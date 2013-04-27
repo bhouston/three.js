@@ -1,4 +1,3 @@
-
 var window = window || {};
 var self = self || window;
 
@@ -12,7 +11,7 @@ if( window.performance === undefined ) {
 if( window.performance.now === undefined ) {
 
 	// check if we are in a Node.js environment
-	if( ( process !== undefined ) && ( process.hrtime !== undefined ) ) {
+	if( ( typeof process !== 'undefined' ) && ( process.hrtime !== undefined ) ) {
 
 		window.performance.now = function () {
 

@@ -113,7 +113,7 @@ THREE.DepthToNormalShader = {
                 "discard;",
             "}",
 
-            "gl_FragColor.xy = vec2( dFdx( centerDepth ) * 1000.0 + 0.5, dFdy( centerDepth ) * 1000.0 + 0.5 );",
+            "gl_FragColor.xy = vec2( dFdx( centerDepth ) * 10000.0 + 0.5, dFdy( centerDepth ) * 10000.0 + 0.5 );",
             "gl_FragColor.z = 0.0;",
             "gl_FragColor.a = 1.0;",
             "return;",

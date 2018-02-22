@@ -6,7 +6,7 @@ vec3 unpackRGBToNormal( const in vec3 rgb ) {
   return 2.0 * rgb.xyz - 1.0;
 }
 
-//#define USE_DEPTH_PACK_256
+#define USE_DEPTH_PACK_256
 
 #ifdef USE_DEPTH_PACK_256
 
@@ -34,6 +34,17 @@ float unpackRGBAToDepth( const in vec4 v ) {
 #define DEPTH_PACK_BYTES 4
 
 vec4 packDepthToRGBA( in highp float v ) {
+
+  #if DEPTH_PACK_BYTES == 4
+    // do nothing.
+    v += 0.5 / ( 255.0*255.0*0.255*0.255 );
+  #elif DEPTH_PACK_BYTES == 3
+    v += 0.5 / ( 255.0*255.0*0.255 );
+  #elif DEPTH_PACK_BYTES == 2
+    v += 0.5 / ( 255.0*255.0 );
+  #elif DEPTH_PACK_BYTES == 1
+    v += 0.5 / ( 255.0 );
+  #endif
 
   const highp vec4 packFactor = vec4( 1.0, 255.0, 65025.0, 16581375.0 );
   highp vec4 res = fract( v * packFactor );

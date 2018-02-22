@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - depth precision test</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				font-family: Monospace;
+				background-color: #800080;
+				margin: 0px;
+				overflow: hidden;
+			}
+			#info {
+				position: absolute;
+				color: #000000;
+				top: 0px;
+				width: 100%;
+				padding: 5px;
+				text-align:center;
+			}
+			a {
+				color: #000;
+			}
+		</style>
+	</head>
+	<body>
+
+		<div id="info"><a href="http://threejs.org" target="_blank" rel="noopener">threejs</a> -  Depth and Derivative Precision Test<br/><br/>Test precision and accuracy by rendering depth and then reconstruct the normals via derivatives by <a href="http://clara.io/" target="_blank" rel="noopener">Ben Houston</a>.</div>
+
+		<script src="../build/three.js"></script>
+		<script src="js/controls/OrbitControls.js"></script>
+		<script src="js/loaders/OBJLoader.js"></script>
+		<script src="js/Detector.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+		<script src="js/shaders/CopyShader.js"></script>
+		<script src="js/shaders/DepthToNormalShader.js"></script>
+		<script src="js/postprocessing/EffectComposer.js"></script>
+		<script src="js/postprocessing/ShaderPass.js"></script>
+		<script src="js/postprocessing/DepthToNormalPass.js"></script>
+		<script src="js/postprocessing/MultiPass.js"></script>
+		<script src="js/postprocessing/RenderPass.js"></script>
+		<script src='js/libs/dat.gui.min.js'></script>
+
+		<script>
+
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+			var group, camera, scene, renderer;
+			var countDown = 1;
+			var controls;
+			var objLoaded = false;
+			var multiPass;
+			var renderPass;
+			var composer;
+			var light;
+
+			var meshMaterial = new THREE.MeshPhysicalMaterial( {
+				color: 0xffffff,
+				roughness: 0.0,
+				metalness: 0.0,
+				envMap: null
+			} );
+
+			var params  = {
+				doubleSided: true,
+			};
+
+			function applyParams() {
+
+				multiPass.side = params.doubleSided ? THREE.DoubleSide : THREE.FrontSide;
+
+			}
+
+			init();
+
+			function init() {
+
+				scene = new THREE.Scene();
+
+				renderer = new THREE.WebGLRenderer( { antialias: false /* to work around a studpi bug in Safari 11.1 */, alpha: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+				renderer.gammaOutput = false;
+				renderer.gammaInput = false;
+				renderer.toneMapping = THREE.LinearToneMapping;
+				renderer.toneMappingWhitePoint = 1;
+				renderer.toneMappingExposure = 1;
+
+				// camera
+
+				camera = new THREE.PerspectiveCamera( 40, window.innerWidth / window.innerHeight, 0.5, 7 );
+				camera.position.set( 1, 0, -4 );
+				scene.add( camera );
+
+				// controls
+
+			  	controls = new THREE.OrbitControls( camera, renderer.domElement );
+				controls.enableDamping = false;
+				controls.dampingFactor = 0.125;
+
+				var container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				stats = new Stats();
+				container.appendChild( stats.dom );
+
+				light = new THREE.PointLight( 0xffffff, 1 );
+				light.position.set(0,2.0,0.0);
+				camera.add( light );
+				light.castShadow = true;
+				light.shadow.camera.near = 0.1;
+				light.shadow.camera.far = 5;
+				light.shadow.bias = - 0; // reduces self-shadowing on double-sided objects
+				light.shadow.side = THREE.BackSide;
+				light.shadow.mapSize.x = 1024;
+				light.shadow.mapSize.y = 1024;
+
+				// renderPass.renderToScreen = true;
+				composer = new THREE.EffectComposer(renderer);
+
+				multiPass = new THREE.MultiPass(renderer, scene, camera);
+				multiPass.outputDebug = false;
+				composer.addPass(multiPass);
+
+				depthToNormalPass = new THREE.DepthToNormalPass(renderer, scene, camera);
+				depthToNormalPass.depthTexture = multiPass.depthTexture;
+				depthToNormalPass.outputDebug = true;
+				composer.addPass(depthToNormalPass);
+
+				renderPass = new THREE.RenderPass(scene, camera, null, 0xaaaaaa);
+				renderPass.clearColor = 0xffffff;
+				renderPass.clearAlpha = 1;
+				renderPass.clear = true;
+				//renderPass.needsSwap = true;
+			//	composer.addPass(renderPass);
+
+				var copyPass = new THREE.ShaderPass(THREE.CopyShader);
+				composer.addPass(copyPass);
+				copyPass.renderToScreen = true;
+
+				var gui = new dat.GUI();
+				gui.add( params, "doubleSided", true );
+
+					// instantiate a loader
+				var loader = new THREE.OBJLoader();
+
+				// load a resource
+				loader.load(
+					// resource URL
+					'models/obj/ninja/ninjaHead_Low.obj',
+					// called when resource is loaded
+					function ( object ) {
+						object.traverse( function(mesh){
+							if( mesh instanceof THREE.Mesh ) {
+								mesh.material = meshMaterial;
+								mesh.geometry.center();
+								mesh.geometry.computeBoundingSphere();
+								var scale = 1/mesh.geometry.boundingSphere.radius;
+								object.scale.set(scale, scale, scale);
+								mesh.rotation.y = Math.PI;
+							}
+						});
+						scene.add( object );
+					},
+					// called when loading is in progresses
+					function ( xhr ) {
+						console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+					},
+					// called when loading has errors
+					function ( error ) {
+						console.error( 'An error happened', error );
+					}
+				);
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+				onWindowResize();
+				requestAnimationFrame( render );
+		}
+
+			function onWindowResize() {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+       			composer.setSize( window.innerWidth * window.devicePixelRatio, window.innerHeight * window.devicePixelRatio );
+
+			}
+
+			function render() {
+				applyParams();
+				
+				requestAnimationFrame( render );
+
+				composer.render();
+
+        		stats.update();
+			}
+
+		</script>
+
+	</body>
+</html>

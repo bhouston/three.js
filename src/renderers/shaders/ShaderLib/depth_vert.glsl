@@ -1,10 +1,13 @@
 #include <common>
+#include <packing>
 #include <uv_pars_vertex>
 #include <displacementmap_pars_vertex>
 #include <morphtarget_pars_vertex>
 #include <skinning_pars_vertex>
 #include <logdepthbuf_pars_vertex>
 #include <clipping_planes_pars_vertex>
+
+varying vec4 clipSpacePosition;
 
 void main() {
 
@@ -28,4 +31,6 @@ void main() {
 	#include <logdepthbuf_vertex>
 	#include <clipping_planes_vertex>
 
+	// https://stackoverflow.com/a/12904072
+	clipSpacePosition = projectionMatrix * mvPosition;
 }

@@ -1,5 +1,26 @@
-export const vertex = /* glsl */`
+import {
+	UniformsLib,
+	UniformsUtils,
+	Matrix4
+} from 'three';
 
+/**
+ * Mesh Velocity Shader @bhouston
+ */
+
+const VelocityShader = {
+
+	uniforms: UniformsUtils.merge( [
+		UniformsLib.common,
+		UniformsLib.displacementmap,
+		{
+			modelMatrixPrev: { value: new Matrix4() },
+			currentProjectionViewMatrix: { value: new Matrix4() },
+			previousProjectionViewMatrix: { value: new Matrix4() }
+		}
+	] ),
+
+	vertexShader: /* glsl */`
 #define NORMAL
 
 #if defined( FLAT_SHADED ) || defined( USE_BUMPMAP ) || defined( TANGENTSPACE_NORMALMAP )
@@ -20,6 +41,8 @@ export const vertex = /* glsl */`
 
 uniform mat4 previousProjectionViewMatrix;
 uniform mat4 currentProjectionViewMatrix;
+
+uniform mat4 modelMatrixPrev;
 
 varying vec4 clipPositionCurrent;
 varying vec4 clipPositionPrevious;
@@ -45,26 +68,24 @@ void main() {
 #ifdef USE_SKINNING
 
 	vec4 mvPosition = modelViewMatrix * skinned;
-    clipPositionCurrent  = currentProjectionViewMatrix * modelMatrix * skinned;
-    clipPositionPrevious = previousProjectionViewMatrix * modelMatrixPrev * skinned;
+	clipPositionCurrent  = currentProjectionViewMatrix * modelMatrix * skinned;
+	clipPositionPrevious = previousProjectionViewMatrix * modelMatrixPrev * skinned;
 
 #else
 
 	vec4 mvPosition = modelViewMatrix * vec4( transformed, 1.0 );
-    clipPositionCurrent  = currentProjectionViewMatrix * modelMatrix * vec4( transformed, 1.0 );
-    clipPositionPrevious = previousProjectionViewMatrix * modelMatrixPrev * vec4( transformed, 1.0 );
+	clipPositionCurrent  = currentProjectionViewMatrix * modelMatrix * vec4( transformed, 1.0 );
+	clipPositionPrevious = previousProjectionViewMatrix * modelMatrixPrev * vec4( transformed, 1.0 );
 
 #endif
 
-    gl_Position = projectionMatrix * mvPosition;
+	gl_Position = projectionMatrix * mvPosition;
 
 	#include <logdepthbuf_vertex>
 	#include <clipping_planes_vertex>
 }
-
-`;
-
-export const fragment = /* glsl */`
+`,
+	fragmentShader: /* glsl */`
 #define NORMAL
 
 uniform float opacity;
@@ -89,18 +110,19 @@ void main() {
 	#include <alphamap_fragment>
 	#include <alphatest_fragment>
 
-    vec2 ndcPositionCurrent  = clipPositionCurrent.xy/clipPositionCurrent.w;
-    vec2 ndcPositionPrevious = clipPositionPrevious.xy/clipPositionPrevious.w;
-    vec2 vel = ( ndcPositionCurrent - ndcPositionPrevious ) * 0.5;
-    vel = vel * 0.5 + 0.5;
-    vec2 v1 = packDepthToRG(vel.x);
-    vec2 v2 = packDepthToRG(vel.y);
-    gl_FragColor = vec4(v1.x, v1.y, v2.x, v2.y);
+	vec2 ndcPositionCurrent  = clipPositionCurrent.xy/clipPositionCurrent.w;
+	vec2 ndcPositionPrevious = clipPositionPrevious.xy/clipPositionPrevious.w;
+	vec2 vel = ( ndcPositionCurrent - ndcPositionPrevious ) * 0.5;
+	vel = vel * 0.5 + 0.5;
+	vec2 v1 = packDepthToRG(vel.x);
+	vec2 v2 = packDepthToRG(vel.y);
+	gl_FragColor = vec4(v1.x, v1.y, v2.x, v2.y);
 
 	#include <logdepthbuf_fragment>
 
 }
 
-`;
+`
+};
 
-
+export { VelocityShader };

@@ -1614,7 +1614,6 @@ function WebGLRenderer( parameters = {} ) {
 				material.isMeshPhongMaterial ||
 				material.isMeshToonMaterial ||
 				material.isMeshStandardMaterial ||
-				material.isMeshVelocityMaterial ||
 				material.envMap ) {
 
 				const uCamPos = p_uniforms.map.cameraPosition;
@@ -1633,7 +1632,6 @@ function WebGLRenderer( parameters = {} ) {
 				material.isMeshLambertMaterial ||
 				material.isMeshBasicMaterial ||
 				material.isMeshStandardMaterial ||
-				material.isMeshVelocityMaterial ||
 				material.isShaderMaterial ) {
 
 				p_uniforms.setValue( _gl, 'isOrthographic', camera.isOrthographicCamera === true );
@@ -1645,7 +1643,6 @@ function WebGLRenderer( parameters = {} ) {
 				material.isMeshLambertMaterial ||
 				material.isMeshBasicMaterial ||
 				material.isMeshStandardMaterial ||
-				material.isMeshVelocityMaterial ||
 				material.isShaderMaterial ||
 				material.isShadowMaterial ||
 				object.isSkinnedMesh ) {
@@ -1748,22 +1745,11 @@ function WebGLRenderer( parameters = {} ) {
 
 		}
 
-		if ( material.isMeshVelocityMaterial ) {
-
-			// nothing yet
-
-			m_uniforms.currentProjectionViewMatrix.value.copy( material.currentProjectionViewMatrix );
-			m_uniforms.previousProjectionViewMatrix.value.copy( material.previousProjectionViewMatrix );
-
-		}
-
 		// common matrices
 
 		p_uniforms.setValue( _gl, 'modelViewMatrix', object.modelViewMatrix );
 		p_uniforms.setValue( _gl, 'normalMatrix', object.normalMatrix );
-		p_uniforms.setValue( _gl, 'modelMatrixPrev', object.matrixWorldPrevious );
 		p_uniforms.setValue( _gl, 'modelMatrix', object.matrixWorld );
-
 
 		return program;
 

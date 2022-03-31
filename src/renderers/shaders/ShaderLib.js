@@ -5,7 +5,6 @@ import { Vector3 } from '../../math/Vector3.js';
 import { UniformsLib } from './UniformsLib.js';
 import { Color } from '../../math/Color.js';
 import { Matrix3 } from '../../math/Matrix3.js';
-import { Matrix4 } from '../../math/Matrix4.js';
 
 const ShaderLib = {
 
@@ -196,22 +195,6 @@ const ShaderLib = {
 
 		vertexShader: ShaderChunk.meshnormal_vert,
 		fragmentShader: ShaderChunk.meshnormal_frag
-
-	},
-
-	velocity: {
-
-		uniforms: mergeUniforms( [
-			UniformsLib.common,
-			UniformsLib.displacementmap,
-			{
-				currentProjectionViewMatrix: { value: new Matrix4() },
-				previousProjectionViewMatrix: { value: new Matrix4() }
-			}
-		] ),
-
-		vertexShader: ShaderChunk.meshvelocity_vert,
-		fragmentShader: ShaderChunk.meshvelocity_frag
 
 	},
 

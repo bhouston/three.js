@@ -1,6 +1,6 @@
 import {
-	Color,
-	Vector3
+	Matrix4,
+	Vector2
 } from 'three';
 
 /**
@@ -15,18 +15,18 @@ const TRAAShader = {
 	},
 
 	uniforms: {
-		jitterOffset: { value: new THREE.Vector2(0, 0) },
+		jitterOffset: { value: new Vector2(0, 0) },
 		currentBeauty: { value: null },
 		previousBeauty: { value: null },
 		tDepth: { value: null },
 		tVelocity: { value: null },
 		minSampleWeight: { value: 1.0 / 16.0 },
 		mode: { value: 0 },
-		cameraNearFar: { value: new THREE.Vector2() },
-		textureSize: { value: new THREE.Vector2() },
-		cameraProjectionMatrix: { value: new THREE.Matrix4() },
-		cameraInverseProjectionMatrix: { value: new THREE.Matrix4() },
-		cameraInverseViewMatrix: { value: new THREE.Matrix4() },
+		cameraNearFar: { value: new Vector2() },
+		textureSize: { value: new Vector2() },
+		cameraProjectionMatrix: { value: new Matrix4() },
+		cameraInverseProjectionMatrix: { value: new Matrix4() },
+		cameraInverseViewMatrix: { value: new Matrix4() },
 	},
 
 	depthWrite: false,

@@ -1,10 +1,10 @@
 import {
 	Color,
+	FullScreenQuad,
 	LinearFilter,
 	Object3D,
 	Matrix4,
 	Mesh,
-	MeshVelocityMaterial,
 	OrthographicCamera,
 	PlaneGeometry,
 	RGBAFormat,
@@ -17,7 +17,8 @@ import {
 } from 'three';
 import { Pass, FullScreenQuad } from './Pass.js';
 import { CopyShader } from '../shaders/CopyShader.js';
-import { TRAASuperSampleShader } from '../shaders/TRAASuperSampleShader.js';
+import { TRAAShader } from '../shaders/TRAAShader.js';
+import { VelocityShader } from '../shaders/VelocityShader.js';
 
 class TexturePass extends Pass {
 	constructor(scene, camera, resolution) {
@@ -25,18 +26,30 @@ class TexturePass extends Pass {
 		this.scene = scene;
 		this.camera = camera;
 
+		//this.orthoScene = new Scene();
+		//this.orthoCamera = new OrthographicCamera(-1, 1, 1, -1, -0.01, 1000);
 
-		this.orthoScene = new Scene();
-		this.orthoCamera = new OrthographicCamera(-1, 1, 1, -1, -0.01, 1000);
+		this.fsQuad = new FullScreenQuad( null );
 
-		this.superSampleTRAAMaterial = new TRAASuperSampleShader();
-		this.velocityMaterial = new MeshVelocityMaterial();
+		this.traaMaterial = new ShaderMaterial( {
+			uniforms: UniformsUtils.clone( TRAAShader.uniforms ),
+			vertexShader: TRAAShader.vertexShader,
+			fragmentShader: TRAAShader.fragmentShader,
+			side: THREE.DoubleSide
+		} );
 
-		this.currentMaterial = this.superSampleTRAAMaterial;
+		this.velocityMaterial = new ShaderMaterial( {
+			uniforms: UniformsUtils.clone( VelocityShader.uniforms ),
+			vertexShader: VelocityShader.vertexShader,
+			fragmentShader: VelocityShader.fragmentShader,
+			side: THREE.DoubleSide
+		} );
+		this.velocityMaterial.extensions.derivatives = true;
 
-		var quad = new PlaneGeometry(2, 2);
-		var quadMesh = new Mesh(quad, this.currentMaterial);
-		this.orthoScene.add(quadMesh);
+		// TODO: replace with
+		//var quad = new PlaneGeometry(2, 2);
+		//var quadMesh = new Mesh(quad, this.traaMaterial);
+	//this.orthoScene.add( quadMesh );
 		this.oldClearColor = new Color();
 		this.oldClearAlpha = 1;
 		this.needsSwap = false;
@@ -243,22 +256,20 @@ class TexturePass extends Pass {
 
 		//renderer.autoClearColor = true;
 		//renderer.autoClearDepth = false;
-		this.orthoScene.overrideMaterial = this.currentMaterial;
 		renderer.autoClearDepth = false;
-		renderer.render(this.orthoScene, this.orthoCamera, writeBuffer, true);
-		this.orthoScene.overrideMaterial = null;
+		renderer.setRenderTarget( null );
+		this.fsQuad.material = this.traaMaterial;
+		this.fsQuad.render( renderer );
 
 		this.copyUniforms["tDiffuse"].value = writeBuffer.texture;
 		this.copyUniforms["opacity"].value = 1;
-		this.orthoScene.overrideMaterial = this.copyMaterial;
-		renderer.render(
-			this.orthoScene,
-			this.orthoCamera,
-			this.accumulatedBeautyRenderTarget,
-			true
-		);
-		renderer.render(this.orthoScene, this.orthoCamera, readBuffer, true);
-		this.orthoScene.overrideMaterial = null;
+
+		this.fsQuad.material = this.copyMaterial;
+		renderer.setRenderTarget( this.accumulatedBeautyRenderTarget );
+		this.fsQuad.render( renderer );
+
+		renderer.setRenderTarget( readBuffer );
+		this.fsQuad.render( renderer );
 
 		renderer.setClearColor(this.oldClearColor, this.oldClearAlpha);
 		renderer.autoClear = oldAutoClear;

@@ -41,11 +41,11 @@
 			import { TRAARenderPass } from './jsm/postprocessing/TRAARenderPass.js';
 			import { CopyShader } from './jsm/shaders/CopyShader.js';
 
-			let camera, scene, renderer, composer, copyPass, traaRenderPass, renderPass;
+			let camera, scene, renderer, composer, copyPass, traaRenderPass, renderPass, depthTexture;
 			let gui, stats;
 			let index = 0;
 
-			const param = { TAAEnabled: '1', TAASampleLevel: 0 };
+			const param = { TRAA: true, Samples: 0, Output: 0 };
 
 			init();
 			animate();
@@ -58,32 +58,37 @@
 
 				gui = new GUI();
 
-				gui.add( param, 'TRAAEnabled', {
-					'Disabled': '0',
-					'Enabled': '1'
-				} ).onFinishChange( function () {
+				gui.add( param, 'TRAA' ).onFinishChange( function () {
 
 					if ( traaRenderPass ) {
 
-						traaRenderPass.enabled = ( param.TRAAEnabled === '1' );
-						renderPass.enabled = ( param.TRAAEnabled !== '1' );
+						traaRenderPass.enabled = param.TRAA;
+						renderPass.enabled = ! param.TRAA;
 
 					}
 
 				} );
 
-				gui.add( param, 'TRAASampleLevel', {
-					'Level 0: 1 Sample': 0,
-					'Level 1: 2 Samples': 1,
-					'Level 2: 4 Samples': 2,
-					'Level 3: 8 Samples': 3,
-					'Level 4: 16 Samples': 4,
-					'Level 5: 32 Samples': 5
+				gui.add( param, 'Samples', 1, 32, 1 ).onFinishChange( function () {
+
+					if ( traaRenderPass ) {
+
+						traaRenderPass.numSamplesPerAccumulation = param.Samples;
+
+					}
+
+				} );
+
+				gui.add( param, 'Output', {
+					'Final': 0,
+					'Raw': 1,
+					'Velocity': 2,
+					'Depth': 3
 				} ).onFinishChange( function () {
 
 					if ( traaRenderPass ) {
 
-						traaRenderPass.sampleLevel = param.TRAASampleLevel;
+						traaRenderPass.output = param.Output;
 
 					}
 
@@ -131,11 +136,18 @@
 				mesh2.position.x = 100;
 				scene.add( mesh2 );
 
+				// render targets
+
+				depthTexture = new THREE.DepthTexture();
+				depthTexture.format = THREE.DepthFormat;
+				depthTexture.type = THREE.UnsignedIntType;
+
 				// postprocessing
 
 				composer = new EffectComposer( renderer );
 
 				traaRenderPass = new TRAARenderPass( scene, camera );
+				traaRenderPass.depthTexture = depthTexture;
 				composer.addPass( traaRenderPass );
 
 				renderPass = new RenderPass( scene, camera );

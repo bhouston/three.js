@@ -49,7 +49,7 @@
 			import { GUI } from './jsm/libs/lil-gui.module.min.js';
 			import { OBJLoader } from './jsm/loaders/OBJLoader.js';
 			import { OrbitControls } from './jsm/controls/OrbitControls.js';
-			import { VelocityShader } from './jsm/shaders/VelocityShader.js';
+			import { VelocityShader, updateMatrixWorldPreview } from './jsm/shaders/VelocityShader.js';
 
 			let stats;
 
@@ -333,12 +333,7 @@
 
 				renderer.render( scene, camera );
 
-				scene.traverse( function( object ) {
-				    if ( object.isMesh ) {
-				        if ( object.matrixWorldPrevious === undefined ) object.matrixWorldPrevious = new THREE.Matrix4();
-				        object.matrixWorldPrevious.copy( object.matrixWorld );
-				    }
-				} );
+				updateMatrixWorldPreview( scene );
 			}
 		</script>
 	</body>

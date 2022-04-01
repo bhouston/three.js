@@ -13,7 +13,7 @@ import {
 import { Pass, FullScreenQuad } from './Pass.js';
 import { CopyShader } from '../shaders/CopyShader.js';
 import { TRAAShader } from '../shaders/TRAAShader.js';
-import { VelocityShader } from '../shaders/VelocityShader.js';
+import { VelocityShader, updateMatrixWorldPreview } from '../shaders/VelocityShader.js';
 
 class TRAARenderPass extends Pass {
 
@@ -33,6 +33,7 @@ class TRAARenderPass extends Pass {
 			uniforms: UniformsUtils.clone( TRAAShader.uniforms ),
 			vertexShader: TRAAShader.vertexShader,
 			fragmentShader: TRAAShader.fragmentShader,
+			defines: TRAAShader.defines,
 			side: DoubleSide,
 		} );
 
@@ -164,7 +165,6 @@ class TRAARenderPass extends Pass {
 
 		}
 
-		this.currentMaterial = this.superSampleTRAAMaterial;
 		this.currentProjectionViewMatrix.multiplyMatrices(
 			this.projectionMatrix,
 			camera.matrixWorldInverse
@@ -198,17 +198,9 @@ class TRAARenderPass extends Pass {
 			this.visibilityFunc
 		);
 		this.scene.overrideMaterial = null;
-		this.scene.traverse( function ( obj ) {
+		updateMatrixWorldPreview( this.scene );
 
-			if ( obj instanceof Object3D ) {
-
-				obj.matrixWorldPrevious.copy( obj.matrixWorld );
-
-			}
-
-		} );
-
-		const traaUniforms = this.currentMaterial.uniforms;
+		const traaUniforms = this.traaMaterial.uniforms;
 
 		if ( camera.view ) {
 
@@ -221,7 +213,7 @@ class TRAARenderPass extends Pass {
 
 		traaUniforms.currentBeauty.value = readBuffer.texture;
 		traaUniforms.previousBeauty.value = this.accumulatedBeautyRenderTarget.texture;
-		traaUniforms.DEPTH_PACKING = this.depthTexture.depthPacking;
+		traaUniforms.DEPTH_PACKING = this.depthTexture.depthPacking; // Enum to 0/1 value?  Is this a bug?
 		traaUniforms.tDepth.value = this.depthTexture;
 		traaUniforms.tVelocity.value = this.velocityRenderTarget.texture;
 
@@ -240,7 +232,7 @@ class TRAARenderPass extends Pass {
 
 		}
 
-		traaUniforms.cameraInverseProjectionMatrix.value.getInverse( this.projectionMatrix );
+		traaUniforms.cameraInverseProjectionMatrix.value.copy( this.projectionMatrix ).invert();
 		traaUniforms.cameraProjectionMatrix.value.copy( this.projectionMatrix );
 		traaUniforms.cameraInverseViewMatrix.value.copy( camera.matrixWorld );
 		traaUniforms.cameraNearFar.value.set( camera.near, camera.far );

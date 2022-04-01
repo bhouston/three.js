@@ -125,4 +125,19 @@ void main() {
 `
 };
 
-export { VelocityShader };
+function updateMatrixWorldPreview( scene ) {
+
+	scene.traverse( function ( object ) {
+
+		if ( object.isMesh ) {
+
+			if ( object.matrixWorldPrevious === undefined ) object.matrixWorldPrevious = new Matrix4();
+
+			object.matrixWorldPrevious.copy( object.matrixWorld );
+
+		}
+
+	} );
+}
+
+export { VelocityShader, updateMatrixWorldPreview };

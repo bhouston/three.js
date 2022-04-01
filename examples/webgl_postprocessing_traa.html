@@ -37,7 +37,6 @@
 			import { EffectComposer } from './jsm/postprocessing/EffectComposer.js';
 			import { RenderPass } from './jsm/postprocessing/RenderPass.js';
 			import { ShaderPass } from './jsm/postprocessing/ShaderPass.js';
-			//import { TRAAShader } from './jsm/shaders/TRAAShader.js';
 			import { TRAARenderPass } from './jsm/postprocessing/TRAARenderPass.js';
 			import { CopyShader } from './jsm/shaders/CopyShader.js';
 
@@ -45,7 +44,7 @@
 			let gui, stats;
 			let index = 0;
 
-			const param = { TRAA: true, Samples: 0, Output: 0 };
+			const param = { TRAA: true, Samples: 16, Output: TRAARenderPass.OUTPUT.Beauty };
 
 			init();
 			animate();
@@ -80,10 +79,10 @@
 				} );
 
 				gui.add( param, 'Output', {
-					'Final': 0,
-					'Raw': 1,
-					'Velocity': 2,
-					'Depth': 3
+					'Beauty': TRAARenderPass.OUTPUT.Beauty,
+					'Raw': TRAARenderPass.OUTPUT.Raw,
+					'Velocity': TRAARenderPass.OUTPUT.Velocity,
+					'Depth': TRAARenderPass.OUTPUT.Depth
 				} ).onFinishChange( function () {
 
 					if ( traaRenderPass ) {

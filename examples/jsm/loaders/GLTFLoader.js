@@ -125,6 +125,12 @@ class GLTFLoader extends Loader {
 
 		this.register( function ( parser ) {
 
+			return new GLTFBehaviorsExtension( parser );
+
+		} );
+
+		this.register( function ( parser ) {
+
 			return new GLTFMaterialsSpecularExtension( parser );
 
 		} );
@@ -451,6 +457,7 @@ function GLTFRegistry() {
 /*********************************/
 
 const EXTENSIONS = {
+	KHR_BEHAVIORS: 'KHR_behaviors',
 	KHR_BINARY_GLTF: 'KHR_binary_glTF',
 	KHR_DRACO_MESH_COMPRESSION: 'KHR_draco_mesh_compression',
 	KHR_LIGHTS_PUNCTUAL: 'KHR_lights_punctual',
@@ -647,6 +654,45 @@ class GLTFMaterialsUnlitExtension {
 		}
 
 		return Promise.all( pending );
+
+	}
+
+}
+
+/**
+ * Behaviors Extension
+ *
+ * Specification: [TODO]
+ */
+ class GLTFBehaviorsExtension {
+
+	constructor( parser ) {
+
+		this.parser = parser;
+		this.name = EXTENSIONS.KHR_BEHAVIORS;
+
+	}
+
+	extendMaterialParams( materialIndex, materialParams ) {
+
+		const parser = this.parser;
+		const materialDef = parser.json.materials[ materialIndex ];
+
+		if ( ! materialDef.extensions || ! materialDef.extensions[ this.name ] ) {
+
+			return Promise.resolve();
+
+		}
+
+		const emissiveStrength = materialDef.extensions[ this.name ].emissiveStrength;
+
+		if ( emissiveStrength !== undefined ) {
+
+			materialParams.emissiveIntensity = emissiveStrength;
+
+		}
+
+		return Promise.resolve();
 
 	}
 
@@ -2673,6 +2719,10 @@ class GLTFParser {
 					dependency = this.loadScene( index );
 					break;
 
+				case 'behavior':
+					dependency = this.loadBehavior( index );
+					break;
+
 				case 'node':
 					dependency = this.loadNode( index );
 					break;
@@ -3958,6 +4008,26 @@ class GLTFParser {
 			return node;
 
 		} );
+
+	}
+
+	/**
+	 * Specification: [TODO]
+	 * @param {number} behaviorIndex
+	 * @return {Promise<BehaviorGraph>}
+	 */
+	 loadBehavior( behaviorIndex ) {
+
+		const json = this.json;
+		const extensions = this.extensions;
+		const parser = this;
+
+		const behaviorDef = json.behaviors[ behaviorIndex ];
+
+		// reserve node's name before its dependencies, so the root has the intended name.
+		const behaviorName = behaviorDef.name ? parser.createUniqueName( behaviorDef.name ) : '';
+
+		return
 
 	}
 

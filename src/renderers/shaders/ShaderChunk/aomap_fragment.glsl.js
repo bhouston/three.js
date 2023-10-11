@@ -18,6 +18,10 @@ export default /* glsl */`
 		#if defined( USE_SHEEN ) 
 			sheenSpecularIndirect *= specularOcclusion;
 		#endif
+		
+		#if defined( USE_CLEARCOAT ) 
+			clearcoatSpecularIndirect *= specularOcclusion;
+		#endif
 
 	#endif
 

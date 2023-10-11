@@ -43,7 +43,9 @@ struct PhysicalMaterial {
 
 // temporary
 vec3 clearcoatSpecular = vec3( 0.0 );
-vec3 sheenSpecular = vec3( 0.0 );
+
+vec3 sheenSpecularDirect = vec3( 0.0 );
+vec3 sheenSpecularIndirect = vec3(0.0 );
 
 vec3 Schlick_to_F0( const in vec3 f, const in float f90, const in float dotVH ) {
     float x = clamp( 1.0 - dotVH, 0.0, 1.0 );
@@ -441,7 +443,7 @@ void RE_Direct_Physical( const in IncidentLight directLight, const in GeometricC
 
 	#ifdef USE_SHEEN
 
-		sheenSpecular += irradiance * BRDF_Sheen( directLight.direction, geometry.viewDir, geometry.normal, material.sheenColor, material.sheenRoughness );
+		sheenSpecularDirect += irradiance * BRDF_Sheen( directLight.direction, geometry.viewDir, geometry.normal, material.sheenColor, material.sheenRoughness );
 
 	#endif
 
@@ -466,7 +468,7 @@ void RE_IndirectSpecular_Physical( const in vec3 radiance, const in vec3 irradia
 
 	#ifdef USE_SHEEN
 
-		sheenSpecular += irradiance * material.sheenColor * IBLSheenBRDF( geometry.normal, geometry.viewDir, material.sheenRoughness );
+		sheenSpecularIndirect += irradiance * material.sheenColor * IBLSheenBRDF( geometry.normal, geometry.viewDir, material.sheenRoughness );
 
 	#endif
 

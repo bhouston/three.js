@@ -9,8 +9,11 @@ The node materials loaded with this loader can only be used with [WebGPURenderer
 ## Code Example
 
 ```js
-const loader = new MaterialXLoader().setPath( SAMPLE_PATH );
-const materials = await loader.loadAsync( 'standard_surface_brass_tiled.mtlx' );
+const loader = new MaterialXLoader()
+	.setPath( SAMPLE_PATH )
+	.setUnsupportedPolicy( 'warn' );
+
+const { materials, report } = await loader.loadAsync( 'standard_surface_brass_tiled.mtlx' );
 ```
 
 ## Import
@@ -57,11 +60,35 @@ Executed when errors occur.
 
 **Returns:** A reference to this loader.
 
-### .parse( text : string ) : Object.<string, NodeMaterial>
+### .setUnsupportedPolicy( policy : 'warn'|'error'|'ignore' ) : MaterialXLoader
 
-Parses the given MaterialX data and returns the resulting materials.
+Configures behavior when unsupported nodes/properties are found.
 
-Supported standard\_surface inputs:
+- `warn` (default): warnings are emitted and loading continues.
+- `error`: warnings are collected and then thrown as an error after parse.
+- `ignore`: warnings are collected silently.
+
+### .setWarningCallback( callback : function ) : MaterialXLoader
+
+Registers a callback fired for each reported warning issue.
+
+### .setMaterialName( name : string ) : MaterialXLoader
+
+Compiles only the selected `surfacematerial` by name when multiple materials exist.
+
+### .parse( text : string ) : { materials : Object.<string, NodeMaterial>, report : Object }
+
+Parses the given MaterialX data and returns resulting materials plus a diagnostics report.
+
+`.load()` and `.loadAsync()` support both plain `.mtlx` files and `.mtlx.zip` archives.
+
+Supported surface shader mappings:
+
+*   `standard_surface`
+*   `gltf_pbr`
+*   `open_pbr_surface`
+
+Commonly mapped standard\_surface inputs:
 
 *   base, base\_color: Base color/albedo
 *   opacity: Alpha/transparency
@@ -76,7 +103,7 @@ Supported standard\_surface inputs:
 *   sheen, sheen\_color, sheen\_roughness: Sheen properties
 *   normal: Normal map
 *   coat, coat\_roughness, coat\_color: Clearcoat properties
-*   emission, emissionColor: Emission properties
+*   emission, emissionColor, emission\_color: Emission properties
 
 **text**
 
@@ -84,7 +111,10 @@ The raw MaterialX data as a string.
 
 **Overrides:** [Loader#parse](Loader.html#parse)
 
-**Returns:** A dictionary holding the parse node materials.
+**Returns:** An object containing:
+
+* `materials`: dictionary of resulting node materials.
+* `report`: diagnostics object with `issues`, `ignoredSurfaceInputs`, `missingReferences`, and related fields.
 
 ## Source
 

@@ -9,6 +9,27 @@
 			.dg .property-name {
 				width: 20% !important;
 			}
+
+			#materialxControls {
+				position: absolute;
+				top: 90px;
+				left: 20px;
+				z-index: 5;
+				background: rgba( 255, 255, 255, 0.9 );
+				padding: 8px;
+				border-radius: 4px;
+				font: 12px sans-serif;
+			}
+
+			#materialxControls label {
+				display: block;
+				margin: 6px 0 2px;
+			}
+
+			#materialxControls select, #materialxControls button {
+				width: 320px;
+				margin-bottom: 4px;
+			}
 		</style>
 	</head>
 	<body>
@@ -21,7 +42,7 @@
 			</div>
 
 			<small>
-				MaterialX Standard Surface loader.
+				MaterialX surface loader.
 			</small>
 		</div>
 
@@ -78,31 +99,29 @@
 			];
 
 			const localSamples = [
-				'heightnormal.mtlx',
-				'conditional_if_float.mtlx',
-				'image_transform.mtlx',
-				'color3_vec3_cm_test.mtlx',
-				'rotate2d_test.mtlx',
-				'rotate3d_test.mtlx',
-				'heighttonormal_normal_input.mtlx',
-				'roughness_test.mtlx',
-				'opacity_test.mtlx',
-				'opacity_only_test.mtlx',
-				'specular_test.mtlx',
-				'ior_test.mtlx',
-				'combined_test.mtlx',
-				'texture_opacity_test.mtlx',
-				'transmission_test.mtlx',
-				'transmission_only_test.mtlx',
-				'transmission_rough.mtlx',
-				'thin_film_rainbow_test.mtlx',
-				'thin_film_ior_clamp_test.mtlx',
-				'sheen_test.mtlx',
+				'open_pbr_pearl_thinfilm.mtlx',
+				'open_pbr_soapbubble_transmission.mtlx',
+				'open_pbr_brushed_metal_anisotropy.mtlx',
+				'open_pbr_velvet_fuzz.mtlx',
+				'gltf_pbr_carpaint_clearcoat.mtlx',
+				'gltf_pbr_glass_dispersion.mtlx',
+				'gltf_pbr_gold_metal.mtlx',
+				'gltf_pbr_default_feature_sweep.mtlx',
+				'standard_surface_marble_veins.mtlx',
+				'standard_surface_jade_translucent.mtlx',
+				'standard_surface_wood_grain.mtlx',
+				'standard_surface_logic_composite_nodes.mtlx',
+			];
+
+			const sampleEntries = [
+				...samples.map( ( sample ) => ( { id: `remote:${ sample }`, sample, path: SAMPLE_PATH } ) ),
+				...localSamples.map( ( sample ) => ( { id: `local:${ sample }`, sample, path: LOCAL_SAMPLE_PATH } ) )
 			];
 
 			let camera, scene, renderer;
 			let controls, prefab;
-			const models = [];
+			let currentModel = null;
+			let controlsRoot, sampleSelect, materialSelect, reloadButton;
 
 			init();
 
@@ -187,18 +206,8 @@
 						scene.environment = texture;
 
 						prefab = ( await new GLTFLoader().loadAsync( './models/gltf/ShaderBall.glb' ) ).scene;
-
-						for ( const sample of samples ) {
-
-							await addSample( sample, SAMPLE_PATH );
-
-						}
-
-						for ( const sample of localSamples ) {
-
-							await addSample( sample, LOCAL_SAMPLE_PATH );
-
-						}
+						createMaterialXControls();
+						await onSampleChanged();
 
 						addGUI();
 
@@ -208,59 +217,278 @@
 
 			}
 
-			function updateModelsAlign() {
+			function createMaterialXControls() {
 
-				const COLUMN_COUNT = 6;
-				const DIST_X = 3;
-				const DIST_Z = 3;
+				controlsRoot = document.createElement( 'div' );
+				controlsRoot.id = 'materialxControls';
 
-				const lineCount = Math.floor( models.length / COLUMN_COUNT ) - 1.5;
+				const sampleLabel = document.createElement( 'label' );
+				sampleLabel.textContent = 'Sample';
+				controlsRoot.appendChild( sampleLabel );
 
-				const offsetX = ( DIST_X * ( COLUMN_COUNT - 1 ) ) * - .5;
-				const offsetZ = ( DIST_Z * lineCount ) * .5;
+				sampleSelect = document.createElement( 'select' );
+				for ( const entry of sampleEntries ) {
 
-				for ( let i = 0; i < models.length; i ++ ) {
+					const option = document.createElement( 'option' );
+					option.value = entry.id;
+					option.textContent = entry.id.startsWith( 'remote:' ) ? `MaterialX: ${ entry.sample }` : `Local: ${ entry.sample }`;
+					sampleSelect.appendChild( option );
 
-					const model = models[ i ];
+				}
 
-					model.position.x = ( ( i % COLUMN_COUNT ) * DIST_X ) + offsetX;
-					model.position.z = ( Math.floor( i / COLUMN_COUNT ) * - DIST_Z ) + offsetZ;
+				controlsRoot.appendChild( sampleSelect );
+
+				const materialLabel = document.createElement( 'label' );
+				materialLabel.textContent = 'Surface Material';
+				controlsRoot.appendChild( materialLabel );
+
+				materialSelect = document.createElement( 'select' );
+				controlsRoot.appendChild( materialSelect );
+
+				reloadButton = document.createElement( 'button' );
+				reloadButton.textContent = 'Load Selected Material';
+				controlsRoot.appendChild( reloadButton );
+
+				document.body.appendChild( controlsRoot );
+
+				sampleSelect.addEventListener( 'change', onSampleChanged );
+				materialSelect.addEventListener( 'change', loadSelectedMaterial );
+				reloadButton.addEventListener( 'click', loadSelectedMaterial );
+
+			}
+
+			function getSampleEntryById( id ) {
+
+				return sampleEntries.find( ( entry ) => entry.id === id ) || sampleEntries[ 0 ];
+
+			}
+
+			function traceMaterialNodeIntegrity( material, sampleName, materialName ) {
+
+				const issues = [];
+				const visited = new Set();
+
+				const requiredMaterialNodes = [
+					'colorNode',
+					'opacityNode',
+					'roughnessNode',
+					'metalnessNode',
+					'specularIntensityNode',
+					'specularColorNode',
+					'iorNode',
+					'transmissionNode',
+					'thicknessNode'
+				];
+
+				for ( const slot of requiredMaterialNodes ) {
+
+					const value = material[ slot ];
+					if ( value === null || value === undefined ) {
+
+						issues.push( `material.${ slot } is ${ value }` );
+
+					} else if ( value.isNode !== true ) {
+
+						issues.push( `material.${ slot } is not a Node (${ typeof value })` );
+
+					}
+
+				}
+
+				const queue = [];
+
+				for ( const slot of Object.getOwnPropertyNames( material ) ) {
+
+					const value = material[ slot ];
+					if ( value && value.isNode === true ) queue.push( { node: value, path: `material.${ slot }` } );
+
+				}
+
+				while ( queue.length > 0 ) {
+
+					const { node, path } = queue.pop();
+					if ( visited.has( node ) ) continue;
+					visited.add( node );
+
+					if ( Array.isArray( node.nodes ) ) {
+
+						for ( let i = 0; i < node.nodes.length; i ++ ) {
+
+							const child = node.nodes[ i ];
+							const childPath = `${ path }.nodes[${ i }]`;
+
+							if ( child === null || child === undefined ) {
+
+								issues.push( `${ childPath } is ${ child }` );
+
+							} else if ( child.isNode !== true ) {
+
+								issues.push( `${ childPath } is not a Node (${ typeof child })` );
+
+							}
+
+						}
+
+					}
+
+					if ( Array.isArray( node.rawInputs ) ) {
+
+						for ( let i = 0; i < node.rawInputs.length; i ++ ) {
+
+							const child = node.rawInputs[ i ];
+							if ( child === null ) issues.push( `${ path }.rawInputs[${ i }] is null` );
+
+						}
+
+					}
+
+					if ( typeof node.getChildren === 'function' ) {
+
+						for ( const childNode of node.getChildren() ) {
+
+							if ( childNode && childNode.isNode === true ) {
+
+								queue.push( { node: childNode, path: `${ path }->${ childNode.constructor?.name || 'Node' }` } );
+
+							}
+
+						}
+
+					}
+
+				}
+
+				if ( issues.length > 0 ) {
+
+					console.groupCollapsed( `[MaterialX TRACE] node-integrity issues: sample=${ sampleName } material=${ materialName || '(auto)' } count=${ issues.length }` );
+					for ( const issue of issues ) console.error( issue );
+					console.groupEnd();
 
 				}
 
 			}
 
-			async function addSample( sample, path ) {
+			async function fetchSurfaceMaterialNames( entry ) {
 
-				const model = prefab.clone();
+				const response = await fetch( entry.path + entry.sample );
+				if ( ! response.ok ) throw new Error( `HTTP ${ response.status }` );
 
-				models.push( model );
+				const xmlText = await response.text();
+				const xmlRoot = new DOMParser().parseFromString( xmlText, 'application/xml' ).documentElement;
+				const nodes = [ ...xmlRoot.querySelectorAll( 'surfacematerial' ) ];
+				const names = nodes.map( ( node ) => node.getAttribute( 'name' ) ).filter( ( name ) => Boolean( name ) );
 
-				scene.add( model );
+				return [ ...new Set( names ) ];
 
-				updateModelsAlign();
+			}
 
-				//
+			function rebuildMaterialSelect( materialNames ) {
 
-				const material = await new MaterialXLoader()
-					.setPath( path )
-					.loadAsync( sample )
-					.then( ( { materials } ) => Object.values( materials ).pop() );
+				materialSelect.innerHTML = '';
 
-				const calibrationMesh = model.getObjectByName( 'Calibration_Mesh' );
-				calibrationMesh.material = material;
+				const autoOption = document.createElement( 'option' );
+				autoOption.value = '';
+				autoOption.textContent = '(auto / first material)';
+				materialSelect.appendChild( autoOption );
 
-				const previewMesh = model.getObjectByName( 'Preview_Mesh' );
-				previewMesh.material = material;
+				for ( const name of materialNames ) {
 
-				if ( material.transparent ) {
-
-					calibrationMesh.renderOrder = 1;
-					previewMesh.renderOrder = 2;
+					const option = document.createElement( 'option' );
+					option.value = name;
+					option.textContent = name;
+					materialSelect.appendChild( option );
 
 				}
 
-				await renderer.compileAsync( model, camera, scene );
+			}
+
+			async function onSampleChanged() {
+
+				const entry = getSampleEntryById( sampleSelect.value );
+
+				try {
+
+					const materialNames = await fetchSurfaceMaterialNames( entry );
+					rebuildMaterialSelect( materialNames );
+
+				} catch ( error ) {
+
+					console.error( `Failed to inspect surfacematerial list for ${ entry.sample }`, error );
+					rebuildMaterialSelect( [] );
+
+				}
+
+				await loadSelectedMaterial();
+
+			}
+
+			async function loadSelectedMaterial() {
+
+				const entry = getSampleEntryById( sampleSelect.value );
+				const selectedMaterialName = materialSelect.value || null;
+
+				if ( currentModel ) {
+
+					scene.remove( currentModel );
+					currentModel = null;
+
+				}
+
+				const model = prefab.clone();
+				scene.add( model );
+				currentModel = model;
+
+				const loader = new MaterialXLoader()
+					.setPath( entry.path )
+					.setUnsupportedPolicy( 'warn' );
+
+				if ( selectedMaterialName ) loader.setMaterialName( selectedMaterialName );
+
+				let material = null;
+
+				try {
+
+					const { materials, report } = await loader.loadAsync( entry.sample );
+
+					if ( report.issues.length > 0 ) {
+
+						console.groupCollapsed( `MaterialX issues: ${ entry.sample } :: ${ selectedMaterialName || '(auto)' } (${ report.issues.length })` );
+						for ( const issue of report.issues ) console.log( issue );
+						console.groupEnd();
+
+					}
+
+					material = Object.values( materials ).pop();
+
+					if ( ! material ) {
+
+						throw new Error( `No material compiled from ${ entry.sample } (material=${ selectedMaterialName || '(auto)' }).` );
+
+					}
+
+					const calibrationMesh = model.getObjectByName( 'Calibration_Mesh' );
+					calibrationMesh.material = material;
+
+					const previewMesh = model.getObjectByName( 'Preview_Mesh' );
+					previewMesh.material = material;
+
+					if ( material.transparent ) {
+
+						calibrationMesh.renderOrder = 1;
+						previewMesh.renderOrder = 2;
+
+					}
+
+					await renderer.compileAsync( model, camera, scene );
+
+					console.info( `[MaterialX OK] sample=${ entry.sample } material=${ selectedMaterialName || '(auto)' }` );
+
+				} catch ( error ) {
+
+					console.error( `[MaterialX FAIL] sample=${ entry.sample } material=${ selectedMaterialName || '(auto)' }`, error );
+					if ( material ) traceMaterialNodeIntegrity( material, entry.sample, selectedMaterialName );
+
+				}
 
 			}
 

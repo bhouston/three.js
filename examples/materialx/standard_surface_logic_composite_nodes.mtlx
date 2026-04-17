@@ -1,0 +1,103 @@
+<?xml version="1.0"?>
+<materialx version="1.39" colorspace="lin_rec709">
+  <nodegraph name="NG_logic_composite_nodes">
+    <texcoord name="uv0" type="vector2" />
+    <circle name="circle_mask" type="float">
+      <input name="texcoord" type="vector2" nodename="uv0" />
+      <input name="center" type="vector2" value="0.5, 0.5" />
+      <input name="radius" type="float" value="0.35" />
+    </circle>
+    <ifgreater name="mask_bool" type="boolean">
+      <input name="value1" type="float" nodename="circle_mask" />
+      <input name="value2" type="float" value="0.5" />
+      <input name="in1" type="boolean" value="true" />
+      <input name="in2" type="boolean" value="false" />
+    </ifgreater>
+    <constant name="true_bool" type="boolean">
+      <input name="value" type="boolean" value="true" />
+    </constant>
+    <and name="logic_and" type="boolean">
+      <input name="in1" type="boolean" nodename="mask_bool" />
+      <input name="in2" type="boolean" nodename="true_bool" />
+    </and>
+    <or name="logic_or" type="boolean">
+      <input name="in1" type="boolean" nodename="mask_bool" />
+      <input name="in2" type="boolean" nodename="true_bool" />
+    </or>
+    <xor name="logic_xor" type="boolean">
+      <input name="in1" type="boolean" nodename="logic_and" />
+      <input name="in2" type="boolean" nodename="logic_or" />
+    </xor>
+    <combine3 name="base_a" type="color3">
+      <input name="in1" type="float" value="0.9" />
+      <input name="in2" type="float" value="0.2" />
+      <input name="in3" type="float" value="0.1" />
+    </combine3>
+    <combine3 name="base_b" type="color3">
+      <input name="in1" type="float" value="0.1" />
+      <input name="in2" type="float" value="0.35" />
+      <input name="in3" type="float" value="0.9" />
+    </combine3>
+    <minus name="minus_color" type="color3">
+      <input name="fg" type="color3" nodename="base_a" />
+      <input name="bg" type="color3" nodename="base_b" />
+      <input name="mix" type="float" value="0.65" />
+    </minus>
+    <difference name="difference_color" type="color3">
+      <input name="fg" type="color3" nodename="minus_color" />
+      <input name="bg" type="color3" nodename="base_a" />
+      <input name="mix" type="float" value="0.8" />
+    </difference>
+    <burn name="burn_color" type="color3">
+      <input name="fg" type="color3" nodename="difference_color" />
+      <input name="bg" type="color3" nodename="base_b" />
+      <input name="mix" type="float" value="0.65" />
+    </burn>
+    <dodge name="dodge_color" type="color3">
+      <input name="fg" type="color3" nodename="burn_color" />
+      <input name="bg" type="color3" nodename="base_a" />
+      <input name="mix" type="float" value="0.45" />
+    </dodge>
+    <colorcorrect name="corrected" type="color3">
+      <input name="in" type="color3" nodename="dodge_color" />
+      <input name="hue" type="float" value="0.08" />
+      <input name="saturation" type="float" value="1.25" />
+      <input name="gamma" type="float" value="0.95" />
+      <input name="lift" type="float" value="0.02" />
+      <input name="gain" type="float" value="1.1" />
+      <input name="contrast" type="float" value="1.2" />
+      <input name="contrastpivot" type="float" value="0.5" />
+      <input name="exposure" type="float" value="0.15" />
+    </colorcorrect>
+    <combine4 name="premult_src" type="color4">
+      <input name="in1" type="float" nodename="circle_mask" />
+      <input name="in2" type="float" value="0.4" />
+      <input name="in3" type="float" value="0.8" />
+      <input name="in4" type="float" value="0.6" />
+    </combine4>
+    <unpremult name="unpremult_color" type="color4">
+      <input name="in" type="color4" nodename="premult_src" />
+    </unpremult>
+    <separate4 name="unpremult_channels" type="multioutput">
+      <input name="in" type="color4" nodename="unpremult_color" />
+    </separate4>
+    <combine3 name="unpremult_rgb" type="color3">
+      <input name="in1" type="float" nodename="unpremult_channels" output="r" />
+      <input name="in2" type="float" nodename="unpremult_channels" output="g" />
+      <input name="in3" type="float" nodename="unpremult_channels" output="b" />
+    </combine3>
+    <mix name="base_color" type="color3">
+      <input name="fg" type="color3" nodename="corrected" />
+      <input name="bg" type="color3" nodename="unpremult_rgb" />
+      <input name="mix" type="float" nodename="logic_xor" />
+    </mix>
+    <output name="out_color" type="color3" nodename="base_color" />
+  </nodegraph>
+  <standard_surface name="SR_logic_composite_nodes" type="surfaceshader">
+    <input name="base_color" type="color3" nodegraph="NG_logic_composite_nodes" output="out_color" />
+    <input name="specular_roughness" type="float" value="0.35" />
+  </standard_surface>
+  <surfacematerial name="M_logic_composite_nodes" type="material">
+    <input name="surfaceshader" type="surfaceshader" nodename="SR_logic_composite_nodes" />
+  </surfacematerial>
+</materialx>

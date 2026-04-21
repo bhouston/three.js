@@ -187,17 +187,6 @@ class MaterialXNode {
 
 		}
 
-		const isAbsoluteURI = /^(?:[a-z]+:)?\/\//i.test( resolvedURI ) || resolvedURI.startsWith( 'data:' ) || resolvedURI.startsWith( 'blob:' );
-
-		// ImageBitmapLoader applies `setPath()` before loading. For absolute URIs we must
-		// use a loader without path to avoid generating `path + absoluteURI`.
-		if ( isAbsoluteURI ) {
-
-			loader = new ImageBitmapLoader( this.materialX.manager );
-			loader.setOptions( { imageOrientation: 'flipY' } );
-
-		}
-
 		const textureNode = new Texture();
 		textureNode.wrapS = textureNode.wrapT = RepeatWrapping;
 		this.materialX.textureCache.set( resolvedURI, textureNode );

@@ -1,7 +1,7 @@
 import {
 	abs, add, clamp, floor, ceil, round, sign, sin, cos, tan, asin, acos,
 	sqrt, log, exp, min, max, normalize, length, dot, cross, mul, div, mod, pow, distance,
-	remap, smoothstep, luminance, mx_rgbtohsv, mx_hsvtorgb, mix, saturation, transpose,
+	remap, smoothstep, luminance, mx_rgbtohsv, mx_hsvtorgb, mix, saturation as mx_saturation, transpose,
 	determinant, inverse, normalMap, mat3, mx_ramplr, mx_ramptb, mx_splitlr, mx_splittb,
 	mx_fractal_noise_float, mx_noise_float, mx_cell_noise_float, mx_worley_noise_float,
 	mx_unifiednoise2d, mx_unifiednoise3d, mx_place2d, mx_safepower, mx_contrast, element,
@@ -51,6 +51,110 @@ const mx_circle = ( texcoord, center, radius ) => {
 };
 
 const mx_bump = ( height, scale = 1 ) => normalMap( mx_heighttonormal( height, 1 ), scale );
+
+const getRGBChannels = ( input ) => vec3( element( input, 0 ), element( input, 1 ), element( input, 2 ) );
+
+const mx_unpremult = ( input ) => {
+
+	const alpha = element( input, 3 );
+	const rgb = getRGBChannels( input );
+	const unpremultiplied = alpha.equal( 0 ).mix( rgb, div( rgb, alpha ) );
+
+	return vec4( unpremultiplied, alpha );
+
+};
+
+const mx_colorcorrect = ( input, hue = 0, saturationAmount = 1, gamma = 1, lift = 0, gain = 1, contrast = 1, contrastPivot = 0.5, exposure = 0 ) => {
+
+	const rgbInput = getRGBChannels( input );
+	const hsv = mx_rgbtohsv( rgbInput );
+	const hueAdjusted = mx_hsvtorgb( add( hsv, vec3( hue, 0, 0 ) ) );
+	const saturationAdjusted = mx_saturation( hueAdjusted, saturationAmount );
+	const gammaAdjusted = mx_range( saturationAdjusted, 0, 1, 0, 1, gamma );
+	const liftApplied = add( mul( gammaAdjusted, sub( 1, lift ) ), lift );
+	const gainApplied = mul( liftApplied, gain );
+	const contrastApplied = mx_contrast( gainApplied, contrast, contrastPivot );
+	const exposureApplied = mul( contrastApplied, pow( 2, exposure ) );
+	const preserveAlpha = input && ( input.nodeType === 'vec4' || input.nodeType === 'color4' );
+
+	return preserveAlpha ? vec4( exposureApplied, element( input, 3 ) ) : exposureApplied;
+
+};
+
+const mx_minus = ( fg, bg, mixval = 1 ) => add( mul( mixval, sub( bg, fg ) ), mul( sub( 1, mixval ), bg ) );
+
+const mx_difference = ( fg, bg, mixval = 1 ) => add( mul( mixval, abs( sub( bg, fg ) ) ), mul( sub( 1, mixval ), bg ) );
+
+const mx_burn_channel = ( fg, bg, mixval = 1 ) => {
+
+	const composed = add( mul( mixval, sub( 1, div( sub( 1, bg ), fg ) ) ), mul( sub( 1, mixval ), bg ) );
+	return abs( fg ).lessThan( 1e-6 ).mix( 0, composed );
+
+};
+
+const mx_dodge_channel = ( fg, bg, mixval = 1 ) => {
+
+	const composed = add( mul( mixval, div( bg, sub( 1, fg ) ) ), mul( sub( 1, mixval ), bg ) );
+	return abs( sub( 1, fg ) ).lessThan( 1e-6 ).mix( 0, composed );
+
+};
+
+const isVec3Like = ( node ) => node && ( node.nodeType === 'vec3' || node.nodeType === 'color' || node.nodeType === 'color3' );
+const isVec4Like = ( node ) => node && ( node.nodeType === 'vec4' || node.nodeType === 'color4' );
+
+const mx_burn = ( fg, bg, mixval = 1 ) => {
+
+	if ( isVec4Like( fg ) || isVec4Like( bg ) ) {
+
+		return vec4(
+			mx_burn_channel( element( fg, 0 ), element( bg, 0 ), mixval ),
+			mx_burn_channel( element( fg, 1 ), element( bg, 1 ), mixval ),
+			mx_burn_channel( element( fg, 2 ), element( bg, 2 ), mixval ),
+			mx_burn_channel( element( fg, 3 ), element( bg, 3 ), mixval )
+		);
+
+	}
+
+	if ( isVec3Like( fg ) || isVec3Like( bg ) ) {
+
+		return vec3(
+			mx_burn_channel( element( fg, 0 ), element( bg, 0 ), mixval ),
+			mx_burn_channel( element( fg, 1 ), element( bg, 1 ), mixval ),
+			mx_burn_channel( element( fg, 2 ), element( bg, 2 ), mixval )
+		);
+
+	}
+
+	return mx_burn_channel( fg, bg, mixval );
+
+};
+
+const mx_dodge = ( fg, bg, mixval = 1 ) => {
+
+	if ( isVec4Like( fg ) || isVec4Like( bg ) ) {
+
+		return vec4(
+			mx_dodge_channel( element( fg, 0 ), element( bg, 0 ), mixval ),
+			mx_dodge_channel( element( fg, 1 ), element( bg, 1 ), mixval ),
+			mx_dodge_channel( element( fg, 2 ), element( bg, 2 ), mixval ),
+			mx_dodge_channel( element( fg, 3 ), element( bg, 3 ), mixval )
+		);
+
+	}
+
+	if ( isVec3Like( fg ) || isVec3Like( bg ) ) {
+
+		return vec3(
+			mx_dodge_channel( element( fg, 0 ), element( bg, 0 ), mixval ),
+			mx_dodge_channel( element( fg, 1 ), element( bg, 1 ), mixval ),
+			mx_dodge_channel( element( fg, 2 ), element( bg, 2 ), mixval )
+		);
+
+	}
+
+	return mx_dodge_channel( fg, bg, mixval );
+
+};
 
 const defaultFloat = ( value ) => () => float( value );
 const defaultInt = ( value ) => () => int( value );
@@ -126,6 +230,22 @@ const MXElements = [
 	new MXElement( 'rgbtohsv', mx_rgbtohsv, [ 'in' ], { in: defaultColor( 0, 0, 0 ) } ),
 	new MXElement( 'hsvtorgb', mx_hsvtorgb, [ 'in' ], { in: defaultColor( 0, 0, 0 ) } ),
 	new MXElement( 'mix', mix, [ 'bg', 'fg', 'mix' ], { bg: defaultFloat( 0 ), fg: defaultFloat( 0 ), mix: defaultFloat( 0 ) } ),
+	new MXElement( 'minus', mx_minus, [ 'fg', 'bg', 'mix' ], { fg: defaultFloat( 0 ), bg: defaultFloat( 0 ), mix: defaultFloat( 1 ) } ),
+	new MXElement( 'difference', mx_difference, [ 'fg', 'bg', 'mix' ], { fg: defaultFloat( 0 ), bg: defaultFloat( 0 ), mix: defaultFloat( 1 ) } ),
+	new MXElement( 'burn', mx_burn, [ 'fg', 'bg', 'mix' ], { fg: defaultFloat( 0 ), bg: defaultFloat( 0 ), mix: defaultFloat( 1 ) } ),
+	new MXElement( 'dodge', mx_dodge, [ 'fg', 'bg', 'mix' ], { fg: defaultFloat( 0 ), bg: defaultFloat( 0 ), mix: defaultFloat( 1 ) } ),
+	new MXElement( 'colorcorrect', mx_colorcorrect, [ 'in', 'hue', 'saturation', 'gamma', 'lift', 'gain', 'contrast', 'contrastpivot', 'exposure' ], {
+		in: defaultColor( 1, 1, 1 ),
+		hue: defaultFloat( 0 ),
+		saturation: defaultFloat( 1 ),
+		gamma: defaultFloat( 1 ),
+		lift: defaultFloat( 0 ),
+		gain: defaultFloat( 1 ),
+		contrast: defaultFloat( 1 ),
+		contrastpivot: defaultFloat( 0.5 ),
+		exposure: defaultFloat( 0 )
+	} ),
+	new MXElement( 'unpremult', mx_unpremult, [ 'in' ], { in: defaultVec4( 0, 0, 0, 1 ) } ),
 	new MXElement( 'combine2', vec2, [ 'in1', 'in2' ], { in1: defaultFloat( 0 ), in2: defaultFloat( 0 ) } ),
 	new MXElement( 'combine3', vec3, [ 'in1', 'in2', 'in3' ], { in1: defaultFloat( 0 ), in2: defaultFloat( 0 ), in3: defaultFloat( 0 ) } ),
 	new MXElement( 'combine4', vec4, [ 'in1', 'in2', 'in3', 'in4' ], { in1: defaultFloat( 0 ), in2: defaultFloat( 0 ), in3: defaultFloat( 0 ), in4: defaultFloat( 0 ) } ),
@@ -189,7 +309,7 @@ const MXElements = [
 	} ),
 	new MXElement( 'safepower', mx_safepower, [ 'in1', 'in2' ], { in1: defaultFloat( 0 ), in2: defaultFloat( 1 ) } ),
 	new MXElement( 'contrast', mx_contrast, [ 'in', 'amount', 'pivot' ], { in: defaultFloat( 0 ), amount: defaultFloat( 1 ), pivot: defaultFloat( 0.5 ) } ),
-	new MXElement( 'saturate', saturation, [ 'in', 'amount' ], { in: defaultColor( 0, 0, 0 ), amount: defaultFloat( 1 ) } ),
+	new MXElement( 'saturate', mx_saturation, [ 'in', 'amount' ], { in: defaultColor( 0, 0, 0 ), amount: defaultFloat( 1 ) } ),
 	new MXElement( 'extract', element, [ 'in', 'index' ], { in: defaultFloat( 0 ), index: defaultInt( 0 ) } ),
 	new MXElement( 'separate2', element, [ 'in' ], { in: defaultVec2( 0, 0 ) } ),
 	new MXElement( 'separate3', element, [ 'in' ], { in: defaultVec3( 0, 0, 0 ) } ),

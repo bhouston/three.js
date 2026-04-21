@@ -30,7 +30,7 @@ const mappedOpenPbrInputs = new Set( [
 	'fuzz_weight', 'fuzz_color', 'fuzz_roughness',
 	'transmission_weight', 'transmission_color', 'transmission_depth',
 	'transmission_dispersion_scale', 'transmission_dispersion_abbe_number',
-	'geometry_normal', 'geometry_opacity',
+	'geometry_normal', 'geometry_opacity', 'geometry_thin_walled',
 	'thin_film_weight', 'thin_film_thickness', 'thin_film_ior',
 	'emission_color', 'emission_luminance'
 ] );
@@ -204,7 +204,8 @@ function applyOpenPbrSurface( material, inputs, issueCollector, nodeName ) {
 
 	material.transmissionNode = inputs.transmission_weight || float( 0 );
 	material.transmissionColorNode = inputs.transmission_color || color( 1, 1, 1 );
-	material.thicknessNode = inputs.transmission_depth || float( 0 );
+	const transmissionDepthNode = inputs.transmission_depth || float( 0 );
+	material.thicknessNode = hasNodeValue( inputs.geometry_thin_walled ) ? inputs.geometry_thin_walled.select( float( 0 ), transmissionDepthNode ) : transmissionDepthNode;
 
 	const transmissionDispersionAbbe = inputs.transmission_dispersion_abbe_number || float( 20 );
 	if ( hasNodeValue( inputs.transmission_dispersion_scale ) ) {

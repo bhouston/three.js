@@ -10,7 +10,9 @@ The node materials loaded with this loader can only be used with [WebGPURenderer
 
 ```js
 const loader = new MaterialXLoader().setPath( SAMPLE_PATH );
-const { materials, report } = await loader.loadAsync( 'standard_surface_brass_tiled.mtlx' );
+const { materials, log, errors, warnings } = await loader.loadAsync( 'standard_surface_brass_tiled.mtlx', {
+	throwOnErrors: false
+} );
 ```
 
 ## Import
@@ -74,10 +76,11 @@ Executed while the loading is in progress.
 Optional MaterialX translation options.
 
 *   `materialName`: Selects one `surfacematerial` by name from a multi-material document.
-*   `issuePolicy`: Controls issue handling. Supported values are `warn`, `error-core`, and `error-all`.
-*   `onWarning`: Callback executed for structured translation warnings.
+*   `throwOnErrors`: Throws when MaterialX translation collects error-severity log entries. Default is `true`.
+*   `interfaceValidator`: Optional validation callback for checking MaterialX node interfaces.
+*   `uvSpace`: Selects input texture coordinate space. Supported values are `bottom-left` and `top-left`.
 
-**Returns:** A promise resolving with an object containing `materials` and `report`.
+**Returns:** A promise resolving with an object containing `materials`, `log`, `errors`, and `warnings`.
 
 ### .parse( text : string, options : Object ) : Object
 
@@ -110,13 +113,13 @@ Optional MaterialX translation options. See [loadAsync](#loadAsync).
 
 **Overrides:** [Loader#parse](Loader.html#parse)
 
-**Returns:** An object containing `materials` and `report`. `materials` is a dictionary holding the parsed node materials.
+**Returns:** An object containing `materials`, `log`, `errors`, and `warnings`. `materials` is a dictionary holding the parsed node materials.
 
 ### .parseBuffer( data : ArrayBuffer, url : string, options : Object ) : Object
 
 Parses raw MaterialX data from an `ArrayBuffer`, `Uint8Array`, or string. ZIP buffers are detected automatically.
 
-**Returns:** An object containing `materials` and `report`.
+**Returns:** An object containing `materials`, `log`, `errors`, and `warnings`.
 
 ### .dispose() : MaterialXLoader
 

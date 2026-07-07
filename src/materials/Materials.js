@@ -3,6 +3,7 @@ import { SpriteMaterial } from './SpriteMaterial.js';
 import { RawShaderMaterial } from './RawShaderMaterial.js';
 import { ShaderMaterial } from './ShaderMaterial.js';
 import { PointsMaterial } from './PointsMaterial.js';
+import { GaussianSplatMaterial } from './GaussianSplatMaterial.js';
 import { MeshPhysicalMaterial } from './MeshPhysicalMaterial.js';
 import { MeshStandardMaterial } from './MeshStandardMaterial.js';
 import { MeshPhongMaterial } from './MeshPhongMaterial.js';
@@ -23,6 +24,7 @@ export {
 	RawShaderMaterial,
 	ShaderMaterial,
 	PointsMaterial,
+	GaussianSplatMaterial,
 	MeshPhysicalMaterial,
 	MeshStandardMaterial,
 	MeshPhongMaterial,

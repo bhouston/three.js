@@ -3159,7 +3159,7 @@ class Renderer {
 
 				error( 'Renderer: Objects of type THREE.LineLoop are not supported. Please use THREE.Line or THREE.LineSegments.' );
 
-			} else if ( object.isMesh || object.isLine || object.isPoints ) {
+			} else if ( object.isMesh || object.isLine || object.isPoints || object.isGaussianSplat ) {
 
 				const frustum = camera.isArrayCamera ? _frustumArray : _frustum;
 

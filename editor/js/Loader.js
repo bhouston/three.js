@@ -1047,8 +1047,7 @@ function Loader( editor ) {
 
 	async function addGaussianSplatObject( splatData, filename ) {
 
-		const { GaussianSplatMesh } = await import( 'three/addons/objects/GaussianSplatMesh.js' );
-		const object = new GaussianSplatMesh( splatData );
+		const object = new THREE.GaussianSplat( splatData );
 		object.name = filename;
 
 		editor.execute( new AddObjectCommand( editor, object ) );

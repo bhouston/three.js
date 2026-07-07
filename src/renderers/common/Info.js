@@ -157,7 +157,11 @@ class Info {
 
 		this.render.drawCalls ++;
 
-		if ( object.isMesh || object.isSprite ) {
+		if ( object.isGaussianSplat ) {
+
+			this.render.triangles += instanceCount * ( count / 3 );
+
+		} else if ( object.isMesh || object.isSprite ) {
 
 			this.render.triangles += instanceCount * ( count / 3 );
 

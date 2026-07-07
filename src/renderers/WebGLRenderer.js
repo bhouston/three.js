@@ -1263,7 +1263,7 @@ class WebGLRenderer {
 
 			//
 
-			if ( object.isMesh ) {
+			if ( object.isMesh || object.isGaussianSplat ) {
 
 				if ( material.wireframe === true ) {
 
@@ -1440,7 +1440,7 @@ class WebGLRenderer {
 
 			scene.traverse( function ( object ) {
 
-				if ( ! ( object.isMesh || object.isPoints || object.isLine || object.isSprite ) ) {
+				if ( ! ( object.isMesh || object.isPoints || object.isLine || object.isSprite || object.isGaussianSplat ) ) {
 
 					return;
 
@@ -1888,7 +1888,7 @@ class WebGLRenderer {
 
 					}
 
-				} else if ( object.isMesh || object.isLine || object.isPoints ) {
+				} else if ( object.isMesh || object.isLine || object.isPoints || object.isGaussianSplat ) {
 
 					if ( ! object.frustumCulled || _frustum.intersectsObject( object ) ) {
 

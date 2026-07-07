@@ -11,6 +11,7 @@ import {
 	DoubleSide,
 	FileLoader,
 	FrontSide,
+	GaussianSplat,
 	Group,
 	ImageBitmapLoader,
 	InstancedMesh,
@@ -3920,7 +3921,7 @@ class GLTFParser {
 				} else if ( primitive.mode === WEBGL_CONSTANTS.POINTS ) {
 
 					mesh = isGaussianSplatPrimitive( primitive )
-						? await createGaussianSplatMesh( geometry, primitive )
+						? await createGaussianSplat( geometry, primitive )
 						: new Points( geometry, material );
 
 				} else {
@@ -3941,7 +3942,7 @@ class GLTFParser {
 
 				if ( primitive.extensions ) addUnknownExtensionsToUserData( extensions, mesh, primitive );
 
-				if ( mesh.isGaussianSplatMesh !== true ) parser.assignFinalMaterial( mesh );
+				if ( mesh.isGaussianSplat !== true && mesh.isGaussianSplatMesh !== true ) parser.assignFinalMaterial( mesh );
 
 				meshes.push( mesh );
 
@@ -4709,7 +4710,7 @@ function isGaussianSplatPrimitive( primitiveDef ) {
 
 }
 
-async function createGaussianSplatMesh( geometry, primitiveDef ) {
+async function createGaussianSplat( geometry, primitiveDef ) {
 
 	const extensionDef = primitiveDef.extensions[ EXTENSIONS.KHR_GAUSSIAN_SPLATTING ];
 
@@ -4796,7 +4797,6 @@ async function createGaussianSplatMesh( geometry, primitiveDef ) {
 
 	}
 
-	const { GaussianSplatMesh } = await import( '../objects/GaussianSplatMesh.js' );
 	const splatGeometry = new BufferGeometry();
 	splatGeometry.setAttribute( 'position', new BufferAttribute( centers, 3 ) );
 	splatGeometry.setAttribute( 'covariance', new BufferAttribute( covariances, 6 ) );
@@ -4804,7 +4804,7 @@ async function createGaussianSplatMesh( geometry, primitiveDef ) {
 	splatGeometry.computeBoundingBox();
 	splatGeometry.computeBoundingSphere();
 
-	const mesh = new GaussianSplatMesh( splatGeometry );
+	const mesh = new GaussianSplat( splatGeometry );
 
 	mesh.userData.gltfExtensions = mesh.userData.gltfExtensions || {};
 	mesh.userData.gltfExtensions[ EXTENSIONS.KHR_GAUSSIAN_SPLATTING ] = Object.assign( {}, extensionDef );

@@ -1845,8 +1845,8 @@ class GLTFWriter {
 	}
 
 	/**
-	 * Process Gaussian splat mesh
-	 * @param {GaussianSplatMesh} mesh Gaussian splat mesh to process
+	 * Process Gaussian splat object.
+	 * @param {GaussianSplat|GaussianSplatMesh} mesh Gaussian splat object to process.
 	 * @return {number} Index of the processed mesh in the "meshes" array
 	 */
 	processGaussianSplatMesh( mesh ) {
@@ -1932,7 +1932,7 @@ class GLTFWriter {
 		const cache = this.cache;
 		const json = this.json;
 
-		const meshCacheKeyParts = [ mesh.geometry.uuid ];
+		const meshCacheKeyParts = [ mesh.isGaussianSplat === true || mesh.isGaussianSplatMesh === true ? mesh.splatGeometry.uuid : mesh.geometry.uuid ];
 
 		if ( Array.isArray( mesh.material ) ) {
 
@@ -1952,7 +1952,7 @@ class GLTFWriter {
 
 		if ( cache.meshes.has( meshCacheKey ) ) return cache.meshes.get( meshCacheKey );
 
-		if ( mesh.isGaussianSplatMesh === true ) {
+		if ( mesh.isGaussianSplat === true || mesh.isGaussianSplatMesh === true ) {
 
 			const index = this.processGaussianSplatMesh( mesh );
 			cache.meshes.set( meshCacheKey, index );
@@ -2607,7 +2607,7 @@ class GLTFWriter {
 
 		this.serializeUserData( object, nodeDef );
 
-		if ( object.isMesh || object.isLine || object.isPoints ) {
+		if ( object.isMesh || object.isLine || object.isPoints || object.isGaussianSplat ) {
 
 			const meshIndex = await this.processMeshAsync( object );
 
@@ -2722,7 +2722,7 @@ class GLTFWriter {
 
 		}
 
-		if ( object.isMesh || object.isLine || object.isPoints ) {
+		if ( object.isMesh || object.isLine || object.isPoints || object.isGaussianSplat ) {
 
 			const meshIndex = await this.processMeshAsync( object );
 

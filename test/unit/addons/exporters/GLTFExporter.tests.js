@@ -1,10 +1,10 @@
 import {
 	BufferAttribute,
-	BufferGeometry
+	BufferGeometry,
+	GaussianSplat
 } from 'three';
 import { GLTFExporter } from '../../../../examples/jsm/exporters/GLTFExporter.js';
 import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
-import { GaussianSplatMesh } from '../../../../examples/jsm/objects/GaussianSplatMesh.js';
 
 const EPS = 1e-5;
 
@@ -14,7 +14,7 @@ function closeTo( assert, actual, expected, message ) {
 
 }
 
-function createGaussianSplatMesh() {
+function createGaussianSplat() {
 
 	const geometry = new BufferGeometry();
 	geometry.setAttribute( 'position', new BufferAttribute( new Float32Array( [ 1, 2, 3 ] ), 3 ) );
@@ -23,7 +23,7 @@ function createGaussianSplatMesh() {
 	geometry.computeBoundingBox();
 	geometry.computeBoundingSphere();
 
-	return new GaussianSplatMesh( geometry );
+	return new GaussianSplat( geometry );
 
 }
 
@@ -33,10 +33,10 @@ export default QUnit.module( 'Addons', () => {
 
 		QUnit.module( 'GLTFExporter', () => {
 
-			QUnit.test( 'exports GaussianSplatMesh with KHR_gaussian_splatting primitive', async ( assert ) => {
+			QUnit.test( 'exports GaussianSplat with KHR_gaussian_splatting primitive', async ( assert ) => {
 
 				const exporter = new GLTFExporter();
-				const json = await exporter.parseAsync( createGaussianSplatMesh() );
+				const json = await exporter.parseAsync( createGaussianSplat() );
 				const primitive = json.meshes[ 0 ].primitives[ 0 ];
 
 				assert.strictEqual( primitive.mode, 0, 'exports a POINTS primitive' );
@@ -52,16 +52,16 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'round-trips exported GaussianSplatMesh through GLTFLoader', async ( assert ) => {
+			QUnit.test( 'round-trips exported GaussianSplat through GLTFLoader', async ( assert ) => {
 
 				const exporter = new GLTFExporter();
 				const loader = new GLTFLoader();
-				const json = await exporter.parseAsync( createGaussianSplatMesh() );
+				const json = await exporter.parseAsync( createGaussianSplat() );
 				const gltf = await loader.parseAsync( JSON.stringify( json ), '' );
 				const mesh = gltf.scene.children[ 0 ];
 				const covariances = mesh.splatGeometry.getAttribute( 'covariance' ).array;
 
-				assert.ok( mesh.isGaussianSplatMesh, 'loads exported splat as GaussianSplatMesh' );
+				assert.ok( mesh.isGaussianSplat, 'loads exported splat as GaussianSplat' );
 				assert.deepEqual( Array.from( mesh.splatGeometry.getAttribute( 'position' ).array ), [ 1, 2, 3 ], 'round-trips centers' );
 				closeTo( assert, covariances[ 0 ], 4, 'round-trips covariance xx' );
 				closeTo( assert, covariances[ 3 ], 9, 'round-trips covariance yy' );

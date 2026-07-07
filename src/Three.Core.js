@@ -14,6 +14,7 @@ export { SkinnedMesh } from './objects/SkinnedMesh.js';
 export { Skeleton } from './objects/Skeleton.js';
 export { Bone } from './objects/Bone.js';
 export { Mesh } from './objects/Mesh.js';
+export { GaussianSplat } from './objects/GaussianSplat.js';
 export { InstancedMesh } from './objects/InstancedMesh.js';
 export { BatchedMesh } from './objects/BatchedMesh.js';
 export { LineSegments } from './objects/LineSegments.js';

@@ -165,6 +165,7 @@ import './src/loaders/TextureLoader.tests.js';
 import './src/materials/LineBasicMaterial.tests.js';
 import './src/materials/LineDashedMaterial.tests.js';
 import './src/materials/Material.tests.js';
+import './src/materials/GaussianSplatMaterial.tests.js';
 import './src/materials/MeshBasicMaterial.tests.js';
 import './src/materials/MeshDepthMaterial.tests.js';
 import './src/materials/MeshDistanceMaterial.tests.js';
@@ -217,6 +218,7 @@ import './src/math/interpolants/QuaternionLinearInterpolant.tests.js';
 //src/objects
 import './src/objects/Bone.tests.js';
 import './src/objects/BatchedMesh.tests.js';
+import './src/objects/GaussianSplat.tests.js';
 import './src/objects/Group.tests.js';
 import './src/objects/InstancedMesh.tests.js';
 import './src/objects/Line.tests.js';

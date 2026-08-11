@@ -4,6 +4,8 @@ import {
 } from 'three';
 
 const SH_C0 = 0.2820947917738781;
+const SH_DEGREE_TO_COMPONENTS = [ 0, 9, 24, 45 ];
+const SH_BAND_COMPONENTS = [ 0, 9, 15, 21 ];
 const GAUSSIAN_SPLAT_PLY_PROPERTY_MAPPING = {
 	scale: [ 'scale_0', 'scale_1', 'scale_2' ],
 	rotation: [ 'rot_0', 'rot_1', 'rot_2', 'rot_3' ],
@@ -112,12 +114,122 @@ function writeCovariance( target, offset, sx, sy, sz, qx, qy, qz, qw ) {
 
 }
 
-function createGaussianSplatGeometry( centers, covariances, colors ) {
+function getGaussianSplatPLYPropertyMapping( sphericalHarmonicsDegree = 0 ) {
+
+	const restComponentCount = SH_DEGREE_TO_COMPONENTS[ sphericalHarmonicsDegree ];
+
+	if ( restComponentCount === undefined ) {
+
+		throw new Error( `THREE.getGaussianSplatPLYPropertyMapping: Unsupported spherical harmonics degree ${ sphericalHarmonicsDegree }.` );
+
+	}
+
+	const mapping = {
+		scale: GAUSSIAN_SPLAT_PLY_PROPERTY_MAPPING.scale,
+		rotation: GAUSSIAN_SPLAT_PLY_PROPERTY_MAPPING.rotation,
+		f_dc: GAUSSIAN_SPLAT_PLY_PROPERTY_MAPPING.f_dc,
+		opacity: GAUSSIAN_SPLAT_PLY_PROPERTY_MAPPING.opacity
+	};
+
+	if ( restComponentCount > 0 ) {
+
+		mapping.f_rest = Array.from( { length: restComponentCount }, ( _, i ) => `f_rest_${ i }` );
+
+	}
+
+	return mapping;
+
+}
+
+function getSphericalHarmonicsDegree( geometry ) {
+
+	if ( geometry === undefined || geometry.isBufferGeometry !== true ) return 0;
+
+	let degree = 0;
+
+	for ( let i = 1; i <= 3; i ++ ) {
+
+		const attribute = geometry.getAttribute( `sphericalHarmonics${ i }` );
+
+		if ( attribute === undefined ) break;
+
+		if ( attribute.itemSize !== SH_BAND_COMPONENTS[ i ] ) {
+
+			throw new Error( `THREE.getSphericalHarmonicsDegree: Invalid sphericalHarmonics${ i } itemSize.` );
+
+		}
+
+		if ( attribute.array instanceof Uint8ClampedArray === false ) {
+
+			throw new Error( `THREE.getSphericalHarmonicsDegree: sphericalHarmonics${ i } must use clamped byte components.` );
+
+		}
+
+		degree = i;
+
+	}
+
+	for ( let i = degree + 1; i <= 3; i ++ ) {
+
+		if ( geometry.getAttribute( `sphericalHarmonics${ i }` ) !== undefined ) {
+
+			throw new Error( 'THREE.getSphericalHarmonicsDegree: Spherical harmonics attributes must be contiguous.' );
+
+		}
+
+	}
+
+	const position = geometry.getAttribute( 'position' );
+
+	if ( position !== undefined ) {
+
+		for ( let i = 1; i <= degree; i ++ ) {
+
+			if ( geometry.getAttribute( `sphericalHarmonics${ i }` ).count !== position.count ) {
+
+				throw new Error( 'THREE.getSphericalHarmonicsDegree: Spherical harmonics attribute counts must match position.' );
+
+			}
+
+		}
+
+	}
+
+	return degree;
+
+}
+
+/**
+ * Creates Gaussian splat geometry from packed attribute arrays. Higher-order
+ * spherical harmonics must use clamped byte components, where each coefficient
+ * is represented by `( value - 128 ) / 128`.
+ *
+ * @param {Float32Array} centers - Splat centers.
+ * @param {Float32Array} covariances - Splat covariance matrices.
+ * @param {Uint8Array|Uint8ClampedArray} colors - RGBA colors.
+ * @param {Object} [sphericalHarmonics={}] - Optional clamped-byte SH band arrays.
+ * @return {BufferGeometry} The Gaussian splat geometry.
+ */
+function createGaussianSplatGeometry( centers, covariances, colors, sphericalHarmonics = {} ) {
 
 	const geometry = new BufferGeometry();
 	geometry.setAttribute( 'position', new BufferAttribute( centers, 3 ) );
 	geometry.setAttribute( 'covariance', new BufferAttribute( covariances, 6 ) );
 	geometry.setAttribute( 'color', new BufferAttribute( colors, 4, true ) );
+
+	for ( let i = 1; i <= 3; i ++ ) {
+
+		const values = sphericalHarmonics[ `sh${ i }` ] || sphericalHarmonics[ `sphericalHarmonics${ i }` ];
+
+		if ( values !== undefined ) {
+
+			geometry.setAttribute( `sphericalHarmonics${ i }`, new BufferAttribute( values, SH_BAND_COMPONENTS[ i ] ) );
+
+		}
+
+	}
+
+	getSphericalHarmonicsDegree( geometry );
 	geometry.computeBoundingBox();
 	geometry.computeBoundingSphere();
 
@@ -129,6 +241,7 @@ function createGaussianSplatGeometryFromPLYGeometry( geometry, {
 	scaleAttribute = 'scale',
 	rotationAttribute = 'rotation',
 	sh0Attribute = 'f_dc',
+	shRestAttribute = 'f_rest',
 	opacityAttribute = 'opacity'
 } = {} ) {
 
@@ -142,6 +255,7 @@ function createGaussianSplatGeometryFromPLYGeometry( geometry, {
 	const scale = geometry.getAttribute( scaleAttribute );
 	const rotation = geometry.getAttribute( rotationAttribute );
 	const sh0 = geometry.getAttribute( sh0Attribute );
+	const shRest = geometry.getAttribute( shRestAttribute );
 	const opacity = geometry.getAttribute( opacityAttribute );
 
 	if ( position === undefined || scale === undefined || rotation === undefined || sh0 === undefined || opacity === undefined ) {
@@ -167,6 +281,12 @@ function createGaussianSplatGeometryFromPLYGeometry( geometry, {
 	const centers = new Float32Array( count * 3 );
 	const covariances = new Float32Array( count * 6 );
 	const colors = new Uint8ClampedArray( count * 4 );
+	const sphericalHarmonicsDegree = getPLYRestSphericalHarmonicsDegree( shRest );
+	const sphericalHarmonics = {};
+
+	if ( sphericalHarmonicsDegree >= 1 ) sphericalHarmonics.sh1 = new Uint8ClampedArray( count * SH_BAND_COMPONENTS[ 1 ] );
+	if ( sphericalHarmonicsDegree >= 2 ) sphericalHarmonics.sh2 = new Uint8ClampedArray( count * SH_BAND_COMPONENTS[ 2 ] );
+	if ( sphericalHarmonicsDegree >= 3 ) sphericalHarmonics.sh3 = new Uint8ClampedArray( count * SH_BAND_COMPONENTS[ 3 ] );
 
 	for ( let i = 0; i < count; i ++ ) {
 
@@ -195,17 +315,83 @@ function createGaussianSplatGeometryFromPLYGeometry( geometry, {
 			sigmoid( opacity.getX( i ) )
 		);
 
+		if ( sphericalHarmonicsDegree > 0 ) {
+
+			writeSphericalHarmonicsFromPLYRest( sphericalHarmonics, i, shRest );
+
+		}
+
 	}
 
-	return createGaussianSplatGeometry( centers, covariances, colors );
+	return createGaussianSplatGeometry( centers, covariances, colors, sphericalHarmonics );
+
+}
+
+function getPLYRestSphericalHarmonicsDegree( shRest ) {
+
+	if ( shRest === undefined ) return 0;
+
+	const degree = SH_DEGREE_TO_COMPONENTS.indexOf( shRest.itemSize );
+
+	if ( degree === - 1 ) {
+
+		throw new Error( 'THREE.createGaussianSplatGeometryFromPLYGeometry: Unsupported number of f_rest spherical harmonics coefficients.' );
+
+	}
+
+	return degree;
+
+}
+
+function writeSphericalHarmonicsFromPLYRest( sphericalHarmonics, index, shRest ) {
+
+	const stride = shRest.itemSize / 3;
+	const source = shRest.array;
+	const sourceOffset = index * shRest.itemSize;
+
+	for ( let j = 0; j < SH_BAND_COMPONENTS[ 1 ]; j ++ ) {
+
+		const coefficient = Math.floor( j / 3 );
+		const channel = j % 3;
+		sphericalHarmonics.sh1[ index * SH_BAND_COMPONENTS[ 1 ] + j ] = source[ sourceOffset + coefficient + channel * stride ] * 128 + 128;
+
+	}
+
+	if ( sphericalHarmonics.sh2 !== undefined ) {
+
+		for ( let j = 0; j < SH_BAND_COMPONENTS[ 2 ]; j ++ ) {
+
+			const coefficient = Math.floor( j / 3 );
+			const channel = j % 3;
+			sphericalHarmonics.sh2[ index * SH_BAND_COMPONENTS[ 2 ] + j ] = source[ sourceOffset + 3 + coefficient + channel * stride ] * 128 + 128;
+
+		}
+
+	}
+
+	if ( sphericalHarmonics.sh3 !== undefined ) {
+
+		for ( let j = 0; j < SH_BAND_COMPONENTS[ 3 ]; j ++ ) {
+
+			const coefficient = Math.floor( j / 3 );
+			const channel = j % 3;
+			sphericalHarmonics.sh3[ index * SH_BAND_COMPONENTS[ 3 ] + j ] = source[ sourceOffset + 8 + coefficient + channel * stride ] * 128 + 128;
+
+		}
+
+	}
 
 }
 
 export {
 	GAUSSIAN_SPLAT_PLY_PROPERTY_MAPPING,
+	SH_BAND_COMPONENTS,
 	SH_C0,
+	SH_DEGREE_TO_COMPONENTS,
 	createGaussianSplatGeometry,
 	createGaussianSplatGeometryFromPLYGeometry,
+	getGaussianSplatPLYPropertyMapping,
+	getSphericalHarmonicsDegree,
 	linearToSH0,
 	sh0ToLinear,
 	sigmoid,

@@ -9,6 +9,8 @@ import {
 	GAUSSIAN_SPLAT_PLY_PROPERTY_MAPPING,
 	createGaussianSplatGeometry,
 	createGaussianSplatGeometryFromPLYGeometry,
+	getGaussianSplatPLYPropertyMapping,
+	getSphericalHarmonicsDegree,
 	linearToSH0,
 	sh0ToLinear,
 	sigmoid
@@ -56,6 +58,38 @@ export default QUnit.module( 'Addons', () => {
 				assert.deepEqual( Array.from( data.getAttribute( 'color' ).array ), [ 128, 128, 128, 128 ], 'colors' );
 				assert.ok( data.boundingBox !== null, 'computes bounding box' );
 				assert.ok( data.boundingSphere !== null, 'computes bounding sphere' );
+
+			} );
+
+			QUnit.test( 'creates Gaussian splat geometry with spherical harmonics attributes', ( assert ) => {
+
+				const data = createGaussianSplatGeometry(
+					new Float32Array( [ 1, 2, 3 ] ),
+					new Float32Array( [ 4, 0, 0, 9, 0, 16 ] ),
+					new Uint8Array( [ 128, 128, 128, 128 ] ),
+					{
+						sh1: new Uint8ClampedArray( [ 129, 130, 131, 132, 133, 134, 135, 136, 137 ] )
+					}
+				);
+
+				assert.strictEqual( getSphericalHarmonicsDegree( data ), 1, 'degree' );
+				assert.strictEqual( data.getAttribute( 'sphericalHarmonics1' ).itemSize, 9, 'item size' );
+				assert.deepEqual( Array.from( data.getAttribute( 'sphericalHarmonics1' ).array ), [ 129, 130, 131, 132, 133, 134, 135, 136, 137 ], 'coefficients' );
+
+			} );
+
+			QUnit.test( 'requires clamped byte spherical harmonics', ( assert ) => {
+
+				assert.throws( () => {
+
+					createGaussianSplatGeometry(
+						new Float32Array( [ 1, 2, 3 ] ),
+						new Float32Array( [ 4, 0, 0, 9, 0, 16 ] ),
+						new Uint8Array( [ 128, 128, 128, 128 ] ),
+						{ sh1: new Float32Array( 9 ) }
+					);
+
+				}, /must use clamped byte components/, 'rejects floating-point SH attributes' );
 
 			} );
 
@@ -121,6 +155,49 @@ export default QUnit.module( 'Addons', () => {
 				closeTo( assert, covariances[ 3 ], 9, 'covariance yy' );
 				closeTo( assert, covariances[ 5 ], 16, 'covariance zz' );
 				assert.deepEqual( Array.from( data.getAttribute( 'color' ).array ), [ 128, 128, 128, 128 ], 'degree-0 color and opacity' );
+
+			} );
+
+			QUnit.test( 'converts PLY f_rest attributes into spherical harmonics', ( assert ) => {
+
+				const ply = [
+					'ply',
+					'format ascii 1.0',
+					'element vertex 1',
+					'property float x',
+					'property float y',
+					'property float z',
+					'property float scale_0',
+					'property float scale_1',
+					'property float scale_2',
+					'property float rot_0',
+					'property float rot_1',
+					'property float rot_2',
+					'property float rot_3',
+					'property float f_dc_0',
+					'property float f_dc_1',
+					'property float f_dc_2',
+					'property float opacity',
+					'property float f_rest_0',
+					'property float f_rest_1',
+					'property float f_rest_2',
+					'property float f_rest_3',
+					'property float f_rest_4',
+					'property float f_rest_5',
+					'property float f_rest_6',
+					'property float f_rest_7',
+					'property float f_rest_8',
+					'end_header',
+					`1 2 3 ${ Math.log( 2 ) } ${ Math.log( 3 ) } ${ Math.log( 4 ) } 1 0 0 0 0 0 0 0 ${ Array.from( { length: 9 }, ( _, i ) => i / 128 ).join( ' ' ) }`
+				].join( '\n' );
+
+				const loader = new PLYLoader();
+				loader.setCustomPropertyNameMapping( getGaussianSplatPLYPropertyMapping( 1 ) );
+
+				const geometry = loader.parse( ply );
+				const data = createGaussianSplatGeometryFromPLYGeometry( geometry );
+
+				assert.deepEqual( Array.from( data.getAttribute( 'sphericalHarmonics1' ).array ), [ 128, 131, 134, 129, 132, 135, 130, 133, 136 ], 'channel-blocked coefficients are remapped to RGB triplets' );
 
 			} );
 

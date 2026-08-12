@@ -1,6 +1,10 @@
 import {
 	BufferAttribute,
-	BufferGeometry
+	BufferGeometry,
+	Matrix3,
+	Matrix4,
+	Quaternion,
+	Vector3
 } from 'three';
 
 const SH_C0 = 0.2820947917738781;
@@ -14,6 +18,15 @@ const GAUSSIAN_SPLAT_PLY_PROPERTY_MAPPING = {
 	f_dc: [ 'f_dc_0', 'f_dc_1', 'f_dc_2' ],
 	opacity: [ 'opacity' ]
 };
+
+const _covarianceMatrix = new Matrix3();
+const _covarianceMatrixTranspose = new Matrix3();
+const _eigenvectorMatrix = new Matrix3();
+const _eigenvectorMatrix4 = new Matrix4();
+const _rotationScaleMatrix = new Matrix4();
+const _quaternion = new Quaternion();
+const _scale = new Vector3();
+const _zero = new Vector3();
 
 function sigmoid( value ) {
 
@@ -59,60 +72,180 @@ function writeColorBytesFromSH0( target, offset, r, g, b, a ) {
 
 function writeCovariance( target, offset, sx, sy, sz, qx, qy, qz, qw ) {
 
-	// Math.sqrt is significantly faster than Math.hypot, and the overflow
-	// protection of Math.hypot is unnecessary for quaternion components.
-	const length = Math.sqrt( qx * qx + qy * qy + qz * qz + qw * qw );
+	_quaternion.set( qx, qy, qz, qw ).normalize();
+	_scale.set( sx, sy, sz );
+	_rotationScaleMatrix.compose( _zero, _quaternion, _scale );
 
-	if ( length === 0 ) {
+	_covarianceMatrix.setFromMatrix4( _rotationScaleMatrix );
+	_covarianceMatrixTranspose.copy( _covarianceMatrix ).transpose();
+	_covarianceMatrix.multiply( _covarianceMatrixTranspose );
 
-		qx = 0;
-		qy = 0;
-		qz = 0;
-		qw = 1;
+	const elements = _covarianceMatrix.elements;
 
-	} else {
+	target[ offset ] = elements[ 0 ];
+	target[ offset + 1 ] = elements[ 3 ];
+	target[ offset + 2 ] = elements[ 6 ];
+	target[ offset + 3 ] = elements[ 4 ];
+	target[ offset + 4 ] = elements[ 7 ];
+	target[ offset + 5 ] = elements[ 8 ];
 
-		const invLength = 1 / length;
-		qx *= invLength;
-		qy *= invLength;
-		qz *= invLength;
-		qw *= invLength;
+}
+
+function decomposeCovariance( source, offset, target ) {
+
+	let m00 = source[ offset ];
+	let m01 = source[ offset + 1 ];
+	let m02 = source[ offset + 2 ];
+	let m11 = source[ offset + 3 ];
+	let m12 = source[ offset + 4 ];
+	let m22 = source[ offset + 5 ];
+
+	let v00 = 1, v01 = 0, v02 = 0;
+	let v10 = 0, v11 = 1, v12 = 0;
+	let v20 = 0, v21 = 0, v22 = 1;
+
+	for ( let i = 0; i < 10; i ++ ) {
+
+		let p = 0;
+		let q = 1;
+		let value = Math.abs( m01 );
+		const abs02 = Math.abs( m02 );
+		const abs12 = Math.abs( m12 );
+
+		if ( abs02 > value ) {
+
+			p = 0;
+			q = 2;
+			value = abs02;
+
+		}
+
+		if ( abs12 > value ) {
+
+			p = 1;
+			q = 2;
+			value = abs12;
+
+		}
+
+		if ( value <= 1e-10 ) break;
+
+		let app, apq, aqq;
+
+		if ( p === 0 && q === 1 ) {
+
+			app = m00; apq = m01; aqq = m11;
+
+		} else if ( p === 0 && q === 2 ) {
+
+			app = m00; apq = m02; aqq = m22;
+
+		} else {
+
+			app = m11; apq = m12; aqq = m22;
+
+		}
+
+		const tau = ( aqq - app ) / ( 2 * apq );
+		const t = Math.sign( tau ) / ( Math.abs( tau ) + Math.sqrt( 1 + tau * tau ) ) || 1;
+		const c = 1 / Math.sqrt( 1 + t * t );
+		const s = t * c;
+
+		if ( p === 0 && q === 1 ) {
+
+			const m02n = c * m02 - s * m12;
+			const m12n = s * m02 + c * m12;
+
+			m00 = app - t * apq;
+			m11 = aqq + t * apq;
+			m01 = 0;
+			m02 = m02n;
+			m12 = m12n;
+
+			const v00n = c * v00 - s * v01;
+			const v01n = s * v00 + c * v01;
+			const v10n = c * v10 - s * v11;
+			const v11n = s * v10 + c * v11;
+			const v20n = c * v20 - s * v21;
+			const v21n = s * v20 + c * v21;
+
+			v00 = v00n; v01 = v01n;
+			v10 = v10n; v11 = v11n;
+			v20 = v20n; v21 = v21n;
+
+		} else if ( p === 0 && q === 2 ) {
+
+			const m01n = c * m01 - s * m12;
+			const m12n = s * m01 + c * m12;
+
+			m00 = app - t * apq;
+			m22 = aqq + t * apq;
+			m02 = 0;
+			m01 = m01n;
+			m12 = m12n;
+
+			const v00n = c * v00 - s * v02;
+			const v02n = s * v00 + c * v02;
+			const v10n = c * v10 - s * v12;
+			const v12n = s * v10 + c * v12;
+			const v20n = c * v20 - s * v22;
+			const v22n = s * v20 + c * v22;
+
+			v00 = v00n; v02 = v02n;
+			v10 = v10n; v12 = v12n;
+			v20 = v20n; v22 = v22n;
+
+		} else {
+
+			const m01n = c * m01 - s * m02;
+			const m02n = s * m01 + c * m02;
+
+			m11 = app - t * apq;
+			m22 = aqq + t * apq;
+			m12 = 0;
+			m01 = m01n;
+			m02 = m02n;
+
+			const v01n = c * v01 - s * v02;
+			const v02n = s * v01 + c * v02;
+			const v11n = c * v11 - s * v12;
+			const v12n = s * v11 + c * v12;
+			const v21n = c * v21 - s * v22;
+			const v22n = s * v21 + c * v22;
+
+			v01 = v01n; v02 = v02n;
+			v11 = v11n; v12 = v12n;
+			v21 = v21n; v22 = v22n;
+
+		}
 
 	}
 
-	const x2 = qx + qx;
-	const y2 = qy + qy;
-	const z2 = qz + qz;
-	const xx = qx * x2;
-	const xy = qx * y2;
-	const xz = qx * z2;
-	const yy = qy * y2;
-	const yz = qy * z2;
-	const zz = qz * z2;
-	const wx = qw * x2;
-	const wy = qw * y2;
-	const wz = qw * z2;
+	_eigenvectorMatrix.set(
+		v00, v01, v02,
+		v10, v11, v12,
+		v20, v21, v22
+	);
 
-	const r00 = 1 - ( yy + zz );
-	const r01 = xy - wz;
-	const r02 = xz + wy;
-	const r10 = xy + wz;
-	const r11 = 1 - ( xx + zz );
-	const r12 = yz - wx;
-	const r20 = xz - wy;
-	const r21 = yz + wx;
-	const r22 = 1 - ( xx + yy );
+	if ( _eigenvectorMatrix.determinant() < 0 ) {
 
-	const sxx = sx * sx;
-	const syy = sy * sy;
-	const szz = sz * sz;
+		v02 = - v02;
+		v12 = - v12;
+		v22 = - v22;
 
-	target[ offset ] = r00 * r00 * sxx + r01 * r01 * syy + r02 * r02 * szz;
-	target[ offset + 1 ] = r00 * r10 * sxx + r01 * r11 * syy + r02 * r12 * szz;
-	target[ offset + 2 ] = r00 * r20 * sxx + r01 * r21 * syy + r02 * r22 * szz;
-	target[ offset + 3 ] = r10 * r10 * sxx + r11 * r11 * syy + r12 * r12 * szz;
-	target[ offset + 4 ] = r10 * r20 * sxx + r11 * r21 * syy + r12 * r22 * szz;
-	target[ offset + 5 ] = r20 * r20 * sxx + r21 * r21 * syy + r22 * r22 * szz;
+		_eigenvectorMatrix.set(
+			v00, v01, v02,
+			v10, v11, v12,
+			v20, v21, v22
+		);
+
+	}
+
+	target[ 0 ] = Math.sqrt( Math.max( 0, m00 ) );
+	target[ 1 ] = Math.sqrt( Math.max( 0, m11 ) );
+	target[ 2 ] = Math.sqrt( Math.max( 0, m22 ) );
+	_eigenvectorMatrix4.setFromMatrix3( _eigenvectorMatrix );
+	_quaternion.setFromRotationMatrix( _eigenvectorMatrix4 ).normalize().toArray( target, 3 );
 
 }
 
@@ -422,6 +555,7 @@ export {
 	createGaussianSplatGeometry,
 	createGaussianSplatGeometryFromPLYGeometry,
 	createPackedSphericalHarmonicsBand,
+	decomposeCovariance,
 	getGaussianSplatPLYPropertyMapping,
 	getSphericalHarmonicsDegree,
 	linearToSH0,

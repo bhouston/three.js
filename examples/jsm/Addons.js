@@ -40,6 +40,7 @@ export * from './exporters/GLTFExporter.js';
 export * from './exporters/KTX2Exporter.js';
 export * from './exporters/OBJExporter.js';
 export * from './exporters/PLYExporter.js';
+export * from './exporters/SPZExporter.js';
 export * from './exporters/STLExporter.js';
 export * from './exporters/USDZExporter.js';
 

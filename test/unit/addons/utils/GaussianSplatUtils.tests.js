@@ -11,11 +11,13 @@ import {
 	SH_BAND_WORDS,
 	createGaussianSplatGeometry,
 	createGaussianSplatGeometryFromPLYGeometry,
+	decomposeCovariance,
 	getGaussianSplatPLYPropertyMapping,
 	getSphericalHarmonicsDegree,
 	linearToSH0,
 	sh0ToLinear,
-	sigmoid
+	sigmoid,
+	writeCovariance
 } from '../../../../examples/jsm/utils/GaussianSplatUtils.js';
 import {
 	getSphericalHarmonicsCoefficientLocation,
@@ -86,6 +88,25 @@ export default QUnit.module( 'Addons', () => {
 				assert.deepEqual( Array.from( data.getAttribute( 'color' ).array ), [ 128, 128, 128, 128 ], 'colors' );
 				assert.ok( data.boundingBox !== null, 'computes bounding box' );
 				assert.ok( data.boundingSphere !== null, 'computes bounding sphere' );
+
+			} );
+
+			QUnit.test( 'decomposes covariance into scales and rotation', ( assert ) => {
+
+				const source = new Float32Array( 6 );
+				const decomposed = new Float32Array( 7 );
+				const roundTrip = new Float32Array( 6 );
+
+				writeCovariance( source, 0, 2, 3, 4, 1, 2, 3, 4 );
+				decomposeCovariance( source, 0, decomposed );
+				writeCovariance( roundTrip, 0, decomposed[ 0 ], decomposed[ 1 ], decomposed[ 2 ], decomposed[ 3 ], decomposed[ 4 ], decomposed[ 5 ], decomposed[ 6 ] );
+
+				closeTo( assert, roundTrip[ 0 ], source[ 0 ], 'covariance xx' );
+				closeTo( assert, roundTrip[ 1 ], source[ 1 ], 'covariance xy' );
+				closeTo( assert, roundTrip[ 2 ], source[ 2 ], 'covariance xz' );
+				closeTo( assert, roundTrip[ 3 ], source[ 3 ], 'covariance yy' );
+				closeTo( assert, roundTrip[ 4 ], source[ 4 ], 'covariance yz' );
+				closeTo( assert, roundTrip[ 5 ], source[ 5 ], 'covariance zz' );
 
 			} );
 

@@ -12,4 +12,5 @@ import './addons/loaders/KSPLATLoader.tests.js';
 import './addons/loaders/SPLATLoader.tests.js';
 import './addons/loaders/SPZLoader.tests.js';
 import './addons/loaders/USDLoader.tests.js';
+import './addons/exporters/SPZExporter.tests.js';
 import './addons/exporters/USDZExporter.tests.js';

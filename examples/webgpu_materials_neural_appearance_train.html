@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - materials - neural appearance training</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - materials - neural appearance training">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_materials_neural_appearance_train.html">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#panel {
+				position: absolute;
+				left: 16px;
+				bottom: 16px;
+				padding: 12px;
+				width: 330px;
+				background: rgba( 0, 0, 0, 0.7 );
+				color: #fff;
+				font: 12px/1.45 monospace;
+				border-radius: 4px;
+				z-index: 2;
+			}
+
+			#panel button {
+				margin: 4px 4px 4px 0;
+			}
+
+			#status {
+				margin-top: 8px;
+				white-space: pre-line;
+			}
+		</style>
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Neural Appearance Training</span>
+			</div>
+
+			<small>
+				Train a compact neural appearance material from an opaque MaterialX material in the browser.
+			</small>
+		</div>
+
+		<div id="panel">
+			<div><strong>MaterialX input:</strong> <span id="materialName">loading default</span></div>
+			<div><strong>Mode:</strong> <span id="mode">MaterialX teacher</span></div>
+			<button id="openButton">Open .mtlx / .mtlx.zip</button>
+			<button id="trainButton">Train</button>
+			<button id="downloadButton" disabled>Download JSON</button>
+			<div id="status">Ready.</div>
+			<input id="fileInput" type="file" accept=".mtlx,.zip,.mtlx.zip" hidden>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
+			import { NeuralAppearanceLoader } from 'three/addons/loaders/NeuralAppearanceLoader.js';
+			import { NeuralAppearanceNodeMaterial } from 'three/addons/materials/NeuralAppearanceNodeMaterial.js';
+			import { NeuralAppearanceTrainer } from 'three/addons/materials/NeuralAppearanceTrainer.js';
+
+			let camera, scene, renderer, mesh;
+			let materialXMaterial, neuralMaterial, latestJson;
+			let isTraining = false;
+
+			const queryParams = new URLSearchParams( window.location.search );
+			const testMaterials = {
+				lambert: 'neural_train_lambert_constant.mtlx',
+				lambertGreen: 'neural_train_lambert_green.mtlx',
+				lambertBlue: 'neural_train_lambert_blue.mtlx',
+				glossy: 'neural_train_glossy_constant.mtlx',
+				glossyRed: 'neural_train_glossy_red.mtlx',
+				glossyGold: 'neural_train_glossy_gold.mtlx'
+			};
+			const autoTrain = queryParams.get( 'autoTrain' ) === '1';
+			const noRotate = queryParams.get( 'noRotate' ) === '1';
+
+			const materialName = document.getElementById( 'materialName' );
+			const mode = document.getElementById( 'mode' );
+			const status = document.getElementById( 'status' );
+			const fileInput = document.getElementById( 'fileInput' );
+			const openButton = document.getElementById( 'openButton' );
+			const trainButton = document.getElementById( 'trainButton' );
+			const downloadButton = document.getElementById( 'downloadButton' );
+
+			const params = {
+				view: 'MaterialX teacher',
+				resolution: readNumberQuery( 'resolution', 8 ),
+				iterations: readNumberQuery( 'iterations', 1200 ),
+				batchSize: readNumberQuery( 'batchSize', 256 ),
+				intensity: readNumberQuery( 'intensity', 1 ),
+				seed: readNumberQuery( 'seed', 1 )
+			};
+
+			window.__neuralAppearanceTrainingReady = false;
+			window.__neuralAppearanceTrainingDone = false;
+			window.__neuralAppearanceLastLoss = NaN;
+			window.__neuralAppearanceExportJson = null;
+			window.__neuralAppearanceTeacherInputs = null;
+			window.__neuralAppearanceSetView = ( view ) => {
+
+				params.view = view === 'neural' ? 'trained neural' : 'MaterialX teacher';
+				updateView();
+				return params.view;
+
+			};
+
+			init();
+
+			async function init() {
+
+				if ( WebGPU.isAvailable() === false ) {
+
+					document.body.appendChild( WebGPU.getErrorMessage() );
+					throw new Error( 'No WebGPU support' );
+
+				}
+
+				const container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 1.2, 5 );
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x15171c );
+
+				scene.add( new THREE.HemisphereLight( 0xffffff, 0x202840, 0.2 ) );
+
+				const keyLight = new THREE.DirectionalLight( 0xffffff, 3 );
+				keyLight.position.set( 2, 2, 2 );
+				scene.add( keyLight );
+
+				const rimLight = new THREE.PointLight( 0x80aaff, 3, 10 );
+				rimLight.position.set( - 2.5, 1.5, - 2.0 );
+				scene.add( rimLight );
+
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( render );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 0.9;
+				container.appendChild( renderer.domElement );
+
+				const controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 0, 0 );
+				controls.update();
+
+				mesh = new THREE.Mesh( new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 ), new THREE.MeshPhysicalNodeMaterial( { color: 0x93604a, roughness: 0.45 } ) );
+				mesh.rotation.x = - 0.35;
+				scene.add( mesh );
+
+				const gui = new GUI();
+				gui.add( params, 'view', [ 'MaterialX teacher', 'trained neural' ] ).onChange( updateView );
+				gui.add( params, 'resolution', [ 1, 2, 4, 8, 16 ] );
+				gui.add( params, 'iterations', 100, 10000, 100 );
+				gui.add( params, 'batchSize', [ 64, 256, 1024, 4096 ] );
+				gui.add( params, 'intensity', 0, 3, 0.01 ).onChange( updateView );
+
+				openButton.addEventListener( 'click', () => fileInput.click() );
+				fileInput.addEventListener( 'change', onFileSelected );
+				trainButton.addEventListener( 'click', train );
+				downloadButton.addEventListener( 'click', download );
+				window.addEventListener( 'resize', onWindowResize );
+
+				await loadDefaultMaterialX();
+				window.__neuralAppearanceTrainingReady = true;
+
+				if ( autoTrain ) {
+
+					await train();
+
+				}
+
+			}
+
+			async function loadDefaultMaterialX() {
+
+				try {
+
+					const file = getDefaultMaterialXFile();
+					const loader = new MaterialXLoader().setPath( 'materialx/' );
+					const asset = await loader.loadAsync( file, {
+						uvSpace: 'top-left',
+						throwOnErrors: false
+					} );
+					setMaterialXMaterial( asset, file );
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
+
+			}
+
+			function getDefaultMaterialXFile() {
+
+				const test = queryParams.get( 'test' );
+
+				if ( test === null ) return 'standard_surface_roughness_test.mtlx';
+				if ( testMaterials[ test ] !== undefined ) return testMaterials[ test ];
+
+				throw new Error( `Unknown neural appearance training test material: ${test}` );
+
+			}
+
+			async function onFileSelected( event ) {
+
+				const file = event.target.files[ 0 ];
+				if ( file === undefined ) return;
+
+				status.textContent = `Loading ${file.name}...`;
+
+				try {
+
+					const loader = new MaterialXLoader();
+					const asset = loader.parseBuffer( await file.arrayBuffer(), file.name, {
+						uvSpace: 'top-left',
+						throwOnErrors: false
+					} );
+					setMaterialXMaterial( asset, file.name );
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
+
+			}
+
+			function setMaterialXMaterial( asset, name ) {
+
+				const materials = normalizeMaterialXMaterials( asset );
+
+				const material = selectMaterialXMaterial( materials );
+
+				if ( material === undefined ) {
+
+					throw new Error( 'THREE.NeuralAppearanceTrainer: MaterialXLoader did not produce any materials.' );
+
+				}
+
+				materialXMaterial = material;
+				materialName.textContent = material.name || name;
+				params.view = 'MaterialX teacher';
+				latestJson = null;
+				window.__neuralAppearanceTrainingDone = false;
+				window.__neuralAppearanceExportJson = null;
+				window.__neuralAppearanceTeacherInputs = null;
+				downloadButton.disabled = true;
+				updateView();
+				status.textContent = getMaterialXStatus( asset, material );
+
+			}
+
+			function normalizeMaterialXMaterials( asset ) {
+
+				return asset && asset.materials ? asset.materials : asset;
+
+			}
+
+			function getMaterialXStatus( asset, material ) {
+
+				const log = asset && Array.isArray( asset.log ) ? asset.log : [];
+				const errorCount = log.filter( ( entry ) => entry.severity === 'error' ).length;
+				const warningCount = log.filter( ( entry ) => entry.severity === 'warning' ).length;
+				const suffix = log.length > 0 ? `\nMaterialX log: ${errorCount} error(s), ${warningCount} warning(s). See console for details.` : '';
+
+				if ( log.length > 0 ) {
+
+					console.groupCollapsed( `THREE.MaterialXLoader: ${errorCount} error(s), ${warningCount} warning(s) for ${material.name || 'material'}` );
+
+					for ( const entry of log ) {
+
+						console[ entry.severity === 'warning' ? 'warn' : 'error' ]( `${entry.severity}: ${entry.code}: ${entry.message}` );
+
+					}
+
+					console.groupEnd();
+
+				}
+
+				return ( isPhysicalNodeMaterial( material ) ?
+					'MaterialX loaded. Press Train to distill it.' :
+					'MaterialX loaded as a node material. Training will use supported Physical defaults for unsupported surface nodes.' ) + suffix;
+
+			}
+
+			function selectMaterialXMaterial( materials ) {
+
+				const materialList = Object.values( materials );
+
+				return materialList.find( isPhysicalNodeMaterial ) || materialList[ 0 ];
+
+			}
+
+			function isPhysicalNodeMaterial( material ) {
+
+				return material !== undefined && (
+					material.isMeshPhysicalNodeMaterial === true ||
+					material.type === 'MeshPhysicalNodeMaterial'
+				);
+
+			}
+
+			async function train() {
+
+				if ( materialXMaterial === undefined ) return;
+
+				trainButton.disabled = true;
+				isTraining = true;
+				window.__neuralAppearanceTrainingDone = false;
+				status.textContent = 'Training...';
+
+				try {
+
+					const trainer = new NeuralAppearanceTrainer( {
+						name: `${materialXMaterial.name || 'MaterialX'} neural appearance`,
+						resolution: Number( params.resolution ),
+						iterations: Number( params.iterations ),
+						batchSize: Number( params.batchSize ),
+						seed: Number( params.seed )
+					} );
+					const result = await trainer.train( {
+						renderer,
+						material: materialXMaterial,
+						onProgress: ( progress ) => {
+
+							window.__neuralAppearanceLastLoss = progress.loss;
+
+							if ( progress.iteration % 20 === 0 || progress.iteration === progress.iterations ) {
+
+								status.textContent = `Training ${progress.iteration}/${progress.iterations}\nloss ${progress.loss.toExponential( 3 )}`;
+
+							}
+
+						}
+					} );
+
+					latestJson = result.json;
+					const neuralData = new NeuralAppearanceLoader().parse( cloneNeuralAppearanceJson( latestJson ) );
+					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity } );
+					params.view = 'trained neural';
+					window.__neuralAppearanceLastLoss = result.loss;
+					window.__neuralAppearanceExportJson = cloneNeuralAppearanceJson( latestJson );
+					window.__neuralAppearanceTeacherInputs = result.teacher.encodeInputs();
+					window.__neuralAppearanceTrainingDone = true;
+					downloadButton.disabled = false;
+					updateView();
+					status.textContent = `Training complete.\nfinal loss ${result.loss.toExponential( 3 )}`;
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				} finally {
+
+					isTraining = false;
+					trainButton.disabled = false;
+
+				}
+
+			}
+
+			function updateView() {
+
+				mode.textContent = params.view;
+
+				if ( params.view === 'trained neural' && neuralMaterial ) {
+
+					neuralMaterial.intensity = params.intensity;
+					neuralMaterial.needsUpdate = true;
+					mesh.material = neuralMaterial;
+
+				} else if ( materialXMaterial ) {
+
+					mesh.material = materialXMaterial;
+
+				}
+
+			}
+
+			function download() {
+
+				if ( latestJson === undefined || latestJson === null ) return;
+
+				const blob = new Blob( [ JSON.stringify( cloneNeuralAppearanceJson( latestJson ), null, '\t' ) ], { type: 'application/json' } );
+				const url = URL.createObjectURL( blob );
+				const link = document.createElement( 'a' );
+				link.href = url;
+				link.download = 'neural_appearance.json';
+				link.click();
+				URL.revokeObjectURL( url );
+
+			}
+
+			function cloneNeuralAppearanceJson( json ) {
+
+				return JSON.parse( JSON.stringify( json ) );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function render() {
+
+				const time = performance.now() * 0.001;
+
+				if ( mesh && noRotate === false && isTraining === false ) mesh.rotation.y = time * 0.15;
+
+				renderer.render( scene, camera );
+
+			}
+
+			function readNumberQuery( name, fallback ) {
+
+				const rawValue = queryParams.get( name );
+				const value = Number( rawValue );
+
+				return rawValue !== null && Number.isFinite( value ) ? value : fallback;
+
+			}
+
+		</script>
+	</body>
+</html>

@@ -1,0 +1,108 @@
+{
+  "format": "three-neural-appearance",
+  "version": 1,
+  "name": "Faux Leather Neural Appearance Fixture",
+  "source": "Tiny runtime fixture for the Three.js neural appearance example. Convert a trained NVlabs/neuralappearance checkpoint with utils/neural-appearance/convert_checkpoint.py for production use.",
+  "latents": {
+    "channels": 8,
+    "wrap": "repeat",
+    "textures": [
+      {
+        "wrap": "repeat",
+        "mipmaps": [
+          {
+            "width": 2,
+            "height": 2,
+            "data": [
+              0.82, 0.16, 0.09, 0.55,
+              0.36, 0.47, 0.18, 0.72,
+              0.65, 0.23, 0.42, 0.28,
+              0.22, 0.62, 0.74, 0.31
+            ]
+          },
+          {
+            "width": 1,
+            "height": 1,
+            "data": [ 0.51, 0.37, 0.36, 0.47 ]
+          }
+        ]
+      },
+      {
+        "wrap": "repeat",
+        "mipmaps": [
+          {
+            "width": 2,
+            "height": 2,
+            "data": [
+              0.21, 0.74, 0.48, 0.12,
+              0.55, 0.28, 0.81, 0.32,
+              0.31, 0.68, 0.36, 0.58,
+              0.76, 0.34, 0.24, 0.44
+            ]
+          },
+          {
+            "width": 1,
+            "height": 1,
+            "data": [ 0.46, 0.51, 0.47, 0.36 ]
+          }
+        ]
+      }
+    ]
+  },
+  "decoder": {
+    "inputSize": 20,
+    "rotation": {
+      "inputSize": 8,
+      "outputSize": 12,
+      "weights": [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+      ]
+    },
+    "layers": [
+      {
+        "inputSize": 20,
+        "outputSize": 4,
+        "activation": "relu",
+        "biases": [ 0.08, 0.05, 0.02, 0.04 ],
+        "weights": [
+          1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0,
+          0, 0, 1, 0, 0, 0, 0, 0, 0.25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0.25, 0, 0, 0, 0, 0, 0, 0, 0
+        ]
+      },
+      {
+        "inputSize": 4,
+        "outputSize": 3,
+        "activation": "linear",
+        "biases": [ 0.02, 0.01, 0.02 ],
+        "weights": [
+          0.75, 0.05, 0.2, 0,
+          0.15, 0.7, 0.05, 0.1,
+          0.1, 0.05, 0.1, 0.75
+        ]
+      }
+    ],
+    "outputActivation": { "type": "linear" }
+  },
+  "referenceEvaluations": [
+    {
+      "uv": [ 0.25, 0.25 ],
+      "wi": [ 0, 0, 1 ],
+      "wo": [ 0, 0, 1 ],
+      "mip": 0,
+      "rgb": [ 0.815, 0.28, 0.27 ]
+    }
+  ]
+}

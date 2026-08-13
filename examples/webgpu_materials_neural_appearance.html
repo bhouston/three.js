@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - materials - neural appearance</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - materials - neural appearance">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_materials_neural_appearance.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_materials_neural_appearance.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#panel {
+				position: absolute;
+				left: 16px;
+				bottom: 16px;
+				padding: 12px;
+				background: rgba( 0, 0, 0, 0.7 );
+				color: #fff;
+				font: 12px/1.45 monospace;
+				border-radius: 4px;
+				z-index: 2;
+			}
+		</style>
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Neural Appearance Material</span>
+			</div>
+
+			<small>
+				WebGPU TSL prototype based on <a href="https://research.nvidia.com/labs/rtr/neural_appearance_models/" target="_blank" rel="noopener">Real-Time Neural Appearance Models</a>. Runtime fixture follows the asset layout converted from <a href="https://github.com/NVlabs/neuralappearance" target="_blank" rel="noopener">NVlabs/neuralappearance</a>.
+			</small>
+		</div>
+
+		<div id="panel">
+			<button id="openButton">Open neural appearance .json</button>
+			<input id="fileInput" type="file" accept=".json,application/json" hidden>
+			<div id="status">Loaded bundled FauxLeather fixture.</div>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+			import { NeuralAppearanceLoader } from 'three/addons/loaders/NeuralAppearanceLoader.js';
+			import { NeuralAppearanceNodeMaterial } from 'three/addons/materials/NeuralAppearanceNodeMaterial.js';
+
+			let camera, scene, renderer, mesh, neuralMaterial, baselineMaterial;
+			let keyLight, rimLight;
+			let fixedMipController;
+
+			const openButton = document.getElementById( 'openButton' );
+			const fileInput = document.getElementById( 'fileInput' );
+			const status = document.getElementById( 'status' );
+
+			const params = {
+				material: 'neural',
+				lodMode: 'deterministic',
+				fixedMipLevel: - 1,
+				intensity: 1,
+				animateLights: true
+			};
+
+			init();
+
+			async function init() {
+
+				if ( WebGPU.isAvailable() === false ) {
+
+					document.body.appendChild( WebGPU.getErrorMessage() );
+					throw new Error( 'No WebGPU support' );
+
+				}
+
+				const container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 1.2, 5 );
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x15171c );
+
+				scene.add( new THREE.HemisphereLight( 0xffffff, 0x202840, 0.25 ) );
+
+				keyLight = new THREE.PointLight( 0xfff0d0, 6, 10 );
+				keyLight.position.set( 2.5, 2.0, 2.5 );
+				scene.add( keyLight );
+
+				rimLight = new THREE.PointLight( 0x80aaff, 3, 10 );
+				rimLight.position.set( - 2.5, 1.5, - 2.0 );
+				scene.add( rimLight );
+
+				const neuralData = await new NeuralAppearanceLoader().loadAsync( 'models/neural-appearance/faux-leather/neural_appearance.json' );
+				setNeuralAppearanceData( neuralData );
+
+				baselineMaterial = new THREE.MeshPhysicalNodeMaterial( {
+					color: 0x93604a,
+					roughness: 0.38,
+					metalness: 0.0,
+					clearcoat: 0.25,
+					clearcoatRoughness: 0.45
+				} );
+
+				const geometry = new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 );
+				mesh = new THREE.Mesh( geometry, neuralMaterial );
+				mesh.rotation.x = - 0.35;
+				scene.add( mesh );
+
+				const floor = new THREE.Mesh(
+					new THREE.PlaneGeometry( 8, 8 ),
+					new THREE.MeshStandardMaterial( { color: 0x252a33, roughness: 0.7 } )
+				);
+				floor.rotation.x = - Math.PI / 2;
+				floor.position.y = - 1.35;
+				scene.add( floor );
+
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( render );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 0.9;
+				container.appendChild( renderer.domElement );
+
+				const controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 0, 0 );
+				controls.update();
+
+				const gui = new GUI();
+				gui.add( params, 'material', [ 'neural', 'physical baseline' ] ).onChange( updateMaterial );
+				gui.add( params, 'lodMode', [ 'deterministic', 'stochastic' ] ).onChange( updateMaterial );
+				fixedMipController = gui.add( params, 'fixedMipLevel', - 1, neuralData.mipLevels - 1, 1 ).name( 'fixed mip (-1 auto)' ).onChange( updateMaterial );
+				gui.add( params, 'intensity', 0, 3, 0.01 ).onChange( updateMaterial );
+				gui.add( params, 'animateLights' );
+
+				openButton.addEventListener( 'click', () => fileInput.click() );
+				fileInput.addEventListener( 'change', onFileSelected );
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			async function onFileSelected( event ) {
+
+				const file = event.target.files[ 0 ];
+				if ( file === undefined ) return;
+
+				status.textContent = `Loading ${file.name}...`;
+
+				try {
+
+					const json = JSON.parse( await file.text() );
+					const neuralData = new NeuralAppearanceLoader().parse( json );
+
+					setNeuralAppearanceData( neuralData );
+					params.material = 'neural';
+					updateFixedMipRange( neuralData );
+					updateMaterial();
+					status.textContent = `Loaded ${file.name}`;
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
+
+			}
+
+			function setNeuralAppearanceData( neuralData ) {
+
+				if ( neuralMaterial ) neuralMaterial.dispose();
+
+				neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, {
+					lodMode: params.lodMode,
+					fixedMipLevel: params.fixedMipLevel,
+					intensity: params.intensity
+				} );
+
+				if ( mesh && params.material === 'neural' ) mesh.material = neuralMaterial;
+
+			}
+
+			function updateFixedMipRange( neuralData ) {
+
+				params.fixedMipLevel = Math.min( params.fixedMipLevel, neuralData.mipLevels - 1 );
+
+				if ( fixedMipController ) {
+
+					fixedMipController.max( neuralData.mipLevels - 1 );
+					fixedMipController.updateDisplay();
+
+				}
+
+			}
+
+			function updateMaterial() {
+
+				if ( mesh === undefined ) return;
+
+				neuralMaterial.lodMode = params.lodMode;
+				neuralMaterial.fixedMipLevel = params.fixedMipLevel;
+				neuralMaterial.intensity = params.intensity;
+				neuralMaterial.needsUpdate = true;
+
+				mesh.material = params.material === 'neural' ? neuralMaterial : baselineMaterial;
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function render() {
+
+				const time = performance.now() * 0.001;
+
+				if ( params.animateLights ) {
+
+					keyLight.position.set( Math.cos( time * 0.7 ) * 2.5, 2.0, Math.sin( time * 0.7 ) * 2.5 );
+					rimLight.position.set( Math.cos( time * 0.5 + Math.PI ) * 2.5, 1.4, Math.sin( time * 0.5 + Math.PI ) * 2.5 );
+
+				}
+
+				if ( mesh ) mesh.rotation.y = time * 0.15;
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>

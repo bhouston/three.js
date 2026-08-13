@@ -30,6 +30,51 @@ export function replaceDefaultUV( callback, node = null ) {
 }
 
 /**
+ * Replaces both default texture coordinates and context-aware semantic UV
+ * geometry attributes.
+ *
+ * Callback replacements receive an object describing the UV source. For
+ * semantic geometry accessors, `index` and `sourceNode` are set. For default
+ * texture coordinates, `textureNode` is set and `index` is zero.
+ *
+ * Replacements provide source-space UV coordinates. Loader-specific coordinate
+ * conversion and downstream coordinate transforms are applied afterwards.
+ *
+ * ```js
+ *material.contextNode = replaceUV( ( { index } ) => {
+ *
+ *	// ...
+ *	return index === 0 ? customUV0 : customUV1;
+ *
+ *} );
+ *```
+ *
+ * @tsl
+ * @function
+ * @param {function(Object,NodeBuilder):Node<vec2>|Node<vec2>} callback - A callback
+ * that receives UV source information, or a node used for every UV source.
+ * @param {Node} [node=null] - An optional node to which the context will be applied.
+ * @return {ContextNode} A context node that replaces all default and semantic UV coordinates.
+ */
+export function replaceUV( callback, node = null ) {
+
+	const getReplacement = typeof callback === 'function' ? callback : () => callback;
+	const getUV = ( textureNode, builder ) => getReplacement( {
+		index: 0,
+		sourceNode: null,
+		textureNode
+	}, builder );
+	const getUVAttribute = ( index, sourceNode, builder ) => getReplacement( {
+		index,
+		sourceNode,
+		textureNode: null
+	}, builder );
+
+	return context( node, { getUV, getUVAttribute } );
+
+}
+
+/**
  * Rotates the given uv coordinates around a center point
  *
  * @tsl

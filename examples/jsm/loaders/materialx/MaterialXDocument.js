@@ -20,7 +20,7 @@ import {
 	vec3,
 	vec4,
 	color,
-	uv,
+	semanticUV,
 	mat3,
 	mat4,
 	element,
@@ -453,7 +453,7 @@ class MaterialXNode {
 
 			}
 
-			node = this.materialX.compileContext.mxToBottomLeftUvSpace( uv( index ) );
+			node = this.materialX.compileContext.getTexcoordNode( index );
 
 		} else {
 
@@ -803,6 +803,7 @@ class MaterialXDocument {
 			compileRegistry: COMPILE_REGISTRY,
 			nodeLibrary: MtlXLibrary,
 			...bottomLeftUvSpaceHelpers,
+			getTexcoordNode: ( index = 0 ) => bottomLeftUvSpaceHelpers.mxToBottomLeftUvSpace( semanticUV( index ) ),
 			mxTransformUv: mx_transform_uv,
 			mxHextileCoord,
 			mxHextileComputeBlendWeights,

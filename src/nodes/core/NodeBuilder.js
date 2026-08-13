@@ -1071,6 +1071,7 @@ class NodeBuilder {
 
 		delete context.material;
 		delete context.getUV;
+		delete context.getUVAttribute;
 		delete context.getOutput;
 		delete context.getTextureLevel;
 		delete context.getAO;

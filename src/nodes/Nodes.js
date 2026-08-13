@@ -57,6 +57,7 @@ export { default as PointUVNode } from './accessors/PointUVNode.js';
 export { default as ReferenceBaseNode } from './accessors/ReferenceBaseNode.js';
 export { default as ReferenceNode } from './accessors/ReferenceNode.js';
 export { default as RendererReferenceNode } from './accessors/RendererReferenceNode.js';
+export { default as SemanticUVNode } from './accessors/UV.js';
 export { default as StorageBufferNode } from './accessors/StorageBufferNode.js';
 export { default as StorageTexture3DNode } from './accessors/StorageTexture3DNode.js';
 export { default as StorageTextureNode } from './accessors/StorageTextureNode.js';

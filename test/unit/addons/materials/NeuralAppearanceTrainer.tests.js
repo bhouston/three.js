@@ -4,6 +4,7 @@ import {
 	evaluateNeuralAppearanceJson,
 	normalizeDirectLightingTargets
 } from '../../../../examples/jsm/materials/NeuralAppearanceTrainer.js';
+import { NeuralAppearanceTeacherEvaluator } from '../../../../examples/jsm/materials/NeuralAppearanceTeacherEvaluator.js';
 
 function createBatchTeacher() {
 
@@ -102,6 +103,73 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'supports a one-texel baseline and deterministic grazing validation', async ( assert ) => {
+
+				const teacher = createBatchTeacher();
+				const trainer = new NeuralAppearanceTrainer( {
+					resolution: 1,
+					iterations: 1,
+					batchSize: 16,
+					hiddenSize: 4,
+					yieldEvery: 0,
+					seed: 5
+				} );
+				const result = await trainer.train( { material: {}, teacher } );
+				const validationCall = teacher.calls[ 1 ];
+				const wiCosines = [ ...new Set( validationCall.map( ( sample ) => sample.wi[ 2 ] ) ) ].sort();
+				const woCosines = [ ...new Set( validationCall.map( ( sample ) => sample.wo[ 2 ] ) ) ].sort();
+
+				assert.deepEqual( result.model.latentGrids.map( ( grid ) => [ grid.width, grid.height ] ), [[ 1, 1 ]], 'trains one latent texel and mip zero when requested' );
+				assert.deepEqual( wiCosines, [ 0.025, 0.1, 0.4, 0.8 ], 'validation sweeps incoming directions through grazing angles' );
+				assert.deepEqual( woCosines, [ 0.025, 0.1, 0.4, 0.8 ], 'validation sweeps outgoing directions through grazing angles' );
+				assert.strictEqual( result.validation.preview.samples.length, 16, 'keeps the original held-out samples in the visual preview' );
+				assert.strictEqual( result.validation.directional.preview.samples.length, 0, 'reports the directional grid separately from the visual preview' );
+
+			} );
+
+			QUnit.test( 'requires training-safe output and gradient settings', async ( assert ) => {
+
+				const teacher = createBatchTeacher();
+
+				await assert.rejects(
+					new NeuralAppearanceTrainer( { outputActivation: { type: 'exp' } } ).train( { material: {}, teacher } ),
+					/Only linear output activation/,
+					'rejects an output activation whose derivative is not trained'
+				);
+				await assert.rejects(
+					new NeuralAppearanceTrainer( { maxGradientNorm: Infinity } ).train( { material: {}, teacher } ),
+					/maxGradientNorm must be finite/,
+					'requires active finite gradient clipping'
+				);
+
+			} );
+
+			QUnit.test( 'rejects non-half-float teacher readback', async ( assert ) => {
+
+				const renderer = {
+					toneMapping: 0,
+					getRenderTarget: () => null,
+					getClearAlpha: () => 1,
+					getClearColor() {},
+					setClearColor() {},
+					setRenderTarget() {},
+					render() {},
+					readRenderTargetPixelsAsync: async () => new Uint8Array( 4 )
+				};
+				const evaluator = new NeuralAppearanceTeacherEvaluator( {}, renderer );
+
+				evaluator._target = {};
+				evaluator._atlasWidth = 1;
+				evaluator._atlasHeight = 1;
+
+				await assert.rejects(
+					evaluator._renderAndRead(),
+					/Half-float teacher readback is required/,
+					'does not silently train from LDR pixels'
+				);
+
+			} );
+
 			QUnit.test( 'evaluates exported half-float latents with runtime LOD selection', ( assert ) => {
 
 				const outputWeights = new Array( 3 * 20 ).fill( 0 );
@@ -174,7 +242,7 @@ export default QUnit.module( 'Addons', () => {
 				} );
 
 				const result = await trainer.train( { material: {}, teacher } );
-				const trainingCall = teacher.calls[ 1 ];
+				const trainingCall = teacher.calls[ 2 ];
 				const footprints = [ ...new Set( trainingCall.map( ( sample ) => sample.duvDx[ 0 ] ) ) ].sort();
 
 				assert.deepEqual( footprints, [ 0.25, 0.5, 1 ], 'requests a matching teacher footprint for every mip' );

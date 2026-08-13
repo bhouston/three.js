@@ -154,9 +154,7 @@ class NeuralAppearanceTeacherEvaluator {
 		const wo = sampleWo.xyz.normalize();
 
 		const sampleMaterial = this.material.clone ? this.material.clone() : this.material;
-		const uvOverrides = collectUvNodes( sampleMaterial ).map( ( node ) => [ node, materialUv ] );
-		sampleMaterial.contextNode = TSL.replaceDefaultUV( materialUv, TSL.overrideNodes( [
-			...uvOverrides,
+		sampleMaterial.contextNode = TSL.replaceUV( materialUv, TSL.overrideNodes( [
 			[ TSL.normalView, normal ],
 			[ TSL.tangentView, tangent ],
 			[ TSL.bitangentView, bitangent ],
@@ -246,7 +244,16 @@ class NeuralAppearanceTeacherEvaluator {
 			this.renderer.setRenderTarget( this._target );
 			this.renderer.render( this._scene, this._camera );
 
-			return await this.renderer.readRenderTargetPixelsAsync( this._target, 0, 0, this._atlasWidth, this._atlasHeight );
+			const pixels = await this.renderer.readRenderTargetPixelsAsync( this._target, 0, 0, this._atlasWidth, this._atlasHeight );
+
+			if ( pixels instanceof Uint16Array === false ) {
+
+				const type = pixels && pixels.constructor ? pixels.constructor.name : typeof pixels;
+				throw new Error( `THREE.NeuralAppearanceTeacherEvaluator: Half-float teacher readback is required; received ${ type }.` );
+
+			}
+
+			return pixels;
 
 		} finally {
 
@@ -353,45 +360,6 @@ function createMaterialUvNode( sampleUv, sampleTangent, sampleBitangent, tileSiz
 function sampleTextureNode( texture, sampleCoord ) {
 
 	return TSL.texture( texture, sampleCoord );
-
-}
-
-function collectUvNodes( material ) {
-
-	const nodes = new Set();
-	const visit = ( node ) => {
-
-		if ( node && node.isNode === true && typeof node.traverse === 'function' ) {
-
-			node.traverse( ( child ) => {
-
-				if ( typeof child.getAttributeName === 'function' && child.getAttributeName() === 'uv' ) {
-
-					nodes.add( child );
-
-				}
-
-			} );
-
-		}
-
-	};
-
-	for ( const value of Object.values( material ) ) {
-
-		if ( Array.isArray( value ) ) {
-
-			value.forEach( visit );
-
-		} else {
-
-			visit( value );
-
-		}
-
-	}
-
-	return Array.from( nodes );
 
 }
 

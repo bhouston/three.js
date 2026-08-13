@@ -45,9 +45,11 @@ class NeuralAppearanceTrainer {
 	async train( { material, renderer = null, onProgress = null, ...options } = {} ) {
 
 		const settings = { ...this.options, ...options };
+		validateTrainingSettings( settings );
 		const teacher = options.teacher || createGpuMaterialTeacher( material, renderer, settings );
 		const model = createModel( settings, this.random );
 		let validationSamples = null;
+		let directionalValidationSamples = null;
 		let lastLoss = Infinity;
 		let validationLoss = Infinity;
 		let validation = null;
@@ -60,13 +62,16 @@ class NeuralAppearanceTrainer {
 
 		if ( teacher.init ) await teacher.init();
 		validationSamples = await generateTrainingSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ), colorAugmentation: false }, teacher, createRandom( settings.seed + 0x9e3779b9 ), settings.iterations );
+		directionalValidationSamples = await generateValidationSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ) }, teacher );
 
 		for ( let iteration = 0; iteration < settings.iterations; iteration ++ ) {
 
 			const lr = getLearningRate( settings, iteration );
 			const samples = await generateTrainingSamples( settings, teacher, this.random, iteration );
 			lastLoss = trainBatch( model, samples, teacher, lr, iteration + 1, settings.maxGradientNorm );
-			validation = evaluateRuntimeValidation( createNeuralAppearanceManifest( model, settings ), validationSamples, settings.previewSampleCount );
+			const manifest = createNeuralAppearanceManifest( model, settings );
+			validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );
+			validation.directional = evaluateRuntimeValidation( manifest, directionalValidationSamples, 0 );
 			validationLoss = validation.loss;
 
 			if ( onProgress ) {
@@ -100,6 +105,34 @@ class NeuralAppearanceTrainer {
 			model,
 			teacher
 		};
+
+	}
+
+}
+
+function validateTrainingSettings( settings ) {
+
+	if ( Number.isInteger( settings.resolution ) === false || settings.resolution < 1 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: resolution must be a positive integer.' );
+
+	}
+
+	if ( settings.outputActivation === null || settings.outputActivation === undefined || settings.outputActivation.type !== 'linear' ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: Only linear output activation is supported during training.' );
+
+	}
+
+	if ( Number.isFinite( settings.maxGradientNorm ) === false || settings.maxGradientNorm <= 0 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: maxGradientNorm must be finite and greater than zero.' );
+
+	}
+
+	if ( Number.isFinite( settings.minimumTrainingCosine ) === false || settings.minimumTrainingCosine < 0 || settings.minimumTrainingCosine > 1 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: minimumTrainingCosine must be between zero and one.' );
 
 	}
 
@@ -155,6 +188,53 @@ async function generateTrainingSamples( options, teacher, random, iteration = 0 
 		}
 
 	}
+
+	return samples;
+
+}
+
+async function generateValidationSamples( options, teacher ) {
+
+	const sampleCount = options.batchSize;
+	const gridSize = Math.max( 1, Math.ceil( Math.sqrt( sampleCount ) ) );
+	const mipLevelCount = getMipLevelCount( options.resolution, options.resolution );
+	const cosines = [ 0.025, 0.1, 0.4, 0.8 ];
+	const samples = [];
+
+	for ( let i = 0; i < sampleCount; i ++ ) {
+
+		const uv = [
+			( i % gridSize + 0.5 ) / gridSize,
+			( Math.floor( i / gridSize ) + 0.5 ) / gridSize
+		];
+		const wiCosine = cosines[ i % cosines.length ];
+		const woCosine = cosines[ Math.floor( i / cosines.length ) % cosines.length ];
+		const azimuth = 2 * Math.PI * ( i + 0.5 ) / sampleCount;
+		const wi = directionFromCosine( wiCosine, azimuth );
+		const wo = directionFromCosine( woCosine, azimuth * 1.61803398875 );
+
+		for ( let mip = 0; mip < mipLevelCount; mip ++ ) {
+
+			const footprint = Math.pow( 2, mip ) / Math.max( 1, options.resolution );
+			samples.push( {
+				uv: uv.slice(),
+				wi: wi.slice(),
+				wo: wo.slice(),
+				normal: [ 0, 0, 1 ],
+				tangent: [ 1, 0, 0 ],
+				bitangent: [ 0, 1, 0 ],
+				duvDx: [ footprint, 0 ],
+				duvDy: [ 0, footprint ],
+				mip,
+				encoderInputs: teacher.encodeInputs( uv )
+			} );
+
+		}
+
+	}
+
+	await assignTeacherTargets( samples, teacher );
+	normalizeDirectLightingTargets( samples, options.minimumTrainingCosine );
 
 	return samples;
 
@@ -258,7 +338,14 @@ function createMLP( inputSize, hiddenLayers, outputSize, random, hiddenActivatio
 
 function trainBatch( model, samples, teacher, learningRate, step, maxGradientNorm ) {
 
-	const invBatch = 1 / getSampleWeightSum( samples );
+	const sampleWeightSum = getSampleWeightSum( samples );
+	if ( sampleWeightSum <= 0 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: Batch contains no finite, well-conditioned teacher samples.' );
+
+	}
+
+	const invBatch = 1 / sampleWeightSum;
 	let loss = 0;
 
 	zeroGradients( model.decoder );
@@ -278,6 +365,11 @@ function trainBatch( model, samples, teacher, learningRate, step, maxGradientNor
 		const gradPrediction = [ 0, 0, 0 ];
 
 		if ( sampleWeight === 0 ) continue;
+		if ( prediction.every( Number.isFinite ) === false || target.every( Number.isFinite ) === false ) {
+
+			throw new Error( 'THREE.NeuralAppearanceTrainer: Encountered a non-finite training sample.' );
+
+		}
 
 		for ( let i = 0; i < 3; i ++ ) {
 
@@ -308,6 +400,13 @@ function trainBatch( model, samples, teacher, learningRate, step, maxGradientNor
 	for ( const grid of model.latentGrids ) applyAdamLatents( grid, learningRate, step );
 	applyAdamRotation( model, learningRate, step );
 	applyAdam( model.decoder, learningRate, step );
+	assertModelFinite( model );
+
+	if ( Number.isFinite( loss ) === false ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: Training produced a non-finite loss.' );
+
+	}
 
 	return loss;
 
@@ -333,8 +432,7 @@ function clipModelGradients( model, maxNorm ) {
 	const norm = Math.sqrt( squaredNorm );
 	if ( ! Number.isFinite( norm ) ) {
 
-		for ( const values of gradients ) values.fill( 0 );
-		return;
+		throw new Error( 'THREE.NeuralAppearanceTrainer: Training produced non-finite gradients.' );
 
 	}
 
@@ -350,9 +448,34 @@ function clipModelGradients( model, maxNorm ) {
 
 }
 
+function assertModelFinite( model ) {
+
+	assertFiniteArray( model.rotationWeights, 'learned-frame weights' );
+
+	for ( const grid of model.latentGrids ) assertFiniteArray( grid.data, 'latent values' );
+
+	for ( const layer of model.decoder.layers ) {
+
+		assertFiniteArray( layer.weights, 'decoder weights' );
+		assertFiniteArray( layer.biases, 'decoder biases' );
+
+	}
+
+}
+
+function assertFiniteArray( values, label ) {
+
+	if ( values.every( Number.isFinite ) === false ) {
+
+		throw new Error( `THREE.NeuralAppearanceTrainer: Training produced non-finite ${ label }.` );
+
+	}
+
+}
+
 function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_OPTIONS.previewSampleCount ) {
 
-	const invBatch = 1 / getSampleWeightSum( samples );
+	const invBatch = 1 / Math.max( getSampleWeightSum( samples ), 1 );
 	let loss = 0;
 	const angularBins = {
 		wi: createAngularBins(),
@@ -370,6 +493,12 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 		const directPrediction = prediction.map( ( value ) => value * nDotL );
 
 		if ( sampleWeight > 0 ) {
+
+			if ( prediction.every( Number.isFinite ) === false || target.every( Number.isFinite ) === false ) {
+
+				throw new Error( 'THREE.NeuralAppearanceTrainer: Runtime validation produced non-finite values.' );
+
+			}
 
 			for ( let i = 0; i < 3; i ++ ) {
 
@@ -502,7 +631,7 @@ function getSampleWeightSum( samples ) {
 
 	}
 
-	return Math.max( weight, 1 );
+	return weight;
 
 }
 
@@ -1214,6 +1343,13 @@ function sampleHemisphereCosine( random ) {
 	const r = Math.sqrt( Math.max( 0, 1 - z * z ) );
 
 	return [ r * Math.cos( phi ), r * Math.sin( phi ), z ];
+
+}
+
+function directionFromCosine( cosine, azimuth ) {
+
+	const radius = Math.sqrt( Math.max( 0, 1 - cosine * cosine ) );
+	return [ radius * Math.cos( azimuth ), radius * Math.sin( azimuth ), cosine ];
 
 }
 

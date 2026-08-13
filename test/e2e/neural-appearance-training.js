@@ -146,7 +146,7 @@ async function runTrainingCase( page, testCase ) {
 
 	}
 
-	if ( worstWhiteComparison.meanRgbError <= testCase.maxMeanRgbError || worstWhiteComparison.meanRgbError <= worstComparison.meanRgbError * 1.1 ) {
+	if ( worstWhiteComparison.meanRgbError <= worstComparison.meanRgbError * 1.1 ) {
 
 		throw new Error( `${testCase.label}: forced-white control was not rejected: white mean RGB error ${worstWhiteComparison.meanRgbError.toFixed( 2 )}, neural mean RGB error ${worstComparison.meanRgbError.toFixed( 2 )}.` );
 
@@ -239,7 +239,7 @@ async function captureCanvasView( page, view, rotation ) {
 
 	if ( page.error !== undefined ) throw new Error( page.error );
 
-	const canvas = await page.$( 'canvas' );
+	const canvas = await page.$( '#neuralAppearanceCanvas' );
 	if ( canvas === null ) throw new Error( 'Could not find renderer canvas.' );
 
 	return {

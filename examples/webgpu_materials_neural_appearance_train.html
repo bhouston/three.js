@@ -200,8 +200,9 @@
 			const params = {
 				view: 'MaterialX teacher',
 				resolution: readNumberQuery( 'resolution', 8 ),
-				iterations: readNumberQuery( 'iterations', 1200 ),
-				batchSize: readNumberQuery( 'batchSize', 256 ),
+				iterations: readNumberQuery( 'iterations', 2000 ),
+				batchSize: readNumberQuery( 'batchSize', 512 ),
+				hiddenSize: readNumberQuery( 'hiddenSize', 32 ),
 				intensity: readNumberQuery( 'intensity', 1 ),
 				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
 				seed: readNumberQuery( 'seed', 1 )
@@ -279,10 +280,11 @@
 				whiteControlMaterial = new THREE.MeshBasicMaterial( { color: 0xffffff } );
 
 				const gui = new GUI();
-				gui.add( params, 'view', [ 'MaterialX teacher', 'trained neural', 'forced white' ] ).onChange( updateView );
+				gui.add( params, 'view', [ 'MaterialX teacher', 'trained neural', 'forced white' ] ).onChange( updateView ).listen();
 				gui.add( params, 'resolution', [ 1, 2, 4, 8, 16 ] );
 				gui.add( params, 'iterations', 100, 10000, 100 );
-				gui.add( params, 'batchSize', [ 64, 256, 1024, 4096 ] );
+				gui.add( params, 'batchSize', [ 64, 256, 512, 1024, 4096 ] );
+				gui.add( params, 'hiddenSize', [ 16, 32, 64 ] );
 				gui.add( params, 'intensity', 0, 3, 0.01 ).onChange( updateView );
 
 				openButton.addEventListener( 'click', () => fileInput.click() );
@@ -467,9 +469,11 @@
 						resolution: Number( params.resolution ),
 						iterations: Number( params.iterations ),
 						batchSize: Number( params.batchSize ),
+						hiddenSize: Number( params.hiddenSize ),
 						previewSampleCount: Number( params.previewSamples ),
 						seed: Number( params.seed )
 					} );
+					let lastLiveMaterialUpdate = - Infinity;
 					const result = await trainer.train( {
 						renderer,
 						material: trainingMaterial,
@@ -481,6 +485,14 @@
 							if ( progress.validation ) window.__neuralAppearanceValidation = progress.validation;
 							if ( progress.validation && progress.validation.preview ) window.__neuralAppearancePreview = progress.validation.preview;
 							appendLossPoint( progress );
+
+							const now = performance.now();
+							if ( progress.iteration === 1 || progress.iteration === progress.iterations || now - lastLiveMaterialUpdate >= 1000 ) {
+
+								showLiveNeuralMaterial( progress.json );
+								lastLiveMaterialUpdate = now;
+
+							}
 
 							if ( progress.iteration % 20 === 0 || progress.iteration === progress.iterations ) {
 
@@ -545,6 +557,17 @@
 					openButton.disabled = false;
 
 				}
+
+			}
+
+			function showLiveNeuralMaterial( json ) {
+
+				const neuralData = new NeuralAppearanceLoader().parse( json );
+				disposeNeuralMaterial();
+				neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity } );
+				params.view = 'trained neural';
+				updateView();
+				mode.textContent = 'live neural (training)';
 
 			}
 

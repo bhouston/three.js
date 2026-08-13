@@ -12,10 +12,11 @@ const DEFAULT_OPTIONS = {
 	learningRate: 0.001,
 	cosineAnnealingScale: 0.01,
 	seed: 1,
-	hiddenSize: 16,
+	hiddenSize: 32,
 	yieldEvery: 8,
 	colorAugmentation: false,
 	minimumTrainingCosine: 0.05,
+	highlightLossScale: 2,
 	maxGradientNorm: 1,
 	previewSampleCount: 64,
 	outputActivation: { type: 'linear' },
@@ -82,6 +83,7 @@ class NeuralAppearanceTrainer {
 					loss: lastLoss,
 					validationLoss,
 					validation,
+					json: manifest,
 					learningRate: lr
 				} );
 
@@ -118,6 +120,16 @@ function validateTrainingSettings( settings ) {
 
 	}
 
+	for ( const name of [ 'iterations', 'batchSize', 'hiddenSize' ] ) {
+
+		if ( Number.isInteger( settings[ name ] ) === false || settings[ name ] < 1 ) {
+
+			throw new Error( `THREE.NeuralAppearanceTrainer: ${ name } must be a positive integer.` );
+
+		}
+
+	}
+
 	if ( settings.outputActivation === null || settings.outputActivation === undefined || settings.outputActivation.type !== 'linear' ) {
 
 		throw new Error( 'THREE.NeuralAppearanceTrainer: Only linear output activation is supported during training.' );
@@ -133,6 +145,12 @@ function validateTrainingSettings( settings ) {
 	if ( Number.isFinite( settings.minimumTrainingCosine ) === false || settings.minimumTrainingCosine < 0 || settings.minimumTrainingCosine > 1 ) {
 
 		throw new Error( 'THREE.NeuralAppearanceTrainer: minimumTrainingCosine must be between zero and one.' );
+
+	}
+
+	if ( Number.isFinite( settings.highlightLossScale ) === false || settings.highlightLossScale < 0 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: highlightLossScale must be finite and non-negative.' );
 
 	}
 
@@ -177,7 +195,7 @@ async function generateTrainingSamples( options, teacher, random, iteration = 0 
 	}
 
 	await assignTeacherTargets( samples, teacher );
-	normalizeDirectLightingTargets( samples, options.minimumTrainingCosine );
+	normalizeDirectLightingTargets( samples, options.minimumTrainingCosine, options.highlightLossScale );
 
 	for ( const sample of samples ) {
 
@@ -481,6 +499,8 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 		wi: createAngularBins(),
 		wo: createAngularBins()
 	};
+	const reciprocity = createDifferenceMetric();
+	const angularSmoothness = createDifferenceMetric();
 	const preview = createRuntimePreview( previewSampleCount, samples.length );
 
 	for ( const sample of samples ) {
@@ -491,6 +511,9 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 		const nDotL = Math.max( sample.wi[ 2 ], 0 );
 		const directTarget = Array.isArray( sample.directTarget ) ? sample.directTarget : target.map( ( value ) => value * nDotL );
 		const directPrediction = prediction.map( ( value ) => value * nDotL );
+		const reciprocalPrediction = evaluateNeuralAppearanceJson( json, { ...sample, wi: sample.wo, wo: sample.wi } );
+		const perturbedWiPrediction = evaluateNeuralAppearanceJson( json, { ...sample, wi: perturbDirection( sample.wi, 0.02 ) } );
+		const perturbedWoPrediction = evaluateNeuralAppearanceJson( json, { ...sample, wo: perturbDirection( sample.wo, 0.02 ) } );
 
 		if ( sampleWeight > 0 ) {
 
@@ -511,6 +534,10 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 
 		}
 
+		accumulateDifferenceMetric( reciprocity, prediction, reciprocalPrediction );
+		accumulateDifferenceMetric( angularSmoothness, prediction, perturbedWiPrediction );
+		accumulateDifferenceMetric( angularSmoothness, prediction, perturbedWoPrediction );
+
 		if ( Array.isArray( sample.directTarget ) && sample.wi[ 2 ] >= 0 && sample.wo[ 2 ] >= 0 ) {
 
 			accumulateAngularError( angularBins.wi, sample.wi[ 2 ], directPrediction, sample.directTarget );
@@ -530,8 +557,56 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 		angularBins: {
 			wi: finalizeAngularBins( angularBins.wi ),
 			wo: finalizeAngularBins( angularBins.wo )
-		}
+		},
+		reciprocity: finalizeDifferenceMetric( reciprocity ),
+		angularSmoothness: finalizeDifferenceMetric( angularSmoothness )
 	};
+
+}
+
+function createDifferenceMetric() {
+
+	return { sampleCount: 0, absoluteDifference: 0, magnitude: 0, maxChannelDifference: 0 };
+
+}
+
+function accumulateDifferenceMetric( metric, a, b ) {
+
+	if ( a.every( Number.isFinite ) === false || b.every( Number.isFinite ) === false ) return;
+	metric.sampleCount ++;
+
+	for ( let channel = 0; channel < 3; channel ++ ) {
+
+		const difference = Math.abs( a[ channel ] - b[ channel ] );
+		metric.absoluteDifference += difference;
+		metric.magnitude += 0.5 * ( Math.abs( a[ channel ] ) + Math.abs( b[ channel ] ) );
+		metric.maxChannelDifference = Math.max( metric.maxChannelDifference, difference );
+
+	}
+
+}
+
+function finalizeDifferenceMetric( metric ) {
+
+	return {
+		sampleCount: metric.sampleCount,
+		meanAbsoluteDifference: metric.sampleCount > 0 ? metric.absoluteDifference / ( metric.sampleCount * 3 ) : null,
+		relativeAbsoluteDifference: metric.magnitude > 0 ? metric.absoluteDifference / metric.magnitude : null,
+		maxChannelDifference: metric.sampleCount > 0 ? metric.maxChannelDifference : null
+	};
+
+}
+
+function perturbDirection( direction, amount ) {
+
+	const reference = Math.abs( direction[ 2 ] ) < 0.9 ? [ 0, 0, 1 ] : [ 1, 0, 0 ];
+	const tangent = normalize( cross( direction, reference ) );
+
+	return normalize( [
+		direction[ 0 ] + tangent[ 0 ] * amount,
+		direction[ 1 ] + tangent[ 1 ] * amount,
+		Math.max( direction[ 2 ] + tangent[ 2 ] * amount, 0 )
+	] );
 
 }
 
@@ -997,7 +1072,7 @@ async function assignTeacherTargets( samples, teacher ) {
 
 }
 
-function normalizeDirectLightingTargets( samples, minimumCosine = DEFAULT_OPTIONS.minimumTrainingCosine ) {
+function normalizeDirectLightingTargets( samples, minimumCosine = DEFAULT_OPTIONS.minimumTrainingCosine, highlightLossScale = 0 ) {
 
 	for ( const sample of samples ) {
 
@@ -1008,7 +1083,9 @@ function normalizeDirectLightingTargets( samples, minimumCosine = DEFAULT_OPTION
 		if ( validTarget && nDotL >= minimumCosine ) {
 
 			sample.target = sample.target.map( ( value ) => value / nDotL );
-			sample.weight = nDotL;
+			const peakRadiance = Math.max( sample.directTarget[ 0 ], sample.directTarget[ 1 ], sample.directTarget[ 2 ], 0 );
+			const highlightWeight = 1 + highlightLossScale * peakRadiance / ( 1 + peakRadiance );
+			sample.weight = nDotL * highlightWeight;
 
 		} else {
 
@@ -1268,7 +1345,7 @@ function sampleTeacherDirections( random ) {
 
 	const mode = random();
 
-	if ( mode < 0.6 ) {
+	if ( mode < 0.35 ) {
 
 		return {
 			wi: sampleHemisphereUniform( random ),
@@ -1277,7 +1354,7 @@ function sampleTeacherDirections( random ) {
 
 	}
 
-	if ( mode < 0.8 ) {
+	if ( mode < 0.55 ) {
 
 		return {
 			wi: sampleHemisphereCosine( random ),
@@ -1286,7 +1363,7 @@ function sampleTeacherDirections( random ) {
 
 	}
 
-	if ( mode < 0.9 ) {
+	if ( mode < 0.65 ) {
 
 		return {
 			wi: sampleSphereUniform( random ),
@@ -1295,7 +1372,20 @@ function sampleTeacherDirections( random ) {
 
 	}
 
+	if ( mode < 0.8 ) return sampleMirrorPair( random );
+
 	return sampleRusinkiewicz( random );
+
+}
+
+function sampleMirrorPair( random ) {
+
+	const wo = sampleHemisphereUniform( random );
+
+	return {
+		wi: [ - wo[ 0 ], - wo[ 1 ], wo[ 2 ] ],
+		wo
+	};
 
 }
 
@@ -1303,16 +1393,26 @@ function sampleRusinkiewicz( random ) {
 
 	for ( let attempts = 0; attempts < 32; attempts ++ ) {
 
-		const wh = sampleHemisphereUniform( random );
-		const wd = sampleHemisphereUniform( random );
-		const wo = reflect( [ - wd[ 0 ], - wd[ 1 ], - wd[ 2 ] ], wh );
-		const wi = reflect( wd, wh );
+		const exponent = [ 2, 8, 32, 128 ][ Math.floor( random() * 4 ) ];
+		const wh = sampleHemispherePower( random, exponent );
+		const wo = sampleHemisphereUniform( random );
+		const wi = reflect( wo, wh );
 
-		if ( wi[ 2 ] > 1e-5 && wo[ 2 ] >= 0 ) return { wi, wo };
+		if ( dot( wo, wh ) > 0 && wi[ 2 ] > 1e-5 ) return { wi, wo };
 
 	}
 
 	return { wi: [ 0, 0, 1 ], wo: [ 0, 0, 1 ] };
+
+}
+
+function sampleHemispherePower( random, exponent ) {
+
+	const z = Math.pow( random(), 1 / ( exponent + 1 ) );
+	const phi = 2 * Math.PI * random();
+	const r = Math.sqrt( Math.max( 0, 1 - z * z ) );
+
+	return [ r * Math.cos( phi ), r * Math.sin( phi ), z ];
 
 }
 
@@ -1471,7 +1571,19 @@ function createRandom( seed ) {
 
 function yieldToBrowser() {
 
-	return new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+	return new Promise( ( resolve ) => {
+
+		if ( typeof requestAnimationFrame === 'function' ) {
+
+			requestAnimationFrame( () => resolve() );
+
+		} else {
+
+			setTimeout( resolve, 0 );
+
+		}
+
+	} );
 
 }
 

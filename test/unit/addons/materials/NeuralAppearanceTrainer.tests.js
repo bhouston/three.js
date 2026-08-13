@@ -2,6 +2,7 @@ import { DataUtils } from 'three';
 import {
 	NeuralAppearanceTrainer,
 	evaluateNeuralAppearanceJson,
+	generateTrainingSamples,
 	normalizeDirectLightingTargets
 } from '../../../../examples/jsm/materials/NeuralAppearanceTrainer.js';
 import { NeuralAppearanceTeacherEvaluator } from '../../../../examples/jsm/materials/NeuralAppearanceTeacherEvaluator.js';
@@ -65,6 +66,41 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( samples[ 1 ].weight, 0, 'gives the grazing target no optimizer influence' );
 				assert.strictEqual( samples[ 2 ].weight, 0, 'rejects a non-finite teacher target' );
 
+				const highlightSamples = [
+					{ wi: [ 0, 0, 0.5 ], target: [ 0.25, 0.5, 1 ] }
+				];
+				normalizeDirectLightingTargets( highlightSamples, 0.05, 2 );
+				assert.ok( highlightSamples[ 0 ].weight > 0.5 && highlightSamples[ 0 ].weight < 1.5, 'bounded highlight weighting emphasizes bright, well-conditioned targets' );
+
+			} );
+
+			QUnit.test( 'oversamples valid specular direction pairs', async ( assert ) => {
+
+				let state = 19;
+				const random = () => {
+
+					state = ( state * 1664525 + 1013904223 ) >>> 0;
+					return state / 4294967296;
+
+				};
+
+				const samples = await generateTrainingSamples( {
+					resolution: 1,
+					iterations: 1,
+					batchSize: 512,
+					colorAugmentation: false,
+					minimumTrainingCosine: 0.05,
+					highlightLossScale: 2
+				}, createBatchTeacher(), random );
+				const mirrorPairs = samples.filter( ( sample ) =>
+					Math.abs( sample.wi[ 0 ] + sample.wo[ 0 ] ) < 1e-10 &&
+					Math.abs( sample.wi[ 1 ] + sample.wo[ 1 ] ) < 1e-10 &&
+					Math.abs( sample.wi[ 2 ] - sample.wo[ 2 ] ) < 1e-10
+				);
+
+				assert.ok( mirrorPairs.length >= 50, 'dedicates a substantial part of each batch to the sharp specular ridge' );
+				assert.ok( samples.every( ( sample ) => sample.wo[ 2 ] >= 0 ), 'keeps outgoing directions in the visible hemisphere' );
+
 			} );
 
 			QUnit.test( 'requests asynchronous batched teacher targets', async ( assert ) => {
@@ -79,12 +115,23 @@ export default QUnit.module( 'Addons', () => {
 					seed: 7
 				} );
 
-				const result = await trainer.train( { material: {}, teacher } );
+				let progressJson = null;
+				const result = await trainer.train( {
+					material: {},
+					teacher,
+					onProgress: ( progress ) => {
+
+						progressJson = progress.json;
+
+					}
+				} );
 
 				assert.ok( teacher.calls.length >= 3, 'teacher used for validation, training, and exported references' );
 				assert.strictEqual( teacher.calls[ 0 ][ 0 ].normal[ 2 ], 1, 'canonical normal passed to teacher' );
 				assert.strictEqual( teacher.calls[ 0 ][ 0 ].tangent[ 0 ], 1, 'canonical tangent passed to teacher' );
 				assert.strictEqual( teacher.calls[ 0 ][ 0 ].bitangent[ 1 ], 1, 'canonical bitangent passed to teacher' );
+				assert.strictEqual( progressJson.format, 'three-neural-appearance', 'reports a renderable model snapshot during training' );
+				assert.strictEqual( progressJson.latents.textures.length, 2, 'includes both live latent textures' );
 				assert.strictEqual( result.json.referenceEvaluations.length, 3, 'exports reference samples' );
 				assert.strictEqual( result.json.referenceEvaluations[ 0 ].targetRgb.length, 3, 'keeps GPU teacher target with exported reference' );
 				assert.ok( result.model.rotationWeights.some( ( value ) => value !== 0 ), 'trains learned-frame weights' );
@@ -100,6 +147,10 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( result.validation.preview.samples[ 0 ].wo.length, 3, 'keeps the preview view direction' );
 				assert.strictEqual( result.validation.angularBins.wi.length, 3, 'reports direct HDR error by incoming-angle bin' );
 				assert.strictEqual( result.validation.angularBins.wo.length, 3, 'reports direct HDR error by outgoing-angle bin' );
+				assert.strictEqual( result.validation.reciprocity.sampleCount, result.validation.sampleCount, 'checks every held-out prediction with exchanged light and view directions' );
+				assert.strictEqual( result.validation.angularSmoothness.sampleCount, result.validation.sampleCount * 2, 'checks local incoming- and outgoing-direction perturbations' );
+				assert.ok( Number.isFinite( result.validation.reciprocity.meanAbsoluteDifference ), 'reports a finite reciprocity error' );
+				assert.ok( Number.isFinite( result.validation.angularSmoothness.meanAbsoluteDifference ), 'reports a finite angular smoothness error' );
 
 			} );
 

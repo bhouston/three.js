@@ -1,5 +1,6 @@
 import { DataUtils } from 'three';
 import { createGpuMaterialTeacher } from './NeuralAppearanceTeacherEvaluator.js';
+import { sampleExponentialMipLevel } from './NeuralAppearanceFilterUtils.js';
 
 const FORMAT = 'three-neural-appearance';
 const VERSION = 1;
@@ -7,6 +8,11 @@ const LATENT_CHANNELS = 8;
 const DECODER_INPUT_SIZE = 20;
 const DEFAULT_OPTIONS = {
 	resolution: 8,
+	sourceResolution: null,
+	latentDownsample: 1,
+	maxResolution: 4096,
+	fixedTrainingMip: - 1,
+	mipSamplingDecay: 0.9,
 	iterations: 2000,
 	batchSize: 1024,
 	learningRate: 0.001,
@@ -45,7 +51,7 @@ class NeuralAppearanceTrainer {
 
 	async train( { material, renderer = null, onProgress = null, ...options } = {} ) {
 
-		const settings = { ...this.options, ...options };
+		const settings = resolveTrainingSettings( { ...this.options, ...options } );
 		validateTrainingSettings( settings );
 		const teacher = options.teacher || createGpuMaterialTeacher( material, renderer, settings );
 		const model = createModel( settings, this.random );
@@ -62,7 +68,7 @@ class NeuralAppearanceTrainer {
 		}
 
 		if ( teacher.init ) await teacher.init();
-		validationSamples = await generateTrainingSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ), colorAugmentation: false }, teacher, createRandom( settings.seed + 0x9e3779b9 ), settings.iterations );
+		validationSamples = await generateTrainingSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ), colorAugmentation: false, sampleAllMips: true }, teacher, createRandom( settings.seed + 0x9e3779b9 ), settings.iterations );
 		directionalValidationSamples = await generateValidationSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ) }, teacher );
 
 		for ( let iteration = 0; iteration < settings.iterations; iteration ++ ) {
@@ -112,11 +118,56 @@ class NeuralAppearanceTrainer {
 
 }
 
+function resolveTrainingSettings( settings ) {
+
+	const sourceResolution = settings.sourceResolution === null || settings.sourceResolution === undefined ?
+		settings.resolution :
+		settings.sourceResolution;
+	const resolution = settings.sourceResolution === null || settings.sourceResolution === undefined ?
+		settings.resolution :
+		Math.max( 1, Math.floor( sourceResolution / settings.latentDownsample ) );
+
+	return { ...settings, resolution, sourceResolution };
+
+}
+
 function validateTrainingSettings( settings ) {
 
 	if ( Number.isInteger( settings.resolution ) === false || settings.resolution < 1 ) {
 
 		throw new Error( 'THREE.NeuralAppearanceTrainer: resolution must be a positive integer.' );
+
+	}
+
+	if ( Number.isInteger( settings.sourceResolution ) === false || settings.sourceResolution < 1 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: sourceResolution must be a positive integer.' );
+
+	}
+
+	if ( Number.isFinite( settings.latentDownsample ) === false || settings.latentDownsample < 1 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: latentDownsample must be finite and at least one.' );
+
+	}
+
+	if ( Number.isInteger( settings.maxResolution ) === false || settings.maxResolution < 1 || settings.resolution > settings.maxResolution ) {
+
+		throw new Error( `THREE.NeuralAppearanceTrainer: resolution must not exceed maxResolution (${settings.maxResolution}).` );
+
+	}
+
+	const mipLevelCount = getMipLevelCount( settings.resolution, settings.resolution );
+
+	if ( Number.isInteger( settings.fixedTrainingMip ) === false || settings.fixedTrainingMip < - 1 || settings.fixedTrainingMip >= mipLevelCount ) {
+
+		throw new Error( `THREE.NeuralAppearanceTrainer: fixedTrainingMip must be -1 or a valid mip level below ${mipLevelCount}.` );
+
+	}
+
+	if ( Number.isFinite( settings.mipSamplingDecay ) === false || settings.mipSamplingDecay <= 0 || settings.mipSamplingDecay > 1 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: mipSamplingDecay must be greater than zero and at most one.' );
 
 	}
 
@@ -159,12 +210,15 @@ function validateTrainingSettings( settings ) {
 async function generateTrainingSamples( options, teacher, random, iteration = 0 ) {
 
 	const batchSize = options.batchSize;
-	const gridSize = Math.max( 1, Math.floor( Math.sqrt( batchSize ) ) );
-	const samples = [];
 	const mipLevelCount = getMipLevelCount( options.resolution, options.resolution );
+	const recordCount = options.fixedTrainingMip >= 0 || options.sampleAllMips === true ?
+		batchSize :
+		batchSize * mipLevelCount;
+	const gridSize = Math.max( 1, Math.floor( Math.sqrt( recordCount ) ) );
+	const samples = [];
 	const augmentationRatio = options.colorAugmentation && teacher.supportsColorAugmentation === true ? 0.5 * ( 1 + Math.cos( Math.PI * Math.min( iteration / Math.max( 1, options.iterations ), 1 ) ) ) : 0;
 
-	for ( let i = 0; i < batchSize; i ++ ) {
+	for ( let i = 0; i < recordCount; i ++ ) {
 
 		const x = i % gridSize;
 		const y = Math.floor( i / gridSize ) % gridSize;
@@ -173,10 +227,17 @@ async function generateTrainingSamples( options, teacher, random, iteration = 0 
 			( y + random() ) / gridSize
 		];
 		const directions = sampleTeacherDirections( random );
+		const sampledMip = options.fixedTrainingMip < 0 && options.sampleAllMips !== true ?
+			sampleExponentialMipLevel( random, mipLevelCount, options.mipSamplingDecay ) :
+			0;
+		const mipLevels = options.fixedTrainingMip >= 0 ?
+			[ options.fixedTrainingMip ] :
+			( options.sampleAllMips === true ? createMipLevelIndices( mipLevelCount ) : [ sampledMip ] );
 
-		for ( let mip = 0; mip < mipLevelCount; mip ++ ) {
+		for ( const mip of mipLevels ) {
 
 			const footprint = Math.pow( 2, mip ) / Math.max( 1, options.resolution );
+
 			samples.push( {
 				uv: uv.slice(),
 				wi: directions.wi.slice(),
@@ -216,6 +277,9 @@ async function generateValidationSamples( options, teacher ) {
 	const sampleCount = options.batchSize;
 	const gridSize = Math.max( 1, Math.ceil( Math.sqrt( sampleCount ) ) );
 	const mipLevelCount = getMipLevelCount( options.resolution, options.resolution );
+	const mipLevels = options.fixedTrainingMip >= 0 ?
+		[ options.fixedTrainingMip ] :
+		createMipLevelIndices( mipLevelCount );
 	const cosines = [ 0.025, 0.1, 0.4, 0.8 ];
 	const samples = [];
 
@@ -231,7 +295,7 @@ async function generateValidationSamples( options, teacher ) {
 		const wi = directionFromCosine( wiCosine, azimuth );
 		const wo = directionFromCosine( woCosine, azimuth * 1.61803398875 );
 
-		for ( let mip = 0; mip < mipLevelCount; mip ++ ) {
+		for ( const mip of mipLevels ) {
 
 			const footprint = Math.pow( 2, mip ) / Math.max( 1, options.resolution );
 			samples.push( {
@@ -944,6 +1008,41 @@ function getMipLevelCount( width, height ) {
 
 }
 
+function createMipLevelIndices( levelCount ) {
+
+	const levels = [];
+
+	for ( let level = 0; level < levelCount; level ++ ) levels.push( level );
+
+	return levels;
+
+}
+
+function estimateTrainingMemory( resolution ) {
+
+	const mipLevels = getMipLevelCount( resolution, resolution );
+	let latentTexels = 0;
+	let width = resolution;
+	let height = resolution;
+
+	for ( let level = 0; level < mipLevels; level ++ ) {
+
+		latentTexels += width * height;
+		width = Math.max( 1, width >> 1 );
+		height = Math.max( 1, height >> 1 );
+
+	}
+
+	return {
+		resolution,
+		mipLevels,
+		latentTexels,
+		trainingBytes: latentTexels * LATENT_CHANNELS * 4 * 4,
+		exportBytes: latentTexels * LATENT_CHANNELS * 2
+	};
+
+}
+
 async function exportNeuralAppearance( model, teacher, options ) {
 
 	const json = createNeuralAppearanceManifest( model, options );
@@ -1592,6 +1691,7 @@ export {
 	createGpuMaterialTeacher,
 	evaluateNeuralAppearanceJson,
 	evaluateRuntimeValidation,
+	estimateTrainingMemory,
 	generateTrainingSamples,
 	normalizeDirectLightingTargets,
 	exportNeuralAppearance

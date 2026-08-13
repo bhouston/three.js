@@ -132,6 +132,7 @@ export * from './loaders/VTKLoader.js';
 export * from './loaders/XYZLoader.js';
 
 export * from './materials/LDrawConditionalLineMaterial.js';
+export * from './materials/NeuralAppearanceFilterUtils.js';
 export * from './materials/NeuralAppearanceTeacherEvaluator.js';
 export * from './materials/NeuralAppearanceTrainer.js';
 

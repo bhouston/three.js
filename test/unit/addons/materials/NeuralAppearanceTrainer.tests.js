@@ -1,11 +1,18 @@
 import { DataUtils } from 'three';
 import {
 	NeuralAppearanceTrainer,
+	estimateTrainingMemory,
 	evaluateNeuralAppearanceJson,
 	generateTrainingSamples,
 	normalizeDirectLightingTargets
 } from '../../../../examples/jsm/materials/NeuralAppearanceTrainer.js';
 import { NeuralAppearanceTeacherEvaluator } from '../../../../examples/jsm/materials/NeuralAppearanceTeacherEvaluator.js';
+import {
+	computeFootprintArea,
+	createGaussianSampleKernel,
+	getGaussianSampleGridSize,
+	prefilterLeanNormalRoughness
+} from '../../../../examples/jsm/materials/NeuralAppearanceFilterUtils.js';
 
 function createBatchTeacher() {
 
@@ -100,6 +107,79 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.ok( mirrorPairs.length >= 50, 'dedicates a substantial part of each batch to the sharp specular ridge' );
 				assert.ok( samples.every( ( sample ) => sample.wo[ 2 ] >= 0 ), 'keeps outgoing directions in the visible hemisphere' );
+
+			} );
+
+			QUnit.test( 'estimates scaled latent memory and fixed-mip training', async ( assert ) => {
+
+				const memory = estimateTrainingMemory( 64 );
+				const samples = await generateTrainingSamples( {
+					resolution: 64,
+					iterations: 1,
+					batchSize: 32,
+					fixedTrainingMip: 0,
+					colorAugmentation: false,
+					minimumTrainingCosine: 0.05,
+					highlightLossScale: 2
+				}, createBatchTeacher(), Math.random );
+
+				assert.strictEqual( memory.mipLevels, 7, 'counts the complete 64px mip hierarchy' );
+				assert.strictEqual( memory.latentTexels, 5461, 'counts texels across independent mip grids' );
+				assert.strictEqual( memory.trainingBytes, 5461 * 8 * 4 * 4, 'includes values, gradients, and two Adam moments' );
+				assert.strictEqual( memory.exportBytes, 5461 * 8 * 2, 'estimates eight FP16 latent channels' );
+				assert.ok( samples.every( ( sample ) => sample.mip === 0 ), 'keeps a resolution baseline at mip zero' );
+				assert.ok( samples.every( ( sample ) => sample.duvDx[ 0 ] === 1 / 64 ), 'uses the finest latent footprint' );
+
+			} );
+
+			QUnit.test( 'samples mip levels exponentially in favor of fine levels', async ( assert ) => {
+
+				let state = 23;
+				const random = () => {
+
+					state = ( state * 1664525 + 1013904223 ) >>> 0;
+					return state / 4294967296;
+
+				};
+
+				const samples = await generateTrainingSamples( {
+					resolution: 8,
+					iterations: 1,
+					batchSize: 1024,
+					fixedTrainingMip: - 1,
+					mipSamplingDecay: 0.5,
+					colorAugmentation: false,
+					minimumTrainingCosine: 0.05,
+					highlightLossScale: 2
+				}, createBatchTeacher(), random );
+				const counts = [ 0, 0, 0, 0 ];
+
+				for ( const sample of samples ) counts[ sample.mip ] ++;
+
+				assert.strictEqual( samples.length, 4096, 'preserves the prior total record budget while choosing one mip per record' );
+				assert.ok( counts[ 0 ] > counts[ 1 ] && counts[ 1 ] > counts[ 2 ] && counts[ 2 ] > counts[ 3 ], 'favors each finer level over the next coarser level' );
+
+			} );
+
+			QUnit.test( 'builds Gaussian footprint filters and LEAN normal moments', ( assert ) => {
+
+				const fineArea = computeFootprintArea( [ 1 / 64, 0 ], [ 0, 1 / 64 ], 64, 64 );
+				const coarseArea = computeFootprintArea( [ 4 / 64, 0 ], [ 0, 4 / 64 ], 64, 64 );
+				const fineGrid = getGaussianSampleGridSize( fineArea, 1, 64 );
+				const coarseGrid = getGaussianSampleGridSize( coarseArea, 1, 64 );
+				const kernel = createGaussianSampleKernel( coarseGrid, 8 );
+				const filtered = prefilterLeanNormalRoughness( [
+					{ normal: [ - 0.5, 0, 0.8660254 ], roughness: 0.2 },
+					{ normal: [ 0.5, 0, 0.8660254 ], roughness: 0.2 }
+				] );
+
+				assert.strictEqual( fineGrid, 1, 'uses one target sample for a one-texel footprint' );
+				assert.strictEqual( coarseGrid, 4, 'increases the sample grid with filter area' );
+				assert.strictEqual( kernel.length, 16, 'creates the requested stratified Gaussian taps' );
+				assert.ok( Math.abs( kernel.reduce( ( sum, sample ) => sum + sample.weight, 0 ) - 1 ) < 1e-12, 'normalizes Gaussian weights' );
+				assert.ok( Math.abs( filtered.normal[ 0 ] ) < 1e-12, 'preserves the mean normal direction' );
+				assert.ok( filtered.roughness > 0.2, 'adds unresolved normal variance to roughness' );
+				assert.ok( filtered.secondMoment[ 0 ] > 0, 'retains the LEAN slope second moment' );
 
 			} );
 
@@ -221,6 +301,41 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'averages Gaussian teacher pixels across coarse footprints', ( assert ) => {
+
+				const evaluator = new NeuralAppearanceTeacherEvaluator( {}, null, {
+					teacherTileSize: 8,
+					sourceResolution: 8
+				} );
+				const pixels = new Float32Array( 8 * 8 * 4 );
+
+				evaluator._atlasColumns = 1;
+				evaluator._atlasWidth = 8;
+
+				for ( let y = 0; y < 8; y ++ ) {
+
+					for ( let x = 0; x < 8; x ++ ) {
+
+						const offset = ( y * 8 + x ) * 4;
+						pixels[ offset ] = Math.pow( x / 7, 2 );
+						pixels[ offset + 1 ] = Math.pow( y / 7, 2 );
+
+					}
+
+				}
+
+				const point = evaluator._readSamplePixel( pixels, 0 );
+				const filtered = evaluator._readFilteredSample( pixels, 0, {
+					duvDx: [ 2 / 8, 0 ],
+					duvDy: [ 0, 2 / 8 ]
+				} );
+
+				assert.ok( filtered[ 0 ] > point[ 0 ], 'integrates nonlinear spatial variation instead of reading the center pixel' );
+				assert.strictEqual( filtered[ 0 ], filtered[ 1 ], 'uses an isotropic Gaussian for an isotropic footprint' );
+				assert.strictEqual( filtered[ 2 ], 0, 'preserves a constant channel' );
+
+			} );
+
 			QUnit.test( 'evaluates exported half-float latents with runtime LOD selection', ( assert ) => {
 
 				const outputWeights = new Array( 3 * 20 ).fill( 0 );
@@ -280,7 +395,7 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'trains and exports appearance-filtered latent mip levels', async ( assert ) => {
+			QUnit.test( 'trains sampled independent appearance mip levels', async ( assert ) => {
 
 				const teacher = createBatchTeacher();
 				const trainer = new NeuralAppearanceTrainer( {
@@ -295,10 +410,15 @@ export default QUnit.module( 'Addons', () => {
 				const result = await trainer.train( { material: {}, teacher } );
 				const trainingCall = teacher.calls[ 2 ];
 				const footprints = [ ...new Set( trainingCall.map( ( sample ) => sample.duvDx[ 0 ] ) ) ].sort();
+				const sampledMips = [ ...new Set( trainingCall.map( ( sample ) => sample.mip ) ) ];
+				const updatedMips = result.model.latentGrids
+					.map( ( grid, mip ) => grid.m.some( ( value ) => value !== 0 ) ? mip : - 1 )
+					.filter( ( mip ) => mip >= 0 );
 
-				assert.deepEqual( footprints, [ 0.25, 0.5, 1 ], 'requests a matching teacher footprint for every mip' );
+				assert.strictEqual( trainingCall.length, 18, 'preserves the all-mip record budget while sampling one mip per record' );
+				assert.ok( footprints.every( ( footprint ) => [ 0.25, 0.5, 1 ].includes( footprint ) ), 'requests the footprint matching each sampled mip' );
 				assert.deepEqual( result.model.latentGrids.map( ( grid ) => [ grid.width, grid.height ] ), [[ 4, 4 ], [ 2, 2 ], [ 1, 1 ]], 'creates an independently optimized grid for every mip' );
-				assert.ok( result.model.latentGrids.every( ( grid ) => grid.m.some( ( value ) => value !== 0 ) ), 'updates every mip during training' );
+				assert.ok( updatedMips.length > 0 && updatedMips.every( ( mip ) => sampledMips.includes( mip ) ), 'only updates independently selected mip grids' );
 				assert.deepEqual( result.json.latents.textures[ 0 ].mipmaps.map( ( mip ) => [ mip.width, mip.height ] ), [[ 4, 4 ], [ 2, 2 ], [ 1, 1 ]], 'exports the trained mip hierarchy' );
 
 				for ( let mip = 0; mip < result.model.latentGrids.length; mip ++ ) {

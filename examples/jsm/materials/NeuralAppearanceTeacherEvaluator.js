@@ -1,8 +1,13 @@
 import * as THREE from 'three';
 import * as TSL from 'three/tsl';
+import {
+	computeFootprintArea,
+	createGaussianSampleKernel,
+	getGaussianSampleGridSize
+} from './NeuralAppearanceFilterUtils.js';
 
 const DEFAULT_BATCH_SIZE = 1024;
-const DEFAULT_TILE_SIZE = 4;
+const DEFAULT_TILE_SIZE = 8;
 const DEFAULT_UV_GRADIENT_SCALE = 1 / 1024;
 const PhysicalLightingModel = THREE.PhysicalLightingModel || class {};
 
@@ -15,6 +20,11 @@ class NeuralAppearanceTeacherEvaluator {
 		this.batchSize = options.teacherBatchSize || options.batchSize || DEFAULT_BATCH_SIZE;
 		this.tileSize = options.teacherTileSize || DEFAULT_TILE_SIZE;
 		this.uvGradientScale = options.uvGradientScale || DEFAULT_UV_GRADIENT_SCALE;
+		this.filterMode = options.teacherFilterMode || 'gaussian';
+		this.filterMinSamples = options.teacherFilterMinSamples || 1;
+		this.filterMaxSamples = Math.min( options.teacherFilterMaxSamples || 64, this.tileSize * this.tileSize );
+		this.filterSigma = options.teacherFilterSigma || 0.25;
+		this.sourceResolution = options.sourceResolution || options.resolution || 1;
 
 		this._scene = null;
 		this._camera = null;
@@ -27,6 +37,7 @@ class NeuralAppearanceTeacherEvaluator {
 		this._atlasHeight = 0;
 		this._atlasColumns = 0;
 		this._sampleTextures = null;
+		this._filterKernels = new Map();
 		this._initialized = false;
 
 	}
@@ -83,7 +94,9 @@ class NeuralAppearanceTeacherEvaluator {
 
 			for ( let i = 0; i < batch.length; i ++ ) {
 
-				targets[ offset + i ] = this._readSamplePixel( pixels, i );
+				targets[ offset + i ] = this.filterMode === 'point' ?
+					this._readSamplePixel( pixels, i ) :
+					this._readFilteredSample( pixels, i, batch[ i ] );
 
 			}
 
@@ -117,6 +130,7 @@ class NeuralAppearanceTeacherEvaluator {
 		this._light = null;
 		this._target = null;
 		this._sampleTextures = null;
+		this._filterKernels.clear();
 		this._initialized = false;
 
 	}
@@ -278,6 +292,44 @@ class NeuralAppearanceTeacherEvaluator {
 			readPixelValue( pixels, index + 1 ),
 			readPixelValue( pixels, index + 2 )
 		];
+
+	}
+
+	_readFilteredSample( pixels, sampleIndex, sample ) {
+
+		const footprintArea = computeFootprintArea(
+			sample.duvDx || [ this.uvGradientScale, 0 ],
+			sample.duvDy || [ 0, this.uvGradientScale ],
+			this.sourceResolution,
+			this.sourceResolution
+		);
+		const gridSize = getGaussianSampleGridSize( footprintArea, this.filterMinSamples, this.filterMaxSamples );
+		let kernel = this._filterKernels.get( gridSize );
+
+		if ( kernel === undefined ) {
+
+			kernel = createGaussianSampleKernel( gridSize, this.tileSize, this.filterSigma );
+			this._filterKernels.set( gridSize, kernel );
+
+		}
+
+		const tileX = sampleIndex % this._atlasColumns;
+		const tileY = Math.floor( sampleIndex / this._atlasColumns );
+		const target = [ 0, 0, 0 ];
+
+		for ( const tap of kernel ) {
+
+			const x = tileX * this.tileSize + tap.x;
+			const y = tileY * this.tileSize + tap.y;
+			const index = ( y * this._atlasWidth + x ) * 4;
+
+			target[ 0 ] += readPixelValue( pixels, index ) * tap.weight;
+			target[ 1 ] += readPixelValue( pixels, index + 1 ) * tap.weight;
+			target[ 2 ] += readPixelValue( pixels, index + 2 ) * tap.weight;
+
+		}
+
+		return target;
 
 	}
 

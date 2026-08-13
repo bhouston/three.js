@@ -122,6 +122,7 @@
 				} );
 
 				const geometry = new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 );
+				geometry.computeTangents();
 				mesh = new THREE.Mesh( geometry, neuralMaterial );
 				mesh.rotation.x = - 0.35;
 				scene.add( mesh );

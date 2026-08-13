@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<materialx version="1.39">
+  <surfacematerial name="mat_neural_train_uv_grid" type="material" nodedef="ND_surfacematerial">
+    <input name="surfaceshader" type="surfaceshader" nodename="surface_shader1" />
+  </surfacematerial>
+  <standard_surface name="surface_shader1" type="surfaceshader" nodedef="ND_standard_surface_surfaceshader">
+    <input name="base_color" type="color3" output="out" nodegraph="uv_grid_color" />
+    <input name="specular" type="float" value="0.0" />
+    <input name="specular_roughness" type="float" value="1.0" />
+    <input name="metalness" type="float" value="0.0" />
+    <input name="coat" type="float" value="0.0" />
+  </standard_surface>
+  <nodegraph name="uv_grid_color">
+    <image name="grid" type="float">
+      <input name="file" type="filename" value="resources/Images/grid.png" />
+      <input name="default" type="float" value="0.0" />
+    </image>
+    <ifgreater name="grid_mask" type="color3">
+      <input name="value1" type="float" nodename="grid" />
+      <input name="value2" type="float" value="0.5" />
+      <input name="in1" type="color3" value="0.88, 0.16, 0.05" />
+      <input name="in2" type="color3" value="0.05, 0.18, 0.82" />
+    </ifgreater>
+    <output name="out" type="color3" nodename="grid_mask" />
+  </nodegraph>
+</materialx>

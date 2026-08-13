@@ -1,10 +1,10 @@
-import { Color } from 'three';
+import { DataUtils } from 'three';
+import { createGpuMaterialTeacher } from './NeuralAppearanceTeacherEvaluator.js';
 
 const FORMAT = 'three-neural-appearance';
 const VERSION = 1;
 const LATENT_CHANNELS = 8;
 const DECODER_INPUT_SIZE = 20;
-const DEFAULT_ENCODER_INPUT_SIZE = 14;
 const DEFAULT_OPTIONS = {
 	resolution: 8,
 	iterations: 2000,
@@ -14,7 +14,10 @@ const DEFAULT_OPTIONS = {
 	seed: 1,
 	hiddenSize: 16,
 	yieldEvery: 8,
-	colorAugmentation: true,
+	colorAugmentation: false,
+	minimumTrainingCosine: 0.05,
+	maxGradientNorm: 1,
+	previewSampleCount: 64,
 	outputActivation: { type: 'linear' },
 	name: 'trained neural appearance'
 };
@@ -42,9 +45,12 @@ class NeuralAppearanceTrainer {
 	async train( { material, renderer = null, onProgress = null, ...options } = {} ) {
 
 		const settings = { ...this.options, ...options };
-		const teacher = options.teacher || createPhysicalMaterialTeacher( material );
+		const teacher = options.teacher || createGpuMaterialTeacher( material, renderer, settings );
 		const model = createModel( settings, this.random );
+		let validationSamples = null;
 		let lastLoss = Infinity;
+		let validationLoss = Infinity;
+		let validation = null;
 
 		if ( renderer && renderer.isWebGPURenderer === true && renderer.init ) {
 
@@ -52,11 +58,16 @@ class NeuralAppearanceTrainer {
 
 		}
 
+		if ( teacher.init ) await teacher.init();
+		validationSamples = await generateTrainingSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ), colorAugmentation: false }, teacher, createRandom( settings.seed + 0x9e3779b9 ), settings.iterations );
+
 		for ( let iteration = 0; iteration < settings.iterations; iteration ++ ) {
 
 			const lr = getLearningRate( settings, iteration );
-			const samples = generateTrainingSamples( settings, teacher, this.random, iteration );
-			lastLoss = trainBatch( model, samples, teacher, lr, iteration + 1 );
+			const samples = await generateTrainingSamples( settings, teacher, this.random, iteration );
+			lastLoss = trainBatch( model, samples, teacher, lr, iteration + 1, settings.maxGradientNorm );
+			validation = evaluateRuntimeValidation( createNeuralAppearanceManifest( model, settings ), validationSamples, settings.previewSampleCount );
+			validationLoss = validation.loss;
 
 			if ( onProgress ) {
 
@@ -64,6 +75,8 @@ class NeuralAppearanceTrainer {
 					iteration: iteration + 1,
 					iterations: settings.iterations,
 					loss: lastLoss,
+					validationLoss,
+					validation,
 					learningRate: lr
 				} );
 
@@ -77,11 +90,13 @@ class NeuralAppearanceTrainer {
 
 		}
 
-		const json = exportNeuralAppearance( model, teacher, settings );
+		const json = await exportNeuralAppearance( model, teacher, settings );
 
 		return {
 			json,
 			loss: lastLoss,
+			validationLoss,
+			validation,
 			model,
 			teacher
 		};
@@ -90,70 +105,13 @@ class NeuralAppearanceTrainer {
 
 }
 
-function createPhysicalMaterialTeacher( material = {} ) {
-
-	const baseColor = readColorValue( material.colorNode, material.color || 0xffffff );
-	const roughness = readNumberValue( material.roughnessNode, material.roughness !== undefined ? material.roughness : 0.5 );
-	const metalness = readNumberValue( material.metalnessNode, material.metalness !== undefined ? material.metalness : 0 );
-	const specularIntensity = readNumberValue( material.specularIntensityNode, material.specularIntensity !== undefined ? material.specularIntensity : 1 );
-	const specularColor = readColorValue( material.specularColorNode, material.specularColor || 0xffffff );
-	const ior = readNumberValue( material.iorNode, material.ior !== undefined ? material.ior : 1.5 );
-	const clearcoat = readNumberValue( material.clearcoatNode, material.clearcoat !== undefined ? material.clearcoat : 0 );
-	const clearcoatRoughness = readNumberValue( material.clearcoatRoughnessNode, material.clearcoatRoughness !== undefined ? material.clearcoatRoughness : 0.1 );
-
-	if ( readNumberValue( material.transmissionNode, material.transmission || 0 ) > 0 ) {
-
-		console.warn( 'THREE.NeuralAppearanceTrainer: Transmission is ignored by the opaque neural appearance runtime.' );
-
-	}
-
-	return {
-		baseColor,
-		roughness: clamp( roughness, 0.04, 1 ),
-		metalness: clamp( metalness, 0, 1 ),
-		specularColor,
-		specularIntensity: clamp( specularIntensity, 0, 1 ),
-		ior,
-		clearcoat: clamp( clearcoat, 0, 1 ),
-		clearcoatRoughness: clamp( clearcoatRoughness, 0.04, 1 ),
-
-		evaluate( sample ) {
-
-			return evaluatePhysicalBRDF( this, sample.wi, sample.wo );
-
-		},
-
-		encodeInputs() {
-
-			const dielectricF0 = Math.pow( ( this.ior - 1 ) / ( this.ior + 1 ), 2 ) * this.specularIntensity;
-			const f0 = [
-				lerp( dielectricF0 * this.specularColor[ 0 ], this.baseColor[ 0 ], this.metalness ),
-				lerp( dielectricF0 * this.specularColor[ 1 ], this.baseColor[ 1 ], this.metalness ),
-				lerp( dielectricF0 * this.specularColor[ 2 ], this.baseColor[ 2 ], this.metalness )
-			];
-
-			return [
-				0, 0, 1,
-				this.baseColor[ 0 ], this.baseColor[ 1 ], this.baseColor[ 2 ],
-				this.roughness,
-				this.metalness,
-				f0[ 0 ], f0[ 1 ], f0[ 2 ],
-				this.clearcoat,
-				this.clearcoatRoughness,
-				0
-			];
-
-		}
-	};
-
-}
-
-function generateTrainingSamples( options, teacher, random, iteration = 0 ) {
+async function generateTrainingSamples( options, teacher, random, iteration = 0 ) {
 
 	const batchSize = options.batchSize;
 	const gridSize = Math.max( 1, Math.floor( Math.sqrt( batchSize ) ) );
 	const samples = [];
-	const augmentationRatio = options.colorAugmentation ? 0.5 * ( 1 + Math.cos( Math.PI * Math.min( iteration / Math.max( 1, options.iterations ), 1 ) ) ) : 0;
+	const mipLevelCount = getMipLevelCount( options.resolution, options.resolution );
+	const augmentationRatio = options.colorAugmentation && teacher.supportsColorAugmentation === true ? 0.5 * ( 1 + Math.cos( Math.PI * Math.min( iteration / Math.max( 1, options.iterations ), 1 ) ) ) : 0;
 
 	for ( let i = 0; i < batchSize; i ++ ) {
 
@@ -163,23 +121,38 @@ function generateTrainingSamples( options, teacher, random, iteration = 0 ) {
 			( x + random() ) / gridSize,
 			( y + random() ) / gridSize
 		];
-		const directions = random() < 0.95 ? sampleRusinkiewicz( random ) : sampleWiGgxWo( teacher.roughness, random );
-		const sample = {
-			uv,
-			wi: directions.wi,
-			wo: directions.wo,
-			encoderInputs: teacher.encodeInputs()
-		};
+		const directions = sampleTeacherDirections( random );
 
-		sample.target = teacher.evaluate( sample );
+		for ( let mip = 0; mip < mipLevelCount; mip ++ ) {
+
+			const footprint = Math.pow( 2, mip ) / Math.max( 1, options.resolution );
+			samples.push( {
+				uv: uv.slice(),
+				wi: directions.wi.slice(),
+				wo: directions.wo.slice(),
+				normal: [ 0, 0, 1 ],
+				tangent: [ 1, 0, 0 ],
+				bitangent: [ 0, 1, 0 ],
+				duvDx: [ footprint, 0 ],
+				duvDy: [ 0, footprint ],
+				mip,
+				encoderInputs: teacher.encodeInputs( uv )
+			} );
+
+		}
+
+	}
+
+	await assignTeacherTargets( samples, teacher );
+	normalizeDirectLightingTargets( samples, options.minimumTrainingCosine );
+
+	for ( const sample of samples ) {
 
 		if ( random() < augmentationRatio ) {
 
 			augmentColorChannels( sample, random );
 
 		}
-
-		samples.push( sample );
 
 	}
 
@@ -189,14 +162,59 @@ function generateTrainingSamples( options, teacher, random, iteration = 0 ) {
 
 function createModel( options, random ) {
 
-	const encoder = createMLP( DEFAULT_ENCODER_INPUT_SIZE, [ 64, 64, 64 ], LATENT_CHANNELS, random, 'leakyRelu', 'tanh' );
 	const decoder = createMLP( DECODER_INPUT_SIZE, [ options.hiddenSize, options.hiddenSize ], 3, random, 'relu', 'linear' );
 	const rotationWeights = new Array( LATENT_CHANNELS * 12 ).fill( 0 );
+	const latentGrids = createLatentMipGrids( options.resolution, options.resolution, random );
 
 	return {
-		encoder,
 		decoder,
-		rotationWeights
+		rotationWeights,
+		rotationGrad: new Array( rotationWeights.length ).fill( 0 ),
+		rotationM: new Array( rotationWeights.length ).fill( 0 ),
+		rotationV: new Array( rotationWeights.length ).fill( 0 ),
+		latentGrid: latentGrids[ 0 ],
+		latentGrids
+	};
+
+}
+
+function createLatentMipGrids( baseWidth, baseHeight, random ) {
+
+	const grids = [];
+	let width = baseWidth;
+	let height = baseHeight;
+
+	while ( true ) {
+
+		grids.push( createLatentGrid( width, height, random ) );
+
+		if ( width === 1 && height === 1 ) break;
+		width = Math.max( 1, width >> 1 );
+		height = Math.max( 1, height >> 1 );
+
+	}
+
+	return grids;
+
+}
+
+function createLatentGrid( width, height, random ) {
+
+	const data = new Array( width * height * LATENT_CHANNELS );
+
+	for ( let i = 0; i < data.length; i ++ ) {
+
+		data[ i ] = ( random() * 2 - 1 ) * 0.25;
+
+	}
+
+	return {
+		width,
+		height,
+		data,
+		grad: new Array( data.length ).fill( 0 ),
+		m: new Array( data.length ).fill( 0 ),
+		v: new Array( data.length ).fill( 0 )
 	};
 
 }
@@ -238,23 +256,28 @@ function createMLP( inputSize, hiddenLayers, outputSize, random, hiddenActivatio
 
 }
 
-function trainBatch( model, samples, teacher, learningRate, step ) {
+function trainBatch( model, samples, teacher, learningRate, step, maxGradientNorm ) {
 
-	const invBatch = 1 / samples.length;
+	const invBatch = 1 / getSampleWeightSum( samples );
 	let loss = 0;
 
-	zeroGradients( model.encoder );
 	zeroGradients( model.decoder );
+	for ( const grid of model.latentGrids ) zeroLatentGradients( grid );
+	model.rotationGrad.fill( 0 );
 
 	for ( const sample of samples ) {
 
-		const encoderRun = forwardMLP( model.encoder, sample.encoderInputs );
-		const latents = encoderRun.output;
-		const decoderInput = buildDecoderInput( latents, sample.wi, sample.wo );
-		const decoderRun = forwardMLP( model.decoder, decoderInput );
+		const latentGrid = model.latentGrids[ sample.mip || 0 ];
+		const latentRun = sampleLatents( latentGrid, sample.uv );
+		const latents = latentRun.output;
+		const inputRun = forwardDecoderInput( latents, model.rotationWeights, sample.wi, sample.wo );
+		const decoderRun = forwardMLP( model.decoder, inputRun.output );
 		const prediction = decoderRun.output.map( ( value ) => Math.max( 0, value ) );
 		const target = sample.target;
+		const sampleWeight = sample.weight !== undefined ? sample.weight : 1;
 		const gradPrediction = [ 0, 0, 0 ];
+
+		if ( sampleWeight === 0 ) continue;
 
 		for ( let i = 0; i < 3; i ++ ) {
 
@@ -263,26 +286,223 @@ function trainBatch( model, samples, teacher, learningRate, step ) {
 			const predLog = powerLog( pred, 3 );
 			const refLog = powerLog( ref, 3 );
 			const diff = predLog - refLog;
-			loss += Math.abs( diff ) * invBatch / 3;
-			gradPrediction[ i ] = Math.sign( diff ) * Math.pow( pred, 1 / 3 - 1 ) * invBatch / 3;
+			loss += Math.abs( diff ) * sampleWeight * invBatch / 3;
+			gradPrediction[ i ] = Math.sign( diff ) * Math.pow( pred, 1 / 3 - 1 ) * sampleWeight * invBatch / 3;
 
-			if ( decoderRun.output[ i ] <= 0 ) {
+		}
 
-				gradPrediction[ i ] = 0;
+		const gradDecoderInput = backwardMLP( model.decoder, decoderRun, gradPrediction );
+		const inputGradients = backwardDecoderInput( inputRun, gradDecoderInput, model.rotationWeights );
+
+		for ( let i = 0; i < model.rotationGrad.length; i ++ ) {
+
+			model.rotationGrad[ i ] += inputGradients.rotationWeights[ i ];
+
+		}
+
+		scatterLatentGradients( latentGrid, latentRun, inputGradients.latents );
+
+	}
+
+	clipModelGradients( model, maxGradientNorm );
+	for ( const grid of model.latentGrids ) applyAdamLatents( grid, learningRate, step );
+	applyAdamRotation( model, learningRate, step );
+	applyAdam( model.decoder, learningRate, step );
+
+	return loss;
+
+}
+
+function clipModelGradients( model, maxNorm ) {
+
+	if ( ! Number.isFinite( maxNorm ) || maxNorm <= 0 ) return;
+
+	const gradients = [ model.rotationGrad ];
+
+	for ( const grid of model.latentGrids ) gradients.push( grid.grad );
+	for ( const layer of model.decoder.layers ) gradients.push( layer.gradWeights, layer.gradBiases );
+
+	let squaredNorm = 0;
+
+	for ( const values of gradients ) {
+
+		for ( const value of values ) squaredNorm += value * value;
+
+	}
+
+	const norm = Math.sqrt( squaredNorm );
+	if ( ! Number.isFinite( norm ) ) {
+
+		for ( const values of gradients ) values.fill( 0 );
+		return;
+
+	}
+
+	if ( norm <= maxNorm ) return;
+
+	const scale = maxNorm / norm;
+
+	for ( const values of gradients ) {
+
+		for ( let i = 0; i < values.length; i ++ ) values[ i ] *= scale;
+
+	}
+
+}
+
+function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_OPTIONS.previewSampleCount ) {
+
+	const invBatch = 1 / getSampleWeightSum( samples );
+	let loss = 0;
+	const angularBins = {
+		wi: createAngularBins(),
+		wo: createAngularBins()
+	};
+	const preview = createRuntimePreview( previewSampleCount, samples.length );
+
+	for ( const sample of samples ) {
+
+		const sampleWeight = sample.weight !== undefined ? sample.weight : 1;
+		const prediction = evaluateNeuralAppearanceJson( json, sample );
+		const target = sample.target;
+		const nDotL = Math.max( sample.wi[ 2 ], 0 );
+		const directTarget = Array.isArray( sample.directTarget ) ? sample.directTarget : target.map( ( value ) => value * nDotL );
+		const directPrediction = prediction.map( ( value ) => value * nDotL );
+
+		if ( sampleWeight > 0 ) {
+
+			for ( let i = 0; i < 3; i ++ ) {
+
+				const pred = Math.max( prediction[ i ], 1e-6 );
+				const ref = Math.max( target[ i ], 1e-6 );
+				const diff = powerLog( pred, 3 ) - powerLog( ref, 3 );
+				loss += Math.abs( diff ) * sampleWeight * invBatch / 3;
 
 			}
 
 		}
 
-		const gradDecoderInput = backwardMLP( model.decoder, decoderRun, gradPrediction );
-		backwardMLP( model.encoder, encoderRun, gradDecoderInput.slice( 0, LATENT_CHANNELS ) );
+		if ( Array.isArray( sample.directTarget ) && sample.wi[ 2 ] >= 0 && sample.wo[ 2 ] >= 0 ) {
+
+			accumulateAngularError( angularBins.wi, sample.wi[ 2 ], directPrediction, sample.directTarget );
+			accumulateAngularError( angularBins.wo, sample.wo[ 2 ], directPrediction, sample.directTarget );
+
+		}
+
+		appendRuntimePreviewSample( preview, sample, directTarget, directPrediction, sampleWeight );
 
 	}
 
-	applyAdam( model.encoder, learningRate, step );
-	applyAdam( model.decoder, learningRate, step );
+	return {
+		loss,
+		sampleCount: samples.length,
+		mipLevels: json.latents.textures[ 0 ].mipmaps.length,
+		preview,
+		angularBins: {
+			wi: finalizeAngularBins( angularBins.wi ),
+			wo: finalizeAngularBins( angularBins.wo )
+		}
+	};
 
-	return loss;
+}
+
+function createRuntimePreview( maxSampleCount, sourceSampleCount ) {
+
+	const sampleCount = Math.min( Math.max( 0, Math.floor( maxSampleCount ) ), sourceSampleCount );
+	const width = sampleCount > 0 ? Math.ceil( Math.sqrt( sampleCount ) ) : 0;
+
+	return {
+		width,
+		height: width > 0 ? Math.ceil( sampleCount / width ) : 0,
+		samples: []
+	};
+
+}
+
+function appendRuntimePreviewSample( preview, sample, targetRgb, predictionRgb, weight ) {
+
+	if ( preview.samples.length >= preview.width * preview.height ) return;
+
+	preview.samples.push( {
+		uv: sample.uv.slice( 0, 2 ),
+		wi: sample.wi.slice( 0, 3 ),
+		wo: sample.wo.slice( 0, 3 ),
+		mip: sample.mip || 0,
+		weight,
+		targetRgb: sanitizeRgb( targetRgb ),
+		predictionRgb: sanitizeRgb( predictionRgb )
+	} );
+
+}
+
+function sanitizeRgb( rgb ) {
+
+	return [
+		sanitizeChannel( rgb[ 0 ] ),
+		sanitizeChannel( rgb[ 1 ] ),
+		sanitizeChannel( rgb[ 2 ] )
+	];
+
+}
+
+function sanitizeChannel( value ) {
+
+	return Number.isFinite( value ) ? Math.max( value, 0 ) : 0;
+
+}
+
+function createAngularBins() {
+
+	return [
+		{ min: 0, max: 0.05, count: 0, absoluteError: 0, targetMagnitude: 0, maxChannelError: 0 },
+		{ min: 0.05, max: 0.2, count: 0, absoluteError: 0, targetMagnitude: 0, maxChannelError: 0 },
+		{ min: 0.2, max: 1, count: 0, absoluteError: 0, targetMagnitude: 0, maxChannelError: 0 }
+	];
+
+}
+
+function accumulateAngularError( bins, cosine, prediction, target ) {
+
+	const bin = bins.find( ( candidate, index ) => cosine >= candidate.min && ( cosine < candidate.max || index === bins.length - 1 ) );
+	if ( bin === undefined || target.every( Number.isFinite ) === false ) return;
+
+	bin.count ++;
+
+	for ( let channel = 0; channel < 3; channel ++ ) {
+
+		const error = Math.abs( prediction[ channel ] - target[ channel ] );
+		bin.absoluteError += error;
+		bin.targetMagnitude += Math.abs( target[ channel ] );
+		bin.maxChannelError = Math.max( bin.maxChannelError, error );
+
+	}
+
+}
+
+function finalizeAngularBins( bins ) {
+
+	return bins.map( ( bin ) => ( {
+		min: bin.min,
+		max: bin.max,
+		count: bin.count,
+		meanAbsoluteError: bin.count > 0 ? bin.absoluteError / ( bin.count * 3 ) : null,
+		relativeAbsoluteError: bin.targetMagnitude > 0 ? bin.absoluteError / bin.targetMagnitude : null,
+		maxChannelError: bin.count > 0 ? bin.maxChannelError : null
+	} ) );
+
+}
+
+function getSampleWeightSum( samples ) {
+
+	let weight = 0;
+
+	for ( const sample of samples ) {
+
+		weight += sample.weight !== undefined ? sample.weight : 1;
+
+	}
+
+	return Math.max( weight, 1 );
 
 }
 
@@ -406,24 +626,145 @@ function applyAdam( mlp, learningRate, step ) {
 
 }
 
-function exportNeuralAppearance( model, teacher, options ) {
+function sampleLatents( grid, uv ) {
+
+	const x = uv[ 0 ] * grid.width - 0.5;
+	const y = uv[ 1 ] * grid.height - 0.5;
+	const x0 = Math.floor( x );
+	const y0 = Math.floor( y );
+	const tx = x - x0;
+	const ty = y - y0;
+	const taps = [
+		{ x: wrapIndex( x0, grid.width ), y: wrapIndex( y0, grid.height ), weight: ( 1 - tx ) * ( 1 - ty ) },
+		{ x: wrapIndex( x0 + 1, grid.width ), y: wrapIndex( y0, grid.height ), weight: tx * ( 1 - ty ) },
+		{ x: wrapIndex( x0, grid.width ), y: wrapIndex( y0 + 1, grid.height ), weight: ( 1 - tx ) * ty },
+		{ x: wrapIndex( x0 + 1, grid.width ), y: wrapIndex( y0 + 1, grid.height ), weight: tx * ty }
+	];
+	const output = new Array( LATENT_CHANNELS ).fill( 0 );
+
+	for ( const tap of taps ) {
+
+		const offset = ( tap.y * grid.width + tap.x ) * LATENT_CHANNELS;
+
+		for ( let channel = 0; channel < LATENT_CHANNELS; channel ++ ) {
+
+			output[ channel ] += grid.data[ offset + channel ] * tap.weight;
+
+		}
+
+	}
+
+	return { output, taps };
+
+}
+
+function scatterLatentGradients( grid, latentRun, gradLatents ) {
+
+	for ( const tap of latentRun.taps ) {
+
+		const offset = ( tap.y * grid.width + tap.x ) * LATENT_CHANNELS;
+
+		for ( let channel = 0; channel < LATENT_CHANNELS; channel ++ ) {
+
+			grid.grad[ offset + channel ] += gradLatents[ channel ] * tap.weight;
+
+		}
+
+	}
+
+}
+
+function zeroLatentGradients( grid ) {
+
+	grid.grad.fill( 0 );
+
+}
+
+function applyAdamLatents( grid, learningRate, step ) {
+
+	const beta1 = 0.9;
+	const beta2 = 0.999;
+	const epsilon = 1e-7;
+	const beta1Correction = 1 - Math.pow( beta1, step );
+	const beta2Correction = 1 - Math.pow( beta2, step );
+
+	for ( let i = 0; i < grid.data.length; i ++ ) {
+
+		const grad = grid.grad[ i ];
+		grid.m[ i ] = beta1 * grid.m[ i ] + ( 1 - beta1 ) * grad;
+		grid.v[ i ] = beta2 * grid.v[ i ] + ( 1 - beta2 ) * grad * grad;
+		grid.data[ i ] -= learningRate * ( grid.m[ i ] / beta1Correction ) / ( Math.sqrt( grid.v[ i ] / beta2Correction ) + epsilon );
+
+	}
+
+}
+
+function applyAdamRotation( model, learningRate, step ) {
+
+	const beta1 = 0.9;
+	const beta2 = 0.999;
+	const epsilon = 1e-7;
+	const beta1Correction = 1 - Math.pow( beta1, step );
+	const beta2Correction = 1 - Math.pow( beta2, step );
+
+	for ( let i = 0; i < model.rotationWeights.length; i ++ ) {
+
+		const grad = model.rotationGrad[ i ];
+		model.rotationM[ i ] = beta1 * model.rotationM[ i ] + ( 1 - beta1 ) * grad;
+		model.rotationV[ i ] = beta2 * model.rotationV[ i ] + ( 1 - beta2 ) * grad * grad;
+		model.rotationWeights[ i ] -= learningRate * ( model.rotationM[ i ] / beta1Correction ) / ( Math.sqrt( model.rotationV[ i ] / beta2Correction ) + epsilon );
+
+	}
+
+}
+
+function wrapIndex( value, size ) {
+
+	return ( ( value % size ) + size ) % size;
+
+}
+
+function getMipLevelCount( width, height ) {
+
+	let levels = 1;
+
+	while ( width > 1 || height > 1 ) {
+
+		width = Math.max( 1, width >> 1 );
+		height = Math.max( 1, height >> 1 );
+		levels ++;
+
+	}
+
+	return levels;
+
+}
+
+async function exportNeuralAppearance( model, teacher, options ) {
+
+	const json = createNeuralAppearanceManifest( model, options );
+	json.referenceEvaluations = await createReferenceEvaluations( json, teacher );
+
+	return json;
+
+}
+
+function createNeuralAppearanceManifest( model, options ) {
 
 	const mipmaps0 = [];
 	const mipmaps1 = [];
-	let width = options.resolution;
-	let height = options.resolution;
 
-	while ( width >= 1 && height >= 1 ) {
+	for ( const grid of model.latentGrids ) {
 
 		const data0 = [];
 		const data1 = [];
 
-		for ( let y = 0; y < height; y ++ ) {
+		for ( let y = 0; y < grid.height; y ++ ) {
 
-			for ( let x = 0; x < width; x ++ ) {
+			for ( let x = 0; x < grid.width; x ++ ) {
 
-				const inputs = teacher.encodeInputs( [ ( x + 0.5 ) / width, ( y + 0.5 ) / height ] );
-				const latents = forwardMLP( model.encoder, inputs ).output;
+				const offset = ( y * grid.width + x ) * LATENT_CHANNELS;
+				const latents = grid.data.slice( offset, offset + LATENT_CHANNELS );
 
 				data0.push( latents[ 0 ], latents[ 1 ], latents[ 2 ], latents[ 3 ] );
 				data1.push( latents[ 4 ], latents[ 5 ], latents[ 6 ], latents[ 7 ] );
@@ -432,12 +773,8 @@ function exportNeuralAppearance( model, teacher, options ) {
 
 		}
 
-		mipmaps0.push( { width, height, data: data0 } );
-		mipmaps1.push( { width, height, data: data1 } );
-
-		if ( width === 1 && height === 1 ) break;
-		width = Math.max( 1, width >> 1 );
-		height = Math.max( 1, height >> 1 );
+		mipmaps0.push( { width: grid.width, height: grid.height, data: data0 } );
+		mipmaps1.push( { width: grid.width, height: grid.height, data: data1 } );
 
 	}
 
@@ -469,40 +806,49 @@ function exportNeuralAppearance( model, teacher, options ) {
 				biases: layer.biases.slice()
 			} ) ),
 			outputActivation: options.outputActivation
-		},
-		referenceEvaluations: createReferenceEvaluations( model, teacher )
+		}
 	};
 
 }
 
-function createReferenceEvaluations( model, teacher ) {
+async function createReferenceEvaluations( json, teacher ) {
 
-	const refs = [];
 	const directions = [
 		{ wi: [ 0, 0, 1 ], wo: normalize( [ 0.4, 0.2, 0.894 ] ) },
 		{ wi: normalize( [ 0.5, 0.1, 0.86 ] ), wo: normalize( [ - 0.3, 0.4, 0.86 ] ) },
 		{ wi: normalize( [ - 0.4, 0.3, 0.866 ] ), wo: [ 0, 0, 1 ] }
 	];
+	const refs = directions.map( ( direction ) => ( {
+		uv: [ 0.5, 0.5 ],
+		wi: direction.wi,
+		wo: direction.wo,
+		normal: [ 0, 0, 1 ],
+		tangent: [ 1, 0, 0 ],
+		bitangent: [ 0, 1, 0 ],
+		duvDx: [ 1 / 1024, 0 ],
+		duvDy: [ 0, 1 / 1024 ],
+		encoderInputs: teacher.encodeInputs( [ 0.5, 0.5 ] )
+	} ) );
 
-	for ( const direction of directions ) {
+	await assignTeacherTargets( refs, teacher );
+	normalizeDirectLightingTargets( refs );
 
-		const sample = {
-			uv: [ 0.5, 0.5 ],
-			wi: direction.wi,
-			wo: direction.wo,
-			encoderInputs: teacher.encodeInputs()
-		};
+	for ( const sample of refs ) {
 
-		const latent = forwardMLP( model.encoder, sample.encoderInputs ).output;
-		const prediction = forwardMLP( model.decoder, buildDecoderInput( latent, sample.wi, sample.wo ) ).output;
+		const prediction = evaluateNeuralAppearanceJson( json, sample );
 
-		refs.push( {
-			uv: sample.uv,
-			wi: sample.wi,
-			wo: sample.wo,
-			mip: 0,
-			rgb: prediction.map( ( value ) => Math.max( 0, value ) )
-		} );
+		sample.mip = 0;
+		sample.targetRgb = sample.target.slice();
+		sample.rgb = prediction;
+		delete sample.normal;
+		delete sample.tangent;
+		delete sample.bitangent;
+		delete sample.duvDx;
+		delete sample.duvDy;
+		delete sample.encoderInputs;
+		delete sample.directTarget;
+		delete sample.target;
+		delete sample.weight;
 
 	}
 
@@ -510,80 +856,317 @@ function createReferenceEvaluations( model, teacher ) {
 
 }
 
-function buildDecoderInput( latents, wi, wo ) {
+async function assignTeacherTargets( samples, teacher ) {
 
-	return [
-		...latents,
-		wi[ 0 ], wi[ 1 ], wi[ 2 ],
-		wo[ 0 ], wo[ 1 ], wo[ 2 ],
-		wi[ 0 ], wi[ 1 ], wi[ 2 ],
-		wo[ 0 ], wo[ 1 ], wo[ 2 ]
-	];
+	const targets = teacher.evaluateBatch ? await teacher.evaluateBatch( samples ) : await Promise.all( samples.map( ( sample ) => teacher.evaluate( sample ) ) );
 
-}
+	for ( let i = 0; i < samples.length; i ++ ) {
 
-function evaluatePhysicalBRDF( teacher, wi, wo ) {
-
-	if ( wi[ 2 ] <= 1e-5 || wo[ 2 ] < 0 ) return [ 0, 0, 0 ];
-
-	const diffuseColor = teacher.baseColor.map( ( channel ) => channel * ( 1 - teacher.metalness ) );
-	const dielectricF0 = Math.pow( ( teacher.ior - 1 ) / ( teacher.ior + 1 ), 2 ) * teacher.specularIntensity;
-	const f0 = [
-		lerp( dielectricF0 * teacher.specularColor[ 0 ], teacher.baseColor[ 0 ], teacher.metalness ),
-		lerp( dielectricF0 * teacher.specularColor[ 1 ], teacher.baseColor[ 1 ], teacher.metalness ),
-		lerp( dielectricF0 * teacher.specularColor[ 2 ], teacher.baseColor[ 2 ], teacher.metalness )
-	];
-	const half = normalize( [ wi[ 0 ] + wo[ 0 ], wi[ 1 ] + wo[ 1 ], wi[ 2 ] + wo[ 2 ] ] );
-	const dotLH = clamp( dot( wi, half ), 0, 1 );
-	const fresnel = f0.map( ( value ) => value + ( 1 - value ) * Math.pow( 1 - dotLH, 5 ) );
-	const ggx = ggxBRDF( teacher.roughness, wi, wo, half );
-	const nDotL = clamp( wi[ 2 ], 0, 1 );
-	const color = new Array( 3 );
-
-	for ( let i = 0; i < 3; i ++ ) {
-
-		color[ i ] = nDotL * ( diffuseColor[ i ] / Math.PI * ( 1 - fresnel[ i ] ) + fresnel[ i ] * ggx );
+		samples[ i ].target = targets[ i ];
 
 	}
 
-	if ( teacher.clearcoat > 0 ) {
+}
 
-		const coatF = 0.04 + 0.96 * Math.pow( 1 - dotLH, 5 );
-		const coat = teacher.clearcoat * coatF * ggxBRDF( teacher.clearcoatRoughness, wi, wo, half );
+function normalizeDirectLightingTargets( samples, minimumCosine = DEFAULT_OPTIONS.minimumTrainingCosine ) {
 
-		for ( let i = 0; i < 3; i ++ ) {
+	for ( const sample of samples ) {
 
-			color[ i ] += nDotL * coat;
+		const nDotL = Math.max( sample.wi[ 2 ], 0 );
+		const validTarget = sample.target.length >= 3 && sample.target.every( Number.isFinite );
+		sample.directTarget = validTarget ? sample.target.slice( 0, 3 ) : null;
+
+		if ( validTarget && nDotL >= minimumCosine ) {
+
+			sample.target = sample.target.map( ( value ) => value / nDotL );
+			sample.weight = nDotL;
+
+		} else {
+
+			sample.target = [ 0, 0, 0 ];
+			sample.weight = 0;
 
 		}
 
 	}
 
-	return color.map( ( value ) => Math.max( 0, value ) );
+}
+
+function evaluateNeuralAppearanceJson( json, reference ) {
+
+	const mip = selectRuntimeMipLevel( json, reference );
+	const latents = sampleRuntimeLatents( json, reference.uv || [ 0.5, 0.5 ], mip );
+	const wi = normalize( reference.wi );
+	const wo = normalize( reference.wo );
+	const input = buildDecoderInput( latents, json.decoder.rotation.weights, wi, wo );
+
+	return evaluateDecoderLayers( json.decoder.layers, input, json.decoder.outputActivation );
 
 }
 
-function ggxBRDF( roughness, wi, wo, half ) {
+function selectRuntimeMipLevel( json, reference ) {
 
-	const alpha = Math.max( 0.001, roughness * roughness );
-	const dotNL = clamp( wi[ 2 ], 0, 1 );
-	const dotNV = clamp( wo[ 2 ], 0, 1 );
-	const dotNH = clamp( half[ 2 ], 0, 1 );
-	const alpha2 = alpha * alpha;
-	const denom = dotNH * dotNH * ( alpha2 - 1 ) + 1;
-	const d = alpha2 / ( Math.PI * denom * denom );
-	const v = smithG( dotNL, alpha ) * smithG( dotNV, alpha ) / Math.max( 4 * dotNL * dotNV, 1e-6 );
+	const mipmaps = json.latents.textures[ 0 ].mipmaps;
+	const maxMip = mipmaps.length - 1;
 
-	return d * v;
+	if ( reference.duvDx && reference.duvDy ) {
+
+		const base = mipmaps[ 0 ];
+		const dx = Math.hypot( reference.duvDx[ 0 ] * base.width, reference.duvDx[ 1 ] * base.height );
+		const dy = Math.hypot( reference.duvDy[ 0 ] * base.width, reference.duvDy[ 1 ] * base.height );
+		const computed = Math.min( Math.max( Math.log2( Math.max( dx, dy, 1 ) ), 0 ), maxMip );
+
+		return Math.floor( computed + 0.5 );
+
+	}
+
+	return Math.min( Math.max( Math.round( reference.mip || 0 ), 0 ), maxMip );
 
 }
 
-function smithG( dotNV, alpha ) {
+function sampleRuntimeLatents( json, uv, mipLevel ) {
 
-	const alpha2 = alpha * alpha;
-	const dot2 = dotNV * dotNV;
+	const textures = json.latents.textures;
+	const mipmap = textures[ 0 ].mipmaps[ mipLevel ];
+	const x = uv[ 0 ] * mipmap.width - 0.5;
+	const y = uv[ 1 ] * mipmap.height - 0.5;
+	const x0 = Math.floor( x );
+	const y0 = Math.floor( y );
+	const tx = x - x0;
+	const ty = y - y0;
+	const taps = [
+		{ x: x0, y: y0, weight: ( 1 - tx ) * ( 1 - ty ) },
+		{ x: x0 + 1, y: y0, weight: tx * ( 1 - ty ) },
+		{ x: x0, y: y0 + 1, weight: ( 1 - tx ) * ty },
+		{ x: x0 + 1, y: y0 + 1, weight: tx * ty }
+	];
+	const latents = new Array( LATENT_CHANNELS ).fill( 0 );
 
-	return 2 * dotNV / Math.max( dotNV + Math.sqrt( alpha2 + ( 1 - alpha2 ) * dot2 ), 1e-6 );
+	for ( let textureIndex = 0; textureIndex < textures.length; textureIndex ++ ) {
+
+		const texture = textures[ textureIndex ];
+		const level = texture.mipmaps[ mipLevel ];
+		const repeat = texture.wrap === 'repeat';
+
+		for ( const tap of taps ) {
+
+			const tapX = repeat ? wrapIndex( tap.x, level.width ) : Math.min( Math.max( tap.x, 0 ), level.width - 1 );
+			const tapY = repeat ? wrapIndex( tap.y, level.height ) : Math.min( Math.max( tap.y, 0 ), level.height - 1 );
+			const offset = ( tapY * level.width + tapX ) * 4;
+
+			for ( let channel = 0; channel < 4; channel ++ ) {
+
+				const value = DataUtils.fromHalfFloat( DataUtils.toHalfFloat( level.data[ offset + channel ] ) );
+				latents[ textureIndex * 4 + channel ] += value * tap.weight;
+
+			}
+
+		}
+
+	}
+
+	return latents;
+
+}
+
+function evaluateDecoderLayers( layers, input, outputActivation = { type: 'linear' } ) {
+
+	let values = input.slice();
+
+	for ( const layer of layers ) {
+
+		const next = [];
+
+		for ( let output = 0; output < layer.outputSize; output ++ ) {
+
+			let value = layer.biases[ output ];
+
+			for ( let inputIndex = 0; inputIndex < layer.inputSize; inputIndex ++ ) {
+
+				value += layer.weights[ output * layer.inputSize + inputIndex ] * values[ inputIndex ];
+
+			}
+
+			next.push( layer.activation === 'relu' ? Math.max( 0, value ) : value );
+
+		}
+
+		values = next;
+
+	}
+
+	if ( outputActivation.type === 'scaledSigmoid' ) {
+
+		const scale = outputActivation.scale !== undefined ? outputActivation.scale : 1;
+		return values.map( ( value ) => scale / ( 1 + Math.exp( - value ) ) );
+
+	}
+
+	if ( outputActivation.type === 'exp' ) {
+
+		const offset = outputActivation.offset || 0;
+		return values.map( ( value ) => Math.exp( value + offset ) );
+
+	}
+
+	return values.map( ( value ) => Math.max( 0, value ) );
+
+}
+
+function buildDecoderInput( latents, rotationWeights, wi, wo ) {
+
+	return forwardDecoderInput( latents, rotationWeights, wi, wo ).output;
+
+}
+
+function forwardDecoderInput( latents, rotationWeights, wi, wo ) {
+
+	const output = latents.slice();
+	const frames = [];
+
+	for ( let frame = 0; frame < 2; frame ++ ) {
+
+		const offset = frame * 6;
+		const rawN = [
+			linearRotationValue( latents, rotationWeights, offset ),
+			linearRotationValue( latents, rotationWeights, offset + 1 ),
+			linearRotationValue( latents, rotationWeights, offset + 2 ) + 1
+		];
+		const rawT = [
+			linearRotationValue( latents, rotationWeights, offset + 3 ) + 1,
+			linearRotationValue( latents, rotationWeights, offset + 4 ),
+			linearRotationValue( latents, rotationWeights, offset + 5 )
+		];
+		const n = normalize( rawN );
+		const t = normalize( rawT );
+		const b = cross( n, t );
+
+		output.push( dot( wi, t ), dot( wi, b ), dot( wi, n ) );
+		output.push( dot( wo, t ), dot( wo, b ), dot( wo, n ) );
+		frames.push( { offset, rawN, rawT, n, t } );
+
+	}
+
+	return { output, latents, wi, wo, frames };
+
+}
+
+function backwardDecoderInput( run, gradOutput, rotationWeights ) {
+
+	const gradLatents = gradOutput.slice( 0, LATENT_CHANNELS );
+	const gradRotationWeights = new Array( rotationWeights.length ).fill( 0 );
+
+	for ( let frame = 0; frame < run.frames.length; frame ++ ) {
+
+		const frameRun = run.frames[ frame ];
+		const inputOffset = LATENT_CHANNELS + frame * 6;
+		const gradT = addScaledVectors( run.wi, gradOutput[ inputOffset ], run.wo, gradOutput[ inputOffset + 3 ] );
+		const gradB = addScaledVectors( run.wi, gradOutput[ inputOffset + 1 ], run.wo, gradOutput[ inputOffset + 4 ] );
+		const gradN = addScaledVectors( run.wi, gradOutput[ inputOffset + 2 ], run.wo, gradOutput[ inputOffset + 5 ] );
+		const gradNormalizedN = addVectors( gradN, cross( frameRun.t, gradB ) );
+		const gradNormalizedT = addVectors( gradT, cross( gradB, frameRun.n ) );
+		const gradRawN = backwardNormalize( frameRun.rawN, frameRun.n, gradNormalizedN );
+		const gradRawT = backwardNormalize( frameRun.rawT, frameRun.t, gradNormalizedT );
+		const gradFrame = [ ...gradRawN, ...gradRawT ];
+
+		for ( let outputIndex = 0; outputIndex < 6; outputIndex ++ ) {
+
+			const rotationOutput = frameRun.offset + outputIndex;
+			const weightOffset = rotationOutput * LATENT_CHANNELS;
+
+			for ( let latentIndex = 0; latentIndex < LATENT_CHANNELS; latentIndex ++ ) {
+
+				gradRotationWeights[ weightOffset + latentIndex ] += gradFrame[ outputIndex ] * run.latents[ latentIndex ];
+				gradLatents[ latentIndex ] += gradFrame[ outputIndex ] * rotationWeights[ weightOffset + latentIndex ];
+
+			}
+
+		}
+
+	}
+
+	return {
+		latents: gradLatents,
+		rotationWeights: gradRotationWeights
+	};
+
+}
+
+function backwardNormalize( raw, normalized, gradNormalized ) {
+
+	const inverseLength = 1 / ( Math.hypot( raw[ 0 ], raw[ 1 ], raw[ 2 ] ) || 1 );
+	const projectedGradient = dot( normalized, gradNormalized );
+
+	return [
+		( gradNormalized[ 0 ] - normalized[ 0 ] * projectedGradient ) * inverseLength,
+		( gradNormalized[ 1 ] - normalized[ 1 ] * projectedGradient ) * inverseLength,
+		( gradNormalized[ 2 ] - normalized[ 2 ] * projectedGradient ) * inverseLength
+	];
+
+}
+
+function addVectors( a, b ) {
+
+	return [ a[ 0 ] + b[ 0 ], a[ 1 ] + b[ 1 ], a[ 2 ] + b[ 2 ] ];
+
+}
+
+function addScaledVectors( a, scaleA, b, scaleB ) {
+
+	return [
+		a[ 0 ] * scaleA + b[ 0 ] * scaleB,
+		a[ 1 ] * scaleA + b[ 1 ] * scaleB,
+		a[ 2 ] * scaleA + b[ 2 ] * scaleB
+	];
+
+}
+
+function linearRotationValue( latents, weights, outputIndex ) {
+
+	let value = 0;
+
+	for ( let i = 0; i < latents.length; i ++ ) {
+
+		value += weights[ outputIndex * LATENT_CHANNELS + i ] * latents[ i ];
+
+	}
+
+	return value;
+
+}
+
+function sampleTeacherDirections( random ) {
+
+	const mode = random();
+
+	if ( mode < 0.6 ) {
+
+		return {
+			wi: sampleHemisphereUniform( random ),
+			wo: sampleHemisphereUniform( random )
+		};
+
+	}
+
+	if ( mode < 0.8 ) {
+
+		return {
+			wi: sampleHemisphereCosine( random ),
+			wo: sampleHemisphereCosine( random )
+		};
+
+	}
+
+	if ( mode < 0.9 ) {
+
+		return {
+			wi: sampleSphereUniform( random ),
+			wo: sampleHemisphereUniform( random )
+		};
+
+	}
+
+	return sampleRusinkiewicz( random );
 
 }
 
@@ -604,24 +1187,29 @@ function sampleRusinkiewicz( random ) {
 
 }
 
-function sampleWiGgxWo( roughness, random ) {
+function sampleSphereUniform( random ) {
 
-	const wi = sampleHemisphereUniform( random );
-	const alpha = Math.max( 0.001, roughness * roughness );
+	const z = random() * 2 - 1;
 	const phi = 2 * Math.PI * random();
-	const u = random();
-	const cosTheta = Math.sqrt( ( 1 - u ) / ( 1 + ( alpha * alpha - 1 ) * u ) );
-	const sinTheta = Math.sqrt( Math.max( 0, 1 - cosTheta * cosTheta ) );
-	const half = [ Math.cos( phi ) * sinTheta, Math.sin( phi ) * sinTheta, cosTheta ];
-	const wo = reflect( [ - wi[ 0 ], - wi[ 1 ], - wi[ 2 ] ], half );
+	const r = Math.sqrt( Math.max( 0, 1 - z * z ) );
 
-	return wi[ 2 ] > 1e-5 && wo[ 2 ] >= 0 ? { wi, wo } : { wi: [ 0, 0, 1 ], wo: [ 0, 0, 1 ] };
+	return [ r * Math.cos( phi ), r * Math.sin( phi ), z ];
 
 }
 
 function sampleHemisphereUniform( random ) {
 
 	const z = random();
+	const phi = 2 * Math.PI * random();
+	const r = Math.sqrt( Math.max( 0, 1 - z * z ) );
+
+	return [ r * Math.cos( phi ), r * Math.sin( phi ), z ];
+
+}
+
+function sampleHemisphereCosine( random ) {
+
+	const z = Math.sqrt( random() );
 	const phi = 2 * Math.PI * random();
 	const r = Math.sqrt( Math.max( 0, 1 - z * z ) );
 
@@ -661,52 +1249,6 @@ function augmentColorChannels( sample, random ) {
 		sample.encoderInputs[ f0Offset + i ] = f0[ pattern[ i ] ];
 
 	}
-
-}
-
-function readNumberValue( node, fallback ) {
-
-	if ( typeof node === 'number' ) return node;
-
-	const value = readNodeConstantValue( node );
-	if ( typeof value === 'number' ) return value;
-
-	return fallback;
-
-}
-
-function readColorValue( node, fallback ) {
-
-	const value = readNodeConstantValue( node );
-	if ( value ) return colorToArray( value );
-
-	return colorToArray( fallback );
-
-}
-
-function readNodeConstantValue( node, depth = 0 ) {
-
-	if ( node === undefined || node === null || depth > 8 ) return undefined;
-	if ( ( node.isConstNode === true || node.isUniformNode === true ) && node.value !== undefined ) return node.value;
-
-	return readNodeConstantValue( node.node, depth + 1 );
-
-}
-
-function colorToArray( value ) {
-
-	if ( Array.isArray( value ) ) return value.slice( 0, 3 );
-	if ( value && value.isColor === true ) return [ value.r, value.g, value.b ];
-	if ( typeof value === 'number' ) {
-
-		const color = new Color( value );
-		return [ color.r, color.g, color.b ];
-
-	}
-
-	if ( value && value.r !== undefined && value.g !== undefined && value.b !== undefined ) return [ value.r, value.g, value.b ];
-
-	return [ 1, 1, 1 ];
 
 }
 
@@ -757,23 +1299,21 @@ function dot( a, b ) {
 
 }
 
+function cross( a, b ) {
+
+	return [
+		a[ 1 ] * b[ 2 ] - a[ 2 ] * b[ 1 ],
+		a[ 2 ] * b[ 0 ] - a[ 0 ] * b[ 2 ],
+		a[ 0 ] * b[ 1 ] - a[ 1 ] * b[ 0 ]
+	];
+
+}
+
 function normalize( value ) {
 
 	const length = Math.hypot( value[ 0 ], value[ 1 ], value[ 2 ] ) || 1;
 
 	return [ value[ 0 ] / length, value[ 1 ] / length, value[ 2 ] / length ];
-
-}
-
-function lerp( a, b, t ) {
-
-	return a + ( b - a ) * t;
-
-}
-
-function clamp( value, min, max ) {
-
-	return Math.min( Math.max( value, min ), max );
 
 }
 
@@ -801,8 +1341,10 @@ function yieldToBrowser() {
 
 export {
 	NeuralAppearanceTrainer,
-	createPhysicalMaterialTeacher,
+	createGpuMaterialTeacher,
+	evaluateNeuralAppearanceJson,
+	evaluateRuntimeValidation,
 	generateTrainingSamples,
-	evaluatePhysicalBRDF,
+	normalizeDirectLightingTargets,
 	exportNeuralAppearance
 };

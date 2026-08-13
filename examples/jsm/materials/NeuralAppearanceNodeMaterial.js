@@ -110,12 +110,38 @@ function evaluateNeuralBRDF( material, lightDirection ) {
 
 	const data = material.neuralAppearanceData;
 	const latentCode = fetchLatentCode( material );
-	const viewDirection = TSL.positionViewDirection.mul( TSL.TBNViewMatrix ).normalize();
-	const incomingDirection = lightDirection.mul( TSL.TBNViewMatrix ).normalize();
+	const viewDirection = transformToCanonicalFrame( TSL.positionViewDirection );
+	const incomingDirection = transformToCanonicalFrame( lightDirection );
 	const decoderInput = buildDecoderInput( data.decoder, material._decoderUniforms, latentCode, incomingDirection, viewDirection );
 	const decoded = evaluateMLP( data.decoder.layers, material._decoderUniforms.layers, decoderInput );
+	const nDotL = incomingDirection.z.max( 0 );
 
-	return applyOutputActivation( decoded, data.decoder.outputActivation );
+	return applyOutputActivation( decoded, data.decoder.outputActivation ).mul( nDotL );
+
+}
+
+function transformToCanonicalFrame( direction ) {
+
+	const frame = TSL.TBNViewMatrix;
+	const normal = frame[ 2 ].normalize();
+
+	// The derivative TBN fallback uses a shared scale for both axes. Rebuild an
+	// orthonormal basis so runtime directions match the canonical training frame.
+	const projectedTangent = frame[ 0 ].sub( normal.mul( frame[ 0 ].dot( normal ) ) );
+	const tangentLengthSquared = projectedTangent.dot( projectedTangent );
+	const normalizedTangent = projectedTangent.mul( tangentLengthSquared.max( 1e-10 ).inverseSqrt() );
+	const fallbackAxis = normal.y.abs().lessThan( 0.999 ).select( TSL.vec3( 0, 1, 0 ), TSL.vec3( 1, 0, 0 ) );
+	const fallbackTangent = fallbackAxis.cross( normal ).normalize();
+	const tangent = tangentLengthSquared.greaterThan( 1e-10 ).select( normalizedTangent, fallbackTangent );
+	const unhandedBitangent = normal.cross( tangent );
+	const handedness = unhandedBitangent.dot( frame[ 1 ] ).lessThan( 0 ).select( - 1, 1 );
+	const bitangent = unhandedBitangent.mul( handedness );
+
+	return TSL.vec3(
+		direction.dot( tangent ),
+		direction.dot( bitangent ),
+		direction.dot( normal )
+	).normalize();
 
 }
 

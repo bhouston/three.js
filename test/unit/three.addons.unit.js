@@ -14,3 +14,4 @@ import './addons/loaders/SPLATLoader.tests.js';
 import './addons/loaders/SPZLoader.tests.js';
 import './addons/loaders/USDLoader.tests.js';
 import './addons/exporters/USDZExporter.tests.js';
+import './addons/materials/NeuralAppearanceTrainer.tests.js';

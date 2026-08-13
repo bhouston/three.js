@@ -10,15 +10,20 @@ const viewScale = 2;
 const networkTimeout = 5; // minutes
 const trainingTimeout = 2; // minutes
 const outputDir = 'test/e2e/output-screenshots';
-const pixelThreshold = 0.2;
-const testCases = [
-	{ name: 'lambert', label: 'diffuse rust', iterations: 400, maxMeanRgbError: 25, maxDifferentPixels: 30 },
-	{ name: 'lambertGreen', label: 'diffuse green', iterations: 400, maxMeanRgbError: 25, maxDifferentPixels: 30 },
-	{ name: 'lambertBlue', label: 'diffuse blue', iterations: 400, maxMeanRgbError: 25, maxDifferentPixels: 30 },
-	{ name: 'glossy', label: 'glossy blue', iterations: 800, maxMeanRgbError: 35, maxDifferentPixels: 45 },
-	{ name: 'glossyRed', label: 'glossy red', iterations: 800, maxMeanRgbError: 35, maxDifferentPixels: 45 },
-	{ name: 'glossyGold', label: 'glossy gold', iterations: 800, maxMeanRgbError: 35, maxDifferentPixels: 45 }
+const pixelThreshold = 0.15;
+const allTestCases = [
+	{ name: 'lambertBlue', label: 'diffuse blue', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5, resolution: 8 },
+	{ name: 'lambertRed', label: 'diffuse red', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5 },
+	{ name: 'lambertGreen', label: 'diffuse green', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5 },
+	{ name: 'lambert', label: 'diffuse rust', iterations: 400, maxMeanRgbError: 18, maxDifferentPixels: 22 },
+	{ name: 'glossy', label: 'glossy blue', iterations: 800, maxMeanRgbError: 30, maxDifferentPixels: 36 },
+	{ name: 'glossyRed', label: 'glossy red', iterations: 800, maxMeanRgbError: 30, maxDifferentPixels: 36 },
+	{ name: 'glossyGold', label: 'glossy gold', iterations: 800, maxMeanRgbError: 22, maxDifferentPixels: 36 },
+	{ name: 'uvGrid', label: 'uv grid', iterations: 1000, maxMeanRgbError: 28, maxDifferentPixels: 32, resolution: 8 }
 ];
+const testCases = process.env.TEST_CASE ? allTestCases.filter( ( testCase ) => testCase.name === process.env.TEST_CASE ) : allTestCases;
+const background = [ 0x15, 0x17, 0x1c ];
+const rotations = [ 0, Math.PI * 0.35, Math.PI * 0.7 ];
 
 const server = createServer();
 let browser;
@@ -42,7 +47,7 @@ async function main() {
 		for ( const testCase of testCases ) {
 
 			const result = await runTrainingCase( page, testCase );
-			const signature = result.teacherInputs.map( ( value ) => value.toFixed( 4 ) ).join( ',' );
+			const signature = getReferenceSignature( result.json );
 
 			if ( signatures.has( signature ) ) {
 
@@ -66,10 +71,19 @@ async function main() {
 
 }
 
+function getReferenceSignature( json ) {
+
+	return json.referenceEvaluations
+		.flatMap( ( reference ) => reference.targetRgb || reference.rgb )
+		.map( ( value ) => value.toFixed( 4 ) )
+		.join( ',' );
+
+}
+
 async function runTrainingCase( page, testCase ) {
 
 	page.error = undefined;
-	await page.goto( `http://localhost:${port}/examples/webgpu_materials_neural_appearance_train.html?test=${testCase.name}&autoTrain=1&noRotate=1&iterations=${testCase.iterations}&batchSize=256&resolution=1&seed=7`, {
+	await page.goto( `http://localhost:${port}/examples/webgpu_materials_neural_appearance_train.html?test=${testCase.name}&autoTrain=1&noRotate=1&iterations=${testCase.iterations}&batchSize=256&resolution=${testCase.resolution || 1}&seed=7`, {
 		waitUntil: 'networkidle0',
 		timeout: networkTimeout * 60000
 	} );
@@ -81,6 +95,9 @@ async function runTrainingCase( page, testCase ) {
 
 	const result = await page.evaluate( () => ( {
 		loss: window.__neuralAppearanceLastLoss,
+		firstLoss: window.__neuralAppearanceFirstLoss,
+		validationLoss: window.__neuralAppearanceValidationLoss,
+		validation: window.__neuralAppearanceValidation,
 		json: window.__neuralAppearanceExportJson,
 		teacherInputs: window.__neuralAppearanceTeacherInputs
 	} ) );
@@ -93,22 +110,55 @@ async function runTrainingCase( page, testCase ) {
 
 	validateExportJson( result.json, testCase );
 	validateTeacherInputs( result.teacherInputs, testCase );
+	validateLosses( result, testCase );
 
-	const teacher = await captureCanvasView( page, 'teacher' );
-	const neural = await captureCanvasView( page, 'neural' );
-	const comparison = compareImages( teacher, neural );
+	let worstComparison = null;
+	let worstWhiteComparison = null;
+	let worstRotation = 0;
 
-	await teacher.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-teacher.jpg` );
-	await neural.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-neural.jpg` );
-	await comparison.diff.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-diff.jpg` );
+	for ( const rotation of rotations ) {
 
-	if ( comparison.meanRgbError > testCase.maxMeanRgbError || comparison.differentPixels > testCase.maxDifferentPixels ) {
+		const teacher = await captureCanvasView( page, 'teacher', rotation );
+		const neural = await captureCanvasView( page, 'neural', rotation );
+		const white = await captureCanvasView( page, 'white', rotation );
+		const comparison = compareImages( teacher.image, neural.image );
+		const whiteComparison = compareImages( teacher.image, white.image );
 
-		throw new Error( `${testCase.label}: teacher/neural image mismatch: mean RGB error ${comparison.meanRgbError.toFixed( 2 )} (max ${testCase.maxMeanRgbError}), different pixels ${comparison.differentPixels.toFixed( 2 )}% (max ${testCase.maxDifferentPixels}%)` );
+		if ( neural.state.activeMaterialType !== 'NeuralAppearanceNodeMaterial' ) {
+
+			throw new Error( `${testCase.label}: neural view rendered ${neural.state.activeMaterialType} instead of NeuralAppearanceNodeMaterial.` );
+
+		}
+
+		if ( worstComparison === null || comparison.differentPixels > worstComparison.differentPixels ) {
+
+			worstComparison = comparison;
+			worstWhiteComparison = whiteComparison;
+			worstRotation = rotation;
+
+			await teacher.image.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-teacher.jpg` );
+			await neural.image.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-neural.jpg` );
+			await white.image.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-white-control.jpg` );
+			await comparison.mask.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-mask.jpg` );
+			await comparison.diff.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-diff.jpg` );
+
+		}
 
 	}
 
-	console.green( `${testCase.label}: loss ${result.loss.toExponential( 3 )}, mean RGB error ${comparison.meanRgbError.toFixed( 2 )}, different pixels ${comparison.differentPixels.toFixed( 2 )}%` );
+	if ( worstWhiteComparison.meanRgbError <= testCase.maxMeanRgbError || worstWhiteComparison.meanRgbError <= worstComparison.meanRgbError * 1.1 ) {
+
+		throw new Error( `${testCase.label}: forced-white control was not rejected: white mean RGB error ${worstWhiteComparison.meanRgbError.toFixed( 2 )}, neural mean RGB error ${worstComparison.meanRgbError.toFixed( 2 )}.` );
+
+	}
+
+	if ( worstComparison.meanRgbError > testCase.maxMeanRgbError || worstComparison.differentPixels > testCase.maxDifferentPixels ) {
+
+		throw new Error( `${testCase.label}: teacher/neural foreground mismatch at rotation ${worstRotation.toFixed( 2 )}: mean RGB error ${worstComparison.meanRgbError.toFixed( 2 )} (max ${testCase.maxMeanRgbError}), RMSE ${worstComparison.rmse.toFixed( 2 )}, different pixels ${worstComparison.differentPixels.toFixed( 2 )}% (max ${testCase.maxDifferentPixels}%), foreground ${worstComparison.foregroundPixels} pixels` );
+
+	}
+
+	console.green( `${testCase.label}: loss ${result.loss.toExponential( 3 )}, validation ${result.validationLoss.toExponential( 3 )}, worst foreground mean RGB error ${worstComparison.meanRgbError.toFixed( 2 )}, different pixels ${worstComparison.differentPixels.toFixed( 2 )}%` );
 
 	return result;
 
@@ -165,22 +215,37 @@ async function launchPage() {
 
 }
 
-async function captureCanvasView( page, view ) {
+async function captureCanvasView( page, view, rotation ) {
 
-	await page.evaluate( async view => {
+	const state = await page.evaluate( async ( view, rotation ) => {
 
+		const startToken = window.__neuralAppearanceFrameToken;
+		window.__neuralAppearanceSetRotation( rotation );
 		window.__neuralAppearanceSetView( view );
-		await new Promise( resolve => requestAnimationFrame( resolve ) );
-		await new Promise( resolve => requestAnimationFrame( resolve ) );
+		for ( let i = 0; i < 8; i ++ ) {
 
-	}, view );
+			await new Promise( resolve => requestAnimationFrame( resolve ) );
+			if ( window.__neuralAppearanceFrameToken > startToken && window.__neuralAppearanceRenderView === ( view === 'neural' ? 'trained neural' : ( view === 'white' ? 'forced white' : 'MaterialX teacher' ) ) ) break;
+
+		}
+
+		return {
+			activeMaterialType: window.__neuralAppearanceActiveMaterialType,
+			frameToken: window.__neuralAppearanceFrameToken,
+			renderView: window.__neuralAppearanceRenderView
+		};
+
+	}, view, rotation );
 
 	if ( page.error !== undefined ) throw new Error( page.error );
 
 	const canvas = await page.$( 'canvas' );
 	if ( canvas === null ) throw new Error( 'Could not find renderer canvas.' );
 
-	return Image.read( await canvas.screenshot( { type: 'png' } ) );
+	return {
+		image: await Image.read( await canvas.screenshot( { type: 'png' } ) ),
+		state
+	};
 
 }
 
@@ -193,19 +258,49 @@ function compareImages( teacher, neural ) {
 	}
 
 	const diff = teacher.clone();
+	const mask = new Image( teacher.width, teacher.height, Buffer.alloc( teacher.width * teacher.height * 4 ) );
 	let error = 0;
+	let squaredError = 0;
 	let differentPixels = 0;
+	let foregroundPixels = 0;
 	const maxPixelDistance = 255 * Math.sqrt( 3 );
 	const threshold = pixelThreshold * maxPixelDistance;
 
 	for ( let i = 0; i < teacher.data.length; i += 4 ) {
 
+		const backgroundDistance = Math.sqrt(
+			Math.pow( teacher.data[ i ] - background[ 0 ], 2 ) +
+			Math.pow( teacher.data[ i + 1 ] - background[ 1 ], 2 ) +
+			Math.pow( teacher.data[ i + 2 ] - background[ 2 ], 2 )
+		);
+
+		if ( backgroundDistance < 24 ) {
+
+			diff.data[ i ] = teacher.data[ i ] * 0.2;
+			diff.data[ i + 1 ] = teacher.data[ i + 1 ] * 0.2;
+			diff.data[ i + 2 ] = teacher.data[ i + 2 ] * 0.2;
+			diff.data[ i + 3 ] = 255;
+			mask.data[ i ] = 0;
+			mask.data[ i + 1 ] = 0;
+			mask.data[ i + 2 ] = 0;
+			mask.data[ i + 3 ] = 255;
+			continue;
+
+		}
+
 		const dr = teacher.data[ i ] - neural.data[ i ];
 		const dg = teacher.data[ i + 1 ] - neural.data[ i + 1 ];
 		const db = teacher.data[ i + 2 ] - neural.data[ i + 2 ];
 		const distance = Math.sqrt( dr * dr + dg * dg + db * db );
+		const pixelError = ( Math.abs( dr ) + Math.abs( dg ) + Math.abs( db ) ) / 3;
 
-		error += ( Math.abs( dr ) + Math.abs( dg ) + Math.abs( db ) ) / 3;
+		error += pixelError;
+		squaredError += pixelError * pixelError;
+		foregroundPixels ++;
+		mask.data[ i ] = 255;
+		mask.data[ i + 1 ] = 255;
+		mask.data[ i + 2 ] = 255;
+		mask.data[ i + 3 ] = 255;
 
 		if ( distance > threshold ) {
 
@@ -226,12 +321,19 @@ function compareImages( teacher, neural ) {
 
 	}
 
-	const pixelCount = teacher.width * teacher.height;
+	if ( foregroundPixels < teacher.width * teacher.height * 0.03 ) {
+
+		throw new Error( `Foreground mask only covered ${foregroundPixels} pixels.` );
+
+	}
 
 	return {
 		diff,
-		meanRgbError: error / pixelCount,
-		differentPixels: differentPixels / pixelCount * 100
+		mask,
+		foregroundPixels,
+		meanRgbError: error / foregroundPixels,
+		rmse: Math.sqrt( squaredError / foregroundPixels ),
+		differentPixels: differentPixels / foregroundPixels * 100
 	};
 
 }
@@ -247,6 +349,54 @@ function validateExportJson( json, testCase ) {
 	if ( json.latents.textures.length !== 2 || json.decoder.inputSize !== 20 ) {
 
 		throw new Error( `${testCase.label}: training produced an invalid neural appearance export shape.` );
+
+	}
+
+}
+
+function validateLosses( result, testCase ) {
+
+	if ( Number.isFinite( result.firstLoss ) === false ) {
+
+		throw new Error( `${testCase.label}: training did not expose a finite first loss.` );
+
+	}
+
+	if ( result.loss >= result.firstLoss * 0.75 ) {
+
+		throw new Error( `${testCase.label}: training loss did not improve enough: first ${result.firstLoss}, final ${result.loss}.` );
+
+	}
+
+	if ( Number.isFinite( result.validationLoss ) === false ) {
+
+		throw new Error( `${testCase.label}: training did not expose a finite validation loss.` );
+
+	}
+
+	if ( result.validationLoss > Math.max( result.loss * 2.5, 0.15 ) ) {
+
+		throw new Error( `${testCase.label}: validation loss is too high: ${result.validationLoss}.` );
+
+	}
+
+	const expectedMipLevels = Math.floor( Math.log2( testCase.resolution || 1 ) ) + 1;
+
+	if ( result.validation === null || result.validation.mipLevels !== expectedMipLevels ) {
+
+		throw new Error( `${testCase.label}: runtime validation did not cover all ${expectedMipLevels} exported mip levels.` );
+
+	}
+
+	for ( const direction of [ 'wi', 'wo' ] ) {
+
+		const bins = result.validation.angularBins[ direction ];
+
+		if ( Array.isArray( bins ) === false || bins.length !== 3 || bins.reduce( ( count, bin ) => count + bin.count, 0 ) === 0 ) {
+
+			throw new Error( `${testCase.label}: runtime validation did not report ${direction} angular-bin errors.` );
+
+		}
 
 	}
 

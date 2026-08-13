@@ -30,6 +30,71 @@
 				margin-top: 8px;
 				white-space: pre-line;
 			}
+
+			#previewPanel {
+				position: absolute;
+				right: 16px;
+				top: 220px;
+				padding: 12px;
+				background: rgba( 0, 0, 0, 0.7 );
+				color: #fff;
+				font: 12px/1.45 monospace;
+				border-radius: 4px;
+				max-height: calc( 100vh - 236px );
+				overflow: auto;
+				z-index: 2;
+			}
+
+			#previewPanel .preview-row {
+				display: flex;
+				gap: 12px;
+				margin-top: 8px;
+			}
+
+			#previewPanel canvas.preview-swatch {
+				display: block;
+				width: 192px;
+				height: 192px;
+				background: #000;
+				image-rendering: pixelated;
+				border: 1px solid rgba( 255, 255, 255, 0.25 );
+			}
+
+			#lossGraph {
+				display: block;
+				width: 396px;
+				height: 120px;
+				margin-top: 10px;
+				background: #050505;
+				border: 1px solid rgba( 255, 255, 255, 0.25 );
+			}
+
+			#lossLegend {
+				display: flex;
+				justify-content: center;
+				gap: 12px;
+				margin-top: 4px;
+				color: #bbb;
+			}
+
+			#lossLegend .training-loss {
+				color: #50c8ff;
+			}
+
+			#lossLegend .validation-loss {
+				color: #ffd166;
+			}
+
+			#previewPanel .preview-label {
+				margin-bottom: 4px;
+				text-align: center;
+			}
+
+			#previewStatus {
+				margin-top: 8px;
+				color: #bbb;
+				text-align: center;
+			}
 		</style>
 	</head>
 	<body>
@@ -56,6 +121,26 @@
 			<input id="fileInput" type="file" accept=".mtlx,.zip,.mtlx.zip" hidden>
 		</div>
 
+		<div id="previewPanel">
+			<div><strong>Training sample preview</strong></div>
+			<div class="preview-row">
+				<div>
+					<div class="preview-label">MaterialX teacher</div>
+					<canvas id="teacherPreview" class="preview-swatch" width="192" height="192"></canvas>
+				</div>
+				<div>
+					<div class="preview-label">Neural output</div>
+					<canvas id="neuralPreview" class="preview-swatch" width="192" height="192"></canvas>
+				</div>
+			</div>
+			<canvas id="lossGraph" width="396" height="120"></canvas>
+			<div id="lossLegend">
+				<span class="training-loss">training loss</span>
+				<span class="validation-loss">validation loss</span>
+			</div>
+			<div id="previewStatus">Train to view matching samples.</div>
+		</div>
+
 		<script type="importmap">
 			{
 				"imports": {
@@ -80,20 +165,25 @@
 			import { NeuralAppearanceTrainer } from 'three/addons/materials/NeuralAppearanceTrainer.js';
 
 			let camera, scene, renderer, mesh;
-			let materialXMaterial, neuralMaterial, latestJson;
+			let materialXMaterial, neuralMaterial, whiteControlMaterial, latestJson;
 			let isTraining = false;
+			let frameToken = 0;
+			let trainingRunId = 0;
+			let lossHistory = [];
 
 			const queryParams = new URLSearchParams( window.location.search );
 			const testMaterials = {
 				lambert: 'neural_train_lambert_constant.mtlx',
 				lambertGreen: 'neural_train_lambert_green.mtlx',
 				lambertBlue: 'neural_train_lambert_blue.mtlx',
+				lambertRed: 'neural_train_lambert_red.mtlx',
 				glossy: 'neural_train_glossy_constant.mtlx',
 				glossyRed: 'neural_train_glossy_red.mtlx',
-				glossyGold: 'neural_train_glossy_gold.mtlx'
+				glossyGold: 'neural_train_glossy_gold.mtlx',
+				uvGrid: 'neural_train_uv_grid.mtlx'
 			};
 			const autoTrain = queryParams.get( 'autoTrain' ) === '1';
-			const noRotate = queryParams.get( 'noRotate' ) === '1';
+			const noRotate = queryParams.get( 'noRotate' ) !== '0';
 
 			const materialName = document.getElementById( 'materialName' );
 			const mode = document.getElementById( 'mode' );
@@ -102,6 +192,10 @@
 			const openButton = document.getElementById( 'openButton' );
 			const trainButton = document.getElementById( 'trainButton' );
 			const downloadButton = document.getElementById( 'downloadButton' );
+			const teacherPreview = document.getElementById( 'teacherPreview' );
+			const neuralPreview = document.getElementById( 'neuralPreview' );
+			const lossGraph = document.getElementById( 'lossGraph' );
+			const previewStatus = document.getElementById( 'previewStatus' );
 
 			const params = {
 				view: 'MaterialX teacher',
@@ -109,19 +203,34 @@
 				iterations: readNumberQuery( 'iterations', 1200 ),
 				batchSize: readNumberQuery( 'batchSize', 256 ),
 				intensity: readNumberQuery( 'intensity', 1 ),
+				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
 				seed: readNumberQuery( 'seed', 1 )
 			};
 
 			window.__neuralAppearanceTrainingReady = false;
 			window.__neuralAppearanceTrainingDone = false;
 			window.__neuralAppearanceLastLoss = NaN;
+			window.__neuralAppearanceFirstLoss = NaN;
+			window.__neuralAppearanceValidationLoss = NaN;
+			window.__neuralAppearanceValidation = null;
+			window.__neuralAppearancePreview = null;
+			window.__neuralAppearanceLossHistory = lossHistory;
 			window.__neuralAppearanceExportJson = null;
 			window.__neuralAppearanceTeacherInputs = null;
+			window.__neuralAppearanceActiveMaterialType = '';
+			window.__neuralAppearanceFrameToken = 0;
+			window.__neuralAppearanceRenderView = null;
 			window.__neuralAppearanceSetView = ( view ) => {
 
-				params.view = view === 'neural' ? 'trained neural' : 'MaterialX teacher';
+				params.view = view === 'neural' ? 'trained neural' : ( view === 'white' ? 'forced white' : 'MaterialX teacher' );
 				updateView();
 				return params.view;
+
+			};
+
+			window.__neuralAppearanceSetRotation = ( y ) => {
+
+				if ( mesh ) mesh.rotation.y = y;
 
 			};
 
@@ -145,15 +254,9 @@
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0x15171c );
 
-				scene.add( new THREE.HemisphereLight( 0xffffff, 0x202840, 0.2 ) );
-
-				const keyLight = new THREE.DirectionalLight( 0xffffff, 3 );
-				keyLight.position.set( 2, 2, 2 );
+				const keyLight = new THREE.DirectionalLight( 0xffffff, 1 );
+				keyLight.position.set( 0, 0, 1 );
 				scene.add( keyLight );
-
-				const rimLight = new THREE.PointLight( 0x80aaff, 3, 10 );
-				rimLight.position.set( - 2.5, 1.5, - 2.0 );
-				scene.add( rimLight );
 
 				renderer = new THREE.WebGPURenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
@@ -167,12 +270,15 @@
 				controls.target.set( 0, 0, 0 );
 				controls.update();
 
-				mesh = new THREE.Mesh( new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 ), new THREE.MeshPhysicalNodeMaterial( { color: 0x93604a, roughness: 0.45 } ) );
+				const geometry = new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 );
+				geometry.computeTangents();
+				mesh = new THREE.Mesh( geometry, new THREE.MeshPhysicalNodeMaterial( { color: 0x93604a, roughness: 0.45 } ) );
 				mesh.rotation.x = - 0.35;
 				scene.add( mesh );
+				whiteControlMaterial = new THREE.MeshBasicMaterial( { color: 0xffffff } );
 
 				const gui = new GUI();
-				gui.add( params, 'view', [ 'MaterialX teacher', 'trained neural' ] ).onChange( updateView );
+				gui.add( params, 'view', [ 'MaterialX teacher', 'trained neural', 'forced white' ] ).onChange( updateView );
 				gui.add( params, 'resolution', [ 1, 2, 4, 8, 16 ] );
 				gui.add( params, 'iterations', 100, 10000, 100 );
 				gui.add( params, 'batchSize', [ 64, 256, 1024, 4096 ] );
@@ -268,10 +374,18 @@
 				materialName.textContent = material.name || name;
 				params.view = 'MaterialX teacher';
 				latestJson = null;
+				trainingRunId ++;
+				disposeNeuralMaterial();
 				window.__neuralAppearanceTrainingDone = false;
+				window.__neuralAppearanceFirstLoss = NaN;
+				window.__neuralAppearanceValidationLoss = NaN;
+				window.__neuralAppearanceValidation = null;
+				window.__neuralAppearancePreview = null;
+				resetLossGraph();
 				window.__neuralAppearanceExportJson = null;
 				window.__neuralAppearanceTeacherInputs = null;
 				downloadButton.disabled = true;
+				clearTrainingPreview();
 				updateView();
 				status.textContent = getMaterialXStatus( asset, material );
 
@@ -332,8 +446,17 @@
 				if ( materialXMaterial === undefined ) return;
 
 				trainButton.disabled = true;
+				openButton.disabled = true;
 				isTraining = true;
+				const runId = ++ trainingRunId;
+				const trainingMaterial = materialXMaterial;
 				window.__neuralAppearanceTrainingDone = false;
+				window.__neuralAppearanceFirstLoss = NaN;
+				window.__neuralAppearanceValidationLoss = NaN;
+				window.__neuralAppearanceValidation = null;
+				window.__neuralAppearancePreview = null;
+				resetLossGraph();
+				clearTrainingPreview();
 				status.textContent = 'Training...';
 
 				try {
@@ -343,35 +466,71 @@
 						resolution: Number( params.resolution ),
 						iterations: Number( params.iterations ),
 						batchSize: Number( params.batchSize ),
+						previewSampleCount: Number( params.previewSamples ),
 						seed: Number( params.seed )
 					} );
 					const result = await trainer.train( {
 						renderer,
-						material: materialXMaterial,
+						material: trainingMaterial,
 						onProgress: ( progress ) => {
 
 							window.__neuralAppearanceLastLoss = progress.loss;
+							if ( progress.iteration === 1 ) window.__neuralAppearanceFirstLoss = progress.loss;
+							if ( Number.isFinite( progress.validationLoss ) ) window.__neuralAppearanceValidationLoss = progress.validationLoss;
+							if ( progress.validation ) window.__neuralAppearanceValidation = progress.validation;
+							if ( progress.validation && progress.validation.preview ) window.__neuralAppearancePreview = progress.validation.preview;
+							appendLossPoint( progress );
 
 							if ( progress.iteration % 20 === 0 || progress.iteration === progress.iterations ) {
 
-								status.textContent = `Training ${progress.iteration}/${progress.iterations}\nloss ${progress.loss.toExponential( 3 )}`;
+								const validationText = Number.isFinite( progress.validationLoss ) ? `\nruntime validation ${progress.validationLoss.toExponential( 3 )}` : '';
+								status.textContent = `Training ${progress.iteration}/${progress.iterations}\nloss ${progress.loss.toExponential( 3 )}${validationText}`;
+
+							}
+
+							if ( progress.validation && progress.validation.preview && ( progress.iteration === 1 || progress.iteration % 4 === 0 || progress.iteration === progress.iterations ) ) {
+
+								drawTrainingPreview( progress.validation.preview, progress.iteration );
+
+							}
+
+							if ( progress.iteration === 1 || progress.iteration % 4 === 0 || progress.iteration === progress.iterations ) {
+
+								drawLossGraph();
 
 							}
 
 						}
 					} );
 
+					const teacherInputs = result.teacher.encodeInputs ? result.teacher.encodeInputs() : null;
+
+					if ( runId !== trainingRunId || materialXMaterial !== trainingMaterial ) {
+
+						if ( result.teacher.dispose ) result.teacher.dispose();
+						return;
+
+					}
+
 					latestJson = result.json;
 					const neuralData = new NeuralAppearanceLoader().parse( cloneNeuralAppearanceJson( latestJson ) );
+					disposeNeuralMaterial();
 					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity } );
 					params.view = 'trained neural';
 					window.__neuralAppearanceLastLoss = result.loss;
+					window.__neuralAppearanceValidationLoss = result.validationLoss;
+					window.__neuralAppearanceValidation = result.validation;
+					window.__neuralAppearancePreview = result.validation ? result.validation.preview : null;
 					window.__neuralAppearanceExportJson = cloneNeuralAppearanceJson( latestJson );
-					window.__neuralAppearanceTeacherInputs = result.teacher.encodeInputs();
+					window.__neuralAppearanceTeacherInputs = teacherInputs;
 					window.__neuralAppearanceTrainingDone = true;
 					downloadButton.disabled = false;
+					if ( result.teacher.dispose ) result.teacher.dispose();
 					updateView();
-					status.textContent = `Training complete.\nfinal loss ${result.loss.toExponential( 3 )}`;
+					if ( result.validation && result.validation.preview ) drawTrainingPreview( result.validation.preview, Number( params.iterations ) );
+					drawLossGraph();
+					const validationText = Number.isFinite( result.validationLoss ) ? `\nruntime validation ${result.validationLoss.toExponential( 3 )}` : '';
+					status.textContent = `Training complete.\nfinal loss ${result.loss.toExponential( 3 )}${validationText}`;
 
 				} catch ( error ) {
 
@@ -382,8 +541,213 @@
 
 					isTraining = false;
 					trainButton.disabled = false;
+					openButton.disabled = false;
 
 				}
+
+			}
+
+			function clearTrainingPreview() {
+
+				clearPreviewCanvas( teacherPreview );
+				clearPreviewCanvas( neuralPreview );
+				previewStatus.textContent = 'Train to view matching samples.';
+
+			}
+
+			function resetLossGraph() {
+
+				lossHistory = [];
+				window.__neuralAppearanceLossHistory = lossHistory;
+				drawLossGraph();
+
+			}
+
+			function appendLossPoint( progress ) {
+
+				lossHistory.push( {
+					iteration: progress.iteration,
+					loss: progress.loss,
+					validationLoss: progress.validationLoss
+				} );
+
+			}
+
+			function clearPreviewCanvas( canvas ) {
+
+				const context = canvas.getContext( '2d' );
+				context.clearRect( 0, 0, canvas.width, canvas.height );
+				context.fillStyle = '#000';
+				context.fillRect( 0, 0, canvas.width, canvas.height );
+
+			}
+
+			function drawTrainingPreview( preview, iteration ) {
+
+				drawPreviewCanvas( teacherPreview, preview, 'targetRgb' );
+				drawPreviewCanvas( neuralPreview, preview, 'predictionRgb' );
+				previewStatus.textContent = `${preview.width}x${preview.height} sample texels (${preview.samples.length}), iteration ${iteration}`;
+
+			}
+
+			function drawPreviewCanvas( canvas, preview, colorKey ) {
+
+				const context = canvas.getContext( '2d' );
+				const columns = Math.max( 1, preview.width );
+				const rows = Math.max( 1, preview.height );
+				const cellWidth = canvas.width / columns;
+				const cellHeight = canvas.height / rows;
+
+				context.clearRect( 0, 0, canvas.width, canvas.height );
+				context.fillStyle = '#000';
+				context.fillRect( 0, 0, canvas.width, canvas.height );
+
+				for ( let i = 0; i < preview.samples.length; i ++ ) {
+
+					const sample = preview.samples[ i ];
+					const x = i % columns;
+					const y = Math.floor( i / columns );
+					context.fillStyle = rgbToCss( sample[ colorKey ] );
+					context.fillRect( x * cellWidth, y * cellHeight, Math.ceil( cellWidth ), Math.ceil( cellHeight ) );
+
+				}
+
+			}
+
+			function rgbToCss( rgb ) {
+
+				return `rgb(${toDisplayByte( rgb[ 0 ] )}, ${toDisplayByte( rgb[ 1 ] )}, ${toDisplayByte( rgb[ 2 ] )})`;
+
+			}
+
+			function toDisplayByte( value ) {
+
+				const mapped = value / ( 1 + value );
+				return Math.round( Math.pow( Math.min( Math.max( mapped, 0 ), 1 ), 1 / 2.2 ) * 255 );
+
+			}
+
+			function drawLossGraph() {
+
+				const context = lossGraph.getContext( '2d' );
+				const width = lossGraph.width;
+				const height = lossGraph.height;
+				const marginLeft = 42;
+				const marginRight = 10;
+				const marginTop = 12;
+				const marginBottom = 24;
+				const plotWidth = width - marginLeft - marginRight;
+				const plotHeight = height - marginTop - marginBottom;
+				const values = lossHistory.flatMap( ( point ) => [
+					point.loss,
+					point.validationLoss
+				] ).filter( ( value ) => Number.isFinite( value ) && value > 0 );
+
+				context.clearRect( 0, 0, width, height );
+				context.fillStyle = '#050505';
+				context.fillRect( 0, 0, width, height );
+				drawLossAxes( context, marginLeft, marginTop, plotWidth, plotHeight );
+
+				context.fillStyle = '#aaa';
+				context.font = '10px monospace';
+				context.fillText( 'loss (log)', marginLeft, 9 );
+				context.fillText( 'iteration', width - 64, height - 4 );
+
+				if ( values.length === 0 ) {
+
+					context.fillText( 'Train to graph loss.', marginLeft + 30, marginTop + plotHeight / 2 );
+					return;
+
+				}
+
+				let minLog = Math.log10( Math.min( ...values ) );
+				let maxLog = Math.log10( Math.max( ...values ) );
+
+				if ( minLog === maxLog ) {
+
+					minLog -= 0.5;
+					maxLog += 0.5;
+
+				}
+
+				drawLossScaleLabels( context, marginLeft, marginTop, plotHeight, minLog, maxLog );
+				drawLossSeries( context, 'loss', '#50c8ff', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
+				drawLossSeries( context, 'validationLoss', '#ffd166', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
+
+			}
+
+			function drawLossAxes( context, x, y, width, height ) {
+
+				context.strokeStyle = 'rgba( 255, 255, 255, 0.35 )';
+				context.lineWidth = 1;
+				context.beginPath();
+				context.moveTo( x, y );
+				context.lineTo( x, y + height );
+				context.lineTo( x + width, y + height );
+				context.stroke();
+
+			}
+
+			function drawLossScaleLabels( context, x, y, height, minLog, maxLog ) {
+
+				context.fillStyle = '#777';
+				context.font = '10px monospace';
+				context.fillText( Math.pow( 10, maxLog ).toExponential( 1 ), 2, y + 4 );
+				context.fillText( Math.pow( 10, minLog ).toExponential( 1 ), 2, y + height );
+
+			}
+
+			function drawLossSeries( context, key, color, x, y, width, height, minLog, maxLog ) {
+
+				const points = lossHistory.filter( ( point ) => Number.isFinite( point[ key ] ) && point[ key ] > 0 );
+				if ( points.length === 0 ) return;
+
+				const maxIteration = Math.max( 1, Number( params.iterations ) - 1 );
+				const logRange = maxLog - minLog || 1;
+
+				context.strokeStyle = color;
+				context.lineWidth = 2;
+				context.beginPath();
+
+				for ( let i = 0; i < points.length; i ++ ) {
+
+					const point = points[ i ];
+					const px = x + ( point.iteration - 1 ) / maxIteration * width;
+					const py = y + height - ( Math.log10( point[ key ] ) - minLog ) / logRange * height;
+
+					if ( i === 0 ) {
+
+						context.moveTo( px, py );
+
+					} else {
+
+						context.lineTo( px, py );
+
+					}
+
+				}
+
+				context.stroke();
+
+			}
+
+			function disposeNeuralMaterial() {
+
+				if ( neuralMaterial === undefined || neuralMaterial === null ) return;
+
+				const data = neuralMaterial.neuralAppearanceData;
+				if ( data && Array.isArray( data.latentTextures ) ) {
+
+					for ( const texture of data.latentTextures ) {
+
+						texture.dispose();
+
+					}
+
+				}
+
+				neuralMaterial.dispose();
+				neuralMaterial = null;
 
 			}
 
@@ -397,11 +761,17 @@
 					neuralMaterial.needsUpdate = true;
 					mesh.material = neuralMaterial;
 
+				} else if ( params.view === 'forced white' && whiteControlMaterial ) {
+
+					mesh.material = whiteControlMaterial;
+
 				} else if ( materialXMaterial ) {
 
 					mesh.material = materialXMaterial;
 
 				}
+
+				window.__neuralAppearanceActiveMaterialType = mesh.material ? mesh.material.type : '';
 
 			}
 
@@ -441,6 +811,9 @@
 				if ( mesh && noRotate === false && isTraining === false ) mesh.rotation.y = time * 0.15;
 
 				renderer.render( scene, camera );
+				frameToken ++;
+				window.__neuralAppearanceFrameToken = frameToken;
+				window.__neuralAppearanceRenderView = params.view;
 
 			}
 

@@ -41,13 +41,13 @@
 			#previewPanel {
 				position: absolute;
 				right: 16px;
-				top: 220px;
+				bottom: 16px;
 				padding: 12px;
 				background: rgba( 0, 0, 0, 0.7 );
 				color: #fff;
 				font: 12px/1.45 monospace;
 				border-radius: 4px;
-				max-height: calc( 100vh - 236px );
+				max-width: calc( 100vw - 32px );
 				overflow: auto;
 				z-index: 2;
 			}
@@ -80,13 +80,19 @@
 			#previewPanel .preview-row {
 				display: flex;
 				gap: 12px;
+			}
+
+			#previewPanel .diagnostics-row {
+				display: flex;
+				align-items: flex-end;
+				gap: 16px;
 				margin-top: 8px;
 			}
 
 			#previewPanel canvas.preview-swatch {
 				display: block;
-				width: 192px;
-				height: 192px;
+				width: 160px;
+				height: 160px;
 				background: #000;
 				image-rendering: pixelated;
 				border: 1px solid rgba( 255, 255, 255, 0.25 );
@@ -125,7 +131,15 @@
 			#previewStatus {
 				margin-top: 8px;
 				color: #bbb;
-				text-align: center;
+				text-align: right;
+			}
+
+			@media ( max-width: 1240px ) {
+
+				body:has( #previewPanel:not( [hidden] ) ) #panel {
+					bottom: 300px;
+				}
+
 			}
 		</style>
 	</head>
@@ -146,6 +160,7 @@
 		<div id="panel">
 			<div><strong>Material:</strong> <span id="materialName">loading default</span></div>
 			<div><strong>Mode:</strong> <span id="mode">MaterialX teacher</span></div>
+			<div><strong>Neural representation:</strong> <span id="neuralRepresentationSize">—</span></div>
 			<button id="openButton">Open .mtlx / .mtlx.zip</button>
 			<button id="openNeuralButton">Open neural .json</button>
 			<button id="trainButton">Train</button>
@@ -163,21 +178,24 @@
 
 		<div id="previewPanel" hidden>
 			<div><strong>Training sample preview</strong></div>
-			<div>Pixelated sample-grid diagnostic; runtime texture filtering is not shown here.</div>
-			<div class="preview-row">
-				<div>
-					<div class="preview-label">MaterialX teacher</div>
-					<canvas id="teacherPreview" class="preview-swatch" width="192" height="192"></canvas>
+			<div class="diagnostics-row">
+				<div class="preview-row">
+					<div>
+						<div class="preview-label">MaterialX teacher</div>
+						<canvas id="teacherPreview" class="preview-swatch" width="192" height="192"></canvas>
+					</div>
+					<div>
+						<div class="preview-label">Neural output</div>
+						<canvas id="neuralPreview" class="preview-swatch" width="192" height="192"></canvas>
+					</div>
 				</div>
 				<div>
-					<div class="preview-label">Neural output</div>
-					<canvas id="neuralPreview" class="preview-swatch" width="192" height="192"></canvas>
+					<canvas id="lossGraph" width="396" height="120"></canvas>
+					<div id="lossLegend">
+						<span class="training-loss">training loss</span>
+						<span class="validation-loss">validation loss</span>
+					</div>
 				</div>
-			</div>
-			<canvas id="lossGraph" width="396" height="120"></canvas>
-			<div id="lossLegend">
-				<span class="training-loss">training loss</span>
-				<span class="validation-loss">validation loss</span>
 			</div>
 			<div id="previewStatus">Train to view matching samples.</div>
 		</div>
@@ -229,6 +247,7 @@
 
 			const materialName = document.getElementById( 'materialName' );
 			const mode = document.getElementById( 'mode' );
+			const neuralRepresentationSize = document.getElementById( 'neuralRepresentationSize' );
 			const status = document.getElementById( 'status' );
 			const estimate = document.getElementById( 'estimate' );
 			const fileInput = document.getElementById( 'fileInput' );
@@ -352,7 +371,7 @@
 				gui.add( params, 'fixedMip', { all: - 1, 'mip 0 baseline': 0, 'mip 1': 1, 'mip 2': 2, 'mip 3': 3, 'mip 4': 4, 'mip 5': 5, 'mip 6': 6 } ).name( 'training mip' ).onChange( updateTrainingEstimate );
 				gui.add( params, 'iterations', 100, 10000, 100 ).onChange( updateTrainingEstimate );
 				gui.add( params, 'batchSize', [ 64, 256, 512, 1024, 4096 ] ).onChange( updateTrainingEstimate );
-				gui.add( params, 'hiddenSize', [ 16, 32, 64 ] );
+				gui.add( params, 'hiddenSize', [ 16, 32, 64 ] ).onChange( updateTrainingEstimate );
 				gui.add( params, 'intensity', 0, 3, 0.01 ).onChange( updateView );
 				updateTrainingEstimate();
 
@@ -455,6 +474,7 @@
 						fixedMipLevel: Number( params.fixedMip )
 					} );
 					materialName.textContent = json.name || file.name;
+					updateNeuralRepresentationSize( json );
 					params.view = 'trained neural';
 					comparisonVisible = false;
 					hideTrainingResults();
@@ -507,6 +527,7 @@
 				trainButton.disabled = false;
 				clearTrainingPreview();
 				hideTrainingResults();
+				updateTrainingEstimate();
 				updateView();
 				status.textContent = getMaterialXStatus( asset, material );
 
@@ -655,6 +676,7 @@
 					}
 
 					latestJson = result.json;
+					updateNeuralRepresentationSize( latestJson );
 					const neuralData = new NeuralAppearanceLoader().parse( cloneNeuralAppearanceJson( latestJson ) );
 					disposeNeuralMaterial();
 					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity, fixedMipLevel: Number( params.fixedMip ) } );
@@ -1031,12 +1053,42 @@
 
 				params.resolution = Math.max( 1, Math.floor( Number( params.sourceResolution ) / Number( params.latentDownsample ) ) );
 				const memory = estimateTrainingMemory( params.resolution );
+				const hiddenSize = Number( params.hiddenSize );
+				const rotationValues = 8 * 12;
+				const layerValues =
+					( 20 * hiddenSize + hiddenSize ) +
+					( hiddenSize * hiddenSize + hiddenSize ) +
+					( hiddenSize * 3 + 3 );
+				const representationBytes = memory.exportBytes + ( rotationValues + layerValues ) * 4;
 				const recordsPerIteration = Number( params.batchSize ) * ( Number( params.fixedMip ) >= 0 ? 1 : memory.mipLevels );
 				const records = recordsPerIteration * Number( params.iterations );
 				const fixedMipText = Number( params.fixedMip ) >= 0 ? `, fixed mip ${params.fixedMip}` : '';
 
 				window.__neuralAppearanceMemoryEstimate = memory;
+				neuralRepresentationSize.textContent = `${representationBytes.toLocaleString()} bytes`;
 				estimate.textContent = `${params.sourceResolution}px source / ${params.latentDownsample} = ${params.resolution}px latent${fixedMipText}\n${memory.mipLevels} mip levels, ${memory.latentTexels.toLocaleString()} latent texels\n~${formatBytes( memory.trainingBytes )} training state + ${formatBytes( memory.exportBytes )} FP16 latents\n${recordsPerIteration.toLocaleString()} records/iteration, ${records.toLocaleString()} total`;
+
+			}
+
+			function updateNeuralRepresentationSize( json ) {
+
+				let bytes = 0;
+
+				for ( const texture of json.latents.textures ) {
+
+					for ( const mipmap of texture.mipmaps ) bytes += mipmap.data.length * 2;
+
+				}
+
+				bytes += json.decoder.rotation.weights.length * 4;
+
+				for ( const layer of json.decoder.layers ) {
+
+					bytes += ( layer.weights.length + layer.biases.length ) * 4;
+
+				}
+
+				neuralRepresentationSize.textContent = `${bytes.toLocaleString()} bytes`;
 
 			}
 

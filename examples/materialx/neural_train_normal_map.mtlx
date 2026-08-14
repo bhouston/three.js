@@ -17,11 +17,11 @@
     </separate2>
     <multiply name="u_phase" type="float">
       <input name="in1" type="float" nodename="uv_components" output="outx" />
-      <input name="in2" type="float" value="25.132741" />
+      <input name="in2" type="float" value="100.530965" />
     </multiply>
     <multiply name="v_phase" type="float">
       <input name="in1" type="float" nodename="uv_components" output="outy" />
-      <input name="in2" type="float" value="18.849556" />
+      <input name="in2" type="float" value="50.265482" />
     </multiply>
     <sin name="u_wave" type="float">
       <input name="in" type="float" nodename="u_phase" />
@@ -43,7 +43,7 @@
     </add>
     <heighttonormal name="normal_map" type="vector3">
       <input name="in" type="float" nodename="height_wave" />
-      <input name="scale" type="float" value="1.5" />
+      <input name="scale" type="float" value="2.0" />
       <input name="texcoord" type="vector2" nodename="texcoord1" />
     </heighttonormal>
     <output name="out" type="vector3" nodename="normal_map" />

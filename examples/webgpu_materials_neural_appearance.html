@@ -169,7 +169,7 @@
 			<div><strong>Neural representation:</strong> <span id="neuralRepresentationSize">—</span></div>
 			<label for="builtInMaterial"><strong>Built-in material:</strong></label>
 			<select id="builtInMaterial">
-				<option value="default">Standard surface roughness</option>
+				<option value="uvGrid">UV rainbow waves</option>
 				<option value="lambert">Lambert</option>
 				<option value="lambertRed">Lambert red</option>
 				<option value="lambertGreen">Lambert green</option>
@@ -177,10 +177,9 @@
 				<option value="glossy">Glossy</option>
 				<option value="glossyRed">Glossy red</option>
 				<option value="glossyGold">Glossy gold</option>
-				<option value="uvGrid">UV color grid</option>
 				<option value="normalMap">Normal map</option>
-				<option value="emissiveGrid">Emissive grid</option>
-				<option value="alphaCutoff">Alpha cutoff grid</option>
+				<option value="emissiveGrid">Emissive rainbow waves</option>
+				<option value="alphaCutoff">Alpha cutoff waves</option>
 				<option value="" disabled>Custom file</option>
 			</select>
 			<button id="openButton">Open .mtlx / .mtlx.zip</button>
@@ -257,8 +256,12 @@
 			const queryParams = new URLSearchParams( window.location.search );
 			const materialPresets = {
 				default: {
-					file: 'standard_surface_roughness_test.mtlx',
-					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 4000, batchSize: 1024, hiddenSize: 64 }
+					file: 'neural_train_uv_grid.mtlx',
+					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 32 }
+				},
+				uvGrid: {
+					file: 'neural_train_uv_grid.mtlx',
+					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 32 }
 				},
 				lambert: {
 					file: 'neural_train_lambert_constant.mtlx',
@@ -288,24 +291,20 @@
 					file: 'neural_train_glossy_gold.mtlx',
 					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 1024, hiddenSize: 32 }
 				},
-				uvGrid: {
-					file: 'neural_train_uv_grid.mtlx',
-					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 5000, batchSize: 1024, hiddenSize: 32 }
-				},
 				normalMap: {
 					file: 'neural_train_normal_map.mtlx',
-					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 6000, batchSize: 1024, hiddenSize: 64 }
+					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 64 }
 				},
 				emissiveGrid: {
 					file: 'neural_train_emissive_grid.mtlx',
-					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 5000, batchSize: 1024, hiddenSize: 32 }
+					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 32 }
 				},
 				alphaCutoff: {
 					file: 'neural_train_alpha_cutoff.mtlx',
-					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 5000, batchSize: 1024, hiddenSize: 32 }
+					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 32 }
 				}
 			};
-			const initialMaterialKey = queryParams.get( 'test' ) || 'default';
+			const initialMaterialKey = queryParams.get( 'test' ) || 'uvGrid';
 			const initialMaterialPreset = materialPresets[ initialMaterialKey ] || materialPresets.default;
 			const autoTrain = queryParams.get( 'autoTrain' ) === '1';
 			const noRotate = queryParams.get( 'noRotate' ) !== '0';

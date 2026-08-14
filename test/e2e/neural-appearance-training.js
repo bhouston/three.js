@@ -44,21 +44,31 @@ async function main() {
 		await fs.rm( outputDir, { recursive: true, force: true } );
 		await fs.mkdir( outputDir, { recursive: true } );
 
-		const page = await launchPage();
+		browser = await launchBrowser();
 		const signatures = new Set();
 
 		for ( const testCase of testCases ) {
 
-			const result = await runTrainingCase( page, testCase );
-			const signature = getReferenceSignature( result.json );
+			const page = await createPage( browser );
 
-			if ( signatures.has( signature ) ) {
+			try {
 
-				throw new Error( `${testCase.label}: teacher inputs match a previous fixture, so the material is not unique.` );
+				const result = await runTrainingCase( page, testCase );
+				const signature = getReferenceSignature( result.json );
+
+				if ( signatures.has( signature ) ) {
+
+					throw new Error( `${testCase.label}: teacher inputs match a previous fixture, so the material is not unique.` );
+
+				}
+
+				signatures.add( signature );
+
+			} finally {
+
+				await page.close();
 
 			}
-
-			signatures.add( signature );
 
 		}
 
@@ -167,7 +177,7 @@ async function runTrainingCase( page, testCase ) {
 
 }
 
-async function launchPage() {
+async function launchBrowser() {
 
 	const flags = [
 		'--hide-scrollbars',
@@ -181,7 +191,7 @@ async function launchPage() {
 	];
 	const viewport = { width: width * viewScale, height: height * viewScale };
 
-	browser = await puppeteer.launch( {
+	return await puppeteer.launch( {
 		headless: ( 'CI' in process.env || process.env.VISIBLE ) ? false : 'new',
 		env: { ...process.env, VK_DRIVER_FILES: '/usr/share/vulkan/icd.d/lvp_icd.x86_64.json' },
 		args: flags,
@@ -191,7 +201,11 @@ async function launchPage() {
 		userDataDir: './.puppeteer_profile'
 	} );
 
-	const page = await browser.newPage();
+}
+
+async function createPage( browserInstance ) {
+
+	const page = await browserInstance.newPage();
 	page.on( 'console', async msg => {
 
 		const text = msg.text().trim();

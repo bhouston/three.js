@@ -150,24 +150,24 @@ class NeuralAppearanceTrainer {
 				await gpuModel.syncToCPU( model, renderer );
 				lastLoss = await gpuModel.readLoss( renderer );
 
-			}
+				const manifest = createNeuralAppearanceManifest( model, settings );
+				validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );
+				validation.directional = evaluateRuntimeValidation( manifest, directionalValidationSamples, 0 );
+				validationLoss = validation.loss;
 
-			const manifest = createNeuralAppearanceManifest( model, settings );
-			validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );
-			validation.directional = evaluateRuntimeValidation( manifest, directionalValidationSamples, 0 );
-			validationLoss = validation.loss;
+				if ( onProgress ) {
 
-			if ( onProgress ) {
+					onProgress( {
+						iteration: iteration + 1,
+						iterations: settings.iterations,
+						loss: lastLoss,
+						validationLoss,
+						validation,
+						json: manifest,
+						learningRate: lr
+					} );
 
-				onProgress( {
-					iteration: iteration + 1,
-					iterations: settings.iterations,
-					loss: lastLoss,
-					validationLoss,
-					validation,
-					json: manifest,
-					learningRate: lr
-				} );
+				}
 
 			}
 
@@ -184,6 +184,16 @@ class NeuralAppearanceTrainer {
 		}
 
 		await gpuModel.syncToCPU( model, renderer );
+
+		if ( validation === null && completedIterations > 0 ) {
+
+			lastLoss = await gpuModel.readLoss( renderer );
+			const manifest = createNeuralAppearanceManifest( model, settings );
+			validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );
+			validation.directional = evaluateRuntimeValidation( manifest, directionalValidationSamples, 0 );
+			validationLoss = validation.loss;
+
+		}
 
 		const json = await exportNeuralAppearance( model, teacher, settings );
 

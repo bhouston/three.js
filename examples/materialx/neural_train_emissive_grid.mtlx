@@ -1,15 +1,15 @@
 <?xml version="1.0"?>
-<materialx version="1.39">
-  <surfacematerial name="mat_neural_train_emissive_grid" type="material" nodedef="ND_surfacematerial">
-    <input name="surfaceshader" type="surfaceshader" nodename="surface_shader1" />
-  </surfacematerial>
-  <standard_surface name="surface_shader1" type="surfaceshader" nodedef="ND_standard_surface_surfaceshader">
-    <input name="base" type="float" value="0.0" />
-    <input name="base_color" type="color3" value="0.0, 0.0, 0.0" />
-    <input name="specular" type="float" value="0.0" />
-    <input name="emission" type="float" value="0.8" />
-    <input name="emission_color" type="color3" output="out" nodegraph="emissive_rainbow_graph" />
-  </standard_surface>
+<materialx version="1.39" colorspace="lin_rec709">
+  <nodegraph name="NG_checkerboard_emission">
+    <texcoord name="uv0" type="vector2" />
+    <checkerboard name="checker" type="float" nodedef="ND_checkerboard_float">
+      <input name="color1" type="float" value="0.0" />
+      <input name="color2" type="float" value="0.8" />
+      <input name="uvtiling" type="vector2" value="4.0, 4.0" />
+      <input name="texcoord" type="vector2" nodename="uv0" />
+    </checkerboard>
+    <output name="out" type="float" nodename="checker" />
+  </nodegraph>
   <nodegraph name="emissive_rainbow_graph">
     <texcoord name="texcoord1" type="vector2" />
     <separate2 name="uv_components" type="vector2">
@@ -75,4 +75,16 @@
     </combine3>
     <output name="out" type="color3" nodename="emissive_color" />
   </nodegraph>
+  <standard_surface name="surface_shader1" type="surfaceshader" nodedef="ND_standard_surface_surfaceshader">
+    <input name="base" type="float" value="1.0" />
+    <input name="base_color" type="color3" output="out" nodegraph="emissive_rainbow_graph" />
+    <input name="specular" type="float" value="0.5" />
+    <input name="specular_roughness" type="float" value="0.22" />
+    <input name="metalness" type="float" value="0.0" />
+    <input name="emission" type="float" output="out" nodegraph="NG_checkerboard_emission" />
+    <input name="emission_color" type="color3" output="out" nodegraph="emissive_rainbow_graph" />
+  </standard_surface>
+  <surfacematerial name="mat_neural_train_emissive_grid" type="material" nodedef="ND_surfacematerial">
+    <input name="surfaceshader" type="surfaceshader" nodename="surface_shader1" />
+  </surfacematerial>
 </materialx>

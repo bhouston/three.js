@@ -13,6 +13,8 @@ import {
 	powerLog
 } from './NeuralAppearanceMLP.js';
 
+const OUTPUT_CLAMP_GRADIENT_LEAK = 0.01;
+
 function createModel( options, random ) {
 
 	const decoder = createMLP( DECODER_INPUT_SIZE, [ options.hiddenSize, options.hiddenSize ], 3, random, 'relu', 'linear' );
@@ -303,7 +305,7 @@ function trainBatch( model, samples, teacher, learningRate, step, maxGradientNor
 
 		}
 
-		const gradRawPrediction = gradPrediction.map( ( gradient, channel ) => rawPrediction[ channel ] > 0 ? gradient : 0 );
+		const gradRawPrediction = applyOutputClampGradient( rawPrediction, gradPrediction );
 		const gradDecoderInput = backwardMLP( model.decoder, decoderRun, gradRawPrediction );
 		const inputGradients = backwardDecoderInput( inputRun, gradDecoderInput, model.rotationWeights );
 
@@ -333,7 +335,7 @@ function trainBatch( model, samples, teacher, learningRate, step, maxGradientNor
 
 			}
 
-			const gradRawEmission = gradEmission.map( ( gradient, channel ) => rawEmission[ channel ] > 0 ? gradient : 0 );
+			const gradRawEmission = applyOutputClampGradient( rawEmission, gradEmission );
 			scatterLatentGradients( latentGrid, latentRun, backwardMLP( model.emissionHead, emissionRun, gradRawEmission ) );
 
 		}
@@ -368,6 +370,12 @@ function trainBatch( model, samples, teacher, learningRate, step, maxGradientNor
 	}
 
 	return loss;
+
+}
+
+function applyOutputClampGradient( rawOutput, gradOutput ) {
+
+	return gradOutput.map( ( gradient, channel ) => rawOutput[ channel ] > 0 ? gradient : gradient * OUTPUT_CLAMP_GRADIENT_LEAK );
 
 }
 
@@ -556,6 +564,7 @@ export {
 	backwardDecoderInput,
 	buildDecoderInput,
 	trainBatch,
+	applyOutputClampGradient,
 	clipModelGradients,
 	assertModelFinite,
 	assertFiniteArray,

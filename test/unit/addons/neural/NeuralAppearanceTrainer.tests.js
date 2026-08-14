@@ -1,6 +1,7 @@
 import {
 	NeuralAppearanceTrainer,
-	estimateTrainingMemory
+	estimateTrainingMemory,
+	getTrainingSampleCapacity
 } from '../../../../examples/jsm/neural/NeuralAppearanceTrainer.js';
 import {
 	createGpuMaterialTeacher,
@@ -74,6 +75,26 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( memory.latentTexels, 5461, 'counts texels across independent mip grids' );
 				assert.strictEqual( memory.trainingBytes, 5461 * 8 * 4 * 4, 'includes values, gradients, and two Adam moments' );
 				assert.strictEqual( memory.exportBytes, 5461 * 8 * 2, 'estimates eight FP16 latent channels' );
+
+			} );
+
+			QUnit.test( 'sizes GPU training batches for sampled mip records', ( assert ) => {
+
+				assert.strictEqual(
+					getTrainingSampleCapacity( { resolution: 4, batchSize: 6, fixedTrainingMip: - 1 } ),
+					18,
+					'allocates one dispatch slot for each sampled mip training record'
+				);
+				assert.strictEqual(
+					getTrainingSampleCapacity( { resolution: 4, batchSize: 6, fixedTrainingMip: 1 } ),
+					6,
+					'fixed-mip training only needs the requested batch size'
+				);
+				assert.strictEqual(
+					getTrainingSampleCapacity( { resolution: 4, batchSize: 6, fixedTrainingMip: - 1, sampleAllMips: true } ),
+					18,
+					'allocates one dispatch slot for each explicit mip sample when sampleAllMips is enabled'
+				);
 
 			} );
 
@@ -229,6 +250,41 @@ export default QUnit.module( 'Addons', () => {
 					assert.deepEqual( result.json.latents.textures[ 1 ].mipmaps[ mip ].data.slice( 0, 4 ), grid.data.slice( 4, 8 ), `exports trained high channels for mip ${mip}` );
 
 				}
+
+			} );
+
+			QUnit.test( 'supports backend configuration and validates GPU requirements', async ( assert ) => {
+
+				const teacher = createBatchTeacher();
+
+				// Explicit CPU backend
+				const cpuTrainer = new NeuralAppearanceTrainer( {
+					backend: 'cpu',
+					resolution: 2,
+					iterations: 1,
+					batchSize: 4,
+					hiddenSize: 4,
+					yieldEvery: 0,
+					seed: 1
+				} );
+
+				const cpuResult = await cpuTrainer.train( { material: {}, teacher } );
+				assert.strictEqual( cpuResult.json.format, 'three-neural-appearance', 'trains successfully with explicit CPU backend' );
+
+				// GPU backend without WebGPU renderer throws
+				const gpuTrainer = new NeuralAppearanceTrainer( {
+					backend: 'gpu',
+					resolution: 2,
+					iterations: 1,
+					batchSize: 4,
+					hiddenSize: 4
+				} );
+
+				await assert.rejects(
+					gpuTrainer.train( { material: {}, teacher, renderer: null } ),
+					/WebGPU renderer is required for GPU backend training/,
+					'rejects GPU backend without WebGPU renderer'
+				);
 
 			} );
 

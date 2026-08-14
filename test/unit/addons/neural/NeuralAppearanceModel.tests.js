@@ -6,6 +6,7 @@ import {
 	forwardDecoderInput,
 	backwardDecoderInput,
 	trainBatch,
+	applyOutputClampGradient,
 	clipModelGradients,
 	assertModelFinite
 } from '../../../../examples/jsm/neural/NeuralAppearanceModel.js';
@@ -86,7 +87,7 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'matches the non-negative output clamp in backpropagation', ( assert ) => {
+			QUnit.test( 'keeps final RGB channels trainable below the non-negative output clamp', ( assert ) => {
 
 				const outputLayer = {
 					inputSize: 20,
@@ -124,9 +125,19 @@ export default QUnit.module( 'Addons', () => {
 					weight: 1
 				} ], null, 0.1, 1, 100 );
 
-				assert.strictEqual( outputLayer.biases[ 0 ], - 1, 'does not send gradients through a clamped negative output' );
+				assert.ok( outputLayer.biases[ 0 ] > - 1, 'revives a clamped negative output toward a positive target' );
 				assert.ok( outputLayer.biases[ 1 ] < 1, 'still updates an active positive output' );
-				assert.strictEqual( outputLayer.biases[ 2 ], 0, 'uses the zero derivative at the clamp boundary' );
+				assert.ok( outputLayer.biases[ 2 ] > 0, 'updates an output at the clamp boundary toward a positive target' );
+
+			} );
+
+			QUnit.test( 'uses a small training gradient leak below the final output clamp', ( assert ) => {
+
+				assert.deepEqual(
+					applyOutputClampGradient( [ - 1, 0, 1 ], [ 2, 3, 4 ] ),
+					[ 0.02, 0.03, 4 ],
+					'lets clamped channels recover without applying the full active-channel gradient'
+				);
 
 			} );
 

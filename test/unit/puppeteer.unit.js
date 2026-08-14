@@ -137,18 +137,45 @@ function main() {
 		red( `# fail ${stats.failed}` );
 
 		// Keep the process running if testing in headful mode, otherwise close it.
-		testMode === 'headless' && close( stats.failed > 0 ? 1 : 0 );
+		if ( testMode === 'headless' ) {
 
-	} )();
+			await close( stats.failed > 0 ? 1 : 0 );
+
+		}
+
+	} )().catch( async ( err ) => {
+
+		console.error( err );
+		await close( 1 );
+
+	} );
 
 }
 
 process.on( 'SIGINT', () => close() );
 
-function close( exitCode = 1 ) {
+async function close( exitCode = 1 ) {
 
-	browser.close();
-	server.close();
+	try {
+
+		if ( server ) {
+
+			if ( server.closeAllConnections ) server.closeAllConnections();
+			server.close();
+
+		}
+
+	} catch ( e ) {}
+
+	try {
+
+		if ( browser ) await Promise.race( [
+			browser.close(),
+			new Promise( ( resolve ) => setTimeout( resolve, 500 ) )
+		] );
+
+	} catch ( e ) {}
+
 	process.exit( exitCode );
 
 }

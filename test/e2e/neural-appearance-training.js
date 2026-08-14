@@ -44,41 +44,31 @@ async function main() {
 		await fs.rm( outputDir, { recursive: true, force: true } );
 		await fs.mkdir( outputDir, { recursive: true } );
 
-		browser = await launchBrowser();
+		const page = await launchPage();
 		const signatures = new Set();
 
 		for ( const testCase of testCases ) {
 
-			const page = await createPage( browser );
+			const result = await runTrainingCase( page, testCase );
+			const signature = getReferenceSignature( result.json );
 
-			try {
+			if ( signatures.has( signature ) ) {
 
-				const result = await runTrainingCase( page, testCase );
-				const signature = getReferenceSignature( result.json );
-
-				if ( signatures.has( signature ) ) {
-
-					throw new Error( `${testCase.label}: teacher inputs match a previous fixture, so the material is not unique.` );
-
-				}
-
-				signatures.add( signature );
-
-			} finally {
-
-				await page.close();
+				throw new Error( `${testCase.label}: teacher inputs match a previous fixture, so the material is not unique.` );
 
 			}
+
+			signatures.add( signature );
 
 		}
 
 		console.green( `TEST PASSED! Neural appearance training matched ${testCases.length} teacher materials.` );
-		close( 0 );
+		await close( 0 );
 
 	} catch ( error ) {
 
 		console.red( error );
-		close( 1 );
+		await close( 1 );
 
 	}
 
@@ -177,7 +167,7 @@ async function runTrainingCase( page, testCase ) {
 
 }
 
-async function launchBrowser() {
+async function launchPage() {
 
 	const flags = [
 		'--hide-scrollbars',
@@ -191,7 +181,7 @@ async function launchBrowser() {
 	];
 	const viewport = { width: width * viewScale, height: height * viewScale };
 
-	return await puppeteer.launch( {
+	browser = await puppeteer.launch( {
 		headless: ( 'CI' in process.env || process.env.VISIBLE ) ? false : 'new',
 		env: { ...process.env, VK_DRIVER_FILES: '/usr/share/vulkan/icd.d/lvp_icd.x86_64.json' },
 		args: flags,
@@ -201,11 +191,7 @@ async function launchBrowser() {
 		userDataDir: './.puppeteer_profile'
 	} );
 
-}
-
-async function createPage( browserInstance ) {
-
-	const page = await browserInstance.newPage();
+	const page = await browser.newPage();
 	page.on( 'console', async msg => {
 
 		const text = msg.text().trim();
@@ -449,9 +435,28 @@ function validateTeacherInputs( teacherInputs, testCase ) {
 
 }
 
-function close( exitCode = 1 ) {
+async function close( exitCode = 1 ) {
 
-	if ( browser ) browser.close();
+	if ( browser ) {
+
+		try {
+
+			await browser.close();
+
+		} catch {
+
+			// ignore
+
+		}
+
+	}
+
+	if ( server.closeAllConnections ) {
+
+		server.closeAllConnections();
+
+	}
+
 	server.close();
 	process.exit( exitCode );
 

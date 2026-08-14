@@ -146,6 +146,110 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'evaluates dual-level trilinear shader blending across fractional mip levels', ( assert ) => {
+
+				const outputWeights = new Array( 3 * 20 ).fill( 0 );
+				outputWeights[ 0 ] = 1;
+				outputWeights[ 20 + 1 ] = 1;
+				outputWeights[ 40 + 2 ] = 1;
+				const json = {
+					latents: {
+						textures: [
+							{
+								wrap: 'repeat',
+								mipmaps: [
+									{ width: 2, height: 2, data: [ 0.2, 0.4, 0.6, 0, 0.2, 0.4, 0.6, 0, 0.2, 0.4, 0.6, 0, 0.2, 0.4, 0.6, 0 ] },
+									{ width: 1, height: 1, data: [ 0.8, 0.6, 0.4, 0 ] }
+								]
+							},
+							{
+								wrap: 'repeat',
+								mipmaps: [
+									{ width: 2, height: 2, data: new Array( 16 ).fill( 0 ) },
+									{ width: 1, height: 1, data: [ 0, 0, 0, 0 ] }
+								]
+							}
+						]
+					},
+					outputs: {
+						brdf: {
+							rotation: { weights: new Array( 8 * 12 ).fill( 0 ) },
+							layers: [ {
+								inputSize: 20,
+								outputSize: 3,
+								activation: 'linear',
+								weights: outputWeights,
+								biases: [ 0, 0, 0 ]
+							} ],
+							outputActivation: { type: 'linear' }
+						},
+						emission: {
+							layers: [ {
+								inputSize: 8,
+								outputSize: 3,
+								activation: 'linear',
+								weights: [
+									1, 0, 0, 0, 0, 0, 0, 0,
+									0, 1, 0, 0, 0, 0, 0, 0,
+									0, 0, 1, 0, 0, 0, 0, 0
+								],
+								biases: [ 0, 0, 0 ]
+							} ],
+							outputActivation: { type: 'linear' }
+						},
+						opacity: {
+							layers: [ {
+								inputSize: 8,
+								outputSize: 1,
+								activation: 'linear',
+								weights: [ 1, 0, 0, 0, 0, 0, 0, 0 ],
+								biases: [ 0 ]
+							} ],
+							outputActivation: { type: 'linear' }
+						}
+					}
+				};
+
+				const half = ( value ) => DataUtils.fromHalfFloat( DataUtils.toHalfFloat( value ) );
+				const direction = [ 0, 0, 1 ];
+
+				// Footprint where dx = sqrt(2) = 1.41421356 => log2(sqrt(2)) = 0.5 (halfway between mip 0 and mip 1)
+				// Base mip 0 (latents [0.2, 0.4, 0.6]), coarse mip 1 (latents [0.8, 0.6, 0.4])
+				const trilinearOutputs = evaluateNeuralAppearanceOutputs( json, {
+					uv: [ 0.25, 0.25 ],
+					wi: direction,
+					wo: direction,
+					duvDx: [ Math.SQRT2 / 2, 0 ],
+					duvDy: [ 0, Math.SQRT2 / 2 ],
+					lodMode: 'trilinear'
+				} );
+
+				const expectedBrdf = [
+					half( 0.2 ) * 0.5 + half( 0.8 ) * 0.5,
+					half( 0.4 ) * 0.5 + half( 0.6 ) * 0.5,
+					half( 0.6 ) * 0.5 + half( 0.4 ) * 0.5
+				];
+
+				assert.ok( Math.abs( trilinearOutputs.brdf[ 0 ] - expectedBrdf[ 0 ] ) < 1e-6, 'trilinearly blends red brdf channel' );
+				assert.ok( Math.abs( trilinearOutputs.brdf[ 1 ] - expectedBrdf[ 1 ] ) < 1e-6, 'trilinearly blends green brdf channel' );
+				assert.ok( Math.abs( trilinearOutputs.brdf[ 2 ] - expectedBrdf[ 2 ] ) < 1e-6, 'trilinearly blends blue brdf channel' );
+				assert.ok( Math.abs( trilinearOutputs.emission[ 0 ] - expectedBrdf[ 0 ] ) < 1e-6, 'trilinearly blends emission output' );
+				assert.ok( Math.abs( trilinearOutputs.opacity - ( half( 0.2 ) * 0.5 + half( 0.8 ) * 0.5 ) ) < 1e-6, 'trilinearly blends opacity output' );
+
+				const deterministicOutputs = evaluateNeuralAppearanceOutputs( json, {
+					uv: [ 0.25, 0.25 ],
+					wi: direction,
+					wo: direction,
+					duvDx: [ Math.SQRT2 / 2, 0 ],
+					duvDy: [ 0, Math.SQRT2 / 2 ],
+					lodMode: 'deterministic'
+				} );
+
+				// Deterministic round(0.5) selects mip 1
+				assert.deepEqual( deterministicOutputs.brdf, [ half( 0.8 ), half( 0.6 ), half( 0.4 ) ], 'deterministic mode selects nearest integer mip without blending' );
+
+			} );
+
 		} );
 
 	} );

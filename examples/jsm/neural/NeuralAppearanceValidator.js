@@ -1,7 +1,6 @@
 import { powerLog } from './NeuralAppearanceMLP.js';
 import {
 	getSampleWeightSum,
-	dot,
 	cross,
 	normalize
 } from './NeuralAppearanceModel.js';
@@ -75,7 +74,7 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 
 		}
 
-		if ( Number.isFinite( outputs.opacity) && Number.isFinite( sample.opacityTarget ) ) {
+		if ( Number.isFinite( outputs.opacity ) && Number.isFinite( sample.opacityTarget ) ) {
 
 			opacityCount ++;
 			opacityLoss += Math.abs( outputs.opacity - sample.opacityTarget ) * invAuxBatch;

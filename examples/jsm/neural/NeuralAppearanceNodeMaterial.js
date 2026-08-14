@@ -4,6 +4,8 @@ import {
 	evaluateNeuralBRDF,
 	evaluateNeuralEmission,
 	evaluateNeuralOpacity,
+	createEvaluateNeuralBRDFFn,
+	createNeuralFragmentContext,
 	createOutputUniforms
 } from './NeuralAppearanceTSL.js';
 
@@ -111,13 +113,23 @@ class NeuralAppearanceLightingModel extends THREE.LightingModel {
 
 		super();
 		this.material = material;
+		this._evaluateBRDF = null;
+		this._fragmentContext = null;
+
+	}
+
+	start( builder ) {
+
+		this._evaluateBRDF = createEvaluateNeuralBRDFFn( this.material );
+		this._fragmentContext = createNeuralFragmentContext( this.material );
+		super.start( builder );
 
 	}
 
 	direct( { lightDirection, lightColor, reflectedLight } ) {
 
 		const material = this.material;
-		const brdf = evaluateNeuralBRDF( material, lightDirection );
+		const brdf = evaluateNeuralBRDF( material, lightDirection, this._fragmentContext, this._evaluateBRDF );
 
 		reflectedLight.directDiffuse.addAssign( brdf.mul( lightColor ).mul( material._intensityNode ) );
 

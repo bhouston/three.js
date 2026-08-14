@@ -11,11 +11,62 @@ function evaluateNeuralAppearanceJson( json, reference ) {
 
 function evaluateNeuralAppearanceOutputs( json, reference ) {
 
-	const mip = selectRuntimeMipLevel( json, reference );
-	const latents = sampleRuntimeLatents( json, reference.uv || [ 0.5, 0.5 ], mip );
 	const wi = normalize( reference.wi );
 	const wo = normalize( reference.wo );
 	const brdf = json.outputs.brdf;
+	const lodMode = reference.lodMode || 'deterministic';
+
+	if ( lodMode === 'trilinear' && reference.duvDx && reference.duvDy ) {
+
+		const continuousLod = computeContinuousRuntimeMipLevel( json, reference );
+		const baseMip = Math.floor( continuousLod );
+		const fracMip = continuousLod - baseMip;
+		const maxMip = json.latents.textures[ 0 ].mipmaps.length - 1;
+		const nextMip = Math.min( baseMip + 1, maxMip );
+
+		const latents0 = sampleRuntimeLatents( json, reference.uv || [ 0.5, 0.5 ], baseMip );
+		const latents1 = sampleRuntimeLatents( json, reference.uv || [ 0.5, 0.5 ], nextMip );
+
+		const input0 = buildDecoderInput( latents0, brdf.rotation.weights, wi, wo );
+		const input1 = buildDecoderInput( latents1, brdf.rotation.weights, wi, wo );
+
+		const brdf0 = evaluateDecoderLayers( brdf.layers, input0, brdf.outputActivation );
+		const brdf1 = evaluateDecoderLayers( brdf.layers, input1, brdf.outputActivation );
+
+		const blendedBrdf = [
+			brdf0[ 0 ] * ( 1 - fracMip ) + brdf1[ 0 ] * fracMip,
+			brdf0[ 1 ] * ( 1 - fracMip ) + brdf1[ 1 ] * fracMip,
+			brdf0[ 2 ] * ( 1 - fracMip ) + brdf1[ 2 ] * fracMip
+		];
+
+		const result = { brdf: blendedBrdf };
+
+		if ( json.outputs.emission ) {
+
+			const emission0 = evaluateDecoderLayers( json.outputs.emission.layers, latents0, json.outputs.emission.outputActivation );
+			const emission1 = evaluateDecoderLayers( json.outputs.emission.layers, latents1, json.outputs.emission.outputActivation );
+			result.emission = [
+				emission0[ 0 ] * ( 1 - fracMip ) + emission1[ 0 ] * fracMip,
+				emission0[ 1 ] * ( 1 - fracMip ) + emission1[ 1 ] * fracMip,
+				emission0[ 2 ] * ( 1 - fracMip ) + emission1[ 2 ] * fracMip
+			];
+
+		}
+
+		if ( json.outputs.opacity ) {
+
+			const opacity0 = evaluateDecoderLayers( json.outputs.opacity.layers, latents0, json.outputs.opacity.outputActivation )[ 0 ];
+			const opacity1 = evaluateDecoderLayers( json.outputs.opacity.layers, latents1, json.outputs.opacity.outputActivation )[ 0 ];
+			result.opacity = opacity0 * ( 1 - fracMip ) + opacity1 * fracMip;
+
+		}
+
+		return result;
+
+	}
+
+	const mip = selectRuntimeMipLevel( json, reference );
+	const latents = sampleRuntimeLatents( json, reference.uv || [ 0.5, 0.5 ], mip );
 	const input = buildDecoderInput( latents, brdf.rotation.weights, wi, wo );
 	const result = {
 		brdf: evaluateDecoderLayers( brdf.layers, input, brdf.outputActivation )
@@ -37,7 +88,7 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 
 }
 
-function selectRuntimeMipLevel( json, reference ) {
+function computeContinuousRuntimeMipLevel( json, reference ) {
 
 	const mipmaps = json.latents.textures[ 0 ].mipmaps;
 	const maxMip = mipmaps.length - 1;
@@ -49,11 +100,18 @@ function selectRuntimeMipLevel( json, reference ) {
 		const dy = Math.hypot( reference.duvDy[ 0 ] * base.width, reference.duvDy[ 1 ] * base.height );
 		const computed = Math.min( Math.max( Math.log2( Math.max( dx, dy, 1 ) ), 0 ), maxMip );
 
-		return Math.floor( computed + 0.5 );
+		return computed;
 
 	}
 
-	return Math.min( Math.max( Math.round( reference.mip || 0 ), 0 ), maxMip );
+	return Math.min( Math.max( reference.mip || 0, 0 ), maxMip );
+
+}
+
+function selectRuntimeMipLevel( json, reference ) {
+
+	const continuous = computeContinuousRuntimeMipLevel( json, reference );
+	return Math.floor( continuous + 0.5 );
 
 }
 
@@ -155,6 +213,7 @@ function evaluateDecoderLayers( layers, input, outputActivation = { type: 'linea
 export {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs,
+	computeContinuousRuntimeMipLevel,
 	selectRuntimeMipLevel,
 	sampleRuntimeLatents,
 	evaluateDecoderLayers

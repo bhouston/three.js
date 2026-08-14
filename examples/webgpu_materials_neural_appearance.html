@@ -170,6 +170,7 @@
 			<label for="builtInMaterial"><strong>Built-in material:</strong></label>
 			<select id="builtInMaterial">
 				<option value="uvGrid">UV rainbow waves</option>
+				<option value="uvGridGlossy">UV rainbow glossy</option>
 				<option value="lambert">Lambert</option>
 				<option value="lambertRed">Lambert red</option>
 				<option value="lambertGreen">Lambert green</option>
@@ -257,11 +258,15 @@
 			const materialPresets = {
 				default: {
 					file: 'neural_train_uv_grid.mtlx',
-					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 32 }
+					settings: { sourceResolution: 32, latentDownsample: 1, iterations: 6000, batchSize: 256, hiddenSize: 32 }
 				},
 				uvGrid: {
 					file: 'neural_train_uv_grid.mtlx',
-					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 32 }
+					settings: { sourceResolution: 32, latentDownsample: 1, iterations: 6000, batchSize: 256, hiddenSize: 32 }
+				},
+				uvGridGlossy: {
+					file: 'neural_train_uv_grid_glossy.mtlx',
+					settings: { sourceResolution: 32, latentDownsample: 1, iterations: 6000, batchSize: 256, hiddenSize: 32 }
 				},
 				lambert: {
 					file: 'neural_train_lambert_constant.mtlx',
@@ -281,27 +286,27 @@
 				},
 				glossy: {
 					file: 'neural_train_glossy_constant.mtlx',
-					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 1024, hiddenSize: 64 }
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 512, hiddenSize: 64 }
 				},
 				glossyRed: {
 					file: 'neural_train_glossy_red.mtlx',
-					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 1024, hiddenSize: 64 }
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 512, hiddenSize: 64 }
 				},
 				glossyGold: {
 					file: 'neural_train_glossy_gold.mtlx',
-					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 1024, hiddenSize: 32 }
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 512, hiddenSize: 32 }
 				},
 				normalMap: {
 					file: 'neural_train_normal_map.mtlx',
-					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 64 }
+					settings: { sourceResolution: 32, latentDownsample: 1, iterations: 6000, batchSize: 512, hiddenSize: 64 }
 				},
 				emissiveGrid: {
 					file: 'neural_train_emissive_grid.mtlx',
-					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 32 }
+					settings: { sourceResolution: 32, latentDownsample: 1, iterations: 6000, batchSize: 512, hiddenSize: 32 }
 				},
 				alphaCutoff: {
 					file: 'neural_train_alpha_cutoff.mtlx',
-					settings: { sourceResolution: 256, latentDownsample: 1, iterations: 6000, batchSize: 1024, hiddenSize: 32 }
+					settings: { sourceResolution: 32, latentDownsample: 1, iterations: 6000, batchSize: 512, hiddenSize: 32 }
 				}
 			};
 			const initialMaterialKey = queryParams.get( 'test' ) || 'uvGrid';
@@ -335,12 +340,15 @@
 			const requestedDownsample = queryParams.has( 'latentDownsample' ) ?
 				readNumberQuery( 'latentDownsample', 1 ) :
 				( queryParams.has( 'resolution' ) ? Math.max( requestedSourceResolution / requestedResolution, 1 ) : presetSettings.latentDownsample );
+			const requestedBackend = queryParams.get( 'backend' ) === 'cpu' ? 'cpu' : 'gpu';
 			const params = {
+				backend: requestedBackend,
 				view: 'MaterialX teacher',
 				sourceResolution: requestedSourceResolution,
 				latentDownsample: requestedDownsample,
 				resolution: Math.max( 1, Math.floor( requestedSourceResolution / requestedDownsample ) ),
 				fixedMip: readNumberQuery( 'fixedMip', - 1 ),
+				lodMode: queryParams.get( 'lodMode' ) || 'deterministic',
 				teacherFilterMode: queryParams.get( 'teacherFilterMode' ) || 'gaussian',
 				iterations: readNumberQuery( 'iterations', presetSettings.iterations ),
 				batchSize: readNumberQuery( 'batchSize', presetSettings.batchSize ),
@@ -401,9 +409,17 @@
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0x15171c );
 
-				const keyLight = new THREE.DirectionalLight( 0xffffff, 1 );
-				keyLight.position.set( 0, 0, 1 );
+				const keyLight = new THREE.DirectionalLight( 0xffffff, 0.9 );
+				keyLight.position.set( 3.2, 2.4, 2.6 );
 				scene.add( keyLight );
+
+				const fillLight = new THREE.DirectionalLight( 0xffffff, 0.32 );
+				fillLight.position.set( - 2.8, 0.6, 2.2 );
+				scene.add( fillLight );
+
+				const rimLight = new THREE.DirectionalLight( 0xffffff, 0.45 );
+				rimLight.position.set( - 1.4, 3.2, - 2.8 );
+				scene.add( rimLight );
 
 				renderer = new THREE.WebGPURenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
@@ -434,11 +450,13 @@
 
 				const gui = new GUI();
 				trainingSettingControllers.push(
+					gui.add( params, 'backend', [ 'gpu', 'cpu' ] ).name( 'backend' ),
 					gui.add( params, 'sourceResolution', [ 1, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 ] ).name( 'source resolution' ).onChange( updateTrainingEstimate ),
 					gui.add( params, 'latentDownsample', [ 1, 2, 4, 8, 16, 32, 64 ] ).name( 'latent downsample' ).onChange( updateTrainingEstimate ),
 					gui.add( params, 'resolution' ).name( 'latent resolution' ).listen().disable()
 				);
 				gui.add( params, 'fixedMip', { all: - 1, 'mip 0 baseline': 0, 'mip 1': 1, 'mip 2': 2, 'mip 3': 3, 'mip 4': 4, 'mip 5': 5, 'mip 6': 6 } ).name( 'training mip' ).onChange( updateTrainingEstimate );
+				gui.add( params, 'lodMode', [ 'trilinear', 'deterministic', 'stochastic' ] ).name( 'LOD mode' ).onChange( updateView );
 				trainingSettingControllers.push(
 					gui.add( params, 'iterations', 100, 10000, 100 ).onChange( updateTrainingEstimate ),
 					gui.add( params, 'batchSize', [ 64, 256, 512, 1024, 4096 ] ).onChange( updateTrainingEstimate ),
@@ -578,6 +596,7 @@
 					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, {
 						intensity: params.intensity,
 						emissiveIntensity: params.emissiveIntensity,
+						lodMode: params.lodMode,
 						fixedMipLevel: Number( params.fixedMip )
 					} );
 					materialName.textContent = json.name || file.name;
@@ -721,6 +740,7 @@
 				try {
 
 					const trainer = new NeuralAppearanceTrainer( {
+						backend: params.backend,
 						name: `${materialXMaterial.name || 'MaterialX'} neural appearance`,
 						resolution: Number( params.resolution ),
 						sourceResolution: Number( params.sourceResolution ),
@@ -791,7 +811,12 @@
 					updateNeuralRepresentationSize( latestJson );
 					const neuralData = new NeuralAppearanceLoader().parse( cloneNeuralAppearanceJson( latestJson ) );
 					disposeNeuralMaterial();
-					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity, emissiveIntensity: params.emissiveIntensity, fixedMipLevel: Number( params.fixedMip ) } );
+					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, {
+						intensity: params.intensity,
+						emissiveIntensity: params.emissiveIntensity,
+						lodMode: params.lodMode,
+						fixedMipLevel: Number( params.fixedMip )
+					} );
 					params.view = 'trained neural';
 					comparisonVisible = true;
 					window.__neuralAppearanceLastLoss = result.loss;
@@ -831,7 +856,12 @@
 
 				const neuralData = new NeuralAppearanceLoader().parse( json );
 				disposeNeuralMaterial();
-				neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity, emissiveIntensity: params.emissiveIntensity, fixedMipLevel: Number( params.fixedMip ) } );
+				neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, {
+					intensity: params.intensity,
+					emissiveIntensity: params.emissiveIntensity,
+					lodMode: params.lodMode,
+					fixedMipLevel: Number( params.fixedMip )
+				} );
 				params.view = 'trained neural';
 				comparisonVisible = true;
 				updateView();
@@ -1060,6 +1090,12 @@
 			function updateView() {
 
 				if ( neuralMaterial ) {
+
+					if ( neuralMaterial.lodMode !== params.lodMode ) {
+
+						neuralMaterial.lodMode = params.lodMode;
+
+					}
 
 					neuralMaterial.intensity = params.intensity;
 					neuralMaterial.emissiveIntensity = params.emissiveIntensity;

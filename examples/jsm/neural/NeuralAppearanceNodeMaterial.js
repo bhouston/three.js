@@ -3,6 +3,7 @@ import * as TSL from 'three/tsl';
 import {
 	evaluateNeuralBRDF,
 	evaluateNeuralEmission,
+	evaluateNeuralIBL,
 	evaluateNeuralOpacity,
 	createEvaluateNeuralBRDFFn,
 	createNeuralFragmentContext,
@@ -149,11 +150,62 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 	}
 
 	/**
+	 * Setups neural environment lighting from material or scene environments.
+	 *
+	 * @param {NodeBuilder} builder - The current node builder.
+	 * @return {?NeuralAppearanceEnvironmentNode} The neural environment node.
+	 */
+	setupEnvironment( builder ) {
+
+		let envNode = super.setupEnvironment( builder );
+
+		if ( envNode === null && builder.environmentNode ) {
+
+			envNode = builder.environmentNode;
+
+		}
+
+		return envNode ? new NeuralAppearanceEnvironmentNode( this, envNode ) : null;
+
+	}
+
+	/**
 	 * Neural lighting is accumulated by the custom lighting model.
 	 *
 	 * @return {Node<vec3>} Black outgoing light before direct lights are applied.
 	 */
 	setupOutgoingLight() {
+
+		return TSL.vec3( 0 );
+
+	}
+
+}
+
+class NeuralAppearanceEnvironmentNode extends THREE.LightingNode {
+
+	constructor( material, envNode = null ) {
+
+		super();
+		this.material = material;
+		this.envNode = envNode;
+
+	}
+
+	setup( builder ) {
+
+		let envNode = this.envNode;
+
+		if ( envNode.isTextureNode || envNode.isMaterialReferenceNode ) {
+
+			const value = envNode.isTextureNode ? envNode.value : builder.material[ envNode.property ];
+			envNode = TSL.pmremTexture( value );
+
+		}
+
+		builder.context.reflectedLight.indirectSpecular.addAssign(
+			evaluateNeuralIBL( this.material, envNode ).mul( this.material._intensityNode )
+		);
 
 		return TSL.vec3( 0 );
 

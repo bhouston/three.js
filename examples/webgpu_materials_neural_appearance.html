@@ -174,7 +174,7 @@
 				<option value="lambertRed">Lambert red</option>
 				<option value="lambertGreen">Lambert green</option>
 				<option value="lambertBlue">Lambert blue</option>
-				<option value="glossyGold">Glossy gold</option>
+					<option value="glossyGold">Metallic gold</option>
 				<option value="velvet">Velvet</option>
 				<option value="checkerboard">Checkerboard 4x4</option>
 				<option value="checkerboardTransparency">Checkerboard transparency</option>
@@ -240,6 +240,7 @@
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
 			import { NeuralAppearanceLoader } from 'three/addons/loaders/NeuralAppearanceLoader.js';
 			import { NeuralAppearanceNodeMaterial } from 'three/addons/neural/NeuralAppearanceNodeMaterial.js';
@@ -247,6 +248,8 @@
 
 			let camera, scene, renderer, mesh, neuralMesh;
 			let materialXMaterial, neuralMaterial, whiteControlMaterial, previewPlaceholderMaterial, latestJson;
+			let environmentMap = null;
+			const directLights = [];
 			let isTraining = false;
 			let activeTrainer = null;
 			let comparisonVisible = false;
@@ -364,6 +367,10 @@
 				showNeuralMaterial: queryParams.get( 'showNeuralMaterial' ) !== 'false',
 				intensity: readNumberQuery( 'intensity', 1 ),
 				emissiveIntensity: readNumberQuery( 'emissiveIntensity', 1 ),
+				directLighting: queryParams.get( 'directLighting' ) !== '0',
+				environmentLighting: queryParams.get( 'environmentLighting' ) !== '0',
+				environmentIntensity: readNumberQuery( 'environmentIntensity', 1 ),
+				environmentRotation: readNumberQuery( 'environmentRotation', 0 ),
 				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
 				seed: readNumberQuery( 'seed', 1 )
 			};
@@ -398,6 +405,18 @@
 
 			};
 
+			window.__neuralAppearanceSetLighting = ( lighting ) => {
+
+				params.directLighting = lighting !== 'environment';
+				params.environmentLighting = lighting !== 'direct';
+				updateLighting();
+				return {
+					directLighting: params.directLighting,
+					environmentLighting: params.environmentLighting
+				};
+
+			};
+
 			init();
 
 			async function init() {
@@ -420,15 +439,21 @@
 
 				const keyLight = new THREE.DirectionalLight( 0xffffff, 0.9 );
 				keyLight.position.set( 3.2, 2.4, 2.6 );
+				keyLight.userData.baseIntensity = keyLight.intensity;
 				scene.add( keyLight );
+				directLights.push( keyLight );
 
 				const fillLight = new THREE.DirectionalLight( 0xffffff, 0.32 );
 				fillLight.position.set( - 2.8, 0.6, 2.2 );
+				fillLight.userData.baseIntensity = fillLight.intensity;
 				scene.add( fillLight );
+				directLights.push( fillLight );
 
 				const rimLight = new THREE.DirectionalLight( 0xffffff, 0.45 );
 				rimLight.position.set( - 1.4, 3.2, - 2.8 );
+				rimLight.userData.baseIntensity = rimLight.intensity;
 				scene.add( rimLight );
+				directLights.push( rimLight );
 
 				renderer = new THREE.WebGPURenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
@@ -438,6 +463,12 @@
 				renderer.toneMappingExposure = 0.9;
 				renderer.domElement.id = 'neuralAppearanceCanvas';
 				container.appendChild( renderer.domElement );
+				await renderer.init();
+				environmentMap = await new HDRLoader()
+					.setPath( 'textures/equirectangular/' )
+					.loadAsync( 'san_giuseppe_bridge_2k.hdr' );
+				environmentMap.mapping = THREE.EquirectangularReflectionMapping;
+				updateLighting();
 
 				const controls = new OrbitControls( camera, renderer.domElement );
 				controls.target.set( 0, 0, 0 );
@@ -473,6 +504,11 @@
 				);
 				gui.add( params, 'intensity', 0, 3, 0.01 ).onChange( updateView );
 				gui.add( params, 'emissiveIntensity', 0, 3, 0.01 ).name( 'emissive intensity' ).onChange( updateView );
+				const lightingFolder = gui.addFolder( 'lighting' );
+				lightingFolder.add( params, 'directLighting' ).name( 'direct lights' ).onChange( updateLighting );
+				lightingFolder.add( params, 'environmentLighting' ).name( 'IBL environment' ).onChange( updateLighting );
+				lightingFolder.add( params, 'environmentIntensity', 0, 3, 0.01 ).name( 'IBL intensity' ).onChange( updateLighting );
+				lightingFolder.add( params, 'environmentRotation', - Math.PI, Math.PI, 0.01 ).name( 'IBL rotation' ).onChange( updateLighting );
 				updateTrainingEstimate();
 
 				builtInMaterial.addEventListener( 'change', onBuiltInMaterialSelected );
@@ -1178,6 +1214,21 @@
 
 			}
 
+			function updateLighting() {
+
+				for ( const light of directLights ) {
+
+					light.intensity = params.directLighting ? light.userData.baseIntensity : 0;
+
+				}
+
+				scene.environment = params.environmentLighting ? environmentMap : null;
+				scene.environmentIntensity = params.environmentIntensity;
+				scene.environmentRotation.y = params.environmentRotation;
+				if ( mesh ) updateView();
+
+			}
+
 			function download() {
 
 				if ( latestJson === undefined || latestJson === null ) return;
@@ -1244,7 +1295,9 @@
 					( 20 * hiddenSize + hiddenSize ) +
 					( hiddenSize * hiddenSize + hiddenSize ) +
 					( hiddenSize * 3 + 3 );
-				const representationBytes = memory.exportBytes + ( rotationValues + layerValues ) * 4;
+				const iblHiddenSize = Math.min( Math.max( hiddenSize, 16 ), 32 );
+				const iblLayerValues = ( 14 * iblHiddenSize + iblHiddenSize ) + ( iblHiddenSize * 13 + 13 );
+				const representationBytes = memory.exportBytes + ( rotationValues + layerValues + iblLayerValues ) * 4;
 				const recordsPerIteration = Number( params.batchSize ) * ( Number( params.fixedMip ) >= 0 ? 1 : memory.mipLevels );
 				const records = recordsPerIteration * Number( params.iterations );
 				const fixedMipText = Number( params.fixedMip ) >= 0 ? `, fixed mip ${params.fixedMip}` : '';

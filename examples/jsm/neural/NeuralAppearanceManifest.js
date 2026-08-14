@@ -2,12 +2,15 @@ import {
 	FORMAT,
 	VERSION,
 	LATENT_CHANNELS,
-	DECODER_INPUT_SIZE
+	DECODER_INPUT_SIZE,
+	IBL_INPUT_SIZE
 } from './NeuralAppearanceFormat.js';
 import { normalize } from './NeuralAppearanceModel.js';
 import {
 	evaluateNeuralAppearanceJson,
-	evaluateNeuralAppearanceOutputs
+	evaluateNeuralAppearanceOutputs,
+	evaluateNeuralIBLWhiteFurnace,
+	integrateNeuralBRDFWhiteFurnace
 } from './NeuralAppearanceRuntime.js';
 import {
 	assignTeacherTargets,
@@ -63,6 +66,11 @@ function createNeuralAppearanceManifest( model, options ) {
 			},
 			layers: serializeLayers( model.decoder ),
 			outputActivation: options.outputActivation
+		},
+		ibl: {
+			inputSize: IBL_INPUT_SIZE,
+			layers: serializeLayers( model.iblHead ),
+			outputActivation: { type: 'linear' }
 		}
 	};
 
@@ -155,10 +163,15 @@ async function createReferenceEvaluations( json, teacher ) {
 
 		const prediction = evaluateNeuralAppearanceJson( json, sample );
 		const outputs = evaluateNeuralAppearanceOutputs( json, sample );
+		const iblWhite = evaluateNeuralIBLWhiteFurnace( json, sample );
+		const integratedWhite = integrateNeuralBRDFWhiteFurnace( json, sample, 32 );
 
 		sample.mip = 0;
 		sample.targetRgb = sample.target.slice();
 		sample.rgb = prediction;
+		sample.ibl = outputs.ibl;
+		sample.iblWhiteFurnace = iblWhite;
+		sample.integratedWhiteFurnace = integratedWhite;
 		if ( sample.emissionTarget ) {
 
 			sample.targetEmission = sample.emissionTarget.slice();

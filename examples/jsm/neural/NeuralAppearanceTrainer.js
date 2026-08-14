@@ -4,6 +4,7 @@ import {
 } from './NeuralAppearanceModel.js';
 import {
 	generateTrainingSamples,
+	generateIBLTrainingSamples,
 	generateValidationSamples,
 	normalizeDirectLightingTargets,
 	getMipLevelCount
@@ -40,6 +41,9 @@ const DEFAULT_OPTIONS = {
 	cosineAnnealingScale: 0.01,
 	seed: 1,
 	hiddenSize: 32,
+	iblHiddenSize: 32,
+	iblSampleCount: 128,
+	iblIntegrationSamples: 32,
 	yieldEvery: 8,
 	colorAugmentation: false,
 	minimumTrainingCosine: 0.05,
@@ -184,10 +188,12 @@ class NeuralAppearanceTrainer {
 		}
 
 		await gpuModel.syncToCPU( model, renderer );
+		const iblTrainingSamples = await generateIBLTrainingSamples( settings, teacher, createRandom( settings.seed + 0x85ebca6b ) );
+		fitIBLHeadFromSamples( model, iblTrainingSamples );
 
-		if ( validation === null && completedIterations > 0 ) {
+		if ( completedIterations > 0 ) {
 
-			lastLoss = await gpuModel.readLoss( renderer );
+			if ( validation === null ) lastLoss = await gpuModel.readLoss( renderer );
 			const manifest = createNeuralAppearanceManifest( model, settings );
 			validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );
 			validation.directional = evaluateRuntimeValidation( manifest, directionalValidationSamples, 0 );
@@ -360,6 +366,49 @@ function getLearningRate( options, iteration ) {
 
 }
 
+function fitIBLHeadFromSamples( model, samples ) {
+
+	if ( ! model.iblHead || samples.length === 0 ) return;
+
+	const outputLayer = model.iblHead.layers[ model.iblHead.layers.length - 1 ];
+	const target = new Array( outputLayer.outputSize ).fill( 0 );
+	let count = 0;
+
+	for ( const sample of samples ) {
+
+		if ( Array.isArray( sample.iblTarget ) === false ) continue;
+
+		for ( let i = 0; i < target.length; i ++ ) {
+
+			target[ i ] += sample.iblTarget[ i ];
+
+		}
+
+		count ++;
+
+	}
+
+	if ( count === 0 ) return;
+
+	for ( let i = 0; i < target.length; i ++ ) target[ i ] /= count;
+
+	for ( const layer of model.iblHead.layers ) {
+
+		layer.weights.fill( 0 );
+		layer.biases.fill( 0 );
+
+	}
+
+	model.iblHead.layers[ 0 ].biases.fill( 1 );
+
+	for ( let i = 0; i < outputLayer.biases.length; i ++ ) {
+
+		outputLayer.biases[ i ] = target[ i ];
+
+	}
+
+}
+
 function createRandom( seed ) {
 
 	let state = seed >>> 0;
@@ -402,6 +451,7 @@ export {
 	evaluateNeuralAppearanceOutputs,
 	evaluateRuntimeValidation,
 	estimateTrainingMemory,
+	fitIBLHeadFromSamples,
 	getTrainingSampleCapacity,
 	generateTrainingSamples,
 	normalizeDirectLightingTargets,

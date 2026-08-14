@@ -5,7 +5,7 @@ function createManifest( fill = 0 ) {
 
 	return {
 		format: 'three-neural-appearance',
-		version: 2,
+		version: 3,
 		name: 'unit test material',
 		latents: {
 			channels: 8,
@@ -43,6 +43,25 @@ function createManifest( fill = 0 ) {
 					}
 				],
 				outputActivation: { type: 'linear' }
+			},
+			ibl: {
+				inputSize: 14,
+				layers: [
+					{
+						inputSize: 14,
+						outputSize: 13,
+						activation: 'linear',
+						biases: [
+							0, 0, 1,
+							fill, 0, 0,
+							0, 0, 1,
+							0,
+							fill, 0, 0
+						],
+						weights: new Array( 14 * 13 ).fill( fill )
+					}
+				],
+				outputActivation: { type: 'linear' }
 			}
 		}
 	};
@@ -60,12 +79,12 @@ export default QUnit.module( 'Addons', () => {
 				const loader = new NeuralAppearanceLoader();
 				const material = new NeuralAppearanceNodeMaterial( loader.parse( createManifest( 0 ) ) );
 				const textures = material.neuralAppearanceData.latentTextures;
-				const weightVector = material._outputUniforms.brdf.layers[ 0 ].weights.array[ 0 ];
+				const weightVector = material._outputUniforms.brdf.parameters.array[ material._outputUniforms.brdf.layers[ 0 ].weightsOffset ];
 				const next = loader.parse( createManifest( 0.25 ) );
 
 				assert.strictEqual( material.updateFromData( next ), true, 'reuses the compiled layout' );
 				assert.strictEqual( material.neuralAppearanceData.latentTextures, textures, 'keeps the original latent textures' );
-				assert.strictEqual( material._outputUniforms.brdf.layers[ 0 ].weights.array[ 0 ], weightVector, 'keeps the original weight uniforms' );
+				assert.strictEqual( material._outputUniforms.brdf.parameters.array[ material._outputUniforms.brdf.layers[ 0 ].weightsOffset ], weightVector, 'keeps the original weight uniforms' );
 				assert.notEqual( weightVector.x, 0, 'writes the new packed weights' );
 
 			} );

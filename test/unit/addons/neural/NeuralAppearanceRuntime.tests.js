@@ -4,6 +4,30 @@ import {
 	evaluateNeuralAppearanceOutputs
 } from '../../../../examples/jsm/neural/NeuralAppearanceRuntime.js';
 
+function createIBLOutput() {
+
+	return {
+		inputSize: 14,
+		layers: [
+			{
+				inputSize: 14,
+				outputSize: 13,
+				activation: 'linear',
+				weights: new Array( 14 * 13 ).fill( 0 ),
+				biases: [
+					0, 0, 1,
+					0.1, 0.2, 0.3,
+					0, 0, 1,
+					0,
+					0.01, 0.02, 0.03
+				]
+			}
+		],
+		outputActivation: { type: 'linear' }
+	};
+
+}
+
 export default QUnit.module( 'Addons', () => {
 
 	QUnit.module( 'Neural', () => {
@@ -46,7 +70,8 @@ export default QUnit.module( 'Addons', () => {
 								biases: [ 0, 0, 0 ]
 							} ],
 							outputActivation: { type: 'linear' }
-						}
+						},
+						ibl: createIBLOutput()
 					}
 				};
 				const direction = [ 0, 0, 1 ];
@@ -110,6 +135,7 @@ export default QUnit.module( 'Addons', () => {
 							} ],
 							outputActivation: { type: 'linear' }
 						},
+						ibl: createIBLOutput(),
 						emission: {
 							layers: [ {
 								inputSize: 8,
@@ -183,6 +209,7 @@ export default QUnit.module( 'Addons', () => {
 							} ],
 							outputActivation: { type: 'linear' }
 						},
+						ibl: createIBLOutput(),
 						emission: {
 							layers: [ {
 								inputSize: 8,

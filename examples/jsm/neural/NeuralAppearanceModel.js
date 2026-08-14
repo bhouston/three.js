@@ -1,6 +1,8 @@
 import {
 	LATENT_CHANNELS,
-	DECODER_INPUT_SIZE
+	DECODER_INPUT_SIZE,
+	IBL_INPUT_SIZE,
+	IBL_OUTPUT_SIZE
 } from './NeuralAppearanceFormat.js';
 import {
 	createMLP,
@@ -12,6 +14,8 @@ const LATENT_INIT_SCALE = 0.35;
 function createModel( options, random ) {
 
 	const decoder = createMLP( DECODER_INPUT_SIZE, [ options.hiddenSize, options.hiddenSize ], 3, random, 'relu', 'linear' );
+	const iblHiddenSize = options.iblHiddenSize || Math.min( Math.max( options.hiddenSize || 32, 16 ), 32 );
+	const iblHead = createMLP( IBL_INPUT_SIZE, [ iblHiddenSize ], IBL_OUTPUT_SIZE, random, 'relu', 'linear' );
 	const emissionHead = options.outputFeatures && options.outputFeatures.emission ?
 		createMLP( LATENT_CHANNELS, [], 3, random, 'relu', 'linear' ) :
 		null;
@@ -22,6 +26,7 @@ function createModel( options, random ) {
 	const latentGrids = createLatentMipGrids( options.resolution, options.resolution, random );
 	const model = {
 		decoder,
+		iblHead,
 		emissionHead,
 		opacityHead,
 		rotationWeights,
@@ -206,6 +211,65 @@ function buildDecoderInput( latents, rotationWeights, wi, wo ) {
 
 }
 
+function forwardIBLInput( latents, rotationWeights, wo ) {
+
+	const decoderInput = forwardDecoderInput( latents, rotationWeights, [ 0, 0, 1 ], wo );
+	const output = latents.slice();
+
+	for ( const frame of decoderInput.frames ) {
+
+		output.push( dot( wo, frame.t ), dot( wo, frame.b ), dot( wo, frame.n ) );
+
+	}
+
+	return { output, latents, wo, frames: decoderInput.frames };
+
+}
+
+function buildIBLInput( latents, rotationWeights, wo ) {
+
+	const input = forwardIBLInput( latents, rotationWeights, wo ).output;
+
+	if ( input.length !== IBL_INPUT_SIZE ) {
+
+		throw new Error( `THREE.NeuralAppearanceModel: IBL input has ${ input.length } values, expected ${ IBL_INPUT_SIZE }.` );
+
+	}
+
+	return input;
+
+}
+
+function unpackIBLOutput( values ) {
+
+	if ( values.length !== IBL_OUTPUT_SIZE ) {
+
+		throw new Error( `THREE.NeuralAppearanceModel: IBL output has ${ values.length } values, expected ${ IBL_OUTPUT_SIZE }.` );
+
+	}
+
+	return {
+		diffuseDirection: normalize( values.slice( 0, 3 ) ),
+		diffuseReflectance: values.slice( 3, 6 ).map( nonnegative ),
+		specularDirection: normalize( values.slice( 6, 9 ) ),
+		specularRoughness: sigmoid( values[ 9 ] ),
+		specularWeight: values.slice( 10, 13 ).map( nonnegative )
+	};
+
+}
+
+function nonnegative( value ) {
+
+	return Math.max( value, 0 );
+
+}
+
+function sigmoid( value ) {
+
+	return 1 / ( 1 + Math.exp( - value ) );
+
+}
+
 function linearRotationValue( latents, weights, outputIndex ) {
 
 	let value = 0;
@@ -271,6 +335,9 @@ export {
 	sampleLatents,
 	forwardDecoderInput,
 	buildDecoderInput,
+	forwardIBLInput,
+	buildIBLInput,
+	unpackIBLOutput,
 	getSampleWeightSum,
 	dot,
 	cross,

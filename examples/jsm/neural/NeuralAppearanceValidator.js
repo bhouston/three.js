@@ -6,7 +6,9 @@ import {
 } from './NeuralAppearanceModel.js';
 import {
 	evaluateNeuralAppearanceJson,
-	evaluateNeuralAppearanceOutputs
+	evaluateNeuralAppearanceOutputs,
+	evaluateNeuralIBLWhiteFurnace,
+	integrateNeuralBRDFWhiteFurnace
 } from './NeuralAppearanceRuntime.js';
 
 const DEFAULT_PREVIEW_SAMPLE_COUNT = 64;
@@ -20,6 +22,9 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 	let emissionCount = 0;
 	let opacityLoss = 0;
 	let opacityCount = 0;
+	let iblLoss = 0;
+	let iblCount = 0;
+	const whiteFurnace = createDifferenceMetric();
 	const angularBins = {
 		wi: createAngularBins(),
 		wo: createAngularBins()
@@ -81,6 +86,32 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 
 		}
 
+		if ( outputs.ibl ) {
+
+			const predictedWhite = evaluateNeuralIBLWhiteFurnace( json, sample );
+			const integratedWhite = sample.directionalAlbedo || integrateNeuralBRDFWhiteFurnace( json, sample, 32 );
+			accumulateDifferenceMetric( whiteFurnace, predictedWhite, integratedWhite );
+
+			if ( Array.isArray( sample.iblTarget ) ) {
+
+				const targetWhite = [
+					sample.iblTarget[ 3 ] + sample.iblTarget[ 10 ],
+					sample.iblTarget[ 4 ] + sample.iblTarget[ 11 ],
+					sample.iblTarget[ 5 ] + sample.iblTarget[ 12 ]
+				];
+
+				for ( let i = 0; i < 3; i ++ ) {
+
+					iblLoss += Math.abs( predictedWhite[ i ] - targetWhite[ i ] ) * invAuxBatch / 3;
+
+				}
+
+				iblCount ++;
+
+			}
+
+		}
+
 		accumulateDifferenceMetric( reciprocity, prediction, reciprocalPrediction );
 		accumulateDifferenceMetric( angularSmoothness, prediction, perturbedWiPrediction );
 		accumulateDifferenceMetric( angularSmoothness, prediction, perturbedWoPrediction );
@@ -96,13 +127,14 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 
 	}
 
-	const auxiliaryLoss = emissionLoss + opacityLoss;
+	const auxiliaryLoss = emissionLoss + opacityLoss + iblLoss;
 
 	return {
-		loss: emissionCount + opacityCount > 0 ? auxiliaryLoss : brdfLoss,
+		loss: emissionCount + opacityCount + iblCount > 0 ? auxiliaryLoss : brdfLoss,
 		brdfLoss,
 		emissionLoss: emissionCount > 0 ? emissionLoss : null,
 		opacityLoss: opacityCount > 0 ? opacityLoss : null,
+		iblLoss: iblCount > 0 ? iblLoss : null,
 		sampleCount: samples.length,
 		mipLevels: json.latents.textures[ 0 ].mipmaps.length,
 		preview,
@@ -111,7 +143,8 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 			wo: finalizeAngularBins( angularBins.wo )
 		},
 		reciprocity: finalizeDifferenceMetric( reciprocity ),
-		angularSmoothness: finalizeDifferenceMetric( angularSmoothness )
+		angularSmoothness: finalizeDifferenceMetric( angularSmoothness ),
+		whiteFurnace: finalizeDifferenceMetric( whiteFurnace )
 	};
 
 }

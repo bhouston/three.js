@@ -1,7 +1,15 @@
 import { DataUtils } from 'three';
 import { LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
 import { sigmoid } from './NeuralAppearanceMLP.js';
-import { buildDecoderInput, normalize, wrapIndex } from './NeuralAppearanceModel.js';
+import {
+	buildDecoderInput,
+	buildIBLInput,
+	unpackIBLOutput,
+	normalize,
+	wrapIndex
+} from './NeuralAppearanceModel.js';
+
+const DEFAULT_IBL_INTEGRATION_SAMPLES = 64;
 
 function evaluateNeuralAppearanceJson( json, reference ) {
 
@@ -40,6 +48,10 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 		];
 
 		const result = { brdf: blendedBrdf };
+		const ibl0 = evaluateIBLHead( json, latents0, wo );
+		const ibl1 = evaluateIBLHead( json, latents1, wo );
+
+		result.ibl = mixIBLOutputs( ibl0, ibl1, fracMip );
 
 		if ( json.outputs.emission ) {
 
@@ -69,7 +81,8 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 	const latents = sampleRuntimeLatents( json, reference.uv || [ 0.5, 0.5 ], mip );
 	const input = buildDecoderInput( latents, brdf.rotation.weights, wi, wo );
 	const result = {
-		brdf: evaluateDecoderLayers( brdf.layers, input, brdf.outputActivation )
+		brdf: evaluateDecoderLayers( brdf.layers, input, brdf.outputActivation ),
+		ibl: evaluateIBLHead( json, latents, wo )
 	};
 
 	if ( json.outputs.emission ) {
@@ -85,6 +98,94 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 	}
 
 	return result;
+
+}
+
+function evaluateIBLHead( json, latents, wo ) {
+
+	const ibl = json.outputs.ibl;
+	const input = buildIBLInput( latents, json.outputs.brdf.rotation.weights, wo );
+
+	return unpackIBLOutput( evaluateDecoderLayers( ibl.layers, input, { type: 'raw' } ) );
+
+}
+
+function mixIBLOutputs( a, b, amount ) {
+
+	return {
+		diffuseDirection: normalize( mixArray( a.diffuseDirection, b.diffuseDirection, amount ) ),
+		diffuseReflectance: mixArray( a.diffuseReflectance, b.diffuseReflectance, amount ),
+		specularDirection: normalize( mixArray( a.specularDirection, b.specularDirection, amount ) ),
+		specularRoughness: a.specularRoughness * ( 1 - amount ) + b.specularRoughness * amount,
+		specularWeight: mixArray( a.specularWeight, b.specularWeight, amount )
+	};
+
+}
+
+function mixArray( a, b, amount ) {
+
+	return a.map( ( value, index ) => value * ( 1 - amount ) + b[ index ] * amount );
+
+}
+
+function evaluateNeuralIBLWhiteFurnace( json, reference ) {
+
+	const ibl = evaluateNeuralAppearanceOutputs( json, reference ).ibl;
+
+	return [
+		ibl.diffuseReflectance[ 0 ] + ibl.specularWeight[ 0 ],
+		ibl.diffuseReflectance[ 1 ] + ibl.specularWeight[ 1 ],
+		ibl.diffuseReflectance[ 2 ] + ibl.specularWeight[ 2 ]
+	];
+
+}
+
+function integrateNeuralBRDFWhiteFurnace( json, reference, sampleCount = DEFAULT_IBL_INTEGRATION_SAMPLES ) {
+
+	const total = [ 0, 0, 0 ];
+	const wo = normalize( reference.wo || [ 0, 0, 1 ] );
+
+	for ( let i = 0; i < sampleCount; i ++ ) {
+
+		const wi = sampleHemisphereCosineHammersley( i, sampleCount );
+		const brdf = evaluateNeuralAppearanceJson( json, { ...reference, wi, wo } );
+
+		for ( let channel = 0; channel < 3; channel ++ ) {
+
+			total[ channel ] += brdf[ channel ] / sampleCount * Math.PI;
+
+		}
+
+	}
+
+	return total;
+
+}
+
+function sampleHemisphereCosineHammersley( index, count ) {
+
+	const u = ( index + 0.5 ) / Math.max( 1, count );
+	const v = radicalInverseVdc( index );
+	const r = Math.sqrt( u );
+	const phi = 2 * Math.PI * v;
+
+	return [
+		r * Math.cos( phi ),
+		r * Math.sin( phi ),
+		Math.sqrt( Math.max( 0, 1 - u ) )
+	];
+
+}
+
+function radicalInverseVdc( bits ) {
+
+	bits = ( bits << 16 ) | ( bits >>> 16 );
+	bits = ( ( bits & 0x55555555 ) << 1 ) | ( ( bits & 0xAAAAAAAA ) >>> 1 );
+	bits = ( ( bits & 0x33333333 ) << 2 ) | ( ( bits & 0xCCCCCCCC ) >>> 2 );
+	bits = ( ( bits & 0x0F0F0F0F ) << 4 ) | ( ( bits & 0xF0F0F0F0 ) >>> 4 );
+	bits = ( ( bits & 0x00FF00FF ) << 8 ) | ( ( bits & 0xFF00FF00 ) >>> 8 );
+
+	return ( bits >>> 0 ) * 2.3283064365386963e-10;
 
 }
 
@@ -206,6 +307,12 @@ function evaluateDecoderLayers( layers, input, outputActivation = { type: 'linea
 
 	}
 
+	if ( outputActivation.type === 'raw' ) {
+
+		return values;
+
+	}
+
 	return values.map( ( value ) => Math.max( 0, value ) );
 
 }
@@ -213,6 +320,9 @@ function evaluateDecoderLayers( layers, input, outputActivation = { type: 'linea
 export {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs,
+	evaluateIBLHead,
+	evaluateNeuralIBLWhiteFurnace,
+	integrateNeuralBRDFWhiteFurnace,
 	computeContinuousRuntimeMipLevel,
 	selectRuntimeMipLevel,
 	sampleRuntimeLatents,

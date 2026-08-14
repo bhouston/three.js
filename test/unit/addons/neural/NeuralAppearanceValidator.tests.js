@@ -52,6 +52,23 @@ export default QUnit.module( 'Addons', () => {
 								biases: [ 0.5, 0.5, 0.5 ]
 							} ],
 							outputActivation: { type: 'linear' }
+						},
+						ibl: {
+							inputSize: 14,
+							layers: [ {
+								inputSize: 14,
+								outputSize: 13,
+								activation: 'linear',
+								weights: new Array( 14 * 13 ).fill( 0 ),
+								biases: [
+									0, 0, 1,
+									0.4, 0.4, 0.4,
+									0, 0, 1,
+									0,
+									0.1, 0.1, 0.1
+								]
+							} ],
+							outputActivation: { type: 'linear' }
 						}
 					}
 				};
@@ -75,6 +92,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( validation.preview.samples.length, 1, 'builds preview' );
 				assert.ok( Number.isFinite( validation.reciprocity.meanAbsoluteDifference ), 'computes reciprocity metric' );
 				assert.ok( Number.isFinite( validation.angularSmoothness.meanAbsoluteDifference ), 'computes angular smoothness metric' );
+				assert.ok( Number.isFinite( validation.whiteFurnace.meanAbsoluteDifference ), 'computes white-furnace metric' );
 
 			} );
 

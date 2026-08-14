@@ -17,7 +17,9 @@ import {
 	LATENT_CHANNELS,
 	LATENT_TEXTURES,
 	CHANNELS_PER_TEXTURE,
-	DECODER_INPUT_SIZE as BRDF_INPUT_SIZE
+	DECODER_INPUT_SIZE as BRDF_INPUT_SIZE,
+	IBL_INPUT_SIZE,
+	IBL_OUTPUT_SIZE
 } from '../neural/NeuralAppearanceFormat.js';
 
 /**
@@ -181,8 +183,15 @@ function toHalfFloatArray( data ) {
 
 function normalizeOutputs( outputs ) {
 
+	if ( ! outputs || ! outputs.ibl ) {
+
+		throw new Error( 'THREE.NeuralAppearanceLoader: Manifest must define outputs.ibl.' );
+
+	}
+
 	return {
 		brdf: normalizeOutputHead( outputs.brdf, 'outputs.brdf', BRDF_INPUT_SIZE, 3, true ),
+		ibl: normalizeOutputHead( outputs.ibl, 'outputs.ibl', IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, false ),
 		emission: outputs.emission ? normalizeOutputHead( outputs.emission, 'outputs.emission', LATENT_CHANNELS, 3, false ) : null,
 		opacity: outputs.opacity ? normalizeOpacityHead( outputs.opacity ) : null
 	};

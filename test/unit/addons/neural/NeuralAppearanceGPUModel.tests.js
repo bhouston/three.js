@@ -29,7 +29,8 @@ export default QUnit.module( 'Addons', () => {
 				// layer 0: 20 * 8 = 160 weights, 8 biases
 				// layer 1: 8 * 8 = 64 weights, 8 biases
 				// layer 2: 8 * 3 = 24 weights, 3 biases
-				// total = 96 + 160 + 8 + 64 + 8 + 24 + 3 = 363
+				// direct total = 96 + 160 + 8 + 64 + 8 + 24 + 3 = 363
+				// IBL default hidden size is 16: 14 * 16 + 16 + 16 * 13 + 13 = 461
 				assert.strictEqual( baseLayout.rotationOffset, 0, 'rotation starts at offset 0' );
 				assert.strictEqual( baseLayout.rotationCount, 96, 'rotation has 96 weights' );
 				assert.strictEqual( baseLayout.layer0WeightsOffset, 96, 'layer 0 weights offset is 96' );
@@ -44,7 +45,9 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( baseLayout.layer2WeightsCount, 24, 'layer 2 weights count is 24' );
 				assert.strictEqual( baseLayout.layer2BiasesOffset, 360, 'layer 2 biases offset is 360' );
 				assert.strictEqual( baseLayout.layer2BiasesCount, 3, 'layer 2 biases count is 3' );
-				assert.strictEqual( baseLayout.totalWeights, 363, 'total weights matches sum of layers' );
+				assert.strictEqual( baseLayout.iblLayer0WeightsCount, 14 * 16, 'IBL layer 0 weights count uses default hidden size' );
+				assert.strictEqual( baseLayout.iblLayer1WeightsCount, 16 * 13, 'IBL layer 1 weights count uses 13 outputs' );
+				assert.strictEqual( baseLayout.totalWeights, 824, 'total weights matches sum of direct and IBL layers' );
 
 				// Multi-level mip pyramid for resolution 4 (4x4=16, 2x2=4, 1x1=1 => 21 texels => 168 floats)
 				assert.strictEqual( baseLayout.mipLevels.length, 3, 'creates 3 mip levels (4x4, 2x2, 1x1)' );
@@ -71,6 +74,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.ok( auxLayout.opacityWeightsOffset > 0, 'allocates opacity weights' );
 				assert.strictEqual( auxLayout.opacityWeightsCount, 8, 'opacity weights count is 8' );
 				assert.strictEqual( auxLayout.opacityBiasesCount, 1, 'opacity biases count is 1' );
+				assert.ok( auxLayout.iblLayer0WeightsOffset > 0, 'allocates required IBL weights' );
 
 			} );
 
@@ -123,6 +127,7 @@ export default QUnit.module( 'Addons', () => {
 					assert.strictEqual( latentsArray[ i ], mip0.data[ i ], `latent float ${i} matches` );
 
 				}
+				assert.strictEqual( weightsArray[ gpuModel.layout.iblLayer1BiasesOffset ], cpuModel.iblHead.layers[ 1 ].biases[ 0 ], 'IBL head weight layout is initialized' );
 
 			} );
 
@@ -189,6 +194,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( data[ stride + 7 ], 0, 'sample 1 mip' );
 				assert.strictEqual( data[ stride + 15 ], 0.0, 'sample 1 no emission' );
 				assert.strictEqual( data[ stride + 19 ], - 1.0, 'sample 1 no opacity' );
+				assert.strictEqual( data[ 20 ], 0, 'sample 0 default IBL target is zero-filled' );
 
 			} );
 
@@ -281,6 +287,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( cpuModel.decoder.layers[ 0 ].weights[ 0 ], 0.75, 'synced decoder layer 0 weight' );
 				assert.strictEqual( cpuModel.decoder.layers[ 1 ].weights[ 0 ], 0.75, 'synced decoder layer 1 weight' );
 				assert.strictEqual( cpuModel.decoder.layers[ 2 ].weights[ 0 ], 0.75, 'synced decoder layer 2 weight' );
+				assert.strictEqual( cpuModel.iblHead.layers[ 0 ].weights[ 0 ], 0.75, 'synced IBL layer 0 weight' );
 				assert.strictEqual( cpuModel.emissionHead.layers[ 0 ].weights[ 0 ], 0.75, 'synced emission head weight' );
 				assert.strictEqual( cpuModel.opacityHead.layers[ 0 ].weights[ 0 ], 0.75, 'synced opacity head weight' );
 

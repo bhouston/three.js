@@ -42,6 +42,23 @@ function fakeData( weight = 0 ) {
 					biases: [ weight, 0, 0 ]
 				} ],
 				outputActivation: { type: 'linear' }
+			},
+			ibl: {
+				inputSize: 14,
+				layers: [ {
+					inputSize: 14,
+					outputSize: 13,
+					activation: 'linear',
+					weights: new Array( 14 * 13 ).fill( weight ),
+					biases: [
+						0, 0, 1,
+						weight, 0, 0,
+						0, 0, 1,
+						0,
+						weight, 0, 0
+					]
+				} ],
+				outputActivation: { type: 'linear' }
 			}
 		}
 	};
@@ -90,6 +107,9 @@ export default QUnit.module( 'Addons', () => {
 						rotation: { weights: new Array( 96 ).fill( 0 ), inputSize: 8, outputSize: 12 },
 						layers: [ { weights: new Array( 60 ).fill( 0 ), biases: [ 0, 0, 0 ], inputSize: 20, outputSize: 3 } ]
 					},
+					ibl: {
+						layers: [ { weights: new Array( 14 * 13 ).fill( 0 ), biases: new Array( 13 ).fill( 0 ), inputSize: 14, outputSize: 13 } ]
+					},
 					emission: {
 						layers: [ { weights: new Array( 24 ).fill( 0 ), biases: [ 0, 0, 0 ], inputSize: 8, outputSize: 3 } ]
 					},
@@ -101,8 +121,10 @@ export default QUnit.module( 'Addons', () => {
 				const uniforms = createOutputUniforms( outputs );
 
 				assert.ok( uniforms.brdf, 'creates brdf uniforms' );
-				assert.ok( uniforms.brdf.rotationWeights, 'creates rotation uniform node' );
+				assert.ok( uniforms.brdf.parameters, 'creates packed parameter uniform node' );
+				assert.strictEqual( uniforms.brdf.rotationWeightsOffset, 0, 'stores rotation offset' );
 				assert.strictEqual( uniforms.brdf.layers.length, 1, 'creates 1 layer for brdf' );
+				assert.ok( uniforms.ibl, 'creates IBL uniforms' );
 				assert.ok( uniforms.emission, 'creates emission uniforms' );
 				assert.strictEqual( uniforms.emission.layers.length, 1, 'creates 1 layer for emission' );
 				assert.ok( uniforms.opacity, 'creates opacity uniforms' );
@@ -127,13 +149,15 @@ export default QUnit.module( 'Addons', () => {
 			QUnit.test( 'updates packed decoder uniforms in place', ( assert ) => {
 
 				const uniforms = createOutputUniforms( fakeData( 0 ).outputs );
-				const first = uniforms.brdf.layers[ 0 ].weights.array[ 0 ];
+				const first = uniforms.brdf.parameters.array[ uniforms.brdf.layers[ 0 ].weightsOffset ];
+				const bias = uniforms.brdf.parameters.array[ uniforms.brdf.layers[ 0 ].biasesOffset ];
 
 				updateOutputUniforms( uniforms, fakeData( 7 ).outputs );
 
-				assert.strictEqual( uniforms.brdf.layers[ 0 ].weights.array[ 0 ], first, 'keeps the same Vector4 instances' );
+				assert.strictEqual( uniforms.brdf.parameters.array[ uniforms.brdf.layers[ 0 ].weightsOffset ], first, 'keeps the same Vector4 instances' );
 				assert.strictEqual( first.x, 7, 'writes new packed weights into the existing array' );
-				assert.strictEqual( uniforms.brdf.layers[ 0 ].biases.array[ 0 ].x, 7, 'writes new packed biases' );
+				assert.strictEqual( uniforms.brdf.parameters.array[ uniforms.brdf.layers[ 0 ].biasesOffset ], bias, 'keeps the same packed bias vector' );
+				assert.strictEqual( bias.x, 7, 'writes new packed biases' );
 
 			} );
 

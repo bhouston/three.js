@@ -2,7 +2,8 @@ import {
 	createModel,
 	createLatentGrid,
 	sampleLatents,
-	forwardDecoderInput
+	forwardDecoderInput,
+	buildIBLInput
 } from '../../../../examples/jsm/neural/NeuralAppearanceModel.js';
 import { forwardMLP } from '../../../../examples/jsm/neural/NeuralAppearanceMLP.js';
 
@@ -26,6 +27,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( model.latentGrids[ 2 ].width, 1, 'finest grid width is 1' );
 				assert.ok( model.emissionHead !== null, 'creates emission head' );
 				assert.ok( model.opacityHead !== null, 'creates opacity head' );
+				assert.ok( model.iblHead !== null, 'creates required IBL head' );
 				assert.strictEqual( model.rotationWeights.length, 96, 'allocates 8 * 12 rotation weights' );
 
 			} );
@@ -127,6 +129,7 @@ export default QUnit.module( 'Addons', () => {
 				const inputRun = forwardDecoderInput( latents, rotationWeights, wi, wo );
 				assert.strictEqual( inputRun.output.length, 20, 'produces 20-channel decoder input (8 latents + 2 * 6 frame projections)' );
 				assert.deepEqual( inputRun.output.slice( 8, 14 ), [ 0, 0, 1, 0, 0, 1 ], 'projects directions into the first default frame' );
+				assert.strictEqual( buildIBLInput( latents, rotationWeights, wo ).length, 14, 'produces 14-channel IBL input (8 latents + 2 * 3 view projections)' );
 
 			} );
 

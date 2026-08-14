@@ -1,7 +1,7 @@
 import { StorageBufferAttribute } from 'three/webgpu';
 import { Vector4 } from 'three';
 import { storage, uniform, uniformArray } from 'three/tsl';
-import { LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
+import { IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
 
 const FIXED_POINT_SCALE = 1e5;
 const GRADIENT_NORM_SCALE = 1e5;
@@ -12,6 +12,7 @@ const GRADIENT_NORM_SCALE = 1e5;
 function computeModelLayout( options = {} ) {
 
 	const hiddenSize = options.hiddenSize || 32;
+	const iblHiddenSize = options.iblHiddenSize || Math.min( Math.max( hiddenSize, 16 ), 32 );
 	const supportsEmission = Boolean( options.outputFeatures && options.outputFeatures.emission );
 	const supportsOpacity = Boolean( options.outputFeatures && options.outputFeatures.opacity );
 
@@ -39,6 +40,17 @@ function computeModelLayout( options = {} ) {
 	const layer2BiasesCount = 3;
 
 	let currentOffset = layer2BiasesOffset + layer2BiasesCount;
+
+	// IBL Head: 14 -> iblHiddenSize -> 13
+	const iblLayer0WeightsOffset = currentOffset;
+	const iblLayer0WeightsCount = IBL_INPUT_SIZE * iblHiddenSize;
+	const iblLayer0BiasesOffset = iblLayer0WeightsOffset + iblLayer0WeightsCount;
+	const iblLayer0BiasesCount = iblHiddenSize;
+	const iblLayer1WeightsOffset = iblLayer0BiasesOffset + iblLayer0BiasesCount;
+	const iblLayer1WeightsCount = iblHiddenSize * IBL_OUTPUT_SIZE;
+	const iblLayer1BiasesOffset = iblLayer1WeightsOffset + iblLayer1WeightsCount;
+	const iblLayer1BiasesCount = IBL_OUTPUT_SIZE;
+	currentOffset = iblLayer1BiasesOffset + iblLayer1BiasesCount;
 
 	// Auxiliary: Emission Head (8 -> 3)
 	let emissionWeightsOffset = - 1;
@@ -143,11 +155,12 @@ function computeModelLayout( options = {} ) {
 
 	const activationStride = actCurrent;
 
-	// Sample Buffer Stride: 20 floats
-	const sampleStride = 20;
+	// Sample Buffer Stride: 20 direct/aux floats + 13 IBL target floats.
+	const sampleStride = 20 + IBL_OUTPUT_SIZE;
 
 	return {
 		hiddenSize,
+		iblHiddenSize,
 		supportsEmission,
 		supportsOpacity,
 		totalWeights,
@@ -165,6 +178,14 @@ function computeModelLayout( options = {} ) {
 		layer2WeightsCount,
 		layer2BiasesOffset,
 		layer2BiasesCount,
+		iblLayer0WeightsOffset,
+		iblLayer0WeightsCount,
+		iblLayer0BiasesOffset,
+		iblLayer0BiasesCount,
+		iblLayer1WeightsOffset,
+		iblLayer1WeightsCount,
+		iblLayer1BiasesOffset,
+		iblLayer1BiasesCount,
 		emissionWeightsOffset,
 		emissionWeightsCount,
 		emissionBiasesOffset,
@@ -282,6 +303,10 @@ class NeuralAppearanceGPUModel {
 		// Decoder Layer 2 (H -> 3)
 		copyLayerWeightsToGPU( cpuModel.decoder.layers[ 2 ], weights, this.layout.layer2WeightsOffset, this.layout.layer2BiasesOffset );
 
+		// IBL Head (14 -> H_ibl -> 13)
+		copyLayerWeightsToGPU( cpuModel.iblHead.layers[ 0 ], weights, this.layout.iblLayer0WeightsOffset, this.layout.iblLayer0BiasesOffset );
+		copyLayerWeightsToGPU( cpuModel.iblHead.layers[ 1 ], weights, this.layout.iblLayer1WeightsOffset, this.layout.iblLayer1BiasesOffset );
+
 		// Emission Head (8 -> 3)
 		if ( cpuModel.emissionHead ) {
 
@@ -396,6 +421,13 @@ class NeuralAppearanceGPUModel {
 
 			}
 
+			const iblTarget = sample.iblTarget || [];
+			for ( let channel = 0; channel < IBL_OUTPUT_SIZE; channel ++ ) {
+
+				data[ base + 20 + channel ] = Number.isFinite( iblTarget[ channel ] ) ? iblTarget[ channel ] : 0;
+
+			}
+
 		}
 
 		this.samplesAttribute.needsUpdate = true;
@@ -428,6 +460,8 @@ class NeuralAppearanceGPUModel {
 		copyLayerWeightsFromGPU( cpuModel.decoder.layers[ 0 ], weights, this.layout.layer0WeightsOffset, this.layout.layer0BiasesOffset );
 		copyLayerWeightsFromGPU( cpuModel.decoder.layers[ 1 ], weights, this.layout.layer1WeightsOffset, this.layout.layer1BiasesOffset );
 		copyLayerWeightsFromGPU( cpuModel.decoder.layers[ 2 ], weights, this.layout.layer2WeightsOffset, this.layout.layer2BiasesOffset );
+		copyLayerWeightsFromGPU( cpuModel.iblHead.layers[ 0 ], weights, this.layout.iblLayer0WeightsOffset, this.layout.iblLayer0BiasesOffset );
+		copyLayerWeightsFromGPU( cpuModel.iblHead.layers[ 1 ], weights, this.layout.iblLayer1WeightsOffset, this.layout.iblLayer1BiasesOffset );
 
 		if ( cpuModel.emissionHead ) {
 

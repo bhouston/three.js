@@ -119,6 +119,154 @@ async function generateValidationSamples( options, teacher ) {
 
 }
 
+async function generateIBLTrainingSamples( options, teacher, random ) {
+
+	const queryCount = Math.max( 1, Math.min( options.iblSampleCount || Math.ceil( options.batchSize / 4 ), options.batchSize ) );
+	const integrationSamples = Math.max( 4, options.iblIntegrationSamples || 32 );
+	const gridSize = Math.max( 1, Math.ceil( Math.sqrt( queryCount ) ) );
+	const records = [];
+	const queries = [];
+
+	for ( let i = 0; i < queryCount; i ++ ) {
+
+		const uv = [
+			( i % gridSize + random() ) / gridSize,
+			( Math.floor( i / gridSize ) + random() ) / gridSize
+		];
+		const wo = sampleHemisphereCosine( random );
+		const query = {
+			uv,
+			wo,
+			mip: 0,
+			records: []
+		};
+
+		for ( let j = 0; j < integrationSamples; j ++ ) {
+
+			const wi = sampleHemisphereCosineHammersley( j, integrationSamples );
+			const record = {
+				uv: uv.slice(),
+				wi,
+				wo: wo.slice(),
+				normal: [ 0, 0, 1 ],
+				tangent: [ 1, 0, 0 ],
+				bitangent: [ 0, 1, 0 ],
+				duvDx: [ 1 / Math.max( 1, options.resolution ), 0 ],
+				duvDy: [ 0, 1 / Math.max( 1, options.resolution ) ],
+				mip: 0,
+				encoderInputs: teacher.encodeInputs ? teacher.encodeInputs( uv ) : [ uv[ 0 ], uv[ 1 ] ]
+			};
+
+			query.records.push( record );
+			records.push( record );
+
+		}
+
+		queries.push( query );
+
+	}
+
+	await assignTeacherTargets( records, teacher );
+
+	for ( const query of queries ) {
+
+		query.iblTarget = fitIBLTargetFromRecords( query.records );
+		query.directionalAlbedo = query.iblTarget.slice( 3, 6 ).map( ( value, index ) => value + query.iblTarget[ 10 + index ] );
+		query.weight = 1;
+		query.target = query.directionalAlbedo.slice();
+		query.wi = [ 0, 0, 1 ];
+		query.normal = [ 0, 0, 1 ];
+		query.tangent = [ 1, 0, 0 ];
+		query.bitangent = [ 0, 1, 0 ];
+		query.duvDx = [ 1 / Math.max( 1, options.resolution ), 0 ];
+		query.duvDy = [ 0, 1 / Math.max( 1, options.resolution ) ];
+		query.encoderInputs = teacher.encodeInputs ? teacher.encodeInputs( query.uv ) : [ query.uv[ 0 ], query.uv[ 1 ] ];
+
+	}
+
+	return queries;
+
+}
+
+function fitIBLTargetFromRecords( records ) {
+
+	const albedo = [ 0, 0, 0 ];
+	const moment = [ 0, 0, 0 ];
+	let strongest = records[ 0 ];
+	let strongestLuma = - Infinity;
+
+	for ( const record of records ) {
+
+		const nDotL = Math.max( record.wi[ 2 ], 0 );
+		const validTarget = record.target && record.target.length >= 3 && record.target.every( Number.isFinite );
+		if ( validTarget === false || nDotL <= 0 ) continue;
+
+		const brdf = record.target.slice( 0, 3 ).map( ( value ) => value / Math.max( nDotL, 1e-4 ) );
+		const contribution = brdf.map( ( value ) => value * Math.PI / records.length );
+		const luma = contribution[ 0 ] * 0.2126 + contribution[ 1 ] * 0.7152 + contribution[ 2 ] * 0.0722;
+
+		for ( let channel = 0; channel < 3; channel ++ ) {
+
+			albedo[ channel ] += contribution[ channel ];
+			moment[ channel ] += record.wi[ channel ] * luma;
+
+		}
+
+		if ( luma > strongestLuma ) {
+
+			strongest = record;
+			strongestLuma = luma;
+
+		}
+
+	}
+
+	const momentLength = Math.hypot( moment[ 0 ], moment[ 1 ], moment[ 2 ] );
+	const specularDirection = strongest ? strongest.wi.slice() : [ 0, 0, 1 ];
+	const roughness = Math.min( Math.max( 1 - momentLength / Math.max( strongestLuma * records.length, 1e-6 ), 0.04 ), 1 );
+	const specularRatio = Math.min( Math.max( 1 - roughness, 0.1 ), 0.65 );
+	const diffuseRatio = 1 - specularRatio;
+
+	return [
+		0, 0, 1,
+		albedo[ 0 ] * diffuseRatio, albedo[ 1 ] * diffuseRatio, albedo[ 2 ] * diffuseRatio,
+		specularDirection[ 0 ], specularDirection[ 1 ], Math.max( specularDirection[ 2 ], 0.001 ),
+		logit( roughness ),
+		albedo[ 0 ] * specularRatio, albedo[ 1 ] * specularRatio, albedo[ 2 ] * specularRatio
+	];
+
+}
+
+function sampleHemisphereCosineHammersley( index, count ) {
+
+	const u = ( index + 0.5 ) / Math.max( 1, count );
+	const v = radicalInverseVdc( index );
+	const r = Math.sqrt( u );
+	const phi = 2 * Math.PI * v;
+
+	return [ r * Math.cos( phi ), r * Math.sin( phi ), Math.sqrt( Math.max( 0, 1 - u ) ) ];
+
+}
+
+function radicalInverseVdc( bits ) {
+
+	bits = ( bits << 16 ) | ( bits >>> 16 );
+	bits = ( ( bits & 0x55555555 ) << 1 ) | ( ( bits & 0xAAAAAAAA ) >>> 1 );
+	bits = ( ( bits & 0x33333333 ) << 2 ) | ( ( bits & 0xCCCCCCCC ) >>> 2 );
+	bits = ( ( bits & 0x0F0F0F0F ) << 4 ) | ( ( bits & 0xF0F0F0F0 ) >>> 4 );
+	bits = ( ( bits & 0x00FF00FF ) << 8 ) | ( ( bits & 0xFF00FF00 ) >>> 8 );
+
+	return ( bits >>> 0 ) * 2.3283064365386963e-10;
+
+}
+
+function logit( value ) {
+
+	const clamped = Math.min( Math.max( value, 1e-5 ), 1 - 1e-5 );
+	return Math.log( clamped / ( 1 - clamped ) );
+
+}
+
 async function assignTeacherTargets( samples, teacher ) {
 
 	const targets = teacher.evaluateBatch ? await teacher.evaluateBatch( samples ) : await Promise.all( samples.map( ( sample ) => teacher.evaluate( sample ) ) );
@@ -375,6 +523,8 @@ function normalize( value ) {
 export {
 	generateTrainingSamples,
 	generateValidationSamples,
+	generateIBLTrainingSamples,
+	fitIBLTargetFromRecords,
 	assignTeacherTargets,
 	assignAuxiliaryTeacherTargets,
 	normalizeDirectLightingTargets,

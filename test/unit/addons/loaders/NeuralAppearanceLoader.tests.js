@@ -5,7 +5,7 @@ function createManifest() {
 
 	return {
 		format: 'three-neural-appearance',
-		version: 2,
+		version: 3,
 		name: 'unit test material',
 		latents: {
 			channels: 8,
@@ -44,6 +44,25 @@ function createManifest() {
 							0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 							0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
 						]
+					}
+				],
+				outputActivation: { type: 'linear' }
+			},
+			ibl: {
+				inputSize: 14,
+				layers: [
+					{
+						inputSize: 14,
+						outputSize: 13,
+						activation: 'linear',
+						biases: [
+							0, 0, 1,
+							0.4, 0.2, 0.1,
+							0, 0, 1,
+							0,
+							0.04, 0.04, 0.04
+						],
+						weights: new Array( 14 * 13 ).fill( 0 )
 					}
 				],
 				outputActivation: { type: 'linear' }
@@ -164,6 +183,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( data.latentTextures.length, 2, 'two latent textures' );
 				assert.ok( data.latentTextures[ 0 ] instanceof DataTexture, 'creates a data texture' );
 				assert.strictEqual( data.outputs.brdf.layers.length, 1, 'brdf layers' );
+				assert.strictEqual( data.outputs.ibl.layers.length, 1, 'ibl layers' );
 				assert.strictEqual( data.outputs.emission.layers.length, 1, 'emission layers' );
 				assert.strictEqual( data.outputs.opacity.mode, 'mask', 'defaults opacity mode to mask' );
 				assert.strictEqual( data.outputs.opacity.alphaCutoff, 0.5, 'opacity cutoff' );

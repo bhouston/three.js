@@ -350,7 +350,7 @@ function validateExportJson( json, testCase ) {
 
 	}
 
-	if ( json.version !== 2 || json.latents.textures.length !== 2 || json.outputs.brdf.inputSize !== 20 ) {
+	if ( json.version !== 3 || json.latents.textures.length !== 2 || json.outputs.brdf.inputSize !== 20 || json.outputs.ibl.inputSize !== 14 ) {
 
 		throw new Error( `${testCase.label}: training produced an invalid neural appearance export shape.` );
 

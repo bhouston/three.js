@@ -83,7 +83,7 @@ function getReferenceSignature( json ) {
 async function runTrainingCase( page, testCase ) {
 
 	page.error = undefined;
-	await page.goto( `http://localhost:${port}/examples/webgpu_materials_neural_appearance_train.html?test=${testCase.name}&autoTrain=1&noRotate=1&iterations=${testCase.iterations}&batchSize=256&resolution=${testCase.resolution || 1}&seed=7`, {
+	await page.goto( `http://localhost:${port}/examples/webgpu_materials_neural_appearance.html?test=${testCase.name}&autoTrain=1&noRotate=1&iterations=${testCase.iterations}&batchSize=256&resolution=${testCase.resolution || 1}&seed=7`, {
 		waitUntil: 'networkidle0',
 		timeout: networkTimeout * 60000
 	} );
@@ -136,11 +136,11 @@ async function runTrainingCase( page, testCase ) {
 			worstWhiteComparison = whiteComparison;
 			worstRotation = rotation;
 
-			await teacher.image.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-teacher.jpg` );
-			await neural.image.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-neural.jpg` );
-			await white.image.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-white-control.jpg` );
-			await comparison.mask.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-mask.jpg` );
-			await comparison.diff.write( `${outputDir}/webgpu_materials_neural_appearance_train-${testCase.name}-diff.jpg` );
+			await teacher.image.write( `${outputDir}/webgpu_materials_neural_appearance-${testCase.name}-teacher.jpg` );
+			await neural.image.write( `${outputDir}/webgpu_materials_neural_appearance-${testCase.name}-neural.jpg` );
+			await white.image.write( `${outputDir}/webgpu_materials_neural_appearance-${testCase.name}-white-control.jpg` );
+			await comparison.mask.write( `${outputDir}/webgpu_materials_neural_appearance-${testCase.name}-mask.jpg` );
+			await comparison.diff.write( `${outputDir}/webgpu_materials_neural_appearance-${testCase.name}-diff.jpg` );
 
 		}
 

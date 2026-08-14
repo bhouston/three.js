@@ -25,6 +25,7 @@ import {
 	FIXED_POINT_SCALE,
 	GRADIENT_NORM_SCALE
 } from './NeuralAppearanceGPUModel.js';
+import { IBL_INPUT_SIZE, IBL_OUTPUT_SIZE } from './NeuralAppearanceFormat.js';
 
 const OUTPUT_CLAMP_GRADIENT_LEAK = 0.01;
 
@@ -75,6 +76,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 	const {
 		hiddenSize,
+		iblHiddenSize,
 		supportsEmission,
 		supportsOpacity,
 		rotationOffset,
@@ -84,6 +86,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 		layer1BiasesOffset,
 		layer2WeightsOffset,
 		layer2BiasesOffset,
+		iblLayer0WeightsOffset,
+		iblLayer0BiasesOffset,
+		iblLayer1WeightsOffset,
+		iblLayer1BiasesOffset,
 		emissionWeightsOffset,
 		emissionBiasesOffset,
 		opacityWeightsOffset,
@@ -100,7 +106,13 @@ function createTrainBatchComputeNode( gpuModel ) {
 		actDelta2Offset,
 		actDelta1Offset,
 		actGradA0Offset,
-		actGradLatentsOffset
+		actGradLatentsOffset,
+		actIblA0Offset,
+		actIblZ1Offset,
+		actIblA1Offset,
+		actIblZ2Offset,
+		actIblDelta2Offset,
+		actIblDelta1Offset
 	} = layout;
 
 	return Fn( () => {
@@ -670,10 +682,204 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			}
 
+			// 14. IBL head (14 -> H_ibl -> 13), trained in the same batch as BRDF/aux.
+			const iblA0 = actBase.add( int( actIblA0Offset ) );
+			const a0 = actBase.add( int( actA0Offset ) );
+
+			Loop( { start: 0, end: 8, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+
+				activationsStorage.element( iblA0.add( c ) ).assign( activationsStorage.element( a0.add( c ) ) );
+
+			} );
+
+			activationsStorage.element( iblA0.add( 8 ) ).assign( activationsStorage.element( a0.add( 11 ) ) );
+			activationsStorage.element( iblA0.add( 9 ) ).assign( activationsStorage.element( a0.add( 12 ) ) );
+			activationsStorage.element( iblA0.add( 10 ) ).assign( activationsStorage.element( a0.add( 13 ) ) );
+			activationsStorage.element( iblA0.add( 11 ) ).assign( activationsStorage.element( a0.add( 17 ) ) );
+			activationsStorage.element( iblA0.add( 12 ) ).assign( activationsStorage.element( a0.add( 18 ) ) );
+			activationsStorage.element( iblA0.add( 13 ) ).assign( activationsStorage.element( a0.add( 19 ) ) );
+
+			Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+				const val = weightsStorage.element( int( iblLayer0BiasesOffset ).add( j ) ).toVar();
+				const rowOffset = int( iblLayer0WeightsOffset ).add( j.mul( IBL_INPUT_SIZE ) );
+
+				Loop( { start: 0, end: IBL_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+					val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( iblA0.add( i ) ) ) );
+
+				} );
+
+				activationsStorage.element( actBase.add( int( actIblZ1Offset ) ).add( j ) ).assign( val );
+				activationsStorage.element( actBase.add( int( actIblA1Offset ) ).add( j ) ).assign( max( val, float( 0.0 ) ) );
+
+			} );
+
+			Loop( { start: 0, end: IBL_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+				const val = weightsStorage.element( int( iblLayer1BiasesOffset ).add( j ) ).toVar();
+				const rowOffset = int( iblLayer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
+
+				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+					val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( actBase.add( int( actIblA1Offset ) ).add( i ) ) ) );
+
+				} );
+
+				activationsStorage.element( actBase.add( int( actIblZ2Offset ) ).add( j ) ).assign( val );
+
+			} );
+
+			const iblZ2 = actBase.add( int( actIblZ2Offset ) );
+			const iblDelta2 = actBase.add( int( actIblDelta2Offset ) );
+
+			Loop( { start: 0, end: IBL_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+				activationsStorage.element( iblDelta2.add( j ) ).assign( 0.0 );
+
+			} );
+
+			const rawDiffuse = vec3(
+				activationsStorage.element( iblZ2.add( 0 ) ),
+				activationsStorage.element( iblZ2.add( 1 ) ),
+				activationsStorage.element( iblZ2.add( 2 ) )
+			);
+			const predDiffuse = rawDiffuse.normalize();
+			const targetDiffuse = vec3(
+				samplesStorage.element( sampleOffset.add( 20 ) ),
+				samplesStorage.element( sampleOffset.add( 21 ) ),
+				samplesStorage.element( sampleOffset.add( 22 ) )
+			).normalize();
+			const rawSpecular = vec3(
+				activationsStorage.element( iblZ2.add( 6 ) ),
+				activationsStorage.element( iblZ2.add( 7 ) ),
+				activationsStorage.element( iblZ2.add( 8 ) )
+			);
+			const predSpecular = rawSpecular.normalize();
+			const targetSpecular = vec3(
+				samplesStorage.element( sampleOffset.add( 26 ) ),
+				samplesStorage.element( sampleOffset.add( 27 ) ),
+				samplesStorage.element( sampleOffset.add( 28 ) )
+			).normalize();
+
+			const dirScale = sampleWeight.mul( invBatchUniform ).mul( 0.5 );
+			sampleLoss.addAssign( float( 1.0 ).sub( predDiffuse.dot( targetDiffuse ) ).mul( dirScale ) );
+			sampleLoss.addAssign( float( 1.0 ).sub( predSpecular.dot( targetSpecular ) ).mul( dirScale ) );
+
+			const gradDiffuse = backwardNormalizeTSL( rawDiffuse, predDiffuse, targetDiffuse.negate().mul( dirScale ) );
+			const gradSpecular = backwardNormalizeTSL( rawSpecular, predSpecular, targetSpecular.negate().mul( dirScale ) );
+			activationsStorage.element( iblDelta2.add( 0 ) ).assign( gradDiffuse.x );
+			activationsStorage.element( iblDelta2.add( 1 ) ).assign( gradDiffuse.y );
+			activationsStorage.element( iblDelta2.add( 2 ) ).assign( gradDiffuse.z );
+			activationsStorage.element( iblDelta2.add( 6 ) ).assign( gradSpecular.x );
+			activationsStorage.element( iblDelta2.add( 7 ) ).assign( gradSpecular.y );
+			activationsStorage.element( iblDelta2.add( 8 ) ).assign( gradSpecular.z );
+
+			const zRough = activationsStorage.element( iblZ2.add( 9 ) );
+			const predRough = float( 1.0 ).div( float( 1.0 ).add( exp( zRough.negate() ) ) );
+			const targetRough = float( 1.0 ).div( float( 1.0 ).add( exp( samplesStorage.element( sampleOffset.add( 29 ) ).negate() ) ) );
+			const roughDiff = predRough.sub( targetRough );
+			sampleLoss.addAssign( roughDiff.abs().mul( sampleWeight ).mul( invBatchUniform ) );
+			activationsStorage.element( iblDelta2.add( 9 ) ).assign(
+				sign( roughDiff ).mul( predRough.mul( float( 1.0 ).sub( predRough ) ) ).mul( sampleWeight ).mul( invBatchUniform )
+			);
+
+			const weightScale = sampleWeight.mul( invBatchUniform ).div( 6.0 );
+			const furnaceScale = sampleWeight.mul( invBatchUniform ).div( 3.0 );
+
+			Loop( { start: 0, end: 3, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+
+				const predDiff = max( activationsStorage.element( iblZ2.add( 3 ).add( c ) ), float( 0.0 ) );
+				const predSpec = max( activationsStorage.element( iblZ2.add( 10 ).add( c ) ), float( 0.0 ) );
+				const targetDiff = max( samplesStorage.element( sampleOffset.add( 23 ).add( c ) ), float( 0.0 ) );
+				const targetSpec = max( samplesStorage.element( sampleOffset.add( 30 ).add( c ) ), float( 0.0 ) );
+				const leakDiff = select( activationsStorage.element( iblZ2.add( 3 ).add( c ) ).greaterThan( 0.0 ), float( 1.0 ), float( OUTPUT_CLAMP_GRADIENT_LEAK ) );
+				const leakSpec = select( activationsStorage.element( iblZ2.add( 10 ).add( c ) ).greaterThan( 0.0 ), float( 1.0 ), float( OUTPUT_CLAMP_GRADIENT_LEAK ) );
+				const furnaceGrad = sign( predDiff.add( predSpec ).sub( targetDiff.add( targetSpec ) ) ).mul( furnaceScale );
+
+				sampleLoss.addAssign( predDiff.sub( targetDiff ).abs().mul( weightScale ) );
+				sampleLoss.addAssign( predSpec.sub( targetSpec ).abs().mul( weightScale ) );
+				sampleLoss.addAssign( predDiff.add( predSpec ).sub( targetDiff.add( targetSpec ) ).abs().mul( furnaceScale ) );
+
+				activationsStorage.element( iblDelta2.add( 3 ).add( c ) ).assign(
+					sign( predDiff.sub( targetDiff ) ).mul( weightScale ).mul( leakDiff ).add( furnaceGrad.mul( leakDiff ) )
+				);
+				activationsStorage.element( iblDelta2.add( 10 ).add( c ) ).assign(
+					sign( predSpec.sub( targetSpec ) ).mul( weightScale ).mul( leakSpec ).add( furnaceGrad.mul( leakSpec ) )
+				);
+
+			} );
+
+			Loop( { start: 0, end: IBL_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+				const delta_j = activationsStorage.element( iblDelta2.add( j ) );
+				atomicAdd( gradWeightsAtomic.element( int( iblLayer1BiasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
+				const rowOffset = int( iblLayer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
+
+				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+					const a1_i = activationsStorage.element( actBase.add( int( actIblA1Offset ) ).add( i ) );
+					atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta_j.mul( a1_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
+
+				} );
+
+			} );
+
+			Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+				const gradInput_i = float( 0.0 ).toVar();
+
+				Loop( { start: 0, end: IBL_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+					const delta_j = activationsStorage.element( iblDelta2.add( j ) );
+					const w_ji = weightsStorage.element( int( iblLayer1WeightsOffset ).add( j.mul( iblHiddenSize ) ).add( i ) );
+					gradInput_i.addAssign( delta_j.mul( w_ji ) );
+
+				} );
+
+				const z1_i = activationsStorage.element( actBase.add( int( actIblZ1Offset ) ).add( i ) );
+				activationsStorage.element( actBase.add( int( actIblDelta1Offset ) ).add( i ) ).assign(
+					select( z1_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) )
+				);
+
+			} );
+
+			Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+				const delta1_j = activationsStorage.element( actBase.add( int( actIblDelta1Offset ) ).add( j ) );
+				atomicAdd( gradWeightsAtomic.element( int( iblLayer0BiasesOffset ).add( j ) ), int( delta1_j.mul( float( FIXED_POINT_SCALE ) ) ) );
+				const rowOffset = int( iblLayer0WeightsOffset ).add( j.mul( IBL_INPUT_SIZE ) );
+
+				Loop( { start: 0, end: IBL_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+					const a0_i = activationsStorage.element( iblA0.add( i ) );
+					atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta1_j.mul( a0_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
+
+				} );
+
+			} );
+
+			Loop( { start: 0, end: 8, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+
+				const gradLatent_c = float( 0.0 ).toVar();
+
+				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+					const delta1_j = activationsStorage.element( actBase.add( int( actIblDelta1Offset ) ).add( j ) );
+					const w_jc = weightsStorage.element( int( iblLayer0WeightsOffset ).add( j.mul( IBL_INPUT_SIZE ) ).add( c ) );
+					gradLatent_c.addAssign( delta1_j.mul( w_jc ) );
+
+				} );
+
+				const curGradZ = activationsStorage.element( actBase.add( int( actGradLatentsOffset ) ).add( c ) );
+				activationsStorage.element( actBase.add( int( actGradLatentsOffset ) ).add( c ) ).assign( curGradZ.add( gradLatent_c ) );
+
+			} );
+
 			// Accumulate loss after all active heads contribute.
 			atomicAdd( lossAtomic.element( 0 ), int( sampleLoss.mul( float( FIXED_POINT_SCALE ) ) ) );
 
-			// 14. Scatter Bilinear Latent Gradients
+			// 15. Scatter Bilinear Latent Gradients
 			Loop( { start: 0, end: 8, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 				const gradZ_c = activationsStorage.element( actBase.add( int( actGradLatentsOffset ) ).add( c ) );
@@ -708,7 +914,7 @@ function createResetGradientNormComputeNode( gpuModel ) {
 /**
  * Accumulates squared weight and latent gradients for global norm clipping.
  */
-function createAccumulateGradientNormComputeNode( gpuModel ) {
+function createAccumulateGradientNormComputeNode( gpuModel, { weightOffset = 0, weightCount = null, includeLatents = true } = {} ) {
 
 	const {
 		layout,
@@ -717,34 +923,35 @@ function createAccumulateGradientNormComputeNode( gpuModel ) {
 		gradNormAtomic
 	} = gpuModel;
 
-	const { totalWeights, totalLatents } = layout;
+	const resolvedWeightCount = weightCount === null ? layout.totalWeights : weightCount;
+	const dispatchCount = resolvedWeightCount + ( includeLatents ? layout.totalLatents : 0 );
 
 	return Fn( () => {
 
 		const idx = int( instanceIndex );
 		const grad = float( 0.0 ).toVar();
 
-		If( idx.lessThan( int( totalWeights ) ), () => {
+		If( idx.lessThan( int( resolvedWeightCount ) ), () => {
 
-			grad.assign( float( atomicLoad( gradWeightsAtomic.element( idx ) ) ).div( float( FIXED_POINT_SCALE ) ) );
+			grad.assign( float( atomicLoad( gradWeightsAtomic.element( int( weightOffset ).add( idx ) ) ) ).div( float( FIXED_POINT_SCALE ) ) );
 
 		} ).Else( () => {
 
-			const latentIdx = idx.sub( int( totalWeights ) );
+			const latentIdx = idx.sub( int( resolvedWeightCount ) );
 			grad.assign( float( atomicLoad( gradLatentsAtomic.element( latentIdx ) ) ).div( float( FIXED_POINT_SCALE ) ) );
 
 		} );
 
 		atomicAdd( gradNormAtomic.element( 0 ), int( grad.mul( grad ).mul( float( GRADIENT_NORM_SCALE ) ) ) );
 
-	} )().compute( totalWeights + totalLatents ).setName( 'NeuralAppearanceAccumulateGradientNorm' );
+	} )().compute( dispatchCount ).setName( 'NeuralAppearanceAccumulateGradientNorm' );
 
 }
 
 /**
  * Creates the Adam optimizer compute node for MLP and frame weights.
  */
-function createAdamWeightsComputeNode( gpuModel, { beta1 = 0.9, beta2 = 0.999, epsilon = 1e-7 } = {} ) {
+function createAdamWeightsComputeNode( gpuModel, { beta1 = 0.9, beta2 = 0.999, epsilon = 1e-7, weightOffset = 0, weightCount = null } = {} ) {
 
 	const {
 		layout,
@@ -758,11 +965,11 @@ function createAdamWeightsComputeNode( gpuModel, { beta1 = 0.9, beta2 = 0.999, e
 		maxGradientNormUniform
 	} = gpuModel;
 
-	const { totalWeights } = layout;
+	const resolvedWeightCount = weightCount === null ? layout.totalWeights : weightCount;
 
 	return Fn( () => {
 
-		const idx = int( instanceIndex );
+		const idx = int( instanceIndex ).add( int( weightOffset ) );
 		const rawGrad = float( atomicLoad( gradWeightsAtomic.element( idx ) ) ).div( float( FIXED_POINT_SCALE ) );
 		const grad = rawGrad.mul( computeGradientClipScale( gradNormAtomic, maxGradientNormUniform ) );
 		atomicStore( gradWeightsAtomic.element( idx ), int( 0 ) );
@@ -784,7 +991,7 @@ function createAdamWeightsComputeNode( gpuModel, { beta1 = 0.9, beta2 = 0.999, e
 		const stepVal = learningRateUniform.mul( mHat ).div( sqrt( max( vHat, float( 0.0 ) ) ).add( float( epsilon ) ) );
 		weightsStorage.element( idx ).assign( w.sub( stepVal ) );
 
-	} )().compute( totalWeights ).setName( 'NeuralAppearanceAdamWeights' );
+	} )().compute( resolvedWeightCount ).setName( 'NeuralAppearanceAdamWeights' );
 
 }
 

@@ -1,7 +1,8 @@
 import {
 	generateTrainingSamples,
 	generateValidationSamples,
-	normalizeDirectLightingTargets
+	normalizeDirectLightingTargets,
+	fitIBLTargetFromRecords
 } from '../../../../examples/jsm/neural/NeuralAppearanceSampler.js';
 
 function createMockTeacher() {
@@ -128,6 +129,24 @@ export default QUnit.module( 'Addons', () => {
 				const wiCosines = [ ...new Set( samples.map( ( s ) => s.wi[ 2 ] ) ) ].sort();
 				assert.deepEqual( wiCosines, [ 0.025, 0.1, 0.4, 0.8 ], 'sweeps through defined grazing cosines' );
 				assert.ok( samples.every( ( s ) => s.target !== undefined ), 'attaches evaluated teacher targets' );
+
+			} );
+
+			QUnit.test( 'fits IBL specular direction to the local reflection of wo', ( assert ) => {
+
+				const wo = [ 0.6, 0, 0.8 ];
+				const records = [
+					{ wi: [ 0, 0, 1 ], wo, target: [ 0.1, 0.1, 0.1 ] },
+					{ wi: [ - 0.6, 0, 0.8 ], wo, target: [ 2, 2, 2 ] },
+					{ wi: [ 0.5, 0.5, 0.707 ], wo, target: [ 0.2, 0.2, 0.2 ] }
+				];
+				const target = fitIBLTargetFromRecords( records );
+
+				assert.deepEqual( target.slice( 0, 3 ), [ 0, 0, 1 ], 'diffuse direction is the canonical normal' );
+				assert.ok( Math.abs( target[ 6 ] + 0.6 ) < 1e-6, 'specular x is the reflection of wo' );
+				assert.ok( Math.abs( target[ 7 ] ) < 1e-6, 'specular y is the reflection of wo' );
+				assert.ok( Math.abs( target[ 8 ] - 0.8 ) < 1e-6, 'specular z is the reflection of wo' );
+				assert.ok( target[ 3 ] + target[ 10 ] > 0, 'splits directional albedo across diffuse and specular weights' );
 
 			} );
 

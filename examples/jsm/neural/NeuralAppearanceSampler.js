@@ -64,6 +64,8 @@ async function generateTrainingSamples( options, teacher, random, iteration = 0 
 
 	}
 
+	assignIBLTargets( samples );
+
 	return samples;
 
 }
@@ -114,6 +116,7 @@ async function generateValidationSamples( options, teacher ) {
 	await assignTeacherTargets( samples, teacher );
 	normalizeDirectLightingTargets( samples, options.minimumTrainingCosine );
 	await assignAuxiliaryTeacherTargets( samples, teacher );
+	assignIBLTargets( samples );
 
 	return samples;
 
@@ -191,9 +194,10 @@ async function generateIBLTrainingSamples( options, teacher, random ) {
 function fitIBLTargetFromRecords( records ) {
 
 	const albedo = [ 0, 0, 0 ];
-	const moment = [ 0, 0, 0 ];
-	let strongest = records[ 0 ];
-	let strongestLuma = - Infinity;
+	let lumaSum = 0;
+	let alignedLuma = 0;
+	const wo = records[ 0 ] && records[ 0 ].wo ? normalize( records[ 0 ].wo ) : [ 0, 0, 1 ];
+	const specularDirection = normalize( [ - wo[ 0 ], - wo[ 1 ], Math.max( wo[ 2 ], 0.001 ) ] );
 
 	for ( const record of records ) {
 
@@ -204,33 +208,28 @@ function fitIBLTargetFromRecords( records ) {
 		const brdf = record.target.slice( 0, 3 ).map( ( value ) => value / Math.max( nDotL, 1e-4 ) );
 		const contribution = brdf.map( ( value ) => value * Math.PI / records.length );
 		const luma = contribution[ 0 ] * 0.2126 + contribution[ 1 ] * 0.7152 + contribution[ 2 ] * 0.0722;
+		const wi = normalize( record.wi );
+		const alignment = Math.max( 0, wi[ 0 ] * specularDirection[ 0 ] + wi[ 1 ] * specularDirection[ 1 ] + wi[ 2 ] * specularDirection[ 2 ] );
 
 		for ( let channel = 0; channel < 3; channel ++ ) {
 
 			albedo[ channel ] += contribution[ channel ];
-			moment[ channel ] += record.wi[ channel ] * luma;
 
 		}
 
-		if ( luma > strongestLuma ) {
-
-			strongest = record;
-			strongestLuma = luma;
-
-		}
+		lumaSum += luma;
+		alignedLuma += luma * alignment;
 
 	}
 
-	const momentLength = Math.hypot( moment[ 0 ], moment[ 1 ], moment[ 2 ] );
-	const specularDirection = strongest ? strongest.wi.slice() : [ 0, 0, 1 ];
-	const roughness = Math.min( Math.max( 1 - momentLength / Math.max( strongestLuma * records.length, 1e-6 ), 0.04 ), 1 );
+	const roughness = Math.min( Math.max( 1 - alignedLuma / Math.max( lumaSum, 1e-6 ), 0.04 ), 1 );
 	const specularRatio = Math.min( Math.max( 1 - roughness, 0.1 ), 0.65 );
 	const diffuseRatio = 1 - specularRatio;
 
 	return [
 		0, 0, 1,
 		albedo[ 0 ] * diffuseRatio, albedo[ 1 ] * diffuseRatio, albedo[ 2 ] * diffuseRatio,
-		specularDirection[ 0 ], specularDirection[ 1 ], Math.max( specularDirection[ 2 ], 0.001 ),
+		specularDirection[ 0 ], specularDirection[ 1 ], specularDirection[ 2 ],
 		logit( roughness ),
 		albedo[ 0 ] * specularRatio, albedo[ 1 ] * specularRatio, albedo[ 2 ] * specularRatio
 	];
@@ -257,6 +256,16 @@ function radicalInverseVdc( bits ) {
 	bits = ( ( bits & 0x00FF00FF ) << 8 ) | ( ( bits & 0xFF00FF00 ) >>> 8 );
 
 	return ( bits >>> 0 ) * 2.3283064365386963e-10;
+
+}
+
+function assignIBLTargets( samples ) {
+
+	for ( const sample of samples ) {
+
+		sample.iblTarget = fitIBLTargetFromRecords( [ sample ] );
+
+	}
 
 }
 

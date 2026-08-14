@@ -19,9 +19,11 @@ import numpy as np
 
 
 FORMAT = "three-neural-appearance"
-VERSION = 2
+VERSION = 3
 LATENT_CHANNELS = 8
 SUPPORTED_INPUT_SIZE = 20
+IBL_INPUT_SIZE = 14
+IBL_OUTPUT_SIZE = 13
 
 
 def main() -> None:
@@ -46,6 +48,7 @@ def main() -> None:
         "latents": convert_latents(checkpoint, model, args.wrap),
         "outputs": {
             "brdf": convert_decoder(model),
+            "ibl": create_default_ibl_head(),
         },
     }
 
@@ -129,6 +132,28 @@ def convert_decoder(model: dict[str, Any]) -> dict[str, Any]:
         },
         "layers": layers,
         "outputActivation": normalize_output_activation(decoder),
+    }
+
+
+def create_default_ibl_head() -> dict[str, Any]:
+    return {
+        "inputSize": IBL_INPUT_SIZE,
+        "layers": [
+            {
+                "inputSize": IBL_INPUT_SIZE,
+                "outputSize": IBL_OUTPUT_SIZE,
+                "activation": "linear",
+                "weights": [0.0] * (IBL_INPUT_SIZE * IBL_OUTPUT_SIZE),
+                "biases": [
+                    0.0, 0.0, 1.0,
+                    0.5, 0.5, 0.5,
+                    0.0, 0.0, 1.0,
+                    0.0,
+                    0.04, 0.04, 0.04,
+                ],
+            }
+        ],
+        "outputActivation": {"type": "linear"},
     }
 
 

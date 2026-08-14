@@ -130,19 +130,21 @@ function evaluateNeuralIBLForTexels( material, envNode, wo, latent0, latent1 ) {
 	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
 	const input = projectIBLInput( latents, frames, wo, ibl.inputSize );
 	const output = evaluateMLP( ibl.layers, uniforms, input );
-	const diffuseDirection = canonicalToWorldDirection( TSL.vec3( output[ 0 ], output[ 1 ], output[ 2 ] ).normalize() );
 	const diffuseReflectance = TSL.vec3( output[ 3 ], output[ 4 ], output[ 5 ] ).max( 0 );
-	const specularDirection = canonicalToWorldDirection( TSL.vec3( output[ 6 ], output[ 7 ], output[ 8 ] ).normalize() );
 	const specularRoughness = TSL.float( 1 ).div( TSL.float( 1 ).add( TSL.exp( output[ 9 ].negate() ) ) );
 	const specularWeight = TSL.vec3( output[ 10 ], output[ 11 ], output[ 12 ] ).max( 0 );
+	const localNormal = TSL.vec3( 0, 0, 1 );
+	const localReflect = TSL.vec3( wo.x.negate(), wo.y.negate(), wo.z );
+	const roughness4 = specularRoughness.mul( specularRoughness ).mul( specularRoughness ).mul( specularRoughness );
+	const localSpecular = roughness4.mix( localReflect, localNormal ).normalize();
 	const diffuseSample = envNode.context( {
-		getUV: () => diffuseDirection,
+		getUV: () => canonicalToWorldDirection( localNormal ),
 		getTextureLevel: () => TSL.float( 1 )
-	} ).mul( Math.PI ).mul( TSL.materialEnvIntensity );
+	} ).isolate().mul( Math.PI ).mul( TSL.materialEnvIntensity );
 	const specularSample = envNode.context( {
-		getUV: () => specularDirection,
+		getUV: () => canonicalToWorldDirection( localSpecular ),
 		getTextureLevel: () => specularRoughness
-	} ).mul( TSL.materialEnvIntensity );
+	} ).isolate().mul( TSL.materialEnvIntensity );
 
 	return diffuseSample.mul( diffuseReflectance ).add( specularSample.mul( specularWeight ) );
 

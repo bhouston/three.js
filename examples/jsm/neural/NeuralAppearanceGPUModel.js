@@ -41,17 +41,6 @@ function computeModelLayout( options = {} ) {
 
 	let currentOffset = layer2BiasesOffset + layer2BiasesCount;
 
-	// IBL Head: 14 -> iblHiddenSize -> 13
-	const iblLayer0WeightsOffset = currentOffset;
-	const iblLayer0WeightsCount = IBL_INPUT_SIZE * iblHiddenSize;
-	const iblLayer0BiasesOffset = iblLayer0WeightsOffset + iblLayer0WeightsCount;
-	const iblLayer0BiasesCount = iblHiddenSize;
-	const iblLayer1WeightsOffset = iblLayer0BiasesOffset + iblLayer0BiasesCount;
-	const iblLayer1WeightsCount = iblHiddenSize * IBL_OUTPUT_SIZE;
-	const iblLayer1BiasesOffset = iblLayer1WeightsOffset + iblLayer1WeightsCount;
-	const iblLayer1BiasesCount = IBL_OUTPUT_SIZE;
-	currentOffset = iblLayer1BiasesOffset + iblLayer1BiasesCount;
-
 	// Auxiliary: Emission Head (8 -> 3)
 	let emissionWeightsOffset = - 1;
 	let emissionBiasesOffset = - 1;
@@ -81,6 +70,20 @@ function computeModelLayout( options = {} ) {
 		currentOffset = opacityBiasesOffset + opacityBiasesCount;
 
 	}
+
+	const directWeightCount = currentOffset;
+
+	// IBL Head last so BRDF+aux Adam can update a contiguous prefix.
+	const iblLayer0WeightsOffset = currentOffset;
+	const iblLayer0WeightsCount = IBL_INPUT_SIZE * iblHiddenSize;
+	const iblLayer0BiasesOffset = iblLayer0WeightsOffset + iblLayer0WeightsCount;
+	const iblLayer0BiasesCount = iblHiddenSize;
+	const iblLayer1WeightsOffset = iblLayer0BiasesOffset + iblLayer0BiasesCount;
+	const iblLayer1WeightsCount = iblHiddenSize * IBL_OUTPUT_SIZE;
+	const iblLayer1BiasesOffset = iblLayer1WeightsOffset + iblLayer1WeightsCount;
+	const iblLayer1BiasesCount = IBL_OUTPUT_SIZE;
+	currentOffset = iblLayer1BiasesOffset + iblLayer1BiasesCount;
+	const iblWeightCount = currentOffset - directWeightCount;
 
 	const totalWeights = currentOffset;
 
@@ -153,6 +156,14 @@ function computeModelLayout( options = {} ) {
 
 	}
 
+	const actIblA0Offset = actCurrent;
+	const actIblZ1Offset = actIblA0Offset + IBL_INPUT_SIZE;
+	const actIblA1Offset = actIblZ1Offset + iblHiddenSize;
+	const actIblZ2Offset = actIblA1Offset + iblHiddenSize;
+	const actIblDelta2Offset = actIblZ2Offset + IBL_OUTPUT_SIZE;
+	const actIblDelta1Offset = actIblDelta2Offset + IBL_OUTPUT_SIZE;
+	actCurrent = actIblDelta1Offset + iblHiddenSize;
+
 	const activationStride = actCurrent;
 
 	// Sample Buffer Stride: 20 direct/aux floats + 13 IBL target floats.
@@ -164,6 +175,8 @@ function computeModelLayout( options = {} ) {
 		supportsEmission,
 		supportsOpacity,
 		totalWeights,
+		directWeightCount,
+		iblWeightCount,
 		rotationOffset,
 		rotationCount,
 		layer0WeightsOffset,
@@ -210,6 +223,12 @@ function computeModelLayout( options = {} ) {
 		actGradLatentsOffset,
 		actEmissionOffset,
 		actOpacityOffset,
+		actIblA0Offset,
+		actIblZ1Offset,
+		actIblA1Offset,
+		actIblZ2Offset,
+		actIblDelta2Offset,
+		actIblDelta1Offset,
 		sampleStride
 	};
 

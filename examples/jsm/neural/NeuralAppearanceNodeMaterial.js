@@ -203,9 +203,7 @@ class NeuralAppearanceEnvironmentNode extends THREE.LightingNode {
 
 		}
 
-		builder.context.reflectedLight.indirectSpecular.addAssign(
-			evaluateNeuralIBL( this.material, envNode ).mul( this.material._intensityNode )
-		);
+		builder.context.neuralEnvironmentNode = envNode;
 
 		return TSL.vec3( 0 );
 
@@ -238,6 +236,17 @@ class NeuralAppearanceLightingModel extends THREE.LightingModel {
 		const brdf = evaluateNeuralBRDF( material, lightDirection, this._fragmentContext, this._evaluateBRDF );
 
 		reflectedLight.directDiffuse.addAssign( brdf.mul( lightColor ).mul( material._intensityNode ) );
+
+	}
+
+	indirect( builder ) {
+
+		const envNode = builder.context.neuralEnvironmentNode;
+		if ( envNode === undefined || envNode === null ) return;
+
+		builder.context.reflectedLight.indirectSpecular.addAssign(
+			evaluateNeuralIBL( this.material, envNode, this._fragmentContext ).mul( this.material._intensityNode )
+		);
 
 	}
 

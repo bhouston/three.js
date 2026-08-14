@@ -19,7 +19,7 @@ import numpy as np
 
 
 FORMAT = "three-neural-appearance"
-VERSION = 1
+VERSION = 2
 LATENT_CHANNELS = 8
 SUPPORTED_INPUT_SIZE = 20
 
@@ -44,7 +44,9 @@ def main() -> None:
         "name": args.name,
         "source": "NVlabs/neuralappearance checkpoint",
         "latents": convert_latents(checkpoint, model, args.wrap),
-        "decoder": convert_decoder(model),
+        "outputs": {
+            "brdf": convert_decoder(model),
+        },
     }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

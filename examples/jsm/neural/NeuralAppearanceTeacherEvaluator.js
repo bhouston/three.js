@@ -35,6 +35,26 @@ class NeuralAppearanceTeacherEvaluator {
 		this.supportsEmission = material.emissiveNode !== null && material.emissiveNode !== undefined;
 		this.supportsOpacity = material.opacityNode !== null && material.opacityNode !== undefined;
 		this.alphaCutoff = Number.isFinite( material.alphaTest ) ? material.alphaTest : 0.5;
+
+		const materialOpacityMode = ( material && material.userData && material.userData.opacityMode ) ? material.userData.opacityMode : ( material ? material._opacityMode : undefined );
+		if ( options.opacityMode === 'mask' || options.opacityMode === 'blend' ) {
+
+			this.opacityMode = options.opacityMode;
+
+		} else if ( materialOpacityMode === 'mask' || materialOpacityMode === 'blend' ) {
+
+			this.opacityMode = materialOpacityMode;
+
+		} else if ( this.supportsOpacity && material && material.transparent === true && ( ! Number.isFinite( material.alphaTest ) || material.alphaTest <= 0 ) ) {
+
+			this.opacityMode = 'blend';
+
+		} else {
+
+			this.opacityMode = 'mask';
+
+		}
+
 		this._targetMode = 'brdf';
 
 		this._scene = null;

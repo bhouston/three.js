@@ -24,6 +24,15 @@
 			}
 		</script>
 		<script type="module">
+			window.QUnit.testDone( ( details ) => {
+
+				if ( details.failed > 0 ) {
+
+					console.error( 'FAILED TEST:', details.module, '>', details.name, JSON.stringify( details.assertions ) );
+
+				}
+
+			} );
 			window.QUnit.on( 'runEnd', ( runEnd ) => {
 
 				// using these later in puppeteer.unit.js

@@ -387,6 +387,11 @@ function applyGltfPbrSurface( material, inputs, log, nodeName ) {
 		material.alphaTestNode = alphaCutoffNode;
 		const alphaCutoff = getConstNumber( alphaCutoffNode );
 		if ( alphaCutoff !== null ) material.alphaTest = alphaCutoff;
+		material.userData.opacityMode = 'mask';
+
+	} else if ( isAlphaBlendMode && hasNodeValue( opacityNode ) && isEffectivelyOne( opacityNode ) === false ) {
+
+		material.userData.opacityMode = 'blend';
 
 	}
 

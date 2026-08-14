@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import * as TSL from 'three/tsl';
 import {
 	evaluateNeuralBRDF,
@@ -72,13 +72,24 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 
 		if ( neuralAppearanceData.outputs.opacity ) {
 
+			const opacityHead = neuralAppearanceData.outputs.opacity;
 			const opacity = evaluateNeuralOpacity( this );
-			const alphaCutoff = TSL.uniform( neuralAppearanceData.outputs.opacity.alphaCutoff );
 			this.opacityNode = opacity;
-			this.alphaTestNode = alphaCutoff;
-			this.alphaTest = neuralAppearanceData.outputs.opacity.alphaCutoff;
-			this.maskNode = opacity.greaterThanEqual( alphaCutoff );
-			this.maskShadowNode = this.maskNode;
+
+			if ( opacityHead.mode === 'blend' ) {
+
+				this.transparent = true;
+				this.depthWrite = false;
+
+			} else {
+
+				const alphaCutoff = TSL.uniform( opacityHead.alphaCutoff );
+				this.alphaTestNode = alphaCutoff;
+				this.alphaTest = opacityHead.alphaCutoff;
+				this.maskNode = opacity.greaterThanEqual( alphaCutoff );
+				this.maskShadowNode = this.maskNode;
+
+			}
 
 		}
 

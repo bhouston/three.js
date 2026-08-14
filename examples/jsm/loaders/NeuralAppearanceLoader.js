@@ -192,6 +192,14 @@ function normalizeOutputs( outputs ) {
 function normalizeOpacityHead( head ) {
 
 	const opacity = normalizeOutputHead( head, 'outputs.opacity', LATENT_CHANNELS, 1, false );
+	const mode = head.mode !== undefined ? head.mode : 'mask';
+
+	if ( mode !== 'mask' && mode !== 'blend' ) {
+
+		throw new Error( `THREE.NeuralAppearanceLoader: Unsupported outputs.opacity.mode "${ mode }".` );
+
+	}
+
 	const alphaCutoff = head.alphaCutoff !== undefined ? head.alphaCutoff : 0.5;
 
 	if ( Number.isFinite( alphaCutoff ) === false || alphaCutoff < 0 || alphaCutoff > 1 ) {
@@ -200,6 +208,7 @@ function normalizeOpacityHead( head ) {
 
 	}
 
+	opacity.mode = mode;
 	opacity.alphaCutoff = alphaCutoff;
 	return opacity;
 

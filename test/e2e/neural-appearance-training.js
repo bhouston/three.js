@@ -8,7 +8,7 @@ const width = 400;
 const height = 250;
 const viewScale = 2;
 const networkTimeout = 5; // minutes
-const trainingTimeout = 2; // minutes
+const trainingTimeout = 3; // minutes
 const outputDir = 'test/e2e/output-screenshots';
 const pixelThreshold = 0.15;
 const allTestCases = [
@@ -22,7 +22,8 @@ const allTestCases = [
 	{ name: 'uvGrid', label: 'uv grid', iterations: 1000, maxMeanRgbError: 28, maxDifferentPixels: 32, resolution: 8 },
 	{ name: 'normalMap', label: 'normal map', iterations: 1000, maxMeanRgbError: 35, maxDifferentPixels: 40, resolution: 8, hiddenSize: 64 },
 	{ name: 'emissiveGrid', label: 'emissive grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 40, resolution: 8, expectedOutputs: [ 'emission' ] },
-	{ name: 'alphaCutoff', label: 'alpha cutoff grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, resolution: 8, expectedOutputs: [ 'opacity' ] }
+	{ name: 'alphaCutoff', label: 'alpha cutoff grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, resolution: 8, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'mask' },
+	{ name: 'checkerboardTransparency', label: 'checkerboard transparency', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, resolution: 8, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'blend' }
 ];
 const testCases = process.env.TEST_CASE ? allTestCases.filter( ( testCase ) => testCase.name === process.env.TEST_CASE ) : allTestCases;
 const background = [ 0x15, 0x17, 0x1c ];
@@ -362,6 +363,12 @@ function validateExportJson( json, testCase ) {
 			throw new Error( `${testCase.label}: training did not export outputs.${outputName}.` );
 
 		}
+
+	}
+
+	if ( testCase.expectedOpacityMode && ( ! json.outputs.opacity || json.outputs.opacity.mode !== testCase.expectedOpacityMode ) ) {
+
+		throw new Error( `${testCase.label}: training exported opacity mode "${json.outputs.opacity ? json.outputs.opacity.mode : undefined}", expected "${testCase.expectedOpacityMode}".` );
 
 	}
 

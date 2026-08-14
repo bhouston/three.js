@@ -327,6 +327,7 @@ function sameHeadArchitecture( current, next ) {
 	if ( currentActivation.type !== nextActivation.type ) return false;
 	if ( ( currentActivation.offset || 0 ) !== ( nextActivation.offset || 0 ) ) return false;
 	if ( ( currentActivation.scale !== undefined ? currentActivation.scale : 1 ) !== ( nextActivation.scale !== undefined ? nextActivation.scale : 1 ) ) return false;
+	if ( ( current.mode || 'mask' ) !== ( next.mode || 'mask' ) ) return false;
 	if ( ( current.alphaCutoff !== undefined ? current.alphaCutoff : null ) !== ( next.alphaCutoff !== undefined ? next.alphaCutoff : null ) ) return false;
 
 	return true;

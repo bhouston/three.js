@@ -78,12 +78,23 @@ function createNeuralAppearanceManifest( model, options ) {
 
 	if ( model.opacityHead ) {
 
+		const opacityMode = options.opacityMode || 'mask';
 		outputs.opacity = {
 			inputSize: LATENT_CHANNELS,
 			layers: serializeLayers( model.opacityHead ),
 			outputActivation: { type: 'sigmoid' },
-			alphaCutoff: options.alphaCutoff
+			mode: opacityMode
 		};
+
+		if ( opacityMode === 'mask' ) {
+
+			outputs.opacity.alphaCutoff = Number.isFinite( options.alphaCutoff ) ? options.alphaCutoff : 0.5;
+
+		} else if ( Number.isFinite( options.alphaCutoff ) ) {
+
+			outputs.opacity.alphaCutoff = options.alphaCutoff;
+
+		}
 
 	}
 

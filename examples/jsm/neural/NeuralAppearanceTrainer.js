@@ -1,7 +1,6 @@
 import { createGpuMaterialTeacher } from './NeuralAppearanceTeacherEvaluator.js';
 import {
-	createModel,
-	trainBatch
+	createModel
 } from './NeuralAppearanceModel.js';
 import {
 	generateTrainingSamples,
@@ -29,7 +28,6 @@ import {
 } from './NeuralAppearanceGPUCompute.js';
 
 const DEFAULT_OPTIONS = {
-	backend: 'auto',
 	resolution: 8,
 	sourceResolution: null,
 	latentDownsample: 1,
@@ -84,9 +82,9 @@ class NeuralAppearanceTrainer {
 		validateTrainingSettings( settings );
 		this._abortRequested = false;
 
-		if ( settings.backend === 'gpu' && ( ! renderer || renderer.isWebGPURenderer !== true ) ) {
+		if ( ! renderer || renderer.isWebGPURenderer !== true ) {
 
-			throw new Error( 'THREE.NeuralAppearanceTrainer: WebGPU renderer is required for GPU backend training.' );
+			throw new Error( 'THREE.NeuralAppearanceTrainer: WebGPU renderer is required for neural appearance training.' );
 
 		}
 
@@ -109,34 +107,23 @@ class NeuralAppearanceTrainer {
 			opacity: teacher.supportsOpacity === true
 		};
 		settings.alphaCutoff = Number.isFinite( teacher.alphaCutoff ) ? teacher.alphaCutoff : 0.5;
+		settings.opacityMode = ( options.opacityMode === 'mask' || options.opacityMode === 'blend' ) ?
+			options.opacityMode :
+			( ( teacher.opacityMode === 'mask' || teacher.opacityMode === 'blend' ) ? teacher.opacityMode : 'mask' );
 		const model = createModel( settings, this.random );
 		validationSamples = await generateTrainingSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ), colorAugmentation: false, sampleAllMips: true }, teacher, createRandom( settings.seed + 0x9e3779b9 ), settings.iterations );
 		directionalValidationSamples = await generateValidationSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ) }, teacher );
 
-		const useGpu = ( settings.backend === 'gpu' ) ||
-			( settings.backend !== 'cpu' && renderer !== null && renderer !== undefined && renderer.isWebGPURenderer === true );
-
-		let gpuModel = null;
-		let trainBatchNode = null;
-		let resetGradientNormNode = null;
-		let accumulateGradientNormNode = null;
-		let adamWeightsNode = null;
-		let adamLatentsNode = null;
-
-		if ( useGpu ) {
-
-			gpuModel = new NeuralAppearanceGPUModel( {
-				...settings,
-				batchSize: getTrainingSampleCapacity( settings )
-			} );
-			gpuModel.initFromCPUModel( model );
-			trainBatchNode = createTrainBatchComputeNode( gpuModel );
-			resetGradientNormNode = createResetGradientNormComputeNode( gpuModel );
-			accumulateGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel );
-			adamWeightsNode = createAdamWeightsComputeNode( gpuModel );
-			adamLatentsNode = createAdamLatentsComputeNode( gpuModel );
-
-		}
+		const gpuModel = new NeuralAppearanceGPUModel( {
+			...settings,
+			batchSize: getTrainingSampleCapacity( settings )
+		} );
+		gpuModel.initFromCPUModel( model );
+		const trainBatchNode = createTrainBatchComputeNode( gpuModel );
+		const resetGradientNormNode = createResetGradientNormComputeNode( gpuModel );
+		const accumulateGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel );
+		const adamWeightsNode = createAdamWeightsComputeNode( gpuModel );
+		const adamLatentsNode = createAdamLatentsComputeNode( gpuModel );
 
 		let completedIterations = 0;
 
@@ -149,27 +136,19 @@ class NeuralAppearanceTrainer {
 
 			if ( this._abortRequested ) break;
 
-			if ( useGpu ) {
+			gpuModel.resetLoss();
+			gpuModel.uploadSamples( samples, lr, iteration + 1, settings.maxGradientNorm );
+			renderer.compute( trainBatchNode );
+			renderer.compute( resetGradientNormNode );
+			renderer.compute( accumulateGradientNormNode );
+			renderer.compute( adamWeightsNode );
+			renderer.compute( adamLatentsNode );
 
-				gpuModel.resetLoss();
-				gpuModel.uploadSamples( samples, lr, iteration + 1, settings.maxGradientNorm );
-				renderer.compute( trainBatchNode );
-				renderer.compute( resetGradientNormNode );
-				renderer.compute( accumulateGradientNormNode );
-				renderer.compute( adamWeightsNode );
-				renderer.compute( adamLatentsNode );
+			const shouldSync = onProgress !== null || ( iteration === settings.iterations - 1 );
+			if ( shouldSync ) {
 
-				const shouldSync = onProgress !== null || ( iteration === settings.iterations - 1 );
-				if ( shouldSync ) {
-
-					await gpuModel.syncToCPU( model, renderer );
-					lastLoss = await gpuModel.readLoss( renderer );
-
-				}
-
-			} else {
-
-				lastLoss = trainBatch( model, samples, teacher, lr, iteration + 1, settings.maxGradientNorm );
+				await gpuModel.syncToCPU( model, renderer );
+				lastLoss = await gpuModel.readLoss( renderer );
 
 			}
 
@@ -204,11 +183,7 @@ class NeuralAppearanceTrainer {
 
 		}
 
-		if ( useGpu ) {
-
-			await gpuModel.syncToCPU( model, renderer );
-
-		}
+		await gpuModel.syncToCPU( model, renderer );
 
 		const json = await exportNeuralAppearance( model, teacher, settings );
 
@@ -243,6 +218,12 @@ function resolveTrainingSettings( settings ) {
 }
 
 function validateTrainingSettings( settings ) {
+
+	if ( settings.backend === 'cpu' ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: CPU backend training is no longer supported. Use a WebGPU renderer for training.' );
+
+	}
 
 	if ( Number.isInteger( settings.resolution ) === false || settings.resolution < 1 ) {
 
@@ -414,6 +395,5 @@ export {
 	getTrainingSampleCapacity,
 	generateTrainingSamples,
 	normalizeDirectLightingTargets,
-	exportNeuralAppearance,
-	trainBatch
+	exportNeuralAppearance
 };

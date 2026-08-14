@@ -177,6 +177,7 @@
 				<option value="glossyGold">Glossy gold</option>
 				<option value="velvet">Velvet</option>
 				<option value="checkerboard">Checkerboard 4x4</option>
+				<option value="checkerboardTransparency">Checkerboard transparency</option>
 				<option value="emissiveGrid">Emissive rainbow waves</option>
 				<option value="alphaCutoff">Alpha cutoff waves</option>
 				<option value="" disabled>Custom file</option>
@@ -296,6 +297,10 @@
 					file: 'neural_train_checkerboard.mtlx',
 					settings: { sourceResolution: 32, latentDownsample: 1, iterations: 2000, batchSize: 256, hiddenSize: 32 }
 				},
+				checkerboardTransparency: {
+					file: 'neural_train_checkerboard_transparency.mtlx',
+					settings: { sourceResolution: 32, latentDownsample: 1, iterations: 2000, batchSize: 256, hiddenSize: 32 }
+				},
 				checkerboardNormal: {
 					file: 'neural_train_checkerboard_normal.mtlx',
 					settings: { sourceResolution: 32, latentDownsample: 1, iterations: 2000, batchSize: 256, hiddenSize: 32 }
@@ -345,9 +350,7 @@
 			const requestedDownsample = queryParams.has( 'latentDownsample' ) ?
 				readNumberQuery( 'latentDownsample', 1 ) :
 				( queryParams.has( 'resolution' ) ? Math.max( requestedSourceResolution / requestedResolution, 1 ) : presetSettings.latentDownsample );
-			const requestedBackend = queryParams.get( 'backend' ) === 'cpu' ? 'cpu' : 'gpu';
 			const params = {
-				backend: requestedBackend,
 				view: 'MaterialX teacher',
 				sourceResolution: requestedSourceResolution,
 				latentDownsample: requestedDownsample,
@@ -456,7 +459,6 @@
 
 				const gui = new GUI();
 				trainingSettingControllers.push(
-					gui.add( params, 'backend', [ 'gpu', 'cpu' ] ).name( 'backend' ),
 					gui.add( params, 'sourceResolution', [ 1, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 ] ).name( 'source resolution' ).onChange( updateTrainingEstimate ),
 					gui.add( params, 'latentDownsample', [ 1, 2, 4, 8, 16, 32, 64 ] ).name( 'latent downsample' ).onChange( updateTrainingEstimate ),
 					gui.add( params, 'resolution' ).name( 'latent resolution' ).listen().disable()
@@ -744,7 +746,6 @@
 				try {
 
 					const trainer = new NeuralAppearanceTrainer( {
-						backend: params.backend,
 						name: `${materialXMaterial.name || 'MaterialX'} neural appearance`,
 						resolution: Number( params.resolution ),
 						sourceResolution: Number( params.sourceResolution ),

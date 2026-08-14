@@ -165,7 +165,35 @@ export default QUnit.module( 'Addons', () => {
 				assert.ok( data.latentTextures[ 0 ] instanceof DataTexture, 'creates a data texture' );
 				assert.strictEqual( data.outputs.brdf.layers.length, 1, 'brdf layers' );
 				assert.strictEqual( data.outputs.emission.layers.length, 1, 'emission layers' );
+				assert.strictEqual( data.outputs.opacity.mode, 'mask', 'defaults opacity mode to mask' );
 				assert.strictEqual( data.outputs.opacity.alphaCutoff, 0.5, 'opacity cutoff' );
+
+			} );
+
+			QUnit.test( 'parses explicit blend and mask opacity modes', ( assert ) => {
+
+				const loader = new NeuralAppearanceLoader();
+				const blendManifest = createManifest();
+				blendManifest.outputs.opacity.mode = 'blend';
+				const blendData = loader.parse( blendManifest );
+
+				assert.strictEqual( blendData.outputs.opacity.mode, 'blend', 'parses blend opacity mode' );
+
+				const maskManifest = createManifest();
+				maskManifest.outputs.opacity.mode = 'mask';
+				const maskData = loader.parse( maskManifest );
+
+				assert.strictEqual( maskData.outputs.opacity.mode, 'mask', 'parses mask opacity mode' );
+
+			} );
+
+			QUnit.test( 'rejects unsupported opacity mode', ( assert ) => {
+
+				const loader = new NeuralAppearanceLoader();
+				const manifest = createManifest();
+				manifest.outputs.opacity.mode = 'invalid_mode';
+
+				assert.throws( () => loader.parse( manifest ), /Unsupported outputs\.opacity\.mode/, 'throws on invalid opacity mode' );
 
 			} );
 

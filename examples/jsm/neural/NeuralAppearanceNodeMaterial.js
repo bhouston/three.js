@@ -6,7 +6,10 @@ import {
 	evaluateNeuralOpacity,
 	createEvaluateNeuralBRDFFn,
 	createNeuralFragmentContext,
-	createOutputUniforms
+	createOutputUniforms,
+	isCompatibleNeuralAppearanceData,
+	updateOutputUniforms,
+	copyLatentTextureData
 } from './NeuralAppearanceTSL.js';
 
 const DEFAULT_PARAMETERS = {
@@ -80,6 +83,46 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 		}
 
 		this.setValues( parameters );
+
+	}
+
+	/**
+	 * Uploads matching latent textures and decoder weights without rebuilding the shader.
+	 *
+	 * Returns `false` when the new data has a different layout. On success the incoming
+	 * latent textures are disposed.
+	 *
+	 * @param {Object} neuralAppearanceData - Data returned by `NeuralAppearanceLoader`.
+	 * @return {boolean} True if the existing shader was reused.
+	 */
+	updateFromData( neuralAppearanceData ) {
+
+		if ( ! neuralAppearanceData || neuralAppearanceData.isNeuralAppearanceData !== true ) {
+
+			throw new Error( 'THREE.NeuralAppearanceNodeMaterial: Expected data from NeuralAppearanceLoader.' );
+
+		}
+
+		if ( isCompatibleNeuralAppearanceData( this.neuralAppearanceData, neuralAppearanceData ) !== true ) {
+
+			return false;
+
+		}
+
+		copyLatentTextureData( this.neuralAppearanceData.latentTextures, neuralAppearanceData.latentTextures );
+		updateOutputUniforms( this._outputUniforms, neuralAppearanceData.outputs );
+
+		this.neuralAppearanceData.name = neuralAppearanceData.name;
+		this.neuralAppearanceData.outputs = neuralAppearanceData.outputs;
+		this.neuralAppearanceData.referenceEvaluations = neuralAppearanceData.referenceEvaluations;
+
+		for ( const texture of neuralAppearanceData.latentTextures ) {
+
+			texture.dispose();
+
+		}
+
+		return true;
 
 	}
 

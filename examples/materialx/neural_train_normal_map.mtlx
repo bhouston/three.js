@@ -46,22 +46,10 @@
       <input name="scale" type="float" value="1.5" />
       <input name="texcoord" type="vector2" nodename="texcoord1" />
     </heighttonormal>
-    <normal name="geom_normal" type="vector3">
-      <input name="space" type="string" value="object" />
-    </normal>
-    <tangent name="geom_tangent" type="vector3">
-      <input name="space" type="string" value="object" />
-    </tangent>
-    <bitangent name="geom_bitangent" type="vector3">
-      <input name="space" type="string" value="object" />
-    </bitangent>
-    <normalmap name="object_normal" type="vector3">
+    <normalmap name="world_normal" type="vector3">
       <input name="in" type="vector3" nodename="tangent_normal" />
       <input name="scale" type="float" value="1.0" />
-      <input name="normal" type="vector3" nodename="geom_normal" />
-      <input name="tangent" type="vector3" nodename="geom_tangent" />
-      <input name="bitangent" type="vector3" nodename="geom_bitangent" />
     </normalmap>
-    <output name="out" type="vector3" nodename="object_normal" />
+    <output name="out" type="vector3" nodename="world_normal" />
   </nodegraph>
 </materialx>

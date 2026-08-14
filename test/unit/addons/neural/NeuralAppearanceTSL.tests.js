@@ -2,8 +2,51 @@ import { Vector4 } from 'three';
 import {
 	packLayerWeights,
 	packLayerBiases,
-	createOutputUniforms
+	createOutputUniforms,
+	isCompatibleNeuralAppearanceData,
+	updateOutputUniforms,
+	copyLatentTextureData
 } from '../../../../examples/jsm/neural/NeuralAppearanceTSL.js';
+
+function fakeTexture( fill = 0 ) {
+
+	const data = new Uint16Array( [ fill, 0, 0, 0 ] );
+
+	return {
+		mipmaps: [ { data, width: 1, height: 1 } ],
+		image: { data },
+		needsUpdate: false,
+		dispose() {}
+	};
+
+}
+
+function fakeData( weight = 0 ) {
+
+	return {
+		isNeuralAppearanceData: true,
+		latentWidth: 1,
+		latentHeight: 1,
+		mipLevels: 1,
+		wrap: 'repeat',
+		latentTextures: [ fakeTexture( weight ), fakeTexture( 0 ) ],
+		outputs: {
+			brdf: {
+				inputSize: 20,
+				rotation: { weights: new Array( 96 ).fill( weight ), inputSize: 8, outputSize: 12 },
+				layers: [ {
+					inputSize: 20,
+					outputSize: 3,
+					activation: 'linear',
+					weights: new Array( 60 ).fill( weight ),
+					biases: [ weight, 0, 0 ]
+				} ],
+				outputActivation: { type: 'linear' }
+			}
+		}
+	};
+
+}
 
 export default QUnit.module( 'Addons', () => {
 
@@ -64,6 +107,45 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( uniforms.emission.layers.length, 1, 'creates 1 layer for emission' );
 				assert.ok( uniforms.opacity, 'creates opacity uniforms' );
 				assert.strictEqual( uniforms.opacity.layers.length, 1, 'creates 1 layer for opacity' );
+
+			} );
+
+			QUnit.test( 'accepts compatible latent and decoder layouts', ( assert ) => {
+
+				assert.ok( isCompatibleNeuralAppearanceData( fakeData( 0 ), fakeData( 1 ) ), 'weight changes stay compatible' );
+
+				const wider = fakeData( 0 );
+				wider.latentWidth = 2;
+				assert.notOk( isCompatibleNeuralAppearanceData( fakeData( 0 ), wider ), 'rejects a different latent size' );
+
+				const hidden = fakeData( 0 );
+				hidden.outputs.brdf.layers[ 0 ].outputSize = 8;
+				assert.notOk( isCompatibleNeuralAppearanceData( fakeData( 0 ), hidden ), 'rejects a different decoder width' );
+
+			} );
+
+			QUnit.test( 'updates packed decoder uniforms in place', ( assert ) => {
+
+				const uniforms = createOutputUniforms( fakeData( 0 ).outputs );
+				const first = uniforms.brdf.layers[ 0 ].weights.array[ 0 ];
+
+				updateOutputUniforms( uniforms, fakeData( 7 ).outputs );
+
+				assert.strictEqual( uniforms.brdf.layers[ 0 ].weights.array[ 0 ], first, 'keeps the same Vector4 instances' );
+				assert.strictEqual( first.x, 7, 'writes new packed weights into the existing array' );
+				assert.strictEqual( uniforms.brdf.layers[ 0 ].biases.array[ 0 ].x, 7, 'writes new packed biases' );
+
+			} );
+
+			QUnit.test( 'copies latent mip data into existing textures', ( assert ) => {
+
+				const current = fakeData( 1 ).latentTextures;
+				const next = fakeData( 9 ).latentTextures;
+
+				copyLatentTextureData( current, next );
+
+				assert.strictEqual( current[ 0 ].mipmaps[ 0 ].data[ 0 ], 9, 'overwrites destination mip data' );
+				assert.strictEqual( current[ 0 ].needsUpdate, true, 'marks the destination texture for upload' );
 
 			} );
 

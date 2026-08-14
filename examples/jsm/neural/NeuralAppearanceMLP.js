@@ -1,3 +1,7 @@
+const LINEAR_SCALAR_OUTPUT_HE_SCALE = 0.2;
+const LINEAR_RGB_OUTPUT_HE_SCALE = 0.45;
+const LINEAR_RGB_OUTPUT_BIAS = 0.3;
+
 function createMLP( inputSize, hiddenLayers, outputSize, random, hiddenActivation = 'relu', outputActivation = 'linear' ) {
 
 	const sizes = [ inputSize, ...hiddenLayers, outputSize ];
@@ -7,9 +11,13 @@ function createMLP( inputSize, hiddenLayers, outputSize, random, hiddenActivatio
 
 		const input = sizes[ i ];
 		const output = sizes[ i + 1 ];
-		const scale = Math.sqrt( 2 / input );
+		const isOutputLayer = i === sizes.length - 2;
+		const activation = isOutputLayer ? outputActivation : hiddenActivation;
+		const isLinearOutput = isOutputLayer && activation === 'linear';
+		const isLinearRgb = isLinearOutput && output === 3;
+		const scale = Math.sqrt( 2 / input ) * ( isLinearRgb ? LINEAR_RGB_OUTPUT_HE_SCALE : ( isLinearOutput ? LINEAR_SCALAR_OUTPUT_HE_SCALE : 1 ) );
 		const weights = new Array( input * output );
-		const biases = new Array( output ).fill( 0 );
+		const biases = new Array( output ).fill( isLinearRgb ? LINEAR_RGB_OUTPUT_BIAS : 0 );
 
 		for ( let j = 0; j < weights.length; j ++ ) {
 
@@ -22,7 +30,7 @@ function createMLP( inputSize, hiddenLayers, outputSize, random, hiddenActivatio
 			outputSize: output,
 			weights,
 			biases,
-			activation: i === sizes.length - 2 ? outputActivation : hiddenActivation,
+			activation,
 			gradWeights: new Array( weights.length ).fill( 0 ),
 			gradBiases: new Array( biases.length ).fill( 0 ),
 			mWeights: new Array( weights.length ).fill( 0 ),

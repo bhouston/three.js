@@ -14,6 +14,7 @@ import {
 } from './NeuralAppearanceMLP.js';
 
 const OUTPUT_CLAMP_GRADIENT_LEAK = 0.01;
+const LATENT_INIT_SCALE = 0.35;
 
 function createModel( options, random ) {
 
@@ -26,8 +27,7 @@ function createModel( options, random ) {
 		null;
 	const rotationWeights = new Array( LATENT_CHANNELS * 12 ).fill( 0 );
 	const latentGrids = createLatentMipGrids( options.resolution, options.resolution, random );
-
-	return {
+	const model = {
 		decoder,
 		emissionHead,
 		opacityHead,
@@ -38,6 +38,10 @@ function createModel( options, random ) {
 		latentGrid: latentGrids[ 0 ],
 		latentGrids
 	};
+
+	decorrelateLinearRgbHead( model );
+
+	return model;
 
 }
 
@@ -67,7 +71,7 @@ function createLatentGrid( width, height, random ) {
 
 	for ( let i = 0; i < data.length; i ++ ) {
 
-		data[ i ] = ( random() * 2 - 1 ) * 0.25;
+		data[ i ] = ( random() * 2 - 1 ) * LATENT_INIT_SCALE;
 
 	}
 
@@ -79,6 +83,68 @@ function createLatentGrid( width, height, random ) {
 		m: new Array( data.length ).fill( 0 ),
 		v: new Array( data.length ).fill( 0 )
 	};
+
+}
+
+function decorrelateLinearRgbHead( model ) {
+
+	const layer = model.decoder.layers[ model.decoder.layers.length - 1 ];
+	if ( layer.outputSize !== 3 || model.latentGrid === undefined ) return;
+
+	const hiddenSize = layer.inputSize;
+	const probes = [
+		{ uv: [ 0.2, 0.2 ], wi: [ 0, 0, 1 ], wo: [ 0, 0, 1 ] },
+		{ uv: [ 0.8, 0.2 ], wi: [ 0.5, 0, 0.866 ], wo: [ 0, 0.5, 0.866 ] },
+		{ uv: [ 0.2, 0.8 ], wi: [ - 0.4, 0.3, 0.866 ], wo: [ 0.2, - 0.3, 0.93 ] },
+		{ uv: [ 0.8, 0.8 ], wi: [ 0.2, 0.6, 0.77 ], wo: [ - 0.5, 0.2, 0.84 ] },
+		{ uv: [ 0.5, 0.5 ], wi: [ 0, 0.7, 0.71 ], wo: [ 0.7, 0, 0.71 ] }
+	];
+	const hiddenMean = new Array( hiddenSize ).fill( 0 );
+
+	for ( const probe of probes ) {
+
+		const latents = sampleLatents( model.latentGrid, probe.uv ).output;
+		const input = forwardDecoderInput( latents, model.rotationWeights, probe.wi, probe.wo ).output;
+		const activations = forwardMLP( model.decoder, input ).activations;
+		const hidden = activations[ activations.length - 2 ];
+
+		for ( let i = 0; i < hiddenSize; i ++ ) {
+
+			hiddenMean[ i ] += hidden[ i ] / probes.length;
+
+		}
+
+	}
+
+	let hiddenNormSquared = 0;
+
+	for ( let i = 0; i < hiddenSize; i ++ ) {
+
+		hiddenNormSquared += hiddenMean[ i ] * hiddenMean[ i ];
+
+	}
+
+	if ( hiddenNormSquared < 1e-12 ) return;
+
+	for ( let channel = 0; channel < 3; channel ++ ) {
+
+		let dot = 0;
+
+		for ( let i = 0; i < hiddenSize; i ++ ) {
+
+			dot += layer.weights[ channel * hiddenSize + i ] * hiddenMean[ i ];
+
+		}
+
+		const projection = dot / hiddenNormSquared;
+
+		for ( let i = 0; i < hiddenSize; i ++ ) {
+
+			layer.weights[ channel * hiddenSize + i ] -= projection * hiddenMean[ i ];
+
+		}
+
+	}
 
 }
 

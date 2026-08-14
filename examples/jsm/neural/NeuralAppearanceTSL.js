@@ -52,83 +52,53 @@ function evaluateNeuralBRDF( material, lightDirection, context, evaluateFn ) {
 
 function evaluateNeuralEmission( material ) {
 
-	return TSL.Fn( () => {
+	const output = material.neuralAppearanceData.outputs.emission;
+	const uniforms = material._outputUniforms.emission;
+	const uvNode = TSL.uv();
 
-		const output = material.neuralAppearanceData.outputs.emission;
-		const uniforms = material._outputUniforms.emission;
-		const uvNode = TSL.uv();
+	if ( material.lodMode === 'trilinear' ) {
+
 		const data = material.neuralAppearanceData;
+		const continuousLod = computeContinuousLOD( material, uvNode );
+		const baseMip = TSL.floor( continuousLod );
+		const fracMip = TSL.fract( continuousLod );
+		const nextMip = TSL.min( baseMip.add( 1 ), data.mipLevels - 1 );
+		const rgb0 = applyOutputActivation( toVec3( evaluateMLP( output.layers, uniforms.layers, fetchLatentCodeAtLevel( material, uvNode, baseMip ) ) ), output.outputActivation );
+		const rgb1 = applyOutputActivation( toVec3( evaluateMLP( output.layers, uniforms.layers, fetchLatentCodeAtLevel( material, uvNode, nextMip ) ) ), output.outputActivation );
 
-		if ( material.lodMode === 'trilinear' ) {
+		return TSL.mix( rgb0, rgb1, fracMip );
 
-			const continuousLod = computeContinuousLOD( material, uvNode ).toVar();
-			const baseMip = TSL.floor( continuousLod ).toVar();
-			const fracMip = TSL.fract( continuousLod ).toVar();
-			const nextMip = TSL.min( baseMip.add( 1 ), data.mipLevels - 1 );
-			const decoded = TSL.array( 'vec3', 2 ).toVar();
+	}
 
-			TSL.Loop( { start: 0, end: 2, type: 'int', name: 'm', condition: '<' }, ( { m } ) => {
+	const decoded = toVec3( evaluateMLP( output.layers, uniforms.layers, fetchLatentCode( material ) ) );
 
-				const level = TSL.select( m.equal( TSL.int( 0 ) ), baseMip, nextMip );
-				const latents = fetchLatentCodeAtLevel( material, uvNode, level );
-				const rgb = applyOutputActivation( toVec3( evaluateMLP( output.layers, uniforms.layers, latents ) ), output.outputActivation );
-
-				decoded.element( m ).assign( rgb );
-
-			} );
-
-			return TSL.mix( decoded.element( 0 ), decoded.element( 1 ), fracMip );
-
-		}
-
-		const lod = computeLOD( material, uvNode );
-		const latents = fetchLatentCodeAtLevel( material, uvNode, lod );
-		const decoded = toVec3( evaluateMLP( output.layers, uniforms.layers, latents ) );
-
-		return applyOutputActivation( decoded, output.outputActivation );
-
-	}, 'vec3' )();
+	return applyOutputActivation( decoded, output.outputActivation );
 
 }
 
 function evaluateNeuralOpacity( material ) {
 
-	return TSL.Fn( () => {
+	const output = material.neuralAppearanceData.outputs.opacity;
+	const uniforms = material._outputUniforms.opacity;
+	const uvNode = TSL.uv();
 
-		const output = material.neuralAppearanceData.outputs.opacity;
-		const uniforms = material._outputUniforms.opacity;
-		const uvNode = TSL.uv();
+	if ( material.lodMode === 'trilinear' ) {
+
 		const data = material.neuralAppearanceData;
+		const continuousLod = computeContinuousLOD( material, uvNode );
+		const baseMip = TSL.floor( continuousLod );
+		const fracMip = TSL.fract( continuousLod );
+		const nextMip = TSL.min( baseMip.add( 1 ), data.mipLevels - 1 );
+		const opacity0 = applyScalarOutputActivation( evaluateMLP( output.layers, uniforms.layers, fetchLatentCodeAtLevel( material, uvNode, baseMip ) )[ 0 ], output.outputActivation );
+		const opacity1 = applyScalarOutputActivation( evaluateMLP( output.layers, uniforms.layers, fetchLatentCodeAtLevel( material, uvNode, nextMip ) )[ 0 ], output.outputActivation );
 
-		if ( material.lodMode === 'trilinear' ) {
+		return TSL.mix( opacity0, opacity1, fracMip );
 
-			const continuousLod = computeContinuousLOD( material, uvNode ).toVar();
-			const baseMip = TSL.floor( continuousLod ).toVar();
-			const fracMip = TSL.fract( continuousLod ).toVar();
-			const nextMip = TSL.min( baseMip.add( 1 ), data.mipLevels - 1 );
-			const decoded = TSL.array( 'float', 2 ).toVar();
+	}
 
-			TSL.Loop( { start: 0, end: 2, type: 'int', name: 'm', condition: '<' }, ( { m } ) => {
+	const decoded = evaluateMLP( output.layers, uniforms.layers, fetchLatentCode( material ) )[ 0 ];
 
-				const level = TSL.select( m.equal( TSL.int( 0 ) ), baseMip, nextMip );
-				const latents = fetchLatentCodeAtLevel( material, uvNode, level );
-				const opacity = applyScalarOutputActivation( evaluateMLP( output.layers, uniforms.layers, latents )[ 0 ], output.outputActivation );
-
-				decoded.element( m ).assign( opacity );
-
-			} );
-
-			return TSL.mix( decoded.element( 0 ), decoded.element( 1 ), fracMip );
-
-		}
-
-		const lod = computeLOD( material, uvNode );
-		const latents = fetchLatentCodeAtLevel( material, uvNode, lod );
-		const decoded = evaluateMLP( output.layers, uniforms.layers, latents )[ 0 ];
-
-		return applyScalarOutputActivation( decoded, output.outputActivation );
-
-	}, 'float' )();
+	return applyScalarOutputActivation( decoded, output.outputActivation );
 
 }
 
@@ -286,6 +256,151 @@ function createHeadUniforms( decoder ) {
 
 }
 
+function isCompatibleNeuralAppearanceData( current, next ) {
+
+	if ( ! current || ! next ) return false;
+	if ( current.latentWidth !== next.latentWidth ) return false;
+	if ( current.latentHeight !== next.latentHeight ) return false;
+	if ( current.mipLevels !== next.mipLevels ) return false;
+	if ( current.wrap !== next.wrap ) return false;
+	if ( ! sameLatentTextureLayout( current.latentTextures, next.latentTextures ) ) return false;
+	if ( ! sameHeadArchitecture( current.outputs.brdf, next.outputs.brdf ) ) return false;
+	if ( ! sameHeadArchitecture( current.outputs.emission, next.outputs.emission ) ) return false;
+	if ( ! sameHeadArchitecture( current.outputs.opacity, next.outputs.opacity ) ) return false;
+
+	return true;
+
+}
+
+function sameLatentTextureLayout( currentTextures, nextTextures ) {
+
+	if ( ! currentTextures || ! nextTextures || currentTextures.length !== nextTextures.length ) return false;
+
+	for ( let i = 0; i < currentTextures.length; i ++ ) {
+
+		const currentMips = currentTextures[ i ].mipmaps;
+		const nextMips = nextTextures[ i ].mipmaps;
+
+		if ( currentMips.length !== nextMips.length ) return false;
+
+		for ( let mip = 0; mip < currentMips.length; mip ++ ) {
+
+			if ( currentMips[ mip ].width !== nextMips[ mip ].width ) return false;
+			if ( currentMips[ mip ].height !== nextMips[ mip ].height ) return false;
+			if ( currentMips[ mip ].data.length !== nextMips[ mip ].data.length ) return false;
+
+		}
+
+	}
+
+	return true;
+
+}
+
+function sameHeadArchitecture( current, next ) {
+
+	if ( Boolean( current ) !== Boolean( next ) ) return false;
+	if ( ! current ) return true;
+	if ( current.inputSize !== next.inputSize ) return false;
+	if ( Boolean( current.rotation ) !== Boolean( next.rotation ) ) return false;
+
+	if ( current.rotation ) {
+
+		if ( current.rotation.inputSize !== next.rotation.inputSize ) return false;
+		if ( current.rotation.outputSize !== next.rotation.outputSize ) return false;
+
+	}
+
+	if ( current.layers.length !== next.layers.length ) return false;
+
+	for ( let i = 0; i < current.layers.length; i ++ ) {
+
+		if ( current.layers[ i ].inputSize !== next.layers[ i ].inputSize ) return false;
+		if ( current.layers[ i ].outputSize !== next.layers[ i ].outputSize ) return false;
+		if ( current.layers[ i ].activation !== next.layers[ i ].activation ) return false;
+
+	}
+
+	const currentActivation = current.outputActivation || { type: 'linear' };
+	const nextActivation = next.outputActivation || { type: 'linear' };
+
+	if ( currentActivation.type !== nextActivation.type ) return false;
+	if ( ( currentActivation.offset || 0 ) !== ( nextActivation.offset || 0 ) ) return false;
+	if ( ( currentActivation.scale !== undefined ? currentActivation.scale : 1 ) !== ( nextActivation.scale !== undefined ? nextActivation.scale : 1 ) ) return false;
+	if ( ( current.alphaCutoff !== undefined ? current.alphaCutoff : null ) !== ( next.alphaCutoff !== undefined ? next.alphaCutoff : null ) ) return false;
+
+	return true;
+
+}
+
+function updateOutputUniforms( uniforms, outputs ) {
+
+	updateHeadUniforms( uniforms.brdf, outputs.brdf );
+	if ( outputs.emission ) updateHeadUniforms( uniforms.emission, outputs.emission );
+	if ( outputs.opacity ) updateHeadUniforms( uniforms.opacity, outputs.opacity );
+
+}
+
+function updateHeadUniforms( uniforms, decoder ) {
+
+	if ( decoder.rotation ) {
+
+		copyPackedVectors( uniforms.rotationWeights.array, packLayerWeights( decoder.rotation.weights, decoder.rotation.inputSize, decoder.rotation.outputSize ) );
+
+	}
+
+	for ( let i = 0; i < decoder.layers.length; i ++ ) {
+
+		const layer = decoder.layers[ i ];
+
+		copyPackedVectors( uniforms.layers[ i ].weights.array, packLayerWeights( layer.weights, layer.inputSize, layer.outputSize ) );
+		copyPackedVectors( uniforms.layers[ i ].biases.array, packLayerBiases( layer.biases ) );
+
+	}
+
+}
+
+function copyPackedVectors( targetArray, packed ) {
+
+	if ( targetArray.length !== packed.length ) {
+
+		throw new Error( `THREE.NeuralAppearanceNodeMaterial: Packed uniform length mismatch (${ targetArray.length } !== ${ packed.length }).` );
+
+	}
+
+	for ( let i = 0; i < packed.length; i ++ ) {
+
+		targetArray[ i ].copy( packed[ i ] );
+
+	}
+
+}
+
+function copyLatentTextureData( destinationTextures, sourceTextures ) {
+
+	for ( let i = 0; i < destinationTextures.length; i ++ ) {
+
+		const destination = destinationTextures[ i ];
+		const source = sourceTextures[ i ];
+
+		for ( let mip = 0; mip < destination.mipmaps.length; mip ++ ) {
+
+			destination.mipmaps[ mip ].data.set( source.mipmaps[ mip ].data );
+
+		}
+
+		if ( destination.image && destination.image.data && destination.image.data !== destination.mipmaps[ 0 ].data ) {
+
+			destination.image.data.set( source.image.data );
+
+		}
+
+		destination.needsUpdate = true;
+
+	}
+
+}
+
 function packLayerWeights( weights, inputSize, outputSize ) {
 
 	const inputVectorCount = Math.ceil( inputSize / 4 );
@@ -356,8 +471,8 @@ function buildDecoderFrames( decoder, decoderUniforms, latents ) {
 	for ( let frame = 0; frame < 2; frame ++ ) {
 
 		const offset = frame * 6;
-		const n = TSL.vec3( rotation.element( offset ), rotation.element( offset + 1 ), rotation.element( offset + 2 ).add( 1 ) ).normalize().toVar();
-		const t = TSL.vec3( rotation.element( offset + 3 ).add( 1 ), rotation.element( offset + 4 ), rotation.element( offset + 5 ) ).normalize().toVar();
+		const n = TSL.vec3( rotation[ offset ], rotation[ offset + 1 ], rotation[ offset + 2 ].add( 1 ) ).normalize().toVar();
+		const t = TSL.vec3( rotation[ offset + 3 ].add( 1 ), rotation[ offset + 4 ], rotation[ offset + 5 ] ).normalize().toVar();
 		const b = TSL.cross( n, t ).normalize().toVar();
 
 		frames.push( { n, t, b } );
@@ -399,47 +514,31 @@ function projectDecoderInput( latents, frames, wi, wo, inputSize ) {
 
 function evaluateMLP( layers, layerUniforms, inputs ) {
 
-	const maxVecCount = Math.max(
-		Math.ceil( inputs.length / 4 ),
-		...layers.map( ( layer ) => Math.max(
-			Math.ceil( layer.inputSize / 4 ),
-			Math.ceil( layer.outputSize / 4 )
-		) )
-	);
-	const bufferA = TSL.array( 'vec4', maxVecCount ).toVar();
-	const bufferB = TSL.array( 'vec4', maxVecCount ).toVar();
-
-	copyInputsToBuffer( inputs, bufferA );
-
-	let readBuffer = bufferA;
-	let writeBuffer = bufferB;
+	let activations = packNodeInputs( inputs );
 
 	for ( let i = 0; i < layers.length; i ++ ) {
 
 		const layer = layers[ i ];
 		const layerUniform = layerUniforms[ i ];
 
-		linearLayerPacked( readBuffer, writeBuffer, layerUniform.weights, layerUniform.biases, layer.inputSize, layer.outputSize, layer.activation );
-
-		const swap = readBuffer;
-		readBuffer = writeBuffer;
-		writeBuffer = swap;
+		activations = linearLayerPacked( activations, layerUniform.weights, layerUniform.biases, layer.inputSize, layer.outputSize, layer.activation );
 
 	}
 
-	return unpackNodeInputs( readBuffer, layers[ layers.length - 1 ].outputSize );
+	return unpackNodeInputs( activations, layers[ layers.length - 1 ].outputSize );
 
 }
 
-function copyInputsToBuffer( inputs, buffer ) {
+function packNodeInputs( inputs ) {
 
+	const inputVectors = [];
 	const inputVectorCount = Math.ceil( inputs.length / 4 );
 
 	for ( let i = 0; i < inputVectorCount; i ++ ) {
 
 		const offset = i * 4;
 
-		buffer.element( i ).assign( TSL.vec4(
+		inputVectors.push( TSL.vec4(
 			inputs[ offset ] || 0,
 			inputs[ offset + 1 ] || 0,
 			inputs[ offset + 2 ] || 0,
@@ -448,13 +547,7 @@ function copyInputsToBuffer( inputs, buffer ) {
 
 	}
 
-}
-
-function packNodeInputs( inputs ) {
-
-	const buffer = TSL.array( 'vec4', Math.ceil( inputs.length / 4 ) ).toVar();
-	copyInputsToBuffer( inputs, buffer );
-	return buffer;
+	return inputVectors;
 
 }
 
@@ -464,10 +557,8 @@ function unpackNodeInputs( inputs, outputSize ) {
 
 	for ( let outputIndex = 0; outputIndex < outputSize; outputIndex ++ ) {
 
-		const vector = inputs.element( Math.floor( outputIndex / 4 ) );
-		const component = outputIndex % 4;
-
-		outputs.push( component === 0 ? vector.x : ( component === 1 ? vector.y : ( component === 2 ? vector.z : vector.w ) ) );
+		const vector = inputs[ Math.floor( outputIndex / 4 ) ];
+		outputs.push( vector.element( outputIndex % 4 ) );
 
 	}
 
@@ -475,92 +566,89 @@ function unpackNodeInputs( inputs, outputSize ) {
 
 }
 
-function packedWeightDot( inputVector, weights, outputIndex, inputVectorCount, outputSize, vectorIndex ) {
+function linearLayerPacked( inputs, weights, biases, inputSize, outputSize, activation ) {
 
-	const clampedOutput = TSL.min( outputIndex, TSL.int( outputSize - 1 ) );
-	const contrib = TSL.dot( inputVector, weights.element( clampedOutput.mul( inputVectorCount ).add( vectorIndex ) ) );
-
-	return TSL.select( outputIndex.lessThan( TSL.int( outputSize ) ), contrib, TSL.float( 0 ) );
-
-}
-
-function linearLayerPacked( inputs, outputs, weights, biases, inputSize, outputSize, activation ) {
-
+	const outputs = [];
 	const inputVectorCount = Math.ceil( inputSize / 4 );
 	const outputVectorCount = Math.ceil( outputSize / 4 );
-	const inputVectorCountNode = TSL.int( inputVectorCount );
 
-	TSL.Loop( { start: 0, end: outputVectorCount, type: 'int', name: 'o', condition: '<' }, ( { o } ) => {
+	for ( let outputVector = 0; outputVector < outputVectorCount; outputVector ++ ) {
 
-		const acc = biases.element( o ).toVar();
-		const row = o.mul( TSL.int( 4 ) );
+		const outputBase = outputVector * 4;
+		const sums = [ TSL.float( 0 ), TSL.float( 0 ), TSL.float( 0 ), TSL.float( 0 ) ];
 
-		TSL.Loop( { start: 0, end: inputVectorCount, type: 'int', name: 'v', condition: '<' }, ( { v } ) => {
+		for ( let vectorIndex = 0; vectorIndex < inputVectorCount; vectorIndex ++ ) {
 
-			const inputVector = inputs.element( v );
-			const contrib = TSL.vec4( 0 ).toVar();
+			const inputVector = inputs[ vectorIndex ];
 
-			TSL.Loop( { start: 0, end: 4, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+			for ( let component = 0; component < 4; component ++ ) {
 
-				const d = packedWeightDot( inputVector, weights, row.add( c ), inputVectorCountNode, outputSize, v );
+				const outputIndex = outputBase + component;
 
-				contrib.addAssign( TSL.vec4(
-					TSL.select( c.equal( TSL.int( 0 ) ), d, TSL.float( 0 ) ),
-					TSL.select( c.equal( TSL.int( 1 ) ), d, TSL.float( 0 ) ),
-					TSL.select( c.equal( TSL.int( 2 ) ), d, TSL.float( 0 ) ),
-					TSL.select( c.equal( TSL.int( 3 ) ), d, TSL.float( 0 ) )
-				) );
+				if ( outputIndex < outputSize ) {
 
-			} );
+					sums[ component ] = sums[ component ].add( TSL.dot( inputVector, weights.element( outputIndex * inputVectorCount + vectorIndex ) ) );
 
-			acc.addAssign( contrib );
+				}
 
-		} );
-
-		if ( activation === 'relu' ) {
-
-			acc.assign( acc.max( 0 ) );
+			}
 
 		}
 
-		outputs.element( o ).assign( acc );
+		let value = biases.element( outputVector ).add( TSL.vec4( sums[ 0 ], sums[ 1 ], sums[ 2 ], sums[ 3 ] ) );
 
-	} );
+		if ( activation === 'relu' ) {
+
+			value = value.max( 0 );
+
+		}
+
+		outputs.push( value );
+
+	}
+
+	return outputs;
 
 }
 
 function linearLayer( inputs, weights, biases, outputSize, activation ) {
 
-	const inputVectors = packNodeInputs( inputs );
+	const outputs = [];
+	const inputVectors = [];
 	const inputVectorCount = Math.ceil( inputs.length / 4 );
-	const outputs = TSL.array( 'float', outputSize ).toVar();
-	const inputVectorCountNode = TSL.int( inputVectorCount );
 
-	TSL.Loop( { start: 0, end: outputSize, type: 'int', name: 'o', condition: '<' }, ( { o } ) => {
+	for ( let i = 0; i < inputVectorCount; i ++ ) {
 
-		const acc = TSL.float( 0 ).toVar();
+		const offset = i * 4;
 
-		if ( biases ) {
+		inputVectors.push( TSL.vec4(
+			inputs[ offset ] || 0,
+			inputs[ offset + 1 ] || 0,
+			inputs[ offset + 2 ] || 0,
+			inputs[ offset + 3 ] || 0
+		) );
 
-			acc.assign( biases.element( o ) );
+	}
+
+	for ( let outputIndex = 0; outputIndex < outputSize; outputIndex ++ ) {
+
+		let value = biases ? biases.element( outputIndex ) : TSL.float( 0 );
+
+		for ( let vectorIndex = 0; vectorIndex < inputVectorCount; vectorIndex ++ ) {
+
+			value = value.add( TSL.dot( inputVectors[ vectorIndex ], weights.element( outputIndex * inputVectorCount + vectorIndex ) ) );
 
 		}
-
-		TSL.Loop( { start: 0, end: inputVectorCount, type: 'int', name: 'v', condition: '<' }, ( { v } ) => {
-
-			acc.addAssign( TSL.dot( inputVectors.element( v ), weights.element( o.mul( inputVectorCountNode ).add( v ) ) ) );
-
-		} );
 
 		if ( activation === 'relu' ) {
 
-			acc.assign( acc.max( 0 ) );
+			value = value.max( 0 );
 
 		}
 
-		outputs.element( o ).assign( acc );
+		outputs.push( value );
 
-	} );
+	}
 
 	return outputs;
 
@@ -622,6 +710,9 @@ export {
 	computeLOD,
 	createOutputUniforms,
 	createHeadUniforms,
+	isCompatibleNeuralAppearanceData,
+	updateOutputUniforms,
+	copyLatentTextureData,
 	packLayerWeights,
 	packLayerBiases,
 	buildDecoderInput,

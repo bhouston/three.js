@@ -135,6 +135,37 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( result.validation.loss, result.validationLoss, 'reports validation from the serialized runtime evaluator' );
 				assert.strictEqual( result.validation.mipLevels, 2, 'validates every exported mip level' );
 				assert.strictEqual( result.validation.sampleCount, 8, 'validates the held-out samples across both mips' );
+				assert.strictEqual( result.stoppedEarly, false, 'completes the requested iteration count' );
+				assert.strictEqual( result.iteration, 1, 'reports the completed iteration count' );
+
+			} );
+
+			QUnit.test( 'aborts an in-flight run and still exports the current model', async ( assert ) => {
+
+				const teacher = createBatchTeacher();
+				const trainer = new NeuralAppearanceTrainer( {
+					resolution: 2,
+					iterations: 8,
+					batchSize: 4,
+					hiddenSize: 4,
+					yieldEvery: 0,
+					seed: 7
+				} );
+				const result = await trainer.train( {
+					material: {},
+					teacher,
+					onProgress: () => {
+
+						trainer.abort();
+
+					}
+				} );
+
+				assert.strictEqual( result.stoppedEarly, true, 'reports that training stopped early' );
+				assert.strictEqual( result.iteration, 1, 'finishes the iteration in progress before stopping' );
+				assert.strictEqual( result.iterations, 8, 'preserves the requested iteration count' );
+				assert.strictEqual( result.json.format, 'three-neural-appearance', 'exports the current model as a complete asset' );
+				assert.ok( Number.isFinite( result.loss ), 'returns the last training loss' );
 
 			} );
 

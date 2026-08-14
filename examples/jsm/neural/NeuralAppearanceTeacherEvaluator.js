@@ -171,7 +171,6 @@ class NeuralAppearanceTeacherEvaluator {
 
 		const sampleMaterial = this.material.clone ? this.material.clone() : this.material;
 		sampleMaterial.contextNode = TSL.replaceUV( nodes.materialUv, TSL.overrideNodes( [
-			[ TSL.normalView, nodes.normal ],
 			[ TSL.tangentView, nodes.tangent ],
 			[ TSL.bitangentView, nodes.bitangent ],
 			[ TSL.positionViewDirection, nodes.wo ]

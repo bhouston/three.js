@@ -64,6 +64,17 @@ class NeuralAppearanceTrainer {
 
 		this.options = { ...DEFAULT_OPTIONS, ...options };
 		this.random = createRandom( this.options.seed );
+		this._abortRequested = false;
+
+	}
+
+	/**
+	 * Requests that an in-flight `train()` call finish after the current iteration
+	 * and return the current model, as if the run had completed.
+	 */
+	abort() {
+
+		this._abortRequested = true;
 
 	}
 
@@ -71,6 +82,7 @@ class NeuralAppearanceTrainer {
 
 		const settings = resolveTrainingSettings( { ...this.options, ...options } );
 		validateTrainingSettings( settings );
+		this._abortRequested = false;
 
 		if ( settings.backend === 'gpu' && ( ! renderer || renderer.isWebGPURenderer !== true ) ) {
 
@@ -126,10 +138,16 @@ class NeuralAppearanceTrainer {
 
 		}
 
+		let completedIterations = 0;
+
 		for ( let iteration = 0; iteration < settings.iterations; iteration ++ ) {
+
+			if ( this._abortRequested ) break;
 
 			const lr = getLearningRate( settings, iteration );
 			const samples = await generateTrainingSamples( settings, teacher, this.random, iteration );
+
+			if ( this._abortRequested ) break;
 
 			if ( useGpu ) {
 
@@ -174,6 +192,10 @@ class NeuralAppearanceTrainer {
 
 			}
 
+			completedIterations = iteration + 1;
+
+			if ( this._abortRequested ) break;
+
 			if ( settings.yieldEvery > 0 && iteration % settings.yieldEvery === settings.yieldEvery - 1 ) {
 
 				await yieldToBrowser();
@@ -197,7 +219,10 @@ class NeuralAppearanceTrainer {
 			validation,
 			model,
 			gpuModel,
-			teacher
+			teacher,
+			iteration: completedIterations,
+			iterations: settings.iterations,
+			stoppedEarly: this._abortRequested
 		};
 
 	}

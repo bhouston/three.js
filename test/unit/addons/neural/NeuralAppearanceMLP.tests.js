@@ -73,6 +73,22 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'initializes a linear RGB head with a shared gray bias', ( assert ) => {
+
+				const random = () => 0.75;
+				const mlp = createMLP( 32, [ 32 ], 3, random, 'relu', 'linear' );
+				const hiddenLayer = mlp.layers[ 0 ];
+				const outputLayer = mlp.layers[ 1 ];
+				const heScale = Math.sqrt( 2 / 32 );
+				const rgbScale = heScale * 0.45;
+
+				assert.deepEqual( outputLayer.biases, [ 0.3, 0.3, 0.3 ], 'starts RGB biases at a shared positive gray' );
+				assert.ok( hiddenLayer.weights.every( ( weight ) => Math.abs( weight ) <= heScale + 1e-12 ), 'keeps He scale on hidden ReLU weights' );
+				assert.ok( outputLayer.weights.every( ( weight ) => Math.abs( weight ) <= rgbScale + 1e-12 ), 'uses a moderate RGB head scale so coarse color can move without a loud random field' );
+				assert.ok( outputLayer.weights.some( ( weight ) => Math.abs( weight ) > rgbScale * 0.4 ), 'still uses nonzero RGB weights for a little hue variation' );
+
+			} );
+
 		} );
 
 	} );

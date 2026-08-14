@@ -22,5 +22,6 @@ import './addons/neural/NeuralAppearanceRuntime.tests.js';
 import './addons/neural/NeuralAppearanceValidator.tests.js';
 import './addons/neural/NeuralAppearanceTeacherReadback.tests.js';
 import './addons/neural/NeuralAppearanceTSL.tests.js';
+import './addons/neural/NeuralAppearanceNodeMaterial.tests.js';
 import './addons/neural/NeuralAppearanceTrainer.tests.js';
 import './addons/neural/NeuralAppearanceGPUModel.tests.js';

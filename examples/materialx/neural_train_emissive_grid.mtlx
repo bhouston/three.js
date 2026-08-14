@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<materialx version="1.39">
+  <surfacematerial name="mat_neural_train_emissive_grid" type="material" nodedef="ND_surfacematerial">
+    <input name="surfaceshader" type="surfaceshader" nodename="surface_shader1" />
+  </surfacematerial>
+  <standard_surface name="surface_shader1" type="surfaceshader" nodedef="ND_standard_surface_surfaceshader">
+    <input name="base" type="float" value="0.0" />
+    <input name="base_color" type="color3" value="0.0, 0.0, 0.0" />
+    <input name="specular" type="float" value="0.0" />
+    <input name="emission" type="float" value="1.5" />
+    <input name="emission_color" type="color3" output="out" nodegraph="emissive_grid_graph" />
+  </standard_surface>
+  <nodegraph name="emissive_grid_graph">
+    <image name="grid" type="float">
+      <input name="file" type="filename" value="resources/Images/grid.png" />
+      <input name="default" type="float" value="0.0" />
+    </image>
+    <ifgreater name="emissive_color" type="color3">
+      <input name="value1" type="float" nodename="grid" />
+      <input name="value2" type="float" value="0.5" />
+      <input name="in1" type="color3" value="1.0, 0.08, 0.01" />
+      <input name="in2" type="color3" value="0.01, 0.15, 1.0" />
+    </ifgreater>
+    <output name="out" type="color3" nodename="emissive_color" />
+  </nodegraph>
+</materialx>

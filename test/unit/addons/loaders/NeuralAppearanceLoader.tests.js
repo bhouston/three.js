@@ -5,7 +5,7 @@ function createManifest() {
 
 	return {
 		format: 'three-neural-appearance',
-		version: 1,
+		version: 2,
 		name: 'unit test material',
 		latents: {
 			channels: 8,
@@ -25,27 +25,60 @@ function createManifest() {
 				}
 			]
 		},
-		decoder: {
-			inputSize: 20,
-			rotation: {
-				inputSize: 8,
-				outputSize: 12,
-				weights: new Array( 96 ).fill( 0 )
+		outputs: {
+			brdf: {
+				inputSize: 20,
+				rotation: {
+					inputSize: 8,
+					outputSize: 12,
+					weights: new Array( 96 ).fill( 0 )
+				},
+				layers: [
+					{
+						inputSize: 20,
+						outputSize: 3,
+						activation: 'linear',
+						biases: [ 0, 0, 0 ],
+						weights: [
+							1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+							0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+							0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+						]
+					}
+				],
+				outputActivation: { type: 'linear' }
 			},
-			layers: [
-				{
-					inputSize: 20,
-					outputSize: 3,
-					activation: 'linear',
-					biases: [ 0, 0, 0 ],
-					weights: [
-						1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-						0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-						0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
-					]
-				}
-			],
-			outputActivation: { type: 'linear' }
+			emission: {
+				inputSize: 8,
+				layers: [
+					{
+						inputSize: 8,
+						outputSize: 3,
+						activation: 'linear',
+						biases: [ 0, 0, 0 ],
+						weights: [
+							1, 0, 0, 0, 0, 0, 0, 0,
+							0, 1, 0, 0, 0, 0, 0, 0,
+							0, 0, 1, 0, 0, 0, 0, 0
+						]
+					}
+				],
+				outputActivation: { type: 'linear' }
+			},
+			opacity: {
+				inputSize: 8,
+				layers: [
+					{
+						inputSize: 8,
+						outputSize: 1,
+						activation: 'linear',
+						biases: [ 0 ],
+						weights: [ 1, 0, 0, 0, 0, 0, 0, 0 ]
+					}
+				],
+				outputActivation: { type: 'sigmoid' },
+				alphaCutoff: 0.5
+			}
 		},
 		referenceEvaluations: [
 			{
@@ -72,7 +105,7 @@ function cpuEval( data, reference ) {
 		reference.wi[ 0 ], reference.wi[ 1 ], reference.wi[ 2 ],
 		reference.wo[ 0 ], reference.wo[ 1 ], reference.wo[ 2 ]
 	];
-	return evaluateDecoderLayers( data.decoder.layers, inputs );
+	return evaluateDecoderLayers( data.outputs.brdf.layers, inputs );
 
 }
 
@@ -130,7 +163,9 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( data.isNeuralAppearanceData, true, 'marks parsed data' );
 				assert.strictEqual( data.latentTextures.length, 2, 'two latent textures' );
 				assert.ok( data.latentTextures[ 0 ] instanceof DataTexture, 'creates a data texture' );
-				assert.strictEqual( data.decoder.layers.length, 1, 'decoder layers' );
+				assert.strictEqual( data.outputs.brdf.layers.length, 1, 'brdf layers' );
+				assert.strictEqual( data.outputs.emission.layers.length, 1, 'emission layers' );
+				assert.strictEqual( data.outputs.opacity.alphaCutoff, 0.5, 'opacity cutoff' );
 
 			} );
 
@@ -138,7 +173,7 @@ export default QUnit.module( 'Addons', () => {
 
 				const loader = new NeuralAppearanceLoader();
 				const manifest = createManifest();
-				manifest.version = 2;
+				manifest.version = 1;
 
 				assert.throws( () => loader.parse( manifest ), /Unsupported version/, 'throws on unsupported version' );
 
@@ -148,7 +183,7 @@ export default QUnit.module( 'Addons', () => {
 
 				const loader = new NeuralAppearanceLoader();
 				const manifest = createManifest();
-				manifest.decoder.layers[ 0 ].weights.pop();
+				manifest.outputs.brdf.layers[ 0 ].weights.pop();
 
 				assert.throws( () => loader.parse( manifest ), /weights length/, 'throws on invalid weight count' );
 

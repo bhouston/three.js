@@ -132,9 +132,21 @@ export * from './loaders/VTKLoader.js';
 export * from './loaders/XYZLoader.js';
 
 export * from './materials/LDrawConditionalLineMaterial.js';
-export * from './materials/NeuralAppearanceFilterUtils.js';
-export * from './materials/NeuralAppearanceTeacherEvaluator.js';
-export * from './materials/NeuralAppearanceTrainer.js';
+
+export * from './neural/NeuralAppearanceFilterUtils.js';
+export * from './neural/NeuralAppearanceFormat.js';
+export * from './neural/NeuralAppearanceManifest.js';
+export * from './neural/NeuralAppearanceMLP.js';
+export * from './neural/NeuralAppearanceModel.js';
+export * from './neural/NeuralAppearanceNodeMaterial.js';
+export * from './neural/NeuralAppearanceRuntime.js';
+export * from './neural/NeuralAppearanceSampler.js';
+export * from './neural/NeuralAppearanceTeacherAtlas.js';
+export * from './neural/NeuralAppearanceTeacherEvaluator.js';
+export * from './neural/NeuralAppearanceTeacherReadback.js';
+export * from './neural/NeuralAppearanceTrainer.js';
+export * from './neural/NeuralAppearanceTSL.js';
+export * from './neural/NeuralAppearanceValidator.js';
 
 export * from './math/Capsule.js';
 export * from './math/ColorConverter.js';

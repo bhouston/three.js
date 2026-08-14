@@ -27,6 +27,12 @@
 				margin: 4px 4px 4px 0;
 			}
 
+			#panel select {
+				box-sizing: border-box;
+				margin: 4px 0;
+				width: 100%;
+			}
+
 			#status {
 				margin-top: 8px;
 				white-space: pre-line;
@@ -161,6 +167,22 @@
 			<div><strong>Material:</strong> <span id="materialName">loading default</span></div>
 			<div><strong>Mode:</strong> <span id="mode">MaterialX teacher</span></div>
 			<div><strong>Neural representation:</strong> <span id="neuralRepresentationSize">—</span></div>
+			<label for="builtInMaterial"><strong>Built-in material:</strong></label>
+			<select id="builtInMaterial">
+				<option value="default">Standard surface roughness</option>
+				<option value="lambert">Lambert</option>
+				<option value="lambertRed">Lambert red</option>
+				<option value="lambertGreen">Lambert green</option>
+				<option value="lambertBlue">Lambert blue</option>
+				<option value="glossy">Glossy</option>
+				<option value="glossyRed">Glossy red</option>
+				<option value="glossyGold">Glossy gold</option>
+				<option value="uvGrid">UV color grid</option>
+				<option value="normalMap">Normal map</option>
+				<option value="emissiveGrid">Emissive grid</option>
+				<option value="alphaCutoff">Alpha cutoff grid</option>
+				<option value="" disabled>Custom file</option>
+			</select>
 			<button id="openButton">Open .mtlx / .mtlx.zip</button>
 			<button id="openNeuralButton">Open neural .json</button>
 			<button id="trainButton">Train</button>
@@ -220,8 +242,8 @@
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
 			import { NeuralAppearanceLoader } from 'three/addons/loaders/NeuralAppearanceLoader.js';
-			import { NeuralAppearanceNodeMaterial } from 'three/addons/materials/NeuralAppearanceNodeMaterial.js';
-			import { NeuralAppearanceTrainer, estimateTrainingMemory } from 'three/addons/materials/NeuralAppearanceTrainer.js';
+			import { NeuralAppearanceNodeMaterial } from 'three/addons/neural/NeuralAppearanceNodeMaterial.js';
+			import { NeuralAppearanceTrainer, estimateTrainingMemory } from 'three/addons/neural/NeuralAppearanceTrainer.js';
 
 			let camera, scene, renderer, mesh, neuralMesh;
 			let materialXMaterial, neuralMaterial, whiteControlMaterial, previewPlaceholderMaterial, latestJson;
@@ -230,18 +252,61 @@
 			let frameToken = 0;
 			let trainingRunId = 0;
 			let lossHistory = [];
+			const trainingSettingControllers = [];
 
 			const queryParams = new URLSearchParams( window.location.search );
-			const testMaterials = {
-				lambert: 'neural_train_lambert_constant.mtlx',
-				lambertGreen: 'neural_train_lambert_green.mtlx',
-				lambertBlue: 'neural_train_lambert_blue.mtlx',
-				lambertRed: 'neural_train_lambert_red.mtlx',
-				glossy: 'neural_train_glossy_constant.mtlx',
-				glossyRed: 'neural_train_glossy_red.mtlx',
-				glossyGold: 'neural_train_glossy_gold.mtlx',
-				uvGrid: 'neural_train_uv_grid.mtlx'
+			const materialPresets = {
+				default: {
+					file: 'standard_surface_roughness_test.mtlx',
+					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 4000, batchSize: 1024, hiddenSize: 64 }
+				},
+				lambert: {
+					file: 'neural_train_lambert_constant.mtlx',
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 1200, batchSize: 512, hiddenSize: 16 }
+				},
+				lambertGreen: {
+					file: 'neural_train_lambert_green.mtlx',
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 1200, batchSize: 512, hiddenSize: 16 }
+				},
+				lambertBlue: {
+					file: 'neural_train_lambert_blue.mtlx',
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 1200, batchSize: 512, hiddenSize: 16 }
+				},
+				lambertRed: {
+					file: 'neural_train_lambert_red.mtlx',
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 1200, batchSize: 512, hiddenSize: 16 }
+				},
+				glossy: {
+					file: 'neural_train_glossy_constant.mtlx',
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 1024, hiddenSize: 64 }
+				},
+				glossyRed: {
+					file: 'neural_train_glossy_red.mtlx',
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 1024, hiddenSize: 64 }
+				},
+				glossyGold: {
+					file: 'neural_train_glossy_gold.mtlx',
+					settings: { sourceResolution: 1, latentDownsample: 1, iterations: 4000, batchSize: 1024, hiddenSize: 32 }
+				},
+				uvGrid: {
+					file: 'neural_train_uv_grid.mtlx',
+					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 5000, batchSize: 1024, hiddenSize: 32 }
+				},
+				normalMap: {
+					file: 'neural_train_normal_map.mtlx',
+					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 6000, batchSize: 1024, hiddenSize: 64 }
+				},
+				emissiveGrid: {
+					file: 'neural_train_emissive_grid.mtlx',
+					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 5000, batchSize: 1024, hiddenSize: 32 }
+				},
+				alphaCutoff: {
+					file: 'neural_train_alpha_cutoff.mtlx',
+					settings: { sourceResolution: 64, latentDownsample: 2, iterations: 5000, batchSize: 1024, hiddenSize: 32 }
+				}
 			};
+			const initialMaterialKey = queryParams.get( 'test' ) || 'default';
+			const initialMaterialPreset = materialPresets[ initialMaterialKey ] || materialPresets.default;
 			const autoTrain = queryParams.get( 'autoTrain' ) === '1';
 			const noRotate = queryParams.get( 'noRotate' ) !== '0';
 
@@ -250,6 +315,7 @@
 			const neuralRepresentationSize = document.getElementById( 'neuralRepresentationSize' );
 			const status = document.getElementById( 'status' );
 			const estimate = document.getElementById( 'estimate' );
+			const builtInMaterial = document.getElementById( 'builtInMaterial' );
 			const fileInput = document.getElementById( 'fileInput' );
 			const neuralFileInput = document.getElementById( 'neuralFileInput' );
 			const openButton = document.getElementById( 'openButton' );
@@ -263,11 +329,13 @@
 			const lossGraph = document.getElementById( 'lossGraph' );
 			const previewStatus = document.getElementById( 'previewStatus' );
 
-			const requestedResolution = readNumberQuery( 'resolution', 8 );
-			const requestedSourceResolution = readNumberQuery( 'sourceResolution', requestedResolution );
+			const presetSettings = initialMaterialPreset.settings;
+			const presetResolution = presetSettings.sourceResolution / presetSettings.latentDownsample;
+			const requestedResolution = readNumberQuery( 'resolution', presetResolution );
+			const requestedSourceResolution = readNumberQuery( 'sourceResolution', queryParams.has( 'resolution' ) ? requestedResolution : presetSettings.sourceResolution );
 			const requestedDownsample = queryParams.has( 'latentDownsample' ) ?
 				readNumberQuery( 'latentDownsample', 1 ) :
-				Math.max( requestedSourceResolution / requestedResolution, 1 );
+				( queryParams.has( 'resolution' ) ? Math.max( requestedSourceResolution / requestedResolution, 1 ) : presetSettings.latentDownsample );
 			const params = {
 				view: 'MaterialX teacher',
 				sourceResolution: requestedSourceResolution,
@@ -275,10 +343,11 @@
 				resolution: Math.max( 1, Math.floor( requestedSourceResolution / requestedDownsample ) ),
 				fixedMip: readNumberQuery( 'fixedMip', - 1 ),
 				teacherFilterMode: queryParams.get( 'teacherFilterMode' ) || 'gaussian',
-				iterations: readNumberQuery( 'iterations', 2000 ),
-				batchSize: readNumberQuery( 'batchSize', 512 ),
-				hiddenSize: readNumberQuery( 'hiddenSize', 32 ),
+				iterations: readNumberQuery( 'iterations', presetSettings.iterations ),
+				batchSize: readNumberQuery( 'batchSize', presetSettings.batchSize ),
+				hiddenSize: readNumberQuery( 'hiddenSize', presetSettings.hiddenSize ),
 				intensity: readNumberQuery( 'intensity', 1 ),
+				emissiveIntensity: readNumberQuery( 'emissiveIntensity', 1 ),
 				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
 				seed: readNumberQuery( 'seed', 1 )
 			};
@@ -365,16 +434,22 @@
 				whiteControlMaterial = new THREE.MeshBasicMaterial( { color: 0xffffff } );
 
 				const gui = new GUI();
-				gui.add( params, 'sourceResolution', [ 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 ] ).name( 'source resolution' ).onChange( updateTrainingEstimate );
-				gui.add( params, 'latentDownsample', [ 1, 2, 4, 8, 16, 32, 64 ] ).name( 'latent downsample' ).onChange( updateTrainingEstimate );
-				gui.add( params, 'resolution' ).name( 'latent resolution' ).listen().disable();
+				trainingSettingControllers.push(
+					gui.add( params, 'sourceResolution', [ 1, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 ] ).name( 'source resolution' ).onChange( updateTrainingEstimate ),
+					gui.add( params, 'latentDownsample', [ 1, 2, 4, 8, 16, 32, 64 ] ).name( 'latent downsample' ).onChange( updateTrainingEstimate ),
+					gui.add( params, 'resolution' ).name( 'latent resolution' ).listen().disable()
+				);
 				gui.add( params, 'fixedMip', { all: - 1, 'mip 0 baseline': 0, 'mip 1': 1, 'mip 2': 2, 'mip 3': 3, 'mip 4': 4, 'mip 5': 5, 'mip 6': 6 } ).name( 'training mip' ).onChange( updateTrainingEstimate );
-				gui.add( params, 'iterations', 100, 10000, 100 ).onChange( updateTrainingEstimate );
-				gui.add( params, 'batchSize', [ 64, 256, 512, 1024, 4096 ] ).onChange( updateTrainingEstimate );
-				gui.add( params, 'hiddenSize', [ 16, 32, 64 ] ).onChange( updateTrainingEstimate );
+				trainingSettingControllers.push(
+					gui.add( params, 'iterations', 100, 10000, 100 ).onChange( updateTrainingEstimate ),
+					gui.add( params, 'batchSize', [ 64, 256, 512, 1024, 4096 ] ).onChange( updateTrainingEstimate ),
+					gui.add( params, 'hiddenSize', [ 16, 32, 64 ] ).onChange( updateTrainingEstimate )
+				);
 				gui.add( params, 'intensity', 0, 3, 0.01 ).onChange( updateView );
+				gui.add( params, 'emissiveIntensity', 0, 3, 0.01 ).name( 'emissive intensity' ).onChange( updateView );
 				updateTrainingEstimate();
 
+				builtInMaterial.addEventListener( 'change', onBuiltInMaterialSelected );
 				openButton.addEventListener( 'click', () => fileInput.click() );
 				fileInput.addEventListener( 'change', onFileSelected );
 				openNeuralButton.addEventListener( 'click', () => neuralFileInput.click() );
@@ -396,33 +471,63 @@
 
 			async function loadDefaultMaterialX() {
 
+				if ( materialPresets[ initialMaterialKey ] === undefined ) {
+
+					status.textContent = `Unknown neural appearance training test material: ${initialMaterialKey}`;
+					return;
+
+				}
+
+				builtInMaterial.value = initialMaterialKey;
+				await loadBuiltInMaterial( initialMaterialKey );
+
+			}
+
+			async function onBuiltInMaterialSelected() {
+
+				applyMaterialPresetSettings( builtInMaterial.value );
+				await loadBuiltInMaterial( builtInMaterial.value );
+
+			}
+
+			function applyMaterialPresetSettings( key ) {
+
+				const preset = materialPresets[ key ];
+				if ( preset === undefined ) return;
+
+				Object.assign( params, preset.settings );
+				updateTrainingEstimate();
+
+				for ( const controller of trainingSettingControllers ) controller.updateDisplay();
+
+			}
+
+			async function loadBuiltInMaterial( key ) {
+
 				try {
 
-					const file = getDefaultMaterialXFile();
+					const preset = materialPresets[ key ];
+					if ( preset === undefined ) throw new Error( `Unknown built-in material: ${key}` );
+
+					builtInMaterial.disabled = true;
+					status.textContent = `Loading ${preset.file}...`;
 					const loader = new MaterialXLoader().setPath( 'materialx/' );
-					const asset = await loader.loadAsync( file, {
+					const asset = await loader.loadAsync( preset.file, {
 						uvSpace: 'top-left',
-						throwOnErrors: false
+						throwOnErrors: true
 					} );
-					setMaterialXMaterial( asset, file );
+					setMaterialXMaterial( asset, preset.file );
 
 				} catch ( error ) {
 
 					console.error( error );
 					status.textContent = error.message;
 
+				} finally {
+
+					builtInMaterial.disabled = isTraining;
+
 				}
-
-			}
-
-			function getDefaultMaterialXFile() {
-
-				const test = queryParams.get( 'test' );
-
-				if ( test === null ) return 'standard_surface_roughness_test.mtlx';
-				if ( testMaterials[ test ] !== undefined ) return testMaterials[ test ];
-
-				throw new Error( `Unknown neural appearance training test material: ${test}` );
 
 			}
 
@@ -438,8 +543,9 @@
 					const loader = new MaterialXLoader();
 					const asset = loader.parseBuffer( await file.arrayBuffer(), file.name, {
 						uvSpace: 'top-left',
-						throwOnErrors: false
+						throwOnErrors: true
 					} );
+					builtInMaterial.value = '';
 					setMaterialXMaterial( asset, file.name );
 
 				} catch ( error ) {
@@ -467,10 +573,12 @@
 
 					trainingRunId ++;
 					materialXMaterial = undefined;
+					builtInMaterial.value = '';
 					latestJson = json;
 					disposeNeuralMaterial();
 					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, {
 						intensity: params.intensity,
+						emissiveIntensity: params.emissiveIntensity,
 						fixedMipLevel: Number( params.fixedMip )
 					} );
 					materialName.textContent = json.name || file.name;
@@ -505,6 +613,12 @@
 				if ( material === undefined ) {
 
 					throw new Error( 'THREE.NeuralAppearanceTrainer: MaterialXLoader did not produce any materials.' );
+
+				}
+
+				if ( isPhysicalNodeMaterial( material ) === false ) {
+
+					throw new Error( 'THREE.NeuralAppearanceTrainer: MaterialX must define a supported physical surface material.' );
 
 				}
 
@@ -560,9 +674,7 @@
 
 				}
 
-				return ( isPhysicalNodeMaterial( material ) ?
-					'MaterialX loaded. Press Train to distill it.' :
-					'MaterialX loaded as a node material. Training will use supported Physical defaults for unsupported surface nodes.' ) + suffix;
+				return 'MaterialX loaded. Press Train to distill it.' + suffix;
 
 			}
 
@@ -588,6 +700,7 @@
 				if ( materialXMaterial === undefined ) return;
 
 				trainButton.disabled = true;
+				builtInMaterial.disabled = true;
 				openButton.disabled = true;
 				openNeuralButton.disabled = true;
 				isTraining = true;
@@ -679,8 +792,9 @@
 					updateNeuralRepresentationSize( latestJson );
 					const neuralData = new NeuralAppearanceLoader().parse( cloneNeuralAppearanceJson( latestJson ) );
 					disposeNeuralMaterial();
-					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity, fixedMipLevel: Number( params.fixedMip ) } );
+					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity, emissiveIntensity: params.emissiveIntensity, fixedMipLevel: Number( params.fixedMip ) } );
 					params.view = 'trained neural';
+					comparisonVisible = true;
 					window.__neuralAppearanceLastLoss = result.loss;
 					window.__neuralAppearanceValidationLoss = result.validationLoss;
 					window.__neuralAppearanceValidation = result.validation;
@@ -705,6 +819,7 @@
 
 					isTraining = false;
 					trainButton.disabled = false;
+					builtInMaterial.disabled = false;
 					openButton.disabled = false;
 					openNeuralButton.disabled = false;
 					updateView();
@@ -717,8 +832,9 @@
 
 				const neuralData = new NeuralAppearanceLoader().parse( json );
 				disposeNeuralMaterial();
-				neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity, fixedMipLevel: Number( params.fixedMip ) } );
+				neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, { intensity: params.intensity, emissiveIntensity: params.emissiveIntensity, fixedMipLevel: Number( params.fixedMip ) } );
 				params.view = 'trained neural';
+				comparisonVisible = true;
 				updateView();
 				mode.textContent = 'live neural (training)';
 
@@ -947,6 +1063,7 @@
 				if ( neuralMaterial ) {
 
 					neuralMaterial.intensity = params.intensity;
+					neuralMaterial.emissiveIntensity = params.emissiveIntensity;
 					neuralMaterial.needsUpdate = true;
 
 				}
@@ -1080,15 +1197,21 @@
 
 				}
 
-				bytes += json.decoder.rotation.weights.length * 4;
+				const outputs = json.outputs || {};
+				if ( outputs.brdf && outputs.brdf.rotation ) bytes += outputs.brdf.rotation.weights.length * 4;
 
-				for ( const layer of json.decoder.layers ) {
+				for ( const output of Object.values( outputs ) ) {
 
-					bytes += ( layer.weights.length + layer.biases.length ) * 4;
+					for ( const layer of output.layers ) {
+
+						bytes += ( layer.weights.length + layer.biases.length ) * 4;
+
+					}
 
 				}
 
-				neuralRepresentationSize.textContent = `${bytes.toLocaleString()} bytes`;
+				const outputNames = Object.keys( outputs ).join( ', ' );
+				neuralRepresentationSize.textContent = `${bytes.toLocaleString()} bytes (${outputNames})`;
 
 			}
 

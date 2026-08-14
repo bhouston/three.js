@@ -11,12 +11,14 @@ import {
 	RGBAFormat,
 	RepeatWrapping
 } from 'three';
-
-const FORMAT = 'three-neural-appearance';
-const VERSION = 1;
-const LATENT_CHANNELS = 8;
-const LATENT_TEXTURES = 2;
-const CHANNELS_PER_TEXTURE = 4;
+import {
+	FORMAT,
+	VERSION,
+	LATENT_CHANNELS,
+	LATENT_TEXTURES,
+	CHANNELS_PER_TEXTURE,
+	DECODER_INPUT_SIZE as BRDF_INPUT_SIZE
+} from '../neural/NeuralAppearanceFormat.js';
 
 /**
  * A loader for compact neural appearance material assets.
@@ -133,7 +135,7 @@ class NeuralAppearanceLoader extends Loader {
 			latentHeight: latentTextures[ 0 ].image.height,
 			mipLevels: latentTextures[ 0 ].mipmaps.length,
 			wrap: manifest.latents.wrap || 'repeat',
-			decoder: normalizeDecoder( manifest.decoder ),
+			outputs: normalizeOutputs( manifest.outputs ),
 			referenceEvaluations: manifest.referenceEvaluations || []
 		};
 
@@ -177,28 +179,66 @@ function toHalfFloatArray( data ) {
 
 }
 
-function normalizeDecoder( decoder ) {
+function normalizeOutputs( outputs ) {
 
-	const rotation = decoder.rotation || null;
+	return {
+		brdf: normalizeOutputHead( outputs.brdf, 'outputs.brdf', BRDF_INPUT_SIZE, 3, true ),
+		emission: outputs.emission ? normalizeOutputHead( outputs.emission, 'outputs.emission', LATENT_CHANNELS, 3, false ) : null,
+		opacity: outputs.opacity ? normalizeOpacityHead( outputs.opacity ) : null
+	};
 
-	if ( rotation !== null ) {
+}
 
-		assertInteger( rotation.inputSize, 'decoder.rotation.inputSize', LATENT_CHANNELS, LATENT_CHANNELS );
-		assertInteger( rotation.outputSize, 'decoder.rotation.outputSize', 12, 12 );
-		rotation.weights = validateArray( rotation.weights, 'decoder.rotation.weights', rotation.inputSize * rotation.outputSize );
+function normalizeOpacityHead( head ) {
+
+	const opacity = normalizeOutputHead( head, 'outputs.opacity', LATENT_CHANNELS, 1, false );
+	const alphaCutoff = head.alphaCutoff !== undefined ? head.alphaCutoff : 0.5;
+
+	if ( Number.isFinite( alphaCutoff ) === false || alphaCutoff < 0 || alphaCutoff > 1 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceLoader: outputs.opacity.alphaCutoff must be between zero and one.' );
 
 	}
 
-	const layers = decoder.layers.map( ( layer, index ) => {
+	opacity.alphaCutoff = alphaCutoff;
+	return opacity;
 
-		const path = `decoder.layers[${ index }]`;
-		assertInteger( layer.inputSize, `${ path }.inputSize`, 1 );
-		assertInteger( layer.outputSize, `${ path }.outputSize`, 1 );
+}
+
+function normalizeOutputHead( head, path, expectedInputSize, expectedOutputSize, needsRotation ) {
+
+	if ( ! head || ! Array.isArray( head.layers ) || head.layers.length === 0 ) {
+
+		throw new Error( `THREE.NeuralAppearanceLoader: Manifest must define ${ path }.layers.` );
+
+	}
+
+	assertInteger( head.inputSize, `${ path }.inputSize`, expectedInputSize, expectedInputSize );
+
+	const rotation = head.rotation || null;
+
+	if ( rotation !== null ) {
+
+		assertInteger( rotation.inputSize, `${ path }.rotation.inputSize`, LATENT_CHANNELS, LATENT_CHANNELS );
+		assertInteger( rotation.outputSize, `${ path }.rotation.outputSize`, 12, 12 );
+		rotation.weights = validateArray( rotation.weights, `${ path }.rotation.weights`, rotation.inputSize * rotation.outputSize );
+
+	} else if ( needsRotation ) {
+
+		throw new Error( `THREE.NeuralAppearanceLoader: ${ path }.rotation is required.` );
+
+	}
+
+	const layers = head.layers.map( ( layer, index ) => {
+
+		const layerPath = `${ path }.layers[${ index }]`;
+		assertInteger( layer.inputSize, `${ layerPath }.inputSize`, 1 );
+		assertInteger( layer.outputSize, `${ layerPath }.outputSize`, 1 );
 
 		const activation = layer.activation || 'linear';
 		if ( activation !== 'linear' && activation !== 'relu' ) {
 
-			throw new Error( `THREE.NeuralAppearanceLoader: Unsupported ${ path }.activation "${ activation }".` );
+			throw new Error( `THREE.NeuralAppearanceLoader: Unsupported ${ layerPath }.activation "${ activation }".` );
 
 		}
 
@@ -206,32 +246,44 @@ function normalizeDecoder( decoder ) {
 			inputSize: layer.inputSize,
 			outputSize: layer.outputSize,
 			activation,
-			weights: validateArray( layer.weights, `${ path }.weights`, layer.inputSize * layer.outputSize ),
-			biases: validateArray( layer.biases || [], `${ path }.biases`, layer.outputSize )
+			weights: validateArray( layer.weights, `${ layerPath }.weights`, layer.inputSize * layer.outputSize ),
+			biases: validateArray( layer.biases || [], `${ layerPath }.biases`, layer.outputSize )
 		};
 
 	} );
+
+	if ( layers[ 0 ].inputSize !== expectedInputSize ) {
+
+		throw new Error( `THREE.NeuralAppearanceLoader: ${ path }.layers[0].inputSize must be ${ expectedInputSize }.` );
+
+	}
 
 	for ( let i = 1; i < layers.length; i ++ ) {
 
 		if ( layers[ i ].inputSize !== layers[ i - 1 ].outputSize ) {
 
-			throw new Error( `THREE.NeuralAppearanceLoader: decoder.layers[${ i }].inputSize does not match the previous output size.` );
+			throw new Error( `THREE.NeuralAppearanceLoader: ${ path }.layers[${ i }].inputSize does not match the previous output size.` );
 
 		}
 
 	}
 
-	const outputActivation = decoder.outputActivation || { type: 'linear' };
+	if ( layers[ layers.length - 1 ].outputSize !== expectedOutputSize ) {
 
-	if ( outputActivation.type !== 'linear' && outputActivation.type !== 'exp' && outputActivation.type !== 'scaledSigmoid' ) {
+		throw new Error( `THREE.NeuralAppearanceLoader: ${ path } final layer outputSize must be ${ expectedOutputSize }.` );
 
-		throw new Error( `THREE.NeuralAppearanceLoader: Unsupported decoder.outputActivation.type "${ outputActivation.type }".` );
+	}
+
+	const outputActivation = head.outputActivation || { type: 'linear' };
+
+	if ( outputActivation.type !== 'linear' && outputActivation.type !== 'exp' && outputActivation.type !== 'scaledSigmoid' && outputActivation.type !== 'sigmoid' ) {
+
+		throw new Error( `THREE.NeuralAppearanceLoader: Unsupported ${ path }.outputActivation.type "${ outputActivation.type }".` );
 
 	}
 
 	return {
-		inputSize: decoder.inputSize,
+		inputSize: head.inputSize,
 		rotation,
 		layers,
 		outputActivation
@@ -303,17 +355,9 @@ function validateManifest( manifest ) {
 
 	}
 
-	if ( ! manifest.decoder || ! Array.isArray( manifest.decoder.layers ) || manifest.decoder.layers.length === 0 ) {
+	if ( ! manifest.outputs || ! manifest.outputs.brdf ) {
 
-		throw new Error( 'THREE.NeuralAppearanceLoader: Manifest must define decoder.layers.' );
-
-	}
-
-	assertInteger( manifest.decoder.inputSize, 'decoder.inputSize', 1 );
-
-	if ( manifest.decoder.inputSize !== 20 ) {
-
-		throw new Error( 'THREE.NeuralAppearanceLoader: Only 20-input decoders with two learned shading frames are supported.' );
+		throw new Error( 'THREE.NeuralAppearanceLoader: Manifest must define outputs.brdf.' );
 
 	}
 

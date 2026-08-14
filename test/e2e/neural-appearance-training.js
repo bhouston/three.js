@@ -19,7 +19,10 @@ const allTestCases = [
 	{ name: 'glossy', label: 'glossy blue', iterations: 800, maxMeanRgbError: 30, maxDifferentPixels: 36 },
 	{ name: 'glossyRed', label: 'glossy red', iterations: 800, maxMeanRgbError: 30, maxDifferentPixels: 36 },
 	{ name: 'glossyGold', label: 'glossy gold', iterations: 800, maxMeanRgbError: 22, maxDifferentPixels: 36 },
-	{ name: 'uvGrid', label: 'uv grid', iterations: 1000, maxMeanRgbError: 28, maxDifferentPixels: 32, resolution: 8 }
+	{ name: 'uvGrid', label: 'uv grid', iterations: 1000, maxMeanRgbError: 28, maxDifferentPixels: 32, resolution: 8 },
+	{ name: 'normalMap', label: 'normal map', iterations: 1000, maxMeanRgbError: 35, maxDifferentPixels: 40, resolution: 8, hiddenSize: 64 },
+	{ name: 'emissiveGrid', label: 'emissive grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 40, resolution: 8, expectedOutputs: [ 'emission' ] },
+	{ name: 'alphaCutoff', label: 'alpha cutoff grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, resolution: 8, expectedOutputs: [ 'opacity' ] }
 ];
 const testCases = process.env.TEST_CASE ? allTestCases.filter( ( testCase ) => testCase.name === process.env.TEST_CASE ) : allTestCases;
 const background = [ 0x15, 0x17, 0x1c ];
@@ -83,7 +86,7 @@ function getReferenceSignature( json ) {
 async function runTrainingCase( page, testCase ) {
 
 	page.error = undefined;
-	await page.goto( `http://localhost:${port}/examples/webgpu_materials_neural_appearance.html?test=${testCase.name}&autoTrain=1&noRotate=1&iterations=${testCase.iterations}&batchSize=256&resolution=${testCase.resolution || 1}&seed=7`, {
+	await page.goto( `http://localhost:${port}/examples/webgpu_materials_neural_appearance.html?test=${testCase.name}&autoTrain=1&noRotate=1&iterations=${testCase.iterations}&batchSize=256&hiddenSize=${testCase.hiddenSize || 32}&resolution=${testCase.resolution || 1}&seed=7`, {
 		waitUntil: 'networkidle0',
 		timeout: networkTimeout * 60000
 	} );
@@ -346,9 +349,19 @@ function validateExportJson( json, testCase ) {
 
 	}
 
-	if ( json.latents.textures.length !== 2 || json.decoder.inputSize !== 20 ) {
+	if ( json.version !== 2 || json.latents.textures.length !== 2 || json.outputs.brdf.inputSize !== 20 ) {
 
 		throw new Error( `${testCase.label}: training produced an invalid neural appearance export shape.` );
+
+	}
+
+	for ( const outputName of testCase.expectedOutputs || [] ) {
+
+		if ( json.outputs[ outputName ] === undefined ) {
+
+			throw new Error( `${testCase.label}: training did not export outputs.${outputName}.` );
+
+		}
 
 	}
 

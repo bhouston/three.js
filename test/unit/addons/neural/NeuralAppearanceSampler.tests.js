@@ -129,6 +129,7 @@ export default QUnit.module( 'Addons', () => {
 				const wiCosines = [ ...new Set( samples.map( ( s ) => s.wi[ 2 ] ) ) ].sort();
 				assert.deepEqual( wiCosines, [ 0.025, 0.1, 0.4, 0.8 ], 'sweeps through defined grazing cosines' );
 				assert.ok( samples.every( ( s ) => s.target !== undefined ), 'attaches evaluated teacher targets' );
+				assert.ok( samples.every( ( s ) => Array.isArray( s.iblTarget ) && s.iblTarget.length === 13 ), 'attaches local-frame IBL targets' );
 
 			} );
 

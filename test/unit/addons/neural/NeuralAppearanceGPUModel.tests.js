@@ -4,7 +4,6 @@ import {
 } from '../../../../examples/jsm/neural/NeuralAppearanceGPUModel.js';
 import {
 	createTrainBatchComputeNode,
-	createTrainIBLBatchComputeNode,
 	createResetGradientNormComputeNode,
 	createAccumulateGradientNormComputeNode,
 	createAdamWeightsComputeNode,
@@ -131,6 +130,7 @@ export default QUnit.module( 'Addons', () => {
 					assert.strictEqual( latentsArray[ i ], mip0.data[ i ], `latent float ${i} matches` );
 
 				}
+
 				assert.strictEqual( weightsArray[ gpuModel.layout.iblLayer1BiasesOffset ], cpuModel.iblHead.layers[ 1 ].biases[ 0 ], 'IBL head weight layout is initialized' );
 
 			} );
@@ -236,34 +236,20 @@ export default QUnit.module( 'Addons', () => {
 
 				const gpuModel = new NeuralAppearanceGPUModel( options );
 				const trainBatchNode = createTrainBatchComputeNode( gpuModel );
-				const trainIBLBatchNode = createTrainIBLBatchComputeNode( gpuModel );
 				const resetGradientNormNode = createResetGradientNormComputeNode( gpuModel );
 				const accumulateGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel );
 				const adamWeightsNode = createAdamWeightsComputeNode( gpuModel );
 				const adamLatentsNode = createAdamLatentsComputeNode( gpuModel );
-				const accumulateIBLGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel, {
-					weightOffset: gpuModel.layout.iblLayer0WeightsOffset,
-					weightCount: gpuModel.layout.iblWeightCount,
-					includeLatents: false
-				} );
-				const adamIBLWeightsNode = createAdamWeightsComputeNode( gpuModel, {
-					weightOffset: gpuModel.layout.iblLayer0WeightsOffset,
-					weightCount: gpuModel.layout.iblWeightCount
-				} );
 
 				assert.ok( trainBatchNode && trainBatchNode.isComputeNode, 'creates train batch compute node' );
-				assert.ok( trainIBLBatchNode && trainIBLBatchNode.isComputeNode, 'creates IBL train batch compute node' );
 				assert.ok( resetGradientNormNode && resetGradientNormNode.isComputeNode, 'creates gradient norm reset compute node' );
 				assert.ok( accumulateGradientNormNode && accumulateGradientNormNode.isComputeNode, 'creates gradient norm accumulation compute node' );
 				assert.ok( adamWeightsNode && adamWeightsNode.isComputeNode, 'creates Adam weights compute node' );
 				assert.ok( adamLatentsNode && adamLatentsNode.isComputeNode, 'creates Adam latents compute node' );
 				assert.strictEqual( trainBatchNode.count, 16, 'train batch dispatch count matches batch size' );
-				assert.strictEqual( trainIBLBatchNode.count, 16, 'IBL train batch dispatch count matches batch size' );
 				assert.strictEqual( resetGradientNormNode.count, 1, 'gradient norm reset dispatches one invocation' );
-				assert.strictEqual( accumulateGradientNormNode.count, gpuModel.layout.directWeightCount + gpuModel.layout.totalLatents, 'BRDF gradient norm covers direct weights and latents' );
-				assert.strictEqual( adamWeightsNode.count, gpuModel.layout.directWeightCount, 'BRDF Adam updates only direct weights' );
-				assert.strictEqual( accumulateIBLGradientNormNode.count, gpuModel.layout.iblWeightCount, 'IBL gradient norm covers only IBL weights' );
-				assert.strictEqual( adamIBLWeightsNode.count, gpuModel.layout.iblWeightCount, 'IBL Adam updates only IBL weights' );
+				assert.strictEqual( accumulateGradientNormNode.count, gpuModel.layout.totalWeights + gpuModel.layout.totalLatents, 'gradient norm accumulation covers all trainable values' );
+				assert.strictEqual( adamWeightsNode.count, gpuModel.layout.totalWeights, 'Adam weights dispatch count matches total weights' );
 				assert.strictEqual( adamLatentsNode.count, gpuModel.layout.totalLatents, 'Adam latents dispatch count matches total latents' );
 
 			} );

@@ -136,11 +136,15 @@ function evaluateNeuralIBLForTexels( material, envNode, wo, latent0, latent1 ) {
 		getUV: () => canonicalToWorldDirection( queryDirection ),
 		getTextureLevel: () => queryRoughness
 	} ).isolate().mul( TSL.materialEnvIntensity );
+	const irradiance = envNode.context( {
+		getUV: () => TSL.normalWorld,
+		getTextureLevel: () => TSL.float( 1 )
+	} ).isolate().mul( TSL.materialEnvIntensity );
 
 	if ( material.neuralAppearanceData.outputs.indirect ) {
 
 		const indirect = material.neuralAppearanceData.outputs.indirect;
-		const indirectInput = projectIndirectInput( latents, wo, incoming, indirect.inputSize );
+		const indirectInput = projectIndirectInput( latents, wo, incoming, irradiance, indirect.inputSize );
 		const decoded = toVec3( evaluateMLP( indirect.layers, material._outputUniforms.indirect, indirectInput ) );
 
 		return applyOutputActivation( decoded, indirect.outputActivation );
@@ -733,7 +737,7 @@ function projectIBLInput( latents, frames, wo, inputSize ) {
 
 }
 
-function projectIndirectInput( latents, wo, incoming, inputSize ) {
+function projectIndirectInput( latents, wo, incoming, irradiance, inputSize ) {
 
 	const input = [];
 
@@ -745,6 +749,7 @@ function projectIndirectInput( latents, wo, incoming, inputSize ) {
 
 	input.push( wo.x, wo.y, wo.z );
 	input.push( incoming.x, incoming.y, incoming.z );
+	input.push( irradiance.x, irradiance.y, irradiance.z );
 
 	if ( input.length !== inputSize ) {
 

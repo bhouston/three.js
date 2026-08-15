@@ -25,16 +25,16 @@ function createIBLOutput() {
 
 function createIndirectOutput() {
 
-	const weights = new Array( 14 * 3 ).fill( 0 );
+	const weights = new Array( 17 * 3 ).fill( 0 );
 	weights[ 11 ] = 1;
-	weights[ 14 + 12 ] = 1;
-	weights[ 28 + 13 ] = 1;
+	weights[ 17 + 12 ] = 1;
+	weights[ 34 + 13 ] = 1;
 
 	return {
-		inputSize: 14,
+		inputSize: 17,
 		layers: [
 			{
-				inputSize: 14,
+				inputSize: 17,
 				outputSize: 3,
 				activation: 'linear',
 				weights,
@@ -353,6 +353,20 @@ export default QUnit.module( 'Addons', () => {
 					mip: 0,
 					iblIncoming: [ 0.2, 0.4, 0.6 ]
 				} ), [ 0.2, 0.4, 0.6 ], 'prefiltered IBL helper uses the indirect decoder' );
+
+				const irradianceWeights = new Array( 17 * 3 ).fill( 0 );
+				irradianceWeights[ 14 ] = 1;
+				irradianceWeights[ 17 + 15 ] = 1;
+				irradianceWeights[ 34 + 16 ] = 1;
+				json.outputs.indirect.layers[ 0 ].weights = irradianceWeights;
+				assert.deepEqual( evaluateNeuralAppearanceOutputs( json, {
+					uv: [ 0.5, 0.5 ],
+					wi: [ 0, 0, 1 ],
+					wo: [ 0, 0, 1 ],
+					mip: 0,
+					iblIncoming: [ 0.2, 0.4, 0.6 ],
+					iblIrradiance: [ 0.7, 0.8, 0.9 ]
+				} ).indirect, [ 0.7, 0.8, 0.9 ], 'passes incoming irradiance through the indirect decoder' );
 
 			} );
 

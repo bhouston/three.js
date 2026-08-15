@@ -244,13 +244,15 @@ function buildIBLInput( latents, rotationWeights, wo ) {
 
 }
 
-function buildIndirectInput( latents, wo, incomingRadiance ) {
+function buildIndirectInput( latents, wo, incomingRadiance, incomingIrradiance ) {
 
 	const input = latents.slice();
 	const incoming = incomingRadiance || [ 1, 1, 1 ];
+	const irradiance = incomingIrradiance || [ 1, 1, 1 ];
 
 	input.push( wo[ 0 ], wo[ 1 ], wo[ 2 ] );
 	input.push( incoming[ 0 ], incoming[ 1 ], incoming[ 2 ] );
+	input.push( irradiance[ 0 ], irradiance[ 1 ], irradiance[ 2 ] );
 
 	if ( input.length !== INDIRECT_INPUT_SIZE ) {
 

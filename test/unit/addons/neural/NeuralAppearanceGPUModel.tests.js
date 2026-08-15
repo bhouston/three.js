@@ -33,8 +33,8 @@ export default QUnit.module( 'Addons', () => {
 				// direct total = 96 + 160 + 8 + 64 + 8 + 24 + 3 = 363
 				// IBL default hidden size is 16:
 				// query 14-16-4: 14 * 16 + 16 + 16 * 4 + 4 = 308
-				// indirect 14-16-3: 14 * 16 + 16 + 16 * 3 + 3 = 291
-				// iblWeightCount = 599
+				// indirect 17-16-3: 17 * 16 + 16 + 16 * 3 + 3 = 339
+				// iblWeightCount = 647
 				assert.strictEqual( baseLayout.rotationOffset, 0, 'rotation starts at offset 0' );
 				assert.strictEqual( baseLayout.rotationCount, 96, 'rotation has 96 weights' );
 				assert.strictEqual( baseLayout.layer0WeightsOffset, 96, 'layer 0 weights offset is 96' );
@@ -53,9 +53,9 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( baseLayout.iblLayer0WeightsOffset, 363, 'IBL head starts after the BRDF weights' );
 				assert.strictEqual( baseLayout.iblLayer0WeightsCount, 14 * 16, 'IBL layer 0 weights count uses default hidden size' );
 				assert.strictEqual( baseLayout.iblLayer1WeightsCount, 16 * 4, 'IBL query layer 1 weights count uses 4 outputs' );
-				assert.strictEqual( baseLayout.iblWeightCount, 599, 'IBL weight count matches query 14-H-4 plus indirect 14-H-3' );
-				assert.strictEqual( baseLayout.totalWeights, 962, 'total weights matches sum of direct and IBL layers' );
-				assert.strictEqual( baseLayout.sampleStride, 31, 'packs BRDF sample plus IBL query, incoming, and indirect labels' );
+				assert.strictEqual( baseLayout.iblWeightCount, 647, 'IBL weight count matches query 14-H-4 plus indirect 17-H-3' );
+				assert.strictEqual( baseLayout.totalWeights, 1010, 'total weights matches sum of direct and IBL layers' );
+				assert.strictEqual( baseLayout.sampleStride, 34, 'packs BRDF sample plus IBL query, radiance, irradiance, and indirect labels' );
 
 				// Multi-level mip pyramid for resolution 4 (4x4=16, 2x2=4, 1x1=1 => 21 texels => 168 floats)
 				assert.strictEqual( baseLayout.mipLevels.length, 3, 'creates 3 mip levels (4x4, 2x2, 1x1)' );

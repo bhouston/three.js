@@ -692,7 +692,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			}
 
-			// 14. IBL query (14 -> H -> 4) and indirect (14 -> H -> 3) heads.
+			// 14. IBL query (14 -> H -> 4) and indirect (17 -> H -> 3) heads.
 			const iblWeight = samplesStorage.element( sampleOffset.add( 20 ) );
 
 			If( iblWeight.greaterThan( 0.0 ), () => {
@@ -861,6 +861,9 @@ function createTrainBatchComputeNode( gpuModel ) {
 				activationsStorage.element( indirectA0.add( 11 ) ).assign( samplesStorage.element( sampleOffset.add( 25 ) ) );
 				activationsStorage.element( indirectA0.add( 12 ) ).assign( samplesStorage.element( sampleOffset.add( 26 ) ) );
 				activationsStorage.element( indirectA0.add( 13 ) ).assign( samplesStorage.element( sampleOffset.add( 27 ) ) );
+				activationsStorage.element( indirectA0.add( 14 ) ).assign( samplesStorage.element( sampleOffset.add( 28 ) ) );
+				activationsStorage.element( indirectA0.add( 15 ) ).assign( samplesStorage.element( sampleOffset.add( 29 ) ) );
+				activationsStorage.element( indirectA0.add( 16 ) ).assign( samplesStorage.element( sampleOffset.add( 30 ) ) );
 
 				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
@@ -899,7 +902,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 					const z3_c = activationsStorage.element( actBase.add( int( actIndirectZ2Offset ) ).add( c ) );
 					const yHat_c = max( z3_c, float( 0.0 ) );
-					const target_c = samplesStorage.element( sampleOffset.add( 28 ).add( c ) );
+					const target_c = samplesStorage.element( sampleOffset.add( 31 ).add( c ) );
 					const predClamped = max( yHat_c, float( 1e-6 ) );
 					const refClamped = max( target_c, float( 1e-6 ) );
 					const predLog = pow( predClamped, float( 1.0 / 3.0 ) ).sub( 1.0 ).mul( 3.0 );

@@ -71,12 +71,12 @@ export default QUnit.module( 'Addons', () => {
 							outputActivation: { type: 'linear' }
 						},
 						indirect: {
-							inputSize: 14,
+							inputSize: 17,
 							layers: [ {
-								inputSize: 14,
+								inputSize: 17,
 								outputSize: 3,
 								activation: 'linear',
-								weights: new Array( 14 * 3 ).fill( 0 ),
+								weights: new Array( 17 * 3 ).fill( 0 ),
 								biases: [ 0, 0, 0 ]
 							} ],
 							outputActivation: { type: 'linear' }

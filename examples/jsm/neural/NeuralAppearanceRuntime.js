@@ -113,7 +113,8 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 function evaluateIndirectHead( json, latents, wo, reference ) {
 
 	const incoming = ( reference && ( reference.iblIncoming || reference.prefilteredSpecular ) ) || [ 1, 1, 1 ];
-	const input = buildIndirectInput( latents, wo, incoming );
+	const irradiance = ( reference && reference.iblIrradiance ) || [ 1, 1, 1 ];
+	const input = buildIndirectInput( latents, wo, incoming, irradiance );
 
 	return evaluateDecoderLayers( json.outputs.indirect.layers, input, json.outputs.indirect.outputActivation );
 
@@ -148,6 +149,7 @@ function evaluateNeuralIBLWhiteFurnace( json, reference ) {
 	return evaluateNeuralPrefilteredIBL( json, {
 		...reference,
 		iblIncoming: [ 1, 1, 1 ],
+		iblIrradiance: [ 1, 1, 1 ],
 		prefilteredSpecular: [ 1, 1, 1 ]
 	} );
 

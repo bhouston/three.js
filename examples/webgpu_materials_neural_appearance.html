@@ -1436,7 +1436,7 @@
 					( hiddenSize * 3 + 3 );
 				const iblHiddenSize = Math.min( Math.max( hiddenSize, 16 ), 32 );
 				const iblLayerValues = ( 14 * iblHiddenSize + iblHiddenSize ) + ( iblHiddenSize * 4 + 4 );
-				const indirectLayerValues = ( 14 * iblHiddenSize + iblHiddenSize ) + ( iblHiddenSize * 3 + 3 );
+				const indirectLayerValues = ( 17 * iblHiddenSize + iblHiddenSize ) + ( iblHiddenSize * 3 + 3 );
 				const representationBytes = memory.exportBytes + ( rotationValues + layerValues + iblLayerValues + indirectLayerValues ) * 4;
 				const recordsPerIteration = Number( params.batchSize ) * ( Number( params.fixedMip ) >= 0 ? 1 : memory.mipLevels );
 				const records = recordsPerIteration * Number( params.iterations );

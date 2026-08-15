@@ -170,6 +170,7 @@ async function assignIBLTeacherTargets( samples, teacher ) {
 			sample.iblDirection = [ 0, 0, 1 ];
 			sample.iblRoughness = 1;
 			sample.iblIncoming = [ 0, 0, 0 ];
+			sample.iblIrradiance = [ 0, 0, 0 ];
 			sample.iblIndirect = [ 0, 0, 0 ];
 
 		}
@@ -180,6 +181,7 @@ async function assignIBLTeacherTargets( samples, teacher ) {
 
 	const queries = await teacher.evaluateBatch( samples, 'iblQuery' );
 	const incoming = await teacher.evaluateBatch( samples, 'iblIncoming' );
+	const irradiance = await teacher.evaluateBatch( samples, 'iblIrradiance' );
 	const indirect = await teacher.evaluateBatch( samples, 'iblIndirect' );
 
 	for ( let i = 0; i < samples.length; i ++ ) {
@@ -191,6 +193,7 @@ async function assignIBLTeacherTargets( samples, teacher ) {
 		samples[ i ].iblDirection = direction;
 		samples[ i ].iblRoughness = roughness;
 		samples[ i ].iblIncoming = ( incoming[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
+		samples[ i ].iblIrradiance = ( irradiance[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
 		samples[ i ].iblIndirect = ( indirect[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
 
 	}

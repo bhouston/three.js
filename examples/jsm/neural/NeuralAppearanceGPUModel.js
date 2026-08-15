@@ -481,9 +481,12 @@ class NeuralAppearanceGPUModel {
 			data[ base + 25 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 0 ];
 			data[ base + 26 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 1 ];
 			data[ base + 27 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 2 ];
-			data[ base + 28 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 0 ];
-			data[ base + 29 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 1 ];
-			data[ base + 30 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 2 ];
+			data[ base + 28 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 29 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 30 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 2 ];
+			data[ base + 31 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 32 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 33 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 2 ];
 
 		}
 

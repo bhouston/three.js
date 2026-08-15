@@ -155,11 +155,12 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( samples.length, 4, 'returns one trainable query per IBL sample' );
 				assert.ok( samples.every( ( sample ) => sample.iblWeight === 0 ), 'disables IBL labels when the teacher has no environment' );
 				assert.ok( samples.every( ( sample ) => Array.isArray( sample.iblIncoming ) && sample.iblIncoming.length === 3 ), 'attaches incoming IBL radiance slots' );
+				assert.ok( samples.every( ( sample ) => Array.isArray( sample.iblIrradiance ) && sample.iblIrradiance.length === 3 ), 'attaches incoming IBL irradiance slots' );
 				assert.ok( samples.every( ( sample ) => Array.isArray( sample.iblIndirect ) && sample.iblIndirect.length === 3 ), 'attaches indirect lighting slots' );
 
 			} );
 
-			QUnit.test( 'assigns teacher IBL query, incoming, and indirect labels', async ( assert ) => {
+			QUnit.test( 'assigns teacher IBL query, incoming, irradiance, and indirect labels', async ( assert ) => {
 
 				const teacher = {
 					supportsIBL: true,
@@ -172,6 +173,7 @@ export default QUnit.module( 'Addons', () => {
 
 						if ( mode === 'iblQuery' ) return samples.map( () => [ 0, 0, 2, 0.25 ] );
 						if ( mode === 'iblIncoming' ) return samples.map( () => [ 0.1, 0.2, 0.3 ] );
+						if ( mode === 'iblIrradiance' ) return samples.map( () => [ 0.7, 0.8, 0.9 ] );
 						if ( mode === 'iblIndirect' ) return samples.map( () => [ 0.4, 0.5, 0.6 ] );
 
 						return samples.map( () => [ 0.2, 0.3, 0.4 ] );
@@ -189,6 +191,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.deepEqual( samples[ 0 ].iblDirection, [ 0, 0, 1 ], 'normalizes the teacher IBL query direction' );
 				assert.strictEqual( samples[ 0 ].iblRoughness, 0.25, 'stores the teacher IBL roughness used for PMREM' );
 				assert.deepEqual( samples[ 0 ].iblIncoming, [ 0.1, 0.2, 0.3 ], 'stores incoming environment radiance' );
+				assert.deepEqual( samples[ 0 ].iblIrradiance, [ 0.7, 0.8, 0.9 ], 'stores incoming environment irradiance' );
 				assert.deepEqual( samples[ 0 ].iblIndirect, [ 0.4, 0.5, 0.6 ], 'stores full teacher indirect lighting' );
 
 			} );

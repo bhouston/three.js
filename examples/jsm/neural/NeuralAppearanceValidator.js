@@ -97,7 +97,8 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 			const predictedWhite = evaluateNeuralIBLWhiteFurnace( json, sample );
 			const predictedPrefiltered = evaluateNeuralPrefilteredIBL( json, {
 				...sample,
-				iblIncoming: [ 1, 1, 1 ]
+				iblIncoming: [ 1, 1, 1 ],
+				iblIrradiance: [ 1, 1, 1 ]
 			} );
 			const integratedWhite = sample.directionalAlbedo || integrateNeuralBRDFWhiteFurnace( json, sample, 32 );
 			accumulateDifferenceMetric( whiteFurnace, predictedWhite, integratedWhite );
@@ -119,7 +120,8 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 
 				const predicted = evaluateNeuralPrefilteredIBL( json, {
 					...sample,
-					iblIncoming: sample.iblIncoming || [ 1, 1, 1 ]
+					iblIncoming: sample.iblIncoming || [ 1, 1, 1 ],
+					iblIrradiance: sample.iblIrradiance || [ 1, 1, 1 ]
 				} );
 
 				for ( let i = 0; i < 3; i ++ ) {

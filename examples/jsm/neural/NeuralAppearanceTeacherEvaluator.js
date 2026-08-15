@@ -250,6 +250,23 @@ class NeuralAppearanceTeacherEvaluator {
 
 			}
 
+		} else if ( this._targetMode === 'iblIrradiance' ) {
+
+			if ( this.environment === null ) {
+
+				throw new Error( 'THREE.NeuralAppearanceTeacherEvaluator: An environment texture is required for IBL irradiance sampling.' );
+
+			}
+
+			sampleMaterial.lights = false;
+			sampleMaterial.lightsNode = TSL.lights( [] );
+			const envNode = TSL.pmremTexture( this.environment );
+			const irradiance = envNode.context( {
+				getUV: () => TSL.normalWorld,
+				getTextureLevel: () => TSL.float( 1 )
+			} );
+			sampleMaterial.outputNode = TSL.vec4( irradiance, 1 );
+
 		} else if ( this._targetMode === 'iblIndirect' ) {
 
 			if ( this.environment === null ) {
@@ -279,7 +296,7 @@ class NeuralAppearanceTeacherEvaluator {
 		this._mesh = new THREE.Mesh( this._geometry, this._material );
 		this._scene.add( this._mesh );
 		if ( this._light ) this._scene.add( this._light );
-		if ( this._targetMode === 'iblIndirect' || this._targetMode === 'iblIncoming' ) {
+		if ( this._targetMode === 'iblIndirect' || this._targetMode === 'iblIncoming' || this._targetMode === 'iblIrradiance' ) {
 
 			this._scene.environment = this.environment;
 

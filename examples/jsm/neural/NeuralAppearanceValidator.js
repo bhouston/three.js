@@ -7,6 +7,7 @@ import {
 import {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs,
+	evaluateNeuralPrefilteredIBL,
 	evaluateNeuralIBLWhiteFurnace,
 	integrateNeuralBRDFWhiteFurnace
 } from './NeuralAppearanceRuntime.js';
@@ -25,6 +26,9 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 	let iblLoss = 0;
 	let iblCount = 0;
 	const whiteFurnace = createDifferenceMetric();
+	const prefilteredIBL = createDifferenceMetric();
+	const mipConsistency = createDifferenceMetric();
+	const framePriors = createFramePriorMetric();
 	const angularBins = {
 		wi: createAngularBins(),
 		wo: createAngularBins()
@@ -45,6 +49,7 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 		const reciprocalPrediction = evaluateNeuralAppearanceJson( json, { ...sample, wi: sample.wo, wo: sample.wi } );
 		const perturbedWiPrediction = evaluateNeuralAppearanceJson( json, { ...sample, wi: perturbDirection( sample.wi, 0.02 ) } );
 		const perturbedWoPrediction = evaluateNeuralAppearanceJson( json, { ...sample, wo: perturbDirection( sample.wo, 0.02 ) } );
+		const nextMipPrediction = evaluateNextMipPrediction( json, sample );
 
 		if ( sampleWeight > 0 ) {
 
@@ -88,21 +93,38 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 
 		if ( outputs.ibl ) {
 
+			accumulateFramePriorMetric( framePriors, outputs.ibl );
 			const predictedWhite = evaluateNeuralIBLWhiteFurnace( json, sample );
+			const predictedPrefiltered = evaluateNeuralPrefilteredIBL( json, {
+				...sample,
+				iblIncoming: [ 1, 1, 1 ]
+			} );
 			const integratedWhite = sample.directionalAlbedo || integrateNeuralBRDFWhiteFurnace( json, sample, 32 );
 			accumulateDifferenceMetric( whiteFurnace, predictedWhite, integratedWhite );
+			accumulateDifferenceMetric( prefilteredIBL, predictedPrefiltered, integratedWhite );
 
-			if ( Array.isArray( sample.iblTarget ) ) {
+			if ( Array.isArray( sample.iblDirection ) && Number.isFinite( sample.iblRoughness ) ) {
 
-				const targetWhite = [
-					sample.iblTarget[ 3 ] + sample.iblTarget[ 10 ],
-					sample.iblTarget[ 4 ] + sample.iblTarget[ 11 ],
-					sample.iblTarget[ 5 ] + sample.iblTarget[ 12 ]
-				];
+				const directionError = Math.hypot(
+					outputs.ibl.direction[ 0 ] - sample.iblDirection[ 0 ],
+					outputs.ibl.direction[ 1 ] - sample.iblDirection[ 1 ],
+					outputs.ibl.direction[ 2 ] - sample.iblDirection[ 2 ]
+				);
+				iblLoss += ( directionError + Math.abs( outputs.ibl.roughness - sample.iblRoughness ) ) * invAuxBatch / 2;
+				iblCount ++;
+
+			}
+
+			if ( Array.isArray( sample.iblIndirect ) ) {
+
+				const predicted = evaluateNeuralPrefilteredIBL( json, {
+					...sample,
+					iblIncoming: sample.iblIncoming || [ 1, 1, 1 ]
+				} );
 
 				for ( let i = 0; i < 3; i ++ ) {
 
-					iblLoss += Math.abs( predictedWhite[ i ] - targetWhite[ i ] ) * invAuxBatch / 3;
+					iblLoss += Math.abs( predicted[ i ] - sample.iblIndirect[ i ] ) * invAuxBatch / 3;
 
 				}
 
@@ -111,6 +133,8 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 			}
 
 		}
+
+		if ( nextMipPrediction ) accumulateDifferenceMetric( mipConsistency, prediction, nextMipPrediction );
 
 		accumulateDifferenceMetric( reciprocity, prediction, reciprocalPrediction );
 		accumulateDifferenceMetric( angularSmoothness, prediction, perturbedWiPrediction );
@@ -144,7 +168,55 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 		},
 		reciprocity: finalizeDifferenceMetric( reciprocity ),
 		angularSmoothness: finalizeDifferenceMetric( angularSmoothness ),
-		whiteFurnace: finalizeDifferenceMetric( whiteFurnace )
+		whiteFurnace: finalizeDifferenceMetric( whiteFurnace ),
+		prefilteredIBL: finalizeDifferenceMetric( prefilteredIBL ),
+		mipConsistency: finalizeDifferenceMetric( mipConsistency ),
+		framePriors: finalizeFramePriorMetric( framePriors )
+	};
+
+}
+
+function evaluateNextMipPrediction( json, sample ) {
+
+	const mipmaps = json.latents && json.latents.textures && json.latents.textures[ 0 ] ? json.latents.textures[ 0 ].mipmaps : null;
+	if ( ! mipmaps || mipmaps.length < 2 ) return null;
+
+	const mip = Math.min( Math.max( sample.mip || 0, 0 ), mipmaps.length - 1 );
+	if ( mip >= mipmaps.length - 1 ) return null;
+
+	return evaluateNeuralAppearanceJson( json, { ...sample, mip: mip + 1, duvDx: null, duvDy: null } );
+
+}
+
+function createFramePriorMetric() {
+
+	return { sampleCount: 0, normalLengthError: 0, roughnessOutOfRange: 0, maxNormalTilt: 0 };
+
+}
+
+function accumulateFramePriorMetric( metric, query ) {
+
+	const normal = query.direction;
+	const roughness = query.roughness;
+	if ( ! normal || normal.every( Number.isFinite ) === false || Number.isFinite( roughness ) === false ) return;
+
+	const normalLength = Math.hypot( normal[ 0 ], normal[ 1 ], normal[ 2 ] );
+	const normalTilt = Math.acos( Math.min( Math.max( Math.abs( normal[ 2 ] ) / Math.max( normalLength, 1e-12 ), 0 ), 1 ) );
+
+	metric.sampleCount ++;
+	metric.normalLengthError += Math.abs( normalLength - 1 );
+	metric.roughnessOutOfRange += roughness < 0 || roughness > 1 ? 1 : 0;
+	metric.maxNormalTilt = Math.max( metric.maxNormalTilt, normalTilt );
+
+}
+
+function finalizeFramePriorMetric( metric ) {
+
+	return {
+		sampleCount: metric.sampleCount,
+		meanNormalLengthError: metric.sampleCount > 0 ? metric.normalLengthError / metric.sampleCount : null,
+		roughnessOutOfRange: metric.roughnessOutOfRange,
+		maxNormalTilt: metric.sampleCount > 0 ? metric.maxNormalTilt : null
 	};
 
 }

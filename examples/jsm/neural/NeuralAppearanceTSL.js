@@ -128,48 +128,30 @@ function evaluateNeuralIBLForTexels( material, envNode, wo, latent0, latent1 ) {
 		latent1.x, latent1.y, latent1.z, latent1.w
 	];
 	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
-	const input = projectIBLInput( latents, frames, wo, ibl.inputSize );
-	const output = evaluateMLP( ibl.layers, uniforms, input );
-	const diffuseReflectance = TSL.vec3( output[ 3 ], output[ 4 ], output[ 5 ] ).max( 0 );
-	const specularRoughness = TSL.float( 1 ).div( TSL.float( 1 ).add( TSL.exp( output[ 9 ].negate() ) ) );
-	const specularWeight = TSL.vec3( output[ 10 ], output[ 11 ], output[ 12 ] ).max( 0 );
-	const localNormal = TSL.vec3( 0, 0, 1 );
-	const localReflect = TSL.vec3( wo.x.negate(), wo.y.negate(), wo.z );
-	const roughness4 = specularRoughness.mul( specularRoughness ).mul( specularRoughness ).mul( specularRoughness );
-	const localSpecular = roughness4.mix( localReflect, localNormal ).normalize();
-	const diffuseSample = envNode.context( {
-		getUV: () => canonicalToWorldDirection( localNormal ),
-		getTextureLevel: () => TSL.float( 1 )
-	} ).isolate().mul( Math.PI ).mul( TSL.materialEnvIntensity );
-	const specularSample = envNode.context( {
-		getUV: () => canonicalToWorldDirection( localSpecular ),
-		getTextureLevel: () => specularRoughness
+	const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize );
+	const query = evaluateMLP( ibl.layers, uniforms, queryInput );
+	const queryDirection = TSL.vec3( query[ 0 ], query[ 1 ], query[ 2 ] ).normalize();
+	const queryRoughness = TSL.float( 1 ).div( TSL.float( 1 ).add( TSL.exp( query[ 3 ].negate() ) ) );
+	const incoming = envNode.context( {
+		getUV: () => canonicalToWorldDirection( queryDirection ),
+		getTextureLevel: () => queryRoughness
 	} ).isolate().mul( TSL.materialEnvIntensity );
 
-	return diffuseSample.mul( diffuseReflectance ).add( specularSample.mul( specularWeight ) );
+	if ( material.neuralAppearanceData.outputs.indirect ) {
+
+		const indirect = material.neuralAppearanceData.outputs.indirect;
+		const indirectInput = projectIndirectInput( latents, wo, incoming, indirect.inputSize );
+		const decoded = toVec3( evaluateMLP( indirect.layers, material._outputUniforms.indirect, indirectInput ) );
+
+		return applyOutputActivation( decoded, indirect.outputActivation );
+
+	}
+
+	return incoming;
 
 }
 
-function canonicalToWorldDirection( direction ) {
-
-	const frame = TSL.TBNViewMatrix;
-	const normal = frame[ 2 ].normalize();
-	const projectedTangent = frame[ 0 ].sub( normal.mul( frame[ 0 ].dot( normal ) ) );
-	const tangentLengthSquared = projectedTangent.dot( projectedTangent );
-	const normalizedTangent = projectedTangent.mul( tangentLengthSquared.max( 1e-10 ).inverseSqrt() );
-	const fallbackAxis = normal.y.abs().lessThan( 0.999 ).select( TSL.vec3( 0, 1, 0 ), TSL.vec3( 1, 0, 0 ) );
-	const fallbackTangent = fallbackAxis.cross( normal ).normalize();
-	const tangent = tangentLengthSquared.greaterThan( 1e-10 ).select( normalizedTangent, fallbackTangent );
-	const unhandedBitangent = normal.cross( tangent );
-	const handedness = unhandedBitangent.dot( frame[ 1 ] ).lessThan( 0 ).select( - 1, 1 );
-	const bitangent = unhandedBitangent.mul( handedness );
-	const viewDirection = tangent.mul( direction.x ).add( bitangent.mul( direction.y ) ).add( normal.mul( direction.z ) ).normalize();
-
-	return viewDirection.transformDirection( TSL.cameraWorldMatrix );
-
-}
-
-function transformToCanonicalFrame( direction ) {
+function getCanonicalViewBasis() {
 
 	const frame = TSL.TBNViewMatrix;
 	const normal = frame[ 2 ].normalize();
@@ -186,11 +168,133 @@ function transformToCanonicalFrame( direction ) {
 	const handedness = unhandedBitangent.dot( frame[ 1 ] ).lessThan( 0 ).select( - 1, 1 );
 	const bitangent = unhandedBitangent.mul( handedness );
 
+	return { tangent, bitangent, normal };
+
+}
+
+function canonicalToViewDirection( direction ) {
+
+	const { tangent, bitangent, normal } = getCanonicalViewBasis();
+
+	return tangent.mul( direction.x ).add( bitangent.mul( direction.y ) ).add( normal.mul( direction.z ) ).normalize();
+
+}
+
+function canonicalToWorldDirection( direction ) {
+
+	return canonicalToViewDirection( direction ).transformDirection( TSL.cameraWorldMatrix );
+
+}
+
+function transformToCanonicalFrame( direction ) {
+
+	const { tangent, bitangent, normal } = getCanonicalViewBasis();
+
 	return TSL.vec3(
 		direction.dot( tangent ),
 		direction.dot( bitangent ),
 		direction.dot( normal )
 	).normalize();
+
+}
+
+function latentsFromTexels( texel0, texel1 ) {
+
+	return [
+		texel0.x, texel0.y, texel0.z, texel0.w,
+		texel1.x, texel1.y, texel1.z, texel1.w
+	];
+
+}
+
+function evaluateLearnedCanonicalNormal( material, fragment ) {
+
+	const brdf = material.neuralAppearanceData.outputs.brdf;
+	const uniforms = material._outputUniforms.brdf;
+
+	if ( fragment.trilinear ) {
+
+		const normal0 = buildDecoderFrames( brdf, uniforms, latentsFromTexels( fragment.texel00, fragment.texel01 ) )[ 0 ].n;
+		const normal1 = buildDecoderFrames( brdf, uniforms, latentsFromTexels( fragment.texel10, fragment.texel11 ) )[ 0 ].n;
+
+		return TSL.mix( normal0, normal1, fragment.fracMip ).normalize();
+
+	}
+
+	return buildDecoderFrames( brdf, uniforms, latentsFromTexels( fragment.texel0, fragment.texel1 ) )[ 0 ].n;
+
+}
+
+function sigmoidNode( value ) {
+
+	return TSL.float( 1 ).div( TSL.float( 1 ).add( TSL.exp( value.negate() ) ) );
+
+}
+
+function evaluateLearnedIBLQueryForTexels( material, texel0, texel1, wo ) {
+
+	const latents = latentsFromTexels( texel0, texel1 );
+	const ibl = material.neuralAppearanceData.outputs.ibl;
+	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
+	const input = projectIBLInput( latents, frames, wo, ibl.inputSize );
+	const output = evaluateMLP( ibl.layers, material._outputUniforms.ibl, input );
+
+	return {
+		direction: TSL.vec3( output[ 0 ], output[ 1 ], output[ 2 ] ).normalize(),
+		roughness: sigmoidNode( output[ 3 ] )
+	};
+
+}
+
+function evaluateLearnedIBLQuery( material, fragment ) {
+
+	if ( fragment.trilinear ) {
+
+		const query0 = evaluateLearnedIBLQueryForTexels( material, fragment.texel00, fragment.texel01, fragment.viewDirection );
+		const query1 = evaluateLearnedIBLQueryForTexels( material, fragment.texel10, fragment.texel11, fragment.viewDirection );
+
+		return {
+			direction: TSL.mix( query0.direction, query1.direction, fragment.fracMip ).normalize(),
+			roughness: TSL.mix( query0.roughness, query1.roughness, fragment.fracMip )
+		};
+
+	}
+
+	return evaluateLearnedIBLQueryForTexels( material, fragment.texel0, fragment.texel1, fragment.viewDirection );
+
+}
+
+/**
+ * Decodes learned shading-frame intermediates used by the debug visualizer.
+ *
+ * @param {NeuralAppearanceNodeMaterial} material - The neural appearance material.
+ * @return {{ viewNormal: Node<vec3>, viewReflect: Node<vec3>, roughness: Node<float> }} Debug values.
+ */
+function evaluateNeuralDebugShading( material ) {
+
+	const fragment = createNeuralFragmentContext( material );
+	const canonicalNormal = evaluateLearnedCanonicalNormal( material, fragment );
+	const query = material.neuralAppearanceData.outputs.ibl ?
+		evaluateLearnedIBLQuery( material, fragment ) :
+		{ direction: fragment.viewDirection.negate().reflect( canonicalNormal ).normalize(), roughness: TSL.float( 1 ) };
+
+	return {
+		viewNormal: canonicalToViewDirection( canonicalNormal ),
+		viewReflect: canonicalToViewDirection( query.direction ),
+		roughness: query.roughness
+	};
+
+}
+
+function packDebugDirection( direction ) {
+
+	return TSL.colorSpaceToWorking( TSL.vec4( TSL.packNormalToRGB( direction ), 1 ), THREE.SRGBColorSpace ).xyz;
+
+}
+
+function packDebugScalar( value ) {
+
+	return TSL.colorSpaceToWorking( TSL.vec4( TSL.vec3( value ), 1 ), THREE.SRGBColorSpace ).xyz;
 
 }
 
@@ -305,6 +409,7 @@ function createOutputUniforms( outputs ) {
 		ibl: createHeadUniforms( outputs.ibl )
 	};
 
+	if ( outputs.indirect ) uniforms.indirect = createHeadUniforms( outputs.indirect );
 	if ( outputs.emission ) uniforms.emission = createHeadUniforms( outputs.emission );
 	if ( outputs.opacity ) uniforms.opacity = createHeadUniforms( outputs.opacity );
 
@@ -334,6 +439,7 @@ function isCompatibleNeuralAppearanceData( current, next ) {
 	if ( ! sameLatentTextureLayout( current.latentTextures, next.latentTextures ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.brdf, next.outputs.brdf ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.ibl, next.outputs.ibl ) ) return false;
+	if ( ! sameHeadArchitecture( current.outputs.indirect, next.outputs.indirect ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.emission, next.outputs.emission ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.opacity, next.outputs.opacity ) ) return false;
 
@@ -407,6 +513,7 @@ function updateOutputUniforms( uniforms, outputs ) {
 
 	updateHeadUniforms( uniforms.brdf, outputs.brdf );
 	updateHeadUniforms( uniforms.ibl, outputs.ibl );
+	if ( outputs.indirect ) updateHeadUniforms( uniforms.indirect, outputs.indirect );
 	if ( outputs.emission ) updateHeadUniforms( uniforms.emission, outputs.emission );
 	if ( outputs.opacity ) updateHeadUniforms( uniforms.opacity, outputs.opacity );
 
@@ -626,6 +733,29 @@ function projectIBLInput( latents, frames, wo, inputSize ) {
 
 }
 
+function projectIndirectInput( latents, wo, incoming, inputSize ) {
+
+	const input = [];
+
+	for ( let i = 0; i < 8; i ++ ) {
+
+		input.push( latents[ i ] );
+
+	}
+
+	input.push( wo.x, wo.y, wo.z );
+	input.push( incoming.x, incoming.y, incoming.z );
+
+	if ( input.length !== inputSize ) {
+
+		throw new Error( `THREE.NeuralAppearanceNodeMaterial: Indirect decoder input has ${ input.length } values, expected ${ inputSize }.` );
+
+	}
+
+	return input;
+
+}
+
 function evaluateMLP( layers, uniforms, inputs ) {
 
 	let activations = packNodeInputs( inputs );
@@ -816,6 +946,9 @@ export {
 	evaluateNeuralEmission,
 	evaluateNeuralIBL,
 	evaluateNeuralOpacity,
+	evaluateNeuralDebugShading,
+	packDebugDirection,
+	packDebugScalar,
 	createEvaluateNeuralBRDFFn,
 	createNeuralFragmentContext,
 	transformToCanonicalFrame,
@@ -832,6 +965,7 @@ export {
 	packLayerBiases,
 	buildDecoderInput,
 	projectIBLInput,
+	canonicalToViewDirection,
 	canonicalToWorldDirection,
 	evaluateMLP,
 	packNodeInputs,

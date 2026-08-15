@@ -3,7 +3,8 @@ import {
 	VERSION,
 	LATENT_CHANNELS,
 	DECODER_INPUT_SIZE,
-	IBL_INPUT_SIZE
+	IBL_INPUT_SIZE,
+	INDIRECT_INPUT_SIZE
 } from './NeuralAppearanceFormat.js';
 import { normalize } from './NeuralAppearanceModel.js';
 import {
@@ -70,6 +71,11 @@ function createNeuralAppearanceManifest( model, options ) {
 		ibl: {
 			inputSize: IBL_INPUT_SIZE,
 			layers: serializeLayers( model.iblHead ),
+			outputActivation: { type: 'linear' }
+		},
+		indirect: {
+			inputSize: INDIRECT_INPUT_SIZE,
+			layers: serializeLayers( model.indirectHead ),
 			outputActivation: { type: 'linear' }
 		}
 	};
@@ -170,6 +176,7 @@ async function createReferenceEvaluations( json, teacher ) {
 		sample.targetRgb = sample.target.slice();
 		sample.rgb = prediction;
 		sample.ibl = outputs.ibl;
+		if ( outputs.indirect ) sample.indirect = outputs.indirect;
 		sample.iblWhiteFurnace = iblWhite;
 		sample.integratedWhiteFurnace = integratedWhite;
 		if ( sample.emissionTarget ) {

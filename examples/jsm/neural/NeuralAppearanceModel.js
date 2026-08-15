@@ -2,7 +2,9 @@ import {
 	LATENT_CHANNELS,
 	DECODER_INPUT_SIZE,
 	IBL_INPUT_SIZE,
-	IBL_OUTPUT_SIZE
+	IBL_OUTPUT_SIZE,
+	INDIRECT_INPUT_SIZE,
+	INDIRECT_OUTPUT_SIZE
 } from './NeuralAppearanceFormat.js';
 import {
 	createMLP,
@@ -16,6 +18,7 @@ function createModel( options, random ) {
 	const decoder = createMLP( DECODER_INPUT_SIZE, [ options.hiddenSize, options.hiddenSize ], 3, random, 'relu', 'linear' );
 	const iblHiddenSize = options.iblHiddenSize || Math.min( Math.max( options.hiddenSize || 32, 16 ), 32 );
 	const iblHead = createMLP( IBL_INPUT_SIZE, [ iblHiddenSize ], IBL_OUTPUT_SIZE, random, 'relu', 'linear' );
+	const indirectHead = createMLP( INDIRECT_INPUT_SIZE, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
 	const emissionHead = options.outputFeatures && options.outputFeatures.emission ?
 		createMLP( LATENT_CHANNELS, [], 3, random, 'relu', 'linear' ) :
 		null;
@@ -27,6 +30,7 @@ function createModel( options, random ) {
 	const model = {
 		decoder,
 		iblHead,
+		indirectHead,
 		emissionHead,
 		opacityHead,
 		rotationWeights,
@@ -240,27 +244,36 @@ function buildIBLInput( latents, rotationWeights, wo ) {
 
 }
 
+function buildIndirectInput( latents, wo, incomingRadiance ) {
+
+	const input = latents.slice();
+	const incoming = incomingRadiance || [ 1, 1, 1 ];
+
+	input.push( wo[ 0 ], wo[ 1 ], wo[ 2 ] );
+	input.push( incoming[ 0 ], incoming[ 1 ], incoming[ 2 ] );
+
+	if ( input.length !== INDIRECT_INPUT_SIZE ) {
+
+		throw new Error( `THREE.NeuralAppearanceModel: Indirect input has ${ input.length } values, expected ${ INDIRECT_INPUT_SIZE }.` );
+
+	}
+
+	return input;
+
+}
+
 function unpackIBLOutput( values ) {
 
 	if ( values.length !== IBL_OUTPUT_SIZE ) {
 
-		throw new Error( `THREE.NeuralAppearanceModel: IBL output has ${ values.length } values, expected ${ IBL_OUTPUT_SIZE }.` );
+		throw new Error( `THREE.NeuralAppearanceModel: IBL query output has ${ values.length } values, expected ${ IBL_OUTPUT_SIZE }.` );
 
 	}
 
 	return {
-		diffuseDirection: normalize( values.slice( 0, 3 ) ),
-		diffuseReflectance: values.slice( 3, 6 ).map( nonnegative ),
-		specularDirection: normalize( values.slice( 6, 9 ) ),
-		specularRoughness: sigmoid( values[ 9 ] ),
-		specularWeight: values.slice( 10, 13 ).map( nonnegative )
+		direction: normalize( values.slice( 0, 3 ) ),
+		roughness: sigmoid( values[ 3 ] )
 	};
-
-}
-
-function nonnegative( value ) {
-
-	return Math.max( value, 0 );
 
 }
 
@@ -337,6 +350,7 @@ export {
 	buildDecoderInput,
 	forwardIBLInput,
 	buildIBLInput,
+	buildIndirectInput,
 	unpackIBLOutput,
 	getSampleWeightSum,
 	dot,

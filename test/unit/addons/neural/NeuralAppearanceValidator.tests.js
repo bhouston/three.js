@@ -37,8 +37,14 @@ export default QUnit.module( 'Addons', () => {
 				const json = {
 					latents: {
 						textures: [
-							{ wrap: 'repeat', mipmaps: [ { width: 1, height: 1, data: [ 0, 0, 0, 0 ] } ] },
-							{ wrap: 'repeat', mipmaps: [ { width: 1, height: 1, data: [ 0, 0, 0, 0 ] } ] }
+							{ wrap: 'repeat', mipmaps: [
+								{ width: 2, height: 2, data: new Array( 16 ).fill( 0 ) },
+								{ width: 1, height: 1, data: [ 0, 0, 0, 0 ] }
+							] },
+							{ wrap: 'repeat', mipmaps: [
+								{ width: 2, height: 2, data: new Array( 16 ).fill( 0 ) },
+								{ width: 1, height: 1, data: [ 0, 0, 0, 0 ] }
+							] }
 						]
 					},
 					outputs: {
@@ -57,16 +63,21 @@ export default QUnit.module( 'Addons', () => {
 							inputSize: 14,
 							layers: [ {
 								inputSize: 14,
-								outputSize: 13,
+								outputSize: 4,
 								activation: 'linear',
-								weights: new Array( 14 * 13 ).fill( 0 ),
-								biases: [
-									0, 0, 1,
-									0.4, 0.4, 0.4,
-									0, 0, 1,
-									0,
-									0.1, 0.1, 0.1
-								]
+								weights: new Array( 14 * 4 ).fill( 0 ),
+								biases: [ 0, 0, 1, 0 ]
+							} ],
+							outputActivation: { type: 'linear' }
+						},
+						indirect: {
+							inputSize: 14,
+							layers: [ {
+								inputSize: 14,
+								outputSize: 3,
+								activation: 'linear',
+								weights: new Array( 14 * 3 ).fill( 0 ),
+								biases: [ 0, 0, 0 ]
 							} ],
 							outputActivation: { type: 'linear' }
 						}
@@ -93,6 +104,9 @@ export default QUnit.module( 'Addons', () => {
 				assert.ok( Number.isFinite( validation.reciprocity.meanAbsoluteDifference ), 'computes reciprocity metric' );
 				assert.ok( Number.isFinite( validation.angularSmoothness.meanAbsoluteDifference ), 'computes angular smoothness metric' );
 				assert.ok( Number.isFinite( validation.whiteFurnace.meanAbsoluteDifference ), 'computes white-furnace metric' );
+				assert.ok( Number.isFinite( validation.prefilteredIBL.meanAbsoluteDifference ), 'computes prefiltered IBL metric' );
+				assert.strictEqual( validation.mipConsistency.sampleCount, 1, 'computes adjacent-mip consistency metric' );
+				assert.strictEqual( validation.framePriors.sampleCount, 1, 'computes frame prior metrics' );
 
 			} );
 

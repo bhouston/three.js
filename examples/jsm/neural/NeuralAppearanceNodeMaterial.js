@@ -5,6 +5,9 @@ import {
 	evaluateNeuralEmission,
 	evaluateNeuralIBL,
 	evaluateNeuralOpacity,
+	evaluateNeuralDebugShading,
+	packDebugDirection,
+	packDebugScalar,
 	createEvaluateNeuralBRDFFn,
 	createNeuralFragmentContext,
 	createOutputUniforms,
@@ -17,7 +20,8 @@ const DEFAULT_PARAMETERS = {
 	lodMode: 'deterministic',
 	fixedMipLevel: - 1,
 	intensity: 1,
-	emissiveIntensity: 1
+	emissiveIntensity: 1,
+	debugView: 'shaded'
 };
 
 /**
@@ -59,6 +63,7 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 		this.fixedMipLevel = parameters.fixedMipLevel !== undefined ? parameters.fixedMipLevel : DEFAULT_PARAMETERS.fixedMipLevel;
 		this.intensity = parameters.intensity !== undefined ? parameters.intensity : DEFAULT_PARAMETERS.intensity;
 		this.emissiveIntensity = parameters.emissiveIntensity !== undefined ? parameters.emissiveIntensity : DEFAULT_PARAMETERS.emissiveIntensity;
+		this.debugView = parameters.debugView || DEFAULT_PARAMETERS.debugView;
 		this._outputUniforms = createOutputUniforms( neuralAppearanceData.outputs );
 
 		this._fixedMipLevelNode = TSL.uniform( this.fixedMipLevel ).onObjectUpdate( ( { material } ) => material.fixedMipLevel );
@@ -177,6 +182,34 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 	setupOutgoingLight() {
 
 		return TSL.vec3( 0 );
+
+	}
+
+	/**
+	 * Replaces shaded lighting with packed decoder-frame debug values.
+	 *
+	 * @param {NodeBuilder} builder - The current node builder.
+	 * @return {Node<vec3>} Shaded lighting or a packed debug direction.
+	 */
+	setupLighting( builder ) {
+
+		if ( this.debugView === 'normal' || this.debugView === 'reflection' || this.debugView === 'roughness' ) {
+
+			const debug = evaluateNeuralDebugShading( this );
+
+			if ( this.debugView === 'roughness' ) {
+
+				return packDebugScalar( debug.roughness );
+
+			}
+
+			const direction = this.debugView === 'normal' ? debug.viewNormal : debug.viewReflect;
+
+			return packDebugDirection( direction );
+
+		}
+
+		return super.setupLighting( builder );
 
 	}
 

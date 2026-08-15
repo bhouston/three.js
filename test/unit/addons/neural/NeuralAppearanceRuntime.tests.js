@@ -1,7 +1,8 @@
 import { DataUtils } from 'three';
 import {
 	evaluateNeuralAppearanceJson,
-	evaluateNeuralAppearanceOutputs
+	evaluateNeuralAppearanceOutputs,
+	evaluateNeuralPrefilteredIBL
 } from '../../../../examples/jsm/neural/NeuralAppearanceRuntime.js';
 
 function createIBLOutput() {
@@ -11,16 +12,33 @@ function createIBLOutput() {
 		layers: [
 			{
 				inputSize: 14,
-				outputSize: 13,
+				outputSize: 4,
 				activation: 'linear',
-				weights: new Array( 14 * 13 ).fill( 0 ),
-				biases: [
-					0, 0, 1,
-					0.1, 0.2, 0.3,
-					0, 0, 1,
-					0,
-					0.01, 0.02, 0.03
-				]
+				weights: new Array( 14 * 4 ).fill( 0 ),
+				biases: [ 0, 0, 1, 0 ]
+			}
+		],
+		outputActivation: { type: 'linear' }
+	};
+
+}
+
+function createIndirectOutput() {
+
+	const weights = new Array( 14 * 3 ).fill( 0 );
+	weights[ 11 ] = 1;
+	weights[ 14 + 12 ] = 1;
+	weights[ 28 + 13 ] = 1;
+
+	return {
+		inputSize: 14,
+		layers: [
+			{
+				inputSize: 14,
+				outputSize: 3,
+				activation: 'linear',
+				weights,
+				biases: [ 0, 0, 0 ]
 			}
 		],
 		outputActivation: { type: 'linear' }
@@ -71,7 +89,8 @@ export default QUnit.module( 'Addons', () => {
 							} ],
 							outputActivation: { type: 'linear' }
 						},
-						ibl: createIBLOutput()
+						ibl: createIBLOutput(),
+						indirect: createIndirectOutput()
 					}
 				};
 				const direction = [ 0, 0, 1 ];
@@ -136,6 +155,7 @@ export default QUnit.module( 'Addons', () => {
 							outputActivation: { type: 'linear' }
 						},
 						ibl: createIBLOutput(),
+						indirect: createIndirectOutput(),
 						emission: {
 							layers: [ {
 								inputSize: 8,
@@ -167,8 +187,20 @@ export default QUnit.module( 'Addons', () => {
 				} );
 
 				assert.deepEqual( outputs.brdf, [ 0.1, 0.2, 0.3 ], 'evaluates brdf output' );
+				assert.deepEqual( outputs.ibl.direction, [ 0, 0, 1 ], 'exposes IBL query direction' );
+				assert.ok( Math.abs( outputs.ibl.roughness - 0.5 ) < 1e-6, 'exposes IBL query roughness' );
 				assert.deepEqual( outputs.emission, [ 1, 0.5, 0.25 ], 'evaluates emission output' );
 				assert.ok( Math.abs( outputs.opacity - 0.5 ) < 1e-6, 'evaluates sigmoid opacity output' );
+
+				const prefiltered = evaluateNeuralPrefilteredIBL( json, {
+					uv: [ 0.5, 0.5 ],
+					wi: [ 0, 0, 1 ],
+					wo: [ 0, 0, 1 ],
+					mip: 0,
+					iblIncoming: [ 2, 3, 4 ]
+				} );
+
+				assert.deepEqual( prefiltered, [ 2, 3, 4 ], 'maps incoming environment radiance through the indirect decoder' );
 
 			} );
 
@@ -210,6 +242,7 @@ export default QUnit.module( 'Addons', () => {
 							outputActivation: { type: 'linear' }
 						},
 						ibl: createIBLOutput(),
+						indirect: createIndirectOutput(),
 						emission: {
 							layers: [ {
 								inputSize: 8,
@@ -274,6 +307,52 @@ export default QUnit.module( 'Addons', () => {
 
 				// Deterministic round(0.5) selects mip 1
 				assert.deepEqual( deterministicOutputs.brdf, [ half( 0.8 ), half( 0.6 ), half( 0.4 ) ], 'deterministic mode selects nearest integer mip without blending' );
+
+			} );
+
+			QUnit.test( 'evaluates IBL query and incoming-light indirect heads', ( assert ) => {
+
+				const json = {
+					latents: {
+						textures: [
+							{ wrap: 'repeat', mipmaps: [ { width: 1, height: 1, data: [ 0, 0, 0, 0 ] } ] },
+							{ wrap: 'repeat', mipmaps: [ { width: 1, height: 1, data: [ 0, 0, 0, 0 ] } ] }
+						]
+					},
+					outputs: {
+						brdf: {
+							rotation: { weights: new Array( 96 ).fill( 0 ) },
+							layers: [ {
+								inputSize: 20,
+								outputSize: 3,
+								activation: 'linear',
+								weights: new Array( 60 ).fill( 0 ),
+								biases: [ 0, 0, 0 ]
+							} ],
+							outputActivation: { type: 'linear' }
+						},
+						ibl: createIBLOutput(),
+						indirect: createIndirectOutput()
+					}
+				};
+				const outputs = evaluateNeuralAppearanceOutputs( json, {
+					uv: [ 0.5, 0.5 ],
+					wi: [ 0, 0, 1 ],
+					wo: [ 0, 0, 1 ],
+					mip: 0,
+					iblIncoming: [ 0.2, 0.4, 0.6 ]
+				} );
+
+				assert.deepEqual( outputs.ibl.direction, [ 0, 0, 1 ], 'evaluates IBL query direction' );
+				assert.ok( Math.abs( outputs.ibl.roughness - 0.5 ) < 1e-6, 'evaluates IBL query roughness' );
+				assert.deepEqual( outputs.indirect, [ 0.2, 0.4, 0.6 ], 'passes incoming radiance through the indirect decoder' );
+				assert.deepEqual( evaluateNeuralPrefilteredIBL( json, {
+					uv: [ 0.5, 0.5 ],
+					wi: [ 0, 0, 1 ],
+					wo: [ 0, 0, 1 ],
+					mip: 0,
+					iblIncoming: [ 0.2, 0.4, 0.6 ]
+				} ), [ 0.2, 0.4, 0.6 ], 'prefiltered IBL helper uses the indirect decoder' );
 
 			} );
 

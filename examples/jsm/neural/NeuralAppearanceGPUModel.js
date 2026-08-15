@@ -1,7 +1,7 @@
 import { StorageBufferAttribute } from 'three/webgpu';
 import { Vector4 } from 'three';
 import { storage, uniform, uniformArray } from 'three/tsl';
-import { IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
+import { IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE, IBL_TARGET_SIZE, LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
 
 const FIXED_POINT_SCALE = 1e5;
 const GRADIENT_NORM_SCALE = 1e5;
@@ -83,6 +83,16 @@ function computeModelLayout( options = {} ) {
 	const iblLayer1BiasesOffset = iblLayer1WeightsOffset + iblLayer1WeightsCount;
 	const iblLayer1BiasesCount = IBL_OUTPUT_SIZE;
 	currentOffset = iblLayer1BiasesOffset + iblLayer1BiasesCount;
+
+	const indirectLayer0WeightsOffset = currentOffset;
+	const indirectLayer0WeightsCount = INDIRECT_INPUT_SIZE * iblHiddenSize;
+	const indirectLayer0BiasesOffset = indirectLayer0WeightsOffset + indirectLayer0WeightsCount;
+	const indirectLayer0BiasesCount = iblHiddenSize;
+	const indirectLayer1WeightsOffset = indirectLayer0BiasesOffset + indirectLayer0BiasesCount;
+	const indirectLayer1WeightsCount = iblHiddenSize * INDIRECT_OUTPUT_SIZE;
+	const indirectLayer1BiasesOffset = indirectLayer1WeightsOffset + indirectLayer1WeightsCount;
+	const indirectLayer1BiasesCount = INDIRECT_OUTPUT_SIZE;
+	currentOffset = indirectLayer1BiasesOffset + indirectLayer1BiasesCount;
 	const iblWeightCount = currentOffset - directWeightCount;
 
 	const totalWeights = currentOffset;
@@ -164,10 +174,17 @@ function computeModelLayout( options = {} ) {
 	const actIblDelta1Offset = actIblDelta2Offset + IBL_OUTPUT_SIZE;
 	actCurrent = actIblDelta1Offset + iblHiddenSize;
 
+	const actIndirectA0Offset = actCurrent;
+	const actIndirectZ1Offset = actIndirectA0Offset + INDIRECT_INPUT_SIZE;
+	const actIndirectA1Offset = actIndirectZ1Offset + iblHiddenSize;
+	const actIndirectZ2Offset = actIndirectA1Offset + iblHiddenSize;
+	const actIndirectDelta2Offset = actIndirectZ2Offset + INDIRECT_OUTPUT_SIZE;
+	const actIndirectDelta1Offset = actIndirectDelta2Offset + INDIRECT_OUTPUT_SIZE;
+	actCurrent = actIndirectDelta1Offset + iblHiddenSize;
+
 	const activationStride = actCurrent;
 
-	// Sample Buffer Stride: 20 direct/aux floats + 13 IBL target floats.
-	const sampleStride = 20 + IBL_OUTPUT_SIZE;
+	const sampleStride = 20 + IBL_TARGET_SIZE;
 
 	return {
 		hiddenSize,
@@ -199,6 +216,14 @@ function computeModelLayout( options = {} ) {
 		iblLayer1WeightsCount,
 		iblLayer1BiasesOffset,
 		iblLayer1BiasesCount,
+		indirectLayer0WeightsOffset,
+		indirectLayer0WeightsCount,
+		indirectLayer0BiasesOffset,
+		indirectLayer0BiasesCount,
+		indirectLayer1WeightsOffset,
+		indirectLayer1WeightsCount,
+		indirectLayer1BiasesOffset,
+		indirectLayer1BiasesCount,
 		emissionWeightsOffset,
 		emissionWeightsCount,
 		emissionBiasesOffset,
@@ -229,6 +254,12 @@ function computeModelLayout( options = {} ) {
 		actIblZ2Offset,
 		actIblDelta2Offset,
 		actIblDelta1Offset,
+		actIndirectA0Offset,
+		actIndirectZ1Offset,
+		actIndirectA1Offset,
+		actIndirectZ2Offset,
+		actIndirectDelta2Offset,
+		actIndirectDelta1Offset,
 		sampleStride
 	};
 
@@ -325,6 +356,8 @@ class NeuralAppearanceGPUModel {
 		// IBL Head (14 -> H_ibl -> 13)
 		copyLayerWeightsToGPU( cpuModel.iblHead.layers[ 0 ], weights, this.layout.iblLayer0WeightsOffset, this.layout.iblLayer0BiasesOffset );
 		copyLayerWeightsToGPU( cpuModel.iblHead.layers[ 1 ], weights, this.layout.iblLayer1WeightsOffset, this.layout.iblLayer1BiasesOffset );
+		copyLayerWeightsToGPU( cpuModel.indirectHead.layers[ 0 ], weights, this.layout.indirectLayer0WeightsOffset, this.layout.indirectLayer0BiasesOffset );
+		copyLayerWeightsToGPU( cpuModel.indirectHead.layers[ 1 ], weights, this.layout.indirectLayer1WeightsOffset, this.layout.indirectLayer1BiasesOffset );
 
 		// Emission Head (8 -> 3)
 		if ( cpuModel.emissionHead ) {
@@ -440,12 +473,17 @@ class NeuralAppearanceGPUModel {
 
 			}
 
-			const iblTarget = sample.iblTarget || [];
-			for ( let channel = 0; channel < IBL_OUTPUT_SIZE; channel ++ ) {
-
-				data[ base + 20 + channel ] = Number.isFinite( iblTarget[ channel ] ) ? iblTarget[ channel ] : 0;
-
-			}
+			data[ base + 20 ] = sample.iblWeight !== undefined ? sample.iblWeight : 0;
+			data[ base + 21 ] = ( sample.iblDirection || [ 0, 0, 1 ] )[ 0 ];
+			data[ base + 22 ] = ( sample.iblDirection || [ 0, 0, 1 ] )[ 1 ];
+			data[ base + 23 ] = ( sample.iblDirection || [ 0, 0, 1 ] )[ 2 ];
+			data[ base + 24 ] = Number.isFinite( sample.iblRoughness ) ? sample.iblRoughness : 1;
+			data[ base + 25 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 26 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 27 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 2 ];
+			data[ base + 28 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 29 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 30 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 2 ];
 
 		}
 
@@ -481,6 +519,8 @@ class NeuralAppearanceGPUModel {
 		copyLayerWeightsFromGPU( cpuModel.decoder.layers[ 2 ], weights, this.layout.layer2WeightsOffset, this.layout.layer2BiasesOffset );
 		copyLayerWeightsFromGPU( cpuModel.iblHead.layers[ 0 ], weights, this.layout.iblLayer0WeightsOffset, this.layout.iblLayer0BiasesOffset );
 		copyLayerWeightsFromGPU( cpuModel.iblHead.layers[ 1 ], weights, this.layout.iblLayer1WeightsOffset, this.layout.iblLayer1BiasesOffset );
+		copyLayerWeightsFromGPU( cpuModel.indirectHead.layers[ 0 ], weights, this.layout.indirectLayer0WeightsOffset, this.layout.indirectLayer0BiasesOffset );
+		copyLayerWeightsFromGPU( cpuModel.indirectHead.layers[ 1 ], weights, this.layout.indirectLayer1WeightsOffset, this.layout.indirectLayer1BiasesOffset );
 
 		if ( cpuModel.emissionHead ) {
 

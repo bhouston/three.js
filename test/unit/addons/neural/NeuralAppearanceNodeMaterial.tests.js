@@ -1,11 +1,12 @@
 import { NeuralAppearanceLoader } from '../../../../examples/jsm/loaders/NeuralAppearanceLoader.js';
 import { NeuralAppearanceNodeMaterial } from '../../../../examples/jsm/neural/NeuralAppearanceNodeMaterial.js';
+import { evaluateNeuralDebugShading } from '../../../../examples/jsm/neural/NeuralAppearanceTSL.js';
 
 function createManifest( fill = 0 ) {
 
 	return {
 		format: 'three-neural-appearance',
-		version: 3,
+		version: 4,
 		name: 'unit test material',
 		latents: {
 			channels: 8,
@@ -49,16 +50,23 @@ function createManifest( fill = 0 ) {
 				layers: [
 					{
 						inputSize: 14,
-						outputSize: 13,
+						outputSize: 4,
 						activation: 'linear',
-						biases: [
-							0, 0, 1,
-							fill, 0, 0,
-							0, 0, 1,
-							0,
-							fill, 0, 0
-						],
-						weights: new Array( 14 * 13 ).fill( fill )
+						biases: [ 0, 0, 1, 0 ],
+						weights: new Array( 14 * 4 ).fill( fill )
+					}
+				],
+				outputActivation: { type: 'linear' }
+			},
+			indirect: {
+				inputSize: 14,
+				layers: [
+					{
+						inputSize: 14,
+						outputSize: 3,
+						activation: 'linear',
+						biases: [ 0, 0, 0 ],
+						weights: new Array( 14 * 3 ).fill( fill )
 					}
 				],
 				outputActivation: { type: 'linear' }
@@ -167,6 +175,22 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( blendMaterial.maskNode, null, 'blend mode does not set maskNode' );
 
 				assert.strictEqual( maskMaterial.updateFromData( loader.parse( blendManifest ) ), false, 'rebuilds when opacity mode changes from mask to blend' );
+
+			} );
+
+			QUnit.test( 'builds debug shading graphs for decoder-frame visualization', ( assert ) => {
+
+				const loader = new NeuralAppearanceLoader();
+				const material = new NeuralAppearanceNodeMaterial( loader.parse( createManifest( 0 ) ) );
+				const debug = evaluateNeuralDebugShading( material );
+
+				assert.strictEqual( material.debugView, 'shaded', 'defaults to shaded lighting' );
+				assert.ok( debug.viewNormal, 'exposes a view-space decoder-frame normal' );
+				assert.ok( debug.viewReflect, 'exposes a view-space decoder-frame reflection' );
+				assert.ok( debug.roughness, 'exposes learned IBL specular roughness' );
+
+				material.debugView = 'roughness';
+				assert.strictEqual( material.debugView, 'roughness', 'accepts a roughness debug view' );
 
 			} );
 

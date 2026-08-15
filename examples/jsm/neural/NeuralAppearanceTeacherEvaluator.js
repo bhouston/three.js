@@ -56,6 +56,8 @@ class NeuralAppearanceTeacherEvaluator {
 		}
 
 		this._targetMode = 'brdf';
+		this.environment = options.environment || null;
+		this.supportsIBL = this.environment !== null && this.environment !== undefined;
 
 		this._scene = null;
 		this._camera = null;
@@ -135,11 +137,14 @@ class NeuralAppearanceTeacherEvaluator {
 
 			const pixels = await this._renderAndRead();
 
+			const usePointFilter = this.filterMode === 'point' || targetMode === 'iblQuery';
+
 			for ( let i = 0; i < batch.length; i ++ ) {
 
-				targets[ offset + i ] = this.filterMode === 'point' ?
+				const pixel = usePointFilter ?
 					this._readSamplePixel( pixels, i ) :
 					this._readFilteredSample( pixels, i, batch[ i ] );
+				targets[ offset + i ] = targetMode === 'iblQuery' ? pixel.slice( 0, 4 ) : pixel.slice( 0, 3 );
 
 			}
 
@@ -218,6 +223,45 @@ class NeuralAppearanceTeacherEvaluator {
 			sampleMaterial.alphaTestNode = null;
 			sampleMaterial.outputNode = TSL.vec4( opacity, opacity, opacity, 1 );
 
+		} else if ( this._targetMode === 'iblQuery' || this._targetMode === 'iblIncoming' ) {
+
+			const query = createTeacherIBLQueryNodes( sampleMaterial );
+			sampleMaterial.lights = false;
+			sampleMaterial.lightsNode = TSL.lights( [] );
+
+			if ( this._targetMode === 'iblQuery' ) {
+
+				sampleMaterial.outputNode = TSL.vec4( query.radianceDir, query.roughness );
+
+			} else {
+
+				if ( this.environment === null ) {
+
+					throw new Error( 'THREE.NeuralAppearanceTeacherEvaluator: An environment texture is required for IBL incoming sampling.' );
+
+				}
+
+				const envNode = TSL.pmremTexture( this.environment );
+				const incoming = envNode.context( {
+					getUV: () => query.radianceDir.transformDirection( TSL.cameraWorldMatrix ),
+					getTextureLevel: () => query.roughness
+				} );
+				sampleMaterial.outputNode = TSL.vec4( incoming, 1 );
+
+			}
+
+		} else if ( this._targetMode === 'iblIndirect' ) {
+
+			if ( this.environment === null ) {
+
+				throw new Error( 'THREE.NeuralAppearanceTeacherEvaluator: An environment texture is required for IBL teacher sampling.' );
+
+			}
+
+			sampleMaterial.lightsNode = TSL.lights( [] ).context( {
+				lightingModel: new NeuralTeacherIBLLightingModel( sampleMaterial )
+			} );
+
 		} else {
 
 			throw new Error( `THREE.NeuralAppearanceTeacherEvaluator: Unsupported target mode "${ this._targetMode }".` );
@@ -235,6 +279,12 @@ class NeuralAppearanceTeacherEvaluator {
 		this._mesh = new THREE.Mesh( this._geometry, this._material );
 		this._scene.add( this._mesh );
 		if ( this._light ) this._scene.add( this._light );
+		if ( this._targetMode === 'iblIndirect' || this._targetMode === 'iblIncoming' ) {
+
+			this._scene.environment = this.environment;
+
+		}
+
 		this._target = createTeacherRenderTarget( this._atlasWidth, this._atlasHeight );
 
 	}
@@ -309,6 +359,40 @@ class NeuralTeacherLightingModel extends PhysicalLightingModel {
 	}
 
 	indirect( /*builder*/ ) {}
+
+}
+
+class NeuralTeacherIBLLightingModel extends PhysicalLightingModel {
+
+	constructor( material ) {
+
+		if ( THREE.PhysicalLightingModel === undefined ) {
+
+			throw new Error( 'THREE.NeuralAppearanceTeacherEvaluator: PhysicalLightingModel is required for IBL teacher sampling. Import three/webgpu for training.' );
+
+		}
+
+		super( material.useClearcoat, material.useSheen, material.useIridescence, material.useAnisotropy, material.useTransmission, material.useDispersion, material.useRetroreflection );
+
+	}
+
+	direct( /*input, builder*/ ) {}
+
+}
+
+function createTeacherIBLQueryNodes( material ) {
+
+	const shadingNormal = TSL.normalView.normalize();
+	const viewDir = TSL.positionViewDirection.normalize();
+	const roughnessSource = material.roughnessNode !== undefined && material.roughnessNode !== null ?
+		TSL.float( material.roughnessNode ) :
+		TSL.materialRoughness;
+	const roughness = TSL.getRoughness( { roughness: roughnessSource } );
+	const reflectDir = viewDir.negate().reflect( shadingNormal );
+	const roughness4 = roughness.mul( roughness ).mul( roughness ).mul( roughness );
+	const radianceDir = roughness4.mix( reflectDir, shadingNormal ).normalize();
+
+	return { roughness, radianceDir };
 
 }
 

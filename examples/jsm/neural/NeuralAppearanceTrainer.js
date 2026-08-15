@@ -4,6 +4,7 @@ import {
 } from './NeuralAppearanceModel.js';
 import {
 	generateTrainingSamples,
+	generateIBLTrainingSamples,
 	generateValidationSamples,
 	normalizeDirectLightingTargets,
 	getMipLevelCount
@@ -22,6 +23,7 @@ import { NeuralAppearanceGPUModel } from './NeuralAppearanceGPUModel.js';
 import {
 	createTrainBatchComputeNode,
 	createResetGradientNormComputeNode,
+	createResetGradientsComputeNode,
 	createAccumulateGradientNormComputeNode,
 	createAdamWeightsComputeNode,
 	createAdamLatentsComputeNode
@@ -35,6 +37,9 @@ const DEFAULT_OPTIONS = {
 	fixedTrainingMip: - 1,
 	mipSamplingDecay: 0.9,
 	iterations: 2000,
+	iblIterations: null,
+	iblTrainingRatio: 0.15,
+	iblLearningRateScale: 0.35,
 	batchSize: 1024,
 	learningRate: 0.001,
 	cosineAnnealingScale: 0.01,
@@ -89,7 +94,10 @@ class NeuralAppearanceTrainer {
 
 		}
 
-		const teacher = options.teacher || createGpuMaterialTeacher( material, renderer, settings );
+		const teacher = options.teacher || createGpuMaterialTeacher( material, renderer, {
+			...settings,
+			environment: options.environment || null
+		} );
 		let validationSamples = null;
 		let directionalValidationSamples = null;
 		let lastLoss = Infinity;
@@ -122,9 +130,21 @@ class NeuralAppearanceTrainer {
 		gpuModel.initFromCPUModel( model );
 		const trainBatchNode = createTrainBatchComputeNode( gpuModel );
 		const resetGradientNormNode = createResetGradientNormComputeNode( gpuModel );
+		const resetGradientsNode = createResetGradientsComputeNode( gpuModel );
 		const accumulateGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel );
 		const adamWeightsNode = createAdamWeightsComputeNode( gpuModel );
 		const adamLatentsNode = createAdamLatentsComputeNode( gpuModel );
+		const accumulateIBLGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel, {
+			weightOffset: gpuModel.layout.directWeightCount,
+			weightCount: gpuModel.layout.iblWeightCount,
+			includeLatents: false
+		} );
+		const adamIBLWeightsNode = createAdamWeightsComputeNode( gpuModel, {
+			weightOffset: gpuModel.layout.directWeightCount,
+			weightCount: gpuModel.layout.iblWeightCount
+		} );
+		const iblIterations = getIBLIterationCount( settings );
+		const totalIterations = settings.iterations + iblIterations;
 
 		let completedIterations = 0;
 
@@ -160,7 +180,8 @@ class NeuralAppearanceTrainer {
 
 					onProgress( {
 						iteration: iteration + 1,
-						iterations: settings.iterations,
+						iterations: totalIterations,
+						phase: 'direct',
 						loss: lastLoss,
 						validationLoss,
 						validation,
@@ -184,9 +205,69 @@ class NeuralAppearanceTrainer {
 
 		}
 
+		for ( let iblIteration = 0; iblIteration < iblIterations; iblIteration ++ ) {
+
+			if ( this._abortRequested ) break;
+
+			const globalIteration = settings.iterations + iblIteration;
+			const lr = getLearningRate( { ...settings, iterations: iblIterations, learningRate: settings.learningRate * settings.iblLearningRateScale }, iblIteration );
+			const samples = await generateIBLTrainingSamples( settings, teacher, this.random );
+
+			if ( this._abortRequested ) break;
+
+			gpuModel.resetLoss();
+			gpuModel.uploadSamples( samples, lr, globalIteration + 1, settings.maxGradientNorm );
+			renderer.compute( resetGradientsNode );
+			renderer.compute( trainBatchNode );
+			renderer.compute( resetGradientNormNode );
+			renderer.compute( accumulateIBLGradientNormNode );
+			renderer.compute( adamIBLWeightsNode );
+
+			const shouldSync = onProgress !== null || ( iblIteration === iblIterations - 1 );
+			if ( shouldSync ) {
+
+				await gpuModel.syncToCPU( model, renderer );
+				lastLoss = await gpuModel.readLoss( renderer );
+
+				const manifest = createNeuralAppearanceManifest( model, settings );
+				validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );
+				validation.directional = evaluateRuntimeValidation( manifest, directionalValidationSamples, 0 );
+				validationLoss = validation.loss;
+
+				if ( onProgress ) {
+
+					onProgress( {
+						iteration: globalIteration + 1,
+						iterations: totalIterations,
+						phase: 'ibl',
+						loss: lastLoss,
+						validationLoss,
+						validation,
+						json: manifest,
+						learningRate: lr
+					} );
+
+				}
+
+			}
+
+			completedIterations = globalIteration + 1;
+
+			if ( this._abortRequested ) break;
+
+			if ( settings.yieldEvery > 0 && iblIteration % settings.yieldEvery === settings.yieldEvery - 1 ) {
+
+				await yieldToBrowser();
+
+			}
+
+		}
+
 		if ( completedIterations > 0 ) {
 
 			if ( validation === null ) lastLoss = await gpuModel.readLoss( renderer );
+			await gpuModel.syncToCPU( model, renderer );
+
 			const manifest = createNeuralAppearanceManifest( model, settings );
 			validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );
 			validation.directional = evaluateRuntimeValidation( manifest, directionalValidationSamples, 0 );
@@ -205,7 +286,7 @@ class NeuralAppearanceTrainer {
 			gpuModel,
 			teacher,
 			iteration: completedIterations,
-			iterations: settings.iterations,
+			iterations: totalIterations,
 			stoppedEarly: this._abortRequested
 		};
 
@@ -223,6 +304,18 @@ function resolveTrainingSettings( settings ) {
 		Math.max( 1, Math.floor( sourceResolution / settings.latentDownsample ) );
 
 	return { ...settings, resolution, sourceResolution };
+
+}
+
+function getIBLIterationCount( settings ) {
+
+	if ( settings.iblIterations !== null && settings.iblIterations !== undefined ) {
+
+		return Math.max( 0, Math.floor( settings.iblIterations ) );
+
+	}
+
+	return Math.max( 0, Math.floor( settings.iterations * settings.iblTrainingRatio ) );
 
 }
 
@@ -279,6 +372,24 @@ function validateTrainingSettings( settings ) {
 			throw new Error( `THREE.NeuralAppearanceTrainer: ${ name } must be a positive integer.` );
 
 		}
+
+	}
+
+	if ( settings.iblIterations !== null && settings.iblIterations !== undefined && ( Number.isInteger( settings.iblIterations ) === false || settings.iblIterations < 0 ) ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: iblIterations must be a non-negative integer.' );
+
+	}
+
+	if ( Number.isFinite( settings.iblTrainingRatio ) === false || settings.iblTrainingRatio < 0 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: iblTrainingRatio must be finite and non-negative.' );
+
+	}
+
+	if ( Number.isFinite( settings.iblLearningRateScale ) === false || settings.iblLearningRateScale <= 0 ) {
+
+		throw new Error( 'THREE.NeuralAppearanceTrainer: iblLearningRateScale must be finite and greater than zero.' );
 
 	}
 

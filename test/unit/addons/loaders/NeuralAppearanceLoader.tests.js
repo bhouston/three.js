@@ -5,7 +5,7 @@ function createManifest() {
 
 	return {
 		format: 'three-neural-appearance',
-		version: 3,
+		version: 4,
 		name: 'unit test material',
 		latents: {
 			channels: 8,
@@ -53,16 +53,23 @@ function createManifest() {
 				layers: [
 					{
 						inputSize: 14,
-						outputSize: 13,
+						outputSize: 4,
 						activation: 'linear',
-						biases: [
-							0, 0, 1,
-							0.4, 0.2, 0.1,
-							0, 0, 1,
-							0,
-							0.04, 0.04, 0.04
-						],
-						weights: new Array( 14 * 13 ).fill( 0 )
+						biases: [ 0, 0, 1, 0 ],
+						weights: new Array( 14 * 4 ).fill( 0 )
+					}
+				],
+				outputActivation: { type: 'linear' }
+			},
+			indirect: {
+				inputSize: 14,
+				layers: [
+					{
+						inputSize: 14,
+						outputSize: 3,
+						activation: 'linear',
+						biases: [ 0, 0, 0 ],
+						weights: new Array( 14 * 3 ).fill( 0 )
 					}
 				],
 				outputActivation: { type: 'linear' }

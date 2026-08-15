@@ -194,8 +194,8 @@
 		</div>
 
 		<div id="modelLabels" hidden>
-			<span>MaterialX teacher</span>
-			<span>Neural output</span>
+			<span id="teacherLabel">MaterialX teacher</span>
+			<span id="neuralLabel">Neural output</span>
 		</div>
 
 		<div id="previewPanel" hidden>
@@ -236,6 +236,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
+			import * as TSL from 'three/tsl';
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -248,6 +249,7 @@
 
 			let camera, scene, renderer, mesh, neuralMesh;
 			let materialXMaterial, neuralMaterial, whiteControlMaterial, previewPlaceholderMaterial, latestJson;
+			let teacherNormalMaterial, teacherReflectionMaterial, teacherRoughnessMaterial;
 			let environmentMap = null;
 			const directLights = [];
 			let isTraining = false;
@@ -340,6 +342,8 @@
 			const stopButton = document.getElementById( 'stopButton' );
 			const downloadButton = document.getElementById( 'downloadButton' );
 			const modelLabels = document.getElementById( 'modelLabels' );
+			const teacherLabel = document.getElementById( 'teacherLabel' );
+			const neuralLabel = document.getElementById( 'neuralLabel' );
 			const previewPanel = document.getElementById( 'previewPanel' );
 			const teacherPreview = document.getElementById( 'teacherPreview' );
 			const neuralPreview = document.getElementById( 'neuralPreview' );
@@ -355,6 +359,7 @@
 				( queryParams.has( 'resolution' ) ? Math.max( requestedSourceResolution / requestedResolution, 1 ) : presetSettings.latentDownsample );
 			const params = {
 				view: 'MaterialX teacher',
+				debugView: queryParams.get( 'debugView' ) || 'shaded',
 				sourceResolution: requestedSourceResolution,
 				latentDownsample: requestedDownsample,
 				resolution: Math.max( 1, Math.floor( requestedSourceResolution / requestedDownsample ) ),
@@ -395,6 +400,14 @@
 				params.view = view === 'neural' ? 'trained neural' : ( view === 'white' ? 'forced white' : 'MaterialX teacher' );
 				updateView();
 				return params.view;
+
+			};
+
+			window.__neuralAppearanceSetDebugView = ( view ) => {
+
+				params.debugView = view === 'normal' || view === 'reflection' || view === 'roughness' ? view : 'shaded';
+				updateView();
+				return params.debugView;
 
 			};
 
@@ -487,6 +500,18 @@
 				neuralMesh.visible = false;
 				scene.add( neuralMesh );
 				whiteControlMaterial = new THREE.MeshBasicMaterial( { color: 0xffffff } );
+				teacherNormalMaterial = new THREE.MeshNormalNodeMaterial( { toneMapped: false } );
+				teacherReflectionMaterial = new THREE.NodeMaterial();
+				teacherReflectionMaterial.lights = false;
+				teacherReflectionMaterial.toneMapped = false;
+				teacherReflectionMaterial.colorNode = TSL.colorSpaceToWorking(
+					TSL.vec4( TSL.packNormalToRGB( TSL.positionViewDirection.negate().reflect( TSL.normalView ) ), 1 ),
+					THREE.SRGBColorSpace
+				);
+				teacherRoughnessMaterial = new THREE.NodeMaterial();
+				teacherRoughnessMaterial.lights = false;
+				teacherRoughnessMaterial.toneMapped = false;
+				teacherRoughnessMaterial.colorNode = TSL.vec3( 1 );
 
 				const gui = new GUI();
 				trainingSettingControllers.push(
@@ -496,6 +521,7 @@
 				);
 				gui.add( params, 'fixedMip', { all: - 1, 'mip 0 baseline': 0, 'mip 1': 1, 'mip 2': 2, 'mip 3': 3, 'mip 4': 4, 'mip 5': 5, 'mip 6': 6 } ).name( 'training mip' ).onChange( updateTrainingEstimate );
 				gui.add( params, 'lodMode', [ 'trilinear', 'deterministic', 'stochastic' ] ).name( 'LOD mode' ).onChange( updateView );
+				gui.add( params, 'debugView', [ 'shaded', 'normal', 'reflection', 'roughness' ] ).name( 'debug view' ).onChange( updateView );
 				gui.add( params, 'showNeuralMaterial' ).name( 'show neural material' ).onChange( updateView );
 				trainingSettingControllers.push(
 					gui.add( params, 'iterations', 100, 10000, 100 ).onChange( updateTrainingEstimate ),
@@ -643,7 +669,8 @@
 						intensity: params.intensity,
 						emissiveIntensity: params.emissiveIntensity,
 						lodMode: params.lodMode,
-						fixedMipLevel: Number( params.fixedMip )
+						fixedMipLevel: Number( params.fixedMip ),
+						debugView: params.debugView
 					} );
 					materialName.textContent = json.name || file.name;
 					updateNeuralRepresentationSize( json );
@@ -799,6 +826,7 @@
 					const result = await trainer.train( {
 						renderer,
 						material: trainingMaterial,
+						environment: environmentMap,
 						onProgress: ( progress ) => {
 
 							window.__neuralAppearanceLastLoss = progress.loss;
@@ -819,9 +847,10 @@
 							if ( progress.iteration % 20 === 0 || progress.iteration === progress.iterations ) {
 
 								const validationText = Number.isFinite( progress.validationLoss ) ? `\nruntime validation ${progress.validationLoss.toExponential( 3 )}` : '';
+								const phaseText = progress.phase === 'ibl' ? 'IBL refinement' : 'Training';
 								const elapsed = performance.now() - trainingStartTime;
 								const remaining = elapsed / progress.iteration * ( progress.iterations - progress.iteration );
-								status.textContent = `Training ${progress.iteration}/${progress.iterations}\nloss ${progress.loss.toExponential( 3 )}${validationText}\nelapsed ${formatDuration( elapsed )}, remaining ~${formatDuration( remaining )}`;
+								status.textContent = `${phaseText} ${progress.iteration}/${progress.iterations}\nloss ${progress.loss.toExponential( 3 )}${validationText}\nelapsed ${formatDuration( elapsed )}, remaining ~${formatDuration( remaining )}`;
 
 							}
 
@@ -916,7 +945,7 @@
 				params.view = 'trained neural';
 				comparisonVisible = true;
 				updateView();
-				mode.textContent = 'live neural (training)';
+				mode.textContent = params.debugView === 'shaded' ? 'live neural (training)' : `live neural (training) / ${ params.debugView }`;
 
 			}
 
@@ -933,7 +962,8 @@
 					intensity: params.intensity,
 					emissiveIntensity: params.emissiveIntensity,
 					lodMode: params.lodMode,
-					fixedMipLevel: Number( params.fixedMip )
+					fixedMipLevel: Number( params.fixedMip ),
+					debugView: params.debugView
 				} );
 
 			}
@@ -1158,6 +1188,8 @@
 
 			function updateView() {
 
+				syncTeacherDebugMaterials();
+
 				if ( neuralMaterial ) {
 
 					if ( neuralMaterial.lodMode !== params.lodMode ) {
@@ -1167,27 +1199,42 @@
 
 					}
 
+					if ( neuralMaterial.debugView !== params.debugView ) {
+
+						neuralMaterial.debugView = params.debugView;
+						neuralMaterial.needsUpdate = true;
+
+					}
+
 					neuralMaterial.intensity = params.intensity;
 					neuralMaterial.emissiveIntensity = params.emissiveIntensity;
+					neuralMaterial.toneMapped = params.debugView === 'shaded';
 
 				}
+
+				const teacherMaterial = getTeacherDisplayMaterial();
+				const neuralDisplayMaterial = getNeuralDisplayMaterial();
+				const labels = getDebugLabels();
+				teacherLabel.textContent = labels.teacher;
+				neuralLabel.textContent = labels.neural;
 
 				if ( comparisonVisible && params.showNeuralMaterial ) {
 
 					mode.textContent = isTraining ? 'training comparison' : 'teacher / neural comparison';
+					if ( params.debugView !== 'shaded' ) mode.textContent += ` / ${ params.debugView }`;
 					mesh.position.x = - 1.25;
 					neuralMesh.position.x = 1.25;
 					mesh.scale.setScalar( 0.58 );
 					neuralMesh.scale.setScalar( 0.58 );
-					mesh.material = materialXMaterial;
-					neuralMesh.material = neuralMaterial || previewPlaceholderMaterial;
+					if ( teacherMaterial ) mesh.material = teacherMaterial;
+					neuralMesh.material = neuralDisplayMaterial;
 					mesh.visible = true;
 					neuralMesh.visible = true;
 					modelLabels.hidden = false;
 
 				} else {
 
-					mode.textContent = params.view;
+					mode.textContent = params.debugView === 'shaded' ? params.view : `${ params.view } / ${ params.debugView }`;
 					mesh.position.x = 0;
 					mesh.scale.setScalar( 1 );
 					mesh.visible = true;
@@ -1196,21 +1243,112 @@
 
 					if ( params.view === 'trained neural' && neuralMaterial && params.showNeuralMaterial ) {
 
-						mesh.material = neuralMaterial;
+						mesh.material = neuralDisplayMaterial;
 
 					} else if ( params.view === 'forced white' && whiteControlMaterial ) {
 
 						mesh.material = whiteControlMaterial;
 
-					} else if ( materialXMaterial ) {
+					} else if ( teacherMaterial ) {
 
-						mesh.material = materialXMaterial;
+						mesh.material = teacherMaterial;
 
 					}
 
 				}
 
 				window.__neuralAppearanceActiveMaterialType = mesh.material ? mesh.material.type : '';
+				window.__neuralAppearanceDebugView = params.debugView;
+
+			}
+
+			function getTeacherDisplayMaterial() {
+
+				if ( params.debugView === 'normal' && teacherNormalMaterial ) return teacherNormalMaterial;
+				if ( params.debugView === 'reflection' && teacherReflectionMaterial ) return teacherReflectionMaterial;
+				if ( params.debugView === 'roughness' && teacherRoughnessMaterial ) return teacherRoughnessMaterial;
+
+				return materialXMaterial;
+
+			}
+
+			function getNeuralDisplayMaterial() {
+
+				return neuralMaterial || previewPlaceholderMaterial;
+
+			}
+
+			function getDebugLabels() {
+
+				if ( params.debugView === 'normal' ) {
+
+					return {
+						teacher: 'Teacher normal',
+						neural: 'Neural estimated normal'
+					};
+
+				}
+
+				if ( params.debugView === 'reflection' ) {
+
+					return {
+						teacher: 'Teacher reflection',
+						neural: 'Neural estimated reflection'
+					};
+
+				}
+
+				if ( params.debugView === 'roughness' ) {
+
+					return {
+						teacher: 'Teacher roughness',
+						neural: 'Neural IBL roughness'
+					};
+
+				}
+
+				return {
+					teacher: 'MaterialX teacher',
+					neural: 'Neural output'
+				};
+
+			}
+
+			function syncTeacherDebugMaterials() {
+
+				const normalNode = materialXMaterial ? materialXMaterial.normalNode : null;
+
+				if ( teacherNormalMaterial && teacherNormalMaterial.normalNode !== normalNode ) {
+
+					teacherNormalMaterial.normalNode = normalNode;
+					teacherNormalMaterial.needsUpdate = true;
+
+				}
+
+				if ( teacherReflectionMaterial && teacherReflectionMaterial.normalNode !== normalNode ) {
+
+					teacherReflectionMaterial.normalNode = normalNode;
+					teacherReflectionMaterial.needsUpdate = true;
+
+				}
+
+				const roughnessSource = materialXMaterial ?
+					( materialXMaterial.roughnessNode !== undefined && materialXMaterial.roughnessNode !== null ?
+						materialXMaterial.roughnessNode :
+						materialXMaterial.roughness ) :
+					null;
+
+				if ( teacherRoughnessMaterial && teacherRoughnessMaterial.userData.roughnessSource !== roughnessSource ) {
+
+					teacherRoughnessMaterial.userData.roughnessSource = roughnessSource;
+					const roughness = roughnessSource !== null && roughnessSource !== undefined ? TSL.float( roughnessSource ) : TSL.float( 1 );
+					teacherRoughnessMaterial.colorNode = TSL.colorSpaceToWorking(
+						TSL.vec4( TSL.vec3( roughness ), 1 ),
+						THREE.SRGBColorSpace
+					);
+					teacherRoughnessMaterial.needsUpdate = true;
+
+				}
 
 			}
 
@@ -1273,6 +1411,7 @@
 				frameToken ++;
 				window.__neuralAppearanceFrameToken = frameToken;
 				window.__neuralAppearanceRenderView = params.view;
+				window.__neuralAppearanceDebugView = params.debugView;
 
 			}
 
@@ -1296,8 +1435,9 @@
 					( hiddenSize * hiddenSize + hiddenSize ) +
 					( hiddenSize * 3 + 3 );
 				const iblHiddenSize = Math.min( Math.max( hiddenSize, 16 ), 32 );
-				const iblLayerValues = ( 14 * iblHiddenSize + iblHiddenSize ) + ( iblHiddenSize * 13 + 13 );
-				const representationBytes = memory.exportBytes + ( rotationValues + layerValues + iblLayerValues ) * 4;
+				const iblLayerValues = ( 14 * iblHiddenSize + iblHiddenSize ) + ( iblHiddenSize * 4 + 4 );
+				const indirectLayerValues = ( 14 * iblHiddenSize + iblHiddenSize ) + ( iblHiddenSize * 3 + 3 );
+				const representationBytes = memory.exportBytes + ( rotationValues + layerValues + iblLayerValues + indirectLayerValues ) * 4;
 				const recordsPerIteration = Number( params.batchSize ) * ( Number( params.fixedMip ) >= 0 ? 1 : memory.mipLevels );
 				const records = recordsPerIteration * Number( params.iterations );
 				const fixedMipText = Number( params.fixedMip ) >= 0 ? `, fixed mip ${params.fixedMip}` : '';

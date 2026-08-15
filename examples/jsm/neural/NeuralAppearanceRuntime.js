@@ -4,6 +4,7 @@ import { sigmoid } from './NeuralAppearanceMLP.js';
 import {
 	buildDecoderInput,
 	buildIBLInput,
+	buildIndirectInput,
 	unpackIBLOutput,
 	normalize,
 	wrapIndex
@@ -50,8 +51,15 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 		const result = { brdf: blendedBrdf };
 		const ibl0 = evaluateIBLHead( json, latents0, wo );
 		const ibl1 = evaluateIBLHead( json, latents1, wo );
-
 		result.ibl = mixIBLOutputs( ibl0, ibl1, fracMip );
+
+		if ( json.outputs.indirect ) {
+
+			const indirect0 = evaluateIndirectHead( json, latents0, wo, reference );
+			const indirect1 = evaluateIndirectHead( json, latents1, wo, reference );
+			result.indirect = mixArray( indirect0, indirect1, fracMip );
+
+		}
 
 		if ( json.outputs.emission ) {
 
@@ -84,6 +92,7 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 		brdf: evaluateDecoderLayers( brdf.layers, input, brdf.outputActivation ),
 		ibl: evaluateIBLHead( json, latents, wo )
 	};
+	if ( json.outputs.indirect ) result.indirect = evaluateIndirectHead( json, latents, wo, reference );
 
 	if ( json.outputs.emission ) {
 
@@ -101,6 +110,15 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 
 }
 
+function evaluateIndirectHead( json, latents, wo, reference ) {
+
+	const incoming = ( reference && ( reference.iblIncoming || reference.prefilteredSpecular ) ) || [ 1, 1, 1 ];
+	const input = buildIndirectInput( latents, wo, incoming );
+
+	return evaluateDecoderLayers( json.outputs.indirect.layers, input, json.outputs.indirect.outputActivation );
+
+}
+
 function evaluateIBLHead( json, latents, wo ) {
 
 	const ibl = json.outputs.ibl;
@@ -113,11 +131,8 @@ function evaluateIBLHead( json, latents, wo ) {
 function mixIBLOutputs( a, b, amount ) {
 
 	return {
-		diffuseDirection: normalize( mixArray( a.diffuseDirection, b.diffuseDirection, amount ) ),
-		diffuseReflectance: mixArray( a.diffuseReflectance, b.diffuseReflectance, amount ),
-		specularDirection: normalize( mixArray( a.specularDirection, b.specularDirection, amount ) ),
-		specularRoughness: a.specularRoughness * ( 1 - amount ) + b.specularRoughness * amount,
-		specularWeight: mixArray( a.specularWeight, b.specularWeight, amount )
+		direction: normalize( mixArray( a.direction, b.direction, amount ) ),
+		roughness: a.roughness * ( 1 - amount ) + b.roughness * amount
 	};
 
 }
@@ -130,13 +145,20 @@ function mixArray( a, b, amount ) {
 
 function evaluateNeuralIBLWhiteFurnace( json, reference ) {
 
-	const ibl = evaluateNeuralAppearanceOutputs( json, reference ).ibl;
+	return evaluateNeuralPrefilteredIBL( json, {
+		...reference,
+		iblIncoming: [ 1, 1, 1 ],
+		prefilteredSpecular: [ 1, 1, 1 ]
+	} );
 
-	return [
-		ibl.diffuseReflectance[ 0 ] + ibl.specularWeight[ 0 ],
-		ibl.diffuseReflectance[ 1 ] + ibl.specularWeight[ 1 ],
-		ibl.diffuseReflectance[ 2 ] + ibl.specularWeight[ 2 ]
-	];
+}
+
+function evaluateNeuralPrefilteredIBL( json, reference ) {
+
+	const outputs = evaluateNeuralAppearanceOutputs( json, reference );
+	if ( outputs.indirect ) return outputs.indirect;
+
+	return [ 0, 0, 0 ];
 
 }
 
@@ -313,7 +335,7 @@ function evaluateDecoderLayers( layers, input, outputActivation = { type: 'linea
 
 	}
 
-	return values.map( ( value ) => Math.max( 0, value ) );
+	return values.map( ( value ) => Math.max( value, 0 ) );
 
 }
 
@@ -321,6 +343,7 @@ export {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs,
 	evaluateIBLHead,
+	evaluateNeuralPrefilteredIBL,
 	evaluateNeuralIBLWhiteFurnace,
 	integrateNeuralBRDFWhiteFurnace,
 	computeContinuousRuntimeMipLevel,

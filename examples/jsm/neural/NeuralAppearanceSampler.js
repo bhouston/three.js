@@ -64,7 +64,7 @@ async function generateTrainingSamples( options, teacher, random, iteration = 0 
 
 	}
 
-	assignIBLTargets( samples );
+	await assignIBLTeacherTargets( samples, teacher );
 
 	return samples;
 
@@ -116,7 +116,7 @@ async function generateValidationSamples( options, teacher ) {
 	await assignTeacherTargets( samples, teacher );
 	normalizeDirectLightingTargets( samples, options.minimumTrainingCosine );
 	await assignAuxiliaryTeacherTargets( samples, teacher );
-	assignIBLTargets( samples );
+	await assignIBLTeacherTargets( samples, teacher );
 
 	return samples;
 
@@ -124,11 +124,9 @@ async function generateValidationSamples( options, teacher ) {
 
 async function generateIBLTrainingSamples( options, teacher, random ) {
 
-	const queryCount = Math.max( 1, Math.min( options.iblSampleCount || Math.ceil( options.batchSize / 4 ), options.batchSize ) );
-	const integrationSamples = Math.max( 4, options.iblIntegrationSamples || 32 );
+	const queryCount = Math.max( 1, Math.min( options.iblSampleCount || options.batchSize, options.batchSize ) );
 	const gridSize = Math.max( 1, Math.ceil( Math.sqrt( queryCount ) ) );
-	const records = [];
-	const queries = [];
+	const samples = [];
 
 	for ( let i = 0; i < queryCount; i ++ ) {
 
@@ -137,142 +135,65 @@ async function generateIBLTrainingSamples( options, teacher, random ) {
 			( Math.floor( i / gridSize ) + random() ) / gridSize
 		];
 		const wo = sampleHemisphereCosine( random );
-		const query = {
+		const footprint = 1 / Math.max( 1, options.resolution );
+
+		samples.push( {
 			uv,
+			wi: [ 0, 0, 1 ],
 			wo,
+			normal: [ 0, 0, 1 ],
+			tangent: [ 1, 0, 0 ],
+			bitangent: [ 0, 1, 0 ],
+			duvDx: [ footprint, 0 ],
+			duvDy: [ 0, footprint ],
 			mip: 0,
-			records: []
-		};
+			weight: 0,
+			target: [ 0, 0, 0 ],
+			encoderInputs: teacher.encodeInputs ? teacher.encodeInputs( uv ) : [ uv[ 0 ], uv[ 1 ] ]
+		} );
 
-		for ( let j = 0; j < integrationSamples; j ++ ) {
+	}
 
-			const wi = sampleHemisphereCosineHammersley( j, integrationSamples );
-			const record = {
-				uv: uv.slice(),
-				wi,
-				wo: wo.slice(),
-				normal: [ 0, 0, 1 ],
-				tangent: [ 1, 0, 0 ],
-				bitangent: [ 0, 1, 0 ],
-				duvDx: [ 1 / Math.max( 1, options.resolution ), 0 ],
-				duvDy: [ 0, 1 / Math.max( 1, options.resolution ) ],
-				mip: 0,
-				encoderInputs: teacher.encodeInputs ? teacher.encodeInputs( uv ) : [ uv[ 0 ], uv[ 1 ] ]
-			};
+	await assignIBLTeacherTargets( samples, teacher );
 
-			query.records.push( record );
-			records.push( record );
+	return samples;
+
+}
+
+async function assignIBLTeacherTargets( samples, teacher ) {
+
+	if ( teacher.supportsIBL !== true || typeof teacher.evaluateBatch !== 'function' ) {
+
+		for ( const sample of samples ) {
+
+			sample.iblWeight = 0;
+			sample.iblDirection = [ 0, 0, 1 ];
+			sample.iblRoughness = 1;
+			sample.iblIncoming = [ 0, 0, 0 ];
+			sample.iblIndirect = [ 0, 0, 0 ];
 
 		}
 
-		queries.push( query );
+		return;
 
 	}
 
-	await assignTeacherTargets( records, teacher );
+	const queries = await teacher.evaluateBatch( samples, 'iblQuery' );
+	const incoming = await teacher.evaluateBatch( samples, 'iblIncoming' );
+	const indirect = await teacher.evaluateBatch( samples, 'iblIndirect' );
 
-	for ( const query of queries ) {
+	for ( let i = 0; i < samples.length; i ++ ) {
 
-		query.iblTarget = fitIBLTargetFromRecords( query.records );
-		query.directionalAlbedo = query.iblTarget.slice( 3, 6 ).map( ( value, index ) => value + query.iblTarget[ 10 + index ] );
-		query.weight = 1;
-		query.target = query.directionalAlbedo.slice();
-		query.wi = [ 0, 0, 1 ];
-		query.normal = [ 0, 0, 1 ];
-		query.tangent = [ 1, 0, 0 ];
-		query.bitangent = [ 0, 1, 0 ];
-		query.duvDx = [ 1 / Math.max( 1, options.resolution ), 0 ];
-		query.duvDy = [ 0, 1 / Math.max( 1, options.resolution ) ];
-		query.encoderInputs = teacher.encodeInputs ? teacher.encodeInputs( query.uv ) : [ query.uv[ 0 ], query.uv[ 1 ] ];
-
-	}
-
-	return queries;
-
-}
-
-function fitIBLTargetFromRecords( records ) {
-
-	const albedo = [ 0, 0, 0 ];
-	let lumaSum = 0;
-	let alignedLuma = 0;
-	const wo = records[ 0 ] && records[ 0 ].wo ? normalize( records[ 0 ].wo ) : [ 0, 0, 1 ];
-	const specularDirection = normalize( [ - wo[ 0 ], - wo[ 1 ], Math.max( wo[ 2 ], 0.001 ) ] );
-
-	for ( const record of records ) {
-
-		const nDotL = Math.max( record.wi[ 2 ], 0 );
-		const validTarget = record.target && record.target.length >= 3 && record.target.every( Number.isFinite );
-		if ( validTarget === false || nDotL <= 0 ) continue;
-
-		const brdf = record.target.slice( 0, 3 ).map( ( value ) => value / Math.max( nDotL, 1e-4 ) );
-		const contribution = brdf.map( ( value ) => value * Math.PI / records.length );
-		const luma = contribution[ 0 ] * 0.2126 + contribution[ 1 ] * 0.7152 + contribution[ 2 ] * 0.0722;
-		const wi = normalize( record.wi );
-		const alignment = Math.max( 0, wi[ 0 ] * specularDirection[ 0 ] + wi[ 1 ] * specularDirection[ 1 ] + wi[ 2 ] * specularDirection[ 2 ] );
-
-		for ( let channel = 0; channel < 3; channel ++ ) {
-
-			albedo[ channel ] += contribution[ channel ];
-
-		}
-
-		lumaSum += luma;
-		alignedLuma += luma * alignment;
+		const query = queries[ i ] || [];
+		const direction = normalize( query.slice( 0, 3 ) );
+		const roughness = Math.min( Math.max( Number( query[ 3 ] ), 0 ), 1 );
+		samples[ i ].iblWeight = Number.isFinite( roughness ) && direction.every( Number.isFinite ) ? 1 : 0;
+		samples[ i ].iblDirection = direction;
+		samples[ i ].iblRoughness = roughness;
+		samples[ i ].iblIncoming = ( incoming[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
+		samples[ i ].iblIndirect = ( indirect[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
 
 	}
-
-	const roughness = Math.min( Math.max( 1 - alignedLuma / Math.max( lumaSum, 1e-6 ), 0.04 ), 1 );
-	const specularRatio = Math.min( Math.max( 1 - roughness, 0.1 ), 0.65 );
-	const diffuseRatio = 1 - specularRatio;
-
-	return [
-		0, 0, 1,
-		albedo[ 0 ] * diffuseRatio, albedo[ 1 ] * diffuseRatio, albedo[ 2 ] * diffuseRatio,
-		specularDirection[ 0 ], specularDirection[ 1 ], specularDirection[ 2 ],
-		logit( roughness ),
-		albedo[ 0 ] * specularRatio, albedo[ 1 ] * specularRatio, albedo[ 2 ] * specularRatio
-	];
-
-}
-
-function sampleHemisphereCosineHammersley( index, count ) {
-
-	const u = ( index + 0.5 ) / Math.max( 1, count );
-	const v = radicalInverseVdc( index );
-	const r = Math.sqrt( u );
-	const phi = 2 * Math.PI * v;
-
-	return [ r * Math.cos( phi ), r * Math.sin( phi ), Math.sqrt( Math.max( 0, 1 - u ) ) ];
-
-}
-
-function radicalInverseVdc( bits ) {
-
-	bits = ( bits << 16 ) | ( bits >>> 16 );
-	bits = ( ( bits & 0x55555555 ) << 1 ) | ( ( bits & 0xAAAAAAAA ) >>> 1 );
-	bits = ( ( bits & 0x33333333 ) << 2 ) | ( ( bits & 0xCCCCCCCC ) >>> 2 );
-	bits = ( ( bits & 0x0F0F0F0F ) << 4 ) | ( ( bits & 0xF0F0F0F0 ) >>> 4 );
-	bits = ( ( bits & 0x00FF00FF ) << 8 ) | ( ( bits & 0xFF00FF00 ) >>> 8 );
-
-	return ( bits >>> 0 ) * 2.3283064365386963e-10;
-
-}
-
-function assignIBLTargets( samples ) {
-
-	for ( const sample of samples ) {
-
-		sample.iblTarget = fitIBLTargetFromRecords( [ sample ] );
-
-	}
-
-}
-
-function logit( value ) {
-
-	const clamped = Math.min( Math.max( value, 1e-5 ), 1 - 1e-5 );
-	return Math.log( clamped / ( 1 - clamped ) );
 
 }
 
@@ -282,7 +203,7 @@ async function assignTeacherTargets( samples, teacher ) {
 
 	for ( let i = 0; i < samples.length; i ++ ) {
 
-		samples[ i ].target = targets[ i ];
+		samples[ i ].target = targets[ i ].slice( 0, 3 );
 
 	}
 
@@ -533,7 +454,7 @@ export {
 	generateTrainingSamples,
 	generateValidationSamples,
 	generateIBLTrainingSamples,
-	fitIBLTargetFromRecords,
+	assignIBLTeacherTargets,
 	assignTeacherTargets,
 	assignAuxiliaryTeacherTargets,
 	normalizeDirectLightingTargets,

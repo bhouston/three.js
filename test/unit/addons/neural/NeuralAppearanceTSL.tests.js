@@ -47,16 +47,21 @@ function fakeData( weight = 0 ) {
 				inputSize: 14,
 				layers: [ {
 					inputSize: 14,
-					outputSize: 13,
+					outputSize: 4,
 					activation: 'linear',
-					weights: new Array( 14 * 13 ).fill( weight ),
-					biases: [
-						0, 0, 1,
-						weight, 0, 0,
-						0, 0, 1,
-						0,
-						weight, 0, 0
-					]
+					weights: new Array( 14 * 4 ).fill( weight ),
+					biases: [ 0, 0, 1, 0 ]
+				} ],
+				outputActivation: { type: 'linear' }
+			},
+			indirect: {
+				inputSize: 14,
+				layers: [ {
+					inputSize: 14,
+					outputSize: 3,
+					activation: 'linear',
+					weights: new Array( 14 * 3 ).fill( weight ),
+					biases: [ 0, 0, 0 ]
 				} ],
 				outputActivation: { type: 'linear' }
 			}
@@ -108,7 +113,10 @@ export default QUnit.module( 'Addons', () => {
 						layers: [ { weights: new Array( 60 ).fill( 0 ), biases: [ 0, 0, 0 ], inputSize: 20, outputSize: 3 } ]
 					},
 					ibl: {
-						layers: [ { weights: new Array( 14 * 13 ).fill( 0 ), biases: new Array( 13 ).fill( 0 ), inputSize: 14, outputSize: 13 } ]
+						layers: [ { weights: new Array( 14 * 4 ).fill( 0 ), biases: new Array( 4 ).fill( 0 ), inputSize: 14, outputSize: 4 } ]
+					},
+					indirect: {
+						layers: [ { weights: new Array( 14 * 3 ).fill( 0 ), biases: new Array( 3 ).fill( 0 ), inputSize: 14, outputSize: 3 } ]
 					},
 					emission: {
 						layers: [ { weights: new Array( 24 ).fill( 0 ), biases: [ 0, 0, 0 ], inputSize: 8, outputSize: 3 } ]
@@ -125,6 +133,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( uniforms.brdf.rotationWeightsOffset, 0, 'stores rotation offset' );
 				assert.strictEqual( uniforms.brdf.layers.length, 1, 'creates 1 layer for brdf' );
 				assert.ok( uniforms.ibl, 'creates IBL uniforms' );
+				assert.ok( uniforms.indirect, 'creates indirect uniforms' );
 				assert.ok( uniforms.emission, 'creates emission uniforms' );
 				assert.strictEqual( uniforms.emission.layers.length, 1, 'creates 1 layer for emission' );
 				assert.ok( uniforms.opacity, 'creates opacity uniforms' );

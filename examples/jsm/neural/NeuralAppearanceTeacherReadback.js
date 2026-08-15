@@ -23,7 +23,8 @@ function readSamplePixel( pixels, sampleIndex, atlasColumns, atlasWidth, tileSiz
 	return [
 		readPixelValue( pixels, index ),
 		readPixelValue( pixels, index + 1 ),
-		readPixelValue( pixels, index + 2 )
+		readPixelValue( pixels, index + 2 ),
+		readPixelValue( pixels, index + 3 )
 	];
 
 }
@@ -59,7 +60,7 @@ function readFilteredSample( pixels, sampleIndex, sample, {
 
 	const tileX = sampleIndex % atlasColumns;
 	const tileY = Math.floor( sampleIndex / atlasColumns );
-	const target = [ 0, 0, 0 ];
+	const target = [ 0, 0, 0, 0 ];
 
 	for ( const tap of kernel ) {
 
@@ -70,6 +71,7 @@ function readFilteredSample( pixels, sampleIndex, sample, {
 		target[ 0 ] += readPixelValue( pixels, index ) * tap.weight;
 		target[ 1 ] += readPixelValue( pixels, index + 1 ) * tap.weight;
 		target[ 2 ] += readPixelValue( pixels, index + 2 ) * tap.weight;
+		target[ 3 ] += readPixelValue( pixels, index + 3 ) * tap.weight;
 
 	}
 

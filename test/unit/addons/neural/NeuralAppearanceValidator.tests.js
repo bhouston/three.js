@@ -70,13 +70,24 @@ export default QUnit.module( 'Addons', () => {
 							} ],
 							outputActivation: { type: 'linear' }
 						},
-						indirect: {
-							inputSize: 17,
+						indirectRadiance: {
+							inputSize: 14,
 							layers: [ {
-								inputSize: 17,
+								inputSize: 14,
 								outputSize: 3,
 								activation: 'linear',
-								weights: new Array( 17 * 3 ).fill( 0 ),
+								weights: new Array( 14 * 3 ).fill( 0 ),
+								biases: [ 0, 0, 0 ]
+							} ],
+							outputActivation: { type: 'linear' }
+						},
+						indirectIrradiance: {
+							inputSize: 14,
+							layers: [ {
+								inputSize: 14,
+								outputSize: 3,
+								activation: 'linear',
+								weights: new Array( 14 * 3 ).fill( 0 ),
 								biases: [ 0, 0, 0 ]
 							} ],
 							outputActivation: { type: 'linear' }
@@ -100,6 +111,7 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.strictEqual( validation.sampleCount, 1, 'evaluates sample count' );
 				assert.ok( Number.isFinite( validation.loss ), 'computes finite loss' );
+				assert.ok( Number.isFinite( validation.directLoss ), 'computes finite direct loss' );
 				assert.strictEqual( validation.preview.samples.length, 1, 'builds preview' );
 				assert.ok( Number.isFinite( validation.reciprocity.meanAbsoluteDifference ), 'computes reciprocity metric' );
 				assert.ok( Number.isFinite( validation.angularSmoothness.meanAbsoluteDifference ), 'computes angular smoothness metric' );

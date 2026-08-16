@@ -33,8 +33,8 @@ export default QUnit.module( 'Addons', () => {
 				// direct total = 96 + 160 + 8 + 64 + 8 + 24 + 3 = 363
 				// IBL default hidden size is 16:
 				// query 14-16-4: 14 * 16 + 16 + 16 * 4 + 4 = 308
-				// indirect 17-16-3: 17 * 16 + 16 + 16 * 3 + 3 = 339
-				// iblWeightCount = 647
+				// each indirect probe 14-16-3: 14 * 16 + 16 + 16 * 3 + 3 = 291
+				// iblWeightCount = 890
 				assert.strictEqual( baseLayout.rotationOffset, 0, 'rotation starts at offset 0' );
 				assert.strictEqual( baseLayout.rotationCount, 96, 'rotation has 96 weights' );
 				assert.strictEqual( baseLayout.layer0WeightsOffset, 96, 'layer 0 weights offset is 96' );
@@ -53,9 +53,9 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( baseLayout.iblLayer0WeightsOffset, 363, 'IBL head starts after the BRDF weights' );
 				assert.strictEqual( baseLayout.iblLayer0WeightsCount, 14 * 16, 'IBL layer 0 weights count uses default hidden size' );
 				assert.strictEqual( baseLayout.iblLayer1WeightsCount, 16 * 4, 'IBL query layer 1 weights count uses 4 outputs' );
-				assert.strictEqual( baseLayout.iblWeightCount, 647, 'IBL weight count matches query 14-H-4 plus indirect 17-H-3' );
-				assert.strictEqual( baseLayout.totalWeights, 1010, 'total weights matches sum of direct and IBL layers' );
-				assert.strictEqual( baseLayout.sampleStride, 34, 'packs BRDF sample plus IBL query, radiance, irradiance, and indirect labels' );
+				assert.strictEqual( baseLayout.iblWeightCount, 890, 'IBL weight count matches query 14-H-4 plus two indirect 14-H-3 heads' );
+				assert.strictEqual( baseLayout.totalWeights, 1253, 'total weights matches sum of direct and IBL layers' );
+				assert.strictEqual( baseLayout.sampleStride, 37, 'packs BRDF sample plus IBL query, probes, and isolate indirect labels' );
 
 				// Multi-level mip pyramid for resolution 4 (4x4=16, 2x2=4, 1x1=1 => 21 texels => 168 floats)
 				assert.strictEqual( baseLayout.mipLevels.length, 3, 'creates 3 mip levels (4x4, 2x2, 1x1)' );
@@ -315,6 +315,8 @@ export default QUnit.module( 'Addons', () => {
 
 				// Simulate GPU loss atomic accumulation (e.g., loss = 0.35 * FIXED_POINT_SCALE)
 				gpuModel.lossAttribute.array[ 0 ] = 35000;
+				gpuModel.lossAttribute.array[ 1 ] = 20000;
+				gpuModel.lossAttribute.array[ 2 ] = 15000;
 
 				const mockRenderer = {
 					isWebGPURenderer: true,
@@ -327,7 +329,9 @@ export default QUnit.module( 'Addons', () => {
 
 				const loss = await gpuModel.readLoss( mockRenderer );
 				assert.ok( Math.abs( loss - 0.35 ) < 1e-5, 'loss decoded correctly from fixed point' );
-				assert.strictEqual( gpuModel.lossAttribute.array[ 0 ], 0, 'resets loss accumulator' );
+				assert.strictEqual( gpuModel.lossAttribute.array[ 0 ], 0, 'resets total loss accumulator' );
+				assert.strictEqual( gpuModel.lossAttribute.array[ 1 ], 0, 'resets direct loss accumulator' );
+				assert.strictEqual( gpuModel.lossAttribute.array[ 2 ], 0, 'resets IBL loss accumulator' );
 
 			} );
 

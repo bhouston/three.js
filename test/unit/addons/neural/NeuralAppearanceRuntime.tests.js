@@ -23,18 +23,22 @@ function createIBLOutput() {
 
 }
 
-function createIndirectOutput() {
+function createIndirectProbeOutput( passthrough = false ) {
 
-	const weights = new Array( 17 * 3 ).fill( 0 );
-	weights[ 11 ] = 1;
-	weights[ 17 + 12 ] = 1;
-	weights[ 34 + 13 ] = 1;
+	const weights = new Array( 14 * 3 ).fill( 0 );
+	if ( passthrough ) {
+
+		weights[ 11 ] = 1;
+		weights[ 14 + 12 ] = 1;
+		weights[ 28 + 13 ] = 1;
+
+	}
 
 	return {
-		inputSize: 17,
+		inputSize: 14,
 		layers: [
 			{
-				inputSize: 17,
+				inputSize: 14,
 				outputSize: 3,
 				activation: 'linear',
 				weights,
@@ -90,7 +94,8 @@ export default QUnit.module( 'Addons', () => {
 							outputActivation: { type: 'linear' }
 						},
 						ibl: createIBLOutput(),
-						indirect: createIndirectOutput()
+						indirectRadiance: createIndirectProbeOutput(),
+						indirectIrradiance: createIndirectProbeOutput()
 					}
 				};
 				const direction = [ 0, 0, 1 ];
@@ -155,7 +160,8 @@ export default QUnit.module( 'Addons', () => {
 							outputActivation: { type: 'linear' }
 						},
 						ibl: createIBLOutput(),
-						indirect: createIndirectOutput(),
+						indirectRadiance: createIndirectProbeOutput( true ),
+						indirectIrradiance: createIndirectProbeOutput(),
 						emission: {
 							layers: [ {
 								inputSize: 8,
@@ -200,7 +206,7 @@ export default QUnit.module( 'Addons', () => {
 					iblIncoming: [ 2, 3, 4 ]
 				} );
 
-				assert.deepEqual( prefiltered, [ 2, 3, 4 ], 'maps incoming environment radiance through the indirect decoder' );
+				assert.deepEqual( prefiltered, [ 2, 3, 4 ], 'maps incoming environment radiance through the radiance IBL head' );
 
 			} );
 
@@ -242,7 +248,8 @@ export default QUnit.module( 'Addons', () => {
 							outputActivation: { type: 'linear' }
 						},
 						ibl: createIBLOutput(),
-						indirect: createIndirectOutput(),
+						indirectRadiance: createIndirectProbeOutput(),
+						indirectIrradiance: createIndirectProbeOutput(),
 						emission: {
 							layers: [ {
 								inputSize: 8,
@@ -332,7 +339,8 @@ export default QUnit.module( 'Addons', () => {
 							outputActivation: { type: 'linear' }
 						},
 						ibl: createIBLOutput(),
-						indirect: createIndirectOutput()
+						indirectRadiance: createIndirectProbeOutput( true ),
+						indirectIrradiance: createIndirectProbeOutput()
 					}
 				};
 				const outputs = evaluateNeuralAppearanceOutputs( json, {
@@ -345,20 +353,18 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.deepEqual( outputs.ibl.direction, [ 0, 0, 1 ], 'evaluates IBL query direction' );
 				assert.ok( Math.abs( outputs.ibl.roughness - 0.5 ) < 1e-6, 'evaluates IBL query roughness' );
-				assert.deepEqual( outputs.indirect, [ 0.2, 0.4, 0.6 ], 'passes incoming radiance through the indirect decoder' );
+				assert.deepEqual( outputs.indirectRadiance, [ 0.2, 0.4, 0.6 ], 'passes incoming radiance through the radiance IBL head' );
+				assert.deepEqual( outputs.indirect, [ 0.2, 0.4, 0.6 ], 'sums isolate heads for full indirect lighting' );
 				assert.deepEqual( evaluateNeuralPrefilteredIBL( json, {
 					uv: [ 0.5, 0.5 ],
 					wi: [ 0, 0, 1 ],
 					wo: [ 0, 0, 1 ],
 					mip: 0,
 					iblIncoming: [ 0.2, 0.4, 0.6 ]
-				} ), [ 0.2, 0.4, 0.6 ], 'prefiltered IBL helper uses the indirect decoder' );
+				} ), [ 0.2, 0.4, 0.6 ], 'prefiltered IBL helper uses the summed isolate heads' );
 
-				const irradianceWeights = new Array( 17 * 3 ).fill( 0 );
-				irradianceWeights[ 14 ] = 1;
-				irradianceWeights[ 17 + 15 ] = 1;
-				irradianceWeights[ 34 + 16 ] = 1;
-				json.outputs.indirect.layers[ 0 ].weights = irradianceWeights;
+				json.outputs.indirectRadiance = createIndirectProbeOutput();
+				json.outputs.indirectIrradiance = createIndirectProbeOutput( true );
 				assert.deepEqual( evaluateNeuralAppearanceOutputs( json, {
 					uv: [ 0.5, 0.5 ],
 					wi: [ 0, 0, 1 ],
@@ -366,7 +372,7 @@ export default QUnit.module( 'Addons', () => {
 					mip: 0,
 					iblIncoming: [ 0.2, 0.4, 0.6 ],
 					iblIrradiance: [ 0.7, 0.8, 0.9 ]
-				} ).indirect, [ 0.7, 0.8, 0.9 ], 'passes incoming irradiance through the indirect decoder' );
+				} ).indirectIrradiance, [ 0.7, 0.8, 0.9 ], 'passes incoming irradiance through the irradiance IBL head' );
 
 			} );
 

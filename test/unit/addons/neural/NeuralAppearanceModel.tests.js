@@ -28,9 +28,11 @@ export default QUnit.module( 'Addons', () => {
 				assert.ok( model.emissionHead !== null, 'creates emission head' );
 				assert.ok( model.opacityHead !== null, 'creates opacity head' );
 				assert.ok( model.iblHead !== null, 'creates required IBL head' );
-				assert.ok( model.indirectHead !== null, 'creates required indirect head' );
+				assert.ok( model.indirectRadianceHead !== null, 'creates required radiance IBL head' );
+				assert.ok( model.indirectIrradianceHead !== null, 'creates required irradiance IBL head' );
 				assert.strictEqual( model.iblHead.layers[ 1 ].outputSize, 4, 'IBL query head predicts direction and roughness' );
-				assert.strictEqual( model.indirectHead.layers[ 0 ].inputSize, 17, 'indirect head consumes latents, view, radiance, and irradiance' );
+				assert.strictEqual( model.indirectRadianceHead.layers[ 0 ].inputSize, 14, 'radiance IBL head consumes latents, view, and radiance' );
+				assert.strictEqual( model.indirectIrradianceHead.layers[ 0 ].inputSize, 14, 'irradiance IBL head consumes latents, view, and irradiance' );
 				assert.strictEqual( model.rotationWeights.length, 96, 'allocates 8 * 12 rotation weights' );
 
 			} );

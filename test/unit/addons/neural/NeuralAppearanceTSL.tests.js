@@ -54,13 +54,24 @@ function fakeData( weight = 0 ) {
 				} ],
 				outputActivation: { type: 'linear' }
 			},
-			indirect: {
-				inputSize: 17,
+			indirectRadiance: {
+				inputSize: 14,
 				layers: [ {
-					inputSize: 17,
+					inputSize: 14,
 					outputSize: 3,
 					activation: 'linear',
-					weights: new Array( 17 * 3 ).fill( weight ),
+					weights: new Array( 14 * 3 ).fill( weight ),
+					biases: [ 0, 0, 0 ]
+				} ],
+				outputActivation: { type: 'linear' }
+			},
+			indirectIrradiance: {
+				inputSize: 14,
+				layers: [ {
+					inputSize: 14,
+					outputSize: 3,
+					activation: 'linear',
+					weights: new Array( 14 * 3 ).fill( weight ),
 					biases: [ 0, 0, 0 ]
 				} ],
 				outputActivation: { type: 'linear' }
@@ -115,8 +126,11 @@ export default QUnit.module( 'Addons', () => {
 					ibl: {
 						layers: [ { weights: new Array( 14 * 4 ).fill( 0 ), biases: new Array( 4 ).fill( 0 ), inputSize: 14, outputSize: 4 } ]
 					},
-					indirect: {
-						layers: [ { weights: new Array( 17 * 3 ).fill( 0 ), biases: new Array( 3 ).fill( 0 ), inputSize: 17, outputSize: 3 } ]
+					indirectRadiance: {
+						layers: [ { weights: new Array( 14 * 3 ).fill( 0 ), biases: new Array( 3 ).fill( 0 ), inputSize: 14, outputSize: 3 } ]
+					},
+					indirectIrradiance: {
+						layers: [ { weights: new Array( 14 * 3 ).fill( 0 ), biases: new Array( 3 ).fill( 0 ), inputSize: 14, outputSize: 3 } ]
 					},
 					emission: {
 						layers: [ { weights: new Array( 24 ).fill( 0 ), biases: [ 0, 0, 0 ], inputSize: 8, outputSize: 3 } ]
@@ -133,7 +147,8 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( uniforms.brdf.rotationWeightsOffset, 0, 'stores rotation offset' );
 				assert.strictEqual( uniforms.brdf.layers.length, 1, 'creates 1 layer for brdf' );
 				assert.ok( uniforms.ibl, 'creates IBL uniforms' );
-				assert.ok( uniforms.indirect, 'creates indirect uniforms' );
+				assert.ok( uniforms.indirectRadiance, 'creates radiance IBL uniforms' );
+				assert.ok( uniforms.indirectIrradiance, 'creates irradiance IBL uniforms' );
 				assert.ok( uniforms.emission, 'creates emission uniforms' );
 				assert.strictEqual( uniforms.emission.layers.length, 1, 'creates 1 layer for emission' );
 				assert.ok( uniforms.opacity, 'creates opacity uniforms' );

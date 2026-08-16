@@ -6,7 +6,7 @@ function createManifest( fill = 0 ) {
 
 	return {
 		format: 'three-neural-appearance',
-		version: 5,
+		version: 6,
 		name: 'unit test material',
 		latents: {
 			channels: 8,
@@ -58,15 +58,28 @@ function createManifest( fill = 0 ) {
 				],
 				outputActivation: { type: 'linear' }
 			},
-			indirect: {
-				inputSize: 17,
+			indirectRadiance: {
+				inputSize: 14,
 				layers: [
 					{
-						inputSize: 17,
+						inputSize: 14,
 						outputSize: 3,
 						activation: 'linear',
 						biases: [ 0, 0, 0 ],
-						weights: new Array( 17 * 3 ).fill( fill )
+						weights: new Array( 14 * 3 ).fill( fill )
+					}
+				],
+				outputActivation: { type: 'linear' }
+			},
+			indirectIrradiance: {
+				inputSize: 14,
+				layers: [
+					{
+						inputSize: 14,
+						outputSize: 3,
+						activation: 'linear',
+						biases: [ 0, 0, 0 ],
+						weights: new Array( 14 * 3 ).fill( fill )
 					}
 				],
 				outputActivation: { type: 'linear' }
@@ -187,10 +200,13 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( material.debugView, 'shaded', 'defaults to shaded lighting' );
 				assert.ok( debug.viewNormal, 'exposes a view-space decoder-frame normal' );
 				assert.ok( debug.viewReflect, 'exposes a view-space decoder-frame reflection' );
+				assert.ok( debug.viewIrradiance, 'exposes a view-space IBL irradiance query direction' );
 				assert.ok( debug.roughness, 'exposes learned IBL specular roughness' );
 
 				material.debugView = 'roughness';
 				assert.strictEqual( material.debugView, 'roughness', 'accepts a roughness debug view' );
+				material.debugView = 'ibl';
+				assert.strictEqual( material.debugView, 'ibl', 'accepts an IBL debug view' );
 
 			} );
 

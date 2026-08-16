@@ -73,9 +73,14 @@ function createNeuralAppearanceManifest( model, options ) {
 			layers: serializeLayers( model.iblHead ),
 			outputActivation: { type: 'linear' }
 		},
-		indirect: {
+		indirectRadiance: {
 			inputSize: INDIRECT_INPUT_SIZE,
-			layers: serializeLayers( model.indirectHead ),
+			layers: serializeLayers( model.indirectRadianceHead ),
+			outputActivation: { type: 'linear' }
+		},
+		indirectIrradiance: {
+			inputSize: INDIRECT_INPUT_SIZE,
+			layers: serializeLayers( model.indirectIrradianceHead ),
 			outputActivation: { type: 'linear' }
 		}
 	};
@@ -177,6 +182,8 @@ async function createReferenceEvaluations( json, teacher ) {
 		sample.rgb = prediction;
 		sample.ibl = outputs.ibl;
 		if ( outputs.indirect ) sample.indirect = outputs.indirect;
+		if ( outputs.indirectRadiance ) sample.indirectRadiance = outputs.indirectRadiance;
+		if ( outputs.indirectIrradiance ) sample.indirectIrradiance = outputs.indirectIrradiance;
 		sample.iblWhiteFurnace = iblWhite;
 		sample.integratedWhiteFurnace = integratedWhite;
 		if ( sample.emissionTarget ) {

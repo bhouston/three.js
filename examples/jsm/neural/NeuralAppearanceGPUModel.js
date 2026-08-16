@@ -6,6 +6,31 @@ import { IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_S
 const FIXED_POINT_SCALE = 1e5;
 const GRADIENT_NORM_SCALE = 1e5;
 
+function allocateIndirectProbeHead( currentOffset, iblHiddenSize ) {
+
+	const layer0WeightsOffset = currentOffset;
+	const layer0WeightsCount = INDIRECT_INPUT_SIZE * iblHiddenSize;
+	const layer0BiasesOffset = layer0WeightsOffset + layer0WeightsCount;
+	const layer0BiasesCount = iblHiddenSize;
+	const layer1WeightsOffset = layer0BiasesOffset + layer0BiasesCount;
+	const layer1WeightsCount = iblHiddenSize * INDIRECT_OUTPUT_SIZE;
+	const layer1BiasesOffset = layer1WeightsOffset + layer1WeightsCount;
+	const layer1BiasesCount = INDIRECT_OUTPUT_SIZE;
+
+	return {
+		layer0WeightsOffset,
+		layer0WeightsCount,
+		layer0BiasesOffset,
+		layer0BiasesCount,
+		layer1WeightsOffset,
+		layer1WeightsCount,
+		layer1BiasesOffset,
+		layer1BiasesCount,
+		nextOffset: layer1BiasesOffset + layer1BiasesCount
+	};
+
+}
+
 /**
  * Computes buffer layouts and offsets for GPU-based neural appearance training.
  */
@@ -84,15 +109,10 @@ function computeModelLayout( options = {} ) {
 	const iblLayer1BiasesCount = IBL_OUTPUT_SIZE;
 	currentOffset = iblLayer1BiasesOffset + iblLayer1BiasesCount;
 
-	const indirectLayer0WeightsOffset = currentOffset;
-	const indirectLayer0WeightsCount = INDIRECT_INPUT_SIZE * iblHiddenSize;
-	const indirectLayer0BiasesOffset = indirectLayer0WeightsOffset + indirectLayer0WeightsCount;
-	const indirectLayer0BiasesCount = iblHiddenSize;
-	const indirectLayer1WeightsOffset = indirectLayer0BiasesOffset + indirectLayer0BiasesCount;
-	const indirectLayer1WeightsCount = iblHiddenSize * INDIRECT_OUTPUT_SIZE;
-	const indirectLayer1BiasesOffset = indirectLayer1WeightsOffset + indirectLayer1WeightsCount;
-	const indirectLayer1BiasesCount = INDIRECT_OUTPUT_SIZE;
-	currentOffset = indirectLayer1BiasesOffset + indirectLayer1BiasesCount;
+	const indirectRadiance = allocateIndirectProbeHead( currentOffset, iblHiddenSize );
+	currentOffset = indirectRadiance.nextOffset;
+	const indirectIrradiance = allocateIndirectProbeHead( currentOffset, iblHiddenSize );
+	currentOffset = indirectIrradiance.nextOffset;
 	const iblWeightCount = currentOffset - directWeightCount;
 
 	const totalWeights = currentOffset;
@@ -216,14 +236,22 @@ function computeModelLayout( options = {} ) {
 		iblLayer1WeightsCount,
 		iblLayer1BiasesOffset,
 		iblLayer1BiasesCount,
-		indirectLayer0WeightsOffset,
-		indirectLayer0WeightsCount,
-		indirectLayer0BiasesOffset,
-		indirectLayer0BiasesCount,
-		indirectLayer1WeightsOffset,
-		indirectLayer1WeightsCount,
-		indirectLayer1BiasesOffset,
-		indirectLayer1BiasesCount,
+		indirectRadianceLayer0WeightsOffset: indirectRadiance.layer0WeightsOffset,
+		indirectRadianceLayer0WeightsCount: indirectRadiance.layer0WeightsCount,
+		indirectRadianceLayer0BiasesOffset: indirectRadiance.layer0BiasesOffset,
+		indirectRadianceLayer0BiasesCount: indirectRadiance.layer0BiasesCount,
+		indirectRadianceLayer1WeightsOffset: indirectRadiance.layer1WeightsOffset,
+		indirectRadianceLayer1WeightsCount: indirectRadiance.layer1WeightsCount,
+		indirectRadianceLayer1BiasesOffset: indirectRadiance.layer1BiasesOffset,
+		indirectRadianceLayer1BiasesCount: indirectRadiance.layer1BiasesCount,
+		indirectIrradianceLayer0WeightsOffset: indirectIrradiance.layer0WeightsOffset,
+		indirectIrradianceLayer0WeightsCount: indirectIrradiance.layer0WeightsCount,
+		indirectIrradianceLayer0BiasesOffset: indirectIrradiance.layer0BiasesOffset,
+		indirectIrradianceLayer0BiasesCount: indirectIrradiance.layer0BiasesCount,
+		indirectIrradianceLayer1WeightsOffset: indirectIrradiance.layer1WeightsOffset,
+		indirectIrradianceLayer1WeightsCount: indirectIrradiance.layer1WeightsCount,
+		indirectIrradianceLayer1BiasesOffset: indirectIrradiance.layer1BiasesOffset,
+		indirectIrradianceLayer1BiasesCount: indirectIrradiance.layer1BiasesCount,
 		emissionWeightsOffset,
 		emissionWeightsCount,
 		emissionBiasesOffset,
@@ -310,8 +338,8 @@ class NeuralAppearanceGPUModel {
 		this.activationsStorage = storage( this.activationsAttribute, 'float', batchSize * activationStride );
 
 		// 5. Batch loss atomic buffer
-		this.lossAttribute = new StorageBufferAttribute( new Int32Array( 1 ), 1, Int32Array );
-		this.lossAtomic = storage( this.lossAttribute, 'int', 1 ).toAtomic();
+		this.lossAttribute = new StorageBufferAttribute( new Int32Array( 3 ), 1, Int32Array );
+		this.lossAtomic = storage( this.lossAttribute, 'int', 3 ).toAtomic();
 
 		// 6. Gradient clipping accumulator
 		this.gradNormAttribute = new StorageBufferAttribute( new Int32Array( 1 ), 1, Int32Array );
@@ -356,8 +384,10 @@ class NeuralAppearanceGPUModel {
 		// IBL Head (14 -> H_ibl -> 13)
 		copyLayerWeightsToGPU( cpuModel.iblHead.layers[ 0 ], weights, this.layout.iblLayer0WeightsOffset, this.layout.iblLayer0BiasesOffset );
 		copyLayerWeightsToGPU( cpuModel.iblHead.layers[ 1 ], weights, this.layout.iblLayer1WeightsOffset, this.layout.iblLayer1BiasesOffset );
-		copyLayerWeightsToGPU( cpuModel.indirectHead.layers[ 0 ], weights, this.layout.indirectLayer0WeightsOffset, this.layout.indirectLayer0BiasesOffset );
-		copyLayerWeightsToGPU( cpuModel.indirectHead.layers[ 1 ], weights, this.layout.indirectLayer1WeightsOffset, this.layout.indirectLayer1BiasesOffset );
+		copyLayerWeightsToGPU( cpuModel.indirectRadianceHead.layers[ 0 ], weights, this.layout.indirectRadianceLayer0WeightsOffset, this.layout.indirectRadianceLayer0BiasesOffset );
+		copyLayerWeightsToGPU( cpuModel.indirectRadianceHead.layers[ 1 ], weights, this.layout.indirectRadianceLayer1WeightsOffset, this.layout.indirectRadianceLayer1BiasesOffset );
+		copyLayerWeightsToGPU( cpuModel.indirectIrradianceHead.layers[ 0 ], weights, this.layout.indirectIrradianceLayer0WeightsOffset, this.layout.indirectIrradianceLayer0BiasesOffset );
+		copyLayerWeightsToGPU( cpuModel.indirectIrradianceHead.layers[ 1 ], weights, this.layout.indirectIrradianceLayer1WeightsOffset, this.layout.indirectIrradianceLayer1BiasesOffset );
 
 		// Emission Head (8 -> 3)
 		if ( cpuModel.emissionHead ) {
@@ -484,9 +514,12 @@ class NeuralAppearanceGPUModel {
 			data[ base + 28 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 0 ];
 			data[ base + 29 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 1 ];
 			data[ base + 30 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 2 ];
-			data[ base + 31 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 0 ];
-			data[ base + 32 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 1 ];
-			data[ base + 33 ] = ( sample.iblIndirect || [ 0, 0, 0 ] )[ 2 ];
+			data[ base + 31 ] = ( sample.iblIndirectRadiance || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 32 ] = ( sample.iblIndirectRadiance || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 33 ] = ( sample.iblIndirectRadiance || [ 0, 0, 0 ] )[ 2 ];
+			data[ base + 34 ] = ( sample.iblIndirectIrradiance || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 35 ] = ( sample.iblIndirectIrradiance || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 36 ] = ( sample.iblIndirectIrradiance || [ 0, 0, 0 ] )[ 2 ];
 
 		}
 
@@ -497,6 +530,8 @@ class NeuralAppearanceGPUModel {
 	resetLoss() {
 
 		this.lossAttribute.array[ 0 ] = 0;
+		this.lossAttribute.array[ 1 ] = 0;
+		this.lossAttribute.array[ 2 ] = 0;
 		this.lossAttribute.needsUpdate = true;
 
 	}
@@ -522,8 +557,10 @@ class NeuralAppearanceGPUModel {
 		copyLayerWeightsFromGPU( cpuModel.decoder.layers[ 2 ], weights, this.layout.layer2WeightsOffset, this.layout.layer2BiasesOffset );
 		copyLayerWeightsFromGPU( cpuModel.iblHead.layers[ 0 ], weights, this.layout.iblLayer0WeightsOffset, this.layout.iblLayer0BiasesOffset );
 		copyLayerWeightsFromGPU( cpuModel.iblHead.layers[ 1 ], weights, this.layout.iblLayer1WeightsOffset, this.layout.iblLayer1BiasesOffset );
-		copyLayerWeightsFromGPU( cpuModel.indirectHead.layers[ 0 ], weights, this.layout.indirectLayer0WeightsOffset, this.layout.indirectLayer0BiasesOffset );
-		copyLayerWeightsFromGPU( cpuModel.indirectHead.layers[ 1 ], weights, this.layout.indirectLayer1WeightsOffset, this.layout.indirectLayer1BiasesOffset );
+		copyLayerWeightsFromGPU( cpuModel.indirectRadianceHead.layers[ 0 ], weights, this.layout.indirectRadianceLayer0WeightsOffset, this.layout.indirectRadianceLayer0BiasesOffset );
+		copyLayerWeightsFromGPU( cpuModel.indirectRadianceHead.layers[ 1 ], weights, this.layout.indirectRadianceLayer1WeightsOffset, this.layout.indirectRadianceLayer1BiasesOffset );
+		copyLayerWeightsFromGPU( cpuModel.indirectIrradianceHead.layers[ 0 ], weights, this.layout.indirectIrradianceLayer0WeightsOffset, this.layout.indirectIrradianceLayer0BiasesOffset );
+		copyLayerWeightsFromGPU( cpuModel.indirectIrradianceHead.layers[ 1 ], weights, this.layout.indirectIrradianceLayer1WeightsOffset, this.layout.indirectIrradianceLayer1BiasesOffset );
 
 		if ( cpuModel.emissionHead ) {
 
@@ -554,15 +591,27 @@ class NeuralAppearanceGPUModel {
 
 	async readLoss( renderer ) {
 
+		const losses = await this.readLosses( renderer );
+		return losses.loss;
+
+	}
+
+	async readLosses( renderer ) {
+
 		const buffer = await renderer.getArrayBufferAsync( this.lossAttribute );
 		const array = new Int32Array( buffer );
-		const loss = array[ 0 ] / FIXED_POINT_SCALE;
+		const losses = {
+			loss: array[ 0 ] / FIXED_POINT_SCALE,
+			directLoss: array[ 1 ] / FIXED_POINT_SCALE,
+			iblLoss: array[ 2 ] / FIXED_POINT_SCALE
+		};
 
-		// Reset loss accumulator
 		this.lossAttribute.array[ 0 ] = 0;
+		this.lossAttribute.array[ 1 ] = 0;
+		this.lossAttribute.array[ 2 ] = 0;
 		this.lossAttribute.needsUpdate = true;
 
-		return loss;
+		return losses;
 
 	}
 

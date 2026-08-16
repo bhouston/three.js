@@ -102,24 +102,24 @@ function evaluateNeuralOpacity( material ) {
 
 }
 
-function evaluateNeuralIBL( material, envNode, context = null ) {
+function evaluateNeuralIBL( material, envNode, context = null, isolate = 'full' ) {
 
 	const fragment = context || createNeuralFragmentContext( material );
 
 	if ( fragment.trilinear ) {
 
-		const ibl0 = evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel00, fragment.texel01 );
-		const ibl1 = evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel10, fragment.texel11 );
+		const ibl0 = evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel00, fragment.texel01, isolate );
+		const ibl1 = evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel10, fragment.texel11, isolate );
 
 		return TSL.mix( ibl0, ibl1, fragment.fracMip );
 
 	}
 
-	return evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel0, fragment.texel1 );
+	return evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel0, fragment.texel1, isolate );
 
 }
 
-function evaluateNeuralIBLForTexels( material, envNode, wo, latent0, latent1 ) {
+function evaluateNeuralIBLForTexels( material, envNode, wo, latent0, latent1, isolate = 'full' ) {
 
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const uniforms = material._outputUniforms.ibl;
@@ -137,21 +137,28 @@ function evaluateNeuralIBLForTexels( material, envNode, wo, latent0, latent1 ) {
 		getTextureLevel: () => queryRoughness
 	} ).isolate().mul( TSL.materialEnvIntensity );
 	const irradiance = envNode.context( {
-		getUV: () => TSL.normalWorld,
+		getUV: () => canonicalToWorldDirection( TSL.vec3( 0, 0, 1 ) ),
 		getTextureLevel: () => TSL.float( 1 )
 	} ).isolate().mul( TSL.materialEnvIntensity );
+	const radianceHead = material.neuralAppearanceData.outputs.indirectRadiance;
+	const irradianceHead = material.neuralAppearanceData.outputs.indirectIrradiance;
+	let outgoing = TSL.vec3( 0 );
 
-	if ( material.neuralAppearanceData.outputs.indirect ) {
+	if ( isolate !== 'irradiance' && radianceHead ) {
 
-		const indirect = material.neuralAppearanceData.outputs.indirect;
-		const indirectInput = projectIndirectInput( latents, wo, incoming, irradiance, indirect.inputSize );
-		const decoded = toVec3( evaluateMLP( indirect.layers, material._outputUniforms.indirect, indirectInput ) );
-
-		return applyOutputActivation( decoded, indirect.outputActivation );
+		outgoing = outgoing.add( evaluateIndirectProbeHead( material, radianceHead, material._outputUniforms.indirectRadiance, latents, wo, incoming ) );
 
 	}
 
-	return incoming;
+	if ( isolate !== 'radiance' && irradianceHead ) {
+
+		outgoing = outgoing.add( evaluateIndirectProbeHead( material, irradianceHead, material._outputUniforms.indirectIrradiance, latents, wo, irradiance ) );
+
+	}
+
+	if ( radianceHead || irradianceHead ) return outgoing;
+
+	return isolate === 'irradiance' ? irradiance : incoming;
 
 }
 
@@ -272,7 +279,7 @@ function evaluateLearnedIBLQuery( material, fragment ) {
  * Decodes learned shading-frame intermediates used by the debug visualizer.
  *
  * @param {NeuralAppearanceNodeMaterial} material - The neural appearance material.
- * @return {{ viewNormal: Node<vec3>, viewReflect: Node<vec3>, roughness: Node<float> }} Debug values.
+ * @return {{ viewNormal: Node<vec3>, viewReflect: Node<vec3>, viewIrradiance: Node<vec3>, roughness: Node<float> }} Debug values.
  */
 function evaluateNeuralDebugShading( material ) {
 
@@ -285,6 +292,7 @@ function evaluateNeuralDebugShading( material ) {
 	return {
 		viewNormal: canonicalToViewDirection( canonicalNormal ),
 		viewReflect: canonicalToViewDirection( query.direction ),
+		viewIrradiance: canonicalToViewDirection( TSL.vec3( 0, 0, 1 ) ),
 		roughness: query.roughness
 	};
 
@@ -413,7 +421,8 @@ function createOutputUniforms( outputs ) {
 		ibl: createHeadUniforms( outputs.ibl )
 	};
 
-	if ( outputs.indirect ) uniforms.indirect = createHeadUniforms( outputs.indirect );
+	if ( outputs.indirectRadiance ) uniforms.indirectRadiance = createHeadUniforms( outputs.indirectRadiance );
+	if ( outputs.indirectIrradiance ) uniforms.indirectIrradiance = createHeadUniforms( outputs.indirectIrradiance );
 	if ( outputs.emission ) uniforms.emission = createHeadUniforms( outputs.emission );
 	if ( outputs.opacity ) uniforms.opacity = createHeadUniforms( outputs.opacity );
 
@@ -443,7 +452,8 @@ function isCompatibleNeuralAppearanceData( current, next ) {
 	if ( ! sameLatentTextureLayout( current.latentTextures, next.latentTextures ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.brdf, next.outputs.brdf ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.ibl, next.outputs.ibl ) ) return false;
-	if ( ! sameHeadArchitecture( current.outputs.indirect, next.outputs.indirect ) ) return false;
+	if ( ! sameHeadArchitecture( current.outputs.indirectRadiance, next.outputs.indirectRadiance ) ) return false;
+	if ( ! sameHeadArchitecture( current.outputs.indirectIrradiance, next.outputs.indirectIrradiance ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.emission, next.outputs.emission ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.opacity, next.outputs.opacity ) ) return false;
 
@@ -517,7 +527,8 @@ function updateOutputUniforms( uniforms, outputs ) {
 
 	updateHeadUniforms( uniforms.brdf, outputs.brdf );
 	updateHeadUniforms( uniforms.ibl, outputs.ibl );
-	if ( outputs.indirect ) updateHeadUniforms( uniforms.indirect, outputs.indirect );
+	if ( outputs.indirectRadiance ) updateHeadUniforms( uniforms.indirectRadiance, outputs.indirectRadiance );
+	if ( outputs.indirectIrradiance ) updateHeadUniforms( uniforms.indirectIrradiance, outputs.indirectIrradiance );
 	if ( outputs.emission ) updateHeadUniforms( uniforms.emission, outputs.emission );
 	if ( outputs.opacity ) updateHeadUniforms( uniforms.opacity, outputs.opacity );
 
@@ -737,7 +748,7 @@ function projectIBLInput( latents, frames, wo, inputSize ) {
 
 }
 
-function projectIndirectInput( latents, wo, incoming, irradiance, inputSize ) {
+function projectIndirectProbeInput( latents, wo, probe, inputSize ) {
 
 	const input = [];
 
@@ -748,8 +759,7 @@ function projectIndirectInput( latents, wo, incoming, irradiance, inputSize ) {
 	}
 
 	input.push( wo.x, wo.y, wo.z );
-	input.push( incoming.x, incoming.y, incoming.z );
-	input.push( irradiance.x, irradiance.y, irradiance.z );
+	input.push( probe.x, probe.y, probe.z );
 
 	if ( input.length !== inputSize ) {
 
@@ -758,6 +768,15 @@ function projectIndirectInput( latents, wo, incoming, irradiance, inputSize ) {
 	}
 
 	return input;
+
+}
+
+function evaluateIndirectProbeHead( material, head, uniforms, latents, wo, probe ) {
+
+	const input = projectIndirectProbeInput( latents, wo, probe, head.inputSize );
+	const decoded = toVec3( evaluateMLP( head.layers, uniforms, input ) );
+
+	return applyOutputActivation( decoded, head.outputActivation );
 
 }
 

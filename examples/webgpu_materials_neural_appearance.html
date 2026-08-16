@@ -246,10 +246,12 @@
 			import { NeuralAppearanceLoader } from 'three/addons/loaders/NeuralAppearanceLoader.js';
 			import { NeuralAppearanceNodeMaterial } from 'three/addons/neural/NeuralAppearanceNodeMaterial.js';
 			import { NeuralAppearanceTrainer, estimateTrainingMemory } from 'three/addons/neural/NeuralAppearanceTrainer.js';
+			import { NeuralTeacherIBLEnvironmentNode, NeuralTeacherIBLLightingModel } from 'three/addons/neural/NeuralAppearanceTeacherEvaluator.js';
 
 			let camera, scene, renderer, mesh, neuralMesh;
 			let materialXMaterial, neuralMaterial, whiteControlMaterial, previewPlaceholderMaterial, latestJson;
-			let teacherNormalMaterial, teacherReflectionMaterial, teacherRoughnessMaterial;
+			let teacherNormalMaterial, teacherReflectionMaterial, teacherRoughnessMaterial, teacherIrradianceMaterial;
+			const teacherIblDebugState = new WeakMap();
 			let environmentMap = null;
 			const directLights = [];
 			let isTraining = false;
@@ -405,7 +407,7 @@
 
 			window.__neuralAppearanceSetDebugView = ( view ) => {
 
-				params.debugView = view === 'normal' || view === 'reflection' || view === 'roughness' ? view : 'shaded';
+				params.debugView = view === 'normal' || view === 'reflection' || view === 'roughness' || view === 'irradiance' || view === 'ibl' || view === 'iblRadiance' || view === 'iblIrradiance' ? view : 'shaded';
 				updateView();
 				return params.debugView;
 
@@ -512,6 +514,13 @@
 				teacherRoughnessMaterial.lights = false;
 				teacherRoughnessMaterial.toneMapped = false;
 				teacherRoughnessMaterial.colorNode = TSL.vec3( 1 );
+				teacherIrradianceMaterial = new THREE.NodeMaterial();
+				teacherIrradianceMaterial.lights = false;
+				teacherIrradianceMaterial.toneMapped = false;
+				teacherIrradianceMaterial.colorNode = TSL.colorSpaceToWorking(
+					TSL.vec4( TSL.packNormalToRGB( TSL.normalView ), 1 ),
+					THREE.SRGBColorSpace
+				);
 
 				const gui = new GUI();
 				trainingSettingControllers.push(
@@ -521,7 +530,7 @@
 				);
 				gui.add( params, 'fixedMip', { all: - 1, 'mip 0 baseline': 0, 'mip 1': 1, 'mip 2': 2, 'mip 3': 3, 'mip 4': 4, 'mip 5': 5, 'mip 6': 6 } ).name( 'training mip' ).onChange( updateTrainingEstimate );
 				gui.add( params, 'lodMode', [ 'trilinear', 'deterministic', 'stochastic' ] ).name( 'LOD mode' ).onChange( updateView );
-				gui.add( params, 'debugView', [ 'shaded', 'normal', 'reflection', 'roughness' ] ).name( 'debug view' ).onChange( updateView );
+				gui.add( params, 'debugView', [ 'shaded', 'normal', 'reflection', 'roughness', 'irradiance', 'ibl', 'iblRadiance', 'iblIrradiance' ] ).name( 'debug view' ).onChange( updateView );
 				gui.add( params, 'showNeuralMaterial' ).name( 'show neural material' ).onChange( updateView );
 				trainingSettingControllers.push(
 					gui.add( params, 'iterations', 100, 10000, 100 ).onChange( updateTrainingEstimate ),
@@ -846,11 +855,11 @@
 
 							if ( progress.iteration % 20 === 0 || progress.iteration === progress.iterations ) {
 
-								const validationText = Number.isFinite( progress.validationLoss ) ? `\nruntime validation ${progress.validationLoss.toExponential( 3 )}` : '';
+								const validationText = formatValidationStatus( progress.validation, progress.validationLoss );
 								const phaseText = progress.phase === 'ibl' ? 'IBL refinement' : 'Training';
 								const elapsed = performance.now() - trainingStartTime;
 								const remaining = elapsed / progress.iteration * ( progress.iterations - progress.iteration );
-								status.textContent = `${phaseText} ${progress.iteration}/${progress.iterations}\nloss ${progress.loss.toExponential( 3 )}${validationText}\nelapsed ${formatDuration( elapsed )}, remaining ~${formatDuration( remaining )}`;
+								status.textContent = `${phaseText} ${progress.iteration}/${progress.iterations}\n${formatTrainingLossStatus( progress )}${validationText}\nelapsed ${formatDuration( elapsed )}, remaining ~${formatDuration( remaining )}`;
 
 							}
 
@@ -895,11 +904,11 @@
 					updateView();
 					if ( result.validation && result.validation.preview ) drawTrainingPreview( result.validation.preview, result.iteration );
 					drawLossGraph();
-					const validationText = Number.isFinite( result.validationLoss ) ? `\nruntime validation ${result.validationLoss.toExponential( 3 )}` : '';
+					const validationText = formatValidationStatus( result.validation, result.validationLoss );
 					const elapsedText = formatDuration( performance.now() - trainingStartTime );
 					status.textContent = result.stoppedEarly ?
-						`Training stopped at iteration ${result.iteration}/${result.iterations} in ${elapsedText}.\nfinal loss ${result.loss.toExponential( 3 )}${validationText}` :
-						`Training complete in ${elapsedText}.\nfinal loss ${result.loss.toExponential( 3 )}${validationText}`;
+						`Training stopped at iteration ${result.iteration}/${result.iterations} in ${elapsedText}.\n${formatTrainingLossStatus( result )}${validationText}` :
+						`Training complete in ${elapsedText}.\n${formatTrainingLossStatus( result )}${validationText}`;
 
 				} catch ( error ) {
 
@@ -998,12 +1007,38 @@
 
 			}
 
+			function formatTrainingLossStatus( progress ) {
+
+				const parts = [ `loss ${progress.loss.toExponential( 3 )}` ];
+				if ( Number.isFinite( progress.directLoss ) ) parts.push( `direct ${progress.directLoss.toExponential( 3 )}` );
+				if ( Number.isFinite( progress.iblLoss ) ) parts.push( `ibl ${progress.iblLoss.toExponential( 3 )}` );
+				return parts.join( '  ' );
+
+			}
+
+			function formatValidationStatus( validation, validationLoss ) {
+
+				if ( Number.isFinite( validationLoss ) === false ) return '';
+
+				const parts = [];
+				if ( validation && Number.isFinite( validation.directLoss ) ) parts.push( `direct ${validation.directLoss.toExponential( 3 )}` );
+				if ( validation && Number.isFinite( validation.iblQueryLoss ) ) parts.push( `query ${validation.iblQueryLoss.toExponential( 3 )}` );
+				if ( validation && Number.isFinite( validation.iblIndirectLoss ) ) parts.push( `indirect ${validation.iblIndirectLoss.toExponential( 3 )}` );
+				const detail = parts.length > 0 ? ` (${ parts.join( ', ' ) })` : '';
+				return `\nruntime validation ${validationLoss.toExponential( 3 )}${detail}`;
+
+			}
+
 			function appendLossPoint( progress ) {
 
 				lossHistory.push( {
 					iteration: progress.iteration,
 					loss: progress.loss,
-					validationLoss: progress.validationLoss
+					directLoss: progress.directLoss,
+					iblLoss: progress.iblLoss,
+					validationLoss: progress.validationLoss,
+					validationDirectLoss: progress.validation ? progress.validation.directLoss : undefined,
+					validationIblLoss: progress.validation ? progress.validation.iblLoss : undefined
 				} );
 
 			}
@@ -1075,7 +1110,11 @@
 				const plotHeight = height - marginTop - marginBottom;
 				const values = lossHistory.flatMap( ( point ) => [
 					point.loss,
-					point.validationLoss
+					point.directLoss,
+					point.iblLoss,
+					point.validationLoss,
+					point.validationDirectLoss,
+					point.validationIblLoss
 				] ).filter( ( value ) => Number.isFinite( value ) && value > 0 );
 
 				context.clearRect( 0, 0, width, height );
@@ -1107,6 +1146,8 @@
 
 				drawLossScaleLabels( context, marginLeft, marginTop, plotHeight, minLog, maxLog );
 				drawLossSeries( context, 'loss', '#50c8ff', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
+				drawLossSeries( context, 'directLoss', '#7ae582', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
+				drawLossSeries( context, 'iblLoss', '#ff6b6b', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
 				drawLossSeries( context, 'validationLoss', '#ffd166', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
 
 			}
@@ -1189,6 +1230,7 @@
 			function updateView() {
 
 				syncTeacherDebugMaterials();
+				applyLights();
 
 				if ( neuralMaterial ) {
 
@@ -1208,7 +1250,7 @@
 
 					neuralMaterial.intensity = params.intensity;
 					neuralMaterial.emissiveIntensity = params.emissiveIntensity;
-					neuralMaterial.toneMapped = params.debugView === 'shaded';
+					neuralMaterial.toneMapped = params.debugView === 'shaded' || params.debugView === 'ibl' || params.debugView === 'iblRadiance' || params.debugView === 'iblIrradiance';
 
 				}
 
@@ -1267,6 +1309,8 @@
 				if ( params.debugView === 'normal' && teacherNormalMaterial ) return teacherNormalMaterial;
 				if ( params.debugView === 'reflection' && teacherReflectionMaterial ) return teacherReflectionMaterial;
 				if ( params.debugView === 'roughness' && teacherRoughnessMaterial ) return teacherRoughnessMaterial;
+				if ( params.debugView === 'irradiance' && teacherIrradianceMaterial ) return teacherIrradianceMaterial;
+				if ( params.debugView === 'ibl' || params.debugView === 'iblRadiance' || params.debugView === 'iblIrradiance' ) return materialXMaterial;
 
 				return materialXMaterial;
 
@@ -1307,6 +1351,42 @@
 
 				}
 
+				if ( params.debugView === 'irradiance' ) {
+
+					return {
+						teacher: 'Teacher IBL irradiance direction',
+						neural: 'Neural IBL irradiance direction'
+					};
+
+				}
+
+				if ( params.debugView === 'ibl' ) {
+
+					return {
+						teacher: 'Teacher IBL',
+						neural: 'Neural IBL'
+					};
+
+				}
+
+				if ( params.debugView === 'iblRadiance' ) {
+
+					return {
+						teacher: 'Teacher specular IBL',
+						neural: 'Neural radiance IBL'
+					};
+
+				}
+
+				if ( params.debugView === 'iblIrradiance' ) {
+
+					return {
+						teacher: 'Teacher diffuse/sheen IBL',
+						neural: 'Neural irradiance IBL'
+					};
+
+				}
+
 				return {
 					teacher: 'MaterialX teacher',
 					neural: 'Neural output'
@@ -1332,6 +1412,13 @@
 
 				}
 
+				if ( teacherIrradianceMaterial && teacherIrradianceMaterial.normalNode !== normalNode ) {
+
+					teacherIrradianceMaterial.normalNode = normalNode;
+					teacherIrradianceMaterial.needsUpdate = true;
+
+				}
+
 				const roughnessSource = materialXMaterial ?
 					( materialXMaterial.roughnessNode !== undefined && materialXMaterial.roughnessNode !== null ?
 						materialXMaterial.roughnessNode :
@@ -1350,19 +1437,90 @@
 
 				}
 
+				applyTeacherIblIsolate( materialXMaterial );
+
+			}
+
+			function applyTeacherIblIsolate( material ) {
+
+				if ( ! material ) return;
+
+				const isolate = params.debugView === 'iblRadiance' ? 'radiance' :
+					params.debugView === 'iblIrradiance' ? 'irradiance' :
+						params.debugView === 'ibl' ? 'full' :
+							null;
+
+				let state = teacherIblDebugState.get( material );
+				if ( state === undefined ) {
+
+					state = {
+						isolate: undefined,
+						setupLightingModel: material.setupLightingModel.bind( material ),
+						setupEnvironment: material.setupEnvironment.bind( material ),
+						customProgramCacheKey: material.customProgramCacheKey.bind( material )
+					};
+					teacherIblDebugState.set( material, state );
+
+				}
+
+				if ( state.isolate === isolate ) return;
+				state.isolate = isolate;
+
+				if ( isolate === null ) {
+
+					material.setupLightingModel = state.setupLightingModel;
+					material.setupEnvironment = state.setupEnvironment;
+					material.customProgramCacheKey = state.customProgramCacheKey;
+					delete material.teacherIblIsolate;
+
+				} else {
+
+					material.teacherIblIsolate = isolate;
+					material.setupLightingModel = function () {
+
+						return new NeuralTeacherIBLLightingModel( this, isolate );
+
+					};
+
+					material.setupEnvironment = function ( builder ) {
+
+						let envNode = THREE.NodeMaterial.prototype.setupEnvironment.call( this, builder );
+						if ( envNode === null && builder.environmentNode ) envNode = builder.environmentNode;
+						return envNode ? new NeuralTeacherIBLEnvironmentNode( envNode, isolate ) : null;
+
+					};
+
+					material.customProgramCacheKey = function () {
+
+						return state.customProgramCacheKey() + '|teacherIblIsolate:' + isolate;
+
+					};
+
+				}
+
+				material.needsUpdate = true;
+
+			}
+
+			function applyLights() {
+
+				const isolateIbl = params.debugView === 'ibl' || params.debugView === 'iblRadiance' || params.debugView === 'iblIrradiance';
+
+				for ( const light of directLights ) {
+
+					light.intensity = isolateIbl === false && params.directLighting ? light.userData.baseIntensity : 0;
+
+				}
+
+				scene.environment = params.environmentLighting || isolateIbl ? environmentMap : null;
+				scene.environmentIntensity = params.environmentIntensity;
+				scene.environmentRotation.y = params.environmentRotation;
+
 			}
 
 			function updateLighting() {
 
-				for ( const light of directLights ) {
-
-					light.intensity = params.directLighting ? light.userData.baseIntensity : 0;
-
-				}
-
-				scene.environment = params.environmentLighting ? environmentMap : null;
-				scene.environmentIntensity = params.environmentIntensity;
-				scene.environmentRotation.y = params.environmentRotation;
+				applyLights();
 				if ( mesh ) updateView();
 
 			}

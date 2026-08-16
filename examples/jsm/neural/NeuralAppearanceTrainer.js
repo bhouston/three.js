@@ -101,6 +101,8 @@ class NeuralAppearanceTrainer {
 		let validationSamples = null;
 		let directionalValidationSamples = null;
 		let lastLoss = Infinity;
+		let lastDirectLoss = Infinity;
+		let lastIblLoss = Infinity;
 		let validationLoss = Infinity;
 		let validation = null;
 
@@ -169,7 +171,10 @@ class NeuralAppearanceTrainer {
 			if ( shouldSync ) {
 
 				await gpuModel.syncToCPU( model, renderer );
-				lastLoss = await gpuModel.readLoss( renderer );
+				const losses = await gpuModel.readLosses( renderer );
+				lastLoss = losses.loss;
+				lastDirectLoss = losses.directLoss;
+				lastIblLoss = losses.iblLoss;
 
 				const manifest = createNeuralAppearanceManifest( model, settings );
 				validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );
@@ -183,6 +188,8 @@ class NeuralAppearanceTrainer {
 						iterations: totalIterations,
 						phase: 'direct',
 						loss: lastLoss,
+						directLoss: lastDirectLoss,
+						iblLoss: lastIblLoss,
 						validationLoss,
 						validation,
 						json: manifest,
@@ -227,7 +234,10 @@ class NeuralAppearanceTrainer {
 			if ( shouldSync ) {
 
 				await gpuModel.syncToCPU( model, renderer );
-				lastLoss = await gpuModel.readLoss( renderer );
+				const losses = await gpuModel.readLosses( renderer );
+				lastLoss = losses.loss;
+				lastDirectLoss = losses.directLoss;
+				lastIblLoss = losses.iblLoss;
 
 				const manifest = createNeuralAppearanceManifest( model, settings );
 				validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );
@@ -241,6 +251,8 @@ class NeuralAppearanceTrainer {
 						iterations: totalIterations,
 						phase: 'ibl',
 						loss: lastLoss,
+						directLoss: lastDirectLoss,
+						iblLoss: lastIblLoss,
 						validationLoss,
 						validation,
 						json: manifest,
@@ -265,7 +277,15 @@ class NeuralAppearanceTrainer {
 
 		if ( completedIterations > 0 ) {
 
-			if ( validation === null ) lastLoss = await gpuModel.readLoss( renderer );
+			if ( validation === null ) {
+
+				const losses = await gpuModel.readLosses( renderer );
+				lastLoss = losses.loss;
+				lastDirectLoss = losses.directLoss;
+				lastIblLoss = losses.iblLoss;
+
+			}
+
 			await gpuModel.syncToCPU( model, renderer );
 
 			const manifest = createNeuralAppearanceManifest( model, settings );
@@ -280,6 +300,8 @@ class NeuralAppearanceTrainer {
 		return {
 			json,
 			loss: lastLoss,
+			directLoss: lastDirectLoss,
+			iblLoss: lastIblLoss,
 			validationLoss,
 			validation,
 			model,

@@ -64,7 +64,7 @@ async function generateTrainingSamples( options, teacher, random, iteration = 0 
 
 	}
 
-	await assignIBLTeacherTargets( samples, teacher );
+	await assignIBLTeacherTargets( samples, teacher, random );
 
 	return samples;
 
@@ -154,13 +154,13 @@ async function generateIBLTrainingSamples( options, teacher, random ) {
 
 	}
 
-	await assignIBLTeacherTargets( samples, teacher );
+	await assignIBLTeacherTargets( samples, teacher, random );
 
 	return samples;
 
 }
 
-async function assignIBLTeacherTargets( samples, teacher ) {
+async function assignIBLTeacherTargets( samples, teacher, random = null ) {
 
 	if ( teacher.supportsIBL !== true || typeof teacher.evaluateBatch !== 'function' ) {
 
@@ -171,7 +171,8 @@ async function assignIBLTeacherTargets( samples, teacher ) {
 			sample.iblRoughness = 1;
 			sample.iblIncoming = [ 0, 0, 0 ];
 			sample.iblIrradiance = [ 0, 0, 0 ];
-			sample.iblIndirect = [ 0, 0, 0 ];
+			sample.iblIndirectRadiance = [ 0, 0, 0 ];
+			sample.iblIndirectIrradiance = [ 0, 0, 0 ];
 
 		}
 
@@ -179,24 +180,120 @@ async function assignIBLTeacherTargets( samples, teacher ) {
 
 	}
 
-	const queries = await teacher.evaluateBatch( samples, 'iblQuery' );
-	const incoming = await teacher.evaluateBatch( samples, 'iblIncoming' );
-	const irradiance = await teacher.evaluateBatch( samples, 'iblIrradiance' );
-	const indirect = await teacher.evaluateBatch( samples, 'iblIndirect' );
+	const teacherSamples = samples.map( ( sample, i ) => createIBLTeacherSample( sample, random || createIndexRandom( i ) ) );
+	const queries = await teacher.evaluateBatch( teacherSamples, 'iblQuery' );
+	const incoming = await teacher.evaluateBatch( teacherSamples, 'iblIncoming' );
+	const irradiance = await teacher.evaluateBatch( teacherSamples, 'iblIrradiance' );
+	const indirectRadiance = await teacher.evaluateBatch( teacherSamples, 'iblIndirectRadiance' );
+	const indirectIrradiance = await teacher.evaluateBatch( teacherSamples, 'iblIndirectIrradiance' );
 
 	for ( let i = 0; i < samples.length; i ++ ) {
 
 		const query = queries[ i ] || [];
-		const direction = normalize( query.slice( 0, 3 ) );
+		const direction = toCanonicalDirection( query.slice( 0, 3 ), teacherSamples[ i ] );
 		const roughness = Math.min( Math.max( Number( query[ 3 ] ), 0 ), 1 );
 		samples[ i ].iblWeight = Number.isFinite( roughness ) && direction.every( Number.isFinite ) ? 1 : 0;
 		samples[ i ].iblDirection = direction;
 		samples[ i ].iblRoughness = roughness;
 		samples[ i ].iblIncoming = ( incoming[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
 		samples[ i ].iblIrradiance = ( irradiance[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
-		samples[ i ].iblIndirect = ( indirect[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
+		samples[ i ].iblIndirectRadiance = ( indirectRadiance[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
+		samples[ i ].iblIndirectIrradiance = ( indirectIrradiance[ i ] || [ 0, 0, 0 ] ).slice( 0, 3 );
 
 	}
+
+}
+
+function createIBLTeacherSample( sample, random ) {
+
+	const normal = randomUnitVector( random );
+	const tangent = orthonormalTangent( normal, random );
+	const bitangent = normalize( cross( normal, tangent ) );
+
+	return {
+		...sample,
+		normal,
+		tangent,
+		bitangent,
+		wi: rotateByFrame( sample.wi, tangent, bitangent, normal ),
+		wo: rotateByFrame( sample.wo, tangent, bitangent, normal )
+	};
+
+}
+
+function toCanonicalDirection( direction, frame ) {
+
+	const view = normalize( direction.length >= 3 ? direction : [ 0, 0, 1 ] );
+
+	return normalize( [
+		dot( view, frame.tangent ),
+		dot( view, frame.bitangent ),
+		dot( view, frame.normal )
+	] );
+
+}
+
+function rotateByFrame( vector, tangent, bitangent, normal ) {
+
+	const value = vector || [ 0, 0, 1 ];
+
+	return [
+		tangent[ 0 ] * value[ 0 ] + bitangent[ 0 ] * value[ 1 ] + normal[ 0 ] * value[ 2 ],
+		tangent[ 1 ] * value[ 0 ] + bitangent[ 1 ] * value[ 1 ] + normal[ 1 ] * value[ 2 ],
+		tangent[ 2 ] * value[ 0 ] + bitangent[ 2 ] * value[ 1 ] + normal[ 2 ] * value[ 2 ]
+	];
+
+}
+
+function randomUnitVector( random ) {
+
+	const z = 2 * random() - 1;
+	const azimuth = 2 * Math.PI * random();
+	const radial = Math.sqrt( Math.max( 0, 1 - z * z ) );
+
+	return [ radial * Math.cos( azimuth ), radial * Math.sin( azimuth ), z ];
+
+}
+
+function orthonormalTangent( normal, random ) {
+
+	const axis = Math.abs( normal[ 2 ] ) < 0.9 ? [ 0, 0, 1 ] : [ 1, 0, 0 ];
+	const tangent = normalize( cross( axis, normal ) );
+	const bitangent = cross( normal, tangent );
+	const angle = 2 * Math.PI * random();
+	const cos = Math.cos( angle );
+	const sin = Math.sin( angle );
+
+	return normalize( [
+		tangent[ 0 ] * cos + bitangent[ 0 ] * sin,
+		tangent[ 1 ] * cos + bitangent[ 1 ] * sin,
+		tangent[ 2 ] * cos + bitangent[ 2 ] * sin
+	] );
+
+}
+
+function createIndexRandom( index ) {
+
+	let state = ( index + 1 ) * 747796405 >>> 0;
+
+	return function random() {
+
+		state = Math.imul( state ^ state >>> 15, 1 | state );
+		state ^= state + Math.imul( state ^ state >>> 7, 61 | state );
+
+		return ( ( state ^ state >>> 14 ) >>> 0 ) / 4294967296;
+
+	};
+
+}
+
+function cross( a, b ) {
+
+	return [
+		a[ 1 ] * b[ 2 ] - a[ 2 ] * b[ 1 ],
+		a[ 2 ] * b[ 0 ] - a[ 0 ] * b[ 2 ],
+		a[ 0 ] * b[ 1 ] - a[ 1 ] * b[ 0 ]
+	];
 
 }
 

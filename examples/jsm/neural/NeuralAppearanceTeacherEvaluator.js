@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as TSL from 'three/tsl';
+import { EnvironmentNode, PhysicalLightingModel } from 'three/webgpu';
 import {
 	computeAtlasDimensions,
 	createAtlasTextures,
@@ -16,7 +17,6 @@ import {
 const DEFAULT_BATCH_SIZE = 1024;
 const DEFAULT_TILE_SIZE = 8;
 const DEFAULT_UV_GRADIENT_SCALE = 1 / 1024;
-const PhysicalLightingModel = THREE.PhysicalLightingModel || class {};
 
 class NeuralAppearanceTeacherEvaluator {
 
@@ -196,6 +196,7 @@ class NeuralAppearanceTeacherEvaluator {
 
 		const sampleMaterial = this.material.clone ? this.material.clone() : this.material;
 		sampleMaterial.contextNode = TSL.replaceUV( nodes.materialUv, TSL.overrideNodes( [
+			[ TSL.normalView, nodes.normal ],
 			[ TSL.tangentView, nodes.tangent ],
 			[ TSL.bitangentView, nodes.bitangent ],
 			[ TSL.positionViewDirection, nodes.wo ]
@@ -258,6 +259,8 @@ class NeuralAppearanceTeacherEvaluator {
 
 			}
 
+			// Incoming PMREM irradiance (N, mip 1). Training input only; outgoing
+			// IBL is sampled with iblIndirect / PhysicalLightingModel.
 			sampleMaterial.lights = false;
 			sampleMaterial.lightsNode = TSL.lights( [] );
 			const envNode = TSL.pmremTexture( this.environment );
@@ -267,7 +270,7 @@ class NeuralAppearanceTeacherEvaluator {
 			} );
 			sampleMaterial.outputNode = TSL.vec4( irradiance, 1 );
 
-		} else if ( this._targetMode === 'iblIndirect' ) {
+		} else if ( this._targetMode === 'iblIndirect' || this._targetMode === 'iblIndirectRadiance' || this._targetMode === 'iblIndirectIrradiance' ) {
 
 			if ( this.environment === null ) {
 
@@ -275,9 +278,25 @@ class NeuralAppearanceTeacherEvaluator {
 
 			}
 
+			const isolate = this._targetMode === 'iblIndirectRadiance' ? 'radiance' :
+				this._targetMode === 'iblIndirectIrradiance' ? 'irradiance' :
+					'full';
+
 			sampleMaterial.lightsNode = TSL.lights( [] ).context( {
-				lightingModel: new NeuralTeacherIBLLightingModel( sampleMaterial )
+				lightingModel: new NeuralTeacherIBLLightingModel( sampleMaterial, isolate )
 			} );
+			sampleMaterial.setupEnvironment = function ( builder ) {
+
+				let envNode = THREE.NodeMaterial.prototype.setupEnvironment.call( this, builder );
+				if ( envNode === null && builder.environmentNode ) envNode = builder.environmentNode;
+				return envNode ? new NeuralTeacherIBLEnvironmentNode( envNode, isolate ) : null;
+
+			};
+			sampleMaterial.customProgramCacheKey = function () {
+
+				return THREE.NodeMaterial.prototype.customProgramCacheKey.call( this ) + '|teacherIblIsolate:' + isolate;
+
+			};
 
 		} else {
 
@@ -296,7 +315,7 @@ class NeuralAppearanceTeacherEvaluator {
 		this._mesh = new THREE.Mesh( this._geometry, this._material );
 		this._scene.add( this._mesh );
 		if ( this._light ) this._scene.add( this._light );
-		if ( this._targetMode === 'iblIndirect' || this._targetMode === 'iblIncoming' || this._targetMode === 'iblIrradiance' ) {
+		if ( this._targetMode === 'iblIndirect' || this._targetMode === 'iblIndirectRadiance' || this._targetMode === 'iblIndirectIrradiance' || this._targetMode === 'iblIncoming' || this._targetMode === 'iblIrradiance' ) {
 
 			this._scene.environment = this.environment;
 
@@ -381,19 +400,122 @@ class NeuralTeacherLightingModel extends PhysicalLightingModel {
 
 class NeuralTeacherIBLLightingModel extends PhysicalLightingModel {
 
-	constructor( material ) {
-
-		if ( THREE.PhysicalLightingModel === undefined ) {
-
-			throw new Error( 'THREE.NeuralAppearanceTeacherEvaluator: PhysicalLightingModel is required for IBL teacher sampling. Import three/webgpu for training.' );
-
-		}
+	constructor( material, isolate = 'full' ) {
 
 		super( material.useClearcoat, material.useSheen, material.useIridescence, material.useAnisotropy, material.useTransmission, material.useDispersion, material.useRetroreflection );
+
+		this.isolate = isolate;
 
 	}
 
 	direct( /*input, builder*/ ) {}
+
+}
+
+class NeuralTeacherIBLEnvironmentNode extends EnvironmentNode {
+
+	static get type() {
+
+		return 'NeuralTeacherIBLEnvironmentNode';
+
+	}
+
+	constructor( envNode = null, isolate = 'full' ) {
+
+		super( envNode );
+		this.isolate = isolate;
+
+	}
+
+	customCacheKey() {
+
+		const isolateKey = this.isolate === 'radiance' ? 1 : this.isolate === 'irradiance' ? 2 : 0;
+		return super.customCacheKey() + isolateKey;
+
+	}
+
+	setup( builder ) {
+
+		const { material } = builder;
+		let envNode = this.envNode;
+
+		if ( envNode.isTextureNode || envNode.isMaterialReferenceNode ) {
+
+			const value = ( envNode.isTextureNode ) ? envNode.value : material[ envNode.property ];
+			const cache = this._getPMREMNodeCache( builder.renderer );
+			let cacheEnvNode = cache.get( value );
+
+			if ( cacheEnvNode === undefined ) {
+
+				cacheEnvNode = TSL.pmremTexture( value );
+				cache.set( value, cacheEnvNode );
+
+			}
+
+			envNode = cacheEnvNode;
+
+		}
+
+		const useAnisotropy = material.useAnisotropy === true || material.anisotropy > 0;
+		const radianceNormalView = useAnisotropy ? TSL.bentNormalView : TSL.normalView;
+		const radiance = envNode.context( createRadianceContext( TSL.roughness, radianceNormalView ) ).mul( TSL.materialEnvIntensity );
+		const irradiance = envNode.context( createIrradianceContext( TSL.normalWorld ) ).mul( Math.PI ).mul( TSL.materialEnvIntensity );
+
+		if ( this.isolate !== 'irradiance' ) {
+
+			builder.context.radiance.addAssign( radiance.isolate() );
+
+		}
+
+		if ( this.isolate !== 'radiance' ) {
+
+			builder.context.iblIrradiance.addAssign( irradiance.isolate() );
+
+		}
+
+		const clearcoatRadiance = builder.context.lightingModel.clearcoatRadiance;
+
+		if ( clearcoatRadiance && this.isolate !== 'irradiance' ) {
+
+			clearcoatRadiance.addAssign(
+				envNode.context( createRadianceContext( TSL.clearcoatRoughness, TSL.clearcoatNormalView ) ).mul( TSL.materialEnvIntensity ).isolate()
+			);
+
+		}
+
+	}
+
+}
+
+function createRadianceContext( roughnessNode, normalViewNode ) {
+
+	let reflectVec = null;
+
+	return {
+		getUV: () => {
+
+			if ( reflectVec === null ) {
+
+				reflectVec = TSL.positionViewDirection.negate().reflect( normalViewNode );
+				reflectVec = TSL.pow4( roughnessNode ).mix( reflectVec, normalViewNode ).normalize();
+				reflectVec = reflectVec.transformDirection( TSL.cameraWorldMatrix );
+
+			}
+
+			return reflectVec;
+
+		},
+		getTextureLevel: () => roughnessNode
+	};
+
+}
+
+function createIrradianceContext( normalWorldNode ) {
+
+	return {
+		getUV: () => normalWorldNode,
+		getTextureLevel: () => TSL.float( 1 )
+	};
 
 }
 
@@ -428,5 +550,7 @@ function createGpuMaterialTeacher( material, renderer, options ) {
 
 export {
 	NeuralAppearanceTeacherEvaluator,
+	NeuralTeacherIBLLightingModel,
+	NeuralTeacherIBLEnvironmentNode,
 	createGpuMaterialTeacher
 };

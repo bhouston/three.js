@@ -1,14 +1,14 @@
 const FORMAT = 'three-neural-appearance';
-const VERSION = 5;
+const VERSION = 6;
 const LATENT_CHANNELS = 8;
 const LATENT_TEXTURES = 2;
 const CHANNELS_PER_TEXTURE = 4;
 const DECODER_INPUT_SIZE = 20;
 const IBL_INPUT_SIZE = 14;
 const IBL_OUTPUT_SIZE = 4;
-const INDIRECT_INPUT_SIZE = LATENT_CHANNELS + 3 + 3 + 3;
+const INDIRECT_INPUT_SIZE = LATENT_CHANNELS + 3 + 3;
 const INDIRECT_OUTPUT_SIZE = 3;
-const IBL_TARGET_SIZE = 14;
+const IBL_TARGET_SIZE = 17;
 const ROTATION_OUTPUT_SIZE = 12;
 const DEFAULT_WRAP = 'repeat';
 

@@ -39,6 +39,166 @@ function backwardNormalizeTSL( raw, norm, gradNorm ) {
 
 }
 
+function trainIndirectProbeHead( {
+	samplesStorage,
+	sampleOffset,
+	activationsStorage,
+	actBase,
+	weightsStorage,
+	gradWeightsAtomic,
+	wo,
+	a0,
+	iblScale,
+	sampleIblLoss,
+	iblHiddenSize,
+	probeSampleOffset,
+	targetSampleOffset,
+	layer0WeightsOffset,
+	layer0BiasesOffset,
+	layer1WeightsOffset,
+	layer1BiasesOffset,
+	actIndirectA0Offset,
+	actIndirectZ1Offset,
+	actIndirectA1Offset,
+	actIndirectZ2Offset,
+	actIndirectDelta2Offset,
+	actIndirectDelta1Offset,
+	actGradLatentsOffset
+} ) {
+
+	const indirectA0 = actBase.add( int( actIndirectA0Offset ) );
+
+	Loop( { start: 0, end: 8, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+
+		activationsStorage.element( indirectA0.add( c ) ).assign( activationsStorage.element( a0.add( c ) ) );
+
+	} );
+
+	activationsStorage.element( indirectA0.add( 8 ) ).assign( wo.x );
+	activationsStorage.element( indirectA0.add( 9 ) ).assign( wo.y );
+	activationsStorage.element( indirectA0.add( 10 ) ).assign( wo.z );
+	activationsStorage.element( indirectA0.add( 11 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset ) ) );
+	activationsStorage.element( indirectA0.add( 12 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 1 ) ) );
+	activationsStorage.element( indirectA0.add( 13 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 2 ) ) );
+
+	Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const val = weightsStorage.element( int( layer0BiasesOffset ).add( j ) ).toVar();
+		const rowOffset = int( layer0WeightsOffset ).add( j.mul( INDIRECT_INPUT_SIZE ) );
+
+		Loop( { start: 0, end: INDIRECT_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+			val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( indirectA0.add( i ) ) ) );
+
+		} );
+
+		activationsStorage.element( actBase.add( int( actIndirectZ1Offset ) ).add( j ) ).assign( val );
+		activationsStorage.element( actBase.add( int( actIndirectA1Offset ) ).add( j ) ).assign( max( val, float( 0.0 ) ) );
+
+	} );
+
+	Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const val = weightsStorage.element( int( layer1BiasesOffset ).add( j ) ).toVar();
+		const rowOffset = int( layer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
+
+		Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+			val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( actBase.add( int( actIndirectA1Offset ) ).add( i ) ) ) );
+
+		} );
+
+		activationsStorage.element( actBase.add( int( actIndirectZ2Offset ) ).add( j ) ).assign( val );
+
+	} );
+
+	const indirectDelta2 = actBase.add( int( actIndirectDelta2Offset ) );
+
+	Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+
+		const z3_c = activationsStorage.element( actBase.add( int( actIndirectZ2Offset ) ).add( c ) );
+		const yHat_c = max( z3_c, float( 0.0 ) );
+		const target_c = samplesStorage.element( sampleOffset.add( targetSampleOffset ).add( c ) );
+		const predClamped = max( yHat_c, float( 1e-6 ) );
+		const refClamped = max( target_c, float( 1e-6 ) );
+		const predLog = pow( predClamped, float( 1.0 / 3.0 ) ).sub( 1.0 ).mul( 3.0 );
+		const refLog = pow( refClamped, float( 1.0 / 3.0 ) ).sub( 1.0 ).mul( 3.0 );
+		const diff = predLog.sub( refLog );
+		sampleIblLoss.addAssign( diff.abs().mul( iblScale ).div( 3.0 ) );
+		const leak = select( z3_c.greaterThan( 0.0 ), float( 1.0 ), float( OUTPUT_CLAMP_GRADIENT_LEAK ) );
+		const grad = sign( diff ).mul( pow( predClamped, float( - 2.0 / 3.0 ) ) ).mul( iblScale ).div( 3.0 ).mul( leak );
+		activationsStorage.element( indirectDelta2.add( c ) ).assign( grad );
+
+	} );
+
+	Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const delta_j = activationsStorage.element( indirectDelta2.add( j ) );
+		atomicAdd( gradWeightsAtomic.element( int( layer1BiasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
+		const rowOffset = int( layer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
+
+		Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+			const a1_i = activationsStorage.element( actBase.add( int( actIndirectA1Offset ) ).add( i ) );
+			atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta_j.mul( a1_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
+
+		} );
+
+	} );
+
+	Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+		const gradInput_i = float( 0.0 ).toVar();
+
+		Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+			const delta_j = activationsStorage.element( indirectDelta2.add( j ) );
+			const w_ji = weightsStorage.element( int( layer1WeightsOffset ).add( j.mul( iblHiddenSize ) ).add( i ) );
+			gradInput_i.addAssign( delta_j.mul( w_ji ) );
+
+		} );
+
+		const z1_i = activationsStorage.element( actBase.add( int( actIndirectZ1Offset ) ).add( i ) );
+		activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( i ) ).assign(
+			select( z1_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) )
+		);
+
+	} );
+
+	Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const delta1_j = activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( j ) );
+		atomicAdd( gradWeightsAtomic.element( int( layer0BiasesOffset ).add( j ) ), int( delta1_j.mul( float( FIXED_POINT_SCALE ) ) ) );
+		const rowOffset = int( layer0WeightsOffset ).add( j.mul( INDIRECT_INPUT_SIZE ) );
+
+		Loop( { start: 0, end: INDIRECT_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+			const a0_i = activationsStorage.element( indirectA0.add( i ) );
+			atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta1_j.mul( a0_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
+
+		} );
+
+	} );
+
+	Loop( { start: 0, end: 8, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+
+		const gradLatent_c = float( 0.0 ).toVar();
+
+		Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+			const delta1_j = activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( j ) );
+			const w_jc = weightsStorage.element( int( layer0WeightsOffset ).add( j.mul( INDIRECT_INPUT_SIZE ) ).add( c ) );
+			gradLatent_c.addAssign( delta1_j.mul( w_jc ) );
+
+		} );
+
+		const curGradZ = activationsStorage.element( actBase.add( int( actGradLatentsOffset ) ).add( c ) );
+		activationsStorage.element( actBase.add( int( actGradLatentsOffset ) ).add( c ) ).assign( curGradZ.add( gradLatent_c ) );
+
+	} );
+
+}
+
 function wrapIndexTSL( val, size ) {
 
 	return val.mod( size ).add( size ).mod( size );
@@ -90,10 +250,14 @@ function createTrainBatchComputeNode( gpuModel ) {
 		iblLayer0BiasesOffset,
 		iblLayer1WeightsOffset,
 		iblLayer1BiasesOffset,
-		indirectLayer0WeightsOffset,
-		indirectLayer0BiasesOffset,
-		indirectLayer1WeightsOffset,
-		indirectLayer1BiasesOffset,
+		indirectRadianceLayer0WeightsOffset,
+		indirectRadianceLayer0BiasesOffset,
+		indirectRadianceLayer1WeightsOffset,
+		indirectRadianceLayer1BiasesOffset,
+		indirectIrradianceLayer0WeightsOffset,
+		indirectIrradianceLayer0BiasesOffset,
+		indirectIrradianceLayer1WeightsOffset,
+		indirectIrradianceLayer1BiasesOffset,
 		emissionWeightsOffset,
 		emissionBiasesOffset,
 		opacityWeightsOffset,
@@ -334,7 +498,8 @@ function createTrainBatchComputeNode( gpuModel ) {
 			} );
 
 			// 7. Cube-Root Power Loss & Delta 3
-			const sampleLoss = float( 0.0 ).toVar();
+			const sampleDirectLoss = float( 0.0 ).toVar();
+			const sampleIblLoss = float( 0.0 ).toVar();
 
 			Loop( { start: 0, end: 3, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
@@ -349,7 +514,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 				const diff = predLog.sub( refLog );
 
 				const channelLoss = diff.abs().mul( sampleWeight ).mul( invBatchUniform ).div( 3.0 );
-				sampleLoss.addAssign( channelLoss );
+				sampleDirectLoss.addAssign( channelLoss );
 
 				const gradPred = sign( diff ).mul( pow( predClamped, float( - 2.0 / 3.0 ) ) ).mul( sampleWeight ).mul( invBatchUniform ).div( 3.0 );
 				const outputClampGradient = select( z3_c.greaterThan( 0.0 ), float( 1.0 ), float( OUTPUT_CLAMP_GRADIENT_LEAK ) );
@@ -629,7 +794,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 						const refLog = pow( refClamped, float( 1.0 / 3.0 ) ).sub( 1.0 ).mul( 3.0 );
 						const diff = predLog.sub( refLog );
 
-						sampleLoss.addAssign( diff.abs().mul( sampleWeight ).mul( invBatchUniform ).div( 3.0 ) );
+						sampleDirectLoss.addAssign( diff.abs().mul( sampleWeight ).mul( invBatchUniform ).div( 3.0 ) );
 
 						const gradPred = sign( diff ).mul( pow( predClamped, float( - 2.0 / 3.0 ) ) ).mul( sampleWeight ).mul( invBatchUniform ).div( 3.0 );
 						const outputClampGradient = select( val.greaterThan( 0.0 ), float( 1.0 ), float( OUTPUT_CLAMP_GRADIENT_LEAK ) );
@@ -672,7 +837,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 					const opPred = float( 1.0 ).div( float( 1.0 ).add( exp( val.negate() ) ) );
 					const bce = opTarget.mul( log( max( opPred, float( 1e-7 ) ) ) )
 						.add( float( 1.0 ).sub( opTarget ).mul( log( max( float( 1.0 ).sub( opPred ), float( 1e-7 ) ) ) ) ).negate();
-					sampleLoss.addAssign( bce.mul( sampleWeight ).mul( invBatchUniform ) );
+					sampleDirectLoss.addAssign( bce.mul( sampleWeight ).mul( invBatchUniform ) );
 
 					const delta_op = opPred.sub( opTarget ).mul( sampleWeight ).mul( invBatchUniform );
 					atomicAdd( gradWeightsAtomic.element( int( opacityBiasesOffset ) ), int( delta_op.mul( float( FIXED_POINT_SCALE ) ) ) );
@@ -692,7 +857,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			}
 
-			// 14. IBL query (14 -> H -> 4) and indirect (17 -> H -> 3) heads.
+			// 14. IBL query (14 -> H -> 4) and separate radiance/irradiance (14 -> H -> 3) heads.
 			const iblWeight = samplesStorage.element( sampleOffset.add( 20 ) );
 
 			If( iblWeight.greaterThan( 0.0 ), () => {
@@ -766,7 +931,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 					samplesStorage.element( sampleOffset.add( 23 ) )
 				).normalize();
 				const dirScale = iblScale;
-				sampleLoss.addAssign( float( 1.0 ).sub( predDirection.dot( targetDirection ) ).mul( dirScale ) );
+				sampleIblLoss.addAssign( float( 1.0 ).sub( predDirection.dot( targetDirection ) ).mul( dirScale ) );
 				const gradDirection = backwardNormalizeTSL( rawDirection, predDirection, targetDirection.negate().mul( dirScale ) );
 				activationsStorage.element( iblDelta2.add( 0 ) ).assign( gradDirection.x );
 				activationsStorage.element( iblDelta2.add( 1 ) ).assign( gradDirection.y );
@@ -776,7 +941,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 				const predRough = float( 1.0 ).div( float( 1.0 ).add( exp( zRough.negate() ) ) );
 				const targetRough = samplesStorage.element( sampleOffset.add( 24 ) );
 				const roughDiff = predRough.sub( targetRough );
-				sampleLoss.addAssign( roughDiff.abs().mul( iblScale ) );
+				sampleIblLoss.addAssign( roughDiff.abs().mul( iblScale ) );
 				activationsStorage.element( iblDelta2.add( 3 ) ).assign(
 					sign( roughDiff ).mul( predRough.mul( float( 1.0 ).sub( predRough ) ) ).mul( iblScale )
 				);
@@ -847,144 +1012,66 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 				} );
 
-				const indirectA0 = actBase.add( int( actIndirectA0Offset ) );
-
-				Loop( { start: 0, end: 8, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
-
-					activationsStorage.element( indirectA0.add( c ) ).assign( activationsStorage.element( a0.add( c ) ) );
-
+				trainIndirectProbeHead( {
+					samplesStorage,
+					sampleOffset,
+					activationsStorage,
+					actBase,
+					weightsStorage,
+					gradWeightsAtomic,
+					wo,
+					a0,
+					iblScale,
+					sampleIblLoss,
+					iblHiddenSize,
+					probeSampleOffset: 25,
+					targetSampleOffset: 31,
+					layer0WeightsOffset: indirectRadianceLayer0WeightsOffset,
+					layer0BiasesOffset: indirectRadianceLayer0BiasesOffset,
+					layer1WeightsOffset: indirectRadianceLayer1WeightsOffset,
+					layer1BiasesOffset: indirectRadianceLayer1BiasesOffset,
+					actIndirectA0Offset,
+					actIndirectZ1Offset,
+					actIndirectA1Offset,
+					actIndirectZ2Offset,
+					actIndirectDelta2Offset,
+					actIndirectDelta1Offset,
+					actGradLatentsOffset
 				} );
 
-				activationsStorage.element( indirectA0.add( 8 ) ).assign( wo.x );
-				activationsStorage.element( indirectA0.add( 9 ) ).assign( wo.y );
-				activationsStorage.element( indirectA0.add( 10 ) ).assign( wo.z );
-				activationsStorage.element( indirectA0.add( 11 ) ).assign( samplesStorage.element( sampleOffset.add( 25 ) ) );
-				activationsStorage.element( indirectA0.add( 12 ) ).assign( samplesStorage.element( sampleOffset.add( 26 ) ) );
-				activationsStorage.element( indirectA0.add( 13 ) ).assign( samplesStorage.element( sampleOffset.add( 27 ) ) );
-				activationsStorage.element( indirectA0.add( 14 ) ).assign( samplesStorage.element( sampleOffset.add( 28 ) ) );
-				activationsStorage.element( indirectA0.add( 15 ) ).assign( samplesStorage.element( sampleOffset.add( 29 ) ) );
-				activationsStorage.element( indirectA0.add( 16 ) ).assign( samplesStorage.element( sampleOffset.add( 30 ) ) );
-
-				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const val = weightsStorage.element( int( indirectLayer0BiasesOffset ).add( j ) ).toVar();
-					const rowOffset = int( indirectLayer0WeightsOffset ).add( j.mul( INDIRECT_INPUT_SIZE ) );
-
-					Loop( { start: 0, end: INDIRECT_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-						val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( indirectA0.add( i ) ) ) );
-
-					} );
-
-					activationsStorage.element( actBase.add( int( actIndirectZ1Offset ) ).add( j ) ).assign( val );
-					activationsStorage.element( actBase.add( int( actIndirectA1Offset ) ).add( j ) ).assign( max( val, float( 0.0 ) ) );
-
-				} );
-
-				Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const val = weightsStorage.element( int( indirectLayer1BiasesOffset ).add( j ) ).toVar();
-					const rowOffset = int( indirectLayer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
-
-					Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-						val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( actBase.add( int( actIndirectA1Offset ) ).add( i ) ) ) );
-
-					} );
-
-					activationsStorage.element( actBase.add( int( actIndirectZ2Offset ) ).add( j ) ).assign( val );
-
-				} );
-
-				const indirectDelta2 = actBase.add( int( actIndirectDelta2Offset ) );
-
-				Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
-
-					const z3_c = activationsStorage.element( actBase.add( int( actIndirectZ2Offset ) ).add( c ) );
-					const yHat_c = max( z3_c, float( 0.0 ) );
-					const target_c = samplesStorage.element( sampleOffset.add( 31 ).add( c ) );
-					const predClamped = max( yHat_c, float( 1e-6 ) );
-					const refClamped = max( target_c, float( 1e-6 ) );
-					const predLog = pow( predClamped, float( 1.0 / 3.0 ) ).sub( 1.0 ).mul( 3.0 );
-					const refLog = pow( refClamped, float( 1.0 / 3.0 ) ).sub( 1.0 ).mul( 3.0 );
-					const diff = predLog.sub( refLog );
-					sampleLoss.addAssign( diff.abs().mul( iblScale ).div( 3.0 ) );
-					const leak = select( z3_c.greaterThan( 0.0 ), float( 1.0 ), float( OUTPUT_CLAMP_GRADIENT_LEAK ) );
-					const grad = sign( diff ).mul( pow( predClamped, float( - 2.0 / 3.0 ) ) ).mul( iblScale ).div( 3.0 ).mul( leak );
-					activationsStorage.element( indirectDelta2.add( c ) ).assign( grad );
-
-				} );
-
-				Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const delta_j = activationsStorage.element( indirectDelta2.add( j ) );
-					atomicAdd( gradWeightsAtomic.element( int( indirectLayer1BiasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-					const rowOffset = int( indirectLayer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
-
-					Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-						const a1_i = activationsStorage.element( actBase.add( int( actIndirectA1Offset ) ).add( i ) );
-						atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta_j.mul( a1_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
-
-					} );
-
-				} );
-
-				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const gradInput_i = float( 0.0 ).toVar();
-
-					Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-						const delta_j = activationsStorage.element( indirectDelta2.add( j ) );
-						const w_ji = weightsStorage.element( int( indirectLayer1WeightsOffset ).add( j.mul( iblHiddenSize ) ).add( i ) );
-						gradInput_i.addAssign( delta_j.mul( w_ji ) );
-
-					} );
-
-					const z1_i = activationsStorage.element( actBase.add( int( actIndirectZ1Offset ) ).add( i ) );
-					activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( i ) ).assign(
-						select( z1_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) )
-					);
-
-				} );
-
-				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const delta1_j = activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( j ) );
-					atomicAdd( gradWeightsAtomic.element( int( indirectLayer0BiasesOffset ).add( j ) ), int( delta1_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-					const rowOffset = int( indirectLayer0WeightsOffset ).add( j.mul( INDIRECT_INPUT_SIZE ) );
-
-					Loop( { start: 0, end: INDIRECT_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-						const a0_i = activationsStorage.element( indirectA0.add( i ) );
-						atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta1_j.mul( a0_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
-
-					} );
-
-				} );
-
-				Loop( { start: 0, end: 8, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
-
-					const gradLatent_c = float( 0.0 ).toVar();
-
-					Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-						const delta1_j = activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( j ) );
-						const w_jc = weightsStorage.element( int( indirectLayer0WeightsOffset ).add( j.mul( INDIRECT_INPUT_SIZE ) ).add( c ) );
-						gradLatent_c.addAssign( delta1_j.mul( w_jc ) );
-
-					} );
-
-					const curGradZ = activationsStorage.element( actBase.add( int( actGradLatentsOffset ) ).add( c ) );
-					activationsStorage.element( actBase.add( int( actGradLatentsOffset ) ).add( c ) ).assign( curGradZ.add( gradLatent_c ) );
-
+				trainIndirectProbeHead( {
+					samplesStorage,
+					sampleOffset,
+					activationsStorage,
+					actBase,
+					weightsStorage,
+					gradWeightsAtomic,
+					wo,
+					a0,
+					iblScale,
+					sampleIblLoss,
+					iblHiddenSize,
+					probeSampleOffset: 28,
+					targetSampleOffset: 34,
+					layer0WeightsOffset: indirectIrradianceLayer0WeightsOffset,
+					layer0BiasesOffset: indirectIrradianceLayer0BiasesOffset,
+					layer1WeightsOffset: indirectIrradianceLayer1WeightsOffset,
+					layer1BiasesOffset: indirectIrradianceLayer1BiasesOffset,
+					actIndirectA0Offset,
+					actIndirectZ1Offset,
+					actIndirectA1Offset,
+					actIndirectZ2Offset,
+					actIndirectDelta2Offset,
+					actIndirectDelta1Offset,
+					actGradLatentsOffset
 				} );
 
 			} );
 
 			// Accumulate loss after all active heads contribute.
-			atomicAdd( lossAtomic.element( 0 ), int( sampleLoss.mul( float( FIXED_POINT_SCALE ) ) ) );
+			atomicAdd( lossAtomic.element( 0 ), int( sampleDirectLoss.add( sampleIblLoss ).mul( float( FIXED_POINT_SCALE ) ) ) );
+			atomicAdd( lossAtomic.element( 1 ), int( sampleDirectLoss.mul( float( FIXED_POINT_SCALE ) ) ) );
+			atomicAdd( lossAtomic.element( 2 ), int( sampleIblLoss.mul( float( FIXED_POINT_SCALE ) ) ) );
 
 			// 15. Scatter Bilinear Latent Gradients
 			Loop( { start: 0, end: 8, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {

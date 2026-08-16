@@ -24,7 +24,11 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 	let opacityLoss = 0;
 	let opacityCount = 0;
 	let iblLoss = 0;
+	let iblQueryLoss = 0;
+	let iblIndirectLoss = 0;
 	let iblCount = 0;
+	let iblQueryCount = 0;
+	let iblIndirectCount = 0;
 	const whiteFurnace = createDifferenceMetric();
 	const prefilteredIBL = createDifferenceMetric();
 	const mipConsistency = createDifferenceMetric();
@@ -111,25 +115,32 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 					outputs.ibl.direction[ 1 ] - sample.iblDirection[ 1 ],
 					outputs.ibl.direction[ 2 ] - sample.iblDirection[ 2 ]
 				);
-				iblLoss += ( directionError + Math.abs( outputs.ibl.roughness - sample.iblRoughness ) ) * invAuxBatch / 2;
+				const queryLoss = ( directionError + Math.abs( outputs.ibl.roughness - sample.iblRoughness ) ) / 2;
+				iblQueryLoss += queryLoss * invAuxBatch;
+				iblLoss += queryLoss * invAuxBatch;
+				iblQueryCount ++;
 				iblCount ++;
 
 			}
 
-			if ( Array.isArray( sample.iblIndirect ) ) {
+			if ( Array.isArray( sample.iblIndirectRadiance ) || Array.isArray( sample.iblIndirectIrradiance ) ) {
 
-				const predicted = evaluateNeuralPrefilteredIBL( json, {
-					...sample,
-					iblIncoming: sample.iblIncoming || [ 1, 1, 1 ],
-					iblIrradiance: sample.iblIrradiance || [ 1, 1, 1 ]
-				} );
+				const predicted = evaluateNeuralAppearanceOutputs( json, sample );
+				const targetRadiance = sample.iblIndirectRadiance || [ 0, 0, 0 ];
+				const targetIrradiance = sample.iblIndirectIrradiance || [ 0, 0, 0 ];
+				const predictedRadiance = predicted.indirectRadiance || [ 0, 0, 0 ];
+				const predictedIrradiance = predicted.indirectIrradiance || [ 0, 0, 0 ];
 
 				for ( let i = 0; i < 3; i ++ ) {
 
-					iblLoss += Math.abs( predicted[ i ] - sample.iblIndirect[ i ] ) * invAuxBatch / 3;
+					const radianceLoss = Math.abs( predictedRadiance[ i ] - targetRadiance[ i ] ) * invAuxBatch / 3;
+					const irradianceLoss = Math.abs( predictedIrradiance[ i ] - targetIrradiance[ i ] ) * invAuxBatch / 3;
+					iblIndirectLoss += radianceLoss + irradianceLoss;
+					iblLoss += radianceLoss + irradianceLoss;
 
 				}
 
+				iblIndirectCount ++;
 				iblCount ++;
 
 			}
@@ -156,11 +167,14 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 	const auxiliaryLoss = emissionLoss + opacityLoss + iblLoss;
 
 	return {
-		loss: emissionCount + opacityCount + iblCount > 0 ? auxiliaryLoss : brdfLoss,
+		loss: brdfLoss + auxiliaryLoss,
+		directLoss: brdfLoss,
 		brdfLoss,
 		emissionLoss: emissionCount > 0 ? emissionLoss : null,
 		opacityLoss: opacityCount > 0 ? opacityLoss : null,
 		iblLoss: iblCount > 0 ? iblLoss : null,
+		iblQueryLoss: iblQueryCount > 0 ? iblQueryLoss : null,
+		iblIndirectLoss: iblIndirectCount > 0 ? iblIndirectLoss : null,
 		sampleCount: samples.length,
 		mipLevels: json.latents.textures[ 0 ].mipmaps.length,
 		preview,

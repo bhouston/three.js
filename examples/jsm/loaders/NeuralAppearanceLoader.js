@@ -185,16 +185,17 @@ function toHalfFloatArray( data ) {
 
 function normalizeOutputs( outputs ) {
 
-	if ( ! outputs || ! outputs.ibl || ! outputs.indirect ) {
+	if ( ! outputs || ! outputs.ibl || ! outputs.indirectRadiance || ! outputs.indirectIrradiance ) {
 
-		throw new Error( 'THREE.NeuralAppearanceLoader: Manifest must define outputs.ibl and outputs.indirect.' );
+		throw new Error( 'THREE.NeuralAppearanceLoader: Manifest must define outputs.ibl, outputs.indirectRadiance, and outputs.indirectIrradiance.' );
 
 	}
 
 	return {
 		brdf: normalizeOutputHead( outputs.brdf, 'outputs.brdf', BRDF_INPUT_SIZE, 3, true ),
 		ibl: normalizeOutputHead( outputs.ibl, 'outputs.ibl', IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, false ),
-		indirect: normalizeOutputHead( outputs.indirect, 'outputs.indirect', INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE, false ),
+		indirectRadiance: normalizeOutputHead( outputs.indirectRadiance, 'outputs.indirectRadiance', INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE, false ),
+		indirectIrradiance: normalizeOutputHead( outputs.indirectIrradiance, 'outputs.indirectIrradiance', INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE, false ),
 		emission: outputs.emission ? normalizeOutputHead( outputs.emission, 'outputs.emission', LATENT_CHANNELS, 3, false ) : null,
 		opacity: outputs.opacity ? normalizeOpacityHead( outputs.opacity ) : null
 	};

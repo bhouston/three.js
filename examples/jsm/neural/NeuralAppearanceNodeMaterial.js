@@ -193,7 +193,7 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 	 */
 	setupLighting( builder ) {
 
-		if ( this.debugView === 'normal' || this.debugView === 'reflection' || this.debugView === 'roughness' ) {
+		if ( this.debugView === 'normal' || this.debugView === 'reflection' || this.debugView === 'roughness' || this.debugView === 'irradiance' ) {
 
 			const debug = evaluateNeuralDebugShading( this );
 
@@ -203,7 +203,9 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 
 			}
 
-			const direction = this.debugView === 'normal' ? debug.viewNormal : debug.viewReflect;
+			const direction = this.debugView === 'normal' ? debug.viewNormal :
+				this.debugView === 'irradiance' ? debug.viewIrradiance :
+					debug.viewReflect;
 
 			return packDebugDirection( direction );
 
@@ -265,6 +267,8 @@ class NeuralAppearanceLightingModel extends THREE.LightingModel {
 
 	direct( { lightDirection, lightColor, reflectedLight } ) {
 
+		if ( isIsolatedIblDebugView( this.material.debugView ) ) return;
+
 		const material = this.material;
 		const brdf = evaluateNeuralBRDF( material, lightDirection, this._fragmentContext, this._evaluateBRDF );
 
@@ -277,11 +281,21 @@ class NeuralAppearanceLightingModel extends THREE.LightingModel {
 		const envNode = builder.context.neuralEnvironmentNode;
 		if ( envNode === undefined || envNode === null ) return;
 
+		const isolate = this.material.debugView === 'iblRadiance' ? 'radiance' :
+			this.material.debugView === 'iblIrradiance' ? 'irradiance' :
+				'full';
+
 		builder.context.reflectedLight.indirectSpecular.addAssign(
-			evaluateNeuralIBL( this.material, envNode, this._fragmentContext ).mul( this.material._intensityNode )
+			evaluateNeuralIBL( this.material, envNode, this._fragmentContext, isolate ).mul( this.material._intensityNode )
 		);
 
 	}
+
+}
+
+function isIsolatedIblDebugView( debugView ) {
+
+	return debugView === 'ibl' || debugView === 'iblRadiance' || debugView === 'iblIrradiance';
 
 }
 

@@ -18,7 +18,8 @@ function createModel( options, random ) {
 	const decoder = createMLP( DECODER_INPUT_SIZE, [ options.hiddenSize, options.hiddenSize ], 3, random, 'relu', 'linear' );
 	const iblHiddenSize = options.iblHiddenSize || Math.min( Math.max( options.hiddenSize || 32, 16 ), 32 );
 	const iblHead = createMLP( IBL_INPUT_SIZE, [ iblHiddenSize ], IBL_OUTPUT_SIZE, random, 'relu', 'linear' );
-	const indirectHead = createMLP( INDIRECT_INPUT_SIZE, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
+	const indirectRadianceHead = createMLP( INDIRECT_INPUT_SIZE, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
+	const indirectIrradianceHead = createMLP( INDIRECT_INPUT_SIZE, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
 	const emissionHead = options.outputFeatures && options.outputFeatures.emission ?
 		createMLP( LATENT_CHANNELS, [], 3, random, 'relu', 'linear' ) :
 		null;
@@ -30,7 +31,8 @@ function createModel( options, random ) {
 	const model = {
 		decoder,
 		iblHead,
-		indirectHead,
+		indirectRadianceHead,
+		indirectIrradianceHead,
 		emissionHead,
 		opacityHead,
 		rotationWeights,
@@ -244,19 +246,17 @@ function buildIBLInput( latents, rotationWeights, wo ) {
 
 }
 
-function buildIndirectInput( latents, wo, incomingRadiance, incomingIrradiance ) {
+function buildIndirectProbeInput( latents, wo, probe ) {
 
 	const input = latents.slice();
-	const incoming = incomingRadiance || [ 1, 1, 1 ];
-	const irradiance = incomingIrradiance || [ 1, 1, 1 ];
+	const incoming = probe || [ 1, 1, 1 ];
 
 	input.push( wo[ 0 ], wo[ 1 ], wo[ 2 ] );
 	input.push( incoming[ 0 ], incoming[ 1 ], incoming[ 2 ] );
-	input.push( irradiance[ 0 ], irradiance[ 1 ], irradiance[ 2 ] );
 
 	if ( input.length !== INDIRECT_INPUT_SIZE ) {
 
-		throw new Error( `THREE.NeuralAppearanceModel: Indirect input has ${ input.length } values, expected ${ INDIRECT_INPUT_SIZE }.` );
+		throw new Error( `THREE.NeuralAppearanceModel: Indirect probe input has ${ input.length } values, expected ${ INDIRECT_INPUT_SIZE }.` );
 
 	}
 
@@ -352,7 +352,7 @@ export {
 	buildDecoderInput,
 	forwardIBLInput,
 	buildIBLInput,
-	buildIndirectInput,
+	buildIndirectProbeInput,
 	unpackIBLOutput,
 	getSampleWeightSum,
 	dot,

@@ -4,7 +4,7 @@ import { sigmoid } from './NeuralAppearanceMLP.js';
 import {
 	buildDecoderInput,
 	buildIBLInput,
-	buildIndirectInput,
+	buildIndirectProbeInput,
 	unpackIBLOutput,
 	normalize,
 	wrapIndex
@@ -53,11 +53,13 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 		const ibl1 = evaluateIBLHead( json, latents1, wo );
 		result.ibl = mixIBLOutputs( ibl0, ibl1, fracMip );
 
-		if ( json.outputs.indirect ) {
+		if ( json.outputs.indirectRadiance || json.outputs.indirectIrradiance ) {
 
-			const indirect0 = evaluateIndirectHead( json, latents0, wo, reference );
-			const indirect1 = evaluateIndirectHead( json, latents1, wo, reference );
-			result.indirect = mixArray( indirect0, indirect1, fracMip );
+			const indirect0 = evaluateIndirectHeads( json, latents0, wo, reference );
+			const indirect1 = evaluateIndirectHeads( json, latents1, wo, reference );
+			result.indirectRadiance = mixArray( indirect0.indirectRadiance, indirect1.indirectRadiance, fracMip );
+			result.indirectIrradiance = mixArray( indirect0.indirectIrradiance, indirect1.indirectIrradiance, fracMip );
+			result.indirect = mixArray( indirect0.indirect, indirect1.indirect, fracMip );
 
 		}
 
@@ -92,7 +94,14 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 		brdf: evaluateDecoderLayers( brdf.layers, input, brdf.outputActivation ),
 		ibl: evaluateIBLHead( json, latents, wo )
 	};
-	if ( json.outputs.indirect ) result.indirect = evaluateIndirectHead( json, latents, wo, reference );
+	if ( json.outputs.indirectRadiance || json.outputs.indirectIrradiance ) {
+
+		const indirect = evaluateIndirectHeads( json, latents, wo, reference );
+		result.indirectRadiance = indirect.indirectRadiance;
+		result.indirectIrradiance = indirect.indirectIrradiance;
+		result.indirect = indirect.indirect;
+
+	}
 
 	if ( json.outputs.emission ) {
 
@@ -110,13 +119,26 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 
 }
 
-function evaluateIndirectHead( json, latents, wo, reference ) {
+function evaluateIndirectHeads( json, latents, wo, reference ) {
 
 	const incoming = ( reference && ( reference.iblIncoming || reference.prefilteredSpecular ) ) || [ 1, 1, 1 ];
 	const irradiance = ( reference && reference.iblIrradiance ) || [ 1, 1, 1 ];
-	const input = buildIndirectInput( latents, wo, incoming, irradiance );
+	const indirectRadiance = json.outputs.indirectRadiance ?
+		evaluateDecoderLayers( json.outputs.indirectRadiance.layers, buildIndirectProbeInput( latents, wo, incoming ), json.outputs.indirectRadiance.outputActivation ) :
+		[ 0, 0, 0 ];
+	const indirectIrradiance = json.outputs.indirectIrradiance ?
+		evaluateDecoderLayers( json.outputs.indirectIrradiance.layers, buildIndirectProbeInput( latents, wo, irradiance ), json.outputs.indirectIrradiance.outputActivation ) :
+		[ 0, 0, 0 ];
 
-	return evaluateDecoderLayers( json.outputs.indirect.layers, input, json.outputs.indirect.outputActivation );
+	return {
+		indirectRadiance,
+		indirectIrradiance,
+		indirect: [
+			indirectRadiance[ 0 ] + indirectIrradiance[ 0 ],
+			indirectRadiance[ 1 ] + indirectIrradiance[ 1 ],
+			indirectRadiance[ 2 ] + indirectIrradiance[ 2 ]
+		]
+	};
 
 }
 

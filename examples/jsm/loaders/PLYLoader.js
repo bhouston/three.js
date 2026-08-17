@@ -120,7 +120,11 @@ class PLYLoader extends Loader {
 	 * and color attributes can be added using the setCustomPropertyNameMapping method.
 	 * For example, the following maps the element properties “custom_property_a”
 	 * and “custom_property_b” to an attribute “customAttribute” with an item size of 2.
-	 * Attribute item sizes are set from the number of element properties in the property array.
+	 * The resulting attribute's item size is set from however many of the named
+	 * properties actually exist on the file's element - properties that are listed
+	 * in the mapping but not present in the file are skipped rather than padded in
+	 * with missing values. If none of the named properties exist, the attribute is
+	 * not created at all.
 	 *
 	 * ```js
 	 * loader.setCustomPropertyNameMapping( {
@@ -413,13 +417,18 @@ class PLYLoader extends Loader {
 			for ( const customAttr of Object.keys( scope.customPropertyMapping ) ) {
 
 				const propNames = scope.customPropertyMapping[ customAttr ];
-				const matched = propNames.map( name => properties.find( p => p.name === name ) );
-				const types = matched.filter( p => p ).map( p => p.type );
+
+				// Only properties that actually exist on this element are used - a
+				// mapping may list more names than the file provides (e.g. a caller
+				// probing for an optional, variable-length group of properties).
+				const matched = propNames.map( name => properties.find( p => p.name === name ) ).filter( p => p !== undefined );
+				const types = matched.map( p => p.type );
 				const uniform = types.length > 0 && types.every( type => type === types[ 0 ] );
 
 				custom[ customAttr ] = {
+					names: matched.map( p => p.name ),
 					type: uniform ? types[ 0 ] : 'float32',
-					usage: matched.every( p => p !== undefined ),
+					usage: matched.length > 0,
 				};
 
 			}
@@ -572,7 +581,8 @@ class PLYLoader extends Loader {
 				if ( buffer[ customProperty ].length > 0 ) {
 
 					const CustomClass = getBufferAttributeClass( vertexDescriptor.custom[ customProperty ].type );
-					geometry.setAttribute( customProperty, new CustomClass( buffer[ customProperty ], scope.customPropertyMapping[ customProperty ].length ) );
+					const itemSize = vertexDescriptor.custom[ customProperty ].names.length;
+					geometry.setAttribute( customProperty, new CustomClass( buffer[ customProperty ], itemSize ) );
 
 				}
 
@@ -588,7 +598,7 @@ class PLYLoader extends Loader {
 
 			if ( elementName === 'vertex' ) {
 
-				const { position, normal, uv, color } = attributeDescriptor;
+				const { position, normal, uv, color, custom } = attributeDescriptor;
 
 				if ( position.usage ) {
 
@@ -647,7 +657,10 @@ class PLYLoader extends Loader {
 
 				for ( const customProperty of Object.keys( scope.customPropertyMapping ) ) {
 
-					for ( const elementProperty of scope.customPropertyMapping[ customProperty ] ) {
+					// Only push properties that were actually found on this element -
+					// names requested in the mapping but absent from the file are
+					// skipped rather than recorded as missing/NaN values.
+					for ( const elementProperty of custom[ customProperty ].names ) {
 
 					  buffer[ customProperty ].push( element[ elementProperty ] );
 

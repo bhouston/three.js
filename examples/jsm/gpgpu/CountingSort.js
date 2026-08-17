@@ -1,5 +1,10 @@
 import { StorageBufferAttribute, DynamicDrawUsage } from 'three/webgpu';
-import { Fn, Loop, atomicAdd, atomicLoad, atomicStore, instanceIndex, storage, uint } from 'three/tsl';
+import {
+	Fn, If, Loop,
+	atomicAdd, atomicLoad, atomicStore,
+	instanceIndex, invocationLocalIndex, storage, subgroupIndex, uint, workgroupArray, workgroupBarrier,
+	subgroupAdd, subgroupElect, subgroupExclusiveAdd
+} from 'three/tsl';
 
 /**
  * A reusable GPU counting sort.
@@ -29,6 +34,16 @@ import { Fn, Loop, atomicAdd, atomicLoad, atomicStore, instanceIndex, storage, u
  *
  * // `sort.orderRead` now holds a storage buffer of `count` indices, ordered by bin.
  * ```
+ *
+ * The prefix sum pass - turning the per-bin histogram into per-bin write offsets - is the one part
+ * of this algorithm that cannot be parallelized across `count`; a naive implementation runs it as a
+ * single-invocation serial loop over `binCount` bins. When the current device reports the WebGPU
+ * `subgroups` feature (see {@link https://web3dsurvey.com/webgpu/features/subgroups} for current
+ * support), this class instead computes it with `subgroupAdd`/`subgroupExclusiveAdd`, which is much
+ * faster in practice since `workgroupSize` bins are scanned at once instead of one. This is decided
+ * automatically per renderer on the first {@link CountingSort#compute} call; when the feature isn't
+ * available, the original serial prefix sum is used instead, so no fallback handling is required by
+ * users of this class.
  *
  * @three_import import { CountingSort } from 'three/addons/gpgpu/CountingSort.js';
  */
@@ -65,6 +80,19 @@ class CountingSort {
 		 */
 		this.workgroupSize = workgroupSize;
 
+		/**
+		 * `binCount` rounded up to a multiple of `workgroupSize`. The histogram/offset buffers are
+		 * allocated at this size (instead of `binCount`) so that the subgroup-based prefix sum's
+		 * `workgroupBarrier()`-using kernel - which, per WGSL uniformity rules, cannot use the
+		 * automatic `instanceIndex >= count` bounds check the other passes rely on - can safely let
+		 * every invocation of its final tile read/write real, zero-initialized elements instead of
+		 * indices past the end of the buffer. See {@link CountingSort#_buildPrefixSubgroupNode}.
+		 *
+		 * @private
+		 * @type {number}
+		 */
+		this._paddedBinCount = Math.ceil( binCount / workgroupSize ) * workgroupSize;
+
 		const orderData = new Uint32Array( count );
 		for ( let i = 0; i < count; i ++ ) orderData[ i ] = i;
 
@@ -77,8 +105,8 @@ class CountingSort {
 		this.orderAttribute = new StorageBufferAttribute( orderData, 1, Uint32Array );
 
 		const binAttribute = new StorageBufferAttribute( new Uint32Array( count ), 1, Uint32Array );
-		const histogramAttribute = new StorageBufferAttribute( new Uint32Array( binCount ), 1, Uint32Array );
-		const offsetAttribute = new StorageBufferAttribute( new Uint32Array( binCount ), 1, Uint32Array );
+		const histogramAttribute = new StorageBufferAttribute( new Uint32Array( this._paddedBinCount ), 1, Uint32Array );
+		const offsetAttribute = new StorageBufferAttribute( new Uint32Array( this._paddedBinCount ), 1, Uint32Array );
 
 		/**
 		 * A read-only storage node for the sorted order buffer.
@@ -113,7 +141,7 @@ class CountingSort {
 		 *
 		 * @type {StorageBufferNode}
 		 */
-		this.histogramAtomic = storage( histogramAttribute, 'uint', binCount ).toAtomic();
+		this.histogramAtomic = storage( histogramAttribute, 'uint', this._paddedBinCount ).toAtomic();
 
 		/**
 		 * An atomic storage node used both for the exclusive prefix sum of the histogram and, during
@@ -121,7 +149,7 @@ class CountingSort {
 		 *
 		 * @type {StorageBufferNode}
 		 */
-		this.offsetAtomic = storage( offsetAttribute, 'uint', binCount ).toAtomic();
+		this.offsetAtomic = storage( offsetAttribute, 'uint', this._paddedBinCount ).toAtomic();
 
 		this._webGLBuffersEnabled = false;
 
@@ -134,6 +162,11 @@ class CountingSort {
 		this._prefixNode = null;
 		this._scatterNode = null;
 
+		// Lazily built, and only if the renderer reports the WebGPU `subgroups` feature - see
+		// `_buildPrefixSubgroupNode()` and `compute()`.
+		this._prefixSubgroupNode = null;
+		this._subgroupsSupported = null;
+
 	}
 
 	/**
@@ -144,14 +177,19 @@ class CountingSort {
 	 */
 	setBinNode( binNode ) {
 
-		const { binCount, workgroupSize, count } = this;
+		const { binCount, workgroupSize, count, _paddedBinCount } = this;
 
+		// Dispatched over `_paddedBinCount`, not `binCount`, so the padding bins beyond `binCount`
+		// are zeroed too; harmless since `binNode()` never produces a bin outside `[0, binCount)`,
+		// but required so that the subgroup-based prefix sum's uniform-control-flow kernel (see
+		// `_buildPrefixSubgroupNode()`) reads real, zeroed histogram entries there instead of
+		// out-of-bounds memory.
 		this._resetNode = Fn( () => {
 
 			atomicStore( this.histogramAtomic.element( instanceIndex ), uint( 0 ) );
 			atomicStore( this.offsetAtomic.element( instanceIndex ), uint( 0 ) );
 
-		} )().compute( binCount, [ workgroupSize ] ).setName( 'CountingSortReset' );
+		} )().compute( _paddedBinCount, [ workgroupSize ] ).setName( 'CountingSortReset' );
 
 		this._histogramNode = Fn( () => {
 
@@ -188,6 +226,79 @@ class CountingSort {
 	}
 
 	/**
+	 * Builds a parallel replacement for {@link CountingSort#_prefixNode} using WebGPU subgroup
+	 * intrinsics. Only called once, lazily, the first time {@link CountingSort#compute} is run on a
+	 * renderer that reports the `subgroups` feature.
+	 *
+	 * The naive, serial prefix sum ({@link CountingSort#_prefixNode}) is `O(binCount)` on a single
+	 * invocation. This instead runs a single workgroup of `workgroupSize` threads that loops over
+	 * `binCount` in `workgroupSize`-wide tiles: each tile is scanned in parallel via
+	 * `subgroupExclusiveAdd` (plus a short, subgroup-count-sized loop to combine the workgroup's
+	 * subgroups), and a small `carry` value threads the running total from one tile to the next.
+	 * `binCount` bins are still processed one tile at a time, but each tile takes one parallel step
+	 * instead of `workgroupSize` serial ones.
+	 *
+	 * @private
+	 */
+	_buildPrefixSubgroupNode() {
+
+		const { workgroupSize, _paddedBinCount } = this;
+
+		const tileCount = uint( _paddedBinCount / workgroupSize );
+
+		// WGSL requires workgroup array sizes to be compile-time constants, but the actual subgroup
+		// size is only known at runtime and varies by device (commonly 32 or 64, but anywhere from 4
+		// to 128 per the WebGPU spec). Size for the worst case (smallest legal subgroup size) so the
+		// array is always big enough, however many subgroups a workgroup ends up split into.
+		const subgroupTotals = workgroupArray( 'uint', Math.max( 1, Math.ceil( workgroupSize / 4 ) ) );
+		const carry = workgroupArray( 'uint', 1 );
+
+		this._prefixSubgroupNode = Fn( () => {
+
+			If( invocationLocalIndex.equal( uint( 0 ) ), () => carry.element( 0 ).assign( uint( 0 ) ) );
+			workgroupBarrier();
+
+			Loop( { start: uint( 0 ), end: tileCount, type: 'uint', name: 'tile', condition: '<' }, ( { tile } ) => {
+
+				const bin = tile.mul( workgroupSize ).add( invocationLocalIndex ).toVar( 'bin' );
+				const binCountValue = atomicLoad( this.histogramAtomic.element( bin ) ).toVar( 'binCountValue' );
+				const localExclusive = subgroupExclusiveAdd( binCountValue ).toVar( 'localExclusive' );
+				const subgroupTotal = subgroupAdd( binCountValue ).toVar( 'subgroupTotal' );
+
+				If( subgroupElect(), () => subgroupTotals.element( subgroupIndex ).assign( subgroupTotal ) );
+
+				// Reconverge before subgroupTotals is read back below.
+				workgroupBarrier();
+
+				const tileOffset = uint( 0 ).toVar( 'tileOffset' );
+
+				Loop( { start: uint( 0 ), end: subgroupIndex, type: 'uint', name: 'i', condition: '<' }, ( { i } ) => {
+
+					tileOffset.addAssign( subgroupTotals.element( i ) );
+
+				} );
+
+				atomicStore( this.offsetAtomic.element( bin ), carry.element( 0 ).add( tileOffset ).add( localExclusive ) );
+
+				// Reconverge before carry is updated: every invocation must have read it above first.
+				workgroupBarrier();
+
+				If( invocationLocalIndex.equal( uint( workgroupSize - 1 ) ), () => {
+
+					carry.element( 0 ).addAssign( tileOffset.add( subgroupTotal ) );
+
+				} );
+
+				// Reconverge before the next tile (or the kernel exit) reads carry again.
+				workgroupBarrier();
+
+			} );
+
+		} )().compute( workgroupSize, [ workgroupSize ] ).setName( 'CountingSortPrefixSubgroup' );
+
+	}
+
+	/**
 	 * Executes a complete counting sort on the GPU, updating {@link CountingSort#orderRead}.
 	 *
 	 * @param {Renderer} renderer - The current scene's renderer.
@@ -196,7 +307,17 @@ class CountingSort {
 
 		renderer.compute( this._resetNode );
 		renderer.compute( this._histogramNode );
-		renderer.compute( this._prefixNode );
+
+		if ( this._subgroupsSupported === null ) {
+
+			this._subgroupsSupported = renderer.hasFeature( 'subgroups' );
+
+			if ( this._subgroupsSupported ) this._buildPrefixSubgroupNode();
+
+		}
+
+		renderer.compute( this._subgroupsSupported ? this._prefixSubgroupNode : this._prefixNode );
+
 		renderer.compute( this._scatterNode );
 
 	}

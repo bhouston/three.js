@@ -166,13 +166,13 @@
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
 			import { NeuralTextureTrainer } from 'three/addons/neural-parameters/NeuralTextureTrainer.js';
 			import { NeuralMaterialNodeMaterial } from 'three/addons/neural-parameters/NeuralMaterialNodeMaterial.js';
-			import { bakeMaterialToTextures, buildChannelPreviewMaterials } from 'three/addons/neural-parameters/NeuralMaterialSource.js';
+			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/neural-parameters/NeuralMaterialSource.js';
 			import { computeGridLevels } from 'three/addons/neural-parameters/NeuralTextureModel.js';
-			import { CHANNELS, TOTAL_CHANNELS } from 'three/addons/neural-parameters/NeuralMaterialFormat.js';
+			import { CHANNELS, MAX_TOTAL_CHANNELS } from 'three/addons/neural-parameters/NeuralMaterialFormat.js';
 
 			let camera, scene, renderer;
 			let teacherMesh, neuralMesh, neuralMaterial, placeholderMaterial;
-			let materialXMaterial = null, sourceTextures = null, teacherDebugMaterials = null;
+			let materialXMaterial = null, sourceTextures = null, teacherDebugMaterials = null, channelClassification = null;
 			let environmentMap = null;
 			const directLights = [];
 			let isTraining = false, activeTrainer = null, comparisonVisible = false;
@@ -324,6 +324,12 @@
 
 			function updateNetworkSize() {
 
+				// Output width follows the *active* (trained) channel count for
+				// the current source material - see classifyMaterialChannels -
+				// falling back to the full vocabulary before any material has
+				// loaded yet.
+				const outputChannels = channelClassification ? channelClassification.totalChannels : MAX_TOTAL_CHANNELS;
+
 				const channels = 4;
 				const resolutions = computeGridLevels( Number( params.baseResolution ), Number( params.targetResolution ), Number( params.levels ) );
 				const latentTexels = resolutions.reduce( ( sum, resolution ) => sum + resolution * resolution, 0 );
@@ -331,11 +337,15 @@
 
 				const hidden = Number( params.hiddenSize );
 				const inputSize = Number( params.levels ) * channels;
-				const weightCount = ( inputSize * hidden + hidden ) + ( hidden * hidden + hidden ) + ( hidden * TOTAL_CHANNELS + TOTAL_CHANNELS );
+				const weightCount = ( inputSize * hidden + hidden ) + ( hidden * hidden + hidden ) + ( hidden * outputChannels + outputChannels );
 				const weightBytes = weightCount * 4; // fp32
 
+				const channelText = channelClassification ?
+					`${outputChannels}/${MAX_TOTAL_CHANNELS} channels trained` :
+					`up to ${MAX_TOTAL_CHANNELS} channels`;
+
 				document.getElementById( 'networkSize' ).textContent =
-					`${formatBytes( latentBytes + weightBytes )} (${formatBytes( latentBytes )} grid + ${formatBytes( weightBytes )} MLP, ${TOTAL_CHANNELS} channels)`;
+					`${formatBytes( latentBytes + weightBytes )} (${formatBytes( latentBytes )} grid + ${formatBytes( weightBytes )} MLP, ${channelText})`;
 
 			}
 
@@ -363,7 +373,7 @@
 
 					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
 
-					setSourceMaterial( material, file );
+					await setSourceMaterial( material, file );
 
 				} catch ( error ) {
 
@@ -394,7 +404,7 @@
 					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
 
 					builtInMaterial.value = '';
-					setSourceMaterial( material, file.name );
+					await setSourceMaterial( material, file.name );
 
 				} catch ( error ) {
 
@@ -413,7 +423,7 @@
 
 			}
 
-			function setSourceMaterial( material, name ) {
+			async function setSourceMaterial( material, name ) {
 
 				materialXMaterial = material;
 				sourceName.textContent = material.name || name;
@@ -426,15 +436,38 @@
 				modelLabels.hidden = true;
 				lossPanel.hidden = true;
 				lossHistory = [];
+				trainButton.disabled = true;
+				status.textContent = 'MaterialX loaded. Measuring which channels actually vary...';
+
+				// Bakes each candidate channel at a small resolution and measures
+				// its real variance - a node being present (as MaterialX wires on
+				// almost every channel, even flat ones) doesn't mean it varies.
+				channelClassification = await classifyMaterialChannels( renderer, material );
+
 				trainButton.disabled = false;
 				updateDebugView();
-				status.textContent = 'MaterialX loaded. Press Train to fit every channel.';
+				updateNetworkSize();
+
+				const activeKeys = channelClassification.activeChannels.map( ( c ) => c.key ).join( ', ' ) || 'none';
+				status.textContent = `MaterialX loaded. Training ${channelClassification.totalChannels}/${MAX_TOTAL_CHANNELS} channels: ${activeKeys}.\nPress Train to fit.`;
 
 			}
 
 			async function train() {
 
 				if ( materialXMaterial === null ) return;
+
+				if ( channelClassification.activeChannels.length === 0 ) {
+
+					// Every channel measured constant - nothing for a network to
+					// fit. Skip straight to a "trained" material built entirely
+					// from the measured constants (no grid/MLP needed at all).
+					rebuildNeuralMaterial( null );
+					comparisonVisible = true;
+					status.textContent = 'Every channel is constant on this material - nothing to train; applying measured constants directly.';
+					return;
+
+				}
 
 				setTrainingUi( true );
 				modelLabels.hidden = false;
@@ -447,7 +480,7 @@
 				try {
 
 					disposeSourceTextures();
-					const renderTargets = await bakeMaterialToTextures( renderer, materialXMaterial, Number( params.bakeResolution ) );
+					const renderTargets = await bakeMaterialToTextures( renderer, materialXMaterial, Number( params.bakeResolution ), channelClassification.activeChannels );
 					sourceTextures = renderTargets;
 
 					status.textContent = 'Training...';
@@ -458,7 +491,7 @@
 						baseResolution: Number( params.baseResolution ),
 						targetResolution: Number( params.targetResolution ),
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
-						outputChannels: TOTAL_CHANNELS,
+						outputChannels: channelClassification.totalChannels,
 						batchSize: Number( params.batchSize ),
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),
@@ -531,7 +564,12 @@
 			function rebuildNeuralMaterial( cpuModel ) {
 
 				disposeNeuralMaterial();
-				neuralMaterial = new NeuralMaterialNodeMaterial( cpuModel, { debugView: params.debugView } );
+				neuralMaterial = new NeuralMaterialNodeMaterial(
+					cpuModel,
+					channelClassification.activeChannels,
+					channelClassification.constantValues,
+					{ debugView: params.debugView }
+				);
 				neuralMesh.material = neuralMaterial;
 				neuralMesh.visible = true;
 				teacherMesh.position.x = - 1.25;

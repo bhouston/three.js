@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { atan, cos, fract, sin, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { cos, float, fract, sin, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { buildLevelTextures, evaluateNeuralTextureRaw } from './NeuralTextureNodeMaterial.js';
-import { CHANNELS, getChannel, previewColor } from './NeuralMaterialFormat.js';
+import { getChannel, previewColor } from './NeuralMaterialFormat.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -18,15 +18,17 @@ function decodeSigned( vectorNode ) {
 
 /**
  * Slices the raw per-channel output array (see evaluateNeuralTextureRaw)
- * into a { [channelKey]: TSL node } map, following the same offsets defined
- * in NeuralMaterialFormat.js so training and reconstruction never drift out
- * of sync.
+ * into a { [channelKey]: TSL node } map, following the offsets of the
+ * *active* (trained) channel layout passed to the constructor - which,
+ * unlike the full NeuralMaterialFormat.CHANNELS list, only covers whatever
+ * subset of channels this particular material actually varies spatially
+ * (see NeuralMaterialSource.classifyMaterialChannels).
  */
-function sliceChannels( outputs ) {
+function sliceChannels( outputs, activeChannels ) {
 
 	const slices = {};
 
-	for ( const channel of CHANNELS ) {
+	for ( const channel of activeChannels ) {
 
 		const values = [];
 		for ( let i = 0; i < channel.size; i ++ ) values.push( outputs[ channel.offset + i ] );
@@ -38,23 +40,34 @@ function sliceChannels( outputs ) {
 
 }
 
+function constantToNode( value ) {
+
+	return Array.isArray( value ) ? vec3( ...value ) : float( value );
+
+}
+
 /**
- * A `MeshPhysicalNodeMaterial` driven entirely by one trained
- * `NeuralTextureTrainer` model fit to the full standard PBR channel set
- * (see NeuralMaterialFormat.js): every node slot below reads a decoded slice
- * of the *same* shared grid + MLP forward pass, matching the NVIDIA neural
- * texture compression "one decoder, many correlated channels" design rather
- * than one network per channel.
+ * A `MeshPhysicalNodeMaterial` driven by one trained `NeuralTextureTrainer`
+ * model: channels the source material actually varied spatially (`
+ * activeChannels`) read a decoded slice of one shared grid + MLP forward
+ * pass - all from the *same* pass, matching the NVIDIA neural texture
+ * compression "one decoder, many correlated channels" design - while
+ * channels that were just a flat constant on the source material
+ * (`constantValues`) are applied directly as ordinary material properties,
+ * bypassing the network entirely (see NeuralMaterialSource.
+ * classifyMaterialChannels for why: no sense spending network capacity, or
+ * training-sample budget, reproducing a value that never varies).
  *
  * @three_import import { NeuralMaterialNodeMaterial } from 'three/addons/neural-parameters/NeuralMaterialNodeMaterial.js';
  */
 class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
-	constructor( cpuModel, options = {} ) {
+	constructor( cpuModel, activeChannels, constantValues, options = {} ) {
 
 		super();
 
 		this.cpuModel = cpuModel;
+		this.activeChannels = activeChannels;
 		this.levelTextures = buildLevelTextures( cpuModel );
 
 		const uvScaleNode = options.uvScaleNode;
@@ -66,35 +79,71 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		const tiledUV = fract( coord );
 
 		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.levelTextures );
-		const slices = sliceChannels( outputs );
+		const slices = sliceChannels( outputs, activeChannels );
 		this._slices = slices;
+		this._constantValues = constantValues;
 
-		this._shadedColorNode = slices.albedo;
-		this.colorNode = this._shadedColorNode;
-		this.opacityNode = slices.opacity.clamp( 0, 1 );
-		this.normalNode = decodeSigned( slices.normal );
-		this.roughnessNode = slices.roughness.clamp( 0.02, 1 );
-		this.metalnessNode = slices.metalness.clamp( 0, 1 );
-		this.clearcoatNode = slices.clearcoat.clamp( 0, 1 );
-		this.clearcoatRoughnessNode = slices.clearcoatRoughness.clamp( 0.02, 1 );
-		this.clearcoatNormalNode = decodeSigned( slices.clearcoatNormal );
-		this.emissiveNode = slices.emissive;
+		const isActive = ( key ) => Object.prototype.hasOwnProperty.call( slices, key );
 
-		const rotationRadians = slices.anisotropyRotation.sub( 0.5 ).mul( TWO_PI );
-		const strength = slices.anisotropyStrength.clamp( 0, 1 );
-		this.anisotropyNode = vec2( cos( rotationRadians ), sin( rotationRadians ) ).mul( strength );
+		// --- albedo / opacity ---
+		this._shadedColorNode = isActive( 'albedo' ) ? slices.albedo : null;
+		if ( isActive( 'albedo' ) ) this.colorNode = this._shadedColorNode;
+		else this.color = new THREE.Color( ...constantValues.albedo );
 
-		// Transmission is trained like every other channel (see
-		// NeuralMaterialFormat.js / debug view), but *not* wired into the live
-		// shading node by default: MeshPhysicalNodeMaterial treats a non-null
-		// transmissionNode as "this object is transmissive" regardless of the
-		// value it evaluates to, routing it through the renderer's separate
-		// screen-space transmission pass (an extra background capture) - for
-		// a demo scene that isn't set up for that, an always-on transmission
-		// path is a likely source of rendering corruption for materials that
-		// are supposed to be fully opaque. Opt in explicitly once the source
-		// material actually uses transmission.
-		if ( options.enableTransmission ) this.transmissionNode = slices.transmission.clamp( 0, 1 );
+		if ( isActive( 'opacity' ) ) this.opacityNode = slices.opacity.clamp( 0, 1 );
+		else this.opacity = constantValues.opacity;
+
+		// --- normal / clearcoat normal (constant = "no bump", leave node unset) ---
+		if ( isActive( 'normal' ) ) this.normalNode = decodeSigned( slices.normal );
+		if ( isActive( 'clearcoatNormal' ) ) this.clearcoatNormalNode = decodeSigned( slices.clearcoatNormal );
+
+		// --- scalar surface properties ---
+		if ( isActive( 'roughness' ) ) this.roughnessNode = slices.roughness.clamp( 0.02, 1 );
+		else this.roughness = constantValues.roughness;
+
+		if ( isActive( 'metalness' ) ) this.metalnessNode = slices.metalness.clamp( 0, 1 );
+		else this.metalness = constantValues.metalness;
+
+		if ( isActive( 'clearcoat' ) ) this.clearcoatNode = slices.clearcoat.clamp( 0, 1 );
+		else this.clearcoat = constantValues.clearcoat;
+
+		if ( isActive( 'clearcoatRoughness' ) ) this.clearcoatRoughnessNode = slices.clearcoatRoughness.clamp( 0.02, 1 );
+		else this.clearcoatRoughness = constantValues.clearcoatRoughness;
+
+		// Transmission genuinely requires the renderer's separate screen-space
+		// transmission pass to render correctly whenever it's non-zero -
+		// that's inherent to reproducing a transmissive material, not
+		// something to avoid. It's only skipped here when *constant*, where
+		// for every material without a transmission map that constant is 0
+		// (opaque), which leaves the expensive pass off exactly when the
+		// source material didn't need it either.
+		if ( isActive( 'transmission' ) ) this.transmissionNode = slices.transmission.clamp( 0, 1 );
+		else this.transmission = constantValues.transmission;
+
+		if ( isActive( 'emissive' ) ) this.emissiveNode = slices.emissive;
+		else this.emissive = new THREE.Color( ...constantValues.emissive );
+
+		// --- anisotropy (strength + rotation always classified together, see
+		// NeuralMaterialFormat.js's shared anisotropyNode nodeKey) ---
+		if ( isActive( 'anisotropyStrength' ) || isActive( 'anisotropyRotation' ) ) {
+
+			const rotationRadians = slices.anisotropyRotation.sub( 0.5 ).mul( TWO_PI );
+			const strength = slices.anisotropyStrength.clamp( 0, 1 );
+			this.anisotropyNode = vec2( cos( rotationRadians ), sin( rotationRadians ) ).mul( strength );
+
+		} else {
+
+			this.anisotropy = constantValues.anisotropyStrength;
+			this.anisotropyRotation = constantValues.anisotropyRotation;
+
+		}
+
+		// --- sheen ---
+		if ( isActive( 'sheenColor' ) ) this.sheenNode = slices.sheenColor.clamp( 0, 1 );
+		else this.sheenColor = new THREE.Color( ...constantValues.sheenColor );
+
+		if ( isActive( 'sheenRoughness' ) ) this.sheenRoughnessNode = slices.sheenRoughness.clamp( 0.02, 1 );
+		else this.sheenRoughness = constantValues.sheenRoughness;
 
 		this.setDebugView( options.debugView || 'shaded' );
 
@@ -102,9 +151,10 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
 	/**
 	 * Swaps the visible output between the full physically-shaded material
-	 * and an unlit preview of one trained channel in isolation (matching
-	 * `NeuralMaterialSource.buildChannelPreviewMaterials` on the teacher
-	 * side, so both can be compared directly).
+	 * and an unlit preview of one channel in isolation - trained or
+	 * constant alike - matching `NeuralMaterialSource.
+	 * buildChannelPreviewMaterials` on the teacher side, so both are
+	 * comparable directly.
 	 */
 	setDebugView( view ) {
 
@@ -113,12 +163,15 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		if ( view === 'shaded' ) {
 
 			this.lights = true;
-			this.colorNode = this._shadedColorNode;
+			if ( this._shadedColorNode ) this.colorNode = this._shadedColorNode;
 
 		} else {
 
 			this.lights = false;
-			this.colorNode = vec4( previewColor( this._slices[ view ], getChannel( view ), true ), 1 );
+			const channel = getChannel( view );
+			const active = Object.prototype.hasOwnProperty.call( this._slices, view );
+			const value = active ? this._slices[ view ] : constantToNode( this._constantValues[ view ] );
+			this.colorNode = vec4( previewColor( value, channel, active ), 1 );
 
 		}
 

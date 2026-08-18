@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { atan, float, length, vec2, vec3, vec4 } from 'three/tsl';
 import { bakeColorNodeToTexture } from './NeuralTextureSource.js';
-import { CHANNELS, PACK_COUNT, previewColor } from './NeuralMaterialFormat.js';
+import { CHANNELS, layoutChannels, previewColor } from './NeuralMaterialFormat.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -11,13 +11,13 @@ function encodeSigned( vectorNode ) {
 
 }
 
-/**
- * Resolves a material channel to a TSL node, whether it's driven by a node
- * graph (MaterialX texture / procedural expression) or a plain scalar/color
- * property - so every channel bakes to a texture uniformly, even ones the
- * source material only defines as a constant.
- */
-function resolveScalar( material, nodeKey, propertyKey, fallback ) {
+function encodeChannelNode( valueNode, channel ) {
+
+	return channel.encode === 'signed' ? encodeSigned( valueNode ) : valueNode;
+
+}
+
+function resolveScalarNode( material, nodeKey, propertyKey, fallback ) {
 
 	if ( material[ nodeKey ] ) return float( material[ nodeKey ] );
 	if ( material[ propertyKey ] !== undefined ) return float( material[ propertyKey ] );
@@ -26,7 +26,7 @@ function resolveScalar( material, nodeKey, propertyKey, fallback ) {
 
 }
 
-function resolveColor( material, nodeKey, propertyKey, fallback ) {
+function resolveColorNode( material, nodeKey, propertyKey, fallback ) {
 
 	if ( material[ nodeKey ] ) return vec3( material[ nodeKey ] );
 	if ( material[ propertyKey ] !== undefined ) return vec3( material[ propertyKey ] );
@@ -35,7 +35,7 @@ function resolveColor( material, nodeKey, propertyKey, fallback ) {
 
 }
 
-function resolveAnisotropy( material ) {
+function resolveAnisotropyNodes( material ) {
 
 	let anisoVec;
 
@@ -57,9 +57,13 @@ function resolveAnisotropy( material ) {
 	// every material with no anisotropy at all (the common case) produces
 	// here. A single NaN sample poisons the *entire* backward pass, not just
 	// this channel, since the output layer's gradient into the shared hidden
-	// layer sums over all 20 channels - so nudge x away from the singularity
-	// by an amount far too small to affect any real (non-zero-strength)
-	// anisotropy direction.
+	// layer sums over every active channel - so nudge x away from the
+	// singularity by an amount far too small to affect any real (non-zero-
+	// strength) anisotropy direction. Moot in practice now that a constant
+	// (node-less) anisotropy never reaches this path at all - see
+	// classifyMaterialChannels - but kept as a defensive guard for the case
+	// where anisotropyNode *is* set but legitimately evaluates to zero
+	// somewhere on the surface.
 	const rotationNode = atan( anisoVec.y, anisoVec.x.add( 1e-6 ) ).div( TWO_PI ).add( 0.5 );
 
 	return { strengthNode, rotationNode };
@@ -67,92 +71,319 @@ function resolveAnisotropy( material ) {
 }
 
 /**
- * Resolves every supported PBR channel of a material to its raw (physical,
- * un-encoded) TSL node - falling back to the material's plain scalar/color
- * property when a given channel has no node graph of its own (e.g. a
- * constant roughness rather than a roughness map). This is the single place
- * that knows how to pull each channel off a MeshPhysicalNodeMaterial; both
- * baking (which additionally *encodes* signed channels, see
- * NeuralMaterialFormat.js) and channel-preview materials build on top of it.
+ * Resolves every channel in NeuralMaterialFormat.CHANNELS to its raw
+ * (physical, un-encoded) TSL node - falling back to the material's plain
+ * scalar/color property when a channel has no node graph of its own. This
+ * is the single place that knows how to pull each channel off a
+ * MeshPhysicalNodeMaterial; baking, channel-preview materials, and constant-
+ * channel detection all build on top of it (or its JS-side counterpart,
+ * `resolveConstantValue`, for channels classified as constant).
  */
-function resolveMaterialChannels( material ) {
+function resolveMaterialChannelNodes( material ) {
 
-	const emissiveColor = resolveColor( material, 'emissiveNode', 'emissive', new THREE.Color( 0, 0, 0 ) );
+	const emissiveColor = resolveColorNode( material, 'emissiveNode', 'emissive', new THREE.Color( 0, 0, 0 ) );
 	const emissiveIntensity = material.emissiveIntensity !== undefined ? material.emissiveIntensity : 1;
-	const { strengthNode: anisotropyStrength, rotationNode: anisotropyRotation } = resolveAnisotropy( material );
+	const sheenColor = resolveColorNode( material, 'sheenNode', 'sheenColor', new THREE.Color( 0, 0, 0 ) );
+	const sheenStrength = material.sheen !== undefined ? material.sheen : 1;
+	const { strengthNode: anisotropyStrength, rotationNode: anisotropyRotation } = resolveAnisotropyNodes( material );
 
 	return {
 		albedo: material.colorNode ? vec3( material.colorNode ) : vec3( material.color || new THREE.Color( 1, 1, 1 ) ),
-		opacity: resolveScalar( material, 'opacityNode', 'opacity', 1 ),
+		opacity: resolveScalarNode( material, 'opacityNode', 'opacity', 1 ),
 		normal: material.normalNode ? vec3( material.normalNode ) : vec3( 0, 0, 1 ),
-		roughness: resolveScalar( material, 'roughnessNode', 'roughness', 1 ),
-		metalness: resolveScalar( material, 'metalnessNode', 'metalness', 0 ),
-		clearcoat: resolveScalar( material, 'clearcoatNode', 'clearcoat', 0 ),
-		clearcoatRoughness: resolveScalar( material, 'clearcoatRoughnessNode', 'clearcoatRoughness', 0 ),
-		transmission: resolveScalar( material, 'transmissionNode', 'transmission', 0 ),
+		roughness: resolveScalarNode( material, 'roughnessNode', 'roughness', 1 ),
+		metalness: resolveScalarNode( material, 'metalnessNode', 'metalness', 0 ),
+		clearcoat: resolveScalarNode( material, 'clearcoatNode', 'clearcoat', 0 ),
+		clearcoatRoughness: resolveScalarNode( material, 'clearcoatRoughnessNode', 'clearcoatRoughness', 0 ),
+		clearcoatNormal: material.clearcoatNormalNode ? vec3( material.clearcoatNormalNode ) : vec3( 0, 0, 1 ),
+		transmission: resolveScalarNode( material, 'transmissionNode', 'transmission', 0 ),
 		emissive: emissiveColor.mul( emissiveIntensity ),
 		anisotropyStrength,
-		clearcoatNormal: material.clearcoatNormalNode ? vec3( material.clearcoatNormalNode ) : vec3( 0, 0, 1 ),
-		anisotropyRotation
+		anisotropyRotation,
+		sheenColor: sheenColor.mul( sheenStrength ),
+		sheenRoughness: resolveScalarNode( material, 'sheenRoughnessNode', 'sheenRoughness', 1 )
 	};
 
 }
 
 /**
- * Builds the 5 packed RGBA colorNodes (see NeuralMaterialFormat.js) used to
- * bake training targets, encoding signed channels (normals, anisotropy
- * direction) into [0,1] first.
+ * JS-side (not TSL) counterpart of resolveMaterialChannelNodes, used only
+ * for channels classifyMaterialChannels has determined are constant -
+ * returns a plain number or [r,g,b]/[x,y,z] array, ready to assign directly
+ * to the reconstructed material's ordinary (non-node) property.
  */
-function buildPackedColorNodes( material ) {
+function resolveConstantValue( material, key ) {
 
-	const ch = resolveMaterialChannels( material );
+	switch ( key ) {
 
-	return [
-		vec4( ch.albedo, ch.opacity ),
-		vec4( encodeSigned( ch.normal ), ch.roughness ),
-		vec4( ch.metalness, ch.clearcoat, ch.clearcoatRoughness, ch.transmission ),
-		vec4( ch.emissive, ch.anisotropyStrength ),
-		vec4( encodeSigned( ch.clearcoatNormal ), ch.anisotropyRotation )
-	];
+		case 'albedo': {
 
-}
+			const c = material.color || new THREE.Color( 1, 1, 1 );
+			return [ c.r, c.g, c.b ];
 
-/**
- * Builds one unlit `THREE.NodeMaterial` per supported channel (plus the
- * `shaded` key, which is just the original material) so a "debug view" GUI
- * control can swap the teacher mesh's material to inspect any single channel
- * in isolation - mirroring `NeuralMaterialNodeMaterial.setDebugView` on the
- * neural side, so both are comparable in the same encoded [0,1] space.
- */
-function buildChannelPreviewMaterials( material ) {
+		}
 
-	const ch = resolveMaterialChannels( material );
-	const materials = { shaded: material };
+		case 'opacity': return material.opacity !== undefined ? material.opacity : 1;
+		case 'normal': return [ 0, 0, 1 ];
+		case 'roughness': return material.roughness !== undefined ? material.roughness : 1;
+		case 'metalness': return material.metalness !== undefined ? material.metalness : 0;
+		case 'clearcoat': return material.clearcoat !== undefined ? material.clearcoat : 0;
+		case 'clearcoatRoughness': return material.clearcoatRoughness !== undefined ? material.clearcoatRoughness : 0;
+		case 'clearcoatNormal': return [ 0, 0, 1 ];
+		case 'transmission': return material.transmission !== undefined ? material.transmission : 0;
+		case 'emissive': {
 
-	for ( const channel of CHANNELS ) {
+			const c = material.emissive || new THREE.Color( 0, 0, 0 );
+			const i = material.emissiveIntensity !== undefined ? material.emissiveIntensity : 1;
+			return [ c.r * i, c.g * i, c.b * i ];
 
-		const previewMaterial = new THREE.NodeMaterial();
-		previewMaterial.lights = false;
-		previewMaterial.toneMapped = false;
-		previewMaterial.colorNode = vec4( previewColor( ch[ channel.key ], channel, false ), 1 );
-		materials[ channel.key ] = previewMaterial;
+		}
+
+		case 'anisotropyStrength': return material.anisotropy !== undefined ? material.anisotropy : 0;
+		case 'anisotropyRotation': return material.anisotropyRotation !== undefined ? material.anisotropyRotation : 0;
+		case 'sheenColor': {
+
+			const c = material.sheenColor || new THREE.Color( 0, 0, 0 );
+			const s = material.sheen !== undefined ? material.sheen : 1;
+			return [ c.r * s, c.g * s, c.b * s ];
+
+		}
+
+		case 'sheenRoughness': return material.sheenRoughness !== undefined ? material.sheenRoughness : 1;
+		default: throw new Error( `THREE.NeuralMaterialSource: unknown channel "${key}".` );
 
 	}
 
-	return materials;
+}
+
+/**
+ * Splits a material's channels into the ones worth training (driven by a
+ * node graph - texture or procedural, so potentially spatially-varying) and
+ * the ones that are just a flat constant (a plain scalar/color property,
+ * with no node at all) - so the network's output width, and the cost of
+ * every training sample, scale with how much of the material actually
+ * varies rather than always paying for the full 24-channel vocabulary.
+ * Constant channels are applied directly as ordinary material properties at
+ * reconstruction time, bypassing the network entirely (see
+ * NeuralMaterialNodeMaterial.js).
+ *
+ * A node being *present* isn't proof a channel actually varies, though: many
+ * generators (including this project's MaterialX loader) wire a pass-through
+ * normal/roughness/etc. node on essentially every material whether or not it
+ * does anything spatially - so node presence is only used as a cheap first
+ * pass to narrow candidates. Each candidate is then baked at a small
+ * `analysisResolution` and read back to measure its actual min/max range;
+ * only channels that come back with real variance stay "active" (trained by
+ * the network) - the rest are demoted to constant, using their *measured*
+ * mean as a more accurate value than a hardcoded default. Without this
+ * second pass, a channel like "normal" that's node-driven but genuinely flat
+ * would still get trained - and since it has to be *learned* via gradient
+ * descent rather than read off exactly like a true constant, it converges
+ * far slower than everything else, which is exactly what shows up as "every
+ * channel looks right except normal" on materials with no real bump map.
+ */
+async function classifyMaterialChannels( renderer, material, options = {} ) {
+
+	const analysisResolution = options.analysisResolution || 32;
+	const varianceThreshold = options.varianceThreshold !== undefined ? options.varianceThreshold : 2e-3;
+
+	const candidateList = [];
+	const constantValues = {};
+
+	for ( const channel of CHANNELS ) {
+
+		const hasNode = channel.nodeKeys.some( ( key ) => Boolean( material[ key ] ) );
+
+		if ( hasNode ) {
+
+			candidateList.push( channel );
+
+		} else {
+
+			constantValues[ channel.key ] = resolveConstantValue( material, channel.key );
+
+		}
+
+	}
+
+	if ( candidateList.length === 0 ) return { activeChannels: [], totalChannels: 0, packCount: 0, constantValues };
+
+	const candidateLayout = layoutChannels( candidateList );
+	let ranges;
+
+	try {
+
+		ranges = await measureChannelRanges( renderer, material, candidateLayout.channels, analysisResolution );
+
+	} catch ( error ) {
+
+		// The variance measurement does a real bake + GPU readback, which is
+		// a lot newer/less exercised than the main training bake path (which
+		// never reads pixels back to the CPU at all) - if it fails for any
+		// reason, fall back to training every node-present candidate rather
+		// than silently producing zero active channels, which would leave
+		// training with nothing to fit at all.
+		console.warn( 'THREE.NeuralMaterialSource: channel variance measurement failed, training all node-present channels instead.', error );
+
+		return { ...layoutChannels( candidateList ), constantValues };
+
+	}
+
+	const confirmedActive = [];
+
+	for ( const channel of candidateLayout.channels ) {
+
+		let isConstant = true;
+		const decodedMeans = [];
+
+		for ( let i = 0; i < channel.size; i ++ ) {
+
+			const range = ranges[ channel.offset + i ];
+
+			// Same defensive fallback as above, per-channel: if this specific
+			// component's range is missing for any reason, don't let a
+			// genuinely-varying channel get silently dropped from training.
+			if ( range === undefined ) { isConstant = false; continue; }
+
+			decodedMeans.push( decodeConstantComponent( range.mean, channel ) );
+			if ( range.max - range.min > varianceThreshold ) isConstant = false;
+
+		}
+
+		if ( isConstant ) constantValues[ channel.key ] = channel.size === 1 ? decodedMeans[ 0 ] : decodedMeans;
+		else confirmedActive.push( channel );
+
+	}
+
+	const { channels: activeChannels, totalChannels, packCount } = layoutChannels( confirmedActive );
+
+	return { activeChannels, totalChannels, packCount, constantValues };
 
 }
 
 /**
- * Bakes every supported PBR channel of a MeshPhysicalNodeMaterial into
- * `PACK_COUNT` RGBA textures via one fullscreen-quad render per pack (see
- * NeuralTextureFormat.js for how flat channel indices map onto them).
+ * Un-does a channel's `encode` mapping on one already-baked (and now
+ * averaged) component value, recovering a physical constant comparable to
+ * what `resolveConstantValue` would have returned directly.
  */
-async function bakeMaterialToTextures( renderer, material, resolution = 512 ) {
+function decodeConstantComponent( encodedValue, channel ) {
 
-	const colorNodes = buildPackedColorNodes( material );
-	if ( colorNodes.length !== PACK_COUNT ) throw new Error( 'THREE.NeuralMaterialSource: pack count mismatch.' );
+	if ( channel.encode === 'signed' ) return encodedValue * 2 - 1;
+	if ( channel.encode === 'angle' ) return ( encodedValue - 0.5 ) * TWO_PI;
 
+	return encodedValue;
+
+}
+
+/**
+ * Bakes `candidateChannels` at a small `resolution` and reads the pixels
+ * back to the CPU, returning one `{min, max, mean}` per flat component
+ * (in the same order/offsets as `candidateChannels`) - cheap enough to run
+ * once per material load, since `resolution` is deliberately tiny (this is
+ * only measuring variance, not fitting detail).
+ */
+async function measureChannelRanges( renderer, material, candidateChannels, resolution ) {
+
+	const packs = buildPackedColorNodes( candidateChannels, material );
+	const ranges = [];
+
+	for ( const colorNode of packs ) {
+
+		const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, resolution );
+		const pixels = await renderer.readRenderTargetPixelsAsync( renderTarget, 0, 0, resolution, resolution );
+		const isHalfFloat = pixels instanceof Uint16Array;
+		const texelCount = pixels.length / 4;
+
+		for ( let c = 0; c < 4; c ++ ) {
+
+			let min = Infinity, max = - Infinity, sum = 0;
+
+			for ( let i = c; i < pixels.length; i += 4 ) {
+
+				const value = isHalfFloat ? THREE.DataUtils.fromHalfFloat( pixels[ i ] ) : pixels[ i ];
+				if ( value < min ) min = value;
+				if ( value > max ) max = value;
+				sum += value;
+
+			}
+
+			ranges.push( { min, max, mean: sum / texelCount } );
+
+		}
+
+		renderTarget.dispose();
+
+	}
+
+	return ranges;
+
+}
+
+function flattenChannelComponents( activeChannels, channelNodes ) {
+
+	const components = [];
+	const axes = [ 'x', 'y', 'z' ];
+
+	for ( const channel of activeChannels ) {
+
+		const encoded = encodeChannelNode( channelNodes[ channel.key ], channel );
+
+		if ( channel.size === 1 ) {
+
+			components.push( encoded );
+
+		} else {
+
+			for ( let i = 0; i < channel.size; i ++ ) components.push( encoded[ axes[ i ] ] );
+
+		}
+
+	}
+
+	return components;
+
+}
+
+function packComponentsIntoVec4( components ) {
+
+	const packs = [];
+
+	for ( let i = 0; i < components.length; i += 4 ) {
+
+		const group = components.slice( i, i + 4 );
+		while ( group.length < 4 ) group.push( float( 0 ) );
+		packs.push( vec4( group[ 0 ], group[ 1 ], group[ 2 ], group[ 3 ] ) );
+
+	}
+
+	return packs;
+
+}
+
+/**
+ * Builds the packed RGBA colorNodes (see NeuralMaterialFormat.js) used to
+ * bake training targets for exactly the given (active/trained) channels, in
+ * their layout order - encoding signed channels (normals, anisotropy
+ * direction) into [0,1] first.
+ */
+function buildPackedColorNodes( activeChannels, material ) {
+
+	const channelNodes = resolveMaterialChannelNodes( material );
+	const components = flattenChannelComponents( activeChannels, channelNodes );
+
+	return packComponentsIntoVec4( components );
+
+}
+
+/**
+ * Bakes every active (trained) PBR channel of a material into
+ * `activeChannels.packCount`-worth of RGBA textures via one fullscreen-quad
+ * render per pack (see NeuralMaterialFormat.js for how flat channel indices
+ * map onto them).
+ */
+async function bakeMaterialToTextures( renderer, material, resolution, activeChannels ) {
+
+	const colorNodes = buildPackedColorNodes( activeChannels, material );
 	const renderTargets = [];
 
 	for ( const colorNode of colorNodes ) {
@@ -165,4 +396,37 @@ async function bakeMaterialToTextures( renderer, material, resolution = 512 ) {
 
 }
 
-export { bakeMaterialToTextures, buildPackedColorNodes, buildChannelPreviewMaterials, resolveMaterialChannels };
+/**
+ * Builds one unlit `THREE.NodeMaterial` per channel in NeuralMaterialFormat.
+ * CHANNELS (plus the `shaded` key, which is just the original material) so a
+ * "debug view" GUI control can swap the teacher mesh's material to inspect
+ * any single channel in isolation - active or constant alike - mirroring
+ * `NeuralMaterialNodeMaterial.setDebugView` on the neural side, so both are
+ * comparable in the same encoded [0,1] space.
+ */
+function buildChannelPreviewMaterials( material ) {
+
+	const channelNodes = resolveMaterialChannelNodes( material );
+	const materials = { shaded: material };
+
+	for ( const channel of CHANNELS ) {
+
+		const previewMaterial = new THREE.NodeMaterial();
+		previewMaterial.lights = false;
+		previewMaterial.toneMapped = false;
+		previewMaterial.colorNode = vec4( previewColor( channelNodes[ channel.key ], channel, false ), 1 );
+		materials[ channel.key ] = previewMaterial;
+
+	}
+
+	return materials;
+
+}
+
+export {
+	bakeMaterialToTextures,
+	buildPackedColorNodes,
+	buildChannelPreviewMaterials,
+	classifyMaterialChannels,
+	resolveMaterialChannelNodes
+};

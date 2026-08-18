@@ -2,9 +2,7 @@ import { StorageBufferAttribute } from 'three/webgpu';
 import { Vector4 } from 'three';
 import { storage, uniform, uniformArray } from 'three/tsl';
 import { IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE, IBL_TARGET_SIZE, LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
-
-const FIXED_POINT_SCALE = 1e5;
-const GRADIENT_NORM_SCALE = 1e5;
+import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 
 function allocateIndirectProbeHead( currentOffset, iblHiddenSize ) {
 
@@ -650,8 +648,6 @@ function copyLayerWeightsFromGPU( layer, source, weightsOffset, biasesOffset ) {
 }
 
 export {
-	FIXED_POINT_SCALE,
-	GRADIENT_NORM_SCALE,
 	computeModelLayout,
 	NeuralAppearanceGPUModel
 };

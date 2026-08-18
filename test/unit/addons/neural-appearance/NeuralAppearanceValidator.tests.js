@@ -6,7 +6,7 @@ import {
 	createAngularBins,
 	accumulateAngularError,
 	finalizeAngularBins
-} from '../../../../examples/jsm/neural/NeuralAppearanceValidator.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceValidator.js';
 
 export default QUnit.module( 'Addons', () => {
 

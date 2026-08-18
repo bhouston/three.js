@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { atan, float, length, vec2, vec3, vec4 } from 'three/tsl';
-import { bakeColorNodeToTexture } from './NeuralTextureSource.js';
+import { bakeColorNodeToTexture } from '../neural-texture/NeuralTextureSource.js';
 import { CHANNELS, layoutChannels, previewColor } from './NeuralMaterialFormat.js';
 
 const TWO_PI = Math.PI * 2;

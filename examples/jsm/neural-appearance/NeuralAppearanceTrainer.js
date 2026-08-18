@@ -22,12 +22,15 @@ import { LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
 import { NeuralAppearanceGPUModel } from './NeuralAppearanceGPUModel.js';
 import {
 	createTrainBatchComputeNode,
-	createResetGradientNormComputeNode,
-	createResetGradientsComputeNode,
 	createAccumulateGradientNormComputeNode,
 	createAdamWeightsComputeNode,
 	createAdamLatentsComputeNode
 } from './NeuralAppearanceGPUCompute.js';
+import {
+	createResetGradientNormComputeNode,
+	createResetGradientsComputeNode
+} from '../neural/NeuralGPUComputeUtils.js';
+import { getLearningRate, createRandom, yieldToBrowser } from '../neural/NeuralTrainingUtils.js';
 
 const DEFAULT_OPTIONS = {
 	resolution: 8,
@@ -60,7 +63,7 @@ const DEFAULT_OPTIONS = {
  * Browser-side trainer that distills an opaque MaterialX-loaded
  * MeshPhysicalNodeMaterial into the compact neural appearance runtime format.
  *
- * @three_import import { NeuralAppearanceTrainer } from 'three/addons/neural/NeuralAppearanceTrainer.js';
+ * @three_import import { NeuralAppearanceTrainer } from 'three/addons/neural-appearance/NeuralAppearanceTrainer.js';
  */
 class NeuralAppearanceTrainer {
 
@@ -479,50 +482,6 @@ function getTrainingSampleCapacity( settings ) {
 function levelCount( resolution ) {
 
 	return getMipLevelCount( resolution, resolution );
-
-}
-
-function getLearningRate( options, iteration ) {
-
-	const t = Math.min( iteration / Math.max( 1, options.iterations - 1 ), 1 );
-	const cosine = 0.5 * ( 1 + Math.cos( Math.PI * t ) );
-	const scale = options.cosineAnnealingScale + cosine * ( 1 - options.cosineAnnealingScale );
-
-	return options.learningRate * scale;
-
-}
-
-function createRandom( seed ) {
-
-	let state = seed >>> 0;
-
-	return function random() {
-
-		state = ( state + 0x6D2B79F5 ) | 0;
-		let value = Math.imul( state ^ state >>> 15, 1 | state );
-		value ^= value + Math.imul( value ^ value >>> 7, 61 | value );
-
-		return ( ( value ^ value >>> 14 ) >>> 0 ) / 4294967296;
-
-	};
-
-}
-
-function yieldToBrowser() {
-
-	return new Promise( ( resolve ) => {
-
-		if ( typeof requestAnimationFrame === 'function' ) {
-
-			requestAnimationFrame( () => resolve() );
-
-		} else {
-
-			setTimeout( resolve, 0 );
-
-		}
-
-	} );
 
 }
 

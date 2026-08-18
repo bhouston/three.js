@@ -3,7 +3,7 @@ import {
 	generateIBLTrainingSamples,
 	generateValidationSamples,
 	normalizeDirectLightingTargets
-} from '../../../../examples/jsm/neural/NeuralAppearanceSampler.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceSampler.js';
 
 function createMockTeacher() {
 

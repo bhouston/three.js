@@ -6,7 +6,7 @@ import {
 	isCompatibleNeuralAppearanceData,
 	updateOutputUniforms,
 	copyLatentTextureData
-} from '../../../../examples/jsm/neural/NeuralAppearanceTSL.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceTSL.js';
 
 function fakeTexture( fill = 0 ) {
 

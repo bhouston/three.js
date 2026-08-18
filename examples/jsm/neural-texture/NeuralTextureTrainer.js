@@ -2,11 +2,12 @@ import { createNeuralTextureModel } from './NeuralTextureModel.js';
 import { NeuralTextureGPUModel } from './NeuralTextureGPUModel.js';
 import {
 	createTextureTrainBatchComputeNode,
-	createResetGradientNormComputeNode,
 	createAccumulateGradientNormComputeNode,
 	createTextureAdamWeightsComputeNode,
 	createTextureAdamLatentsComputeNode
 } from './NeuralTextureGPUCompute.js';
+import { createResetGradientNormComputeNode } from '../neural/NeuralGPUComputeUtils.js';
+import { getLearningRate, createRandom, yieldToBrowser } from '../neural/NeuralTrainingUtils.js';
 
 const DEFAULT_OPTIONS = {
 	channels: 4,
@@ -44,7 +45,7 @@ const DEFAULT_OPTIONS = {
  * generated and read entirely on the GPU inside the training compute
  * shader - no readback round trip is needed per iteration.
  *
- * @three_import import { NeuralTextureTrainer } from 'three/addons/neural-parameters/NeuralTextureTrainer.js';
+ * @three_import import { NeuralTextureTrainer } from 'three/addons/neural-texture/NeuralTextureTrainer.js';
  */
 class NeuralTextureTrainer {
 
@@ -143,50 +144,6 @@ class NeuralTextureTrainer {
 		return { cpuModel, gpuModel, loss: lastLoss, iteration: completedIterations, iterations, stoppedEarly: completedIterations < iterations };
 
 	}
-
-}
-
-function getLearningRate( options, iteration ) {
-
-	const t = Math.min( iteration / Math.max( 1, options.iterations - 1 ), 1 );
-	const cosine = 0.5 * ( 1 + Math.cos( Math.PI * t ) );
-	const scale = options.cosineAnnealingScale + cosine * ( 1 - options.cosineAnnealingScale );
-
-	return options.learningRate * scale;
-
-}
-
-function createRandom( seed ) {
-
-	let state = seed >>> 0;
-
-	return function random() {
-
-		state = ( state + 0x6D2B79F5 ) | 0;
-		let value = Math.imul( state ^ state >>> 15, 1 | state );
-		value ^= value + Math.imul( value ^ value >>> 7, 61 | value );
-
-		return ( ( value ^ value >>> 14 ) >>> 0 ) / 4294967296;
-
-	};
-
-}
-
-function yieldToBrowser() {
-
-	return new Promise( ( resolve ) => {
-
-		if ( typeof requestAnimationFrame === 'function' ) {
-
-			requestAnimationFrame( () => resolve() );
-
-		} else {
-
-			setTimeout( resolve, 0 );
-
-		}
-
-	} );
 
 }
 

@@ -1,4 +1,4 @@
-import { createMLP } from '../neural/NeuralAppearanceMLP.js';
+import { createMLP } from '../neural/NeuralMLP.js';
 
 const LATENT_INIT_SCALE = 0.35;
 

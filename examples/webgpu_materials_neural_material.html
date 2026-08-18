@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgpu - materials - neural parameters material</title>
+		<title>three.js webgpu - materials - neural material</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<meta property="og:title" content="three.js webgpu - materials - neural parameters material">
+		<meta property="og:title" content="three.js webgpu - materials - neural material">
 		<meta property="og:type" content="website">
-		<meta property="og:url" content="https://threejs.org/examples/webgpu_materials_neural_parameters_material.html">
-		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_materials_neural_parameters_material.jpg">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_materials_neural_material.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_materials_neural_material.jpg">
 		<link type="text/css" rel="stylesheet" href="example.css">
 		<style>
 			#panel {
@@ -102,7 +102,7 @@
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 
 			<div class="title-wrapper">
-				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Neural Parameters Material</span>
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Neural Material</span>
 			</div>
 
 			<small>
@@ -168,24 +168,24 @@
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
-			import { NeuralTextureTrainer } from 'three/addons/neural-parameters/NeuralTextureTrainer.js';
-			import { NeuralMaterialNodeMaterial } from 'three/addons/neural-parameters/NeuralMaterialNodeMaterial.js';
-			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/neural-parameters/NeuralMaterialSource.js';
-			import { computeGridLevels } from 'three/addons/neural-parameters/NeuralTextureModel.js';
-			import { CHANNELS, MAX_TOTAL_CHANNELS, getChannel } from 'three/addons/neural-parameters/NeuralMaterialFormat.js';
+			import { NeuralTextureTrainer } from 'three/addons/neural-texture/NeuralTextureTrainer.js';
+			import { NeuralMaterialNodeMaterial } from 'three/addons/neural-material/NeuralMaterialNodeMaterial.js';
+			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/neural-material/NeuralMaterialSource.js';
+			import { computeGridLevels } from 'three/addons/neural-texture/NeuralTextureModel.js';
+			import { CHANNELS, MAX_TOTAL_CHANNELS, getChannel } from 'three/addons/neural-material/NeuralMaterialFormat.js';
 
 			// On-disk format for this example's own "Save JSON" / "Load JSON"
 			// buttons - deliberately similar in spirit to (top-level format/
 			// version/name/source, a latent-data block, a decoder block) but
-			// not identical to examples/jsm/neural/NeuralAppearanceFormat.js's
+			// not identical to examples/jsm/neural-appearance/NeuralAppearanceFormat.js's
 			// on-disk shape: that format serializes a *hemisphere* IBL/BRDF
 			// appearance model (latents + rotation + IBL decoder), this one
 			// serializes a *2D* multiresolution grid + single MLP decoder for
 			// tiling material channels, so the data blocks below (`grid`,
 			// `decoder`) don't share field names or structure with `latents`/
 			// `outputs` over there.
-			const NEURAL_PARAMETERS_FORMAT = 'three-neural-parameters-material';
-			const NEURAL_PARAMETERS_VERSION = 1;
+			const NEURAL_MATERIAL_FORMAT = 'three-neural-material';
+			const NEURAL_MATERIAL_VERSION = 1;
 
 			let camera, scene, renderer;
 			let teacherMesh, neuralMesh, neuralMaterial, placeholderMaterial;
@@ -454,7 +454,7 @@
 			}
 
 			// Builds this example's own on-disk JSON shape for a trained network -
-			// see the NEURAL_PARAMETERS_FORMAT comment above for how/why it
+			// see the NEURAL_MATERIAL_FORMAT comment above for how/why it
 			// differs from NeuralAppearanceFormat.js's shape. `grid`/`decoder` are
 			// null when every channel turned out constant (no network was needed
 			// at all) - only `channels.constants` carries the material in that
@@ -462,10 +462,10 @@
 			function buildExportPayload() {
 
 				return {
-					format: NEURAL_PARAMETERS_FORMAT,
-					version: NEURAL_PARAMETERS_VERSION,
+					format: NEURAL_MATERIAL_FORMAT,
+					version: NEURAL_MATERIAL_VERSION,
 					name: sourceName.textContent || 'Untitled neural material',
-					source: 'Exported from three.js webgpu_materials_neural_parameters_material example.',
+					source: 'Exported from three.js webgpu_materials_neural_material example.',
 					channels: {
 						active: channelClassification.activeChannels.map( ( c ) => ( { key: c.key, offset: c.offset } ) ),
 						totalChannels: channelClassification.totalChannels,
@@ -546,9 +546,9 @@
 			// and "Train" stays disabled until a MaterialX source is opened.
 			function loadNeuralMaterialFromJson( payload, fileName ) {
 
-				if ( payload === null || typeof payload !== 'object' || payload.format !== NEURAL_PARAMETERS_FORMAT ) {
+				if ( payload === null || typeof payload !== 'object' || payload.format !== NEURAL_MATERIAL_FORMAT ) {
 
-					throw new Error( `Not a "${NEURAL_PARAMETERS_FORMAT}" JSON file.` );
+					throw new Error( `Not a "${NEURAL_MATERIAL_FORMAT}" JSON file.` );
 
 				}
 

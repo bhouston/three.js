@@ -127,7 +127,7 @@ function evaluateNeuralTexture( uvNode, cpuModel, levelTextures ) {
  * against a reference source texture, so both sides of the comparison view
  * can share the same tileable, scale/offset-able UV mapping.
  *
- * @three_import import { NeuralTextureNodeMaterial } from 'three/addons/neural-parameters/NeuralTextureNodeMaterial.js';
+ * @three_import import { NeuralTextureNodeMaterial } from 'three/addons/neural-texture/NeuralTextureNodeMaterial.js';
  */
 class NeuralTextureNodeMaterial extends THREE.NodeMaterial {
 

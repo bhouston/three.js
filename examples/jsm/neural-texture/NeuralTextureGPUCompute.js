@@ -11,7 +11,6 @@ import {
 	instanceIndex,
 	int,
 	max,
-	min,
 	pow,
 	select,
 	sin,
@@ -19,20 +18,8 @@ import {
 	textureLevel,
 	vec2
 } from 'three/tsl';
-import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from '../neural/NeuralAppearanceGPUModel.js';
-
-// Resets are pure zero-fills, unaffected by batch-size scaling, so they're
-// reused verbatim from the neural appearance module.
-export {
-	createResetGradientNormComputeNode,
-	createResetGradientsComputeNode
-} from '../neural/NeuralAppearanceGPUCompute.js';
-
-function wrapIndexTSL( val, size ) {
-
-	return val.mod( size ).add( size ).mod( size );
-
-}
+import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
+import { wrapIndexTSL, computeGradientClipScale } from '../neural/NeuralGPUComputeUtils.js';
 
 function hash1( seed ) {
 
@@ -315,15 +302,6 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		}
 
 	} )().compute( batchSize ).setName( 'NeuralTextureTrainBatch' );
-
-}
-
-function computeGradientClipScale( gradNormAtomic, maxGradientNormUniform ) {
-
-	const normSquared = float( atomicLoad( gradNormAtomic.element( 0 ) ) ).div( float( GRADIENT_NORM_SCALE ) );
-	const unclippedScale = maxGradientNormUniform.div( sqrt( max( normSquared, float( 1e-20 ) ) ) );
-
-	return min( float( 1.0 ), unclippedScale );
 
 }
 

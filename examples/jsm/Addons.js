@@ -133,20 +133,22 @@ export * from './loaders/XYZLoader.js';
 
 export * from './materials/LDrawConditionalLineMaterial.js';
 
-export * from './neural/NeuralAppearanceFilterUtils.js';
-export * from './neural/NeuralAppearanceFormat.js';
-export * from './neural/NeuralAppearanceManifest.js';
-export * from './neural/NeuralAppearanceMLP.js';
-export * from './neural/NeuralAppearanceModel.js';
-export * from './neural/NeuralAppearanceNodeMaterial.js';
-export * from './neural/NeuralAppearanceRuntime.js';
-export * from './neural/NeuralAppearanceSampler.js';
-export * from './neural/NeuralAppearanceTeacherAtlas.js';
-export * from './neural/NeuralAppearanceTeacherEvaluator.js';
-export * from './neural/NeuralAppearanceTeacherReadback.js';
-export * from './neural/NeuralAppearanceTrainer.js';
-export * from './neural/NeuralAppearanceTSL.js';
-export * from './neural/NeuralAppearanceValidator.js';
+export * from './neural/NeuralGPUTrainingConstants.js';
+export * from './neural/NeuralMLP.js';
+
+export * from './neural-appearance/NeuralAppearanceFilterUtils.js';
+export * from './neural-appearance/NeuralAppearanceFormat.js';
+export * from './neural-appearance/NeuralAppearanceManifest.js';
+export * from './neural-appearance/NeuralAppearanceModel.js';
+export * from './neural-appearance/NeuralAppearanceNodeMaterial.js';
+export * from './neural-appearance/NeuralAppearanceRuntime.js';
+export * from './neural-appearance/NeuralAppearanceSampler.js';
+export * from './neural-appearance/NeuralAppearanceTeacherAtlas.js';
+export * from './neural-appearance/NeuralAppearanceTeacherEvaluator.js';
+export * from './neural-appearance/NeuralAppearanceTeacherReadback.js';
+export * from './neural-appearance/NeuralAppearanceTrainer.js';
+export * from './neural-appearance/NeuralAppearanceTSL.js';
+export * from './neural-appearance/NeuralAppearanceValidator.js';
 
 export * from './math/Capsule.js';
 export * from './math/ColorConverter.js';

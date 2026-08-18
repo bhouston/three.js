@@ -2,11 +2,11 @@ import {
 	NeuralAppearanceTrainer,
 	estimateTrainingMemory,
 	getTrainingSampleCapacity
-} from '../../../../examples/jsm/neural/NeuralAppearanceTrainer.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceTrainer.js';
 import {
 	createGpuMaterialTeacher,
 	NeuralAppearanceTeacherEvaluator
-} from '../../../../examples/jsm/neural/NeuralAppearanceTeacherEvaluator.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceTeacherEvaluator.js';
 
 export default QUnit.module( 'Addons', () => {
 

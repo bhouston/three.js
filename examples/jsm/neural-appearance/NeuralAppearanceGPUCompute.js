@@ -14,7 +14,6 @@ import {
 	int,
 	log,
 	max,
-	min,
 	pow,
 	select,
 	sign,
@@ -24,7 +23,8 @@ import {
 import {
 	FIXED_POINT_SCALE,
 	GRADIENT_NORM_SCALE
-} from './NeuralAppearanceGPUModel.js';
+} from '../neural/NeuralGPUTrainingConstants.js';
+import { wrapIndexTSL, computeGradientClipScale } from '../neural/NeuralGPUComputeUtils.js';
 import { IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE } from './NeuralAppearanceFormat.js';
 
 const OUTPUT_CLAMP_GRADIENT_LEAK = 0.01;
@@ -196,21 +196,6 @@ function trainIndirectProbeHead( {
 		activationsStorage.element( actBase.add( int( actGradLatentsOffset ) ).add( c ) ).assign( curGradZ.add( gradLatent_c ) );
 
 	} );
-
-}
-
-function wrapIndexTSL( val, size ) {
-
-	return val.mod( size ).add( size ).mod( size );
-
-}
-
-function computeGradientClipScale( gradNormAtomic, maxGradientNormUniform ) {
-
-	const normSquared = float( atomicLoad( gradNormAtomic.element( 0 ) ) ).div( float( GRADIENT_NORM_SCALE ) );
-	const unclippedScale = maxGradientNormUniform.div( sqrt( max( normSquared, float( 1e-20 ) ) ) );
-
-	return min( float( 1.0 ), unclippedScale );
 
 }
 
@@ -1091,51 +1076,6 @@ function createTrainBatchComputeNode( gpuModel ) {
 }
 
 /**
- * Clears the scalar accumulator used by the gradient clipping pass.
- */
-function createResetGradientNormComputeNode( gpuModel ) {
-
-	const { gradNormAtomic } = gpuModel;
-
-	return Fn( () => {
-
-		atomicStore( gradNormAtomic.element( 0 ), int( 0 ) );
-
-	} )().compute( 1 ).setName( 'NeuralAppearanceResetGradientNorm' );
-
-}
-
-/**
- * Clears accumulated weight and latent gradients before a scoped optimizer pass.
- */
-function createResetGradientsComputeNode( gpuModel ) {
-
-	const {
-		layout,
-		gradWeightsAtomic,
-		gradLatentsAtomic
-	} = gpuModel;
-	const dispatchCount = layout.totalWeights + layout.totalLatents;
-
-	return Fn( () => {
-
-		const idx = int( instanceIndex );
-
-		If( idx.lessThan( int( layout.totalWeights ) ), () => {
-
-			atomicStore( gradWeightsAtomic.element( idx ), int( 0 ) );
-
-		} ).Else( () => {
-
-			atomicStore( gradLatentsAtomic.element( idx.sub( int( layout.totalWeights ) ) ), int( 0 ) );
-
-		} );
-
-	} )().compute( dispatchCount ).setName( 'NeuralAppearanceResetGradients' );
-
-}
-
-/**
  * Accumulates squared weight and latent gradients for global norm clipping.
  */
 function createAccumulateGradientNormComputeNode( gpuModel, { weightOffset = 0, weightCount = null, includeLatents = true } = {} ) {
@@ -1268,8 +1208,6 @@ function createAdamLatentsComputeNode( gpuModel, { beta1 = 0.9, beta2 = 0.999, e
 
 export {
 	createTrainBatchComputeNode,
-	createResetGradientNormComputeNode,
-	createResetGradientsComputeNode,
 	createAccumulateGradientNormComputeNode,
 	createAdamWeightsComputeNode,
 	createAdamLatentsComputeNode

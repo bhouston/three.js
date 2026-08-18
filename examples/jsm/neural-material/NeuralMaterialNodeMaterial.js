@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { bitangentWorld, cos, float, fract, normalWorld, sin, tangentWorld, transformNormalToView, uv, vec2, vec3, vec4 } from 'three/tsl';
-import { buildLevelTextures, evaluateNeuralTextureRaw } from './NeuralTextureNodeMaterial.js';
+import { buildLevelTextures, evaluateNeuralTextureRaw } from '../neural-texture/NeuralTextureNodeMaterial.js';
 import { getChannel, previewColor } from './NeuralMaterialFormat.js';
 
 const TWO_PI = Math.PI * 2;
@@ -93,7 +93,7 @@ function constantToNode( value ) {
  * classifyMaterialChannels for why: no sense spending network capacity, or
  * training-sample budget, reproducing a value that never varies).
  *
- * @three_import import { NeuralMaterialNodeMaterial } from 'three/addons/neural-parameters/NeuralMaterialNodeMaterial.js';
+ * @three_import import { NeuralMaterialNodeMaterial } from 'three/addons/neural-material/NeuralMaterialNodeMaterial.js';
  */
 class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 

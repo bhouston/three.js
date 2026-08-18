@@ -1,6 +1,6 @@
 import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, uniform } from 'three/tsl';
-import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from '../neural/NeuralAppearanceGPUModel.js';
+import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 import { computeGridLevels } from './NeuralTextureModel.js';
 
 /**
@@ -252,4 +252,4 @@ class NeuralTextureGPUModel {
 
 }
 
-export { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE, computeTextureModelLayout, NeuralTextureGPUModel };
+export { computeTextureModelLayout, NeuralTextureGPUModel };

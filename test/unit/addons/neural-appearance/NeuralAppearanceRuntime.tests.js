@@ -3,7 +3,7 @@ import {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs,
 	evaluateNeuralPrefilteredIBL
-} from '../../../../examples/jsm/neural/NeuralAppearanceRuntime.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceRuntime.js';
 
 function createIBLOutput() {
 

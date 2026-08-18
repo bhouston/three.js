@@ -1,4 +1,4 @@
-import { powerLog } from './NeuralAppearanceMLP.js';
+import { powerLog } from '../neural/NeuralMLP.js';
 import {
 	getSampleWeightSum,
 	cross,

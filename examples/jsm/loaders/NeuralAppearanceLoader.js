@@ -22,7 +22,7 @@ import {
 	IBL_OUTPUT_SIZE,
 	INDIRECT_INPUT_SIZE,
 	INDIRECT_OUTPUT_SIZE
-} from '../neural/NeuralAppearanceFormat.js';
+} from '../neural-appearance/NeuralAppearanceFormat.js';
 
 /**
  * A loader for compact neural appearance material assets.

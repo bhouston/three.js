@@ -4,13 +4,13 @@ import {
 	activate,
 	sigmoid,
 	powerLog
-} from '../../../../examples/jsm/neural/NeuralAppearanceMLP.js';
+} from '../../../../examples/jsm/neural/NeuralMLP.js';
 
 export default QUnit.module( 'Addons', () => {
 
 	QUnit.module( 'Neural', () => {
 
-		QUnit.module( 'NeuralAppearanceMLP', () => {
+		QUnit.module( 'NeuralMLP', () => {
 
 			QUnit.test( 'evaluates activation functions', ( assert ) => {
 

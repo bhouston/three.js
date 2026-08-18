@@ -1,16 +1,18 @@
 import {
 	computeModelLayout,
 	NeuralAppearanceGPUModel
-} from '../../../../examples/jsm/neural/NeuralAppearanceGPUModel.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceGPUModel.js';
 import {
 	createTrainBatchComputeNode,
-	createResetGradientNormComputeNode,
-	createResetGradientsComputeNode,
 	createAccumulateGradientNormComputeNode,
 	createAdamWeightsComputeNode,
 	createAdamLatentsComputeNode
-} from '../../../../examples/jsm/neural/NeuralAppearanceGPUCompute.js';
-import { createModel } from '../../../../examples/jsm/neural/NeuralAppearanceModel.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceGPUCompute.js';
+import {
+	createResetGradientNormComputeNode,
+	createResetGradientsComputeNode
+} from '../../../../examples/jsm/neural/NeuralGPUComputeUtils.js';
+import { createModel } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceModel.js';
 
 export default QUnit.module( 'Addons', () => {
 

@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgpu - materials - neural parameters</title>
+		<title>three.js webgpu - materials - neural texture</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<meta property="og:title" content="three.js webgpu - materials - neural parameters">
+		<meta property="og:title" content="three.js webgpu - materials - neural texture">
 		<meta property="og:type" content="website">
-		<meta property="og:url" content="https://threejs.org/examples/webgpu_materials_neural_parameters.html">
-		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_materials_neural_parameters.jpg">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_materials_neural_texture.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_materials_neural_texture.jpg">
 		<link type="text/css" rel="stylesheet" href="example.css">
 		<style>
 			#panel {
@@ -102,7 +102,7 @@
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 
 			<div class="title-wrapper">
-				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Neural Parameters</span>
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Neural Texture</span>
 			</div>
 
 			<small>
@@ -167,10 +167,10 @@
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
-			import { NeuralTextureTrainer } from 'three/addons/neural-parameters/NeuralTextureTrainer.js';
-			import { NeuralTextureNodeMaterial } from 'three/addons/neural-parameters/NeuralTextureNodeMaterial.js';
-			import { bakeColorNodeToTexture, extractBaseColorNode, loadImageTexture } from 'three/addons/neural-parameters/NeuralTextureSource.js';
-			import { computeGridLevels } from 'three/addons/neural-parameters/NeuralTextureModel.js';
+			import { NeuralTextureTrainer } from 'three/addons/neural-texture/NeuralTextureTrainer.js';
+			import { NeuralTextureNodeMaterial } from 'three/addons/neural-texture/NeuralTextureNodeMaterial.js';
+			import { bakeColorNodeToTexture, extractBaseColorNode, loadImageTexture } from 'three/addons/neural-texture/NeuralTextureSource.js';
+			import { computeGridLevels } from 'three/addons/neural-texture/NeuralTextureModel.js';
 
 			let camera, scene, renderer;
 			let teacherMesh, neuralMesh, teacherMaterial, neuralMaterial, placeholderMaterial;

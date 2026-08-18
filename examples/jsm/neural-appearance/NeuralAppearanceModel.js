@@ -9,7 +9,7 @@ import {
 import {
 	createMLP,
 	forwardMLP
-} from './NeuralAppearanceMLP.js';
+} from '../neural/NeuralMLP.js';
 
 const LATENT_INIT_SCALE = 0.35;
 

@@ -28,7 +28,7 @@ const DEFAULT_PARAMETERS = {
  * Evaluates a compact neural appearance model in a WebGPU node material.
  *
  * @augments NodeMaterial
- * @three_import import { NeuralAppearanceNodeMaterial } from 'three/addons/neural/NeuralAppearanceNodeMaterial.js';
+ * @three_import import { NeuralAppearanceNodeMaterial } from 'three/addons/neural-appearance/NeuralAppearanceNodeMaterial.js';
  */
 class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 

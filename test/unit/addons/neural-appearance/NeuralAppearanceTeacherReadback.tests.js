@@ -3,12 +3,12 @@ import {
 	createGaussianSampleKernel,
 	getGaussianSampleGridSize,
 	prefilterLeanNormalRoughness
-} from '../../../../examples/jsm/neural/NeuralAppearanceFilterUtils.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceFilterUtils.js';
 import {
 	readSamplePixel,
 	readFilteredSample,
 	renderAndReadTeacher
-} from '../../../../examples/jsm/neural/NeuralAppearanceTeacherReadback.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceTeacherReadback.js';
 
 export default QUnit.module( 'Addons', () => {
 

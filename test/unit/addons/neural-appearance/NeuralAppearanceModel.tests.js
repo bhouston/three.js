@@ -4,8 +4,8 @@ import {
 	sampleLatents,
 	forwardDecoderInput,
 	buildIBLInput
-} from '../../../../examples/jsm/neural/NeuralAppearanceModel.js';
-import { forwardMLP } from '../../../../examples/jsm/neural/NeuralAppearanceMLP.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceModel.js';
+import { forwardMLP } from '../../../../examples/jsm/neural/NeuralMLP.js';
 
 export default QUnit.module( 'Addons', () => {
 

@@ -1,6 +1,6 @@
 import { NeuralAppearanceLoader } from '../../../../examples/jsm/loaders/NeuralAppearanceLoader.js';
-import { NeuralAppearanceNodeMaterial } from '../../../../examples/jsm/neural/NeuralAppearanceNodeMaterial.js';
-import { evaluateNeuralDebugShading } from '../../../../examples/jsm/neural/NeuralAppearanceTSL.js';
+import { NeuralAppearanceNodeMaterial } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceNodeMaterial.js';
+import { evaluateNeuralDebugShading } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceTSL.js';
 
 function createManifest( fill = 0 ) {
 

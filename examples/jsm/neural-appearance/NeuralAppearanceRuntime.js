@@ -1,6 +1,6 @@
 import { DataUtils } from 'three';
 import { LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
-import { sigmoid } from './NeuralAppearanceMLP.js';
+import { sigmoid } from '../neural/NeuralMLP.js';
 import {
 	buildDecoderInput,
 	buildIBLInput,

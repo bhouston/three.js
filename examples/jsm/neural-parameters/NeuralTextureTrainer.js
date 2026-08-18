@@ -66,7 +66,7 @@ class NeuralTextureTrainer {
 
 	}
 
-	async train( { renderer, sourceTexture, onProgress = null, ...options } = {} ) {
+	async train( { renderer, sourceTexture, sourceTextures, onProgress = null, ...options } = {} ) {
 
 		const settings = { ...this.options, ...options };
 		this._abortRequested = false;
@@ -77,9 +77,11 @@ class NeuralTextureTrainer {
 
 		}
 
-		if ( ! sourceTexture ) {
+		const textures = sourceTextures || ( sourceTexture ? [ sourceTexture ] : null );
 
-			throw new Error( 'THREE.NeuralTextureTrainer: a sourceTexture is required.' );
+		if ( ! textures || textures.length === 0 ) {
+
+			throw new Error( 'THREE.NeuralTextureTrainer: a sourceTexture (or sourceTextures array) is required.' );
 
 		}
 
@@ -87,7 +89,7 @@ class NeuralTextureTrainer {
 		const gpuModel = new NeuralTextureGPUModel( settings );
 		gpuModel.initFromCPUModel( cpuModel );
 
-		const trainBatchNode = createTextureTrainBatchComputeNode( gpuModel, sourceTexture );
+		const trainBatchNode = createTextureTrainBatchComputeNode( gpuModel, textures );
 		const resetGradientNormNode = createResetGradientNormComputeNode( gpuModel );
 		const accumulateGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel );
 		const adamWeightsNode = createTextureAdamWeightsComputeNode( gpuModel );

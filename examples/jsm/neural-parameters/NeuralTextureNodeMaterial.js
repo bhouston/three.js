@@ -44,9 +44,11 @@ function buildLevelTextures( cpuModel ) {
 
 /**
  * Builds the TSL expression that evaluates the trained multiresolution grid
- * + MLP decoder at `uvNode`, returning a vec3 color.
+ * + MLP decoder at `uvNode`, returning the raw array of `outputChannels`
+ * scalar nodes (one per trained channel - callers slice/decode these into
+ * whatever physical quantities they represent, see NeuralMaterialFormat.js).
  */
-function evaluateNeuralTexture( uvNode, cpuModel, levelTextures ) {
+function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 
 	const features = [];
 
@@ -88,6 +90,18 @@ function evaluateNeuralTexture( uvNode, cpuModel, levelTextures ) {
 		activations = next;
 
 	}
+
+	return activations;
+
+}
+
+/**
+ * Convenience wrapper for the (outputChannels === 3) single-texture case:
+ * evaluates the network and returns just a vec3 color.
+ */
+function evaluateNeuralTexture( uvNode, cpuModel, levelTextures ) {
+
+	const activations = evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures );
 
 	return vec3( activations[ 0 ], activations[ 1 ], activations[ 2 ] );
 
@@ -147,4 +161,4 @@ class NeuralTextureNodeMaterial extends THREE.NodeMaterial {
 
 }
 
-export { NeuralTextureNodeMaterial, evaluateNeuralTexture, buildLevelTextures };
+export { NeuralTextureNodeMaterial, evaluateNeuralTexture, evaluateNeuralTextureRaw, buildLevelTextures };

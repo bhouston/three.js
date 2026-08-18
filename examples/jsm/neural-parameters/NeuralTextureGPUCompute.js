@@ -60,14 +60,20 @@ function randomStratifiedUV( sampleIdx, stepUniform, gridSize ) {
 }
 
 /**
- * Creates the training compute node: samples the source texture directly
+ * Creates the training compute node: samples the source texture(s) directly
  * (no teacher-atlas readback needed, since the target is already a static
  * GPU texture), forward-evaluates the multiresolution grid + MLP decoder,
  * computes an L2 loss, and hand-differentiates the backward pass -
  * accumulating gradients atomically exactly like the neural appearance
  * trainer's GPU backward pass. Runs one invocation per batch sample.
+ *
+ * `sourceTextures` is an array of RGBA textures whose channels are
+ * concatenated (in order, up to 4 components each) to form the
+ * `outputChannels`-wide training target - e.g. a single albedo texture for
+ * the texture-fitting demo, or 5 packed textures for the full-material demo
+ * (see NeuralMaterialFormat.js).
  */
-function createTextureTrainBatchComputeNode( gpuModel, sourceTexture ) {
+function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 
 	const {
 		layout,
@@ -101,8 +107,19 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTexture ) {
 		const uv = randomStratifiedUV( sampleIdx, stepUniform, gridSize );
 		const actBase = sampleIdx.mul( int( activationStride ) );
 
-		const target = textureLevel( sourceTexture, uv, 0 );
-		const targetComponents = [ target.x, target.y, target.z ];
+		const targetComponents = [];
+
+		for ( const sourceTexture of sourceTextures ) {
+
+			const sample = textureLevel( sourceTexture, uv, 0 );
+			const remaining = outputChannels - targetComponents.length;
+
+			if ( remaining > 0 ) targetComponents.push( sample.x );
+			if ( remaining > 1 ) targetComponents.push( sample.y );
+			if ( remaining > 2 ) targetComponents.push( sample.z );
+			if ( remaining > 3 ) targetComponents.push( sample.w );
+
+		}
 
 		// 1. Bilinear-sample every grid level (wrap addressing) and concatenate
 		// their features into a0 - this is the trainable positional encoding.

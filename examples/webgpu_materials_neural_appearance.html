@@ -471,6 +471,19 @@
 				directLights.push( rimLight );
 
 				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				// The neural appearance teacher's CPU atlas readback (see
+				// NeuralAppearanceTeacherReadback.js) assumes rows come back in the
+				// same top-down order the write-side shader used (TSL's
+				// viewportCoordinate, canonicalized per WebGPU convention) - true on
+				// the native WebGPU backend, but NOT on the WebGL2 fallback backend
+				// (its raw gl.readPixels() rows are bottom-up, unflipped), which would
+				// silently scramble training targets row-by-row. WebGPURenderer falls
+				// back to WebGL2 automatically whenever native WebGPU init fails, even
+				// past the WebGPU.isAvailable() check above (e.g. adapter request
+				// failure) - clearing the fallback here (there's no public
+				// constructor option for this) makes that failure loud instead of
+				// silently correct-looking-but-wrong.
+				renderer._getFallback = null;
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.setAnimationLoop( render );

@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - materials - neural parameters</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - materials - neural parameters">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_materials_neural_parameters.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_materials_neural_parameters.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#panel {
+				position: absolute;
+				left: 16px;
+				bottom: 16px;
+				padding: 12px;
+				width: 320px;
+				background: rgba( 0, 0, 0, 0.7 );
+				color: #fff;
+				font: 12px/1.45 monospace;
+				border-radius: 4px;
+				z-index: 2;
+			}
+
+			#panel button {
+				margin: 4px 4px 4px 0;
+			}
+
+			#panel select {
+				box-sizing: border-box;
+				margin: 4px 0;
+				width: 100%;
+			}
+
+			#status {
+				margin-top: 8px;
+				white-space: pre-line;
+			}
+
+			#lossPanel {
+				position: absolute;
+				right: 16px;
+				bottom: 16px;
+				padding: 12px;
+				background: rgba( 0, 0, 0, 0.7 );
+				color: #fff;
+				font: 12px/1.45 monospace;
+				border-radius: 4px;
+				z-index: 2;
+			}
+
+			#lossPanel[hidden],
+			#modelLabels[hidden] {
+				display: none;
+			}
+
+			#modelLabels {
+				position: absolute;
+				left: 0;
+				right: 0;
+				top: 120px;
+				display: flex;
+				justify-content: center;
+				gap: min( 35vw, 420px );
+				color: #fff;
+				font: 13px/1.45 monospace;
+				pointer-events: none;
+				z-index: 1;
+			}
+
+			#modelLabels span {
+				width: 180px;
+				text-align: center;
+				text-shadow: 0 1px 3px #000;
+			}
+
+			#lossGraph {
+				display: block;
+				width: 396px;
+				height: 120px;
+				background: #050505;
+				border: 1px solid rgba( 255, 255, 255, 0.25 );
+			}
+
+			#lossLegend {
+				display: flex;
+				justify-content: center;
+				gap: 12px;
+				margin-top: 4px;
+				color: #bbb;
+			}
+
+			#lossLegend .training-loss {
+				color: #50c8ff;
+			}
+		</style>
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Neural Parameters</span>
+			</div>
+
+			<small>
+				Fits a small multiresolution-grid + MLP network to a single material input texture (e.g. a MaterialX base color), instead of the whole shading model.
+			</small>
+		</div>
+
+		<div id="panel">
+			<div><strong>Source:</strong> <span id="sourceName">loading default</span></div>
+			<label for="builtInMaterial"><strong>Built-in MaterialX:</strong></label>
+			<select id="builtInMaterial">
+				<option value="checkerboard">Checkerboard 4x4</option>
+				<option value="uvGrid">UV rainbow waves</option>
+				<option value="lambertRed">Lambert red</option>
+				<option value="lambertGreen">Lambert green</option>
+				<option value="lambertBlue">Lambert blue</option>
+				<option value="glossyGold">Metallic gold</option>
+				<option value="velvet">Velvet</option>
+				<option value="emissiveGrid">Emissive rainbow waves</option>
+				<option value="" disabled>Custom file</option>
+			</select>
+			<button id="openMtlxButton">Open .mtlx</button>
+			<button id="openImageButton">Open image</button>
+			<button id="trainButton">Train</button>
+			<button id="stopButton" disabled>Stop training</button>
+			<div><strong>Network size:</strong> <span id="networkSize">—</span></div>
+			<div id="status">Ready.</div>
+			<input id="mtlxFileInput" type="file" accept=".mtlx,.zip,.mtlx.zip" hidden>
+			<input id="imageFileInput" type="file" accept="image/*" hidden>
+		</div>
+
+		<div id="modelLabels" hidden>
+			<span>Source texture</span>
+			<span id="neuralLabel">Neural output</span>
+		</div>
+
+		<div id="lossPanel" hidden>
+			<div><strong>Training loss</strong></div>
+			<canvas id="lossGraph" width="396" height="120"></canvas>
+			<div id="lossLegend">
+				<span class="training-loss">L2 loss (log)</span>
+			</div>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import * as TSL from 'three/tsl';
+
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
+			import { NeuralTextureTrainer } from 'three/addons/neural-parameters/NeuralTextureTrainer.js';
+			import { NeuralTextureNodeMaterial } from 'three/addons/neural-parameters/NeuralTextureNodeMaterial.js';
+			import { bakeColorNodeToTexture, extractBaseColorNode, loadImageTexture } from 'three/addons/neural-parameters/NeuralTextureSource.js';
+			import { computeGridLevels } from 'three/addons/neural-parameters/NeuralTextureModel.js';
+
+			let camera, scene, renderer;
+			let teacherMesh, neuralMesh, teacherMaterial, neuralMaterial, placeholderMaterial;
+			let sourceTexture = null, sourceRenderTarget = null, materialXMaterial = null;
+			let isTraining = false, activeTrainer = null, comparisonVisible = false;
+			let lossHistory = [];
+
+			const params = {
+				bakeResolution: 512,
+				uvScaleX: 1,
+				uvScaleY: 1,
+				uvOffsetX: 0,
+				uvOffsetY: 0,
+				levels: 4,
+				baseResolution: 16,
+				targetResolution: 128,
+				hiddenSize: 32,
+				batchSize: 8192,
+				iterations: 3000,
+				learningRate: 0.01,
+				outputMode: 'neural',
+				errorScale: 6
+			};
+
+			const uvScaleUniform = TSL.uniform( new THREE.Vector2( 1, 1 ) );
+			const uvOffsetUniform = TSL.uniform( new THREE.Vector2( 0, 0 ) );
+
+			const materialPresets = {
+				checkerboard: 'neural_train_checkerboard.mtlx',
+				uvGrid: 'neural_train_uv_grid.mtlx',
+				lambertRed: 'neural_train_lambert_red.mtlx',
+				lambertGreen: 'neural_train_lambert_green.mtlx',
+				lambertBlue: 'neural_train_lambert_blue.mtlx',
+				glossyGold: 'neural_train_glossy_gold.mtlx',
+				velvet: 'neural_train_velvet.mtlx',
+				emissiveGrid: 'neural_train_emissive_grid.mtlx'
+			};
+
+			const sourceName = document.getElementById( 'sourceName' );
+			const status = document.getElementById( 'status' );
+			const builtInMaterial = document.getElementById( 'builtInMaterial' );
+			const mtlxFileInput = document.getElementById( 'mtlxFileInput' );
+			const imageFileInput = document.getElementById( 'imageFileInput' );
+			const openMtlxButton = document.getElementById( 'openMtlxButton' );
+			const openImageButton = document.getElementById( 'openImageButton' );
+			const trainButton = document.getElementById( 'trainButton' );
+			const stopButton = document.getElementById( 'stopButton' );
+			const modelLabels = document.getElementById( 'modelLabels' );
+			const lossPanel = document.getElementById( 'lossPanel' );
+			const lossGraph = document.getElementById( 'lossGraph' );
+
+			init();
+
+			async function init() {
+
+				if ( WebGPU.isAvailable() === false ) {
+
+					document.body.appendChild( WebGPU.getErrorMessage() );
+					throw new Error( 'No WebGPU support' );
+
+				}
+
+				const container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 40, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 0, 3.2 );
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x15171c );
+
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( render );
+				renderer.domElement.id = 'neuralParametersCanvas';
+				container.appendChild( renderer.domElement );
+				await renderer.init();
+
+				const controls = new OrbitControls( camera, renderer.domElement );
+				controls.enableRotate = false;
+				controls.target.set( 0, 0, 0 );
+				controls.update();
+
+				const geometry = new THREE.PlaneGeometry( 1, 1 );
+				placeholderMaterial = new THREE.MeshBasicNodeMaterial( { color: 0x222222 } );
+
+				teacherMesh = new THREE.Mesh( geometry, placeholderMaterial );
+				teacherMesh.position.x = - 0.65;
+				scene.add( teacherMesh );
+
+				neuralMesh = new THREE.Mesh( geometry, placeholderMaterial );
+				neuralMesh.position.x = 0.65;
+				scene.add( neuralMesh );
+
+				const gui = new GUI();
+
+				const sourceFolder = gui.addFolder( 'source' );
+				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024 ] ).name( 'bake resolution' ).onChange( () => reloadCurrentSource() );
+
+				const uvFolder = gui.addFolder( 'uv scale / offset' );
+				uvFolder.add( params, 'uvScaleX', 0.1, 8, 0.05 ).name( 'scale x' ).onChange( updateUvUniforms );
+				uvFolder.add( params, 'uvScaleY', 0.1, 8, 0.05 ).name( 'scale y' ).onChange( updateUvUniforms );
+				uvFolder.add( params, 'uvOffsetX', - 4, 4, 0.01 ).name( 'offset x' ).onChange( updateUvUniforms );
+				uvFolder.add( params, 'uvOffsetY', - 4, 4, 0.01 ).name( 'offset y' ).onChange( updateUvUniforms );
+
+				const networkFolder = gui.addFolder( 'network (grid + MLP)' );
+				networkFolder.add( params, 'levels', [ 2, 3, 4, 5, 6, 8 ] ).name( 'grid levels' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'baseResolution', [ 8, 16, 32 ] ).name( 'grid base res' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'targetResolution', [ 64, 128, 256, 512 ] ).name( 'grid target res' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'hiddenSize', [ 16, 32, 64 ] ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
+
+				const trainingFolder = gui.addFolder( 'training' );
+				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
+				trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' );
+				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
+
+				const viewFolder = gui.addFolder( 'view' );
+				viewFolder.add( params, 'outputMode', [ 'neural', 'diff' ] ).name( 'right side shows' ).onChange( () => rebuildNeuralMaterial( null ) );
+				viewFolder.add( params, 'errorScale', 1, 30, 0.5 ).name( 'error amplification' ).onChange( () => rebuildNeuralMaterial( null ) );
+
+				builtInMaterial.addEventListener( 'change', () => loadBuiltInMaterial( builtInMaterial.value ) );
+				openMtlxButton.addEventListener( 'click', () => mtlxFileInput.click() );
+				mtlxFileInput.addEventListener( 'change', onMtlxFileSelected );
+				openImageButton.addEventListener( 'click', () => imageFileInput.click() );
+				imageFileInput.addEventListener( 'change', onImageFileSelected );
+				trainButton.addEventListener( 'click', train );
+				stopButton.addEventListener( 'click', stopTraining );
+				window.addEventListener( 'resize', onWindowResize );
+
+				updateUvUniforms();
+				updateNetworkSize();
+				builtInMaterial.value = 'checkerboard';
+				await loadBuiltInMaterial( 'checkerboard' );
+
+			}
+
+			function updateUvUniforms() {
+
+				uvScaleUniform.value.set( params.uvScaleX, params.uvScaleY );
+				uvOffsetUniform.value.set( params.uvOffsetX, params.uvOffsetY );
+
+			}
+
+			function updateNetworkSize() {
+
+				const channels = 4;
+				const outputChannels = 3;
+				const resolutions = computeGridLevels( Number( params.baseResolution ), Number( params.targetResolution ), Number( params.levels ) );
+				const latentTexels = resolutions.reduce( ( sum, resolution ) => sum + resolution * resolution, 0 );
+				const latentBytes = latentTexels * channels * 2; // exported as fp16, like the neural appearance runtime
+
+				const hidden = Number( params.hiddenSize );
+				const inputSize = Number( params.levels ) * channels;
+				const weightCount = ( inputSize * hidden + hidden ) + ( hidden * hidden + hidden ) + ( hidden * outputChannels + outputChannels );
+				const weightBytes = weightCount * 4; // fp32
+
+				document.getElementById( 'networkSize' ).textContent =
+					`${formatBytes( latentBytes + weightBytes )} (${formatBytes( latentBytes )} grid + ${formatBytes( weightBytes )} MLP, ${latentTexels.toLocaleString()} texels)`;
+
+			}
+
+			function formatBytes( bytes ) {
+
+				if ( bytes < 1024 ) return `${bytes} B`;
+				if ( bytes < 1024 * 1024 ) return `${( bytes / 1024 ).toFixed( 1 )} KiB`;
+				return `${( bytes / ( 1024 * 1024 ) ).toFixed( 1 )} MiB`;
+
+			}
+
+			async function loadBuiltInMaterial( key ) {
+
+				const file = materialPresets[ key ];
+				if ( file === undefined ) return;
+
+				try {
+
+					builtInMaterial.disabled = true;
+					status.textContent = `Loading ${file}...`;
+					const loader = new MaterialXLoader().setPath( 'materialx/' );
+					const asset = await loader.loadAsync( file, { uvSpace: 'top-left', throwOnErrors: true } );
+					const materials = asset && asset.materials ? asset.materials : asset;
+					const material = Object.values( materials ).find( isPhysicalNodeMaterial ) || Object.values( materials )[ 0 ];
+
+					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
+
+					materialXMaterial = material;
+					await setSourceFromMaterialX( material, file );
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				} finally {
+
+					builtInMaterial.disabled = isTraining;
+
+				}
+
+			}
+
+			async function onMtlxFileSelected( event ) {
+
+				const file = event.target.files[ 0 ];
+				if ( file === undefined ) return;
+
+				try {
+
+					status.textContent = `Loading ${file.name}...`;
+					const loader = new MaterialXLoader();
+					const asset = loader.parseBuffer( await file.arrayBuffer(), file.name, { uvSpace: 'top-left', throwOnErrors: true } );
+					const materials = asset && asset.materials ? asset.materials : asset;
+					const material = Object.values( materials ).find( isPhysicalNodeMaterial ) || Object.values( materials )[ 0 ];
+
+					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
+
+					builtInMaterial.value = '';
+					materialXMaterial = material;
+					await setSourceFromMaterialX( material, file.name );
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
+
+				event.target.value = '';
+
+			}
+
+			async function onImageFileSelected( event ) {
+
+				const file = event.target.files[ 0 ];
+				if ( file === undefined ) return;
+
+				try {
+
+					status.textContent = `Loading ${file.name}...`;
+					const url = URL.createObjectURL( file );
+					const texture = await loadImageTexture( url );
+					URL.revokeObjectURL( url );
+
+					builtInMaterial.value = '';
+					materialXMaterial = null;
+					setSourceTexture( texture, null );
+					sourceName.textContent = file.name;
+					status.textContent = `Loaded ${file.name}. Press Train to fit it.`;
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
+
+				event.target.value = '';
+
+			}
+
+			function isPhysicalNodeMaterial( material ) {
+
+				return material !== undefined && ( material.isMeshPhysicalNodeMaterial === true || material.type === 'MeshPhysicalNodeMaterial' );
+
+			}
+
+			async function setSourceFromMaterialX( material, name ) {
+
+				const colorNode = extractBaseColorNode( material );
+				if ( colorNode === null ) throw new Error( 'MaterialX material has no usable base color.' );
+
+				const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, Number( params.bakeResolution ) );
+				setSourceTexture( renderTarget.texture, renderTarget );
+				sourceName.textContent = material.name || name;
+				status.textContent = 'Base color baked from MaterialX. Press Train to fit it.';
+
+			}
+
+			async function reloadCurrentSource() {
+
+				if ( materialXMaterial ) await setSourceFromMaterialX( materialXMaterial, materialXMaterial.name );
+
+			}
+
+			function setSourceTexture( texture, renderTarget ) {
+
+				if ( sourceRenderTarget ) sourceRenderTarget.dispose();
+				if ( sourceTexture && sourceRenderTarget === null ) sourceTexture.dispose();
+
+				sourceTexture = texture;
+				sourceRenderTarget = renderTarget;
+
+				if ( teacherMaterial ) teacherMaterial.dispose();
+				teacherMaterial = new THREE.NodeMaterial();
+				teacherMaterial.lights = false;
+				teacherMaterial.toneMapped = false;
+				teacherMaterial.colorNode = TSL.vec4( TSL.texture( sourceTexture, TSL.fract( TSL.uv().mul( uvScaleUniform ).add( uvOffsetUniform ) ) ).rgb, 1 );
+				teacherMesh.material = teacherMaterial;
+
+				disposeNeuralMaterial();
+				neuralMesh.material = placeholderMaterial;
+				comparisonVisible = false;
+				modelLabels.hidden = true;
+				lossPanel.hidden = true;
+				lossHistory = [];
+				trainButton.disabled = false;
+
+			}
+
+			async function train() {
+
+				if ( sourceTexture === null ) return;
+
+				setTrainingUi( true );
+				comparisonVisible = true;
+				modelLabels.hidden = false;
+				lossPanel.hidden = false;
+				lossHistory = [];
+				drawLossGraph();
+				status.textContent = 'Training...';
+				const startTime = performance.now();
+
+				try {
+
+					const trainer = new NeuralTextureTrainer( {
+						channels: 4,
+						levels: Number( params.levels ),
+						baseResolution: Number( params.baseResolution ),
+						targetResolution: Number( params.targetResolution ),
+						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
+						outputChannels: 3,
+						batchSize: Number( params.batchSize ),
+						iterations: Number( params.iterations ),
+						learningRate: Number( params.learningRate ),
+						seed: 1
+					} );
+					activeTrainer = trainer;
+
+					const result = await trainer.train( {
+						renderer,
+						sourceTexture,
+						onProgress: ( progress ) => {
+
+							lossHistory.push( { iteration: progress.iteration, loss: progress.loss } );
+							drawLossGraph();
+							rebuildNeuralMaterial( progress.cpuModel );
+
+							if ( progress.iteration % 20 === 0 || progress.iteration === progress.iterations ) {
+
+								const elapsed = performance.now() - startTime;
+								status.textContent = `Training ${progress.iteration}/${progress.iterations}\nloss ${progress.loss.toExponential( 3 )}\nelapsed ${formatDuration( elapsed )}`;
+
+							}
+
+						}
+					} );
+
+					rebuildNeuralMaterial( result.cpuModel );
+					const elapsedText = formatDuration( performance.now() - startTime );
+					status.textContent = result.stoppedEarly ?
+						`Stopped at ${result.iteration}/${result.iterations} in ${elapsedText}.\nloss ${result.loss.toExponential( 3 )}` :
+						`Training complete in ${elapsedText}.\nloss ${result.loss.toExponential( 3 )}`;
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				} finally {
+
+					activeTrainer = null;
+					setTrainingUi( false );
+
+				}
+
+			}
+
+			function stopTraining() {
+
+				if ( activeTrainer === null ) return;
+				activeTrainer.abort();
+				stopButton.disabled = true;
+				status.textContent = 'Stopping...';
+
+			}
+
+			function setTrainingUi( active ) {
+
+				isTraining = active;
+				stopButton.disabled = ! active;
+				trainButton.disabled = active || sourceTexture === null;
+				builtInMaterial.disabled = active;
+				openMtlxButton.disabled = active;
+				openImageButton.disabled = active;
+
+			}
+
+			function rebuildNeuralMaterial( cpuModel ) {
+
+				if ( cpuModel === null && neuralMaterial === null ) return;
+				if ( cpuModel === null ) cpuModel = neuralMaterial.cpuModel;
+
+				disposeNeuralMaterial();
+				neuralMaterial = new NeuralTextureNodeMaterial( cpuModel, {
+					mode: params.outputMode,
+					sourceTexture,
+					errorScale: Number( params.errorScale ),
+					uvScaleNode: uvScaleUniform,
+					uvOffsetNode: uvOffsetUniform
+				} );
+				neuralMesh.material = neuralMaterial;
+
+			}
+
+			function disposeNeuralMaterial() {
+
+				if ( neuralMaterial === null || neuralMaterial === undefined ) return;
+				neuralMaterial.dispose();
+				neuralMaterial = null;
+
+			}
+
+			function drawLossGraph() {
+
+				const context = lossGraph.getContext( '2d' );
+				const width = lossGraph.width;
+				const height = lossGraph.height;
+				const marginLeft = 46;
+				const marginRight = 10;
+				const marginTop = 12;
+				const marginBottom = 24;
+				const plotWidth = width - marginLeft - marginRight;
+				const plotHeight = height - marginTop - marginBottom;
+
+				context.clearRect( 0, 0, width, height );
+				context.fillStyle = '#050505';
+				context.fillRect( 0, 0, width, height );
+
+				context.strokeStyle = 'rgba( 255, 255, 255, 0.35 )';
+				context.lineWidth = 1;
+				context.beginPath();
+				context.moveTo( marginLeft, marginTop );
+				context.lineTo( marginLeft, marginTop + plotHeight );
+				context.lineTo( marginLeft + plotWidth, marginTop + plotHeight );
+				context.stroke();
+
+				context.fillStyle = '#aaa';
+				context.font = '10px monospace';
+				context.fillText( 'loss (log)', marginLeft, 9 );
+				context.fillText( 'iteration', width - 64, height - 4 );
+
+				const values = lossHistory.map( ( point ) => point.loss ).filter( ( value ) => Number.isFinite( value ) && value > 0 );
+				if ( values.length === 0 ) {
+
+					context.fillText( 'Train to graph loss.', marginLeft + 30, marginTop + plotHeight / 2 );
+					return;
+
+				}
+
+				let minLog = Math.log10( Math.min( ...values ) );
+				let maxLog = Math.log10( Math.max( ...values ) );
+				if ( minLog === maxLog ) {
+
+					minLog -= 0.5;
+					maxLog += 0.5;
+
+				}
+
+				context.fillStyle = '#777';
+				context.fillText( Math.pow( 10, maxLog ).toExponential( 1 ), 2, marginTop + 4 );
+				context.fillText( Math.pow( 10, minLog ).toExponential( 1 ), 2, marginTop + plotHeight );
+
+				const maxIteration = Math.max( 1, lossHistory[ lossHistory.length - 1 ].iteration - 1 );
+				const logRange = maxLog - minLog || 1;
+
+				context.strokeStyle = '#50c8ff';
+				context.lineWidth = 2;
+				context.beginPath();
+
+				for ( let i = 0; i < lossHistory.length; i ++ ) {
+
+					const point = lossHistory[ i ];
+					if ( point.loss <= 0 ) continue;
+					const px = marginLeft + ( point.iteration - 1 ) / maxIteration * plotWidth;
+					const py = marginTop + plotHeight - ( Math.log10( point.loss ) - minLog ) / logRange * plotHeight;
+
+					if ( i === 0 ) context.moveTo( px, py );
+					else context.lineTo( px, py );
+
+				}
+
+				context.stroke();
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function render() {
+
+				teacherMesh.visible = true;
+				neuralMesh.visible = comparisonVisible;
+
+				renderer.render( scene, camera );
+
+			}
+
+			function formatDuration( milliseconds ) {
+
+				const seconds = Math.max( milliseconds, 0 ) / 1000;
+				if ( seconds < 60 ) return `${seconds.toFixed( 1 )}s`;
+				return `${Math.floor( seconds / 60 )}m ${Math.round( seconds % 60 )}s`;
+
+			}
+
+		</script>
+	</body>
+</html>

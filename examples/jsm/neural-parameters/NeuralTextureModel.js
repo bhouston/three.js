@@ -1,0 +1,72 @@
+import { createMLP } from '../neural/NeuralAppearanceMLP.js';
+
+const LATENT_INIT_SCALE = 0.35;
+
+/**
+ * Computes the per-level grid resolutions for a multiresolution feature grid,
+ * geometrically spaced between a coarse base resolution and a fine target
+ * resolution (instant-ngp / NVIDIA neural texture compression style).
+ */
+function computeGridLevels( baseResolution, targetResolution, levels ) {
+
+	const resolutions = [];
+
+	if ( levels <= 1 ) {
+
+		resolutions.push( Math.max( 1, Math.round( targetResolution ) ) );
+
+	} else {
+
+		const growth = Math.pow( Math.max( targetResolution, baseResolution ) / Math.max( 1, baseResolution ), 1 / ( levels - 1 ) );
+
+		for ( let i = 0; i < levels; i ++ ) {
+
+			resolutions.push( Math.max( 1, Math.round( baseResolution * Math.pow( growth, i ) ) ) );
+
+		}
+
+	}
+
+	return resolutions;
+
+}
+
+function createLatentGrid( width, height, channels, random ) {
+
+	const data = new Float32Array( width * height * channels );
+
+	for ( let i = 0; i < data.length; i ++ ) {
+
+		data[ i ] = ( random() * 2 - 1 ) * LATENT_INIT_SCALE;
+
+	}
+
+	return { width, height, channels, data };
+
+}
+
+/**
+ * Creates the CPU-side reference model: a multiresolution feature grid pyramid
+ * (instant-ngp / NVIDIA NTC style, one grid per level, features concatenated
+ * across levels) feeding a small MLP decoder.
+ */
+function createNeuralTextureModel( options, random ) {
+
+	const channels = options.channels || 4;
+	const levels = options.levels || 4;
+	const baseResolution = options.baseResolution || 16;
+	const targetResolution = options.targetResolution || 256;
+	const hiddenSizes = options.hiddenSizes || [ 32, 32 ];
+	const outputChannels = options.outputChannels || 3;
+
+	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
+	const grids = resolutions.map( ( resolution ) => createLatentGrid( resolution, resolution, channels, random ) );
+
+	const inputSize = levels * channels;
+	const decoder = createMLP( inputSize, hiddenSizes, outputChannels, random, 'relu', 'linear' );
+
+	return { channels, levels, resolutions, grids, decoder, hiddenSizes, outputChannels };
+
+}
+
+export { createNeuralTextureModel, createLatentGrid, computeGridLevels, LATENT_INIT_SCALE };

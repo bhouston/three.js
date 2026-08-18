@@ -20,6 +20,7 @@ async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512 ) {
 	material.colorNode = colorNode;
 
 	const geometry = new THREE.PlaneGeometry( 2, 2 );
+	geometry.computeTangents();
 	const mesh = new THREE.Mesh( geometry, material );
 	scene.add( mesh );
 

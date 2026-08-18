@@ -167,27 +167,21 @@ function resolveConstantValue( material, key ) {
  * reconstruction time, bypassing the network entirely (see
  * NeuralMaterialNodeMaterial.js).
  *
- * A node being *present* isn't proof a channel actually varies, though: many
- * generators (including this project's MaterialX loader) wire a pass-through
- * normal/roughness/etc. node on essentially every material whether or not it
- * does anything spatially - so node presence is only used as a cheap first
- * pass to narrow candidates. Each candidate is then baked at a small
- * `analysisResolution` and read back to measure its actual min/max range;
- * only channels that come back with real variance stay "active" (trained by
- * the network) - the rest are demoted to constant, using their *measured*
- * mean as a more accurate value than a hardcoded default. Without this
- * second pass, a channel like "normal" that's node-driven but genuinely flat
- * would still get trained - and since it has to be *learned* via gradient
- * descent rather than read off exactly like a true constant, it converges
- * far slower than everything else, which is exactly what shows up as "every
- * channel looks right except normal" on materials with no real bump map.
+ * This is a node-presence heuristic, not a pixel-level analysis: a channel
+ * is "active" (trained) iff at least one of its `nodeKeys` is set on the
+ * material, regardless of whether that node's output actually varies once
+ * evaluated - a texture-driven channel that happens to be uniform everywhere
+ * still gets trained (harmlessly - a constant target is trivially fit, see
+ * the flat-velvet-color regression test in NeuralTextureTrainer). An earlier
+ * version of this function baked and read back each candidate channel to
+ * measure its real variance and reclassify accordingly; that added real
+ * complexity and failure surface (a GPU readback round trip per material
+ * load) without a clear net win, so it's been backed out in favor of this
+ * simpler, synchronous check.
  */
-async function classifyMaterialChannels( renderer, material, options = {} ) {
+function classifyMaterialChannels( material ) {
 
-	const analysisResolution = options.analysisResolution || 32;
-	const varianceThreshold = options.varianceThreshold !== undefined ? options.varianceThreshold : 2e-3;
-
-	const candidateList = [];
+	const activeList = [];
 	const constantValues = {};
 
 	for ( const channel of CHANNELS ) {
@@ -196,7 +190,7 @@ async function classifyMaterialChannels( renderer, material, options = {} ) {
 
 		if ( hasNode ) {
 
-			candidateList.push( channel );
+			activeList.push( channel );
 
 		} else {
 
@@ -206,116 +200,9 @@ async function classifyMaterialChannels( renderer, material, options = {} ) {
 
 	}
 
-	if ( candidateList.length === 0 ) return { activeChannels: [], totalChannels: 0, packCount: 0, constantValues };
-
-	const candidateLayout = layoutChannels( candidateList );
-	let ranges;
-
-	try {
-
-		ranges = await measureChannelRanges( renderer, material, candidateLayout.channels, analysisResolution );
-
-	} catch ( error ) {
-
-		// The variance measurement does a real bake + GPU readback, which is
-		// a lot newer/less exercised than the main training bake path (which
-		// never reads pixels back to the CPU at all) - if it fails for any
-		// reason, fall back to training every node-present candidate rather
-		// than silently producing zero active channels, which would leave
-		// training with nothing to fit at all.
-		console.warn( 'THREE.NeuralMaterialSource: channel variance measurement failed, training all node-present channels instead.', error );
-
-		return { ...layoutChannels( candidateList ), constantValues };
-
-	}
-
-	const confirmedActive = [];
-
-	for ( const channel of candidateLayout.channels ) {
-
-		let isConstant = true;
-		const decodedMeans = [];
-
-		for ( let i = 0; i < channel.size; i ++ ) {
-
-			const range = ranges[ channel.offset + i ];
-
-			// Same defensive fallback as above, per-channel: if this specific
-			// component's range is missing for any reason, don't let a
-			// genuinely-varying channel get silently dropped from training.
-			if ( range === undefined ) { isConstant = false; continue; }
-
-			decodedMeans.push( decodeConstantComponent( range.mean, channel ) );
-			if ( range.max - range.min > varianceThreshold ) isConstant = false;
-
-		}
-
-		if ( isConstant ) constantValues[ channel.key ] = channel.size === 1 ? decodedMeans[ 0 ] : decodedMeans;
-		else confirmedActive.push( channel );
-
-	}
-
-	const { channels: activeChannels, totalChannels, packCount } = layoutChannels( confirmedActive );
+	const { channels: activeChannels, totalChannels, packCount } = layoutChannels( activeList );
 
 	return { activeChannels, totalChannels, packCount, constantValues };
-
-}
-
-/**
- * Un-does a channel's `encode` mapping on one already-baked (and now
- * averaged) component value, recovering a physical constant comparable to
- * what `resolveConstantValue` would have returned directly.
- */
-function decodeConstantComponent( encodedValue, channel ) {
-
-	if ( channel.encode === 'signed' ) return encodedValue * 2 - 1;
-	if ( channel.encode === 'angle' ) return ( encodedValue - 0.5 ) * TWO_PI;
-
-	return encodedValue;
-
-}
-
-/**
- * Bakes `candidateChannels` at a small `resolution` and reads the pixels
- * back to the CPU, returning one `{min, max, mean}` per flat component
- * (in the same order/offsets as `candidateChannels`) - cheap enough to run
- * once per material load, since `resolution` is deliberately tiny (this is
- * only measuring variance, not fitting detail).
- */
-async function measureChannelRanges( renderer, material, candidateChannels, resolution ) {
-
-	const packs = buildPackedColorNodes( candidateChannels, material );
-	const ranges = [];
-
-	for ( const colorNode of packs ) {
-
-		const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, resolution );
-		const pixels = await renderer.readRenderTargetPixelsAsync( renderTarget, 0, 0, resolution, resolution );
-		const isHalfFloat = pixels instanceof Uint16Array;
-		const texelCount = pixels.length / 4;
-
-		for ( let c = 0; c < 4; c ++ ) {
-
-			let min = Infinity, max = - Infinity, sum = 0;
-
-			for ( let i = c; i < pixels.length; i += 4 ) {
-
-				const value = isHalfFloat ? THREE.DataUtils.fromHalfFloat( pixels[ i ] ) : pixels[ i ];
-				if ( value < min ) min = value;
-				if ( value > max ) max = value;
-				sum += value;
-
-			}
-
-			ranges.push( { min, max, mean: sum / texelCount } );
-
-		}
-
-		renderTarget.dispose();
-
-	}
-
-	return ranges;
 
 }
 

@@ -373,7 +373,7 @@
 
 					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
 
-					await setSourceMaterial( material, file );
+					setSourceMaterial( material, file );
 
 				} catch ( error ) {
 
@@ -404,7 +404,7 @@
 					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
 
 					builtInMaterial.value = '';
-					await setSourceMaterial( material, file.name );
+					setSourceMaterial( material, file.name );
 
 				} catch ( error ) {
 
@@ -423,9 +423,10 @@
 
 			}
 
-			async function setSourceMaterial( material, name ) {
+			function setSourceMaterial( material, name ) {
 
 				materialXMaterial = material;
+				channelClassification = classifyMaterialChannels( material );
 				sourceName.textContent = material.name || name;
 				disposeTeacherDebugMaterials();
 				teacherDebugMaterials = buildChannelPreviewMaterials( material );
@@ -436,14 +437,6 @@
 				modelLabels.hidden = true;
 				lossPanel.hidden = true;
 				lossHistory = [];
-				trainButton.disabled = true;
-				status.textContent = 'MaterialX loaded. Measuring which channels actually vary...';
-
-				// Bakes each candidate channel at a small resolution and measures
-				// its real variance - a node being present (as MaterialX wires on
-				// almost every channel, even flat ones) doesn't mean it varies.
-				channelClassification = await classifyMaterialChannels( renderer, material );
-
 				trainButton.disabled = false;
 				updateDebugView();
 				updateNetworkSize();

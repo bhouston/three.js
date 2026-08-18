@@ -75,6 +75,20 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 
 		for ( let j = 0; j < layer.outputSize; j ++ ) {
 
+			// A plain functional .add() chain within one neuron's dot product
+			// is fine (bounded depth = inputSize, and unlike .addAssign() it
+			// doesn't need an active Fn() stack - this graph is built directly
+			// at material-construction time, not inside a compute Fn()). What
+			// actually caused the WGSL "maximum parser recursive depth
+			// reached" failure is each neuron re-inlining every element of
+			// `activations`, which is itself already a deeply-nested
+			// expression from the previous layer - the nesting compounds
+			// *across* layers, not just within one. .toVar() on the finished
+			// per-neuron value (not the accumulation itself) breaks that
+			// compounding: the next layer's dot product then references an
+			// already-materialized variable instead of re-expanding the whole
+			// upstream tree, so depth stays roughly bounded to one layer's
+			// inputSize instead of multiplying across every layer.
 			let value = biasesArray.element( j );
 
 			for ( let i = 0; i < layer.inputSize; i ++ ) {
@@ -83,7 +97,7 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 
 			}
 
-			next.push( layer.activation === 'relu' ? value.max( 0 ) : value );
+			next.push( ( layer.activation === 'relu' ? value.max( 0 ) : value ).toVar() );
 
 		}
 

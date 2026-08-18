@@ -91,6 +91,14 @@ function previewColor( valueNode, channel, alreadyEncoded ) {
 
 	if ( channel.encode === 'signed' && ! alreadyEncoded ) value = value.mul( 0.5 ).add( 0.5 );
 
+	// A trained (as opposed to measured-constant) value has no guarantee of
+	// landing in [0,1] - the decoder's output layer is linear/unclamped, and
+	// an undertrained network can genuinely predict well outside that range.
+	// Clamp for display so this reads as "not converged yet" (a muted, but
+	// plausible, color) rather than hard-saturating to a misleadingly bold
+	// primary color.
+	value = value.clamp( 0, 1 );
+
 	if ( channel.size === 1 ) return vec3( value, value, value );
 
 	return value;

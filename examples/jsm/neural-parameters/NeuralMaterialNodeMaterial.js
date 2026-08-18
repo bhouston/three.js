@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { cos, float, fract, sin, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { bitangentWorld, cos, float, fract, normalWorld, sin, tangentWorld, transformNormalToView, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { buildLevelTextures, evaluateNeuralTextureRaw } from './NeuralTextureNodeMaterial.js';
 import { getChannel, previewColor } from './NeuralMaterialFormat.js';
 
@@ -13,6 +13,41 @@ function decodeSigned( vectorNode ) {
 	// channel at all) - nudge it off the singularity first, negligible for
 	// any real, non-degenerate normal.
 	return vectorNode.mul( 2 ).sub( 1 ).add( vec3( 1e-6, 0, 0 ) ).normalize();
+
+}
+
+/**
+ * Turns a trained tangent-space-ish perturbation vector into the mesh's
+ * final view-space normal.
+ *
+ * This is NOT the standard three.js `normalMap(texture, scale)` convention,
+ * where the returned vector is left in tangent space and the base
+ * `NodeMaterial.setupNormal()` pipeline transforms it downstream using
+ * whatever mesh it's applied to - `setupNormal()` actually uses `normalNode`
+ * verbatim as the final normal, no further transform. MaterialX's own
+ * `<normalmap>` conversion (see examples/jsm/loaders/materialx/
+ * MaterialXNodeLibrary.js's mx_normalmap + MaterialXSurfaceMappings.js's
+ * transformNormalToView(...) call) does the tangent/bitangent/normal blend
+ * *inside* the graph itself, using whatever mesh that graph gets built
+ * against - which is why baking that node's output on our flat training
+ * quad and reapplying it verbatim to the torus knot was wrong for any real
+ * (non-constant) bump detail: the baked value is relative to the quad's own
+ * orientation, not a portable tangent-space vector, and setupNormal() never
+ * re-blends it per-mesh. This function replicates that same blend here, but
+ * against tangentWorld/bitangentWorld/normalWorld as resolved for whatever
+ * mesh THIS material is actually applied to (the torus knot) - these are
+ * dynamic per-mesh TSL accessors, so this "just works" the same way
+ * MaterialX's own conversion does when applied directly to a mesh.
+ */
+function reconstructFinalNormal( encodedVectorNode ) {
+
+	const tangentSpace = decodeSigned( encodedVectorNode );
+	const blended = tangentWorld.mul( tangentSpace.x )
+		.add( bitangentWorld.mul( tangentSpace.y ) )
+		.add( normalWorld.mul( tangentSpace.z ) )
+		.normalize();
+
+	return transformNormalToView( blended );
 
 }
 
@@ -94,8 +129,8 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		else this.opacity = constantValues.opacity;
 
 		// --- normal / clearcoat normal (constant = "no bump", leave node unset) ---
-		if ( isActive( 'normal' ) ) this.normalNode = decodeSigned( slices.normal );
-		if ( isActive( 'clearcoatNormal' ) ) this.clearcoatNormalNode = decodeSigned( slices.clearcoatNormal );
+		if ( isActive( 'normal' ) ) this.normalNode = reconstructFinalNormal( slices.normal );
+		if ( isActive( 'clearcoatNormal' ) ) this.clearcoatNormalNode = reconstructFinalNormal( slices.clearcoatNormal );
 
 		// --- scalar surface properties ---
 		if ( isActive( 'roughness' ) ) this.roughnessNode = slices.roughness.clamp( 0.02, 1 );
@@ -163,11 +198,20 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		if ( view === 'shaded' ) {
 
 			this.lights = true;
+			this.toneMapped = true;
 			if ( this._shadedColorNode ) this.colorNode = this._shadedColorNode;
 
 		} else {
 
+			// Tone mapping (ACES etc.) is meant for real lit HDR output, not a
+			// flat diagnostic color - left at its default (true) here, it gets
+			// applied to this raw channel value anyway, which can skew colors
+			// (filmic curves are notorious for pushing bright/uneven values
+			// toward warm/red tones) and make this view uncomparable to the
+			// teacher's preview material, which already sets toneMapped=false
+			// (see NeuralMaterialSource.buildChannelPreviewMaterials).
 			this.lights = false;
+			this.toneMapped = false;
 			const channel = getChannel( view );
 			const active = Object.prototype.hasOwnProperty.call( this._slices, view );
 			const value = active ? this._slices[ view ] : constantToNode( this._constantValues[ view ] );

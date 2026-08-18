@@ -26,6 +26,22 @@ async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512 ) {
 	material.colorNode = colorNode;
 
 	const geometry = new THREE.PlaneGeometry( 2, 2 );
+	// PlaneGeometry's built-in UV has v=1 at the top of the quad and v=0 at
+	// the bottom - the opposite of the "v=0 at top" convention three.js's own
+	// fullscreen-quad helper (renderers/common/QuadMesh.js's QuadGeometry)
+	// uses for render-target passes, which is what makes "render at raw UV
+	// (u,v), then later sample the resulting texture back at that same (u,v)"
+	// round-trip correctly. Left unflipped, whatever gets baked at (u,v) here
+	// reads back later (via texture()/textureLevel() in
+	// NeuralTextureGPUCompute's training kernel and NeuralTextureNodeMaterial/
+	// NeuralMaterialNodeMaterial's inference-time evaluateNeuralTextureRaw) as
+	// (u, 1-v) instead - a spurious vertical flip baked into every trained
+	// channel, since none of those consumers know to undo it. Flipping V here
+	// once, at the source, keeps the whole pipeline working in plain raw-UV
+	// space so the neural mesh's material lines up with the teacher's.
+	const uvAttribute = geometry.attributes.uv;
+	for ( let i = 0; i < uvAttribute.count; i ++ ) uvAttribute.setY( i, 1 - uvAttribute.getY( i ) );
+	uvAttribute.needsUpdate = true;
 	geometry.computeTangents();
 	const mesh = new THREE.Mesh( geometry, material );
 	scene.add( mesh );

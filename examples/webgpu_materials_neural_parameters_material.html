@@ -127,8 +127,12 @@
 			<button id="trainButton">Train</button>
 			<button id="stopButton" disabled>Stop training</button>
 			<div><strong>Network size:</strong> <span id="networkSize">—</span></div>
+			<div><strong>Trained network:</strong></div>
+			<button id="saveJsonButton" disabled>Save JSON</button>
+			<button id="loadJsonButton">Load JSON</button>
 			<div id="status">Ready.</div>
 			<input id="mtlxFileInput" type="file" accept=".mtlx,.zip,.mtlx.zip" hidden>
+			<input id="jsonFileInput" type="file" accept=".json" hidden>
 		</div>
 
 		<div id="modelLabels" hidden>
@@ -168,11 +172,25 @@
 			import { NeuralMaterialNodeMaterial } from 'three/addons/neural-parameters/NeuralMaterialNodeMaterial.js';
 			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/neural-parameters/NeuralMaterialSource.js';
 			import { computeGridLevels } from 'three/addons/neural-parameters/NeuralTextureModel.js';
-			import { CHANNELS, MAX_TOTAL_CHANNELS } from 'three/addons/neural-parameters/NeuralMaterialFormat.js';
+			import { CHANNELS, MAX_TOTAL_CHANNELS, getChannel } from 'three/addons/neural-parameters/NeuralMaterialFormat.js';
+
+			// On-disk format for this example's own "Save JSON" / "Load JSON"
+			// buttons - deliberately similar in spirit to (top-level format/
+			// version/name/source, a latent-data block, a decoder block) but
+			// not identical to examples/jsm/neural/NeuralAppearanceFormat.js's
+			// on-disk shape: that format serializes a *hemisphere* IBL/BRDF
+			// appearance model (latents + rotation + IBL decoder), this one
+			// serializes a *2D* multiresolution grid + single MLP decoder for
+			// tiling material channels, so the data blocks below (`grid`,
+			// `decoder`) don't share field names or structure with `latents`/
+			// `outputs` over there.
+			const NEURAL_PARAMETERS_FORMAT = 'three-neural-parameters-material';
+			const NEURAL_PARAMETERS_VERSION = 1;
 
 			let camera, scene, renderer;
 			let teacherMesh, neuralMesh, neuralMaterial, placeholderMaterial;
 			let materialXMaterial = null, sourceTextures = null, teacherDebugMaterials = null, channelClassification = null;
+			let currentCpuModel = null;
 			let environmentMap = null;
 			const directLights = [];
 			let isTraining = false, activeTrainer = null, comparisonVisible = false;
@@ -207,6 +225,9 @@
 			const openMtlxButton = document.getElementById( 'openMtlxButton' );
 			const trainButton = document.getElementById( 'trainButton' );
 			const stopButton = document.getElementById( 'stopButton' );
+			const saveJsonButton = document.getElementById( 'saveJsonButton' );
+			const loadJsonButton = document.getElementById( 'loadJsonButton' );
+			const jsonFileInput = document.getElementById( 'jsonFileInput' );
 			const modelLabels = document.getElementById( 'modelLabels' );
 			const lossPanel = document.getElementById( 'lossPanel' );
 			const lossGraph = document.getElementById( 'lossGraph' );
@@ -308,6 +329,9 @@
 				mtlxFileInput.addEventListener( 'change', onMtlxFileSelected );
 				trainButton.addEventListener( 'click', train );
 				stopButton.addEventListener( 'click', stopTraining );
+				saveJsonButton.addEventListener( 'click', saveJson );
+				loadJsonButton.addEventListener( 'click', () => jsonFileInput.click() );
+				jsonFileInput.addEventListener( 'change', onJsonFileSelected );
 				window.addEventListener( 'resize', onWindowResize );
 
 				updateNetworkSize();
@@ -332,12 +356,21 @@
 
 				const channels = 4;
 				const bytesPerTexel = channels * 2; // exported as fp16 (4 channels x 2 bytes)
-				const resolutions = computeGridLevels( Number( params.baseResolution ), Number( params.targetResolution ), Number( params.levels ) );
+
+				// Once a network actually exists (trained here, or loaded from a
+				// JSON file whose grid/MLP dimensions may not match the current
+				// GUI sliders at all), report its *real* dimensions rather than
+				// what the sliders would currently produce.
+				const resolutions = currentCpuModel ?
+					currentCpuModel.resolutions :
+					computeGridLevels( Number( params.baseResolution ), Number( params.targetResolution ), Number( params.levels ) );
+				const levels = currentCpuModel ? currentCpuModel.levels : Number( params.levels );
+				const hidden = currentCpuModel ? currentCpuModel.hiddenSizes[ 0 ] : Number( params.hiddenSize );
+
 				const latentTexels = resolutions.reduce( ( sum, resolution ) => sum + resolution * resolution, 0 );
 				const latentBytes = latentTexels * bytesPerTexel;
 
-				const hidden = Number( params.hiddenSize );
-				const inputSize = Number( params.levels ) * channels;
+				const inputSize = levels * channels;
 				const weightCount = ( inputSize * hidden + hidden ) + ( hidden * hidden + hidden ) + ( hidden * outputChannels + outputChannels );
 				const weightBytes = weightCount * 4; // fp32
 
@@ -420,6 +453,176 @@
 
 			}
 
+			// Builds this example's own on-disk JSON shape for a trained network -
+			// see the NEURAL_PARAMETERS_FORMAT comment above for how/why it
+			// differs from NeuralAppearanceFormat.js's shape. `grid`/`decoder` are
+			// null when every channel turned out constant (no network was needed
+			// at all) - only `channels.constants` carries the material in that
+			// case, and loadNeuralMaterialFromJson mirrors that back.
+			function buildExportPayload() {
+
+				return {
+					format: NEURAL_PARAMETERS_FORMAT,
+					version: NEURAL_PARAMETERS_VERSION,
+					name: sourceName.textContent || 'Untitled neural material',
+					source: 'Exported from three.js webgpu_materials_neural_parameters_material example.',
+					channels: {
+						active: channelClassification.activeChannels.map( ( c ) => ( { key: c.key, offset: c.offset } ) ),
+						totalChannels: channelClassification.totalChannels,
+						constants: channelClassification.constantValues
+					},
+					grid: currentCpuModel === null ? null : {
+						channels: currentCpuModel.channels,
+						levels: currentCpuModel.levels,
+						resolutions: currentCpuModel.resolutions,
+						levelsData: currentCpuModel.grids.map( ( grid ) => ( {
+							width: grid.width,
+							height: grid.height,
+							data: Array.from( grid.data )
+						} ) )
+					},
+					decoder: currentCpuModel === null ? null : {
+						hiddenSizes: currentCpuModel.hiddenSizes,
+						outputChannels: currentCpuModel.outputChannels,
+						layers: currentCpuModel.decoder.layers.map( ( layer ) => ( {
+							inputSize: layer.inputSize,
+							outputSize: layer.outputSize,
+							activation: layer.activation,
+							weights: layer.weights,
+							biases: layer.biases
+						} ) )
+					}
+				};
+
+			}
+
+			function saveJson() {
+
+				if ( channelClassification === null ) return;
+
+				const payload = buildExportPayload();
+				const safeName = ( sourceName.textContent || 'neural-material' ).trim().replace( /[^a-z0-9-_]+/gi, '_' );
+				const filename = `${safeName || 'neural-material'}.json`;
+
+				const blob = new Blob( [ JSON.stringify( payload ) ], { type: 'application/json' } );
+				const url = URL.createObjectURL( blob );
+				const link = document.createElement( 'a' );
+				link.href = url;
+				link.download = filename;
+				link.click();
+				URL.revokeObjectURL( url );
+
+				status.textContent = `Saved ${filename}.`;
+
+			}
+
+			async function onJsonFileSelected( event ) {
+
+				const file = event.target.files[ 0 ];
+				if ( file === undefined ) return;
+
+				try {
+
+					status.textContent = `Loading ${file.name}...`;
+					const payload = JSON.parse( await file.text() );
+					loadNeuralMaterialFromJson( payload, file.name );
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
+
+				event.target.value = '';
+
+			}
+
+			// Inverse of buildExportPayload() - reconstructs a cpuModel/
+			// channelClassification pair from a saved JSON file and hands them to
+			// rebuildNeuralMaterial. There is no MaterialX teacher to compare
+			// against for a loaded file (that source material was never part of
+			// the export), so the neural mesh is shown alone (sideBySide: false)
+			// and "Train" stays disabled until a MaterialX source is opened.
+			function loadNeuralMaterialFromJson( payload, fileName ) {
+
+				if ( payload === null || typeof payload !== 'object' || payload.format !== NEURAL_PARAMETERS_FORMAT ) {
+
+					throw new Error( `Not a "${NEURAL_PARAMETERS_FORMAT}" JSON file.` );
+
+				}
+
+				if ( ! payload.channels || ! Array.isArray( payload.channels.active ) ) {
+
+					throw new Error( 'Malformed neural material JSON: missing channels.' );
+
+				}
+
+				const activeChannels = payload.channels.active.map( ( c ) => ( { ...getChannel( c.key ), offset: c.offset } ) );
+				const constantValues = payload.channels.constants || {};
+				const totalChannels = payload.channels.totalChannels !== undefined ?
+					payload.channels.totalChannels :
+					activeChannels.reduce( ( sum, c ) => sum + c.size, 0 );
+				const packCount = Math.ceil( totalChannels / 4 );
+
+				let cpuModel = null;
+
+				if ( payload.grid !== null && payload.grid !== undefined && payload.decoder !== null && payload.decoder !== undefined ) {
+
+					const grids = payload.grid.levelsData.map( ( level ) => ( {
+						width: level.width,
+						height: level.height,
+						channels: payload.grid.channels,
+						data: Float32Array.from( level.data )
+					} ) );
+
+					const decoder = {
+						layers: payload.decoder.layers.map( ( layer ) => ( {
+							inputSize: layer.inputSize,
+							outputSize: layer.outputSize,
+							activation: layer.activation,
+							weights: layer.weights,
+							biases: layer.biases
+						} ) )
+					};
+
+					cpuModel = {
+						channels: payload.grid.channels,
+						levels: payload.grid.levels,
+						resolutions: payload.grid.resolutions,
+						grids,
+						decoder,
+						hiddenSizes: payload.decoder.hiddenSizes,
+						outputChannels: payload.decoder.outputChannels
+					};
+
+				} else if ( activeChannels.length > 0 ) {
+
+					throw new Error( 'Neural material JSON has trained channels but no grid/decoder data.' );
+
+				}
+
+				materialXMaterial = null;
+				disposeTeacherDebugMaterials();
+				disposeSourceTextures();
+				builtInMaterial.value = '';
+				trainButton.disabled = true; // no MaterialX source loaded to (re)train against
+				modelLabels.hidden = true;
+				lossPanel.hidden = true;
+				lossHistory = [];
+
+				channelClassification = { activeChannels, totalChannels, packCount, constantValues };
+				sourceName.textContent = payload.name || fileName;
+
+				rebuildNeuralMaterial( cpuModel, false );
+				comparisonVisible = true;
+				updateNetworkSize();
+
+				const activeKeys = activeChannels.map( ( c ) => c.key ).join( ', ' ) || 'none';
+				status.textContent = `Loaded "${sourceName.textContent}" (${totalChannels}/${MAX_TOTAL_CHANNELS} channels: ${activeKeys}).`;
+
+			}
+
 			function isPhysicalNodeMaterial( material ) {
 
 				return material !== undefined && ( material.isMeshPhysicalNodeMaterial === true || material.type === 'MeshPhysicalNodeMaterial' );
@@ -436,11 +639,14 @@
 				disposeNeuralMaterial();
 				neuralMesh.material = placeholderMaterial;
 				neuralMesh.visible = false;
+				teacherMesh.visible = true;
 				comparisonVisible = false;
 				modelLabels.hidden = true;
 				lossPanel.hidden = true;
 				lossHistory = [];
 				trainButton.disabled = false;
+				saveJsonButton.disabled = true;
+				currentCpuModel = null;
 				updateDebugView();
 				updateNetworkSize();
 
@@ -557,9 +763,10 @@
 
 			}
 
-			function rebuildNeuralMaterial( cpuModel ) {
+			function rebuildNeuralMaterial( cpuModel, sideBySide = true ) {
 
 				disposeNeuralMaterial();
+				currentCpuModel = cpuModel;
 				neuralMaterial = new NeuralMaterialNodeMaterial(
 					cpuModel,
 					channelClassification.activeChannels,
@@ -568,10 +775,25 @@
 				);
 				neuralMesh.material = neuralMaterial;
 				neuralMesh.visible = true;
-				teacherMesh.position.x = - 1.25;
-				neuralMesh.position.x = 1.25;
-				teacherMesh.scale.setScalar( 0.58 );
-				neuralMesh.scale.setScalar( 0.58 );
+				saveJsonButton.disabled = false;
+
+				if ( sideBySide ) {
+
+					teacherMesh.visible = true;
+					teacherMesh.position.x = - 1.25;
+					neuralMesh.position.x = 1.25;
+					teacherMesh.scale.setScalar( 0.58 );
+					neuralMesh.scale.setScalar( 0.58 );
+
+				} else {
+
+					// Loaded straight from a JSON file with no MaterialX teacher to
+					// compare against - show the neural mesh alone, centered.
+					teacherMesh.visible = false;
+					neuralMesh.position.x = 0;
+					neuralMesh.scale.setScalar( 1 );
+
+				}
 
 			}
 

@@ -331,9 +331,10 @@
 				const outputChannels = channelClassification ? channelClassification.totalChannels : MAX_TOTAL_CHANNELS;
 
 				const channels = 4;
+				const bytesPerTexel = channels * 2; // exported as fp16 (4 channels x 2 bytes)
 				const resolutions = computeGridLevels( Number( params.baseResolution ), Number( params.targetResolution ), Number( params.levels ) );
 				const latentTexels = resolutions.reduce( ( sum, resolution ) => sum + resolution * resolution, 0 );
-				const latentBytes = latentTexels * channels * 2; // exported as fp16
+				const latentBytes = latentTexels * bytesPerTexel;
 
 				const hidden = Number( params.hiddenSize );
 				const inputSize = Number( params.levels ) * channels;
@@ -344,8 +345,10 @@
 					`${outputChannels}/${MAX_TOTAL_CHANNELS} channels trained` :
 					`up to ${MAX_TOTAL_CHANNELS} channels`;
 
+				const gridText = `${resolutions.map( r => `${r}²` ).join( '+' )} px, ${bytesPerTexel} B/texel`;
+
 				document.getElementById( 'networkSize' ).textContent =
-					`${formatBytes( latentBytes + weightBytes )} (${formatBytes( latentBytes )} grid + ${formatBytes( weightBytes )} MLP, ${channelText})`;
+					`${formatBytes( latentBytes + weightBytes )} (${formatBytes( latentBytes )} grid [${gridText}] + ${formatBytes( weightBytes )} MLP, ${channelText})`;
 
 			}
 

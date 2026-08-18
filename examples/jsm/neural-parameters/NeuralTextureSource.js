@@ -17,6 +17,12 @@ async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512 ) {
 	const material = new THREE.NodeMaterial();
 	material.lights = false;
 	material.toneMapped = false;
+	// These bake textures store raw packed data (e.g. roughness/metalness may
+	// land in the alpha channel), not real alpha-compositing surfaces. Without
+	// this, the material's default opaque blending state forces alpha to 1.0
+	// on write, silently clobbering any data channel packed into slot 3 of a
+	// vec4 (see NeuralMaterialSource.js's packComponentsIntoVec4).
+	material.blending = THREE.NoBlending;
 	material.colorNode = colorNode;
 
 	const geometry = new THREE.PlaneGeometry( 2, 2 );

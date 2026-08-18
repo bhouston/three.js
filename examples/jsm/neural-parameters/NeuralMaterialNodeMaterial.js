@@ -214,8 +214,25 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 			this.toneMapped = false;
 			const channel = getChannel( view );
 			const active = Object.prototype.hasOwnProperty.call( this._slices, view );
-			const value = active ? this._slices[ view ] : constantToNode( this._constantValues[ view ] );
-			this.colorNode = vec4( previewColor( value, channel, active ), 1 );
+
+			// Normal channels need special handling here: `this._slices[ view ]`
+			// is the raw *tangent-space* decoded network output (still encoded
+			// [0,1] via decodeSigned inside reconstructFinalNormal), whereas the
+			// teacher's preview (NeuralMaterialSource.buildChannelPreviewMaterials)
+			// shows `material.normalNode`, which MaterialXLoader already blends
+			// through the mesh's own TBN basis into a final view-space normal
+			// (see reconstructFinalNormal's doc comment above). Comparing the raw
+			// tangent-space slice against that would show two different spaces
+			// side by side - route it through the same TBN blend used for actual
+			// shading (`this.normalNode`/`this.clearcoatNormalNode` above) so both
+			// previews are apples-to-apples, matching how the teacher's channel
+			// was already final/blended before previewColor's own signed-encode.
+			const isNormalChannel = view === 'normal' || view === 'clearcoatNormal';
+			const value = active
+				? ( isNormalChannel ? reconstructFinalNormal( this._slices[ view ] ) : this._slices[ view ] )
+				: constantToNode( this._constantValues[ view ] );
+			const alreadyEncoded = active && isNormalChannel ? false : active;
+			this.colorNode = vec4( previewColor( value, channel, alreadyEncoded ), 1 );
 
 		}
 

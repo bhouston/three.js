@@ -239,7 +239,7 @@ class NeuralTextureGPUModel {
 		const buffer = await renderer.getArrayBufferAsync( this.lossAttribute );
 		const array = new Int32Array( buffer );
 		// The kernel accumulates the raw (un-batch-averaged) per-sample loss
-		// sum - see NeuralTextureGPUCompute.js for why - so the mean loss is
+		// sum - see NeuralTextureGPUComputeTSL.js for why - so the mean loss is
 		// recovered here by dividing by batchSize as well as FIXED_POINT_SCALE.
 		const loss = array[ 0 ] / ( FIXED_POINT_SCALE * this.batchSize );
 

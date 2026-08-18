@@ -1,4 +1,5 @@
 import { sampleExponentialMipLevel } from './NeuralAppearanceFilterUtils.js';
+import { dot, cross, normalize } from '../neural/NeuralVectorMath.js';
 
 const DEFAULT_MINIMUM_TRAINING_COSINE = 0.05;
 
@@ -287,16 +288,6 @@ function createIndexRandom( index ) {
 
 }
 
-function cross( a, b ) {
-
-	return [
-		a[ 1 ] * b[ 2 ] - a[ 2 ] * b[ 1 ],
-		a[ 2 ] * b[ 0 ] - a[ 0 ] * b[ 2 ],
-		a[ 0 ] * b[ 1 ] - a[ 1 ] * b[ 0 ]
-	];
-
-}
-
 async function assignTeacherTargets( samples, teacher ) {
 
 	const targets = teacher.evaluateBatch ? await teacher.evaluateBatch( samples ) : await Promise.all( samples.map( ( sample ) => teacher.evaluate( sample ) ) );
@@ -533,20 +524,6 @@ function createMipLevelIndices( levelCount ) {
 	for ( let level = 0; level < levelCount; level ++ ) levels.push( level );
 
 	return levels;
-
-}
-
-function dot( a, b ) {
-
-	return a[ 0 ] * b[ 0 ] + a[ 1 ] * b[ 1 ] + a[ 2 ] * b[ 2 ];
-
-}
-
-function normalize( value ) {
-
-	const length = Math.hypot( value[ 0 ], value[ 1 ], value[ 2 ] ) || 1;
-
-	return [ value[ 0 ] / length, value[ 1 ] / length, value[ 2 ] / length ];
 
 }
 

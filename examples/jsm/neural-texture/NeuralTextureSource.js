@@ -33,7 +33,7 @@ async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512 ) {
 	// (u,v), then later sample the resulting texture back at that same (u,v)"
 	// round-trip correctly. Left unflipped, whatever gets baked at (u,v) here
 	// reads back later (via texture()/textureLevel() in
-	// NeuralTextureGPUCompute's training kernel and NeuralTextureNodeMaterial/
+	// NeuralTextureGPUComputeTSL's training kernel and NeuralTextureNodeMaterial/
 	// NeuralMaterialNodeMaterial's inference-time evaluateNeuralTextureRaw) as
 	// (u, 1-v) instead - a spurious vertical flip baked into every trained
 	// channel, since none of those consumers know to undo it. Flipping V here

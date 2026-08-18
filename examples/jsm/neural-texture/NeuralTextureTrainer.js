@@ -5,8 +5,8 @@ import {
 	createAccumulateGradientNormComputeNode,
 	createTextureAdamWeightsComputeNode,
 	createTextureAdamLatentsComputeNode
-} from './NeuralTextureGPUCompute.js';
-import { createResetGradientNormComputeNode } from '../neural/NeuralGPUComputeUtils.js';
+} from './NeuralTextureGPUComputeTSL.js';
+import { createResetGradientNormComputeNode } from '../neural/NeuralGPUComputeTSL.js';
 import { getLearningRate, createRandom, yieldToBrowser } from '../neural/NeuralTrainingUtils.js';
 
 const DEFAULT_OPTIONS = {

@@ -7,11 +7,11 @@ import {
 	createAccumulateGradientNormComputeNode,
 	createAdamWeightsComputeNode,
 	createAdamLatentsComputeNode
-} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceGPUCompute.js';
+} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceGPUComputeTSL.js';
 import {
 	createResetGradientNormComputeNode,
 	createResetGradientsComputeNode
-} from '../../../../examples/jsm/neural/NeuralGPUComputeUtils.js';
+} from '../../../../examples/jsm/neural/NeuralGPUComputeTSL.js';
 import { createModel } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceModel.js';
 
 export default QUnit.module( 'Addons', () => {

@@ -4,7 +4,6 @@ import {
 	Loop,
 	atomicAdd,
 	atomicLoad,
-	atomicStore,
 	clamp,
 	cross,
 	exp,
@@ -17,14 +16,13 @@ import {
 	pow,
 	select,
 	sign,
-	sqrt,
 	vec3
 } from 'three/tsl';
 import {
 	FIXED_POINT_SCALE,
 	GRADIENT_NORM_SCALE
 } from '../neural/NeuralGPUTrainingConstants.js';
-import { wrapIndexTSL, computeGradientClipScale } from '../neural/NeuralGPUComputeUtils.js';
+import { wrapIndexTSL, createAdamComputeNode } from '../neural/NeuralGPUComputeTSL.js';
 import { IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE } from './NeuralAppearanceFormat.js';
 
 const OUTPUT_CLAMP_GRADIENT_LEAK = 0.01;
@@ -1129,33 +1127,22 @@ function createAdamWeightsComputeNode( gpuModel, { beta1 = 0.9, beta2 = 0.999, e
 		maxGradientNormUniform
 	} = gpuModel;
 
-	const resolvedWeightCount = weightCount === null ? layout.totalWeights : weightCount;
-
-	return Fn( () => {
-
-		const idx = int( instanceIndex ).add( int( weightOffset ) );
-		const rawGrad = float( atomicLoad( gradWeightsAtomic.element( idx ) ) ).div( float( FIXED_POINT_SCALE ) );
-		const grad = rawGrad.mul( computeGradientClipScale( gradNormAtomic, maxGradientNormUniform ) );
-		atomicStore( gradWeightsAtomic.element( idx ), int( 0 ) );
-
-		const m = mWeightsStorage.element( idx );
-		const v = vWeightsStorage.element( idx );
-		const w = weightsStorage.element( idx );
-
-		const nextM = float( beta1 ).mul( m ).add( float( 1.0 - beta1 ).mul( grad ) );
-		const nextV = float( beta2 ).mul( v ).add( float( 1.0 - beta2 ).mul( grad ).mul( grad ) );
-		mWeightsStorage.element( idx ).assign( nextM );
-		vWeightsStorage.element( idx ).assign( nextV );
-
-		const beta1Corr = float( 1.0 ).sub( pow( float( beta1 ), float( stepUniform ) ) );
-		const beta2Corr = float( 1.0 ).sub( pow( float( beta2 ), float( stepUniform ) ) );
-		const mHat = nextM.div( max( beta1Corr, float( 1e-10 ) ) );
-		const vHat = nextV.div( max( beta2Corr, float( 1e-10 ) ) );
-
-		const stepVal = learningRateUniform.mul( mHat ).div( sqrt( max( vHat, float( 0.0 ) ) ).add( float( epsilon ) ) );
-		weightsStorage.element( idx ).assign( w.sub( stepVal ) );
-
-	} )().compute( resolvedWeightCount ).setName( 'NeuralAppearanceAdamWeights' );
+	return createAdamComputeNode( {
+		valuesStorage: weightsStorage,
+		gradAtomic: gradWeightsAtomic,
+		mStorage: mWeightsStorage,
+		vStorage: vWeightsStorage,
+		gradNormAtomic,
+		maxGradientNormUniform,
+		learningRateUniform,
+		stepUniform,
+		offset: weightOffset,
+		count: weightCount === null ? layout.totalWeights : weightCount,
+		beta1,
+		beta2,
+		epsilon,
+		name: 'NeuralAppearanceAdamWeights'
+	} );
 
 }
 
@@ -1176,33 +1163,21 @@ function createAdamLatentsComputeNode( gpuModel, { beta1 = 0.9, beta2 = 0.999, e
 		maxGradientNormUniform
 	} = gpuModel;
 
-	const { totalLatents } = layout;
-
-	return Fn( () => {
-
-		const idx = int( instanceIndex );
-		const rawGrad = float( atomicLoad( gradLatentsAtomic.element( idx ) ) ).div( float( FIXED_POINT_SCALE ) );
-		const grad = rawGrad.mul( computeGradientClipScale( gradNormAtomic, maxGradientNormUniform ) );
-		atomicStore( gradLatentsAtomic.element( idx ), int( 0 ) );
-
-		const m = mLatentsStorage.element( idx );
-		const v = vLatentsStorage.element( idx );
-		const lat = latentsStorage.element( idx );
-
-		const nextM = float( beta1 ).mul( m ).add( float( 1.0 - beta1 ).mul( grad ) );
-		const nextV = float( beta2 ).mul( v ).add( float( 1.0 - beta2 ).mul( grad ).mul( grad ) );
-		mLatentsStorage.element( idx ).assign( nextM );
-		vLatentsStorage.element( idx ).assign( nextV );
-
-		const beta1Corr = float( 1.0 ).sub( pow( float( beta1 ), float( stepUniform ) ) );
-		const beta2Corr = float( 1.0 ).sub( pow( float( beta2 ), float( stepUniform ) ) );
-		const mHat = nextM.div( max( beta1Corr, float( 1e-10 ) ) );
-		const vHat = nextV.div( max( beta2Corr, float( 1e-10 ) ) );
-
-		const stepVal = learningRateUniform.mul( mHat ).div( sqrt( max( vHat, float( 0.0 ) ) ).add( float( epsilon ) ) );
-		latentsStorage.element( idx ).assign( lat.sub( stepVal ) );
-
-	} )().compute( totalLatents ).setName( 'NeuralAppearanceAdamLatents' );
+	return createAdamComputeNode( {
+		valuesStorage: latentsStorage,
+		gradAtomic: gradLatentsAtomic,
+		mStorage: mLatentsStorage,
+		vStorage: vLatentsStorage,
+		gradNormAtomic,
+		maxGradientNormUniform,
+		learningRateUniform,
+		stepUniform,
+		count: layout.totalLatents,
+		beta1,
+		beta2,
+		epsilon,
+		name: 'NeuralAppearanceAdamLatents'
+	} );
 
 }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as TSL from 'three/tsl';
+import { normalize } from '../neural/NeuralVectorMath.js';
 
 function computeAtlasDimensions( capacity, tileSize, alignment = 16 ) {
 
@@ -150,13 +151,6 @@ function write4( data, offset, x, y, z, w ) {
 	data[ offset + 1 ] = y;
 	data[ offset + 2 ] = z;
 	data[ offset + 3 ] = w;
-
-}
-
-function normalize( value ) {
-
-	const length = Math.hypot( value[ 0 ], value[ 1 ], value[ 2 ] ) || 1;
-	return [ value[ 0 ] / length, value[ 1 ] / length, value[ 2 ] / length ];
 
 }
 

@@ -10,6 +10,7 @@ import {
 	createMLP,
 	forwardMLP
 } from '../neural/NeuralMLP.js';
+import { dot, cross, normalize } from '../neural/NeuralVectorMath.js';
 
 const LATENT_INIT_SCALE = 0.35;
 
@@ -299,29 +300,6 @@ function linearRotationValue( latents, weights, outputIndex ) {
 
 }
 
-function dot( a, b ) {
-
-	return a[ 0 ] * b[ 0 ] + a[ 1 ] * b[ 1 ] + a[ 2 ] * b[ 2 ];
-
-}
-
-function cross( a, b ) {
-
-	return [
-		a[ 1 ] * b[ 2 ] - a[ 2 ] * b[ 1 ],
-		a[ 2 ] * b[ 0 ] - a[ 0 ] * b[ 2 ],
-		a[ 0 ] * b[ 1 ] - a[ 1 ] * b[ 0 ]
-	];
-
-}
-
-function normalize( value ) {
-
-	const length = Math.hypot( value[ 0 ], value[ 1 ], value[ 2 ] ) || 1;
-
-	return [ value[ 0 ] / length, value[ 1 ] / length, value[ 2 ] / length ];
-
-}
 
 function wrapIndex( value, size ) {
 

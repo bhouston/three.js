@@ -617,6 +617,41 @@ class NeuralAppearanceGPUModel {
 
 	}
 
+	// Frees the GPU-resident storage buffers (weights, weight/latent
+	// gradients, weight/latent Adam moments, samples, activations, loss,
+	// gradient-norm accumulator) backing this model. Without this, every
+	// training run leaks its full set of compute buffers for the lifetime of
+	// the WebGPU device -- StorageBufferAttribute.dispose() alone is not
+	// enough here (attributes.js only wires a GPU-side cleanup listener for
+	// attributes attached to a BufferGeometry via a render object; these are
+	// standalone compute-only buffers, never geometry-attached, so nothing
+	// currently listens for their 'dispose' event). `renderer.backend` is
+	// reached into directly to actually release the GPU buffer -- there is
+	// currently no higher-level public renderer API for deallocating a
+	// standalone storage buffer.
+	dispose( renderer ) {
+
+		const attributes = [
+			this.weightsAttribute, this.gradWeightsAttribute, this.mWeightsAttribute, this.vWeightsAttribute,
+			this.latentsAttribute, this.gradLatentsAttribute, this.mLatentsAttribute, this.vLatentsAttribute,
+			this.samplesAttribute, this.activationsAttribute,
+			this.lossAttribute, this.gradNormAttribute
+		];
+
+		for ( const attribute of attributes ) {
+
+			if ( renderer && renderer.backend && renderer.backend.has( attribute ) ) {
+
+				renderer.backend.destroyAttribute( attribute );
+
+			}
+
+			attribute.dispose();
+
+		}
+
+	}
+
 }
 
 function copyLayerWeightsToGPU( layer, target, weightsOffset, biasesOffset ) {

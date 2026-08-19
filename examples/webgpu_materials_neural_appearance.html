@@ -889,6 +889,7 @@
 					if ( runId !== trainingRunId || materialXMaterial !== trainingMaterial ) {
 
 						if ( result.teacher.dispose ) result.teacher.dispose();
+						if ( result.gpuModel && result.gpuModel.dispose ) result.gpuModel.dispose( renderer );
 						return;
 
 					}
@@ -907,6 +908,7 @@
 					window.__neuralAppearanceTrainingDone = true;
 					downloadButton.disabled = false;
 					if ( result.teacher.dispose ) result.teacher.dispose();
+					if ( result.gpuModel && result.gpuModel.dispose ) result.gpuModel.dispose( renderer );
 					updateView();
 					if ( result.validation && result.validation.preview ) drawTrainingPreview( result.validation.preview, result.iteration );
 					drawLossGraph();

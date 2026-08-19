@@ -24,17 +24,23 @@ const DEFAULT_UV_GRADIENT_SCALE = 1 / 1024;
 // to serve several modes from one render+readback when they're requested
 // back-to-back for the *same* sample batch, which is how
 // NeuralAppearanceSampler.js already calls them (assignTeacherTargets then
-// assignAuxiliaryTeacherTargets share one `samples` array; the three
-// evaluateBatch(teacherSamples, ...) IBL-probe calls in
-// assignIBLTeacherTargets share another). Modes not listed here (opacity,
-// iblIndirectRadiance, iblIndirectIrradiance) keep their own single-purpose
-// pass -- see NeuralAppearanceTeacherEvaluator._createResources() for why.
+// assignAuxiliaryTeacherTargets share one `samples` array; the five
+// evaluateBatch(teacherSamples, ...) IBL calls in assignIBLTeacherTargets
+// share another). 'iblProbe' merges all 5 IBL channels into one draw with 5
+// half-float RGBA attachments (40 bytes/sample) -- comfortably inside the
+// maxColorAttachments=8 / maxColorAttachmentBytesPerSample>=64 limits that
+// ~98% of WebGPU devices report (web3dsurvey.com/webgpu, checked 2026-08-19).
+// Only 'opacity' is still ungrouped (it needs alpha-testing disabled, which
+// would change how the 'direct' group's fragments discard if merged with it)
+// -- see NeuralAppearanceTeacherEvaluator._createResources() for why.
 const GROUP_BY_MODE = {
 	brdf: { groupId: 'direct', channel: 'output', size: 3 },
 	emission: { groupId: 'direct', channel: 'emission', size: 3 },
 	iblQuery: { groupId: 'iblProbe', channel: 'query', size: 4 },
 	iblIncoming: { groupId: 'iblProbe', channel: 'incoming', size: 3 },
-	iblIrradiance: { groupId: 'iblProbe', channel: 'irradiance', size: 3 }
+	iblIrradiance: { groupId: 'iblProbe', channel: 'irradiance', size: 3 },
+	iblIndirectRadiance: { groupId: 'iblProbe', channel: 'indirectRadiance', size: 3 },
+	iblIndirectIrradiance: { groupId: 'iblProbe', channel: 'indirectIrradiance', size: 3 }
 };
 
 class NeuralAppearanceTeacherEvaluator {
@@ -351,15 +357,46 @@ class NeuralAppearanceTeacherEvaluator {
 
 			}
 
-			// Merges the three IBL-query-style readouts ('iblQuery',
-			// 'iblIncoming', 'iblIrradiance') into one MRT draw: all three
-			// leave lights=false and don't touch alpha-testing, so they
-			// discard identically, and 'iblIncoming' already depends on
-			// 'iblQuery's direction/roughness -- computed once and shared
-			// here rather than recomputed per pass.
+			// Merges all 5 IBL-related readouts into one MRT draw (see
+			// GROUP_BY_MODE's header comment for the attachment-budget check
+			// backing this): the raw PMREM query/incoming/irradiance samples
+			// (training-input features, unchanged from before) plus the
+			// BRDF-weighted indirect diffuse/specular response (training
+			// targets) that used to each need their own single-purpose
+			// render+readback via two differently-isolated shader variants
+			// (NeuralTeacherIBLLightingModel's 'radiance'/'irradiance'
+			// isolate modes). Reading both indirectDiffuse/indirectSpecular
+			// out of one un-isolated ('full') lighting-model pass instead --
+			// via the `capture` param below -- is not bit-identical to the
+			// old two-pass isolate hack: the old 'irradiance'-isolated pass
+			// left a small multi-scattering cross-term (which depends on
+			// *both* radiance and irradiance) leaking into what was meant to
+			// be a pure-irradiance channel; this merged pass instead reads
+			// PhysicalLightingModel's real indirectDiffuse/indirectSpecular
+			// split directly, which is the physically-correct split with no
+			// leak. This changes what the 'iblIndirectRadiance'/
+			// 'iblIndirectIrradiance' training targets numerically
+			// represent by a small amount -- compare loss curves against a
+			// pre-change baseline before relying on this for anything beyond
+			// the intended speedup.
 			const query = createTeacherIBLQueryNodes( sampleMaterial );
-			sampleMaterial.lights = false;
-			sampleMaterial.lightsNode = TSL.lights( [] );
+
+			const indirectDiffuseVar = TSL.vec3( 0 ).toVar( 'neuralTeacherIndirectDiffuse' );
+			const indirectSpecularVar = TSL.vec3( 0 ).toVar( 'neuralTeacherIndirectSpecular' );
+
+			sampleMaterial.lightsNode = TSL.lights( [] ).context( {
+				lightingModel: new NeuralTeacherIBLLightingModel( sampleMaterial, 'full', {
+					indirectDiffuse: indirectDiffuseVar,
+					indirectSpecular: indirectSpecularVar
+				} )
+			} );
+			sampleMaterial.setupEnvironment = function ( builder ) {
+
+				let envNode = THREE.NodeMaterial.prototype.setupEnvironment.call( this, builder );
+				if ( envNode === null && builder.environmentNode ) envNode = builder.environmentNode;
+				return envNode ? new NeuralTeacherIBLEnvironmentNode( envNode, 'full' ) : null;
+
+			};
 
 			const envNode = TSL.pmremTexture( this.environment );
 			const incoming = envNode.context( {
@@ -376,40 +413,12 @@ class NeuralAppearanceTeacherEvaluator {
 			sampleMaterial.mrtNode = TSL.mrt( {
 				query: TSL.vec4( query.radianceDir, query.roughness ),
 				incoming: TSL.vec4( incoming, 1 ),
-				irradiance: TSL.vec4( irradiance, 1 )
+				irradiance: TSL.vec4( irradiance, 1 ),
+				indirectRadiance: TSL.vec4( indirectSpecularVar, 1 ),
+				indirectIrradiance: TSL.vec4( indirectDiffuseVar, 1 )
 			} );
 
-			channelNames = [ 'query', 'incoming', 'irradiance' ];
-			usesEnvironment = true;
-
-		} else if ( key === 'iblIndirectRadiance' || key === 'iblIndirectIrradiance' ) {
-
-			if ( this.environment === null ) {
-
-				throw new Error( 'THREE.NeuralAppearanceTeacherEvaluator: An environment texture is required for IBL teacher sampling.' );
-
-			}
-
-			const isolate = key === 'iblIndirectRadiance' ? 'radiance' : 'irradiance';
-
-			sampleMaterial.lightsNode = TSL.lights( [] ).context( {
-				lightingModel: new NeuralTeacherIBLLightingModel( sampleMaterial, isolate )
-			} );
-			sampleMaterial.setupEnvironment = function ( builder ) {
-
-				let envNode = THREE.NodeMaterial.prototype.setupEnvironment.call( this, builder );
-				if ( envNode === null && builder.environmentNode ) envNode = builder.environmentNode;
-				return envNode ? new NeuralTeacherIBLEnvironmentNode( envNode, isolate ) : null;
-
-			};
-
-			sampleMaterial.customProgramCacheKey = function () {
-
-				return THREE.NodeMaterial.prototype.customProgramCacheKey.call( this ) + '|teacherIblIsolate:' + isolate;
-
-			};
-
-			channelNames = [ key ];
+			channelNames = [ 'query', 'incoming', 'irradiance', 'indirectRadiance', 'indirectIrradiance' ];
 			usesEnvironment = true;
 
 		} else {
@@ -510,15 +519,38 @@ class NeuralTeacherLightingModel extends PhysicalLightingModel {
 
 class NeuralTeacherIBLLightingModel extends PhysicalLightingModel {
 
-	constructor( material, isolate = 'full' ) {
+	// `capture`, when given, is `{ indirectDiffuse, indirectSpecular }` --
+	// two vec3 `.toVar()` nodes that get assigned PhysicalLightingModel's
+	// final indirect diffuse/specular split once lighting finishes, so a
+	// caller can read them out as separate MRT outputs instead of only the
+	// combined `output` channel. Used by the merged 'iblProbe' pass in
+	// NeuralAppearanceTeacherEvaluator._createResources(); left null for the
+	// standalone isolate-mode debug view (examples/webgpu_materials_neural_appearance.html),
+	// which only needs the combined output and must keep working unchanged.
+	constructor( material, isolate = 'full', capture = null ) {
 
 		super( material.useClearcoat, material.useSheen, material.useIridescence, material.useAnisotropy, material.useTransmission, material.useDispersion, material.useRetroreflection );
 
 		this.isolate = isolate;
+		this._capture = capture;
 
 	}
 
 	direct( /*input, builder*/ ) {}
+
+	finish( builder ) {
+
+		super.finish( builder );
+
+		if ( this._capture ) {
+
+			const { reflectedLight } = builder.context;
+			this._capture.indirectDiffuse.assign( reflectedLight.indirectDiffuse );
+			this._capture.indirectSpecular.assign( reflectedLight.indirectSpecular );
+
+		}
+
+	}
 
 }
 

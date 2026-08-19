@@ -164,8 +164,10 @@ export default QUnit.module( 'Addons', () => {
 				await teacher.evaluateBatch( samples, 'iblQuery' );
 				await teacher.evaluateBatch( samples, 'iblIncoming' );
 				await teacher.evaluateBatch( samples, 'iblIrradiance' );
+				await teacher.evaluateBatch( samples, 'iblIndirectRadiance' );
+				await teacher.evaluateBatch( samples, 'iblIndirectIrradiance' );
 
-				assert.strictEqual( renderCalls.length, 1, 'renders the shared IBL probe group once for the same sample batch, not once per requested mode' );
+				assert.strictEqual( renderCalls.length, 1, 'renders the shared IBL probe group once for the same sample batch, not once per requested mode -- including the two BRDF-weighted indirect channels merged in on top of Phase 2' );
 				assert.strictEqual( teacher._modeBundles.size, 1, 'builds a single merged bundle for the whole iblProbe group' );
 
 			} );

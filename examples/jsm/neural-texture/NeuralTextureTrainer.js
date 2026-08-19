@@ -16,6 +16,9 @@ const DEFAULT_OPTIONS = {
 	targetResolution: 256,
 	hiddenSizes: [ 32, 32 ],
 	outputChannels: 3,
+	// Experimental: also feed the raw (u, v) sample coordinate into the MLP
+	// alongside the concatenated grid features - see NeuralTextureModel.js.
+	includeUV: false,
 	batchSize: 4096,
 	learningRate: 0.01,
 	// Anneals all the way to (near) zero by the final iteration. A learning

@@ -188,6 +188,7 @@
 				baseResolution: 16,
 				targetResolution: 128,
 				hiddenSize: 16,
+				includeUV: false,
 				batchSize: 8192,
 				iterations: 3000,
 				learningRate: 0.01,
@@ -283,6 +284,7 @@
 				networkFolder.add( params, 'baseResolution', [ 8, 16, 32 ] ).name( 'grid base res' ).onChange( updateNetworkSize );
 				networkFolder.add( params, 'targetResolution', [ 64, 128, 256, 512 ] ).name( 'grid target res' ).onChange( updateNetworkSize );
 				networkFolder.add( params, 'hiddenSize', [ 16, 32, 64 ] ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'includeUV' ).name( 'MLP input: raw uv (experimental)' ).onChange( updateNetworkSize );
 
 				const trainingFolder = gui.addFolder( 'training' );
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
@@ -325,7 +327,7 @@
 				const latentBytes = latentTexels * channels * 2; // exported as fp16, like the neural appearance runtime
 
 				const hidden = Number( params.hiddenSize );
-				const inputSize = Number( params.levels ) * channels;
+				const inputSize = Number( params.levels ) * channels + ( params.includeUV ? 2 : 0 );
 				const weightCount = ( inputSize * hidden + hidden ) + ( hidden * hidden + hidden ) + ( hidden * outputChannels + outputChannels );
 				const weightBytes = weightCount * 4; // fp32
 
@@ -504,6 +506,7 @@
 						targetResolution: Number( params.targetResolution ),
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
 						outputChannels: 3,
+						includeUV: params.includeUV,
 						batchSize: Number( params.batchSize ),
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),

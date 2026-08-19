@@ -64,6 +64,14 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 
 	}
 
+	// Mirror the training kernel's step 1b: append the raw (u, v) sample
+	// coordinate after the grid taps when the model was trained with it.
+	if ( cpuModel.includeUV ) {
+
+		features.push( uvNode.x, uvNode.y );
+
+	}
+
 	let activations = features;
 
 	for ( let l = 0; l < cpuModel.decoder.layers.length; l ++ ) {

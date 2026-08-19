@@ -16,6 +16,7 @@ function computeTextureModelLayout( options = {} ) {
 	const targetResolution = options.targetResolution || 256;
 	const hiddenSizes = options.hiddenSizes || [ 32, 32 ];
 	const outputChannels = options.outputChannels || 3;
+	const includeUV = options.includeUV || false;
 
 	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
 
@@ -33,8 +34,11 @@ function computeTextureModelLayout( options = {} ) {
 
 	const totalLatents = latentOffset;
 
-	// MLP weight layout: input = concatenated multiresolution grid features.
-	const inputSize = levels * channels;
+	// MLP weight layout: input = concatenated multiresolution grid features,
+	// optionally followed by the raw (u, v) sample coordinate (see
+	// NeuralTextureModel.js for why).
+	const uvInputOffset = levels * channels;
+	const inputSize = uvInputOffset + ( includeUV ? 2 : 0 );
 	const sizes = [ inputSize, ...hiddenSizes, outputChannels ];
 	const mlpLayers = [];
 	let weightOffset = 0;
@@ -101,7 +105,9 @@ function computeTextureModelLayout( options = {} ) {
 		resolutions,
 		hiddenSizes,
 		outputChannels,
+		includeUV,
 		inputSize,
+		uvInputOffset,
 		gridLevels,
 		totalLatents,
 		mlpLayers,

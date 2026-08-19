@@ -14,14 +14,19 @@ function createNeuralTextureModel( options, random ) {
 	const targetResolution = options.targetResolution || 256;
 	const hiddenSizes = options.hiddenSizes || [ 32, 32 ];
 	const outputChannels = options.outputChannels || 3;
+	const includeUV = options.includeUV || false;
 
 	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
 	const grids = resolutions.map( ( resolution ) => createLatentGrid( resolution, resolution, channels, random ) );
 
-	const inputSize = levels * channels;
+	// Optionally append the raw (u, v) sample coordinate after the concatenated
+	// grid features, giving the MLP a direct "skip connection" to exact
+	// sub-texel position alongside the (bilinearly-blurred) learned encoding -
+	// see NeuralTextureGPUComputeTSL.js for how this is trained.
+	const inputSize = levels * channels + ( includeUV ? 2 : 0 );
 	const decoder = createMLP( inputSize, hiddenSizes, outputChannels, random, 'relu', 'linear' );
 
-	return { channels, levels, resolutions, grids, decoder, hiddenSizes, outputChannels };
+	return { channels, levels, resolutions, grids, decoder, hiddenSizes, outputChannels, includeUV };
 
 }
 

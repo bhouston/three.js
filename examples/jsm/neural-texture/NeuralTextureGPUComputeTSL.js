@@ -76,6 +76,8 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		channels,
 		mlpLayers,
 		a0Offset,
+		uvInputOffset,
+		includeUV,
 		layerActs,
 		deltaOffsets,
 		gradA0Offset,
@@ -150,6 +152,18 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 				activationsStorage.element( actBase.add( int( a0Offset + g * channels + c ) ) ).assign( z_c );
 
 			}
+
+		}
+
+		// 1b. Optionally append the raw (u, v) sample coordinate after the grid
+		// taps, as a direct "skip connection" to exact sub-texel position
+		// alongside the (bilinearly-blurred) learned grid encoding. Not
+		// trainable, so its backward gradient (computed into gradA0 below along
+		// with everything else) is simply never scattered anywhere in step 5.
+		if ( includeUV ) {
+
+			activationsStorage.element( actBase.add( int( a0Offset + uvInputOffset ) ) ).assign( uv.x );
+			activationsStorage.element( actBase.add( int( a0Offset + uvInputOffset + 1 ) ) ).assign( uv.y );
 
 		}
 

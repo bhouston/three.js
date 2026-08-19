@@ -167,8 +167,14 @@ export default QUnit.module( 'Addons', () => {
 				await teacher.evaluateBatch( samples, 'iblIndirectRadiance' );
 				await teacher.evaluateBatch( samples, 'iblIndirectIrradiance' );
 
-				assert.strictEqual( renderCalls.length, 1, 'renders the shared IBL probe group once for the same sample batch, not once per requested mode -- including the two BRDF-weighted indirect channels merged in on top of Phase 2' );
-				assert.strictEqual( teacher._modeBundles.size, 1, 'builds a single merged bundle for the whole iblProbe group' );
+				// Two render calls, not five: 'iblProbe' (query/incoming/irradiance)
+				// and 'iblIndirect' (indirectRadiance/indirectIrradiance) are each
+				// their own MRT group -- kept as two groups rather than one merged
+				// 5-attachment group to stay under the 32-bytes/sample MRT budget
+				// some real WebGPU devices enforce (see GROUP_BY_MODE's header
+				// comment in NeuralAppearanceTeacherEvaluator.js).
+				assert.strictEqual( renderCalls.length, 2, 'renders the iblProbe and iblIndirect groups once each for the same sample batch, not once per requested mode' );
+				assert.strictEqual( teacher._modeBundles.size, 2, 'builds one merged bundle per IBL group' );
 
 			} );
 

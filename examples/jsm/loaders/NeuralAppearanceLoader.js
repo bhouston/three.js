@@ -5,7 +5,6 @@ import {
 	FileLoader,
 	HalfFloatType,
 	LinearFilter,
-	LinearMipmapLinearFilter,
 	Loader,
 	NoColorSpace,
 	RGBAFormat,
@@ -15,8 +14,7 @@ import {
 	FORMAT,
 	VERSION,
 	LATENT_CHANNELS,
-	LATENT_TEXTURES,
-	CHANNELS_PER_TEXTURE,
+	CHANNELS_PER_LEVEL,
 	DECODER_INPUT_SIZE as BRDF_INPUT_SIZE,
 	IBL_INPUT_SIZE,
 	IBL_OUTPUT_SIZE,
@@ -27,10 +25,12 @@ import {
 /**
  * A loader for compact neural appearance material assets.
  *
- * The format stores an 8D latent texture as two RGBA16F textures and a small
- * MLP decoder that evaluates the learned BRDF for a pair of tangent-space
- * directions. Training is intentionally offline; this loader only prepares
- * runtime data for {@link NeuralAppearanceNodeMaterial}.
+ * The format stores a multiresolution latent grid (one RGBA16F texture per
+ * level, the same encoding used by neural-texture / neural-material - see
+ * NeuralGridModel.js) and a small MLP decoder that evaluates the learned
+ * BRDF for a pair of tangent-space directions. Training is intentionally
+ * offline; this loader only prepares runtime data for
+ * {@link NeuralAppearanceNodeMaterial}.
  *
  * @augments Loader
  * @three_import import { NeuralAppearanceLoader } from 'three/addons/loaders/NeuralAppearanceLoader.js';
@@ -104,40 +104,13 @@ class NeuralAppearanceLoader extends Loader {
 
 		validateManifest( manifest );
 
-		const latentTextures = manifest.latents.textures.map( ( textureConfig, index ) => {
-
-			const mipmaps = textureConfig.mipmaps.map( ( mipmap, mipLevel ) => createMipmap( mipmap, `latents.textures[${ index }].mipmaps[${ mipLevel }]` ) );
-			const firstMipmap = mipmaps[ 0 ];
-			const texture = new DataTexture(
-				firstMipmap.data,
-				firstMipmap.width,
-				firstMipmap.height,
-				RGBAFormat,
-				HalfFloatType,
-				undefined,
-				textureConfig.wrap === 'repeat' ? RepeatWrapping : ClampToEdgeWrapping,
-				textureConfig.wrap === 'repeat' ? RepeatWrapping : ClampToEdgeWrapping,
-				LinearFilter,
-				mipmaps.length > 1 ? LinearMipmapLinearFilter : LinearFilter,
-				undefined,
-				NoColorSpace
-			);
-
-			texture.generateMipmaps = false;
-			texture.mipmaps = mipmaps;
-			texture.needsUpdate = true;
-
-			return texture;
-
-		} );
+		const levelTextures = manifest.latents.levels.map( ( level, index ) => createLevelTexture( level, `latents.levels[${ index }]`, manifest.latents.wrap ) );
 
 		return {
 			isNeuralAppearanceData: true,
 			name: manifest.name || '',
-			latentTextures,
-			latentWidth: latentTextures[ 0 ].image.width,
-			latentHeight: latentTextures[ 0 ].image.height,
-			mipLevels: latentTextures[ 0 ].mipmaps.length,
+			latentTextures: levelTextures,
+			levels: levelTextures.length,
 			wrap: manifest.latents.wrap || 'repeat',
 			outputs: normalizeOutputs( manifest.outputs ),
 			referenceEvaluations: manifest.referenceEvaluations || []
@@ -147,13 +120,13 @@ class NeuralAppearanceLoader extends Loader {
 
 }
 
-function createMipmap( mipmap, path ) {
+function createLevelTexture( level, path, wrap ) {
 
-	assertInteger( mipmap.width, `${ path }.width`, 1 );
-	assertInteger( mipmap.height, `${ path }.height`, 1 );
+	assertInteger( level.width, `${ path }.width`, 1 );
+	assertInteger( level.height, `${ path }.height`, 1 );
 
-	const expectedLength = mipmap.width * mipmap.height * CHANNELS_PER_TEXTURE;
-	const data = toFloat32Array( mipmap.data, `${ path }.data` );
+	const expectedLength = level.width * level.height * CHANNELS_PER_LEVEL;
+	const data = toFloat32Array( level.data, `${ path }.data` );
 
 	if ( data.length !== expectedLength ) {
 
@@ -161,11 +134,28 @@ function createMipmap( mipmap, path ) {
 
 	}
 
-	return {
-		data: toHalfFloatArray( data ),
-		width: mipmap.width,
-		height: mipmap.height
-	};
+	const levelWrap = level.wrap || wrap || 'repeat';
+	const wrapping = levelWrap === 'repeat' ? RepeatWrapping : ClampToEdgeWrapping;
+
+	const texture = new DataTexture(
+		toHalfFloatArray( data ),
+		level.width,
+		level.height,
+		RGBAFormat,
+		HalfFloatType,
+		undefined,
+		wrapping,
+		wrapping,
+		LinearFilter,
+		LinearFilter,
+		undefined,
+		NoColorSpace
+	);
+
+	texture.generateMipmaps = false;
+	texture.needsUpdate = true;
+
+	return texture;
 
 }
 
@@ -333,45 +323,31 @@ function validateManifest( manifest ) {
 
 	}
 
-	if ( ! manifest.latents || ! Array.isArray( manifest.latents.textures ) ) {
+	if ( ! manifest.latents || ! Array.isArray( manifest.latents.levels ) || manifest.latents.levels.length === 0 ) {
 
-		throw new Error( 'THREE.NeuralAppearanceLoader: Manifest must define latents.textures.' );
-
-	}
-
-	if ( manifest.latents.channels !== LATENT_CHANNELS ) {
-
-		throw new Error( `THREE.NeuralAppearanceLoader: latents.channels must be ${ LATENT_CHANNELS }.` );
+		throw new Error( 'THREE.NeuralAppearanceLoader: Manifest must define a non-empty latents.levels array.' );
 
 	}
 
-	if ( manifest.latents.textures.length !== LATENT_TEXTURES ) {
+	if ( manifest.latents.channelsPerLevel !== undefined && manifest.latents.channelsPerLevel !== CHANNELS_PER_LEVEL ) {
 
-		throw new Error( `THREE.NeuralAppearanceLoader: latents.textures must contain ${ LATENT_TEXTURES } RGBA texture definitions.` );
+		throw new Error( `THREE.NeuralAppearanceLoader: latents.channelsPerLevel must be ${ CHANNELS_PER_LEVEL }.` );
 
 	}
 
-	const mipCount = manifest.latents.textures[ 0 ].mipmaps.length;
+	if ( manifest.latents.levels.length * CHANNELS_PER_LEVEL !== LATENT_CHANNELS ) {
 
-	for ( let textureIndex = 0; textureIndex < manifest.latents.textures.length; textureIndex ++ ) {
+		throw new Error( `THREE.NeuralAppearanceLoader: latents.levels must contain ${ LATENT_CHANNELS / CHANNELS_PER_LEVEL } levels of ${ CHANNELS_PER_LEVEL } channels each.` );
 
-		const texture = manifest.latents.textures[ textureIndex ];
+	}
 
-		if ( texture.wrap !== undefined && texture.wrap !== 'repeat' && texture.wrap !== 'clamp' ) {
+	for ( let levelIndex = 0; levelIndex < manifest.latents.levels.length; levelIndex ++ ) {
 
-			throw new Error( `THREE.NeuralAppearanceLoader: Unsupported latents.textures[${ textureIndex }].wrap "${ texture.wrap }".` );
+		const level = manifest.latents.levels[ levelIndex ];
 
-		}
+		if ( level.wrap !== undefined && level.wrap !== 'repeat' && level.wrap !== 'clamp' ) {
 
-		if ( ! Array.isArray( texture.mipmaps ) || texture.mipmaps.length === 0 ) {
-
-			throw new Error( `THREE.NeuralAppearanceLoader: latents.textures[${ textureIndex }].mipmaps must be a non-empty array.` );
-
-		}
-
-		if ( texture.mipmaps.length !== mipCount ) {
-
-			throw new Error( 'THREE.NeuralAppearanceLoader: Latent textures must have the same number of mip levels.' );
+			throw new Error( `THREE.NeuralAppearanceLoader: Unsupported latents.levels[${ levelIndex }].wrap "${ level.wrap }".` );
 
 		}
 

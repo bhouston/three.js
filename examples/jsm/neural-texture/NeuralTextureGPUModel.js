@@ -1,7 +1,7 @@
 import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, uniform } from 'three/tsl';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
-import { computeGridLevels } from './NeuralTextureModel.js';
+import { computeGridLevels } from '../neural/NeuralGridModel.js';
 
 /**
  * Computes buffer layouts and offsets for GPU-based neural texture training:

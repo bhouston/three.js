@@ -1,15 +1,10 @@
-import { sampleExponentialMipLevel } from './NeuralAppearanceFilterUtils.js';
 import { dot, cross, normalize } from '../neural/NeuralVectorMath.js';
 
 const DEFAULT_MINIMUM_TRAINING_COSINE = 0.05;
 
 async function generateTrainingSamples( options, teacher, random, iteration = 0 ) {
 
-	const batchSize = options.batchSize;
-	const mipLevelCount = getMipLevelCount( options.resolution, options.resolution );
-	const recordCount = options.fixedTrainingMip >= 0 || options.sampleAllMips === true ?
-		batchSize :
-		batchSize * mipLevelCount;
+	const recordCount = options.batchSize;
 	const gridSize = Math.max( 1, Math.floor( Math.sqrt( recordCount ) ) );
 	const samples = [];
 	const augmentationRatio = options.colorAugmentation && teacher.supportsColorAugmentation === true ? 0.5 * ( 1 + Math.cos( Math.PI * Math.min( iteration / Math.max( 1, options.iterations ), 1 ) ) ) : 0;
@@ -23,31 +18,16 @@ async function generateTrainingSamples( options, teacher, random, iteration = 0 
 			( y + random() ) / gridSize
 		];
 		const directions = sampleTeacherDirections( random );
-		const sampledMip = options.fixedTrainingMip < 0 && options.sampleAllMips !== true ?
-			sampleExponentialMipLevel( random, mipLevelCount, options.mipSamplingDecay ) :
-			0;
-		const mipLevels = options.fixedTrainingMip >= 0 ?
-			[ options.fixedTrainingMip ] :
-			( options.sampleAllMips === true ? createMipLevelIndices( mipLevelCount ) : [ sampledMip ] );
 
-		for ( const mip of mipLevels ) {
-
-			const footprint = Math.pow( 2, mip ) / Math.max( 1, options.resolution );
-
-			samples.push( {
-				uv: uv.slice(),
-				wi: directions.wi.slice(),
-				wo: directions.wo.slice(),
-				normal: [ 0, 0, 1 ],
-				tangent: [ 1, 0, 0 ],
-				bitangent: [ 0, 1, 0 ],
-				duvDx: [ footprint, 0 ],
-				duvDy: [ 0, footprint ],
-				mip,
-				encoderInputs: teacher.encodeInputs ? teacher.encodeInputs( uv ) : [ uv[ 0 ], uv[ 1 ] ]
-			} );
-
-		}
+		samples.push( {
+			uv: uv.slice(),
+			wi: directions.wi.slice(),
+			wo: directions.wo.slice(),
+			normal: [ 0, 0, 1 ],
+			tangent: [ 1, 0, 0 ],
+			bitangent: [ 0, 1, 0 ],
+			encoderInputs: teacher.encodeInputs ? teacher.encodeInputs( uv ) : [ uv[ 0 ], uv[ 1 ] ]
+		} );
 
 	}
 
@@ -75,10 +55,6 @@ async function generateValidationSamples( options, teacher ) {
 
 	const sampleCount = options.batchSize;
 	const gridSize = Math.max( 1, Math.ceil( Math.sqrt( sampleCount ) ) );
-	const mipLevelCount = getMipLevelCount( options.resolution, options.resolution );
-	const mipLevels = options.fixedTrainingMip >= 0 ?
-		[ options.fixedTrainingMip ] :
-		createMipLevelIndices( mipLevelCount );
 	const cosines = [ 0.025, 0.1, 0.4, 0.8 ];
 	const samples = [];
 
@@ -94,23 +70,15 @@ async function generateValidationSamples( options, teacher ) {
 		const wi = directionFromCosine( wiCosine, azimuth );
 		const wo = directionFromCosine( woCosine, azimuth * 1.61803398875 );
 
-		for ( const mip of mipLevels ) {
-
-			const footprint = Math.pow( 2, mip ) / Math.max( 1, options.resolution );
-			samples.push( {
-				uv: uv.slice(),
-				wi: wi.slice(),
-				wo: wo.slice(),
-				normal: [ 0, 0, 1 ],
-				tangent: [ 1, 0, 0 ],
-				bitangent: [ 0, 1, 0 ],
-				duvDx: [ footprint, 0 ],
-				duvDy: [ 0, footprint ],
-				mip,
-				encoderInputs: teacher.encodeInputs ? teacher.encodeInputs( uv ) : [ uv[ 0 ], uv[ 1 ] ]
-			} );
-
-		}
+		samples.push( {
+			uv: uv.slice(),
+			wi: wi.slice(),
+			wo: wo.slice(),
+			normal: [ 0, 0, 1 ],
+			tangent: [ 1, 0, 0 ],
+			bitangent: [ 0, 1, 0 ],
+			encoderInputs: teacher.encodeInputs ? teacher.encodeInputs( uv ) : [ uv[ 0 ], uv[ 1 ] ]
+		} );
 
 	}
 
@@ -136,7 +104,6 @@ async function generateIBLTrainingSamples( options, teacher, random ) {
 			( Math.floor( i / gridSize ) + random() ) / gridSize
 		];
 		const wo = sampleHemisphereCosine( random );
-		const footprint = 1 / Math.max( 1, options.resolution );
 
 		samples.push( {
 			uv,
@@ -145,9 +112,6 @@ async function generateIBLTrainingSamples( options, teacher, random ) {
 			normal: [ 0, 0, 1 ],
 			tangent: [ 1, 0, 0 ],
 			bitangent: [ 0, 1, 0 ],
-			duvDx: [ footprint, 0 ],
-			duvDy: [ 0, footprint ],
-			mip: 0,
 			weight: 0,
 			target: [ 0, 0, 0 ],
 			encoderInputs: teacher.encodeInputs ? teacher.encodeInputs( uv ) : [ uv[ 0 ], uv[ 1 ] ]
@@ -501,32 +465,6 @@ function augmentColorChannels( sample, random ) {
 
 }
 
-function getMipLevelCount( width, height ) {
-
-	let levels = 1;
-
-	while ( width > 1 || height > 1 ) {
-
-		width = Math.max( 1, width >> 1 );
-		height = Math.max( 1, height >> 1 );
-		levels ++;
-
-	}
-
-	return levels;
-
-}
-
-function createMipLevelIndices( levelCount ) {
-
-	const levels = [];
-
-	for ( let level = 0; level < levelCount; level ++ ) levels.push( level );
-
-	return levels;
-
-}
-
 export {
 	generateTrainingSamples,
 	generateValidationSamples,
@@ -535,7 +473,5 @@ export {
 	assignTeacherTargets,
 	assignAuxiliaryTeacherTargets,
 	normalizeDirectLightingTargets,
-	sampleTeacherDirections,
-	getMipLevelCount,
-	createMipLevelIndices
+	sampleTeacherDirections
 };

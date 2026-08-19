@@ -1,17 +1,23 @@
 import * as THREE from 'three';
 import * as TSL from 'three/tsl';
+import { LEVELS } from './NeuralAppearanceFormat.js';
+
+// The multiresolution latent grid always has LEVELS (=4) levels of
+// CHANNELS_PER_LEVEL (=4) features each - same fixed geometry as
+// neural-texture / neural-material (see NeuralGridModel.js) - so the runtime
+// evaluator below is written directly against 4 named vec4 texel inputs
+// (latent0..latent3) rather than looping over a variable-length array; this
+// keeps the TSL graph shape identical to the shared MLP evaluator helpers.
+const LEVEL_NAMES = [ 'latent0', 'latent1', 'latent2', 'latent3' ];
 
 function createEvaluateNeuralBRDFFn( material ) {
 
 	const brdf = material.neuralAppearanceData.outputs.brdf;
 	const uniforms = material._outputUniforms.brdf;
 
-	return TSL.Fn( ( { wi, wo, latent0, latent1 } ) => {
+	return TSL.Fn( ( { wi, wo, latent0, latent1, latent2, latent3 } ) => {
 
-		const latents = [
-			latent0.x, latent0.y, latent0.z, latent0.w,
-			latent1.x, latent1.y, latent1.z, latent1.w
-		];
+		const latents = latentsFromTexels( latent0, latent1, latent2, latent3 );
 		const frames = buildDecoderFrames( brdf, uniforms, latents );
 		const input = projectDecoderInput( latents, frames, wi, wo, brdf.inputSize );
 		const decoded = toVec3( evaluateMLP( brdf.layers, uniforms, input ) );
@@ -25,7 +31,9 @@ function createEvaluateNeuralBRDFFn( material ) {
 			{ name: 'wi', type: 'vec3' },
 			{ name: 'wo', type: 'vec3' },
 			{ name: 'latent0', type: 'vec4' },
-			{ name: 'latent1', type: 'vec4' }
+			{ name: 'latent1', type: 'vec4' },
+			{ name: 'latent2', type: 'vec4' },
+			{ name: 'latent3', type: 'vec4' }
 		]
 	} );
 
@@ -37,16 +45,7 @@ function evaluateNeuralBRDF( material, lightDirection, context, evaluateFn ) {
 	const fn = evaluateFn || createEvaluateNeuralBRDFFn( material );
 	const wi = transformToCanonicalFrame( lightDirection );
 
-	if ( fragment.trilinear ) {
-
-		const rgb0 = fn( wi, fragment.viewDirection, fragment.texel00, fragment.texel01 );
-		const rgb1 = fn( wi, fragment.viewDirection, fragment.texel10, fragment.texel11 );
-
-		return TSL.mix( rgb0, rgb1, fragment.fracMip );
-
-	}
-
-	return fn( wi, fragment.viewDirection, fragment.texel0, fragment.texel1 );
+	return fn( wi, fragment.viewDirection, fragment.texel0, fragment.texel1, fragment.texel2, fragment.texel3 );
 
 }
 
@@ -54,22 +53,6 @@ function evaluateNeuralEmission( material ) {
 
 	const output = material.neuralAppearanceData.outputs.emission;
 	const uniforms = material._outputUniforms.emission;
-	const uvNode = TSL.uv();
-
-	if ( material.lodMode === 'trilinear' ) {
-
-		const data = material.neuralAppearanceData;
-		const continuousLod = computeContinuousLOD( material, uvNode );
-		const baseMip = TSL.floor( continuousLod );
-		const fracMip = TSL.fract( continuousLod );
-		const nextMip = TSL.min( baseMip.add( 1 ), data.mipLevels - 1 );
-		const rgb0 = applyOutputActivation( toVec3( evaluateMLP( output.layers, uniforms, fetchLatentCodeAtLevel( material, uvNode, baseMip ) ) ), output.outputActivation );
-		const rgb1 = applyOutputActivation( toVec3( evaluateMLP( output.layers, uniforms, fetchLatentCodeAtLevel( material, uvNode, nextMip ) ) ), output.outputActivation );
-
-		return TSL.mix( rgb0, rgb1, fracMip );
-
-	}
-
 	const decoded = toVec3( evaluateMLP( output.layers, uniforms, fetchLatentCode( material ) ) );
 
 	return applyOutputActivation( decoded, output.outputActivation );
@@ -80,22 +63,6 @@ function evaluateNeuralOpacity( material ) {
 
 	const output = material.neuralAppearanceData.outputs.opacity;
 	const uniforms = material._outputUniforms.opacity;
-	const uvNode = TSL.uv();
-
-	if ( material.lodMode === 'trilinear' ) {
-
-		const data = material.neuralAppearanceData;
-		const continuousLod = computeContinuousLOD( material, uvNode );
-		const baseMip = TSL.floor( continuousLod );
-		const fracMip = TSL.fract( continuousLod );
-		const nextMip = TSL.min( baseMip.add( 1 ), data.mipLevels - 1 );
-		const opacity0 = applyScalarOutputActivation( evaluateMLP( output.layers, uniforms, fetchLatentCodeAtLevel( material, uvNode, baseMip ) )[ 0 ], output.outputActivation );
-		const opacity1 = applyScalarOutputActivation( evaluateMLP( output.layers, uniforms, fetchLatentCodeAtLevel( material, uvNode, nextMip ) )[ 0 ], output.outputActivation );
-
-		return TSL.mix( opacity0, opacity1, fracMip );
-
-	}
-
 	const decoded = evaluateMLP( output.layers, uniforms, fetchLatentCode( material ) )[ 0 ];
 
 	return applyScalarOutputActivation( decoded, output.outputActivation );
@@ -106,27 +73,15 @@ function evaluateNeuralIBL( material, envNode, context = null, isolate = 'full' 
 
 	const fragment = context || createNeuralFragmentContext( material );
 
-	if ( fragment.trilinear ) {
-
-		const ibl0 = evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel00, fragment.texel01, isolate );
-		const ibl1 = evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel10, fragment.texel11, isolate );
-
-		return TSL.mix( ibl0, ibl1, fragment.fracMip );
-
-	}
-
-	return evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel0, fragment.texel1, isolate );
+	return evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel0, fragment.texel1, fragment.texel2, fragment.texel3, isolate );
 
 }
 
-function evaluateNeuralIBLForTexels( material, envNode, wo, latent0, latent1, isolate = 'full' ) {
+function evaluateNeuralIBLForTexels( material, envNode, wo, latent0, latent1, latent2, latent3, isolate = 'full' ) {
 
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const uniforms = material._outputUniforms.ibl;
-	const latents = [
-		latent0.x, latent0.y, latent0.z, latent0.w,
-		latent1.x, latent1.y, latent1.z, latent1.w
-	];
+	const latents = latentsFromTexels( latent0, latent1, latent2, latent3 );
 	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
 	const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize );
 	const query = evaluateMLP( ibl.layers, uniforms, queryInput );
@@ -209,11 +164,13 @@ function transformToCanonicalFrame( direction ) {
 
 }
 
-function latentsFromTexels( texel0, texel1 ) {
+function latentsFromTexels( texel0, texel1, texel2, texel3 ) {
 
 	return [
 		texel0.x, texel0.y, texel0.z, texel0.w,
-		texel1.x, texel1.y, texel1.z, texel1.w
+		texel1.x, texel1.y, texel1.z, texel1.w,
+		texel2.x, texel2.y, texel2.z, texel2.w,
+		texel3.x, texel3.y, texel3.z, texel3.w
 	];
 
 }
@@ -223,16 +180,7 @@ function evaluateLearnedCanonicalNormal( material, fragment ) {
 	const brdf = material.neuralAppearanceData.outputs.brdf;
 	const uniforms = material._outputUniforms.brdf;
 
-	if ( fragment.trilinear ) {
-
-		const normal0 = buildDecoderFrames( brdf, uniforms, latentsFromTexels( fragment.texel00, fragment.texel01 ) )[ 0 ].n;
-		const normal1 = buildDecoderFrames( brdf, uniforms, latentsFromTexels( fragment.texel10, fragment.texel11 ) )[ 0 ].n;
-
-		return TSL.mix( normal0, normal1, fragment.fracMip ).normalize();
-
-	}
-
-	return buildDecoderFrames( brdf, uniforms, latentsFromTexels( fragment.texel0, fragment.texel1 ) )[ 0 ].n;
+	return buildDecoderFrames( brdf, uniforms, latentsFromTexels( fragment.texel0, fragment.texel1, fragment.texel2, fragment.texel3 ) )[ 0 ].n;
 
 }
 
@@ -242,9 +190,9 @@ function sigmoidNode( value ) {
 
 }
 
-function evaluateLearnedIBLQueryForTexels( material, texel0, texel1, wo ) {
+function evaluateLearnedIBLQueryForTexels( material, texel0, texel1, texel2, texel3, wo ) {
 
-	const latents = latentsFromTexels( texel0, texel1 );
+	const latents = latentsFromTexels( texel0, texel1, texel2, texel3 );
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
 	const input = projectIBLInput( latents, frames, wo, ibl.inputSize );
@@ -259,19 +207,7 @@ function evaluateLearnedIBLQueryForTexels( material, texel0, texel1, wo ) {
 
 function evaluateLearnedIBLQuery( material, fragment ) {
 
-	if ( fragment.trilinear ) {
-
-		const query0 = evaluateLearnedIBLQueryForTexels( material, fragment.texel00, fragment.texel01, fragment.viewDirection );
-		const query1 = evaluateLearnedIBLQueryForTexels( material, fragment.texel10, fragment.texel11, fragment.viewDirection );
-
-		return {
-			direction: TSL.mix( query0.direction, query1.direction, fragment.fracMip ).normalize(),
-			roughness: TSL.mix( query0.roughness, query1.roughness, fragment.fracMip )
-		};
-
-	}
-
-	return evaluateLearnedIBLQueryForTexels( material, fragment.texel0, fragment.texel1, fragment.viewDirection );
+	return evaluateLearnedIBLQueryForTexels( material, fragment.texel0, fragment.texel1, fragment.texel2, fragment.texel3, fragment.viewDirection );
 
 }
 
@@ -310,33 +246,26 @@ function packDebugScalar( value ) {
 
 }
 
-function fetchLatentCode( material ) {
-
-	const uvNode = TSL.uv();
-	const lod = computeLOD( material, uvNode );
-	return fetchLatentCodeAtLevel( material, uvNode, lod );
-
-}
-
-function fetchLatentTexels( material, uvNode, levelNode ) {
+/**
+ * Bilinear-samples every latent grid level texture at `uvNode` (ordinary
+ * hardware bilinear + repeat wrap, no LOD/mip selection) and concatenates
+ * their channels into a flat array of scalar latent nodes - mirrors
+ * `evaluateNeuralTextureRaw` in neural-texture/NeuralTextureNodeMaterial.js.
+ */
+function fetchLatentTexels( material, uvNode ) {
 
 	const data = material.neuralAppearanceData;
+	const texels = data.latentTextures.map( ( levelTexture ) => TSL.texture( levelTexture, uvNode ).toVar() );
 
-	return {
-		texel0: TSL.texture( data.latentTextures[ 0 ], uvNode ).level( levelNode ).toVar(),
-		texel1: TSL.texture( data.latentTextures[ 1 ], uvNode ).level( levelNode ).toVar()
-	};
+	return { texel0: texels[ 0 ], texel1: texels[ 1 ], texel2: texels[ 2 ], texel3: texels[ 3 ] };
 
 }
 
-function fetchLatentCodeAtLevel( material, uvNode, levelNode ) {
+function fetchLatentCode( material ) {
 
-	const texels = fetchLatentTexels( material, uvNode, levelNode );
+	const texels = fetchLatentTexels( material, TSL.uv() );
 
-	return [
-		texels.texel0.x, texels.texel0.y, texels.texel0.z, texels.texel0.w,
-		texels.texel1.x, texels.texel1.y, texels.texel1.z, texels.texel1.w
-	];
+	return latentsFromTexels( texels.texel0, texels.texel1, texels.texel2, texels.texel3 );
 
 }
 
@@ -344,73 +273,15 @@ function createNeuralFragmentContext( material ) {
 
 	const uvNode = TSL.uv();
 	const viewDirection = transformToCanonicalFrame( TSL.positionViewDirection ).toVar();
-
-	if ( material.lodMode === 'trilinear' ) {
-
-		const data = material.neuralAppearanceData;
-		const continuousLod = computeContinuousLOD( material, uvNode ).toVar();
-		const baseMip = TSL.floor( continuousLod ).toVar();
-		const fracMip = TSL.fract( continuousLod ).toVar();
-		const nextMip = TSL.min( baseMip.add( 1 ), data.mipLevels - 1 );
-		const mip0 = fetchLatentTexels( material, uvNode, baseMip );
-		const mip1 = fetchLatentTexels( material, uvNode, nextMip );
-
-		return {
-			trilinear: true,
-			fracMip,
-			viewDirection,
-			texel00: mip0.texel0,
-			texel01: mip0.texel1,
-			texel10: mip1.texel0,
-			texel11: mip1.texel1
-		};
-
-	}
-
-	const lod = computeLOD( material, uvNode ).toVar();
-	const texels = fetchLatentTexels( material, uvNode, lod );
+	const texels = fetchLatentTexels( material, uvNode );
 
 	return {
-		trilinear: false,
 		viewDirection,
 		texel0: texels.texel0,
-		texel1: texels.texel1
+		texel1: texels.texel1,
+		texel2: texels.texel2,
+		texel3: texels.texel3
 	};
-
-}
-
-function computeContinuousLOD( material, uvNode ) {
-
-	const data = material.neuralAppearanceData;
-	const fixedMip = material._fixedMipLevelNode;
-	const duvdx = TSL.dFdx( uvNode ).mul( TSL.vec2( data.latentWidth, data.latentHeight ) );
-	const duvdy = TSL.dFdy( uvNode ).mul( TSL.vec2( data.latentWidth, data.latentHeight ) );
-	const footprint = TSL.max( TSL.length( duvdx ), TSL.length( duvdy ) ).max( 1.0 );
-	const computed = TSL.log2( footprint ).clamp( 0, data.mipLevels - 1 );
-
-	return TSL.select( fixedMip.greaterThanEqual( 0 ), fixedMip, computed );
-
-}
-
-function computeLOD( material, uvNode ) {
-
-	const data = material.neuralAppearanceData;
-	const fixedMip = material._fixedMipLevelNode;
-	const computed = computeContinuousLOD( material, uvNode );
-	const nearest = TSL.floor( computed.add( 0.5 ) );
-
-	if ( material.lodMode === 'stochastic' ) {
-
-		const base = TSL.floor( computed );
-		const probability = TSL.fract( computed );
-		const random = TSL.fract( TSL.sin( TSL.dot( uvNode, TSL.vec2( 12.9898, 78.233 ) ) ).mul( 43758.5453 ) );
-		const stochastic = TSL.select( random.lessThan( probability ), base.add( 1 ), base ).clamp( 0, data.mipLevels - 1 );
-
-		return TSL.select( fixedMip.greaterThanEqual( 0 ), fixedMip, stochastic );
-
-	}
-
-	return TSL.select( fixedMip.greaterThanEqual( 0 ), fixedMip, nearest );
 
 }
 
@@ -445,9 +316,7 @@ function createHeadUniforms( decoder ) {
 function isCompatibleNeuralAppearanceData( current, next ) {
 
 	if ( ! current || ! next ) return false;
-	if ( current.latentWidth !== next.latentWidth ) return false;
-	if ( current.latentHeight !== next.latentHeight ) return false;
-	if ( current.mipLevels !== next.mipLevels ) return false;
+	if ( current.levels !== next.levels ) return false;
 	if ( current.wrap !== next.wrap ) return false;
 	if ( ! sameLatentTextureLayout( current.latentTextures, next.latentTextures ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.brdf, next.outputs.brdf ) ) return false;
@@ -467,18 +336,9 @@ function sameLatentTextureLayout( currentTextures, nextTextures ) {
 
 	for ( let i = 0; i < currentTextures.length; i ++ ) {
 
-		const currentMips = currentTextures[ i ].mipmaps;
-		const nextMips = nextTextures[ i ].mipmaps;
-
-		if ( currentMips.length !== nextMips.length ) return false;
-
-		for ( let mip = 0; mip < currentMips.length; mip ++ ) {
-
-			if ( currentMips[ mip ].width !== nextMips[ mip ].width ) return false;
-			if ( currentMips[ mip ].height !== nextMips[ mip ].height ) return false;
-			if ( currentMips[ mip ].data.length !== nextMips[ mip ].data.length ) return false;
-
-		}
+		if ( currentTextures[ i ].image.width !== nextTextures[ i ].image.width ) return false;
+		if ( currentTextures[ i ].image.height !== nextTextures[ i ].image.height ) return false;
+		if ( currentTextures[ i ].image.data.length !== nextTextures[ i ].image.data.length ) return false;
 
 	}
 
@@ -563,18 +423,7 @@ function copyLatentTextureData( destinationTextures, sourceTextures ) {
 		const destination = destinationTextures[ i ];
 		const source = sourceTextures[ i ];
 
-		for ( let mip = 0; mip < destination.mipmaps.length; mip ++ ) {
-
-			destination.mipmaps[ mip ].data.set( source.mipmaps[ mip ].data );
-
-		}
-
-		if ( destination.image && destination.image.data && destination.image.data !== destination.mipmaps[ 0 ].data ) {
-
-			destination.image.data.set( source.image.data );
-
-		}
-
+		destination.image.data.set( source.image.data );
 		destination.needsUpdate = true;
 
 	}
@@ -694,13 +543,7 @@ function buildDecoderFrames( decoder, decoderUniforms, latents ) {
 
 function projectDecoderInput( latents, frames, wi, wo, inputSize ) {
 
-	const input = [];
-
-	for ( let i = 0; i < 8; i ++ ) {
-
-		input.push( latents[ i ] );
-
-	}
+	const input = latents.slice();
 
 	for ( let frame = 0; frame < frames.length; frame ++ ) {
 
@@ -723,13 +566,7 @@ function projectDecoderInput( latents, frames, wi, wo, inputSize ) {
 
 function projectIBLInput( latents, frames, wo, inputSize ) {
 
-	const input = [];
-
-	for ( let i = 0; i < 8; i ++ ) {
-
-		input.push( latents[ i ] );
-
-	}
+	const input = latents.slice();
 
 	for ( let frame = 0; frame < frames.length; frame ++ ) {
 
@@ -750,13 +587,7 @@ function projectIBLInput( latents, frames, wo, inputSize ) {
 
 function projectIndirectProbeInput( latents, wo, probe, inputSize ) {
 
-	const input = [];
-
-	for ( let i = 0; i < 8; i ++ ) {
-
-		input.push( latents[ i ] );
-
-	}
+	const input = latents.slice();
 
 	input.push( wo.x, wo.y, wo.z );
 	input.push( probe.x, probe.y, probe.z );
@@ -977,9 +808,6 @@ export {
 	createNeuralFragmentContext,
 	transformToCanonicalFrame,
 	fetchLatentCode,
-	fetchLatentCodeAtLevel,
-	computeContinuousLOD,
-	computeLOD,
 	createOutputUniforms,
 	createHeadUniforms,
 	isCompatibleNeuralAppearanceData,
@@ -998,5 +826,7 @@ export {
 	toVec3,
 	linearLayer,
 	applyOutputActivation,
-	applyScalarOutputActivation
+	applyScalarOutputActivation,
+	LEVEL_NAMES,
+	LEVELS
 };

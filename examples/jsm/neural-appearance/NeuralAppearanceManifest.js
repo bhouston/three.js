@@ -2,6 +2,7 @@ import {
 	FORMAT,
 	VERSION,
 	LATENT_CHANNELS,
+	CHANNELS_PER_LEVEL,
 	DECODER_INPUT_SIZE,
 	IBL_INPUT_SIZE,
 	INDIRECT_INPUT_SIZE
@@ -30,32 +31,13 @@ async function exportNeuralAppearance( model, teacher, options ) {
 
 function createNeuralAppearanceManifest( model, options ) {
 
-	const mipmaps0 = [];
-	const mipmaps1 = [];
-
-	for ( const grid of model.latentGrids ) {
-
-		const data0 = [];
-		const data1 = [];
-
-		for ( let y = 0; y < grid.height; y ++ ) {
-
-			for ( let x = 0; x < grid.width; x ++ ) {
-
-				const offset = ( y * grid.width + x ) * LATENT_CHANNELS;
-				const latents = grid.data.slice( offset, offset + LATENT_CHANNELS );
-
-				data0.push( latents[ 0 ], latents[ 1 ], latents[ 2 ], latents[ 3 ] );
-				data1.push( latents[ 4 ], latents[ 5 ], latents[ 6 ], latents[ 7 ] );
-
-			}
-
-		}
-
-		mipmaps0.push( { width: grid.width, height: grid.height, data: data0 } );
-		mipmaps1.push( { width: grid.width, height: grid.height, data: data1 } );
-
-	}
+	const levels = model.latentGrids.map( ( grid ) => ( {
+		width: grid.width,
+		height: grid.height,
+		channels: grid.channels,
+		wrap: 'repeat',
+		data: Array.from( grid.data )
+	} ) );
 
 	const outputs = {
 		brdf: {
@@ -123,12 +105,9 @@ function createNeuralAppearanceManifest( model, options ) {
 		name: options.name,
 		source: 'THREE.NeuralAppearanceTrainer',
 		latents: {
-			channels: LATENT_CHANNELS,
-			wrap: 'repeat',
-			textures: [
-				{ wrap: 'repeat', mipmaps: mipmaps0 },
-				{ wrap: 'repeat', mipmaps: mipmaps1 }
-			]
+			levels,
+			channelsPerLevel: CHANNELS_PER_LEVEL,
+			wrap: 'repeat'
 		},
 		outputs
 	};
@@ -161,8 +140,6 @@ async function createReferenceEvaluations( json, teacher ) {
 		normal: [ 0, 0, 1 ],
 		tangent: [ 1, 0, 0 ],
 		bitangent: [ 0, 1, 0 ],
-		duvDx: [ 1 / 1024, 0 ],
-		duvDy: [ 0, 1 / 1024 ],
 		encoderInputs: teacher.encodeInputs ? teacher.encodeInputs( [ 0.5, 0.5 ] ) : [ 0.5, 0.5 ]
 	} ) );
 
@@ -177,7 +154,6 @@ async function createReferenceEvaluations( json, teacher ) {
 		const iblWhite = evaluateNeuralIBLWhiteFurnace( json, sample );
 		const integratedWhite = integrateNeuralBRDFWhiteFurnace( json, sample, 32 );
 
-		sample.mip = 0;
 		sample.targetRgb = sample.target.slice();
 		sample.rgb = prediction;
 		sample.ibl = outputs.ibl;
@@ -203,8 +179,6 @@ async function createReferenceEvaluations( json, teacher ) {
 		delete sample.normal;
 		delete sample.tangent;
 		delete sample.bitangent;
-		delete sample.duvDx;
-		delete sample.duvDy;
 		delete sample.encoderInputs;
 		delete sample.directTarget;
 		delete sample.target;

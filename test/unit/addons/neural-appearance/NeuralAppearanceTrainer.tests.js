@@ -1,7 +1,6 @@
 import {
 	NeuralAppearanceTrainer,
-	estimateTrainingMemory,
-	getTrainingSampleCapacity
+	estimateTrainingMemory
 } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceTrainer.js';
 import {
 	createGpuMaterialTeacher,
@@ -14,34 +13,15 @@ export default QUnit.module( 'Addons', () => {
 
 		QUnit.module( 'NeuralAppearanceTrainer', () => {
 
-			QUnit.test( 'estimates scaled latent memory and fixed-mip training', ( assert ) => {
+			QUnit.test( 'estimates multiresolution grid memory', ( assert ) => {
 
-				const memory = estimateTrainingMemory( 64 );
+				const memory = estimateTrainingMemory( 3, 2, 8 );
 
-				assert.strictEqual( memory.mipLevels, 7, 'counts the complete 64px mip hierarchy' );
-				assert.strictEqual( memory.latentTexels, 5461, 'counts texels across independent mip grids' );
-				assert.strictEqual( memory.trainingBytes, 5461 * 8 * 4 * 4, 'includes values, gradients, and two Adam moments' );
-				assert.strictEqual( memory.exportBytes, 5461 * 8 * 2, 'estimates eight FP16 latent channels' );
-
-			} );
-
-			QUnit.test( 'sizes GPU training batches for sampled mip records', ( assert ) => {
-
-				assert.strictEqual(
-					getTrainingSampleCapacity( { resolution: 4, batchSize: 6, fixedTrainingMip: - 1 } ),
-					18,
-					'allocates one dispatch slot for each sampled mip training record'
-				);
-				assert.strictEqual(
-					getTrainingSampleCapacity( { resolution: 4, batchSize: 6, fixedTrainingMip: 1 } ),
-					6,
-					'fixed-mip training only needs the requested batch size'
-				);
-				assert.strictEqual(
-					getTrainingSampleCapacity( { resolution: 4, batchSize: 6, fixedTrainingMip: - 1, sampleAllMips: true } ),
-					18,
-					'allocates one dispatch slot for each explicit mip sample when sampleAllMips is enabled'
-				);
+				assert.strictEqual( memory.levels, 3, 'reports the requested level count' );
+				assert.deepEqual( memory.resolutions, [ 2, 4, 8 ], 'geometrically spaces resolutions between base and target' );
+				assert.strictEqual( memory.latentTexels, 4 + 16 + 64, 'counts texels across independent grid levels' );
+				assert.strictEqual( memory.trainingBytes, memory.latentTexels * 4 * 4 * 4, 'includes values, gradients, and two Adam moments' );
+				assert.strictEqual( memory.exportBytes, memory.latentTexels * 4 * 2, 'estimates four FP16 latent channels per level' );
 
 			} );
 
@@ -78,7 +58,9 @@ export default QUnit.module( 'Addons', () => {
 
 				const cpuTrainer = new NeuralAppearanceTrainer( {
 					backend: 'cpu',
-					resolution: 2,
+					levels: 2,
+					baseResolution: 2,
+					targetResolution: 4,
 					iterations: 1,
 					batchSize: 4,
 					hiddenSize: 4,
@@ -88,7 +70,9 @@ export default QUnit.module( 'Addons', () => {
 
 				const gpuTrainer = new NeuralAppearanceTrainer( {
 					backend: 'gpu',
-					resolution: 2,
+					levels: 2,
+					baseResolution: 2,
+					targetResolution: 4,
 					iterations: 1,
 					batchSize: 4,
 					hiddenSize: 4

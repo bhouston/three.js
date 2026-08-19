@@ -13,8 +13,7 @@ function fakeTexture( fill = 0 ) {
 	const data = new Uint16Array( [ fill, 0, 0, 0 ] );
 
 	return {
-		mipmaps: [ { data, width: 1, height: 1 } ],
-		image: { data },
+		image: { width: 1, height: 1, data },
 		needsUpdate: false,
 		dispose() {}
 	};
@@ -25,53 +24,51 @@ function fakeData( weight = 0 ) {
 
 	return {
 		isNeuralAppearanceData: true,
-		latentWidth: 1,
-		latentHeight: 1,
-		mipLevels: 1,
+		levels: 4,
 		wrap: 'repeat',
-		latentTextures: [ fakeTexture( weight ), fakeTexture( 0 ) ],
+		latentTextures: [ fakeTexture( weight ), fakeTexture( 0 ), fakeTexture( 0 ), fakeTexture( 0 ) ],
 		outputs: {
 			brdf: {
-				inputSize: 20,
-				rotation: { weights: new Array( 96 ).fill( weight ), inputSize: 8, outputSize: 12 },
+				inputSize: 28,
+				rotation: { weights: new Array( 192 ).fill( weight ), inputSize: 16, outputSize: 12 },
 				layers: [ {
-					inputSize: 20,
+					inputSize: 28,
 					outputSize: 3,
 					activation: 'linear',
-					weights: new Array( 60 ).fill( weight ),
+					weights: new Array( 84 ).fill( weight ),
 					biases: [ weight, 0, 0 ]
 				} ],
 				outputActivation: { type: 'linear' }
 			},
 			ibl: {
-				inputSize: 14,
+				inputSize: 22,
 				layers: [ {
-					inputSize: 14,
+					inputSize: 22,
 					outputSize: 4,
 					activation: 'linear',
-					weights: new Array( 14 * 4 ).fill( weight ),
+					weights: new Array( 22 * 4 ).fill( weight ),
 					biases: [ 0, 0, 1, 0 ]
 				} ],
 				outputActivation: { type: 'linear' }
 			},
 			indirectRadiance: {
-				inputSize: 14,
+				inputSize: 22,
 				layers: [ {
-					inputSize: 14,
+					inputSize: 22,
 					outputSize: 3,
 					activation: 'linear',
-					weights: new Array( 14 * 3 ).fill( weight ),
+					weights: new Array( 22 * 3 ).fill( weight ),
 					biases: [ 0, 0, 0 ]
 				} ],
 				outputActivation: { type: 'linear' }
 			},
 			indirectIrradiance: {
-				inputSize: 14,
+				inputSize: 22,
 				layers: [ {
-					inputSize: 14,
+					inputSize: 22,
 					outputSize: 3,
 					activation: 'linear',
-					weights: new Array( 14 * 3 ).fill( weight ),
+					weights: new Array( 22 * 3 ).fill( weight ),
 					biases: [ 0, 0, 0 ]
 				} ],
 				outputActivation: { type: 'linear' }
@@ -120,23 +117,23 @@ export default QUnit.module( 'Addons', () => {
 
 				const outputs = {
 					brdf: {
-						rotation: { weights: new Array( 96 ).fill( 0 ), inputSize: 8, outputSize: 12 },
-						layers: [ { weights: new Array( 60 ).fill( 0 ), biases: [ 0, 0, 0 ], inputSize: 20, outputSize: 3 } ]
+						rotation: { weights: new Array( 192 ).fill( 0 ), inputSize: 16, outputSize: 12 },
+						layers: [ { weights: new Array( 84 ).fill( 0 ), biases: [ 0, 0, 0 ], inputSize: 28, outputSize: 3 } ]
 					},
 					ibl: {
-						layers: [ { weights: new Array( 14 * 4 ).fill( 0 ), biases: new Array( 4 ).fill( 0 ), inputSize: 14, outputSize: 4 } ]
+						layers: [ { weights: new Array( 22 * 4 ).fill( 0 ), biases: new Array( 4 ).fill( 0 ), inputSize: 22, outputSize: 4 } ]
 					},
 					indirectRadiance: {
-						layers: [ { weights: new Array( 14 * 3 ).fill( 0 ), biases: new Array( 3 ).fill( 0 ), inputSize: 14, outputSize: 3 } ]
+						layers: [ { weights: new Array( 22 * 3 ).fill( 0 ), biases: new Array( 3 ).fill( 0 ), inputSize: 22, outputSize: 3 } ]
 					},
 					indirectIrradiance: {
-						layers: [ { weights: new Array( 14 * 3 ).fill( 0 ), biases: new Array( 3 ).fill( 0 ), inputSize: 14, outputSize: 3 } ]
+						layers: [ { weights: new Array( 22 * 3 ).fill( 0 ), biases: new Array( 3 ).fill( 0 ), inputSize: 22, outputSize: 3 } ]
 					},
 					emission: {
-						layers: [ { weights: new Array( 24 ).fill( 0 ), biases: [ 0, 0, 0 ], inputSize: 8, outputSize: 3 } ]
+						layers: [ { weights: new Array( 48 ).fill( 0 ), biases: [ 0, 0, 0 ], inputSize: 16, outputSize: 3 } ]
 					},
 					opacity: {
-						layers: [ { weights: new Array( 8 ).fill( 0 ), biases: [ 0 ], inputSize: 8, outputSize: 1 } ]
+						layers: [ { weights: new Array( 16 ).fill( 0 ), biases: [ 0 ], inputSize: 16, outputSize: 1 } ]
 					}
 				};
 
@@ -161,7 +158,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.ok( isCompatibleNeuralAppearanceData( fakeData( 0 ), fakeData( 1 ) ), 'weight changes stay compatible' );
 
 				const wider = fakeData( 0 );
-				wider.latentWidth = 2;
+				wider.latentTextures[ 0 ].image.width = 2;
 				assert.notOk( isCompatibleNeuralAppearanceData( fakeData( 0 ), wider ), 'rejects a different latent size' );
 
 				const hidden = fakeData( 0 );
@@ -185,14 +182,14 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'copies latent mip data into existing textures', ( assert ) => {
+			QUnit.test( 'copies latent level data into existing textures', ( assert ) => {
 
 				const current = fakeData( 1 ).latentTextures;
 				const next = fakeData( 9 ).latentTextures;
 
 				copyLatentTextureData( current, next );
 
-				assert.strictEqual( current[ 0 ].mipmaps[ 0 ].data[ 0 ], 9, 'overwrites destination mip data' );
+				assert.strictEqual( current[ 0 ].image.data[ 0 ], 9, 'overwrites destination level data' );
 				assert.strictEqual( current[ 0 ].needsUpdate, true, 'marks the destination texture for upload' );
 
 			} );

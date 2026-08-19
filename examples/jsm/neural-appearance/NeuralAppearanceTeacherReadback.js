@@ -1,9 +1,4 @@
 import * as THREE from 'three';
-import {
-	computeFootprintArea,
-	createGaussianSampleKernel,
-	getGaussianSampleGridSize
-} from './NeuralAppearanceFilterUtils.js';
 
 function readPixelValue( pixels, index ) {
 
@@ -26,56 +21,6 @@ function readSamplePixel( pixels, sampleIndex, atlasColumns, atlasWidth, tileSiz
 		readPixelValue( pixels, index + 2 ),
 		readPixelValue( pixels, index + 3 )
 	];
-
-}
-
-function readFilteredSample( pixels, sampleIndex, sample, {
-	atlasColumns,
-	atlasWidth,
-	tileSize,
-	sourceResolution = 1,
-	uvGradientScale = 1 / 1024,
-	filterMinSamples = 1,
-	filterMaxSamples = 64,
-	filterSigma = 0.25,
-	filterKernels = null
-} = {} ) {
-
-	const footprintArea = computeFootprintArea(
-		sample.duvDx || [ uvGradientScale, 0 ],
-		sample.duvDy || [ 0, uvGradientScale ],
-		sourceResolution,
-		sourceResolution
-	);
-	const maxSamples = Math.min( filterMaxSamples, tileSize * tileSize );
-	const gridSize = getGaussianSampleGridSize( footprintArea, filterMinSamples, maxSamples );
-	let kernel = filterKernels ? filterKernels.get( gridSize ) : undefined;
-
-	if ( kernel === undefined ) {
-
-		kernel = createGaussianSampleKernel( gridSize, tileSize, filterSigma );
-		if ( filterKernels ) filterKernels.set( gridSize, kernel );
-
-	}
-
-	const tileX = sampleIndex % atlasColumns;
-	const tileY = Math.floor( sampleIndex / atlasColumns );
-	const target = [ 0, 0, 0, 0 ];
-
-	for ( const tap of kernel ) {
-
-		const x = tileX * tileSize + tap.x;
-		const y = tileY * tileSize + tap.y;
-		const index = ( y * atlasWidth + x ) * 4;
-
-		target[ 0 ] += readPixelValue( pixels, index ) * tap.weight;
-		target[ 1 ] += readPixelValue( pixels, index + 1 ) * tap.weight;
-		target[ 2 ] += readPixelValue( pixels, index + 2 ) * tap.weight;
-		target[ 3 ] += readPixelValue( pixels, index + 3 ) * tap.weight;
-
-	}
-
-	return target;
 
 }
 
@@ -119,6 +64,5 @@ async function renderAndReadTeacher( renderer, scene, camera, target, atlasWidth
 export {
 	readPixelValue,
 	readSamplePixel,
-	readFilteredSample,
 	renderAndReadTeacher
 };

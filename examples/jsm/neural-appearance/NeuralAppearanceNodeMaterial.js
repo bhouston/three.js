@@ -17,8 +17,6 @@ import {
 } from './NeuralAppearanceTSL.js';
 
 const DEFAULT_PARAMETERS = {
-	lodMode: 'deterministic',
-	fixedMipLevel: - 1,
 	intensity: 1,
 	emissiveIntensity: 1,
 	debugView: 'shaded'
@@ -59,14 +57,11 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 		this.transparent = false;
 
 		this.neuralAppearanceData = neuralAppearanceData;
-		this.lodMode = parameters.lodMode || DEFAULT_PARAMETERS.lodMode;
-		this.fixedMipLevel = parameters.fixedMipLevel !== undefined ? parameters.fixedMipLevel : DEFAULT_PARAMETERS.fixedMipLevel;
 		this.intensity = parameters.intensity !== undefined ? parameters.intensity : DEFAULT_PARAMETERS.intensity;
 		this.emissiveIntensity = parameters.emissiveIntensity !== undefined ? parameters.emissiveIntensity : DEFAULT_PARAMETERS.emissiveIntensity;
 		this.debugView = parameters.debugView || DEFAULT_PARAMETERS.debugView;
 		this._outputUniforms = createOutputUniforms( neuralAppearanceData.outputs );
 
-		this._fixedMipLevelNode = TSL.uniform( this.fixedMipLevel ).onObjectUpdate( ( { material } ) => material.fixedMipLevel );
 		this._intensityNode = TSL.uniform( this.intensity ).onObjectUpdate( ( { material } ) => material.intensity );
 		this._emissiveIntensityNode = TSL.uniform( this.emissiveIntensity ).onObjectUpdate( ( { material } ) => material.emissiveIntensity );
 

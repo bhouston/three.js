@@ -2,84 +2,77 @@ import { NeuralAppearanceLoader } from '../../../../examples/jsm/loaders/NeuralA
 import { NeuralAppearanceNodeMaterial } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceNodeMaterial.js';
 import { evaluateNeuralDebugShading } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceTSL.js';
 
+function createLevel( fill ) {
+
+	return { width: 1, height: 1, wrap: 'repeat', data: [ fill, 0, 0, 0 ] };
+
+}
+
 function createManifest( fill = 0 ) {
 
 	return {
 		format: 'three-neural-appearance',
-		version: 6,
+		version: 7,
 		name: 'unit test material',
 		latents: {
-			channels: 8,
-			wrap: 'repeat',
-			textures: [
-				{
-					wrap: 'repeat',
-					mipmaps: [
-						{ width: 1, height: 1, data: [ fill, 0, 0, 0 ] }
-					]
-				},
-				{
-					wrap: 'repeat',
-					mipmaps: [
-						{ width: 1, height: 1, data: [ 0, 0, 0, 0 ] }
-					]
-				}
-			]
+			levels: [ createLevel( fill ), createLevel( 0 ), createLevel( 0 ), createLevel( 0 ) ],
+			channelsPerLevel: 4,
+			wrap: 'repeat'
 		},
 		outputs: {
 			brdf: {
-				inputSize: 20,
+				inputSize: 28,
 				rotation: {
-					inputSize: 8,
+					inputSize: 16,
 					outputSize: 12,
-					weights: new Array( 96 ).fill( fill )
+					weights: new Array( 192 ).fill( fill )
 				},
 				layers: [
 					{
-						inputSize: 20,
+						inputSize: 28,
 						outputSize: 3,
 						activation: 'linear',
 						biases: [ fill, 0, 0 ],
-						weights: new Array( 60 ).fill( fill )
+						weights: new Array( 84 ).fill( fill )
 					}
 				],
 				outputActivation: { type: 'linear' }
 			},
 			ibl: {
-				inputSize: 14,
+				inputSize: 22,
 				layers: [
 					{
-						inputSize: 14,
+						inputSize: 22,
 						outputSize: 4,
 						activation: 'linear',
 						biases: [ 0, 0, 1, 0 ],
-						weights: new Array( 14 * 4 ).fill( fill )
+						weights: new Array( 22 * 4 ).fill( fill )
 					}
 				],
 				outputActivation: { type: 'linear' }
 			},
 			indirectRadiance: {
-				inputSize: 14,
+				inputSize: 22,
 				layers: [
 					{
-						inputSize: 14,
+						inputSize: 22,
 						outputSize: 3,
 						activation: 'linear',
 						biases: [ 0, 0, 0 ],
-						weights: new Array( 14 * 3 ).fill( fill )
+						weights: new Array( 22 * 3 ).fill( fill )
 					}
 				],
 				outputActivation: { type: 'linear' }
 			},
 			indirectIrradiance: {
-				inputSize: 14,
+				inputSize: 22,
 				layers: [
 					{
-						inputSize: 14,
+						inputSize: 22,
 						outputSize: 3,
 						activation: 'linear',
 						biases: [ 0, 0, 0 ],
-						weights: new Array( 14 * 3 ).fill( fill )
+						weights: new Array( 22 * 3 ).fill( fill )
 					}
 				],
 				outputActivation: { type: 'linear' }
@@ -117,11 +110,11 @@ export default QUnit.module( 'Addons', () => {
 				const nextManifest = createManifest( 0 );
 				nextManifest.outputs.brdf.layers = [
 					{
-						inputSize: 20,
+						inputSize: 28,
 						outputSize: 8,
 						activation: 'relu',
 						biases: new Array( 8 ).fill( 0 ),
-						weights: new Array( 160 ).fill( 0 )
+						weights: new Array( 224 ).fill( 0 )
 					},
 					{
 						inputSize: 8,
@@ -142,14 +135,14 @@ export default QUnit.module( 'Addons', () => {
 
 				const maskManifest = createManifest( 0 );
 				maskManifest.outputs.opacity = {
-					inputSize: 8,
+					inputSize: 16,
 					layers: [
 						{
-							inputSize: 8,
+							inputSize: 16,
 							outputSize: 1,
 							activation: 'linear',
 							biases: [ 0 ],
-							weights: [ 1, 0, 0, 0, 0, 0, 0, 0 ]
+							weights: [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 						}
 					],
 					outputActivation: { type: 'sigmoid' },
@@ -166,14 +159,14 @@ export default QUnit.module( 'Addons', () => {
 
 				const blendManifest = createManifest( 0 );
 				blendManifest.outputs.opacity = {
-					inputSize: 8,
+					inputSize: 16,
 					layers: [
 						{
-							inputSize: 8,
+							inputSize: 16,
 							outputSize: 1,
 							activation: 'linear',
 							biases: [ 0 ],
-							weights: [ 1, 0, 0, 0, 0, 0, 0, 0 ]
+							weights: [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 						}
 					],
 					outputActivation: { type: 'sigmoid' },

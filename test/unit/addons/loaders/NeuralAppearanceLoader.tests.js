@@ -1,118 +1,122 @@
 import { DataTexture, DataUtils } from 'three';
 import { NeuralAppearanceLoader } from '../../../../examples/jsm/loaders/NeuralAppearanceLoader.js';
 
+function createLevel( data ) {
+
+	return { width: 1, height: 1, wrap: 'repeat', data };
+
+}
+
+function createBrdfWeights() {
+
+	const weights = new Array( 84 ).fill( 0 );
+	weights[ 0 ] = 1; // output 0 <- latent channel 0 (level 0, channel 0)
+	weights[ 29 ] = 1; // output 1 <- latent channel 1 (level 0, channel 1)
+	weights[ 83 ] = 1; // output 2 <- frame1's wo.n projection (== 1 for wo = [0,0,1] with zero rotation weights)
+	return weights;
+
+}
+
 function createManifest() {
 
 	return {
 		format: 'three-neural-appearance',
-		version: 6,
+		version: 7,
 		name: 'unit test material',
 		latents: {
-			channels: 8,
+			channelsPerLevel: 4,
 			wrap: 'repeat',
-			textures: [
-				{
-					wrap: 'repeat',
-					mipmaps: [
-						{ width: 1, height: 1, data: [ 0.8, 0.2, 0.1, 0.5 ] }
-					]
-				},
-				{
-					wrap: 'repeat',
-					mipmaps: [
-						{ width: 1, height: 1, data: [ 0.3, 0.4, 0.5, 0.6 ] }
-					]
-				}
+			levels: [
+				createLevel( [ 0.8, 0.2, 0.1, 0.5 ] ),
+				createLevel( [ 0.3, 0.4, 0.5, 0.6 ] ),
+				createLevel( [ 0, 0, 0, 0 ] ),
+				createLevel( [ 0, 0, 0, 0 ] )
 			]
 		},
 		outputs: {
 			brdf: {
-				inputSize: 20,
+				inputSize: 28,
 				rotation: {
-					inputSize: 8,
+					inputSize: 16,
 					outputSize: 12,
-					weights: new Array( 96 ).fill( 0 )
+					weights: new Array( 192 ).fill( 0 )
 				},
 				layers: [
 					{
-						inputSize: 20,
+						inputSize: 28,
 						outputSize: 3,
 						activation: 'linear',
 						biases: [ 0, 0, 0 ],
-						weights: [
-							1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-							0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-							0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
-						]
+						weights: createBrdfWeights()
 					}
 				],
 				outputActivation: { type: 'linear' }
 			},
 			ibl: {
-				inputSize: 14,
+				inputSize: 22,
 				layers: [
 					{
-						inputSize: 14,
+						inputSize: 22,
 						outputSize: 4,
 						activation: 'linear',
 						biases: [ 0, 0, 1, 0 ],
-						weights: new Array( 14 * 4 ).fill( 0 )
+						weights: new Array( 22 * 4 ).fill( 0 )
 					}
 				],
 				outputActivation: { type: 'linear' }
 			},
 			indirectRadiance: {
-				inputSize: 14,
+				inputSize: 22,
 				layers: [
 					{
-						inputSize: 14,
+						inputSize: 22,
 						outputSize: 3,
 						activation: 'linear',
 						biases: [ 0, 0, 0 ],
-						weights: new Array( 14 * 3 ).fill( 0 )
+						weights: new Array( 22 * 3 ).fill( 0 )
 					}
 				],
 				outputActivation: { type: 'linear' }
 			},
 			indirectIrradiance: {
-				inputSize: 14,
+				inputSize: 22,
 				layers: [
 					{
-						inputSize: 14,
+						inputSize: 22,
 						outputSize: 3,
 						activation: 'linear',
 						biases: [ 0, 0, 0 ],
-						weights: new Array( 14 * 3 ).fill( 0 )
+						weights: new Array( 22 * 3 ).fill( 0 )
 					}
 				],
 				outputActivation: { type: 'linear' }
 			},
 			emission: {
-				inputSize: 8,
+				inputSize: 16,
 				layers: [
 					{
-						inputSize: 8,
+						inputSize: 16,
 						outputSize: 3,
 						activation: 'linear',
 						biases: [ 0, 0, 0 ],
 						weights: [
-							1, 0, 0, 0, 0, 0, 0, 0,
-							0, 1, 0, 0, 0, 0, 0, 0,
-							0, 0, 1, 0, 0, 0, 0, 0
+							1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+							0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+							0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 						]
 					}
 				],
 				outputActivation: { type: 'linear' }
 			},
 			opacity: {
-				inputSize: 8,
+				inputSize: 16,
 				layers: [
 					{
-						inputSize: 8,
+						inputSize: 16,
 						outputSize: 1,
 						activation: 'linear',
 						biases: [ 0 ],
-						weights: [ 1, 0, 0, 0, 0, 0, 0, 0 ]
+						weights: [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 					}
 				],
 				outputActivation: { type: 'sigmoid' },
@@ -124,7 +128,6 @@ function createManifest() {
 				uv: [ 0.5, 0.5 ],
 				wi: [ 0, 0, 1 ],
 				wo: [ 0, 0, 1 ],
-				mip: 0,
 				rgb: [ 0.8, 0.2, 1 ]
 			}
 		]
@@ -134,16 +137,25 @@ function createManifest() {
 
 function cpuEval( data, reference ) {
 
-	const texel0 = data.latentTextures[ 0 ].image.data;
-	const texel1 = data.latentTextures[ 1 ].image.data;
-	const inputs = [
-		DataUtils.fromHalfFloat( texel0[ 0 ] ), DataUtils.fromHalfFloat( texel0[ 1 ] ), DataUtils.fromHalfFloat( texel0[ 2 ] ), DataUtils.fromHalfFloat( texel0[ 3 ] ),
-		DataUtils.fromHalfFloat( texel1[ 0 ] ), DataUtils.fromHalfFloat( texel1[ 1 ] ), DataUtils.fromHalfFloat( texel1[ 2 ] ), DataUtils.fromHalfFloat( texel1[ 3 ] ),
+	const inputs = [];
+
+	for ( const texture of data.latentTextures ) {
+
+		const image = texture.image.data;
+		inputs.push(
+			DataUtils.fromHalfFloat( image[ 0 ] ), DataUtils.fromHalfFloat( image[ 1 ] ),
+			DataUtils.fromHalfFloat( image[ 2 ] ), DataUtils.fromHalfFloat( image[ 3 ] )
+		);
+
+	}
+
+	inputs.push(
 		reference.wi[ 0 ], reference.wi[ 1 ], reference.wi[ 2 ],
 		reference.wo[ 0 ], reference.wo[ 1 ], reference.wo[ 2 ],
 		reference.wi[ 0 ], reference.wi[ 1 ], reference.wi[ 2 ],
 		reference.wo[ 0 ], reference.wo[ 1 ], reference.wo[ 2 ]
-	];
+	);
+
 	return evaluateDecoderLayers( data.outputs.brdf.layers, inputs );
 
 }
@@ -200,7 +212,7 @@ export default QUnit.module( 'Addons', () => {
 				const data = loader.parse( createManifest() );
 
 				assert.strictEqual( data.isNeuralAppearanceData, true, 'marks parsed data' );
-				assert.strictEqual( data.latentTextures.length, 2, 'two latent textures' );
+				assert.strictEqual( data.latentTextures.length, 4, 'four latent grid level textures' );
 				assert.ok( data.latentTextures[ 0 ] instanceof DataTexture, 'creates a data texture' );
 				assert.strictEqual( data.outputs.brdf.layers.length, 1, 'brdf layers' );
 				assert.strictEqual( data.outputs.ibl.layers.length, 1, 'ibl layers' );
@@ -254,6 +266,16 @@ export default QUnit.module( 'Addons', () => {
 				manifest.outputs.brdf.layers[ 0 ].weights.pop();
 
 				assert.throws( () => loader.parse( manifest ), /weights length/, 'throws on invalid weight count' );
+
+			} );
+
+			QUnit.test( 'rejects a mismatched number of latent grid levels', ( assert ) => {
+
+				const loader = new NeuralAppearanceLoader();
+				const manifest = createManifest();
+				manifest.latents.levels.pop();
+
+				assert.throws( () => loader.parse( manifest ), /latents\.levels must contain/, 'throws when the level count does not match LATENT_CHANNELS / CHANNELS_PER_LEVEL' );
 
 			} );
 

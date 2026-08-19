@@ -8,6 +8,12 @@ import {
 	finalizeAngularBins
 } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceValidator.js';
 
+function createLatentLevel( fill ) {
+
+	return { width: 1, height: 1, channels: 4, wrap: 'repeat', data: new Array( 4 ).fill( fill ) };
+
+}
+
 export default QUnit.module( 'Addons', () => {
 
 	QUnit.module( 'Neural', () => {
@@ -36,58 +42,54 @@ export default QUnit.module( 'Addons', () => {
 
 				const json = {
 					latents: {
-						textures: [
-							{ wrap: 'repeat', mipmaps: [
-								{ width: 2, height: 2, data: new Array( 16 ).fill( 0 ) },
-								{ width: 1, height: 1, data: [ 0, 0, 0, 0 ] }
-							] },
-							{ wrap: 'repeat', mipmaps: [
-								{ width: 2, height: 2, data: new Array( 16 ).fill( 0 ) },
-								{ width: 1, height: 1, data: [ 0, 0, 0, 0 ] }
-							] }
+						levels: [
+							createLatentLevel( 0 ),
+							createLatentLevel( 0 ),
+							createLatentLevel( 0 ),
+							createLatentLevel( 0 )
 						]
 					},
 					outputs: {
 						brdf: {
-							rotation: { weights: new Array( 96 ).fill( 0 ) },
+							rotation: { weights: new Array( 192 ).fill( 0 ) },
 							layers: [ {
-								inputSize: 20,
+								inputSize: 28,
 								outputSize: 3,
 								activation: 'linear',
-								weights: new Array( 60 ).fill( 0 ),
+								weights: new Array( 84 ).fill( 0 ),
 								biases: [ 0.5, 0.5, 0.5 ]
 							} ],
 							outputActivation: { type: 'linear' }
 						},
 						ibl: {
-							inputSize: 14,
+							inputSize: 22,
 							layers: [ {
-								inputSize: 14,
+								inputSize: 22,
 								outputSize: 4,
 								activation: 'linear',
-								weights: new Array( 14 * 4 ).fill( 0 ),
+								weights: new Array( 22 * 4 ).fill( 0 ),
 								biases: [ 0, 0, 1, 0 ]
 							} ],
 							outputActivation: { type: 'linear' }
 						},
 						indirectRadiance: {
-							inputSize: 14,
+							inputSize: 22,
 							layers: [ {
-								inputSize: 14,
+								inputSize: 22,
 								outputSize: 3,
 								activation: 'linear',
-								weights: new Array( 14 * 3 ).fill( 0 ),
+								weights: new Array( 22 * 3 ).fill( 0 ),
 								biases: [ 0, 0, 0 ]
 							} ],
 							outputActivation: { type: 'linear' }
 						},
 						indirectIrradiance: {
-							inputSize: 14,
+							inputSize: 22,
 							layers: [ {
-								inputSize: 14,
+								inputSize: 22,
 								outputSize: 3,
 								activation: 'linear',
-								weights: new Array( 14 * 3 ).fill( 0 ),
+								weights: new Array( 22 * 3 ).fill( 0 ),
 								biases: [ 0, 0, 0 ]
 							} ],
 							outputActivation: { type: 'linear' }
@@ -100,7 +102,6 @@ export default QUnit.module( 'Addons', () => {
 						uv: [ 0.5, 0.5 ],
 						wi: [ 0, 0, 1 ],
 						wo: [ 0, 0, 1 ],
-						mip: 0,
 						target: [ 0.5, 0.5, 0.5 ],
 						directTarget: [ 0.5, 0.5, 0.5 ],
 						weight: 1
@@ -110,6 +111,7 @@ export default QUnit.module( 'Addons', () => {
 				const validation = evaluateRuntimeValidation( json, samples, 4 );
 
 				assert.strictEqual( validation.sampleCount, 1, 'evaluates sample count' );
+				assert.strictEqual( validation.levels, 4, 'reports the number of latent grid levels' );
 				assert.ok( Number.isFinite( validation.loss ), 'computes finite loss' );
 				assert.ok( Number.isFinite( validation.directLoss ), 'computes finite direct loss' );
 				assert.strictEqual( validation.preview.samples.length, 1, 'builds preview' );
@@ -117,7 +119,6 @@ export default QUnit.module( 'Addons', () => {
 				assert.ok( Number.isFinite( validation.angularSmoothness.meanAbsoluteDifference ), 'computes angular smoothness metric' );
 				assert.ok( Number.isFinite( validation.whiteFurnace.meanAbsoluteDifference ), 'computes white-furnace metric' );
 				assert.ok( Number.isFinite( validation.prefilteredIBL.meanAbsoluteDifference ), 'computes prefiltered IBL metric' );
-				assert.strictEqual( validation.mipConsistency.sampleCount, 1, 'computes adjacent-mip consistency metric' );
 				assert.strictEqual( validation.framePriors.sampleCount, 1, 'computes frame prior metrics' );
 
 			} );

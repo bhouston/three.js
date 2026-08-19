@@ -1,4 +1,8 @@
 import {
+	LEVELS,
+	BASE_RESOLUTION,
+	TARGET_RESOLUTION,
+	CHANNELS_PER_LEVEL,
 	LATENT_CHANNELS,
 	DECODER_INPUT_SIZE,
 	IBL_INPUT_SIZE,
@@ -10,9 +14,8 @@ import {
 	createMLP,
 	forwardMLP
 } from '../neural/NeuralMLP.js';
+import { computeGridLevels, createLatentGrid } from '../neural/NeuralGridModel.js';
 import { dot, cross, normalize } from '../neural/NeuralVectorMath.js';
-
-const LATENT_INIT_SCALE = 0.35;
 
 function createModel( options, random ) {
 
@@ -28,7 +31,13 @@ function createModel( options, random ) {
 		createMLP( LATENT_CHANNELS, [], 1, random, 'relu', 'linear' ) :
 		null;
 	const rotationWeights = new Array( LATENT_CHANNELS * 12 ).fill( 0 );
-	const latentGrids = createLatentMipGrids( options.resolution, options.resolution, random );
+
+	const levels = options.levels || LEVELS;
+	const baseResolution = options.baseResolution || BASE_RESOLUTION;
+	const targetResolution = options.targetResolution || TARGET_RESOLUTION;
+	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
+	const latentGrids = resolutions.map( ( resolution ) => createLatentGrid( resolution, resolution, CHANNELS_PER_LEVEL, random ) );
+
 	const model = {
 		decoder,
 		iblHead,
@@ -37,7 +46,10 @@ function createModel( options, random ) {
 		emissionHead,
 		opacityHead,
 		rotationWeights,
-		latentGrid: latentGrids[ 0 ],
+		levels,
+		baseResolution,
+		targetResolution,
+		resolutions,
 		latentGrids
 	};
 
@@ -47,48 +59,10 @@ function createModel( options, random ) {
 
 }
 
-function createLatentMipGrids( baseWidth, baseHeight, random ) {
-
-	const grids = [];
-	let width = baseWidth;
-	let height = baseHeight;
-
-	while ( true ) {
-
-		grids.push( createLatentGrid( width, height, random ) );
-
-		if ( width === 1 && height === 1 ) break;
-		width = Math.max( 1, width >> 1 );
-		height = Math.max( 1, height >> 1 );
-
-	}
-
-	return grids;
-
-}
-
-function createLatentGrid( width, height, random ) {
-
-	const data = new Array( width * height * LATENT_CHANNELS );
-
-	for ( let i = 0; i < data.length; i ++ ) {
-
-		data[ i ] = ( random() * 2 - 1 ) * LATENT_INIT_SCALE;
-
-	}
-
-	return {
-		width,
-		height,
-		data
-	};
-
-}
-
 function decorrelateLinearRgbHead( model ) {
 
 	const layer = model.decoder.layers[ model.decoder.layers.length - 1 ];
-	if ( layer.outputSize !== 3 || model.latentGrid === undefined ) return;
+	if ( layer.outputSize !== 3 || model.latentGrids === undefined ) return;
 
 	const hiddenSize = layer.inputSize;
 	const probes = [
@@ -102,7 +76,7 @@ function decorrelateLinearRgbHead( model ) {
 
 	for ( const probe of probes ) {
 
-		const latents = sampleLatents( model.latentGrid, probe.uv ).output;
+		const latents = sampleLatents( model.latentGrids, probe.uv ).output;
 		const input = forwardDecoderInput( latents, model.rotationWeights, probe.wi, probe.wo ).output;
 		const activations = forwardMLP( model.decoder, input ).activations;
 		const hidden = activations[ activations.length - 2 ];
@@ -147,35 +121,52 @@ function decorrelateLinearRgbHead( model ) {
 
 }
 
-function sampleLatents( grid, uv ) {
+/**
+ * Bilinear-samples every level of a multiresolution latent grid pyramid
+ * (same encoding as neural-texture / neural-material - see
+ * NeuralGridModel.js) and concatenates their features into a single
+ * `LATENT_CHANNELS`-wide latent vector.
+ */
+function sampleLatents( grids, uv ) {
 
-	const x = uv[ 0 ] * grid.width - 0.5;
-	const y = uv[ 1 ] * grid.height - 0.5;
-	const x0 = Math.floor( x );
-	const y0 = Math.floor( y );
-	const tx = x - x0;
-	const ty = y - y0;
-	const taps = [
-		{ x: wrapIndex( x0, grid.width ), y: wrapIndex( y0, grid.height ), weight: ( 1 - tx ) * ( 1 - ty ) },
-		{ x: wrapIndex( x0 + 1, grid.width ), y: wrapIndex( y0, grid.height ), weight: tx * ( 1 - ty ) },
-		{ x: wrapIndex( x0, grid.width ), y: wrapIndex( y0 + 1, grid.height ), weight: ( 1 - tx ) * ty },
-		{ x: wrapIndex( x0 + 1, grid.width ), y: wrapIndex( y0 + 1, grid.height ), weight: tx * ty }
-	];
-	const output = new Array( LATENT_CHANNELS ).fill( 0 );
+	const totalChannels = grids.reduce( ( sum, grid ) => sum + grid.channels, 0 );
+	const output = new Array( totalChannels ).fill( 0 );
+	const levelTaps = [];
+	let channelOffset = 0;
 
-	for ( const tap of taps ) {
+	for ( const grid of grids ) {
 
-		const offset = ( tap.y * grid.width + tap.x ) * LATENT_CHANNELS;
+		const x = uv[ 0 ] * grid.width - 0.5;
+		const y = uv[ 1 ] * grid.height - 0.5;
+		const x0 = Math.floor( x );
+		const y0 = Math.floor( y );
+		const tx = x - x0;
+		const ty = y - y0;
+		const taps = [
+			{ x: wrapIndex( x0, grid.width ), y: wrapIndex( y0, grid.height ), weight: ( 1 - tx ) * ( 1 - ty ) },
+			{ x: wrapIndex( x0 + 1, grid.width ), y: wrapIndex( y0, grid.height ), weight: tx * ( 1 - ty ) },
+			{ x: wrapIndex( x0, grid.width ), y: wrapIndex( y0 + 1, grid.height ), weight: ( 1 - tx ) * ty },
+			{ x: wrapIndex( x0 + 1, grid.width ), y: wrapIndex( y0 + 1, grid.height ), weight: tx * ty }
+		];
 
-		for ( let channel = 0; channel < LATENT_CHANNELS; channel ++ ) {
+		for ( const tap of taps ) {
 
-			output[ channel ] += grid.data[ offset + channel ] * tap.weight;
+			const offset = ( tap.y * grid.width + tap.x ) * grid.channels;
+
+			for ( let channel = 0; channel < grid.channels; channel ++ ) {
+
+				output[ channelOffset + channel ] += grid.data[ offset + channel ] * tap.weight;
+
+			}
 
 		}
 
+		levelTaps.push( { grid, taps, channelOffset } );
+		channelOffset += grid.channels;
+
 	}
 
-	return { output, taps };
+	return { output, levelTaps };
 
 }
 
@@ -323,8 +314,6 @@ function getSampleWeightSum( samples ) {
 
 export {
 	createModel,
-	createLatentMipGrids,
-	createLatentGrid,
 	sampleLatents,
 	forwardDecoderInput,
 	buildDecoderInput,

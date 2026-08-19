@@ -6,8 +6,7 @@ import {
 	generateTrainingSamples,
 	generateIBLTrainingSamples,
 	generateValidationSamples,
-	normalizeDirectLightingTargets,
-	getMipLevelCount
+	normalizeDirectLightingTargets
 } from './NeuralAppearanceSampler.js';
 import {
 	createNeuralAppearanceManifest,
@@ -18,7 +17,8 @@ import {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs
 } from './NeuralAppearanceRuntime.js';
-import { LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
+import { LEVELS, BASE_RESOLUTION, TARGET_RESOLUTION, CHANNELS_PER_LEVEL } from './NeuralAppearanceFormat.js';
+import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { NeuralAppearanceGPUModel } from './NeuralAppearanceGPUModel.js';
 import {
 	createTrainBatchComputeNode,
@@ -33,12 +33,9 @@ import {
 import { getLearningRate, createRandom, yieldToBrowser } from '../neural/NeuralTrainingUtils.js';
 
 const DEFAULT_OPTIONS = {
-	resolution: 8,
-	sourceResolution: null,
-	latentDownsample: 1,
-	maxResolution: 4096,
-	fixedTrainingMip: - 1,
-	mipSamplingDecay: 0.9,
+	levels: LEVELS,
+	baseResolution: BASE_RESOLUTION,
+	targetResolution: TARGET_RESOLUTION,
 	iterations: 2000,
 	iblIterations: null,
 	iblTrainingRatio: 0.15,
@@ -87,7 +84,7 @@ class NeuralAppearanceTrainer {
 
 	async train( { material, renderer = null, onProgress = null, ...options } = {} ) {
 
-		const settings = resolveTrainingSettings( { ...this.options, ...options } );
+		const settings = { ...this.options, ...options };
 		validateTrainingSettings( settings );
 		this._abortRequested = false;
 
@@ -125,12 +122,12 @@ class NeuralAppearanceTrainer {
 			options.opacityMode :
 			( ( teacher.opacityMode === 'mask' || teacher.opacityMode === 'blend' ) ? teacher.opacityMode : 'mask' );
 		const model = createModel( settings, this.random );
-		validationSamples = await generateTrainingSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ), colorAugmentation: false, sampleAllMips: true }, teacher, createRandom( settings.seed + 0x9e3779b9 ), settings.iterations );
+		validationSamples = await generateTrainingSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ), colorAugmentation: false }, teacher, createRandom( settings.seed + 0x9e3779b9 ), settings.iterations );
 		directionalValidationSamples = await generateValidationSamples( { ...settings, batchSize: Math.min( 64, settings.batchSize ) }, teacher );
 
 		const gpuModel = new NeuralAppearanceGPUModel( {
 			...settings,
-			batchSize: getTrainingSampleCapacity( settings )
+			batchSize: settings.batchSize
 		} );
 		gpuModel.initFromCPUModel( model );
 		const trainBatchNode = createTrainBatchComputeNode( gpuModel );
@@ -319,19 +316,6 @@ class NeuralAppearanceTrainer {
 
 }
 
-function resolveTrainingSettings( settings ) {
-
-	const sourceResolution = settings.sourceResolution === null || settings.sourceResolution === undefined ?
-		settings.resolution :
-		settings.sourceResolution;
-	const resolution = settings.sourceResolution === null || settings.sourceResolution === undefined ?
-		settings.resolution :
-		Math.max( 1, Math.floor( sourceResolution / settings.latentDownsample ) );
-
-	return { ...settings, resolution, sourceResolution };
-
-}
-
 function getIBLIterationCount( settings ) {
 
 	if ( settings.iblIterations !== null && settings.iblIterations !== undefined ) {
@@ -352,41 +336,21 @@ function validateTrainingSettings( settings ) {
 
 	}
 
-	if ( Number.isInteger( settings.resolution ) === false || settings.resolution < 1 ) {
+	if ( Number.isInteger( settings.levels ) === false || settings.levels < 1 ) {
 
-		throw new Error( 'THREE.NeuralAppearanceTrainer: resolution must be a positive integer.' );
-
-	}
-
-	if ( Number.isInteger( settings.sourceResolution ) === false || settings.sourceResolution < 1 ) {
-
-		throw new Error( 'THREE.NeuralAppearanceTrainer: sourceResolution must be a positive integer.' );
+		throw new Error( 'THREE.NeuralAppearanceTrainer: levels must be a positive integer.' );
 
 	}
 
-	if ( Number.isFinite( settings.latentDownsample ) === false || settings.latentDownsample < 1 ) {
+	if ( Number.isInteger( settings.baseResolution ) === false || settings.baseResolution < 1 ) {
 
-		throw new Error( 'THREE.NeuralAppearanceTrainer: latentDownsample must be finite and at least one.' );
-
-	}
-
-	if ( Number.isInteger( settings.maxResolution ) === false || settings.maxResolution < 1 || settings.resolution > settings.maxResolution ) {
-
-		throw new Error( `THREE.NeuralAppearanceTrainer: resolution must not exceed maxResolution (${ settings.maxResolution }).` );
+		throw new Error( 'THREE.NeuralAppearanceTrainer: baseResolution must be a positive integer.' );
 
 	}
 
-	const mipLevelCount = getMipLevelCount( settings.resolution, settings.resolution );
+	if ( Number.isInteger( settings.targetResolution ) === false || settings.targetResolution < settings.baseResolution ) {
 
-	if ( Number.isInteger( settings.fixedTrainingMip ) === false || settings.fixedTrainingMip < - 1 || settings.fixedTrainingMip >= mipLevelCount ) {
-
-		throw new Error( `THREE.NeuralAppearanceTrainer: fixedTrainingMip must be -1 or a valid mip level below ${ mipLevelCount }.` );
-
-	}
-
-	if ( Number.isFinite( settings.mipSamplingDecay ) === false || settings.mipSamplingDecay <= 0 || settings.mipSamplingDecay > 1 ) {
-
-		throw new Error( 'THREE.NeuralAppearanceTrainer: mipSamplingDecay must be greater than zero and at most one.' );
+		throw new Error( 'THREE.NeuralAppearanceTrainer: targetResolution must be an integer at least baseResolution.' );
 
 	}
 
@@ -444,44 +408,31 @@ function validateTrainingSettings( settings ) {
 
 }
 
-function estimateTrainingMemory( resolution ) {
+/**
+ * Estimates GPU training-buffer bytes and exported-asset bytes for the
+ * multiresolution latent grid (see NeuralGridModel.js), given the same
+ * levels/baseResolution/targetResolution knobs used by `createModel`.
+ */
+function estimateTrainingMemory( levels = LEVELS, baseResolution = BASE_RESOLUTION, targetResolution = TARGET_RESOLUTION ) {
 
-	const mipLevels = getMipLevelCount( resolution, resolution );
+	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
 	let latentTexels = 0;
-	let width = resolution;
-	let height = resolution;
 
-	for ( let level = 0; level < levelCount( resolution ); level ++ ) {
+	for ( const resolution of resolutions ) {
 
-		latentTexels += width * height;
-		width = Math.max( 1, width >> 1 );
-		height = Math.max( 1, height >> 1 );
+		latentTexels += resolution * resolution;
 
 	}
 
 	return {
-		resolution,
-		mipLevels,
+		levels,
+		baseResolution,
+		targetResolution,
+		resolutions,
 		latentTexels,
-		trainingBytes: latentTexels * LATENT_CHANNELS * 4 * 4,
-		exportBytes: latentTexels * LATENT_CHANNELS * 2
+		trainingBytes: latentTexels * CHANNELS_PER_LEVEL * 4 * 4,
+		exportBytes: latentTexels * CHANNELS_PER_LEVEL * 2
 	};
-
-}
-
-function getTrainingSampleCapacity( settings ) {
-
-	const mipLevelCount = getMipLevelCount( settings.resolution, settings.resolution );
-
-	return settings.fixedTrainingMip >= 0 ?
-		settings.batchSize :
-		settings.batchSize * mipLevelCount;
-
-}
-
-function levelCount( resolution ) {
-
-	return getMipLevelCount( resolution, resolution );
 
 }
 
@@ -493,7 +444,6 @@ export {
 	evaluateNeuralAppearanceOutputs,
 	evaluateRuntimeValidation,
 	estimateTrainingMemory,
-	getTrainingSampleCapacity,
 	generateTrainingSamples,
 	normalizeDirectLightingTargets,
 	exportNeuralAppearance

@@ -69,8 +69,6 @@ export default QUnit.module( 'Addons', () => {
 				};
 
 				const samples = await generateTrainingSamples( {
-					resolution: 1,
-					iterations: 1,
 					batchSize: 512,
 					colorAugmentation: false,
 					minimumTrainingCosine: 0.05,
@@ -82,37 +80,9 @@ export default QUnit.module( 'Addons', () => {
 					Math.abs( sample.wi[ 2 ] - sample.wo[ 2 ] ) < 1e-10
 				);
 
+				assert.strictEqual( samples.length, 512, 'produces exactly one point sample per requested batch record' );
 				assert.ok( mirrorPairs.length >= 50, 'dedicates a substantial part of each batch to the sharp specular ridge' );
 				assert.ok( samples.every( ( sample ) => sample.wo[ 2 ] >= 0 ), 'keeps outgoing directions in the visible hemisphere' );
-
-			} );
-
-			QUnit.test( 'samples mip levels exponentially in favor of fine levels', async ( assert ) => {
-
-				let state = 23;
-				const random = () => {
-
-					state = ( state * 1664525 + 1013904223 ) >>> 0;
-					return state / 4294967296;
-
-				};
-
-				const samples = await generateTrainingSamples( {
-					resolution: 8,
-					iterations: 1,
-					batchSize: 1024,
-					fixedTrainingMip: - 1,
-					mipSamplingDecay: 0.5,
-					colorAugmentation: false,
-					minimumTrainingCosine: 0.05,
-					highlightLossScale: 2
-				}, createMockTeacher(), random );
-				const counts = [ 0, 0, 0, 0 ];
-
-				for ( const sample of samples ) counts[ sample.mip ] ++;
-
-				assert.strictEqual( samples.length, 4096, 'preserves the prior total record budget while choosing one mip per record' );
-				assert.ok( counts[ 0 ] > counts[ 1 ] && counts[ 1 ] > counts[ 2 ] && counts[ 2 ] > counts[ 3 ], 'favors each finer level over the next coarser level' );
 
 			} );
 
@@ -120,9 +90,7 @@ export default QUnit.module( 'Addons', () => {
 
 				const teacher = createMockTeacher();
 				const samples = await generateValidationSamples( {
-					resolution: 2,
 					batchSize: 16,
-					fixedTrainingMip: - 1,
 					minimumTrainingCosine: 0.05
 				}, teacher );
 
@@ -146,7 +114,6 @@ export default QUnit.module( 'Addons', () => {
 				};
 
 				const samples = await generateIBLTrainingSamples( {
-					resolution: 4,
 					batchSize: 16,
 					iblSampleCount: 4,
 					iblIntegrationSamples: 8
@@ -183,9 +150,7 @@ export default QUnit.module( 'Addons', () => {
 					}
 				};
 				const samples = await generateValidationSamples( {
-					resolution: 1,
 					batchSize: 4,
-					fixedTrainingMip: 0,
 					minimumTrainingCosine: 0.05
 				}, teacher );
 

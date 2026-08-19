@@ -136,7 +136,6 @@ export * from './materials/LDrawConditionalLineMaterial.js';
 export * from './neural/NeuralGPUTrainingConstants.js';
 export * from './neural/NeuralMLP.js';
 
-export * from './neural-appearance/NeuralAppearanceFilterUtils.js';
 export * from './neural-appearance/NeuralAppearanceFormat.js';
 export * from './neural-appearance/NeuralAppearanceManifest.js';
 export * from './neural-appearance/NeuralAppearanceModel.js';

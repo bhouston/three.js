@@ -1,8 +1,24 @@
 import { StorageBufferAttribute } from 'three/webgpu';
-import { Vector4 } from 'three';
-import { storage, uniform, uniformArray } from 'three/tsl';
-import { IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE, IBL_TARGET_SIZE, LATENT_CHANNELS } from './NeuralAppearanceFormat.js';
+import { storage, uniform } from 'three/tsl';
+import {
+	IBL_INPUT_SIZE,
+	IBL_OUTPUT_SIZE,
+	INDIRECT_INPUT_SIZE,
+	INDIRECT_OUTPUT_SIZE,
+	IBL_TARGET_SIZE,
+	LATENT_CHANNELS,
+	DECODER_INPUT_SIZE,
+	LEVELS,
+	BASE_RESOLUTION,
+	TARGET_RESOLUTION,
+	CHANNELS_PER_LEVEL
+} from './NeuralAppearanceFormat.js';
+import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
+
+// Fields making up the "direct" part of each uploaded training sample
+// (everything before the IBL query/probe block) - see uploadSamples() below.
+const DIRECT_SAMPLE_SIZE = 17;
 
 function allocateIndirectProbeHead( currentOffset, iblHiddenSize ) {
 
@@ -40,13 +56,13 @@ function computeModelLayout( options = {} ) {
 	const supportsOpacity = Boolean( options.outputFeatures && options.outputFeatures.opacity );
 
 	// Weights Layout:
-	// 0..95: rotation weights (8 channels * 12 outputs)
+	// 0..(LATENT_CHANNELS*12-1): rotation weights (LATENT_CHANNELS channels * 12 outputs)
 	const rotationOffset = 0;
 	const rotationCount = LATENT_CHANNELS * 12;
 
-	// Layer 0: 20 -> hiddenSize
+	// Layer 0: DECODER_INPUT_SIZE -> hiddenSize
 	const layer0WeightsOffset = rotationOffset + rotationCount;
-	const layer0WeightsCount = 20 * hiddenSize;
+	const layer0WeightsCount = DECODER_INPUT_SIZE * hiddenSize;
 	const layer0BiasesOffset = layer0WeightsOffset + layer0WeightsCount;
 	const layer0BiasesCount = hiddenSize;
 
@@ -64,7 +80,7 @@ function computeModelLayout( options = {} ) {
 
 	let currentOffset = layer2BiasesOffset + layer2BiasesCount;
 
-	// Auxiliary: Emission Head (8 -> 3)
+	// Auxiliary: Emission Head (LATENT_CHANNELS -> 3)
 	let emissionWeightsOffset = - 1;
 	let emissionBiasesOffset = - 1;
 	let emissionWeightsCount = 0;
@@ -79,7 +95,7 @@ function computeModelLayout( options = {} ) {
 
 	}
 
-	// Auxiliary: Opacity Head (8 -> 1)
+	// Auxiliary: Opacity Head (LATENT_CHANNELS -> 1)
 	let opacityWeightsOffset = - 1;
 	let opacityBiasesOffset = - 1;
 	let opacityWeightsCount = 0;
@@ -115,36 +131,32 @@ function computeModelLayout( options = {} ) {
 
 	const totalWeights = currentOffset;
 
-	// Latents Mip Pyramid Layout
-	const baseResolution = options.resolution || 8;
-	const mipLevels = [];
-	let currentWidth = baseResolution;
-	let currentHeight = baseResolution;
+	// Multiresolution Latent Grid Layout (instant-ngp / NVIDIA NTC style - same
+	// geometry as neural-texture / neural-material, see NeuralGridModel.js):
+	// `levels` grids geometrically spaced between `baseResolution` and
+	// `targetResolution`, each contributing `CHANNELS_PER_LEVEL` features that
+	// get concatenated (not summed) into the decoder input.
+	const levels = options.levels || LEVELS;
+	const baseResolution = options.baseResolution || BASE_RESOLUTION;
+	const targetResolution = options.targetResolution || TARGET_RESOLUTION;
+	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
+
+	const gridLevels = [];
 	let latentOffset = 0;
 
-	while ( true ) {
+	for ( const resolution of resolutions ) {
 
-		const texelCount = currentWidth * currentHeight;
-		const floatCount = texelCount * LATENT_CHANNELS;
-		mipLevels.push( {
-			width: currentWidth,
-			height: currentHeight,
-			offset: latentOffset,
-			texelCount,
-			floatCount
-		} );
+		const texelCount = resolution * resolution;
+		const floatCount = texelCount * CHANNELS_PER_LEVEL;
+		gridLevels.push( { width: resolution, height: resolution, offset: latentOffset, texelCount, floatCount } );
 		latentOffset += floatCount;
-
-		if ( currentWidth === 1 && currentHeight === 1 ) break;
-		currentWidth = Math.max( 1, currentWidth >> 1 );
-		currentHeight = Math.max( 1, currentHeight >> 1 );
 
 	}
 
 	const totalLatents = latentOffset;
 
 	// Per-Sample Activations Layout:
-	// a0: 20
+	// a0: DECODER_INPUT_SIZE
 	// z1: H
 	// a1: H
 	// z2: H
@@ -153,10 +165,10 @@ function computeModelLayout( options = {} ) {
 	// delta3: 3
 	// delta2: H
 	// delta1: H
-	// gradA0: 20
-	// gradLatents: 8
+	// gradA0: DECODER_INPUT_SIZE
+	// gradLatents: LATENT_CHANNELS
 	const actA0Offset = 0;
-	const actZ1Offset = actA0Offset + 20;
+	const actZ1Offset = actA0Offset + DECODER_INPUT_SIZE;
 	const actA1Offset = actZ1Offset + hiddenSize;
 	const actZ2Offset = actA1Offset + hiddenSize;
 	const actA2Offset = actZ2Offset + hiddenSize;
@@ -165,7 +177,7 @@ function computeModelLayout( options = {} ) {
 	const actDelta2Offset = actDelta3Offset + 3;
 	const actDelta1Offset = actDelta2Offset + hiddenSize;
 	const actGradA0Offset = actDelta1Offset + hiddenSize;
-	const actGradLatentsOffset = actGradA0Offset + 20;
+	const actGradLatentsOffset = actGradA0Offset + DECODER_INPUT_SIZE;
 	let actCurrent = actGradLatentsOffset + LATENT_CHANNELS;
 
 	let actEmissionOffset = - 1;
@@ -202,7 +214,7 @@ function computeModelLayout( options = {} ) {
 
 	const activationStride = actCurrent;
 
-	const sampleStride = 20 + IBL_TARGET_SIZE;
+	const sampleStride = DIRECT_SAMPLE_SIZE + IBL_TARGET_SIZE;
 
 	return {
 		hiddenSize,
@@ -258,7 +270,8 @@ function computeModelLayout( options = {} ) {
 		opacityWeightsCount,
 		opacityBiasesOffset,
 		opacityBiasesCount,
-		mipLevels,
+		levels,
+		gridLevels,
 		totalLatents,
 		activationStride,
 		actA0Offset,
@@ -303,7 +316,7 @@ class NeuralAppearanceGPUModel {
 		this.layout = computeModelLayout( options );
 
 		// 1. Weight buffers
-		const { totalWeights, totalLatents, sampleStride, activationStride, mipLevels } = this.layout;
+		const { totalWeights, totalLatents, sampleStride, activationStride } = this.layout;
 		const batchSize = this.batchSize;
 
 		this.weightsAttribute = new StorageBufferAttribute( new Float32Array( totalWeights ), 1, Float32Array );
@@ -349,10 +362,6 @@ class NeuralAppearanceGPUModel {
 		this.stepUniform = uniform( 1 );
 		this.maxGradientNormUniform = uniform( options.maxGradientNorm || 1 );
 
-		// Pack mip information: (width, height, baseOffset, 0)
-		const mipVectors = mipLevels.map( ( m ) => new Vector4( m.width, m.height, m.offset, 0 ) );
-		this.mipInfoArray = uniformArray( mipVectors, 'vec4' );
-
 	}
 
 	initFromCPUModel( cpuModel ) {
@@ -364,13 +373,13 @@ class NeuralAppearanceGPUModel {
 		latents.fill( 0 );
 
 		// Rotation weights
-		for ( let i = 0; i < 96; i ++ ) {
+		for ( let i = 0; i < LATENT_CHANNELS * 12; i ++ ) {
 
 			weights[ this.layout.rotationOffset + i ] = cpuModel.rotationWeights[ i ] || 0;
 
 		}
 
-		// Decoder Layer 0 (20 -> H)
+		// Decoder Layer 0 (DECODER_INPUT_SIZE -> H)
 		copyLayerWeightsToGPU( cpuModel.decoder.layers[ 0 ], weights, this.layout.layer0WeightsOffset, this.layout.layer0BiasesOffset );
 
 		// Decoder Layer 1 (H -> H)
@@ -379,7 +388,7 @@ class NeuralAppearanceGPUModel {
 		// Decoder Layer 2 (H -> 3)
 		copyLayerWeightsToGPU( cpuModel.decoder.layers[ 2 ], weights, this.layout.layer2WeightsOffset, this.layout.layer2BiasesOffset );
 
-		// IBL Head (14 -> H_ibl -> 13)
+		// IBL Head
 		copyLayerWeightsToGPU( cpuModel.iblHead.layers[ 0 ], weights, this.layout.iblLayer0WeightsOffset, this.layout.iblLayer0BiasesOffset );
 		copyLayerWeightsToGPU( cpuModel.iblHead.layers[ 1 ], weights, this.layout.iblLayer1WeightsOffset, this.layout.iblLayer1BiasesOffset );
 		copyLayerWeightsToGPU( cpuModel.indirectRadianceHead.layers[ 0 ], weights, this.layout.indirectRadianceLayer0WeightsOffset, this.layout.indirectRadianceLayer0BiasesOffset );
@@ -387,28 +396,28 @@ class NeuralAppearanceGPUModel {
 		copyLayerWeightsToGPU( cpuModel.indirectIrradianceHead.layers[ 0 ], weights, this.layout.indirectIrradianceLayer0WeightsOffset, this.layout.indirectIrradianceLayer0BiasesOffset );
 		copyLayerWeightsToGPU( cpuModel.indirectIrradianceHead.layers[ 1 ], weights, this.layout.indirectIrradianceLayer1WeightsOffset, this.layout.indirectIrradianceLayer1BiasesOffset );
 
-		// Emission Head (8 -> 3)
+		// Emission Head (LATENT_CHANNELS -> 3)
 		if ( cpuModel.emissionHead ) {
 
 			copyLayerWeightsToGPU( cpuModel.emissionHead.layers[ 0 ], weights, this.layout.emissionWeightsOffset, this.layout.emissionBiasesOffset );
 
 		}
 
-		// Opacity Head (8 -> 1)
+		// Opacity Head (LATENT_CHANNELS -> 1)
 		if ( cpuModel.opacityHead ) {
 
 			copyLayerWeightsToGPU( cpuModel.opacityHead.layers[ 0 ], weights, this.layout.opacityWeightsOffset, this.layout.opacityBiasesOffset );
 
 		}
 
-		// Latent Grids
-		for ( let m = 0; m < cpuModel.latentGrids.length; m ++ ) {
+		// Latent Grid Levels
+		for ( let g = 0; g < cpuModel.latentGrids.length; g ++ ) {
 
-			const mip = this.layout.mipLevels[ m ];
-			const grid = cpuModel.latentGrids[ m ];
-			for ( let i = 0; i < mip.floatCount; i ++ ) {
+			const level = this.layout.gridLevels[ g ];
+			const grid = cpuModel.latentGrids[ g ];
+			for ( let i = 0; i < level.floatCount; i ++ ) {
 
-				latents[ mip.offset + i ] = grid.data[ i ];
+				latents[ level.offset + i ] = grid.data[ i ];
 
 			}
 
@@ -452,72 +461,67 @@ class NeuralAppearanceGPUModel {
 			const base = i * stride;
 
 			const uv = sample.uv || [ 0.5, 0.5 ];
-			const duvDx = sample.duvDx || [ 0, 0 ];
 			const wi = sample.wi || [ 0, 0, 1 ];
 			const wo = sample.wo || [ 0, 0, 1 ];
 			const target = sample.target || [ 0, 0, 0 ];
 			const weight = sample.weight !== undefined ? sample.weight : 1.0;
-			const mip = sample.mip || 0;
 
 			data[ base + 0 ] = uv[ 0 ];
 			data[ base + 1 ] = uv[ 1 ];
-			data[ base + 2 ] = duvDx[ 0 ];
-			data[ base + 3 ] = duvDx[ 1 ];
-			data[ base + 4 ] = wi[ 0 ];
-			data[ base + 5 ] = wi[ 1 ];
-			data[ base + 6 ] = wi[ 2 ];
-			data[ base + 7 ] = mip;
-			data[ base + 8 ] = wo[ 0 ];
-			data[ base + 9 ] = wo[ 1 ];
-			data[ base + 10 ] = wo[ 2 ];
-			data[ base + 11 ] = weight;
-			data[ base + 12 ] = target[ 0 ];
-			data[ base + 13 ] = target[ 1 ];
-			data[ base + 14 ] = target[ 2 ];
+			data[ base + 2 ] = wi[ 0 ];
+			data[ base + 3 ] = wi[ 1 ];
+			data[ base + 4 ] = wi[ 2 ];
+			data[ base + 5 ] = wo[ 0 ];
+			data[ base + 6 ] = wo[ 1 ];
+			data[ base + 7 ] = wo[ 2 ];
+			data[ base + 8 ] = weight;
+			data[ base + 9 ] = target[ 0 ];
+			data[ base + 10 ] = target[ 1 ];
+			data[ base + 11 ] = target[ 2 ];
 
 			if ( sample.emissionTarget ) {
 
-				data[ base + 15 ] = 1.0;
-				data[ base + 16 ] = sample.emissionTarget[ 0 ];
-				data[ base + 17 ] = sample.emissionTarget[ 1 ];
-				data[ base + 18 ] = sample.emissionTarget[ 2 ];
+				data[ base + 12 ] = 1.0;
+				data[ base + 13 ] = sample.emissionTarget[ 0 ];
+				data[ base + 14 ] = sample.emissionTarget[ 1 ];
+				data[ base + 15 ] = sample.emissionTarget[ 2 ];
 
 			} else {
 
-				data[ base + 15 ] = 0.0;
-				data[ base + 16 ] = 0;
-				data[ base + 17 ] = 0;
-				data[ base + 18 ] = 0;
+				data[ base + 12 ] = 0.0;
+				data[ base + 13 ] = 0;
+				data[ base + 14 ] = 0;
+				data[ base + 15 ] = 0;
 
 			}
 
 			if ( Number.isFinite( sample.opacityTarget ) ) {
 
-				data[ base + 19 ] = sample.opacityTarget;
+				data[ base + 16 ] = sample.opacityTarget;
 
 			} else {
 
-				data[ base + 19 ] = - 1.0;
+				data[ base + 16 ] = - 1.0;
 
 			}
 
-			data[ base + 20 ] = sample.iblWeight !== undefined ? sample.iblWeight : 0;
-			data[ base + 21 ] = ( sample.iblDirection || [ 0, 0, 1 ] )[ 0 ];
-			data[ base + 22 ] = ( sample.iblDirection || [ 0, 0, 1 ] )[ 1 ];
-			data[ base + 23 ] = ( sample.iblDirection || [ 0, 0, 1 ] )[ 2 ];
-			data[ base + 24 ] = Number.isFinite( sample.iblRoughness ) ? sample.iblRoughness : 1;
-			data[ base + 25 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 0 ];
-			data[ base + 26 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 1 ];
-			data[ base + 27 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 2 ];
-			data[ base + 28 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 0 ];
-			data[ base + 29 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 1 ];
-			data[ base + 30 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 2 ];
-			data[ base + 31 ] = ( sample.iblIndirectRadiance || [ 0, 0, 0 ] )[ 0 ];
-			data[ base + 32 ] = ( sample.iblIndirectRadiance || [ 0, 0, 0 ] )[ 1 ];
-			data[ base + 33 ] = ( sample.iblIndirectRadiance || [ 0, 0, 0 ] )[ 2 ];
-			data[ base + 34 ] = ( sample.iblIndirectIrradiance || [ 0, 0, 0 ] )[ 0 ];
-			data[ base + 35 ] = ( sample.iblIndirectIrradiance || [ 0, 0, 0 ] )[ 1 ];
-			data[ base + 36 ] = ( sample.iblIndirectIrradiance || [ 0, 0, 0 ] )[ 2 ];
+			data[ base + 17 ] = sample.iblWeight !== undefined ? sample.iblWeight : 0;
+			data[ base + 18 ] = ( sample.iblDirection || [ 0, 0, 1 ] )[ 0 ];
+			data[ base + 19 ] = ( sample.iblDirection || [ 0, 0, 1 ] )[ 1 ];
+			data[ base + 20 ] = ( sample.iblDirection || [ 0, 0, 1 ] )[ 2 ];
+			data[ base + 21 ] = Number.isFinite( sample.iblRoughness ) ? sample.iblRoughness : 1;
+			data[ base + 22 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 23 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 24 ] = ( sample.iblIncoming || [ 0, 0, 0 ] )[ 2 ];
+			data[ base + 25 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 26 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 27 ] = ( sample.iblIrradiance || [ 0, 0, 0 ] )[ 2 ];
+			data[ base + 28 ] = ( sample.iblIndirectRadiance || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 29 ] = ( sample.iblIndirectRadiance || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 30 ] = ( sample.iblIndirectRadiance || [ 0, 0, 0 ] )[ 2 ];
+			data[ base + 31 ] = ( sample.iblIndirectIrradiance || [ 0, 0, 0 ] )[ 0 ];
+			data[ base + 32 ] = ( sample.iblIndirectIrradiance || [ 0, 0, 0 ] )[ 1 ];
+			data[ base + 33 ] = ( sample.iblIndirectIrradiance || [ 0, 0, 0 ] )[ 2 ];
 
 		}
 
@@ -543,7 +547,7 @@ class NeuralAppearanceGPUModel {
 		const latents = new Float32Array( latentsBuffer );
 
 		// Copy rotation weights
-		for ( let i = 0; i < 96; i ++ ) {
+		for ( let i = 0; i < LATENT_CHANNELS * 12; i ++ ) {
 
 			cpuModel.rotationWeights[ i ] = weights[ this.layout.rotationOffset + i ];
 
@@ -572,14 +576,14 @@ class NeuralAppearanceGPUModel {
 
 		}
 
-		// Copy latent grids
-		for ( let m = 0; m < cpuModel.latentGrids.length; m ++ ) {
+		// Copy latent grid levels
+		for ( let g = 0; g < cpuModel.latentGrids.length; g ++ ) {
 
-			const mip = this.layout.mipLevels[ m ];
-			const grid = cpuModel.latentGrids[ m ];
-			for ( let i = 0; i < mip.floatCount; i ++ ) {
+			const level = this.layout.gridLevels[ g ];
+			const grid = cpuModel.latentGrids[ g ];
+			for ( let i = 0; i < level.floatCount; i ++ ) {
 
-				grid.data[ i ] = latents[ mip.offset + i ];
+				grid.data[ i ] = latents[ level.offset + i ];
 
 			}
 
@@ -649,5 +653,6 @@ function copyLayerWeightsFromGPU( layer, source, weightsOffset, biasesOffset ) {
 
 export {
 	computeModelLayout,
-	NeuralAppearanceGPUModel
+	NeuralAppearanceGPUModel,
+	DIRECT_SAMPLE_SIZE
 };

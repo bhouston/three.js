@@ -31,7 +31,6 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 	let iblIndirectCount = 0;
 	const whiteFurnace = createDifferenceMetric();
 	const prefilteredIBL = createDifferenceMetric();
-	const mipConsistency = createDifferenceMetric();
 	const framePriors = createFramePriorMetric();
 	const angularBins = {
 		wi: createAngularBins(),
@@ -53,7 +52,6 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 		const reciprocalPrediction = evaluateNeuralAppearanceJson( json, { ...sample, wi: sample.wo, wo: sample.wi } );
 		const perturbedWiPrediction = evaluateNeuralAppearanceJson( json, { ...sample, wi: perturbDirection( sample.wi, 0.02 ) } );
 		const perturbedWoPrediction = evaluateNeuralAppearanceJson( json, { ...sample, wo: perturbDirection( sample.wo, 0.02 ) } );
-		const nextMipPrediction = evaluateNextMipPrediction( json, sample );
 
 		if ( sampleWeight > 0 ) {
 
@@ -147,8 +145,6 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 
 		}
 
-		if ( nextMipPrediction ) accumulateDifferenceMetric( mipConsistency, prediction, nextMipPrediction );
-
 		accumulateDifferenceMetric( reciprocity, prediction, reciprocalPrediction );
 		accumulateDifferenceMetric( angularSmoothness, prediction, perturbedWiPrediction );
 		accumulateDifferenceMetric( angularSmoothness, prediction, perturbedWoPrediction );
@@ -176,7 +172,7 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 		iblQueryLoss: iblQueryCount > 0 ? iblQueryLoss : null,
 		iblIndirectLoss: iblIndirectCount > 0 ? iblIndirectLoss : null,
 		sampleCount: samples.length,
-		mipLevels: json.latents.textures[ 0 ].mipmaps.length,
+		levels: json.latents.levels.length,
 		preview,
 		angularBins: {
 			wi: finalizeAngularBins( angularBins.wi ),
@@ -186,21 +182,8 @@ function evaluateRuntimeValidation( json, samples, previewSampleCount = DEFAULT_
 		angularSmoothness: finalizeDifferenceMetric( angularSmoothness ),
 		whiteFurnace: finalizeDifferenceMetric( whiteFurnace ),
 		prefilteredIBL: finalizeDifferenceMetric( prefilteredIBL ),
-		mipConsistency: finalizeDifferenceMetric( mipConsistency ),
 		framePriors: finalizeFramePriorMetric( framePriors )
 	};
-
-}
-
-function evaluateNextMipPrediction( json, sample ) {
-
-	const mipmaps = json.latents && json.latents.textures && json.latents.textures[ 0 ] ? json.latents.textures[ 0 ].mipmaps : null;
-	if ( ! mipmaps || mipmaps.length < 2 ) return null;
-
-	const mip = Math.min( Math.max( sample.mip || 0, 0 ), mipmaps.length - 1 );
-	if ( mip >= mipmaps.length - 1 ) return null;
-
-	return evaluateNeuralAppearanceJson( json, { ...sample, mip: mip + 1, duvDx: null, duvDy: null } );
 
 }
 
@@ -304,7 +287,6 @@ function appendRuntimePreviewSample( preview, sample, targetRgb, predictionRgb, 
 		uv: sample.uv.slice( 0, 2 ),
 		wi: sample.wi.slice( 0, 3 ),
 		wo: sample.wo.slice( 0, 3 ),
-		mip: sample.mip || 0,
 		weight,
 		targetRgb: sanitizeRgb( targetRgb ),
 		predictionRgb: sanitizeRgb( predictionRgb )

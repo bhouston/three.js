@@ -1,10 +1,10 @@
 import {
 	createModel,
-	createLatentGrid,
 	sampleLatents,
 	forwardDecoderInput,
 	buildIBLInput
 } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceModel.js';
+import { createLatentGrid } from '../../../../examples/jsm/neural/NeuralGridModel.js';
 import { forwardMLP } from '../../../../examples/jsm/neural/NeuralMLP.js';
 
 export default QUnit.module( 'Addons', () => {
@@ -13,27 +13,30 @@ export default QUnit.module( 'Addons', () => {
 
 		QUnit.module( 'NeuralAppearanceModel', () => {
 
-			QUnit.test( 'creates multi-level latent mip grids', ( assert ) => {
+			QUnit.test( 'creates a multiresolution latent grid pyramid', ( assert ) => {
 
 				const random = () => 0.5;
 				const model = createModel( {
-					resolution: 4,
+					levels: 3,
+					baseResolution: 2,
+					targetResolution: 8,
 					hiddenSize: 8,
 					outputFeatures: { emission: true, opacity: true }
 				}, random );
 
-				assert.strictEqual( model.latentGrids.length, 3, 'creates 4x4, 2x2, 1x1 grids' );
-				assert.strictEqual( model.latentGrids[ 0 ].width, 4, 'base grid width is 4' );
-				assert.strictEqual( model.latentGrids[ 2 ].width, 1, 'finest grid width is 1' );
+				assert.strictEqual( model.latentGrids.length, 3, 'creates one grid per level' );
+				assert.strictEqual( model.latentGrids[ 0 ].width, 2, 'coarsest grid uses baseResolution' );
+				assert.strictEqual( model.latentGrids[ 2 ].width, 8, 'finest grid uses targetResolution' );
+				assert.strictEqual( model.latentGrids[ 0 ].channels, 4, 'each level contributes 4 channels' );
 				assert.ok( model.emissionHead !== null, 'creates emission head' );
 				assert.ok( model.opacityHead !== null, 'creates opacity head' );
 				assert.ok( model.iblHead !== null, 'creates required IBL head' );
 				assert.ok( model.indirectRadianceHead !== null, 'creates required radiance IBL head' );
 				assert.ok( model.indirectIrradianceHead !== null, 'creates required irradiance IBL head' );
 				assert.strictEqual( model.iblHead.layers[ 1 ].outputSize, 4, 'IBL query head predicts direction and roughness' );
-				assert.strictEqual( model.indirectRadianceHead.layers[ 0 ].inputSize, 14, 'radiance IBL head consumes latents, view, and radiance' );
-				assert.strictEqual( model.indirectIrradianceHead.layers[ 0 ].inputSize, 14, 'irradiance IBL head consumes latents, view, and irradiance' );
-				assert.strictEqual( model.rotationWeights.length, 96, 'allocates 8 * 12 rotation weights' );
+				assert.strictEqual( model.indirectRadianceHead.layers[ 0 ].inputSize, 22, 'radiance IBL head consumes latents, view, and radiance' );
+				assert.strictEqual( model.indirectIrradianceHead.layers[ 0 ].inputSize, 22, 'irradiance IBL head consumes latents, view, and irradiance' );
+				assert.strictEqual( model.rotationWeights.length, 192, 'allocates 16 * 12 rotation weights' );
 
 			} );
 
@@ -65,7 +68,7 @@ export default QUnit.module( 'Addons', () => {
 
 				}
 
-				const model = createModel( { resolution: 8, hiddenSize: 32 }, createRandom( 1 ) );
+				const model = createModel( { levels: 4, baseResolution: 8, targetResolution: 8, hiddenSize: 32 }, createRandom( 1 ) );
 				const evalRandom = createRandom( 1000 );
 				const channelSums = [ 0, 0, 0 ];
 				let clampedCount = 0;
@@ -74,7 +77,7 @@ export default QUnit.module( 'Addons', () => {
 
 				for ( let i = 0; i < 64; i ++ ) {
 
-					const latents = sampleLatents( model.latentGrid, [ evalRandom(), evalRandom() ] ).output;
+					const latents = sampleLatents( model.latentGrids, [ evalRandom(), evalRandom() ] ).output;
 					const input = forwardDecoderInput(
 						latents,
 						model.rotationWeights,
@@ -109,16 +112,20 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'samples latents bilinearly', ( assert ) => {
+			QUnit.test( 'samples latents bilinearly across every grid level', ( assert ) => {
 
-				const grid = createLatentGrid( 2, 2, () => 0.5 );
+				const grids = [
+					createLatentGrid( 2, 2, 4, () => 0.5 ),
+					createLatentGrid( 2, 2, 4, () => 0.5 )
+				];
 				const uv = [ 0.25, 0.25 ];
-				const run = sampleLatents( grid, uv );
+				const run = sampleLatents( grids, uv );
 
-				assert.strictEqual( run.output.length, 8, 'samples 8 latent channels' );
-				assert.strictEqual( run.taps.length, 4, 'samples 4 taps' );
+				assert.strictEqual( run.output.length, 8, 'samples 4 latent channels per level' );
+				assert.strictEqual( run.levelTaps.length, 2, 'samples every grid level' );
+				assert.strictEqual( run.levelTaps[ 0 ].taps.length, 4, 'samples 4 taps per level' );
 
-				const tapWeightSum = run.taps.reduce( ( sum, tap ) => sum + tap.weight, 0 );
+				const tapWeightSum = run.levelTaps[ 0 ].taps.reduce( ( sum, tap ) => sum + tap.weight, 0 );
 				assert.ok( Math.abs( tapWeightSum - 1.0 ) < 1e-12, 'bilinear weights sum to 1' );
 				assert.ok( run.output.every( ( value ) => value === 0 ), 'constant random seed initializes zero-valued latents' );
 
@@ -126,15 +133,15 @@ export default QUnit.module( 'Addons', () => {
 
 			QUnit.test( 'evaluates learned-frame decoder input', ( assert ) => {
 
-				const latents = [ 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8 ];
-				const rotationWeights = new Array( 96 ).fill( 0 );
+				const latents = new Array( 16 ).fill( 0 ).map( ( _, i ) => ( i + 1 ) / 20 );
+				const rotationWeights = new Array( 192 ).fill( 0 );
 				const wi = [ 0, 0, 1 ];
 				const wo = [ 0, 0, 1 ];
 
 				const inputRun = forwardDecoderInput( latents, rotationWeights, wi, wo );
-				assert.strictEqual( inputRun.output.length, 20, 'produces 20-channel decoder input (8 latents + 2 * 6 frame projections)' );
-				assert.deepEqual( inputRun.output.slice( 8, 14 ), [ 0, 0, 1, 0, 0, 1 ], 'projects directions into the first default frame' );
-				assert.strictEqual( buildIBLInput( latents, rotationWeights, wo ).length, 14, 'produces 14-channel IBL input (8 latents + 2 * 3 view projections)' );
+				assert.strictEqual( inputRun.output.length, 28, 'produces 28-channel decoder input (16 latents + 2 * 6 frame projections)' );
+				assert.deepEqual( inputRun.output.slice( 16, 22 ), [ 0, 0, 1, 0, 0, 1 ], 'projects directions into the first default frame' );
+				assert.strictEqual( buildIBLInput( latents, rotationWeights, wo ).length, 22, 'produces 22-channel IBL input (16 latents + 2 * 3 view projections)' );
 
 			} );
 

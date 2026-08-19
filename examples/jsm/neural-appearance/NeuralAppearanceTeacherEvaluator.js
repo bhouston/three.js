@@ -10,7 +10,6 @@ import {
 } from './NeuralAppearanceTeacherAtlas.js';
 import {
 	readSamplePixel,
-	readFilteredSample,
 	renderAndReadTeacher
 } from './NeuralAppearanceTeacherReadback.js';
 
@@ -27,10 +26,6 @@ class NeuralAppearanceTeacherEvaluator {
 		this.batchSize = options.teacherBatchSize || options.batchSize || DEFAULT_BATCH_SIZE;
 		this.tileSize = options.teacherTileSize || DEFAULT_TILE_SIZE;
 		this.uvGradientScale = options.uvGradientScale || DEFAULT_UV_GRADIENT_SCALE;
-		this.filterMode = options.teacherFilterMode || 'gaussian';
-		this.filterMinSamples = options.teacherFilterMinSamples || 1;
-		this.filterMaxSamples = Math.min( options.teacherFilterMaxSamples || 64, this.tileSize * this.tileSize );
-		this.filterSigma = options.teacherFilterSigma || 0.25;
 		this.sourceResolution = options.sourceResolution || options.resolution || 1;
 		this.supportsEmission = material.emissiveNode !== null && material.emissiveNode !== undefined;
 		this.supportsOpacity = material.opacityNode !== null && material.opacityNode !== undefined;
@@ -70,7 +65,6 @@ class NeuralAppearanceTeacherEvaluator {
 		this._atlasHeight = 0;
 		this._atlasColumns = 0;
 		this._sampleTextures = null;
-		this._filterKernels = new Map();
 		this._initialized = false;
 
 	}
@@ -137,13 +131,9 @@ class NeuralAppearanceTeacherEvaluator {
 
 			const pixels = await this._renderAndRead();
 
-			const usePointFilter = this.filterMode === 'point' || targetMode === 'iblQuery';
-
 			for ( let i = 0; i < batch.length; i ++ ) {
 
-				const pixel = usePointFilter ?
-					this._readSamplePixel( pixels, i ) :
-					this._readFilteredSample( pixels, i, batch[ i ] );
+				const pixel = this._readSamplePixel( pixels, i );
 				targets[ offset + i ] = targetMode === 'iblQuery' ? pixel.slice( 0, 4 ) : pixel.slice( 0, 3 );
 
 			}
@@ -178,7 +168,6 @@ class NeuralAppearanceTeacherEvaluator {
 		this._light = null;
 		this._target = null;
 		this._sampleTextures = null;
-		this._filterKernels.clear();
 		this._initialized = false;
 
 	}
@@ -348,22 +337,6 @@ class NeuralAppearanceTeacherEvaluator {
 	_readSamplePixel( pixels, sampleIndex ) {
 
 		return readSamplePixel( pixels, sampleIndex, this._atlasColumns, this._atlasWidth, this.tileSize );
-
-	}
-
-	_readFilteredSample( pixels, sampleIndex, sample ) {
-
-		return readFilteredSample( pixels, sampleIndex, sample, {
-			atlasColumns: this._atlasColumns,
-			atlasWidth: this._atlasWidth,
-			tileSize: this.tileSize,
-			sourceResolution: this.sourceResolution,
-			uvGradientScale: this.uvGradientScale,
-			filterMinSamples: this.filterMinSamples,
-			filterMaxSamples: this.filterMaxSamples,
-			filterSigma: this.filterSigma,
-			filterKernels: this._filterKernels
-		} );
 
 	}
 

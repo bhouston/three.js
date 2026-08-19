@@ -1,24 +1,18 @@
 import * as THREE from 'three';
-import { bitangentWorld, cos, float, fract, normalWorld, sin, tangentWorld, transformNormalToView, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { bitangentWorld, float, fract, max, normalWorld, sqrt, tangentWorld, transformNormalToView, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { buildLevelTextures, evaluateNeuralTextureRaw } from '../neural-texture/NeuralTextureNodeMaterial.js';
+import { applyChannelActivation } from '../neural/NeuralOutputActivations.js';
 import { getChannel, previewColor } from './NeuralMaterialFormat.js';
 
-const TWO_PI = Math.PI * 2;
-
-function decodeSigned( vectorNode ) {
-
-	// A plain .normalize() is a 0/0 NaN trap if the network ever outputs
-	// something whose decoded value lands exactly on the zero vector (most
-	// likely right at initialization, before training has shaped this
-	// channel at all) - nudge it off the singularity first, negligible for
-	// any real, non-degenerate normal.
-	return vectorNode.mul( 2 ).sub( 1 ).add( vec3( 1e-6, 0, 0 ) ).normalize();
-
-}
-
 /**
- * Turns a trained tangent-space-ish perturbation vector into the mesh's
- * final view-space normal.
+ * Turns a trained tangent-space (dx, dy) offset into the mesh's final
+ * view-space normal. The network only predicts the 2-component offset (see
+ * NeuralMaterialFormat.js's 'tanh'-activated `normal`/`clearcoatNormal`
+ * channels) - z is reconstructed here as the positive root
+ * `sqrt(1 - dx*dx - dy*dy)`, matching the always-positive-hemisphere
+ * tangent-space z that MaterialX's own `normalNode` produces (the same
+ * assumption the old full-vector encoding relied on: this z was always ~1,
+ * never actually trained as an independent degree of freedom).
  *
  * This is NOT the standard three.js `normalMap(texture, scale)` convention,
  * where the returned vector is left in tangent space and the base
@@ -39,9 +33,12 @@ function decodeSigned( vectorNode ) {
  * dynamic per-mesh TSL accessors, so this "just works" the same way
  * MaterialX's own conversion does when applied directly to a mesh.
  */
-function reconstructFinalNormal( encodedVectorNode ) {
+function reconstructFinalNormal( offsetNode ) {
 
-	const tangentSpace = decodeSigned( encodedVectorNode );
+	const dx = offsetNode.x;
+	const dy = offsetNode.y;
+	const dz = sqrt( max( float( 1 ).sub( dx.mul( dx ) ).sub( dy.mul( dy ) ), float( 0 ) ) );
+	const tangentSpace = vec3( dx, dy, dz );
 	const blended = tangentWorld.mul( tangentSpace.x )
 		.add( bitangentWorld.mul( tangentSpace.y ) )
 		.add( normalWorld.mul( tangentSpace.z ) )
@@ -57,7 +54,11 @@ function reconstructFinalNormal( encodedVectorNode ) {
  * *active* (trained) channel layout passed to the constructor - which,
  * unlike the full NeuralMaterialFormat.CHANNELS list, only covers whatever
  * subset of channels this particular material actually varies spatially
- * (see NeuralMaterialSource.classifyMaterialChannels).
+ * (see NeuralMaterialSource.classifyMaterialChannels). Each channel's raw
+ * (linear-decoder) slice is passed through its own output activation here -
+ * see NeuralMaterialFormat.js / ../neural/NeuralOutputActivations.js - so every
+ * consumer downstream of `sliceChannels` already sees values in the
+ * channel's natural physical range.
  */
 function sliceChannels( outputs, activeChannels ) {
 
@@ -66,8 +67,11 @@ function sliceChannels( outputs, activeChannels ) {
 	for ( const channel of activeChannels ) {
 
 		const values = [];
-		for ( let i = 0; i < channel.size; i ++ ) values.push( outputs[ channel.offset + i ] );
-		slices[ channel.key ] = channel.size === 1 ? values[ 0 ] : vec3( ...values );
+		for ( let i = 0; i < channel.size; i ++ ) values.push( applyChannelActivation( outputs[ channel.offset + i ], channel.activation ) );
+
+		if ( channel.size === 1 ) slices[ channel.key ] = values[ 0 ];
+		else if ( channel.size === 2 ) slices[ channel.key ] = vec2( ...values );
+		else slices[ channel.key ] = vec3( ...values );
 
 	}
 
@@ -77,7 +81,9 @@ function sliceChannels( outputs, activeChannels ) {
 
 function constantToNode( value ) {
 
-	return Array.isArray( value ) ? vec3( ...value ) : float( value );
+	if ( ! Array.isArray( value ) ) return float( value );
+
+	return value.length === 2 ? vec2( ...value ) : vec3( ...value );
 
 }
 
@@ -158,18 +164,18 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		if ( isActive( 'emissive' ) ) this.emissiveNode = slices.emissive;
 		else this.emissive = new THREE.Color( ...constantValues.emissive );
 
-		// --- anisotropy (strength + rotation always classified together, see
-		// NeuralMaterialFormat.js's shared anisotropyNode nodeKey) ---
-		if ( isActive( 'anisotropyStrength' ) || isActive( 'anisotropyRotation' ) ) {
+		// --- anisotropy (trained directly as a signed (ax, ay) direction
+		// vector - see NeuralMaterialFormat.js - which is exactly the form
+		// MeshPhysicalMaterial.anisotropyNode itself expects, no cos/sin
+		// recombination needed) ---
+		if ( isActive( 'anisotropy' ) ) {
 
-			const rotationRadians = slices.anisotropyRotation.sub( 0.5 ).mul( TWO_PI );
-			const strength = slices.anisotropyStrength.clamp( 0, 1 );
-			this.anisotropyNode = vec2( cos( rotationRadians ), sin( rotationRadians ) ).mul( strength );
+			this.anisotropyNode = slices.anisotropy;
 
 		} else {
 
-			this.anisotropy = constantValues.anisotropyStrength;
-			this.anisotropyRotation = constantValues.anisotropyRotation;
+			this.anisotropy = Math.hypot( ...constantValues.anisotropy );
+			this.anisotropyRotation = Math.atan2( constantValues.anisotropy[ 1 ], constantValues.anisotropy[ 0 ] );
 
 		}
 
@@ -215,24 +221,28 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 			const channel = getChannel( view );
 			const active = Object.prototype.hasOwnProperty.call( this._slices, view );
 
-			// Normal channels need special handling here: `this._slices[ view ]`
-			// is the raw *tangent-space* decoded network output (still encoded
-			// [0,1] via decodeSigned inside reconstructFinalNormal), whereas the
+			// `this._slices[ view ]` already went through this channel's own
+			// output activation (see sliceChannels/applyChannelActivation), so
+			// it's in the same raw physical range as the teacher's resolved
+			// node - always `alreadyEncoded: false` here, exactly like
+			// `NeuralMaterialSource.buildChannelPreviewMaterials`'s own call,
+			// so both sides remap into display space identically.
+			//
+			// Normal channels need one extra step: `this._slices[ view ]` is
+			// still the raw tangent-space (dx, dy) offset, whereas the
 			// teacher's preview (NeuralMaterialSource.buildChannelPreviewMaterials)
 			// shows `material.normalNode`, which MaterialXLoader already blends
 			// through the mesh's own TBN basis into a final view-space normal
-			// (see reconstructFinalNormal's doc comment above). Comparing the raw
-			// tangent-space slice against that would show two different spaces
-			// side by side - route it through the same TBN blend used for actual
-			// shading (`this.normalNode`/`this.clearcoatNormalNode` above) so both
-			// previews are apples-to-apples, matching how the teacher's channel
-			// was already final/blended before previewColor's own signed-encode.
+			// (see reconstructFinalNormal's doc comment above). Comparing the
+			// raw tangent-space slice against that would show two different
+			// spaces side by side - route it through the same TBN blend used
+			// for actual shading (`this.normalNode`/`this.clearcoatNormalNode`
+			// above) so both previews are apples-to-apples.
 			const isNormalChannel = view === 'normal' || view === 'clearcoatNormal';
 			const value = active
 				? ( isNormalChannel ? reconstructFinalNormal( this._slices[ view ] ) : this._slices[ view ] )
 				: constantToNode( this._constantValues[ view ] );
-			const alreadyEncoded = active && isNormalChannel ? false : active;
-			this.colorNode = vec4( previewColor( value, channel, alreadyEncoded ), 1 );
+			this.colorNode = vec4( previewColor( value, channel, false ), 1 );
 
 		}
 
@@ -250,4 +260,4 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
 }
 
-export { NeuralMaterialNodeMaterial, sliceChannels, decodeSigned };
+export { NeuralMaterialNodeMaterial, sliceChannels };

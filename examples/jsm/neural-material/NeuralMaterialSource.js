@@ -1,21 +1,7 @@
 import * as THREE from 'three';
-import { atan, float, length, vec2, vec3, vec4 } from 'three/tsl';
+import { float, vec2, vec3, vec4 } from 'three/tsl';
 import { bakeColorNodeToTexture } from '../neural-texture/NeuralTextureSource.js';
 import { CHANNELS, layoutChannels, previewColor } from './NeuralMaterialFormat.js';
-
-const TWO_PI = Math.PI * 2;
-
-function encodeSigned( vectorNode ) {
-
-	return vectorNode.mul( 0.5 ).add( 0.5 );
-
-}
-
-function encodeChannelNode( valueNode, channel ) {
-
-	return channel.encode === 'signed' ? encodeSigned( valueNode ) : valueNode;
-
-}
 
 function resolveScalarNode( material, nodeKey, propertyKey, fallback ) {
 
@@ -35,38 +21,24 @@ function resolveColorNode( material, nodeKey, propertyKey, fallback ) {
 
 }
 
+/**
+ * Resolves the material's anisotropy direction as a raw signed 2D vector
+ * `(strength*cos(rotation), strength*sin(rotation))` - exactly the form
+ * `MeshPhysicalMaterial.anisotropyNode` itself expects, and the form the
+ * trained network predicts directly via a single 'tanh' `anisotropy`
+ * channel (see NeuralMaterialFormat.js) rather than a separate
+ * strength/rotation pair - which avoids ever needing an atan2-based angle
+ * encoding (with its 0/1 wraparound discontinuity and atan2(0,0) singularity
+ * at zero strength) in the first place.
+ */
 function resolveAnisotropyNodes( material ) {
 
-	let anisoVec;
+	if ( material.anisotropyNode ) return vec2( material.anisotropyNode );
 
-	if ( material.anisotropyNode ) {
+	const strength = material.anisotropy !== undefined ? material.anisotropy : 0;
+	const rotation = material.anisotropyRotation !== undefined ? material.anisotropyRotation : 0;
 
-		anisoVec = vec2( material.anisotropyNode );
-
-	} else {
-
-		const strength = material.anisotropy !== undefined ? material.anisotropy : 0;
-		const rotation = material.anisotropyRotation !== undefined ? material.anisotropyRotation : 0;
-		anisoVec = vec2( Math.cos( rotation ) * strength, Math.sin( rotation ) * strength );
-
-	}
-
-	const strengthNode = length( anisoVec );
-	// atan2(0,0) is a degenerate call whose result is implementation-defined
-	// (can come back NaN on some GPU backends) - and (0,0) is exactly what
-	// every material with no anisotropy at all (the common case) produces
-	// here. A single NaN sample poisons the *entire* backward pass, not just
-	// this channel, since the output layer's gradient into the shared hidden
-	// layer sums over every active channel - so nudge x away from the
-	// singularity by an amount far too small to affect any real (non-zero-
-	// strength) anisotropy direction. Moot in practice now that a constant
-	// (node-less) anisotropy never reaches this path at all - see
-	// classifyMaterialChannels - but kept as a defensive guard for the case
-	// where anisotropyNode *is* set but legitimately evaluates to zero
-	// somewhere on the surface.
-	const rotationNode = atan( anisoVec.y, anisoVec.x.add( 1e-6 ) ).div( TWO_PI ).add( 0.5 );
-
-	return { strengthNode, rotationNode };
+	return vec2( Math.cos( rotation ) * strength, Math.sin( rotation ) * strength );
 
 }
 
@@ -85,7 +57,7 @@ function resolveMaterialChannelNodes( material ) {
 	const emissiveIntensity = material.emissiveIntensity !== undefined ? material.emissiveIntensity : 1;
 	const sheenColor = resolveColorNode( material, 'sheenNode', 'sheenColor', new THREE.Color( 0, 0, 0 ) );
 	const sheenStrength = material.sheen !== undefined ? material.sheen : 1;
-	const { strengthNode: anisotropyStrength, rotationNode: anisotropyRotation } = resolveAnisotropyNodes( material );
+	const anisotropy = resolveAnisotropyNodes( material );
 
 	return {
 		albedo: material.colorNode ? vec3( material.colorNode ) : vec3( material.color || new THREE.Color( 1, 1, 1 ) ),
@@ -98,8 +70,7 @@ function resolveMaterialChannelNodes( material ) {
 		clearcoatNormal: material.clearcoatNormalNode ? vec3( material.clearcoatNormalNode ) : vec3( 0, 0, 1 ),
 		transmission: resolveScalarNode( material, 'transmissionNode', 'transmission', 0 ),
 		emissive: emissiveColor.mul( emissiveIntensity ),
-		anisotropyStrength,
-		anisotropyRotation,
+		anisotropy,
 		sheenColor: sheenColor.mul( sheenStrength ),
 		sheenRoughness: resolveScalarNode( material, 'sheenRoughnessNode', 'sheenRoughness', 1 )
 	};
@@ -139,8 +110,14 @@ function resolveConstantValue( material, key ) {
 
 		}
 
-		case 'anisotropyStrength': return material.anisotropy !== undefined ? material.anisotropy : 0;
-		case 'anisotropyRotation': return material.anisotropyRotation !== undefined ? material.anisotropyRotation : 0;
+		case 'anisotropy': {
+
+			const strength = material.anisotropy !== undefined ? material.anisotropy : 0;
+			const rotation = material.anisotropyRotation !== undefined ? material.anisotropyRotation : 0;
+			return [ Math.cos( rotation ) * strength, Math.sin( rotation ) * strength ];
+
+		}
+
 		case 'sheenColor': {
 
 			const c = material.sheenColor || new THREE.Color( 0, 0, 0 );
@@ -213,15 +190,21 @@ function flattenChannelComponents( activeChannels, channelNodes ) {
 
 	for ( const channel of activeChannels ) {
 
-		const encoded = encodeChannelNode( channelNodes[ channel.key ], channel );
+		const value = channelNodes[ channel.key ];
 
 		if ( channel.size === 1 ) {
 
-			components.push( encoded );
+			components.push( value );
 
 		} else {
 
-			for ( let i = 0; i < channel.size; i ++ ) components.push( encoded[ axes[ i ] ] );
+			// 2-component 'tanh' channels (normal/clearcoatNormal offsets,
+			// anisotropy direction) train against only (x, y) - the raw
+			// resolved node may still be a full vec3 (e.g. the material's
+			// tangent-space normalNode); z is deliberately dropped here and
+			// reconstructed at consumption time instead (see
+			// NeuralMaterialNodeMaterial.reconstructFinalNormal).
+			for ( let i = 0; i < channel.size; i ++ ) components.push( value[ axes[ i ] ] );
 
 		}
 
@@ -250,8 +233,10 @@ function packComponentsIntoVec4( components ) {
 /**
  * Builds the packed RGBA colorNodes (see NeuralMaterialFormat.js) used to
  * bake training targets for exactly the given (active/trained) channels, in
- * their layout order - encoding signed channels (normals, anisotropy
- * direction) into [0,1] first.
+ * their layout order and raw physical units - each channel's `activation`
+ * (see NeuralMaterialFormat.js / ../neural/NeuralOutputActivations.js) is what maps
+ * the network's own output into this same raw range, so no target-side
+ * encoding happens here.
  */
 function buildPackedColorNodes( activeChannels, material ) {
 

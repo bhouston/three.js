@@ -172,7 +172,7 @@
 			import { NeuralMaterialNodeMaterial } from 'three/addons/neural-material/NeuralMaterialNodeMaterial.js';
 			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/neural-material/NeuralMaterialSource.js';
 			import { computeGridLevels } from 'three/addons/neural-texture/NeuralTextureModel.js';
-			import { CHANNELS, MAX_TOTAL_CHANNELS, getChannel } from 'three/addons/neural-material/NeuralMaterialFormat.js';
+			import { CHANNELS, MAX_TOTAL_CHANNELS, getChannel, buildChannelActivations } from 'three/addons/neural-material/NeuralMaterialFormat.js';
 
 			// On-disk format for this example's own "Save JSON" / "Load JSON"
 			// buttons - deliberately similar in spirit to (top-level format/
@@ -695,6 +695,7 @@
 						targetResolution: Number( params.targetResolution ),
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
 						outputChannels: channelClassification.totalChannels,
+						channelActivations: buildChannelActivations( channelClassification.activeChannels ),
 						batchSize: Number( params.batchSize ),
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),

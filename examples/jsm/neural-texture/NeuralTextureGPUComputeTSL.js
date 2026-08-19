@@ -17,6 +17,7 @@ import {
 } from 'three/tsl';
 import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 import { wrapIndexTSL, createAdamComputeNode } from '../neural/NeuralGPUComputeTSL.js';
+import { applyChannelActivation, channelActivationDerivativeFromOutput } from '../neural/NeuralOutputActivations.js';
 
 function hash1( seed ) {
 
@@ -56,6 +57,16 @@ function randomStratifiedUV( sampleIdx, stepUniform, gridSize ) {
  * `outputChannels`-wide training target - e.g. a single albedo texture for
  * the texture-fitting demo, or 5 packed textures for the full-material demo
  * (see NeuralMaterialFormat.js).
+ *
+ * `gpuModel.layout.channelActivations`, if present, is a flat array (one
+ * entry per output channel, `undefined`/omitted entries default to plain
+ * linear) naming an output nonlinearity applied to that channel's raw
+ * decoder output before the loss/delta are computed - see
+ * ../neural/NeuralOutputActivations.js. Used by neural-material to fit each
+ * channel's targets in their own natural physical range (bounded reflectance
+ * via sigmoid, signed tangent-space offsets via tanh, HDR emission via
+ * softplus) instead of forcing every channel through the same unbounded
+ * linear output.
  */
 function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 
@@ -82,7 +93,8 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		deltaOffsets,
 		gradA0Offset,
 		activationStride,
-		outputChannels
+		outputChannels,
+		channelActivations
 	} = layout;
 
 	const gridSize = Math.max( 1, Math.ceil( Math.sqrt( batchSize ) ) );
@@ -195,6 +207,16 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 
 		// 3. L2 loss + output delta.
 		//
+		// Each output channel c may carry its own output nonlinearity (see
+		// ../neural/NeuralOutputActivations.js, keyed by NeuralMaterialFormat.
+		// js's per-channel `activation`) applied on top of this always-linear
+		// decoder's raw `z` - the loss is computed
+		// against the *activated* prediction `a = activation(z)` (matching a
+		// raw-physical-units target), and the stored delta is the chain-rule
+		// product `(a - target) * da/dz`, so everything downstream (step 4,
+		// the hand-written backward pass) still just consumes a plain
+		// per-output `dL/dz` exactly as it did for the old all-linear output.
+		//
 		// Deltas/gradients are deliberately kept at raw, un-batch-averaged
 		// magnitude here (no division by batchSize). Gradients get quantized
 		// to fixed-point integers and atomically summed one sample at a time
@@ -214,10 +236,13 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 
 		for ( let c = 0; c < outputChannels; c ++ ) {
 
-			const pred = activationsStorage.element( outZBase.add( c ) );
+			const activation = channelActivations ? channelActivations[ c ] : undefined;
+			const z = activationsStorage.element( outZBase.add( c ) );
+			const pred = applyChannelActivation( z, activation );
 			const diff = pred.sub( targetComponents[ c ] );
 			sampleLoss.addAssign( diff.mul( diff ).mul( 0.5 ) );
-			activationsStorage.element( outDeltaBase.add( c ) ).assign( diff );
+			const delta = diff.mul( channelActivationDerivativeFromOutput( pred, activation ) );
+			activationsStorage.element( outDeltaBase.add( c ) ).assign( delta );
 
 		}
 

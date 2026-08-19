@@ -17,6 +17,12 @@ function computeTextureModelLayout( options = {} ) {
 	const hiddenSizes = options.hiddenSizes || [ 32, 32 ];
 	const outputChannels = options.outputChannels || 3;
 	const includeUV = options.includeUV || false;
+	// One entry per output channel naming its output nonlinearity (see
+	// ../neural/NeuralOutputActivations.js); undefined/omitted entries (the
+	// default, `options.channelActivations` unset) mean plain linear, i.e.
+	// today's behavior for every neural-texture caller that doesn't pass
+	// this - only neural-material does (see NeuralMaterialFormat.js).
+	const channelActivations = options.channelActivations || null;
 
 	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
 
@@ -105,6 +111,7 @@ function computeTextureModelLayout( options = {} ) {
 		resolutions,
 		hiddenSizes,
 		outputChannels,
+		channelActivations,
 		includeUV,
 		inputSize,
 		uvInputOffset,

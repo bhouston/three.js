@@ -281,6 +281,7 @@ class NeuralAppearanceTeacherEvaluator {
 				return envNode ? new NeuralTeacherIBLEnvironmentNode( envNode, isolate ) : null;
 
 			};
+
 			sampleMaterial.customProgramCacheKey = function () {
 
 				return THREE.NodeMaterial.prototype.customProgramCacheKey.call( this ) + '|teacherIblIsolate:' + isolate;

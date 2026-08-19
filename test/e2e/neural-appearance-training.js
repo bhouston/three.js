@@ -11,19 +11,24 @@ const networkTimeout = 5; // minutes
 const trainingTimeout = 3; // minutes
 const outputDir = 'test/e2e/output-screenshots';
 const pixelThreshold = 0.15;
+// `targetResolution`/`baseResolution` size the shared multiresolution latent
+// grid (see NeuralGridModel.js / NeuralAppearanceFormat.js) - cases with
+// spatially detailed teacher patterns (UV grids, checkerboards, normal maps)
+// use a finer target resolution than the flat-color cases, which are fine
+// with the html defaults (baseResolution 16, targetResolution 256).
 const allTestCases = [
-	{ name: 'lambertBlue', label: 'diffuse blue', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5, resolution: 8 },
+	{ name: 'lambertBlue', label: 'diffuse blue', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5, baseResolution: 4, targetResolution: 64 },
 	{ name: 'lambertRed', label: 'diffuse red', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5 },
 	{ name: 'lambertGreen', label: 'diffuse green', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5 },
 	{ name: 'lambert', label: 'diffuse rust', iterations: 400, maxMeanRgbError: 18, maxDifferentPixels: 22 },
 	{ name: 'glossy', label: 'glossy blue', iterations: 800, maxMeanRgbError: 30, maxDifferentPixels: 36 },
 	{ name: 'glossyRed', label: 'glossy red', iterations: 800, maxMeanRgbError: 30, maxDifferentPixels: 36 },
 	{ name: 'glossyGold', label: 'glossy gold', iterations: 800, maxMeanRgbError: 22, maxDifferentPixels: 36 },
-	{ name: 'uvGrid', label: 'uv grid', iterations: 1000, maxMeanRgbError: 28, maxDifferentPixels: 32, resolution: 8 },
-	{ name: 'normalMap', label: 'normal map', iterations: 1000, maxMeanRgbError: 35, maxDifferentPixels: 40, resolution: 8, hiddenSize: 64 },
-	{ name: 'emissiveGrid', label: 'emissive grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 40, resolution: 8, expectedOutputs: [ 'emission' ] },
-	{ name: 'alphaCutoff', label: 'alpha cutoff grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, resolution: 8, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'mask' },
-	{ name: 'checkerboardTransparency', label: 'checkerboard transparency', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, resolution: 8, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'blend' }
+	{ name: 'uvGrid', label: 'uv grid', iterations: 1000, maxMeanRgbError: 28, maxDifferentPixels: 32, baseResolution: 4, targetResolution: 64 },
+	{ name: 'normalMap', label: 'normal map', iterations: 1000, maxMeanRgbError: 35, maxDifferentPixels: 40, baseResolution: 4, targetResolution: 64, hiddenSize: 64 },
+	{ name: 'emissiveGrid', label: 'emissive grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 40, baseResolution: 4, targetResolution: 64, expectedOutputs: [ 'emission' ] },
+	{ name: 'alphaCutoff', label: 'alpha cutoff grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, baseResolution: 4, targetResolution: 64, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'mask' },
+	{ name: 'checkerboardTransparency', label: 'checkerboard transparency', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, baseResolution: 4, targetResolution: 64, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'blend' }
 ];
 const testCases = process.env.TEST_CASE ? allTestCases.filter( ( testCase ) => testCase.name === process.env.TEST_CASE ) : allTestCases;
 const background = [ 0x15, 0x17, 0x1c ];
@@ -87,7 +92,9 @@ function getReferenceSignature( json ) {
 async function runTrainingCase( page, testCase ) {
 
 	page.error = undefined;
-	await page.goto( `http://localhost:${port}/examples/webgpu_materials_neural_appearance.html?test=${testCase.name}&autoTrain=1&noRotate=1&iterations=${testCase.iterations}&batchSize=256&hiddenSize=${testCase.hiddenSize || 32}&resolution=${testCase.resolution || 1}&seed=7`, {
+	const targetResolutionParam = testCase.targetResolution ? `&targetResolution=${testCase.targetResolution}` : '';
+	const baseResolutionParam = testCase.baseResolution ? `&baseResolution=${testCase.baseResolution}` : '';
+	await page.goto( `http://localhost:${port}/examples/webgpu_materials_neural_appearance.html?test=${testCase.name}&autoTrain=1&noRotate=1&iterations=${testCase.iterations}&batchSize=256&hiddenSize=${testCase.hiddenSize || 32}${baseResolutionParam}${targetResolutionParam}&seed=7`, {
 		waitUntil: 'networkidle0',
 		timeout: networkTimeout * 60000
 	} );
@@ -400,11 +407,15 @@ function validateLosses( result, testCase ) {
 
 	}
 
-	const expectedMipLevels = Math.floor( Math.log2( testCase.resolution || 1 ) ) + 1;
+	// The multiresolution latent grid always has 4 levels (see
+	// NeuralAppearanceFormat.js) regardless of baseResolution/targetResolution,
+	// so there's no per-case mip-count to check anymore - just confirm the
+	// runtime validation exported the expected level count.
+	const expectedLevels = testCase.levels || 4;
 
-	if ( result.validation === null || result.validation.mipLevels !== expectedMipLevels ) {
+	if ( result.validation === null || result.validation.levels !== expectedLevels ) {
 
-		throw new Error( `${testCase.label}: runtime validation did not cover all ${expectedMipLevels} exported mip levels.` );
+		throw new Error( `${testCase.label}: runtime validation did not cover all ${expectedLevels} exported latent grid levels.` );
 
 	}
 

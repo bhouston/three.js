@@ -238,7 +238,7 @@
 			import * as THREE from 'three/webgpu';
 			import * as TSL from 'three/tsl';
 
-			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
@@ -261,6 +261,13 @@
 			let trainingRunId = 0;
 			let lossHistory = [];
 			const trainingSettingControllers = [];
+
+			function trackSetting( key, controller ) {
+
+				trainingSettingControllers.push( { key, controller } );
+				return controller;
+
+			}
 
 			const queryParams = new URLSearchParams( window.location.search );
 			// Network (grid + MLP) settings are shared, global GUI controls -
@@ -471,6 +478,7 @@
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
 				renderer.toneMappingExposure = 0.9;
 				renderer.domElement.id = 'neuralAppearanceCanvas';
+				renderer.inspector = new Inspector();
 				container.appendChild( renderer.domElement );
 				await renderer.init();
 				environmentMap = await new HDRLoader()
@@ -516,28 +524,24 @@
 					THREE.SRGBColorSpace
 				);
 
-				const gui = new GUI();
+				const gui = renderer.inspector.createParameters( 'Neural Appearance' );
 
 				// Mirrors examples/webgpu_materials_neural_texture.html's
 				// "network (grid + MLP)" folder: same control names, order,
 				// and dropdown option sets for the shared grid + MLP encoding
 				// (see NeuralGridModel.js / NeuralAppearanceFormat.js).
 				const networkFolder = gui.addFolder( 'network (grid + MLP)' );
-				trainingSettingControllers.push(
-					networkFolder.add( params, 'levels', [ 2, 3, 4, 5, 6, 8 ] ).name( 'grid levels' ).onChange( updateTrainingEstimate ),
-					networkFolder.add( params, 'baseResolution', [ 8, 16, 32 ] ).name( 'grid base res' ).onChange( updateTrainingEstimate ),
-					networkFolder.add( params, 'targetResolution', [ 64, 128, 256, 512 ] ).name( 'grid target res' ).onChange( updateTrainingEstimate ),
-					networkFolder.add( params, 'hiddenSize', [ 16, 32, 64 ] ).name( 'MLP hidden width (x2 layers)' ).onChange( updateTrainingEstimate )
-				);
+				trackSetting( 'levels', networkFolder.add( params, 'levels', [ 2, 3, 4, 5, 6, 8 ] ).name( 'grid levels' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'baseResolution', networkFolder.add( params, 'baseResolution', [ 8, 16, 32 ] ).name( 'grid base res' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'targetResolution', networkFolder.add( params, 'targetResolution', [ 64, 128, 256, 512 ] ).name( 'grid target res' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'hiddenSize', networkFolder.add( params, 'hiddenSize', [ 16, 32, 64 ] ).name( 'MLP hidden width (x2 layers)' ).onChange( updateTrainingEstimate ) );
 
 				// Mirrors neural-texture's "training" folder (same names,
 				// order, and option sets/ranges).
 				const trainingFolder = gui.addFolder( 'training' );
-				trainingSettingControllers.push(
-					trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' ).onChange( updateTrainingEstimate ),
-					trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' ).onChange( updateTrainingEstimate ),
-					trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' )
-				);
+				trackSetting( 'batchSize', trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'iterations', trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' ).onChange( updateTrainingEstimate ) );
+				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
 
 				// Appearance-specific: debug views, IBL/emissive intensity -
 				// no neural-texture analog, so these keep their own "view"
@@ -605,7 +609,7 @@
 				Object.assign( params, preset.settings );
 				updateTrainingEstimate();
 
-				for ( const controller of trainingSettingControllers ) controller.updateDisplay();
+				for ( const { key, controller } of trainingSettingControllers ) controller.setValue( params[ key ] );
 
 			}
 

@@ -49,21 +49,28 @@ function evaluateNeuralBRDF( material, lightDirection, context, evaluateFn ) {
 
 }
 
-function evaluateNeuralEmission( material ) {
+// `context`, when given, is a NeuralAppearanceFragmentContext (see
+// createNeuralFragmentContext) shared with the BRDF/IBL evaluation for the
+// same fragment -- reuses its already-sampled latent code instead of
+// re-sampling all 4 grid-level textures again. Falls back to sampling its
+// own copy when called standalone (e.g. `context` not yet available).
+function evaluateNeuralEmission( material, context = null ) {
 
 	const output = material.neuralAppearanceData.outputs.emission;
 	const uniforms = material._outputUniforms.emission;
-	const decoded = toVec3( evaluateMLP( output.layers, uniforms, fetchLatentCode( material ) ) );
+	const latents = context ? context.latents : fetchLatentCode( material );
+	const decoded = toVec3( evaluateMLP( output.layers, uniforms, latents ) );
 
 	return applyOutputActivation( decoded, output.outputActivation );
 
 }
 
-function evaluateNeuralOpacity( material ) {
+function evaluateNeuralOpacity( material, context = null ) {
 
 	const output = material.neuralAppearanceData.outputs.opacity;
 	const uniforms = material._outputUniforms.opacity;
-	const decoded = evaluateMLP( output.layers, uniforms, fetchLatentCode( material ) )[ 0 ];
+	const latents = context ? context.latents : fetchLatentCode( material );
+	const decoded = evaluateMLP( output.layers, uniforms, latents )[ 0 ];
 
 	return applyScalarOutputActivation( decoded, output.outputActivation );
 
@@ -73,16 +80,19 @@ function evaluateNeuralIBL( material, envNode, context = null, isolate = 'full' 
 
 	const fragment = context || createNeuralFragmentContext( material );
 
-	return evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.texel0, fragment.texel1, fragment.texel2, fragment.texel3, isolate );
+	return evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.latents, fragment.frames, isolate );
 
 }
 
-function evaluateNeuralIBLForTexels( material, envNode, wo, latent0, latent1, latent2, latent3, isolate = 'full' ) {
+// `latents`/`frames` are the same per-fragment values createNeuralFragmentContext
+// already computed for BRDF -- passed in directly instead of re-sampling the
+// grid textures and re-running the rotation decoder (buildDecoderFrames)
+// here a second time. Not exported/called outside this module, so its
+// signature is free to change.
+function evaluateNeuralIBLForTexels( material, envNode, wo, latents, frames, isolate = 'full' ) {
 
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const uniforms = material._outputUniforms.ibl;
-	const latents = latentsFromTexels( latent0, latent1, latent2, latent3 );
-	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
 	const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize );
 	const query = evaluateMLP( ibl.layers, uniforms, queryInput );
 	const queryDirection = TSL.vec3( query[ 0 ], query[ 1 ], query[ 2 ] ).normalize();
@@ -269,18 +279,31 @@ function fetchLatentCode( material ) {
 
 }
 
+// Built once per fragment (see NeuralAppearanceNodeMaterial's constructor and
+// NeuralAppearanceLightingModel.start(), both of which now share a single
+// instance of this context instead of each building their own) and reused by
+// every decoder head -- BRDF, emission, opacity, IBL. `latents`/`frames` are
+// included here so evaluateNeuralEmission/evaluateNeuralOpacity/evaluateNeuralIBL
+// don't each independently re-sample the grid textures or re-run the
+// rotation decoder (`buildDecoderFrames`) that BRDF also needs; only the
+// directional BRDF Fn (which must run once per light, not once per fragment)
+// still derives its own frames internally -- see createEvaluateNeuralBRDFFn.
 function createNeuralFragmentContext( material ) {
 
 	const uvNode = TSL.uv();
 	const viewDirection = transformToCanonicalFrame( TSL.positionViewDirection ).toVar();
 	const texels = fetchLatentTexels( material, uvNode );
+	const latents = latentsFromTexels( texels.texel0, texels.texel1, texels.texel2, texels.texel3 );
+	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
 
 	return {
 		viewDirection,
 		texel0: texels.texel0,
 		texel1: texels.texel1,
 		texel2: texels.texel2,
-		texel3: texels.texel3
+		texel3: texels.texel3,
+		latents,
+		frames
 	};
 
 }

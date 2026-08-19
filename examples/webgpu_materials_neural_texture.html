@@ -163,7 +163,7 @@
 			import * as THREE from 'three/webgpu';
 			import * as TSL from 'three/tsl';
 
-			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
@@ -247,6 +247,7 @@
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.setAnimationLoop( render );
 				renderer.domElement.id = 'neuralParametersCanvas';
+				renderer.inspector = new Inspector();
 				container.appendChild( renderer.domElement );
 				await renderer.init();
 
@@ -266,7 +267,7 @@
 				neuralMesh.position.x = 0.65;
 				scene.add( neuralMesh );
 
-				const gui = new GUI();
+				const gui = renderer.inspector.createParameters( 'Neural Texture' );
 
 				const sourceFolder = gui.addFolder( 'source' );
 				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024 ] ).name( 'bake resolution' ).onChange( () => reloadCurrentSource() );

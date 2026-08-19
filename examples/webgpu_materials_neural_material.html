@@ -163,7 +163,7 @@
 
 			import * as THREE from 'three/webgpu';
 
-			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
@@ -276,6 +276,7 @@
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
 				renderer.toneMappingExposure = 0.9;
 				renderer.domElement.id = 'neuralParametersMaterialCanvas';
+				renderer.inspector = new Inspector();
 				container.appendChild( renderer.domElement );
 				await renderer.init();
 
@@ -305,7 +306,7 @@
 				neuralMesh.visible = false;
 				scene.add( neuralMesh );
 
-				const gui = new GUI();
+				const gui = renderer.inspector.createParameters( 'Neural Material' );
 
 				const sourceFolder = gui.addFolder( 'source' );
 				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024 ] ).name( 'bake resolution' );

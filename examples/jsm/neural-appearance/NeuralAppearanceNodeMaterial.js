@@ -62,19 +62,27 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 		this.debugView = parameters.debugView || DEFAULT_PARAMETERS.debugView;
 		this._outputUniforms = createOutputUniforms( neuralAppearanceData.outputs );
 
+		// Built once and shared with the BRDF/IBL lighting model (see
+		// NeuralAppearanceLightingModel.start(), which reuses this same
+		// instance instead of building its own) -- every decoder head reads
+		// its already-sampled grid latents/rotation frames from here rather
+		// than each independently re-sampling the 4 grid-level textures and
+		// re-running the rotation decoder per head.
+		this._fragmentContext = createNeuralFragmentContext( this );
+
 		this._intensityNode = TSL.uniform( this.intensity ).onObjectUpdate( ( { material } ) => material.intensity );
 		this._emissiveIntensityNode = TSL.uniform( this.emissiveIntensity ).onObjectUpdate( ( { material } ) => material.emissiveIntensity );
 
 		if ( neuralAppearanceData.outputs.emission ) {
 
-			this.emissiveNode = evaluateNeuralEmission( this ).mul( this._emissiveIntensityNode );
+			this.emissiveNode = evaluateNeuralEmission( this, this._fragmentContext ).mul( this._emissiveIntensityNode );
 
 		}
 
 		if ( neuralAppearanceData.outputs.opacity ) {
 
 			const opacityHead = neuralAppearanceData.outputs.opacity;
-			const opacity = evaluateNeuralOpacity( this );
+			const opacity = evaluateNeuralOpacity( this, this._fragmentContext );
 			this.opacityNode = opacity;
 
 			if ( opacityHead.mode === 'blend' ) {
@@ -255,7 +263,10 @@ class NeuralAppearanceLightingModel extends THREE.LightingModel {
 	start( builder ) {
 
 		this._evaluateBRDF = createEvaluateNeuralBRDFFn( this.material );
-		this._fragmentContext = createNeuralFragmentContext( this.material );
+		// Reuses the material's own shared context (built once in its
+		// constructor) instead of building a second, independent one --
+		// see NeuralAppearanceNodeMaterial's constructor comment.
+		this._fragmentContext = this.material._fragmentContext;
 		super.start( builder );
 
 	}

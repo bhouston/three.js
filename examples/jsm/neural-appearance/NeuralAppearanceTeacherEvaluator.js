@@ -50,17 +50,15 @@ class NeuralAppearanceTeacherEvaluator {
 
 		}
 
-		this._targetMode = 'brdf';
 		this.environment = options.environment || null;
 		this.supportsIBL = this.environment !== null && this.environment !== undefined;
 
-		this._scene = null;
-		this._camera = null;
-		this._geometry = null;
-		this._material = null;
-		this._mesh = null;
-		this._light = null;
-		this._target = null;
+		// Per-target-mode resource bundles ({ scene, camera, geometry, material,
+		// mesh, light, target }), built lazily on first use and cached for the
+		// lifetime of this evaluator -- avoids the dispose()/rebuild/shader-
+		// recompile cycle that used to happen every time evaluateBatch() was
+		// called with a different targetMode than the previous call.
+		this._modeBundles = new Map();
 		this._atlasWidth = 0;
 		this._atlasHeight = 0;
 		this._atlasColumns = 0;
@@ -81,7 +79,7 @@ class NeuralAppearanceTeacherEvaluator {
 
 		if ( this.renderer.init ) await this.renderer.init();
 
-		this._createResources();
+		this._createSharedAtlasResources();
 		this._initialized = true;
 
 	}
@@ -107,18 +105,9 @@ class NeuralAppearanceTeacherEvaluator {
 
 	async evaluateBatch( samples, targetMode = 'brdf' ) {
 
-		if ( this._initialized === false ) {
+		if ( this._initialized === false ) await this.init();
 
-			this._targetMode = targetMode;
-			await this.init();
-
-		} else if ( targetMode !== this._targetMode ) {
-
-			this.dispose();
-			this._targetMode = targetMode;
-			await this.init();
-
-		}
+		const bundle = this._getModeBundle( targetMode );
 
 		if ( samples.length === 0 ) return [];
 
@@ -129,7 +118,7 @@ class NeuralAppearanceTeacherEvaluator {
 			const batch = samples.slice( offset, offset + this.batchSize );
 			this._uploadSamples( batch );
 
-			const pixels = await this._renderAndRead();
+			const pixels = await this._renderAndRead( bundle );
 
 			for ( let i = 0; i < batch.length; i ++ ) {
 
@@ -146,9 +135,15 @@ class NeuralAppearanceTeacherEvaluator {
 
 	dispose() {
 
-		if ( this._target ) this._target.dispose();
-		if ( this._geometry ) this._geometry.dispose();
-		if ( this._material && this._material !== this.material && this._material.dispose ) this._material.dispose();
+		for ( const bundle of this._modeBundles.values() ) {
+
+			if ( bundle.target ) bundle.target.dispose();
+			if ( bundle.geometry ) bundle.geometry.dispose();
+			if ( bundle.material && bundle.material !== this.material && bundle.material.dispose ) bundle.material.dispose();
+
+		}
+
+		this._modeBundles.clear();
 
 		if ( this._sampleTextures ) {
 
@@ -160,19 +155,16 @@ class NeuralAppearanceTeacherEvaluator {
 
 		}
 
-		this._scene = null;
-		this._camera = null;
-		this._geometry = null;
-		this._material = null;
-		this._mesh = null;
-		this._light = null;
-		this._target = null;
 		this._sampleTextures = null;
 		this._initialized = false;
 
 	}
 
-	_createResources() {
+	// Builds (once) the shared atlas input-sample textures and the shader
+	// nodes that read from them. These encode uv/frame/direction only and are
+	// mode-agnostic -- every per-mode material bundle samples from the same
+	// atlas textures, so they're created once here rather than per mode.
+	_createSharedAtlasResources() {
 
 		const capacity = Math.max( 1, this.batchSize );
 		const { atlasColumns, atlasRows, atlasWidth, atlasHeight } = computeAtlasDimensions( capacity, this.tileSize );
@@ -181,7 +173,28 @@ class NeuralAppearanceTeacherEvaluator {
 		this._atlasHeight = atlasHeight;
 
 		this._sampleTextures = createAtlasTextures( atlasColumns, atlasRows );
-		const nodes = createAtlasShaderNodes( this._sampleTextures, atlasColumns, atlasRows, this.tileSize );
+		this._atlasNodes = createAtlasShaderNodes( this._sampleTextures, atlasColumns, atlasRows, this.tileSize );
+
+	}
+
+	// Returns the cached scene/material/render-target bundle for targetMode,
+	// building and caching it on first use. Never disposed/rebuilt afterwards
+	// -- this is what removes the per-iteration shader-recompile + resource-
+	// churn cycle that used to happen on every targetMode switch.
+	_getModeBundle( targetMode ) {
+
+		let bundle = this._modeBundles.get( targetMode );
+		if ( bundle ) return bundle;
+
+		bundle = this._createResources( targetMode );
+		this._modeBundles.set( targetMode, bundle );
+		return bundle;
+
+	}
+
+	_createResources( targetMode ) {
+
+		const nodes = this._atlasNodes;
 
 		const sampleMaterial = this.material.clone ? this.material.clone() : this.material;
 		sampleMaterial.contextNode = TSL.replaceUV( nodes.materialUv, TSL.overrideNodes( [
@@ -191,20 +204,23 @@ class NeuralAppearanceTeacherEvaluator {
 			[ TSL.positionViewDirection, nodes.wo ]
 		] ) );
 
-		if ( this._targetMode === 'brdf' ) {
+		let light = null;
 
-			sampleMaterial.lightsNode = TSL.lights( [ this._createLight() ] ).context( {
+		if ( targetMode === 'brdf' ) {
+
+			light = this._createLight();
+			sampleMaterial.lightsNode = TSL.lights( [ light ] ).context( {
 				lightingModel: new NeuralTeacherLightingModel( sampleMaterial, nodes.wi )
 			} );
 
-		} else if ( this._targetMode === 'emission' ) {
+		} else if ( targetMode === 'emission' ) {
 
 			const emission = sampleMaterial.emissiveNode || TSL.vec3( 0 );
 			sampleMaterial.lights = false;
 			sampleMaterial.lightsNode = TSL.lights( [] );
 			sampleMaterial.outputNode = TSL.vec4( emission, 1 );
 
-		} else if ( this._targetMode === 'opacity' ) {
+		} else if ( targetMode === 'opacity' ) {
 
 			const opacity = sampleMaterial.opacityNode || TSL.float( 1 );
 			sampleMaterial.lights = false;
@@ -213,13 +229,13 @@ class NeuralAppearanceTeacherEvaluator {
 			sampleMaterial.alphaTestNode = null;
 			sampleMaterial.outputNode = TSL.vec4( opacity, opacity, opacity, 1 );
 
-		} else if ( this._targetMode === 'iblQuery' || this._targetMode === 'iblIncoming' ) {
+		} else if ( targetMode === 'iblQuery' || targetMode === 'iblIncoming' ) {
 
 			const query = createTeacherIBLQueryNodes( sampleMaterial );
 			sampleMaterial.lights = false;
 			sampleMaterial.lightsNode = TSL.lights( [] );
 
-			if ( this._targetMode === 'iblQuery' ) {
+			if ( targetMode === 'iblQuery' ) {
 
 				sampleMaterial.outputNode = TSL.vec4( query.radianceDir, query.roughness );
 
@@ -240,7 +256,7 @@ class NeuralAppearanceTeacherEvaluator {
 
 			}
 
-		} else if ( this._targetMode === 'iblIrradiance' ) {
+		} else if ( targetMode === 'iblIrradiance' ) {
 
 			if ( this.environment === null ) {
 
@@ -259,7 +275,7 @@ class NeuralAppearanceTeacherEvaluator {
 			} );
 			sampleMaterial.outputNode = TSL.vec4( irradiance, 1 );
 
-		} else if ( this._targetMode === 'iblIndirect' || this._targetMode === 'iblIndirectRadiance' || this._targetMode === 'iblIndirectIrradiance' ) {
+		} else if ( targetMode === 'iblIndirect' || targetMode === 'iblIndirectRadiance' || targetMode === 'iblIndirectIrradiance' ) {
 
 			if ( this.environment === null ) {
 
@@ -267,8 +283,8 @@ class NeuralAppearanceTeacherEvaluator {
 
 			}
 
-			const isolate = this._targetMode === 'iblIndirectRadiance' ? 'radiance' :
-				this._targetMode === 'iblIndirectIrradiance' ? 'irradiance' :
+			const isolate = targetMode === 'iblIndirectRadiance' ? 'radiance' :
+				targetMode === 'iblIndirectIrradiance' ? 'irradiance' :
 					'full';
 
 			sampleMaterial.lightsNode = TSL.lights( [] ).context( {
@@ -290,36 +306,37 @@ class NeuralAppearanceTeacherEvaluator {
 
 		} else {
 
-			throw new Error( `THREE.NeuralAppearanceTeacherEvaluator: Unsupported target mode "${ this._targetMode }".` );
+			throw new Error( `THREE.NeuralAppearanceTeacherEvaluator: Unsupported target mode "${ targetMode }".` );
 
 		}
 
 		sampleMaterial.toneMapped = false;
 		sampleMaterial.needsUpdate = true;
 
-		this._scene = new THREE.Scene();
-		this._camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 4 );
-		this._camera.position.set( 0, 0, 2 );
-		this._geometry = new THREE.PlaneGeometry( 2, 2 );
-		this._material = sampleMaterial;
-		this._mesh = new THREE.Mesh( this._geometry, this._material );
-		this._scene.add( this._mesh );
-		if ( this._light ) this._scene.add( this._light );
-		if ( this._targetMode === 'iblIndirect' || this._targetMode === 'iblIndirectRadiance' || this._targetMode === 'iblIndirectIrradiance' || this._targetMode === 'iblIncoming' || this._targetMode === 'iblIrradiance' ) {
+		const scene = new THREE.Scene();
+		const camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 4 );
+		camera.position.set( 0, 0, 2 );
+		const geometry = new THREE.PlaneGeometry( 2, 2 );
+		const mesh = new THREE.Mesh( geometry, sampleMaterial );
+		scene.add( mesh );
+		if ( light ) scene.add( light );
+		if ( targetMode === 'iblIndirect' || targetMode === 'iblIndirectRadiance' || targetMode === 'iblIndirectIrradiance' || targetMode === 'iblIncoming' || targetMode === 'iblIrradiance' ) {
 
-			this._scene.environment = this.environment;
+			scene.environment = this.environment;
 
 		}
 
-		this._target = createTeacherRenderTarget( this._atlasWidth, this._atlasHeight );
+		const target = createTeacherRenderTarget( this._atlasWidth, this._atlasHeight );
+
+		return { scene, camera, geometry, material: sampleMaterial, mesh, light, target };
 
 	}
 
 	_createLight() {
 
-		this._light = new THREE.DirectionalLight( 0xffffff, 1 );
-		this._light.position.set( 0, 0, 1 );
-		return this._light;
+		const light = new THREE.DirectionalLight( 0xffffff, 1 );
+		light.position.set( 0, 0, 1 );
+		return light;
 
 	}
 
@@ -329,9 +346,9 @@ class NeuralAppearanceTeacherEvaluator {
 
 	}
 
-	async _renderAndRead() {
+	async _renderAndRead( bundle ) {
 
-		return renderAndReadTeacher( this.renderer, this._scene, this._camera, this._target, this._atlasWidth, this._atlasHeight );
+		return renderAndReadTeacher( this.renderer, bundle.scene, bundle.camera, bundle.target, this._atlasWidth, this._atlasHeight );
 
 	}
 

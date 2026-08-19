@@ -371,10 +371,6 @@
 				showNeuralMaterial: queryParams.get( 'showNeuralMaterial' ) !== 'false',
 				intensity: readNumberQuery( 'intensity', 1 ),
 				emissiveIntensity: readNumberQuery( 'emissiveIntensity', 1 ),
-				directLighting: queryParams.get( 'directLighting' ) !== '0',
-				environmentLighting: queryParams.get( 'environmentLighting' ) !== '0',
-				environmentIntensity: readNumberQuery( 'environmentIntensity', 1 ),
-				environmentRotation: readNumberQuery( 'environmentRotation', 0 ),
 				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
 				seed: readNumberQuery( 'seed', 1 )
 			};
@@ -414,18 +410,6 @@
 
 				if ( mesh ) mesh.rotation.y = y;
 				if ( neuralMesh ) neuralMesh.rotation.y = y;
-
-			};
-
-			window.__neuralAppearanceSetLighting = ( lighting ) => {
-
-				params.directLighting = lighting !== 'environment';
-				params.environmentLighting = lighting !== 'direct';
-				updateLighting();
-				return {
-					directLighting: params.directLighting,
-					environmentLighting: params.environmentLighting
-				};
 
 			};
 
@@ -566,10 +550,9 @@
 				viewFolder.add( params, 'emissiveIntensity', 0, 3, 0.01 ).name( 'emissive intensity' ).onChange( updateView );
 				// No "lighting" GUI folder: the debug-view render modes (normal,
 				// reflection, roughness, irradiance, ibl, iblRadiance,
-				// iblIrradiance) cover manual lighting inspection now. The
-				// underlying params/updateLighting()/applyLights() stay wired
-				// up programmatically for window.__neuralAppearanceSetLighting
-				// (used by e2e/screenshot tooling), just not exposed as controls.
+				// iblIrradiance) cover manual lighting inspection now, so direct
+				// + environment lighting are just always both on (see
+				// applyLights()) except where a debug view isolates IBL.
 				updateTrainingEstimate();
 
 				builtInMaterial.addEventListener( 'change', onBuiltInMaterialSelected );
@@ -1522,13 +1505,11 @@
 
 				for ( const light of directLights ) {
 
-					light.intensity = isolateIbl === false && params.directLighting ? light.userData.baseIntensity : 0;
+					light.intensity = isolateIbl === false ? light.userData.baseIntensity : 0;
 
 				}
 
-				scene.environment = params.environmentLighting || isolateIbl ? environmentMap : null;
-				scene.environmentIntensity = params.environmentIntensity;
-				scene.environmentRotation.y = params.environmentRotation;
+				scene.environment = environmentMap;
 
 			}
 

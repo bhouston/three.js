@@ -91,6 +91,45 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'caches per-target-mode teacher resources instead of disposing/rebuilding on every mode switch', async ( assert ) => {
+
+				const renderer = {
+					isWebGPURenderer: true,
+					toneMapping: 0,
+					init: async () => {},
+					getRenderTarget: () => null,
+					getClearAlpha: () => 1,
+					getClearColor() {},
+					setClearColor() {},
+					setRenderTarget() {},
+					render() {},
+					readRenderTargetPixelsAsync: async ( target, x, y, width, height ) => new Uint16Array( width * height * 4 )
+				};
+
+				const material = { isMeshPhysicalNodeMaterial: true, clone: () => material };
+				const teacher = createGpuMaterialTeacher( material, renderer, { batchSize: 4, environment: {} } );
+
+				let buildCount = 0;
+				const originalCreateResources = teacher._createResources.bind( teacher );
+				teacher._createResources = ( targetMode ) => {
+
+					buildCount ++;
+					return originalCreateResources( targetMode );
+
+				};
+
+				const sample = { uv: [ 0.5, 0.5 ], wi: [ 0, 0, 1 ], wo: [ 0, 0, 1 ], normal: [ 0, 0, 1 ], tangent: [ 1, 0, 0 ], bitangent: [ 0, 1, 0 ] };
+
+				await teacher.evaluateBatch( [ sample ], 'emission' );
+				await teacher.evaluateBatch( [ sample ], 'iblQuery' );
+				await teacher.evaluateBatch( [ sample ], 'emission' );
+				await teacher.evaluateBatch( [ sample ], 'iblQuery' );
+
+				assert.strictEqual( buildCount, 2, 'builds each target-mode bundle exactly once, on first use' );
+				assert.strictEqual( teacher._modeBundles.size, 2, 'keeps both bundles cached simultaneously' );
+
+			} );
+
 		} );
 
 	} );

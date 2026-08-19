@@ -167,7 +167,7 @@ class NeuralAppearanceTrainer {
 			renderer.compute( adamWeightsNode );
 			renderer.compute( adamLatentsNode );
 
-			const shouldSync = onProgress !== null || ( iteration === settings.iterations - 1 );
+			const shouldSync = onProgress !== null && ( iteration % 4 === 0 || iteration === settings.iterations - 1 );
 			if ( shouldSync ) {
 
 				await gpuModel.syncToCPU( model, renderer );
@@ -230,7 +230,7 @@ class NeuralAppearanceTrainer {
 			renderer.compute( accumulateIBLGradientNormNode );
 			renderer.compute( adamIBLWeightsNode );
 
-			const shouldSync = onProgress !== null || ( iblIteration === iblIterations - 1 );
+			const shouldSync = onProgress !== null && ( iblIteration % 4 === 0 || iblIteration === iblIterations - 1 );
 			if ( shouldSync ) {
 
 				await gpuModel.syncToCPU( model, renderer );

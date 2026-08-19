@@ -10,12 +10,32 @@ import {
 } from './NeuralAppearanceTeacherAtlas.js';
 import {
 	readSamplePixel,
-	renderAndReadTeacher
+	renderAndReadTeacherAttachments
 } from './NeuralAppearanceTeacherReadback.js';
 
 const DEFAULT_BATCH_SIZE = 1024;
 const DEFAULT_TILE_SIZE = 8;
 const DEFAULT_UV_GRADIENT_SCALE = 1 / 1024;
+
+// Maps a public single-purpose targetMode onto the merged MRT render group it
+// shares a draw call with, plus the name/size of its attachment within that
+// group's output. evaluateBatch()'s per-call contract (a flat array for the
+// requested mode) is unchanged -- see _evaluateGrouped() for how this is used
+// to serve several modes from one render+readback when they're requested
+// back-to-back for the *same* sample batch, which is how
+// NeuralAppearanceSampler.js already calls them (assignTeacherTargets then
+// assignAuxiliaryTeacherTargets share one `samples` array; the three
+// evaluateBatch(teacherSamples, ...) IBL-probe calls in
+// assignIBLTeacherTargets share another). Modes not listed here (opacity,
+// iblIndirectRadiance, iblIndirectIrradiance) keep their own single-purpose
+// pass -- see NeuralAppearanceTeacherEvaluator._createResources() for why.
+const GROUP_BY_MODE = {
+	brdf: { groupId: 'direct', channel: 'output', size: 3 },
+	emission: { groupId: 'direct', channel: 'emission', size: 3 },
+	iblQuery: { groupId: 'iblProbe', channel: 'query', size: 4 },
+	iblIncoming: { groupId: 'iblProbe', channel: 'incoming', size: 3 },
+	iblIrradiance: { groupId: 'iblProbe', channel: 'irradiance', size: 3 }
+};
 
 class NeuralAppearanceTeacherEvaluator {
 
@@ -65,6 +85,14 @@ class NeuralAppearanceTeacherEvaluator {
 		this._sampleTextures = null;
 		this._initialized = false;
 
+		// One-slot cache for the most recently rendered MRT group (see
+		// GROUP_BY_MODE): if the next evaluateBatch() call requests a mode
+		// from the *same* group for the *same* `samples` array reference, its
+		// result is already in hand and no render/readback is needed at all.
+		this._lastGroupId = null;
+		this._lastGroupSamples = null;
+		this._lastGroupResults = null;
+
 	}
 
 	async init() {
@@ -106,11 +134,71 @@ class NeuralAppearanceTeacherEvaluator {
 	async evaluateBatch( samples, targetMode = 'brdf' ) {
 
 		if ( this._initialized === false ) await this.init();
-
-		const bundle = this._getModeBundle( targetMode );
-
 		if ( samples.length === 0 ) return [];
 
+		const groupInfo = GROUP_BY_MODE[ targetMode ];
+
+		return groupInfo ? this._evaluateGrouped( samples, targetMode, groupInfo ) : this._evaluateUngrouped( samples, targetMode );
+
+	}
+
+	// Modes that share an MRT render group (see GROUP_BY_MODE): if the
+	// immediately preceding call already rendered this group for this exact
+	// `samples` array, its results are reused as-is -- no render/readback.
+	// Otherwise renders the whole group once (all of its channels, batched
+	// the same way a single-mode pass would be) and caches every mode's
+	// slice of it, not just the one requested.
+	async _evaluateGrouped( samples, targetMode, groupInfo ) {
+
+		if ( this._lastGroupId === groupInfo.groupId && this._lastGroupSamples === samples ) {
+
+			return this._lastGroupResults[ targetMode ];
+
+		}
+
+		const bundle = this._getModeBundle( groupInfo.groupId );
+		const modesInGroup = Object.keys( GROUP_BY_MODE ).filter( ( mode ) =>
+			GROUP_BY_MODE[ mode ].groupId === groupInfo.groupId && bundle.channelNames.includes( GROUP_BY_MODE[ mode ].channel )
+		);
+
+		const results = {};
+		for ( const mode of modesInGroup ) results[ mode ] = new Array( samples.length );
+
+		for ( let offset = 0; offset < samples.length; offset += this.batchSize ) {
+
+			const batch = samples.slice( offset, offset + this.batchSize );
+			this._uploadSamples( batch );
+
+			const pixelsByChannel = await this._renderAndRead( bundle );
+
+			for ( let i = 0; i < batch.length; i ++ ) {
+
+				for ( const mode of modesInGroup ) {
+
+					const { channel, size } = GROUP_BY_MODE[ mode ];
+					const pixel = this._readSamplePixel( pixelsByChannel[ channel ], i );
+					results[ mode ][ offset + i ] = pixel.slice( 0, size );
+
+				}
+
+			}
+
+		}
+
+		this._lastGroupId = groupInfo.groupId;
+		this._lastGroupSamples = samples;
+		this._lastGroupResults = results;
+
+		return results[ targetMode ];
+
+	}
+
+	// Modes with no merge group -- each gets its own single-channel pass, as
+	// before Phase 2 (Phase 1's per-mode bundle cache still applies).
+	async _evaluateUngrouped( samples, targetMode ) {
+
+		const bundle = this._getModeBundle( targetMode );
+		const channel = bundle.channelNames[ 0 ];
 		const targets = new Array( samples.length );
 
 		for ( let offset = 0; offset < samples.length; offset += this.batchSize ) {
@@ -118,12 +206,12 @@ class NeuralAppearanceTeacherEvaluator {
 			const batch = samples.slice( offset, offset + this.batchSize );
 			this._uploadSamples( batch );
 
-			const pixels = await this._renderAndRead( bundle );
+			const pixelsByChannel = await this._renderAndRead( bundle );
 
 			for ( let i = 0; i < batch.length; i ++ ) {
 
-				const pixel = this._readSamplePixel( pixels, i );
-				targets[ offset + i ] = targetMode === 'iblQuery' ? pixel.slice( 0, 4 ) : pixel.slice( 0, 3 );
+				const pixel = this._readSamplePixel( pixelsByChannel[ channel ], i );
+				targets[ offset + i ] = pixel.slice( 0, 3 );
 
 			}
 
@@ -157,6 +245,9 @@ class NeuralAppearanceTeacherEvaluator {
 
 		this._sampleTextures = null;
 		this._initialized = false;
+		this._lastGroupId = null;
+		this._lastGroupSamples = null;
+		this._lastGroupResults = null;
 
 	}
 
@@ -192,7 +283,11 @@ class NeuralAppearanceTeacherEvaluator {
 
 	}
 
-	_createResources( targetMode ) {
+	// `key` is either a merge-group id from GROUP_BY_MODE ('direct',
+	// 'iblProbe') or, for modes with no merge group, the targetMode itself
+	// ('opacity', 'iblIndirectRadiance', 'iblIndirectIrradiance'). Either way
+	// it doubles as the cache key in _modeBundles / _getModeBundle().
+	_createResources( key ) {
 
 		const nodes = this._atlasNodes;
 
@@ -205,22 +300,40 @@ class NeuralAppearanceTeacherEvaluator {
 		] ) );
 
 		let light = null;
+		let channelNames;
+		let usesEnvironment = false;
 
-		if ( targetMode === 'brdf' ) {
+		if ( key === 'direct' ) {
 
+			// Merges the direct-lit BRDF color ('brdf') with the emission
+			// readout ('emission', when supported) into a single MRT draw --
+			// both leave alpha-testing at the teacher material's default, so
+			// they discard identically. Opacity deliberately stays its own
+			// pass below: it needs alpha-testing disabled to read a value
+			// even where this draw would discard the fragment as masked-out.
 			light = this._createLight();
 			sampleMaterial.lightsNode = TSL.lights( [ light ] ).context( {
 				lightingModel: new NeuralTeacherLightingModel( sampleMaterial, nodes.wi )
 			} );
 
-		} else if ( targetMode === 'emission' ) {
+			channelNames = [ 'output' ];
 
-			const emission = sampleMaterial.emissiveNode || TSL.vec3( 0 );
-			sampleMaterial.lights = false;
-			sampleMaterial.lightsNode = TSL.lights( [] );
-			sampleMaterial.outputNode = TSL.vec4( emission, 1 );
+			if ( this.supportsEmission ) {
 
-		} else if ( targetMode === 'opacity' ) {
+				// Only reach for mrtNode when there's more than one attachment to
+				// name -- MRTNode.setup() matches outputs to render-target
+				// textures *by name* (see the naming note near the RenderTarget
+				// creation below), which the plain single-attachment path
+				// doesn't set up (and doesn't need to: it just lets the
+				// material's default output pipeline write straight to
+				// attachment 0, exactly like the un-merged 'brdf' pass used to).
+				const emission = sampleMaterial.emissiveNode || TSL.vec3( 0 );
+				sampleMaterial.mrtNode = TSL.mrt( { output: TSL.output, emission: TSL.vec4( emission, 1 ) } );
+				channelNames.push( 'emission' );
+
+			}
+
+		} else if ( key === 'opacity' ) {
 
 			const opacity = sampleMaterial.opacityNode || TSL.float( 1 );
 			sampleMaterial.lights = false;
@@ -228,54 +341,48 @@ class NeuralAppearanceTeacherEvaluator {
 			sampleMaterial.alphaTest = 0;
 			sampleMaterial.alphaTestNode = null;
 			sampleMaterial.outputNode = TSL.vec4( opacity, opacity, opacity, 1 );
+			channelNames = [ 'opacity' ];
 
-		} else if ( targetMode === 'iblQuery' || targetMode === 'iblIncoming' ) {
+		} else if ( key === 'iblProbe' ) {
 
+			if ( this.environment === null ) {
+
+				throw new Error( 'THREE.NeuralAppearanceTeacherEvaluator: An environment texture is required for IBL probe sampling.' );
+
+			}
+
+			// Merges the three IBL-query-style readouts ('iblQuery',
+			// 'iblIncoming', 'iblIrradiance') into one MRT draw: all three
+			// leave lights=false and don't touch alpha-testing, so they
+			// discard identically, and 'iblIncoming' already depends on
+			// 'iblQuery's direction/roughness -- computed once and shared
+			// here rather than recomputed per pass.
 			const query = createTeacherIBLQueryNodes( sampleMaterial );
 			sampleMaterial.lights = false;
 			sampleMaterial.lightsNode = TSL.lights( [] );
 
-			if ( targetMode === 'iblQuery' ) {
-
-				sampleMaterial.outputNode = TSL.vec4( query.radianceDir, query.roughness );
-
-			} else {
-
-				if ( this.environment === null ) {
-
-					throw new Error( 'THREE.NeuralAppearanceTeacherEvaluator: An environment texture is required for IBL incoming sampling.' );
-
-				}
-
-				const envNode = TSL.pmremTexture( this.environment );
-				const incoming = envNode.context( {
-					getUV: () => query.radianceDir.transformDirection( TSL.cameraWorldMatrix ),
-					getTextureLevel: () => query.roughness
-				} );
-				sampleMaterial.outputNode = TSL.vec4( incoming, 1 );
-
-			}
-
-		} else if ( targetMode === 'iblIrradiance' ) {
-
-			if ( this.environment === null ) {
-
-				throw new Error( 'THREE.NeuralAppearanceTeacherEvaluator: An environment texture is required for IBL irradiance sampling.' );
-
-			}
-
+			const envNode = TSL.pmremTexture( this.environment );
+			const incoming = envNode.context( {
+				getUV: () => query.radianceDir.transformDirection( TSL.cameraWorldMatrix ),
+				getTextureLevel: () => query.roughness
+			} );
 			// Incoming PMREM irradiance (N, mip 1). Training input only; outgoing
 			// IBL is sampled with iblIndirect / PhysicalLightingModel.
-			sampleMaterial.lights = false;
-			sampleMaterial.lightsNode = TSL.lights( [] );
-			const envNode = TSL.pmremTexture( this.environment );
 			const irradiance = envNode.context( {
 				getUV: () => TSL.normalWorld,
 				getTextureLevel: () => TSL.float( 1 )
 			} );
-			sampleMaterial.outputNode = TSL.vec4( irradiance, 1 );
 
-		} else if ( targetMode === 'iblIndirect' || targetMode === 'iblIndirectRadiance' || targetMode === 'iblIndirectIrradiance' ) {
+			sampleMaterial.mrtNode = TSL.mrt( {
+				query: TSL.vec4( query.radianceDir, query.roughness ),
+				incoming: TSL.vec4( incoming, 1 ),
+				irradiance: TSL.vec4( irradiance, 1 )
+			} );
+
+			channelNames = [ 'query', 'incoming', 'irradiance' ];
+			usesEnvironment = true;
+
+		} else if ( key === 'iblIndirectRadiance' || key === 'iblIndirectIrradiance' ) {
 
 			if ( this.environment === null ) {
 
@@ -283,9 +390,7 @@ class NeuralAppearanceTeacherEvaluator {
 
 			}
 
-			const isolate = targetMode === 'iblIndirectRadiance' ? 'radiance' :
-				targetMode === 'iblIndirectIrradiance' ? 'irradiance' :
-					'full';
+			const isolate = key === 'iblIndirectRadiance' ? 'radiance' : 'irradiance';
 
 			sampleMaterial.lightsNode = TSL.lights( [] ).context( {
 				lightingModel: new NeuralTeacherIBLLightingModel( sampleMaterial, isolate )
@@ -304,9 +409,12 @@ class NeuralAppearanceTeacherEvaluator {
 
 			};
 
+			channelNames = [ key ];
+			usesEnvironment = true;
+
 		} else {
 
-			throw new Error( `THREE.NeuralAppearanceTeacherEvaluator: Unsupported target mode "${ targetMode }".` );
+			throw new Error( `THREE.NeuralAppearanceTeacherEvaluator: Unsupported target mode "${ key }".` );
 
 		}
 
@@ -320,15 +428,15 @@ class NeuralAppearanceTeacherEvaluator {
 		const mesh = new THREE.Mesh( geometry, sampleMaterial );
 		scene.add( mesh );
 		if ( light ) scene.add( light );
-		if ( targetMode === 'iblIndirect' || targetMode === 'iblIndirectRadiance' || targetMode === 'iblIndirectIrradiance' || targetMode === 'iblIncoming' || targetMode === 'iblIrradiance' ) {
+		if ( usesEnvironment ) scene.environment = this.environment;
 
-			scene.environment = this.environment;
+		// MRTNode matches each mrtNode output by attachment *name* (see
+		// THREE.MRTNode#setup), so multi-channel bundles need their render
+		// target's textures named to match; single-channel bundles just use
+		// outputNode directly and don't need MRT/naming at all.
+		const target = createTeacherRenderTarget( this._atlasWidth, this._atlasHeight, channelNames.length > 1 ? channelNames : null );
 
-		}
-
-		const target = createTeacherRenderTarget( this._atlasWidth, this._atlasHeight );
-
-		return { scene, camera, geometry, material: sampleMaterial, mesh, light, target };
+		return { scene, camera, geometry, material: sampleMaterial, mesh, light, target, channelNames };
 
 	}
 
@@ -346,9 +454,20 @@ class NeuralAppearanceTeacherEvaluator {
 
 	}
 
+	// Renders bundle.scene once and reads back every one of its named
+	// attachments from that single draw, returned as { [channelName]: pixels }.
 	async _renderAndRead( bundle ) {
 
-		return renderAndReadTeacher( this.renderer, bundle.scene, bundle.camera, bundle.target, this._atlasWidth, this._atlasHeight );
+		const textureIndices = bundle.channelNames.map( ( _name, i ) => i );
+		const attachments = await renderAndReadTeacherAttachments( this.renderer, bundle.scene, bundle.camera, bundle.target, this._atlasWidth, this._atlasHeight, textureIndices );
+
+		const pixelsByChannel = {};
+		bundle.channelNames.forEach( ( name, i ) => {
+
+			pixelsByChannel[ name ] = attachments[ i ];
+
+		} );
+		return pixelsByChannel;
 
 	}
 

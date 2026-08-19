@@ -18,17 +18,36 @@ function computeAtlasDimensions( capacity, tileSize, alignment = 16 ) {
 
 }
 
-function createTeacherRenderTarget( width, height ) {
+// `channelNames`, when given, names each color attachment (`target.textures[i].name`)
+// so a `mrt()` output dictionary using those same keys can be matched to the
+// right attachment (see THREE.MRTNode#setup, which looks attachments up by name).
+// A single-attachment target (the common case) doesn't need names.
+function createTeacherRenderTarget( width, height, channelNames = null ) {
 
-	return new THREE.RenderTarget( width, height, {
+	const count = channelNames ? channelNames.length : 1;
+
+	const target = new THREE.RenderTarget( width, height, {
 		type: THREE.HalfFloatType,
 		format: THREE.RGBAFormat,
 		colorSpace: THREE.NoColorSpace,
 		minFilter: THREE.NearestFilter,
 		magFilter: THREE.NearestFilter,
 		depthBuffer: false,
-		stencilBuffer: false
+		stencilBuffer: false,
+		count
 	} );
+
+	if ( channelNames ) {
+
+		for ( let i = 0; i < channelNames.length; i ++ ) {
+
+			target.textures[ i ].name = channelNames[ i ];
+
+		}
+
+	}
+
+	return target;
 
 }
 

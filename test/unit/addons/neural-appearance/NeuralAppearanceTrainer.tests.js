@@ -120,13 +120,53 @@ export default QUnit.module( 'Addons', () => {
 
 				const sample = { uv: [ 0.5, 0.5 ], wi: [ 0, 0, 1 ], wo: [ 0, 0, 1 ], normal: [ 0, 0, 1 ], tangent: [ 1, 0, 0 ], bitangent: [ 0, 1, 0 ] };
 
-				await teacher.evaluateBatch( [ sample ], 'emission' );
+				// 'opacity' (ungrouped) and 'iblQuery' (part of the 'iblProbe' MRT
+				// group) exercise two independently-cached bundle keys without
+				// touching the 'direct' (brdf-lit) group, which needs a real
+				// WebGPU-registered PhysicalLightingModel this mock renderer/
+				// material can't provide.
+				await teacher.evaluateBatch( [ sample ], 'opacity' );
 				await teacher.evaluateBatch( [ sample ], 'iblQuery' );
-				await teacher.evaluateBatch( [ sample ], 'emission' );
+				await teacher.evaluateBatch( [ sample ], 'opacity' );
 				await teacher.evaluateBatch( [ sample ], 'iblQuery' );
 
 				assert.strictEqual( buildCount, 2, 'builds each target-mode bundle exactly once, on first use' );
 				assert.strictEqual( teacher._modeBundles.size, 2, 'keeps both bundles cached simultaneously' );
+
+			} );
+
+			QUnit.test( 'merges related IBL-probe target modes into one MRT render+readback', async ( assert ) => {
+
+				const renderCalls = [];
+				const renderer = {
+					isWebGPURenderer: true,
+					toneMapping: 0,
+					init: async () => {},
+					getRenderTarget: () => null,
+					getClearAlpha: () => 1,
+					getClearColor() {},
+					setClearColor() {},
+					setRenderTarget() {},
+					render() {
+
+						renderCalls.push( true );
+
+					},
+					readRenderTargetPixelsAsync: async ( target, x, y, width, height ) => new Uint16Array( width * height * 4 )
+				};
+
+				const material = { isMeshPhysicalNodeMaterial: true, clone: () => material };
+				const teacher = createGpuMaterialTeacher( material, renderer, { batchSize: 4, environment: {} } );
+
+				const sample = { uv: [ 0.5, 0.5 ], wi: [ 0, 0, 1 ], wo: [ 0, 0, 1 ], normal: [ 0, 0, 1 ], tangent: [ 1, 0, 0 ], bitangent: [ 0, 1, 0 ] };
+				const samples = [ sample ];
+
+				await teacher.evaluateBatch( samples, 'iblQuery' );
+				await teacher.evaluateBatch( samples, 'iblIncoming' );
+				await teacher.evaluateBatch( samples, 'iblIrradiance' );
+
+				assert.strictEqual( renderCalls.length, 1, 'renders the shared IBL probe group once for the same sample batch, not once per requested mode' );
+				assert.strictEqual( teacher._modeBundles.size, 1, 'builds a single merged bundle for the whole iblProbe group' );
 
 			} );
 

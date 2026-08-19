@@ -59,6 +59,19 @@ const CHANNELS = [
 
 const MAX_TOTAL_CHANNELS = CHANNELS.reduce( ( sum, c ) => sum + c.size, 0 ); // 24, if every channel is active
 
+/**
+ * Debug-only views of the mesh's raw tangent-space frame itself
+ * (`tangentWorld`/`bitangentWorld`) - not trained channels, just the
+ * geometry-derived basis every 'tanh'-activated normal/clearcoatNormal/
+ * anisotropy channel is defined relative to. Both the teacher
+ * (buildChannelPreviewMaterials) and the neural material (setDebugView)
+ * expose these identically so a "normal" debug-view mismatch between the
+ * two can be isolated to either the trained (dx, dy) content or this
+ * shared frame - if *this* view already disagrees, the bug is in how the
+ * frame itself is built/consumed, not in anything the network learned.
+ */
+const FRAME_VIEWS = [ 'tangent', 'bitangent' ];
+
 function getChannel( key ) {
 
 	const channel = CHANNELS.find( ( c ) => c.key === key );
@@ -145,4 +158,4 @@ function previewColor( valueNode, channel, alreadyEncoded ) {
 
 }
 
-export { CHANNELS, MAX_TOTAL_CHANNELS, getChannel, layoutChannels, buildChannelActivations, previewColor };
+export { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, getChannel, layoutChannels, buildChannelActivations, previewColor };

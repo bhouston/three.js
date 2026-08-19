@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { float, vec2, vec3, vec4 } from 'three/tsl';
+import { bitangentWorld, float, tangentWorld, transformNormalToView, vec2, vec3, vec4 } from 'three/tsl';
 import { bakeColorNodeToTexture } from '../neural-texture/NeuralTextureSource.js';
-import { CHANNELS, layoutChannels, previewColor } from './NeuralMaterialFormat.js';
+import { CHANNELS, FRAME_VIEWS, layoutChannels, previewColor } from './NeuralMaterialFormat.js';
 
 function resolveScalarNode( material, nodeKey, propertyKey, fallback ) {
 
@@ -204,7 +204,32 @@ function flattenChannelComponents( activeChannels, channelNodes ) {
 			// tangent-space normalNode); z is deliberately dropped here and
 			// reconstructed at consumption time instead (see
 			// NeuralMaterialNodeMaterial.reconstructFinalNormal).
-			for ( let i = 0; i < channel.size; i ++ ) components.push( value[ axes[ i ] ] );
+			for ( let i = 0; i < channel.size; i ++ ) {
+
+				let component = value[ axes[ i ] ];
+
+				// The normal/clearcoatNormal offset is baked on a flat quad
+				// whose UV.v gets flipped before computeTangents() runs (see
+				// bakeColorNodeToTexture in NeuralTextureSource.js - that flip
+				// is required for correct scalar-channel UV round-tripping),
+				// which flips that quad's bitangent handedness relative to
+				// any real mesh's own (un-flipped) tangent basis. Since the
+				// quad sits at the identity transform, its tangent/bitangent/
+				// normal are otherwise meant to coincide with world X/Y/Z, so
+				// the baked y here is the *negated* tangent-space offset the
+				// network is meant to learn. Negate it back so the trained
+				// (dx, dy) matches the true tangent-space convention that
+				// NeuralMaterialNodeMaterial.reconstructFinalNormal() blends
+				// through a real mesh's un-flipped tangentWorld/bitangentWorld
+				// at inference time - without this, the neural material's
+				// reconstructed normal disagrees in sign with the teacher's
+				// live-evaluated one (visible as a mismatched "normal" debug
+				// view between the two).
+				if ( i === 1 && ( channel.key === 'normal' || channel.key === 'clearcoatNormal' ) ) component = component.negate();
+
+				components.push( component );
+
+			}
 
 		}
 
@@ -281,13 +306,53 @@ function buildChannelPreviewMaterials( material ) {
 	const channelNodes = resolveMaterialChannelNodes( material );
 	const materials = { shaded: material };
 
-	for ( const channel of CHANNELS ) {
+	// Every preview below is built as a *clone* of the real (MeshPhysical-
+	// NodeMaterial-derived) `material`, not a bare `THREE.NodeMaterial()`.
+	// That matters specifically for `bitangentWorld`: it's never a stored
+	// vertex attribute (only `tangent.xyz` + a handedness sign are - see
+	// TangentUtils/Bitangent.js), so it's *always* re-derived per pixel as
+	// normalWorld.cross(tangentWorld) inside a `.once(['NORMAL'])`-cached
+	// helper that only gets wired up to a real per-frame varying when the
+	// material actually runs a normal-mapping build pass. A bare
+	// `NodeMaterial` with only `colorNode` set never triggers that pass, so
+	// its `bitangentWorld` was observed to freeze at its first-build value
+	// instead of tracking the mesh's rotation - `tangentWorld` doesn't have
+	// this problem (it comes straight off the stored vertex attribute), and
+	// `NeuralMaterialNodeMaterial` doesn't either, since it's a full
+	// MeshPhysicalNodeMaterial subclass that always runs that setup
+	// regardless of `lights`. Cloning `material` here (which already has
+	// `normalNode`/`clearcoatNormalNode` set) gives every preview the same
+	// class and the same setup path, so `bitangentWorld` behaves exactly as
+	// it does in the real 'shaded' render and in the neural material.
+	function clonePreviewMaterial() {
 
-		const previewMaterial = new THREE.NodeMaterial();
+		const previewMaterial = material.clone();
 		previewMaterial.lights = false;
 		previewMaterial.toneMapped = false;
+		return previewMaterial;
+
+	}
+
+	for ( const channel of CHANNELS ) {
+
+		const previewMaterial = clonePreviewMaterial();
 		previewMaterial.colorNode = vec4( previewColor( channelNodes[ channel.key ], channel, false ), 1 );
 		materials[ channel.key ] = previewMaterial;
+
+	}
+
+	// Debug-only views of the raw tangentWorld/bitangentWorld frame itself
+	// (see FRAME_VIEWS's doc comment) - view-space, same tanh-vector color
+	// convention as the 'normal'/'clearcoatNormal' channels above, so this
+	// is directly comparable against NeuralMaterialNodeMaterial's own
+	// 'tangent'/'bitangent' debug views.
+	const frameNodes = { tangent: tangentWorld, bitangent: bitangentWorld };
+
+	for ( const key of FRAME_VIEWS ) {
+
+		const previewMaterial = clonePreviewMaterial();
+		previewMaterial.colorNode = vec4( previewColor( transformNormalToView( frameNodes[ key ] ), { activation: 'tanh', size: 3 }, false ), 1 );
+		materials[ key ] = previewMaterial;
 
 	}
 

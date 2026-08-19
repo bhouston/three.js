@@ -494,6 +494,18 @@
 				controls.update();
 
 				const geometry = new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 );
+
+				// Scale UV.x (the tubular/length direction) so tiling textures
+				// repeat instead of stretching once around the knot's long path.
+				const uvAttribute = geometry.attributes.uv;
+				for ( let i = 0; i < uvAttribute.count; i ++ ) {
+
+					uvAttribute.setX( i, uvAttribute.getX( i ) * 6 );
+
+				}
+
+				uvAttribute.needsUpdate = true;
+
 				geometry.computeTangents();
 				mesh = new THREE.Mesh( geometry, new THREE.MeshPhysicalNodeMaterial( { color: 0x93604a, roughness: 0.45 } ) );
 				mesh.rotation.x = - 0.35;

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { bitangentWorld, float, fract, max, normalWorld, sqrt, tangentWorld, transformNormalToView, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { buildLevelTextures, evaluateNeuralTextureRaw } from '../neural-texture/NeuralTextureNodeMaterial.js';
 import { applyChannelActivation } from '../neural/NeuralOutputActivations.js';
-import { getChannel, previewColor } from './NeuralMaterialFormat.js';
+import { FRAME_VIEWS, getChannel, previewColor } from './NeuralMaterialFormat.js';
 
 /**
  * Turns a trained tangent-space (dx, dy) offset into the mesh's final
@@ -206,6 +206,23 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 			this.lights = true;
 			this.toneMapped = true;
 			if ( this._shadedColorNode ) this.colorNode = this._shadedColorNode;
+
+		} else if ( FRAME_VIEWS.includes( view ) ) {
+
+			// Debug-only views of the raw tangentWorld/bitangentWorld frame
+			// itself, bypassing the trained network entirely - see
+			// FRAME_VIEWS's doc comment in NeuralMaterialFormat.js and
+			// NeuralMaterialSource.buildChannelPreviewMaterials's matching
+			// 'tangent'/'bitangent' entries. Both this mesh and the teacher
+			// mesh share the same geometry (and therefore the same tangent/
+			// bitangent vertex attribute), so this view should be pixel-
+			// identical between the two - if it isn't, the mismatch is in
+			// how the frame is built/consumed here, not in anything the
+			// network learned.
+			this.lights = false;
+			this.toneMapped = false;
+			const frameNode = view === 'tangent' ? tangentWorld : bitangentWorld;
+			this.colorNode = vec4( previewColor( transformNormalToView( frameNode ), { activation: 'tanh', size: 3 }, false ), 1 );
 
 		} else {
 

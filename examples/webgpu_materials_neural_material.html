@@ -121,6 +121,9 @@
 				<option value="uvGrid">UV rainbow waves</option>
 				<option value="lambertRed">Lambert red</option>
 				<option value="emissiveGrid">Emissive rainbow waves</option>
+				<option value="velvetWaveRainbow">Velvet sheen + normal waves + rainbow emissive</option>
+				<option value="brick">Brick wall</option>
+				<option value="roadAggregate">Road aggregate</option>
 				<option value="" disabled>Custom file</option>
 			</select>
 			<button id="openMtlxButton">Open .mtlx</button>
@@ -172,7 +175,7 @@
 			import { NeuralMaterialNodeMaterial } from 'three/addons/neural-material/NeuralMaterialNodeMaterial.js';
 			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/neural-material/NeuralMaterialSource.js';
 			import { computeGridLevels } from 'three/addons/neural-texture/NeuralTextureModel.js';
-			import { CHANNELS, MAX_TOTAL_CHANNELS, getChannel, buildChannelActivations } from 'three/addons/neural-material/NeuralMaterialFormat.js';
+			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, getChannel, buildChannelActivations } from 'three/addons/neural-material/NeuralMaterialFormat.js';
 
 			// On-disk format for this example's own "Save JSON" / "Load JSON"
 			// buttons - deliberately similar in spirit to (top-level format/
@@ -215,7 +218,10 @@
 				velvet: 'neural_train_velvet.mtlx',
 				uvGrid: 'neural_train_uv_grid.mtlx',
 				lambertRed: 'neural_train_lambert_red.mtlx',
-				emissiveGrid: 'neural_train_emissive_grid.mtlx'
+				emissiveGrid: 'neural_train_emissive_grid.mtlx',
+				velvetWaveRainbow: 'neural_train_velvet_wave_rainbow.mtlx',
+				brick: 'neural_train_brick.mtlx',
+				roadAggregate: 'neural_train_road_aggregate.mtlx'
 			};
 
 			const sourceName = document.getElementById( 'sourceName' );
@@ -293,6 +299,18 @@
 				controls.update();
 
 				const geometry = new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 );
+
+				// Scale UV.x (the tubular/length direction) so tiling textures
+				// repeat instead of stretching once around the knot's long path.
+				const uvAttribute = geometry.attributes.uv;
+				for ( let i = 0; i < uvAttribute.count; i ++ ) {
+
+					uvAttribute.setX( i, uvAttribute.getX( i ) * 6 );
+
+				}
+
+				uvAttribute.needsUpdate = true;
+
 				geometry.computeTangents();
 
 				placeholderMaterial = new THREE.MeshPhysicalNodeMaterial( { color: 0x222222, roughness: 0.8 } );
@@ -323,7 +341,7 @@
 				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
 
 				const viewFolder = gui.addFolder( 'view' );
-				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ) ] ).name( 'channel' ).onChange( updateDebugView );
+				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS ] ).name( 'channel' ).onChange( updateDebugView );
 
 				builtInMaterial.addEventListener( 'change', () => loadBuiltInMaterial( builtInMaterial.value ) );
 				openMtlxButton.addEventListener( 'click', () => mtlxFileInput.click() );

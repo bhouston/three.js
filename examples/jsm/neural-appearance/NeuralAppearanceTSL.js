@@ -59,7 +59,7 @@ function evaluateNeuralEmission( material, context = null ) {
 	const output = material.neuralAppearanceData.outputs.emission;
 	const uniforms = material._outputUniforms.emission;
 	const latents = context ? context.latents : fetchLatentCode( material );
-	const decoded = toVec3( evaluateMLP( output.layers, uniforms, latents ) );
+	const decoded = toVec3( evaluateMLPViaFn( `evaluateEmissionHead_${ material.id }`, output.layers, uniforms, latents, 3 ) );
 
 	return applyOutputActivation( decoded, output.outputActivation );
 
@@ -70,7 +70,7 @@ function evaluateNeuralOpacity( material, context = null ) {
 	const output = material.neuralAppearanceData.outputs.opacity;
 	const uniforms = material._outputUniforms.opacity;
 	const latents = context ? context.latents : fetchLatentCode( material );
-	const decoded = evaluateMLP( output.layers, uniforms, latents )[ 0 ];
+	const decoded = evaluateMLPViaFn( `evaluateOpacityHead_${ material.id }`, output.layers, uniforms, latents, 1 )[ 0 ];
 
 	return applyScalarOutputActivation( decoded, output.outputActivation );
 
@@ -89,19 +89,44 @@ function evaluateNeuralIBL( material, envNode, context = null, isolate = 'full' 
 // grid textures and re-running the rotation decoder (buildDecoderFrames)
 // here a second time. Not exported/called outside this module, so its
 // signature is free to change.
+//
+// PERF PROFILING: `material.neuralPerfDebug` (see webgpu_materials_neural_appearance.html's
+// "perf (IBL stages)" GUI folder) can force any of this function's 5 GPU-cost
+// stages -- the iblHead MLP query, the two envNode.context().isolate() PMREM
+// samples, and the indirectRadiance/indirectIrradiance MLP heads -- to be
+// skipped and replaced with a cheap constant, so each stage's frame-time
+// contribution can be measured in isolation. Purely a debugging aid: when
+// `neuralPerfDebug` is unset (the default), every flag below is falsy and
+// this function's shader graph and output are byte-for-byte what they were
+// before this instrumentation was added.
 function evaluateNeuralIBLForTexels( material, envNode, wo, latents, frames, isolate = 'full' ) {
+
+	const perf = material.neuralPerfDebug || {};
 
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const uniforms = material._outputUniforms.ibl;
-	const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize );
-	const query = evaluateMLP( ibl.layers, uniforms, queryInput );
-	const queryDirection = TSL.vec3( query[ 0 ], query[ 1 ], query[ 2 ] ).normalize();
-	const queryRoughness = TSL.float( 1 ).div( TSL.float( 1 ).add( TSL.exp( query[ 3 ].negate() ) ) );
-	const incoming = envNode.context( {
+
+	let queryDirection, queryRoughness;
+
+	if ( perf.skipIblHead ) {
+
+		queryDirection = TSL.vec3( 0, 0, 1 );
+		queryRoughness = TSL.float( 0.5 );
+
+	} else {
+
+		const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize );
+		const query = evaluateMLPViaFn( `evaluateIBLHead_${ material.id }`, ibl.layers, uniforms, queryInput, 4 );
+		queryDirection = TSL.vec3( query[ 0 ], query[ 1 ], query[ 2 ] ).normalize();
+		queryRoughness = TSL.float( 1 ).div( TSL.float( 1 ).add( TSL.exp( query[ 3 ].negate() ) ) );
+
+	}
+
+	const incoming = perf.skipIncomingSample ? TSL.vec3( 0.5 ) : envNode.context( {
 		getUV: () => canonicalToWorldDirection( queryDirection ),
 		getTextureLevel: () => queryRoughness
 	} ).isolate().mul( TSL.materialEnvIntensity );
-	const irradiance = envNode.context( {
+	const irradiance = perf.skipIrradianceSample ? TSL.vec3( 0.5 ) : envNode.context( {
 		getUV: () => canonicalToWorldDirection( TSL.vec3( 0, 0, 1 ) ),
 		getTextureLevel: () => TSL.float( 1 )
 	} ).isolate().mul( TSL.materialEnvIntensity );
@@ -111,13 +136,15 @@ function evaluateNeuralIBLForTexels( material, envNode, wo, latents, frames, iso
 
 	if ( isolate !== 'irradiance' && radianceHead ) {
 
-		outgoing = outgoing.add( evaluateIndirectProbeHead( material, radianceHead, material._outputUniforms.indirectRadiance, latents, wo, incoming ) );
+		outgoing = outgoing.add( perf.skipRadianceHead ? incoming :
+			evaluateIndirectProbeHead( material, radianceHead, material._outputUniforms.indirectRadiance, latents, wo, incoming, 'Radiance' ) );
 
 	}
 
 	if ( isolate !== 'radiance' && irradianceHead ) {
 
-		outgoing = outgoing.add( evaluateIndirectProbeHead( material, irradianceHead, material._outputUniforms.indirectIrradiance, latents, wo, irradiance ) );
+		outgoing = outgoing.add( perf.skipIrradianceHead ? irradiance :
+			evaluateIndirectProbeHead( material, irradianceHead, material._outputUniforms.indirectIrradiance, latents, wo, irradiance, 'Irradiance' ) );
 
 	}
 
@@ -206,7 +233,7 @@ function evaluateLearnedIBLQueryForTexels( material, texel0, texel1, texel2, tex
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
 	const input = projectIBLInput( latents, frames, wo, ibl.inputSize );
-	const output = evaluateMLP( ibl.layers, material._outputUniforms.ibl, input );
+	const output = evaluateMLPViaFn( `evaluateIBLHead_${ material.id }`, ibl.layers, material._outputUniforms.ibl, input, 4 );
 
 	return {
 		direction: TSL.vec3( output[ 0 ], output[ 1 ], output[ 2 ] ).normalize(),
@@ -628,10 +655,10 @@ function projectIndirectProbeInput( latents, wo, probe, inputSize ) {
 
 }
 
-function evaluateIndirectProbeHead( material, head, uniforms, latents, wo, probe ) {
+function evaluateIndirectProbeHead( material, head, uniforms, latents, wo, probe, label ) {
 
 	const input = projectIndirectProbeInput( latents, wo, probe, head.inputSize );
-	const decoded = toVec3( evaluateMLP( head.layers, uniforms, input ) );
+	const decoded = toVec3( evaluateMLPViaFn( `evaluateIndirect${ label }Head_${ material.id }`, head.layers, uniforms, input, 3 ) );
 
 	return applyOutputActivation( decoded, head.outputActivation );
 
@@ -651,6 +678,73 @@ function evaluateMLP( layers, uniforms, inputs ) {
 	}
 
 	return unpackNodeInputs( activations, layers[ layers.length - 1 ].outputSize );
+
+}
+
+// `linearLayerPacked` materializes every layer's output with `.toVar()` (see
+// its own comment) so a deep net's per-layer expressions don't compound into
+// one huge inline tree - but that only actually *frees* those locals if the
+// evaluation happens inside its own `TSL.Fn()` scope, the way
+// createEvaluateNeuralBRDFFn already wraps the BRDF decoder. Call sites that
+// instead call `evaluateMLP` directly inline (no Fn wrapper) accumulate all
+// of that net's materialized locals into the *caller's* scope - the main
+// fragment shader body, for evaluateNeuralIBLForTexels - and when several
+// such nets run side by side there (iblHead + indirectRadiance +
+// indirectIrradiance), their locals all pile up in that one shared scope at
+// once and can blow WGSL's private-address-space budget (observed: "The
+// combined byte size of all variables in the private address space exceeds
+// 8192 bytes", pipeline creation failure, nothing renders).
+//
+// This wraps a single MLP head's evaluation in its own `TSL.Fn()`. so its
+// `.toVar()` locals live and die inside that head's own function scope
+// (compiled once as a real WGSL function, called once here) instead of
+// piling up in the caller's scope alongside every other head's locals. Only
+// suitable for outputSize in {1, 3, 4} (float/vec3/vec4 - what a TSL.Fn can
+// return as a single value); every current MLP head fits one of those.
+function evaluateMLPViaFn( name, layers, uniforms, inputs, outputSize ) {
+
+	const packedInputs = packNodeInputs( inputs );
+	const inputNames = packedInputs.map( ( _, i ) => `in${ i }` );
+
+	const outputType = outputSize === 1 ? 'float' : outputSize === 3 ? 'vec3' :
+		outputSize === 4 ? 'vec4' : null;
+
+	if ( outputType === null ) {
+
+		throw new Error( `THREE.NeuralAppearanceNodeMaterial: evaluateMLPViaFn only supports outputSize 1/3/4 (got ${ outputSize }).` );
+
+	}
+
+	const fn = TSL.Fn( ( args ) => {
+
+		let activations = inputNames.map( n => args[ n ] );
+
+		for ( let i = 0; i < layers.length; i ++ ) {
+
+			const layer = layers[ i ];
+			const layerUniform = uniforms.layers[ i ];
+
+			activations = linearLayerPacked( activations, uniforms.parameters, layerUniform.weightsOffset, layerUniform.biasesOffset, layer.inputSize, layer.outputSize, layer.activation );
+
+		}
+
+		const unpacked = unpackNodeInputs( activations, outputSize );
+
+		if ( outputType === 'float' ) return unpacked[ 0 ];
+		if ( outputType === 'vec3' ) return TSL.vec3( unpacked[ 0 ], unpacked[ 1 ], unpacked[ 2 ] );
+		return TSL.vec4( unpacked[ 0 ], unpacked[ 1 ], unpacked[ 2 ], unpacked[ 3 ] );
+
+	} ).setLayout( {
+		name,
+		type: outputType,
+		inputs: inputNames.map( n => ( { name: n, type: 'vec4' } ) )
+	} );
+
+	const result = fn( ...packedInputs );
+
+	if ( outputType === 'float' ) return [ result ];
+	if ( outputType === 'vec3' ) return [ result.x, result.y, result.z ];
+	return [ result.x, result.y, result.z, result.w ];
 
 }
 
@@ -733,7 +827,14 @@ function linearLayerPacked( inputs, parameters, weightsOffset, biasesOffset, inp
 
 		}
 
-		outputs.push( value );
+		// Materialize each output vector4 into a variable before it's consumed by
+		// the next layer's dot() calls, instead of leaving it as a live expression
+		// that gets re-expanded at every downstream reference. Mirrors the fix
+		// neural-material's evaluateNeuralTextureRaw (NeuralTextureNodeMaterial.js)
+		// applies for the same reason: without it, per-layer expressions compound
+		// across layers into a much larger (and, for a deep enough net, WGSL
+		// parser-recursion-breaking) generated shader.
+		outputs.push( value.toVar() );
 
 	}
 

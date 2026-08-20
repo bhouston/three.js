@@ -24,12 +24,8 @@ import {
 } from '../neural/NeuralGPUTrainingConstants.js';
 import { wrapIndexTSL, createAdamComputeNode } from '../neural/NeuralGPUComputeTSL.js';
 import {
-	IBL_INPUT_SIZE,
 	IBL_OUTPUT_SIZE,
-	INDIRECT_INPUT_SIZE,
 	INDIRECT_OUTPUT_SIZE,
-	LATENT_CHANNELS,
-	DECODER_INPUT_SIZE,
 	CHANNELS_PER_LEVEL
 } from './NeuralAppearanceFormat.js';
 
@@ -69,30 +65,32 @@ function trainIndirectProbeHead( {
 	actIndirectZ2Offset,
 	actIndirectDelta2Offset,
 	actIndirectDelta1Offset,
-	actGradLatentsOffset
+	actGradLatentsOffset,
+	latentChannels,
+	indirectInputSize
 } ) {
 
 	const indirectA0 = actBase.add( int( actIndirectA0Offset ) );
 
-	Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+	Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 		activationsStorage.element( indirectA0.add( c ) ).assign( activationsStorage.element( a0.add( c ) ) );
 
 	} );
 
-	activationsStorage.element( indirectA0.add( LATENT_CHANNELS ) ).assign( wo.x );
-	activationsStorage.element( indirectA0.add( LATENT_CHANNELS + 1 ) ).assign( wo.y );
-	activationsStorage.element( indirectA0.add( LATENT_CHANNELS + 2 ) ).assign( wo.z );
-	activationsStorage.element( indirectA0.add( LATENT_CHANNELS + 3 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset ) ) );
-	activationsStorage.element( indirectA0.add( LATENT_CHANNELS + 4 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 1 ) ) );
-	activationsStorage.element( indirectA0.add( LATENT_CHANNELS + 5 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 2 ) ) );
+	activationsStorage.element( indirectA0.add( latentChannels ) ).assign( wo.x );
+	activationsStorage.element( indirectA0.add( latentChannels + 1 ) ).assign( wo.y );
+	activationsStorage.element( indirectA0.add( latentChannels + 2 ) ).assign( wo.z );
+	activationsStorage.element( indirectA0.add( latentChannels + 3 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset ) ) );
+	activationsStorage.element( indirectA0.add( latentChannels + 4 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 1 ) ) );
+	activationsStorage.element( indirectA0.add( latentChannels + 5 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 2 ) ) );
 
 	Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
 		const val = weightsStorage.element( int( layer0BiasesOffset ).add( j ) ).toVar();
-		const rowOffset = int( layer0WeightsOffset ).add( j.mul( INDIRECT_INPUT_SIZE ) );
+		const rowOffset = int( layer0WeightsOffset ).add( j.mul( indirectInputSize ) );
 
-		Loop( { start: 0, end: INDIRECT_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+		Loop( { start: 0, end: indirectInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 			val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( indirectA0.add( i ) ) ) );
 
@@ -175,9 +173,9 @@ function trainIndirectProbeHead( {
 
 		const delta1_j = activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( j ) );
 		atomicAdd( gradWeightsAtomic.element( int( layer0BiasesOffset ).add( j ) ), int( delta1_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-		const rowOffset = int( layer0WeightsOffset ).add( j.mul( INDIRECT_INPUT_SIZE ) );
+		const rowOffset = int( layer0WeightsOffset ).add( j.mul( indirectInputSize ) );
 
-		Loop( { start: 0, end: INDIRECT_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+		Loop( { start: 0, end: indirectInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 			const a0_i = activationsStorage.element( indirectA0.add( i ) );
 			atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta1_j.mul( a0_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
@@ -186,14 +184,14 @@ function trainIndirectProbeHead( {
 
 	} );
 
-	Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+	Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 		const gradLatent_c = float( 0.0 ).toVar();
 
 		Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
 			const delta1_j = activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( j ) );
-			const w_jc = weightsStorage.element( int( layer0WeightsOffset ).add( j.mul( INDIRECT_INPUT_SIZE ) ).add( c ) );
+			const w_jc = weightsStorage.element( int( layer0WeightsOffset ).add( j.mul( indirectInputSize ) ).add( c ) );
 			gradLatent_c.addAssign( delta1_j.mul( w_jc ) );
 
 		} );
@@ -230,6 +228,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 		iblHiddenSize,
 		supportsEmission,
 		supportsOpacity,
+		latentChannels,
+		decoderInputSize,
+		iblInputSize,
+		indirectInputSize,
 		rotationOffset,
 		layer0WeightsOffset,
 		layer0BiasesOffset,
@@ -366,10 +368,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 				// Raw N (j = 0, 1, 2)
 				Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
-					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j ).mul( LATENT_CHANNELS ) );
+					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j ).mul( latentChannels ) );
 					const r_j = float( 0.0 ).toVar();
 
-					Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
 						const rotW = weightsStorage.element( rotRowOffset.add( c ) );
@@ -396,10 +398,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 				// Raw T (j = 0, 1, 2 for rotation outputs 3, 4, 5)
 				Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
-					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j.add( 3 ) ).mul( LATENT_CHANNELS ) );
+					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j.add( 3 ) ).mul( latentChannels ) );
 					const r_j = float( 0.0 ).toVar();
 
-					Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
 						const rotW = weightsStorage.element( rotRowOffset.add( c ) );
@@ -428,7 +430,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 				const rawB = cross( n, t );
 				const b = rawB.normalize();
 
-				const projBase = actBase.add( int( actA0Offset ) ).add( LATENT_CHANNELS ).add( f.mul( 6 ) );
+				const projBase = actBase.add( int( actA0Offset ) ).add( latentChannels ).add( f.mul( 6 ) );
 				activationsStorage.element( projBase.add( 0 ) ).assign( wi.dot( t ) );
 				activationsStorage.element( projBase.add( 1 ) ).assign( wi.dot( b ) );
 				activationsStorage.element( projBase.add( 2 ) ).assign( wi.dot( n ) );
@@ -438,13 +440,13 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			} );
 
-			// 4. Forward Layer 0 (DECODER_INPUT_SIZE -> hiddenSize)
+			// 4. Forward Layer 0 (decoderInputSize -> hiddenSize)
 			Loop( { start: 0, end: hiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
 				const val = weightsStorage.element( int( layer0BiasesOffset ).add( j ) ).toVar();
-				const rowOffset = int( layer0WeightsOffset ).add( j.mul( DECODER_INPUT_SIZE ) );
+				const rowOffset = int( layer0WeightsOffset ).add( j.mul( decoderInputSize ) );
 
-				Loop( { start: 0, end: DECODER_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+				Loop( { start: 0, end: decoderInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 					const a0_i = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( i ) );
 					const w_ji = weightsStorage.element( rowOffset.add( i ) );
@@ -587,14 +589,14 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			} );
 
-			// 10. Backward Layer 0 (DECODER_INPUT_SIZE -> hiddenSize)
+			// 10. Backward Layer 0 (decoderInputSize -> hiddenSize)
 			Loop( { start: 0, end: hiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
 				const delta1_j = activationsStorage.element( actBase.add( int( actDelta1Offset ) ).add( j ) );
 				atomicAdd( gradWeightsAtomic.element( int( layer0BiasesOffset ).add( j ) ), int( delta1_j.mul( float( FIXED_POINT_SCALE ) ) ) );
 
-				const rowOffset = int( layer0WeightsOffset ).add( j.mul( DECODER_INPUT_SIZE ) );
-				Loop( { start: 0, end: DECODER_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+				const rowOffset = int( layer0WeightsOffset ).add( j.mul( decoderInputSize ) );
+				Loop( { start: 0, end: decoderInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 					const a0_i = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( i ) );
 					const gradW = delta1_j.mul( a0_i );
@@ -604,14 +606,14 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			} );
 
-			// Compute gradA0 (DECODER_INPUT_SIZE floats)
-			Loop( { start: 0, end: DECODER_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+			// Compute gradA0 (decoderInputSize floats)
+			Loop( { start: 0, end: decoderInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 				const gradA0_i = float( 0.0 ).toVar();
 				Loop( { start: 0, end: hiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
 					const delta1_j = activationsStorage.element( actBase.add( int( actDelta1Offset ) ).add( j ) );
-					const w_ji = weightsStorage.element( int( layer0WeightsOffset ).add( j.mul( DECODER_INPUT_SIZE ) ).add( i ) );
+					const w_ji = weightsStorage.element( int( layer0WeightsOffset ).add( j.mul( decoderInputSize ) ).add( i ) );
 					gradA0_i.addAssign( delta1_j.mul( w_ji ) );
 
 				} );
@@ -621,8 +623,8 @@ function createTrainBatchComputeNode( gpuModel ) {
 			} );
 
 			// 11. Shading Frames Backward
-			// Initialize gradLatents with gradA0[0..LATENT_CHANNELS)
-			Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+			// Initialize gradLatents with gradA0[0..latentChannels)
+			Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 				const gradA0_c = activationsStorage.element( actBase.add( int( actGradA0Offset ) ).add( c ) );
 				activationsStorage.element( actBase.add( int( actGradLatentsOffset ) ).add( c ) ).assign( gradA0_c );
@@ -632,7 +634,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 			// Backward through both frames
 			Loop( { start: 0, end: 2, type: 'int', name: 'f', condition: '<' }, ( { f } ) => {
 
-				const inOffset = actBase.add( int( actGradA0Offset ) ).add( LATENT_CHANNELS ).add( f.mul( 6 ) );
+				const inOffset = actBase.add( int( actGradA0Offset ) ).add( latentChannels ).add( f.mul( 6 ) );
 				const gradT_val = activationsStorage.element( inOffset.add( 0 ) );
 				const gradB_val = activationsStorage.element( inOffset.add( 1 ) );
 				const gradN_val = activationsStorage.element( inOffset.add( 2 ) );
@@ -651,10 +653,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 				// Recompute rawN
 				Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
-					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j ).mul( LATENT_CHANNELS ) );
+					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j ).mul( latentChannels ) );
 					const r_j = float( 0.0 ).toVar();
 
-					Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
 						const rotW = weightsStorage.element( rotRowOffset.add( c ) );
@@ -681,10 +683,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 				// Recompute rawT
 				Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
-					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j.add( 3 ) ).mul( LATENT_CHANNELS ) );
+					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j.add( 3 ) ).mul( latentChannels ) );
 					const r_j = float( 0.0 ).toVar();
 
-					Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
 						const rotW = weightsStorage.element( rotRowOffset.add( c ) );
@@ -722,7 +724,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 				Loop( { start: 0, end: 6, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
-					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j ).mul( LATENT_CHANNELS ) );
+					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j ).mul( latentChannels ) );
 					const gradFrameJ = float( 0.0 ).toVar();
 
 					If( j.equal( 0 ), () => {
@@ -751,7 +753,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 					} );
 
-					Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
 						const gradRotW = gradFrameJ.mul( z_c );
@@ -775,9 +777,9 @@ function createTrainBatchComputeNode( gpuModel ) {
 					Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
 						const val = weightsStorage.element( int( emissionBiasesOffset ).add( j ) ).toVar();
-						const rowOffset = int( emissionWeightsOffset ).add( j.mul( LATENT_CHANNELS ) );
+						const rowOffset = int( emissionWeightsOffset ).add( j.mul( latentChannels ) );
 
-						Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+						Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 							const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
 							val.addAssign( weightsStorage.element( rowOffset.add( c ) ).mul( z_c ) );
@@ -799,7 +801,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 						atomicAdd( gradWeightsAtomic.element( int( emissionBiasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
 
-						Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+						Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 							const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
 							atomicAdd( gradWeightsAtomic.element( rowOffset.add( c ) ), int( delta_j.mul( z_c ).mul( float( FIXED_POINT_SCALE ) ) ) );
@@ -824,7 +826,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 					const opTarget = clamp( samplesStorage.element( sampleOffset.add( 16 ) ), float( 0.0 ), float( 1.0 ) );
 					const val = weightsStorage.element( int( opacityBiasesOffset ) ).toVar();
 
-					Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
 						val.addAssign( weightsStorage.element( int( opacityWeightsOffset ).add( c ) ).mul( z_c ) );
@@ -839,7 +841,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 					const delta_op = opPred.sub( opTarget ).mul( sampleWeight ).mul( invBatchUniform );
 					atomicAdd( gradWeightsAtomic.element( int( opacityBiasesOffset ) ), int( delta_op.mul( float( FIXED_POINT_SCALE ) ) ) );
 
-					Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
 						atomicAdd( gradWeightsAtomic.element( int( opacityWeightsOffset ).add( c ) ), int( delta_op.mul( z_c ).mul( float( FIXED_POINT_SCALE ) ) ) );
@@ -854,7 +856,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			}
 
-			// 14. IBL query (IBL_INPUT_SIZE -> H -> 4) and separate radiance/irradiance (INDIRECT_INPUT_SIZE -> H -> 3) heads.
+			// 14. IBL query (iblInputSize -> H -> 4) and separate radiance/irradiance (indirectInputSize -> H -> 3) heads.
 			const iblWeight = samplesStorage.element( sampleOffset.add( 17 ) );
 
 			If( iblWeight.greaterThan( 0.0 ), () => {
@@ -863,25 +865,25 @@ function createTrainBatchComputeNode( gpuModel ) {
 				const iblA0 = actBase.add( int( actIblA0Offset ) );
 				const a0 = actBase.add( int( actA0Offset ) );
 
-				Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+				Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 					activationsStorage.element( iblA0.add( c ) ).assign( activationsStorage.element( a0.add( c ) ) );
 
 				} );
 
-				activationsStorage.element( iblA0.add( LATENT_CHANNELS ) ).assign( activationsStorage.element( a0.add( LATENT_CHANNELS + 3 ) ) );
-				activationsStorage.element( iblA0.add( LATENT_CHANNELS + 1 ) ).assign( activationsStorage.element( a0.add( LATENT_CHANNELS + 4 ) ) );
-				activationsStorage.element( iblA0.add( LATENT_CHANNELS + 2 ) ).assign( activationsStorage.element( a0.add( LATENT_CHANNELS + 5 ) ) );
-				activationsStorage.element( iblA0.add( LATENT_CHANNELS + 3 ) ).assign( activationsStorage.element( a0.add( LATENT_CHANNELS + 9 ) ) );
-				activationsStorage.element( iblA0.add( LATENT_CHANNELS + 4 ) ).assign( activationsStorage.element( a0.add( LATENT_CHANNELS + 10 ) ) );
-				activationsStorage.element( iblA0.add( LATENT_CHANNELS + 5 ) ).assign( activationsStorage.element( a0.add( LATENT_CHANNELS + 11 ) ) );
+				activationsStorage.element( iblA0.add( latentChannels ) ).assign( activationsStorage.element( a0.add( latentChannels + 3 ) ) );
+				activationsStorage.element( iblA0.add( latentChannels + 1 ) ).assign( activationsStorage.element( a0.add( latentChannels + 4 ) ) );
+				activationsStorage.element( iblA0.add( latentChannels + 2 ) ).assign( activationsStorage.element( a0.add( latentChannels + 5 ) ) );
+				activationsStorage.element( iblA0.add( latentChannels + 3 ) ).assign( activationsStorage.element( a0.add( latentChannels + 9 ) ) );
+				activationsStorage.element( iblA0.add( latentChannels + 4 ) ).assign( activationsStorage.element( a0.add( latentChannels + 10 ) ) );
+				activationsStorage.element( iblA0.add( latentChannels + 5 ) ).assign( activationsStorage.element( a0.add( latentChannels + 11 ) ) );
 
 				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
 					const val = weightsStorage.element( int( iblLayer0BiasesOffset ).add( j ) ).toVar();
-					const rowOffset = int( iblLayer0WeightsOffset ).add( j.mul( IBL_INPUT_SIZE ) );
+					const rowOffset = int( iblLayer0WeightsOffset ).add( j.mul( iblInputSize ) );
 
-					Loop( { start: 0, end: IBL_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+					Loop( { start: 0, end: iblInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 						val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( iblA0.add( i ) ) ) );
 
@@ -981,9 +983,9 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 					const delta1_j = activationsStorage.element( actBase.add( int( actIblDelta1Offset ) ).add( j ) );
 					atomicAdd( gradWeightsAtomic.element( int( iblLayer0BiasesOffset ).add( j ) ), int( delta1_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-					const rowOffset = int( iblLayer0WeightsOffset ).add( j.mul( IBL_INPUT_SIZE ) );
+					const rowOffset = int( iblLayer0WeightsOffset ).add( j.mul( iblInputSize ) );
 
-					Loop( { start: 0, end: IBL_INPUT_SIZE, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+					Loop( { start: 0, end: iblInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 						const a0_i = activationsStorage.element( iblA0.add( i ) );
 						atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta1_j.mul( a0_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
@@ -992,14 +994,14 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 				} );
 
-				Loop( { start: 0, end: LATENT_CHANNELS, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+				Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 					const gradLatent_c = float( 0.0 ).toVar();
 
 					Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
 						const delta1_j = activationsStorage.element( actBase.add( int( actIblDelta1Offset ) ).add( j ) );
-						const w_jc = weightsStorage.element( int( iblLayer0WeightsOffset ).add( j.mul( IBL_INPUT_SIZE ) ).add( c ) );
+						const w_jc = weightsStorage.element( int( iblLayer0WeightsOffset ).add( j.mul( iblInputSize ) ).add( c ) );
 						gradLatent_c.addAssign( delta1_j.mul( w_jc ) );
 
 					} );
@@ -1033,7 +1035,9 @@ function createTrainBatchComputeNode( gpuModel ) {
 					actIndirectZ2Offset,
 					actIndirectDelta2Offset,
 					actIndirectDelta1Offset,
-					actGradLatentsOffset
+					actGradLatentsOffset,
+					latentChannels,
+					indirectInputSize
 				} );
 
 				trainIndirectProbeHead( {
@@ -1060,7 +1064,9 @@ function createTrainBatchComputeNode( gpuModel ) {
 					actIndirectZ2Offset,
 					actIndirectDelta2Offset,
 					actIndirectDelta1Offset,
-					actGradLatentsOffset
+					actGradLatentsOffset,
+					latentChannels,
+					indirectInputSize
 				} );
 
 			} );

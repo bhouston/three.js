@@ -1,4 +1,4 @@
-import { LATENT_CHANNELS, CHANNELS_PER_LEVEL } from './NeuralAppearanceFormat.js';
+import { CHANNELS_PER_LEVEL } from './NeuralAppearanceFormat.js';
 import { sigmoid } from '../neural/NeuralMLP.js';
 import {
 	buildDecoderInput,
@@ -165,13 +165,26 @@ function radicalInverseVdc( bits ) {
 /**
  * Bilinear-samples every level of the multiresolution latent grid (same
  * encoding as neural-texture / neural-material - see NeuralGridModel.js) and
- * concatenates their channels into a single `LATENT_CHANNELS`-wide latent
- * vector. No mip/LOD selection - every level always contributes.
+ * concatenates their channels into a single `levels.length *
+ * CHANNELS_PER_LEVEL`-wide latent vector. No mip/LOD selection - every level
+ * always contributes.
+ *
+ * Sized from `json.latents.levels.length` - the manifest's *actual* level
+ * count - not NeuralAppearanceFormat.js's fixed `LATENT_CHANNELS` constant,
+ * which is only correct for a manifest exported with the default `levels`
+ * (4). A fixed-size allocation here would leave phantom trailing zero
+ * "channels" for a manifest with fewer levels (corrupting every downstream
+ * consumer that derives its own expected input width from `latents.length`,
+ * as buildDecoderInput/buildIBLInput/buildIndirectProbeInput in
+ * NeuralAppearanceModel.js now do), and for a manifest with more levels than
+ * the default, would silently rely on the array auto-growing rather than
+ * being sized correctly up front. See NeuralAppearanceFormat.js's doc
+ * comment on the computeXXX helpers for the full story.
  */
 function sampleRuntimeLatents( json, uv ) {
 
 	const levels = json.latents.levels;
-	const latents = new Array( LATENT_CHANNELS ).fill( 0 );
+	const latents = new Array( levels.length * CHANNELS_PER_LEVEL ).fill( 0 );
 	let channelOffset = 0;
 
 	for ( const level of levels ) {

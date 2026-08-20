@@ -21,6 +21,49 @@ const IBL_TARGET_SIZE = 17;
 const ROTATION_OUTPUT_SIZE = 12;
 const DEFAULT_WRAP = 'repeat';
 
+/**
+ * `LATENT_CHANNELS`/`DECODER_INPUT_SIZE`/`IBL_INPUT_SIZE`/`INDIRECT_INPUT_SIZE`
+ * above are only correct for a model actually built with `levels === LEVELS`
+ * (the default). `createModel`/`NeuralAppearanceGPUModel`/
+ * `createNeuralAppearanceManifest`/the runtime decoder all accept a
+ * *configurable* `levels` (see e.g. webgpu_materials_neural_appearance.html's
+ * "grid levels" GUI control, which offers 2/3/4/5/6/8) - for any of those,
+ * the model's real latent vector is `levels * CHANNELS_PER_LEVEL` wide, not
+ * the fixed `LATENT_CHANNELS` above. Every one of those consumers must derive
+ * its channel/input-size math from these functions (given the model's own
+ * `levels`), not from the bare constants, or it silently builds/reads a
+ * decoder sized for the wrong input width - which doesn't throw, it just
+ * makes every prediction `NaN` (out-of-bounds reads in a plain JS array
+ * return `undefined`, and `weight * undefined` is `NaN`, which then
+ * propagates through every downstream layer). That was a real, previously
+ * undiscovered bug in this exact shape - see NeuralAppearanceModel.
+ * levels-bug.test.js in test/vitest/ for the full writeup and a regression
+ * test (now fixed).
+ */
+function computeLatentChannels( levels = LEVELS ) {
+
+	return levels * CHANNELS_PER_LEVEL;
+
+}
+
+function computeDecoderInputSize( levels = LEVELS ) {
+
+	return computeLatentChannels( levels ) + 12;
+
+}
+
+function computeIblInputSize( levels = LEVELS ) {
+
+	return computeLatentChannels( levels ) + 6;
+
+}
+
+function computeIndirectInputSize( levels = LEVELS ) {
+
+	return computeLatentChannels( levels ) + 3 + 3;
+
+}
+
 export {
 	FORMAT,
 	VERSION,
@@ -36,5 +79,9 @@ export {
 	INDIRECT_OUTPUT_SIZE,
 	IBL_TARGET_SIZE,
 	ROTATION_OUTPUT_SIZE,
-	DEFAULT_WRAP
+	DEFAULT_WRAP,
+	computeLatentChannels,
+	computeDecoderInputSize,
+	computeIblInputSize,
+	computeIndirectInputSize
 };

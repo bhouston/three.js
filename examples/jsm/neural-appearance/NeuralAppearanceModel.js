@@ -3,12 +3,12 @@ import {
 	BASE_RESOLUTION,
 	TARGET_RESOLUTION,
 	CHANNELS_PER_LEVEL,
-	LATENT_CHANNELS,
-	DECODER_INPUT_SIZE,
-	IBL_INPUT_SIZE,
 	IBL_OUTPUT_SIZE,
-	INDIRECT_INPUT_SIZE,
-	INDIRECT_OUTPUT_SIZE
+	INDIRECT_OUTPUT_SIZE,
+	computeLatentChannels,
+	computeDecoderInputSize,
+	computeIblInputSize,
+	computeIndirectInputSize
 } from './NeuralAppearanceFormat.js';
 import {
 	createMLP,
@@ -19,20 +19,33 @@ import { dot, cross, normalize } from '../neural/NeuralVectorMath.js';
 
 function createModel( options, random ) {
 
-	const decoder = createMLP( DECODER_INPUT_SIZE, [ options.hiddenSize, options.hiddenSize ], 3, random, 'relu', 'linear' );
+	// `levels` is computed first (and every MLP head below is sized from
+	// *this* model's actual levels, via the computeXXX helpers) - not from
+	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/DECODER_INPUT_SIZE/
+	// IBL_INPUT_SIZE/INDIRECT_INPUT_SIZE constants, which are only correct
+	// for levels === LEVELS (the default). Getting this wrong doesn't throw -
+	// it silently builds a decoder sized for the wrong input width, and every
+	// prediction comes out NaN. See NeuralAppearanceFormat.js's doc comment
+	// on those helpers for the full story.
+	const levels = options.levels || LEVELS;
+	const latentChannels = computeLatentChannels( levels );
+	const decoderInputSize = computeDecoderInputSize( levels );
+	const iblInputSize = computeIblInputSize( levels );
+	const indirectInputSize = computeIndirectInputSize( levels );
+
+	const decoder = createMLP( decoderInputSize, [ options.hiddenSize, options.hiddenSize ], 3, random, 'relu', 'linear' );
 	const iblHiddenSize = options.iblHiddenSize || Math.min( Math.max( options.hiddenSize || 32, 16 ), 32 );
-	const iblHead = createMLP( IBL_INPUT_SIZE, [ iblHiddenSize ], IBL_OUTPUT_SIZE, random, 'relu', 'linear' );
-	const indirectRadianceHead = createMLP( INDIRECT_INPUT_SIZE, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
-	const indirectIrradianceHead = createMLP( INDIRECT_INPUT_SIZE, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
+	const iblHead = createMLP( iblInputSize, [ iblHiddenSize ], IBL_OUTPUT_SIZE, random, 'relu', 'linear' );
+	const indirectRadianceHead = createMLP( indirectInputSize, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
+	const indirectIrradianceHead = createMLP( indirectInputSize, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
 	const emissionHead = options.outputFeatures && options.outputFeatures.emission ?
-		createMLP( LATENT_CHANNELS, [], 3, random, 'relu', 'linear' ) :
+		createMLP( latentChannels, [], 3, random, 'relu', 'linear' ) :
 		null;
 	const opacityHead = options.outputFeatures && options.outputFeatures.opacity ?
-		createMLP( LATENT_CHANNELS, [], 1, random, 'relu', 'linear' ) :
+		createMLP( latentChannels, [], 1, random, 'relu', 'linear' ) :
 		null;
-	const rotationWeights = new Array( LATENT_CHANNELS * 12 ).fill( 0 );
+	const rotationWeights = new Array( latentChannels * 12 ).fill( 0 );
 
-	const levels = options.levels || LEVELS;
 	const baseResolution = options.baseResolution || BASE_RESOLUTION;
 	const targetResolution = options.targetResolution || TARGET_RESOLUTION;
 	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
@@ -227,10 +240,15 @@ function forwardIBLInput( latents, rotationWeights, wo ) {
 function buildIBLInput( latents, rotationWeights, wo ) {
 
 	const input = forwardIBLInput( latents, rotationWeights, wo ).output;
+	// Expected width is *this call's* latents.length + 6 (see
+	// computeIblInputSize in NeuralAppearanceFormat.js), not the fixed
+	// IBL_INPUT_SIZE constant - that constant is only correct when
+	// latents.length === LATENT_CHANNELS (i.e. levels === LEVELS).
+	const expectedSize = latents.length + 6;
 
-	if ( input.length !== IBL_INPUT_SIZE ) {
+	if ( input.length !== expectedSize ) {
 
-		throw new Error( `THREE.NeuralAppearanceModel: IBL input has ${ input.length } values, expected ${ IBL_INPUT_SIZE }.` );
+		throw new Error( `THREE.NeuralAppearanceModel: IBL input has ${ input.length } values, expected ${ expectedSize }.` );
 
 	}
 
@@ -246,9 +264,13 @@ function buildIndirectProbeInput( latents, wo, probe ) {
 	input.push( wo[ 0 ], wo[ 1 ], wo[ 2 ] );
 	input.push( incoming[ 0 ], incoming[ 1 ], incoming[ 2 ] );
 
-	if ( input.length !== INDIRECT_INPUT_SIZE ) {
+	// See buildIBLInput's comment above - derived from this call's actual
+	// latents.length, not a fixed constant.
+	const expectedSize = latents.length + 6;
 
-		throw new Error( `THREE.NeuralAppearanceModel: Indirect probe input has ${ input.length } values, expected ${ INDIRECT_INPUT_SIZE }.` );
+	if ( input.length !== expectedSize ) {
+
+		throw new Error( `THREE.NeuralAppearanceModel: Indirect probe input has ${ input.length } values, expected ${ expectedSize }.` );
 
 	}
 
@@ -280,10 +302,16 @@ function sigmoid( value ) {
 function linearRotationValue( latents, weights, outputIndex ) {
 
 	let value = 0;
+	// Row stride is this call's actual latents.length, not the fixed
+	// LATENT_CHANNELS constant - `weights` (rotationWeights) is sized
+	// `latents.length * ROTATION_OUTPUT_SIZE` by createModel for whatever
+	// `levels` that model was actually built with (see createModel's own
+	// comment), which only equals LATENT_CHANNELS when levels === LEVELS.
+	const stride = latents.length;
 
 	for ( let i = 0; i < latents.length; i ++ ) {
 
-		value += weights[ outputIndex * LATENT_CHANNELS + i ] * latents[ i ];
+		value += weights[ outputIndex * stride + i ] * latents[ i ];
 
 	}
 

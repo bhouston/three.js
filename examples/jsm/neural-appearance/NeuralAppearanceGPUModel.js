@@ -1,17 +1,17 @@
 import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, uniform } from 'three/tsl';
 import {
-	IBL_INPUT_SIZE,
 	IBL_OUTPUT_SIZE,
-	INDIRECT_INPUT_SIZE,
 	INDIRECT_OUTPUT_SIZE,
 	IBL_TARGET_SIZE,
-	LATENT_CHANNELS,
-	DECODER_INPUT_SIZE,
 	LEVELS,
 	BASE_RESOLUTION,
 	TARGET_RESOLUTION,
-	CHANNELS_PER_LEVEL
+	CHANNELS_PER_LEVEL,
+	computeLatentChannels,
+	computeDecoderInputSize,
+	computeIblInputSize,
+	computeIndirectInputSize
 } from './NeuralAppearanceFormat.js';
 import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
@@ -20,10 +20,10 @@ import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 // (everything before the IBL query/probe block) - see uploadSamples() below.
 const DIRECT_SAMPLE_SIZE = 17;
 
-function allocateIndirectProbeHead( currentOffset, iblHiddenSize ) {
+function allocateIndirectProbeHead( currentOffset, iblHiddenSize, indirectInputSize ) {
 
 	const layer0WeightsOffset = currentOffset;
-	const layer0WeightsCount = INDIRECT_INPUT_SIZE * iblHiddenSize;
+	const layer0WeightsCount = indirectInputSize * iblHiddenSize;
 	const layer0BiasesOffset = layer0WeightsOffset + layer0WeightsCount;
 	const layer0BiasesCount = iblHiddenSize;
 	const layer1WeightsOffset = layer0BiasesOffset + layer0BiasesCount;
@@ -55,14 +55,30 @@ function computeModelLayout( options = {} ) {
 	const supportsEmission = Boolean( options.outputFeatures && options.outputFeatures.emission );
 	const supportsOpacity = Boolean( options.outputFeatures && options.outputFeatures.opacity );
 
-	// Weights Layout:
-	// 0..(LATENT_CHANNELS*12-1): rotation weights (LATENT_CHANNELS channels * 12 outputs)
-	const rotationOffset = 0;
-	const rotationCount = LATENT_CHANNELS * 12;
+	// `levels` (and everything derived from it below) is computed first and
+	// used throughout this function's buffer-layout math - NOT
+	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/DECODER_INPUT_SIZE/
+	// IBL_INPUT_SIZE/INDIRECT_INPUT_SIZE constants, which are only correct
+	// when levels === LEVELS (the default). A GPU model built for a
+	// non-default `levels` (see e.g. webgpu_materials_neural_appearance.html's
+	// "grid levels" GUI control) needs its own actually-configured channel/
+	// input-size math, or every buffer offset past the rotation-weights block
+	// is wrong. See NeuralAppearanceFormat.js's doc comment on these helpers,
+	// and NeuralAppearanceModel.levels-bug.test.js, for the full story.
+	const levels = options.levels || LEVELS;
+	const latentChannels = computeLatentChannels( levels );
+	const decoderInputSize = computeDecoderInputSize( levels );
+	const iblInputSize = computeIblInputSize( levels );
+	const indirectInputSize = computeIndirectInputSize( levels );
 
-	// Layer 0: DECODER_INPUT_SIZE -> hiddenSize
+	// Weights Layout:
+	// 0..(latentChannels*12-1): rotation weights (latentChannels channels * 12 outputs)
+	const rotationOffset = 0;
+	const rotationCount = latentChannels * 12;
+
+	// Layer 0: decoderInputSize -> hiddenSize
 	const layer0WeightsOffset = rotationOffset + rotationCount;
-	const layer0WeightsCount = DECODER_INPUT_SIZE * hiddenSize;
+	const layer0WeightsCount = decoderInputSize * hiddenSize;
 	const layer0BiasesOffset = layer0WeightsOffset + layer0WeightsCount;
 	const layer0BiasesCount = hiddenSize;
 
@@ -80,7 +96,7 @@ function computeModelLayout( options = {} ) {
 
 	let currentOffset = layer2BiasesOffset + layer2BiasesCount;
 
-	// Auxiliary: Emission Head (LATENT_CHANNELS -> 3)
+	// Auxiliary: Emission Head (latentChannels -> 3)
 	let emissionWeightsOffset = - 1;
 	let emissionBiasesOffset = - 1;
 	let emissionWeightsCount = 0;
@@ -88,14 +104,14 @@ function computeModelLayout( options = {} ) {
 	if ( supportsEmission ) {
 
 		emissionWeightsOffset = currentOffset;
-		emissionWeightsCount = LATENT_CHANNELS * 3;
+		emissionWeightsCount = latentChannels * 3;
 		emissionBiasesOffset = emissionWeightsOffset + emissionWeightsCount;
 		emissionBiasesCount = 3;
 		currentOffset = emissionBiasesOffset + emissionBiasesCount;
 
 	}
 
-	// Auxiliary: Opacity Head (LATENT_CHANNELS -> 1)
+	// Auxiliary: Opacity Head (latentChannels -> 1)
 	let opacityWeightsOffset = - 1;
 	let opacityBiasesOffset = - 1;
 	let opacityWeightsCount = 0;
@@ -103,7 +119,7 @@ function computeModelLayout( options = {} ) {
 	if ( supportsOpacity ) {
 
 		opacityWeightsOffset = currentOffset;
-		opacityWeightsCount = LATENT_CHANNELS * 1;
+		opacityWeightsCount = latentChannels * 1;
 		opacityBiasesOffset = opacityWeightsOffset + opacityWeightsCount;
 		opacityBiasesCount = 1;
 		currentOffset = opacityBiasesOffset + opacityBiasesCount;
@@ -114,7 +130,7 @@ function computeModelLayout( options = {} ) {
 
 	// IBL Head last so BRDF+aux Adam can update a contiguous prefix.
 	const iblLayer0WeightsOffset = currentOffset;
-	const iblLayer0WeightsCount = IBL_INPUT_SIZE * iblHiddenSize;
+	const iblLayer0WeightsCount = iblInputSize * iblHiddenSize;
 	const iblLayer0BiasesOffset = iblLayer0WeightsOffset + iblLayer0WeightsCount;
 	const iblLayer0BiasesCount = iblHiddenSize;
 	const iblLayer1WeightsOffset = iblLayer0BiasesOffset + iblLayer0BiasesCount;
@@ -123,9 +139,9 @@ function computeModelLayout( options = {} ) {
 	const iblLayer1BiasesCount = IBL_OUTPUT_SIZE;
 	currentOffset = iblLayer1BiasesOffset + iblLayer1BiasesCount;
 
-	const indirectRadiance = allocateIndirectProbeHead( currentOffset, iblHiddenSize );
+	const indirectRadiance = allocateIndirectProbeHead( currentOffset, iblHiddenSize, indirectInputSize );
 	currentOffset = indirectRadiance.nextOffset;
-	const indirectIrradiance = allocateIndirectProbeHead( currentOffset, iblHiddenSize );
+	const indirectIrradiance = allocateIndirectProbeHead( currentOffset, iblHiddenSize, indirectInputSize );
 	currentOffset = indirectIrradiance.nextOffset;
 	const iblWeightCount = currentOffset - directWeightCount;
 
@@ -135,8 +151,9 @@ function computeModelLayout( options = {} ) {
 	// geometry as neural-texture / neural-material, see NeuralGridModel.js):
 	// `levels` grids geometrically spaced between `baseResolution` and
 	// `targetResolution`, each contributing `CHANNELS_PER_LEVEL` features that
-	// get concatenated (not summed) into the decoder input.
-	const levels = options.levels || LEVELS;
+	// get concatenated (not summed) into the decoder input. (`levels` itself
+	// was already computed above, alongside latentChannels/decoderInputSize/
+	// iblInputSize/indirectInputSize.)
 	const baseResolution = options.baseResolution || BASE_RESOLUTION;
 	const targetResolution = options.targetResolution || TARGET_RESOLUTION;
 	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
@@ -156,7 +173,7 @@ function computeModelLayout( options = {} ) {
 	const totalLatents = latentOffset;
 
 	// Per-Sample Activations Layout:
-	// a0: DECODER_INPUT_SIZE
+	// a0: decoderInputSize
 	// z1: H
 	// a1: H
 	// z2: H
@@ -165,10 +182,10 @@ function computeModelLayout( options = {} ) {
 	// delta3: 3
 	// delta2: H
 	// delta1: H
-	// gradA0: DECODER_INPUT_SIZE
-	// gradLatents: LATENT_CHANNELS
+	// gradA0: decoderInputSize
+	// gradLatents: latentChannels
 	const actA0Offset = 0;
-	const actZ1Offset = actA0Offset + DECODER_INPUT_SIZE;
+	const actZ1Offset = actA0Offset + decoderInputSize;
 	const actA1Offset = actZ1Offset + hiddenSize;
 	const actZ2Offset = actA1Offset + hiddenSize;
 	const actA2Offset = actZ2Offset + hiddenSize;
@@ -177,8 +194,8 @@ function computeModelLayout( options = {} ) {
 	const actDelta2Offset = actDelta3Offset + 3;
 	const actDelta1Offset = actDelta2Offset + hiddenSize;
 	const actGradA0Offset = actDelta1Offset + hiddenSize;
-	const actGradLatentsOffset = actGradA0Offset + DECODER_INPUT_SIZE;
-	let actCurrent = actGradLatentsOffset + LATENT_CHANNELS;
+	const actGradLatentsOffset = actGradA0Offset + decoderInputSize;
+	let actCurrent = actGradLatentsOffset + latentChannels;
 
 	let actEmissionOffset = - 1;
 	if ( supportsEmission ) {
@@ -197,7 +214,7 @@ function computeModelLayout( options = {} ) {
 	}
 
 	const actIblA0Offset = actCurrent;
-	const actIblZ1Offset = actIblA0Offset + IBL_INPUT_SIZE;
+	const actIblZ1Offset = actIblA0Offset + iblInputSize;
 	const actIblA1Offset = actIblZ1Offset + iblHiddenSize;
 	const actIblZ2Offset = actIblA1Offset + iblHiddenSize;
 	const actIblDelta2Offset = actIblZ2Offset + IBL_OUTPUT_SIZE;
@@ -205,7 +222,7 @@ function computeModelLayout( options = {} ) {
 	actCurrent = actIblDelta1Offset + iblHiddenSize;
 
 	const actIndirectA0Offset = actCurrent;
-	const actIndirectZ1Offset = actIndirectA0Offset + INDIRECT_INPUT_SIZE;
+	const actIndirectZ1Offset = actIndirectA0Offset + indirectInputSize;
 	const actIndirectA1Offset = actIndirectZ1Offset + iblHiddenSize;
 	const actIndirectZ2Offset = actIndirectA1Offset + iblHiddenSize;
 	const actIndirectDelta2Offset = actIndirectZ2Offset + INDIRECT_OUTPUT_SIZE;
@@ -271,6 +288,10 @@ function computeModelLayout( options = {} ) {
 		opacityBiasesOffset,
 		opacityBiasesCount,
 		levels,
+		latentChannels,
+		decoderInputSize,
+		iblInputSize,
+		indirectInputSize,
 		gridLevels,
 		totalLatents,
 		activationStride,
@@ -372,14 +393,20 @@ class NeuralAppearanceGPUModel {
 		weights.fill( 0 );
 		latents.fill( 0 );
 
-		// Rotation weights
-		for ( let i = 0; i < LATENT_CHANNELS * 12; i ++ ) {
+		// Rotation weights - this.layout.latentChannels (not the fixed
+		// LATENT_CHANNELS constant) is this model's actual latentChannels*12
+		// rotation-weight block size, matching cpuModel.rotationWeights'
+		// actual length (see NeuralAppearanceModel.js's createModel). Using
+		// the fixed constant here would read/write the wrong number of
+		// entries whenever this model's `levels` isn't the default, silently
+		// aliasing into the decoder's weight block right after it.
+		for ( let i = 0; i < this.layout.latentChannels * 12; i ++ ) {
 
 			weights[ this.layout.rotationOffset + i ] = cpuModel.rotationWeights[ i ] || 0;
 
 		}
 
-		// Decoder Layer 0 (DECODER_INPUT_SIZE -> H)
+		// Decoder Layer 0 (decoderInputSize -> H)
 		copyLayerWeightsToGPU( cpuModel.decoder.layers[ 0 ], weights, this.layout.layer0WeightsOffset, this.layout.layer0BiasesOffset );
 
 		// Decoder Layer 1 (H -> H)
@@ -396,14 +423,14 @@ class NeuralAppearanceGPUModel {
 		copyLayerWeightsToGPU( cpuModel.indirectIrradianceHead.layers[ 0 ], weights, this.layout.indirectIrradianceLayer0WeightsOffset, this.layout.indirectIrradianceLayer0BiasesOffset );
 		copyLayerWeightsToGPU( cpuModel.indirectIrradianceHead.layers[ 1 ], weights, this.layout.indirectIrradianceLayer1WeightsOffset, this.layout.indirectIrradianceLayer1BiasesOffset );
 
-		// Emission Head (LATENT_CHANNELS -> 3)
+		// Emission Head (latentChannels -> 3)
 		if ( cpuModel.emissionHead ) {
 
 			copyLayerWeightsToGPU( cpuModel.emissionHead.layers[ 0 ], weights, this.layout.emissionWeightsOffset, this.layout.emissionBiasesOffset );
 
 		}
 
-		// Opacity Head (LATENT_CHANNELS -> 1)
+		// Opacity Head (latentChannels -> 1)
 		if ( cpuModel.opacityHead ) {
 
 			copyLayerWeightsToGPU( cpuModel.opacityHead.layers[ 0 ], weights, this.layout.opacityWeightsOffset, this.layout.opacityBiasesOffset );
@@ -546,8 +573,9 @@ class NeuralAppearanceGPUModel {
 		const weights = new Float32Array( weightsBuffer );
 		const latents = new Float32Array( latentsBuffer );
 
-		// Copy rotation weights
-		for ( let i = 0; i < LATENT_CHANNELS * 12; i ++ ) {
+		// Copy rotation weights - see initFromCPUModel's matching comment on
+		// why this.layout.latentChannels, not the fixed LATENT_CHANNELS.
+		for ( let i = 0; i < this.layout.latentChannels * 12; i ++ ) {
 
 			cpuModel.rotationWeights[ i ] = weights[ this.layout.rotationOffset + i ];
 

@@ -1,11 +1,11 @@
 import {
 	FORMAT,
 	VERSION,
-	LATENT_CHANNELS,
 	CHANNELS_PER_LEVEL,
-	DECODER_INPUT_SIZE,
-	IBL_INPUT_SIZE,
-	INDIRECT_INPUT_SIZE
+	computeLatentChannels,
+	computeDecoderInputSize,
+	computeIblInputSize,
+	computeIndirectInputSize
 } from './NeuralAppearanceFormat.js';
 import { normalize } from './NeuralAppearanceModel.js';
 import {
@@ -31,6 +31,20 @@ async function exportNeuralAppearance( model, teacher, options ) {
 
 function createNeuralAppearanceManifest( model, options ) {
 
+	// Every inputSize below is derived from *this model's own* `model.levels`
+	// (via the computeXXX helpers), not NeuralAppearanceFormat.js's fixed
+	// LATENT_CHANNELS/DECODER_INPUT_SIZE/IBL_INPUT_SIZE/INDIRECT_INPUT_SIZE
+	// constants - those are only correct when levels === LEVELS (the
+	// default). A manifest exported for a non-default `levels` model needs to
+	// document its layers' *real* input widths, or a decoder reading this
+	// manifest back (NeuralAppearanceRuntime.js) has no way to know how many
+	// latent channels it's actually working with. See NeuralAppearanceFormat.
+	// js's doc comment on these helpers for the full story.
+	const latentChannels = computeLatentChannels( model.levels );
+	const decoderInputSize = computeDecoderInputSize( model.levels );
+	const iblInputSize = computeIblInputSize( model.levels );
+	const indirectInputSize = computeIndirectInputSize( model.levels );
+
 	const levels = model.latentGrids.map( ( grid ) => ( {
 		width: grid.width,
 		height: grid.height,
@@ -41,9 +55,9 @@ function createNeuralAppearanceManifest( model, options ) {
 
 	const outputs = {
 		brdf: {
-			inputSize: DECODER_INPUT_SIZE,
+			inputSize: decoderInputSize,
 			rotation: {
-				inputSize: LATENT_CHANNELS,
+				inputSize: latentChannels,
 				outputSize: 12,
 				weights: model.rotationWeights.slice()
 			},
@@ -51,17 +65,17 @@ function createNeuralAppearanceManifest( model, options ) {
 			outputActivation: options.outputActivation
 		},
 		ibl: {
-			inputSize: IBL_INPUT_SIZE,
+			inputSize: iblInputSize,
 			layers: serializeLayers( model.iblHead ),
 			outputActivation: { type: 'linear' }
 		},
 		indirectRadiance: {
-			inputSize: INDIRECT_INPUT_SIZE,
+			inputSize: indirectInputSize,
 			layers: serializeLayers( model.indirectRadianceHead ),
 			outputActivation: { type: 'linear' }
 		},
 		indirectIrradiance: {
-			inputSize: INDIRECT_INPUT_SIZE,
+			inputSize: indirectInputSize,
 			layers: serializeLayers( model.indirectIrradianceHead ),
 			outputActivation: { type: 'linear' }
 		}
@@ -70,7 +84,7 @@ function createNeuralAppearanceManifest( model, options ) {
 	if ( model.emissionHead ) {
 
 		outputs.emission = {
-			inputSize: LATENT_CHANNELS,
+			inputSize: latentChannels,
 			layers: serializeLayers( model.emissionHead ),
 			outputActivation: { type: 'linear' }
 		};
@@ -81,7 +95,7 @@ function createNeuralAppearanceManifest( model, options ) {
 
 		const opacityMode = options.opacityMode || 'mask';
 		outputs.opacity = {
-			inputSize: LATENT_CHANNELS,
+			inputSize: latentChannels,
 			layers: serializeLayers( model.opacityHead ),
 			outputActivation: { type: 'sigmoid' },
 			mode: opacityMode

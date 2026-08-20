@@ -58,6 +58,21 @@ is fully covered:
 | `NeuralTrainingUtils.js` | unit | LR annealing incl. clamping, seeded PRNG determinism, `yieldToBrowser`'s RAF/setTimeout fallback |
 | `NeuralOutputActivations.js` | browser | forward + backward TSL nodes evaluated on real WebGPU against reference formulas, incl. softplus overflow region and a forward/backward finite-difference cross-check |
 
+Also covered, beyond the `neural/` primitives table above:
+
+| File | Project | Notes |
+|---|---|---|
+| `neural-texture/NeuralTextureModel.js` | unit | CPU decoder construction, `includeUV` input-size effect, deterministic grid/decoder content for a seeded `random` |
+| `neural-texture/NeuralTextureSource.js` | browser | `bakeColorNodeToTexture` sign preservation and raw-UV round-trip - this is where the real "brick preset missing normal-map slopes" bug lived, see the file's own comment |
+| `neural-texture/NeuralTextureTrainer.js` | browser | end-to-end sign-convergence (a tanh channel alone in its own packed render target, matching the real neural-material `normal` channel's layout) + convergence-rate regression (capacity/learning-rate/divergence ordering checks) |
+| `neural-appearance/NeuralAppearanceFormat.js` | unit | format constants, incl. every `*_SIZE` constant's exact arithmetic relationship to `LEVELS`/`CHANNELS_PER_LEVEL` |
+| `neural-appearance/NeuralAppearanceModel.js` | unit | `sampleLatents` bilinear/wrap addressing, `forwardDecoderInput`/`buildIBLInput`/`buildIndirectProbeInput`/`unpackIBLOutput` shape and math, `createModel` construction - **plus a documented, currently-`it.fails` known bug** (`NeuralAppearanceModel.levels-bug.test.js`): `LATENT_CHANNELS`/`DECODER_INPUT_SIZE`/`IBL_INPUT_SIZE`/`INDIRECT_INPUT_SIZE` are fixed constants baked from the hardcoded default `LEVELS = 4`, not from a model's actual configured `levels` - so the "grid levels" GUI control in `webgpu_materials_neural_appearance.html` silently produces all-NaN predictions for any non-default value. Not yet fixed (touches every module that imports these as constants); see that test file for the full writeup |
+| `neural-appearance/NeuralAppearanceValidator.js` | unit | difference/angular-bin metric accumulation, `evaluateRuntimeValidation` integration incl. the non-finite-value throw path and null-when-absent guards for emission/opacity/ibl losses |
+| `neural-appearance/NeuralAppearanceTrainer.js` | browser (perf) | stage-timing breakdown (`NeuralAppearanceTrainer.perf.test.js`, not a pass/fail gate): confirms teacher render+readback (not GPU training compute) dominates wall-clock (~60-80% in a small run), and quantifies IBL sampling's per-iteration evaluateBatch-call multiplier (5 calls/iteration vs. 1 for direct-only) - useful data for anyone chasing the "neural-appearance training is slow" complaint next, see that file's comments |
+| `neural-material/NeuralMaterialFormat.js` | unit for `layoutChannels`/`buildChannelActivations`/`getChannel`; browser for `previewColor` | offset-assignment contract, `MAX_TOTAL_CHANNELS` invariant, unknown-key error path, and (browser) the exact display bug fixed in this session - `previewColor`'s `size === 2` branch hardcoding blue to 0 when handed an already-reconstructed 3-component normal |
+| `neural-material/NeuralMaterialSource.js` | unit for `classifyMaterialChannels`; browser for `buildPackedColorNodes` | active/constant channel classification and default-value fallbacks (unit); the `flattenChannelComponents` V-flip sign convention - x passthrough, y negated - incl. the exact "channel alone in its own packed render target" layout the real `brick` preset hits (browser) |
+| `neural-material/NeuralMaterialNodeMaterial.js` | browser | `reconstructFinalNormal`'s sign fidelity for all four `(dx, dy)` sign combinations and its `sqrt(max(1 - dx² - dy², 0))` near/over-unit-circle clamp |
+
 ## Roadmap for the rest
 
 Every other file, classified by which project it belongs in and what to
@@ -69,39 +84,32 @@ yourself before trusting this table if it's been edited since.
 
 | File | Project | What to test |
 |---|---|---|
-| `NeuralTextureModel.js` (33 lines) | unit | CPU decoder forward pass - smallest, do this first |
-| `NeuralTextureSource.js` (113 lines) | **browser** | Renders via `THREE.Scene`/`RenderTarget` even though it doesn't literally import `three/tsl` - `bakeColorNodeToTexture`'s UV-flip-on-bake is exactly the kind of silent-flip bug worth a real round-trip test: bake a node with a known asymmetric pattern, read the render target back, assert the orientation |
-| `NeuralTextureTrainer.js` (153 lines) | unit for the orchestration logic, mock the GPU calls it delegates to | Iteration/LR-schedule wiring, not the compute itself (that's `NeuralTextureGPUComputeTSL.js`'s job below) |
+| `NeuralTextureTrainer.js` (153 lines) | unit for the orchestration logic, mock the GPU calls it delegates to | Iteration/LR-schedule wiring is now covered end-to-end via the browser convergence/sign-convergence tests above, but a dedicated unit test mocking the GPU calls (to check e.g. abort()/onProgress wiring in isolation) is still open |
 | `NeuralTextureGPUModel.js` (268 lines) | browser | Storage buffer layout/allocation - assert byte offsets and sizes match what `NeuralTextureGPUComputeTSL.js` expects to read/write |
 | `NeuralTextureGPUComputeTSL.js` (463 lines) | browser | The actual training-step kernels - this is the highest-value target in the whole framework for the `evalScalar`/`evalFloats` pattern: pick one weight, one gradient, one Adam step, hand-compute the expected update in plain JS, run the kernel, compare |
 | `NeuralTextureNodeMaterial.js` (186 lines) | browser | Inference-time evaluation - feed a known latent grid + tiny MLP, sample at a known UV, compare against `NeuralTextureModel.js`'s CPU forward pass (cross-check, same pattern as the appearance manifest's `referenceEvaluations`) |
 
 ### neural-material/
 
-| File | Project | What to test |
-|---|---|---|
-| `NeuralMaterialFormat.js` (161 lines) | unit for `layoutChannels`/`buildChannelActivations`/`getChannel` (pure data-layout logic); **browser** for `previewColor` (builds a TSL node) | Channel offset assignment for arbitrary active-channel subsets (this is the encoder/decoder contract other modules index into by flat offset - a layout bug here silently corrupts every channel after the first mismatch), `MAX_TOTAL_CHANNELS` invariant, unknown-key error path |
-| `NeuralMaterialSource.js` (378 lines) | mixed - `classifyMaterialChannels` (which channels are "active") is likely pure JS/unit; anything building/resolving TSL nodes (e.g. `resolveAnisotropyNodes`) is browser | Classification given a material with only some node properties set - the "spatially-varying vs constant" decision this drives is a correctness-critical converter step |
-| `NeuralMaterialNodeMaterial.js` (292 lines) | browser | `reconstructFinalNormal`'s `sqrt(1 - dx*dx - dy*dy)` z-reconstruction is a natural edge-case target: dx/dy near the unit circle boundary (sqrt of a near-zero or slightly negative value) |
+Fully covered (see the "Also covered" table above) - `NeuralMaterialFormat.js`, `NeuralMaterialSource.js`, `NeuralMaterialNodeMaterial.js`.
 
 ### neural-appearance/
 
 This directory is the biggest and has the clearest "encoder/decoder/
-loader/converter" shape of the whole framework:
+loader/converter" shape of the whole framework. `NeuralAppearanceFormat.js`,
+`NeuralAppearanceModel.js`, and `NeuralAppearanceValidator.js` are now
+covered (see the "Also covered" table above) - remaining:
 
 | File | Project | Role | What to test |
 |---|---|---|---|
-| `NeuralAppearanceFormat.js` (40 lines) | unit | format constants | Trivial but cheap - lock down `FORMAT`/`VERSION`/size constants so a future edit that changes one without meaning to fails loudly |
-| `NeuralAppearanceModel.js` (329 lines) | unit | CPU model (decoder) | No TSL import - this is a pure-JS forward pass, do it early. Cross-check against the browser-side TSL evaluation of the same math once that exists (see `NeuralAppearanceTSL.js` row) |
 | `NeuralAppearanceManifest.js` (200 lines) | unit | **encoder** - model → JSON manifest | `serializeLayers` round-trips (weights/biases survive `.slice()`), `createNeuralAppearanceManifest`'s conditional `emission`/`opacity` block inclusion, `layoutChannels`-style offset consistency |
 | `NeuralAppearanceRuntime.js` (281 lines) | unit | **decoder** - JSON manifest → evaluated outputs, pure-JS reference implementation | This is the module the manifest's own `referenceEvaluations` are generated from (see `createReferenceEvaluations` in Manifest.js) - test it directly, then use it as the oracle when writing the `NeuralAppearanceTSL.js` GPU tests below, the same way `NeuralOutputActivations.test.js` uses hand-written reference formulas |
 | `NeuralAppearanceSampler.js` (477 lines) | unit | teacher-target sampling/normalization | `normalizeDirectLightingTargets`, `assignTeacherTargets` given a fake teacher |
 | `NeuralAppearanceTeacherReadback.js` (93 lines) | unit | readback plumbing | Whatever doesn't require a real render target |
-| `NeuralAppearanceTrainer.js` (450 lines) | unit for orchestration/schedule, browser for anything that actually dispatches | |
-| `NeuralAppearanceValidator.js` (362 lines) | unit | **loader-adjacent** - validates a manifest/model before use | This is exactly where malformed-input edge cases belong: missing fields, wrong array lengths, out-of-range channel counts - the kind of thing that currently fails deep inside a render call with a confusing GPU error instead of a clear validation message |
+| `NeuralAppearanceTrainer.js` (450 lines) | unit for orchestration/schedule | Perf/stage-timing is now covered (see above); still open: `abort()`, `outputFeatures`/`opacityMode` derivation, `validateTrainingSettings`'s error paths |
 | `NeuralAppearanceTSL.js` (855 lines) | browser | GPU-side inference node graph | Largest file, highest payoff: cross-check against `NeuralAppearanceRuntime.js`'s CPU reference the same way `createReferenceEvaluations` already does at export time - now made into an actual assertion instead of just JSON that a human has to eyeball |
 | `NeuralAppearanceTeacherAtlas.js` (195 lines) | browser | renders a real atlas texture | |
-| `NeuralAppearanceTeacherEvaluator.js` (747 lines) | browser | teacher BRDF evaluation kernels | |
+| `NeuralAppearanceTeacherEvaluator.js` (747 lines) | browser | teacher BRDF evaluation kernels | Its `evaluateBatch` MRT grouping/caching behavior is exercised indirectly by the perf test above (call-count assertions would make this explicit) |
 | `NeuralAppearanceGPUModel.js` (693 lines) | browser | storage buffer layout (same pattern as `NeuralTextureGPUModel.js`) | |
 | `NeuralAppearanceGPUComputeTSL.js` (1211 lines) | browser | training kernels (same pattern as `NeuralTextureGPUComputeTSL.js`) | Biggest single file in the framework - tackle after the smaller GPU kernels above have proven out the pattern |
 | `NeuralAppearanceNodeMaterial.js` (308 lines) | browser | inference-time material wiring | |

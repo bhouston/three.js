@@ -461,10 +461,15 @@ class NeuralAppearanceTeacherEvaluator {
 		// different attachment count/format than the target actually bound
 		// for that draw. `key` (the mode-bundle cache key -- see
 		// _getModeBundle()) is guaranteed unique per bundle, so suffixing
-		// with it guarantees each bundle gets its own pipeline.
+		// with it guarantees each bundle gets its own pipeline. `key` alone
+		// is not enough across separate evaluator instances though: two
+		// runs' 'direct' bundles share the same `key` but can differ in
+		// attachment count (e.g. supportsEmission changes whether
+		// 'emission' is included), so the suffix must also encode the
+		// resolved channel/attachment signature.
 		sampleMaterial.customProgramCacheKey = function () {
 
-			return THREE.NodeMaterial.prototype.customProgramCacheKey.call( this ) + '|neuralTeacherMode:' + key;
+			return THREE.NodeMaterial.prototype.customProgramCacheKey.call( this ) + '|neuralTeacherMode:' + key + ':' + channelNames.join( ',' );
 
 		};
 

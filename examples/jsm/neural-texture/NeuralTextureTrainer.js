@@ -70,9 +70,9 @@ class NeuralTextureTrainer {
 
 	}
 
-	async train( { renderer, sourceTexture, sourceTextures, onProgress = null, ...options } = {} ) {
+	async train( { renderer, sourceTexture, sourceTextures, onProgress = null } = {} ) {
 
-		const settings = { ...this.options, ...options };
+		const settings = this.options;
 		this._abortRequested = false;
 
 		if ( ! renderer || renderer.isWebGPURenderer !== true ) {
@@ -93,58 +93,66 @@ class NeuralTextureTrainer {
 		const gpuModel = new NeuralTextureGPUModel( settings );
 		gpuModel.initFromCPUModel( cpuModel );
 
-		const trainBatchNode = createTextureTrainBatchComputeNode( gpuModel, textures );
-		const resetGradientNormNode = createResetGradientNormComputeNode( gpuModel );
-		const accumulateGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel );
-		const adamWeightsNode = createTextureAdamWeightsComputeNode( gpuModel );
-		const adamLatentsNode = createTextureAdamLatentsComputeNode( gpuModel );
+		try {
 
-		const iterations = settings.iterations;
-		let lastLoss = NaN;
-		let completedIterations = 0;
+			const trainBatchNode = createTextureTrainBatchComputeNode( gpuModel, textures );
+			const resetGradientNormNode = createResetGradientNormComputeNode( gpuModel );
+			const accumulateGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel );
+			const adamWeightsNode = createTextureAdamWeightsComputeNode( gpuModel );
+			const adamLatentsNode = createTextureAdamLatentsComputeNode( gpuModel );
 
-		for ( let iteration = 0; iteration < iterations; iteration ++ ) {
+			const iterations = settings.iterations;
+			let lastLoss = NaN;
+			let completedIterations = 0;
 
-			if ( this._abortRequested ) break;
+			for ( let iteration = 0; iteration < iterations; iteration ++ ) {
 
-			const learningRate = getLearningRate( settings, iteration );
-			gpuModel.resetLoss();
-			gpuModel.learningRateUniform.value = learningRate;
-			gpuModel.stepUniform.value = iteration + 1;
-			gpuModel.maxGradientNormUniform.value = settings.maxGradientNorm;
+				if ( this._abortRequested ) break;
 
-			renderer.compute( trainBatchNode );
-			renderer.compute( resetGradientNormNode );
-			renderer.compute( accumulateGradientNormNode );
-			renderer.compute( adamWeightsNode );
-			renderer.compute( adamLatentsNode );
+				const learningRate = getLearningRate( settings, iteration );
+				gpuModel.resetLoss();
+				gpuModel.learningRateUniform.value = learningRate;
+				gpuModel.stepUniform.value = iteration + 1;
+				gpuModel.maxGradientNormUniform.value = settings.maxGradientNorm;
 
-			completedIterations = iteration + 1;
+				renderer.compute( trainBatchNode );
+				renderer.compute( resetGradientNormNode );
+				renderer.compute( accumulateGradientNormNode );
+				renderer.compute( adamWeightsNode );
+				renderer.compute( adamLatentsNode );
 
-			const shouldSync = onProgress !== null && ( iteration % 4 === 0 || iteration === iterations - 1 );
+				completedIterations = iteration + 1;
 
-			if ( shouldSync ) {
+				const shouldSync = onProgress !== null && ( iteration % 4 === 0 || iteration === iterations - 1 );
 
-				lastLoss = await gpuModel.readLoss( renderer );
-				await gpuModel.syncToCPU( cpuModel, renderer );
+				if ( shouldSync ) {
 
-				if ( onProgress ) {
+					lastLoss = await gpuModel.readLoss( renderer );
+					await gpuModel.syncToCPU( cpuModel, renderer );
 
-					onProgress( { iteration: completedIterations, iterations, loss: lastLoss, learningRate, cpuModel, gpuModel } );
+					if ( onProgress ) {
+
+						onProgress( { iteration: completedIterations, iterations, loss: lastLoss, learningRate, cpuModel, gpuModel } );
+
+					}
+
+					await yieldToBrowser();
 
 				}
 
-				await yieldToBrowser();
+				if ( iteration % 32 === 31 ) await yieldToBrowser();
 
 			}
 
-			if ( iteration % 32 === 31 ) await yieldToBrowser();
+			await gpuModel.syncToCPU( cpuModel, renderer );
+
+			return { cpuModel, loss: lastLoss, iteration: completedIterations, iterations, stoppedEarly: completedIterations < iterations };
+
+		} finally {
+
+			gpuModel.dispose();
 
 		}
-
-		await gpuModel.syncToCPU( cpuModel, renderer );
-
-		return { cpuModel, gpuModel, loss: lastLoss, iteration: completedIterations, iterations, stoppedEarly: completedIterations < iterations };
 
 	}
 

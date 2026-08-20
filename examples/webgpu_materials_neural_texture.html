@@ -171,12 +171,12 @@
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
 			import { NeuralTextureTrainer } from 'three/addons/neural-texture/NeuralTextureTrainer.js';
 			import { NeuralTextureNodeMaterial } from 'three/addons/neural-texture/NeuralTextureNodeMaterial.js';
-			import { bakeColorNodeToTexture, extractBaseColorNode, loadImageTexture } from 'three/addons/neural-texture/NeuralTextureSource.js';
-			import { computeGridLevels } from 'three/addons/neural-texture/NeuralTextureModel.js';
+			import { NeuralTextureSource, extractBaseColorNode } from 'three/addons/neural-texture/NeuralTextureSource.js';
+			import { computeTextureModelLayout } from 'three/addons/neural-texture/NeuralTextureGPUModel.js';
 
 			let camera, scene, renderer;
 			let teacherMesh, neuralMesh, teacherMaterial, neuralMaterial, placeholderMaterial;
-			let sourceTexture = null, sourceRenderTarget = null, materialXMaterial = null;
+			let source = null, materialXMaterial = null;
 			let isTraining = false, activeTrainer = null, comparisonVisible = false;
 			let lossHistory = [];
 
@@ -324,16 +324,20 @@
 
 			function updateNetworkSize() {
 
-				const channels = 4;
-				const outputChannels = 3;
-				const resolutions = computeGridLevels( Number( params.baseResolution ), Number( params.targetResolution ), Number( params.levels ) );
-				const latentTexels = resolutions.reduce( ( sum, resolution ) => sum + resolution * resolution, 0 );
-				const latentBytes = latentTexels * channels * 2; // exported as fp16, like the neural appearance runtime
-
 				const hidden = Number( params.hiddenSize );
-				const inputSize = Number( params.levels ) * channels + ( params.includeUV ? 2 : 0 );
-				const weightCount = ( inputSize * hidden + hidden ) + ( hidden * hidden + hidden ) + ( hidden * outputChannels + outputChannels );
-				const weightBytes = weightCount * 4; // fp32
+				const layout = computeTextureModelLayout( {
+					channels: 4,
+					levels: Number( params.levels ),
+					baseResolution: Number( params.baseResolution ),
+					targetResolution: Number( params.targetResolution ),
+					hiddenSizes: [ hidden, hidden ],
+					outputChannels: 3,
+					includeUV: params.includeUV
+				} );
+
+				const latentTexels = layout.gridLevels.reduce( ( sum, level ) => sum + level.texelCount, 0 );
+				const latentBytes = layout.totalLatents * 2; // exported as fp16, like the neural appearance runtime
+				const weightBytes = layout.totalWeights * 4; // fp32
 
 				document.getElementById( 'networkSize' ).textContent =
 					`${formatBytes( latentBytes + weightBytes )} (${formatBytes( latentBytes )} grid + ${formatBytes( weightBytes )} MLP, ${latentTexels.toLocaleString()} texels)`;
@@ -419,12 +423,12 @@
 
 					status.textContent = `Loading ${file.name}...`;
 					const url = URL.createObjectURL( file );
-					const texture = await loadImageTexture( url );
+					const loaded = await NeuralTextureSource.fromImage( url );
 					URL.revokeObjectURL( url );
 
 					builtInMaterial.value = '';
 					materialXMaterial = null;
-					setSourceTexture( texture, null );
+					setSource( loaded );
 					sourceName.textContent = file.name;
 					status.textContent = `Loaded ${file.name}. Press Train to fit it.`;
 
@@ -450,8 +454,8 @@
 				const colorNode = extractBaseColorNode( material );
 				if ( colorNode === null ) throw new Error( 'MaterialX material has no usable base color.' );
 
-				const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, Number( params.bakeResolution ) );
-				setSourceTexture( renderTarget.texture, renderTarget );
+				const baked = await NeuralTextureSource.fromBakedColorNode( renderer, colorNode, Number( params.bakeResolution ) );
+				setSource( baked );
 				sourceName.textContent = material.name || name;
 				status.textContent = 'Base color baked from MaterialX. Press Train to fit it.';
 
@@ -463,19 +467,16 @@
 
 			}
 
-			function setSourceTexture( texture, renderTarget ) {
+			function setSource( newSource ) {
 
-				if ( sourceRenderTarget ) sourceRenderTarget.dispose();
-				if ( sourceTexture && sourceRenderTarget === null ) sourceTexture.dispose();
-
-				sourceTexture = texture;
-				sourceRenderTarget = renderTarget;
+				if ( source ) source.dispose();
+				source = newSource;
 
 				if ( teacherMaterial ) teacherMaterial.dispose();
 				teacherMaterial = new THREE.NodeMaterial();
 				teacherMaterial.lights = false;
 				teacherMaterial.toneMapped = false;
-				teacherMaterial.colorNode = TSL.vec4( TSL.texture( sourceTexture, TSL.fract( TSL.uv().mul( uvScaleUniform ).add( uvOffsetUniform ) ) ).rgb, 1 );
+				teacherMaterial.colorNode = TSL.vec4( TSL.texture( source.texture, TSL.fract( TSL.uv().mul( uvScaleUniform ).add( uvOffsetUniform ) ) ).rgb, 1 );
 				teacherMesh.material = teacherMaterial;
 
 				disposeNeuralMaterial();
@@ -490,7 +491,7 @@
 
 			async function train() {
 
-				if ( sourceTexture === null ) return;
+				if ( source === null ) return;
 
 				setTrainingUi( true );
 				comparisonVisible = true;
@@ -520,7 +521,7 @@
 
 					const result = await trainer.train( {
 						renderer,
-						sourceTexture,
+						sourceTexture: source.texture,
 						onProgress: ( progress ) => {
 
 							lossHistory.push( { iteration: progress.iteration, loss: progress.loss } );
@@ -570,7 +571,7 @@
 
 				isTraining = active;
 				stopButton.disabled = ! active;
-				trainButton.disabled = active || sourceTexture === null;
+				trainButton.disabled = active || source === null;
 				builtInMaterial.disabled = active;
 				openMtlxButton.disabled = active;
 				openImageButton.disabled = active;
@@ -585,7 +586,7 @@
 				disposeNeuralMaterial();
 				neuralMaterial = new NeuralTextureNodeMaterial( cpuModel, {
 					mode: params.outputMode,
-					sourceTexture,
+					sourceTexture: source.texture,
 					errorScale: Number( params.errorScale ),
 					uvScaleNode: uvScaleUniform,
 					uvOffsetNode: uvOffsetUniform

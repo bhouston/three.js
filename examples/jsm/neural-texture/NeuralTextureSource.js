@@ -134,4 +134,42 @@ function loadImageTexture( url ) {
 
 }
 
-export { bakeColorNodeToTexture, extractBaseColorNode, loadImageTexture };
+/**
+ * Owns a source texture plus the (optional) render target that produced it,
+ * so a caller doesn't have to track "is this a baked texture I own a
+ * render target for, or a plain loaded texture I own directly?" via a
+ * separate nullable variable. `dispose()` releases whichever one applies -
+ * disposing the render target's own copy of the texture, never both.
+ */
+class NeuralTextureSource {
+
+	constructor( texture, renderTarget = null ) {
+
+		this.texture = texture;
+		this.renderTarget = renderTarget;
+
+	}
+
+	static async fromBakedColorNode( renderer, colorNode, resolution = 512 ) {
+
+		const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, resolution );
+		return new NeuralTextureSource( renderTarget.texture, renderTarget );
+
+	}
+
+	static async fromImage( url ) {
+
+		return new NeuralTextureSource( await loadImageTexture( url ) );
+
+	}
+
+	dispose() {
+
+		if ( this.renderTarget ) this.renderTarget.dispose();
+		else this.texture.dispose();
+
+	}
+
+}
+
+export { NeuralTextureSource, bakeColorNodeToTexture, extractBaseColorNode, loadImageTexture };

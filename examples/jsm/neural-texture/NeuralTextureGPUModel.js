@@ -2,6 +2,7 @@ import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, uniform } from 'three/tsl';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 import { computeGridLevels } from '../neural/NeuralGridModel.js';
+import { resolveNeuralTextureOptions } from './NeuralTextureModel.js';
 
 /**
  * Computes buffer layouts and offsets for GPU-based neural texture training:
@@ -10,13 +11,7 @@ import { computeGridLevels } from '../neural/NeuralGridModel.js';
  */
 function computeTextureModelLayout( options = {} ) {
 
-	const channels = options.channels || 4;
-	const levels = options.levels || 4;
-	const baseResolution = options.baseResolution || 16;
-	const targetResolution = options.targetResolution || 256;
-	const hiddenSizes = options.hiddenSizes || [ 32, 32 ];
-	const outputChannels = options.outputChannels || 3;
-	const includeUV = options.includeUV || false;
+	const { channels, levels, baseResolution, targetResolution, hiddenSizes, outputChannels, includeUV } = resolveNeuralTextureOptions( options );
 	// One entry per output channel naming its output nonlinearity (see
 	// ../neural/NeuralOutputActivations.js); undefined/omitted entries (the
 	// default, `options.channelActivations` unset) mean plain linear, i.e.
@@ -129,6 +124,53 @@ function computeTextureModelLayout( options = {} ) {
 }
 
 /**
+ * Copies weights/biases and latent-grid data between the CPU reference
+ * model and a flat GPU-layout-shaped array, in either direction - the two
+ * are identical index-for-index copy loops with only the assignment side
+ * flipped, so `initFromCPUModel`/`syncToCPU` both delegate here rather than
+ * maintaining that loop twice.
+ */
+function copyModel( cpuModel, layout, weights, latents, direction ) {
+
+	for ( let l = 0; l < cpuModel.decoder.layers.length; l ++ ) {
+
+		const layer = cpuModel.decoder.layers[ l ];
+		const layerLayout = layout.mlpLayers[ l ];
+
+		if ( direction === 'toGPU' ) {
+
+			for ( let i = 0; i < layer.weights.length; i ++ ) weights[ layerLayout.weightsOffset + i ] = layer.weights[ i ];
+			for ( let i = 0; i < layer.biases.length; i ++ ) weights[ layerLayout.biasesOffset + i ] = layer.biases[ i ];
+
+		} else {
+
+			for ( let i = 0; i < layer.weights.length; i ++ ) layer.weights[ i ] = weights[ layerLayout.weightsOffset + i ];
+			for ( let i = 0; i < layer.biases.length; i ++ ) layer.biases[ i ] = weights[ layerLayout.biasesOffset + i ];
+
+		}
+
+	}
+
+	for ( let g = 0; g < cpuModel.grids.length; g ++ ) {
+
+		const grid = cpuModel.grids[ g ];
+		const level = layout.gridLevels[ g ];
+
+		if ( direction === 'toGPU' ) {
+
+			for ( let i = 0; i < grid.data.length; i ++ ) latents[ level.offset + i ] = grid.data[ i ];
+
+		} else {
+
+			for ( let i = 0; i < grid.data.length; i ++ ) grid.data[ i ] = latents[ level.offset + i ];
+
+		}
+
+	}
+
+}
+
+/**
  * Encapsulates the GPU StorageBuffers, uniforms, and CPU synchronizers for
  * neural texture training. Field names intentionally mirror
  * `NeuralAppearanceGPUModel` so the Adam / gradient-clip compute kernels can
@@ -188,24 +230,7 @@ class NeuralTextureGPUModel {
 		weights.fill( 0 );
 		latents.fill( 0 );
 
-		for ( let l = 0; l < cpuModel.decoder.layers.length; l ++ ) {
-
-			const layer = cpuModel.decoder.layers[ l ];
-			const layout = this.layout.mlpLayers[ l ];
-
-			for ( let i = 0; i < layer.weights.length; i ++ ) weights[ layout.weightsOffset + i ] = layer.weights[ i ];
-			for ( let i = 0; i < layer.biases.length; i ++ ) weights[ layout.biasesOffset + i ] = layer.biases[ i ];
-
-		}
-
-		for ( let g = 0; g < cpuModel.grids.length; g ++ ) {
-
-			const grid = cpuModel.grids[ g ];
-			const level = this.layout.gridLevels[ g ];
-
-			for ( let i = 0; i < grid.data.length; i ++ ) latents[ level.offset + i ] = grid.data[ i ];
-
-		}
+		copyModel( cpuModel, this.layout, weights, latents, 'toGPU' );
 
 		this.weightsAttribute.needsUpdate = true;
 		this.latentsAttribute.needsUpdate = true;
@@ -226,24 +251,30 @@ class NeuralTextureGPUModel {
 		const weights = new Float32Array( weightsBuffer );
 		const latents = new Float32Array( latentsBuffer );
 
-		for ( let l = 0; l < cpuModel.decoder.layers.length; l ++ ) {
+		copyModel( cpuModel, this.layout, weights, latents, 'toCPU' );
 
-			const layer = cpuModel.decoder.layers[ l ];
-			const layout = this.layout.mlpLayers[ l ];
+	}
 
-			for ( let i = 0; i < layer.weights.length; i ++ ) layer.weights[ i ] = weights[ layout.weightsOffset + i ];
-			for ( let i = 0; i < layer.biases.length; i ++ ) layer.biases[ i ] = weights[ layout.biasesOffset + i ];
+	/**
+	 * Releases every GPU storage buffer this instance owns. Training GPU
+	 * models are cheap to construct but hold 11 real GPU-side buffers - a
+	 * fresh trainer run that doesn't dispose the previous one leaks them.
+	 */
+	dispose() {
 
-		}
+		this.weightsAttribute.dispose();
+		this.gradWeightsAttribute.dispose();
+		this.mWeightsAttribute.dispose();
+		this.vWeightsAttribute.dispose();
 
-		for ( let g = 0; g < cpuModel.grids.length; g ++ ) {
+		this.latentsAttribute.dispose();
+		this.gradLatentsAttribute.dispose();
+		this.mLatentsAttribute.dispose();
+		this.vLatentsAttribute.dispose();
 
-			const grid = cpuModel.grids[ g ];
-			const level = this.layout.gridLevels[ g ];
-
-			for ( let i = 0; i < grid.data.length; i ++ ) grid.data[ i ] = latents[ level.offset + i ];
-
-		}
+		this.activationsAttribute.dispose();
+		this.lossAttribute.dispose();
+		this.gradNormAttribute.dispose();
 
 	}
 

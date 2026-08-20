@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { bitangentWorld, float, tangentWorld, transformNormalToView, vec2, vec3, vec4 } from 'three/tsl';
+import { bitangentWorld, float, tangentWorld, vec2, vec3, vec4 } from 'three/tsl';
 import { bakeColorNodeToTexture } from '../neural-texture/NeuralTextureSource.js';
-import { CHANNELS, FRAME_VIEWS, layoutChannels, previewColor } from './NeuralMaterialFormat.js';
+import { CHANNELS, SIMPLE_SCALAR_KEYS, FRAME_VIEWS, getChannel, layoutChannels, buildDebugViewColorNode, buildFrameViewColorNode } from './NeuralMaterialFormat.js';
 
 function resolveScalarNode( material, nodeKey, propertyKey, fallback ) {
 
@@ -57,23 +57,26 @@ function resolveMaterialChannelNodes( material ) {
 	const emissiveIntensity = material.emissiveIntensity !== undefined ? material.emissiveIntensity : 1;
 	const sheenColor = resolveColorNode( material, 'sheenNode', 'sheenColor', new THREE.Color( 0, 0, 0 ) );
 	const sheenStrength = material.sheen !== undefined ? material.sheen : 1;
-	const anisotropy = resolveAnisotropyNodes( material );
 
-	return {
+	const nodes = {
 		albedo: material.colorNode ? vec3( material.colorNode ) : vec3( material.color || new THREE.Color( 1, 1, 1 ) ),
-		opacity: resolveScalarNode( material, 'opacityNode', 'opacity', 1 ),
 		normal: material.normalNode ? vec3( material.normalNode ) : vec3( 0, 0, 1 ),
-		roughness: resolveScalarNode( material, 'roughnessNode', 'roughness', 1 ),
-		metalness: resolveScalarNode( material, 'metalnessNode', 'metalness', 0 ),
-		clearcoat: resolveScalarNode( material, 'clearcoatNode', 'clearcoat', 0 ),
-		clearcoatRoughness: resolveScalarNode( material, 'clearcoatRoughnessNode', 'clearcoatRoughness', 0 ),
 		clearcoatNormal: material.clearcoatNormalNode ? vec3( material.clearcoatNormalNode ) : vec3( 0, 0, 1 ),
-		transmission: resolveScalarNode( material, 'transmissionNode', 'transmission', 0 ),
 		emissive: emissiveColor.mul( emissiveIntensity ),
-		anisotropy,
-		sheenColor: sheenColor.mul( sheenStrength ),
-		sheenRoughness: resolveScalarNode( material, 'sheenRoughnessNode', 'sheenRoughness', 1 )
+		anisotropy: resolveAnisotropyNodes( material ),
+		sheenColor: sheenColor.mul( sheenStrength )
 	};
+
+	// The remaining channels are all a single `${key}Node`/`${key}` node/
+	// property pair with a scalar default - see SIMPLE_SCALAR_KEYS.
+	for ( const key of SIMPLE_SCALAR_KEYS ) {
+
+		const channel = getChannel( key );
+		nodes[ key ] = resolveScalarNode( material, key + 'Node', key, channel.defaultValue );
+
+	}
+
+	return nodes;
 
 }
 
@@ -85,6 +88,13 @@ function resolveMaterialChannelNodes( material ) {
  */
 function resolveConstantValue( material, key ) {
 
+	if ( SIMPLE_SCALAR_KEYS.includes( key ) ) {
+
+		const defaultValue = getChannel( key ).defaultValue;
+		return material[ key ] !== undefined ? material[ key ] : defaultValue;
+
+	}
+
 	switch ( key ) {
 
 		case 'albedo': {
@@ -94,14 +104,8 @@ function resolveConstantValue( material, key ) {
 
 		}
 
-		case 'opacity': return material.opacity !== undefined ? material.opacity : 1;
 		case 'normal': return [ 0, 0, 1 ];
-		case 'roughness': return material.roughness !== undefined ? material.roughness : 1;
-		case 'metalness': return material.metalness !== undefined ? material.metalness : 0;
-		case 'clearcoat': return material.clearcoat !== undefined ? material.clearcoat : 0;
-		case 'clearcoatRoughness': return material.clearcoatRoughness !== undefined ? material.clearcoatRoughness : 0;
 		case 'clearcoatNormal': return [ 0, 0, 1 ];
-		case 'transmission': return material.transmission !== undefined ? material.transmission : 0;
 		case 'emissive': {
 
 			const c = material.emissive || new THREE.Color( 0, 0, 0 );
@@ -126,7 +130,6 @@ function resolveConstantValue( material, key ) {
 
 		}
 
-		case 'sheenRoughness': return material.sheenRoughness !== undefined ? material.sheenRoughness : 1;
 		default: throw new Error( `THREE.NeuralMaterialSource: unknown channel "${key}".` );
 
 	}
@@ -336,16 +339,7 @@ function buildChannelPreviewMaterials( material ) {
 	for ( const channel of CHANNELS ) {
 
 		const previewMaterial = clonePreviewMaterial();
-
-		// channelNodes.normal/clearcoatNormal is `material.normalNode`/
-		// `clearcoatNormalNode` itself - already a full 3-component TBN-
-		// blended vector (see resolveMaterialChannelNodes), not the raw
-		// 2-component (dx, dy) the network trains against. Describe it to
-		// previewColor as size 3 so its z isn't silently dropped to 0 - see
-		// the matching fix/comment in NeuralMaterialNodeMaterial.setDebugView.
-		const isNormalChannel = channel.key === 'normal' || channel.key === 'clearcoatNormal';
-		const previewChannel = isNormalChannel ? { ...channel, size: 3 } : channel;
-		previewMaterial.colorNode = vec4( previewColor( channelNodes[ channel.key ], previewChannel, false ), 1 );
+		previewMaterial.colorNode = buildDebugViewColorNode( channel, channelNodes[ channel.key ] );
 		materials[ channel.key ] = previewMaterial;
 
 	}
@@ -360,7 +354,7 @@ function buildChannelPreviewMaterials( material ) {
 	for ( const key of FRAME_VIEWS ) {
 
 		const previewMaterial = clonePreviewMaterial();
-		previewMaterial.colorNode = vec4( previewColor( transformNormalToView( frameNodes[ key ] ), { activation: 'tanh', size: 3 }, false ), 1 );
+		previewMaterial.colorNode = buildFrameViewColorNode( frameNodes[ key ] );
 		materials[ key ] = previewMaterial;
 
 	}

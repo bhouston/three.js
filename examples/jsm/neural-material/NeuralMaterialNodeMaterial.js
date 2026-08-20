@@ -1,8 +1,10 @@
 import * as THREE from 'three';
-import { bitangentWorld, float, fract, max, normalWorld, sqrt, tangentWorld, transformNormalToView, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { bitangentWorld, float, fract, max, normalWorld, sqrt, tangentWorld, transformNormalToView, uv, vec2, vec3 } from 'three/tsl';
 import { buildLevelTextures, evaluateNeuralTextureRaw } from '../neural-texture/NeuralTextureNodeMaterial.js';
+import { NeuralTextureTrainer } from '../neural-texture/NeuralTextureTrainer.js';
 import { applyChannelActivation } from '../neural/NeuralOutputActivations.js';
-import { FRAME_VIEWS, getChannel, previewColor } from './NeuralMaterialFormat.js';
+import { FRAME_VIEWS, SIMPLE_SCALAR_KEYS, getChannel, buildDebugViewColorNode, buildFrameViewColorNode, buildChannelActivations } from './NeuralMaterialFormat.js';
+import { bakeMaterialToTextures, classifyMaterialChannels } from './NeuralMaterialSource.js';
 
 /**
  * Turns a trained tangent-space (dx, dy) offset into the mesh's final
@@ -103,9 +105,18 @@ function constantToNode( value ) {
  */
 class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
-	constructor( cpuModel, activeChannels, constantValues, options = {} ) {
+	/**
+	 * `channelClassification` is whatever `NeuralMaterialSource.
+	 * classifyMaterialChannels` returned - `{ activeChannels, constantValues,
+	 * totalChannels, packCount }` - passed through as-is rather than
+	 * destructured by the caller, since the two fields this constructor
+	 * needs are always produced together and never meaningfully used apart.
+	 */
+	constructor( cpuModel, channelClassification, options = {} ) {
 
 		super();
+
+		const { activeChannels, constantValues } = channelClassification;
 
 		this.cpuModel = cpuModel;
 		this.activeChannels = activeChannels;
@@ -126,40 +137,26 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
 		const isActive = ( key ) => Object.prototype.hasOwnProperty.call( slices, key );
 
-		// --- albedo / opacity ---
+		// --- albedo (kept separate: this is also `this._shadedColorNode`,
+		// swapped back in by setDebugView('shaded')) ---
 		this._shadedColorNode = isActive( 'albedo' ) ? slices.albedo : null;
 		if ( isActive( 'albedo' ) ) this.colorNode = this._shadedColorNode;
 		else this.color = new THREE.Color( ...constantValues.albedo );
 
-		if ( isActive( 'opacity' ) ) this.opacityNode = slices.opacity.clamp( 0, 1 );
-		else this.opacity = constantValues.opacity;
+		// --- every channel that's just a `${key}Node`/`${key}` pair with a
+		// scalar clamp range - see NeuralMaterialFormat.SIMPLE_SCALAR_KEYS ---
+		for ( const key of SIMPLE_SCALAR_KEYS ) {
+
+			const channel = getChannel( key );
+
+			if ( isActive( key ) ) this[ key + 'Node' ] = slices[ key ].clamp( ...channel.clampRange );
+			else this[ key ] = constantValues[ key ];
+
+		}
 
 		// --- normal / clearcoat normal (constant = "no bump", leave node unset) ---
 		if ( isActive( 'normal' ) ) this.normalNode = reconstructFinalNormal( slices.normal );
 		if ( isActive( 'clearcoatNormal' ) ) this.clearcoatNormalNode = reconstructFinalNormal( slices.clearcoatNormal );
-
-		// --- scalar surface properties ---
-		if ( isActive( 'roughness' ) ) this.roughnessNode = slices.roughness.clamp( 0.02, 1 );
-		else this.roughness = constantValues.roughness;
-
-		if ( isActive( 'metalness' ) ) this.metalnessNode = slices.metalness.clamp( 0, 1 );
-		else this.metalness = constantValues.metalness;
-
-		if ( isActive( 'clearcoat' ) ) this.clearcoatNode = slices.clearcoat.clamp( 0, 1 );
-		else this.clearcoat = constantValues.clearcoat;
-
-		if ( isActive( 'clearcoatRoughness' ) ) this.clearcoatRoughnessNode = slices.clearcoatRoughness.clamp( 0.02, 1 );
-		else this.clearcoatRoughness = constantValues.clearcoatRoughness;
-
-		// Transmission genuinely requires the renderer's separate screen-space
-		// transmission pass to render correctly whenever it's non-zero -
-		// that's inherent to reproducing a transmissive material, not
-		// something to avoid. It's only skipped here when *constant*, where
-		// for every material without a transmission map that constant is 0
-		// (opaque), which leaves the expensive pass off exactly when the
-		// source material didn't need it either.
-		if ( isActive( 'transmission' ) ) this.transmissionNode = slices.transmission.clamp( 0, 1 );
-		else this.transmission = constantValues.transmission;
 
 		if ( isActive( 'emissive' ) ) this.emissiveNode = slices.emissive;
 		else this.emissive = new THREE.Color( ...constantValues.emissive );
@@ -179,12 +176,10 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
 		}
 
-		// --- sheen ---
+		// --- sheen (sheenColor is a Color + separate `sheen` intensity
+		// property, not a plain scalar, so it's not in SIMPLE_SCALAR_KEYS) ---
 		if ( isActive( 'sheenColor' ) ) this.sheenNode = slices.sheenColor.clamp( 0, 1 );
 		else this.sheenColor = new THREE.Color( ...constantValues.sheenColor );
-
-		if ( isActive( 'sheenRoughness' ) ) this.sheenRoughnessNode = slices.sheenRoughness.clamp( 0.02, 1 );
-		else this.sheenRoughness = constantValues.sheenRoughness;
 
 		this.setDebugView( options.debugView || 'shaded' );
 
@@ -222,7 +217,7 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 			this.lights = false;
 			this.toneMapped = false;
 			const frameNode = view === 'tangent' ? tangentWorld : bitangentWorld;
-			this.colorNode = vec4( previewColor( transformNormalToView( frameNode ), { activation: 'tanh', size: 3 }, false ), 1 );
+			this.colorNode = buildFrameViewColorNode( frameNode );
 
 		} else {
 
@@ -264,14 +259,12 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 			// this preview value - for normal/clearcoatNormal it's always the
 			// TBN-reconstructed, fully 3-component view-space normal above
 			// (both when active and, via constantToNode, in the [0,0,1]
-			// constant-fallback case). Feeding the real 2-component channel
-			// descriptor into previewColor would hit its `size === 2` branch,
-			// which hardcodes blue to 0 and silently discards the normal's z -
-			// use a size-3 descriptor so all three components actually reach
-			// the display color, matching the familiar blue-dominant
-			// tangent-space normal map palette instead of a z-less yellow one.
-			const previewChannel = isNormalChannel ? { ...channel, size: 3 } : channel;
-			this.colorNode = vec4( previewColor( value, previewChannel, false ), 1 );
+			// constant-fallback case). `buildDebugViewColorNode` widens the
+			// channel descriptor to size 3 for exactly these two channels, so
+			// all three components actually reach the display color, matching
+			// the familiar blue-dominant tangent-space normal map palette
+			// instead of a z-less yellow one.
+			this.colorNode = buildDebugViewColorNode( channel, value );
 
 		}
 
@@ -284,6 +277,88 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		for ( const levelTexture of this.levelTextures ) levelTexture.dispose();
 
 		super.dispose();
+
+	}
+
+	/**
+	 * End-to-end convenience path covering the sequence every consumer of
+	 * this addon otherwise has to hand-assemble from five separate low-level
+	 * pieces: classify the material's channels, bake the active ones to
+	 * textures, train a `NeuralTextureTrainer` against them, and construct
+	 * (and, on every progress tick, re-construct and dispose the previous)
+	 * `NeuralMaterialNodeMaterial`.
+	 *
+	 * `options` is passed straight through to `NeuralTextureTrainer` (so
+	 * `levels`, `hiddenSizes`, `iterations`, `learningRate`, etc. all apply),
+	 * plus a few fit()-specific fields: `resolution` (bake resolution,
+	 * default 512), `debugView` (default 'shaded'), and `onProgress`, called
+	 * with the usual `NeuralTextureTrainer` progress payload plus a
+	 * `material` field holding the current (already-disposing-its-
+	 * predecessor) in-progress material, suitable for live preview during
+	 * training.
+	 *
+	 * Throws if every channel on `material` classifies as constant - see
+	 * `NeuralMaterialSource.classifyMaterialChannels` - since there's then
+	 * nothing for a network to fit; construct directly from a
+	 * classification's `constantValues` in that case instead.
+	 */
+	static async fit( renderer, material, options = {} ) {
+
+		const { onProgress, resolution = 512, debugView = 'shaded', ...trainerOptions } = options;
+
+		const channelClassification = classifyMaterialChannels( material );
+
+		if ( channelClassification.activeChannels.length === 0 ) {
+
+			throw new Error( 'THREE.NeuralMaterialNodeMaterial.fit: every channel on this material is constant - there is nothing for a network to fit. Use NeuralMaterialSource.classifyMaterialChannels() directly instead.' );
+
+		}
+
+		const renderTargets = await bakeMaterialToTextures( renderer, material, resolution, channelClassification.activeChannels );
+
+		const trainer = new NeuralTextureTrainer( {
+			outputChannels: channelClassification.totalChannels,
+			channelActivations: buildChannelActivations( channelClassification.activeChannels ),
+			...trainerOptions
+		} );
+
+		let current = null;
+
+		const rebuild = ( cpuModel ) => {
+
+			const previous = current;
+			current = new NeuralMaterialNodeMaterial( cpuModel, channelClassification, { debugView } );
+			if ( previous ) previous.dispose();
+
+			return current;
+
+		};
+
+		try {
+
+			const result = await trainer.train( {
+				renderer,
+				sourceTextures: renderTargets.map( ( renderTarget ) => renderTarget.texture ),
+				onProgress: onProgress ? ( progress ) => onProgress( { ...progress, material: rebuild( progress.cpuModel ) } ) : null
+			} );
+
+			rebuild( result.cpuModel );
+
+			return {
+				material: current,
+				channelClassification,
+				cpuModel: result.cpuModel,
+				loss: result.loss,
+				iteration: result.iteration,
+				iterations: result.iterations,
+				stoppedEarly: result.stoppedEarly
+			};
+
+		} finally {
+
+			for ( const renderTarget of renderTargets ) renderTarget.dispose();
+
+		}
 
 	}
 

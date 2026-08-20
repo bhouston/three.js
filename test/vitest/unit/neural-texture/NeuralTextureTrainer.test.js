@@ -16,7 +16,8 @@ const mocks = vi.hoisted( () => {
 		stepUniform: { value: 0 },
 		maxGradientNormUniform: { value: 0 },
 		readLoss: vi.fn().mockResolvedValue( 0.5 ),
-		syncToCPU: vi.fn().mockResolvedValue( undefined )
+		syncToCPU: vi.fn().mockResolvedValue( undefined ),
+		dispose: vi.fn()
 	};
 
 	return {

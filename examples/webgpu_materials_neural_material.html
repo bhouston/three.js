@@ -861,8 +861,7 @@
 				currentCpuModel = cpuModel;
 				neuralMaterial = new NeuralMaterialNodeMaterial(
 					cpuModel,
-					channelClassification.activeChannels,
-					channelClassification.constantValues,
+					channelClassification,
 					{ debugView: params.debugView }
 				);
 				neuralMesh.material = neuralMaterial;

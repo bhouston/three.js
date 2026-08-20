@@ -4,14 +4,12 @@ import {
 	IBL_OUTPUT_SIZE,
 	INDIRECT_OUTPUT_SIZE,
 	IBL_TARGET_SIZE,
-	LEVELS,
-	BASE_RESOLUTION,
-	TARGET_RESOLUTION,
 	CHANNELS_PER_LEVEL,
 	computeLatentChannels,
 	computeDecoderInputSize,
 	computeIblInputSize,
-	computeIndirectInputSize
+	computeIndirectInputSize,
+	resolveNeuralAppearanceModelOptions
 } from './NeuralAppearanceFormat.js';
 import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
@@ -50,16 +48,11 @@ function allocateIndirectProbeHead( currentOffset, iblHiddenSize, indirectInputS
  */
 function computeModelLayout( options = {} ) {
 
-	const hiddenSize = options.hiddenSize || 32;
-	const iblHiddenSize = options.iblHiddenSize || Math.min( Math.max( hiddenSize, 16 ), 32 );
-	const supportsEmission = Boolean( options.outputFeatures && options.outputFeatures.emission );
-	const supportsOpacity = Boolean( options.outputFeatures && options.outputFeatures.opacity );
-
-	// `levels` (and everything derived from it below) is computed first and
-	// used throughout this function's buffer-layout math - NOT
-	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/etc. constants - see
-	// that file's doc comment on these helpers for why.
-	const levels = options.levels || LEVELS;
+	// See NeuralAppearanceFormat.resolveNeuralAppearanceModelOptions's doc
+	// comment: this is the single source of truth for these defaults,
+	// shared with createModel (CPU authoring) so the two can't silently
+	// disagree.
+	const { levels, hiddenSize, iblHiddenSize, baseResolution, targetResolution, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
 	const latentChannels = computeLatentChannels( levels );
 	const decoderInputSize = computeDecoderInputSize( levels );
 	const iblInputSize = computeIblInputSize( levels );
@@ -145,11 +138,10 @@ function computeModelLayout( options = {} ) {
 	// geometry as neural-texture / neural-material, see NeuralGridModel.js):
 	// `levels` grids geometrically spaced between `baseResolution` and
 	// `targetResolution`, each contributing `CHANNELS_PER_LEVEL` features that
-	// get concatenated (not summed) into the decoder input. (`levels` itself
-	// was already computed above, alongside latentChannels/decoderInputSize/
-	// iblInputSize/indirectInputSize.)
-	const baseResolution = options.baseResolution || BASE_RESOLUTION;
-	const targetResolution = options.targetResolution || TARGET_RESOLUTION;
+	// get concatenated (not summed) into the decoder input. (`levels`/
+	// `baseResolution`/`targetResolution` were already resolved above,
+	// alongside latentChannels/decoderInputSize/iblInputSize/
+	// indirectInputSize.)
 	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
 
 	const gridLevels = [];

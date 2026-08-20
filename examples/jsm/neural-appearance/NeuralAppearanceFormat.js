@@ -64,6 +64,51 @@ function computeIndirectInputSize( levels = LEVELS ) {
 
 }
 
+/**
+ * Single source of truth for the model-shape options `createModel` (CPU
+ * authoring) and `computeModelLayout` (GPU buffer layout) each otherwise
+ * re-derive independently - `hiddenSize`, its `iblHiddenSize` clamp,
+ * `baseResolution`/`targetResolution`, `levels`, and which auxiliary heads
+ * are enabled. Resolving these once here means the CPU model and its GPU
+ * layout can't silently disagree on a default (which previously happened:
+ * `computeModelLayout` defaulted `hiddenSize` to 32 when omitted, while
+ * `createModel` did not, sizing its decoder's hidden layers from
+ * `options.hiddenSize` - `undefined` - directly).
+ */
+function resolveNeuralAppearanceModelOptions( options = {} ) {
+
+	const hiddenSize = options.hiddenSize || 32;
+
+	return {
+		levels: options.levels || LEVELS,
+		hiddenSize,
+		iblHiddenSize: options.iblHiddenSize || Math.min( Math.max( hiddenSize, 16 ), 32 ),
+		baseResolution: options.baseResolution || BASE_RESOLUTION,
+		targetResolution: options.targetResolution || TARGET_RESOLUTION,
+		supportsEmission: Boolean( options.outputFeatures && options.outputFeatures.emission ),
+		supportsOpacity: Boolean( options.outputFeatures && options.outputFeatures.opacity )
+	};
+
+}
+
+/**
+ * Shared two-tier "explicit setting, or a declared value, or a default"
+ * fallback for the `mask`/`blend` opacity mode - used identically by
+ * `NeuralAppearanceTeacherEvaluator` (explicit option -> the material's own
+ * declared mode -> a transparent/alphaTest-based heuristic) and
+ * `NeuralAppearanceTrainer` (explicit option -> the teacher's already-
+ * resolved mode -> `'mask'`), so the two can't independently drift on what
+ * counts as a valid explicit/declared value.
+ */
+function resolveOpacityMode( explicit, declared, fallback ) {
+
+	if ( explicit === 'mask' || explicit === 'blend' ) return explicit;
+	if ( declared === 'mask' || declared === 'blend' ) return declared;
+
+	return fallback;
+
+}
+
 export {
 	FORMAT,
 	VERSION,
@@ -83,5 +128,7 @@ export {
 	computeLatentChannels,
 	computeDecoderInputSize,
 	computeIblInputSize,
-	computeIndirectInputSize
+	computeIndirectInputSize,
+	resolveNeuralAppearanceModelOptions,
+	resolveOpacityMode
 };

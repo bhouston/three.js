@@ -179,17 +179,17 @@ function alignTo( value, alignment ) {
 
 }
 
+// createSampleTexture/createSampleCoordNode/createMaterialUvNode/
+// sampleTextureNode/write4/normalize/alignTo are internal helpers used only
+// by createAtlasTextures/createAtlasShaderNodes/uploadAtlasSamples above -
+// not part of this module's actual public contract (only
+// NeuralAppearanceTeacherEvaluator.js and its test import from here, and
+// neither reaches for them), so they stay unexported rather than widening
+// the surface area every consumer has to consider.
 export {
 	computeAtlasDimensions,
 	createTeacherRenderTarget,
-	createSampleTexture,
 	createAtlasTextures,
-	createSampleCoordNode,
-	createMaterialUvNode,
-	sampleTextureNode,
 	createAtlasShaderNodes,
-	uploadAtlasSamples,
-	write4,
-	normalize,
-	alignTo
+	uploadAtlasSamples
 };

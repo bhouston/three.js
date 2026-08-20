@@ -1,14 +1,12 @@
 import {
-	LEVELS,
-	BASE_RESOLUTION,
-	TARGET_RESOLUTION,
 	CHANNELS_PER_LEVEL,
 	IBL_OUTPUT_SIZE,
 	INDIRECT_OUTPUT_SIZE,
 	computeLatentChannels,
 	computeDecoderInputSize,
 	computeIblInputSize,
-	computeIndirectInputSize
+	computeIndirectInputSize,
+	resolveNeuralAppearanceModelOptions
 } from './NeuralAppearanceFormat.js';
 import {
 	createMLP,
@@ -19,31 +17,24 @@ import { dot, cross, normalize } from '../neural/NeuralVectorMath.js';
 
 function createModel( options, random ) {
 
-	// `levels` is computed first (and every MLP head below is sized from
-	// *this* model's actual levels, via the computeXXX helpers) - not from
-	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/etc. constants - see
-	// that file's doc comment on these helpers for why.
-	const levels = options.levels || LEVELS;
+	// See NeuralAppearanceFormat.resolveNeuralAppearanceModelOptions's doc
+	// comment: this is the single source of truth for these defaults,
+	// shared with computeModelLayout (GPU buffer layout) so the two can't
+	// silently disagree.
+	const { levels, hiddenSize, iblHiddenSize, baseResolution, targetResolution, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
 	const latentChannels = computeLatentChannels( levels );
 	const decoderInputSize = computeDecoderInputSize( levels );
 	const iblInputSize = computeIblInputSize( levels );
 	const indirectInputSize = computeIndirectInputSize( levels );
 
-	const decoder = createMLP( decoderInputSize, [ options.hiddenSize, options.hiddenSize ], 3, random, 'relu', 'linear' );
-	const iblHiddenSize = options.iblHiddenSize || Math.min( Math.max( options.hiddenSize || 32, 16 ), 32 );
+	const decoder = createMLP( decoderInputSize, [ hiddenSize, hiddenSize ], 3, random, 'relu', 'linear' );
 	const iblHead = createMLP( iblInputSize, [ iblHiddenSize ], IBL_OUTPUT_SIZE, random, 'relu', 'linear' );
 	const indirectRadianceHead = createMLP( indirectInputSize, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
 	const indirectIrradianceHead = createMLP( indirectInputSize, [ iblHiddenSize ], INDIRECT_OUTPUT_SIZE, random, 'relu', 'linear' );
-	const emissionHead = options.outputFeatures && options.outputFeatures.emission ?
-		createMLP( latentChannels, [], 3, random, 'relu', 'linear' ) :
-		null;
-	const opacityHead = options.outputFeatures && options.outputFeatures.opacity ?
-		createMLP( latentChannels, [], 1, random, 'relu', 'linear' ) :
-		null;
+	const emissionHead = supportsEmission ? createMLP( latentChannels, [], 3, random, 'relu', 'linear' ) : null;
+	const opacityHead = supportsOpacity ? createMLP( latentChannels, [], 1, random, 'relu', 'linear' ) : null;
 	const rotationWeights = new Array( latentChannels * 12 ).fill( 0 );
 
-	const baseResolution = options.baseResolution || BASE_RESOLUTION;
-	const targetResolution = options.targetResolution || TARGET_RESOLUTION;
 	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
 	const latentGrids = resolutions.map( ( resolution ) => createLatentGrid( resolution, resolution, CHANNELS_PER_LEVEL, random ) );
 

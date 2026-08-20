@@ -245,8 +245,8 @@
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
 			import { NeuralAppearanceLoader } from 'three/addons/loaders/NeuralAppearanceLoader.js';
 			import { NeuralAppearanceNodeMaterial } from 'three/addons/neural-appearance/NeuralAppearanceNodeMaterial.js';
-			import { NeuralAppearanceTrainer, estimateTrainingMemory } from 'three/addons/neural-appearance/NeuralAppearanceTrainer.js';
-			import { NeuralTeacherIBLEnvironmentNode, NeuralTeacherIBLLightingModel } from 'three/addons/neural-appearance/NeuralAppearanceTeacherEvaluator.js';
+			import { NeuralAppearanceTrainer, estimateTrainingMemory, disposeTrainingResult } from 'three/addons/neural-appearance/NeuralAppearanceTrainer.js';
+			import { NeuralTeacherIBLEnvironmentNode, NeuralTeacherIBLLightingModel } from 'three/addons/neural-appearance/NeuralAppearanceTeacherLightingModels.js';
 
 			let camera, scene, renderer, mesh, neuralMesh;
 			let materialXMaterial, neuralMaterial, whiteControlMaterial, previewPlaceholderMaterial, latestJson;
@@ -904,8 +904,7 @@
 
 					if ( runId !== trainingRunId || materialXMaterial !== trainingMaterial ) {
 
-						if ( result.teacher.dispose ) result.teacher.dispose();
-						if ( result.gpuModel && result.gpuModel.dispose ) result.gpuModel.dispose( renderer );
+						disposeTrainingResult( result, renderer );
 						return;
 
 					}
@@ -923,8 +922,7 @@
 					window.__neuralAppearanceTeacherInputs = teacherInputs;
 					window.__neuralAppearanceTrainingDone = true;
 					downloadButton.disabled = false;
-					if ( result.teacher.dispose ) result.teacher.dispose();
-					if ( result.gpuModel && result.gpuModel.dispose ) result.gpuModel.dispose( renderer );
+					disposeTrainingResult( result, renderer );
 					updateView();
 					if ( result.validation && result.validation.preview ) drawTrainingPreview( result.validation.preview, result.iteration );
 					drawLossGraph();

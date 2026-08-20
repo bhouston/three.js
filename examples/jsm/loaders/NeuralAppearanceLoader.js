@@ -1,13 +1,7 @@
 import {
 	ClampToEdgeWrapping,
-	DataUtils,
-	DataTexture,
 	FileLoader,
-	HalfFloatType,
-	LinearFilter,
 	Loader,
-	NoColorSpace,
-	RGBAFormat,
 	RepeatWrapping
 } from 'three';
 import {
@@ -21,6 +15,7 @@ import {
 	INDIRECT_INPUT_SIZE,
 	INDIRECT_OUTPUT_SIZE
 } from '../neural-appearance/NeuralAppearanceFormat.js';
+import { createHalfFloatLatentTexture } from '../neural/NeuralHalfFloatTexture.js';
 
 /**
  * A loader for compact neural appearance material assets.
@@ -137,39 +132,7 @@ function createLevelTexture( level, path, wrap ) {
 	const levelWrap = level.wrap || wrap || 'repeat';
 	const wrapping = levelWrap === 'repeat' ? RepeatWrapping : ClampToEdgeWrapping;
 
-	const texture = new DataTexture(
-		toHalfFloatArray( data ),
-		level.width,
-		level.height,
-		RGBAFormat,
-		HalfFloatType,
-		undefined,
-		wrapping,
-		wrapping,
-		LinearFilter,
-		LinearFilter,
-		undefined,
-		NoColorSpace
-	);
-
-	texture.generateMipmaps = false;
-	texture.needsUpdate = true;
-
-	return texture;
-
-}
-
-function toHalfFloatArray( data ) {
-
-	const result = new Uint16Array( data.length );
-
-	for ( let i = 0; i < data.length; i ++ ) {
-
-		result[ i ] = DataUtils.toHalfFloat( data[ i ] );
-
-	}
-
-	return result;
+	return createHalfFloatLatentTexture( data, level.width, level.height, { channels: CHANNELS_PER_LEVEL, wrap: wrapping } );
 
 }
 

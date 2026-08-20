@@ -8,6 +8,7 @@ import {
 	packLayerBiasesVec4,
 	evaluateLinearLayerVec4
 } from '../neural/NeuralMLPTSL.js';
+import { sigmoidTSL } from '../neural/NeuralOutputActivations.js';
 
 // The multiresolution latent grid always has LEVELS (=4) levels of
 // CHANNELS_PER_LEVEL (=4) features each - same fixed geometry as
@@ -125,7 +126,7 @@ function evaluateNeuralIBLForTexels( material, envNode, wo, latents, frames, iso
 		const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize );
 		const query = evaluateMLPViaFn( `evaluateIBLHead_${ material.id }`, ibl.layers, uniforms, queryInput, 4 );
 		queryDirection = TSL.vec3( query[ 0 ], query[ 1 ], query[ 2 ] ).normalize();
-		queryRoughness = TSL.float( 1 ).div( TSL.float( 1 ).add( TSL.exp( query[ 3 ].negate() ) ) );
+		queryRoughness = sigmoidTSL( query[ 3 ] );
 
 	}
 
@@ -228,12 +229,6 @@ function evaluateLearnedCanonicalNormal( material, fragment ) {
 
 }
 
-function sigmoidNode( value ) {
-
-	return TSL.float( 1 ).div( TSL.float( 1 ).add( TSL.exp( value.negate() ) ) );
-
-}
-
 function evaluateLearnedIBLQueryForTexels( material, texel0, texel1, texel2, texel3, wo ) {
 
 	const latents = latentsFromTexels( texel0, texel1, texel2, texel3 );
@@ -244,7 +239,7 @@ function evaluateLearnedIBLQueryForTexels( material, texel0, texel1, texel2, tex
 
 	return {
 		direction: TSL.vec3( output[ 0 ], output[ 1 ], output[ 2 ] ).normalize(),
-		roughness: sigmoidNode( output[ 3 ] )
+		roughness: sigmoidTSL( output[ 3 ] )
 	};
 
 }
@@ -750,7 +745,7 @@ function applyOutputActivation( value, activation ) {
 	if ( activation.type === 'scaledSigmoid' ) {
 
 		const scale = activation.scale !== undefined ? activation.scale : 1;
-		return TSL.float( scale ).div( TSL.float( 1 ).add( TSL.exp( value.negate() ) ) );
+		return sigmoidTSL( value ).mul( scale );
 
 	}
 
@@ -762,7 +757,7 @@ function applyScalarOutputActivation( value, activation ) {
 
 	if ( activation.type === 'sigmoid' ) {
 
-		return TSL.float( 1 ).div( TSL.float( 1 ).add( TSL.exp( value.negate() ) ) );
+		return sigmoidTSL( value );
 
 	}
 

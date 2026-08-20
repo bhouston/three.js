@@ -1,17 +1,144 @@
-import { Fn, If, atomicLoad, atomicStore, float, instanceIndex, int, max, min, pow, sqrt } from 'three/tsl';
+import { StorageBufferAttribute } from 'three/webgpu';
+import { Fn, If, Loop, atomicAdd, atomicLoad, atomicStore, float, instanceIndex, int, max, min, pow, select, sqrt, storage } from 'three/tsl';
 import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from './NeuralGPUTrainingConstants.js';
 
 // Small WebGPU compute-kernel TSL builders shared by every neural trainer
 // (texture, material, appearance): wrapping a grid index, clipping by a
 // global gradient norm, the two zero-fill kernels that reset gradient
-// accumulators between optimizer passes, and the Adam step itself. None of
-// this depends on what the gradients are gradients *of*, only on the
-// fixed-point atomic layout every trainer shares via
-// `NeuralGPUTrainingConstants.js`.
+// accumulators between optimizer passes, one dense layer's forward/backward
+// math, and the Adam step itself. None of this depends on what the
+// gradients are gradients *of*, only on the fixed-point atomic layout every
+// trainer shares via `NeuralGPUTrainingConstants.js`.
 
 function wrapIndexTSL( val, size ) {
 
 	return val.mod( size ).add( size ).mod( size );
+
+}
+
+/**
+ * Allocates the 4 GPU StorageBuffers one Adam-optimized parameter block
+ * needs (value, atomic gradient accumulator, and the 1st/2nd moment
+ * buffers Adam maintains per parameter) plus their `storage()`-wrapped TSL
+ * nodes, keyed under `name`'s own `{name}Attribute`/`grad{Name}Atomic`/etc.
+ * property names (e.g. `name: 'weights'` yields `weightsAttribute`,
+ * `gradWeightsAttribute`, `mWeightsAttribute`, `vWeightsAttribute`,
+ * `weightsStorage`, `gradWeightsAtomic`, `mWeightsStorage`,
+ * `vWeightsStorage`) so a GPUModel constructor can `Object.assign(this,
+ * createAdamParameterBuffers('weights', totalWeights))` directly instead of
+ * re-declaring each of those 8 fields by hand. Every neural trainer's
+ * GPUModel (texture, appearance) calls this once for its weights and once
+ * for its latents - identical buffer shape in both, just sized differently
+ * and keyed under a different name - so this constructor boilerplate lives
+ * here instead of being hand-duplicated per trainer.
+ */
+function createAdamParameterBuffers( name, count ) {
+
+	const Name = name[ 0 ].toUpperCase() + name.slice( 1 );
+	const attribute = new StorageBufferAttribute( new Float32Array( count ), 1, Float32Array );
+	const gradAttribute = new StorageBufferAttribute( new Int32Array( count ), 1, Int32Array );
+	const mAttribute = new StorageBufferAttribute( new Float32Array( count ), 1, Float32Array );
+	const vAttribute = new StorageBufferAttribute( new Float32Array( count ), 1, Float32Array );
+
+	return {
+		[ `${ name }Attribute` ]: attribute,
+		[ `grad${ Name }Attribute` ]: gradAttribute,
+		[ `m${ Name }Attribute` ]: mAttribute,
+		[ `v${ Name }Attribute` ]: vAttribute,
+		[ `${ name }Storage` ]: storage( attribute, 'float', count ),
+		[ `grad${ Name }Atomic` ]: storage( gradAttribute, 'int', count ).toAtomic(),
+		[ `m${ Name }Storage` ]: storage( mAttribute, 'float', count ),
+		[ `v${ Name }Storage` ]: storage( vAttribute, 'float', count )
+	};
+
+}
+
+/**
+ * Forward pass through one dense layer: `out = W . in + b`, optionally
+ * ReLU-activated. `inputBase`/`zBase`/`aBase` are absolute activation-buffer
+ * indices (already offset by whatever per-sample/per-section offset applies)
+ * rather than raw layout offsets, so this same helper covers both "this
+ * layer's input starts partway through a shared activation buffer" and
+ * "this layer's input is its own small scratch region" uniformly. `aBase:
+ * null` skips writing the activated output - used for the final (linear)
+ * layer of a head, whose raw `z` is consumed directly.
+ *
+ * Shared by every trainer's forward pass - neural-appearance's decoder/IBL/
+ * indirect-probe heads (NeuralAppearanceGPUComputeTSL.js) and neural-
+ * texture's MLP decoder (NeuralTextureGPUComputeTSL.js).
+ */
+function forwardDenseLayerTSL( { activationsStorage, weightsStorage, inputBase, inputSize, outputSize, weightsOffset, biasesOffset, zBase, aBase = null } ) {
+
+	Loop( { start: 0, end: outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const val = weightsStorage.element( int( biasesOffset ).add( j ) ).toVar();
+		const rowOffset = int( weightsOffset ).add( j.mul( inputSize ) );
+
+		Loop( { start: 0, end: inputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+			val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( inputBase.add( i ) ) ) );
+
+		} );
+
+		activationsStorage.element( zBase.add( j ) ).assign( val );
+		if ( aBase !== null ) activationsStorage.element( aBase.add( j ) ).assign( max( val, float( 0.0 ) ) );
+
+	} );
+
+}
+
+/**
+ * Backward pass, gradient-accumulation half: for one dense layer, scatters
+ * `delta (x) input` into that layer's weight/bias gradients via atomic
+ * fixed-point adds. Shared by the same call sites as `forwardDenseLayerTSL`
+ * above (their backward counterparts).
+ */
+function accumulateDenseLayerGradTSL( { activationsStorage, gradWeightsAtomic, deltaBase, inputBase, inputSize, outputSize, weightsOffset, biasesOffset } ) {
+
+	Loop( { start: 0, end: outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const delta_j = activationsStorage.element( deltaBase.add( j ) );
+		atomicAdd( gradWeightsAtomic.element( int( biasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
+		const rowOffset = int( weightsOffset ).add( j.mul( inputSize ) );
+
+		Loop( { start: 0, end: inputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+			const in_i = activationsStorage.element( inputBase.add( i ) );
+			atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta_j.mul( in_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
+
+		} );
+
+	} );
+
+}
+
+/**
+ * Backward pass, delta-propagation half: for one dense layer whose *input*
+ * came from a ReLU, propagates `delta` back through the weight matrix and
+ * gates it by that input's own ReLU derivative, writing the previous
+ * layer's delta. NOT a fit for a layer whose input is raw (unactivated)
+ * features - those have no ReLU derivative to gate by - so those stay
+ * hand-written at their call sites.
+ */
+function backwardDenseLayerReLUTSL( { activationsStorage, weightsStorage, deltaBase, deltaSize, weightsOffset, prevSize, prevZBase, outDeltaBase } ) {
+
+	Loop( { start: 0, end: prevSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+		const gradInput_i = float( 0.0 ).toVar();
+
+		Loop( { start: 0, end: deltaSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+			const delta_j = activationsStorage.element( deltaBase.add( j ) );
+			const w_ji = weightsStorage.element( int( weightsOffset ).add( j.mul( prevSize ) ).add( i ) );
+			gradInput_i.addAssign( delta_j.mul( w_ji ) );
+
+		} );
+
+		const z_i = activationsStorage.element( prevZBase.add( i ) );
+		const delta_i = select( z_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) );
+		activationsStorage.element( outDeltaBase.add( i ) ).assign( delta_i );
+
+	} );
 
 }
 
@@ -130,6 +257,10 @@ function createAdamComputeNode( {
 
 export {
 	wrapIndexTSL,
+	createAdamParameterBuffers,
+	forwardDenseLayerTSL,
+	accumulateDenseLayerGradTSL,
+	backwardDenseLayerReLUTSL,
 	computeGradientClipScale,
 	createResetGradientNormComputeNode,
 	createResetGradientsComputeNode,

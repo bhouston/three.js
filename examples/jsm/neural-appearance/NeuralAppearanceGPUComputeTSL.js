@@ -22,7 +22,13 @@ import {
 	FIXED_POINT_SCALE,
 	GRADIENT_NORM_SCALE
 } from '../neural/NeuralGPUTrainingConstants.js';
-import { wrapIndexTSL, createAdamComputeNode } from '../neural/NeuralGPUComputeTSL.js';
+import {
+	wrapIndexTSL,
+	forwardDenseLayerTSL,
+	accumulateDenseLayerGradTSL,
+	backwardDenseLayerReLUTSL,
+	createAdamComputeNode
+} from '../neural/NeuralGPUComputeTSL.js';
 import {
 	IBL_OUTPUT_SIZE,
 	INDIRECT_OUTPUT_SIZE,
@@ -38,101 +44,6 @@ function backwardNormalizeTSL( raw, norm, gradNorm ) {
 	const proj = norm.dot( gradNorm );
 
 	return gradNorm.sub( norm.mul( proj ) ).mul( invLen );
-
-}
-
-/**
- * Forward pass through one dense layer: `out = W . in + b`, optionally
- * ReLU-activated. `inputBase`/`zBase`/`aBase` are absolute activation-buffer
- * indices (already offset by `actBase` and whichever section offset
- * applies) rather than raw layout offsets, so this same helper covers both
- * "this layer's input starts partway through the shared activation buffer"
- * (the decoder/IBL/indirect-probe heads below) and "this layer's input is
- * its own small scratch region" (trainIndirectProbeHead's a0) uniformly.
- * `aBase: null` skips writing the activated output - used for the final
- * (linear) layer of a head, whose raw `z` is consumed directly.
- *
- * This is the single forward-layer shape shared by the decoder's 3 layers,
- * the IBL head's 2 layers, and the indirect-probe head's 2 layers (used
- * once per probe, twice total) - see NeuralAppearanceGPUComputeTSL's module
- * doc / the call sites below for how each plugs in.
- */
-function forwardDenseLayerTSL( { activationsStorage, weightsStorage, inputBase, inputSize, outputSize, weightsOffset, biasesOffset, zBase, aBase = null } ) {
-
-	Loop( { start: 0, end: outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-		const val = weightsStorage.element( int( biasesOffset ).add( j ) ).toVar();
-		const rowOffset = int( weightsOffset ).add( j.mul( inputSize ) );
-
-		Loop( { start: 0, end: inputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-			val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( inputBase.add( i ) ) ) );
-
-		} );
-
-		activationsStorage.element( zBase.add( j ) ).assign( val );
-		if ( aBase !== null ) activationsStorage.element( aBase.add( j ) ).assign( max( val, float( 0.0 ) ) );
-
-	} );
-
-}
-
-/**
- * Backward pass, gradient-accumulation half: for one dense layer, scatters
- * `delta (x) input` into that layer's weight/bias gradients via atomic
- * fixed-point adds. Shared by the same 7 call sites as
- * `forwardDenseLayerTSL` above (their backward counterparts).
- */
-function accumulateDenseLayerGradTSL( { activationsStorage, gradWeightsAtomic, deltaBase, inputBase, inputSize, outputSize, weightsOffset, biasesOffset } ) {
-
-	Loop( { start: 0, end: outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-		const delta_j = activationsStorage.element( deltaBase.add( j ) );
-		atomicAdd( gradWeightsAtomic.element( int( biasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-		const rowOffset = int( weightsOffset ).add( j.mul( inputSize ) );
-
-		Loop( { start: 0, end: inputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-			const in_i = activationsStorage.element( inputBase.add( i ) );
-			atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta_j.mul( in_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
-
-		} );
-
-	} );
-
-}
-
-/**
- * Backward pass, delta-propagation half: for one dense layer whose *input*
- * came from a ReLU (i.e. every hidden layer feeding another hidden layer),
- * propagates `delta` back through the weight matrix and gates it by that
- * input's own ReLU derivative, writing the previous layer's delta. Shared
- * by decoder layer 2->1 and 1->0, the IBL head's layer 1->0, and the
- * indirect-probe head's layer 1->0 (used twice). NOT used for a layer whose
- * input is raw (unactivated) features - the decoder's a0, or the IBL/
- * indirect heads' a0 - since those have no ReLU derivative to gate by and
- * only partially feed back into the shared latent gradient rather than a
- * full per-input delta; those stay hand-written at their call sites.
- */
-function backwardDenseLayerReLUTSL( { activationsStorage, weightsStorage, deltaBase, deltaSize, weightsOffset, prevSize, prevZBase, outDeltaBase } ) {
-
-	Loop( { start: 0, end: prevSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-		const gradInput_i = float( 0.0 ).toVar();
-
-		Loop( { start: 0, end: deltaSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-			const delta_j = activationsStorage.element( deltaBase.add( j ) );
-			const w_ji = weightsStorage.element( int( weightsOffset ).add( j.mul( prevSize ) ).add( i ) );
-			gradInput_i.addAssign( delta_j.mul( w_ji ) );
-
-		} );
-
-		const z_i = activationsStorage.element( prevZBase.add( i ) );
-		const delta_i = select( z_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) );
-		activationsStorage.element( outDeltaBase.add( i ) ).assign( delta_i );
-
-	} );
 
 }
 

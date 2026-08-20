@@ -13,6 +13,7 @@ import {
 } from './NeuralAppearanceFormat.js';
 import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
+import { createAdamParameterBuffers } from '../neural/NeuralGPUComputeTSL.js';
 
 // Fields making up the "direct" part of each uploaded training sample
 // (everything before the IBL query/probe block) - see uploadSamples() below.
@@ -326,26 +327,10 @@ class NeuralAppearanceGPUModel {
 		const { totalWeights, totalLatents, sampleStride, activationStride } = this.layout;
 		const batchSize = this.batchSize;
 
-		this.weightsAttribute = new StorageBufferAttribute( new Float32Array( totalWeights ), 1, Float32Array );
-		this.gradWeightsAttribute = new StorageBufferAttribute( new Int32Array( totalWeights ), 1, Int32Array );
-		this.mWeightsAttribute = new StorageBufferAttribute( new Float32Array( totalWeights ), 1, Float32Array );
-		this.vWeightsAttribute = new StorageBufferAttribute( new Float32Array( totalWeights ), 1, Float32Array );
-
-		this.weightsStorage = storage( this.weightsAttribute, 'float', totalWeights );
-		this.gradWeightsAtomic = storage( this.gradWeightsAttribute, 'int', totalWeights ).toAtomic();
-		this.mWeightsStorage = storage( this.mWeightsAttribute, 'float', totalWeights );
-		this.vWeightsStorage = storage( this.vWeightsAttribute, 'float', totalWeights );
+		Object.assign( this, createAdamParameterBuffers( 'weights', totalWeights ) );
 
 		// 2. Latent buffers
-		this.latentsAttribute = new StorageBufferAttribute( new Float32Array( totalLatents ), 1, Float32Array );
-		this.gradLatentsAttribute = new StorageBufferAttribute( new Int32Array( totalLatents ), 1, Int32Array );
-		this.mLatentsAttribute = new StorageBufferAttribute( new Float32Array( totalLatents ), 1, Float32Array );
-		this.vLatentsAttribute = new StorageBufferAttribute( new Float32Array( totalLatents ), 1, Float32Array );
-
-		this.latentsStorage = storage( this.latentsAttribute, 'float', totalLatents );
-		this.gradLatentsAtomic = storage( this.gradLatentsAttribute, 'int', totalLatents ).toAtomic();
-		this.mLatentsStorage = storage( this.mLatentsAttribute, 'float', totalLatents );
-		this.vLatentsStorage = storage( this.vLatentsAttribute, 'float', totalLatents );
+		Object.assign( this, createAdamParameterBuffers( 'latents', totalLatents ) );
 
 		// 3. Sample buffer
 		this.samplesAttribute = new StorageBufferAttribute( new Float32Array( batchSize * sampleStride ), 1, Float32Array );

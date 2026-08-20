@@ -21,11 +21,23 @@ import { exp, float, log, max, tanh } from 'three/tsl';
  */
 
 /**
+ * Plain logistic sigmoid, `1 / (1 + e^-x)` - factored out since every
+ * sigmoid-shaped output nonlinearity in this codebase (channel activations
+ * here, neural-appearance's roughness/opacity/scaledSigmoid outputs in
+ * ../neural-appearance/NeuralAppearanceTSL.js) is this same formula.
+ */
+function sigmoidTSL( xNode ) {
+
+	return float( 1 ).div( float( 1 ).add( exp( xNode.negate() ) ) );
+
+}
+
+/**
  * z -> a, the forward nonlinearity.
  */
 function applyChannelActivation( zNode, activation ) {
 
-	if ( activation === 'sigmoid' ) return float( 1 ).div( float( 1 ).add( exp( zNode.negate() ) ) );
+	if ( activation === 'sigmoid' ) return sigmoidTSL( zNode );
 	if ( activation === 'tanh' ) return tanh( zNode );
 
 	// Numerically stable softplus: log(1+e^z) computed as
@@ -56,4 +68,4 @@ function channelActivationDerivativeFromOutput( aNode, activation ) {
 
 }
 
-export { applyChannelActivation, channelActivationDerivativeFromOutput };
+export { sigmoidTSL, applyChannelActivation, channelActivationDerivativeFromOutput };

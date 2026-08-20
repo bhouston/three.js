@@ -7,45 +7,20 @@ import {
 	packLayerBiasesVec4,
 	evaluateLinearLayerVec4
 } from '../neural/NeuralMLPTSL.js';
+import { createHalfFloatLatentTexture } from '../neural/NeuralHalfFloatTexture.js';
 
 /**
- * Packs each trained latent grid level into an RGBA float DataTexture so the
- * runtime can rely on ordinary hardware bilinear filtering + repeat wrap
- * addressing for both interpolation and seamless tiling - no manual
+ * Packs each trained latent grid level into an RGBA half-float DataTexture
+ * so the runtime can rely on ordinary hardware bilinear filtering + repeat
+ * wrap addressing for both interpolation and seamless tiling - no manual
  * bilinear/wrap math needed at inference time (unlike the training kernel,
  * which must hand-roll it for the backward pass).
  */
 function buildLevelTextures( cpuModel ) {
 
-	return cpuModel.grids.map( ( grid ) => {
-
-		// Half-float, not full float: RGBA32F DataTextures aren't filterable
-		// under WebGPU without an opt-in feature, while RGBA16F is filterable
-		// by default and gives plenty of precision for latent grid features.
-		const data = new Uint16Array( grid.width * grid.height * 4 );
-
-		for ( let p = 0; p < grid.width * grid.height; p ++ ) {
-
-			for ( let c = 0; c < 4; c ++ ) {
-
-				const value = c < grid.channels ? grid.data[ p * grid.channels + c ] : 0;
-				data[ p * 4 + c ] = THREE.DataUtils.toHalfFloat( value );
-
-			}
-
-		}
-
-		const levelTexture = new THREE.DataTexture( data, grid.width, grid.height, THREE.RGBAFormat, THREE.HalfFloatType );
-		levelTexture.wrapS = THREE.RepeatWrapping;
-		levelTexture.wrapT = THREE.RepeatWrapping;
-		levelTexture.magFilter = THREE.LinearFilter;
-		levelTexture.minFilter = THREE.LinearFilter;
-		levelTexture.generateMipmaps = false;
-		levelTexture.needsUpdate = true;
-
-		return levelTexture;
-
-	} );
+	return cpuModel.grids.map( ( grid ) =>
+		createHalfFloatLatentTexture( grid.data, grid.width, grid.height, { channels: grid.channels } )
+	);
 
 }
 

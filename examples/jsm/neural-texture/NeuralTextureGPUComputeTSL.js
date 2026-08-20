@@ -9,14 +9,18 @@ import {
 	fract,
 	instanceIndex,
 	int,
-	max,
-	select,
 	sin,
 	textureLevel,
 	vec2
 } from 'three/tsl';
 import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
-import { wrapIndexTSL, createAdamComputeNode } from '../neural/NeuralGPUComputeTSL.js';
+import {
+	wrapIndexTSL,
+	forwardDenseLayerTSL,
+	accumulateDenseLayerGradTSL,
+	backwardDenseLayerReLUTSL,
+	createAdamComputeNode
+} from '../neural/NeuralGPUComputeTSL.js';
 import { applyChannelActivation, channelActivationDerivativeFromOutput } from '../neural/NeuralOutputActivations.js';
 
 function hash1( seed ) {
@@ -187,20 +191,11 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 			const zBase = actBase.add( int( layerActs[ l ].zOffset ) );
 			const aBase = layerActs[ l ].aOffset >= 0 ? actBase.add( int( layerActs[ l ].aOffset ) ) : null;
 
-			Loop( { start: 0, end: layer.outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-				const val = weightsStorage.element( int( layer.biasesOffset ).add( j ) ).toVar();
-				const rowOffset = int( layer.weightsOffset ).add( j.mul( layer.inputSize ) );
-
-				Loop( { start: 0, end: layer.inputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( inBase.add( i ) ) ) );
-
-				} );
-
-				activationsStorage.element( zBase.add( j ) ).assign( val );
-				if ( aBase !== null ) activationsStorage.element( aBase.add( j ) ).assign( max( val, float( 0.0 ) ) );
-
+			forwardDenseLayerTSL( {
+				activationsStorage, weightsStorage,
+				inputBase: inBase, inputSize: layer.inputSize, outputSize: layer.outputSize,
+				weightsOffset: layer.weightsOffset, biasesOffset: layer.biasesOffset,
+				zBase, aBase
 			} );
 
 		}
@@ -255,19 +250,10 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 			const deltaBase = actBase.add( int( deltaOffsets[ l ] ) );
 			const inBase = actBase.add( int( l === 0 ? a0Offset : layerActs[ l - 1 ].aOffset ) );
 
-			Loop( { start: 0, end: layer.outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-				const delta_j = activationsStorage.element( deltaBase.add( j ) );
-				atomicAdd( gradWeightsAtomic.element( int( layer.biasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-				const rowOffset = int( layer.weightsOffset ).add( j.mul( layer.inputSize ) );
-
-				Loop( { start: 0, end: layer.inputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const a_i = activationsStorage.element( inBase.add( i ) );
-					atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta_j.mul( a_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
-
-				} );
-
+			accumulateDenseLayerGradTSL( {
+				activationsStorage, gradWeightsAtomic,
+				deltaBase, inputBase: inBase, inputSize: layer.inputSize, outputSize: layer.outputSize,
+				weightsOffset: layer.weightsOffset, biasesOffset: layer.biasesOffset
 			} );
 
 			if ( l > 0 ) {
@@ -275,21 +261,11 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 				const prevZBase = actBase.add( int( layerActs[ l - 1 ].zOffset ) );
 				const prevDeltaBase = actBase.add( int( deltaOffsets[ l - 1 ] ) );
 
-				Loop( { start: 0, end: layer.inputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const gradInput_i = float( 0.0 ).toVar();
-
-					Loop( { start: 0, end: layer.outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-						const delta_j = activationsStorage.element( deltaBase.add( j ) );
-						const w_ji = weightsStorage.element( int( layer.weightsOffset ).add( j.mul( layer.inputSize ) ).add( i ) );
-						gradInput_i.addAssign( delta_j.mul( w_ji ) );
-
-					} );
-
-					const z_i = activationsStorage.element( prevZBase.add( i ) );
-					activationsStorage.element( prevDeltaBase.add( i ) ).assign( select( z_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) ) );
-
+				backwardDenseLayerReLUTSL( {
+					activationsStorage, weightsStorage,
+					deltaBase, deltaSize: layer.outputSize,
+					weightsOffset: layer.weightsOffset, prevSize: layer.inputSize,
+					prevZBase, outDeltaBase: prevDeltaBase
 				} );
 
 			} else {

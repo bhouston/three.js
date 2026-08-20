@@ -57,31 +57,41 @@ async function renderAndReadTeacherAttachments( renderer, scene, camera, target,
 
 	renderer.getClearColor( previousClearColor );
 
-	try {
+	renderer.toneMapping = THREE.NoToneMapping;
+	renderer.setClearColor( 0x000000, 1 );
+	renderer.setRenderTarget( target );
+	renderer.render( scene, camera );
 
-		renderer.toneMapping = THREE.NoToneMapping;
-		renderer.setClearColor( 0x000000, 1 );
-		renderer.setRenderTarget( target );
-		renderer.render( scene, camera );
+	// Restore the renderer's render target (and other overridden state)
+	// *before* the async readback below, not in a `finally` after it. The
+	// example's rAF-driven animation loop calls `renderer.render()` without
+	// first calling `setRenderTarget( null )`, so it inherits whatever
+	// render target is currently active; `readRenderTargetPixelsAsync()`
+	// involves a real GPU round trip (`GPUBuffer.mapAsync()`) that can span
+	// one or more animation frames, and every training iteration goes
+	// through this await. Restoring only in `finally` left a window, hit on
+	// essentially every frame while training was active, during which a
+	// concurrent animation-loop render would draw the whole viewport scene
+	// into this offscreen teacher target instead of the canvas -- surfacing
+	// as a WebGPU GPUValidationError ("color and depth targets from pass do
+	// not match pipeline") from pipelines cached against mismatched
+	// attachment layouts. `readRenderTargetPixelsAsync()` takes `target`
+	// explicitly and doesn't depend on the renderer's "current" render
+	// target, so restoring first is safe.
+	renderer.setRenderTarget( previousTarget );
+	renderer.setClearColor( previousClearColor, previousClearAlpha );
+	renderer.toneMapping = previousToneMapping;
 
-		const attachments = [];
+	const attachments = [];
 
-		for ( const textureIndex of textureIndices ) {
+	for ( const textureIndex of textureIndices ) {
 
-			const pixels = await renderer.readRenderTargetPixelsAsync( target, 0, 0, atlasWidth, atlasHeight, textureIndex );
-			attachments.push( validateHalfFloatPixels( pixels ) );
-
-		}
-
-		return attachments;
-
-	} finally {
-
-		renderer.setRenderTarget( previousTarget );
-		renderer.setClearColor( previousClearColor, previousClearAlpha );
-		renderer.toneMapping = previousToneMapping;
+		const pixels = await renderer.readRenderTargetPixelsAsync( target, 0, 0, atlasWidth, atlasHeight, textureIndex );
+		attachments.push( validateHalfFloatPixels( pixels ) );
 
 	}
+
+	return attachments;
 
 }
 

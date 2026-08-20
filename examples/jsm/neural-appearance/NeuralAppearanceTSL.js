@@ -97,44 +97,21 @@ function evaluateNeuralIBL( material, envNode, context = null, isolate = 'full' 
 // grid textures and re-running the rotation decoder (buildDecoderFrames)
 // here a second time. Not exported/called outside this module, so its
 // signature is free to change.
-//
-// PERF PROFILING: `material.neuralPerfDebug` (see webgpu_materials_neural_appearance.html's
-// "perf (IBL stages)" GUI folder) can force any of this function's 5 GPU-cost
-// stages -- the iblHead MLP query, the two envNode.context().isolate() PMREM
-// samples, and the indirectRadiance/indirectIrradiance MLP heads -- to be
-// skipped and replaced with a cheap constant, so each stage's frame-time
-// contribution can be measured in isolation. Purely a debugging aid: when
-// `neuralPerfDebug` is unset (the default), every flag below is falsy and
-// this function's shader graph and output are byte-for-byte what they were
-// before this instrumentation was added.
 function evaluateNeuralIBLForTexels( material, envNode, wo, latents, frames, isolate = 'full' ) {
-
-	const perf = material.neuralPerfDebug || {};
 
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const uniforms = material._outputUniforms.ibl;
 
-	let queryDirection, queryRoughness;
+	const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize );
+	const query = evaluateMLPViaFn( `evaluateIBLHead_${ material.id }`, ibl.layers, uniforms, queryInput, 4 );
+	const queryDirection = TSL.vec3( query[ 0 ], query[ 1 ], query[ 2 ] ).normalize();
+	const queryRoughness = sigmoidTSL( query[ 3 ] );
 
-	if ( perf.skipIblHead ) {
-
-		queryDirection = TSL.vec3( 0, 0, 1 );
-		queryRoughness = TSL.float( 0.5 );
-
-	} else {
-
-		const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize );
-		const query = evaluateMLPViaFn( `evaluateIBLHead_${ material.id }`, ibl.layers, uniforms, queryInput, 4 );
-		queryDirection = TSL.vec3( query[ 0 ], query[ 1 ], query[ 2 ] ).normalize();
-		queryRoughness = sigmoidTSL( query[ 3 ] );
-
-	}
-
-	const incoming = perf.skipIncomingSample ? TSL.vec3( 0.5 ) : envNode.context( {
+	const incoming = envNode.context( {
 		getUV: () => canonicalToWorldDirection( queryDirection ),
 		getTextureLevel: () => queryRoughness
 	} ).isolate().mul( TSL.materialEnvIntensity );
-	const irradiance = perf.skipIrradianceSample ? TSL.vec3( 0.5 ) : envNode.context( {
+	const irradiance = envNode.context( {
 		getUV: () => canonicalToWorldDirection( TSL.vec3( 0, 0, 1 ) ),
 		getTextureLevel: () => TSL.float( 1 )
 	} ).isolate().mul( TSL.materialEnvIntensity );
@@ -144,15 +121,13 @@ function evaluateNeuralIBLForTexels( material, envNode, wo, latents, frames, iso
 
 	if ( isolate !== 'irradiance' && radianceHead ) {
 
-		outgoing = outgoing.add( perf.skipRadianceHead ? incoming :
-			evaluateIndirectProbeHead( material, radianceHead, material._outputUniforms.indirectRadiance, latents, wo, incoming, 'Radiance' ) );
+		outgoing = outgoing.add( evaluateIndirectProbeHead( material, radianceHead, material._outputUniforms.indirectRadiance, latents, wo, incoming, 'Radiance' ) );
 
 	}
 
 	if ( isolate !== 'radiance' && irradianceHead ) {
 
-		outgoing = outgoing.add( perf.skipIrradianceHead ? irradiance :
-			evaluateIndirectProbeHead( material, irradianceHead, material._outputUniforms.indirectIrradiance, latents, wo, irradiance, 'Irradiance' ) );
+		outgoing = outgoing.add( evaluateIndirectProbeHead( material, irradianceHead, material._outputUniforms.indirectIrradiance, latents, wo, irradiance, 'Irradiance' ) );
 
 	}
 

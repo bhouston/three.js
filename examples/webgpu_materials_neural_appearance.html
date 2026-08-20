@@ -375,30 +375,6 @@
 				iterations: readNumberQuery( 'iterations', presetSettings.iterations ),
 				batchSize: readNumberQuery( 'batchSize', presetSettings.batchSize ),
 				learningRate: readNumberQuery( 'learningRate', 0.001 ),
-				showNeuralMaterial: queryParams.get( 'showNeuralMaterial' ) !== 'false',
-				// PERF EXPERIMENT: toggles all 3 direct lights on/off live, to check
-				// whether the neural-appearance BRDF's once-per-light MLP evaluation
-				// (see NeuralAppearanceTSL.js createEvaluateNeuralBRDFFn, called once
-				// per entry in `directLights`) is really the dominant per-frame cost.
-				directLights: queryParams.get( 'directLights' ) !== 'false',
-				// PERF EXPERIMENT: toggles scene.environment on/off live. When null,
-				// NeuralAppearanceLightingModel.indirect() (NeuralAppearanceNodeMaterial.js)
-				// short-circuits entirely - no iblHead / indirectRadianceHead /
-				// indirectIrradianceHead MLP evaluation and no PMREM texture context
-				// evaluations - so this isolates the IBL/indirect stack's frame cost.
-				environment: queryParams.get( 'environment' ) !== 'false',
-				// PERF EXPERIMENT: per-stage skip toggles for the IBL/indirect path
-				// (evaluateNeuralIBLForTexels in NeuralAppearanceTSL.js). Each one
-				// replaces that single stage with a cheap constant so its individual
-				// GPU cost can be isolated - see updatePerfDebug() / the "perf (IBL
-				// stages)" GUI folder below.
-				perfSkipIblHead: false,
-				perfSkipIncomingSample: false,
-				perfSkipIrradianceSample: false,
-				perfSkipRadianceHead: false,
-				perfSkipIrradianceHead: false,
-				intensity: readNumberQuery( 'intensity', 1 ),
-				emissiveIntensity: readNumberQuery( 'emissiveIntensity', 1 ),
 				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
 				seed: readNumberQuery( 'seed', 1 )
 			};
@@ -582,22 +558,6 @@
 				// output-mode toggle.
 				const viewFolder = gui.addFolder( 'view' );
 				viewFolder.add( params, 'debugView', [ 'shaded', 'normal', 'reflection', 'roughness', 'irradiance', 'ibl', 'iblRadiance', 'iblIrradiance' ] ).name( 'debug view' ).onChange( updateView );
-				viewFolder.add( params, 'showNeuralMaterial' ).name( 'show neural material' ).onChange( updateView );
-				viewFolder.add( params, 'directLights' ).name( 'direct lights' ).onChange( applyLights );
-				viewFolder.add( params, 'environment' ).name( 'environment (IBL)' ).onChange( applyLights );
-
-				// PERF EXPERIMENT: isolates each of evaluateNeuralIBLForTexels' 5 GPU
-				// cost stages (NeuralAppearanceTSL.js) so their individual frame-time
-				// contribution can be profiled by toggling one at a time and watching
-				// fps, instead of only being able to turn the whole IBL path on/off.
-				const perfFolder = gui.addFolder( 'perf (IBL stages)' );
-				perfFolder.add( params, 'perfSkipIblHead' ).name( 'skip iblHead MLP' ).onChange( updatePerfDebug );
-				perfFolder.add( params, 'perfSkipIncomingSample' ).name( 'skip radiance PMREM sample' ).onChange( updatePerfDebug );
-				perfFolder.add( params, 'perfSkipIrradianceSample' ).name( 'skip irradiance PMREM sample' ).onChange( updatePerfDebug );
-				perfFolder.add( params, 'perfSkipRadianceHead' ).name( 'skip indirectRadiance MLP' ).onChange( updatePerfDebug );
-				perfFolder.add( params, 'perfSkipIrradianceHead' ).name( 'skip indirectIrradiance MLP' ).onChange( updatePerfDebug );
-				viewFolder.add( params, 'intensity', 0, 3, 0.01 ).onChange( updateView );
-				viewFolder.add( params, 'emissiveIntensity', 0, 3, 0.01 ).name( 'emissive intensity' ).onChange( updateView );
 				// No "lighting" GUI folder: the debug-view render modes (normal,
 				// reflection, roughness, irradiance, ibl, iblRadiance,
 				// iblIrradiance) cover manual lighting inspection now, so direct
@@ -734,11 +694,8 @@
 					latestJson = json;
 					disposeNeuralMaterial();
 					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, {
-						intensity: params.intensity,
-						emissiveIntensity: params.emissiveIntensity,
 						debugView: params.debugView
 					} );
-					updatePerfDebug();
 					materialName.textContent = json.name || file.name;
 					updateNeuralRepresentationSize( json );
 					params.view = 'trained neural';
@@ -1005,8 +962,6 @@
 
 			function showLiveNeuralMaterial( json ) {
 
-				if ( params.showNeuralMaterial !== true ) return;
-
 				applyNeuralAppearanceData( new NeuralAppearanceLoader().parse( json ) );
 				params.view = 'trained neural';
 				comparisonVisible = true;
@@ -1025,11 +980,8 @@
 
 				disposeNeuralMaterial();
 				neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, {
-					intensity: params.intensity,
-					emissiveIntensity: params.emissiveIntensity,
 					debugView: params.debugView
 				} );
-				updatePerfDebug();
 
 			}
 
@@ -1288,8 +1240,6 @@
 
 					}
 
-					neuralMaterial.intensity = params.intensity;
-					neuralMaterial.emissiveIntensity = params.emissiveIntensity;
 					neuralMaterial.toneMapped = params.debugView === 'shaded' || params.debugView === 'ibl' || params.debugView === 'iblRadiance' || params.debugView === 'iblIrradiance';
 
 				}
@@ -1300,7 +1250,7 @@
 				teacherLabel.textContent = labels.teacher;
 				neuralLabel.textContent = labels.neural;
 
-				if ( comparisonVisible && params.showNeuralMaterial ) {
+				if ( comparisonVisible ) {
 
 					mode.textContent = isTraining ? 'training comparison' : 'teacher / neural comparison';
 					if ( params.debugView !== 'shaded' ) mode.textContent += ` / ${ params.debugView }`;
@@ -1323,7 +1273,7 @@
 					neuralMesh.visible = false;
 					modelLabels.hidden = true;
 
-					if ( params.view === 'trained neural' && neuralMaterial && params.showNeuralMaterial ) {
+					if ( params.view === 'trained neural' && neuralMaterial ) {
 
 						mesh.material = neuralDisplayMaterial;
 
@@ -1542,58 +1492,22 @@
 
 			}
 
-			function updatePerfDebug() {
-
-				if ( ! neuralMaterial ) return;
-
-				neuralMaterial.neuralPerfDebug = {
-					skipIblHead: params.perfSkipIblHead,
-					skipIncomingSample: params.perfSkipIncomingSample,
-					skipIrradianceSample: params.perfSkipIrradianceSample,
-					skipRadianceHead: params.perfSkipRadianceHead,
-					skipIrradianceHead: params.perfSkipIrradianceHead
-				};
-				// neuralPerfDebug is only read while evaluateNeuralIBLForTexels'
-				// shader graph is being built (NeuralAppearanceTSL.js), not re-checked
-				// per frame, so a toggle change needs an explicit rebuild to actually
-				// add/remove that stage's cost from the compiled shader.
-				neuralMaterial.needsUpdate = true;
-
-			}
-
 			function applyLights() {
 
 				const isolateIbl = params.debugView === 'ibl' || params.debugView === 'iblRadiance' || params.debugView === 'iblIrradiance';
 
-				directLights.forEach( ( light, index ) => {
+				directLights.forEach( ( light ) => {
 
 					light.intensity = isolateIbl === false ? light.userData.baseIntensity : 0;
 
-					// Merely zeroing intensity does NOT reduce the shader's per-light
-					// MLP evaluation cost (NeuralAppearanceLightingModel.direct() /
-					// createEvaluateNeuralBRDFFn in NeuralAppearanceTSL.js runs once
-					// per light object the renderer sees, regardless of intensity) -
-					// so the "direct lights" perf toggle below actually adds/removes
-					// the fill/rim lights (index > 0; keyLight at index 0 always stays)
-					// from the scene to change that count for real.
-					const shouldBeInScene = index === 0 || params.directLights !== false;
-
-					if ( shouldBeInScene && light.parent !== scene ) scene.add( light );
-					if ( ! shouldBeInScene && light.parent === scene ) scene.remove( light );
+					if ( light.parent !== scene ) scene.add( light );
 
 				} );
 
-				const nextEnvironment = params.environment !== false ? environmentMap : null;
+				if ( scene.environment !== environmentMap ) {
 
-				if ( scene.environment !== nextEnvironment ) {
+					scene.environment = environmentMap;
 
-					scene.environment = nextEnvironment;
-
-					// indirect()'s envNode presence is resolved when the material's
-					// shader is built (NeuralAppearanceNodeMaterial.js:196-211), not
-					// re-checked every frame, so flipping scene.environment needs an
-					// explicit rebuild to actually add/remove the IBL/indirect MLP
-					// evaluation from the compiled shader.
 					if ( neuralMaterial ) neuralMaterial.needsUpdate = true;
 
 				}

@@ -26,8 +26,9 @@ import { createServer } from '../../utils/server.js';
 const pixelThreshold = 0.1; // threshold error in one pixel
 const maxDifferentPixels = 0.1; // at most 0.1% different pixels
 
-const idleTime = 2; // 2 seconds - for how long there should be no network requests
-const parseTime = 1; // 1 second per megabyte
+const idleTime = 0.4; // seconds - for how long there should be no network requests. Was 2s,
+// tuned for real network latency; localhost round-trips are near-instant so a much shorter
+// window is enough to catch a late-firing follow-up request.
 
 const networkTimeout = 5; // 5 minutes, set to 0 to disable
 const renderTimeout = 5; // 5 seconds, set to 0 to disable
@@ -285,28 +286,6 @@ async function preparePage( page, injection, builds ) {
 
 	} );
 
-	page.on( 'response', async ( response ) => {
-
-		try {
-
-			if ( response.status() === 200 ) {
-
-				// pageSize only feeds the `parseTime` heuristic delay below, so
-				// the Content-Length header (our own static server always sets
-				// it) is enough - the old script called response.body(), which
-				// pulls the full asset payload back over CDP for every request
-				// on every page. With many lanes running concurrently through
-				// one Node process that was a real bottleneck: ~30% slower on
-				// asset-heavy examples in testing.
-				const lenHeader = response.headers()[ 'content-length' ];
-				page.pageSize += lenHeader ? Number( lenHeader ) : 0;
-
-			}
-
-		} catch ( e ) {}
-
-	} );
-
 	await page.route( '**/*', async ( route ) => {
 
 		const url = route.request().url();
@@ -336,7 +315,6 @@ async function preparePage( page, injection, builds ) {
 async function renderAndScreenshot( page, file ) {
 
 	page.file = file;
-	page.pageSize = 0;
 	page.consoleErrors = [];
 	page.consoleWarnings = [];
 
@@ -367,9 +345,18 @@ async function renderAndScreenshot( page, file ) {
 			timeout: networkTimeout * 60000
 		} );
 
-		await page.evaluate( async ( { renderTimeout, parseTime } ) => {
+		await page.evaluate( async ( { renderTimeout } ) => {
 
-			await new Promise( resolve => setTimeout( resolve, parseTime ) );
+			// Wait for the main thread to actually go idle (worker-based decode,
+			// shader compile, texture upload, etc. all show up as scheduled work)
+			// instead of guessing a delay from downloaded byte count. Bounded by
+			// a short timeout so an example that's never truly idle doesn't stall.
+			await new Promise( resolve => {
+
+				if ( 'requestIdleCallback' in window ) requestIdleCallback( resolve, { timeout: 500 } );
+				else setTimeout( resolve, 50 );
+
+			} );
 
 			window._renderStarted = true;
 
@@ -393,11 +380,11 @@ async function renderAndScreenshot( page, file ) {
 
 					}
 
-				}, 100 );
+				}, 16 );
 
 			} );
 
-		}, { renderTimeout, parseTime: page.pageSize / 1024 / 1024 * parseTime * 1000 } );
+		}, { renderTimeout } );
 
 	} catch ( e ) {
 

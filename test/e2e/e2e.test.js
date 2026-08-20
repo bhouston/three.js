@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, test } from 'vitest';
 import { chromium } from 'playwright';
+import pLimit from 'p-limit';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import { existsSync } from 'fs';
@@ -9,14 +10,18 @@ import { createServer } from '../../utils/server.js';
 
 // Vitest-driven replacement for the old `node test/e2e/playwright.js` runner.
 //
-// Rather than looping through every example on a single page (the old
-// script's approach), examples are queued onto a small pool of "lanes" -
-// each lane is its own Chromium process, reused sequentially for whichever
-// example is next in the queue. `test.concurrent` lets vitest kick off all
-// example tests immediately; each one blocks on `pool.acquire()` until a
-// lane is free, which is what actually bounds concurrency and gives good
-// load balancing (a lane that finishes a cheap example quickly picks up the
-// next one, instead of a fixed static split of the file list).
+// A single Chromium process is shared by every example. Each example gets
+// its own tab (browser context + page), opened right before it runs and
+// closed right after, so no state (console listeners, routes, DOM, storage,
+// in-flight requests) can leak between examples. `test.concurrent` lets
+// vitest kick off all example tests immediately; a `p-limit` limiter bounds
+// how many tabs actually run at once, which is what gives good load
+// balancing (a tab that finishes a cheap example quickly picks up the next
+// one, instead of a fixed static split of the file list).
+//
+// There's no lane-restart logic: since every example already gets a fresh
+// context, a wedged example (e.g. a lost WebGPU device) is retried once in
+// a brand-new tab rather than by tearing down and relaunching the browser.
 //
 // See test/e2e/README.md for usage (env vars for --webgpu / --make / an
 // exact example list, and how this interacts with CI's own job matrix).
@@ -40,16 +45,12 @@ const jpgQuality = 95;
 
 const outputDir = 'test/e2e/output-screenshots';
 
-// Number of concurrent Chromium processes ("lanes"). Each is a full
-// browser process (not just a page/context) because example rendering is
-// CPU/GL-heavy under software rendering; separate processes give real
-// parallelism without lock contention inside one GL context, the same
-// isolation the old CI matrix relied on. Override with E2E_WORKERS.
-// Software rendering is CPU-bound, so going past the physical core count
-// has shown no further speedup in testing (measured on an 8-core machine:
-// 8 vs 16 lanes was a wash) - default to the core count rather than
-// oversubscribing.
-const LANES = Number( process.env.E2E_WORKERS ) || Math.max( 1, os.cpus().length );
+// Number of tabs (contexts) allowed to run concurrently in the shared
+// Chromium process. Override with E2E_WORKERS. Software rendering is
+// CPU-bound, so going past the physical core count has shown no further
+// speedup in testing (measured on an 8-core machine: 8 vs 16 was a wash) -
+// default to the core count rather than oversubscribing.
+const CONCURRENCY = Number( process.env.E2E_WORKERS ) || Math.max( 1, os.cpus().length );
 
 const isMakeScreenshot = !! process.env.E2E_MAKE;
 const isWebGPU = !! process.env.E2E_WEBGPU;
@@ -96,7 +97,7 @@ const launchOptions = {
 	timeout: 0
 };
 
-/* Shared server + build injection, set up once for all lanes */
+/* Shared server + build injection, set up once for the whole suite */
 
 const server = createServer();
 let port;
@@ -110,66 +111,33 @@ let cleanPage;
 let injection;
 let builds;
 
-/* Lane pool: each lane owns one Chromium process + one long-lived page,
- * reused across whichever examples get queued onto it. */
+/* Shared browser process; every example runs in its own tab */
 
-function createPool( size, factory ) {
+let browserServer;
+let browser;
+const limit = pLimit( CONCURRENCY );
 
-	const idle = [];
-	const waiting = [];
+// Opens a fresh tab (its own context + page) for a single example, so no
+// state can leak between examples sharing the browser process.
+async function openPage() {
 
-	for ( let i = 0; i < size; i ++ ) idle.push( factory( i ) );
-
-	return {
-		async acquire() {
-
-			if ( idle.length ) return idle.pop();
-			return new Promise( resolve => waiting.push( resolve ) );
-
-		},
-		release( lane ) {
-
-			if ( waiting.length ) waiting.shift()( lane );
-			else idle.push( lane );
-
-		}
-	};
-
-}
-
-async function launchLane() {
-
-	// launchServer (instead of chromium.launch()) gives us a handle on the
-	// underlying browser process so we can force-kill it if it wedges.
-	const browserServer = await chromium.launchServer( launchOptions );
-	const browser = await chromium.connect( browserServer.wsEndpoint() );
 	const context = await browser.newContext( { viewport } );
 	const page = await context.newPage();
 	await preparePage( page, injection, builds );
 
-	return { browserServer, browser, context, page };
+	return page;
 
 }
 
-async function restartLane( lane ) {
+async function closePage( page ) {
 
-	// Kill the whole Chrome process tree; browserServer.close() can hang
-	// after a wedged GPU process, so use kill() which SIGKILLs it.
 	try {
 
-		await lane.browserServer.kill();
+		await page.context().close();
 
 	} catch ( e ) {}
 
-	const fresh = await launchLane();
-	lane.browserServer = fresh.browserServer;
-	lane.browser = fresh.browser;
-	lane.context = fresh.context;
-	lane.page = fresh.page;
-
 }
-
-let pool;
 
 function createNetworkTracker( page ) {
 
@@ -405,22 +373,19 @@ async function renderAndScreenshot( page, file ) {
 
 	}
 
-	// Warnings are logged (see the 'console' listener in preparePage) but don't
-	// fail the test - matches the old puppeteer.js runner's behavior, which
-	// only ever failed on `type === 'error'`. Examples routinely log pre-existing
-	// deprecation/compat warnings that aren't test-worthy regressions.
-
 	return screenshot;
 
 }
 
-async function checkFile( lane, file ) {
+async function checkFile( file ) {
 
 	const pageStart = performance.now();
 
+	let page = await openPage();
+
 	try {
 
-		const screenshot = await renderAndScreenshot( lane.page, file );
+		const screenshot = await renderAndScreenshot( page, file );
 
 		const pageElapsed = ( performance.now() - pageStart ) / 1000;
 
@@ -474,25 +439,25 @@ async function checkFile( lane, file ) {
 
 	} catch ( e ) {
 
-		// Once a lane's WebGPU device is lost (e.g. another process on the
-		// machine starves the GPU), every subsequent GPUValidationError on that
-		// lane cascades from the original loss but usually doesn't repeat the
-		// literal "Device Lost" message itself - only the first example to
+		// A lost WebGPU device (e.g. another process on the machine starving
+		// the GPU) tends to cascade: every subsequent GPUValidationError on
+		// that page follows from the original loss but usually doesn't repeat
+		// the literal "Device Lost" message itself - only the first example to
 		// observe it does. Matching the wider cascade signature too means a
-		// wedged lane gets a fresh browser process on the very next example
-		// instead of failing every example queued to it until something else
-		// (a differently-worded error, or the queue running out) resets it.
+		// wedged tab gets replaced by a fresh one on the very next attempt
+		// instead of failing outright.
 		const isDeviceLossOrCascade = /WebGPU Device Lost|GPUValidationError|is invalid due to a previous error/.test( String( e ) );
 
 		if ( isDeviceLossOrCascade ) {
 
 			console.warn( `${ e }` );
-			console.warn( `Restarting lane after device loss on ${ file }, retrying once...` );
-			await restartLane( lane );
+			console.warn( `Retrying ${ file } in a fresh tab after device loss...` );
+			await closePage( page );
+			page = await openPage();
 
-			// Give the example a single retry on a fresh browser process
-			// before failing outright - mirrors the old script's recovery.
-			const screenshot = await renderAndScreenshot( lane.page, file );
+			// Give the example a single retry in a brand-new tab before
+			// failing outright - mirrors the old script's recovery.
+			const screenshot = await renderAndScreenshot( page, file );
 
 			if ( ! isMakeScreenshot ) {
 
@@ -521,7 +486,7 @@ async function checkFile( lane, file ) {
 
 	} finally {
 
-		lane.page.file = undefined; // release lock
+		await closePage( page );
 
 	}
 
@@ -553,7 +518,7 @@ async function listFiles() {
 	if ( isWebGPU ) files = files.filter( f => f.includes( 'webgpu_' ) );
 
 	// CI parallelism across job-matrix shards, e.g. CI=0..4 with numCIJobs=5.
-	// Independent from LANES, which parallelizes *within* one shard/machine.
+	// Independent from CONCURRENCY, which parallelizes *within* one shard/machine.
 	if ( 'CI' in process.env && process.env.CI !== '' && ! isNaN( Number( process.env.CI ) ) ) {
 
 		const numCIJobs = Number( process.env.E2E_CI_JOBS ) || 5;
@@ -598,23 +563,20 @@ beforeAll( async () => {
 
 	} );
 
-	pool = createPool( LANES, launchLane );
+	// launchServer (instead of chromium.launch()) gives us a handle on the
+	// underlying browser process for a clean kill() in afterAll.
+	browserServer = await chromium.launchServer( launchOptions );
+	browser = await chromium.connect( browserServer.wsEndpoint() );
 
 }, 5 * 60000 );
 
 afterAll( async () => {
 
-	// Drain the pool so every lane's browser process gets closed.
-	for ( let i = 0; i < LANES; i ++ ) {
+	try {
 
-		try {
+		await browserServer.kill();
 
-			const lane = await pool.acquire();
-			await lane.browserServer.close();
-
-		} catch ( e ) {}
-
-	}
+	} catch ( e ) {}
 
 	await new Promise( resolve => server.close( resolve ) );
 
@@ -622,27 +584,13 @@ afterAll( async () => {
 
 const files = await listFiles();
 
-console.log( `Testing ${ files.length } example(s) across ${ LANES } lane(s)${ isMakeScreenshot ? ' (generating screenshots)' : '' }.` );
+console.log( `Testing ${ files.length } example(s) with up to ${ CONCURRENCY } concurrent tab(s)${ isMakeScreenshot ? ' (generating screenshots)' : '' }.` );
 
 describe.concurrent( 'examples', () => {
 
 	for ( const file of files ) {
 
-		test( file, { timeout: 0 }, async () => {
-
-			const lane = await pool.acquire();
-
-			try {
-
-				await checkFile( lane, file );
-
-			} finally {
-
-				pool.release( lane );
-
-			}
-
-		} );
+		test( file, { timeout: 0 }, () => limit( () => checkFile( file ) ) );
 
 	}
 

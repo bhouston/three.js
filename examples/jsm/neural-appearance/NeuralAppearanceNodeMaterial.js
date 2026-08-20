@@ -165,6 +165,23 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 	}
 
 	/**
+	 * Releases the latent grid textures this material owns. The decoder
+	 * weight/bias uniforms (`_outputUniforms`, built via `TSL.uniformArray`)
+	 * don't need an explicit release here - unlike `latentTextures`, they're
+	 * plain node-graph state torn down by the renderer's standard
+	 * node-disposal path when this material's own `dispose()` event fires
+	 * (via the inherited `Material.dispose()` below), not a GPU resource
+	 * this class owns directly.
+	 */
+	dispose() {
+
+		for ( const texture of this.neuralAppearanceData.latentTextures ) texture.dispose();
+
+		super.dispose();
+
+	}
+
+	/**
 	 * Setups the lighting model.
 	 *
 	 * @return {NeuralAppearanceLightingModel} The lighting model.

@@ -57,14 +57,8 @@ function computeModelLayout( options = {} ) {
 
 	// `levels` (and everything derived from it below) is computed first and
 	// used throughout this function's buffer-layout math - NOT
-	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/DECODER_INPUT_SIZE/
-	// IBL_INPUT_SIZE/INDIRECT_INPUT_SIZE constants, which are only correct
-	// when levels === LEVELS (the default). A GPU model built for a
-	// non-default `levels` (see e.g. webgpu_materials_neural_appearance.html's
-	// "grid levels" GUI control) needs its own actually-configured channel/
-	// input-size math, or every buffer offset past the rotation-weights block
-	// is wrong. See NeuralAppearanceFormat.js's doc comment on these helpers,
-	// and NeuralAppearanceModel.levels-bug.test.js, for the full story.
+	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/etc. constants - see
+	// that file's doc comment on these helpers for why.
 	const levels = options.levels || LEVELS;
 	const latentChannels = computeLatentChannels( levels );
 	const decoderInputSize = computeDecoderInputSize( levels );

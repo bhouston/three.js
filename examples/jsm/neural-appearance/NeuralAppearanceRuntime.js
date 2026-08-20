@@ -1,11 +1,11 @@
 import { CHANNELS_PER_LEVEL } from './NeuralAppearanceFormat.js';
 import { sigmoid } from '../neural/NeuralMLP.js';
+import { normalize } from '../neural/NeuralVectorMath.js';
 import {
 	buildDecoderInput,
 	buildIBLInput,
 	buildIndirectProbeInput,
 	unpackIBLOutput,
-	normalize,
 	wrapIndex
 } from './NeuralAppearanceModel.js';
 
@@ -170,16 +170,13 @@ function radicalInverseVdc( bits ) {
  * always contributes.
  *
  * Sized from `json.latents.levels.length` - the manifest's *actual* level
- * count - not NeuralAppearanceFormat.js's fixed `LATENT_CHANNELS` constant,
- * which is only correct for a manifest exported with the default `levels`
- * (4). A fixed-size allocation here would leave phantom trailing zero
- * "channels" for a manifest with fewer levels (corrupting every downstream
- * consumer that derives its own expected input width from `latents.length`,
- * as buildDecoderInput/buildIBLInput/buildIndirectProbeInput in
- * NeuralAppearanceModel.js now do), and for a manifest with more levels than
- * the default, would silently rely on the array auto-growing rather than
- * being sized correctly up front. See NeuralAppearanceFormat.js's doc
- * comment on the computeXXX helpers for the full story.
+ * count - not NeuralAppearanceFormat.js's fixed `LATENT_CHANNELS` constant
+ * (see that file's doc comment on the computeXXX helpers for why). A
+ * fixed-size allocation here would leave phantom trailing zero "channels"
+ * for a manifest with fewer levels, corrupting every downstream consumer
+ * that derives its own expected input width from `latents.length` (as
+ * buildDecoderInput/buildIBLInput/buildIndirectProbeInput in
+ * NeuralAppearanceModel.js do).
  */
 function sampleRuntimeLatents( json, uv ) {
 

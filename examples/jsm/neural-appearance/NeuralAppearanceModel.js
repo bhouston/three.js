@@ -21,12 +21,8 @@ function createModel( options, random ) {
 
 	// `levels` is computed first (and every MLP head below is sized from
 	// *this* model's actual levels, via the computeXXX helpers) - not from
-	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/DECODER_INPUT_SIZE/
-	// IBL_INPUT_SIZE/INDIRECT_INPUT_SIZE constants, which are only correct
-	// for levels === LEVELS (the default). Getting this wrong doesn't throw -
-	// it silently builds a decoder sized for the wrong input width, and every
-	// prediction comes out NaN. See NeuralAppearanceFormat.js's doc comment
-	// on those helpers for the full story.
+	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/etc. constants - see
+	// that file's doc comment on these helpers for why.
 	const levels = options.levels || LEVELS;
 	const latentChannels = computeLatentChannels( levels );
 	const decoderInputSize = computeDecoderInputSize( levels );
@@ -350,8 +346,5 @@ export {
 	buildIndirectProbeInput,
 	unpackIBLOutput,
 	getSampleWeightSum,
-	dot,
-	cross,
-	normalize,
 	wrapIndex
 };

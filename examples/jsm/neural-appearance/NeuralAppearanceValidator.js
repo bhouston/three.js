@@ -1,9 +1,6 @@
 import { powerLog } from '../neural/NeuralMLP.js';
-import {
-	getSampleWeightSum,
-	cross,
-	normalize
-} from './NeuralAppearanceModel.js';
+import { cross, normalize } from '../neural/NeuralVectorMath.js';
+import { getSampleWeightSum } from './NeuralAppearanceModel.js';
 import {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs,

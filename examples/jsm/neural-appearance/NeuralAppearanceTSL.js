@@ -546,7 +546,10 @@ function buildDecoderFrames( decoder, decoderUniforms, latents ) {
 
 	}
 
-	const rotation = linearLayer( latents, decoderUniforms.parameters, decoderUniforms.rotationWeightsOffset, null, decoder.rotation.outputSize, 'linear' );
+	const rotation = unpackNodeInputs(
+		linearLayerPacked( packNodeInputs( latents ), decoderUniforms.parameters, decoderUniforms.rotationWeightsOffset, null, latents.length, decoder.rotation.outputSize, 'linear' ),
+		decoder.rotation.outputSize
+	);
 	const frames = [];
 
 	for ( let frame = 0; frame < 2; frame ++ ) {
@@ -717,50 +720,12 @@ function linearLayerPacked( inputs, parameters, weightsOffset, biasesOffset, inp
 
 		}
 
-		let value = parameters.element( biasesOffset + outputVector ).add( TSL.vec4( sums[ 0 ], sums[ 1 ], sums[ 2 ], sums[ 3 ] ) );
-
-		if ( activation === 'relu' ) {
-
-			value = value.max( 0 );
-
-		}
-
-		outputs.push( value );
-
-	}
-
-	return outputs;
-
-}
-
-function linearLayer( inputs, parameters, weightsOffset, biasesOffset, outputSize, activation ) {
-
-	const outputs = [];
-	const inputVectors = [];
-	const inputVectorCount = Math.ceil( inputs.length / 4 );
-
-	for ( let i = 0; i < inputVectorCount; i ++ ) {
-
-		const offset = i * 4;
-
-		inputVectors.push( TSL.vec4(
-			inputs[ offset ] || 0,
-			inputs[ offset + 1 ] || 0,
-			inputs[ offset + 2 ] || 0,
-			inputs[ offset + 3 ] || 0
-		) );
-
-	}
-
-	for ( let outputIndex = 0; outputIndex < outputSize; outputIndex ++ ) {
-
-		let value = biasesOffset !== null ? parameters.element( biasesOffset + outputIndex ) : TSL.float( 0 );
-
-		for ( let vectorIndex = 0; vectorIndex < inputVectorCount; vectorIndex ++ ) {
-
-			value = value.add( TSL.dot( inputVectors[ vectorIndex ], parameters.element( weightsOffset + outputIndex * inputVectorCount + vectorIndex ) ) );
-
-		}
+		// `biasesOffset: null` (only the rotation layer - see
+		// buildDecoderFrames - which packs no bias values at all, matching
+		// the training kernel's bias-free rotation projection) skips the
+		// bias term entirely rather than reading a bogus offset.
+		const bias = biasesOffset !== null ? parameters.element( biasesOffset + outputVector ) : TSL.vec4( 0 );
+		let value = bias.add( TSL.vec4( sums[ 0 ], sums[ 1 ], sums[ 2 ], sums[ 3 ] ) );
 
 		if ( activation === 'relu' ) {
 
@@ -847,7 +812,6 @@ export {
 	unpackNodeInputs,
 	linearLayerPacked,
 	toVec3,
-	linearLayer,
 	applyOutputActivation,
 	applyScalarOutputActivation,
 	LEVEL_NAMES,

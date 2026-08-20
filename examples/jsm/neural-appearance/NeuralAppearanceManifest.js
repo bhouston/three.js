@@ -7,7 +7,7 @@ import {
 	computeIblInputSize,
 	computeIndirectInputSize
 } from './NeuralAppearanceFormat.js';
-import { normalize } from './NeuralAppearanceModel.js';
+import { normalize } from '../neural/NeuralVectorMath.js';
 import {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs,
@@ -32,14 +32,9 @@ async function exportNeuralAppearance( model, teacher, options ) {
 function createNeuralAppearanceManifest( model, options ) {
 
 	// Every inputSize below is derived from *this model's own* `model.levels`
-	// (via the computeXXX helpers), not NeuralAppearanceFormat.js's fixed
-	// LATENT_CHANNELS/DECODER_INPUT_SIZE/IBL_INPUT_SIZE/INDIRECT_INPUT_SIZE
-	// constants - those are only correct when levels === LEVELS (the
-	// default). A manifest exported for a non-default `levels` model needs to
-	// document its layers' *real* input widths, or a decoder reading this
-	// manifest back (NeuralAppearanceRuntime.js) has no way to know how many
-	// latent channels it's actually working with. See NeuralAppearanceFormat.
-	// js's doc comment on these helpers for the full story.
+	// via the computeXXX helpers, not NeuralAppearanceFormat.js's fixed
+	// LATENT_CHANNELS/etc. constants - see that file's doc comment on these
+	// helpers for why.
 	const latentChannels = computeLatentChannels( model.levels );
 	const decoderInputSize = computeDecoderInputSize( model.levels );
 	const iblInputSize = computeIblInputSize( model.levels );
@@ -161,48 +156,47 @@ async function createReferenceEvaluations( json, teacher ) {
 	normalizeDirectLightingTargets( refs );
 	await assignAuxiliaryTeacherTargets( refs, teacher );
 
-	for ( const sample of refs ) {
+	// Build a clean, explicitly-whitelisted output object per sample rather
+	// than mutating the working `refs` entry and deleting its scratch
+	// fields afterward - a whitelist can't leak a field nobody remembered
+	// to delete, the way the mutate-then-delete version could.
+	return refs.map( ( sample ) => {
 
 		const prediction = evaluateNeuralAppearanceJson( json, sample );
 		const outputs = evaluateNeuralAppearanceOutputs( json, sample );
-		const iblWhite = evaluateNeuralIBLWhiteFurnace( json, sample );
-		const integratedWhite = integrateNeuralBRDFWhiteFurnace( json, sample, 32 );
 
-		sample.targetRgb = sample.target.slice();
-		sample.rgb = prediction;
-		sample.ibl = outputs.ibl;
-		if ( outputs.indirect ) sample.indirect = outputs.indirect;
-		if ( outputs.indirectRadiance ) sample.indirectRadiance = outputs.indirectRadiance;
-		if ( outputs.indirectIrradiance ) sample.indirectIrradiance = outputs.indirectIrradiance;
-		sample.iblWhiteFurnace = iblWhite;
-		sample.integratedWhiteFurnace = integratedWhite;
+		const result = {
+			uv: sample.uv,
+			wi: sample.wi,
+			wo: sample.wo,
+			targetRgb: sample.target.slice(),
+			rgb: prediction,
+			ibl: outputs.ibl,
+			iblWhiteFurnace: evaluateNeuralIBLWhiteFurnace( json, sample ),
+			integratedWhiteFurnace: integrateNeuralBRDFWhiteFurnace( json, sample, 32 )
+		};
+
+		if ( outputs.indirect ) result.indirect = outputs.indirect;
+		if ( outputs.indirectRadiance ) result.indirectRadiance = outputs.indirectRadiance;
+		if ( outputs.indirectIrradiance ) result.indirectIrradiance = outputs.indirectIrradiance;
+
 		if ( sample.emissionTarget ) {
 
-			sample.targetEmission = sample.emissionTarget.slice();
-			sample.emission = outputs.emission.slice();
+			result.targetEmission = sample.emissionTarget.slice();
+			result.emission = outputs.emission.slice();
 
 		}
 
 		if ( Number.isFinite( sample.opacityTarget ) ) {
 
-			sample.targetOpacity = sample.opacityTarget;
-			sample.opacity = outputs.opacity;
+			result.targetOpacity = sample.opacityTarget;
+			result.opacity = outputs.opacity;
 
 		}
 
-		delete sample.normal;
-		delete sample.tangent;
-		delete sample.bitangent;
-		delete sample.encoderInputs;
-		delete sample.directTarget;
-		delete sample.target;
-		delete sample.emissionTarget;
-		delete sample.opacityTarget;
-		delete sample.weight;
+		return result;
 
-	}
-
-	return refs;
+	} );
 
 }
 

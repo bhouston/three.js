@@ -6,10 +6,8 @@ import {
 	evaluateNeuralOpacity,
 	createOutputUniforms
 } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceTSL.js';
-import {
-	buildDecoderInput,
-	normalize
-} from '../../../../examples/jsm/neural-appearance/NeuralAppearanceModel.js';
+import { buildDecoderInput } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceModel.js';
+import { normalize } from '../../../../examples/jsm/neural/NeuralVectorMath.js';
 import { evaluateDecoderLayers } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceRuntime.js';
 import { createRandom } from '../../../../examples/jsm/neural/NeuralTrainingUtils.js';
 import { withTestRenderer, evalFloats, evalScalar } from '../helpers/webgpuEval.js';

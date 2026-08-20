@@ -1233,17 +1233,8 @@
 
 				if ( neuralMaterial === undefined || neuralMaterial === null ) return;
 
-				const data = neuralMaterial.neuralAppearanceData;
-				if ( data && Array.isArray( data.latentTextures ) ) {
-
-					for ( const texture of data.latentTextures ) {
-
-						texture.dispose();
-
-					}
-
-				}
-
+				// NeuralAppearanceNodeMaterial.dispose() now also releases its
+				// own latentTextures - no need to do that here first.
 				neuralMaterial.dispose();
 				neuralMaterial = null;
 

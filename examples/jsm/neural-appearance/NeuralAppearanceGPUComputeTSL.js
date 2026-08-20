@@ -41,6 +41,183 @@ function backwardNormalizeTSL( raw, norm, gradNorm ) {
 
 }
 
+/**
+ * Forward pass through one dense layer: `out = W . in + b`, optionally
+ * ReLU-activated. `inputBase`/`zBase`/`aBase` are absolute activation-buffer
+ * indices (already offset by `actBase` and whichever section offset
+ * applies) rather than raw layout offsets, so this same helper covers both
+ * "this layer's input starts partway through the shared activation buffer"
+ * (the decoder/IBL/indirect-probe heads below) and "this layer's input is
+ * its own small scratch region" (trainIndirectProbeHead's a0) uniformly.
+ * `aBase: null` skips writing the activated output - used for the final
+ * (linear) layer of a head, whose raw `z` is consumed directly.
+ *
+ * This is the single forward-layer shape shared by the decoder's 3 layers,
+ * the IBL head's 2 layers, and the indirect-probe head's 2 layers (used
+ * once per probe, twice total) - see NeuralAppearanceGPUComputeTSL's module
+ * doc / the call sites below for how each plugs in.
+ */
+function forwardDenseLayerTSL( { activationsStorage, weightsStorage, inputBase, inputSize, outputSize, weightsOffset, biasesOffset, zBase, aBase = null } ) {
+
+	Loop( { start: 0, end: outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const val = weightsStorage.element( int( biasesOffset ).add( j ) ).toVar();
+		const rowOffset = int( weightsOffset ).add( j.mul( inputSize ) );
+
+		Loop( { start: 0, end: inputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+			val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( inputBase.add( i ) ) ) );
+
+		} );
+
+		activationsStorage.element( zBase.add( j ) ).assign( val );
+		if ( aBase !== null ) activationsStorage.element( aBase.add( j ) ).assign( max( val, float( 0.0 ) ) );
+
+	} );
+
+}
+
+/**
+ * Backward pass, gradient-accumulation half: for one dense layer, scatters
+ * `delta (x) input` into that layer's weight/bias gradients via atomic
+ * fixed-point adds. Shared by the same 7 call sites as
+ * `forwardDenseLayerTSL` above (their backward counterparts).
+ */
+function accumulateDenseLayerGradTSL( { activationsStorage, gradWeightsAtomic, deltaBase, inputBase, inputSize, outputSize, weightsOffset, biasesOffset } ) {
+
+	Loop( { start: 0, end: outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const delta_j = activationsStorage.element( deltaBase.add( j ) );
+		atomicAdd( gradWeightsAtomic.element( int( biasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
+		const rowOffset = int( weightsOffset ).add( j.mul( inputSize ) );
+
+		Loop( { start: 0, end: inputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+			const in_i = activationsStorage.element( inputBase.add( i ) );
+			atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta_j.mul( in_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
+
+		} );
+
+	} );
+
+}
+
+/**
+ * Backward pass, delta-propagation half: for one dense layer whose *input*
+ * came from a ReLU (i.e. every hidden layer feeding another hidden layer),
+ * propagates `delta` back through the weight matrix and gates it by that
+ * input's own ReLU derivative, writing the previous layer's delta. Shared
+ * by decoder layer 2->1 and 1->0, the IBL head's layer 1->0, and the
+ * indirect-probe head's layer 1->0 (used twice). NOT used for a layer whose
+ * input is raw (unactivated) features - the decoder's a0, or the IBL/
+ * indirect heads' a0 - since those have no ReLU derivative to gate by and
+ * only partially feed back into the shared latent gradient rather than a
+ * full per-input delta; those stay hand-written at their call sites.
+ */
+function backwardDenseLayerReLUTSL( { activationsStorage, weightsStorage, deltaBase, deltaSize, weightsOffset, prevSize, prevZBase, outDeltaBase } ) {
+
+	Loop( { start: 0, end: prevSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+		const gradInput_i = float( 0.0 ).toVar();
+
+		Loop( { start: 0, end: deltaSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+			const delta_j = activationsStorage.element( deltaBase.add( j ) );
+			const w_ji = weightsStorage.element( int( weightsOffset ).add( j.mul( prevSize ) ).add( i ) );
+			gradInput_i.addAssign( delta_j.mul( w_ji ) );
+
+		} );
+
+		const z_i = activationsStorage.element( prevZBase.add( i ) );
+		const delta_i = select( z_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) );
+		activationsStorage.element( outDeltaBase.add( i ) ).assign( delta_i );
+
+	} );
+
+}
+
+/**
+ * Computes one learned tangent-space coordinate frame (n, t, b) from the
+ * latent code at `actA0Base`, via the two 3-row rotation projections
+ * (raw N, raw T) at `rotationOffset + frameOffset`, each Gram-Schmidt'd
+ * into an orthonormal frame. Shared between the forward pass (step 3 below,
+ * which also stores wi/wo (.) frame projections) and the backward pass
+ * (step 11, which needs the same n/t/b - and the un-normalized rawN/rawT/
+ * rawB - to backprop through) - the two are otherwise identical
+ * computations that used to be hand-duplicated ~80 lines apart.
+ */
+function computeFrameTSL( { activationsStorage, weightsStorage, actA0Base, rotationOffset, latentChannels, frameOffset } ) {
+
+	const rawN = vec3( 0.0 ).toVar();
+	const rawT = vec3( 0.0 ).toVar();
+
+	Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j ).mul( latentChannels ) );
+		const r_j = float( 0.0 ).toVar();
+
+		Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+
+			const z_c = activationsStorage.element( actA0Base.add( c ) );
+			const rotW = weightsStorage.element( rotRowOffset.add( c ) );
+			r_j.addAssign( rotW.mul( z_c ) );
+
+		} );
+
+		If( j.equal( 0 ), () => {
+
+			rawN.x.assign( r_j );
+
+		} ).ElseIf( j.equal( 1 ), () => {
+
+			rawN.y.assign( r_j );
+
+		} ).Else( () => {
+
+			rawN.z.assign( r_j.add( 1.0 ) );
+
+		} );
+
+	} );
+
+	Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+
+		const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j.add( 3 ) ).mul( latentChannels ) );
+		const r_j = float( 0.0 ).toVar();
+
+		Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
+
+			const z_c = activationsStorage.element( actA0Base.add( c ) );
+			const rotW = weightsStorage.element( rotRowOffset.add( c ) );
+			r_j.addAssign( rotW.mul( z_c ) );
+
+		} );
+
+		If( j.equal( 0 ), () => {
+
+			rawT.x.assign( r_j.add( 1.0 ) );
+
+		} ).ElseIf( j.equal( 1 ), () => {
+
+			rawT.y.assign( r_j );
+
+		} ).Else( () => {
+
+			rawT.z.assign( r_j );
+
+		} );
+
+	} );
+
+	const n = rawN.normalize();
+	const t = rawT.normalize();
+	const rawB = cross( n, t );
+	const b = rawB.normalize();
+
+	return { rawN, rawT, n, t, rawB, b };
+
+}
+
 function trainIndirectProbeHead( {
 	samplesStorage,
 	sampleOffset,
@@ -85,35 +262,20 @@ function trainIndirectProbeHead( {
 	activationsStorage.element( indirectA0.add( latentChannels + 4 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 1 ) ) );
 	activationsStorage.element( indirectA0.add( latentChannels + 5 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 2 ) ) );
 
-	Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+	const indirectA1 = actBase.add( int( actIndirectA1Offset ) );
 
-		const val = weightsStorage.element( int( layer0BiasesOffset ).add( j ) ).toVar();
-		const rowOffset = int( layer0WeightsOffset ).add( j.mul( indirectInputSize ) );
-
-		Loop( { start: 0, end: indirectInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-			val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( indirectA0.add( i ) ) ) );
-
-		} );
-
-		activationsStorage.element( actBase.add( int( actIndirectZ1Offset ) ).add( j ) ).assign( val );
-		activationsStorage.element( actBase.add( int( actIndirectA1Offset ) ).add( j ) ).assign( max( val, float( 0.0 ) ) );
-
+	forwardDenseLayerTSL( {
+		activationsStorage, weightsStorage,
+		inputBase: indirectA0, inputSize: indirectInputSize, outputSize: iblHiddenSize,
+		weightsOffset: layer0WeightsOffset, biasesOffset: layer0BiasesOffset,
+		zBase: actBase.add( int( actIndirectZ1Offset ) ), aBase: indirectA1
 	} );
 
-	Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-		const val = weightsStorage.element( int( layer1BiasesOffset ).add( j ) ).toVar();
-		const rowOffset = int( layer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
-
-		Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-			val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( actBase.add( int( actIndirectA1Offset ) ).add( i ) ) ) );
-
-		} );
-
-		activationsStorage.element( actBase.add( int( actIndirectZ2Offset ) ).add( j ) ).assign( val );
-
+	forwardDenseLayerTSL( {
+		activationsStorage, weightsStorage,
+		inputBase: indirectA1, inputSize: iblHiddenSize, outputSize: INDIRECT_OUTPUT_SIZE,
+		weightsOffset: layer1WeightsOffset, biasesOffset: layer1BiasesOffset,
+		zBase: actBase.add( int( actIndirectZ2Offset ) ), aBase: null
 	} );
 
 	const indirectDelta2 = actBase.add( int( actIndirectDelta2Offset ) );
@@ -135,53 +297,25 @@ function trainIndirectProbeHead( {
 
 	} );
 
-	Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-		const delta_j = activationsStorage.element( indirectDelta2.add( j ) );
-		atomicAdd( gradWeightsAtomic.element( int( layer1BiasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-		const rowOffset = int( layer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
-
-		Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-			const a1_i = activationsStorage.element( actBase.add( int( actIndirectA1Offset ) ).add( i ) );
-			atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta_j.mul( a1_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
-
-		} );
-
+	accumulateDenseLayerGradTSL( {
+		activationsStorage, weightsStorage, gradWeightsAtomic,
+		deltaBase: indirectDelta2, inputBase: indirectA1, inputSize: iblHiddenSize, outputSize: INDIRECT_OUTPUT_SIZE,
+		weightsOffset: layer1WeightsOffset, biasesOffset: layer1BiasesOffset
 	} );
 
-	Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+	const indirectDelta1 = actBase.add( int( actIndirectDelta1Offset ) );
 
-		const gradInput_i = float( 0.0 ).toVar();
-
-		Loop( { start: 0, end: INDIRECT_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-			const delta_j = activationsStorage.element( indirectDelta2.add( j ) );
-			const w_ji = weightsStorage.element( int( layer1WeightsOffset ).add( j.mul( iblHiddenSize ) ).add( i ) );
-			gradInput_i.addAssign( delta_j.mul( w_ji ) );
-
-		} );
-
-		const z1_i = activationsStorage.element( actBase.add( int( actIndirectZ1Offset ) ).add( i ) );
-		activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( i ) ).assign(
-			select( z1_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) )
-		);
-
+	backwardDenseLayerReLUTSL( {
+		activationsStorage, weightsStorage,
+		deltaBase: indirectDelta2, deltaSize: INDIRECT_OUTPUT_SIZE,
+		weightsOffset: layer1WeightsOffset, prevSize: iblHiddenSize,
+		prevZBase: actBase.add( int( actIndirectZ1Offset ) ), outDeltaBase: indirectDelta1
 	} );
 
-	Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-		const delta1_j = activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( j ) );
-		atomicAdd( gradWeightsAtomic.element( int( layer0BiasesOffset ).add( j ) ), int( delta1_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-		const rowOffset = int( layer0WeightsOffset ).add( j.mul( indirectInputSize ) );
-
-		Loop( { start: 0, end: indirectInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-			const a0_i = activationsStorage.element( indirectA0.add( i ) );
-			atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta1_j.mul( a0_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
-
-		} );
-
+	accumulateDenseLayerGradTSL( {
+		activationsStorage, weightsStorage, gradWeightsAtomic,
+		deltaBase: indirectDelta1, inputBase: indirectA0, inputSize: indirectInputSize, outputSize: iblHiddenSize,
+		weightsOffset: layer0WeightsOffset, biasesOffset: layer0BiasesOffset
 	} );
 
 	Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
@@ -190,7 +324,7 @@ function trainIndirectProbeHead( {
 
 		Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
-			const delta1_j = activationsStorage.element( actBase.add( int( actIndirectDelta1Offset ) ).add( j ) );
+			const delta1_j = activationsStorage.element( indirectDelta1.add( j ) );
 			const w_jc = weightsStorage.element( int( layer0WeightsOffset ).add( j.mul( indirectInputSize ) ).add( c ) );
 			gradLatent_c.addAssign( delta1_j.mul( w_jc ) );
 
@@ -358,79 +492,17 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			}
 
+			const a0Base = actBase.add( int( actA0Offset ) );
+			const a1Base = actBase.add( int( actA1Offset ) );
+			const a2Base = actBase.add( int( actA2Offset ) );
+
 			// 3. Learned coordinate frames (Frame 0 and Frame 1)
 			Loop( { start: 0, end: 2, type: 'int', name: 'f', condition: '<' }, ( { f } ) => {
 
 				const frameOffset = f.mul( 6 );
-				const rawN = vec3( 0.0 ).toVar();
-				const rawT = vec3( 0.0 ).toVar();
+				const { n, t, b } = computeFrameTSL( { activationsStorage, weightsStorage, actA0Base: a0Base, rotationOffset, latentChannels, frameOffset } );
 
-				// Raw N (j = 0, 1, 2)
-				Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j ).mul( latentChannels ) );
-					const r_j = float( 0.0 ).toVar();
-
-					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
-
-						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
-						const rotW = weightsStorage.element( rotRowOffset.add( c ) );
-						r_j.addAssign( rotW.mul( z_c ) );
-
-					} );
-
-					If( j.equal( 0 ), () => {
-
-						rawN.x.assign( r_j );
-
-					} ).ElseIf( j.equal( 1 ), () => {
-
-						rawN.y.assign( r_j );
-
-					} ).Else( () => {
-
-						rawN.z.assign( r_j.add( 1.0 ) );
-
-					} );
-
-				} );
-
-				// Raw T (j = 0, 1, 2 for rotation outputs 3, 4, 5)
-				Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j.add( 3 ) ).mul( latentChannels ) );
-					const r_j = float( 0.0 ).toVar();
-
-					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
-
-						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
-						const rotW = weightsStorage.element( rotRowOffset.add( c ) );
-						r_j.addAssign( rotW.mul( z_c ) );
-
-					} );
-
-					If( j.equal( 0 ), () => {
-
-						rawT.x.assign( r_j.add( 1.0 ) );
-
-					} ).ElseIf( j.equal( 1 ), () => {
-
-						rawT.y.assign( r_j );
-
-					} ).Else( () => {
-
-						rawT.z.assign( r_j );
-
-					} );
-
-				} );
-
-				const n = rawN.normalize();
-				const t = rawT.normalize();
-				const rawB = cross( n, t );
-				const b = rawB.normalize();
-
-				const projBase = actBase.add( int( actA0Offset ) ).add( latentChannels ).add( f.mul( 6 ) );
+				const projBase = a0Base.add( latentChannels ).add( f.mul( 6 ) );
 				activationsStorage.element( projBase.add( 0 ) ).assign( wi.dot( t ) );
 				activationsStorage.element( projBase.add( 1 ) ).assign( wi.dot( b ) );
 				activationsStorage.element( projBase.add( 2 ) ).assign( wi.dot( n ) );
@@ -441,59 +513,27 @@ function createTrainBatchComputeNode( gpuModel ) {
 			} );
 
 			// 4. Forward Layer 0 (decoderInputSize -> hiddenSize)
-			Loop( { start: 0, end: hiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-				const val = weightsStorage.element( int( layer0BiasesOffset ).add( j ) ).toVar();
-				const rowOffset = int( layer0WeightsOffset ).add( j.mul( decoderInputSize ) );
-
-				Loop( { start: 0, end: decoderInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const a0_i = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( i ) );
-					const w_ji = weightsStorage.element( rowOffset.add( i ) );
-					val.addAssign( w_ji.mul( a0_i ) );
-
-				} );
-
-				activationsStorage.element( actBase.add( int( actZ1Offset ) ).add( j ) ).assign( val );
-				activationsStorage.element( actBase.add( int( actA1Offset ) ).add( j ) ).assign( max( val, float( 0.0 ) ) );
-
+			forwardDenseLayerTSL( {
+				activationsStorage, weightsStorage,
+				inputBase: a0Base, inputSize: decoderInputSize, outputSize: hiddenSize,
+				weightsOffset: layer0WeightsOffset, biasesOffset: layer0BiasesOffset,
+				zBase: actBase.add( int( actZ1Offset ) ), aBase: a1Base
 			} );
 
 			// 5. Forward Layer 1 (hiddenSize -> hiddenSize)
-			Loop( { start: 0, end: hiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-				const val = weightsStorage.element( int( layer1BiasesOffset ).add( j ) ).toVar();
-				const rowOffset = int( layer1WeightsOffset ).add( j.mul( hiddenSize ) );
-
-				Loop( { start: 0, end: hiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const a1_i = activationsStorage.element( actBase.add( int( actA1Offset ) ).add( i ) );
-					const w_ji = weightsStorage.element( rowOffset.add( i ) );
-					val.addAssign( w_ji.mul( a1_i ) );
-
-				} );
-
-				activationsStorage.element( actBase.add( int( actZ2Offset ) ).add( j ) ).assign( val );
-				activationsStorage.element( actBase.add( int( actA2Offset ) ).add( j ) ).assign( max( val, float( 0.0 ) ) );
-
+			forwardDenseLayerTSL( {
+				activationsStorage, weightsStorage,
+				inputBase: a1Base, inputSize: hiddenSize, outputSize: hiddenSize,
+				weightsOffset: layer1WeightsOffset, biasesOffset: layer1BiasesOffset,
+				zBase: actBase.add( int( actZ2Offset ) ), aBase: a2Base
 			} );
 
 			// 6. Forward Layer 2 (hiddenSize -> 3, Linear)
-			Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-				const val = weightsStorage.element( int( layer2BiasesOffset ).add( j ) ).toVar();
-				const rowOffset = int( layer2WeightsOffset ).add( j.mul( hiddenSize ) );
-
-				Loop( { start: 0, end: hiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const a2_i = activationsStorage.element( actBase.add( int( actA2Offset ) ).add( i ) );
-					const w_ji = weightsStorage.element( rowOffset.add( i ) );
-					val.addAssign( w_ji.mul( a2_i ) );
-
-				} );
-
-				activationsStorage.element( actBase.add( int( actZ3Offset ) ).add( j ) ).assign( val );
-
+			forwardDenseLayerTSL( {
+				activationsStorage, weightsStorage,
+				inputBase: a2Base, inputSize: hiddenSize, outputSize: 3,
+				weightsOffset: layer2WeightsOffset, biasesOffset: layer2BiasesOffset,
+				zBase: actBase.add( int( actZ3Offset ) ), aBase: null
 			} );
 
 			// 7. Cube-Root Power Loss & Delta 3
@@ -521,98 +561,55 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			} );
 
+			const delta3Base = actBase.add( int( actDelta3Offset ) );
+			const delta2Base = actBase.add( int( actDelta2Offset ) );
+			const delta1Base = actBase.add( int( actDelta1Offset ) );
+
 			// 8. Backward Layer 2 (hiddenSize -> 3)
-			Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-				const delta3_j = activationsStorage.element( actBase.add( int( actDelta3Offset ) ).add( j ) );
-				atomicAdd( gradWeightsAtomic.element( int( layer2BiasesOffset ).add( j ) ), int( delta3_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-
-				const rowOffset = int( layer2WeightsOffset ).add( j.mul( hiddenSize ) );
-				Loop( { start: 0, end: hiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const a2_i = activationsStorage.element( actBase.add( int( actA2Offset ) ).add( i ) );
-					const gradW = delta3_j.mul( a2_i );
-					atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( gradW.mul( float( FIXED_POINT_SCALE ) ) ) );
-
-				} );
-
+			accumulateDenseLayerGradTSL( {
+				activationsStorage, weightsStorage, gradWeightsAtomic,
+				deltaBase: delta3Base, inputBase: a2Base, inputSize: hiddenSize, outputSize: 3,
+				weightsOffset: layer2WeightsOffset, biasesOffset: layer2BiasesOffset
 			} );
 
-			Loop( { start: 0, end: hiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-				const gradInput_i = float( 0.0 ).toVar();
-				Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const delta3_j = activationsStorage.element( actBase.add( int( actDelta3Offset ) ).add( j ) );
-					const w_ji = weightsStorage.element( int( layer2WeightsOffset ).add( j.mul( hiddenSize ) ).add( i ) );
-					gradInput_i.addAssign( delta3_j.mul( w_ji ) );
-
-				} );
-
-				const z2_i = activationsStorage.element( actBase.add( int( actZ2Offset ) ).add( i ) );
-				const delta2_i = select( z2_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) );
-				activationsStorage.element( actBase.add( int( actDelta2Offset ) ).add( i ) ).assign( delta2_i );
-
+			backwardDenseLayerReLUTSL( {
+				activationsStorage, weightsStorage,
+				deltaBase: delta3Base, deltaSize: 3,
+				weightsOffset: layer2WeightsOffset, prevSize: hiddenSize,
+				prevZBase: actBase.add( int( actZ2Offset ) ), outDeltaBase: delta2Base
 			} );
 
 			// 9. Backward Layer 1 (hiddenSize -> hiddenSize)
-			Loop( { start: 0, end: hiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-				const delta2_j = activationsStorage.element( actBase.add( int( actDelta2Offset ) ).add( j ) );
-				atomicAdd( gradWeightsAtomic.element( int( layer1BiasesOffset ).add( j ) ), int( delta2_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-
-				const rowOffset = int( layer1WeightsOffset ).add( j.mul( hiddenSize ) );
-				Loop( { start: 0, end: hiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const a1_i = activationsStorage.element( actBase.add( int( actA1Offset ) ).add( i ) );
-					const gradW = delta2_j.mul( a1_i );
-					atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( gradW.mul( float( FIXED_POINT_SCALE ) ) ) );
-
-				} );
-
+			accumulateDenseLayerGradTSL( {
+				activationsStorage, weightsStorage, gradWeightsAtomic,
+				deltaBase: delta2Base, inputBase: a1Base, inputSize: hiddenSize, outputSize: hiddenSize,
+				weightsOffset: layer1WeightsOffset, biasesOffset: layer1BiasesOffset
 			} );
 
-			Loop( { start: 0, end: hiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-				const gradInput_i = float( 0.0 ).toVar();
-				Loop( { start: 0, end: hiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const delta2_j = activationsStorage.element( actBase.add( int( actDelta2Offset ) ).add( j ) );
-					const w_ji = weightsStorage.element( int( layer1WeightsOffset ).add( j.mul( hiddenSize ) ).add( i ) );
-					gradInput_i.addAssign( delta2_j.mul( w_ji ) );
-
-				} );
-
-				const z1_i = activationsStorage.element( actBase.add( int( actZ1Offset ) ).add( i ) );
-				const delta1_i = select( z1_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) );
-				activationsStorage.element( actBase.add( int( actDelta1Offset ) ).add( i ) ).assign( delta1_i );
-
+			backwardDenseLayerReLUTSL( {
+				activationsStorage, weightsStorage,
+				deltaBase: delta2Base, deltaSize: hiddenSize,
+				weightsOffset: layer1WeightsOffset, prevSize: hiddenSize,
+				prevZBase: actBase.add( int( actZ1Offset ) ), outDeltaBase: delta1Base
 			} );
 
 			// 10. Backward Layer 0 (decoderInputSize -> hiddenSize)
-			Loop( { start: 0, end: hiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-				const delta1_j = activationsStorage.element( actBase.add( int( actDelta1Offset ) ).add( j ) );
-				atomicAdd( gradWeightsAtomic.element( int( layer0BiasesOffset ).add( j ) ), int( delta1_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-
-				const rowOffset = int( layer0WeightsOffset ).add( j.mul( decoderInputSize ) );
-				Loop( { start: 0, end: decoderInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const a0_i = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( i ) );
-					const gradW = delta1_j.mul( a0_i );
-					atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( gradW.mul( float( FIXED_POINT_SCALE ) ) ) );
-
-				} );
-
+			accumulateDenseLayerGradTSL( {
+				activationsStorage, weightsStorage, gradWeightsAtomic,
+				deltaBase: delta1Base, inputBase: a0Base, inputSize: decoderInputSize, outputSize: hiddenSize,
+				weightsOffset: layer0WeightsOffset, biasesOffset: layer0BiasesOffset
 			} );
 
-			// Compute gradA0 (decoderInputSize floats)
+			// Compute gradA0 (decoderInputSize floats) - unlike the two
+			// propagate steps above, a0 is raw (unactivated) input, so there's
+			// no ReLU derivative to gate by; this stays hand-written rather
+			// than using backwardDenseLayerReLUTSL.
 			Loop( { start: 0, end: decoderInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 				const gradA0_i = float( 0.0 ).toVar();
 				Loop( { start: 0, end: hiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
-					const delta1_j = activationsStorage.element( actBase.add( int( actDelta1Offset ) ).add( j ) );
+					const delta1_j = activationsStorage.element( delta1Base.add( j ) );
 					const w_ji = weightsStorage.element( int( layer0WeightsOffset ).add( j.mul( decoderInputSize ) ).add( i ) );
 					gradA0_i.addAssign( delta1_j.mul( w_ji ) );
 
@@ -647,73 +644,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 				const gradN = wi.mul( gradN_val ).add( wo.mul( gradWoN_val ) );
 
 				const frameOffset = f.mul( 6 );
-				const rawN = vec3( 0.0 ).toVar();
-				const rawT = vec3( 0.0 ).toVar();
-
-				// Recompute rawN
-				Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j ).mul( latentChannels ) );
-					const r_j = float( 0.0 ).toVar();
-
-					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
-
-						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
-						const rotW = weightsStorage.element( rotRowOffset.add( c ) );
-						r_j.addAssign( rotW.mul( z_c ) );
-
-					} );
-
-					If( j.equal( 0 ), () => {
-
-						rawN.x.assign( r_j );
-
-					} ).ElseIf( j.equal( 1 ), () => {
-
-						rawN.y.assign( r_j );
-
-					} ).Else( () => {
-
-						rawN.z.assign( r_j.add( 1.0 ) );
-
-					} );
-
-				} );
-
-				// Recompute rawT
-				Loop( { start: 0, end: 3, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const rotRowOffset = int( rotationOffset ).add( frameOffset.add( j.add( 3 ) ).mul( latentChannels ) );
-					const r_j = float( 0.0 ).toVar();
-
-					Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
-
-						const z_c = activationsStorage.element( actBase.add( int( actA0Offset ) ).add( c ) );
-						const rotW = weightsStorage.element( rotRowOffset.add( c ) );
-						r_j.addAssign( rotW.mul( z_c ) );
-
-					} );
-
-					If( j.equal( 0 ), () => {
-
-						rawT.x.assign( r_j.add( 1.0 ) );
-
-					} ).ElseIf( j.equal( 1 ), () => {
-
-						rawT.y.assign( r_j );
-
-					} ).Else( () => {
-
-						rawT.z.assign( r_j );
-
-					} );
-
-				} );
-
-				const n = rawN.normalize();
-				const t = rawT.normalize();
-				const rawB = cross( n, t );
-				const b = rawB.normalize();
+				// Recompute the same (n, t, b) frame the forward pass built at
+				// step 3 - see computeFrameTSL's doc comment for why this isn't
+				// instead cached from the forward pass.
+				const { rawN, rawT, n, t, rawB, b } = computeFrameTSL( { activationsStorage, weightsStorage, actA0Base: a0Base, rotationOffset, latentChannels, frameOffset } );
 
 				const gradRawB = backwardNormalizeTSL( rawB, b, gradB );
 				const gradNormN = gradN.add( cross( t, gradRawB ) );
@@ -878,35 +812,20 @@ function createTrainBatchComputeNode( gpuModel ) {
 				activationsStorage.element( iblA0.add( latentChannels + 4 ) ).assign( activationsStorage.element( a0.add( latentChannels + 10 ) ) );
 				activationsStorage.element( iblA0.add( latentChannels + 5 ) ).assign( activationsStorage.element( a0.add( latentChannels + 11 ) ) );
 
-				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+				const iblA1 = actBase.add( int( actIblA1Offset ) );
 
-					const val = weightsStorage.element( int( iblLayer0BiasesOffset ).add( j ) ).toVar();
-					const rowOffset = int( iblLayer0WeightsOffset ).add( j.mul( iblInputSize ) );
-
-					Loop( { start: 0, end: iblInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-						val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( iblA0.add( i ) ) ) );
-
-					} );
-
-					activationsStorage.element( actBase.add( int( actIblZ1Offset ) ).add( j ) ).assign( val );
-					activationsStorage.element( actBase.add( int( actIblA1Offset ) ).add( j ) ).assign( max( val, float( 0.0 ) ) );
-
+				forwardDenseLayerTSL( {
+					activationsStorage, weightsStorage,
+					inputBase: iblA0, inputSize: iblInputSize, outputSize: iblHiddenSize,
+					weightsOffset: iblLayer0WeightsOffset, biasesOffset: iblLayer0BiasesOffset,
+					zBase: actBase.add( int( actIblZ1Offset ) ), aBase: iblA1
 				} );
 
-				Loop( { start: 0, end: IBL_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const val = weightsStorage.element( int( iblLayer1BiasesOffset ).add( j ) ).toVar();
-					const rowOffset = int( iblLayer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
-
-					Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-						val.addAssign( weightsStorage.element( rowOffset.add( i ) ).mul( activationsStorage.element( actBase.add( int( actIblA1Offset ) ).add( i ) ) ) );
-
-					} );
-
-					activationsStorage.element( actBase.add( int( actIblZ2Offset ) ).add( j ) ).assign( val );
-
+				forwardDenseLayerTSL( {
+					activationsStorage, weightsStorage,
+					inputBase: iblA1, inputSize: iblHiddenSize, outputSize: IBL_OUTPUT_SIZE,
+					weightsOffset: iblLayer1WeightsOffset, biasesOffset: iblLayer1BiasesOffset,
+					zBase: actBase.add( int( actIblZ2Offset ) ), aBase: null
 				} );
 
 				const iblZ2 = actBase.add( int( actIblZ2Offset ) );
@@ -945,62 +864,41 @@ function createTrainBatchComputeNode( gpuModel ) {
 					sign( roughDiff ).mul( predRough.mul( float( 1.0 ).sub( predRough ) ) ).mul( iblScale )
 				);
 
-				Loop( { start: 0, end: IBL_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
+				const iblDelta1 = actBase.add( int( actIblDelta1Offset ) );
 
-					const delta_j = activationsStorage.element( iblDelta2.add( j ) );
-					atomicAdd( gradWeightsAtomic.element( int( iblLayer1BiasesOffset ).add( j ) ), int( delta_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-					const rowOffset = int( iblLayer1WeightsOffset ).add( j.mul( iblHiddenSize ) );
-
-					Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-						const a1_i = activationsStorage.element( actBase.add( int( actIblA1Offset ) ).add( i ) );
-						atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta_j.mul( a1_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
-
-					} );
-
+				accumulateDenseLayerGradTSL( {
+					activationsStorage, weightsStorage, gradWeightsAtomic,
+					deltaBase: iblDelta2, inputBase: iblA1, inputSize: iblHiddenSize, outputSize: IBL_OUTPUT_SIZE,
+					weightsOffset: iblLayer1WeightsOffset, biasesOffset: iblLayer1BiasesOffset
 				} );
 
-				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-					const gradInput_i = float( 0.0 ).toVar();
-
-					Loop( { start: 0, end: IBL_OUTPUT_SIZE, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-						const delta_j = activationsStorage.element( iblDelta2.add( j ) );
-						const w_ji = weightsStorage.element( int( iblLayer1WeightsOffset ).add( j.mul( iblHiddenSize ) ).add( i ) );
-						gradInput_i.addAssign( delta_j.mul( w_ji ) );
-
-					} );
-
-					const z1_i = activationsStorage.element( actBase.add( int( actIblZ1Offset ) ).add( i ) );
-					activationsStorage.element( actBase.add( int( actIblDelta1Offset ) ).add( i ) ).assign(
-						select( z1_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) )
-					);
-
+				backwardDenseLayerReLUTSL( {
+					activationsStorage, weightsStorage,
+					deltaBase: iblDelta2, deltaSize: IBL_OUTPUT_SIZE,
+					weightsOffset: iblLayer1WeightsOffset, prevSize: iblHiddenSize,
+					prevZBase: actBase.add( int( actIblZ1Offset ) ), outDeltaBase: iblDelta1
 				} );
 
-				Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
-
-					const delta1_j = activationsStorage.element( actBase.add( int( actIblDelta1Offset ) ).add( j ) );
-					atomicAdd( gradWeightsAtomic.element( int( iblLayer0BiasesOffset ).add( j ) ), int( delta1_j.mul( float( FIXED_POINT_SCALE ) ) ) );
-					const rowOffset = int( iblLayer0WeightsOffset ).add( j.mul( iblInputSize ) );
-
-					Loop( { start: 0, end: iblInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
-
-						const a0_i = activationsStorage.element( iblA0.add( i ) );
-						atomicAdd( gradWeightsAtomic.element( rowOffset.add( i ) ), int( delta1_j.mul( a0_i ).mul( float( FIXED_POINT_SCALE ) ) ) );
-
-					} );
-
+				accumulateDenseLayerGradTSL( {
+					activationsStorage, weightsStorage, gradWeightsAtomic,
+					deltaBase: iblDelta1, inputBase: iblA0, inputSize: iblInputSize, outputSize: iblHiddenSize,
+					weightsOffset: iblLayer0WeightsOffset, biasesOffset: iblLayer0BiasesOffset
 				} );
 
+				// gradLatent_c only propagates the *latent* subset of iblA0 (c <
+				// latentChannels, not the full iblInputSize) back into the shared
+				// grid gradients - iblA0's remaining components are external
+				// sample inputs (wo/probe directions), not something to backprop
+				// into - so this stays hand-written rather than reusing
+				// backwardDenseLayerReLUTSL (which also isn't a fit: iblA0 is raw,
+				// unactivated input, with no ReLU derivative to gate by).
 				Loop( { start: 0, end: latentChannels, type: 'int', name: 'c', condition: '<' }, ( { c } ) => {
 
 					const gradLatent_c = float( 0.0 ).toVar();
 
 					Loop( { start: 0, end: iblHiddenSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
-						const delta1_j = activationsStorage.element( actBase.add( int( actIblDelta1Offset ) ).add( j ) );
+						const delta1_j = activationsStorage.element( iblDelta1.add( j ) );
 						const w_jc = weightsStorage.element( int( iblLayer0WeightsOffset ).add( j.mul( iblInputSize ) ).add( c ) );
 						gradLatent_c.addAssign( delta1_j.mul( w_jc ) );
 

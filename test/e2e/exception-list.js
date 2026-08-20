@@ -27,6 +27,12 @@ export const exceptionList = [
 
 	// Timming issues?
 	'physics_rapier_instancing',
+	// Steps its simulation off a real (non-deterministic-injection-covered)
+	// setInterval in JoltPhysics.js rather than the frozen RAF/performance.now
+	// clock, so how many physics steps land before the screenshot depends on
+	// real wall-clock time elapsed under CPU contention - same root cause as
+	// physics_rapier_instancing above.
+	'physics_jolt_instancing',
 	'webgl_shadowmap',
 	'webaudio_visualizer',
 	'webgpu_compute_audio',

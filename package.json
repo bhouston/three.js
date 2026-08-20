@@ -66,6 +66,10 @@
     "test-e2e-neural-appearance": "node test/e2e/neural-appearance-training.js",
     "test-e2e-cov": "node test/e2e/check-coverage.js",
     "test-e2e-webgpu": "node test/e2e/puppeteer.js --webgpu",
+    "test-neural": "vitest run",
+    "test-neural-unit": "vitest run --project unit",
+    "test-neural-browser": "vitest run --project browser",
+    "test-neural-watch": "vitest",
     "test-treeshake": "rollup -c test/rollup.treeshake.config.js",
     "make-screenshot": "node test/e2e/puppeteer.js --make"
   },
@@ -95,6 +99,8 @@
     "@eslint/js": "^9.0.0",
     "@rollup/plugin-node-resolve": "^16.0.0",
     "@rollup/plugin-terser": "^1.0.0",
+    "@vitest/browser": "^4.1.11",
+    "@vitest/browser-playwright": "^4.1.11",
     "eslint": "^10.8.0",
     "eslint-config-mdcs": "^5.0.0",
     "eslint-plugin-compat": "^7.0.0",
@@ -104,9 +110,11 @@
     "jpeg-js": "^0.4.4",
     "jsdoc": "^4.0.5",
     "magic-string": "^1.0.0",
+    "playwright": "^1.62.1",
     "pngjs": "^7.0.0",
     "puppeteer": "^25.0.0",
     "rollup": "^4.6.0",
-    "turndown": "^7.2.2"
+    "turndown": "^7.2.2",
+    "vitest": "^4.1.11"
   }
 }

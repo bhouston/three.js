@@ -259,7 +259,19 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 			const value = active
 				? ( isNormalChannel ? reconstructFinalNormal( this._slices[ view ] ) : this._slices[ view ] )
 				: constantToNode( this._constantValues[ view ] );
-			this.colorNode = vec4( previewColor( value, channel, false ), 1 );
+
+			// `channel.size` (2) describes the *trained* (dx, dy) payload, not
+			// this preview value - for normal/clearcoatNormal it's always the
+			// TBN-reconstructed, fully 3-component view-space normal above
+			// (both when active and, via constantToNode, in the [0,0,1]
+			// constant-fallback case). Feeding the real 2-component channel
+			// descriptor into previewColor would hit its `size === 2` branch,
+			// which hardcodes blue to 0 and silently discards the normal's z -
+			// use a size-3 descriptor so all three components actually reach
+			// the display color, matching the familiar blue-dominant
+			// tangent-space normal map palette instead of a z-less yellow one.
+			const previewChannel = isNormalChannel ? { ...channel, size: 3 } : channel;
+			this.colorNode = vec4( previewColor( value, previewChannel, false ), 1 );
 
 		}
 
@@ -277,4 +289,4 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
 }
 
-export { NeuralMaterialNodeMaterial, sliceChannels };
+export { NeuralMaterialNodeMaterial, sliceChannels, reconstructFinalNormal };

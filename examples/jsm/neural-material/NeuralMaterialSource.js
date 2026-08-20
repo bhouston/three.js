@@ -336,7 +336,16 @@ function buildChannelPreviewMaterials( material ) {
 	for ( const channel of CHANNELS ) {
 
 		const previewMaterial = clonePreviewMaterial();
-		previewMaterial.colorNode = vec4( previewColor( channelNodes[ channel.key ], channel, false ), 1 );
+
+		// channelNodes.normal/clearcoatNormal is `material.normalNode`/
+		// `clearcoatNormalNode` itself - already a full 3-component TBN-
+		// blended vector (see resolveMaterialChannelNodes), not the raw
+		// 2-component (dx, dy) the network trains against. Describe it to
+		// previewColor as size 3 so its z isn't silently dropped to 0 - see
+		// the matching fix/comment in NeuralMaterialNodeMaterial.setDebugView.
+		const isNormalChannel = channel.key === 'normal' || channel.key === 'clearcoatNormal';
+		const previewChannel = isNormalChannel ? { ...channel, size: 3 } : channel;
+		previewMaterial.colorNode = vec4( previewColor( channelNodes[ channel.key ], previewChannel, false ), 1 );
 		materials[ channel.key ] = previewMaterial;
 
 	}

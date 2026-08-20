@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { vec4 } from 'three/tsl';
 
 /**
  * Bakes an arbitrary TSL color node (e.g. a MaterialX base-color graph -
@@ -23,7 +24,30 @@ async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512 ) {
 	// on write, silently clobbering any data channel packed into slot 3 of a
 	// vec4 (see NeuralMaterialSource.js's packComponentsIntoVec4).
 	material.blending = THREE.NoBlending;
-	material.colorNode = colorNode;
+	// Deliberately `fragmentNode`, not `colorNode`: assigning `colorNode` runs
+	// NodeMaterial's normal (colorNode === null ? built-in : custom) fragment
+	// path through `setupDiffuseColor`/`setupLighting`, whose "basicOutput"
+	// unconditionally does `vec4(outgoingLightNode, diffuseColor.a).max(0)`
+	// ("force unsigned floats - useful for RenderTargets", see
+	// NodeMaterial.js's setupFragment) - correct for a material's *actual
+	// lit output*, but this bake path (re)uses a colorNode to smuggle
+	// arbitrary, potentially *signed* data (e.g. NeuralMaterialFormat.js's
+	// tangent-space (dx, dy) normal offset, in [-1, 1]) through a plain
+	// unlit NodeMaterial. That `.max(0)` silently clips every negative
+	// component of every baked channel to 0 before training ever sees it -
+	// found by writing a test that baked a flat known-negative color and got
+	// a wrong, non-negative value back (test/vitest/browser/neural-texture/
+	// NeuralTextureSource.test.js's "preserves negative values" case).
+	// `fragmentNode` bypasses setupDiffuseColor/setupLighting/that clamp
+	// entirely (see NodeMaterial.js: "this node property can be used if you
+	// need complete freedom in implementing the fragment shader"), so the
+	// baked value is exactly what `colorNode` computes, sign intact.
+	// `vec4( colorNode )` (TSL's ConvertType) auto-pads a vec3 input with
+	// alpha = 1 and passes a vec4 input through unchanged, so this works
+	// whether the caller's node is already a full RGBA pack (e.g.
+	// NeuralMaterialSource.js's buildPackedColorNodes) or a bare vec3 (e.g.
+	// a MaterialX albedo colorNode, see webgpu_materials_neural_texture.html).
+	material.fragmentNode = vec4( colorNode );
 
 	const geometry = new THREE.PlaneGeometry( 2, 2 );
 	// PlaneGeometry's built-in UV has v=1 at the top of the quad and v=0 at

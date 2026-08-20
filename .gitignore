@@ -19,6 +19,9 @@ test/treeshake/index.webgpu.nodes.bundle.js
 test/treeshake/index.webgpu.nodes.bundle.min.js
 test/unit/build
 
+.vitest-cache
+test/vitest/.browser-cache
+
 **/node_modules
 .puppeteer_profile_debug/ChromeFeatureState
 .puppeteer_profile_debug/DevToolsActivePort

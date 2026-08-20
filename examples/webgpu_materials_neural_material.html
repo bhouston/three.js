@@ -191,6 +191,7 @@
 			const NEURAL_MATERIAL_VERSION = 1;
 
 			let camera, scene, renderer;
+			let geometry;
 			let teacherMesh, neuralMesh, neuralMaterial, placeholderMaterial;
 			let materialXMaterial = null, sourceTextures = null, teacherDebugMaterials = null, channelClassification = null;
 			let currentCpuModel = null;
@@ -208,7 +209,8 @@
 				batchSize: 8192,
 				iterations: 750,
 				learningRate: 0.01,
-				debugView: 'shaded'
+				debugView: 'shaded',
+				shape: 'torus'
 			};
 
 			const materialPresets = {
@@ -298,20 +300,7 @@
 				controls.enablePan = false;
 				controls.update();
 
-				const geometry = new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 );
-
-				// Scale UV.x (the tubular/length direction) so tiling textures
-				// repeat instead of stretching once around the knot's long path.
-				const uvAttribute = geometry.attributes.uv;
-				for ( let i = 0; i < uvAttribute.count; i ++ ) {
-
-					uvAttribute.setX( i, uvAttribute.getX( i ) * 6 );
-
-				}
-
-				uvAttribute.needsUpdate = true;
-
-				geometry.computeTangents();
+				geometry = buildGeometry( params.shape );
 
 				placeholderMaterial = new THREE.MeshPhysicalNodeMaterial( { color: 0x222222, roughness: 0.8 } );
 
@@ -340,6 +329,9 @@
 				trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' );
 				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
 
+				const objectFolder = gui.addFolder( 'object' );
+				objectFolder.add( params, 'shape', [ 'torus', 'sphere', 'plane' ] ).name( 'shape' ).onChange( updateShape );
+
 				const viewFolder = gui.addFolder( 'view' );
 				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS ] ).name( 'channel' ).onChange( updateDebugView );
 
@@ -362,6 +354,86 @@
 				// the HDRI or MaterialX preset is still loading) and crashing
 				// on teacherMesh/neuralMesh still being undefined.
 				renderer.setAnimationLoop( render );
+
+			}
+
+			// Builds the mesh geometry for the selected "object" shape - every
+			// shape gets computeTangents() run on it since normal/clearcoatNormal
+			// channels are decoded in tangent space (see
+			// NeuralMaterialNodeMaterial.reconstructFinalNormal) and need a real
+			// tangentWorld/bitangentWorld basis to blend through.
+			//
+			// 'plane' is deliberately a flat, seamless quad with the untouched
+			// (already 0-1 on both axes) PlaneGeometry UVs and a single constant
+			// tangent basis across its whole surface - useful as a control case
+			// when debugging normal-channel artifacts that show up on 'torus':
+			// if an artifact (e.g. bump detail only along two of four brick
+			// edges) disappears on the plane, the bug is in the torus knot's UV
+			// seams/tangent basis, not in the trained (dx, dy) normal encoding
+			// itself; if it persists on the plane, the encoding/training is the
+			// real culprit.
+			function buildGeometry( shape ) {
+
+				if ( shape === 'sphere' ) {
+
+					const geo = new THREE.SphereGeometry( 1, 64, 32 );
+					geo.computeTangents();
+					return geo;
+
+				}
+
+				if ( shape === 'plane' ) {
+
+					const geo = new THREE.PlaneGeometry( 3, 3 );
+					geo.computeTangents();
+					return geo;
+
+				}
+
+				const geo = new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 );
+
+				// Scale UV.x (the tubular/length direction) so tiling textures
+				// repeat instead of stretching once around the knot's long path.
+				const uvAttribute = geo.attributes.uv;
+				for ( let i = 0; i < uvAttribute.count; i ++ ) {
+
+					uvAttribute.setX( i, uvAttribute.getX( i ) * 6 );
+
+				}
+
+				uvAttribute.needsUpdate = true;
+
+				geo.computeTangents();
+				return geo;
+
+			}
+
+			function updateShape() {
+
+				const oldGeometry = geometry;
+				geometry = buildGeometry( params.shape );
+
+				teacherMesh.geometry = geometry;
+				neuralMesh.geometry = geometry;
+
+				if ( params.shape === 'plane' ) {
+
+					// Orientation is driven every frame in render() (billboarded
+					// to face the camera) - reset here so it doesn't inherit
+					// whatever rotation another shape left behind.
+					teacherMesh.rotation.set( 0, 0, 0 );
+					neuralMesh.rotation.set( 0, 0, 0 );
+					teacherMesh.quaternion.identity();
+					neuralMesh.quaternion.identity();
+
+				} else {
+
+					teacherMesh.rotation.set( - 0.35, 0, 0 );
+					neuralMesh.rotation.copy( teacherMesh.rotation );
+
+				}
+
+				if ( oldGeometry && oldGeometry !== geometry ) oldGeometry.dispose();
 
 			}
 
@@ -952,7 +1024,15 @@
 
 				const time = performance.now() * 0.001;
 
-				if ( isTraining === false ) {
+				if ( params.shape === 'plane' ) {
+
+					// Billboard: always face the camera regardless of orbit angle,
+					// so the plane's UV.xy stays aligned with screen x/y and the
+					// normal encoding can be inspected head-on.
+					teacherMesh.quaternion.copy( camera.quaternion );
+					neuralMesh.quaternion.copy( camera.quaternion );
+
+				} else if ( isTraining === false ) {
 
 					teacherMesh.rotation.y = time * 0.15;
 					neuralMesh.rotation.y = teacherMesh.rotation.y;

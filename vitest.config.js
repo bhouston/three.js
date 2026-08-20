@@ -68,6 +68,15 @@ export default defineConfig( {
 					testTimeout: 0,
 					hookTimeout: 5 * 60000,
 					teardownTimeout: 60000,
+					// vitest only runs 5 `test.concurrent` bodies at once by
+					// default, silently overriding the e2e.test.js lane pool -
+					// confirmed by timestamping actual start times, only 5 of 8
+					// requested lanes were ever active concurrently until this
+					// was raised. Passing --maxConcurrency on the CLI does NOT
+					// reach a --project sub-config, so it has to be set here.
+					// 64 comfortably covers any realistic E2E_WORKERS value;
+					// real concurrency is still bounded by the lane pool itself.
+					maxConcurrency: 64,
 				},
 			},
 		],

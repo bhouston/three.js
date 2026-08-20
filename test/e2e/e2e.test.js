@@ -43,10 +43,12 @@ const outputDir = 'test/e2e/output-screenshots';
 // browser process (not just a page/context) because example rendering is
 // CPU/GL-heavy under software rendering; separate processes give real
 // parallelism without lock contention inside one GL context, the same
-// isolation the old CI matrix relied on. Override with E2E_WORKERS; default
-// is conservative on shared CI runners and lets local dev machines scale up.
-const LANES = Number( process.env.E2E_WORKERS ) || Math.max( 1, Math.min( os.cpus().length * 2 - 1, 8 ) );
-console.log( 'LANES', LANES );
+// isolation the old CI matrix relied on. Override with E2E_WORKERS.
+// Software rendering is CPU-bound, so going past the physical core count
+// has shown no further speedup in testing (measured on an 8-core machine:
+// 8 vs 16 lanes was a wash) - default to the core count rather than
+// oversubscribing.
+const LANES = Number( process.env.E2E_WORKERS ) || Math.max( 1, os.cpus().length );
 
 const isMakeScreenshot = !! process.env.E2E_MAKE;
 const isWebGPU = !! process.env.E2E_WEBGPU;
@@ -289,8 +291,15 @@ async function preparePage( page, injection, builds ) {
 
 			if ( response.status() === 200 ) {
 
-				const buffer = await response.body();
-				page.pageSize += buffer.length;
+				// pageSize only feeds the `parseTime` heuristic delay below, so
+				// the Content-Length header (our own static server always sets
+				// it) is enough - the old script called response.body(), which
+				// pulls the full asset payload back over CDP for every request
+				// on every page. With many lanes running concurrently through
+				// one Node process that was a real bottleneck: ~30% slower on
+				// asset-heavy examples in testing.
+				const lenHeader = response.headers()[ 'content-length' ];
+				page.pageSize += lenHeader ? Number( lenHeader ) : 0;
 
 			}
 

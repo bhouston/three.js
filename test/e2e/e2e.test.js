@@ -58,10 +58,6 @@ const exactList = ( process.env.E2E_ONLY || '' )
 	.map( s => s.trim() )
 	.filter( Boolean );
 
-console.red = msg => console.log( `\x1b[31m${msg}\x1b[39m` );
-console.green = msg => console.log( `\x1b[32m${msg}\x1b[39m` );
-console.yellow = msg => console.log( `\x1b[33m${msg}\x1b[39m` );
-
 /* Launch flags */
 
 // `--enable-unsafe-swiftshader` is required from Chromium ~136 onward:
@@ -276,7 +272,7 @@ async function preparePage( page, injection, builds ) {
 
 		if ( type === 'warning' ) {
 
-			console.yellow( key );
+			console.log( `[Browser] ${key}` );
 			page.consoleWarnings.push( text );
 
 		} else if ( type === 'error' ) {
@@ -431,7 +427,6 @@ async function checkFile( lane, file ) {
 		if ( isMakeScreenshot ) {
 
 			await screenshot.write( `examples/screenshots/${ file }.jpg`, jpgQuality );
-			console.green( `Screenshot generated for file ${ file }` );
 			return;
 
 		}
@@ -468,11 +463,7 @@ async function checkFile( lane, file ) {
 
 		const differentPixels = numDifferentPixels / ( actual.width * actual.height ) * 100;
 
-		if ( differentPixels < maxDifferentPixels ) {
-
-			console.green( `Diff ${ differentPixels.toFixed( 1 ) }% in file: ${ file } (${ pageElapsed.toFixed( 1 ) }s)` );
-
-		} else {
+		if ( differentPixels >= maxDifferentPixels ) {
 
 			await screenshot.write( `${ outputDir }/${ file }-actual.jpg`, jpgQuality );
 			await expected.write( `${ outputDir }/${ file }-expected.jpg`, jpgQuality );
@@ -495,8 +486,8 @@ async function checkFile( lane, file ) {
 
 		if ( isDeviceLossOrCascade ) {
 
-			console.yellow( `${ e }` );
-			console.yellow( `Restarting lane after device loss on ${ file }, retrying once...` );
+			console.warn( `${ e }` );
+			console.warn( `Restarting lane after device loss on ${ file }, retrying once...` );
 			await restartLane( lane );
 
 			// Give the example a single retry on a fresh browser process

@@ -54,6 +54,22 @@ export default defineConfig( {
 					},
 				},
 			},
+			{
+				extends: true,
+				test: {
+					name: 'e2e',
+					environment: 'node',
+					include: [ 'test/e2e/e2e.test.js' ],
+					// Examples own their timeouts internally (networkTimeout,
+					// renderTimeout); a per-test vitest timeout would also have to
+					// cover time spent queued behind other examples on the same
+					// lane, so it's disabled here in favor of the job-level
+					// timeout-minutes in CI.
+					testTimeout: 0,
+					hookTimeout: 5 * 60000,
+					teardownTimeout: 60000,
+				},
+			},
 		],
 
 	},

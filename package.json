@@ -62,11 +62,11 @@
     "test-unit-node": "vitest run --project unit-node",
     "test-unit-browser": "vitest run --project unit-browser",
     "test-unit-watch": "vitest",
-    "test-e2e": "node test/e2e/playwright.js",
+    "test-e2e": "vitest run --project e2e",
     "test-e2e-cov": "node test/e2e/check-coverage.js",
-    "test-e2e-webgpu": "node test/e2e/playwright.js --webgpu",
+    "test-e2e-webgpu": "E2E_WEBGPU=1 vitest run --project e2e",
     "test-treeshake": "rollup -c test/rollup.treeshake.config.js",
-    "make-screenshot": "node test/e2e/playwright.js --make"
+    "make-screenshot": "E2E_MAKE=1 vitest run --project e2e"
   },
   "keywords": [
     "three",

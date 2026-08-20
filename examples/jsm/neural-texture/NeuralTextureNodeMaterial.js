@@ -8,6 +8,7 @@ import {
 	evaluateLinearLayerVec4
 } from '../neural/NeuralMLPTSL.js';
 import { createHalfFloatLatentTexture } from '../neural/NeuralHalfFloatTexture.js';
+import { triangleWaveEncodeTSL } from '../neural/NeuralGPUComputeTSL.js';
 
 /**
  * Packs each trained latent grid level into an RGBA half-float DataTexture
@@ -46,11 +47,12 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 
 	}
 
-	// Mirror the training kernel's step 1b: append the raw (u, v) sample
-	// coordinate after the grid taps when the model was trained with it.
-	if ( cpuModel.includeUV ) {
+	// Mirror the training kernel's step 1b: append the same NTC-style tiled
+	// positional encoding after the grid taps that the model was trained
+	// with - see NeuralGridModel.triangleWaveEncode / triangleWaveEncodeTSL.
+	if ( cpuModel.peOctaves > 0 ) {
 
-		features.push( uvNode.x, uvNode.y );
+		features.push( ...triangleWaveEncodeTSL( uvNode.x, uvNode.y, cpuModel.peOctaves ) );
 
 	}
 

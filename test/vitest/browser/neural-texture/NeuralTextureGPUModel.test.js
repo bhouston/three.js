@@ -67,9 +67,10 @@ function simulateLatentIndices( layout ) {
 }
 
 /**
- * Replays the a0 (concatenated grid taps + optional raw UV) addressing from
- * the same forward pass: `a0Offset + g * channels + c` for each level/channel,
- * then (if includeUV) `a0Offset + uvInputOffset` and `+ 1`.
+ * Replays the a0 (concatenated grid taps + tiled positional encoding)
+ * addressing from the same forward pass: `a0Offset + g * channels + c` for
+ * each level/channel, then `a0Offset + peInputOffset + i` for each of the
+ * `peOctaves * 2` positional-encoding values.
  */
 function simulateA0Indices( layout ) {
 
@@ -81,10 +82,9 @@ function simulateA0Indices( layout ) {
 
 	}
 
-	if ( layout.includeUV ) {
+	for ( let i = 0; i < layout.peOctaves * 2; i ++ ) {
 
-		indices.add( layout.a0Offset + layout.uvInputOffset );
-		indices.add( layout.a0Offset + layout.uvInputOffset + 1 );
+		indices.add( layout.a0Offset + layout.peInputOffset + i );
 
 	}
 
@@ -185,28 +185,31 @@ function expectExactPartition( regions, total ) {
 
 const configs = {
 	'default options': {},
-	'includeUV enabled': { includeUV: true },
+	'positional encoding disabled': { peOctaves: 0 },
+	'extra positional encoding octaves': { peOctaves: 5 },
 	'single hidden layer': { hiddenSizes: [ 16 ] },
 	'deep MLP, 3 hidden layers': { hiddenSizes: [ 24, 24, 24 ] },
-	'material-style 9-channel output, includeUV': { outputChannels: 9, includeUV: true, hiddenSizes: [ 48, 48 ] },
+	'material-style 9-channel output, extra PE octaves': { outputChannels: 9, peOctaves: 5, hiddenSizes: [ 48, 48 ] },
 	'single grid level': { levels: 1, baseResolution: 8, targetResolution: 8 },
 	'channels = 2': { channels: 2 },
-	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, targetResolution: 2, channels: 1, outputChannels: 1 }
+	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, targetResolution: 2, channels: 1, outputChannels: 1, peOctaves: 0 }
 };
 
 describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout)', () => {
 
 	describe( 'computeTextureModelLayout - hand-computed layouts (worked out on paper, not re-derived from the source)', () => {
 
-		it( 'two-level grid, includeUV, one hidden layer, 2-channel output', () => {
+		it( 'two-level grid, 1 PE octave, one hidden layer, 2-channel output', () => {
 
 			// channels=2, levels=2, baseResolution=2, targetResolution=4 -> growth
 			// factor 2 -> resolutions [2, 4]. hiddenSizes=[3], outputChannels=2,
-			// includeUV=true. Hand-traced:
+			// peOctaves=1 (2 PE values - same total as the old raw-uv skip
+			// connection, so the rest of this hand-traced layout is unchanged).
+			// Hand-traced:
 			//   level0: 2x2 texels * 2 channels = 8 floats @ offset 0
 			//   level1: 4x4 texels * 2 channels = 32 floats @ offset 8
 			//   totalLatents = 40
-			//   uvInputOffset = levels*channels = 4; inputSize = 4 + 2 (uv) = 6
+			//   peInputOffset = levels*channels = 4; inputSize = 4 + 2*1 (PE) = 6
 			//   layer sizes [6, 3, 2]:
 			//     layer0: 6*3=18 weights @0, 3 biases @18 -> next offset 21
 			//     layer1 (output): 3*2=6 weights @21, 2 biases @27 -> totalWeights 29
@@ -215,7 +218,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			//   -> gradA0 [19,25) -> activationStride 25
 			const layout = computeTextureModelLayout( {
 				channels: 2, levels: 2, baseResolution: 2, targetResolution: 4,
-				hiddenSizes: [ 3 ], outputChannels: 2, includeUV: true
+				hiddenSizes: [ 3 ], outputChannels: 2, peOctaves: 1
 			} );
 
 			expect( layout.resolutions ).toEqual( [ 2, 4 ] );
@@ -223,7 +226,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			expect( layout.gridLevels[ 1 ] ).toMatchObject( { width: 4, height: 4, offset: 8, texelCount: 16, floatCount: 32 } );
 			expect( layout.totalLatents ).toBe( 40 );
 
-			expect( layout.uvInputOffset ).toBe( 4 );
+			expect( layout.peInputOffset ).toBe( 4 );
 			expect( layout.inputSize ).toBe( 6 );
 
 			expect( layout.mlpLayers[ 0 ] ).toMatchObject( {
@@ -246,23 +249,23 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 		it( 'minimal degenerate config: single 1x1 texel level, no hidden layers, 1-channel everything', () => {
 
 			// channels=1, levels=1, baseResolution=1, targetResolution=1,
-			// hiddenSizes=[], outputChannels=1, includeUV=false. Hand-traced:
+			// hiddenSizes=[], outputChannels=1, peOctaves=0. Hand-traced:
 			//   single 1x1 grid level -> 1 float @ offset 0 -> totalLatents 1
-			//   uvInputOffset = 1*1 = 1; inputSize = 1 (no uv)
+			//   peInputOffset = 1*1 = 1; inputSize = 1 (no PE)
 			//   layer sizes [1, 1]: one layer, immediately the output:
 			//     1*1=1 weight @0, 1 bias @1 -> totalWeights 2
 			//   activation buffer: a0 [0,1) -> z0(output, no a-slot) [1,2) ->
 			//   delta0 [2,3) -> gradA0 [3,4) -> activationStride 4
 			const layout = computeTextureModelLayout( {
 				channels: 1, levels: 1, baseResolution: 1, targetResolution: 1,
-				hiddenSizes: [], outputChannels: 1, includeUV: false
+				hiddenSizes: [], outputChannels: 1, peOctaves: 0
 			} );
 
 			expect( layout.resolutions ).toEqual( [ 1 ] );
 			expect( layout.gridLevels[ 0 ] ).toMatchObject( { width: 1, height: 1, offset: 0, texelCount: 1, floatCount: 1 } );
 			expect( layout.totalLatents ).toBe( 1 );
 
-			expect( layout.uvInputOffset ).toBe( 1 );
+			expect( layout.peInputOffset ).toBe( 1 );
 			expect( layout.inputSize ).toBe( 1 );
 
 			expect( layout.mlpLayers ).toHaveLength( 1 );
@@ -349,7 +352,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			// buffer allocation itself is plain JS.
 			expect( getRenderer() ).toBeTruthy();
 
-			const model = new NeuralTextureGPUModel( { batchSize: 64, includeUV: true, outputChannels: 5 } );
+			const model = new NeuralTextureGPUModel( { batchSize: 64, peOctaves: 2, outputChannels: 5 } );
 			const { totalWeights, totalLatents, activationStride } = model.layout;
 
 			// These four pairs are independent JS expressions (`new

@@ -63,29 +63,29 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		} );
 
-		it( 'sizes the decoder input as levels * channels when includeUV is not set', () => {
+		it( 'sizes the decoder input as levels * channels when peOctaves is 0', () => {
 
-			const options = { channels: 4, levels: 3, baseResolution: 8, targetResolution: 64, hiddenSizes: [ 5 ], outputChannels: 3 };
+			const options = { channels: 4, levels: 3, baseResolution: 8, targetResolution: 64, hiddenSizes: [ 5 ], outputChannels: 3, peOctaves: 0 };
 			const model = createNeuralTextureModel( options, () => 0.5 );
 
 			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels );
 
 		} );
 
-		it( 'adds 2 to the decoder input size for the (u, v) skip connection when includeUV is true', () => {
+		it( 'adds 2 * peOctaves to the decoder input size for the tiled positional encoding', () => {
 
-			const options = { channels: 4, levels: 3, baseResolution: 8, targetResolution: 64, hiddenSizes: [ 5 ], outputChannels: 3, includeUV: true };
+			const options = { channels: 4, levels: 3, baseResolution: 8, targetResolution: 64, hiddenSizes: [ 5 ], outputChannels: 3, peOctaves: 5 };
 			const model = createNeuralTextureModel( options, () => 0.5 );
 
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels + 2 );
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels + 10 );
 
 		} );
 
-		it( 'defaults includeUV to false when omitted', () => {
+		it( 'defaults peOctaves to 3 (matching NTC) when omitted', () => {
 
 			const model = createNeuralTextureModel( {}, () => 0.5 );
 
-			expect( model.includeUV ).toBe( false );
+			expect( model.peOctaves ).toBe( 3 );
 
 		} );
 
@@ -109,16 +109,16 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 			expect( model.levels ).toBe( 4 );
 			expect( model.hiddenSizes ).toEqual( [ 32, 32 ] );
 			expect( model.outputChannels ).toBe( 3 );
-			expect( model.includeUV ).toBe( false );
+			expect( model.peOctaves ).toBe( 3 );
 
 			// baseResolution = 16, targetResolution = 256
 			expect( model.resolutions[ 0 ] ).toBe( 16 );
 			expect( model.resolutions[ model.resolutions.length - 1 ] ).toBe( 256 );
 			expect( model.resolutions.length ).toBe( 4 );
 
-			// decoder: input = levels * channels = 16, 2 hidden layers + 1 output layer
+			// decoder: input = levels * channels + 2 * peOctaves = 16 + 6 = 22, 2 hidden layers + 1 output layer
 			expect( model.decoder.layers.length ).toBe( 3 );
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 16 );
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 22 );
 			expect( model.decoder.layers[ model.decoder.layers.length - 1 ].outputSize ).toBe( 3 );
 
 		} );

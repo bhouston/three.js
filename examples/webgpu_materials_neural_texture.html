@@ -167,6 +167,7 @@
 			import { NeuralTextureNodeMaterial } from 'three/addons/neural-texture/NeuralTextureNodeMaterial.js';
 			import { NeuralTextureSource, extractBaseColorNode } from 'three/addons/neural-texture/NeuralTextureSource.js';
 			import { computeTextureModelLayout } from 'three/addons/neural-texture/NeuralTextureGPUModel.js';
+			import { computeTileOctaves } from 'three/addons/neural/NeuralGridModel.js';
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
 			import { formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
 
@@ -185,7 +186,6 @@
 				baseResolution: 16,
 				targetResolution: 64,
 				hiddenSize: 16,
-				includeUV: false,
 				batchSize: 8192,
 				iterations: 3000,
 				learningRate: 0.01,
@@ -274,7 +274,7 @@
 				const gui = renderer.inspector.createParameters( 'Neural Texture' );
 
 				const sourceFolder = gui.addFolder( 'source' );
-				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024, 2048, 4096 ] ).name( 'bake resolution' ).onChange( () => reloadCurrentSource() );
+				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024, 2048, 4096 ] ).name( 'bake resolution' ).onChange( () => { reloadCurrentSource(); updateNetworkSize(); } );
 
 				const uvFolder = gui.addFolder( 'uv scale / offset' );
 				uvFolder.add( params, 'uvScaleX', 0.1, 8, 0.05 ).name( 'scale x' ).onChange( updateUvUniforms );
@@ -287,7 +287,6 @@
 				networkFolder.add( params, 'baseResolution', [ 8, 16, 32 ] ).name( 'grid base res' ).onChange( updateNetworkSize );
 				networkFolder.add( params, 'targetResolution', [ 64, 128, 256, 512 ] ).name( 'grid target res' ).onChange( updateNetworkSize );
 				networkFolder.add( params, 'hiddenSize', [ 16, 32, 64 ] ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'includeUV' ).name( 'MLP input: raw uv (experimental)' ).onChange( updateNetworkSize );
 
 				const trainingFolder = gui.addFolder( 'training' );
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
@@ -321,6 +320,17 @@
 
 			}
 
+			// The finest grid level (targetResolution) is very likely coarser than
+			// the actual bake resolution content is fit at - NTC-style tiled
+			// positional encoding (see NeuralGridModel.js) bridges that gap, sized
+			// automatically from how many octaves of upsampling separate the two
+			// (never fewer than the paper's own default of 3 octaves).
+			function currentPeOctaves() {
+
+				return Math.max( 3, computeTileOctaves( Number( params.targetResolution ), Number( params.bakeResolution ) ) );
+
+			}
+
 			function updateNetworkSize() {
 
 				const hidden = Number( params.hiddenSize );
@@ -331,7 +341,7 @@
 					targetResolution: Number( params.targetResolution ),
 					hiddenSizes: [ hidden, hidden ],
 					outputChannels: 3,
-					includeUV: params.includeUV
+					peOctaves: currentPeOctaves()
 				} );
 
 				const latentTexels = layout.gridLevels.reduce( ( sum, level ) => sum + level.texelCount, 0 );
@@ -502,7 +512,7 @@
 						targetResolution: Number( params.targetResolution ),
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
 						outputChannels: 3,
-						includeUV: params.includeUV,
+						peOctaves: currentPeOctaves(),
 						batchSize: Number( params.batchSize ),
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),

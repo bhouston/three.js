@@ -12,7 +12,7 @@ import { resolveNeuralTextureOptions } from './NeuralTextureModel.js';
  */
 function computeTextureModelLayout( options = {} ) {
 
-	const { channels, levels, baseResolution, targetResolution, hiddenSizes, outputChannels, includeUV } = resolveNeuralTextureOptions( options );
+	const { channels, levels, baseResolution, targetResolution, hiddenSizes, outputChannels, peOctaves } = resolveNeuralTextureOptions( options );
 	// One entry per output channel naming its output nonlinearity (see
 	// ../neural/NeuralOutputActivations.js); undefined/omitted entries (the
 	// default, `options.channelActivations` unset) mean plain linear, i.e.
@@ -37,10 +37,10 @@ function computeTextureModelLayout( options = {} ) {
 	const totalLatents = latentOffset;
 
 	// MLP weight layout: input = concatenated multiresolution grid features,
-	// optionally followed by the raw (u, v) sample coordinate (see
-	// NeuralTextureModel.js for why).
-	const uvInputOffset = levels * channels;
-	const inputSize = uvInputOffset + ( includeUV ? 2 : 0 );
+	// followed by `peOctaves` octaves of tiled positional encoding (see
+	// NeuralTextureModel.js / NeuralGridModel.triangleWaveEncode for why).
+	const peInputOffset = levels * channels;
+	const inputSize = peInputOffset + peOctaves * 2;
 	const sizes = [ inputSize, ...hiddenSizes, outputChannels ];
 	const mlpLayers = [];
 	let weightOffset = 0;
@@ -108,9 +108,9 @@ function computeTextureModelLayout( options = {} ) {
 		hiddenSizes,
 		outputChannels,
 		channelActivations,
-		includeUV,
+		peOctaves,
 		inputSize,
-		uvInputOffset,
+		peInputOffset,
 		gridLevels,
 		totalLatents,
 		mlpLayers,

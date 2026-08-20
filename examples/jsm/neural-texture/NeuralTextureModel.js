@@ -1,5 +1,15 @@
 import { createMLP } from '../neural/NeuralMLP.js';
-import { computeGridLevels, createLatentGrid, LATENT_INIT_SCALE } from '../neural/NeuralGridModel.js';
+import { computeGridLevels, createLatentGrid, computeTileOctaves, LATENT_INIT_SCALE } from '../neural/NeuralGridModel.js';
+
+// Default tiled positional-encoding octave count - matches NVIDIA's neural
+// texture compression paper (Vaidyanathan et al. 2023, Section 4.3.2:
+// `log2(8) = 3`), a reasonable default when the caller doesn't know its
+// actual bake/source resolution up front. Callers that do know it should
+// instead pass an explicit `peOctaves`, ideally computed via
+// `computeTileOctaves(finestGridResolution, sourceResolution)` from
+// NeuralGridModel.js so the encoding's frequency range actually matches the
+// content being fit - see NeuralTextureTrainer.js.
+const DEFAULT_PE_OCTAVES = 3;
 
 /**
  * Single source of truth for the model-shape options shared by the CPU
@@ -16,9 +26,12 @@ function resolveNeuralTextureOptions( options = {} ) {
 		targetResolution: options.targetResolution || 256,
 		hiddenSizes: options.hiddenSizes || [ 32, 32 ],
 		outputChannels: options.outputChannels || 3,
-		// Experimental: also feed the raw (u, v) sample coordinate into the
-		// MLP alongside the concatenated grid features - see below.
-		includeUV: options.includeUV || false
+		// Number of NTC-style tiled triangle-wave positional-encoding octaves
+		// (see NeuralGridModel.triangleWaveEncode) concatenated after the grid
+		// features and fed into the MLP - replaces the raw (u, v) coordinate
+		// this model used to optionally feed the decoder directly. 0 disables
+		// positional encoding entirely (grid features only).
+		peOctaves: options.peOctaves !== undefined ? options.peOctaves : DEFAULT_PE_OCTAVES
 	};
 
 }
@@ -30,20 +43,29 @@ function resolveNeuralTextureOptions( options = {} ) {
  */
 function createNeuralTextureModel( options, random ) {
 
-	const { channels, levels, baseResolution, targetResolution, hiddenSizes, outputChannels, includeUV } = resolveNeuralTextureOptions( options );
+	const { channels, levels, baseResolution, targetResolution, hiddenSizes, outputChannels, peOctaves } = resolveNeuralTextureOptions( options );
 
 	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
 	const grids = resolutions.map( ( resolution ) => createLatentGrid( resolution, resolution, channels, random ) );
 
-	// Optionally append the raw (u, v) sample coordinate after the concatenated
-	// grid features, giving the MLP a direct "skip connection" to exact
-	// sub-texel position alongside the (bilinearly-blurred) learned encoding -
-	// see NeuralTextureGPUComputeTSL.js for how this is trained.
-	const inputSize = levels * channels + ( includeUV ? 2 : 0 );
+	// Append `peOctaves` octaves of NTC-style tiled positional encoding (2
+	// values per octave: horizontal + vertical) after the concatenated grid
+	// features, giving the MLP a way to reconstruct detail above the finest
+	// grid level's Nyquist limit - see NeuralGridModel.triangleWaveEncode and
+	// NeuralTextureGPUComputeTSL.js for how this is trained.
+	const inputSize = levels * channels + peOctaves * 2;
 	const decoder = createMLP( inputSize, hiddenSizes, outputChannels, random, 'relu', 'linear' );
 
-	return { channels, levels, resolutions, grids, decoder, hiddenSizes, outputChannels, includeUV };
+	return { channels, levels, resolutions, grids, decoder, hiddenSizes, outputChannels, peOctaves };
 
 }
 
-export { createNeuralTextureModel, resolveNeuralTextureOptions, createLatentGrid, computeGridLevels, LATENT_INIT_SCALE };
+export {
+	createNeuralTextureModel,
+	resolveNeuralTextureOptions,
+	createLatentGrid,
+	computeGridLevels,
+	computeTileOctaves,
+	LATENT_INIT_SCALE,
+	DEFAULT_PE_OCTAVES
+};

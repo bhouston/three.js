@@ -16,6 +16,7 @@ import {
 import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 import {
 	wrapIndexTSL,
+	triangleWaveEncodeTSL,
 	forwardDenseLayerTSL,
 	accumulateDenseLayerGradTSL,
 	backwardDenseLayerReLUTSL,
@@ -89,8 +90,8 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		channels,
 		mlpLayers,
 		a0Offset,
-		uvInputOffset,
-		includeUV,
+		peInputOffset,
+		peOctaves,
 		layerActs,
 		deltaOffsets,
 		gradA0Offset,
@@ -169,15 +170,23 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 
 		}
 
-		// 1b. Optionally append the raw (u, v) sample coordinate after the grid
-		// taps, as a direct "skip connection" to exact sub-texel position
+		// 1b. Append `peOctaves` octaves of NTC-style tiled triangle-wave
+		// positional encoding (see NeuralGridModel.triangleWaveEncode /
+		// triangleWaveEncodeTSL) after the grid taps, giving the MLP a way to
+		// reconstruct detail above the finest grid level's Nyquist limit
 		// alongside the (bilinearly-blurred) learned grid encoding. Not
-		// trainable, so its backward gradient (computed into gradA0 below along
-		// with everything else) is simply never scattered anywhere in step 5.
-		if ( includeUV ) {
+		// trainable (a fixed function of uv, not a learned parameter), so its
+		// backward gradient (computed into gradA0 below along with everything
+		// else) is simply never scattered anywhere in step 5.
+		if ( peOctaves > 0 ) {
 
-			activationsStorage.element( actBase.add( int( a0Offset + uvInputOffset ) ) ).assign( uv.x );
-			activationsStorage.element( actBase.add( int( a0Offset + uvInputOffset + 1 ) ) ).assign( uv.y );
+			const peValues = triangleWaveEncodeTSL( uv.x, uv.y, peOctaves );
+
+			for ( let i = 0; i < peValues.length; i ++ ) {
+
+				activationsStorage.element( actBase.add( int( a0Offset + peInputOffset + i ) ) ).assign( peValues[ i ] );
+
+			}
 
 		}
 

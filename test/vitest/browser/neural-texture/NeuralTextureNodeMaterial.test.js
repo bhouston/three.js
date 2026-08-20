@@ -7,6 +7,7 @@ import {
 	buildLevelTextures
 } from '../../../../examples/jsm/neural-texture/NeuralTextureNodeMaterial.js';
 import { createNeuralTextureModel } from '../../../../examples/jsm/neural-texture/NeuralTextureModel.js';
+import { triangleWaveEncode } from '../../../../examples/jsm/neural/NeuralGridModel.js';
 import { forwardMLP } from '../../../../examples/jsm/neural/NeuralMLP.js';
 import { bakeColorNodeToTexture } from '../../../../examples/jsm/neural-texture/NeuralTextureSource.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
@@ -62,7 +63,8 @@ function toHalfPrecision( value ) {
 // Builds the plain-JS reference input vector for the decoder at grid texel
 // (col, row): the concatenated (half-float-rounded) latent features across
 // every level, in the same order evaluateNeuralTextureRaw concatenates them,
-// plus the raw (u, v) skip connection when the model was trained with it.
+// plus the tiled positional encoding (see NeuralGridModel.triangleWaveEncode)
+// when the model was trained with peOctaves > 0.
 function referenceDecoderInput( cpuModel, gridSize, col, row ) {
 
 	const features = [];
@@ -78,9 +80,9 @@ function referenceDecoderInput( cpuModel, gridSize, col, row ) {
 
 	}
 
-	if ( cpuModel.includeUV ) {
+	if ( cpuModel.peOctaves > 0 ) {
 
-		features.push( ( col + 0.5 ) / gridSize, ( row + 0.5 ) / gridSize );
+		features.push( ...triangleWaveEncode( ( col + 0.5 ) / gridSize, ( row + 0.5 ) / gridSize, cpuModel.peOctaves ) );
 
 	}
 
@@ -105,10 +107,10 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureNodeMaterial (real We
 
 	} );
 
-	it( 'matches NeuralTextureModel.js\'s CPU forward pass at every latent-grid texel (single level, no UV skip)', async () => {
+	it( 'matches NeuralTextureModel.js\'s CPU forward pass at every latent-grid texel (single level, no positional encoding)', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 4, levels: 1, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3 };
+		const options = { channels: 4, levels: 1, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3, peOctaves: 0 };
 		const cpuModel = createNeuralTextureModel( options, makeRandom( 1.7 ) );
 
 		const material = new NeuralTextureNodeMaterial( cpuModel );
@@ -137,13 +139,13 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureNodeMaterial (real We
 
 	} );
 
-	it( 'matches the CPU forward pass when the model was trained with the raw (u, v) skip connection', async () => {
+	it( 'matches the CPU forward pass when the model was trained with tiled positional encoding', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 2, levels: 1, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 3 ], outputChannels: 3, includeUV: true };
+		const options = { channels: 2, levels: 1, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 3 ], outputChannels: 3, peOctaves: 2 };
 		const cpuModel = createNeuralTextureModel( options, makeRandom( 2.3 ) );
 
-		expect( cpuModel.decoder.layers[ 0 ].inputSize ).toBe( options.channels + 2 );
+		expect( cpuModel.decoder.layers[ 0 ].inputSize ).toBe( options.channels + 2 * options.peOctaves );
 
 		const material = new NeuralTextureNodeMaterial( cpuModel );
 
@@ -178,7 +180,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureNodeMaterial (real We
 		// resolution (computeGridLevels' growth factor collapses to 1), which
 		// keeps texel-center addressing identical for both levels while still
 		// exercising real multi-level concatenation order.
-		const options = { channels: 2, levels: 2, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3 };
+		const options = { channels: 2, levels: 2, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3, peOctaves: 0 };
 		const cpuModel = createNeuralTextureModel( options, makeRandom( 0.9 ) );
 
 		expect( cpuModel.grids.length ).toBe( 2 );

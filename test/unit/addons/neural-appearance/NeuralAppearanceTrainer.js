@@ -58,7 +58,6 @@ describe( 'Addons', () => {
 					iterations: 1,
 					batchSize: 4,
 					hiddenSize: 4,
-					yieldEvery: 0,
 					seed: 1
 				} );
 

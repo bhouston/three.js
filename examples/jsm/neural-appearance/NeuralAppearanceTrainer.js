@@ -46,7 +46,6 @@ const DEFAULT_OPTIONS = {
 	seed: 1,
 	hiddenSize: 32,
 	iblHiddenSize: 32,
-	yieldEvery: 8,
 	colorAugmentation: false,
 	minimumTrainingCosine: 0.05,
 	highlightLossScale: 2,
@@ -137,13 +136,20 @@ async function runPhase( {
 
 			}
 
+			// Mirrors NeuralTextureTrainer's loop: yield to the browser right
+			// after onProgress fires, so a UI update it just triggered (e.g. a
+			// loss-graph redraw) actually gets painted before the next chunk
+			// of synchronous GPU work runs, instead of being queued up behind
+			// it and only becoming visible once the whole phase finishes.
+			await yieldToBrowser();
+
 		}
 
 		completedIterations = iterationOffset + i + 1;
 
 		if ( isAborted() ) break;
 
-		if ( settings.yieldEvery > 0 && i % settings.yieldEvery === settings.yieldEvery - 1 ) await yieldToBrowser();
+		if ( i % 32 === 31 ) await yieldToBrowser();
 
 	}
 

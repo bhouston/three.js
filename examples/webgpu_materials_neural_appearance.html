@@ -44,7 +44,7 @@
 				white-space: pre-line;
 			}
 
-			#previewPanel {
+			#lossPanel {
 				position: absolute;
 				right: 16px;
 				bottom: 16px;
@@ -53,12 +53,10 @@
 				color: #fff;
 				font: 12px/1.45 monospace;
 				border-radius: 4px;
-				max-width: calc( 100vw - 32px );
-				overflow: auto;
 				z-index: 2;
 			}
 
-			#previewPanel[hidden],
+			#lossPanel[hidden],
 			#modelLabels[hidden] {
 				display: none;
 			}
@@ -83,32 +81,10 @@
 				text-shadow: 0 1px 3px #000;
 			}
 
-			#previewPanel .preview-row {
-				display: flex;
-				gap: 12px;
-			}
-
-			#previewPanel .diagnostics-row {
-				display: flex;
-				align-items: flex-end;
-				gap: 16px;
-				margin-top: 8px;
-			}
-
-			#previewPanel canvas.preview-swatch {
-				display: block;
-				width: 160px;
-				height: 160px;
-				background: #000;
-				image-rendering: pixelated;
-				border: 1px solid rgba( 255, 255, 255, 0.25 );
-			}
-
 			#lossGraph {
 				display: block;
 				width: 396px;
 				height: 120px;
-				margin-top: 10px;
 				background: #050505;
 				border: 1px solid rgba( 255, 255, 255, 0.25 );
 			}
@@ -119,33 +95,6 @@
 				gap: 12px;
 				margin-top: 4px;
 				color: #bbb;
-			}
-
-			#lossLegend .training-loss {
-				color: #50c8ff;
-			}
-
-			#lossLegend .validation-loss {
-				color: #ffd166;
-			}
-
-			#previewPanel .preview-label {
-				margin-bottom: 4px;
-				text-align: center;
-			}
-
-			#previewStatus {
-				margin-top: 8px;
-				color: #bbb;
-				text-align: right;
-			}
-
-			@media ( max-width: 1240px ) {
-
-				body:has( #previewPanel:not( [hidden] ) ) #panel {
-					bottom: 300px;
-				}
-
 			}
 		</style>
 	</head>
@@ -198,28 +147,10 @@
 			<span id="neuralLabel">Neural output</span>
 		</div>
 
-		<div id="previewPanel" hidden>
-			<div><strong>Training sample preview</strong></div>
-			<div class="diagnostics-row">
-				<div class="preview-row">
-					<div>
-						<div class="preview-label">MaterialX teacher</div>
-						<canvas id="teacherPreview" class="preview-swatch" width="192" height="192"></canvas>
-					</div>
-					<div>
-						<div class="preview-label">Neural output</div>
-						<canvas id="neuralPreview" class="preview-swatch" width="192" height="192"></canvas>
-					</div>
-				</div>
-				<div>
-					<canvas id="lossGraph" width="396" height="120"></canvas>
-					<div id="lossLegend">
-						<span class="training-loss">training loss</span>
-						<span class="validation-loss">validation loss</span>
-					</div>
-				</div>
-			</div>
-			<div id="previewStatus">Train to view matching samples.</div>
+		<div id="lossPanel" hidden>
+			<div><strong>Training loss</strong></div>
+			<canvas id="lossGraph" width="396" height="120"></canvas>
+			<div id="lossLegend"></div>
 		</div>
 
 		<script type="importmap">
@@ -247,6 +178,8 @@
 			import { NeuralAppearanceNodeMaterial } from 'three/addons/neural-appearance/NeuralAppearanceNodeMaterial.js';
 			import { NeuralAppearanceTrainer, estimateTrainingMemory, disposeTrainingResult } from 'three/addons/neural-appearance/NeuralAppearanceTrainer.js';
 			import { NeuralTeacherIBLEnvironmentNode, NeuralTeacherIBLLightingModel } from 'three/addons/neural-appearance/NeuralAppearanceTeacherLightingModels.js';
+			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
+			import { formatBytes, computeMLPParamCount } from 'three/addons/neural/NeuralModelSize.js';
 
 			let camera, scene, renderer, mesh, neuralMesh;
 			let materialXMaterial, neuralMaterial, whiteControlMaterial, previewPlaceholderMaterial, latestJson;
@@ -259,7 +192,6 @@
 			let comparisonVisible = false;
 			let frameToken = 0;
 			let trainingRunId = 0;
-			let lossHistory = [];
 			const trainingSettingControllers = [];
 
 			function trackSetting( key, controller ) {
@@ -358,11 +290,17 @@
 			const modelLabels = document.getElementById( 'modelLabels' );
 			const teacherLabel = document.getElementById( 'teacherLabel' );
 			const neuralLabel = document.getElementById( 'neuralLabel' );
-			const previewPanel = document.getElementById( 'previewPanel' );
-			const teacherPreview = document.getElementById( 'teacherPreview' );
-			const neuralPreview = document.getElementById( 'neuralPreview' );
-			const lossGraph = document.getElementById( 'lossGraph' );
-			const previewStatus = document.getElementById( 'previewStatus' );
+			const lossPanel = document.getElementById( 'lossPanel' );
+			const lossGraph = new NeuralLossGraph(
+				document.getElementById( 'lossGraph' ),
+				[
+					{ key: 'loss', label: 'training loss', color: '#50c8ff' },
+					{ key: 'directLoss', label: 'direct', color: '#7ae582' },
+					{ key: 'iblLoss', label: 'ibl', color: '#ff6b6b' },
+					{ key: 'validationLoss', label: 'validation loss', color: '#ffd166' }
+				],
+				{ legend: document.getElementById( 'lossLegend' ) }
+			);
 
 			const presetSettings = initialMaterialPreset.settings;
 			const params = {
@@ -385,8 +323,7 @@
 			window.__neuralAppearanceFirstLoss = NaN;
 			window.__neuralAppearanceValidationLoss = NaN;
 			window.__neuralAppearanceValidation = null;
-			window.__neuralAppearancePreview = null;
-			window.__neuralAppearanceLossHistory = lossHistory;
+			window.__neuralAppearanceLossHistory = lossGraph.history;
 			window.__neuralAppearanceExportJson = null;
 			window.__neuralAppearanceTeacherInputs = null;
 			window.__neuralAppearanceActiveMaterialType = '';
@@ -748,13 +685,11 @@
 				window.__neuralAppearanceFirstLoss = NaN;
 				window.__neuralAppearanceValidationLoss = NaN;
 				window.__neuralAppearanceValidation = null;
-				window.__neuralAppearancePreview = null;
 				resetLossGraph();
 				window.__neuralAppearanceExportJson = null;
 				window.__neuralAppearanceTeacherInputs = null;
 				downloadButton.disabled = true;
 				trainButton.disabled = false;
-				clearTrainingPreview();
 				hideTrainingResults();
 				updateTrainingEstimate();
 				updateView();
@@ -824,10 +759,7 @@
 				window.__neuralAppearanceFirstLoss = NaN;
 				window.__neuralAppearanceValidationLoss = NaN;
 				window.__neuralAppearanceValidation = null;
-				window.__neuralAppearancePreview = null;
 				resetLossGraph();
-				clearTrainingPreview();
-				const trainingStartTime = performance.now();
 				status.textContent = 'Training...';
 
 				try {
@@ -856,7 +788,6 @@
 							if ( progress.iteration === 1 ) window.__neuralAppearanceFirstLoss = progress.loss;
 							if ( Number.isFinite( progress.validationLoss ) ) window.__neuralAppearanceValidationLoss = progress.validationLoss;
 							if ( progress.validation ) window.__neuralAppearanceValidation = progress.validation;
-							if ( progress.validation && progress.validation.preview ) window.__neuralAppearancePreview = progress.validation.preview;
 							appendLossPoint( progress );
 
 							const now = performance.now();
@@ -869,25 +800,16 @@
 
 							if ( progress.iteration % 20 === 0 || progress.iteration === progress.iterations ) {
 
+								// The current iteration and primary loss are shown on
+								// the loss graph itself (top-right / bottom-right)
+								// rather than duplicated here - see NeuralLossGraph.js.
 								const validationText = formatValidationStatus( progress.validation, progress.validationLoss );
 								const phaseText = progress.phase === 'ibl' ? 'IBL refinement' : 'Training';
-								const elapsed = performance.now() - trainingStartTime;
-								const remaining = elapsed / progress.iteration * ( progress.iterations - progress.iteration );
-								status.textContent = `${phaseText} ${progress.iteration}/${progress.iterations}\n${formatTrainingLossStatus( progress )}${validationText}\nelapsed ${formatDuration( elapsed )}, remaining ~${formatDuration( remaining )}`;
+								status.textContent = `${phaseText}...\n${formatTrainingLossStatus( progress )}${validationText}`;
 
 							}
 
-							if ( progress.validation && progress.validation.preview && ( progress.iteration === 1 || progress.iteration % 4 === 0 || progress.iteration === progress.iterations ) ) {
-
-								drawTrainingPreview( progress.validation.preview, progress.iteration );
-
-							}
-
-							if ( progress.iteration === 1 || progress.iteration % 4 === 0 || progress.iteration === progress.iterations ) {
-
-								drawLossGraph();
-
-							}
+							drawLossGraph();
 
 						}
 					} );
@@ -909,20 +831,17 @@
 					window.__neuralAppearanceLastLoss = result.loss;
 					window.__neuralAppearanceValidationLoss = result.validationLoss;
 					window.__neuralAppearanceValidation = result.validation;
-					window.__neuralAppearancePreview = result.validation ? result.validation.preview : null;
 					window.__neuralAppearanceExportJson = cloneNeuralAppearanceJson( latestJson );
 					window.__neuralAppearanceTeacherInputs = teacherInputs;
 					window.__neuralAppearanceTrainingDone = true;
 					downloadButton.disabled = false;
 					disposeTrainingResult( result, renderer );
 					updateView();
-					if ( result.validation && result.validation.preview ) drawTrainingPreview( result.validation.preview, result.iteration );
 					drawLossGraph();
 					const validationText = formatValidationStatus( result.validation, result.validationLoss );
-					const elapsedText = formatDuration( performance.now() - trainingStartTime );
 					status.textContent = result.stoppedEarly ?
-						`Training stopped at iteration ${result.iteration}/${result.iterations} in ${elapsedText}.\n${formatTrainingLossStatus( result )}${validationText}` :
-						`Training complete in ${elapsedText}.\n${formatTrainingLossStatus( result )}${validationText}`;
+						`Training stopped.\n${formatTrainingLossStatus( result )}${validationText}` :
+						`Training complete.\n${formatTrainingLossStatus( result )}${validationText}`;
 
 				} catch ( error ) {
 
@@ -987,37 +906,30 @@
 
 			function showTrainingResults() {
 
-				previewPanel.hidden = false;
+				lossPanel.hidden = false;
 				modelLabels.hidden = false;
 
 			}
 
 			function hideTrainingResults() {
 
-				previewPanel.hidden = true;
+				lossPanel.hidden = true;
 				modelLabels.hidden = true;
-
-			}
-
-			function clearTrainingPreview() {
-
-				clearPreviewCanvas( teacherPreview );
-				clearPreviewCanvas( neuralPreview );
-				previewStatus.textContent = 'Train to view matching samples.';
 
 			}
 
 			function resetLossGraph() {
 
-				lossHistory = [];
-				window.__neuralAppearanceLossHistory = lossHistory;
-				drawLossGraph();
+				lossGraph.reset();
+				window.__neuralAppearanceLossHistory = lossGraph.history;
 
 			}
 
 			function formatTrainingLossStatus( progress ) {
 
-				const parts = [ `loss ${progress.loss.toExponential( 3 )}` ];
+				// The primary loss is shown on the loss graph itself (top-right)
+				// rather than duplicated here - see NeuralLossGraph.js.
+				const parts = [];
 				if ( Number.isFinite( progress.directLoss ) ) parts.push( `direct ${progress.directLoss.toExponential( 3 )}` );
 				if ( Number.isFinite( progress.iblLoss ) ) parts.push( `ibl ${progress.iblLoss.toExponential( 3 )}` );
 				return parts.join( '  ' );
@@ -1039,7 +951,7 @@
 
 			function appendLossPoint( progress ) {
 
-				lossHistory.push( {
+				lossGraph.addPoint( {
 					iteration: progress.iteration,
 					loss: progress.loss,
 					directLoss: progress.directLoss,
@@ -1051,167 +963,9 @@
 
 			}
 
-			function clearPreviewCanvas( canvas ) {
-
-				const context = canvas.getContext( '2d' );
-				context.clearRect( 0, 0, canvas.width, canvas.height );
-				context.fillStyle = '#000';
-				context.fillRect( 0, 0, canvas.width, canvas.height );
-
-			}
-
-			function drawTrainingPreview( preview, iteration ) {
-
-				drawPreviewCanvas( teacherPreview, preview, 'targetRgb' );
-				drawPreviewCanvas( neuralPreview, preview, 'predictionRgb' );
-				previewStatus.textContent = `${preview.width}x${preview.height} sample texels (${preview.samples.length}), iteration ${iteration}`;
-
-			}
-
-			function drawPreviewCanvas( canvas, preview, colorKey ) {
-
-				const context = canvas.getContext( '2d' );
-				const columns = Math.max( 1, preview.width );
-				const rows = Math.max( 1, preview.height );
-				const cellWidth = canvas.width / columns;
-				const cellHeight = canvas.height / rows;
-
-				context.clearRect( 0, 0, canvas.width, canvas.height );
-				context.fillStyle = '#000';
-				context.fillRect( 0, 0, canvas.width, canvas.height );
-
-				for ( let i = 0; i < preview.samples.length; i ++ ) {
-
-					const sample = preview.samples[ i ];
-					const x = i % columns;
-					const y = Math.floor( i / columns );
-					context.fillStyle = rgbToCss( sample[ colorKey ] );
-					context.fillRect( x * cellWidth, y * cellHeight, Math.ceil( cellWidth ), Math.ceil( cellHeight ) );
-
-				}
-
-			}
-
-			function rgbToCss( rgb ) {
-
-				return `rgb(${toDisplayByte( rgb[ 0 ] )}, ${toDisplayByte( rgb[ 1 ] )}, ${toDisplayByte( rgb[ 2 ] )})`;
-
-			}
-
-			function toDisplayByte( value ) {
-
-				const mapped = value / ( 1 + value );
-				return Math.round( Math.pow( Math.min( Math.max( mapped, 0 ), 1 ), 1 / 2.2 ) * 255 );
-
-			}
-
 			function drawLossGraph() {
 
-				const context = lossGraph.getContext( '2d' );
-				const width = lossGraph.width;
-				const height = lossGraph.height;
-				const marginLeft = 42;
-				const marginRight = 10;
-				const marginTop = 12;
-				const marginBottom = 24;
-				const plotWidth = width - marginLeft - marginRight;
-				const plotHeight = height - marginTop - marginBottom;
-				const values = lossHistory.flatMap( ( point ) => [
-					point.loss,
-					point.directLoss,
-					point.iblLoss,
-					point.validationLoss,
-					point.validationDirectLoss,
-					point.validationIblLoss
-				] ).filter( ( value ) => Number.isFinite( value ) && value > 0 );
-
-				context.clearRect( 0, 0, width, height );
-				context.fillStyle = '#050505';
-				context.fillRect( 0, 0, width, height );
-				drawLossAxes( context, marginLeft, marginTop, plotWidth, plotHeight );
-
-				context.fillStyle = '#aaa';
-				context.font = '10px monospace';
-				context.fillText( 'loss (log)', marginLeft, 9 );
-				context.fillText( 'iteration', width - 64, height - 4 );
-
-				if ( values.length === 0 ) {
-
-					context.fillText( 'Train to graph loss.', marginLeft + 30, marginTop + plotHeight / 2 );
-					return;
-
-				}
-
-				let minLog = Math.log10( Math.min( ...values ) );
-				let maxLog = Math.log10( Math.max( ...values ) );
-
-				if ( minLog === maxLog ) {
-
-					minLog -= 0.5;
-					maxLog += 0.5;
-
-				}
-
-				drawLossScaleLabels( context, marginLeft, marginTop, plotHeight, minLog, maxLog );
-				drawLossSeries( context, 'loss', '#50c8ff', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
-				drawLossSeries( context, 'directLoss', '#7ae582', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
-				drawLossSeries( context, 'iblLoss', '#ff6b6b', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
-				drawLossSeries( context, 'validationLoss', '#ffd166', marginLeft, marginTop, plotWidth, plotHeight, minLog, maxLog );
-
-			}
-
-			function drawLossAxes( context, x, y, width, height ) {
-
-				context.strokeStyle = 'rgba( 255, 255, 255, 0.35 )';
-				context.lineWidth = 1;
-				context.beginPath();
-				context.moveTo( x, y );
-				context.lineTo( x, y + height );
-				context.lineTo( x + width, y + height );
-				context.stroke();
-
-			}
-
-			function drawLossScaleLabels( context, x, y, height, minLog, maxLog ) {
-
-				context.fillStyle = '#777';
-				context.font = '10px monospace';
-				context.fillText( Math.pow( 10, maxLog ).toExponential( 1 ), 2, y + 4 );
-				context.fillText( Math.pow( 10, minLog ).toExponential( 1 ), 2, y + height );
-
-			}
-
-			function drawLossSeries( context, key, color, x, y, width, height, minLog, maxLog ) {
-
-				const points = lossHistory.filter( ( point ) => Number.isFinite( point[ key ] ) && point[ key ] > 0 );
-				if ( points.length === 0 ) return;
-
-				const maxIteration = Math.max( 1, Number( params.iterations ) - 1 );
-				const logRange = maxLog - minLog || 1;
-
-				context.strokeStyle = color;
-				context.lineWidth = 2;
-				context.beginPath();
-
-				for ( let i = 0; i < points.length; i ++ ) {
-
-					const point = points[ i ];
-					const px = x + ( point.iteration - 1 ) / maxIteration * width;
-					const py = y + height - ( Math.log10( point[ key ] ) - minLog ) / logRange * height;
-
-					if ( i === 0 ) {
-
-						context.moveTo( px, py );
-
-					} else {
-
-						context.lineTo( px, py );
-
-					}
-
-				}
-
-				context.stroke();
+				lossGraph.draw();
 
 			}
 
@@ -1585,15 +1339,12 @@
 				const latentChannels = memory.levels * 4;
 				const decoderInputSize = latentChannels + 12;
 				const rotationValues = latentChannels * 12;
-				const layerValues =
-					( decoderInputSize * hiddenSize + hiddenSize ) +
-					( hiddenSize * hiddenSize + hiddenSize ) +
-					( hiddenSize * 3 + 3 );
+				const layerValues = computeMLPParamCount( { inputSize: decoderInputSize, hiddenSize, hiddenLayers: 2, outputSize: 3 } );
 				const iblHiddenSize = Math.min( Math.max( hiddenSize, 16 ), 32 );
 				const iblInputSize = latentChannels + 6;
 				const indirectInputSize = latentChannels + 6;
-				const iblLayerValues = ( iblInputSize * iblHiddenSize + iblHiddenSize ) + ( iblHiddenSize * 4 + 4 );
-				const indirectLayerValues = ( indirectInputSize * iblHiddenSize + iblHiddenSize ) + ( iblHiddenSize * 3 + 3 );
+				const iblLayerValues = computeMLPParamCount( { inputSize: iblInputSize, hiddenSize: iblHiddenSize, hiddenLayers: 1, outputSize: 4 } );
+				const indirectLayerValues = computeMLPParamCount( { inputSize: indirectInputSize, hiddenSize: iblHiddenSize, hiddenLayers: 1, outputSize: 3 } );
 				const representationBytes = memory.exportBytes + ( rotationValues + layerValues + iblLayerValues + indirectLayerValues ) * 4;
 				const recordsPerIteration = Number( params.batchSize );
 				const records = recordsPerIteration * Number( params.iterations );
@@ -1625,22 +1376,6 @@
 
 				const outputNames = Object.keys( outputs ).join( ', ' );
 				neuralRepresentationSize.textContent = `${bytes.toLocaleString()} bytes (${outputNames})`;
-
-			}
-
-			function formatBytes( bytes ) {
-
-				if ( bytes < 1024 ) return `${bytes} B`;
-				if ( bytes < 1024 * 1024 ) return `${( bytes / 1024 ).toFixed( 1 )} KiB`;
-				return `${( bytes / ( 1024 * 1024 ) ).toFixed( 1 )} MiB`;
-
-			}
-
-			function formatDuration( milliseconds ) {
-
-				const seconds = Math.max( milliseconds, 0 ) / 1000;
-				if ( seconds < 60 ) return `${seconds.toFixed( 1 )}s`;
-				return `${Math.floor( seconds / 60 )}m ${Math.round( seconds % 60 )}s`;
 
 			}
 

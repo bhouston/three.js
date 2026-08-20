@@ -90,10 +90,6 @@
 				margin-top: 4px;
 				color: #bbb;
 			}
-
-			#lossLegend .training-loss {
-				color: #50c8ff;
-			}
 		</style>
 	</head>
 	<body>
@@ -146,9 +142,7 @@
 		<div id="lossPanel" hidden>
 			<div><strong>Training loss</strong></div>
 			<canvas id="lossGraph" width="396" height="120"></canvas>
-			<div id="lossLegend">
-				<span class="training-loss">L2 loss (log)</span>
-			</div>
+			<div id="lossLegend"></div>
 		</div>
 
 		<script type="importmap">
@@ -176,6 +170,8 @@
 			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/neural-material/NeuralMaterialSource.js';
 			import { computeGridLevels } from 'three/addons/neural-texture/NeuralTextureModel.js';
 			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, getChannel, buildChannelActivations } from 'three/addons/neural-material/NeuralMaterialFormat.js';
+			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
+			import { computeMLPParamCount, computeGridLatentTexels, formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
 
 			// On-disk format for this example's own "Save JSON" / "Load JSON"
 			// buttons - deliberately similar in spirit to (top-level format/
@@ -198,7 +194,6 @@
 			let environmentMap = null;
 			const directLights = [];
 			let isTraining = false, activeTrainer = null, comparisonVisible = false;
-			let lossHistory = [];
 
 			const params = {
 				bakeResolution: 1024,
@@ -238,7 +233,11 @@
 			const jsonFileInput = document.getElementById( 'jsonFileInput' );
 			const modelLabels = document.getElementById( 'modelLabels' );
 			const lossPanel = document.getElementById( 'lossPanel' );
-			const lossGraph = document.getElementById( 'lossGraph' );
+			const lossGraph = new NeuralLossGraph(
+				document.getElementById( 'lossGraph' ),
+				[ { key: 'loss', label: 'L2 loss (log)', color: '#50c8ff' } ],
+				{ legend: document.getElementById( 'lossLegend' ) }
+			);
 
 			init();
 
@@ -458,11 +457,11 @@
 				const levels = currentCpuModel ? currentCpuModel.levels : Number( params.levels );
 				const hidden = currentCpuModel ? currentCpuModel.hiddenSizes[ 0 ] : Number( params.hiddenSize );
 
-				const latentTexels = resolutions.reduce( ( sum, resolution ) => sum + resolution * resolution, 0 );
+				const latentTexels = computeGridLatentTexels( resolutions );
 				const latentBytes = latentTexels * bytesPerTexel;
 
 				const inputSize = levels * channels;
-				const weightCount = ( inputSize * hidden + hidden ) + ( hidden * hidden + hidden ) + ( hidden * outputChannels + outputChannels );
+				const weightCount = computeMLPParamCount( { inputSize, hiddenSize: hidden, hiddenLayers: 2, outputSize: outputChannels } );
 				const weightBytes = weightCount * 4; // fp32
 
 				const channelText = channelClassification ?
@@ -471,16 +470,10 @@
 
 				const gridText = `${resolutions.map( r => `${r}²` ).join( '+' )} px, ${bytesPerTexel} B/texel`;
 
-				document.getElementById( 'networkSize' ).textContent =
-					`${formatBytes( latentBytes + weightBytes )} (${formatBytes( latentBytes )} grid [${gridText}] + ${formatBytes( weightBytes )} MLP, ${channelText})`;
-
-			}
-
-			function formatBytes( bytes ) {
-
-				if ( bytes < 1024 ) return `${bytes} B`;
-				if ( bytes < 1024 * 1024 ) return `${( bytes / 1024 ).toFixed( 1 )} KiB`;
-				return `${( bytes / ( 1024 * 1024 ) ).toFixed( 1 )} MiB`;
+				document.getElementById( 'networkSize' ).textContent = formatModelSizeSummary( {
+					grid: { label: gridText, bytes: latentBytes },
+					heads: [ { label: `MLP (${channelText})`, bytes: weightBytes } ]
+				} );
 
 			}
 
@@ -700,7 +693,7 @@
 				trainButton.disabled = true; // no MaterialX source loaded to (re)train against
 				modelLabels.hidden = true;
 				lossPanel.hidden = true;
-				lossHistory = [];
+				lossGraph.reset();
 
 				channelClassification = { activeChannels, totalChannels, packCount, constantValues };
 				sourceName.textContent = payload.name || fileName;
@@ -734,7 +727,7 @@
 				comparisonVisible = false;
 				modelLabels.hidden = true;
 				lossPanel.hidden = true;
-				lossHistory = [];
+				lossGraph.reset();
 				trainButton.disabled = false;
 				saveJsonButton.disabled = true;
 				currentCpuModel = null;
@@ -765,10 +758,8 @@
 				setTrainingUi( true );
 				modelLabels.hidden = false;
 				lossPanel.hidden = false;
-				lossHistory = [];
-				drawLossGraph();
+				lossGraph.reset();
 				status.textContent = 'Baking material channels...';
-				const startTime = performance.now();
 
 				try {
 
@@ -798,29 +789,20 @@
 						sourceTextures: renderTargets.map( ( rt ) => rt.texture ),
 						onProgress: ( progress ) => {
 
-							lossHistory.push( { iteration: progress.iteration, loss: progress.loss } );
-							drawLossGraph();
+							// The current iteration and primary loss are shown on the
+							// loss graph itself (top-right / bottom-right) rather than
+							// duplicated in the status text - see NeuralLossGraph.js.
+							lossGraph.addPoint( { iteration: progress.iteration, loss: progress.loss } );
+							lossGraph.draw();
 							rebuildNeuralMaterial( progress.cpuModel );
 							comparisonVisible = true;
-
-							// onProgress already only fires every few iterations
-							// (see NeuralTextureTrainer's own throttling), so no
-							// extra modulo gate is needed here - and since it
-							// always reports iteration numbers of the form 4k+1,
-							// a "% 20 === 0" gate would in fact never pass before
-							// the very last call, leaving this text stuck.
-							const elapsed = performance.now() - startTime;
-							status.textContent = `Training ${progress.iteration}/${progress.iterations}\nloss ${progress.loss.toExponential( 3 )}\nelapsed ${formatDuration( elapsed )}`;
 
 						}
 					} );
 
 					rebuildNeuralMaterial( result.cpuModel );
 					comparisonVisible = true;
-					const elapsedText = formatDuration( performance.now() - startTime );
-					status.textContent = result.stoppedEarly ?
-						`Stopped at ${result.iteration}/${result.iterations} in ${elapsedText}.\nloss ${result.loss.toExponential( 3 )}` :
-						`Training complete in ${elapsedText}.\nloss ${result.loss.toExponential( 3 )}`;
+					status.textContent = result.stoppedEarly ? 'Stopped.' : 'Training complete.';
 
 				} catch ( error ) {
 
@@ -938,79 +920,6 @@
 
 			}
 
-			function drawLossGraph() {
-
-				const context = lossGraph.getContext( '2d' );
-				const width = lossGraph.width;
-				const height = lossGraph.height;
-				const marginLeft = 46;
-				const marginRight = 10;
-				const marginTop = 12;
-				const marginBottom = 24;
-				const plotWidth = width - marginLeft - marginRight;
-				const plotHeight = height - marginTop - marginBottom;
-
-				context.clearRect( 0, 0, width, height );
-				context.fillStyle = '#050505';
-				context.fillRect( 0, 0, width, height );
-
-				context.strokeStyle = 'rgba( 255, 255, 255, 0.35 )';
-				context.lineWidth = 1;
-				context.beginPath();
-				context.moveTo( marginLeft, marginTop );
-				context.lineTo( marginLeft, marginTop + plotHeight );
-				context.lineTo( marginLeft + plotWidth, marginTop + plotHeight );
-				context.stroke();
-
-				context.fillStyle = '#aaa';
-				context.font = '10px monospace';
-				context.fillText( 'loss (log)', marginLeft, 9 );
-				context.fillText( 'iteration', width - 64, height - 4 );
-
-				const values = lossHistory.map( ( point ) => point.loss ).filter( ( value ) => Number.isFinite( value ) && value > 0 );
-				if ( values.length === 0 ) {
-
-					context.fillText( 'Train to graph loss.', marginLeft + 30, marginTop + plotHeight / 2 );
-					return;
-
-				}
-
-				let minLog = Math.log10( Math.min( ...values ) );
-				let maxLog = Math.log10( Math.max( ...values ) );
-				if ( minLog === maxLog ) {
-
-					minLog -= 0.5;
-					maxLog += 0.5;
-
-				}
-
-				context.fillStyle = '#777';
-				context.fillText( Math.pow( 10, maxLog ).toExponential( 1 ), 2, marginTop + 4 );
-				context.fillText( Math.pow( 10, minLog ).toExponential( 1 ), 2, marginTop + plotHeight );
-
-				const maxIteration = Math.max( 1, lossHistory[ lossHistory.length - 1 ].iteration - 1 );
-				const logRange = maxLog - minLog || 1;
-
-				context.strokeStyle = '#50c8ff';
-				context.lineWidth = 2;
-				context.beginPath();
-
-				for ( let i = 0; i < lossHistory.length; i ++ ) {
-
-					const point = lossHistory[ i ];
-					if ( point.loss <= 0 ) continue;
-					const px = marginLeft + ( point.iteration - 1 ) / maxIteration * plotWidth;
-					const py = marginTop + plotHeight - ( Math.log10( point.loss ) - minLog ) / logRange * plotHeight;
-
-					if ( i === 0 ) context.moveTo( px, py );
-					else context.lineTo( px, py );
-
-				}
-
-				context.stroke();
-
-			}
-
 			function onWindowResize() {
 
 				camera.aspect = window.innerWidth / window.innerHeight;
@@ -1039,14 +948,6 @@
 				}
 
 				renderer.render( scene, camera );
-
-			}
-
-			function formatDuration( milliseconds ) {
-
-				const seconds = Math.max( milliseconds, 0 ) / 1000;
-				if ( seconds < 60 ) return `${seconds.toFixed( 1 )}s`;
-				return `${Math.floor( seconds / 60 )}m ${Math.round( seconds % 60 )}s`;
 
 			}
 

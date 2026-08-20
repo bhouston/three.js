@@ -26,6 +26,11 @@ npm run test-e2e
 
 # check only webgpu_* examples
 npm run test-e2e-webgpu
+
+# render with the real GPU instead of SwiftShader, for fast local iteration
+# (pixel diffs WILL fail against the SwiftShader-based baselines - this is
+# for eyeballing that an example loads/renders, not for passing the suite)
+E2E_ONLY=<example1_name>,<example2_name> E2E_GPU=1 VISIBLE=1 npm run test-e2e
 ```
 
 Merge only those commits that pass the tests, otherwise all next commits will also fail.

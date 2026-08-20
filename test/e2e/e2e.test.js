@@ -54,6 +54,7 @@ const CONCURRENCY = Number( process.env.E2E_WORKERS ) || Math.max( 1, os.cpus().
 
 const isMakeScreenshot = !! process.env.E2E_MAKE;
 const isWebGPU = !! process.env.E2E_WEBGPU;
+const isGPU = !! process.env.E2E_GPU;
 const exactList = ( process.env.E2E_ONLY || '' )
 	.split( ',' )
 	.map( s => s.trim() )
@@ -61,38 +62,67 @@ const exactList = ( process.env.E2E_ONLY || '' )
 
 /* Launch flags */
 
-// `--enable-unsafe-swiftshader` is required from Chromium ~136 onward:
-// software WebGL (SwiftShader) is no longer enabled by default in headless
-// mode and silently fails ("Could not create a WebGL context") without it.
-// The Vulkan/WebGPU flags rely on a system Vulkan driver (lavapipe via the
-// `mesa-vulkan-drivers` package in CI; VK_DRIVER_FILES below points at it).
-const launchArgs = [
-	'--hide-scrollbars',
-	'--enable-unsafe-webgpu',
-	'--enable-features=Vulkan',
-	'--disable-vulkan-surface',
-	'--ignore-gpu-blocklist',
-	'--disable-gpu-driver-bug-workarounds',
-	'--disable-gpu-watchdog',
-	'--use-gl=angle',
-	'--use-angle=swiftshader-webgl',
-	'--enable-unsafe-swiftshader',
-	'--no-sandbox'
-];
-
 const viewport = { width: width * viewScale, height: height * viewScale };
+
+let launchArgs;
+
+if ( isGPU ) {
+
+	// E2E_GPU: use the machine's real GPU instead of SwiftShader/lavapipe
+	// software rendering, for fast local iteration. Rendering will *not*
+	// pixel-match the checked-in baselines in examples/screenshots/ (those
+	// were generated under software rendering, which is deliberately used
+	// everywhere else - including CI, which typically has no GPU at all -
+	// because it's the only thing that renders identically across machines).
+	// Expect the pixel-diff step to fail here; this mode is for eyeballing
+	// that an example loads/renders, not for passing the real suite. Combine
+	// with VISIBLE=1 for actual GPU compositing, since headless Chromium
+	// doesn't reliably composite with a real GPU.
+	console.warn( 'E2E_GPU: rendering with the real GPU - screenshots will not match the SwiftShader-based baselines.' );
+
+	launchArgs = [
+		'--hide-scrollbars',
+		'--enable-unsafe-webgpu',
+		'--ignore-gpu-blocklist',
+		'--use-gl=angle',
+		'--no-sandbox'
+	];
+
+} else {
+
+	// `--enable-unsafe-swiftshader` is required from Chromium ~136 onward:
+	// software WebGL (SwiftShader) is no longer enabled by default in headless
+	// mode and silently fails ("Could not create a WebGL context") without it.
+	// The Vulkan/WebGPU flags rely on a system Vulkan driver (lavapipe via the
+	// `mesa-vulkan-drivers` package in CI; VK_DRIVER_FILES below points at it).
+	launchArgs = [
+		'--hide-scrollbars',
+		'--enable-unsafe-webgpu',
+		'--enable-features=Vulkan',
+		'--disable-vulkan-surface',
+		'--ignore-gpu-blocklist',
+		'--disable-gpu-driver-bug-workarounds',
+		'--disable-gpu-watchdog',
+		'--use-gl=angle',
+		'--use-angle=swiftshader-webgl',
+		'--enable-unsafe-swiftshader',
+		'--no-sandbox'
+	];
+
+}
 
 // Points ANGLE/Vulkan at the lavapipe software ICD installed by
 // `mesa-vulkan-drivers` in CI, which is what makes WebGPU work headlessly
 // there. Only applied when that file actually exists - forcing it on a
 // machine without it (e.g. local macOS/Windows dev, or a differently
 // configured Linux box) makes the Vulkan loader fail hard enough to take
-// down WebGL too, not just WebGPU.
+// down WebGL too, not just WebGPU. Irrelevant (and skipped) under E2E_GPU,
+// which doesn't use the software Vulkan path at all.
 const vulkanIcd = '/usr/share/vulkan/icd.d/lvp_icd.x86_64.json';
 
 const launchOptions = {
 	headless: ( 'CI' in process.env || process.env.VISIBLE ) ? false : true,
-	env: existsSync( vulkanIcd ) ? { ...process.env, VK_DRIVER_FILES: vulkanIcd } : process.env,
+	env: ( ! isGPU && existsSync( vulkanIcd ) ) ? { ...process.env, VK_DRIVER_FILES: vulkanIcd } : process.env,
 	args: launchArgs,
 	timeout: 0
 };
@@ -126,6 +156,21 @@ async function openPage() {
 	await preparePage( page, injection, builds );
 
 	return page;
+
+}
+
+// Small pool of in-flight `openPage()` promises, kept topped up to
+// PAGE_QUEUE_SIZE. Creating a context/page isn't instant, so pre-warming a
+// few ahead of time means an example that's ready to start usually finds
+// one already opening (or open) instead of paying that latency itself.
+const PAGE_QUEUE_SIZE = 4;
+const pageQueue = [];
+
+async function getPage() {
+
+	while ( pageQueue.length < PAGE_QUEUE_SIZE ) pageQueue.push( openPage() );
+
+	return pageQueue.shift();
 
 }
 
@@ -381,7 +426,7 @@ async function checkFile( file ) {
 
 	const pageStart = performance.now();
 
-	let page = await openPage();
+	let page = await getPage();
 
 	try {
 
@@ -452,8 +497,8 @@ async function checkFile( file ) {
 
 			console.warn( `${ e }` );
 			console.warn( `Retrying ${ file } in a fresh tab after device loss...` );
-			await closePage( page );
-			page = await openPage();
+			closePage( page ); // fire-and-forget; the wedged tab doesn't need to finish closing before we retry
+			page = await getPage();
 
 			// Give the example a single retry in a brand-new tab before
 			// failing outright - mirrors the old script's recovery.
@@ -486,7 +531,10 @@ async function checkFile( file ) {
 
 	} finally {
 
-		await closePage( page );
+		// Fire-and-forget: closing the tab doesn't affect this test's outcome,
+		// so don't make the test wait on it - let it close in the background
+		// while the next queued example gets going.
+		closePage( page );
 
 	}
 
@@ -584,7 +632,7 @@ afterAll( async () => {
 
 const files = await listFiles();
 
-console.log( `Testing ${ files.length } example(s) with up to ${ CONCURRENCY } concurrent tab(s)${ isMakeScreenshot ? ' (generating screenshots)' : '' }.` );
+console.log( `Testing ${ files.length } example(s) with up to ${ CONCURRENCY } concurrent tab(s)${ isMakeScreenshot ? ' (generating screenshots)' : '' }${ isGPU ? ' (E2E_GPU: real GPU, baselines will mismatch)' : '' }.` );
 
 describe.concurrent( 'examples', () => {
 

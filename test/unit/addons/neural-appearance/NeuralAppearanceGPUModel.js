@@ -15,7 +15,7 @@ import {
 } from '../../../../examples/jsm/neural/NeuralGPUComputeTSL.js';
 import { createModel } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceModel.js';
 
-const SMALL_GRID = { levels: 3, baseResolution: 2, targetResolution: 8 };
+const SMALL_GRID = { levels: 3, baseResolution: 2, growthFactor: 2 };
 
 describe( 'Addons', () => {
 
@@ -63,7 +63,7 @@ describe( 'Addons', () => {
 				expect( baseLayout.totalWeights ).toBe( 1525 );
 				expect( baseLayout.sampleStride ).toBe( 34 );
 
-				// Multiresolution grid levels=3, baseResolution=2, targetResolution=8
+				// Multiresolution grid levels=3, baseResolution=2, growthFactor=2
 				// => resolutions [2, 4, 8] => texel counts 4, 16, 64 => float counts (x4 channels) 16, 64, 256
 				expect( baseLayout.gridLevels.length ).toBe( 3 );
 				expect( baseLayout.gridLevels[ 0 ].offset ).toBe( 0 );

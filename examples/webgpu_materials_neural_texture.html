@@ -167,7 +167,7 @@
 			import { NeuralTextureNodeMaterial } from 'three/addons/neural-texture/NeuralTextureNodeMaterial.js';
 			import { NeuralTextureSource, extractBaseColorNode } from 'three/addons/neural-texture/NeuralTextureSource.js';
 			import { computeTextureModelLayout } from 'three/addons/neural-texture/NeuralTextureGPUModel.js';
-			import { computeTileOctaves } from 'three/addons/neural/NeuralGridModel.js';
+			import { computeGridLevels, computeTileOctaves, GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
 			import { formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
 
@@ -184,7 +184,7 @@
 				uvOffsetY: 0,
 				levels: 4,
 				baseResolution: 16,
-				targetResolution: 64,
+				growthFactor: 2,
 				hiddenSize: 16,
 				batchSize: 8192,
 				iterations: 3000,
@@ -283,10 +283,10 @@
 				uvFolder.add( params, 'uvOffsetY', - 4, 4, 0.01 ).name( 'offset y' ).onChange( updateUvUniforms );
 
 				const networkFolder = gui.addFolder( 'network (grid + MLP)' );
-				networkFolder.add( params, 'levels', [ 2, 3, 4, 5, 6, 8 ] ).name( 'grid levels' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'baseResolution', [ 8, 16, 32 ] ).name( 'grid base res' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'targetResolution', [ 64, 128, 256, 512 ] ).name( 'grid target res' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'hiddenSize', [ 16, 32, 64 ] ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'levels', GRID_LEVELS_OPTIONS ).name( 'grid levels' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'grid base res' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'growthFactor', GRID_GROWTH_FACTOR_OPTIONS ).name( 'grid growth factor' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
 
 				const trainingFolder = gui.addFolder( 'training' );
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
@@ -320,14 +320,17 @@
 
 			}
 
-			// The finest grid level (targetResolution) is very likely coarser than
-			// the actual bake resolution content is fit at - NTC-style tiled
-			// positional encoding (see NeuralGridModel.js) bridges that gap, sized
-			// automatically from how many octaves of upsampling separate the two
-			// (never fewer than the paper's own default of 3 octaves).
+			// The finest grid level is very likely coarser than the actual bake
+			// resolution content is fit at - NTC-style tiled positional encoding
+			// (see NeuralGridModel.js) bridges that gap, sized automatically from
+			// how many octaves of upsampling separate the two (never fewer than
+			// the paper's own default of 3 octaves).
 			function currentPeOctaves() {
 
-				return Math.max( 3, computeTileOctaves( Number( params.targetResolution ), Number( params.bakeResolution ) ) );
+				const resolutions = computeGridLevels( Number( params.baseResolution ), Number( params.growthFactor ), Number( params.levels ) );
+				const finestGridResolution = resolutions[ resolutions.length - 1 ];
+
+				return Math.max( 3, computeTileOctaves( finestGridResolution, Number( params.bakeResolution ) ) );
 
 			}
 
@@ -338,7 +341,7 @@
 					channels: 4,
 					levels: Number( params.levels ),
 					baseResolution: Number( params.baseResolution ),
-					targetResolution: Number( params.targetResolution ),
+					growthFactor: Number( params.growthFactor ),
 					hiddenSizes: [ hidden, hidden ],
 					outputChannels: 3,
 					peOctaves: currentPeOctaves()
@@ -509,7 +512,7 @@
 						channels: 4,
 						levels: Number( params.levels ),
 						baseResolution: Number( params.baseResolution ),
-						targetResolution: Number( params.targetResolution ),
+						growthFactor: Number( params.growthFactor ),
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
 						outputChannels: 3,
 						peOctaves: currentPeOctaves(),

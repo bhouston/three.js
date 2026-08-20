@@ -180,6 +180,7 @@
 			import { NeuralTeacherIBLEnvironmentNode, NeuralTeacherIBLLightingModel } from 'three/addons/neural-appearance/NeuralAppearanceTeacherLightingModels.js';
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
 			import { formatBytes, computeMLPParamCount } from 'three/addons/neural/NeuralModelSize.js';
+			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
 
 			let camera, scene, renderer, mesh, neuralMesh;
 			let materialXMaterial, neuralMaterial, whiteControlMaterial, previewPlaceholderMaterial, latestJson;
@@ -308,7 +309,7 @@
 				debugView: queryParams.get( 'debugView' ) || 'shaded',
 				levels: readNumberQuery( 'levels', 4 ),
 				baseResolution: readNumberQuery( 'baseResolution', 16 ),
-				targetResolution: readNumberQuery( 'targetResolution', readNumberQuery( 'resolution', 256 ) ),
+				growthFactor: readNumberQuery( 'growthFactor', 2 ),
 				hiddenSize: readNumberQuery( 'hiddenSize', presetSettings.hiddenSize ),
 				iterations: readNumberQuery( 'iterations', presetSettings.iterations ),
 				batchSize: readNumberQuery( 'batchSize', presetSettings.batchSize ),
@@ -477,10 +478,10 @@
 				// and dropdown option sets for the shared grid + MLP encoding
 				// (see NeuralGridModel.js / NeuralAppearanceFormat.js).
 				const networkFolder = gui.addFolder( 'network (grid + MLP)' );
-				trackSetting( 'levels', networkFolder.add( params, 'levels', [ 2, 3, 4, 5, 6, 8 ] ).name( 'grid levels' ).onChange( updateTrainingEstimate ) );
-				trackSetting( 'baseResolution', networkFolder.add( params, 'baseResolution', [ 8, 16, 32 ] ).name( 'grid base res' ).onChange( updateTrainingEstimate ) );
-				trackSetting( 'targetResolution', networkFolder.add( params, 'targetResolution', [ 64, 128, 256, 512 ] ).name( 'grid target res' ).onChange( updateTrainingEstimate ) );
-				trackSetting( 'hiddenSize', networkFolder.add( params, 'hiddenSize', [ 16, 32, 64 ] ).name( 'MLP hidden width (x2 layers)' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'levels', networkFolder.add( params, 'levels', GRID_LEVELS_OPTIONS ).name( 'grid levels' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'baseResolution', networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'grid base res' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'growthFactor', networkFolder.add( params, 'growthFactor', GRID_GROWTH_FACTOR_OPTIONS ).name( 'grid growth factor' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'hiddenSize', networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).onChange( updateTrainingEstimate ) );
 
 				// Mirrors neural-texture's "training" folder (same names,
 				// order, and option sets/ranges).
@@ -768,7 +769,7 @@
 						name: `${materialXMaterial.name || 'MaterialX'} neural appearance`,
 						levels: Number( params.levels ),
 						baseResolution: Number( params.baseResolution ),
-						targetResolution: Number( params.targetResolution ),
+						growthFactor: Number( params.growthFactor ),
 						iterations: Number( params.iterations ),
 						batchSize: Number( params.batchSize ),
 						learningRate: Number( params.learningRate ),
@@ -1334,7 +1335,7 @@
 
 			function updateTrainingEstimate() {
 
-				const memory = estimateTrainingMemory( Number( params.levels ), Number( params.baseResolution ), Number( params.targetResolution ) );
+				const memory = estimateTrainingMemory( Number( params.levels ), Number( params.baseResolution ), Number( params.growthFactor ) );
 				const hiddenSize = Number( params.hiddenSize );
 				const latentChannels = memory.levels * 4;
 				const decoderInputSize = latentChannels + 12;
@@ -1351,7 +1352,8 @@
 
 				window.__neuralAppearanceMemoryEstimate = memory;
 				neuralRepresentationSize.textContent = `${representationBytes.toLocaleString()} bytes`;
-				estimate.textContent = `${memory.levels} levels (${memory.baseResolution}px - ${memory.targetResolution}px), ${memory.latentTexels.toLocaleString()} latent texels\n~${formatBytes( memory.trainingBytes )} training state + ${formatBytes( memory.exportBytes )} FP16 latents\n${recordsPerIteration.toLocaleString()} records/iteration, ${records.toLocaleString()} total`;
+				const finestResolution = memory.resolutions[ memory.resolutions.length - 1 ];
+				estimate.textContent = `${memory.levels} levels (${memory.baseResolution}px - ${finestResolution}px, growth ${memory.growthFactor}x), ${memory.latentTexels.toLocaleString()} latent texels\n~${formatBytes( memory.trainingBytes )} training state + ${formatBytes( memory.exportBytes )} FP16 latents\n${recordsPerIteration.toLocaleString()} records/iteration, ${records.toLocaleString()} total`;
 
 			}
 

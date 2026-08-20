@@ -13,8 +13,7 @@ import {
 	createOutputUniforms,
 	isCompatibleNeuralAppearanceData,
 	updateOutputUniforms,
-	copyLatentTextureData,
-	LEVEL_NAMES
+	copyLatentTextureData
 } from './NeuralAppearanceTSL.js';
 
 const DEFAULT_PARAMETERS = {
@@ -54,19 +53,15 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 		}
 
 		// The shader graph below (see NeuralAppearanceTSL.js's fetchLatentTexels/
-		// createEvaluateNeuralBRDFFn) is written directly against exactly
-		// LEVEL_NAMES.length (4) named latent-texel inputs for TSL graph-shape
-		// reasons, not a variable-length loop over however many grid levels the
-		// model actually has - a real, currently unsupported limitation
-		// (unlike the training side's `levels` handling, which was fixed to
-		// support any level count - see NeuralAppearanceModel.levels-bug.
-		// test.js). Silently reading past/short of `latentTextures` here would
-		// mean `undefined`/ignored levels contributing to the shader instead
-		// of a clear error, so fail loudly and specifically instead.
-		if ( ! Array.isArray( neuralAppearanceData.latentTextures ) || neuralAppearanceData.latentTextures.length !== LEVEL_NAMES.length ) {
+		// createEvaluateNeuralBRDFFn) generates its named latent-texel inputs
+		// (latent0..latentN-1) from this model's own `levels` count at
+		// construction time, so any level count `createModel`/
+		// `NeuralAppearanceTrainer` can produce renders correctly here too -
+		// this is just a basic shape check, not a fixed-count limitation.
+		if ( ! Array.isArray( neuralAppearanceData.latentTextures ) || neuralAppearanceData.latentTextures.length === 0 ) {
 
 			const actual = neuralAppearanceData.latentTextures ? neuralAppearanceData.latentTextures.length : 0;
-			throw new Error( `THREE.NeuralAppearanceNodeMaterial: This data has ${ actual } latent grid level(s); only exactly ${ LEVEL_NAMES.length } is currently supported for rendering (training/export support other level counts - see NeuralAppearanceTrainer's \`levels\` option - but the render-time shader graph does not yet).` );
+			throw new Error( `THREE.NeuralAppearanceNodeMaterial: neuralAppearanceData.latentTextures must be a non-empty array (got ${ actual }).` );
 
 		}
 

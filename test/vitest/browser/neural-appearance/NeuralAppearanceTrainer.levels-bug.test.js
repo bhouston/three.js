@@ -50,7 +50,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceTrainer "grid le
 		const trainer = new NeuralAppearanceTrainer( {
 			levels,
 			baseResolution: 4,
-			targetResolution: 8,
+			growthFactor: 2,
 			hiddenSize: 8,
 			iblHiddenSize: 8,
 			batchSize: 256,

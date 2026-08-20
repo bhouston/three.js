@@ -32,13 +32,14 @@ async function exportNeuralAppearance( model, teacher, options ) {
 function createNeuralAppearanceManifest( model, options ) {
 
 	// Every inputSize below is derived from *this model's own* `model.levels`
-	// via the computeXXX helpers, not NeuralAppearanceFormat.js's fixed
-	// LATENT_CHANNELS/etc. constants - see that file's doc comment on these
-	// helpers for why.
+	// and `model.peOctaves` via the computeXXX helpers, not
+	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/etc. constants - see
+	// that file's doc comment on these helpers for why.
+	const peOctaves = model.peOctaves || 0;
 	const latentChannels = computeLatentChannels( model.levels );
-	const decoderInputSize = computeDecoderInputSize( model.levels );
-	const iblInputSize = computeIblInputSize( model.levels );
-	const indirectInputSize = computeIndirectInputSize( model.levels );
+	const decoderInputSize = computeDecoderInputSize( model.levels, peOctaves );
+	const iblInputSize = computeIblInputSize( model.levels, peOctaves );
+	const indirectInputSize = computeIndirectInputSize( model.levels, peOctaves );
 
 	const levels = model.latentGrids.map( ( grid ) => ( {
 		width: grid.width,
@@ -118,6 +119,14 @@ function createNeuralAppearanceManifest( model, options ) {
 			channelsPerLevel: CHANNELS_PER_LEVEL,
 			wrap: 'repeat'
 		},
+		// Persisted at the manifest root (not per-output) since it's a single
+		// model-wide constant, mirroring `latents.levels.length` - every output
+		// head's own `inputSize` above already bakes in `peOctaves * 2`, but the
+		// runtime/render-time consumers (NeuralAppearanceRuntime.js,
+		// NeuralAppearanceNodeMaterial.js) need the raw count too, to know how
+		// many tiled-positional-encoding values to compute from a sample's uv
+		// and append - see NeuralGridModel.triangleWaveEncode.
+		peOctaves,
 		outputs
 	};
 

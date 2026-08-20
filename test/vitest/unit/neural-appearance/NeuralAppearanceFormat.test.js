@@ -13,7 +13,7 @@ import {
 	LATENT_CHANNELS,
 	LEVELS,
 	ROTATION_OUTPUT_SIZE,
-	TARGET_RESOLUTION,
+	GROWTH_FACTOR,
 	VERSION
 } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceFormat.js';
 
@@ -34,12 +34,19 @@ describe( 'Addons > Neural > Neural-Appearance > NeuralAppearanceFormat', () => 
 
 	it( 'grid geometry constants are positive integers', () => {
 
-		for ( const value of [ LEVELS, BASE_RESOLUTION, TARGET_RESOLUTION, CHANNELS_PER_LEVEL ] ) {
+		for ( const value of [ LEVELS, BASE_RESOLUTION, CHANNELS_PER_LEVEL ] ) {
 
 			expect( Number.isInteger( value ) ).toBe( true );
 			expect( value ).toBeGreaterThan( 0 );
 
 		}
+
+	} );
+
+	it( 'GROWTH_FACTOR is a finite number of at least 1', () => {
+
+		expect( Number.isFinite( GROWTH_FACTOR ) ).toBe( true );
+		expect( GROWTH_FACTOR ).toBeGreaterThanOrEqual( 1 );
 
 	} );
 

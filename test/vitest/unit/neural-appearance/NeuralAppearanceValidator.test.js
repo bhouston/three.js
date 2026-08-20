@@ -19,7 +19,7 @@ import {
 // `levels` without also changing that constant would size the decoder input
 // (which is derived from LATENT_CHANNELS) inconsistently with the actual
 // concatenated latent length, breaking the forward pass. baseResolution/
-// targetResolution/hiddenSize are shrunk instead, which is safe.
+// growthFactor/hiddenSize are shrunk instead, which is safe.
 //
 // random() = 0.5 maps to a weight of exactly 0 in every layer (see
 // NeuralMLP.js: `weights[j] = (random() * 2 - 1) * scale`), so every head's
@@ -31,7 +31,7 @@ function createTinyManifest() {
 	const model = createModel( {
 		hiddenSize: 4,
 		baseResolution: 2,
-		targetResolution: 4,
+		growthFactor: 2,
 		outputFeatures: {}
 	}, random );
 

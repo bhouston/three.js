@@ -7,10 +7,10 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		it( 'derives resolutions from computeGridLevels and produces one grid per resolution', () => {
 
-			const options = { channels: 2, levels: 3, baseResolution: 8, targetResolution: 32 };
+			const options = { channels: 2, levels: 3, baseResolution: 8, growthFactor: 2 };
 			const model = createNeuralTextureModel( options, () => 0.5 );
 
-			const expectedResolutions = computeGridLevels( options.baseResolution, options.targetResolution, options.levels );
+			const expectedResolutions = computeGridLevels( options.baseResolution, options.growthFactor, options.levels );
 
 			expect( model.resolutions ).toEqual( expectedResolutions );
 			expect( model.grids.length ).toBe( expectedResolutions.length );
@@ -42,7 +42,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 			};
 
-			const options = { channels: 2, levels: 2, baseResolution: 4, targetResolution: 8, hiddenSizes: [ 3 ], outputChannels: 2 };
+			const options = { channels: 2, levels: 2, baseResolution: 4, growthFactor: 2, hiddenSizes: [ 3 ], outputChannels: 2 };
 			const model = createNeuralTextureModel( options, random );
 
 			let independentCalls = 0;
@@ -65,7 +65,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		it( 'sizes the decoder input as levels * channels when peOctaves is 0', () => {
 
-			const options = { channels: 4, levels: 3, baseResolution: 8, targetResolution: 64, hiddenSizes: [ 5 ], outputChannels: 3, peOctaves: 0 };
+			const options = { channels: 4, levels: 3, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 5 ], outputChannels: 3, peOctaves: 0 };
 			const model = createNeuralTextureModel( options, () => 0.5 );
 
 			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels );
@@ -74,7 +74,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		it( 'adds 2 * peOctaves to the decoder input size for the tiled positional encoding', () => {
 
-			const options = { channels: 4, levels: 3, baseResolution: 8, targetResolution: 64, hiddenSizes: [ 5 ], outputChannels: 3, peOctaves: 5 };
+			const options = { channels: 4, levels: 3, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 5 ], outputChannels: 3, peOctaves: 5 };
 			const model = createNeuralTextureModel( options, () => 0.5 );
 
 			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels + 10 );
@@ -91,7 +91,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		it( 'sizes the decoder output layer to match options.outputChannels', () => {
 
-			const options = { channels: 2, levels: 2, baseResolution: 4, targetResolution: 16, hiddenSizes: [ 6, 6 ], outputChannels: 7 };
+			const options = { channels: 2, levels: 2, baseResolution: 4, growthFactor: 4, hiddenSizes: [ 6, 6 ], outputChannels: 7 };
 			const model = createNeuralTextureModel( options, () => 0.5 );
 
 			const outputLayer = model.decoder.layers[ model.decoder.layers.length - 1 ];
@@ -111,9 +111,9 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 			expect( model.outputChannels ).toBe( 3 );
 			expect( model.peOctaves ).toBe( 3 );
 
-			// baseResolution = 16, targetResolution = 256
+			// baseResolution = 16, growthFactor = 2, levels = 4 -> 16, 32, 64, 128
 			expect( model.resolutions[ 0 ] ).toBe( 16 );
-			expect( model.resolutions[ model.resolutions.length - 1 ] ).toBe( 256 );
+			expect( model.resolutions[ model.resolutions.length - 1 ] ).toBe( 128 );
 			expect( model.resolutions.length ).toBe( 4 );
 
 			// decoder: input = levels * channels + 2 * peOctaves = 16 + 6 = 22, 2 hidden layers + 1 output layer
@@ -125,7 +125,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		it( 'produces deterministic grid and decoder contents for random() = 0.5 (midpoint => all zero weights)', () => {
 
-			const options = { channels: 2, levels: 2, baseResolution: 4, targetResolution: 8, hiddenSizes: [ 4 ], outputChannels: 3 };
+			const options = { channels: 2, levels: 2, baseResolution: 4, growthFactor: 2, hiddenSizes: [ 4 ], outputChannels: 3 };
 			const model = createNeuralTextureModel( options, () => 0.5 );
 
 			for ( const grid of model.grids ) {
@@ -169,7 +169,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 			};
 
-			const options = { channels: 3, levels: 3, baseResolution: 4, targetResolution: 32, hiddenSizes: [ 6 ], outputChannels: 2 };
+			const options = { channels: 3, levels: 3, baseResolution: 4, growthFactor: 2, hiddenSizes: [ 6 ], outputChannels: 2 };
 
 			const modelA = createNeuralTextureModel( options, makeRandom() );
 			const modelB = createNeuralTextureModel( options, makeRandom() );

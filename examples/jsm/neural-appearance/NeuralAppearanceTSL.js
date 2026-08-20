@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import * as TSL from 'three/tsl';
-import { LEVELS } from './NeuralAppearanceFormat.js';
 import {
 	packVec4Inputs,
 	unpackVec4Outputs,
@@ -10,27 +9,37 @@ import {
 } from '../neural/NeuralMLPTSL.js';
 import { sigmoidTSL } from '../neural/NeuralOutputActivations.js';
 
-// The multiresolution latent grid always has LEVELS (=4) levels of
-// CHANNELS_PER_LEVEL (=4) features each - same fixed geometry as
-// neural-texture / neural-material (see NeuralGridModel.js) - so the runtime
-// evaluator below is written directly against 4 named vec4 texel inputs
-// (latent0..latent3) rather than looping over a variable-length array; this
-// keeps the TSL graph shape identical to the shared MLP evaluator helpers.
-const LEVEL_NAMES = [ 'latent0', 'latent1', 'latent2', 'latent3' ];
+// The multiresolution latent grid can have any number of levels (see
+// computeGridLevels/NeuralAppearanceTrainer's `levels` option) - this
+// generates that many named `latent0..latentN-1` vec4 texel inputs for a
+// given model's TSL BRDF Fn signature (built once per material, in
+// createEvaluateNeuralBRDFFn below), rather than hardcoding a fixed count.
+// TSL.Fn's signature has to be static per-Fn-instance (its `setLayout` shape
+// is baked into the compiled WGSL function), so this can't be a runtime
+// loop over a texture array - it's a JS-time loop, generating a differently-
+// shaped Fn per model, which is fine since one is only ever built once per
+// material (see createNeuralFragmentContext/NeuralAppearanceNodeMaterial's
+// constructor).
+function levelNames( levelCount ) {
+
+	return Array.from( { length: levelCount }, ( _, i ) => `latent${ i }` );
+
+}
 
 function createEvaluateNeuralBRDFFn( material ) {
 
 	const brdf = material.neuralAppearanceData.outputs.brdf;
 	const uniforms = material._outputUniforms.brdf;
+	const names = levelNames( material.neuralAppearanceData.levels );
 
-	return TSL.Fn( ( { wi, wo, latent0, latent1, latent2, latent3 } ) => {
+	return TSL.Fn( ( args ) => {
 
-		const latents = latentsFromTexels( latent0, latent1, latent2, latent3 );
+		const latents = latentsFromTexels( names.map( ( name ) => args[ name ] ) );
 		const frames = buildDecoderFrames( brdf, uniforms, latents );
-		const input = projectDecoderInput( latents, frames, wi, wo, brdf.inputSize );
+		const input = projectDecoderInput( latents, frames, args.wi, args.wo, brdf.inputSize );
 		const decoded = toVec3( evaluateMLP( brdf.layers, uniforms, input ) );
 
-		return applyOutputActivation( decoded, brdf.outputActivation ).mul( wi.z.max( 0 ) );
+		return applyOutputActivation( decoded, brdf.outputActivation ).mul( args.wi.z.max( 0 ) );
 
 	} ).setLayout( {
 		name: `evaluateNeuralBRDF_${ material.id }`,
@@ -38,10 +47,7 @@ function createEvaluateNeuralBRDFFn( material ) {
 		inputs: [
 			{ name: 'wi', type: 'vec3' },
 			{ name: 'wo', type: 'vec3' },
-			{ name: 'latent0', type: 'vec4' },
-			{ name: 'latent1', type: 'vec4' },
-			{ name: 'latent2', type: 'vec4' },
-			{ name: 'latent3', type: 'vec4' }
+			...names.map( ( name ) => ( { name, type: 'vec4' } ) )
 		]
 	} );
 
@@ -53,7 +59,7 @@ function evaluateNeuralBRDF( material, lightDirection, context, evaluateFn ) {
 	const fn = evaluateFn || createEvaluateNeuralBRDFFn( material );
 	const wi = transformToCanonicalFrame( lightDirection );
 
-	return fn( wi, fragment.viewDirection, fragment.texel0, fragment.texel1, fragment.texel2, fragment.texel3 );
+	return fn( wi, fragment.viewDirection, ...fragment.texels );
 
 }
 
@@ -184,14 +190,12 @@ function transformToCanonicalFrame( direction ) {
 
 }
 
-function latentsFromTexels( texel0, texel1, texel2, texel3 ) {
+// `texels` is an array (one vec4 node per grid level, in level order - see
+// fetchLatentTexels), not a fixed count - flattened to a plain array of
+// scalar latent nodes 4 at a time.
+function latentsFromTexels( texels ) {
 
-	return [
-		texel0.x, texel0.y, texel0.z, texel0.w,
-		texel1.x, texel1.y, texel1.z, texel1.w,
-		texel2.x, texel2.y, texel2.z, texel2.w,
-		texel3.x, texel3.y, texel3.z, texel3.w
-	];
+	return texels.flatMap( ( texel ) => [ texel.x, texel.y, texel.z, texel.w ] );
 
 }
 
@@ -200,13 +204,13 @@ function evaluateLearnedCanonicalNormal( material, fragment ) {
 	const brdf = material.neuralAppearanceData.outputs.brdf;
 	const uniforms = material._outputUniforms.brdf;
 
-	return buildDecoderFrames( brdf, uniforms, latentsFromTexels( fragment.texel0, fragment.texel1, fragment.texel2, fragment.texel3 ) )[ 0 ].n;
+	return buildDecoderFrames( brdf, uniforms, latentsFromTexels( fragment.texels ) )[ 0 ].n;
 
 }
 
-function evaluateLearnedIBLQueryForTexels( material, texel0, texel1, texel2, texel3, wo ) {
+function evaluateLearnedIBLQueryForTexels( material, texels, wo ) {
 
-	const latents = latentsFromTexels( texel0, texel1, texel2, texel3 );
+	const latents = latentsFromTexels( texels );
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
 	const input = projectIBLInput( latents, frames, wo, ibl.inputSize );
@@ -221,7 +225,7 @@ function evaluateLearnedIBLQueryForTexels( material, texel0, texel1, texel2, tex
 
 function evaluateLearnedIBLQuery( material, fragment ) {
 
-	return evaluateLearnedIBLQueryForTexels( material, fragment.texel0, fragment.texel1, fragment.texel2, fragment.texel3, fragment.viewDirection );
+	return evaluateLearnedIBLQueryForTexels( material, fragment.texels, fragment.viewDirection );
 
 }
 
@@ -262,24 +266,23 @@ function packDebugScalar( value ) {
 
 /**
  * Bilinear-samples every latent grid level texture at `uvNode` (ordinary
- * hardware bilinear + repeat wrap, no LOD/mip selection) and concatenates
- * their channels into a flat array of scalar latent nodes - mirrors
+ * hardware bilinear + repeat wrap, no LOD/mip selection) - mirrors
  * `evaluateNeuralTextureRaw` in neural-texture/NeuralTextureNodeMaterial.js.
+ * Returns one vec4 texel node per grid level, in level order (however many
+ * levels this particular model has - see levelNames above); flatten with
+ * `latentsFromTexels` to get the concatenated scalar latent array.
  */
 function fetchLatentTexels( material, uvNode ) {
 
 	const data = material.neuralAppearanceData;
-	const texels = data.latentTextures.map( ( levelTexture ) => TSL.texture( levelTexture, uvNode ).toVar() );
 
-	return { texel0: texels[ 0 ], texel1: texels[ 1 ], texel2: texels[ 2 ], texel3: texels[ 3 ] };
+	return data.latentTextures.map( ( levelTexture ) => TSL.texture( levelTexture, uvNode ).toVar() );
 
 }
 
 function fetchLatentCode( material ) {
 
-	const texels = fetchLatentTexels( material, TSL.uv() );
-
-	return latentsFromTexels( texels.texel0, texels.texel1, texels.texel2, texels.texel3 );
+	return latentsFromTexels( fetchLatentTexels( material, TSL.uv() ) );
 
 }
 
@@ -297,15 +300,12 @@ function createNeuralFragmentContext( material ) {
 	const uvNode = TSL.uv();
 	const viewDirection = transformToCanonicalFrame( TSL.positionViewDirection ).toVar();
 	const texels = fetchLatentTexels( material, uvNode );
-	const latents = latentsFromTexels( texels.texel0, texels.texel1, texels.texel2, texels.texel3 );
+	const latents = latentsFromTexels( texels );
 	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
 
 	return {
 		viewDirection,
-		texel0: texels.texel0,
-		texel1: texels.texel1,
-		texel2: texels.texel2,
-		texel3: texels.texel3,
+		texels,
 		latents,
 		frames
 	};
@@ -769,7 +769,5 @@ export {
 	linearLayerPacked,
 	toVec3,
 	applyOutputActivation,
-	applyScalarOutputActivation,
-	LEVEL_NAMES,
-	LEVELS
+	applyScalarOutputActivation
 };

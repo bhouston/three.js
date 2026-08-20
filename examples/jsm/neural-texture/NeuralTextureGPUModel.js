@@ -12,7 +12,7 @@ import { resolveNeuralTextureOptions } from './NeuralTextureModel.js';
  */
 function computeTextureModelLayout( options = {} ) {
 
-	const { channels, levels, baseResolution, targetResolution, hiddenSizes, outputChannels, peOctaves } = resolveNeuralTextureOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels, peOctaves } = resolveNeuralTextureOptions( options );
 	// One entry per output channel naming its output nonlinearity (see
 	// ../neural/NeuralOutputActivations.js); undefined/omitted entries (the
 	// default, `options.channelActivations` unset) mean plain linear, i.e.
@@ -20,7 +20,13 @@ function computeTextureModelLayout( options = {} ) {
 	// this - only neural-material does (see NeuralMaterialFormat.js).
 	const channelActivations = options.channelActivations || null;
 
-	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
+	// `computeGridLevels` may return fewer levels than requested when a
+	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
+	// NeuralGridModel.js) - `levels` below is reassigned to the actual grid
+	// count so `peInputOffset`/`inputSize` match `NeuralTextureModel`'s CPU
+	// decoder exactly.
+	const resolutions = computeGridLevels( baseResolution, growthFactor, requestedLevels );
+	const levels = resolutions.length;
 
 	const gridLevels = [];
 	let latentOffset = 0;

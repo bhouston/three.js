@@ -17,7 +17,7 @@ import {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs
 } from './NeuralAppearanceRuntime.js';
-import { LEVELS, BASE_RESOLUTION, TARGET_RESOLUTION, CHANNELS_PER_LEVEL, resolveOpacityMode } from './NeuralAppearanceFormat.js';
+import { LEVELS, BASE_RESOLUTION, GROWTH_FACTOR, CHANNELS_PER_LEVEL, resolveOpacityMode } from './NeuralAppearanceFormat.js';
 import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { NeuralAppearanceGPUModel } from './NeuralAppearanceGPUModel.js';
 import {
@@ -35,7 +35,7 @@ import { getLearningRate, createRandom, yieldToBrowser } from '../neural/NeuralT
 const DEFAULT_OPTIONS = {
 	levels: LEVELS,
 	baseResolution: BASE_RESOLUTION,
-	targetResolution: TARGET_RESOLUTION,
+	growthFactor: GROWTH_FACTOR,
 	iterations: 2000,
 	iblIterations: null,
 	iblTrainingRatio: 0.15,
@@ -320,15 +320,18 @@ function getIBLIterationCount( settings ) {
 }
 
 // Declarative shape for every setting whose validity check is just "is a
-// number of this kind" - covers 11 of `validateTrainingSettings`'s checks
+// number of this kind" - covers 12 of `validateTrainingSettings`'s checks
 // in one table-driven loop instead of one hand-written `if`/`throw` per
-// setting. The remaining 3 (`backend`, `targetResolution` - whose minimum
-// is *relative to* `baseResolution`, not a fixed bound - and
-// `outputActivation` - an object shape, not a number) don't fit this shape
-// and stay hand-written below.
+// setting. `growthFactor`'s bound (>= 1, no upper limit relative to any
+// other setting) fits this shape just fine, unlike the old `targetResolution`
+// (whose minimum was *relative to* `baseResolution`, not a fixed bound) - so
+// it's declared here rather than hand-written. The remaining 2 (`backend`
+// and `outputActivation` - an object shape, not a number) don't fit this
+// shape and stay hand-written below.
 const NUMERIC_SETTINGS_SCHEMA = [
 	{ key: 'levels', kind: 'posInt' },
 	{ key: 'baseResolution', kind: 'posInt' },
+	{ key: 'growthFactor', kind: 'atLeastOne' },
 	{ key: 'iterations', kind: 'posInt' },
 	{ key: 'batchSize', kind: 'posInt' },
 	{ key: 'hiddenSize', kind: 'posInt' },
@@ -345,7 +348,8 @@ const NUMERIC_SETTING_KINDS = {
 	nullableNonNegInt: { check: ( v ) => v === null || v === undefined || ( Number.isInteger( v ) && v >= 0 ), message: 'must be a non-negative integer' },
 	nonNegFinite: { check: ( v ) => Number.isFinite( v ) && v >= 0, message: 'must be finite and non-negative' },
 	positiveFinite: { check: ( v ) => Number.isFinite( v ) && v > 0, message: 'must be finite and greater than zero' },
-	unitRange: { check: ( v ) => Number.isFinite( v ) && v >= 0 && v <= 1, message: 'must be between zero and one' }
+	unitRange: { check: ( v ) => Number.isFinite( v ) && v >= 0 && v <= 1, message: 'must be between zero and one' },
+	atLeastOne: { check: ( v ) => Number.isFinite( v ) && v >= 1, message: 'must be a finite number of at least 1' }
 };
 
 function validateTrainingSettings( settings ) {
@@ -368,12 +372,6 @@ function validateTrainingSettings( settings ) {
 
 	}
 
-	if ( Number.isInteger( settings.targetResolution ) === false || settings.targetResolution < settings.baseResolution ) {
-
-		throw new Error( 'THREE.NeuralAppearanceTrainer: targetResolution must be an integer at least baseResolution.' );
-
-	}
-
 	if ( settings.outputActivation === null || settings.outputActivation === undefined || settings.outputActivation.type !== 'linear' ) {
 
 		throw new Error( 'THREE.NeuralAppearanceTrainer: Only linear output activation is supported during training.' );
@@ -385,11 +383,16 @@ function validateTrainingSettings( settings ) {
 /**
  * Estimates GPU training-buffer bytes and exported-asset bytes for the
  * multiresolution latent grid (see NeuralGridModel.js), given the same
- * levels/baseResolution/targetResolution knobs used by `createModel`.
+ * levels/baseResolution/growthFactor knobs used by `createModel`.
  */
-function estimateTrainingMemory( levels = LEVELS, baseResolution = BASE_RESOLUTION, targetResolution = TARGET_RESOLUTION ) {
+function estimateTrainingMemory( requestedLevels = LEVELS, baseResolution = BASE_RESOLUTION, growthFactor = GROWTH_FACTOR ) {
 
-	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
+	// `computeGridLevels` may return fewer levels than requested when a
+	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
+	// NeuralGridModel.js) - report the actual count so this estimate matches
+	// what `createModel`/`computeModelLayout` really build.
+	const resolutions = computeGridLevels( baseResolution, growthFactor, requestedLevels );
+	const levels = resolutions.length;
 	let latentTexels = 0;
 
 	for ( const resolution of resolutions ) {
@@ -401,7 +404,7 @@ function estimateTrainingMemory( levels = LEVELS, baseResolution = BASE_RESOLUTI
 	return {
 		levels,
 		baseResolution,
-		targetResolution,
+		growthFactor,
 		resolutions,
 		latentTexels,
 		trainingBytes: latentTexels * CHANNELS_PER_LEVEL * 4 * 4,

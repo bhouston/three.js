@@ -270,13 +270,19 @@ describe( 'Addons', () => {
 
 			} );
 
-			test( 'rejects a mismatched number of latent grid levels', () => {
+			test( 'rejects a latent grid level count that does not match the output heads\' declared input sizes', () => {
 
+				// The number of latent grid levels itself is no longer fixed (see
+				// computeGridLevels/NeuralAppearanceTrainer - models can be trained
+				// with any level count), so popping a level is only invalid because
+				// this manifest's output heads still declare inputSize for the
+				// *original* 4-level shape (28/22/16) rather than the 3-level shape
+				// (24/18/12) that would actually match - see normalizeOutputs.
 				const loader = new NeuralAppearanceLoader();
 				const manifest = createManifest();
 				manifest.latents.levels.pop();
 
-				expect( () => loader.parse( manifest ) ).toThrow( /latents\.levels must contain/ );
+				expect( () => loader.parse( manifest ) ).toThrow( /outputs\.brdf\.inputSize must be/ );
 
 			} );
 

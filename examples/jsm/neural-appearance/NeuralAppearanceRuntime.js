@@ -1,6 +1,7 @@
 import { CHANNELS_PER_LEVEL } from './NeuralAppearanceFormat.js';
 import { sigmoid } from '../neural/NeuralMLP.js';
 import { normalize } from '../neural/NeuralVectorMath.js';
+import { triangleWaveEncode } from '../neural/NeuralGridModel.js';
 import {
 	buildDecoderInput,
 	buildIBLInput,
@@ -8,6 +9,23 @@ import {
 	unpackIBLOutput,
 	wrapIndex
 } from './NeuralAppearanceModel.js';
+
+/**
+ * The NTC-style tiled positional encoding for this manifest's `peOctaves`
+ * (0 for any manifest predating this field, or one trained/exported with it
+ * disabled - `json.peOctaves` is `undefined` in the former case, hence the
+ * `|| 0`) at `uv` - see NeuralGridModel.triangleWaveEncode. Computed once per
+ * evaluation call and threaded into every buildDecoderInput/buildIBLInput/
+ * buildIndirectProbeInput call below, exactly like NeuralAppearanceModel.js's
+ * decorrelateLinearRgbHead does for CPU training-time probes.
+ */
+function computePositionalEncoding( json, uv ) {
+
+	const peOctaves = json.peOctaves || 0;
+
+	return peOctaves > 0 ? triangleWaveEncode( uv[ 0 ], uv[ 1 ], peOctaves ) : [];
+
+}
 
 const DEFAULT_IBL_INTEGRATION_SAMPLES = 64;
 
@@ -22,17 +40,19 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 	const wi = normalize( reference.wi );
 	const wo = normalize( reference.wo );
 	const brdf = json.outputs.brdf;
+	const uv = reference.uv || [ 0.5, 0.5 ];
 
-	const latents = sampleRuntimeLatents( json, reference.uv || [ 0.5, 0.5 ] );
-	const input = buildDecoderInput( latents, brdf.rotation.weights, wi, wo );
+	const latents = sampleRuntimeLatents( json, uv );
+	const positionalEncoding = computePositionalEncoding( json, uv );
+	const input = buildDecoderInput( latents, brdf.rotation.weights, wi, wo, positionalEncoding );
 	const result = {
 		brdf: evaluateDecoderLayers( brdf.layers, input, brdf.outputActivation ),
-		ibl: evaluateIBLHead( json, latents, wo )
+		ibl: evaluateIBLHead( json, latents, wo, positionalEncoding )
 	};
 
 	if ( json.outputs.indirectRadiance || json.outputs.indirectIrradiance ) {
 
-		const indirect = evaluateIndirectHeads( json, latents, wo, reference );
+		const indirect = evaluateIndirectHeads( json, latents, wo, reference, positionalEncoding );
 		result.indirectRadiance = indirect.indirectRadiance;
 		result.indirectIrradiance = indirect.indirectIrradiance;
 		result.indirect = indirect.indirect;
@@ -55,15 +75,15 @@ function evaluateNeuralAppearanceOutputs( json, reference ) {
 
 }
 
-function evaluateIndirectHeads( json, latents, wo, reference ) {
+function evaluateIndirectHeads( json, latents, wo, reference, positionalEncoding = [] ) {
 
 	const incoming = ( reference && ( reference.iblIncoming || reference.prefilteredSpecular ) ) || [ 1, 1, 1 ];
 	const irradiance = ( reference && reference.iblIrradiance ) || [ 1, 1, 1 ];
 	const indirectRadiance = json.outputs.indirectRadiance ?
-		evaluateDecoderLayers( json.outputs.indirectRadiance.layers, buildIndirectProbeInput( latents, wo, incoming ), json.outputs.indirectRadiance.outputActivation ) :
+		evaluateDecoderLayers( json.outputs.indirectRadiance.layers, buildIndirectProbeInput( latents, wo, incoming, positionalEncoding ), json.outputs.indirectRadiance.outputActivation ) :
 		[ 0, 0, 0 ];
 	const indirectIrradiance = json.outputs.indirectIrradiance ?
-		evaluateDecoderLayers( json.outputs.indirectIrradiance.layers, buildIndirectProbeInput( latents, wo, irradiance ), json.outputs.indirectIrradiance.outputActivation ) :
+		evaluateDecoderLayers( json.outputs.indirectIrradiance.layers, buildIndirectProbeInput( latents, wo, irradiance, positionalEncoding ), json.outputs.indirectIrradiance.outputActivation ) :
 		[ 0, 0, 0 ];
 
 	return {
@@ -78,10 +98,10 @@ function evaluateIndirectHeads( json, latents, wo, reference ) {
 
 }
 
-function evaluateIBLHead( json, latents, wo ) {
+function evaluateIBLHead( json, latents, wo, positionalEncoding = [] ) {
 
 	const ibl = json.outputs.ibl;
-	const input = buildIBLInput( latents, json.outputs.brdf.rotation.weights, wo );
+	const input = buildIBLInput( latents, json.outputs.brdf.rotation.weights, wo, positionalEncoding );
 
 	return unpackIBLOutput( evaluateDecoderLayers( ibl.layers, input, { type: 'raw' } ) );
 

@@ -20,7 +20,7 @@ describe( 'Addons', () => {
 				const model = createModel( {
 					levels: 3,
 					baseResolution: 2,
-					targetResolution: 8,
+					growthFactor: 2,
 					hiddenSize: 8,
 					outputFeatures: { emission: true, opacity: true }
 				}, random );
@@ -69,7 +69,7 @@ describe( 'Addons', () => {
 
 				}
 
-				const model = createModel( { levels: 4, baseResolution: 8, targetResolution: 8, hiddenSize: 32 }, createRandom( 1 ) );
+				const model = createModel( { levels: 4, baseResolution: 8, growthFactor: 1, hiddenSize: 32 }, createRandom( 1 ) );
 				const evalRandom = createRandom( 1000 );
 				const channelSums = [ 0, 0, 0 ];
 				let clampedCount = 0;

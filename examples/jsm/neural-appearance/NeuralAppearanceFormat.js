@@ -1,16 +1,30 @@
 const FORMAT = 'three-neural-appearance';
-const VERSION = 7;
+const VERSION = 8;
 
 // Multiresolution latent grid encoding (shared geometry with neural-texture /
-// neural-material - see NeuralGridModel.js): `LEVELS` grids geometrically
-// spaced between `BASE_RESOLUTION` and `TARGET_RESOLUTION`, each contributing
-// `CHANNELS_PER_LEVEL` features that are concatenated (not summed) into the
-// decoder input.
+// neural-material - see NeuralGridModel.js): `LEVELS` grids starting at
+// `BASE_RESOLUTION` and multiplying by `GROWTH_FACTOR` for each additional
+// level, each contributing `CHANNELS_PER_LEVEL` features that are
+// concatenated (not summed) into the decoder input.
 const LEVELS = 4;
 const BASE_RESOLUTION = 16;
-const TARGET_RESOLUTION = 256;
+const GROWTH_FACTOR = 2;
 const CHANNELS_PER_LEVEL = 4;
 const LATENT_CHANNELS = LEVELS * CHANNELS_PER_LEVEL;
+
+// Default tiled positional-encoding octaves (see NeuralGridModel.
+// triangleWaveEncode / the NTC paper's Section 4.3.2) concatenated onto the
+// decoder/IBL/indirect-probe head inputs, after their existing fixed
+// direction-dot values, giving those heads a way to reconstruct detail above
+// the finest latent grid level's Nyquist limit - same technique as
+// neural-texture/neural-material (see NeuralTextureModel.js), just applied
+// to this model's 3 separate input vectors instead of 1. Defaults to 0
+// (disabled, byte-for-byte the pre-existing input sizes/behavior) rather
+// than neural-texture's nonzero default: unlike neural-texture, this model
+// never had a raw-UV input to replace, so enabling this is a new capability
+// opted into via `peOctaves`, not a fix - see NeuralAppearanceModel.js /
+// NeuralAppearanceGPUComputeTSL.js for where it's threaded through.
+const DEFAULT_PE_OCTAVES = 0;
 
 const DECODER_INPUT_SIZE = LATENT_CHANNELS + 12;
 const IBL_INPUT_SIZE = LATENT_CHANNELS + 6;
@@ -24,21 +38,23 @@ const DEFAULT_WRAP = 'repeat';
 /**
  * `LATENT_CHANNELS`/`DECODER_INPUT_SIZE`/`IBL_INPUT_SIZE`/`INDIRECT_INPUT_SIZE`
  * above are only correct for a model actually built with `levels === LEVELS`
- * (the default). `createModel`/`NeuralAppearanceGPUModel`/
- * `createNeuralAppearanceManifest`/the runtime decoder all accept a
- * *configurable* `levels` (see e.g. webgpu_materials_neural_appearance.html's
- * "grid levels" GUI control, which offers 2/3/4/5/6/8) - for any of those,
- * the model's real latent vector is `levels * CHANNELS_PER_LEVEL` wide, not
- * the fixed `LATENT_CHANNELS` above. Every one of those consumers must derive
- * its channel/input-size math from these functions (given the model's own
- * `levels`), not from the bare constants, or it silently builds/reads a
- * decoder sized for the wrong input width - which doesn't throw, it just
- * makes every prediction `NaN` (out-of-bounds reads in a plain JS array
- * return `undefined`, and `weight * undefined` is `NaN`, which then
- * propagates through every downstream layer). That was a real, previously
- * undiscovered bug in this exact shape - see NeuralAppearanceModel.
- * levels-bug.test.js in test/vitest/ for the full writeup and a regression
- * test (now fixed).
+ * and `peOctaves === DEFAULT_PE_OCTAVES` (0) - the defaults. `createModel`/
+ * `NeuralAppearanceGPUModel`/`createNeuralAppearanceManifest`/the runtime
+ * decoder all accept a *configurable* `levels` (see e.g.
+ * webgpu_materials_neural_appearance.html's "grid levels" GUI control, which
+ * offers 2/3/4/5/6/8) and `peOctaves` - for any of those, the model's real
+ * input widths are `levels * CHANNELS_PER_LEVEL` (+ `peOctaves * 2` on the
+ * decoder/IBL/indirect heads) wide, not the fixed constants above. Every one
+ * of those consumers must derive its channel/input-size math from these
+ * functions (given the model's own `levels`/`peOctaves`), not from the bare
+ * constants, or it silently builds/reads a decoder sized for the wrong input
+ * width - which doesn't throw, it just makes every prediction `NaN`
+ * (out-of-bounds reads in a plain JS array return `undefined`, and `weight *
+ * undefined` is `NaN`, which then propagates through every downstream
+ * layer). That was a real, previously undiscovered bug in this exact shape
+ * for `levels` - see NeuralAppearanceModel.levels-bug.test.js in
+ * test/vitest/ for the full writeup and a regression test (now fixed) - the
+ * same care applies to `peOctaves`.
  */
 function computeLatentChannels( levels = LEVELS ) {
 
@@ -46,21 +62,21 @@ function computeLatentChannels( levels = LEVELS ) {
 
 }
 
-function computeDecoderInputSize( levels = LEVELS ) {
+function computeDecoderInputSize( levels = LEVELS, peOctaves = DEFAULT_PE_OCTAVES ) {
 
-	return computeLatentChannels( levels ) + 12;
-
-}
-
-function computeIblInputSize( levels = LEVELS ) {
-
-	return computeLatentChannels( levels ) + 6;
+	return computeLatentChannels( levels ) + 12 + peOctaves * 2;
 
 }
 
-function computeIndirectInputSize( levels = LEVELS ) {
+function computeIblInputSize( levels = LEVELS, peOctaves = DEFAULT_PE_OCTAVES ) {
 
-	return computeLatentChannels( levels ) + 3 + 3;
+	return computeLatentChannels( levels ) + 6 + peOctaves * 2;
+
+}
+
+function computeIndirectInputSize( levels = LEVELS, peOctaves = DEFAULT_PE_OCTAVES ) {
+
+	return computeLatentChannels( levels ) + 3 + 3 + peOctaves * 2;
 
 }
 
@@ -68,7 +84,7 @@ function computeIndirectInputSize( levels = LEVELS ) {
  * Single source of truth for the model-shape options `createModel` (CPU
  * authoring) and `computeModelLayout` (GPU buffer layout) each otherwise
  * re-derive independently - `hiddenSize`, its `iblHiddenSize` clamp,
- * `baseResolution`/`targetResolution`, `levels`, and which auxiliary heads
+ * `baseResolution`/`growthFactor`, `levels`, and which auxiliary heads
  * are enabled. Resolving these once here means the CPU model and its GPU
  * layout can't silently disagree on a default (which previously happened:
  * `computeModelLayout` defaulted `hiddenSize` to 32 when omitted, while
@@ -84,7 +100,8 @@ function resolveNeuralAppearanceModelOptions( options = {} ) {
 		hiddenSize,
 		iblHiddenSize: options.iblHiddenSize || Math.min( Math.max( hiddenSize, 16 ), 32 ),
 		baseResolution: options.baseResolution || BASE_RESOLUTION,
-		targetResolution: options.targetResolution || TARGET_RESOLUTION,
+		growthFactor: options.growthFactor || GROWTH_FACTOR,
+		peOctaves: options.peOctaves !== undefined ? options.peOctaves : DEFAULT_PE_OCTAVES,
 		supportsEmission: Boolean( options.outputFeatures && options.outputFeatures.emission ),
 		supportsOpacity: Boolean( options.outputFeatures && options.outputFeatures.opacity )
 	};
@@ -113,8 +130,9 @@ export {
 	FORMAT,
 	VERSION,
 	LEVELS,
+	DEFAULT_PE_OCTAVES,
 	BASE_RESOLUTION,
-	TARGET_RESOLUTION,
+	GROWTH_FACTOR,
 	CHANNELS_PER_LEVEL,
 	LATENT_CHANNELS,
 	DECODER_INPUT_SIZE,

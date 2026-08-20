@@ -190,9 +190,9 @@ const configs = {
 	'single hidden layer': { hiddenSizes: [ 16 ] },
 	'deep MLP, 3 hidden layers': { hiddenSizes: [ 24, 24, 24 ] },
 	'material-style 9-channel output, extra PE octaves': { outputChannels: 9, peOctaves: 5, hiddenSizes: [ 48, 48 ] },
-	'single grid level': { levels: 1, baseResolution: 8, targetResolution: 8 },
+	'single grid level': { levels: 1, baseResolution: 8, growthFactor: 2 },
 	'channels = 2': { channels: 2 },
-	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, targetResolution: 2, channels: 1, outputChannels: 1, peOctaves: 0 }
+	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, growthFactor: 2, channels: 1, outputChannels: 1, peOctaves: 0 }
 };
 
 describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout)', () => {
@@ -201,8 +201,8 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 
 		it( 'two-level grid, 1 PE octave, one hidden layer, 2-channel output', () => {
 
-			// channels=2, levels=2, baseResolution=2, targetResolution=4 -> growth
-			// factor 2 -> resolutions [2, 4]. hiddenSizes=[3], outputChannels=2,
+			// channels=2, levels=2, baseResolution=2, growthFactor=2 ->
+			// resolutions [2, 4]. hiddenSizes=[3], outputChannels=2,
 			// peOctaves=1 (2 PE values - same total as the old raw-uv skip
 			// connection, so the rest of this hand-traced layout is unchanged).
 			// Hand-traced:
@@ -217,7 +217,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			//   not output) -> z1(output) [12,14) -> delta0 [14,17) -> delta1 [17,19)
 			//   -> gradA0 [19,25) -> activationStride 25
 			const layout = computeTextureModelLayout( {
-				channels: 2, levels: 2, baseResolution: 2, targetResolution: 4,
+				channels: 2, levels: 2, baseResolution: 2, growthFactor: 2,
 				hiddenSizes: [ 3 ], outputChannels: 2, peOctaves: 1
 			} );
 
@@ -248,7 +248,8 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 
 		it( 'minimal degenerate config: single 1x1 texel level, no hidden layers, 1-channel everything', () => {
 
-			// channels=1, levels=1, baseResolution=1, targetResolution=1,
+			// channels=1, levels=1, baseResolution=1, growthFactor=2 (irrelevant
+			// with levels=1 - resolves to just [baseResolution]),
 			// hiddenSizes=[], outputChannels=1, peOctaves=0. Hand-traced:
 			//   single 1x1 grid level -> 1 float @ offset 0 -> totalLatents 1
 			//   peInputOffset = 1*1 = 1; inputSize = 1 (no PE)
@@ -257,7 +258,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			//   activation buffer: a0 [0,1) -> z0(output, no a-slot) [1,2) ->
 			//   delta0 [2,3) -> gradA0 [3,4) -> activationStride 4
 			const layout = computeTextureModelLayout( {
-				channels: 1, levels: 1, baseResolution: 1, targetResolution: 1,
+				channels: 1, levels: 1, baseResolution: 1, growthFactor: 2,
 				hiddenSizes: [], outputChannels: 1, peOctaves: 0
 			} );
 
@@ -391,7 +392,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 
 		it( 'initFromCPUModel/syncToCPU round-trip through the real WebGPU device, placing each MLP layer and grid level at the layout offsets the kernels read/write', async () => {
 
-			const model = new NeuralTextureGPUModel( { batchSize: 16, hiddenSizes: [ 8 ], levels: 2, baseResolution: 4, targetResolution: 8 } );
+			const model = new NeuralTextureGPUModel( { batchSize: 16, hiddenSizes: [ 8 ], levels: 2, baseResolution: 4, growthFactor: 2 } );
 
 			// A tiny stand-in CPU model with recognizable, distinct weight/bias/
 			// grid values per layer/level so a mislaid offset would show up as a

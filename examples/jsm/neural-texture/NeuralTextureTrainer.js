@@ -13,7 +13,7 @@ const DEFAULT_OPTIONS = {
 	channels: 4,
 	levels: 4,
 	baseResolution: 16,
-	targetResolution: 256,
+	growthFactor: 2,
 	hiddenSizes: [ 32, 32 ],
 	outputChannels: 3,
 	// NTC-style tiled positional-encoding octaves fed into the MLP alongside

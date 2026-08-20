@@ -23,7 +23,7 @@ function resolveNeuralTextureOptions( options = {} ) {
 		channels: options.channels || 4,
 		levels: options.levels || 4,
 		baseResolution: options.baseResolution || 16,
-		targetResolution: options.targetResolution || 256,
+		growthFactor: options.growthFactor || 2,
 		hiddenSizes: options.hiddenSizes || [ 32, 32 ],
 		outputChannels: options.outputChannels || 3,
 		// Number of NTC-style tiled triangle-wave positional-encoding octaves
@@ -43,9 +43,16 @@ function resolveNeuralTextureOptions( options = {} ) {
  */
 function createNeuralTextureModel( options, random ) {
 
-	const { channels, levels, baseResolution, targetResolution, hiddenSizes, outputChannels, peOctaves } = resolveNeuralTextureOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels, peOctaves } = resolveNeuralTextureOptions( options );
 
-	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
+	// `computeGridLevels` may return fewer levels than requested when a
+	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
+	// NeuralGridModel.js) - `levels` below is reassigned to the actual grid
+	// count so `inputSize` (and the returned `levels` field, which
+	// `NeuralTextureGPUModel`'s layout must match) reflect what was really
+	// built, not what was requested.
+	const resolutions = computeGridLevels( baseResolution, growthFactor, requestedLevels );
+	const levels = resolutions.length;
 	const grids = resolutions.map( ( resolution ) => createLatentGrid( resolution, resolution, channels, random ) );
 
 	// Append `peOctaves` octaves of NTC-style tiled positional encoding (2

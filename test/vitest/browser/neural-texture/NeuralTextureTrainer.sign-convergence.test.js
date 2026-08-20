@@ -104,7 +104,7 @@ describe( 'Addons > Neural > NeuralTexture > NeuralTextureTrainer sign convergen
 			channels: 4,
 			levels: 3,
 			baseResolution: 8,
-			targetResolution: resolution,
+			growthFactor: 2,
 			hiddenSizes: [ 16, 16 ],
 			outputChannels: 5,
 			channelActivations: [ 'sigmoid', 'sigmoid', 'sigmoid', 'tanh', 'tanh' ],

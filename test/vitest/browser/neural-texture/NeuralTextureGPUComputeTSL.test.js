@@ -77,7 +77,7 @@ function createTinyGPUModel() {
 		channels: 1,
 		levels: 1,
 		baseResolution: 2,
-		targetResolution: 2,
+		growthFactor: 2,
 		hiddenSizes: [],
 		outputChannels: 1,
 		peOctaves: 0,

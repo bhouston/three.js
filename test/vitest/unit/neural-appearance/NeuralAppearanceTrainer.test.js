@@ -102,20 +102,24 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceTrainer (orchest
 
 		} );
 
-		it( 'rejects when targetResolution is less than baseResolution', async () => {
+		it.each( [ 0, 0.5, -3, NaN ] )( 'rejects when growthFactor is less than 1 (growthFactor=%p)', async ( growthFactor ) => {
 
-			const trainer = new NeuralAppearanceTrainer( { baseResolution: 16, targetResolution: 8 } );
+			const trainer = new NeuralAppearanceTrainer( { baseResolution: 16, growthFactor } );
 			await expect( trainer.train( {} ) ).rejects.toThrow(
-				'THREE.NeuralAppearanceTrainer: targetResolution must be an integer at least baseResolution.'
+				'THREE.NeuralAppearanceTrainer: growthFactor must be a finite number of at least 1.'
 			);
 
 		} );
 
-		it( 'rejects when targetResolution is not an integer, even if numerically >= baseResolution', async () => {
+		it( 'accepts a non-integer growthFactor of at least 1', async () => {
 
-			const trainer = new NeuralAppearanceTrainer( { baseResolution: 8, targetResolution: 8.5 } );
+			const trainer = new NeuralAppearanceTrainer( { baseResolution: 8, growthFactor: 1.5 } );
+			// growthFactor validation should pass for this value, so train()
+			// should get past validateTrainingSettings and fail for the next
+			// reason instead (no WebGPU renderer provided), not a growthFactor
+			// complaint.
 			await expect( trainer.train( {} ) ).rejects.toThrow(
-				'THREE.NeuralAppearanceTrainer: targetResolution must be an integer at least baseResolution.'
+				'THREE.NeuralAppearanceTrainer: WebGPU renderer is required for neural appearance training.'
 			);
 
 		} );

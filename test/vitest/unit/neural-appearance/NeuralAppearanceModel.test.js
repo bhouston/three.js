@@ -356,7 +356,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceModel', () => {
 
 	describe( 'createModel', () => {
 
-		const baseOptions = { hiddenSize: 8, baseResolution: 2, targetResolution: 4 };
+		const baseOptions = { hiddenSize: 8, baseResolution: 2, growthFactor: 2 };
 
 		it( 'builds every head and a zero-initialized rotationWeights array', () => {
 
@@ -375,7 +375,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceModel', () => {
 		it( 'sizes resolutions/latentGrids from computeGridLevels', () => {
 
 			const model = createModel( baseOptions, () => 0.5 );
-			const expectedResolutions = computeGridLevels( baseOptions.baseResolution, baseOptions.targetResolution, model.levels );
+			const expectedResolutions = computeGridLevels( baseOptions.baseResolution, baseOptions.growthFactor, model.levels );
 
 			expect( model.resolutions ).toEqual( expectedResolutions );
 			expect( model.latentGrids.length ).toBe( expectedResolutions.length );

@@ -110,7 +110,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureNodeMaterial (real We
 	it( 'matches NeuralTextureModel.js\'s CPU forward pass at every latent-grid texel (single level, no positional encoding)', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 4, levels: 1, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3, peOctaves: 0 };
+		const options = { channels: 4, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3, peOctaves: 0 };
 		const cpuModel = createNeuralTextureModel( options, makeRandom( 1.7 ) );
 
 		const material = new NeuralTextureNodeMaterial( cpuModel );
@@ -142,7 +142,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureNodeMaterial (real We
 	it( 'matches the CPU forward pass when the model was trained with tiled positional encoding', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 2, levels: 1, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 3 ], outputChannels: 3, peOctaves: 2 };
+		const options = { channels: 2, levels: 1, baseResolution: gridSize, hiddenSizes: [ 3 ], outputChannels: 3, peOctaves: 2 };
 		const cpuModel = createNeuralTextureModel( options, makeRandom( 2.3 ) );
 
 		expect( cpuModel.decoder.layers[ 0 ].inputSize ).toBe( options.channels + 2 * options.peOctaves );
@@ -176,11 +176,10 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureNodeMaterial (real We
 	it( 'concatenates multiple grid levels in the same order as the CPU model (levels * channels input)', async () => {
 
 		const gridSize = 32;
-		// baseResolution === targetResolution forces every level to the same
-		// resolution (computeGridLevels' growth factor collapses to 1), which
+		// growthFactor: 1 forces every level to the same resolution, which
 		// keeps texel-center addressing identical for both levels while still
 		// exercising real multi-level concatenation order.
-		const options = { channels: 2, levels: 2, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3, peOctaves: 0 };
+		const options = { channels: 2, levels: 2, baseResolution: gridSize, growthFactor: 1, hiddenSizes: [ 4 ], outputChannels: 3, peOctaves: 0 };
 		const cpuModel = createNeuralTextureModel( options, makeRandom( 0.9 ) );
 
 		expect( cpuModel.grids.length ).toBe( 2 );
@@ -217,7 +216,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureNodeMaterial (real We
 	it( 'evaluateNeuralTextureRaw\'s 4th output channel matches the CPU forward pass (not just the first 3, as the vec3 wrapper would give)', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 3, levels: 1, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 4 };
+		const options = { channels: 3, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 4 };
 		const cpuModel = createNeuralTextureModel( options, makeRandom( 3.1 ) );
 
 		const levelTextures = buildLevelTextures( cpuModel );
@@ -253,7 +252,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureNodeMaterial (real We
 	it( 'the diff mode output matches abs(predicted - source) * errorScale against the CPU reference', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 4, levels: 1, baseResolution: gridSize, targetResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3 };
+		const options = { channels: 4, levels: 1, baseResolution: gridSize, growthFactor: 2, hiddenSizes: [ 4 ], outputChannels: 3 };
 		const cpuModel = createNeuralTextureModel( options, makeRandom( 4.4 ) );
 
 		// A known, deterministic "source" texture to diff against - solid
@@ -310,7 +309,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureNodeMaterial (real We
 
 	it( 'dispose() disposes exactly one texture per grid level', () => {
 
-		const options = { channels: 4, levels: 3, baseResolution: 4, targetResolution: 16, hiddenSizes: [ 4 ], outputChannels: 3 };
+		const options = { channels: 4, levels: 3, baseResolution: 4, growthFactor: 2, hiddenSizes: [ 4 ], outputChannels: 3 };
 		const cpuModel = createNeuralTextureModel( options, makeRandom( 5.5 ) );
 
 		const material = new NeuralTextureNodeMaterial( cpuModel );

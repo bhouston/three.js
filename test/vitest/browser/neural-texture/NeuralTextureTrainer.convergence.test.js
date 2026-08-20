@@ -78,7 +78,7 @@ describe( 'Addons > Neural > NeuralTexture > NeuralTextureTrainer convergence ra
 			channels: 4,
 			levels: 3,
 			baseResolution: 8,
-			targetResolution: 32,
+			growthFactor: 2,
 			hiddenSizes: [ 16, 16 ],
 			outputChannels: 3,
 			batchSize: 2048,

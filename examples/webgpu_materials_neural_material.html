@@ -169,6 +169,7 @@
 			import { NeuralMaterialNodeMaterial } from 'three/addons/neural-material/NeuralMaterialNodeMaterial.js';
 			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/neural-material/NeuralMaterialSource.js';
 			import { computeGridLevels } from 'three/addons/neural-texture/NeuralTextureModel.js';
+			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
 			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, getChannel, buildChannelActivations } from 'three/addons/neural-material/NeuralMaterialFormat.js';
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
 			import { computeMLPParamCount, computeGridLatentTexels, formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
@@ -199,7 +200,7 @@
 				bakeResolution: 1024,
 				levels: 4,
 				baseResolution: 16,
-				targetResolution: 64,
+				growthFactor: 2,
 				hiddenSize: 16,
 				batchSize: 8192,
 				iterations: 750,
@@ -318,10 +319,10 @@
 				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024, 2048, 4096 ] ).name( 'bake resolution' );
 
 				const networkFolder = gui.addFolder( 'network (grid + MLP)' );
-				networkFolder.add( params, 'levels', [ 2, 3, 4, 5, 6, 8 ] ).name( 'grid levels' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'baseResolution', [ 8, 16, 32 ] ).name( 'grid base res' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'targetResolution', [ 64, 128, 256, 512 ] ).name( 'grid target res' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'hiddenSize', [ 16, 32, 64, 128 ] ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'levels', GRID_LEVELS_OPTIONS ).name( 'grid levels' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'grid base res' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'growthFactor', GRID_GROWTH_FACTOR_OPTIONS ).name( 'grid growth factor' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
 
 				const trainingFolder = gui.addFolder( 'training' );
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
@@ -453,8 +454,13 @@
 				// what the sliders would currently produce.
 				const resolutions = currentCpuModel ?
 					currentCpuModel.resolutions :
-					computeGridLevels( Number( params.baseResolution ), Number( params.targetResolution ), Number( params.levels ) );
-				const levels = currentCpuModel ? currentCpuModel.levels : Number( params.levels );
+					computeGridLevels( Number( params.baseResolution ), Number( params.growthFactor ), Number( params.levels ) );
+				// `computeGridLevels` may return fewer levels than requested when a
+				// level's resolution would exceed MAX_GRID_RESOLUTION (see
+				// NeuralGridModel.js) - use the actual grid's level count
+				// (`resolutions.length`), not the raw GUI setting, so `inputSize`
+				// below matches what the real model would build.
+				const levels = currentCpuModel ? currentCpuModel.levels : resolutions.length;
 				const hidden = currentCpuModel ? currentCpuModel.hiddenSizes[ 0 ] : Number( params.hiddenSize );
 
 				const latentTexels = computeGridLatentTexels( resolutions );
@@ -773,7 +779,7 @@
 						channels: 4,
 						levels: Number( params.levels ),
 						baseResolution: Number( params.baseResolution ),
-						targetResolution: Number( params.targetResolution ),
+						growthFactor: Number( params.growthFactor ),
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
 						outputChannels: channelClassification.totalChannels,
 						channelActivations: buildChannelActivations( channelClassification.activeChannels ),

@@ -1,19 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { NeuralAppearanceNodeMaterial } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceNodeMaterial.js';
 
-// Documents a real, separate limitation surfaced while fixing the "grid
-// levels" training bug (see NeuralAppearanceModel.levels-bug.test.js):
-// NeuralAppearanceTSL.js's shader graph is written directly against exactly
-// 4 named latent-texel inputs (LEVEL_NAMES) for TSL graph-shape reasons, not
-// a variable-length loop over however many grid levels a model actually has.
-// Training/export now correctly supports any `levels` count, but *rendering*
-// still doesn't - NeuralAppearanceLoader.parse() already throws a clear
-// error for a manifest with `latents.levels.length !== 4` (see
-// NeuralAppearanceLoader.js's own validateManifest check), so this is the
-// second layer of the same guard for anyone constructing
-// `neuralAppearanceData` directly (bypassing the loader) instead of failing
-// silently deep inside the shader graph.
-describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceNodeMaterial (grid-level-count guard)', () => {
+// NeuralAppearanceTSL.js's shader graph used to be written directly against
+// exactly 4 named latent-texel inputs (LEVEL_NAMES), so this constructor
+// rejected any other level count. It now generates that many named
+// `latent0..latentN-1` inputs from the model's own `levels` at construction
+// time (see NeuralAppearanceTSL.js's levelNames/createEvaluateNeuralBRDFFn),
+// so training/export/NeuralAppearanceLoader/rendering all correctly support
+// any `levels` count - see NeuralAppearanceTSL.test.js's variable-level-count
+// coverage for the shader-graph side of that. All that's left here is a
+// basic non-empty-array shape check for anyone constructing
+// `neuralAppearanceData` directly (bypassing the loader).
+describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceNodeMaterial (latentTextures shape guard)', () => {
 
 	function buildFakeData( latentTextureCount ) {
 
@@ -29,11 +27,9 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceNodeMaterial (gr
 
 	}
 
-	it( 'throws a clear error when latentTextures.length is not exactly 4', () => {
+	it( 'throws a clear error when latentTextures is empty', () => {
 
-		expect( () => new NeuralAppearanceNodeMaterial( buildFakeData( 2 ) ) ).toThrow( /latent grid level/i );
-		expect( () => new NeuralAppearanceNodeMaterial( buildFakeData( 8 ) ) ).toThrow( /latent grid level/i );
-		expect( () => new NeuralAppearanceNodeMaterial( buildFakeData( 0 ) ) ).toThrow( /latent grid level/i );
+		expect( () => new NeuralAppearanceNodeMaterial( buildFakeData( 0 ) ) ).toThrow( /latentTextures must be a non-empty array/ );
 
 	} );
 

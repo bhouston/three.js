@@ -16,7 +16,7 @@ describe( 'Addons', () => {
 
 			test( 'estimates multiresolution grid memory', () => {
 
-				const memory = estimateTrainingMemory( 3, 2, 8 );
+				const memory = estimateTrainingMemory( 3, 2, 2 );
 
 				expect( memory.levels ).toBe( 3 );
 				expect( memory.resolutions ).toEqual( [ 2, 4, 8 ] );
@@ -54,7 +54,7 @@ describe( 'Addons', () => {
 					backend: 'cpu',
 					levels: 2,
 					baseResolution: 2,
-					targetResolution: 4,
+					growthFactor: 2,
 					iterations: 1,
 					batchSize: 4,
 					hiddenSize: 4,
@@ -65,7 +65,7 @@ describe( 'Addons', () => {
 					backend: 'gpu',
 					levels: 2,
 					baseResolution: 2,
-					targetResolution: 4,
+					growthFactor: 2,
 					iterations: 1,
 					batchSize: 4,
 					hiddenSize: 4

@@ -57,7 +57,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceModel (fixed: no
 		expect( LATENT_CHANNELS ).toBe( LEVELS * CHANNELS_PER_LEVEL );
 
 		const random = () => 0.3;
-		const model = createModel( { levels: 2, baseResolution: 2, targetResolution: 4, hiddenSize: 4, outputFeatures: {} }, random );
+		const model = createModel( { levels: 2, baseResolution: 2, growthFactor: 2, hiddenSize: 4, outputFeatures: {} }, random );
 		const actualLatentChannels = model.latentGrids.reduce( ( sum, grid ) => sum + grid.channels, 0 );
 
 		expect( model.levels ).toBe( 2 );
@@ -74,7 +74,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceModel (fixed: no
 	it.each( [ 2, 3, 4, 5, 6, 8 ] )( 'a model built with levels=%i produces finite decoder/IBL/indirect predictions', ( levels ) => {
 
 		const random = () => 0.3;
-		const model = createModel( { levels, baseResolution: 2, targetResolution: 4, hiddenSize: 4, outputFeatures: {} }, random );
+		const model = createModel( { levels, baseResolution: 2, growthFactor: 2, hiddenSize: 4, outputFeatures: {} }, random );
 
 		const latents = new Array( levels * CHANNELS_PER_LEVEL ).fill( 0 ).map( ( _v, i ) => ( i + 1 ) / 10 );
 		const wi = [ 0, 0, 1 ], wo = [ 0.1, 0.2, 0.97 ];
@@ -108,7 +108,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceModel (fixed: no
 		const model = createModel( {
 			levels,
 			baseResolution: 4,
-			targetResolution: 8,
+			growthFactor: 2,
 			hiddenSize: 8,
 			outputFeatures: { emission: true, opacity: true }
 		}, random );

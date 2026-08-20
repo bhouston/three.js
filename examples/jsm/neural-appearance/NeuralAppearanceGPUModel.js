@@ -53,11 +53,28 @@ function computeModelLayout( options = {} ) {
 	// comment: this is the single source of truth for these defaults,
 	// shared with createModel (CPU authoring) so the two can't silently
 	// disagree.
-	const { levels, hiddenSize, iblHiddenSize, baseResolution, targetResolution, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
+	const { levels: requestedLevels, hiddenSize, iblHiddenSize, baseResolution, growthFactor, peOctaves, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
+
+	// `computeGridLevels` may return fewer levels than requested when a
+	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
+	// NeuralGridModel.js) - computed up front here (rather than down where
+	// the grid layout itself is built, below) so every input-size/channel-
+	// count derivation uses the actual level count, matching `createModel`'s
+	// CPU-side layout exactly.
+	const resolutions = computeGridLevels( baseResolution, growthFactor, requestedLevels );
+	const levels = resolutions.length;
 	const latentChannels = computeLatentChannels( levels );
-	const decoderInputSize = computeDecoderInputSize( levels );
-	const iblInputSize = computeIblInputSize( levels );
-	const indirectInputSize = computeIndirectInputSize( levels );
+	const decoderInputSize = computeDecoderInputSize( levels, peOctaves );
+	const iblInputSize = computeIblInputSize( levels, peOctaves );
+	const indirectInputSize = computeIndirectInputSize( levels, peOctaves );
+	// Offset of the peOctaves*2 tiled-PE block within each of the 3 input
+	// vectors above - always immediately after that vector's fixed portion
+	// (12 frame dots for the decoder, 6 direction dots for IBL/indirect - see
+	// NeuralAppearanceGPUComputeTSL.js's forward pass for where these get
+	// written/copied).
+	const decoderPeOffset = decoderInputSize - peOctaves * 2;
+	const iblPeOffset = iblInputSize - peOctaves * 2;
+	const indirectPeOffset = indirectInputSize - peOctaves * 2;
 
 	// Weights Layout:
 	// 0..(latentChannels*12-1): rotation weights (latentChannels channels * 12 outputs)
@@ -137,14 +154,12 @@ function computeModelLayout( options = {} ) {
 
 	// Multiresolution Latent Grid Layout (instant-ngp / NVIDIA NTC style - same
 	// geometry as neural-texture / neural-material, see NeuralGridModel.js):
-	// `levels` grids geometrically spaced between `baseResolution` and
-	// `targetResolution`, each contributing `CHANNELS_PER_LEVEL` features that
-	// get concatenated (not summed) into the decoder input. (`levels`/
-	// `baseResolution`/`targetResolution` were already resolved above,
+	// `levels` grids starting at `baseResolution` and multiplying by
+	// `growthFactor` for each additional level, each contributing
+	// `CHANNELS_PER_LEVEL` features that get concatenated (not summed) into
+	// the decoder input. (`resolutions`/`levels` were already resolved above,
 	// alongside latentChannels/decoderInputSize/iblInputSize/
-	// indirectInputSize.)
-	const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
-
+	// indirectInputSize, so they can't disagree.)
 	const gridLevels = [];
 	let latentOffset = 0;
 
@@ -276,9 +291,13 @@ function computeModelLayout( options = {} ) {
 		opacityBiasesCount,
 		levels,
 		latentChannels,
+		peOctaves,
 		decoderInputSize,
 		iblInputSize,
 		indirectInputSize,
+		decoderPeOffset,
+		iblPeOffset,
+		indirectPeOffset,
 		gridLevels,
 		totalLatents,
 		activationStride,

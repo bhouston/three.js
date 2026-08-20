@@ -7,13 +7,13 @@ import {
 import {
 	FORMAT,
 	VERSION,
-	LATENT_CHANNELS,
 	CHANNELS_PER_LEVEL,
-	DECODER_INPUT_SIZE as BRDF_INPUT_SIZE,
-	IBL_INPUT_SIZE,
 	IBL_OUTPUT_SIZE,
-	INDIRECT_INPUT_SIZE,
-	INDIRECT_OUTPUT_SIZE
+	INDIRECT_OUTPUT_SIZE,
+	computeLatentChannels,
+	computeDecoderInputSize,
+	computeIblInputSize,
+	computeIndirectInputSize
 } from '../neural-appearance/NeuralAppearanceFormat.js';
 import { createHalfFloatLatentTexture } from '../neural/NeuralHalfFloatTexture.js';
 
@@ -101,13 +101,22 @@ class NeuralAppearanceLoader extends Loader {
 
 		const levelTextures = manifest.latents.levels.map( ( level, index ) => createLevelTexture( level, `latents.levels[${ index }]`, manifest.latents.wrap ) );
 
+		// Expected head input sizes are derived from *this manifest's own*
+		// level count and peOctaves (mirroring how NeuralAppearanceManifest.js
+		// wrote them), not NeuralAppearanceFormat's fixed LATENT_CHANNELS/etc.
+		// defaults - otherwise any model trained with a non-default number of
+		// grid levels would fail to load even though its heads are perfectly
+		// consistent with its own grid.
+		const levels = levelTextures.length;
+		const peOctaves = Number.isInteger( manifest.peOctaves ) ? manifest.peOctaves : 0;
+
 		return {
 			isNeuralAppearanceData: true,
 			name: manifest.name || '',
 			latentTextures: levelTextures,
-			levels: levelTextures.length,
+			levels,
 			wrap: manifest.latents.wrap || 'repeat',
-			outputs: normalizeOutputs( manifest.outputs ),
+			outputs: normalizeOutputs( manifest.outputs, levels, peOctaves ),
 			referenceEvaluations: manifest.referenceEvaluations || []
 		};
 
@@ -136,7 +145,7 @@ function createLevelTexture( level, path, wrap ) {
 
 }
 
-function normalizeOutputs( outputs ) {
+function normalizeOutputs( outputs, levels, peOctaves ) {
 
 	if ( ! outputs || ! outputs.ibl || ! outputs.indirectRadiance || ! outputs.indirectIrradiance ) {
 
@@ -144,20 +153,25 @@ function normalizeOutputs( outputs ) {
 
 	}
 
+	const latentChannels = computeLatentChannels( levels );
+	const decoderInputSize = computeDecoderInputSize( levels, peOctaves );
+	const iblInputSize = computeIblInputSize( levels, peOctaves );
+	const indirectInputSize = computeIndirectInputSize( levels, peOctaves );
+
 	return {
-		brdf: normalizeOutputHead( outputs.brdf, 'outputs.brdf', BRDF_INPUT_SIZE, 3, true ),
-		ibl: normalizeOutputHead( outputs.ibl, 'outputs.ibl', IBL_INPUT_SIZE, IBL_OUTPUT_SIZE, false ),
-		indirectRadiance: normalizeOutputHead( outputs.indirectRadiance, 'outputs.indirectRadiance', INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE, false ),
-		indirectIrradiance: normalizeOutputHead( outputs.indirectIrradiance, 'outputs.indirectIrradiance', INDIRECT_INPUT_SIZE, INDIRECT_OUTPUT_SIZE, false ),
-		emission: outputs.emission ? normalizeOutputHead( outputs.emission, 'outputs.emission', LATENT_CHANNELS, 3, false ) : null,
-		opacity: outputs.opacity ? normalizeOpacityHead( outputs.opacity ) : null
+		brdf: normalizeOutputHead( outputs.brdf, 'outputs.brdf', decoderInputSize, 3, true, latentChannels ),
+		ibl: normalizeOutputHead( outputs.ibl, 'outputs.ibl', iblInputSize, IBL_OUTPUT_SIZE, false, latentChannels ),
+		indirectRadiance: normalizeOutputHead( outputs.indirectRadiance, 'outputs.indirectRadiance', indirectInputSize, INDIRECT_OUTPUT_SIZE, false, latentChannels ),
+		indirectIrradiance: normalizeOutputHead( outputs.indirectIrradiance, 'outputs.indirectIrradiance', indirectInputSize, INDIRECT_OUTPUT_SIZE, false, latentChannels ),
+		emission: outputs.emission ? normalizeOutputHead( outputs.emission, 'outputs.emission', latentChannels, 3, false, latentChannels ) : null,
+		opacity: outputs.opacity ? normalizeOpacityHead( outputs.opacity, latentChannels ) : null
 	};
 
 }
 
-function normalizeOpacityHead( head ) {
+function normalizeOpacityHead( head, latentChannels ) {
 
-	const opacity = normalizeOutputHead( head, 'outputs.opacity', LATENT_CHANNELS, 1, false );
+	const opacity = normalizeOutputHead( head, 'outputs.opacity', latentChannels, 1, false, latentChannels );
 	const mode = head.mode !== undefined ? head.mode : 'mask';
 
 	if ( mode !== 'mask' && mode !== 'blend' ) {
@@ -180,7 +194,7 @@ function normalizeOpacityHead( head ) {
 
 }
 
-function normalizeOutputHead( head, path, expectedInputSize, expectedOutputSize, needsRotation ) {
+function normalizeOutputHead( head, path, expectedInputSize, expectedOutputSize, needsRotation, latentChannels ) {
 
 	if ( ! head || ! Array.isArray( head.layers ) || head.layers.length === 0 ) {
 
@@ -194,7 +208,7 @@ function normalizeOutputHead( head, path, expectedInputSize, expectedOutputSize,
 
 	if ( rotation !== null ) {
 
-		assertInteger( rotation.inputSize, `${ path }.rotation.inputSize`, LATENT_CHANNELS, LATENT_CHANNELS );
+		assertInteger( rotation.inputSize, `${ path }.rotation.inputSize`, latentChannels, latentChannels );
 		assertInteger( rotation.outputSize, `${ path }.rotation.outputSize`, 12, 12 );
 		rotation.weights = validateArray( rotation.weights, `${ path }.rotation.weights`, rotation.inputSize * rotation.outputSize );
 
@@ -298,11 +312,14 @@ function validateManifest( manifest ) {
 
 	}
 
-	if ( manifest.latents.levels.length * CHANNELS_PER_LEVEL !== LATENT_CHANNELS ) {
-
-		throw new Error( `THREE.NeuralAppearanceLoader: latents.levels must contain ${ LATENT_CHANNELS / CHANNELS_PER_LEVEL } levels of ${ CHANNELS_PER_LEVEL } channels each.` );
-
-	}
+	// `latents.levels.length` is *not* checked against a fixed level count
+	// here - models can be trained with any number of grid levels (see
+	// NeuralAppearanceTrainer/computeGridLevels), and NeuralAppearanceFormat's
+	// LATENT_CHANNELS/etc. constants are only defaults for the *default*
+	// level count, not a hard requirement (see that file's own doc comment on
+	// computeLatentChannels). The output heads' declared inputSize below is
+	// instead cross-checked against sizes derived from *this* manifest's own
+	// level count and peOctaves, in `parse()`.
 
 	for ( let levelIndex = 0; levelIndex < manifest.latents.levels.length; levelIndex ++ ) {
 

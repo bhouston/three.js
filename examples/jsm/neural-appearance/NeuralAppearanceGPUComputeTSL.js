@@ -24,6 +24,7 @@ import {
 } from '../neural/NeuralGPUTrainingConstants.js';
 import {
 	wrapIndexTSL,
+	triangleWaveEncodeTSL,
 	forwardDenseLayerTSL,
 	accumulateDenseLayerGradTSL,
 	backwardDenseLayerReLUTSL,
@@ -155,7 +156,10 @@ function trainIndirectProbeHead( {
 	actIndirectDelta1Offset,
 	actGradLatentsOffset,
 	latentChannels,
-	indirectInputSize
+	indirectInputSize,
+	peOctaves,
+	decoderPeOffset,
+	indirectPeOffset
 } ) {
 
 	const indirectA0 = actBase.add( int( actIndirectA0Offset ) );
@@ -172,6 +176,22 @@ function trainIndirectProbeHead( {
 	activationsStorage.element( indirectA0.add( latentChannels + 3 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset ) ) );
 	activationsStorage.element( indirectA0.add( latentChannels + 4 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 1 ) ) );
 	activationsStorage.element( indirectA0.add( latentChannels + 5 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 2 ) ) );
+
+	// Copy the tiled positional encoding a0 already carries (written once,
+	// per-sample, in the main forward pass below) into this probe head's own
+	// input vector - not trainable (a fixed function of uv), so - like the
+	// direction/probe values just above - it's never read back out in this
+	// function's backward pass (only c < latentChannels is backpropagated).
+	if ( peOctaves > 0 ) {
+
+		Loop( { start: 0, end: peOctaves * 2, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+			activationsStorage.element( indirectA0.add( int( indirectPeOffset ) ).add( i ) )
+				.assign( activationsStorage.element( a0.add( int( decoderPeOffset ) ).add( i ) ) );
+
+		} );
+
+	}
 
 	const indirectA1 = actBase.add( int( actIndirectA1Offset ) );
 
@@ -275,6 +295,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 		decoderInputSize,
 		iblInputSize,
 		indirectInputSize,
+		peOctaves,
+		decoderPeOffset,
+		iblPeOffset,
+		indirectPeOffset,
 		rotationOffset,
 		layer0WeightsOffset,
 		layer0BiasesOffset,
@@ -420,6 +444,26 @@ function createTrainBatchComputeNode( gpuModel ) {
 				activationsStorage.element( projBase.add( 5 ) ).assign( wo.dot( n ) );
 
 			} );
+
+			// 3b. Tiled positional encoding (see NeuralGridModel.
+			// triangleWaveEncode / triangleWaveEncodeTSL) - appended after the 12
+			// frame-dot values, giving the decoder a way to reconstruct detail
+			// above the finest latent grid level's Nyquist limit. Not trainable
+			// (a fixed function of uv), so - same as neural-texture's identical
+			// step - its backward gradient (computed into gradA0 in step 10
+			// below along with everything else) is simply never scattered
+			// anywhere.
+			if ( peOctaves > 0 ) {
+
+				const peValues = triangleWaveEncodeTSL( uvX, uvY, peOctaves );
+
+				for ( let i = 0; i < peValues.length; i ++ ) {
+
+					activationsStorage.element( a0Base.add( int( decoderPeOffset + i ) ) ).assign( peValues[ i ] );
+
+				}
+
+			}
 
 			// 4. Forward Layer 0 (decoderInputSize -> hiddenSize)
 			forwardDenseLayerTSL( {
@@ -721,6 +765,21 @@ function createTrainBatchComputeNode( gpuModel ) {
 				activationsStorage.element( iblA0.add( latentChannels + 4 ) ).assign( activationsStorage.element( a0.add( latentChannels + 10 ) ) );
 				activationsStorage.element( iblA0.add( latentChannels + 5 ) ).assign( activationsStorage.element( a0.add( latentChannels + 11 ) ) );
 
+				// Copy the tiled positional encoding a0 already carries (step 3b
+				// above) into the IBL head's own input vector - see
+				// trainIndirectProbeHead's matching comment for why this needs no
+				// backward-pass counterpart.
+				if ( peOctaves > 0 ) {
+
+					Loop( { start: 0, end: peOctaves * 2, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+
+						activationsStorage.element( iblA0.add( int( iblPeOffset ) ).add( i ) )
+							.assign( activationsStorage.element( a0.add( int( decoderPeOffset ) ).add( i ) ) );
+
+					} );
+
+				}
+
 				const iblA1 = actBase.add( int( actIblA1Offset ) );
 
 				forwardDenseLayerTSL( {
@@ -844,7 +903,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 					actIndirectDelta1Offset,
 					actGradLatentsOffset,
 					latentChannels,
-					indirectInputSize
+					indirectInputSize,
+					peOctaves,
+					decoderPeOffset,
+					indirectPeOffset
 				} );
 
 				trainIndirectProbeHead( {
@@ -873,7 +935,10 @@ function createTrainBatchComputeNode( gpuModel ) {
 					actIndirectDelta1Offset,
 					actGradLatentsOffset,
 					latentChannels,
-					indirectInputSize
+					indirectInputSize,
+					peOctaves,
+					decoderPeOffset,
+					indirectPeOffset
 				} );
 
 			} );

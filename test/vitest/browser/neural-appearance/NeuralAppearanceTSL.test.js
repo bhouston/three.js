@@ -25,7 +25,8 @@ import { withTestRenderer, evalFloats, evalScalar } from '../helpers/webgpuEval.
 // assertion. A regression in either implementation that made it disagree
 // with the other would fail here.
 
-const LATENT_CHANNELS = 16; // 4 levels x 4 channels/level, matching NeuralAppearanceTSL's fixed LEVEL_NAMES geometry
+const LEVELS = 4;
+const LATENT_CHANNELS = LEVELS * 4; // `LEVELS` levels x 4 channels/level
 
 function buildLayer( random, inputSize, outputSize, activation ) {
 
@@ -36,17 +37,17 @@ function buildLayer( random, inputSize, outputSize, activation ) {
 
 }
 
-function buildManifestOutputs( random ) {
+function buildManifestOutputs( random, latentChannels = LATENT_CHANNELS ) {
 
-	const decoderInputSize = LATENT_CHANNELS + 12;
-	const iblInputSize = LATENT_CHANNELS + 6;
+	const decoderInputSize = latentChannels + 12;
+	const iblInputSize = latentChannels + 6;
 
 	const brdf = {
 		inputSize: decoderInputSize,
 		rotation: {
-			inputSize: LATENT_CHANNELS,
+			inputSize: latentChannels,
 			outputSize: 12,
-			weights: Array.from( { length: LATENT_CHANNELS * 12 }, () => ( random() - 0.5 ) )
+			weights: Array.from( { length: latentChannels * 12 }, () => ( random() - 0.5 ) )
 		},
 		layers: [
 			buildLayer( random, decoderInputSize, 8, 'relu' ),
@@ -65,14 +66,14 @@ function buildManifestOutputs( random ) {
 	};
 
 	const emission = {
-		inputSize: LATENT_CHANNELS,
-		layers: [ buildLayer( random, LATENT_CHANNELS, 3, 'linear' ) ],
+		inputSize: latentChannels,
+		layers: [ buildLayer( random, latentChannels, 3, 'linear' ) ],
 		outputActivation: { type: 'exp', offset: 0 }
 	};
 
 	const opacity = {
-		inputSize: LATENT_CHANNELS,
-		layers: [ buildLayer( random, LATENT_CHANNELS, 1, 'linear' ) ],
+		inputSize: latentChannels,
+		layers: [ buildLayer( random, latentChannels, 1, 'linear' ) ],
 		outputActivation: { type: 'sigmoid' }
 	};
 
@@ -82,11 +83,11 @@ function buildManifestOutputs( random ) {
 
 let nextMaterialId = 1;
 
-function buildMaterialStub( outputs ) {
+function buildMaterialStub( outputs, levels = LEVELS ) {
 
 	return {
 		id: nextMaterialId ++, // unique per stub - createEvaluateNeuralBRDFFn bakes this into its generated function name
-		neuralAppearanceData: { outputs },
+		neuralAppearanceData: { outputs, levels },
 		_outputUniforms: createOutputUniforms( outputs )
 	};
 
@@ -108,6 +109,24 @@ async function evalVec3( renderer, buildNode ) {
 function vec4FromLatents( latents, offset ) {
 
 	return vec4( latents[ offset ], latents[ offset + 1 ], latents[ offset + 2 ], latents[ offset + 3 ] );
+
+}
+
+// Builds the `{ latent0: vec4(...), latent1: vec4(...), ... }` args
+// createEvaluateNeuralBRDFFn's generated Fn expects, for however many levels
+// `latents` actually holds (`latents.length / 4`) - mirrors
+// NeuralAppearanceTSL.js's own `levelNames`.
+function latentArgsFromArray( latents ) {
+
+	const args = {};
+
+	for ( let level = 0; level * 4 < latents.length; level ++ ) {
+
+		args[ `latent${ level }` ] = vec4FromLatents( latents, level * 4 );
+
+	}
+
+	return args;
 
 }
 
@@ -149,10 +168,7 @@ describe( 'Addons > NeuralAppearance > NeuralAppearanceTSL (real WebGPU, cross-c
 				const gpuResult = await evalVec3( getRenderer(), () => fn( {
 					wi: vec3( wi[ 0 ], wi[ 1 ], wi[ 2 ] ),
 					wo: vec3( wo[ 0 ], wo[ 1 ], wo[ 2 ] ),
-					latent0: vec4FromLatents( latents, 0 ),
-					latent1: vec4FromLatents( latents, 4 ),
-					latent2: vec4FromLatents( latents, 8 ),
-					latent3: vec4FromLatents( latents, 12 )
+					...latentArgsFromArray( latents )
 				} ) );
 
 				for ( let channel = 0; channel < 3; channel ++ ) {
@@ -195,10 +211,7 @@ describe( 'Addons > NeuralAppearance > NeuralAppearanceTSL (real WebGPU, cross-c
 		const gpuResult = await evalVec3( getRenderer(), () => fn( {
 			wi: vec3( wi[ 0 ], wi[ 1 ], wi[ 2 ] ),
 			wo: vec3( wo[ 0 ], wo[ 1 ], wo[ 2 ] ),
-			latent0: vec4FromLatents( zeroLatents, 0 ),
-			latent1: vec4FromLatents( zeroLatents, 4 ),
-			latent2: vec4FromLatents( zeroLatents, 8 ),
-			latent3: vec4FromLatents( zeroLatents, 12 )
+			...latentArgsFromArray( zeroLatents )
 		} ) );
 
 		const expected = 0.5 * Math.max( wi[ 2 ], 0 );
@@ -208,6 +221,48 @@ describe( 'Addons > NeuralAppearance > NeuralAppearanceTSL (real WebGPU, cross-c
 			expect( gpuResult[ channel ] ).toBeCloseTo( expected, 5 );
 
 		}
+
+	} );
+
+	describe( 'BRDF head with a non-default level count (createEvaluateNeuralBRDFFn generates its latentN inputs from the model)', () => {
+
+		// NeuralAppearanceTSL.js used to hardcode exactly 4 named latent-texel
+		// inputs (latent0..latent3); createEvaluateNeuralBRDFFn now generates
+		// `material.neuralAppearanceData.levels` of them instead (see
+		// levelNames). This exercises that generalization directly with a
+		// level count other than the "everything happens to be 4" default
+		// used everywhere else in this file, so a regression back to a fixed
+		// count would fail here even though the rest of the file wouldn't
+		// notice.
+		const altRandom = createRandom( 20260821 );
+		const altLevels = 2;
+		const altLatentChannels = altLevels * 4;
+		const altOutputs = buildManifestOutputs( altRandom, altLatentChannels );
+		const altMaterial = buildMaterialStub( altOutputs, altLevels );
+		const altLatents = Array.from( { length: altLatentChannels }, () => ( altRandom() - 0.5 ) );
+
+		it( 'GPU decoder output matches the CPU reference decoder for a 2-level model', async () => {
+
+			const { wi, wo } = directionSets[ 0 ];
+
+			const cpuInput = buildDecoderInput( altLatents, altOutputs.brdf.rotation.weights, wi, wo );
+			const cpuDecoded = evaluateDecoderLayers( altOutputs.brdf.layers, cpuInput, altOutputs.brdf.outputActivation );
+			const expected = cpuDecoded.map( ( value ) => value * Math.max( wi[ 2 ], 0 ) );
+
+			const fn = createEvaluateNeuralBRDFFn( altMaterial );
+			const gpuResult = await evalVec3( getRenderer(), () => fn( {
+				wi: vec3( wi[ 0 ], wi[ 1 ], wi[ 2 ] ),
+				wo: vec3( wo[ 0 ], wo[ 1 ], wo[ 2 ] ),
+				...latentArgsFromArray( altLatents )
+			} ) );
+
+			for ( let channel = 0; channel < 3; channel ++ ) {
+
+				expect( gpuResult[ channel ] ).toBeCloseTo( expected[ channel ], 3 );
+
+			}
+
+		} );
 
 	} );
 

@@ -235,10 +235,10 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUModel storage
 		it.each( LEVEL_CONFIGS )( 'gridLevels count matches configured `levels` and offsets tile totalLatents, levels=%i', ( levels ) => {
 
 			const baseResolution = 8;
-			const targetResolution = 128;
-			const layout = computeModelLayout( { levels, baseResolution, targetResolution } );
+			const growthFactor = 2;
+			const layout = computeModelLayout( { levels, baseResolution, growthFactor } );
 
-			const resolutions = computeGridLevels( baseResolution, targetResolution, levels );
+			const resolutions = computeGridLevels( baseResolution, growthFactor, levels );
 			expect( layout.gridLevels.length ).toBe( levels );
 			expect( layout.gridLevels.length ).toBe( resolutions.length );
 
@@ -495,7 +495,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUModel storage
 		it.each( [ 4, 2, 6 ] )( 'decoder layer0 weight[j][i] lands at layer0WeightsOffset + j*decoderInputSize + i (levels=%i)', async ( levels ) => {
 
 			const renderer = getRenderer();
-			const model = new NeuralAppearanceGPUModel( { levels, hiddenSize: 6, iblHiddenSize: 16, baseResolution: 4, targetResolution: 8, batchSize: 1 } );
+			const model = new NeuralAppearanceGPUModel( { levels, hiddenSize: 6, iblHiddenSize: 16, baseResolution: 4, growthFactor: 2, batchSize: 1 } );
 			const cpuModel = makeSyntheticCpuModel( model.layout );
 
 			model.initFromCPUModel( cpuModel );
@@ -527,7 +527,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUModel storage
 		it.each( [ 4, 2, 6 ] )( 'both indirect probe heads\' layer1 weight[j][i] and bias[j] land at their own layout offsets, not aliasing each other (levels=%i)', async ( levels ) => {
 
 			const renderer = getRenderer();
-			const model = new NeuralAppearanceGPUModel( { levels, hiddenSize: 6, iblHiddenSize: 12, baseResolution: 4, targetResolution: 8, batchSize: 1 } );
+			const model = new NeuralAppearanceGPUModel( { levels, hiddenSize: 6, iblHiddenSize: 12, baseResolution: 4, growthFactor: 2, batchSize: 1 } );
 			const cpuModel = makeSyntheticCpuModel( model.layout );
 
 			model.initFromCPUModel( cpuModel );
@@ -561,7 +561,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUModel storage
 		it( 'syncToCPU() round-trips weights and latent grids written by initFromCPUModel() back out unchanged', async () => {
 
 			const renderer = getRenderer();
-			const model = new NeuralAppearanceGPUModel( { levels: 3, hiddenSize: 6, iblHiddenSize: 12, baseResolution: 4, targetResolution: 8, batchSize: 1 } );
+			const model = new NeuralAppearanceGPUModel( { levels: 3, hiddenSize: 6, iblHiddenSize: 12, baseResolution: 4, growthFactor: 2, batchSize: 1 } );
 			const cpuModel = makeSyntheticCpuModel( model.layout );
 
 			model.initFromCPUModel( cpuModel );

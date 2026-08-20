@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 import { abs, fract, texture, uniformArray, uv, vec3, vec4 } from 'three/tsl';
+import {
+	packVec4Inputs,
+	unpackVec4Outputs,
+	packLayerWeightsVec4,
+	packLayerBiasesVec4,
+	evaluateLinearLayerVec4
+} from '../neural/NeuralMLPTSL.js';
 
 /**
  * Packs each trained latent grid level into an RGBA float DataTexture so the
@@ -72,48 +79,35 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 
 	}
 
-	let activations = features;
+	// Shared vec4-packed MLP evaluator (see ../neural/NeuralMLPTSL.js) - same
+	// evaluator neural-appearance uses. Packing 4 scalars per vec4 and
+	// evaluating each output neuron with TSL.dot() maps to a native GPU
+	// dot-product instruction, and evaluateLinearLayerVec4 materializes each
+	// layer's output with .toVar() before the next layer consumes it - this
+	// used to be a from-scratch, per-scalar-.add() reimplementation here
+	// (with its own separately-discovered .toVar() fix for the same WGSL
+	// "maximum parser recursive depth" failure the shared version's comment
+	// describes) with no principled reason for the two to differ.
+	let activations = packVec4Inputs( features );
 
 	for ( let l = 0; l < cpuModel.decoder.layers.length; l ++ ) {
 
 		const layer = cpuModel.decoder.layers[ l ];
-		const weightsArray = uniformArray( layer.weights, 'float' );
-		const biasesArray = uniformArray( layer.biases, 'float' );
-		const next = [];
+		const weightsArray = uniformArray( packLayerWeightsVec4( layer.weights, layer.inputSize, layer.outputSize ), 'vec4' );
+		const biasesArray = uniformArray( packLayerBiasesVec4( layer.biases ), 'vec4' );
+		const inputVectorCount = Math.ceil( layer.inputSize / 4 );
 
-		for ( let j = 0; j < layer.outputSize; j ++ ) {
-
-			// A plain functional .add() chain within one neuron's dot product
-			// is fine (bounded depth = inputSize, and unlike .addAssign() it
-			// doesn't need an active Fn() stack - this graph is built directly
-			// at material-construction time, not inside a compute Fn()). What
-			// actually caused the WGSL "maximum parser recursive depth
-			// reached" failure is each neuron re-inlining every element of
-			// `activations`, which is itself already a deeply-nested
-			// expression from the previous layer - the nesting compounds
-			// *across* layers, not just within one. .toVar() on the finished
-			// per-neuron value (not the accumulation itself) breaks that
-			// compounding: the next layer's dot product then references an
-			// already-materialized variable instead of re-expanding the whole
-			// upstream tree, so depth stays roughly bounded to one layer's
-			// inputSize instead of multiplying across every layer.
-			let value = biasesArray.element( j );
-
-			for ( let i = 0; i < layer.inputSize; i ++ ) {
-
-				value = value.add( weightsArray.element( j * layer.inputSize + i ).mul( activations[ i ] ) );
-
-			}
-
-			next.push( ( layer.activation === 'relu' ? value.max( 0 ) : value ).toVar() );
-
-		}
-
-		activations = next;
+		activations = evaluateLinearLayerVec4(
+			activations, layer.inputSize, layer.outputSize, layer.activation,
+			( outputIndex, vectorIndex ) => weightsArray.element( outputIndex * inputVectorCount + vectorIndex ),
+			( outputVector ) => biasesArray.element( outputVector )
+		);
 
 	}
 
-	return activations;
+	const lastLayer = cpuModel.decoder.layers[ cpuModel.decoder.layers.length - 1 ];
+
+	return unpackVec4Outputs( activations, lastLayer.outputSize );
 
 }
 

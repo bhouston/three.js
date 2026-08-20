@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import * as TSL from 'three/tsl';
 import { LEVELS } from './NeuralAppearanceFormat.js';
+import {
+	packVec4Inputs,
+	unpackVec4Outputs,
+	packLayerWeightsVec4,
+	packLayerBiasesVec4,
+	evaluateLinearLayerVec4
+} from '../neural/NeuralMLPTSL.js';
 
 // The multiresolution latent grid always has LEVELS (=4) levels of
 // CHANNELS_PER_LEVEL (=4) features each - same fixed geometry as
@@ -480,55 +487,6 @@ function copyLatentTextureData( destinationTextures, sourceTextures ) {
 
 }
 
-function packLayerWeights( weights, inputSize, outputSize ) {
-
-	const inputVectorCount = Math.ceil( inputSize / 4 );
-	const packed = [];
-
-	for ( let outputIndex = 0; outputIndex < outputSize; outputIndex ++ ) {
-
-		for ( let vectorIndex = 0; vectorIndex < inputVectorCount; vectorIndex ++ ) {
-
-			const inputBase = vectorIndex * 4;
-			const rowOffset = outputIndex * inputSize;
-
-			packed.push( new THREE.Vector4(
-				inputBase < inputSize ? ( weights[ rowOffset + inputBase ] || 0 ) : 0,
-				inputBase + 1 < inputSize ? ( weights[ rowOffset + inputBase + 1 ] || 0 ) : 0,
-				inputBase + 2 < inputSize ? ( weights[ rowOffset + inputBase + 2 ] || 0 ) : 0,
-				inputBase + 3 < inputSize ? ( weights[ rowOffset + inputBase + 3 ] || 0 ) : 0
-			) );
-
-		}
-
-	}
-
-	return packed;
-
-}
-
-function packLayerBiases( biases ) {
-
-	const packed = [];
-	const vectorCount = Math.ceil( biases.length / 4 );
-
-	for ( let vectorIndex = 0; vectorIndex < vectorCount; vectorIndex ++ ) {
-
-		const offset = vectorIndex * 4;
-
-		packed.push( new THREE.Vector4(
-			biases[ offset ] || 0,
-			biases[ offset + 1 ] || 0,
-			biases[ offset + 2 ] || 0,
-			biases[ offset + 3 ] || 0
-		) );
-
-	}
-
-	return packed;
-
-}
-
 function packHeadParameters( decoder ) {
 
 	const values = [];
@@ -538,17 +496,17 @@ function packHeadParameters( decoder ) {
 	if ( decoder.rotation ) {
 
 		rotationWeightsOffset = values.length;
-		values.push( ...packLayerWeights( decoder.rotation.weights, decoder.rotation.inputSize, decoder.rotation.outputSize ) );
+		values.push( ...packLayerWeightsVec4( decoder.rotation.weights, decoder.rotation.inputSize, decoder.rotation.outputSize ) );
 
 	}
 
 	for ( const layer of decoder.layers ) {
 
 		const weightsOffset = values.length;
-		values.push( ...packLayerWeights( layer.weights, layer.inputSize, layer.outputSize ) );
+		values.push( ...packLayerWeightsVec4( layer.weights, layer.inputSize, layer.outputSize ) );
 
 		const biasesOffset = values.length;
-		values.push( ...packLayerBiases( layer.biases ) );
+		values.push( ...packLayerBiasesVec4( layer.biases ) );
 
 		layers.push( { weightsOffset, biasesOffset } );
 
@@ -573,8 +531,8 @@ function buildDecoderFrames( decoder, decoderUniforms, latents ) {
 
 	}
 
-	const rotation = unpackNodeInputs(
-		linearLayerPacked( packNodeInputs( latents ), decoderUniforms.parameters, decoderUniforms.rotationWeightsOffset, null, latents.length, decoder.rotation.outputSize, 'linear' ),
+	const rotation = unpackVec4Outputs(
+		linearLayerPacked( packVec4Inputs( latents ), decoderUniforms.parameters, decoderUniforms.rotationWeightsOffset, null, latents.length, decoder.rotation.outputSize, 'linear' ),
 		decoder.rotation.outputSize
 	);
 	const frames = [];
@@ -666,7 +624,7 @@ function evaluateIndirectProbeHead( material, head, uniforms, latents, wo, probe
 
 function evaluateMLP( layers, uniforms, inputs ) {
 
-	let activations = packNodeInputs( inputs );
+	let activations = packVec4Inputs( inputs );
 
 	for ( let i = 0; i < layers.length; i ++ ) {
 
@@ -677,7 +635,7 @@ function evaluateMLP( layers, uniforms, inputs ) {
 
 	}
 
-	return unpackNodeInputs( activations, layers[ layers.length - 1 ].outputSize );
+	return unpackVec4Outputs( activations, layers[ layers.length - 1 ].outputSize );
 
 }
 
@@ -703,7 +661,7 @@ function evaluateMLP( layers, uniforms, inputs ) {
 // return as a single value); every current MLP head fits one of those.
 function evaluateMLPViaFn( name, layers, uniforms, inputs, outputSize ) {
 
-	const packedInputs = packNodeInputs( inputs );
+	const packedInputs = packVec4Inputs( inputs );
 	const inputNames = packedInputs.map( ( _, i ) => `in${ i }` );
 
 	const outputType = outputSize === 1 ? 'float' : outputSize === 3 ? 'vec3' :
@@ -728,7 +686,7 @@ function evaluateMLPViaFn( name, layers, uniforms, inputs, outputSize ) {
 
 		}
 
-		const unpacked = unpackNodeInputs( activations, outputSize );
+		const unpacked = unpackVec4Outputs( activations, outputSize );
 
 		if ( outputType === 'float' ) return unpacked[ 0 ];
 		if ( outputType === 'vec3' ) return TSL.vec3( unpacked[ 0 ], unpacked[ 1 ], unpacked[ 2 ] );
@@ -748,97 +706,24 @@ function evaluateMLPViaFn( name, layers, uniforms, inputs, outputSize ) {
 
 }
 
-function packNodeInputs( inputs ) {
-
-	const inputVectors = [];
-	const inputVectorCount = Math.ceil( inputs.length / 4 );
-
-	for ( let i = 0; i < inputVectorCount; i ++ ) {
-
-		const offset = i * 4;
-
-		inputVectors.push( TSL.vec4(
-			inputs[ offset ] || 0,
-			inputs[ offset + 1 ] || 0,
-			inputs[ offset + 2 ] || 0,
-			inputs[ offset + 3 ] || 0
-		) );
-
-	}
-
-	return inputVectors;
-
-}
-
-function unpackNodeInputs( inputs, outputSize ) {
-
-	const outputs = [];
-
-	for ( let outputIndex = 0; outputIndex < outputSize; outputIndex ++ ) {
-
-		const vector = inputs[ Math.floor( outputIndex / 4 ) ];
-		outputs.push( vector.element( outputIndex % 4 ) );
-
-	}
-
-	return outputs;
-
-}
-
+// This module's combined-uniform-buffer-with-offset layout
+// (`uniforms.parameters` + `weightsOffset`/`biasesOffset`, see
+// packHeadParameters) is specific to neural-appearance, so this stays a
+// local wrapper around the shared evaluateLinearLayerVec4 rather than a bare
+// re-export: it supplies the `getWeightVec4`/`getBiasVec4` closures that
+// read from that combined buffer. `biasesOffset: null` (only the rotation
+// layer - see buildDecoderFrames - which packs no bias values at all,
+// matching the training kernel's bias-free rotation projection) skips the
+// bias term entirely rather than reading a bogus offset.
 function linearLayerPacked( inputs, parameters, weightsOffset, biasesOffset, inputSize, outputSize, activation ) {
 
-	const outputs = [];
 	const inputVectorCount = Math.ceil( inputSize / 4 );
-	const outputVectorCount = Math.ceil( outputSize / 4 );
 
-	for ( let outputVector = 0; outputVector < outputVectorCount; outputVector ++ ) {
-
-		const outputBase = outputVector * 4;
-		const sums = [ TSL.float( 0 ), TSL.float( 0 ), TSL.float( 0 ), TSL.float( 0 ) ];
-
-		for ( let vectorIndex = 0; vectorIndex < inputVectorCount; vectorIndex ++ ) {
-
-			const inputVector = inputs[ vectorIndex ];
-
-			for ( let component = 0; component < 4; component ++ ) {
-
-				const outputIndex = outputBase + component;
-
-				if ( outputIndex < outputSize ) {
-
-					sums[ component ] = sums[ component ].add( TSL.dot( inputVector, parameters.element( weightsOffset + outputIndex * inputVectorCount + vectorIndex ) ) );
-
-				}
-
-			}
-
-		}
-
-		// `biasesOffset: null` (only the rotation layer - see
-		// buildDecoderFrames - which packs no bias values at all, matching
-		// the training kernel's bias-free rotation projection) skips the
-		// bias term entirely rather than reading a bogus offset.
-		const bias = biasesOffset !== null ? parameters.element( biasesOffset + outputVector ) : TSL.vec4( 0 );
-		let value = bias.add( TSL.vec4( sums[ 0 ], sums[ 1 ], sums[ 2 ], sums[ 3 ] ) );
-
-		if ( activation === 'relu' ) {
-
-			value = value.max( 0 );
-
-		}
-
-		// Materialize each output vector4 into a variable before it's consumed by
-		// the next layer's dot() calls, instead of leaving it as a live expression
-		// that gets re-expanded at every downstream reference. Mirrors the fix
-		// neural-material's evaluateNeuralTextureRaw (NeuralTextureNodeMaterial.js)
-		// applies for the same reason: without it, per-layer expressions compound
-		// across layers into a much larger (and, for a deep enough net, WGSL
-		// parser-recursion-breaking) generated shader.
-		outputs.push( value.toVar() );
-
-	}
-
-	return outputs;
+	return evaluateLinearLayerVec4(
+		inputs, inputSize, outputSize, activation,
+		( outputIndex, vectorIndex ) => parameters.element( weightsOffset + outputIndex * inputVectorCount + vectorIndex ),
+		biasesOffset !== null ? ( outputVector ) => parameters.element( biasesOffset + outputVector ) : null
+	);
 
 }
 
@@ -902,15 +787,15 @@ export {
 	isCompatibleNeuralAppearanceData,
 	updateOutputUniforms,
 	copyLatentTextureData,
-	packLayerWeights,
-	packLayerBiases,
+	packLayerWeightsVec4,
+	packLayerBiasesVec4,
 	buildDecoderInput,
 	projectIBLInput,
 	canonicalToViewDirection,
 	canonicalToWorldDirection,
 	evaluateMLP,
-	packNodeInputs,
-	unpackNodeInputs,
+	packVec4Inputs,
+	unpackVec4Outputs,
 	linearLayerPacked,
 	toVec3,
 	applyOutputActivation,

@@ -1,8 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { Vector4 } from 'three';
 import {
-	packLayerWeights,
-	packLayerBiases,
 	createOutputUniforms,
 	isCompatibleNeuralAppearanceData,
 	updateOutputUniforms,
@@ -85,34 +82,9 @@ describe( 'Addons', () => {
 
 		describe( 'NeuralAppearanceTSL', () => {
 
-			test( 'packs layer weights into vec4 uniform array', () => {
-
-				// 6 inputs (ceil(6/4) = 2 vec4s per output) and 2 outputs => 4 Vector4s
-				const weights = [
-					1, 2, 3, 4, 5, 6,
-					7, 8, 9, 10, 11, 12
-				];
-				const packed = packLayerWeights( weights, 6, 2 );
-
-				expect( packed.length ).toBe( 4 );
-				expect( packed[ 0 ] instanceof Vector4 ).toBeTruthy();
-				expect( [ packed[ 0 ].x, packed[ 0 ].y, packed[ 0 ].z, packed[ 0 ].w ] ).toEqual( [ 1, 2, 3, 4 ] );
-				expect( [ packed[ 1 ].x, packed[ 1 ].y, packed[ 1 ].z, packed[ 1 ].w ] ).toEqual( [ 5, 6, 0, 0 ] );
-				expect( [ packed[ 2 ].x, packed[ 2 ].y, packed[ 2 ].z, packed[ 2 ].w ] ).toEqual( [ 7, 8, 9, 10 ] );
-				expect( [ packed[ 3 ].x, packed[ 3 ].y, packed[ 3 ].z, packed[ 3 ].w ] ).toEqual( [ 11, 12, 0, 0 ] );
-
-			} );
-
-			test( 'packs layer biases into vec4 uniform array', () => {
-
-				const biases = [ 1, 2, 3, 4, 5 ];
-				const packed = packLayerBiases( biases );
-
-				expect( packed.length ).toBe( 2 );
-				expect( [ packed[ 0 ].x, packed[ 0 ].y, packed[ 0 ].z, packed[ 0 ].w ] ).toEqual( [ 1, 2, 3, 4 ] );
-				expect( [ packed[ 1 ].x, packed[ 1 ].y, packed[ 1 ].z, packed[ 1 ].w ] ).toEqual( [ 5, 0, 0, 0 ] );
-
-			} );
+			// Vec4 weight/bias packing is now generic, shared logic (see
+			// examples/jsm/neural/NeuralMLPTSL.js) - tested directly there in
+			// test/unit/addons/neural/NeuralMLPTSL.js, not duplicated here.
 
 			test( 'creates output uniforms for heads', () => {
 

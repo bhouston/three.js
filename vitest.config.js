@@ -7,7 +7,7 @@ const testUtils = fileURLToPath( new URL( './test/unit/utils', import.meta.url )
 
 // Lane is chosen by filename: "*.browser.js" runs in the unit-browser
 // project (real Chromium), everything else in unit-node (plain Node).
-// See test/unit/VITEST_SPIKE.md for the full rationale and playbook.
+// See test/unit/VITEST_MIGRATION.md for the full rationale and playbook.
 export default defineConfig( {
 
 	resolve: {
@@ -25,8 +25,16 @@ export default defineConfig( {
 				test: {
 					name: 'unit-node',
 					environment: 'node',
-					include: [ 'test/unit/src/**/*.js' ],
-					exclude: [ 'test/unit/src/**/*.tests.js', 'test/unit/src/**/*.browser.js' ],
+					include: [ 'test/unit/src/**/*.js', 'test/unit/addons/**/*.js' ],
+					exclude: [
+						'test/unit/**/*.browser.js',
+						// shared (non-test) helper modules imported by test files -
+						// add any new ones here rather than under test/unit/src or
+						// test/unit/addons directly, since those trees are otherwise
+						// assumed to be all test files
+						'test/unit/addons/utils/GaussianSplatTestUtils.js',
+						'test/unit/utils/std-geometry-tests.js',
+					],
 					setupFiles: [ './test/unit/vitest-setup.js' ],
 				},
 			},
@@ -34,7 +42,7 @@ export default defineConfig( {
 				extends: true,
 				test: {
 					name: 'unit-browser',
-					include: [ 'test/unit/src/**/*.browser.js' ],
+					include: [ 'test/unit/src/**/*.browser.js', 'test/unit/addons/**/*.browser.js' ],
 					setupFiles: [ './test/unit/vitest-setup.js' ],
 					browser: {
 						enabled: true,

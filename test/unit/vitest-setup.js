@@ -6,11 +6,42 @@
 //   assert.equalKey( obj, ref, k ) -> expect( obj ).toEqualKey( ref, k )
 //   assert.smartEqual( a, b )      -> expect( a ).toSmartEqual( b )
 //
-// Everything else (assert.ok, assert.strictEqual, assert.deepEqual, ...) maps
-// directly onto vitest's built-in expect() API and needs no shim.
+// Everything else (assert.ok, assert.strictEqual, ...) maps directly onto
+// vitest's built-in expect() API - except assert.deepEqual on whole three.js
+// object graphs (e.g. comparing two Object3D instances), which needs
+// toEqualLikeQUnit below instead of plain toEqual. Two behaviors QUnit's
+// deepEqual has that vitest's toEqual doesn't:
+//   - numbers compare with `===`, so -0 and 0 are equal (vitest's toEqual
+//     uses Object.is, which correctly-for-NaN's-sake treats them as
+//     different - but three.js code legitimately produces -0 in places,
+//     e.g. rotation round-trips through quaternions).
+//   - two functions are always treated as equal, so per-instance bound
+//     callbacks (e.g. Euler's onChange, bound to a specific Object3D in its
+//     constructor) don't make two otherwise-identical instances look
+//     unequal just because their callback closures differ.
 
 import { expect } from 'vitest';
 import { SmartComparer } from './utils/SmartComparer.js';
+
+function normalizeForQUnitStyleEqual( value, seen = new WeakMap() ) {
+
+	if ( typeof value === 'number' ) return value === 0 ? 0 : value;
+	if ( typeof value === 'function' ) return undefined;
+	if ( value === null || typeof value !== 'object' ) return value;
+	if ( seen.has( value ) ) return seen.get( value );
+
+	const clone = Array.isArray( value ) ? [] : Object.create( Object.getPrototypeOf( value ) );
+	seen.set( value, clone );
+
+	for ( const key of Object.keys( value ) ) {
+
+		clone[ key ] = normalizeForQUnitStyleEqual( value[ key ], seen );
+
+	}
+
+	return clone;
+
+}
 
 expect.extend( {
 
@@ -47,6 +78,20 @@ expect.extend( {
 		return {
 			pass,
 			message: () => cmp.getDiagnostic() || `expected values to${ pass ? ' not' : '' } be smart-equal`,
+		};
+
+	},
+
+	toEqualLikeQUnit( actual, expected ) {
+
+		const pass = this.equals(
+			normalizeForQUnitStyleEqual( actual ),
+			normalizeForQUnitStyleEqual( expected ),
+		);
+
+		return {
+			pass,
+			message: () => `expected values to${ pass ? ' not' : '' } be structurally equal (QUnit deepEqual semantics: -0 equals 0, functions always equal)`,
 		};
 
 	},

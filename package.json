@@ -43,7 +43,7 @@
   ],
   "scripts": {
     "start": "npm run dev",
-    "test": "npm run lint && npm run test-unit && npm run test-unit-addons",
+    "test": "npm run lint && npm run test-unit",
     "build": "rollup -c utils/build/rollup.config.js",
     "build-docs": "jsdoc -c utils/docs/jsdoc.config.json && npm run build-llms",
     "build-llms": "node utils/llms/build.js",
@@ -58,19 +58,15 @@
     "lint-utils": "eslint utils",
     "lint": "npm run lint-core",
     "lint-fix": "npm run lint-core -- --fix && npm run lint-addons -- --fix && npm run lint-examples -- --fix && npm run lint-editor -- --fix && npm run lint-manual -- --fix && npm run lint-test -- --fix && npm run lint-utils -- --fix",
-    "test-unit": "node test/unit/puppeteer.unit.js --testPage=UnitTests.html --mode=headless",
-    "test-unit-headful": "node test/unit/puppeteer.unit.js --testPage=UnitTests.html --mode=headful",
-    "test-unit-addons": "node test/unit/puppeteer.unit.js --testPage=UnitTestsAddons.html --mode=headless",
-    "test-unit-addons-headful": "node test/unit/puppeteer.unit.js --testPage=UnitTestsAddons.html --mode=headful",
-    "test-e2e": "node test/e2e/puppeteer.js",
+    "test-unit": "vitest run",
+    "test-unit-node": "vitest run --project unit-node",
+    "test-unit-browser": "vitest run --project unit-browser",
+    "test-unit-watch": "vitest",
+    "test-e2e": "node test/e2e/playwright.js",
     "test-e2e-cov": "node test/e2e/check-coverage.js",
-    "test-e2e-webgpu": "node test/e2e/puppeteer.js --webgpu",
+    "test-e2e-webgpu": "node test/e2e/playwright.js --webgpu",
     "test-treeshake": "rollup -c test/rollup.treeshake.config.js",
-    "make-screenshot": "node test/e2e/puppeteer.js --make",
-    "test-unit-vitest": "vitest run",
-    "test-unit-vitest-node": "vitest run --project unit-node",
-    "test-unit-vitest-browser": "vitest run --project unit-browser",
-    "test-unit-vitest-watch": "vitest"
+    "make-screenshot": "node test/e2e/playwright.js --make"
   },
   "keywords": [
     "three",
@@ -111,7 +107,6 @@
     "magic-string": "^1.0.0",
     "playwright": "^1.62.1",
     "pngjs": "^7.0.0",
-    "puppeteer": "^25.0.0",
     "rollup": "^4.6.0",
     "turndown": "^7.2.2",
     "vitest": "^4.1.11"

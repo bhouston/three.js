@@ -4,30 +4,42 @@
 
 ## Run
 
-You can run the unit tests in two ways:
+- `npm run test-unit` — runs the full suite once (both the plain-Node lane and
+  the real-Chromium lane, see below).
+- `npm run test-unit-watch` — same, but in watch mode: only the tests
+  affected by what you changed re-run, live, as you edit.
+- `npm run test-unit-node` / `npm run test-unit-browser` — run just one lane.
 
-- Headless: Execute `npm run test-unit`, `npm run test-unit-addons` from the root folder.  
-  In headless mode the tests will run in a headless browser.
-- Headful: Execute `npm run test-unit-headful`, `npm run test-unit-addons-headful` from the root folder.  
-  In headful mode, a browser window will open, and you can see the tests running.  
-  While the headful mode is running you can also use any browser to navigate to http://localhost:8080/test/unit/UnitTests.html or http://localhost:8080/test/unit/UnitTestsAddons.html to run the tests in that browser.  
-  Further changes to the library will not be reflected until the page is refreshed.
+Tests live under `test/unit/src/` (mirrors `src/`) and `test/unit/addons/`
+(mirrors `examples/jsm/`). A file runs in one of two lanes, chosen by its
+name:
+
+- `X.js` — the default. Runs in plain Node (via [Vitest](https://vitest.dev)).
+  Fast, no browser involved.
+- `X.browser.js` — runs in a real headless Chromium (via Vitest's
+  [browser mode](https://vitest.dev/guide/browser/), using Playwright).
+  Reserved for tests that genuinely need a DOM/canvas/GPU API Node doesn't
+  have (e.g. `createImageBitmap`).
+
+See `VITEST_MIGRATION.md` in this folder for the full set of conventions and
+the QUnit → Vitest conversion playbook (kept for reference / future test
+files).
 
 See [Installation](https://threejs.org/docs/#manual/introduction/Installation) for more information.
 
-## Notes
-
-A small number of tests can only be run in a browser environment.
-
-For browser tests, further changes to the library will not be reflected until the page is refreshed.
-
 ## Troubleshooting
 
-When adding or updating tests, the most common cause of test failure is forgetting to change `QUnit.todo` to `QUnit.test` when the test is ready.
+An error that says "No test found in suite" for a file with no failures
+listed usually means the file's `describe()` block has zero `test()` calls
+in it — either a mistake, or (for an intentionally-empty placeholder) add a
+`test.todo( 'no tests yet' )` inside it.
 
-An error that indicates "no tests were found" means that an import statement could not be resolved. This is usually caused by a typo in the import path.
+An error that indicates "no tests were found" for the whole run usually means
+an import statement couldn't be resolved — check for a typo in the import
+path, or in the `@src`/`@test-utils` alias usage.
 
 ## Debugging
 
-To debug a test, add `debugger;` to the test code. Then, run the test in a browser and open the developer tools. The test will stop at the `debugger` statement and you can inspect the code.
-
+To debug a test, add `debugger;` to the test code and run Vitest with
+`--inspect-brk`, or use your editor's Vitest integration to run/debug a
+single test directly.

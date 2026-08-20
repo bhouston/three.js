@@ -1,5 +1,12 @@
 # Three.js end-to-end testing
 
+Driven by [Playwright](https://playwright.dev) (`test/e2e/playwright.js`).
+Screenshots are pixel-diffed against the reference JPGs in
+`examples/screenshots/` using the same hand-rolled comparator as before
+(`image.js`) - those files are the test baseline *and* the source of the
+public examples gallery's thumbnails, so they're not managed by Playwright's
+own snapshot tooling.
+
 ### Motivation
 Simplify code reviews with quick pixel testing inside CI. The same screenshots are used for thumbnails.
 

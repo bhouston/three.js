@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   test:
-    name: Lint, Unit, Unit addons, Circular dependencies & Examples testing
+    name: Lint, Unit, Circular dependencies & Examples testing
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,15 +26,14 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
 
       - name: === Lint testing ===
         run: npm run lint
 
       - name: === Unit testing ===
         run: npm run test-unit
-
-      - name: === Unit addons testing ===
-        run: npm run test-unit-addons
 
       - name: === Examples ready for release ===
         run: npm run test-e2e-cov
@@ -66,6 +65,8 @@ jobs:
           sudo apt-get install -y mesa-vulkan-drivers xvfb
       - name: Install dependencies
         run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
       - name: Build
         run: npm run build
 

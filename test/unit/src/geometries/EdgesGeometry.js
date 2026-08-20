@@ -1,0 +1,229 @@
+import { describe, test, expect } from 'vitest';
+import { EdgesGeometry } from '@src/geometries/EdgesGeometry.js';
+
+import { BufferGeometry } from '@src/core/BufferGeometry.js';
+import { BufferAttribute } from '@src/core/BufferAttribute.js';
+import { Vector3 } from '@src/math/Vector3.js';
+
+//
+// HELPERS
+//
+
+function testEdges( vertList, idxList, numAfter ) {
+
+	const geoms = createGeometries( vertList, idxList );
+
+	for ( let i = 0; i < geoms.length; i ++ ) {
+
+		const geom = geoms[ i ];
+
+		const numBefore = idxList.length;
+		expect( countEdges( geom ) ).toBe( numBefore );
+
+		const egeom = new EdgesGeometry( geom );
+
+		expect( countEdges( egeom ) ).toBe( numAfter );
+
+	}
+
+}
+
+function createGeometries( vertList, idxList ) {
+
+	const geomIB = createIndexedBufferGeometry( vertList, idxList );
+	const geomDC = addDrawCalls( geomIB.clone() );
+	return [ geomIB, geomDC ];
+
+}
+
+function createIndexedBufferGeometry( vertList, idxList ) {
+
+	const geom = new BufferGeometry();
+
+	const indexTable = [];
+	const numTris = idxList.length / 3;
+	let numVerts = 0;
+
+	const indices = new Uint32Array( numTris * 3 );
+	let vertices = new Float32Array( vertList.length * 3 );
+
+	for ( let i = 0; i < numTris; i ++ ) {
+
+		for ( let j = 0; j < 3; j ++ ) {
+
+			const idx = idxList[ 3 * i + j ];
+			if ( indexTable[ idx ] === undefined ) {
+
+				const v = vertList[ idx ];
+				vertices[ 3 * numVerts ] = v.x;
+				vertices[ 3 * numVerts + 1 ] = v.y;
+				vertices[ 3 * numVerts + 2 ] = v.z;
+
+				indexTable[ idx ] = numVerts;
+
+				numVerts ++;
+
+			}
+
+			indices[ 3 * i + j ] = indexTable[ idx ];
+
+		}
+
+	}
+
+	vertices = vertices.subarray( 0, 3 * numVerts );
+
+	geom.setIndex( new BufferAttribute( indices, 1 ) );
+	geom.setAttribute( 'position', new BufferAttribute( vertices, 3 ) );
+
+	return geom;
+
+}
+
+function addDrawCalls( geometry ) {
+
+	const numTris = geometry.index.count / 3;
+
+	for ( let i = 0; i < numTris; i ++ ) {
+
+		const start = i * 3;
+		const count = 3;
+
+		geometry.addGroup( start, count );
+
+	}
+
+	return geometry;
+
+}
+
+function countEdges( geom ) {
+
+	if ( geom instanceof EdgesGeometry ) {
+
+		return geom.getAttribute( 'position' ).count / 2;
+
+	}
+
+	if ( geom.faces !== undefined ) {
+
+		return geom.faces.length * 3;
+
+	}
+
+	const indices = geom.index;
+	if ( indices ) {
+
+		return indices.count;
+
+	}
+
+	return geom.getAttribute( 'position' ).count;
+
+}
+
+describe( 'Geometries', () => {
+
+	describe( 'EdgesGeometry', () => {
+
+		const vertList = [
+			new Vector3( 0, 0, 0 ),
+			new Vector3( 1, 0, 0 ),
+			new Vector3( 1, 1, 0 ),
+			new Vector3( 0, 1, 0 ),
+			new Vector3( 1, 1, 1 ),
+		];
+
+		test( 'Extending', () => {
+
+			const object = new EdgesGeometry();
+			expect( object instanceof BufferGeometry ).toBe( true );
+
+		} );
+
+		test( 'Instancing', () => {
+
+			const object = new EdgesGeometry();
+			expect( object ).toBeTruthy();
+
+		} );
+
+		test( 'type', () => {
+
+			const object = new EdgesGeometry();
+			expect( object.type === 'EdgesGeometry' ).toBeTruthy();
+
+		} );
+
+		test( 'singularity', () => {
+
+			testEdges( vertList, [ 1, 1, 1 ], 0 );
+
+		} );
+
+		test( 'needle', () => {
+
+			testEdges( vertList, [ 0, 0, 1 ], 0 );
+
+		} );
+
+		test( 'single triangle', () => {
+
+			testEdges( vertList, [ 0, 1, 2 ], 3 );
+
+		} );
+
+		test( 'two isolated triangles', () => {
+
+			const vertList = [
+				new Vector3( 0, 0, 0 ),
+				new Vector3( 1, 0, 0 ),
+				new Vector3( 1, 1, 0 ),
+				new Vector3( 0, 0, 1 ),
+				new Vector3( 1, 0, 1 ),
+				new Vector3( 1, 1, 1 ),
+			];
+
+			testEdges( vertList, [ 0, 1, 2, 3, 4, 5 ], 6 );
+
+		} );
+
+		test( 'two flat triangles', () => {
+
+			testEdges( vertList, [ 0, 1, 2, 0, 2, 3 ], 4 );
+
+		} );
+
+		test( 'two flat triangles, inverted', () => {
+
+			testEdges( vertList, [ 0, 1, 2, 0, 3, 2 ], 5 );
+
+		} );
+
+		test( 'two non-coplanar triangles', () => {
+
+			testEdges( vertList, [ 0, 1, 2, 0, 4, 2 ], 5 );
+
+		} );
+
+		test( 'three triangles, coplanar first', () => {
+
+			testEdges( vertList, [ 0, 2, 3, 0, 1, 2, 0, 4, 2 ], 7 );
+
+		} );
+
+		test( 'three triangles, coplanar last', () => {
+
+			testEdges( vertList, [ 0, 1, 2, 0, 4, 2, 0, 2, 3 ], 6 ); // Should be 7
+
+		} );
+
+		test( 'tetrahedron', () => {
+
+			testEdges( vertList, [ 0, 1, 2, 0, 1, 4, 0, 4, 2, 1, 2, 4 ], 6 );
+
+		} );
+
+	} );
+
+} );

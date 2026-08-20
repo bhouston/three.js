@@ -1,21 +1,19 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 
-// Vitest test suite for the neural-texture / neural-material / neural-appearance
-// framework (examples/jsm/neural*). Deliberately separate from the repo's
-// existing QUnit + puppeteer harness (test/unit/**) - see test/vitest/README.md
-// for why, and for the conventions each project below expects tests to follow.
+const src = fileURLToPath( new URL( './src', import.meta.url ) );
+const testUtils = fileURLToPath( new URL( './test/unit/utils', import.meta.url ) );
+
+// Lane is chosen by filename: "*.browser.js" runs in the unit-browser
+// project (real Chromium), everything else in unit-node (plain Node).
+// See test/unit/VITEST_MIGRATION.md for the full rationale and playbook.
 //
-// Two projects:
-//  - "unit": plain Node, for pure-JS logic (math, MLP forward pass, format/
-//    manifest encode-decode, byte-level (de)serialization) that never touches
-//    a GPU or a TSL node graph. Fast, no browser needed.
-//  - "browser": real Chromium + real WebGPU (via the playwright provider),
-//    for anything that builds or evaluates a TSL node graph, drives a
-//    WebGPURenderer, or runs a compute kernel. These are the pieces the old
-//    QUnit suite could only ever mock around - here they actually execute on
-//    the GPU and get read back, so a broken kernel fails a test instead of
-//    silently shipping.
+// Two extra projects, "unit" and "browser", cover the neural-texture /
+// neural-material / neural-appearance framework (examples/jsm/neural*) -
+// kept separate from the unit-node/unit-browser lanes above since they
+// exercise the public examples/jsm surface (not src/) and, for "browser",
+// need real WebGPU rather than plain Chromium. See test/vitest/README.md.
 const webgpuLaunchArgs = [
 	// Playwright's bundled Chromium ships WebGPU behind these flags; without
 	// them navigator.gpu.requestAdapter() resolves to null on every platform.
@@ -25,8 +23,76 @@ const webgpuLaunchArgs = [
 ];
 
 export default defineConfig( {
+
+	resolve: {
+		alias: {
+			'@src': src,
+			'@test-utils': testUtils,
+		},
+	},
+
 	test: {
+
 		projects: [
+			{
+				extends: true,
+				test: {
+					name: 'unit-node',
+					environment: 'node',
+					include: [ 'test/unit/src/**/*.js', 'test/unit/addons/**/*.js' ],
+					exclude: [
+						'test/unit/**/*.browser.js',
+						// shared (non-test) helper modules imported by test files -
+						// add any new ones here rather than under test/unit/src or
+						// test/unit/addons directly, since those trees are otherwise
+						// assumed to be all test files
+						'test/unit/addons/utils/GaussianSplatTestUtils.js',
+						'test/unit/utils/std-geometry-tests.js',
+					],
+					setupFiles: [ './test/unit/vitest-setup.js' ],
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: 'unit-browser',
+					include: [ 'test/unit/src/**/*.browser.js', 'test/unit/addons/**/*.browser.js' ],
+					setupFiles: [ './test/unit/vitest-setup.js' ],
+					browser: {
+						enabled: true,
+						headless: true,
+						provider: playwright(),
+						instances: [
+							{ browser: 'chromium' },
+						],
+					},
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: 'e2e',
+					environment: 'node',
+					include: [ 'test/e2e/e2e.test.js' ],
+					// Examples own their timeouts internally (networkTimeout,
+					// renderTimeout); a per-test vitest timeout would also have to
+					// cover time spent queued behind other examples on the same
+					// lane, so it's disabled here in favor of the job-level
+					// timeout-minutes in CI.
+					testTimeout: 0,
+					hookTimeout: 5 * 60000,
+					teardownTimeout: 60000,
+					// vitest only runs 5 `test.concurrent` bodies at once by
+					// default, silently overriding the e2e.test.js lane pool -
+					// confirmed by timestamping actual start times, only 5 of 8
+					// requested lanes were ever active concurrently until this
+					// was raised. Passing --maxConcurrency on the CLI does NOT
+					// reach a --project sub-config, so it has to be set here.
+					// 64 comfortably covers any realistic E2E_WORKERS value;
+					// real concurrency is still bounded by the lane pool itself.
+					maxConcurrency: 64,
+				},
+			},
 			{
 				test: {
 					name: 'unit',
@@ -67,6 +133,8 @@ export default defineConfig( {
 					}
 				}
 			}
-		]
-	}
+		],
+
+	},
+
 } );

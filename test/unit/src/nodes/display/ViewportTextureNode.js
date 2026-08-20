@@ -1,0 +1,198 @@
+import { describe, test, expect } from 'vitest';
+import { viewportTexture } from '@src/nodes/display/ViewportTextureNode.js';
+import { FramebufferTexture } from '@src/textures/FramebufferTexture.js';
+import { RenderTarget } from '@src/core/RenderTarget.js';
+
+describe( 'Nodes', () => {
+
+	describe( 'Display', () => {
+
+		describe( 'ViewportTextureNode', () => {
+
+			describe( 'Texture Caching', () => {
+
+				test( 'getTextureForReference returns defaultFramebuffer for null reference', () => {
+
+					const node = viewportTexture();
+					const texture = node.getTextureForReference( null );
+
+					expect( texture ).toBe( node.defaultFramebuffer );
+
+				} );
+
+				test( 'getTextureForReference caches textures per reference', () => {
+
+					const node = viewportTexture();
+
+					// Create mock references (using RenderTargets as they work as cache keys)
+					const renderTarget1 = new RenderTarget( 512, 512 );
+					const renderTarget2 = new RenderTarget( 256, 256 );
+
+					// Get textures for each reference
+					const texture1a = node.getTextureForReference( renderTarget1 );
+					const texture1b = node.getTextureForReference( renderTarget1 );
+					const texture2 = node.getTextureForReference( renderTarget2 );
+
+					// Same reference should return same cached texture
+					expect( texture1a ).toBe( texture1b );
+
+					// Different references should return different textures
+					expect( texture1a ).not.toBe( texture2 );
+
+					// Both should be FramebufferTexture instances
+					expect( texture1a instanceof FramebufferTexture ).toBeTruthy();
+					expect( texture2 instanceof FramebufferTexture ).toBeTruthy();
+
+					// Clean up
+					renderTarget1.dispose();
+					renderTarget2.dispose();
+
+				} );
+
+				test( 'cached textures are independent from defaultFramebuffer', () => {
+
+					const node = viewportTexture();
+
+					const renderTarget = new RenderTarget( 512, 512 );
+					const cachedTexture = node.getTextureForReference( renderTarget );
+
+					expect( cachedTexture ).not.toBe( node.defaultFramebuffer );
+
+					// Clean up
+					renderTarget.dispose();
+
+				} );
+
+				test( 'multiple render targets get independent caches', () => {
+
+					const node = viewportTexture();
+
+					// Create multiple render targets with different sizes
+					const targets = [
+						new RenderTarget( 512, 512 ),
+						new RenderTarget( 256, 256 ),
+						new RenderTarget( 128, 128 ),
+						new RenderTarget( 1024, 1024 )
+					];
+
+					const textures = targets.map( target => node.getTextureForReference( target ) );
+
+					// All textures should be unique
+					for ( let i = 0; i < textures.length; i ++ ) {
+
+						for ( let j = i + 1; j < textures.length; j ++ ) {
+
+							expect( textures[ i ] ).not.toBe( textures[ j ] );
+
+						}
+
+					}
+
+					// Verify caching works for all
+					targets.forEach( ( target, index ) => {
+
+						const retrieved = node.getTextureForReference( target );
+						expect( retrieved ).toBe( textures[ index ] );
+
+					} );
+
+					// Clean up
+					targets.forEach( target => target.dispose() );
+
+				} );
+
+			} );
+
+			describe( 'Reference Priority', () => {
+
+				test( 'referenceNode delegation works correctly', () => {
+
+					// Create a parent node
+					const parentNode = viewportTexture();
+
+					// Create a child node that references the parent
+					const childNode = viewportTexture();
+					childNode.referenceNode = parentNode;
+
+					const renderTarget = new RenderTarget( 512, 512 );
+
+					// When childNode has a referenceNode, it should use parent's cache
+					const textureFromChild = childNode.getTextureForReference( renderTarget );
+					const textureFromParent = parentNode.getTextureForReference( renderTarget );
+
+					expect( textureFromChild ).toBe( textureFromParent );
+
+					// Clean up
+					renderTarget.dispose();
+
+				} );
+
+				// When rendering to a RenderTarget, it should take priority over CanvasTarget
+				test( 'updateReference prioritizes renderTarget over canvasTarget', () => {
+
+					const node = viewportTexture();
+
+					// Create mock targets
+					const renderTarget = new RenderTarget( 512, 512 );
+					const canvasTarget = { isCanvasTarget: true }; // Mock canvas target
+
+					// Create mock renderer that returns both targets
+					const mockRenderer = {
+						getRenderTarget: () => renderTarget,
+						getCanvasTarget: () => canvasTarget
+					};
+
+					// Create mock frame object
+					const mockFrame = {
+						renderer: mockRenderer
+					};
+
+					// Call updateReference
+					node.updateReference( mockFrame );
+
+					// The node.value should be the texture for renderTarget, not canvasTarget
+					const expectedTexture = node.getTextureForReference( renderTarget );
+					const canvasTexture = node.getTextureForReference( canvasTarget );
+
+					expect( node.value ).toBe( expectedTexture );
+					expect( node.value ).not.toBe( canvasTexture );
+
+					// Clean up
+					renderTarget.dispose();
+
+				} );
+
+				// Test the edge case: when only canvasTarget is available (renderTarget is null)
+				test( 'updateReference uses canvasTarget when renderTarget is null', () => {
+
+					const node = viewportTexture();
+
+					const canvasTarget = { isCanvasTarget: true }; // Mock canvas target
+
+					// Create mock renderer where renderTarget is null
+					const mockRenderer = {
+						getRenderTarget: () => null,
+						getCanvasTarget: () => canvasTarget
+					};
+
+					const mockFrame = {
+						renderer: mockRenderer
+					};
+
+					// Call updateReference
+					node.updateReference( mockFrame );
+
+					// The node.value should be the texture for canvasTarget
+					const expectedTexture = node.getTextureForReference( canvasTarget );
+
+					expect( node.value ).toBe( expectedTexture );
+
+				} );
+
+			} );
+
+		} );
+
+	} );
+
+} );

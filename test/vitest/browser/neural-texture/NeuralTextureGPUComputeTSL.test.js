@@ -65,9 +65,12 @@ function readInt( renderer, attribute, index ) {
 }
 
 // Builds a tiny NeuralTextureGPUModel: 1 grid channel, 1 level (2x2), no
-// hidden layers, 1 output channel - just enough buffer layout (2 weights:
-// one input weight + one bias, 4 latents) to address individual elements by
-// hand while exercising the exact same kernels the real trainer runs.
+// hidden layers, 1 output channel, positional encoding disabled - just
+// enough buffer layout (2 weights: one input weight + one bias, 4 latents)
+// to address individual elements by hand while exercising the exact same
+// kernels the real trainer runs. peOctaves: 0 keeps this a genuine
+// single-weight linear model - with the default peOctaves the grid tap
+// alone would no longer be the whole input.
 function createTinyGPUModel() {
 
 	return new NeuralTextureGPUModel( {
@@ -77,6 +80,7 @@ function createTinyGPUModel() {
 		targetResolution: 2,
 		hiddenSizes: [],
 		outputChannels: 1,
+		peOctaves: 0,
 		batchSize: 1
 	} );
 

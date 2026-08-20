@@ -104,14 +104,14 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			const epsilon = 1e-7;
 
 			const idx = 0;
-			gpuModel.weightsAttribute.array[ idx ] = weight;
-			gpuModel.weightsAttribute.needsUpdate = true;
-			gpuModel.gradWeightsAttribute.array[ idx ] = Math.round( grad * FIXED_POINT_SCALE );
-			gpuModel.gradWeightsAttribute.needsUpdate = true;
-			gpuModel.mWeightsAttribute.array[ idx ] = m;
-			gpuModel.mWeightsAttribute.needsUpdate = true;
-			gpuModel.vWeightsAttribute.array[ idx ] = v;
-			gpuModel.vWeightsAttribute.needsUpdate = true;
+			gpuModel.weightsBuffers.attribute.array[ idx ] = weight;
+			gpuModel.weightsBuffers.attribute.needsUpdate = true;
+			gpuModel.weightsBuffers.gradAttribute.array[ idx ] = Math.round( grad * FIXED_POINT_SCALE );
+			gpuModel.weightsBuffers.gradAttribute.needsUpdate = true;
+			gpuModel.weightsBuffers.mAttribute.array[ idx ] = m;
+			gpuModel.weightsBuffers.mAttribute.needsUpdate = true;
+			gpuModel.weightsBuffers.vAttribute.array[ idx ] = v;
+			gpuModel.weightsBuffers.vAttribute.needsUpdate = true;
 			gpuModel.gradNormAttribute.array[ 0 ] = 0; // norm-squared 0 -> clip scale clamps to 1 (no clipping)
 			gpuModel.gradNormAttribute.needsUpdate = true;
 			gpuModel.stepUniform.value = step;
@@ -123,9 +123,9 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			await renderer.computeAsync( kernel );
 
 			const [ gpuWeight, gpuM, gpuV ] = await Promise.all( [
-				readFloat( renderer, gpuModel.weightsAttribute, idx ),
-				readFloat( renderer, gpuModel.mWeightsAttribute, idx ),
-				readFloat( renderer, gpuModel.vWeightsAttribute, idx )
+				readFloat( renderer, gpuModel.weightsBuffers.attribute, idx ),
+				readFloat( renderer, gpuModel.weightsBuffers.mAttribute, idx ),
+				readFloat( renderer, gpuModel.weightsBuffers.vAttribute, idx )
 			] );
 
 			const expected = referenceAdamStep( { weight, grad, m, v, step, lr, beta1, beta2, epsilon } );
@@ -136,7 +136,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 
 			// The gradient accumulator must be zeroed after being consumed, so the
 			// next training iteration starts from a clean accumulator.
-			const gradAfter = await readInt( renderer, gpuModel.gradWeightsAttribute, idx );
+			const gradAfter = await readInt( renderer, gpuModel.weightsBuffers.gradAttribute, idx );
 			expect( gradAfter ).toBe( 0 );
 
 		} );
@@ -170,14 +170,14 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			const clippedGrad = rawGrad * clipScale;
 
 			const idx = 0;
-			gpuModel.weightsAttribute.array[ idx ] = weight;
-			gpuModel.weightsAttribute.needsUpdate = true;
-			gpuModel.gradWeightsAttribute.array[ idx ] = Math.round( rawGrad * FIXED_POINT_SCALE );
-			gpuModel.gradWeightsAttribute.needsUpdate = true;
-			gpuModel.mWeightsAttribute.array[ idx ] = m;
-			gpuModel.mWeightsAttribute.needsUpdate = true;
-			gpuModel.vWeightsAttribute.array[ idx ] = v;
-			gpuModel.vWeightsAttribute.needsUpdate = true;
+			gpuModel.weightsBuffers.attribute.array[ idx ] = weight;
+			gpuModel.weightsBuffers.attribute.needsUpdate = true;
+			gpuModel.weightsBuffers.gradAttribute.array[ idx ] = Math.round( rawGrad * FIXED_POINT_SCALE );
+			gpuModel.weightsBuffers.gradAttribute.needsUpdate = true;
+			gpuModel.weightsBuffers.mAttribute.array[ idx ] = m;
+			gpuModel.weightsBuffers.mAttribute.needsUpdate = true;
+			gpuModel.weightsBuffers.vAttribute.array[ idx ] = v;
+			gpuModel.weightsBuffers.vAttribute.needsUpdate = true;
 			gpuModel.gradNormAttribute.array[ 0 ] = Math.round( normSquared * GRADIENT_NORM_SCALE );
 			gpuModel.gradNormAttribute.needsUpdate = true;
 			gpuModel.stepUniform.value = step;
@@ -188,7 +188,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			const kernel = createTextureAdamWeightsComputeNode( gpuModel, { beta1, beta2, epsilon } );
 			await renderer.computeAsync( kernel );
 
-			const gpuWeight = await readFloat( renderer, gpuModel.weightsAttribute, idx );
+			const gpuWeight = await readFloat( renderer, gpuModel.weightsBuffers.attribute, idx );
 
 			const expectedClipped = referenceAdamStep( { weight, grad: clippedGrad, m, v, step, lr, beta1, beta2, epsilon } );
 			const expectedUnclipped = referenceAdamStep( { weight, grad: rawGrad, m, v, step, lr, beta1, beta2, epsilon } );
@@ -222,14 +222,14 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			const epsilon = 1e-7;
 
 			const idx = 2; // an arbitrary latent element within the 4-element grid
-			gpuModel.latentsAttribute.array[ idx ] = value;
-			gpuModel.latentsAttribute.needsUpdate = true;
-			gpuModel.gradLatentsAttribute.array[ idx ] = Math.round( grad * FIXED_POINT_SCALE );
-			gpuModel.gradLatentsAttribute.needsUpdate = true;
-			gpuModel.mLatentsAttribute.array[ idx ] = m;
-			gpuModel.mLatentsAttribute.needsUpdate = true;
-			gpuModel.vLatentsAttribute.array[ idx ] = v;
-			gpuModel.vLatentsAttribute.needsUpdate = true;
+			gpuModel.latentsBuffers.attribute.array[ idx ] = value;
+			gpuModel.latentsBuffers.attribute.needsUpdate = true;
+			gpuModel.latentsBuffers.gradAttribute.array[ idx ] = Math.round( grad * FIXED_POINT_SCALE );
+			gpuModel.latentsBuffers.gradAttribute.needsUpdate = true;
+			gpuModel.latentsBuffers.mAttribute.array[ idx ] = m;
+			gpuModel.latentsBuffers.mAttribute.needsUpdate = true;
+			gpuModel.latentsBuffers.vAttribute.array[ idx ] = v;
+			gpuModel.latentsBuffers.vAttribute.needsUpdate = true;
 			gpuModel.gradNormAttribute.array[ 0 ] = 0;
 			gpuModel.gradNormAttribute.needsUpdate = true;
 			gpuModel.stepUniform.value = step;
@@ -240,7 +240,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			const kernel = createTextureAdamLatentsComputeNode( gpuModel, { beta1, beta2, epsilon } );
 			await renderer.computeAsync( kernel );
 
-			const gpuValue = await readFloat( renderer, gpuModel.latentsAttribute, idx );
+			const gpuValue = await readFloat( renderer, gpuModel.latentsBuffers.attribute, idx );
 			const expected = referenceAdamStep( { weight: value, grad, m, v, step, lr, beta1, beta2, epsilon } );
 
 			expect( gpuValue ).toBeCloseTo( expected.weight, 4 );
@@ -263,18 +263,18 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 
 			for ( let i = 0; i < totalWeights; i ++ ) {
 
-				gpuModel.gradWeightsAttribute.array[ i ] = Math.round( weightGrads[ i ] * FIXED_POINT_SCALE );
+				gpuModel.weightsBuffers.gradAttribute.array[ i ] = Math.round( weightGrads[ i ] * FIXED_POINT_SCALE );
 
 			}
 
 			for ( let i = 0; i < totalLatents; i ++ ) {
 
-				gpuModel.gradLatentsAttribute.array[ i ] = Math.round( latentGrads[ i ] * FIXED_POINT_SCALE );
+				gpuModel.latentsBuffers.gradAttribute.array[ i ] = Math.round( latentGrads[ i ] * FIXED_POINT_SCALE );
 
 			}
 
-			gpuModel.gradWeightsAttribute.needsUpdate = true;
-			gpuModel.gradLatentsAttribute.needsUpdate = true;
+			gpuModel.weightsBuffers.gradAttribute.needsUpdate = true;
+			gpuModel.latentsBuffers.gradAttribute.needsUpdate = true;
 			gpuModel.gradNormAttribute.array[ 0 ] = 0;
 			gpuModel.gradNormAttribute.needsUpdate = true;
 			gpuModel.invBatchUniform.value = invBatch;
@@ -320,11 +320,11 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			// to predict a0.
 			const target = 0.5; // constant target texture, likewise UV-independent
 
-			gpuModel.weightsAttribute.array[ weightLayer.weightsOffset ] = w;
-			gpuModel.weightsAttribute.array[ weightLayer.biasesOffset ] = b;
-			gpuModel.weightsAttribute.needsUpdate = true;
-			gpuModel.latentsAttribute.array.fill( latentValue );
-			gpuModel.latentsAttribute.needsUpdate = true;
+			gpuModel.weightsBuffers.attribute.array[ weightLayer.weightsOffset ] = w;
+			gpuModel.weightsBuffers.attribute.array[ weightLayer.biasesOffset ] = b;
+			gpuModel.weightsBuffers.attribute.needsUpdate = true;
+			gpuModel.latentsBuffers.attribute.array.fill( latentValue );
+			gpuModel.latentsBuffers.attribute.needsUpdate = true;
 			gpuModel.resetLoss();
 
 			// A single flat-colored texture: sampling anywhere returns `target`
@@ -368,8 +368,8 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			const expectedBiasGrad = diff;
 
 			const gpuLoss = await gpuModel.readLoss( renderer );
-			const gpuWeightGrad = ( await readInt( renderer, gpuModel.gradWeightsAttribute, weightLayer.weightsOffset ) ) / FIXED_POINT_SCALE;
-			const gpuBiasGrad = ( await readInt( renderer, gpuModel.gradWeightsAttribute, weightLayer.biasesOffset ) ) / FIXED_POINT_SCALE;
+			const gpuWeightGrad = ( await readInt( renderer, gpuModel.weightsBuffers.gradAttribute, weightLayer.weightsOffset ) ) / FIXED_POINT_SCALE;
+			const gpuBiasGrad = ( await readInt( renderer, gpuModel.weightsBuffers.gradAttribute, weightLayer.biasesOffset ) ) / FIXED_POINT_SCALE;
 
 			expect( gpuLoss ).toBeCloseTo( expectedLoss, 3 );
 			expect( gpuWeightGrad ).toBeCloseTo( expectedWeightGrad, 3 );
@@ -395,11 +395,11 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			const { layout } = gpuModel;
 			const weightLayer = layout.mlpLayers[ 0 ];
 
-			gpuModel.weightsAttribute.array[ weightLayer.weightsOffset ] = 0.1;
-			gpuModel.weightsAttribute.array[ weightLayer.biasesOffset ] = 0.0;
-			gpuModel.weightsAttribute.needsUpdate = true;
-			gpuModel.latentsAttribute.array.fill( 0.3 );
-			gpuModel.latentsAttribute.needsUpdate = true;
+			gpuModel.weightsBuffers.attribute.array[ weightLayer.weightsOffset ] = 0.1;
+			gpuModel.weightsBuffers.attribute.array[ weightLayer.biasesOffset ] = 0.0;
+			gpuModel.weightsBuffers.attribute.needsUpdate = true;
+			gpuModel.latentsBuffers.attribute.array.fill( 0.3 );
+			gpuModel.latentsBuffers.attribute.needsUpdate = true;
 			gpuModel.learningRateUniform.value = 0.05;
 			gpuModel.stepUniform.value = 1;
 			gpuModel.maxGradientNormUniform.value = 1000;

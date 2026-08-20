@@ -1,7 +1,7 @@
 import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, uniform } from 'three/tsl';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
-import { createAdamParameterBuffers } from '../neural/NeuralGPUComputeTSL.js';
+import { createAdamParameterBuffers, disposeAdamParameterBuffers } from '../neural/NeuralGPUComputeTSL.js';
 import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { resolveNeuralTextureOptions } from './NeuralTextureModel.js';
 
@@ -173,9 +173,9 @@ function copyModel( cpuModel, layout, weights, latents, direction ) {
 
 /**
  * Encapsulates the GPU StorageBuffers, uniforms, and CPU synchronizers for
- * neural texture training. Field names intentionally mirror
- * `NeuralAppearanceGPUModel` so the Adam / gradient-clip compute kernels can
- * be reused verbatim.
+ * neural texture training. `weightsBuffers`/`latentsBuffers` shapes
+ * intentionally mirror `NeuralAppearanceGPUModel`'s so the Adam / gradient-
+ * clip compute kernels can be reused verbatim.
  */
 class NeuralTextureGPUModel {
 
@@ -188,8 +188,8 @@ class NeuralTextureGPUModel {
 		const { totalWeights, totalLatents, activationStride } = this.layout;
 		const batchSize = this.batchSize;
 
-		Object.assign( this, createAdamParameterBuffers( 'weights', totalWeights ) );
-		Object.assign( this, createAdamParameterBuffers( 'latents', totalLatents ) );
+		this.weightsBuffers = createAdamParameterBuffers( totalWeights );
+		this.latentsBuffers = createAdamParameterBuffers( totalLatents );
 
 		this.activationsAttribute = new StorageBufferAttribute( new Float32Array( batchSize * activationStride ), 1, Float32Array );
 		this.activationsStorage = storage( this.activationsAttribute, 'float', batchSize * activationStride );
@@ -209,15 +209,15 @@ class NeuralTextureGPUModel {
 
 	initFromCPUModel( cpuModel ) {
 
-		const weights = this.weightsAttribute.array;
-		const latents = this.latentsAttribute.array;
+		const weights = this.weightsBuffers.attribute.array;
+		const latents = this.latentsBuffers.attribute.array;
 		weights.fill( 0 );
 		latents.fill( 0 );
 
 		copyModel( cpuModel, this.layout, weights, latents, 'toGPU' );
 
-		this.weightsAttribute.needsUpdate = true;
-		this.latentsAttribute.needsUpdate = true;
+		this.weightsBuffers.attribute.needsUpdate = true;
+		this.latentsBuffers.attribute.needsUpdate = true;
 
 	}
 
@@ -230,8 +230,10 @@ class NeuralTextureGPUModel {
 
 	async syncToCPU( cpuModel, renderer ) {
 
-		const weightsBuffer = await renderer.getArrayBufferAsync( this.weightsAttribute );
-		const latentsBuffer = await renderer.getArrayBufferAsync( this.latentsAttribute );
+		const [ weightsBuffer, latentsBuffer ] = await Promise.all( [
+			renderer.getArrayBufferAsync( this.weightsBuffers.attribute ),
+			renderer.getArrayBufferAsync( this.latentsBuffers.attribute )
+		] );
 		const weights = new Float32Array( weightsBuffer );
 		const latents = new Float32Array( latentsBuffer );
 
@@ -246,15 +248,8 @@ class NeuralTextureGPUModel {
 	 */
 	dispose() {
 
-		this.weightsAttribute.dispose();
-		this.gradWeightsAttribute.dispose();
-		this.mWeightsAttribute.dispose();
-		this.vWeightsAttribute.dispose();
-
-		this.latentsAttribute.dispose();
-		this.gradLatentsAttribute.dispose();
-		this.mLatentsAttribute.dispose();
-		this.vLatentsAttribute.dispose();
+		disposeAdamParameterBuffers( this.weightsBuffers );
+		disposeAdamParameterBuffers( this.latentsBuffers );
 
 		this.activationsAttribute.dispose();
 		this.lossAttribute.dispose();

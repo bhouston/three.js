@@ -78,13 +78,11 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		layout,
 		batchSize,
 		activationsStorage,
-		weightsStorage,
-		gradWeightsAtomic,
-		latentsStorage,
-		gradLatentsAtomic,
 		lossAtomic,
 		stepUniform
 	} = gpuModel;
+	const { valuesStorage: weightsStorage, gradAtomic: gradWeightsAtomic } = gpuModel.weightsBuffers;
+	const { valuesStorage: latentsStorage, gradAtomic: gradLatentsAtomic } = gpuModel.latentsBuffers;
 
 	const {
 		gridLevels,
@@ -326,7 +324,9 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
  */
 function createAccumulateGradientNormComputeNode( gpuModel ) {
 
-	const { layout, gradWeightsAtomic, gradLatentsAtomic, gradNormAtomic, invBatchUniform } = gpuModel;
+	const { layout, gradNormAtomic, invBatchUniform } = gpuModel;
+	const { gradAtomic: gradWeightsAtomic } = gpuModel.weightsBuffers;
+	const { gradAtomic: gradLatentsAtomic } = gpuModel.latentsBuffers;
 	const { totalWeights, totalLatents } = layout;
 	const dispatchCount = totalWeights + totalLatents;
 
@@ -363,22 +363,19 @@ function createTextureAdamWeightsComputeNode( gpuModel, { beta1 = 0.9, beta2 = 0
 
 	const {
 		layout,
-		weightsStorage,
-		gradWeightsAtomic,
-		mWeightsStorage,
-		vWeightsStorage,
 		learningRateUniform,
 		stepUniform,
 		gradNormAtomic,
 		maxGradientNormUniform,
 		invBatchUniform
 	} = gpuModel;
+	const { valuesStorage, gradAtomic, mStorage, vStorage } = gpuModel.weightsBuffers;
 
 	return createAdamComputeNode( {
-		valuesStorage: weightsStorage,
-		gradAtomic: gradWeightsAtomic,
-		mStorage: mWeightsStorage,
-		vStorage: vWeightsStorage,
+		valuesStorage,
+		gradAtomic,
+		mStorage,
+		vStorage,
 		gradNormAtomic,
 		maxGradientNormUniform,
 		learningRateUniform,
@@ -401,22 +398,19 @@ function createTextureAdamLatentsComputeNode( gpuModel, { beta1 = 0.9, beta2 = 0
 
 	const {
 		layout,
-		latentsStorage,
-		gradLatentsAtomic,
-		mLatentsStorage,
-		vLatentsStorage,
 		learningRateUniform,
 		stepUniform,
 		gradNormAtomic,
 		maxGradientNormUniform,
 		invBatchUniform
 	} = gpuModel;
+	const { valuesStorage, gradAtomic, mStorage, vStorage } = gpuModel.latentsBuffers;
 
 	return createAdamComputeNode( {
-		valuesStorage: latentsStorage,
-		gradAtomic: gradLatentsAtomic,
-		mStorage: mLatentsStorage,
-		vStorage: vLatentsStorage,
+		valuesStorage,
+		gradAtomic,
+		mStorage,
+		vStorage,
 		gradNormAtomic,
 		maxGradientNormUniform,
 		learningRateUniform,

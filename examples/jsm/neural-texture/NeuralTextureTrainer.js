@@ -127,8 +127,10 @@ class NeuralTextureTrainer {
 
 				if ( shouldSync ) {
 
-					lastLoss = await gpuModel.readLoss( renderer );
-					await gpuModel.syncToCPU( cpuModel, renderer );
+					[ lastLoss ] = await Promise.all( [
+						gpuModel.readLoss( renderer ),
+						gpuModel.syncToCPU( cpuModel, renderer )
+					] );
 
 					if ( onProgress ) {
 

@@ -106,10 +106,10 @@ describe( 'Addons', () => {
 				const cpuModel = createModel( options, random );
 				const gpuModel = new NeuralAppearanceGPUModel( options );
 
-				expect( gpuModel.weightsStorage ).toBeTruthy();
-				expect( gpuModel.gradWeightsAtomic ).toBeTruthy();
-				expect( gpuModel.latentsStorage ).toBeTruthy();
-				expect( gpuModel.gradLatentsAtomic ).toBeTruthy();
+				expect( gpuModel.weightsBuffers.valuesStorage ).toBeTruthy();
+				expect( gpuModel.weightsBuffers.gradAtomic ).toBeTruthy();
+				expect( gpuModel.latentsBuffers.valuesStorage ).toBeTruthy();
+				expect( gpuModel.latentsBuffers.gradAtomic ).toBeTruthy();
 				expect( gpuModel.samplesStorage ).toBeTruthy();
 				expect( gpuModel.activationsStorage ).toBeTruthy();
 				expect( gpuModel.lossAtomic ).toBeTruthy();
@@ -117,8 +117,8 @@ describe( 'Addons', () => {
 				// Populate GPU buffers from CPU model
 				gpuModel.initFromCPUModel( cpuModel );
 
-				const weightsArray = gpuModel.weightsAttribute.array;
-				const latentsArray = gpuModel.latentsAttribute.array;
+				const weightsArray = gpuModel.weightsBuffers.attribute.array;
+				const latentsArray = gpuModel.latentsBuffers.attribute.array;
 
 				// Verify rotation weights copy
 				for ( let i = 0; i < gpuModel.layout.rotationCount; i ++ ) {
@@ -284,11 +284,11 @@ describe( 'Addons', () => {
 				};
 
 				// Modify GPU weights
-				const weightsArray = gpuModel.weightsAttribute.array;
+				const weightsArray = gpuModel.weightsBuffers.attribute.array;
 				weightsArray.fill( 0.75 );
 
 				// Modify GPU latents
-				const latentsArray = gpuModel.latentsAttribute.array;
+				const latentsArray = gpuModel.latentsBuffers.attribute.array;
 				latentsArray.fill( 0.42 );
 
 				await gpuModel.syncToCPU( cpuModel, mockRenderer );

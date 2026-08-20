@@ -201,10 +201,10 @@
 			let lossHistory = [];
 
 			const params = {
-				bakeResolution: 128,
+				bakeResolution: 1024,
 				levels: 4,
 				baseResolution: 16,
-				targetResolution: 128,
+				targetResolution: 64,
 				hiddenSize: 16,
 				batchSize: 8192,
 				iterations: 750,
@@ -316,7 +316,7 @@
 				const gui = renderer.inspector.createParameters( 'Neural Material' );
 
 				const sourceFolder = gui.addFolder( 'source' );
-				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024 ] ).name( 'bake resolution' );
+				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024, 2048, 4096 ] ).name( 'bake resolution' );
 
 				const networkFolder = gui.addFolder( 'network (grid + MLP)' );
 				networkFolder.add( params, 'levels', [ 2, 3, 4, 5, 6, 8 ] ).name( 'grid levels' ).onChange( updateNetworkSize );

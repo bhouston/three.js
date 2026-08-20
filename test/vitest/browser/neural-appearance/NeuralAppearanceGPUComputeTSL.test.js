@@ -149,15 +149,15 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 				const w0 = 0.5, m0 = 0.1, v0 = 0.01, grad = 0.2;
 				const lr = 0.01, beta1 = 0.9, beta2 = 0.999, epsilon = 1e-7, step = 1;
 
-				model.weightsAttribute.array[ index ] = w0;
-				model.mWeightsAttribute.array[ index ] = m0;
-				model.vWeightsAttribute.array[ index ] = v0;
-				model.gradWeightsAttribute.array[ index ] = Math.round( grad * FIXED_POINT_SCALE );
+				model.weightsBuffers.attribute.array[ index ] = w0;
+				model.weightsBuffers.mAttribute.array[ index ] = m0;
+				model.weightsBuffers.vAttribute.array[ index ] = v0;
+				model.weightsBuffers.gradAttribute.array[ index ] = Math.round( grad * FIXED_POINT_SCALE );
 				model.gradNormAttribute.array[ 0 ] = 0; // unclipped: clip scale resolves to 1
-				model.weightsAttribute.needsUpdate = true;
-				model.mWeightsAttribute.needsUpdate = true;
-				model.vWeightsAttribute.needsUpdate = true;
-				model.gradWeightsAttribute.needsUpdate = true;
+				model.weightsBuffers.attribute.needsUpdate = true;
+				model.weightsBuffers.mAttribute.needsUpdate = true;
+				model.weightsBuffers.vAttribute.needsUpdate = true;
+				model.weightsBuffers.gradAttribute.needsUpdate = true;
 				model.gradNormAttribute.needsUpdate = true;
 				model.learningRateUniform.value = lr;
 				model.stepUniform.value = step;
@@ -167,9 +167,9 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 				const expected = referenceAdamStep( { weight: w0, grad, m: m0, v: v0, lr, beta1, beta2, epsilon, step } );
 
-				const gpuWeight = await readFloat32( renderer, model.weightsAttribute, index );
-				const gpuM = await readFloat32( renderer, model.mWeightsAttribute, index );
-				const gpuV = await readFloat32( renderer, model.vWeightsAttribute, index );
+				const gpuWeight = await readFloat32( renderer, model.weightsBuffers.attribute, index );
+				const gpuM = await readFloat32( renderer, model.weightsBuffers.mAttribute, index );
+				const gpuV = await readFloat32( renderer, model.weightsBuffers.vAttribute, index );
 
 				expect( gpuWeight ).toBeCloseTo( expected.newWeight, 5 );
 				expect( gpuM ).toBeCloseTo( expected.newM, 5 );
@@ -177,7 +177,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 				// The gradient accumulator must be zeroed after being consumed,
 				// so the next batch starts from a clean slate.
-				const gpuGrad = await readInt32( renderer, model.gradWeightsAttribute, index );
+				const gpuGrad = await readInt32( renderer, model.weightsBuffers.gradAttribute, index );
 				expect( gpuGrad ).toBe( 0 );
 
 			} finally {
@@ -198,15 +198,15 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 				const w0 = - 0.3, m0 = 0.05, v0 = 0.002, grad = - 0.15;
 				const lr = 0.02, beta1 = 0.9, beta2 = 0.999, epsilon = 1e-7, step = 2;
 
-				model.weightsAttribute.array[ index ] = w0;
-				model.mWeightsAttribute.array[ index ] = m0;
-				model.vWeightsAttribute.array[ index ] = v0;
-				model.gradWeightsAttribute.array[ index ] = Math.round( grad * FIXED_POINT_SCALE );
+				model.weightsBuffers.attribute.array[ index ] = w0;
+				model.weightsBuffers.mAttribute.array[ index ] = m0;
+				model.weightsBuffers.vAttribute.array[ index ] = v0;
+				model.weightsBuffers.gradAttribute.array[ index ] = Math.round( grad * FIXED_POINT_SCALE );
 				model.gradNormAttribute.array[ 0 ] = 0;
-				model.weightsAttribute.needsUpdate = true;
-				model.mWeightsAttribute.needsUpdate = true;
-				model.vWeightsAttribute.needsUpdate = true;
-				model.gradWeightsAttribute.needsUpdate = true;
+				model.weightsBuffers.attribute.needsUpdate = true;
+				model.weightsBuffers.mAttribute.needsUpdate = true;
+				model.weightsBuffers.vAttribute.needsUpdate = true;
+				model.weightsBuffers.gradAttribute.needsUpdate = true;
 				model.gradNormAttribute.needsUpdate = true;
 				model.learningRateUniform.value = lr;
 				model.stepUniform.value = step;
@@ -216,9 +216,9 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 				const expected = referenceAdamStep( { weight: w0, grad, m: m0, v: v0, lr, beta1, beta2, epsilon, step } );
 
-				const gpuWeight = await readFloat32( renderer, model.weightsAttribute, index );
-				const gpuM = await readFloat32( renderer, model.mWeightsAttribute, index );
-				const gpuV = await readFloat32( renderer, model.vWeightsAttribute, index );
+				const gpuWeight = await readFloat32( renderer, model.weightsBuffers.attribute, index );
+				const gpuM = await readFloat32( renderer, model.weightsBuffers.mAttribute, index );
+				const gpuV = await readFloat32( renderer, model.weightsBuffers.vAttribute, index );
 
 				expect( gpuWeight ).toBeCloseTo( expected.newWeight, 5 );
 				expect( gpuM ).toBeCloseTo( expected.newM, 5 );
@@ -250,15 +250,15 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 				const clipScale = Math.min( 1, maxGradientNorm / Math.sqrt( normSquared ) );
 				const clippedGrad = rawGrad * clipScale;
 
-				model.weightsAttribute.array[ index ] = w0;
-				model.mWeightsAttribute.array[ index ] = m0;
-				model.vWeightsAttribute.array[ index ] = v0;
-				model.gradWeightsAttribute.array[ index ] = Math.round( rawGrad * FIXED_POINT_SCALE );
+				model.weightsBuffers.attribute.array[ index ] = w0;
+				model.weightsBuffers.mAttribute.array[ index ] = m0;
+				model.weightsBuffers.vAttribute.array[ index ] = v0;
+				model.weightsBuffers.gradAttribute.array[ index ] = Math.round( rawGrad * FIXED_POINT_SCALE );
 				model.gradNormAttribute.array[ 0 ] = Math.round( normSquared * GRADIENT_NORM_SCALE );
-				model.weightsAttribute.needsUpdate = true;
-				model.mWeightsAttribute.needsUpdate = true;
-				model.vWeightsAttribute.needsUpdate = true;
-				model.gradWeightsAttribute.needsUpdate = true;
+				model.weightsBuffers.attribute.needsUpdate = true;
+				model.weightsBuffers.mAttribute.needsUpdate = true;
+				model.weightsBuffers.vAttribute.needsUpdate = true;
+				model.weightsBuffers.gradAttribute.needsUpdate = true;
 				model.gradNormAttribute.needsUpdate = true;
 				model.learningRateUniform.value = lr;
 				model.stepUniform.value = step;
@@ -269,8 +269,8 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 				const expectedClipped = referenceAdamStep( { weight: w0, grad: clippedGrad, m: m0, v: v0, lr, beta1, beta2, epsilon, step } );
 				const expectedUnclipped = referenceAdamStep( { weight: w0, grad: rawGrad, m: m0, v: v0, lr, beta1, beta2, epsilon, step } );
 
-				const gpuWeight = await readFloat32( renderer, model.weightsAttribute, index );
-				const gpuM = await readFloat32( renderer, model.mWeightsAttribute, index );
+				const gpuWeight = await readFloat32( renderer, model.weightsBuffers.attribute, index );
+				const gpuM = await readFloat32( renderer, model.weightsBuffers.mAttribute, index );
 
 				expect( gpuWeight ).toBeCloseTo( expectedClipped.newWeight, 5 );
 				expect( gpuM ).toBeCloseTo( expectedClipped.newM, 5 );
@@ -306,15 +306,15 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 				const z0 = 0.02, m0 = - 0.01, v0 = 0.0005, grad = 0.08;
 				const lr = 0.005, beta1 = 0.9, beta2 = 0.999, epsilon = 1e-7, step = 1;
 
-				model.latentsAttribute.array[ index ] = z0;
-				model.mLatentsAttribute.array[ index ] = m0;
-				model.vLatentsAttribute.array[ index ] = v0;
-				model.gradLatentsAttribute.array[ index ] = Math.round( grad * FIXED_POINT_SCALE );
+				model.latentsBuffers.attribute.array[ index ] = z0;
+				model.latentsBuffers.mAttribute.array[ index ] = m0;
+				model.latentsBuffers.vAttribute.array[ index ] = v0;
+				model.latentsBuffers.gradAttribute.array[ index ] = Math.round( grad * FIXED_POINT_SCALE );
 				model.gradNormAttribute.array[ 0 ] = 0;
-				model.latentsAttribute.needsUpdate = true;
-				model.mLatentsAttribute.needsUpdate = true;
-				model.vLatentsAttribute.needsUpdate = true;
-				model.gradLatentsAttribute.needsUpdate = true;
+				model.latentsBuffers.attribute.needsUpdate = true;
+				model.latentsBuffers.mAttribute.needsUpdate = true;
+				model.latentsBuffers.vAttribute.needsUpdate = true;
+				model.latentsBuffers.gradAttribute.needsUpdate = true;
 				model.gradNormAttribute.needsUpdate = true;
 				model.learningRateUniform.value = lr;
 				model.stepUniform.value = step;
@@ -324,9 +324,9 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 				const expected = referenceAdamStep( { weight: z0, grad, m: m0, v: v0, lr, beta1, beta2, epsilon, step } );
 
-				const gpuValue = await readFloat32( renderer, model.latentsAttribute, index );
-				const gpuM = await readFloat32( renderer, model.mLatentsAttribute, index );
-				const gpuV = await readFloat32( renderer, model.vLatentsAttribute, index );
+				const gpuValue = await readFloat32( renderer, model.latentsBuffers.attribute, index );
+				const gpuM = await readFloat32( renderer, model.latentsBuffers.mAttribute, index );
+				const gpuV = await readFloat32( renderer, model.latentsBuffers.vAttribute, index );
 
 				expect( gpuValue ).toBeCloseTo( expected.newWeight, 5 );
 				expect( gpuM ).toBeCloseTo( expected.newM, 5 );
@@ -352,13 +352,13 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 				const gW1 = 0.3, gW2 = - 0.4, gL1 = 0.1, gL2 = 0.2;
 
-				model.gradWeightsAttribute.array[ 0 ] = Math.round( gW1 * FIXED_POINT_SCALE );
-				model.gradWeightsAttribute.array[ 1 ] = Math.round( gW2 * FIXED_POINT_SCALE );
-				model.gradLatentsAttribute.array[ 0 ] = Math.round( gL1 * FIXED_POINT_SCALE );
-				model.gradLatentsAttribute.array[ 1 ] = Math.round( gL2 * FIXED_POINT_SCALE );
+				model.weightsBuffers.gradAttribute.array[ 0 ] = Math.round( gW1 * FIXED_POINT_SCALE );
+				model.weightsBuffers.gradAttribute.array[ 1 ] = Math.round( gW2 * FIXED_POINT_SCALE );
+				model.latentsBuffers.gradAttribute.array[ 0 ] = Math.round( gL1 * FIXED_POINT_SCALE );
+				model.latentsBuffers.gradAttribute.array[ 1 ] = Math.round( gL2 * FIXED_POINT_SCALE );
 				model.gradNormAttribute.array[ 0 ] = 0;
-				model.gradWeightsAttribute.needsUpdate = true;
-				model.gradLatentsAttribute.needsUpdate = true;
+				model.weightsBuffers.gradAttribute.needsUpdate = true;
+				model.latentsBuffers.gradAttribute.needsUpdate = true;
 				model.gradNormAttribute.needsUpdate = true;
 
 				await renderer.computeAsync( createAccumulateGradientNormComputeNode( model ) );
@@ -390,11 +390,11 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 				const gW1 = 0.5, gL1 = 100.0; // latent gradient deliberately huge - must not leak in
 
-				model.gradWeightsAttribute.array[ 0 ] = Math.round( gW1 * FIXED_POINT_SCALE );
-				model.gradLatentsAttribute.array[ 0 ] = Math.round( gL1 * FIXED_POINT_SCALE );
+				model.weightsBuffers.gradAttribute.array[ 0 ] = Math.round( gW1 * FIXED_POINT_SCALE );
+				model.latentsBuffers.gradAttribute.array[ 0 ] = Math.round( gL1 * FIXED_POINT_SCALE );
 				model.gradNormAttribute.array[ 0 ] = 0;
-				model.gradWeightsAttribute.needsUpdate = true;
-				model.gradLatentsAttribute.needsUpdate = true;
+				model.weightsBuffers.gradAttribute.needsUpdate = true;
+				model.latentsBuffers.gradAttribute.needsUpdate = true;
 				model.gradNormAttribute.needsUpdate = true;
 
 				await renderer.computeAsync( createAccumulateGradientNormComputeNode( model, { includeLatents: false } ) );
@@ -431,10 +431,10 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 		function seedModel( model, seed ) {
 
-			fillSmallRandom( model.weightsAttribute.array, seed );
-			fillSmallRandom( model.latentsAttribute.array, seed + 1 );
-			model.weightsAttribute.needsUpdate = true;
-			model.latentsAttribute.needsUpdate = true;
+			fillSmallRandom( model.weightsBuffers.attribute.array, seed );
+			fillSmallRandom( model.latentsBuffers.attribute.array, seed + 1 );
+			model.weightsBuffers.attribute.needsUpdate = true;
+			model.latentsBuffers.attribute.needsUpdate = true;
 
 		}
 
@@ -492,7 +492,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 				seedModel( model, 777 );
 
-				const baseWeights = Float32Array.from( model.weightsAttribute.array );
+				const baseWeights = Float32Array.from( model.weightsBuffers.attribute.array );
 				// Row j=1 (green channel), input i=0, of the final linear (RGB)
 				// layer. Row j=0 lands in the output clamp's "dead zone"
 				// (z3 < 0) for this seed, where the kernel intentionally uses a
@@ -518,9 +518,9 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 				async function lossForWeight( value ) {
 
-					model.weightsAttribute.array.set( baseWeights );
-					model.weightsAttribute.array[ targetIndex ] = value;
-					model.weightsAttribute.needsUpdate = true;
+					model.weightsBuffers.attribute.array.set( baseWeights );
+					model.weightsBuffers.attribute.array[ targetIndex ] = value;
+					model.weightsBuffers.attribute.needsUpdate = true;
 					await resetAndRun( model );
 					const losses = await model.readLosses( renderer );
 					return losses.loss;
@@ -534,11 +534,11 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 
 				// Analytic gradient: restore the exact base weight and read what
 				// the kernel's own backward pass wrote into gradWeightsAtomic.
-				model.weightsAttribute.array.set( baseWeights );
-				model.weightsAttribute.needsUpdate = true;
+				model.weightsBuffers.attribute.array.set( baseWeights );
+				model.weightsBuffers.attribute.needsUpdate = true;
 				await resetAndRun( model );
 
-				const rawGrad = await readInt32( renderer, model.gradWeightsAttribute, targetIndex );
+				const rawGrad = await readInt32( renderer, model.weightsBuffers.gradAttribute, targetIndex );
 				const analyticGradient = rawGrad / FIXED_POINT_SCALE;
 
 				// Confirm the precondition documented above: channel j=1's z3

@@ -13,7 +13,7 @@ import {
 } from './NeuralAppearanceFormat.js';
 import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
-import { createAdamParameterBuffers } from '../neural/NeuralGPUComputeTSL.js';
+import { createAdamParameterBuffers, disposeAdamParameterBuffers } from '../neural/NeuralGPUComputeTSL.js';
 
 // Fields making up the "direct" part of each uploaded training sample
 // (everything before the IBL query/probe block) - see uploadSamples() below.
@@ -327,10 +327,10 @@ class NeuralAppearanceGPUModel {
 		const { totalWeights, totalLatents, sampleStride, activationStride } = this.layout;
 		const batchSize = this.batchSize;
 
-		Object.assign( this, createAdamParameterBuffers( 'weights', totalWeights ) );
+		this.weightsBuffers = createAdamParameterBuffers( totalWeights );
 
 		// 2. Latent buffers
-		Object.assign( this, createAdamParameterBuffers( 'latents', totalLatents ) );
+		this.latentsBuffers = createAdamParameterBuffers( totalLatents );
 
 		// 3. Sample buffer
 		this.samplesAttribute = new StorageBufferAttribute( new Float32Array( batchSize * sampleStride ), 1, Float32Array );
@@ -358,8 +358,8 @@ class NeuralAppearanceGPUModel {
 
 	initFromCPUModel( cpuModel ) {
 
-		const weights = this.weightsAttribute.array;
-		const latents = this.latentsAttribute.array;
+		const weights = this.weightsBuffers.attribute.array;
+		const latents = this.latentsBuffers.attribute.array;
 
 		weights.fill( 0 );
 		latents.fill( 0 );
@@ -421,8 +421,8 @@ class NeuralAppearanceGPUModel {
 
 		}
 
-		this.weightsAttribute.needsUpdate = true;
-		this.latentsAttribute.needsUpdate = true;
+		this.weightsBuffers.attribute.needsUpdate = true;
+		this.latentsBuffers.attribute.needsUpdate = true;
 
 	}
 
@@ -538,8 +538,10 @@ class NeuralAppearanceGPUModel {
 
 	async syncToCPU( cpuModel, renderer ) {
 
-		const weightsBuffer = await renderer.getArrayBufferAsync( this.weightsAttribute );
-		const latentsBuffer = await renderer.getArrayBufferAsync( this.latentsAttribute );
+		const [ weightsBuffer, latentsBuffer ] = await Promise.all( [
+			renderer.getArrayBufferAsync( this.weightsBuffers.attribute ),
+			renderer.getArrayBufferAsync( this.latentsBuffers.attribute )
+		] );
 
 		const weights = new Float32Array( weightsBuffer );
 		const latents = new Float32Array( latentsBuffer );
@@ -630,14 +632,10 @@ class NeuralAppearanceGPUModel {
 	// standalone storage buffer.
 	dispose( renderer ) {
 
-		const attributes = [
-			this.weightsAttribute, this.gradWeightsAttribute, this.mWeightsAttribute, this.vWeightsAttribute,
-			this.latentsAttribute, this.gradLatentsAttribute, this.mLatentsAttribute, this.vLatentsAttribute,
-			this.samplesAttribute, this.activationsAttribute,
-			this.lossAttribute, this.gradNormAttribute
-		];
+		disposeAdamParameterBuffers( this.weightsBuffers, renderer );
+		disposeAdamParameterBuffers( this.latentsBuffers, renderer );
 
-		for ( const attribute of attributes ) {
+		for ( const attribute of [ this.samplesAttribute, this.activationsAttribute, this.lossAttribute, this.gradNormAttribute ] ) {
 
 			if ( renderer && renderer.backend && renderer.backend.has( attribute ) ) {
 

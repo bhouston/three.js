@@ -356,15 +356,15 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			// Float32Array/Int32Array(totalWeights)` etc.), not a shared formula -
 			// a copy-paste slip sizing e.g. gradWeightsAttribute from totalLatents
 			// instead of totalWeights would be caught here.
-			expect( model.weightsAttribute.array.length ).toBe( totalWeights );
-			expect( model.gradWeightsAttribute.array.length ).toBe( totalWeights );
-			expect( model.mWeightsAttribute.array.length ).toBe( totalWeights );
-			expect( model.vWeightsAttribute.array.length ).toBe( totalWeights );
+			expect( model.weightsBuffers.attribute.array.length ).toBe( totalWeights );
+			expect( model.weightsBuffers.gradAttribute.array.length ).toBe( totalWeights );
+			expect( model.weightsBuffers.mAttribute.array.length ).toBe( totalWeights );
+			expect( model.weightsBuffers.vAttribute.array.length ).toBe( totalWeights );
 
-			expect( model.latentsAttribute.array.length ).toBe( totalLatents );
-			expect( model.gradLatentsAttribute.array.length ).toBe( totalLatents );
-			expect( model.mLatentsAttribute.array.length ).toBe( totalLatents );
-			expect( model.vLatentsAttribute.array.length ).toBe( totalLatents );
+			expect( model.latentsBuffers.attribute.array.length ).toBe( totalLatents );
+			expect( model.latentsBuffers.gradAttribute.array.length ).toBe( totalLatents );
+			expect( model.latentsBuffers.mAttribute.array.length ).toBe( totalLatents );
+			expect( model.latentsBuffers.vAttribute.array.length ).toBe( totalLatents );
 
 			// createTextureTrainBatchComputeNode dispatches `batchSize`
 			// invocations, each indexing its private activation-buffer slice at
@@ -381,7 +381,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			// into gradWeightsAtomic and [totalWeights, totalWeights+totalLatents)
 			// (offset back down to [0, totalLatents)) into gradLatentsAtomic - so
 			// both buffers together must exactly cover that dispatch range.
-			expect( model.gradWeightsAttribute.array.length + model.gradLatentsAttribute.array.length )
+			expect( model.weightsBuffers.gradAttribute.array.length + model.latentsBuffers.gradAttribute.array.length )
 				.toBe( totalWeights + totalLatents );
 
 		} );
@@ -411,13 +411,13 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 
 				for ( let i = 0; i < layer.weightsCount; i ++ ) {
 
-					expect( model.weightsAttribute.array[ layer.weightsOffset + i ] ).toBe( l + 1 );
+					expect( model.weightsBuffers.attribute.array[ layer.weightsOffset + i ] ).toBe( l + 1 );
 
 				}
 
 				for ( let i = 0; i < layer.biasesCount; i ++ ) {
 
-					expect( model.weightsAttribute.array[ layer.biasesOffset + i ] ).toBe( - ( l + 1 ) );
+					expect( model.weightsBuffers.attribute.array[ layer.biasesOffset + i ] ).toBe( - ( l + 1 ) );
 
 				}
 
@@ -427,7 +427,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 
 				for ( let i = 0; i < level.floatCount; i ++ ) {
 
-					expect( model.latentsAttribute.array[ level.offset + i ] ).toBe( 100 + g );
+					expect( model.latentsBuffers.attribute.array[ level.offset + i ] ).toBe( 100 + g );
 
 				}
 
@@ -441,18 +441,18 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			// both storages first (mirroring what every real training kernel does
 			// implicitly before any readback in the trainer).
 			const renderer = getRenderer();
-			model.weightsAttribute.needsUpdate = true;
-			model.latentsAttribute.needsUpdate = true;
+			model.weightsBuffers.attribute.needsUpdate = true;
+			model.latentsBuffers.attribute.needsUpdate = true;
 
 			const identityWeights = Fn( () => {
 
-				model.weightsStorage.element( instanceIndex ).assign( model.weightsStorage.element( instanceIndex ) );
+				model.weightsBuffers.valuesStorage.element( instanceIndex ).assign( model.weightsBuffers.valuesStorage.element( instanceIndex ) );
 
 			} )().compute( model.layout.totalWeights );
 
 			const identityLatents = Fn( () => {
 
-				model.latentsStorage.element( instanceIndex ).assign( model.latentsStorage.element( instanceIndex ) );
+				model.latentsBuffers.valuesStorage.element( instanceIndex ).assign( model.latentsBuffers.valuesStorage.element( instanceIndex ) );
 
 			} )().compute( model.layout.totalLatents );
 

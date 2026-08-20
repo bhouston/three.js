@@ -20,36 +20,54 @@ function wrapIndexTSL( val, size ) {
  * Allocates the 4 GPU StorageBuffers one Adam-optimized parameter block
  * needs (value, atomic gradient accumulator, and the 1st/2nd moment
  * buffers Adam maintains per parameter) plus their `storage()`-wrapped TSL
- * nodes, keyed under `name`'s own `{name}Attribute`/`grad{Name}Atomic`/etc.
- * property names (e.g. `name: 'weights'` yields `weightsAttribute`,
- * `gradWeightsAttribute`, `mWeightsAttribute`, `vWeightsAttribute`,
- * `weightsStorage`, `gradWeightsAtomic`, `mWeightsStorage`,
- * `vWeightsStorage`) so a GPUModel constructor can `Object.assign(this,
- * createAdamParameterBuffers('weights', totalWeights))` directly instead of
- * re-declaring each of those 8 fields by hand. Every neural trainer's
- * GPUModel (texture, appearance) calls this once for its weights and once
- * for its latents - identical buffer shape in both, just sized differently
- * and keyed under a different name - so this constructor boilerplate lives
- * here instead of being hand-duplicated per trainer.
+ * nodes, as a single bundle object - `{ attribute, gradAttribute,
+ * mAttribute, vAttribute, valuesStorage, gradAtomic, mStorage, vStorage }`.
+ * Every neural trainer's GPUModel (texture, appearance) calls this once for
+ * its weights and once for its latents (`this.weightsBuffers =
+ * createAdamParameterBuffers(totalWeights)`, `this.latentsBuffers =
+ * createAdamParameterBuffers(totalLatents)`) - identical buffer shape in
+ * both, just sized differently - so this constructor boilerplate, and the
+ * "a set of Adam parameter buffers" concept it represents, lives here
+ * instead of being hand-duplicated (or hand-flattened into 8 loose fields)
+ * per trainer.
  */
-function createAdamParameterBuffers( name, count ) {
+function createAdamParameterBuffers( count ) {
 
-	const Name = name[ 0 ].toUpperCase() + name.slice( 1 );
 	const attribute = new StorageBufferAttribute( new Float32Array( count ), 1, Float32Array );
 	const gradAttribute = new StorageBufferAttribute( new Int32Array( count ), 1, Int32Array );
 	const mAttribute = new StorageBufferAttribute( new Float32Array( count ), 1, Float32Array );
 	const vAttribute = new StorageBufferAttribute( new Float32Array( count ), 1, Float32Array );
 
 	return {
-		[ `${ name }Attribute` ]: attribute,
-		[ `grad${ Name }Attribute` ]: gradAttribute,
-		[ `m${ Name }Attribute` ]: mAttribute,
-		[ `v${ Name }Attribute` ]: vAttribute,
-		[ `${ name }Storage` ]: storage( attribute, 'float', count ),
-		[ `grad${ Name }Atomic` ]: storage( gradAttribute, 'int', count ).toAtomic(),
-		[ `m${ Name }Storage` ]: storage( mAttribute, 'float', count ),
-		[ `v${ Name }Storage` ]: storage( vAttribute, 'float', count )
+		attribute,
+		gradAttribute,
+		mAttribute,
+		vAttribute,
+		valuesStorage: storage( attribute, 'float', count ),
+		gradAtomic: storage( gradAttribute, 'int', count ).toAtomic(),
+		mStorage: storage( mAttribute, 'float', count ),
+		vStorage: storage( vAttribute, 'float', count )
 	};
+
+}
+
+/**
+ * Releases the 4 GPU StorageBuffers a `createAdamParameterBuffers` bundle
+ * owns - the disposal counterpart kept next to it for the same reason.
+ * `renderer`, when given, also releases the backend-side GPU buffer via
+ * `renderer.backend.destroyAttribute` - `StorageBufferAttribute.dispose()`
+ * alone only fires a 'dispose' event, and these standalone compute-only
+ * buffers (never attached to a BufferGeometry/render object) have nothing
+ * wired up to listen for it.
+ */
+function disposeAdamParameterBuffers( buffers, renderer = null ) {
+
+	for ( const attribute of [ buffers.attribute, buffers.gradAttribute, buffers.mAttribute, buffers.vAttribute ] ) {
+
+		if ( renderer && renderer.backend && renderer.backend.has( attribute ) ) renderer.backend.destroyAttribute( attribute );
+		attribute.dispose();
+
+	}
 
 }
 
@@ -171,11 +189,9 @@ function createResetGradientNormComputeNode( gpuModel ) {
  */
 function createResetGradientsComputeNode( gpuModel ) {
 
-	const {
-		layout,
-		gradWeightsAtomic,
-		gradLatentsAtomic
-	} = gpuModel;
+	const { layout } = gpuModel;
+	const { gradAtomic: gradWeightsAtomic } = gpuModel.weightsBuffers;
+	const { gradAtomic: gradLatentsAtomic } = gpuModel.latentsBuffers;
 	const dispatchCount = layout.totalWeights + layout.totalLatents;
 
 	return Fn( () => {
@@ -258,6 +274,7 @@ function createAdamComputeNode( {
 export {
 	wrapIndexTSL,
 	createAdamParameterBuffers,
+	disposeAdamParameterBuffers,
 	forwardDenseLayerTSL,
 	accumulateDenseLayerGradTSL,
 	backwardDenseLayerReLUTSL,

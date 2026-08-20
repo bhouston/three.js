@@ -319,15 +319,15 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUModel storage
 			const model = new NeuralAppearanceGPUModel( options );
 			const { layout } = model;
 
-			expect( model.weightsAttribute.array.length ).toBe( layout.totalWeights );
-			expect( model.gradWeightsAttribute.array.length ).toBe( layout.totalWeights );
-			expect( model.mWeightsAttribute.array.length ).toBe( layout.totalWeights );
-			expect( model.vWeightsAttribute.array.length ).toBe( layout.totalWeights );
+			expect( model.weightsBuffers.attribute.array.length ).toBe( layout.totalWeights );
+			expect( model.weightsBuffers.gradAttribute.array.length ).toBe( layout.totalWeights );
+			expect( model.weightsBuffers.mAttribute.array.length ).toBe( layout.totalWeights );
+			expect( model.weightsBuffers.vAttribute.array.length ).toBe( layout.totalWeights );
 
-			expect( model.latentsAttribute.array.length ).toBe( layout.totalLatents );
-			expect( model.gradLatentsAttribute.array.length ).toBe( layout.totalLatents );
-			expect( model.mLatentsAttribute.array.length ).toBe( layout.totalLatents );
-			expect( model.vLatentsAttribute.array.length ).toBe( layout.totalLatents );
+			expect( model.latentsBuffers.attribute.array.length ).toBe( layout.totalLatents );
+			expect( model.latentsBuffers.gradAttribute.array.length ).toBe( layout.totalLatents );
+			expect( model.latentsBuffers.mAttribute.array.length ).toBe( layout.totalLatents );
+			expect( model.latentsBuffers.vAttribute.array.length ).toBe( layout.totalLatents );
 
 			expect( model.samplesAttribute.array.length ).toBe( options.batchSize * layout.sampleStride );
 			expect( model.activationsAttribute.array.length ).toBe( options.batchSize * layout.activationStride );
@@ -509,7 +509,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUModel storage
 
 				probes.forEach( ( [ j, i ], idx ) => {
 
-					out.element( idx ).assign( model.weightsStorage.element( layer0WeightsOffset + j * decoderInputSize + i ) );
+					out.element( idx ).assign( model.weightsBuffers.valuesStorage.element( layer0WeightsOffset + j * decoderInputSize + i ) );
 
 				} );
 
@@ -543,10 +543,10 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUModel storage
 
 			const values = await evalFloats( renderer, 4, ( out ) => {
 
-				out.element( 0 ).assign( model.weightsStorage.element( indirectRadianceLayer1WeightsOffset + j * iblHiddenSize + i ) );
-				out.element( 1 ).assign( model.weightsStorage.element( indirectRadianceLayer1BiasesOffset + j ) );
-				out.element( 2 ).assign( model.weightsStorage.element( indirectIrradianceLayer1WeightsOffset + j * iblHiddenSize + i ) );
-				out.element( 3 ).assign( model.weightsStorage.element( indirectIrradianceLayer1BiasesOffset + j ) );
+				out.element( 0 ).assign( model.weightsBuffers.valuesStorage.element( indirectRadianceLayer1WeightsOffset + j * iblHiddenSize + i ) );
+				out.element( 1 ).assign( model.weightsBuffers.valuesStorage.element( indirectRadianceLayer1BiasesOffset + j ) );
+				out.element( 2 ).assign( model.weightsBuffers.valuesStorage.element( indirectIrradianceLayer1WeightsOffset + j * iblHiddenSize + i ) );
+				out.element( 3 ).assign( model.weightsBuffers.valuesStorage.element( indirectIrradianceLayer1BiasesOffset + j ) );
 
 			} );
 
@@ -572,7 +572,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUModel storage
 			// Force that here with a trivial no-op dispatch that touches both.
 			await evalFloats( renderer, 1, ( out ) => {
 
-				out.element( 0 ).assign( model.weightsStorage.element( 0 ).add( model.latentsStorage.element( 0 ) ) );
+				out.element( 0 ).assign( model.weightsBuffers.valuesStorage.element( 0 ).add( model.latentsBuffers.valuesStorage.element( 0 ) ) );
 
 			} );
 

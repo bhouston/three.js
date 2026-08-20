@@ -64,8 +64,10 @@ const DEFAULT_OPTIONS = {
  */
 async function syncAndValidate( gpuModel, model, settings, validationSamples, directionalValidationSamples, renderer ) {
 
-	await gpuModel.syncToCPU( model, renderer );
-	const losses = await gpuModel.readLosses( renderer );
+	const [ , losses ] = await Promise.all( [
+		gpuModel.syncToCPU( model, renderer ),
+		gpuModel.readLosses( renderer )
+	] );
 
 	const manifest = createNeuralAppearanceManifest( model, settings );
 	const validation = evaluateRuntimeValidation( manifest, validationSamples, settings.previewSampleCount );

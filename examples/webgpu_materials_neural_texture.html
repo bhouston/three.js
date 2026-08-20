@@ -181,14 +181,14 @@
 			let lossHistory = [];
 
 			const params = {
-				bakeResolution: 128,
+				bakeResolution: 1024,
 				uvScaleX: 1,
 				uvScaleY: 1,
 				uvOffsetX: 0,
 				uvOffsetY: 0,
 				levels: 4,
 				baseResolution: 16,
-				targetResolution: 128,
+				targetResolution: 64,
 				hiddenSize: 16,
 				includeUV: false,
 				batchSize: 8192,
@@ -275,7 +275,7 @@
 				const gui = renderer.inspector.createParameters( 'Neural Texture' );
 
 				const sourceFolder = gui.addFolder( 'source' );
-				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024 ] ).name( 'bake resolution' ).onChange( () => reloadCurrentSource() );
+				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024, 2048, 4096 ] ).name( 'bake resolution' ).onChange( () => reloadCurrentSource() );
 
 				const uvFolder = gui.addFolder( 'uv scale / offset' );
 				uvFolder.add( params, 'uvScaleX', 0.1, 8, 0.05 ).name( 'scale x' ).onChange( updateUvUniforms );

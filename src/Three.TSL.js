@@ -625,7 +625,6 @@ export const uniformTexture = TSL.uniformTexture;
 export const unpackHalf2x16 = TSL.unpackHalf2x16;
 export const unpackNormal = TSL.unpackNormal;
 export const unpackRGBToNormal = TSL.unpackRGBToNormal;
-export const unpackNormal = TSL.unpackNormal;
 export const unpackSnorm2x16 = TSL.unpackSnorm2x16;
 export const unpackSnorm4x8 = TSL.unpackSnorm4x8;
 export const unpackUnorm2x16 = TSL.unpackUnorm2x16;

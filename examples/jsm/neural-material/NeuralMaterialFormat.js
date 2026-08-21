@@ -318,7 +318,11 @@ const CHANNELS = [
 		// itself expects - no hypot/atan2 decomposition into the legacy
 		// strength/rotation properties needed, since those would (like every
 		// other plain property) route through a live uniform instead of a
-		// literal constant node.
+		// literal constant node. The generic "skip applyConstant entirely
+		// when the resolved value equals this channel's own `defaultValue`"
+		// pass below (see its doc comment) is what actually keeps a
+		// zero-strength material from ever reaching this assignment - this
+		// closure doesn't need to know that itself.
 		applyConstant: ( targetMaterial, constantValue ) => {
 
 			targetMaterial.anisotropyNode = vec2( ...constantValue );
@@ -371,6 +375,67 @@ for ( const channel of CHANNELS ) {
 	// normal disagrees in sign with the teacher's live-evaluated one (visible
 	// as a mismatched "normal" debug view between the two).
 	channel.transformBakeComponent = ( component, index ) => ( index === 1 ? component.negate() : component );
+
+}
+
+/**
+ * True iff `value` (a plain number, or a [x,y]/[x,y,z] array - the shape
+ * every channel's `resolveConstant`/`constantValue` produces) is exactly
+ * this channel's own `defaultValue` - used by the pass below to skip
+ * `applyConstant` entirely for a channel whose resolved value is a total
+ * no-op, rather than special-casing that per channel.
+ */
+function constantEqualsDefault( channel, value ) {
+
+	const defaultValue = channel.defaultValue;
+	if ( defaultValue === undefined ) return false;
+
+	if ( Array.isArray( defaultValue ) ) {
+
+		return Array.isArray( value ) && value.length === defaultValue.length && value.every( ( v, i ) => v === defaultValue[ i ] );
+
+	}
+
+	return value === defaultValue;
+
+}
+
+/**
+ * Wraps every built-in channel's `applyConstant` so it's skipped entirely
+ * when the resolved constant value is exactly this channel's own
+ * `defaultValue` - i.e. a value that changes nothing about how the material
+ * should shade, matching what a freshly-constructed `MeshPhysicalNodeMaterial`
+ * already does by default. This isn't just an optimization: several PBR
+ * properties gate an entire extra shading branch on whether their `*Node`
+ * property is non-null at all - `MeshPhysicalNodeMaterial`'s `useClearcoat`/
+ * `useSheen`/`useAnisotropy`/`useTransmission` getters (src/materials/nodes/
+ * MeshPhysicalNodeMaterial.js) all check `this.<key>Node !== null`,
+ * independent of what value that node actually evaluates to. Assigning a
+ * literal *default-valued* constant node (e.g. `anisotropyNode = vec2(0, 0)`)
+ * still satisfies that check, so it force-enables a branch - including, for
+ * anisotropy, a `TBNViewMatrix` tangent/bitangent frame built from
+ * screen-space derivatives - that's both unnecessary and numerically fragile
+ * (grazing angles, sharply-varying normals) for every neural material
+ * regardless of whether its source ever used that property at all. This was
+ * a real regression (see git history) that showed up as black/NaN pixels
+ * concentrated wherever the (unrelated, correctly-reconstructed) normal
+ * channel varied most, which made it look like a normal-reconstruction bug.
+ * Skipping the assignment entirely when the value is the channel's own
+ * default keeps every `use*` gate exactly as it would be on an untouched
+ * `MeshPhysicalNodeMaterial`, for every channel this pattern could affect,
+ * not just the one that happened to get noticed first.
+ */
+for ( const channel of CHANNELS ) {
+
+	const applyConstant = channel.applyConstant;
+
+	channel.applyConstant = ( targetMaterial, constantValue ) => {
+
+		if ( constantEqualsDefault( channel, constantValue ) ) return;
+
+		applyConstant( targetMaterial, constantValue );
+
+	};
 
 }
 

@@ -136,12 +136,28 @@ describe( 'Addons > Neural > NeuralMaterial > custom channel composition', () =>
 
 		expect( target.customTintApplied ).toBe( 'SLICE_customTint' );
 		expect( target.sensorGain ).toBe( 2.5 );
-		// A built-in channel's applyConstant assigns a literal TSL constant
-		// node onto `roughnessNode`, not the plain `roughness` property - see
-		// NeuralMaterialFormat.js's top doc comment for why (so the shader
-		// compiler can treat it as an actual constant, not a live uniform).
-		expect( target.roughnessNode ).toBeDefined();
+		// `material` never set `roughness`, so its resolved constant is
+		// exactly `roughness`'s own `defaultValue` (1) - a total no-op, so
+		// the built-in channel's applyConstant is skipped entirely (see
+		// NeuralMaterialFormat.js's `constantEqualsDefault` pass) rather than
+		// assigning a `roughnessNode` that would needlessly (and, for a
+		// handful of other PBR properties, incorrectly - see that pass's doc
+		// comment) differ from what an untouched material already does.
+		expect( target.roughnessNode ).toBeUndefined();
 		expect( target.roughness ).toBeUndefined();
+
+	} );
+
+	it( 'applyConstant is skipped entirely when the resolved value equals the channel\'s own default (a real regression: see NeuralMaterialFormat.js\'s constantEqualsDefault doc comment)', () => {
+
+		const target = {};
+		const roughnessChannel = getChannel( 'roughness' );
+
+		roughnessChannel.applyConstant( target, 1 ); // roughness's own default
+		expect( target.roughnessNode ).toBeUndefined();
+
+		roughnessChannel.applyConstant( target, 0.4 ); // a genuine, non-default constant
+		expect( target.roughnessNode ).toBeDefined();
 
 	} );
 

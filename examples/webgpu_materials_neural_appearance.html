@@ -117,20 +117,7 @@
 			<div><strong>Mode:</strong> <span id="mode">MaterialX teacher</span></div>
 			<div><strong>Neural representation:</strong> <span id="neuralRepresentationSize">—</span></div>
 			<label for="builtInMaterial"><strong>Built-in material:</strong></label>
-			<select id="builtInMaterial">
-				<option value="uvGrid">UV rainbow waves</option>
-				<option value="uvGridGlossy">UV rainbow glossy</option>
-				<option value="lambertRed">Lambert red</option>
-				<option value="lambertGreen">Lambert green</option>
-				<option value="lambertBlue">Lambert blue</option>
-					<option value="glossyGold">Metallic gold</option>
-				<option value="velvet">Velvet</option>
-				<option value="checkerboard">Checkerboard 4x4</option>
-				<option value="checkerboardTransparency">Checkerboard transparency</option>
-				<option value="emissiveGrid">Emissive rainbow waves</option>
-				<option value="alphaCutoff">Alpha cutoff waves</option>
-				<option value="" disabled>Custom file</option>
-			</select>
+			<select id="builtInMaterial"></select>
 			<button id="openButton">Open .mtlx / .mtlx.zip</button>
 			<button id="openNeuralButton">Open neural .json</button>
 			<button id="trainButton">Train</button>
@@ -139,7 +126,7 @@
 			<div id="status">Ready.</div>
 			<div id="estimate"></div>
 			<input id="fileInput" type="file" accept=".mtlx,.zip,.mtlx.zip" hidden>
-			<input id="neuralFileInput" type="file" accept=".json,application/json" hidden>
+			<input id="neuralFileInput" type="file" accept=".neuralAppearance,.json,application/json" hidden>
 		</div>
 
 		<div id="modelLabels" hidden>
@@ -181,6 +168,7 @@
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
 			import { formatBytes, computeMLPParamCount } from 'three/addons/neural/NeuralModelSize.js';
 			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
+			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/neural/NeuralMaterialXSamples.js';
 
 			let camera, scene, renderer, mesh, neuralMesh;
 			let materialXMaterial, neuralMaterial, whiteControlMaterial, previewPlaceholderMaterial, latestJson;
@@ -203,75 +191,43 @@
 			}
 
 			const queryParams = new URLSearchParams( window.location.search );
+			const DEFAULT_MATERIALX_KEY = 'neural_train_uv_grid';
+
 			// Network (grid + MLP) settings are shared, global GUI controls -
 			// mirroring examples/webgpu_materials_neural_texture.html, where
 			// only "source" (there: bakeResolution; here: the MaterialX file)
-			// is preset-specific and grid/MLP sizing is not. Presets only vary
-			// training length/cost, not the grid geometry.
-			const materialPresets = {
-				default: {
-					file: 'neural_train_uv_grid.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 16 }
-				},
-				uvGrid: {
-					file: 'neural_train_uv_grid.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 16 }
-				},
-				uvGridGlossy: {
-					file: 'neural_train_uv_grid_glossy.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-				},
-				lambertGreen: {
-					file: 'neural_train_lambert_green.mtlx',
-					settings: { iterations: 1200, batchSize: 1024, hiddenSize: 16 }
-				},
-				lambertBlue: {
-					file: 'neural_train_lambert_blue.mtlx',
-					settings: { iterations: 1200, batchSize: 1024, hiddenSize: 16 }
-				},
-				lambertRed: {
-					file: 'neural_train_lambert_red.mtlx',
-					settings: { iterations: 1200, batchSize: 1024, hiddenSize: 16 }
-				},
-				glossyRed: {
-					file: 'neural_train_glossy_red.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-				},
-				glossyGold: {
-					file: 'neural_train_glossy_gold.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-				},
-				velvet: {
-					file: 'neural_train_velvet.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-				},
-				checkerboard: {
-					file: 'neural_train_checkerboard.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-				},
-				checkerboardTransparency: {
-					file: 'neural_train_checkerboard_transparency.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-				},
-				checkerboardNormal: {
-					file: 'neural_train_checkerboard_normal.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-				},
-				normalMap: {
-					file: 'neural_train_normal_map.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-				},
-				emissiveGrid: {
-					file: 'neural_train_emissive_grid.mtlx',
-					settings: { iterations: 10000, batchSize: 1024, hiddenSize: 32 }
-				},
-				alphaCutoff: {
-					file: 'neural_train_alpha_cutoff.mtlx',
-					settings: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-				}
+			// is preset-specific and grid/MLP sizing is not. This table only
+			// hand-tunes training length/cost for the materials it was
+			// originally curated for (see NeuralMaterialXSamples.js for the
+			// full, alphabetical catalog of built-in files) - anything else
+			// picked from the dropdown falls back to DEFAULT_TRAINING_SETTINGS.
+			const DEFAULT_TRAINING_SETTINGS = { iterations: 2000, batchSize: 1024, hiddenSize: 32 };
+			const TRAINING_SETTINGS_OVERRIDES = {
+				neural_train_uv_grid: { iterations: 2000, batchSize: 1024, hiddenSize: 16 },
+				neural_train_uv_grid_glossy: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
+				neural_train_lambert_red: { iterations: 1200, batchSize: 1024, hiddenSize: 16 },
+				neural_train_glossy_red: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
+				neural_train_glossy_gold: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
+				neural_train_velvet: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
+				neural_train_checkerboard: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
+				neural_train_checkerboard_transparency: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
+				neural_train_checkerboard_normal: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
+				neural_train_normal_map: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
+				neural_train_emissive_grid: { iterations: 10000, batchSize: 1024, hiddenSize: 32 },
+				neural_train_alpha_cutoff: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
 			};
-			const initialMaterialKey = queryParams.get( 'test' ) || 'uvGrid';
-			const initialMaterialPreset = materialPresets[ initialMaterialKey ] || materialPresets.default;
+
+			function getMaterialPreset( key ) {
+
+				const sample = getMaterialXSample( key );
+				if ( sample === undefined ) return undefined;
+
+				return { file: sample.file, settings: TRAINING_SETTINGS_OVERRIDES[ key ] || DEFAULT_TRAINING_SETTINGS };
+
+			}
+
+			const initialMaterialKey = queryParams.get( 'test' ) || DEFAULT_MATERIALX_KEY;
+			const initialMaterialPreset = getMaterialPreset( initialMaterialKey ) || getMaterialPreset( DEFAULT_MATERIALX_KEY );
 			const autoTrain = queryParams.get( 'autoTrain' ) === '1';
 			const noRotate = queryParams.get( 'noRotate' ) !== '0';
 
@@ -316,6 +272,7 @@
 				iterations: readNumberQuery( 'iterations', presetSettings.iterations ),
 				batchSize: readNumberQuery( 'batchSize', presetSettings.batchSize ),
 				learningRate: readNumberQuery( 'learningRate', 0.001 ),
+				quantization: queryParams.get( 'quantization' ) || 'none',
 				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
 				seed: readNumberQuery( 'seed', 1 )
 			};
@@ -493,6 +450,7 @@
 				trackSetting( 'batchSize', trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' ).onChange( updateTrainingEstimate ) );
 				trackSetting( 'iterations', trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' ).onChange( updateTrainingEstimate ) );
 				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
+				trainingFolder.add( params, 'quantization', { 'Off': 'none', '8-bit': 'uint8' } ).name( 'quantization' );
 
 				// Appearance-specific: debug views, IBL/emissive intensity -
 				// no neural-texture analog, so these keep their own "view"
@@ -506,6 +464,8 @@
 				// + environment lighting are just always both on (see
 				// applyLights()) except where a debug view isolates IBL.
 				updateTrainingEstimate();
+
+				populateMaterialXSelect( builtInMaterial );
 
 				builtInMaterial.addEventListener( 'change', onBuiltInMaterialSelected );
 				openButton.addEventListener( 'click', () => fileInput.click() );
@@ -530,7 +490,7 @@
 
 			async function loadDefaultMaterialX() {
 
-				if ( materialPresets[ initialMaterialKey ] === undefined ) {
+				if ( getMaterialPreset( initialMaterialKey ) === undefined ) {
 
 					status.textContent = `Unknown neural appearance training test material: ${initialMaterialKey}`;
 					return;
@@ -551,7 +511,7 @@
 
 			function applyMaterialPresetSettings( key ) {
 
-				const preset = materialPresets[ key ];
+				const preset = getMaterialPreset( key );
 				if ( preset === undefined ) return;
 
 				Object.assign( params, preset.settings );
@@ -565,7 +525,7 @@
 
 				try {
 
-					const preset = materialPresets[ key ];
+					const preset = getMaterialPreset( key );
 					if ( preset === undefined ) throw new Error( `Unknown built-in material: ${key}` );
 
 					builtInMaterial.disabled = true;
@@ -575,6 +535,16 @@
 						uvSpace: 'top-left',
 						throwOnErrors: true
 					} );
+
+					// <image>-backed nodes load their bitmap asynchronously in the
+					// background - loadAsync() above only waits for the MaterialX
+					// document itself to parse. The live render loop will pick up
+					// a bitmap that arrives after this point on its own, but
+					// train()/autoTrain can fire right after this call returns and
+					// both bake the teacher up front, so wait here too or an
+					// immediate training run sees a blank texture.
+					if ( asset.texturesReady ) await asset.texturesReady;
+
 					setMaterialXMaterial( asset, preset.file );
 
 				} catch ( error ) {
@@ -604,6 +574,12 @@
 						uvSpace: 'top-left',
 						throwOnErrors: true
 					} );
+
+					// See the loadBuiltInMaterial() comment above - wait for any
+					// <image>-backed textures to finish loading before training
+					// can bake the teacher.
+					if ( asset.texturesReady ) await asset.texturesReady;
+
 					builtInMaterial.value = '';
 					setMaterialXMaterial( asset, file.name );
 
@@ -781,6 +757,7 @@
 						peOctaves: Number( params.peOctaves ),
 						inputEncoding: params.inputEncoding,
 						previewSampleCount: Number( params.previewSamples ),
+						quantization: { mode: params.quantization },
 						seed: Number( params.seed )
 					} );
 					activeTrainer = trainer;
@@ -1290,7 +1267,7 @@
 				const url = URL.createObjectURL( blob );
 				const link = document.createElement( 'a' );
 				link.href = url;
-				link.download = 'neural_appearance.json';
+				link.download = 'neural_appearance.neuralAppearance';
 				link.click();
 				URL.revokeObjectURL( url );
 

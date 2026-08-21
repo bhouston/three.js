@@ -1,4 +1,4 @@
-import { CHANNELS_PER_LEVEL } from './NeuralAppearanceFormat.js';
+import { CHANNELS_PER_LEVEL, decodeAppearanceManifest } from './NeuralAppearanceFormat.js';
 import { sigmoid } from '../neural/NeuralMLP.js';
 import { normalize } from '../neural/NeuralVectorMath.js';
 import { computeUVEncoding } from './NeuralAppearanceUVEncoding.js';
@@ -38,6 +38,16 @@ function evaluateNeuralAppearanceJson( json, reference ) {
 }
 
 function evaluateNeuralAppearanceOutputs( json, reference ) {
+
+	// Transparently accepts either shape: a compact (uint8/float16-packed)
+	// `.neuralAppearance` manifest - the shape `createNeuralAppearanceManifest`/
+	// `exportNeuralAppearance` actually produce, see NeuralAppearanceManifest.js
+	// - or the plain-float-array intermediate shape every function below was
+	// originally written against (still what `createReferenceEvaluations`
+	// passes in, and what NeuralAppearanceRuntime.test.js's hand-rolled
+	// fixtures use). `decodeAppearanceManifest` is a no-op on an already-plain
+	// manifest - see NeuralAppearanceFormat.js.
+	json = decodeAppearanceManifest( json );
 
 	const wi = normalize( reference.wi );
 	const wo = normalize( reference.wo );

@@ -1,5 +1,6 @@
 import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, uniform } from 'three/tsl';
+import { resolveQuantizationConfig } from '../neural/NeuralQuantization.js';
 import {
 	IBL_OUTPUT_SIZE,
 	INDIRECT_OUTPUT_SIZE,
@@ -374,6 +375,41 @@ class NeuralAppearanceGPUModel {
 		this.learningRateUniform = uniform( options.learningRate || 0.001 );
 		this.stepUniform = uniform( 1 );
 		this.maxGradientNormUniform = uniform( options.maxGradientNorm || 1 );
+
+		// QAT (see NeuralQuantization.js) - see NeuralTextureGPUModel.js's
+		// identical comment for the reasoning behind the initial [-1, 1]
+		// placeholder range and why a fixed `range` tuple is only ever written
+		// once, here.
+		this.quantization = resolveQuantizationConfig( options );
+		this.quantizationRangeUniforms = this.layout.gridLevels.map( () => ( {
+			min: uniform( this.quantization.range === 'auto' ? - 1 : this.quantization.range[ 0 ] ),
+			max: uniform( this.quantization.range === 'auto' ? 1 : this.quantization.range[ 1 ] )
+		} ) );
+
+	}
+
+	/**
+	 * Updates every per-level quantization-range uniform - see
+	 * NeuralTextureGPUModel.js's identical method.
+	 */
+	setQuantizationRange( ranges ) {
+
+		for ( let g = 0; g < this.quantizationRangeUniforms.length; g ++ ) {
+
+			this.quantizationRangeUniforms[ g ].min.value = ranges[ g ][ 0 ];
+			this.quantizationRangeUniforms[ g ].max.value = ranges[ g ][ 1 ];
+
+		}
+
+	}
+
+	/**
+	 * Reads back the current per-level quantization range as plain arrays -
+	 * see NeuralTextureGPUModel.js's identical method.
+	 */
+	getQuantizationRange() {
+
+		return this.quantizationRangeUniforms.map( ( { min, max } ) => [ min.value, max.value ] );
 
 	}
 

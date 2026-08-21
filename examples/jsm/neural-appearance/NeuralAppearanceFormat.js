@@ -1,7 +1,16 @@
 import { getUVEncodingInputSize } from '../neural/NeuralGridModel.js';
+import { decodeUint8Base64, decodeFloat16Base64, decodeMLPLayersBase64 } from '../neural/NeuralBinaryCodec.js';
 
 const FORMAT = 'three-neural-appearance';
-const VERSION = 8;
+// Bumped for the QAT + compact-binary-manifest rework (see
+// NeuralAppearanceManifest.js/NeuralAppearanceLoader.js): `latents.levels[]`
+// is now uint8-quantized (`dtype`/`min`/`max`/`dataBase64`, not a plain
+// `data` float array) and every output head's MLP weights/biases are now
+// float16-packed (`mlp: { dtype, layout, dataBase64 }`, not inline
+// `layers[].weights`/`layers[].biases` arrays) - a breaking, non-backward-
+// compatible change to the manifest shape, so old exports must be
+// re-trained/re-exported, not just re-versioned.
+const VERSION = 9;
 
 // Multiresolution latent grid encoding (shared geometry with neural-texture /
 // neural-material - see NeuralGridModel.js): `LEVELS` grids starting at
@@ -139,6 +148,105 @@ function resolveOpacityMode( explicit, declared, fallback ) {
 
 }
 
+/**
+ * True iff `json` is a compact (uint8-quantized latents + float16-packed
+ * MLP weights, see NeuralAppearanceManifest.js's `compactAppearanceJson`)
+ * `.neuralAppearance` manifest, as opposed to the plain-float-array
+ * intermediate shape `NeuralAppearanceManifest.js`'s
+ * `createPlainAppearanceJson` (and every hand-rolled manifest in
+ * NeuralAppearanceRuntime.test.js) uses. `decodeAppearanceManifest` below
+ * is a no-op on an already-plain manifest, so callers that don't know which
+ * shape they have (see NeuralAppearanceRuntime.js's evaluation entry
+ * points) can check this first rather than needing two code paths.
+ */
+function isCompactAppearanceManifest( json ) {
+
+	const level = json && json.latents && json.latents.levels && json.latents.levels[ 0 ];
+
+	return Boolean( level && level.dataBase64 !== undefined );
+
+}
+
+/**
+ * Decodes a compact `.neuralAppearance` manifest's uint8-quantized
+ * `latents.levels[]` and float16-packed output head `mlp`/`rotation` blocks
+ * back into the plain-float-array shape `NeuralAppearanceModel.js`'s
+ * `buildDecoderInput`/`buildIBLInput`/`buildIndirectProbeInput` and
+ * `NeuralAppearanceRuntime.js`'s `sampleRuntimeLatents`/
+ * `evaluateDecoderLayers` already operate on - the exact inverse of
+ * NeuralAppearanceManifest.js's `compactAppearanceJson`, using
+ * NeuralBinaryCodec.js for every base64/float16/uint8 decode. A no-op
+ * (returns `json` as-is) when `json` is already plain (see
+ * `isCompactAppearanceManifest`), so callers that always want plain data can
+ * call this unconditionally. Shared by `NeuralAppearanceLoader.js` (decoding
+ * a loaded manifest before building runtime textures/uniforms) and
+ * `NeuralAppearanceRuntime.js` (transparently accepting either shape in its
+ * CPU reference evaluator, e.g. for `NeuralAppearanceValidator.js` to
+ * validate a real, already-compacted export).
+ */
+function decodeAppearanceManifest( json ) {
+
+	if ( isCompactAppearanceManifest( json ) === false ) return json;
+
+	const levels = json.latents.levels.map( ( level, index ) => decodeAppearanceLevel( level, `latents.levels[${ index }]` ) );
+
+	const outputs = {};
+	for ( const key of Object.keys( json.outputs ) ) outputs[ key ] = decodeAppearanceHead( json.outputs[ key ], `outputs.${ key }` );
+
+	return {
+		...json,
+		latents: { ...json.latents, levels },
+		outputs
+	};
+
+}
+
+function decodeAppearanceLevel( level, path ) {
+
+	if ( level.dtype !== 'uint8' ) {
+
+		throw new Error( `THREE.NeuralAppearanceFormat: Unsupported ${ path }.dtype "${ level.dtype }".` );
+
+	}
+
+	const expectedLength = level.width * level.height * CHANNELS_PER_LEVEL;
+	const data = decodeUint8Base64( level.dataBase64, level.min, level.max, expectedLength );
+
+	return { width: level.width, height: level.height, channels: level.channels, wrap: level.wrap, data };
+
+}
+
+function decodeAppearanceHead( head, path ) {
+
+	if ( ! head.mlp || typeof head.mlp.dataBase64 !== 'string' || ! Array.isArray( head.mlp.layout ) ) {
+
+		throw new Error( `THREE.NeuralAppearanceFormat: Manifest must define ${ path }.mlp.layout and ${ path }.mlp.dataBase64.` );
+
+	}
+
+	const { mlp, rotation, ...rest } = head;
+	const decoded = { ...rest, layers: decodeMLPLayersBase64( mlp ) };
+
+	if ( rotation ) {
+
+		if ( typeof rotation.dataBase64 !== 'string' ) {
+
+			throw new Error( `THREE.NeuralAppearanceFormat: Manifest must define ${ path }.rotation.dataBase64.` );
+
+		}
+
+		decoded.rotation = {
+			inputSize: rotation.inputSize,
+			outputSize: rotation.outputSize,
+			weights: decodeFloat16Base64( rotation.dataBase64, rotation.inputSize * rotation.outputSize )
+		};
+
+	}
+
+	return decoded;
+
+}
+
 export {
 	FORMAT,
 	VERSION,
@@ -162,5 +270,7 @@ export {
 	computeIblInputSize,
 	computeIndirectInputSize,
 	resolveNeuralAppearanceModelOptions,
-	resolveOpacityMode
+	resolveOpacityMode,
+	isCompactAppearanceManifest,
+	decodeAppearanceManifest
 };

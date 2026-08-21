@@ -15,6 +15,7 @@ import {
 import { computeGridLevels, createLatentGrid } from '../neural/NeuralGridModel.js';
 import { computeUVEncoding } from './NeuralAppearanceUVEncoding.js';
 import { dot, cross, normalize } from '../neural/NeuralVectorMath.js';
+import { QUANTIZATION_SCHEMES } from '../neural/NeuralQuantization.js';
 
 function createModel( options, random ) {
 
@@ -138,13 +139,27 @@ function decorrelateLinearRgbHead( model ) {
  * (same encoding as neural-texture / neural-material - see
  * NeuralGridModel.js) and concatenates their features into a single
  * `LATENT_CHANNELS`-wide latent vector.
+ *
+ * `quantization`, when given, is `{ mode, ranges }` - `mode` one of
+ * `QUANTIZATION_SCHEMES`'s keys (see NeuralQuantization.js) and `ranges` an
+ * array of one `[min, max]` tuple per grid level - and applies that scheme's
+ * `quantizeForwardCPU` to each level's bilinearly-sampled value before it's
+ * written into `output`, mirroring the forward-only Straight-Through-
+ * Estimator quantize NeuralTextureGPUComputeTSL.js/
+ * NeuralAppearanceGPUComputeTSL.js apply on the GPU (see that module's doc
+ * comment for why forward-only is enough here). Omitting `quantization`
+ * (the default, `null`) reproduces this function's pre-QAT output exactly -
+ * this CPU path is a *reference* model, not itself part of any training
+ * loop (training runs entirely on the GPU), so most callers never need to
+ * pass it.
  */
-function sampleLatents( grids, uv ) {
+function sampleLatents( grids, uv, quantization = null ) {
 
 	const totalChannels = grids.reduce( ( sum, grid ) => sum + grid.channels, 0 );
 	const output = new Array( totalChannels ).fill( 0 );
 	const levelTaps = [];
 	let channelOffset = 0;
+	let levelIndex = 0;
 
 	for ( const grid of grids ) {
 
@@ -173,8 +188,22 @@ function sampleLatents( grids, uv ) {
 
 		}
 
+		if ( quantization !== null && quantization.mode !== 'none' ) {
+
+			const scheme = QUANTIZATION_SCHEMES[ quantization.mode ];
+			const [ lo, hi ] = quantization.ranges[ levelIndex ];
+
+			for ( let channel = 0; channel < grid.channels; channel ++ ) {
+
+				output[ channelOffset + channel ] = scheme.quantizeForwardCPU( output[ channelOffset + channel ], lo, hi );
+
+			}
+
+		}
+
 		levelTaps.push( { grid, taps, channelOffset } );
 		channelOffset += grid.channels;
+		levelIndex += 1;
 
 	}
 

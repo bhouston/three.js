@@ -1,3 +1,5 @@
+// Exported as .neuralAppearance (JSON content, format: 'three-neural-appearance') - see FORMAT/VERSION below
+
 import {
 	FORMAT,
 	VERSION,
@@ -19,17 +21,26 @@ import {
 	assignAuxiliaryTeacherTargets,
 	normalizeDirectLightingTargets
 } from './NeuralAppearanceSampler.js';
+import { encodeUint8Base64, encodeFloat16Base64, encodeMLPLayersBase64 } from '../neural/NeuralBinaryCodec.js';
+import { computeLatentRanges } from '../neural/NeuralQuantization.js';
 
-async function exportNeuralAppearance( model, teacher, options ) {
-
-	const json = createNeuralAppearanceManifest( model, options );
-	json.referenceEvaluations = await createReferenceEvaluations( json, teacher );
-
-	return json;
-
-}
-
-function createNeuralAppearanceManifest( model, options ) {
+/**
+ * `createReferenceEvaluations` (below) needs to bilinear-sample the exact
+ * float latent values the model was evaluated with (see
+ * NeuralAppearanceRuntime.js's `sampleRuntimeLatents`, which reads
+ * `level.data[...]` directly) - i.e. a *plain*, uncompacted JSON shape, not
+ * the uint8/float16-packed `.neuralAppearance` manifest this module
+ * ultimately exports. `createPlainAppearanceJson` builds that intermediate
+ * shape (byte-for-byte what `createNeuralAppearanceManifest` produced before
+ * the QAT + compact-binary-manifest rework); `compactAppearanceJson` (below)
+ * then quantizes/packs it into the real exported manifest. Keeping this as
+ * an internal two-step pipeline - rather than teaching
+ * NeuralAppearanceRuntime.js's reference evaluator to decode base64 itself -
+ * means that evaluator (also used standalone, e.g. by
+ * NeuralAppearanceValidator.js) never needs to know the exported manifest
+ * is compacted at all.
+ */
+function createPlainAppearanceJson( model, options ) {
 
 	// Every inputSize below is derived from *this model's own* `model.levels`
 	// and `model.peOctaves` via the computeXXX helpers, not
@@ -134,6 +145,146 @@ function createNeuralAppearanceManifest( model, options ) {
 		inputEncoding,
 		outputs
 	};
+
+}
+
+/**
+ * Resolves the per-level `[min, max]` quantization range used to encode the
+ * exported latent grid as uint8 - identical policy to
+ * NeuralTextureManifest.js's `resolveQuantizationRange`: an explicit
+ * `options.quantizationRange`, else `model.quantizationRange` (set by
+ * `NeuralAppearanceTrainer.train()` when QAT was actually used - see
+ * NeuralQuantization.js), else a plain min/max scan over the model's *final*
+ * (post-training) latents via `computeLatentRanges`.
+ *
+ * As with neural-texture, scanning a range at export time for a model that
+ * was never trained with quantization-aware training (QAT) still produces a
+ * numerically valid uint8-quantized manifest, but the network's weights
+ * were never exposed to the rounding error quantization introduces - so the
+ * exported model may reconstruct slightly less accurately than one actually
+ * trained with `quantization.mode: 'uint8'` (see NeuralAppearanceTrainer.js's
+ * `quantization` option). Prefer training with QAT enabled when export-time
+ * compactness matters.
+ */
+function resolveQuantizationRange( model, options ) {
+
+	if ( options.quantizationRange ) return options.quantizationRange;
+	if ( model.quantizationRange ) return model.quantizationRange;
+
+	let offset = 0;
+	const gridLevels = [];
+
+	for ( const grid of model.latentGrids ) {
+
+		gridLevels.push( { offset, floatCount: grid.data.length } );
+		offset += grid.data.length;
+
+	}
+
+	const flat = new Float32Array( offset );
+
+	for ( let g = 0; g < model.latentGrids.length; g ++ ) {
+
+		flat.set( model.latentGrids[ g ].data, gridLevels[ g ].offset );
+
+	}
+
+	return computeLatentRanges( flat, gridLevels, true );
+
+}
+
+/**
+ * Packs one output head's plain (`serializeLayers`-shaped) `layers` array,
+ * plus (for `brdf` only) its `rotation` weight matrix, into the compact
+ * float16 `mlp`/`rotation` blocks the exported manifest actually stores -
+ * every other field on `plainHead` (`inputSize`, `outputActivation`, and for
+ * `opacity`, `mode`/`alphaCutoff`) is already plain JSON and carried through
+ * unchanged.
+ */
+function compactHead( plainHead ) {
+
+	const { layers, rotation, ...rest } = plainHead;
+	const head = { ...rest, mlp: encodeMLPLayersBase64( layers ) };
+
+	if ( rotation ) {
+
+		head.rotation = {
+			inputSize: rotation.inputSize,
+			outputSize: rotation.outputSize,
+			dtype: 'float16',
+			dataBase64: encodeFloat16Base64( Float32Array.from( rotation.weights ) )
+		};
+
+	}
+
+	return head;
+
+}
+
+/**
+ * Quantizes `plain.latents.levels[]` to uint8 and float16-packs every output
+ * head's MLP weights/biases (see `compactHead`), turning the plain JSON
+ * `createPlainAppearanceJson` produced into the actual compact
+ * `.neuralAppearance` manifest shape `NeuralAppearanceLoader.js` decodes.
+ */
+function compactAppearanceJson( plain, model, options ) {
+
+	const ranges = resolveQuantizationRange( model, options );
+
+	const levels = plain.latents.levels.map( ( level, index ) => {
+
+		const [ min, max ] = ranges[ index ];
+
+		return {
+			width: level.width,
+			height: level.height,
+			channels: level.channels,
+			wrap: level.wrap,
+			dtype: 'uint8',
+			min,
+			max,
+			dataBase64: encodeUint8Base64( Float32Array.from( level.data ), min, max )
+		};
+
+	} );
+
+	const outputs = {};
+	for ( const key of Object.keys( plain.outputs ) ) outputs[ key ] = compactHead( plain.outputs[ key ] );
+
+	return {
+		format: plain.format,
+		version: plain.version,
+		name: plain.name,
+		source: plain.source,
+		latents: {
+			channelsPerLevel: plain.latents.channelsPerLevel,
+			wrap: plain.latents.wrap,
+			levels
+		},
+		peOctaves: plain.peOctaves,
+		inputEncoding: plain.inputEncoding,
+		outputs
+	};
+
+}
+
+async function exportNeuralAppearance( model, teacher, options ) {
+
+	const plain = createPlainAppearanceJson( model, options );
+	const referenceEvaluations = await createReferenceEvaluations( plain, teacher );
+
+	const json = compactAppearanceJson( plain, model, options );
+	json.referenceEvaluations = referenceEvaluations;
+
+	return json;
+
+}
+
+function createNeuralAppearanceManifest( model, options ) {
+
+	const plain = createPlainAppearanceJson( model, options );
+
+	return compactAppearanceJson( plain, model, options );
 
 }
 

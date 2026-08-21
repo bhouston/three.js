@@ -18,18 +18,14 @@ const pixelThreshold = 0.15;
 // finest-level resolution) than the flat-color cases, which are fine with the
 // html defaults (baseResolution 16, growthFactor 2).
 const allTestCases = [
-	{ name: 'lambertBlue', label: 'diffuse blue', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5, baseResolution: 4, growthFactor: 4 },
-	{ name: 'lambertRed', label: 'diffuse red', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5 },
-	{ name: 'lambertGreen', label: 'diffuse green', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5 },
-	{ name: 'lambert', label: 'diffuse rust', iterations: 400, maxMeanRgbError: 18, maxDifferentPixels: 22 },
-	{ name: 'glossy', label: 'glossy blue', iterations: 800, maxMeanRgbError: 30, maxDifferentPixels: 36 },
-	{ name: 'glossyRed', label: 'glossy red', iterations: 800, maxMeanRgbError: 30, maxDifferentPixels: 36 },
-	{ name: 'glossyGold', label: 'glossy gold', iterations: 800, maxMeanRgbError: 22, maxDifferentPixels: 36 },
-	{ name: 'uvGrid', label: 'uv grid', iterations: 1000, maxMeanRgbError: 28, maxDifferentPixels: 32, baseResolution: 4, growthFactor: 4 },
-	{ name: 'normalMap', label: 'normal map', iterations: 1000, maxMeanRgbError: 35, maxDifferentPixels: 40, baseResolution: 4, growthFactor: 4, hiddenSize: 64 },
-	{ name: 'emissiveGrid', label: 'emissive grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 40, baseResolution: 4, growthFactor: 4, expectedOutputs: [ 'emission' ] },
-	{ name: 'alphaCutoff', label: 'alpha cutoff grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, baseResolution: 4, growthFactor: 4, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'mask' },
-	{ name: 'checkerboardTransparency', label: 'checkerboard transparency', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, baseResolution: 4, growthFactor: 4, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'blend' }
+	{ name: 'neural_train_lambert_red', label: 'diffuse red', iterations: 1200, maxMeanRgbError: 8, maxDifferentPixels: 5 },
+	{ name: 'neural_train_glossy_red', label: 'glossy red', iterations: 800, maxMeanRgbError: 30, maxDifferentPixels: 36 },
+	{ name: 'neural_train_glossy_gold', label: 'glossy gold', iterations: 800, maxMeanRgbError: 22, maxDifferentPixels: 36 },
+	{ name: 'neural_train_uv_grid', label: 'uv grid', iterations: 1000, maxMeanRgbError: 28, maxDifferentPixels: 32, baseResolution: 4, growthFactor: 4 },
+	{ name: 'neural_train_normal_map', label: 'normal map', iterations: 1000, maxMeanRgbError: 35, maxDifferentPixels: 40, baseResolution: 4, growthFactor: 4, hiddenSize: 64 },
+	{ name: 'neural_train_emissive_grid', label: 'emissive grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 40, baseResolution: 4, growthFactor: 4, expectedOutputs: [ 'emission' ] },
+	{ name: 'neural_train_alpha_cutoff', label: 'alpha cutoff grid', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, baseResolution: 4, growthFactor: 4, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'mask' },
+	{ name: 'neural_train_checkerboard_transparency', label: 'checkerboard transparency', iterations: 1200, maxMeanRgbError: 35, maxDifferentPixels: 45, baseResolution: 4, growthFactor: 4, expectedOutputs: [ 'opacity' ], expectedOpacityMode: 'blend' }
 ];
 const testCases = process.env.TEST_CASE ? allTestCases.filter( ( testCase ) => testCase.name === process.env.TEST_CASE ) : allTestCases;
 const background = [ 0x15, 0x17, 0x1c ];

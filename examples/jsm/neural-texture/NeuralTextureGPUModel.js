@@ -4,6 +4,7 @@ import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 import { createAdamParameterBuffers, disposeAdamParameterBuffers } from '../neural/NeuralGPUComputeTSL.js';
 import { computeGridLevels, getUVEncodingInputSize } from '../neural/NeuralGridModel.js';
 import { resolveNeuralTextureOptions } from './NeuralTextureModel.js';
+import { resolveQuantizationConfig } from '../neural/NeuralQuantization.js';
 
 /**
  * Computes buffer layouts and offsets for GPU-based neural texture training:
@@ -211,6 +212,51 @@ class NeuralTextureGPUModel {
 		this.learningRateUniform = uniform( options.learningRate || 0.01 );
 		this.stepUniform = uniform( 1 );
 		this.maxGradientNormUniform = uniform( options.maxGradientNorm || 1 );
+
+		// QAT (see NeuralQuantization.js) - `quantization.mode !== 'none'`
+		// makes NeuralTextureGPUComputeTSL.js's forward pass quantize every
+		// bilinear-sampled latent before it's consumed by the MLP. One
+		// [min, max] uniform pair per grid level, initialized to a generous
+		// placeholder range (latents are init'd within
+		// [-LATENT_INIT_SCALE, LATENT_INIT_SCALE], see NeuralGridModel.js, but
+		// grow during training) so nothing is clipped before the first 'auto'
+		// range refresh (see NeuralTextureTrainer.js) actually measures the
+		// real range - a fixed `range` tuple is written once here and never
+		// refreshed.
+		this.quantization = resolveQuantizationConfig( options );
+		this.quantizationRangeUniforms = this.layout.gridLevels.map( () => ( {
+			min: uniform( this.quantization.range === 'auto' ? - 1 : this.quantization.range[ 0 ] ),
+			max: uniform( this.quantization.range === 'auto' ? 1 : this.quantization.range[ 1 ] )
+		} ) );
+
+	}
+
+	/**
+	 * Updates every per-level quantization-range uniform from a freshly
+	 * computed `[min, max]` tuple array (see
+	 * `NeuralQuantization.computeLatentRanges`) - called periodically (and
+	 * once more at the very end) by NeuralTextureTrainer.js when
+	 * `quantization.range === 'auto'`.
+	 */
+	setQuantizationRange( ranges ) {
+
+		for ( let g = 0; g < this.quantizationRangeUniforms.length; g ++ ) {
+
+			this.quantizationRangeUniforms[ g ].min.value = ranges[ g ][ 0 ];
+			this.quantizationRangeUniforms[ g ].max.value = ranges[ g ][ 1 ];
+
+		}
+
+	}
+
+	/**
+	 * Reads back the current per-level quantization range as plain
+	 * `[min, max]` arrays (not TSL uniform nodes) - used to freeze the final
+	 * range at the end of training (see NeuralTextureTrainer.js).
+	 */
+	getQuantizationRange() {
+
+		return this.quantizationRangeUniforms.map( ( { min, max } ) => [ min.value, max.value ] );
 
 	}
 

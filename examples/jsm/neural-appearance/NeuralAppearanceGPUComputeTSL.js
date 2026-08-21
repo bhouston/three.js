@@ -36,6 +36,7 @@ import {
 	CHANNELS_PER_LEVEL
 } from './NeuralAppearanceFormat.js';
 import { getUVEncodingInputSize } from '../neural/NeuralGridModel.js';
+import { QUANTIZATION_SCHEMES } from '../neural/NeuralQuantization.js';
 
 const OUTPUT_CLAMP_GRADIENT_LEAK = 0.01;
 
@@ -285,10 +286,19 @@ function createTrainBatchComputeNode( gpuModel ) {
 		samplesStorage,
 		activationsStorage,
 		lossAtomic,
-		invBatchUniform
+		invBatchUniform,
+		quantization,
+		quantizationRangeUniforms
 	} = gpuModel;
 	const { valuesStorage: weightsStorage, gradAtomic: gradWeightsAtomic } = gpuModel.weightsBuffers;
 	const { valuesStorage: latentsStorage, gradAtomic: gradLatentsAtomic } = gpuModel.latentsBuffers;
+	// QAT (see NeuralQuantization.js/NeuralAppearanceGPUModel.js) - see
+	// NeuralTextureGPUComputeTSL.js's identical comment: `mode === 'none'`
+	// resolves to a plain passthrough at kernel-*build* time, so the default
+	// training path's node graph is byte-for-byte unchanged.
+	const quantizeLatent = quantization.mode !== 'none' ?
+		QUANTIZATION_SCHEMES[ quantization.mode ].quantizeForwardTSL :
+		null;
 
 	const {
 		gridLevels,
@@ -425,7 +435,14 @@ function createTrainBatchComputeNode( gpuModel ) {
 						.add( latentsStorage.element( off2.add( c ) ).mul( w2 ) )
 						.add( latentsStorage.element( off3.add( c ) ).mul( w3 ) );
 
-					activationsStorage.element( actBase.add( int( actA0Offset + g * CHANNELS_PER_LEVEL + c ) ) ).assign( z_c );
+					// QAT forward quantize (STE) - the backward scatter (below,
+					// step 5/gradA0) still targets the *raw* latentsStorage taps
+					// untouched, exactly as it did before QAT.
+					const a0_c = quantizeLatent !== null ?
+						quantizeLatent( z_c, quantizationRangeUniforms[ g ].min, quantizationRangeUniforms[ g ].max ) :
+						z_c;
+
+					activationsStorage.element( actBase.add( int( actA0Offset + g * CHANNELS_PER_LEVEL + c ) ) ).assign( a0_c );
 
 				}
 

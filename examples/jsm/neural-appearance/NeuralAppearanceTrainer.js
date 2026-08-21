@@ -31,6 +31,11 @@ import {
 	createResetGradientsComputeNode
 } from '../neural/NeuralGPUComputeTSL.js';
 import { getLearningRate, createRandom, yieldToBrowser } from '../neural/NeuralTrainingUtils.js';
+import { DEFAULT_QUANTIZATION_OPTIONS, resolveQuantizationConfig, refreshGPUQuantizationRange } from '../neural/NeuralQuantization.js';
+
+// See NeuralTextureTrainer.js's identical constant for the reasoning behind
+// this cadence.
+const QUANTIZATION_RANGE_REFRESH_INTERVAL = 64;
 
 const DEFAULT_OPTIONS = {
 	levels: LEVELS,
@@ -60,7 +65,11 @@ const DEFAULT_OPTIONS = {
 	maxGradientNorm: 1,
 	previewSampleCount: 64,
 	outputActivation: { type: 'linear' },
-	name: 'trained neural appearance'
+	name: 'trained neural appearance',
+	// Quantization-Aware Training (QAT) of the latent grid - see
+	// NeuralQuantization.js. Defaults to `mode: 'none'` (a byte-for-byte
+	// no-op vs. training without QAT at all).
+	quantization: DEFAULT_QUANTIZATION_OPTIONS
 };
 
 /**
@@ -102,7 +111,7 @@ async function syncAndValidate( gpuModel, model, settings, validationSamples, di
  */
 async function runPhase( {
 	iterationCount, generateSamples, computeLearningRate, computeNodes, phase, iterationOffset, totalIterations,
-	settings, gpuModel, model, renderer, onProgress, validationSamples, directionalValidationSamples, isAborted
+	settings, gpuModel, model, renderer, onProgress, validationSamples, directionalValidationSamples, isAborted, quantization
 } ) {
 
 	let completedIterations = iterationOffset;
@@ -155,6 +164,22 @@ async function runPhase( {
 
 		completedIterations = iterationOffset + i + 1;
 
+		// QAT `range: 'auto'` periodic re-measurement (see
+		// NeuralQuantization.refreshGPUQuantizationRange and
+		// QUANTIZATION_RANGE_REFRESH_INTERVAL's doc comment above). Gated on
+		// `quantization` (resolved once in train(), not `gpuModel.quantization`)
+		// so the default `mode: 'none'` path never touches `gpuModel` for this
+		// at all. Harmless to run during the IBL phase too, even though that
+		// phase doesn't update latents (no adamLatentsNode in its
+		// computeNodes) - it just re-reads the same range the direct phase
+		// already settled.
+		if ( quantization.mode !== 'none' && quantization.range === 'auto' &&
+			( completedIterations % QUANTIZATION_RANGE_REFRESH_INTERVAL === 0 || i === iterationCount - 1 ) ) {
+
+			await refreshGPUQuantizationRange( gpuModel, renderer );
+
+		}
+
 		if ( isAborted() ) break;
 
 		if ( i % 32 === 31 ) await yieldToBrowser();
@@ -196,6 +221,11 @@ class NeuralAppearanceTrainer {
 		const settings = { ...this.options, ...options };
 		validateTrainingSettings( settings );
 		this._abortRequested = false;
+		// See NeuralTextureTrainer.js's identical comment - resolved once more
+		// (idempotently) when NeuralAppearanceGPUModel itself reads
+		// `settings.quantization`.
+		const quantization = resolveQuantizationConfig( settings );
+		this.quantizationRange = null;
 
 		if ( ! renderer || renderer.isWebGPURenderer !== true ) {
 
@@ -255,7 +285,7 @@ class NeuralAppearanceTrainer {
 		const iblIterations = getIBLIterationCount( settings );
 		const totalIterations = settings.iterations + iblIterations;
 		const isAborted = () => this._abortRequested;
-		const phaseCommon = { settings, gpuModel, model, renderer, onProgress, validationSamples, directionalValidationSamples, isAborted, totalIterations };
+		const phaseCommon = { settings, gpuModel, model, renderer, onProgress, validationSamples, directionalValidationSamples, isAborted, totalIterations, quantization };
 
 		let completedIterations = 0;
 
@@ -294,6 +324,22 @@ class NeuralAppearanceTrainer {
 
 		}
 
+		// Freeze the final QAT range (see NeuralQuantization.js) so a later
+		// export phase can quantize the exported latent grid against exactly
+		// the range the network was actually trained/evaluated against - see
+		// NeuralTextureTrainer.js's identical comment. Retrievable as either
+		// `trainer.quantizationRange` or `model.quantizationRange` - both the
+		// same `[min, max]`-per-level array, or `null` when quantization is
+		// disabled.
+		if ( quantization.mode !== 'none' ) {
+
+			if ( quantization.range === 'auto' ) await refreshGPUQuantizationRange( gpuModel, renderer );
+			this.quantizationRange = gpuModel.getQuantizationRange();
+
+		}
+
+		model.quantizationRange = this.quantizationRange;
+
 		const json = await exportNeuralAppearance( model, teacher, settings );
 
 		return {
@@ -308,7 +354,9 @@ class NeuralAppearanceTrainer {
 			teacher,
 			iteration: completedIterations,
 			iterations: totalIterations,
-			stoppedEarly: this._abortRequested
+			stoppedEarly: this._abortRequested,
+			quantization,
+			quantizationRange: this.quantizationRange
 		};
 
 	}
@@ -385,6 +433,10 @@ function validateTrainingSettings( settings ) {
 		throw new Error( 'THREE.NeuralAppearanceTrainer: Only linear output activation is supported during training.' );
 
 	}
+
+	// Throws a clear "THREE.NeuralQuantization: ..." error immediately rather
+	// than deep inside GPUModel construction - see NeuralQuantization.js.
+	resolveQuantizationConfig( settings );
 
 }
 

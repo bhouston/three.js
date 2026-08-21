@@ -23,6 +23,7 @@ import {
 	createAdamComputeNode
 } from '../neural/NeuralGPUComputeTSL.js';
 import { applyChannelActivation, channelActivationDerivativeFromOutput } from '../neural/NeuralOutputActivations.js';
+import { QUANTIZATION_SCHEMES } from '../neural/NeuralQuantization.js';
 
 function hash1( seed ) {
 
@@ -80,10 +81,23 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		batchSize,
 		activationsStorage,
 		lossAtomic,
-		stepUniform
+		stepUniform,
+		quantization,
+		quantizationRangeUniforms
 	} = gpuModel;
 	const { valuesStorage: weightsStorage, gradAtomic: gradWeightsAtomic } = gpuModel.weightsBuffers;
 	const { valuesStorage: latentsStorage, gradAtomic: gradLatentsAtomic } = gpuModel.latentsBuffers;
+	// QAT (see NeuralQuantization.js/NeuralTextureGPUModel.js): only latents
+	// are quantized (`target !== 'latents'` is rejected by
+	// resolveQuantizationConfig unless mode is 'none'), and only the forward
+	// pass - see the module doc comment in NeuralQuantization.js for why a
+	// forward-only Straight-Through-Estimator quantize is enough here. `mode
+	// === 'none'` is resolved to a plain passthrough at kernel-*build* time
+	// (not per-invocation), so the default training path's node graph is
+	// byte-for-byte what it was before QAT existed.
+	const quantizeLatent = quantization.mode !== 'none' ?
+		QUANTIZATION_SCHEMES[ quantization.mode ].quantizeForwardTSL :
+		null;
 
 	const {
 		gridLevels,
@@ -165,7 +179,15 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 					.add( latentsStorage.element( off2.add( c ) ).mul( w2 ) )
 					.add( latentsStorage.element( off3.add( c ) ).mul( w3 ) );
 
-				activationsStorage.element( actBase.add( int( a0Offset + g * channels + c ) ) ).assign( z_c );
+				// QAT forward quantize (STE) - the backward scatter in step 5
+				// below still targets the *raw* latentsStorage taps untouched,
+				// exactly as it did before QAT: only this forward-read value
+				// changes.
+				const a0_c = quantizeLatent !== null ?
+					quantizeLatent( z_c, quantizationRangeUniforms[ g ].min, quantizationRangeUniforms[ g ].max ) :
+					z_c;
+
+				activationsStorage.element( actBase.add( int( a0Offset + g * channels + c ) ) ).assign( a0_c );
 
 			}
 

@@ -1,10 +1,50 @@
 import { describe, test, expect } from 'vitest';
 import { DataTexture, DataUtils } from 'three';
 import { NeuralAppearanceLoader } from '../../../../examples/jsm/loaders/NeuralAppearanceLoader.js';
+import { encodeUint8Base64, encodeFloat16Base64, encodeMLPLayersBase64 } from '../../../../examples/jsm/neural/NeuralBinaryCodec.js';
 
-function createLevel( data ) {
+// Builds a compact (uint8-quantized latents, float16-packed MLP weights)
+// `.neuralAppearance` manifest by hand, mirroring exactly what
+// NeuralAppearanceManifest.js's `compactAppearanceJson` produces from a real
+// trained model - see that file for the authoritative shape.
 
-	return { width: 1, height: 1, wrap: 'repeat', data };
+function encodeLevel( data ) {
+
+	const min = Math.min( ...data );
+	const max = Math.max( ...data );
+
+	return {
+		width: 1,
+		height: 1,
+		channels: 4,
+		wrap: 'repeat',
+		dtype: 'uint8',
+		min,
+		max,
+		dataBase64: encodeUint8Base64( Float32Array.from( data ), min, max )
+	};
+
+}
+
+function encodeHead( inputSize, layers, outputActivation, extra = {} ) {
+
+	return {
+		inputSize,
+		mlp: encodeMLPLayersBase64( layers ),
+		outputActivation,
+		...extra
+	};
+
+}
+
+function encodeRotation( inputSize, outputSize, weights ) {
+
+	return {
+		inputSize,
+		outputSize,
+		dtype: 'float16',
+		dataBase64: encodeFloat16Base64( Float32Array.from( weights ) )
+	};
 
 }
 
@@ -22,107 +62,47 @@ function createManifest() {
 
 	return {
 		format: 'three-neural-appearance',
-		version: 7,
+		version: 9,
 		name: 'unit test material',
 		latents: {
 			channelsPerLevel: 4,
 			wrap: 'repeat',
 			levels: [
-				createLevel( [ 0.8, 0.2, 0.1, 0.5 ] ),
-				createLevel( [ 0.3, 0.4, 0.5, 0.6 ] ),
-				createLevel( [ 0, 0, 0, 0 ] ),
-				createLevel( [ 0, 0, 0, 0 ] )
+				encodeLevel( [ 0.8, 0.2, 0.1, 0.5 ] ),
+				encodeLevel( [ 0.3, 0.4, 0.5, 0.6 ] ),
+				encodeLevel( [ 0, 0, 0, 0 ] ),
+				encodeLevel( [ 0, 0, 0, 0 ] )
 			]
 		},
 		outputs: {
 			brdf: {
 				inputSize: 28,
-				rotation: {
-					inputSize: 16,
-					outputSize: 12,
-					weights: new Array( 192 ).fill( 0 )
-				},
-				layers: [
-					{
-						inputSize: 28,
-						outputSize: 3,
-						activation: 'linear',
-						biases: [ 0, 0, 0 ],
-						weights: createBrdfWeights()
-					}
-				],
-				outputActivation: { type: 'linear' }
+				rotation: encodeRotation( 16, 12, new Array( 192 ).fill( 0 ) ),
+				...encodeHead( 28, [
+					{ inputSize: 28, outputSize: 3, activation: 'linear', biases: [ 0, 0, 0 ], weights: createBrdfWeights() }
+				], { type: 'linear' } )
 			},
-			ibl: {
-				inputSize: 22,
-				layers: [
-					{
-						inputSize: 22,
-						outputSize: 4,
-						activation: 'linear',
-						biases: [ 0, 0, 1, 0 ],
-						weights: new Array( 22 * 4 ).fill( 0 )
-					}
-				],
-				outputActivation: { type: 'linear' }
-			},
-			indirectRadiance: {
-				inputSize: 22,
-				layers: [
-					{
-						inputSize: 22,
-						outputSize: 3,
-						activation: 'linear',
-						biases: [ 0, 0, 0 ],
-						weights: new Array( 22 * 3 ).fill( 0 )
-					}
-				],
-				outputActivation: { type: 'linear' }
-			},
-			indirectIrradiance: {
-				inputSize: 22,
-				layers: [
-					{
-						inputSize: 22,
-						outputSize: 3,
-						activation: 'linear',
-						biases: [ 0, 0, 0 ],
-						weights: new Array( 22 * 3 ).fill( 0 )
-					}
-				],
-				outputActivation: { type: 'linear' }
-			},
-			emission: {
-				inputSize: 16,
-				layers: [
-					{
-						inputSize: 16,
-						outputSize: 3,
-						activation: 'linear',
-						biases: [ 0, 0, 0 ],
-						weights: [
-							1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-							0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-							0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-						]
-					}
-				],
-				outputActivation: { type: 'linear' }
-			},
-			opacity: {
-				inputSize: 16,
-				layers: [
-					{
-						inputSize: 16,
-						outputSize: 1,
-						activation: 'linear',
-						biases: [ 0 ],
-						weights: [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
-					}
-				],
-				outputActivation: { type: 'sigmoid' },
-				alphaCutoff: 0.5
-			}
+			ibl: encodeHead( 22, [
+				{ inputSize: 22, outputSize: 4, activation: 'linear', biases: [ 0, 0, 1, 0 ], weights: new Array( 22 * 4 ).fill( 0 ) }
+			], { type: 'linear' } ),
+			indirectRadiance: encodeHead( 22, [
+				{ inputSize: 22, outputSize: 3, activation: 'linear', biases: [ 0, 0, 0 ], weights: new Array( 22 * 3 ).fill( 0 ) }
+			], { type: 'linear' } ),
+			indirectIrradiance: encodeHead( 22, [
+				{ inputSize: 22, outputSize: 3, activation: 'linear', biases: [ 0, 0, 0 ], weights: new Array( 22 * 3 ).fill( 0 ) }
+			], { type: 'linear' } ),
+			emission: encodeHead( 16, [
+				{
+					inputSize: 16, outputSize: 3, activation: 'linear', biases: [ 0, 0, 0 ], weights: [
+						1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+						0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+						0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+					]
+				}
+			], { type: 'linear' } ),
+			opacity: encodeHead( 16, [
+				{ inputSize: 16, outputSize: 1, activation: 'linear', biases: [ 0 ], weights: [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ] }
+			], { type: 'sigmoid' }, { alphaCutoff: 0.5 } )
 		},
 		referenceEvaluations: [
 			{
@@ -191,7 +171,7 @@ function evaluateDecoderLayers( layers, inputs ) {
 
 }
 
-function closeToArray( actual, expected, tolerance = 1e-3 ) {
+function closeToArray( actual, expected, tolerance = 1e-2 ) {
 
 	for ( let i = 0; i < actual.length; i ++ ) {
 
@@ -260,13 +240,22 @@ describe( 'Addons', () => {
 
 			} );
 
-			test( 'rejects malformed decoder dimensions', () => {
+			test( 'rejects a decoder mlp block whose declared layout disagrees with the head\'s own inputSize', () => {
 
+				// Compact `mlp.layout` entries (`{ rows, cols, kind }`, see
+				// NeuralBinaryCodec.js's encodeMLPLayersBase64/
+				// decodeMLPLayersBase64) are self-consistent by construction - a
+				// decoded layer's weights.length is always exactly
+				// layout.rows * layout.cols, so it can no longer disagree with
+				// itself the way a hand-edited plain `weights` array used to.
+				// What can still disagree is the *declared* head.inputSize
+				// against the first decoded layer's own inputSize (rows) - see
+				// normalizeOutputHead's cross-check in NeuralAppearanceLoader.js.
 				const loader = new NeuralAppearanceLoader();
 				const manifest = createManifest();
-				manifest.outputs.brdf.layers[ 0 ].weights.pop();
+				manifest.outputs.brdf.mlp.layout[ 0 ].rows = 27;
 
-				expect( () => loader.parse( manifest ) ).toThrow( /weights length/ );
+				expect( () => loader.parse( manifest ) ).toThrow( /outputs\.brdf\.layers\[0\]\.inputSize must be/ );
 
 			} );
 
@@ -286,7 +275,7 @@ describe( 'Addons', () => {
 
 			} );
 
-			test( 'matches exported reference evaluation', () => {
+			test( 'matches exported reference evaluation within uint8/float16 quantization tolerance', () => {
 
 				const loader = new NeuralAppearanceLoader();
 				const data = loader.parse( createManifest() );

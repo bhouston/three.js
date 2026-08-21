@@ -344,16 +344,29 @@ class MaterialXNode {
 		textureNode.flipY = false;
 		this.materialX.textureCache.set( textureCacheKey, textureNode );
 
-		loader.load( resolvedURI, ( imageData ) => {
+		const nodeName = this.name;
+		const materialX = this.materialX;
 
-			textureNode.image = imageData;
-			textureNode.needsUpdate = true;
+		materialX.textureLoadPromises.push( new Promise( ( resolveLoad ) => {
 
-		}, undefined, () => {
+			loader.load( resolvedURI, ( imageData ) => {
 
-			throw new Error( `Failed to load texture "${resolvedURI}".` );
+				textureNode.image = imageData;
+				textureNode.needsUpdate = true;
+				resolveLoad();
 
-		} );
+			}, undefined, () => {
+
+				materialX.log.add(
+					MaterialXLogCodes.TEXTURE_LOAD_FAILED,
+					`Failed to load texture "${resolvedURI}".`,
+					nodeName,
+				);
+				resolveLoad();
+
+			} );
+
+		} ) );
 
 		return textureNode;
 
@@ -797,6 +810,16 @@ class MaterialXDocument {
 		this.textureLoader.setOptions( { imageOrientation: 'none' } );
 		this.textureLoader.setPath( path );
 		this.textureCache = new Map();
+		// Every <image>/<tiledimage>/etc. node's bitmap loads asynchronously in
+		// the background (see MaterialXNode#getTexture below) - parse() itself
+		// returns long before those loads land. Callers that need the actual
+		// pixel data to be present before they act on the parsed material
+		// (e.g. baking a MaterialX base color node to a texture once, rather
+		// than continuously re-rendering it) can `await result.texturesReady`
+		// on the object parse() returns. Each entry here always resolves
+		// (never rejects) once its load settles, success or failure, so one
+		// broken texture can't hang every other caller's wait forever.
+		this.textureLoadPromises = [];
 		const bottomLeftUvSpaceHelpers = getBottomLeftUvSpaceHelpers( this.uvSpace );
 
 		this.compileContext = {
@@ -870,6 +893,10 @@ class MaterialXDocument {
 			log: this.log.entries,
 			errors: this.log.errors,
 			warnings: this.log.warnings,
+			// Resolves once every <image>-backed texture this parse triggered
+			// has either loaded or failed - see the textureLoadPromises comment
+			// in the constructor above. Never rejects.
+			texturesReady: Promise.all( this.textureLoadPromises ).then( () => undefined ),
 		};
 
 	}

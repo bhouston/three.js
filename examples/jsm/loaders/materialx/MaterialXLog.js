@@ -31,6 +31,10 @@ const MaterialXLogCodes = {
 		label: 'type-mismatch',
 		severity: 'error',
 	},
+	TEXTURE_LOAD_FAILED: {
+		label: 'texture-load-failed',
+		severity: 'error',
+	},
 };
 
 class MaterialXLog {

@@ -13,7 +13,8 @@ import {
 	computeLatentChannels,
 	computeDecoderInputSize,
 	computeIblInputSize,
-	computeIndirectInputSize
+	computeIndirectInputSize,
+	decodeAppearanceManifest
 } from '../neural-appearance/NeuralAppearanceFormat.js';
 import { createHalfFloatLatentTexture } from '../neural/NeuralHalfFloatTexture.js';
 
@@ -95,9 +96,17 @@ class NeuralAppearanceLoader extends Loader {
 	 */
 	parse( data ) {
 
-		const manifest = ( typeof data === 'string' ) ? JSON.parse( data ) : data;
+		const raw = ( typeof data === 'string' ) ? JSON.parse( data ) : data;
 
-		validateManifest( manifest );
+		validateManifest( raw );
+
+		// Decodes the compact (uint8-quantized latents, float16-packed MLP
+		// weights - see NeuralAppearanceManifest.js) manifest back into the
+		// plain-float-array shape the rest of this loader
+		// (`createLevelTexture`/`normalizeOutputs`/`normalizeOutputHead`)
+		// already expects - shared with NeuralAppearanceRuntime.js's CPU
+		// reference evaluator, see NeuralAppearanceFormat.js.
+		const manifest = decodeAppearanceManifest( raw );
 
 		const levelTextures = manifest.latents.levels.map( ( level, index ) => createLevelTexture( level, `latents.levels[${ index }]`, manifest.latents.wrap ) );
 

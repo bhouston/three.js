@@ -8,6 +8,18 @@ import {
 } from './NeuralTextureGPUComputeTSL.js';
 import { createResetGradientNormComputeNode } from '../neural/NeuralGPUComputeTSL.js';
 import { getLearningRate, createRandom, yieldToBrowser } from '../neural/NeuralTrainingUtils.js';
+import { DEFAULT_QUANTIZATION_OPTIONS, resolveQuantizationConfig, refreshGPUQuantizationRange } from '../neural/NeuralQuantization.js';
+
+// How often (in training iterations) `quantization.range === 'auto'` is
+// re-measured from the live GPU latent buffer (see
+// NeuralQuantization.refreshGPUQuantizationRange). Latents move gradually
+// under Adam, so the true min/max drifts slowly - a readback every 64
+// iterations is frequent enough to track that drift without ever clipping
+// noticeably stale, while staying rare enough (a full GPU->CPU latent-buffer
+// round trip each time) not to meaningfully slow down training, which
+// already only syncs that often anyway (see the `shouldSync`/`onProgress`
+// cadence below).
+const QUANTIZATION_RANGE_REFRESH_INTERVAL = 64;
 
 const DEFAULT_OPTIONS = {
 	channels: 4,
@@ -40,7 +52,11 @@ const DEFAULT_OPTIONS = {
 	iterations: 3000,
 	maxGradientNorm: 1,
 	seed: 1,
-	name: 'trained neural texture'
+	name: 'trained neural texture',
+	// Quantization-Aware Training (QAT) of the latent grid - see
+	// NeuralQuantization.js. Defaults to `mode: 'none'` (a byte-for-byte
+	// no-op vs. training without QAT at all).
+	quantization: DEFAULT_QUANTIZATION_OPTIONS
 };
 
 /**
@@ -97,6 +113,13 @@ class NeuralTextureTrainer {
 
 		}
 
+		// Validated once up front (throws a clear error immediately rather
+		// than deep inside GPUModel construction) - `gpuModel` below resolves
+		// it again from the same `settings.quantization` input, which is
+		// idempotent (see resolveQuantizationConfig's doc comment).
+		const quantization = resolveQuantizationConfig( settings );
+		this.quantizationRange = null;
+
 		const cpuModel = createNeuralTextureModel( settings, this.random );
 		const gpuModel = new NeuralTextureGPUModel( settings );
 		gpuModel.initFromCPUModel( cpuModel );
@@ -150,13 +173,53 @@ class NeuralTextureTrainer {
 
 				}
 
+				// QAT `range: 'auto'` periodic re-measurement (see
+				// NeuralQuantization.refreshGPUQuantizationRange and
+				// QUANTIZATION_RANGE_REFRESH_INTERVAL's doc comment above).
+				// Gated on `quantization` (resolved once above from
+				// `settings`, not `gpuModel.quantization`) so the default
+				// `mode: 'none'` path never touches `gpuModel` for this at
+				// all - a true no-op, not just a cheap early-return.
+				if ( quantization.mode !== 'none' && quantization.range === 'auto' &&
+					( iteration % QUANTIZATION_RANGE_REFRESH_INTERVAL === QUANTIZATION_RANGE_REFRESH_INTERVAL - 1 || iteration === iterations - 1 ) ) {
+
+					await refreshGPUQuantizationRange( gpuModel, renderer );
+
+				}
+
 				if ( iteration % 32 === 31 ) await yieldToBrowser();
 
 			}
 
 			await gpuModel.syncToCPU( cpuModel, renderer );
 
-			return { cpuModel, loss: lastLoss, iteration: completedIterations, iterations, stoppedEarly: completedIterations < iterations };
+			// Freeze the final QAT range (see NeuralQuantization.js) so a
+			// later export phase can quantize the exported latent grid against
+			// exactly the range the network was actually trained/evaluated
+			// against - not a range measured before the last few optimizer
+			// steps moved the latents further. Retrievable as either
+			// `trainer.quantizationRange` (this trainer instance) or
+			// `cpuModel.quantizationRange` (the returned model) - both are the
+			// same `[min, max]`-per-level array, or `null` when quantization is
+			// disabled (`mode: 'none'`).
+			if ( quantization.mode !== 'none' ) {
+
+				if ( quantization.range === 'auto' ) await refreshGPUQuantizationRange( gpuModel, renderer );
+				this.quantizationRange = gpuModel.getQuantizationRange();
+
+			}
+
+			cpuModel.quantizationRange = this.quantizationRange;
+
+			return {
+				cpuModel,
+				loss: lastLoss,
+				iteration: completedIterations,
+				iterations,
+				stoppedEarly: completedIterations < iterations,
+				quantization,
+				quantizationRange: this.quantizationRange
+			};
 
 		} finally {
 

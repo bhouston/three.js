@@ -3,6 +3,7 @@ import {
 	createNeuralAppearanceManifest,
 	serializeLayers
 } from '../../../../examples/jsm/neural-appearance/NeuralAppearanceManifest.js';
+import { decodeUint8Base64 } from '../../../../examples/jsm/neural/NeuralBinaryCodec.js';
 
 // `createNeuralAppearanceManifest` is the "encoder" half of the manifest
 // format: model (plain JS objects - grids/MLPs, the same shapes `createModel`
@@ -276,7 +277,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceManifest', () =>
 
 		} );
 
-		it( 'copies each grid\'s data array (mutating the model afterwards leaves the manifest\'s copy unchanged)', () => {
+		it( 'quantizes each grid\'s data at export time (mutating the model afterwards leaves the manifest\'s already-encoded copy unchanged)', () => {
 
 			const model = makeModel( 2 );
 			const grid = model.latentGrids[ 0 ];
@@ -286,8 +287,50 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceManifest', () =>
 
 			grid.data[ 0 ] = 12345;
 
-			expect( manifest.latents.levels[ 0 ].data ).toEqual( originalData );
-			expect( manifest.latents.levels[ 0 ].data ).not.toBe( grid.data );
+			const level = manifest.latents.levels[ 0 ];
+			expect( level.dtype ).toBe( 'uint8' );
+			expect( typeof level.dataBase64 ).toBe( 'string' );
+
+			const decoded = decodeUint8Base64( level.dataBase64, level.min, level.max, originalData.length );
+			const tolerance = ( level.max - level.min ) / 255 + 1e-6;
+
+			for ( let i = 0; i < originalData.length; i ++ ) {
+
+				expect( Math.abs( decoded[ i ] - originalData[ i ] ) ).toBeLessThanOrEqual( tolerance );
+
+			}
+
+		} );
+
+		it( 'encodes latents.levels[] as uint8 (dtype/min/max/dataBase64) and every output head\'s weights as a float16 mlp block', () => {
+
+			const model = makeModel( 4, { emission: true, opacity: true } );
+
+			const manifest = createNeuralAppearanceManifest( model, options );
+
+			for ( const level of manifest.latents.levels ) {
+
+				expect( level.dtype ).toBe( 'uint8' );
+				expect( typeof level.min ).toBe( 'number' );
+				expect( typeof level.max ).toBe( 'number' );
+				expect( typeof level.dataBase64 ).toBe( 'string' );
+				expect( level.data ).toBeUndefined();
+
+			}
+
+			for ( const key of [ 'brdf', 'ibl', 'indirectRadiance', 'indirectIrradiance', 'emission', 'opacity' ] ) {
+
+				const head = manifest.outputs[ key ];
+				expect( head.mlp.dtype ).toBe( 'float16' );
+				expect( Array.isArray( head.mlp.layout ) ).toBe( true );
+				expect( typeof head.mlp.dataBase64 ).toBe( 'string' );
+				expect( head.layers ).toBeUndefined();
+
+			}
+
+			expect( manifest.outputs.brdf.rotation.dtype ).toBe( 'float16' );
+			expect( typeof manifest.outputs.brdf.rotation.dataBase64 ).toBe( 'string' );
+			expect( manifest.outputs.brdf.rotation.weights ).toBeUndefined();
 
 		} );
 

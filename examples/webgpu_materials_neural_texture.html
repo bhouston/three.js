@@ -109,19 +109,7 @@
 		<div id="panel">
 			<div><strong>Source:</strong> <span id="sourceName">loading default</span></div>
 			<label for="builtInMaterial"><strong>Built-in MaterialX:</strong></label>
-			<select id="builtInMaterial">
-				<option value="checkerboard">Checkerboard 4x4</option>
-				<option value="uvGrid">UV rainbow waves</option>
-				<option value="lambertRed">Lambert red</option>
-				<option value="lambertGreen">Lambert green</option>
-				<option value="lambertBlue">Lambert blue</option>
-				<option value="glossyGold">Metallic gold</option>
-				<option value="velvet">Velvet</option>
-				<option value="emissiveGrid">Emissive rainbow waves</option>
-				<option value="brick">Brick wall</option>
-				<option value="roadAggregate">Road aggregate</option>
-				<option value="" disabled>Custom file</option>
-			</select>
+			<select id="builtInMaterial"></select>
 			<button id="openMtlxButton">Open .mtlx</button>
 			<button id="openImageButton">Open image</button>
 			<button id="trainButton">Train</button>
@@ -170,6 +158,7 @@
 			import { computeGridLevels, computeTileOctaves, GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
 			import { formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
+			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/neural/NeuralMaterialXSamples.js';
 
 			let camera, scene, renderer;
 			let teacherMesh, neuralMesh, teacherMaterial, neuralMaterial, placeholderMaterial;
@@ -190,6 +179,7 @@
 				batchSize: 8192,
 				iterations: 3000,
 				learningRate: 0.01,
+				quantization: 'none',
 				outputMode: 'neural',
 				errorScale: 6
 			};
@@ -197,18 +187,7 @@
 			const uvScaleUniform = TSL.uniform( new THREE.Vector2( 1, 1 ) );
 			const uvOffsetUniform = TSL.uniform( new THREE.Vector2( 0, 0 ) );
 
-			const materialPresets = {
-				checkerboard: 'neural_train_checkerboard.mtlx',
-				uvGrid: 'neural_train_uv_grid.mtlx',
-				lambertRed: 'neural_train_lambert_red.mtlx',
-				lambertGreen: 'neural_train_lambert_green.mtlx',
-				lambertBlue: 'neural_train_lambert_blue.mtlx',
-				glossyGold: 'neural_train_glossy_gold.mtlx',
-				velvet: 'neural_train_velvet.mtlx',
-				emissiveGrid: 'neural_train_emissive_grid.mtlx',
-				brick: 'neural_train_brick.mtlx',
-				roadAggregate: 'neural_train_road_aggregate.mtlx'
-			};
+			const DEFAULT_MATERIALX_KEY = 'neural_train_checkerboard';
 
 			const sourceName = document.getElementById( 'sourceName' );
 			const status = document.getElementById( 'status' );
@@ -294,6 +273,7 @@
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
 				trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' );
 				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
+				trainingFolder.add( params, 'quantization', { 'Off': 'none', '8-bit': 'uint8' } ).name( 'quantization' );
 
 				const viewFolder = gui.addFolder( 'view' );
 				viewFolder.add( params, 'outputMode', [ 'neural', 'diff' ] ).name( 'right side shows' ).onChange( () => rebuildNeuralMaterial( null ) );
@@ -308,10 +288,12 @@
 				stopButton.addEventListener( 'click', stopTraining );
 				window.addEventListener( 'resize', onWindowResize );
 
+				populateMaterialXSelect( builtInMaterial );
+
 				updateUvUniforms();
 				updateNetworkSize();
-				builtInMaterial.value = 'checkerboard';
-				await loadBuiltInMaterial( 'checkerboard' );
+				builtInMaterial.value = DEFAULT_MATERIALX_KEY;
+				await loadBuiltInMaterial( DEFAULT_MATERIALX_KEY );
 
 			}
 
@@ -363,8 +345,10 @@
 
 			async function loadBuiltInMaterial( key ) {
 
-				const file = materialPresets[ key ];
-				if ( file === undefined ) return;
+				const sample = getMaterialXSample( key );
+				if ( sample === undefined ) return;
+
+				const file = sample.file;
 
 				try {
 
@@ -376,6 +360,15 @@
 					const material = Object.values( materials ).find( isPhysicalNodeMaterial ) || Object.values( materials )[ 0 ];
 
 					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
+
+					// <image>-backed nodes (e.g. this material's base color) load
+					// their bitmap asynchronously in the background - loadAsync()
+					// above only waits for the MaterialX document itself to
+					// parse. Baking the base color to a texture below is a single
+					// one-shot render, not a continuous one, so it must wait for
+					// any such bitmap to actually arrive first or it bakes
+					// whatever was there before the image loaded (usually blank).
+					if ( asset.texturesReady ) await asset.texturesReady;
 
 					materialXMaterial = material;
 					await setSourceFromMaterialX( material, file );
@@ -407,6 +400,10 @@
 					const material = Object.values( materials ).find( isPhysicalNodeMaterial ) || Object.values( materials )[ 0 ];
 
 					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
+
+					// See the loadBuiltInMaterial() comment above - wait for any
+					// <image>-backed textures to finish loading before baking.
+					if ( asset.texturesReady ) await asset.texturesReady;
 
 					builtInMaterial.value = '';
 					materialXMaterial = material;
@@ -523,6 +520,7 @@
 						batchSize: Number( params.batchSize ),
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),
+						quantization: { mode: params.quantization },
 						seed: 1
 					} );
 					activeTrainer = trainer;

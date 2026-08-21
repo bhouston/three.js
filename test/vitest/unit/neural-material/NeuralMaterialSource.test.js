@@ -97,6 +97,21 @@ describe( 'Addons > Neural > NeuralMaterial > NeuralMaterialSource', () => {
 
 		} );
 
+		it( 'captures the source material\'s side/transparent flags as renderFlags', () => {
+
+			// Mirrors what MaterialX's `setTransmissionFlags` sets on a
+			// transmissive OpenPBR material (see
+			// ../loaders/materialx/MaterialXSurfaceMappings.js) - captured here
+			// so NeuralMaterialNodeMaterial can mirror them and keep its
+			// transmission pass count (and therefore its attenuation tint
+			// strength) consistent with the material it was fit against.
+			const material = { side: 2 /* THREE.DoubleSide */, transparent: true };
+			const { renderFlags } = classifyMaterialChannels( material );
+
+			expect( renderFlags ).toEqual( { side: 2, transparent: true } );
+
+		} );
+
 	} );
 
 } );

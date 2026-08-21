@@ -101,7 +101,31 @@ function classifyMaterialChannels( material, channels = CHANNELS ) {
 
 	const { channels: activeChannels, totalChannels, packCount } = layoutChannels( activeList );
 
-	return { activeChannels, totalChannels, packCount, constantValues };
+	return { activeChannels, totalChannels, packCount, constantValues, renderFlags: resolveRenderFlags( material ) };
+
+}
+
+/**
+ * Captures the source material's `side`/`transparent` flags so
+ * `NeuralMaterialNodeMaterial` can mirror them (see its constructor) instead
+ * of always defaulting to `FrontSide`/opaque. This matters most for
+ * transmission: MaterialX's OpenPBR conversion sets `side = DoubleSide` +
+ * `transparent = true` whenever `transmission_weight` is active (see
+ * `setTransmissionFlags` in `../loaders/materialx/MaterialXSurfaceMappings.js`),
+ * which makes the renderer render that mesh in two passes (back-face then
+ * front-face - see `RenderList.needsDoublePass`/`Renderer._renderTransparents`)
+ * and therefore apply the `attenuationColor`/`attenuationDistance` Beer-
+ * Lambert absorption *twice* through the volume. A neural material that
+ * stays single-pass applies that same absorption only once, so its
+ * attenuation tint comes out visibly weaker (roughly the square root of the
+ * teacher's) even when the trained `attenuationColor`/`attenuationDistance`/
+ * `thickness` channels themselves match exactly - copying these two flags
+ * keeps the neural material's pass count (and therefore its tint strength)
+ * consistent with the material it was fit against.
+ */
+function resolveRenderFlags( material ) {
+
+	return { side: material.side, transparent: material.transparent };
 
 }
 

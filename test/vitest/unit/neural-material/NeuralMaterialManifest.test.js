@@ -133,6 +133,35 @@ describe( 'Addons > Neural > Neural-Material > NeuralMaterialManifest', () => {
 
 	} );
 
+	it( 'round-trips renderFlags (side/transparent) through export -> JSON -> load', () => {
+
+		const classification = { ...buildChannelClassification(), renderFlags: { side: 2 /* THREE.DoubleSide */, transparent: true } };
+		const model = buildModel( classification.totalChannels );
+
+		const manifest = createNeuralMaterialManifest( model, classification, { name: 'renderFlags roundtrip' } );
+		expect( manifest.renderFlags ).toEqual( { side: 2, transparent: true } );
+
+		const json = JSON.parse( JSON.stringify( manifest ) );
+		const loaded = new NeuralMaterialLoader().parse( json );
+
+		expect( loaded.channelClassification.renderFlags ).toEqual( { side: 2, transparent: true } );
+
+	} );
+
+	it( 'a manifest saved without renderFlags (pre-existing files) loads with renderFlags null', () => {
+
+		const classification = buildChannelClassification();
+		const model = buildModel( classification.totalChannels );
+
+		const manifest = createNeuralMaterialManifest( model, classification, { name: 'no renderFlags' } );
+		expect( manifest.renderFlags ).toBeNull();
+
+		const loaded = new NeuralMaterialLoader().parse( JSON.parse( JSON.stringify( manifest ) ) );
+
+		expect( loaded.channelClassification.renderFlags ).toBeNull();
+
+	} );
+
 	it( 'loader rejects a manifest with the wrong format', () => {
 
 		const loader = new NeuralMaterialLoader();

@@ -92,7 +92,7 @@ class NeuralMaterialLoader extends Loader {
 		validateManifest( manifest );
 
 		const cpuModel = this._textureLoader.parseManifestObject( manifest.texture );
-		const channelClassification = decodeChannelClassification( manifest.channels );
+		const channelClassification = decodeChannelClassification( manifest.channels, manifest.renderFlags );
 
 		return {
 			name: manifest.name || '',
@@ -104,7 +104,7 @@ class NeuralMaterialLoader extends Loader {
 
 }
 
-function decodeChannelClassification( channels ) {
+function decodeChannelClassification( channels, renderFlags ) {
 
 	const activeList = channels.activeKeys.map( ( key ) => getChannel( key ) );
 	const { channels: activeChannels, totalChannels, packCount } = layoutChannels( activeList );
@@ -121,7 +121,13 @@ function decodeChannelClassification( channels ) {
 	// the encoded form. A caller that wants the true semantic values back
 	// (e.g. for display) should call `decodeConstantValues` itself on a
 	// separate copy, not on what gets handed to `NeuralMaterialNodeMaterial`.
-	return { activeChannels, totalChannels, packCount, constantValues: channels.constantValues || {} };
+	//
+	// `renderFlags` is `null`/`undefined` for a manifest saved before this
+	// field existed (or built without a source material) - passed through
+	// as-is, since `NeuralMaterialNodeMaterial`'s constructor already treats
+	// a falsy `renderFlags` as "keep the class default" (see
+	// NeuralMaterialSource.resolveRenderFlags's doc comment).
+	return { activeChannels, totalChannels, packCount, constantValues: channels.constantValues || {}, renderFlags: renderFlags || null };
 
 }
 

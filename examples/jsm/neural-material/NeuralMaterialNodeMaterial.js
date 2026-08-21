@@ -79,8 +79,23 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
 		super();
 
-		const { activeChannels, constantValues } = channelClassification;
+		const { activeChannels, constantValues, renderFlags } = channelClassification;
 		const channels = options.channels || CHANNELS;
+
+		// Mirror the source material's `side`/`transparent` (see
+		// NeuralMaterialSource.resolveRenderFlags's doc comment) - most
+		// importantly so a transmissive source's `DoubleSide` survives onto
+		// this material too, keeping its Beer-Lambert attenuation pass count
+		// (and therefore tint strength) consistent with what it was fit
+		// against. `renderFlags` is undefined for a manifest saved before this
+		// field existed - falls back to this class's inherited default
+		// (`FrontSide`/opaque) exactly as before.
+		if ( renderFlags ) {
+
+			if ( renderFlags.side !== undefined ) this.side = renderFlags.side;
+			if ( renderFlags.transparent !== undefined ) this.transparent = renderFlags.transparent;
+
+		}
 
 		this.cpuModel = cpuModel;
 		this.activeChannels = activeChannels;

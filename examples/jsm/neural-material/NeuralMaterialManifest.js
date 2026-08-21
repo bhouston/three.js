@@ -33,6 +33,14 @@ function createNeuralMaterialManifest( cpuModel, channelClassification, options 
 		version: VERSION,
 		name: options.name,
 		texture,
+		// See NeuralMaterialSource.resolveRenderFlags's doc comment - `side`/
+		// `transparent` aren't channels (nothing for the network to fit), but
+		// still need to round-trip so a loaded material's transmission pass
+		// count (and therefore its attenuation tint strength) matches the
+		// source material it was fit against. `undefined` on a
+		// classification built without a source material (e.g. hand-assembled
+		// constant-only classification) round-trips as a plain `null`.
+		renderFlags: channelClassification.renderFlags || null,
 		channels: {
 			// Only the channel *keys* need to be persisted, in layout order -
 			// every other field on an `activeChannels` entry (`size`,

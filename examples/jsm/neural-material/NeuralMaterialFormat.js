@@ -63,6 +63,16 @@ const CHANNELS = [
 	{ key: 'clearcoatRoughness', size: 1, activation: 'sigmoid', nodeKeys: [ 'clearcoatRoughnessNode' ], clampRange: [ 0.02, 1 ], defaultValue: 0 },
 	{ key: 'clearcoatNormal', size: 2, activation: 'tanh', nodeKeys: [ 'clearcoatNormalNode' ], clampRange: null, defaultValue: [ 0, 0, 1 ] },
 	{ key: 'transmission', size: 1, activation: 'sigmoid', nodeKeys: [ 'transmissionNode' ], clampRange: [ 0, 1 ], defaultValue: 0 },
+	// Dielectric specular reflectance multiplier - MeshPhysicalMaterial
+	// defaults this to 1 (full Fresnel reflectance at normal incidence, per
+	// `ior`), but a source material can turn its non-metal specular lobe down
+	// or fully off (e.g. a MaterialX `specular="0"` Lambertian). Without this
+	// channel that override was silently dropped on reconstruction - the
+	// neural material always inherited MeshPhysicalMaterial's `specularIntensity
+	// = 1` default regardless of what the source material set - producing a
+	// reconstruction that looks visibly shinier than a matte source despite
+	// matching roughness/metalness.
+	{ key: 'specularIntensity', size: 1, activation: 'sigmoid', nodeKeys: [ 'specularIntensityNode' ], clampRange: [ 0, 1 ], defaultValue: 1 },
 	{ key: 'emissive', size: 3, activation: 'softplus', nodeKeys: [ 'emissiveNode' ], clampRange: null, defaultValue: [ 0, 0, 0 ] },
 	// Anisotropy strength+rotation trained as a single signed 2D direction
 	// vector (ax, ay) = (cos(rotation)*strength, sin(rotation)*strength),
@@ -88,9 +98,9 @@ const CHANNELS = [
  * resolveMaterialChannelNodes` and `NeuralMaterialNodeMaterial`'s
  * constructor for each.
  */
-const SIMPLE_SCALAR_KEYS = [ 'opacity', 'roughness', 'metalness', 'clearcoat', 'clearcoatRoughness', 'transmission', 'sheenRoughness' ];
+const SIMPLE_SCALAR_KEYS = [ 'opacity', 'roughness', 'metalness', 'clearcoat', 'clearcoatRoughness', 'transmission', 'specularIntensity', 'sheenRoughness' ];
 
-const MAX_TOTAL_CHANNELS = CHANNELS.reduce( ( sum, c ) => sum + c.size, 0 ); // 24, if every channel is active
+const MAX_TOTAL_CHANNELS = CHANNELS.reduce( ( sum, c ) => sum + c.size, 0 ); // 23, if every channel is active
 
 /**
  * Debug-only views of the mesh's raw tangent-space frame itself

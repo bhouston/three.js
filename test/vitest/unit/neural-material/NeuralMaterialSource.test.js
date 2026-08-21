@@ -42,6 +42,7 @@ describe( 'Addons > Neural > NeuralMaterial > NeuralMaterialSource', () => {
 			expect( constantValues.clearcoatRoughness ).toBe( 0 );
 			expect( constantValues.clearcoatNormal ).toEqual( [ 0, 0, 1 ] );
 			expect( constantValues.transmission ).toBe( 0 );
+			expect( constantValues.specularIntensity ).toBe( 1 );
 			expect( constantValues.emissive ).toEqual( [ 0, 0, 0 ] );
 			expect( constantValues.anisotropy ).toEqual( [ 0, 0 ] );
 			expect( constantValues.sheenColor ).toEqual( [ 0, 0, 0 ] );

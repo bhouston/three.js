@@ -71,9 +71,11 @@ export default QUnit.module( 'TSL', () => {
 			// own doc comment. At x=0 the argument is -PI, giving sin(-PI)/(-PI) == 0.
 			assert.closeAbs( sinc( float( 0 ), float( 1 ) ), float( 0 ), 1e-4, 'sinc(0, k=1) == 0' );
 
-			// At x == 1/k the argument is 0 -- sin(0)/0 is the sinc()
-			// removable-singularity limit of 1, exercising the function's peak.
-			assert.closeAbs( sinc( float( 1 ), float( 1 ) ), float( 1 ), 1e-2, 'sinc(1/k, k) == 1 -- the sinc() peak' );
+			// At x == 1/k the argument is exactly 0 -- naively that's sin(0)/0,
+			// but sinc()'s removable-singularity guard (see MathUtils.js) returns
+			// the analytic limit of 1 instead of evaluating the 0/0 division, so
+			// this is exercised at full precision, not just approximately.
+			assert.closeAbs( sinc( float( 1 ), float( 1 ) ), float( 1 ), 1e-4, 'sinc(1/k, k) == 1 -- the sinc() peak' );
 
 			// At x == 2/k the argument is +PI, giving sin(PI)/PI == 0 again.
 			assert.closeAbs( sinc( float( 2 ), float( 1 ) ), float( 0 ), 1e-3, 'sinc(2/k, k) == 0 again' );
@@ -90,10 +92,12 @@ export default QUnit.module( 'TSL', () => {
 			// (real-time) timer -- that keeps every expected value a pure,
 			// independently hand-computed function of t.
 
-			// oscSine(t) == 0.5*sin(2*PI*(t+0.75)) + 0.5.
+			// oscSine(t) == 0.5*sin(2*PI*(t+0.75)) + 0.5 -- the +0.75 phase
+			// offset puts the trough at t=0 and the peak at t=0.5 (not the
+			// t=0.25/t=0.75 a naive sin() phase might suggest).
 			assert.closeAbs( oscSine( float( 0 ) ), float( 0.5 * Math.sin( 2 * Math.PI * 0.75 ) + 0.5 ), 1e-4, 'oscSine(0)' );
-			assert.closeAbs( oscSine( float( 0.25 ) ), float( 1 ), 1e-4, 'oscSine(0.25) reaches its peak of 1' );
-			assert.closeAbs( oscSine( float( 0.75 ) ), float( 0 ), 1e-4, 'oscSine(0.75) reaches its trough of 0' );
+			assert.closeAbs( oscSine( float( 0.5 ) ), float( 1 ), 1e-4, 'oscSine(0.5) reaches its peak of 1' );
+			assert.closeAbs( oscSine( float( 0 ) ), float( 0 ), 1e-4, 'oscSine(0) reaches its trough of 0' );
 
 			// oscSquare(t) == round(fract(t)) -- 0 for the first half of each
 			// unit period, 1 for the second half.
@@ -101,11 +105,11 @@ export default QUnit.module( 'TSL', () => {
 			assert.eq( oscSquare( float( 0.8 ) ), float( 1 ), 'oscSquare(0.8) is in the high half' );
 			assert.eq( oscSquare( float( 1.2 ) ), float( 0 ), 'oscSquare(1.2) repeats the low half of the next period' );
 
-			// oscTriangle(t) == abs(2*fract(t+0.5)-1) -- 1 at integer t, 0 at
+			// oscTriangle(t) == abs(2*fract(t+0.5)-1) -- 0 at integer t, 1 at
 			// the half-integer point, ramping linearly between.
-			assert.closeAbs( oscTriangle( float( 0 ) ), float( 1 ), 1e-5, 'oscTriangle(0) is at its peak' );
-			assert.closeAbs( oscTriangle( float( 0.5 ) ), float( 0 ), 1e-5, 'oscTriangle(0.5) is at its trough' );
-			assert.closeAbs( oscTriangle( float( 0.25 ) ), float( 0.5 ), 1e-4, 'oscTriangle(0.25) is exactly midway down the ramp' );
+			assert.closeAbs( oscTriangle( float( 0 ) ), float( 0 ), 1e-5, 'oscTriangle(0) is at its trough' );
+			assert.closeAbs( oscTriangle( float( 0.5 ) ), float( 1 ), 1e-5, 'oscTriangle(0.5) is at its peak' );
+			assert.closeAbs( oscTriangle( float( 0.25 ) ), float( 0.5 ), 1e-4, 'oscTriangle(0.25) is exactly midway up the ramp' );
 
 			// oscSawtooth(t) == fract(t) -- a plain linear ramp per period.
 			assert.closeAbs( oscSawtooth( float( 0.3 ) ), float( 0.3 ), 1e-5, 'oscSawtooth(0.3) == 0.3' );
@@ -140,6 +144,36 @@ export default QUnit.module( 'TSL', () => {
 			// code paths inside RotateNode.setup().
 			const rotated = rotate( vec3( 1, 0, 5 ), vec3( 0, 0, Math.PI / 2 ) );
 			assert.closeAbs( rotated, vec3( 0, 1, 5 ), 1e-4, 'rotating (1,0,5) by PI/2 about Z gives (0,1,5)' );
+
+		} );
+
+		// The X and Y single-axis paths weren't independently exercised when
+		// RotateNode's 3D branch had its column/row transpose bug (see
+		// tsl-unit-test-findings.md) -- only Z was empirically checked, even
+		// though the fix touched all three per-axis matrices identically.
+		// These two tests close that gap by applying the same 2D-vs-3D
+		// cross-check to X and Y, with the "other two" coordinates held fixed
+		// as an independent pass-through check (mirroring the Z test's own Z
+		// pass-through of `5`).
+		gpuTest( 'rotate() on a 3D position about the X axis only matches the 2D case', ( { assert } ) => {
+
+			// Rotating about X only: (y,z) behaves exactly like the 2D case's
+			// (x,y), with X passed through unchanged.
+			const rotated = rotate( vec3( 5, 1, 0 ), vec3( Math.PI / 2, 0, 0 ) );
+			assert.closeAbs( rotated, vec3( 5, 0, 1 ), 1e-4, 'rotating (5,1,0) by PI/2 about X gives (5,0,1)' );
+
+		} );
+
+		gpuTest( 'rotate() on a 3D position about the Y axis only matches the 2D case', ( { assert } ) => {
+
+			// Rotating about Y only, with Y passed through unchanged. Unlike
+			// the X and Z axes, RotateNode's Y-axis matrix is built with its
+			// sin/-sin terms swapped relative to the X/Z pattern (see
+			// RotateNode.js's rotationYMatrix), so this rotates (x,z) the
+			// opposite way round from what the X/Z pattern alone would
+			// suggest: x' = x*cos + z*sin, z' = -x*sin + z*cos.
+			const rotated = rotate( vec3( 1, 5, 0 ), vec3( 0, Math.PI / 2, 0 ) );
+			assert.closeAbs( rotated, vec3( 0, 5, -1 ), 1e-4, 'rotating (1,5,0) by PI/2 about Y gives (0,5,-1)' );
 
 		} );
 

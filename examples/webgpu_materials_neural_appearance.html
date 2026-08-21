@@ -240,7 +240,7 @@
 				iterations: readNumberQuery( 'iterations', 10000 ),
 				batchSize: readNumberQuery( 'batchSize', 1024 ),
 				learningRate: readNumberQuery( 'learningRate', 0.001 ),
-				quantization: queryParams.get( 'quantization' ) || 'none',
+				quantization: queryParams.get( 'quantization' ) || 'uint8',
 				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
 				seed: readNumberQuery( 'seed', 1 ),
 				showBackground: true

@@ -3,9 +3,9 @@ import * as TSL from 'three/tsl';
 import {
 	packVec4Inputs,
 	unpackVec4Outputs,
-	packLayerWeightsVec4,
+	packLayerWeightsMat4,
 	packLayerBiasesVec4,
-	evaluateLinearLayerVec4
+	evaluateLinearLayerMat4
 } from '../neural/NeuralMLPTSL.js';
 import { sigmoidTSL } from '../neural/NeuralOutputActivations.js';
 import { triangleWaveEncodeTSL } from '../neural/NeuralGPUComputeTSL.js';
@@ -396,8 +396,13 @@ function createHeadUniforms( decoder ) {
 
 	const packed = packHeadParameters( decoder );
 
+	// Two parallel uniform buffers rather than one combined buffer: a
+	// `UniformArrayNode` is typed by a single `elementType`, so `mat4`
+	// weight blocks and `vec4` bias vectors can't share one array the way
+	// the old all-vec4 layout let them.
 	return {
-		parameters: TSL.uniformArray( packed.values, 'vec4' ),
+		weights: TSL.uniformArray( packed.weightsValues, 'mat4' ),
+		biases: TSL.uniformArray( packed.biasesValues, 'vec4' ),
 		rotationWeightsOffset: packed.rotationWeightsOffset,
 		layers: packed.layers
 	};
@@ -502,7 +507,10 @@ function updateOutputUniforms( uniforms, outputs ) {
 
 function updateHeadUniforms( uniforms, decoder ) {
 
-	copyPackedVectors( uniforms.parameters.array, packHeadParameters( decoder ).values );
+	const packed = packHeadParameters( decoder );
+
+	copyPackedVectors( uniforms.weights.array, packed.weightsValues );
+	copyPackedVectors( uniforms.biases.array, packed.biasesValues );
 
 }
 
@@ -538,30 +546,31 @@ function copyLatentTextureData( destinationTextures, sourceTextures ) {
 
 function packHeadParameters( decoder ) {
 
-	const values = [];
+	const weightsValues = [];
+	const biasesValues = [];
 	const layers = [];
 	let rotationWeightsOffset = null;
 
 	if ( decoder.rotation ) {
 
-		rotationWeightsOffset = values.length;
-		values.push( ...packLayerWeightsVec4( decoder.rotation.weights, decoder.rotation.inputSize, decoder.rotation.outputSize ) );
+		rotationWeightsOffset = weightsValues.length;
+		weightsValues.push( ...packLayerWeightsMat4( decoder.rotation.weights, decoder.rotation.inputSize, decoder.rotation.outputSize ) );
 
 	}
 
 	for ( const layer of decoder.layers ) {
 
-		const weightsOffset = values.length;
-		values.push( ...packLayerWeightsVec4( layer.weights, layer.inputSize, layer.outputSize ) );
+		const weightsOffset = weightsValues.length;
+		weightsValues.push( ...packLayerWeightsMat4( layer.weights, layer.inputSize, layer.outputSize ) );
 
-		const biasesOffset = values.length;
-		values.push( ...packLayerBiasesVec4( layer.biases ) );
+		const biasesOffset = biasesValues.length;
+		biasesValues.push( ...packLayerBiasesVec4( layer.biases ) );
 
 		layers.push( { weightsOffset, biasesOffset } );
 
 	}
 
-	return { values, rotationWeightsOffset, layers };
+	return { weightsValues, biasesValues, rotationWeightsOffset, layers };
 
 }
 
@@ -581,7 +590,7 @@ function buildDecoderFrames( decoder, decoderUniforms, latents ) {
 	}
 
 	const rotation = unpackVec4Outputs(
-		linearLayerPacked( packVec4Inputs( latents ), decoderUniforms.parameters, decoderUniforms.rotationWeightsOffset, null, latents.length, decoder.rotation.outputSize, 'linear' ),
+		linearLayerPacked( packVec4Inputs( latents ), decoderUniforms, decoderUniforms.rotationWeightsOffset, null, latents.length, decoder.rotation.outputSize, 'linear' ),
 		decoder.rotation.outputSize
 	);
 	const frames = [];
@@ -700,7 +709,7 @@ function evaluateMLP( layers, uniforms, inputs ) {
 		const layer = layers[ i ];
 		const layerUniform = uniforms.layers[ i ];
 
-		activations = linearLayerPacked( activations, uniforms.parameters, layerUniform.weightsOffset, layerUniform.biasesOffset, layer.inputSize, layer.outputSize, layer.activation );
+		activations = linearLayerPacked( activations, uniforms, layerUniform.weightsOffset, layerUniform.biasesOffset, layer.inputSize, layer.outputSize, layer.activation );
 
 	}
 
@@ -751,7 +760,7 @@ function evaluateMLPViaFn( name, layers, uniforms, inputs, outputSize ) {
 			const layer = layers[ i ];
 			const layerUniform = uniforms.layers[ i ];
 
-			activations = linearLayerPacked( activations, uniforms.parameters, layerUniform.weightsOffset, layerUniform.biasesOffset, layer.inputSize, layer.outputSize, layer.activation );
+			activations = linearLayerPacked( activations, uniforms, layerUniform.weightsOffset, layerUniform.biasesOffset, layer.inputSize, layer.outputSize, layer.activation );
 
 		}
 
@@ -775,23 +784,26 @@ function evaluateMLPViaFn( name, layers, uniforms, inputs, outputSize ) {
 
 }
 
-// This module's combined-uniform-buffer-with-offset layout
-// (`uniforms.parameters` + `weightsOffset`/`biasesOffset`, see
-// packHeadParameters) is specific to neural-appearance, so this stays a
-// local wrapper around the shared evaluateLinearLayerVec4 rather than a bare
-// re-export: it supplies the `getWeightVec4`/`getBiasVec4` closures that
-// read from that combined buffer. `biasesOffset: null` (only the rotation
-// layer - see buildDecoderFrames - which packs no bias values at all,
-// matching the training kernel's bias-free rotation projection) skips the
-// bias term entirely rather than reading a bogus offset.
-function linearLayerPacked( inputs, parameters, weightsOffset, biasesOffset, inputSize, outputSize, activation ) {
+// This module's per-head uniform layout (`uniforms.weights`/`uniforms.biases`
+// + `weightsOffset`/`biasesOffset`, see packHeadParameters/createHeadUniforms)
+// is specific to neural-appearance - all of a head's layers (plus its
+// rotation layer, if any) share one mat4 weights buffer and one vec4 biases
+// buffer, addressed by per-layer offset, rather than each layer getting its
+// own uniformArray the way neural-texture's simpler single-network case does
+// - so this stays a local wrapper around the shared evaluateLinearLayerMat4
+// rather than a bare re-export: it supplies the `getWeightMat4`/`getBiasVec4`
+// closures that read from those two buffers. `biasesOffset: null` (only the
+// rotation layer - see buildDecoderFrames - which packs no bias values at
+// all, matching the training kernel's bias-free rotation projection) skips
+// the bias term entirely rather than reading a bogus offset.
+function linearLayerPacked( inputs, uniforms, weightsOffset, biasesOffset, inputSize, outputSize, activation ) {
 
 	const inputVectorCount = Math.ceil( inputSize / 4 );
 
-	return evaluateLinearLayerVec4(
+	return evaluateLinearLayerMat4(
 		inputs, inputSize, outputSize, activation,
-		( outputIndex, vectorIndex ) => parameters.element( weightsOffset + outputIndex * inputVectorCount + vectorIndex ),
-		biasesOffset !== null ? ( outputVector ) => parameters.element( biasesOffset + outputVector ) : null
+		( outputVector, inputVector ) => uniforms.weights.element( weightsOffset + outputVector * inputVectorCount + inputVector ),
+		biasesOffset !== null ? ( outputVector ) => uniforms.biases.element( biasesOffset + outputVector ) : null
 	);
 
 }
@@ -856,7 +868,7 @@ export {
 	isCompatibleNeuralAppearanceData,
 	updateOutputUniforms,
 	copyLatentTextureData,
-	packLayerWeightsVec4,
+	packLayerWeightsMat4,
 	packLayerBiasesVec4,
 	buildDecoderInput,
 	projectIBLInput,

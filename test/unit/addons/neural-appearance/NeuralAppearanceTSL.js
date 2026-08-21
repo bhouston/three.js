@@ -113,7 +113,8 @@ describe( 'Addons', () => {
 				const uniforms = createOutputUniforms( outputs );
 
 				expect( uniforms.brdf ).toBeTruthy();
-				expect( uniforms.brdf.parameters ).toBeTruthy();
+				expect( uniforms.brdf.weights ).toBeTruthy();
+				expect( uniforms.brdf.biases ).toBeTruthy();
 				expect( uniforms.brdf.rotationWeightsOffset ).toBe( 0 );
 				expect( uniforms.brdf.layers.length ).toBe( 1 );
 				expect( uniforms.ibl ).toBeTruthy();
@@ -143,14 +144,14 @@ describe( 'Addons', () => {
 			test( 'updates packed decoder uniforms in place', () => {
 
 				const uniforms = createOutputUniforms( fakeData( 0 ).outputs );
-				const first = uniforms.brdf.parameters.array[ uniforms.brdf.layers[ 0 ].weightsOffset ];
-				const bias = uniforms.brdf.parameters.array[ uniforms.brdf.layers[ 0 ].biasesOffset ];
+				const firstWeights = uniforms.brdf.weights.array[ uniforms.brdf.layers[ 0 ].weightsOffset ];
+				const bias = uniforms.brdf.biases.array[ uniforms.brdf.layers[ 0 ].biasesOffset ];
 
 				updateOutputUniforms( uniforms, fakeData( 7 ).outputs );
 
-				expect( uniforms.brdf.parameters.array[ uniforms.brdf.layers[ 0 ].weightsOffset ] ).toBe( first );
-				expect( first.x ).toBe( 7 );
-				expect( uniforms.brdf.parameters.array[ uniforms.brdf.layers[ 0 ].biasesOffset ] ).toBe( bias );
+				expect( uniforms.brdf.weights.array[ uniforms.brdf.layers[ 0 ].weightsOffset ] ).toBe( firstWeights );
+				expect( firstWeights.elements[ 0 ] ).toBe( 7 );
+				expect( uniforms.brdf.biases.array[ uniforms.brdf.layers[ 0 ].biasesOffset ] ).toBe( bias );
 				expect( bias.x ).toBe( 7 );
 
 			} );

@@ -3,9 +3,9 @@ import { abs, fract, texture, uniformArray, uv, vec3, vec4 } from 'three/tsl';
 import {
 	packVec4Inputs,
 	unpackVec4Outputs,
-	packLayerWeightsVec4,
+	packLayerWeightsMat4,
 	packLayerBiasesVec4,
-	evaluateLinearLayerVec4
+	evaluateLinearLayerMat4
 } from '../neural/NeuralMLPTSL.js';
 import { createHalfFloatLatentTexture } from '../neural/NeuralHalfFloatTexture.js';
 import { triangleWaveEncodeTSL } from '../neural/NeuralGPUComputeTSL.js';
@@ -65,27 +65,29 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 
 	}
 
-	// Shared vec4-packed MLP evaluator (see ../neural/NeuralMLPTSL.js) - same
-	// evaluator neural-appearance uses. Packing 4 scalars per vec4 and
-	// evaluating each output neuron with TSL.dot() maps to a native GPU
-	// dot-product instruction, and evaluateLinearLayerVec4 materializes each
-	// layer's output with .toVar() before the next layer consumes it - this
-	// used to be a from-scratch, per-scalar-.add() reimplementation here
-	// (with its own separately-discovered .toVar() fix for the same WGSL
-	// "maximum parser recursive depth" failure the shared version's comment
-	// describes) with no principled reason for the two to differ.
+	// Shared mat4-packed MLP evaluator (see ../neural/NeuralMLPTSL.js) - same
+	// evaluator neural-appearance uses. Packing weights into 4x4 blocks and
+	// evaluating each layer with a native mat4 * vec4 multiply maps to one
+	// hardware FMA-chain instruction per input quad (instead of 4 separate
+	// dot() calls, one per output neuron), and evaluateLinearLayerMat4
+	// materializes each layer's output with .toVar() before the next layer
+	// consumes it - this used to be a from-scratch, per-scalar-.add()
+	// reimplementation here (with its own separately-discovered .toVar() fix
+	// for the same WGSL "maximum parser recursive depth" failure the shared
+	// version's comment describes) with no principled reason for the two to
+	// differ.
 	let activations = packVec4Inputs( features );
 
 	for ( let l = 0; l < cpuModel.decoder.layers.length; l ++ ) {
 
 		const layer = cpuModel.decoder.layers[ l ];
-		const weightsArray = uniformArray( packLayerWeightsVec4( layer.weights, layer.inputSize, layer.outputSize ), 'vec4' );
+		const weightsArray = uniformArray( packLayerWeightsMat4( layer.weights, layer.inputSize, layer.outputSize ), 'mat4' );
 		const biasesArray = uniformArray( packLayerBiasesVec4( layer.biases ), 'vec4' );
 		const inputVectorCount = Math.ceil( layer.inputSize / 4 );
 
-		activations = evaluateLinearLayerVec4(
+		activations = evaluateLinearLayerMat4(
 			activations, layer.inputSize, layer.outputSize, layer.activation,
-			( outputIndex, vectorIndex ) => weightsArray.element( outputIndex * inputVectorCount + vectorIndex ),
+			( outputVector, inputVector ) => weightsArray.element( outputVector * inputVectorCount + inputVector ),
 			( outputVector ) => biasesArray.element( outputVector )
 		);
 

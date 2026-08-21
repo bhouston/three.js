@@ -94,13 +94,13 @@ describe( 'Addons', () => {
 				const loader = new NeuralAppearanceLoader();
 				const material = new NeuralAppearanceNodeMaterial( loader.parse( createManifest( 0 ) ) );
 				const textures = material.neuralAppearanceData.latentTextures;
-				const weightVector = material._outputUniforms.brdf.parameters.array[ material._outputUniforms.brdf.layers[ 0 ].weightsOffset ];
+				const weightBlock = material._outputUniforms.brdf.weights.array[ material._outputUniforms.brdf.layers[ 0 ].weightsOffset ];
 				const next = loader.parse( createManifest( 0.25 ) );
 
 				expect( material.updateFromData( next ) ).toBe( true );
 				expect( material.neuralAppearanceData.latentTextures ).toBe( textures );
-				expect( material._outputUniforms.brdf.parameters.array[ material._outputUniforms.brdf.layers[ 0 ].weightsOffset ] ).toBe( weightVector );
-				expect( weightVector.x ).not.toBe( 0 );
+				expect( material._outputUniforms.brdf.weights.array[ material._outputUniforms.brdf.layers[ 0 ].weightsOffset ] ).toBe( weightBlock );
+				expect( weightBlock.elements[ 0 ] ).not.toBe( 0 );
 
 			} );
 

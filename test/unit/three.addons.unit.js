@@ -23,3 +23,8 @@ import './addons/tsl/TSLVectorMatrix.tests.js';
 import './addons/tsl/TSLMathExtra.tests.js';
 import './addons/tsl/TSLLogicBitwise.tests.js';
 import './addons/tsl/TSLCurveUtils.tests.js';
+import './addons/tsl/TSLColorSpace.tests.js';
+import './addons/tsl/TSLBlendModes.tests.js';
+import './addons/tsl/TSLColorAdjustmentExtra.tests.js';
+import './addons/tsl/TSLToneMapping.tests.js';
+import './addons/tsl/TSLProceduralUtils.tests.js';

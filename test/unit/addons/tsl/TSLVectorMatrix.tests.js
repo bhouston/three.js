@@ -36,7 +36,7 @@ export default QUnit.module( 'TSL', () => {
 		gpuTest( 'normalize() produces a unit vector pointing the same direction', ( { assert } ) => {
 
 			assert.closeAbs( normalize( vec3( 5, 0, 0 ) ), vec3( 1, 0, 0 ), 1e-5, 'axis-aligned vector normalizes to the exact unit axis' );
-			assert.closeAbs( length( normalize( vec3( 3, -4, 12 ) ) ), float( 1 ), 1e-5, 'arbitrary vector normalizes to unit length' );
+			assert.closeAbs( length( normalize( vec3( 3, - 4, 12 ) ) ), float( 1 ), 1e-5, 'arbitrary vector normalizes to unit length' );
 
 			// A very small (but non-zero) vector should still normalize to unit
 			// length rather than collapsing to zero from underflow.
@@ -49,7 +49,7 @@ export default QUnit.module( 'TSL', () => {
 			// reflect(I, N) == I - 2*dot(N,I)*N. For a 45-degree incident ray
 			// hitting a horizontal plane (normal +Y), the reflection is the
 			// mirror image across that plane.
-			const incident = vec3( 1, -1, 0 );
+			const incident = vec3( 1, - 1, 0 );
 			const normal = vec3( 0, 1, 0 );
 			assert.closeAbs( reflect( incident, normal ), vec3( 1, 1, 0 ), 1e-5, 'reflect(1,-1,0 off +Y) == (1,1,0)' );
 
@@ -58,14 +58,14 @@ export default QUnit.module( 'TSL', () => {
 		gpuTest( 'refract() Snell\'s law, including total internal reflection', ( { assert } ) => {
 
 			// Straight-on incidence (I parallel to -N) is never bent, regardless of eta.
-			const straightOn = refract( vec3( 0, -1, 0 ), vec3( 0, 1, 0 ), float( 0.9 ) );
-			assert.closeAbs( straightOn, vec3( 0, -1, 0 ), 1e-4, 'refract() straight through the normal is undeviated' );
+			const straightOn = refract( vec3( 0, - 1, 0 ), vec3( 0, 1, 0 ), float( 0.9 ) );
+			assert.closeAbs( straightOn, vec3( 0, - 1, 0 ), 1e-4, 'refract() straight through the normal is undeviated' );
 
 			// Total internal reflection: going from a denser to a less-dense
 			// medium (eta > 1) past the critical angle must return exactly
 			// vec3(0) per the GLSL/WGSL spec, rather than a bent (and physically
 			// meaningless) ray.
-			const grazing = normalize( vec3( 0.99, -0.1411, 0 ) ); // close to grazing incidence
+			const grazing = normalize( vec3( 0.99, - 0.1411, 0 ) ); // close to grazing incidence
 			const tir = refract( grazing, vec3( 0, 1, 0 ), float( 1.5 ) );
 			assert.closeAbs( tir, vec3( 0, 0, 0 ), 1e-5, 'refract() past the critical angle returns the zero vector (total internal reflection)' );
 
@@ -76,7 +76,7 @@ export default QUnit.module( 'TSL', () => {
 			const n = vec3( 0, 1, 0 );
 
 			// dot(Nref, I) < 0 -> returns N unchanged.
-			assert.closeAbs( faceForward( n, vec3( 0, -1, 0 ), vec3( 0, 1, 0 ) ), n, 1e-5, 'faceForward keeps N when Nref and I already face opposite ways' );
+			assert.closeAbs( faceForward( n, vec3( 0, - 1, 0 ), vec3( 0, 1, 0 ) ), n, 1e-5, 'faceForward keeps N when Nref and I already face opposite ways' );
 
 			// dot(Nref, I) >= 0 -> returns -N.
 			assert.closeAbs( faceForward( n, vec3( 0, 1, 0 ), vec3( 0, 1, 0 ) ), n.negate(), 1e-5, 'faceForward flips N when Nref and I face the same way' );
@@ -171,7 +171,7 @@ export default QUnit.module( 'TSL', () => {
 				1, 0, 0, 0,
 				0.5, 1, 0, 0,
 				0, 0.25, 1, 0,
-				3, -2, 1, 1
+				3, - 2, 1, 1
 			);
 
 			const identity = mat4( 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 );
@@ -188,6 +188,52 @@ export default QUnit.module( 'TSL', () => {
 			// scale factors rather than from the matrix-multiply code being tested.
 			const m = mat3( 1, 0, 0, 0, 2, 0, 0, 0, 3 );
 			assert.closeAbs( mul( m, vec3( 1, 1, 1 ) ), vec3( 1, 2, 3 ), 1e-5, 'diagonal-scale matrix times (1,1,1)' );
+
+		} );
+
+		gpuTest( 'mat3(vec3, vec3, vec3) is COLUMN-major (GLSL-native), the OPPOSITE convention from mat3(9 scalars) (row-major, see above)', ( { assert } ) => {
+
+			// A real, confirmed sharp edge in this codebase's TSL surface: the
+			// two mat3 constructor call shapes take OPPOSITE argument
+			// conventions. `mat3(9 plain numbers)` routes through
+			// `getValueFromType()` -> `new Matrix3().set(...)`, which is
+			// ROW-major (see the dedicated test above). But `mat3(vec3, vec3,
+			// vec3)` -- three *Node* arguments, not plain numbers -- takes a
+			// completely different code path (`ConvertType` sees `object`-typed
+			// params and skips `getValueFromType()` entirely, building a
+			// `JoinNode` instead), and `JoinNode.generate()` just emits a
+			// literal `mat3(a, b, c)` in the generated GLSL/WGSL -- which is
+			// GLSL/WGSL's own native, COLUMN-major constructor: each vec3
+			// argument becomes one COLUMN, not one row. This is exactly the
+			// pattern used throughout src/nodes/display/ToneMappingFunctions.js
+			// and MaterialXNoise.js's various matrix constants -- correct
+			// there (those matrices are written with the intent of literal
+			// GLSL column-major semantics), but a real trap for anyone
+			// assuming mat3's *scalar* constructor's row-major convention
+			// (documented above, and it's the one Matrix3-familiar readers of
+			// this codebase would reasonably expect) also applies here.
+			const m = mat3( vec3( 1, 2, 3 ), vec3( 4, 5, 6 ), vec3( 7, 8, 9 ) );
+
+			assert.eq( m.element( 0 ), vec3( 1, 2, 3 ), 'column 0 == the first vec3 argument, verbatim (not its first component spread across a row)' );
+			assert.eq( m.element( 1 ), vec3( 4, 5, 6 ), 'column 1 == the second vec3 argument, verbatim' );
+			assert.eq( m.element( 2 ), vec3( 7, 8, 9 ), 'column 2 == the third vec3 argument, verbatim' );
+
+			// Contrast directly against the scalar-constructor form using the
+			// exact same 9 numbers, flattened in the same reading order --
+			// the two are each other's transpose.
+			const mScalars = mat3( 1, 2, 3, 4, 5, 6, 7, 8, 9 );
+			assert.eq( transpose( m ), mScalars, 'mat3(vec3,vec3,vec3) with these columns is the transpose of mat3(...9 scalars) with the same numbers in reading order' );
+
+		} );
+
+		gpuTest( 'mul(mat3, vec3) is a standard M*v product (v as a column vector) against the mat3(vec3,vec3,vec3) column-major layout above', ( { assert } ) => {
+
+			// m's first column (verbatim, per the finding above) is (1,2,3), so
+			// m * (1,0,0) -- v as a column vector -- must select exactly that
+			// column back out: (1,2,3), not (1,4,7) (which is what the *other*
+			// valid multiplication convention, v^T * M, would give here instead).
+			const m = mat3( vec3( 1, 2, 3 ), vec3( 4, 5, 6 ), vec3( 7, 8, 9 ) );
+			assert.eq( mul( m, vec3( 1, 0, 0 ) ), vec3( 1, 2, 3 ), 'mul(m, (1,0,0)) selects column 0 verbatim -- confirms the M*v convention' );
 
 		} );
 

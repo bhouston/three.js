@@ -47,12 +47,21 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 
 	}
 
-	// Mirror the training kernel's step 1b: append the same NTC-style tiled
-	// positional encoding after the grid taps that the model was trained
-	// with - see NeuralGridModel.triangleWaveEncode / triangleWaveEncodeTSL.
-	if ( cpuModel.peOctaves > 0 ) {
+	// Mirror the training kernel's step 1b: append the same UV-derived input
+	// after the grid taps that the model was trained with - either NTC-style
+	// tiled positional encoding (see NeuralGridModel.triangleWaveEncode /
+	// triangleWaveEncodeTSL) or the raw (u, v) coordinate. Falls back to the
+	// pre-`inputEncoding` `peOctaves > 0` check for backward compatibility
+	// with any model object not built via `createNeuralTextureModel`.
+	const inputEncoding = cpuModel.inputEncoding !== undefined ? cpuModel.inputEncoding : ( cpuModel.peOctaves > 0 ? 'positional' : 'none' );
+
+	if ( inputEncoding === 'positional' ) {
 
 		features.push( ...triangleWaveEncodeTSL( uvNode.x, uvNode.y, cpuModel.peOctaves ) );
+
+	} else if ( inputEncoding === 'raw' ) {
+
+		features.push( uvNode.x, uvNode.y );
 
 	}
 

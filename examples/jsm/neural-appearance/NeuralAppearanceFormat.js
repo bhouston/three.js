@@ -1,3 +1,5 @@
+import { getUVEncodingInputSize } from '../neural/NeuralGridModel.js';
+
 const FORMAT = 'three-neural-appearance';
 const VERSION = 8;
 
@@ -25,6 +27,13 @@ const LATENT_CHANNELS = LEVELS * CHANNELS_PER_LEVEL;
 // opted into via `peOctaves`, not a fix - see NeuralAppearanceModel.js /
 // NeuralAppearanceGPUComputeTSL.js for where it's threaded through.
 const DEFAULT_PE_OCTAVES = 0;
+
+// Default UV-derived input strategy for the decoder/IBL/indirect-probe heads
+// - 'none' matches this model's historical (pre-`inputEncoding`) default of
+// `peOctaves === 0`, i.e. no UV-derived input at all beyond the existing
+// fixed direction-dot values. See `getUVEncodingInputSize` in
+// NeuralGridModel.js.
+const DEFAULT_INPUT_ENCODING = 'none';
 
 const DECODER_INPUT_SIZE = LATENT_CHANNELS + 12;
 const IBL_INPUT_SIZE = LATENT_CHANNELS + 6;
@@ -62,21 +71,21 @@ function computeLatentChannels( levels = LEVELS ) {
 
 }
 
-function computeDecoderInputSize( levels = LEVELS, peOctaves = DEFAULT_PE_OCTAVES ) {
+function computeDecoderInputSize( levels = LEVELS, peOctaves = DEFAULT_PE_OCTAVES, inputEncoding = DEFAULT_INPUT_ENCODING ) {
 
-	return computeLatentChannels( levels ) + 12 + peOctaves * 2;
-
-}
-
-function computeIblInputSize( levels = LEVELS, peOctaves = DEFAULT_PE_OCTAVES ) {
-
-	return computeLatentChannels( levels ) + 6 + peOctaves * 2;
+	return computeLatentChannels( levels ) + 12 + getUVEncodingInputSize( inputEncoding, peOctaves );
 
 }
 
-function computeIndirectInputSize( levels = LEVELS, peOctaves = DEFAULT_PE_OCTAVES ) {
+function computeIblInputSize( levels = LEVELS, peOctaves = DEFAULT_PE_OCTAVES, inputEncoding = DEFAULT_INPUT_ENCODING ) {
 
-	return computeLatentChannels( levels ) + 3 + 3 + peOctaves * 2;
+	return computeLatentChannels( levels ) + 6 + getUVEncodingInputSize( inputEncoding, peOctaves );
+
+}
+
+function computeIndirectInputSize( levels = LEVELS, peOctaves = DEFAULT_PE_OCTAVES, inputEncoding = DEFAULT_INPUT_ENCODING ) {
+
+	return computeLatentChannels( levels ) + 3 + 3 + getUVEncodingInputSize( inputEncoding, peOctaves );
 
 }
 
@@ -102,6 +111,10 @@ function resolveNeuralAppearanceModelOptions( options = {} ) {
 		baseResolution: options.baseResolution || BASE_RESOLUTION,
 		growthFactor: options.growthFactor || GROWTH_FACTOR,
 		peOctaves: options.peOctaves !== undefined ? options.peOctaves : DEFAULT_PE_OCTAVES,
+		// Which UV-derived input (if any) is fed into the decoder/IBL/indirect
+		// heads alongside the concatenated latent grid features - see
+		// NeuralAppearanceUVEncoding.js / NeuralGridModel.getUVEncodingInputSize.
+		inputEncoding: options.inputEncoding || DEFAULT_INPUT_ENCODING,
 		supportsEmission: Boolean( options.outputFeatures && options.outputFeatures.emission ),
 		supportsOpacity: Boolean( options.outputFeatures && options.outputFeatures.opacity )
 	};
@@ -131,6 +144,7 @@ export {
 	VERSION,
 	LEVELS,
 	DEFAULT_PE_OCTAVES,
+	DEFAULT_INPUT_ENCODING,
 	BASE_RESOLUTION,
 	GROWTH_FACTOR,
 	CHANNELS_PER_LEVEL,

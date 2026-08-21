@@ -139,12 +139,31 @@ function triangleWaveEncode( u, v, octaves ) {
 
 }
 
+/**
+ * Number of extra scalar decoder inputs contributed by a UV-derived input
+ * encoding, given the `inputEncoding` mode ('none' | 'raw' | 'positional')
+ * and (for 'positional') the number of octaves. Centralizes the input-size
+ * arithmetic that used to be hardcoded as `peOctaves * 2` everywhere
+ * (neural-texture, neural-material, neural-appearance) so all three UV-input
+ * strategies - no UV input at all, raw (u, v), or NTC-style tiled
+ * positional encoding via `triangleWaveEncode`/`triangleWaveEncodeTSL` -
+ * stay consistent across CPU and GPU model construction.
+ */
+function getUVEncodingInputSize( inputEncoding, peOctaves ) {
+
+	if ( inputEncoding === 'positional' ) return peOctaves * 2;
+	if ( inputEncoding === 'raw' ) return 2;
+	return 0;
+
+}
+
 export {
 	computeGridLevels,
 	createLatentGrid,
 	computeTileOctaves,
 	triangleWave,
 	triangleWaveEncode,
+	getUVEncodingInputSize,
 	LATENT_INIT_SCALE,
 	GRID_LEVELS_OPTIONS,
 	GRID_BASE_RESOLUTION_OPTIONS,

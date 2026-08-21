@@ -577,6 +577,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 				baseResolution: 4,
 				growthFactor: 2,
 				peOctaves: 2,
+				inputEncoding: 'positional',
 				batchSize: 1
 			} );
 
@@ -668,6 +669,7 @@ describe( 'Addons > Neural > NeuralAppearance > NeuralAppearanceGPUComputeTSL (r
 				baseResolution: 4,
 				growthFactor: 2,
 				peOctaves: 2,
+				inputEncoding: 'positional',
 				batchSize: 1
 			} );
 

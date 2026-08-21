@@ -1,7 +1,7 @@
 import { CHANNELS_PER_LEVEL } from './NeuralAppearanceFormat.js';
 import { sigmoid } from '../neural/NeuralMLP.js';
 import { normalize } from '../neural/NeuralVectorMath.js';
-import { triangleWaveEncode } from '../neural/NeuralGridModel.js';
+import { computeUVEncoding } from './NeuralAppearanceUVEncoding.js';
 import {
 	buildDecoderInput,
 	buildIBLInput,
@@ -11,19 +11,21 @@ import {
 } from './NeuralAppearanceModel.js';
 
 /**
- * The NTC-style tiled positional encoding for this manifest's `peOctaves`
- * (0 for any manifest predating this field, or one trained/exported with it
- * disabled - `json.peOctaves` is `undefined` in the former case, hence the
- * `|| 0`) at `uv` - see NeuralGridModel.triangleWaveEncode. Computed once per
- * evaluation call and threaded into every buildDecoderInput/buildIBLInput/
- * buildIndirectProbeInput call below, exactly like NeuralAppearanceModel.js's
- * decorrelateLinearRgbHead does for CPU training-time probes.
+ * The UV-derived array for this manifest's `inputEncoding`/`peOctaves` at
+ * `uv` - falls back to today's `peOctaves > 0 ? 'positional' : 'none'` logic
+ * when `json.inputEncoding` is undefined, for backward compatibility with
+ * any manifest predating this field. See NeuralAppearanceUVEncoding.js.
+ * Computed once per evaluation call and threaded into every
+ * buildDecoderInput/buildIBLInput/buildIndirectProbeInput call below, exactly
+ * like NeuralAppearanceModel.js's decorrelateLinearRgbHead does for CPU
+ * training-time probes.
  */
 function computePositionalEncoding( json, uv ) {
 
 	const peOctaves = json.peOctaves || 0;
+	const inputEncoding = json.inputEncoding !== undefined ? json.inputEncoding : ( peOctaves > 0 ? 'positional' : 'none' );
 
-	return peOctaves > 0 ? triangleWaveEncode( uv[ 0 ], uv[ 1 ], peOctaves ) : [];
+	return computeUVEncoding( inputEncoding, uv, peOctaves );
 
 }
 

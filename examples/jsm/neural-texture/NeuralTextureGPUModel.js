@@ -2,7 +2,7 @@ import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, uniform } from 'three/tsl';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 import { createAdamParameterBuffers, disposeAdamParameterBuffers } from '../neural/NeuralGPUComputeTSL.js';
-import { computeGridLevels } from '../neural/NeuralGridModel.js';
+import { computeGridLevels, getUVEncodingInputSize } from '../neural/NeuralGridModel.js';
 import { resolveNeuralTextureOptions } from './NeuralTextureModel.js';
 
 /**
@@ -12,7 +12,7 @@ import { resolveNeuralTextureOptions } from './NeuralTextureModel.js';
  */
 function computeTextureModelLayout( options = {} ) {
 
-	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels, peOctaves } = resolveNeuralTextureOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels, peOctaves, inputEncoding } = resolveNeuralTextureOptions( options );
 	// One entry per output channel naming its output nonlinearity (see
 	// ../neural/NeuralOutputActivations.js); undefined/omitted entries (the
 	// default, `options.channelActivations` unset) mean plain linear, i.e.
@@ -46,7 +46,7 @@ function computeTextureModelLayout( options = {} ) {
 	// followed by `peOctaves` octaves of tiled positional encoding (see
 	// NeuralTextureModel.js / NeuralGridModel.triangleWaveEncode for why).
 	const peInputOffset = levels * channels;
-	const inputSize = peInputOffset + peOctaves * 2;
+	const inputSize = peInputOffset + getUVEncodingInputSize( inputEncoding, peOctaves );
 	const sizes = [ inputSize, ...hiddenSizes, outputChannels ];
 	const mlpLayers = [];
 	let weightOffset = 0;
@@ -115,6 +115,7 @@ function computeTextureModelLayout( options = {} ) {
 		outputChannels,
 		channelActivations,
 		peOctaves,
+		inputEncoding,
 		inputSize,
 		peInputOffset,
 		gridLevels,

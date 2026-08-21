@@ -35,6 +35,7 @@ import {
 	INDIRECT_OUTPUT_SIZE,
 	CHANNELS_PER_LEVEL
 } from './NeuralAppearanceFormat.js';
+import { getUVEncodingInputSize } from '../neural/NeuralGridModel.js';
 
 const OUTPUT_CLAMP_GRADIENT_LEAK = 0.01;
 
@@ -158,6 +159,7 @@ function trainIndirectProbeHead( {
 	latentChannels,
 	indirectInputSize,
 	peOctaves,
+	inputEncoding,
 	decoderPeOffset,
 	indirectPeOffset
 } ) {
@@ -177,14 +179,17 @@ function trainIndirectProbeHead( {
 	activationsStorage.element( indirectA0.add( latentChannels + 4 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 1 ) ) );
 	activationsStorage.element( indirectA0.add( latentChannels + 5 ) ).assign( samplesStorage.element( sampleOffset.add( probeSampleOffset + 2 ) ) );
 
-	// Copy the tiled positional encoding a0 already carries (written once,
-	// per-sample, in the main forward pass below) into this probe head's own
-	// input vector - not trainable (a fixed function of uv), so - like the
-	// direction/probe values just above - it's never read back out in this
-	// function's backward pass (only c < latentChannels is backpropagated).
-	if ( peOctaves > 0 ) {
+	// Copy the UV-derived input a0 already carries (written once, per-sample,
+	// in the main forward pass below - positional encoding or raw (u, v),
+	// per `inputEncoding`) into this probe head's own input vector - not
+	// trainable (a fixed function of uv), so - like the direction/probe
+	// values just above - it's never read back out in this function's
+	// backward pass (only c < latentChannels is backpropagated).
+	const indirectUVEncodingInputSize = getUVEncodingInputSize( inputEncoding, peOctaves );
 
-		Loop( { start: 0, end: peOctaves * 2, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+	if ( indirectUVEncodingInputSize > 0 ) {
+
+		Loop( { start: 0, end: indirectUVEncodingInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 			activationsStorage.element( indirectA0.add( int( indirectPeOffset ) ).add( i ) )
 				.assign( activationsStorage.element( a0.add( int( decoderPeOffset ) ).add( i ) ) );
@@ -296,6 +301,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 		iblInputSize,
 		indirectInputSize,
 		peOctaves,
+		inputEncoding,
 		decoderPeOffset,
 		iblPeOffset,
 		indirectPeOffset,
@@ -445,15 +451,16 @@ function createTrainBatchComputeNode( gpuModel ) {
 
 			} );
 
-			// 3b. Tiled positional encoding (see NeuralGridModel.
-			// triangleWaveEncode / triangleWaveEncodeTSL) - appended after the 12
-			// frame-dot values, giving the decoder a way to reconstruct detail
-			// above the finest latent grid level's Nyquist limit. Not trainable
+			// 3b. UV-derived decoder input (see `inputEncoding`), appended after
+			// the 12 frame-dot values, giving the decoder a way to reconstruct
+			// detail above the finest latent grid level's Nyquist limit: either
+			// tiled positional encoding (see NeuralGridModel.triangleWaveEncode /
+			// triangleWaveEncodeTSL) or the raw (u, v) coordinate. Not trainable
 			// (a fixed function of uv), so - same as neural-texture's identical
 			// step - its backward gradient (computed into gradA0 in step 10
 			// below along with everything else) is simply never scattered
 			// anywhere.
-			if ( peOctaves > 0 ) {
+			if ( inputEncoding === 'positional' ) {
 
 				const peValues = triangleWaveEncodeTSL( uvX, uvY, peOctaves );
 
@@ -462,6 +469,11 @@ function createTrainBatchComputeNode( gpuModel ) {
 					activationsStorage.element( a0Base.add( int( decoderPeOffset + i ) ) ).assign( peValues[ i ] );
 
 				}
+
+			} else if ( inputEncoding === 'raw' ) {
+
+				activationsStorage.element( a0Base.add( int( decoderPeOffset ) ) ).assign( uvX );
+				activationsStorage.element( a0Base.add( int( decoderPeOffset + 1 ) ) ).assign( uvY );
 
 			}
 
@@ -765,13 +777,15 @@ function createTrainBatchComputeNode( gpuModel ) {
 				activationsStorage.element( iblA0.add( latentChannels + 4 ) ).assign( activationsStorage.element( a0.add( latentChannels + 10 ) ) );
 				activationsStorage.element( iblA0.add( latentChannels + 5 ) ).assign( activationsStorage.element( a0.add( latentChannels + 11 ) ) );
 
-				// Copy the tiled positional encoding a0 already carries (step 3b
-				// above) into the IBL head's own input vector - see
-				// trainIndirectProbeHead's matching comment for why this needs no
-				// backward-pass counterpart.
-				if ( peOctaves > 0 ) {
+				// Copy the UV-derived input a0 already carries (step 3b above) into
+				// the IBL head's own input vector - see trainIndirectProbeHead's
+				// matching comment for why this needs no backward-pass
+				// counterpart.
+				const iblUVEncodingInputSize = getUVEncodingInputSize( inputEncoding, peOctaves );
 
-					Loop( { start: 0, end: peOctaves * 2, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
+				if ( iblUVEncodingInputSize > 0 ) {
+
+					Loop( { start: 0, end: iblUVEncodingInputSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
 						activationsStorage.element( iblA0.add( int( iblPeOffset ) ).add( i ) )
 							.assign( activationsStorage.element( a0.add( int( decoderPeOffset ) ).add( i ) ) );
@@ -905,6 +919,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 					latentChannels,
 					indirectInputSize,
 					peOctaves,
+					inputEncoding,
 					decoderPeOffset,
 					indirectPeOffset
 				} );
@@ -937,6 +952,7 @@ function createTrainBatchComputeNode( gpuModel ) {
 					latentChannels,
 					indirectInputSize,
 					peOctaves,
+					inputEncoding,
 					decoderPeOffset,
 					indirectPeOffset
 				} );

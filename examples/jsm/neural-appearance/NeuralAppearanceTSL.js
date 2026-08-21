@@ -8,6 +8,45 @@ import {
 	evaluateLinearLayerVec4
 } from '../neural/NeuralMLPTSL.js';
 import { sigmoidTSL } from '../neural/NeuralOutputActivations.js';
+import { triangleWaveEncodeTSL } from '../neural/NeuralGPUComputeTSL.js';
+import { getUVEncodingInputSize } from '../neural/NeuralGridModel.js';
+
+// `inputEncoding`/`peOctaves` were added to `neuralAppearanceData` (see
+// NeuralAppearanceLoader.js/NeuralAppearanceManifest.js) after this module's
+// decoder/IBL/indirect-probe-head input builders were first written, so
+// older data objects (e.g. hand-built material stubs in tests) may not carry
+// them at all. Falls back to the pre-`inputEncoding` `peOctaves > 0` check,
+// same as NeuralTextureNodeMaterial.js's `evaluateNeuralTextureRaw` and
+// NeuralAppearanceRuntime.js's CPU runtime.
+function resolveUVEncoding( neuralAppearanceData ) {
+
+	const peOctaves = neuralAppearanceData.peOctaves || 0;
+	const inputEncoding = neuralAppearanceData.inputEncoding !== undefined ?
+		neuralAppearanceData.inputEncoding : ( peOctaves > 0 ? 'positional' : 'none' );
+
+	return { inputEncoding, peOctaves };
+
+}
+
+// TSL twin of NeuralAppearanceUVEncoding.js's `computeUVEncoding` - mirrors
+// the training kernel's own three-way branch in
+// NeuralAppearanceGPUComputeTSL.js (see its step "3b. UV-derived decoder
+// input"): 'positional' emits `peOctaves` octaves of NTC-style tiled
+// positional encoding (triangleWaveEncodeTSL), 'raw' emits the raw (u, v)
+// coordinate unencoded, and 'none' (default/fallback) emits nothing. The
+// decoder, IBL head, and indirect-probe heads all read the exact same values
+// (see the training kernel's decoderPeOffset/iblPeOffset/indirectPeOffset,
+// which all copy from the decoder's own UV-derived input rather than
+// recomputing it) - this returns one set of nodes per fragment via
+// createNeuralFragmentContext, reused by every head.
+function computeUVEncodingTSL( inputEncoding, peOctaves, uvNode ) {
+
+	if ( inputEncoding === 'positional' ) return triangleWaveEncodeTSL( uvNode.x, uvNode.y, peOctaves );
+	if ( inputEncoding === 'raw' ) return [ uvNode.x, uvNode.y ];
+
+	return [];
+
+}
 
 // The multiresolution latent grid can have any number of levels (see
 // computeGridLevels/NeuralAppearanceTrainer's `levels` option) - this
@@ -26,17 +65,31 @@ function levelNames( levelCount ) {
 
 }
 
+// Like `levelNames`, generates a differently-shaped Fn per model - here
+// according to `getUVEncodingInputSize( inputEncoding, peOctaves )` rather
+// than the level count. Models with `inputEncoding: 'none'` (the default,
+// and every pre-`inputEncoding` model) get 0 of these, so their generated Fn
+// signature is unchanged from before this UV-encoding support existed.
+function uvEncodingNames( uvEncodingSize ) {
+
+	return Array.from( { length: uvEncodingSize }, ( _, i ) => `uvEncoding${ i }` );
+
+}
+
 function createEvaluateNeuralBRDFFn( material ) {
 
 	const brdf = material.neuralAppearanceData.outputs.brdf;
 	const uniforms = material._outputUniforms.brdf;
 	const names = levelNames( material.neuralAppearanceData.levels );
+	const { inputEncoding, peOctaves } = resolveUVEncoding( material.neuralAppearanceData );
+	const peNames = uvEncodingNames( getUVEncodingInputSize( inputEncoding, peOctaves ) );
 
 	return TSL.Fn( ( args ) => {
 
 		const latents = latentsFromTexels( names.map( ( name ) => args[ name ] ) );
 		const frames = buildDecoderFrames( brdf, uniforms, latents );
-		const input = projectDecoderInput( latents, frames, args.wi, args.wo, brdf.inputSize );
+		const uvEncoding = peNames.map( ( name ) => args[ name ] );
+		const input = projectDecoderInput( latents, frames, args.wi, args.wo, brdf.inputSize, uvEncoding );
 		const decoded = toVec3( evaluateMLP( brdf.layers, uniforms, input ) );
 
 		return applyOutputActivation( decoded, brdf.outputActivation ).mul( args.wi.z.max( 0 ) );
@@ -47,19 +100,25 @@ function createEvaluateNeuralBRDFFn( material ) {
 		inputs: [
 			{ name: 'wi', type: 'vec3' },
 			{ name: 'wo', type: 'vec3' },
-			...names.map( ( name ) => ( { name, type: 'vec4' } ) )
+			...names.map( ( name ) => ( { name, type: 'vec4' } ) ),
+			...peNames.map( ( name ) => ( { name, type: 'float' } ) )
 		]
 	} );
 
 }
 
+// Called per-light (see NeuralAppearanceLightingModel.direct), unlike the
+// other decoder heads below which run once per fragment - so, like `wi`
+// above, the UV-derived encoding has to be threaded in as an explicit Fn
+// input (see createEvaluateNeuralBRDFFn) rather than read directly off
+// `fragment`/`TSL.uv()` inside a plain (non-Fn) node graph.
 function evaluateNeuralBRDF( material, lightDirection, context, evaluateFn ) {
 
 	const fragment = context || createNeuralFragmentContext( material );
 	const fn = evaluateFn || createEvaluateNeuralBRDFFn( material );
 	const wi = transformToCanonicalFrame( lightDirection );
 
-	return fn( wi, fragment.viewDirection, ...fragment.texels );
+	return fn( wi, fragment.viewDirection, ...fragment.texels, ...fragment.uvEncoding );
 
 }
 
@@ -94,21 +153,22 @@ function evaluateNeuralIBL( material, envNode, context = null, isolate = 'full' 
 
 	const fragment = context || createNeuralFragmentContext( material );
 
-	return evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.latents, fragment.frames, isolate );
+	return evaluateNeuralIBLForTexels( material, envNode, fragment.viewDirection, fragment.latents, fragment.frames, fragment.uvEncoding, isolate );
 
 }
 
-// `latents`/`frames` are the same per-fragment values createNeuralFragmentContext
-// already computed for BRDF -- passed in directly instead of re-sampling the
-// grid textures and re-running the rotation decoder (buildDecoderFrames)
-// here a second time. Not exported/called outside this module, so its
-// signature is free to change.
-function evaluateNeuralIBLForTexels( material, envNode, wo, latents, frames, isolate = 'full' ) {
+// `latents`/`frames`/`uvEncoding` are the same per-fragment values
+// createNeuralFragmentContext already computed for BRDF -- passed in
+// directly instead of re-sampling the grid textures, re-running the
+// rotation decoder (buildDecoderFrames), or recomputing the UV-derived
+// encoding here a second time. Not exported/called outside this module, so
+// its signature is free to change.
+function evaluateNeuralIBLForTexels( material, envNode, wo, latents, frames, uvEncoding, isolate = 'full' ) {
 
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const uniforms = material._outputUniforms.ibl;
 
-	const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize );
+	const queryInput = projectIBLInput( latents, frames, wo, ibl.inputSize, uvEncoding );
 	const query = evaluateMLPViaFn( `evaluateIBLHead_${ material.id }`, ibl.layers, uniforms, queryInput, 4 );
 	const queryDirection = TSL.vec3( query[ 0 ], query[ 1 ], query[ 2 ] ).normalize();
 	const queryRoughness = sigmoidTSL( query[ 3 ] );
@@ -127,13 +187,13 @@ function evaluateNeuralIBLForTexels( material, envNode, wo, latents, frames, iso
 
 	if ( isolate !== 'irradiance' && radianceHead ) {
 
-		outgoing = outgoing.add( evaluateIndirectProbeHead( material, radianceHead, material._outputUniforms.indirectRadiance, latents, wo, incoming, 'Radiance' ) );
+		outgoing = outgoing.add( evaluateIndirectProbeHead( material, radianceHead, material._outputUniforms.indirectRadiance, latents, wo, incoming, uvEncoding, 'Radiance' ) );
 
 	}
 
 	if ( isolate !== 'radiance' && irradianceHead ) {
 
-		outgoing = outgoing.add( evaluateIndirectProbeHead( material, irradianceHead, material._outputUniforms.indirectIrradiance, latents, wo, irradiance, 'Irradiance' ) );
+		outgoing = outgoing.add( evaluateIndirectProbeHead( material, irradianceHead, material._outputUniforms.indirectIrradiance, latents, wo, irradiance, uvEncoding, 'Irradiance' ) );
 
 	}
 
@@ -208,12 +268,12 @@ function evaluateLearnedCanonicalNormal( material, fragment ) {
 
 }
 
-function evaluateLearnedIBLQueryForTexels( material, texels, wo ) {
+function evaluateLearnedIBLQueryForTexels( material, texels, wo, uvEncoding ) {
 
 	const latents = latentsFromTexels( texels );
 	const ibl = material.neuralAppearanceData.outputs.ibl;
 	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
-	const input = projectIBLInput( latents, frames, wo, ibl.inputSize );
+	const input = projectIBLInput( latents, frames, wo, ibl.inputSize, uvEncoding );
 	const output = evaluateMLPViaFn( `evaluateIBLHead_${ material.id }`, ibl.layers, material._outputUniforms.ibl, input, 4 );
 
 	return {
@@ -225,7 +285,7 @@ function evaluateLearnedIBLQueryForTexels( material, texels, wo ) {
 
 function evaluateLearnedIBLQuery( material, fragment ) {
 
-	return evaluateLearnedIBLQueryForTexels( material, fragment.texels, fragment.viewDirection );
+	return evaluateLearnedIBLQueryForTexels( material, fragment.texels, fragment.viewDirection, fragment.uvEncoding );
 
 }
 
@@ -302,12 +362,16 @@ function createNeuralFragmentContext( material ) {
 	const texels = fetchLatentTexels( material, uvNode );
 	const latents = latentsFromTexels( texels );
 	const frames = buildDecoderFrames( material.neuralAppearanceData.outputs.brdf, material._outputUniforms.brdf, latents );
+	const { inputEncoding, peOctaves } = resolveUVEncoding( material.neuralAppearanceData );
+	const uvEncoding = computeUVEncodingTSL( inputEncoding, peOctaves, uvNode );
 
 	return {
+		uvNode,
 		viewDirection,
 		texels,
 		latents,
-		frames
+		frames,
+		uvEncoding
 	};
 
 }
@@ -345,6 +409,7 @@ function isCompatibleNeuralAppearanceData( current, next ) {
 	if ( ! current || ! next ) return false;
 	if ( current.levels !== next.levels ) return false;
 	if ( current.wrap !== next.wrap ) return false;
+	if ( ! sameUVEncoding( current, next ) ) return false;
 	if ( ! sameLatentTextureLayout( current.latentTextures, next.latentTextures ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.brdf, next.outputs.brdf ) ) return false;
 	if ( ! sameHeadArchitecture( current.outputs.ibl, next.outputs.ibl ) ) return false;
@@ -354,6 +419,20 @@ function isCompatibleNeuralAppearanceData( current, next ) {
 	if ( ! sameHeadArchitecture( current.outputs.opacity, next.outputs.opacity ) ) return false;
 
 	return true;
+
+}
+
+// Guards against a hot-swap silently reusing a compiled shader for a model
+// with a different `inputEncoding` whose resulting input size *happens* to
+// match (e.g. `raw` = 2 values vs. one-octave `positional` = 2 values) - a
+// head's `inputSize` alone (checked by sameHeadArchitecture below) can't
+// distinguish those.
+function sameUVEncoding( current, next ) {
+
+	const currentEncoding = resolveUVEncoding( current );
+	const nextEncoding = resolveUVEncoding( next );
+
+	return currentEncoding.inputEncoding === nextEncoding.inputEncoding && currentEncoding.peOctaves === nextEncoding.peOctaves;
 
 }
 
@@ -486,10 +565,10 @@ function packHeadParameters( decoder ) {
 
 }
 
-function buildDecoderInput( decoder, decoderUniforms, latents, wi, wo ) {
+function buildDecoderInput( decoder, decoderUniforms, latents, wi, wo, uvEncoding = [] ) {
 
 	const frames = buildDecoderFrames( decoder, decoderUniforms, latents );
-	return projectDecoderInput( latents, frames, wi, wo, decoder.inputSize );
+	return projectDecoderInput( latents, frames, wi, wo, decoder.inputSize, uvEncoding );
 
 }
 
@@ -522,7 +601,14 @@ function buildDecoderFrames( decoder, decoderUniforms, latents ) {
 
 }
 
-function projectDecoderInput( latents, frames, wi, wo, inputSize ) {
+// `uvEncoding` (see computeUVEncodingTSL) is appended last, after the 12
+// frame-dot values - mirroring the training kernel's `decoderPeOffset`,
+// which sits right after this same layout in NeuralAppearanceGPUComputeTSL.js
+// (`computeLatentChannels( levels ) + 12`, see NeuralAppearanceFormat.js's
+// computeDecoderInputSize). Defaults to `[]` so callers that never carry a
+// UV-derived input (models with `inputEncoding: 'none'`, or older callers
+// unaware of it) are unaffected.
+function projectDecoderInput( latents, frames, wi, wo, inputSize, uvEncoding = [] ) {
 
 	const input = latents.slice();
 
@@ -535,6 +621,8 @@ function projectDecoderInput( latents, frames, wi, wo, inputSize ) {
 
 	}
 
+	input.push( ...uvEncoding );
+
 	if ( input.length !== inputSize ) {
 
 		throw new Error( `THREE.NeuralAppearanceNodeMaterial: Decoder input has ${ input.length } values, expected ${ inputSize }.` );
@@ -545,7 +633,12 @@ function projectDecoderInput( latents, frames, wi, wo, inputSize ) {
 
 }
 
-function projectIBLInput( latents, frames, wo, inputSize ) {
+// `uvEncoding` is appended last, after the 6 `wo`-dot values - mirroring the
+// training kernel's `iblPeOffset` (`computeLatentChannels( levels ) + 6`, see
+// NeuralAppearanceFormat.js's computeIblInputSize), which copies the same
+// values the decoder's own UV-derived input already carries rather than
+// recomputing them.
+function projectIBLInput( latents, frames, wo, inputSize, uvEncoding = [] ) {
 
 	const input = latents.slice();
 
@@ -555,6 +648,8 @@ function projectIBLInput( latents, frames, wo, inputSize ) {
 		input.push( wo.dot( basis.t ), wo.dot( basis.b ), wo.dot( basis.n ) );
 
 	}
+
+	input.push( ...uvEncoding );
 
 	if ( input.length !== inputSize ) {
 
@@ -566,12 +661,16 @@ function projectIBLInput( latents, frames, wo, inputSize ) {
 
 }
 
-function projectIndirectProbeInput( latents, wo, probe, inputSize ) {
+// `uvEncoding` is appended last, after `wo` and the probe RGB - mirroring the
+// training kernel's `indirectPeOffset` (`computeLatentChannels( levels ) + 6`,
+// see NeuralAppearanceFormat.js's computeIndirectInputSize).
+function projectIndirectProbeInput( latents, wo, probe, inputSize, uvEncoding = [] ) {
 
 	const input = latents.slice();
 
 	input.push( wo.x, wo.y, wo.z );
 	input.push( probe.x, probe.y, probe.z );
+	input.push( ...uvEncoding );
 
 	if ( input.length !== inputSize ) {
 
@@ -583,9 +682,9 @@ function projectIndirectProbeInput( latents, wo, probe, inputSize ) {
 
 }
 
-function evaluateIndirectProbeHead( material, head, uniforms, latents, wo, probe, label ) {
+function evaluateIndirectProbeHead( material, head, uniforms, latents, wo, probe, uvEncoding, label ) {
 
-	const input = projectIndirectProbeInput( latents, wo, probe, head.inputSize );
+	const input = projectIndirectProbeInput( latents, wo, probe, head.inputSize, uvEncoding );
 	const decoded = toVec3( evaluateMLPViaFn( `evaluateIndirect${ label }Head_${ material.id }`, head.layers, uniforms, input, 3 ) );
 
 	return applyOutputActivation( decoded, head.outputActivation );

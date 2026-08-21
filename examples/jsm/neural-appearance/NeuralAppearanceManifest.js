@@ -36,10 +36,11 @@ function createNeuralAppearanceManifest( model, options ) {
 	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/etc. constants - see
 	// that file's doc comment on these helpers for why.
 	const peOctaves = model.peOctaves || 0;
+	const inputEncoding = model.inputEncoding || 'none';
 	const latentChannels = computeLatentChannels( model.levels );
-	const decoderInputSize = computeDecoderInputSize( model.levels, peOctaves );
-	const iblInputSize = computeIblInputSize( model.levels, peOctaves );
-	const indirectInputSize = computeIndirectInputSize( model.levels, peOctaves );
+	const decoderInputSize = computeDecoderInputSize( model.levels, peOctaves, inputEncoding );
+	const iblInputSize = computeIblInputSize( model.levels, peOctaves, inputEncoding );
+	const indirectInputSize = computeIndirectInputSize( model.levels, peOctaves, inputEncoding );
 
 	const levels = model.latentGrids.map( ( grid ) => ( {
 		width: grid.width,
@@ -127,6 +128,10 @@ function createNeuralAppearanceManifest( model, options ) {
 		// many tiled-positional-encoding values to compute from a sample's uv
 		// and append - see NeuralGridModel.triangleWaveEncode.
 		peOctaves,
+		// Which UV-derived input (if any) `peOctaves` above was combined with -
+		// see NeuralAppearanceUVEncoding.js / NeuralAppearanceFormat.js's
+		// `resolveNeuralAppearanceModelOptions`.
+		inputEncoding,
 		outputs
 	};
 

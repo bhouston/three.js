@@ -1,4 +1,4 @@
-import { createNeuralTextureModel, DEFAULT_PE_OCTAVES } from './NeuralTextureModel.js';
+import { createNeuralTextureModel, DEFAULT_PE_OCTAVES, DEFAULT_INPUT_ENCODING } from './NeuralTextureModel.js';
 import { NeuralTextureGPUModel } from './NeuralTextureGPUModel.js';
 import {
 	createTextureTrainBatchComputeNode,
@@ -22,6 +22,11 @@ const DEFAULT_OPTIONS = {
 	// this with `computeTileOctaves(finestGridResolution, sourceResolution)`
 	// (from NeuralGridModel.js) instead of the generic default.
 	peOctaves: DEFAULT_PE_OCTAVES,
+	// Which UV-derived input (if any) is fed into the MLP alongside the
+	// concatenated grid features - 'none', 'raw' (u, v), or 'positional'
+	// (`peOctaves` octaves of tiled positional encoding) - see
+	// NeuralTextureModel.js / NeuralGridModel.getUVEncodingInputSize.
+	inputEncoding: DEFAULT_INPUT_ENCODING,
 	batchSize: 4096,
 	learningRate: 0.01,
 	// Anneals all the way to (near) zero by the final iteration. A learning

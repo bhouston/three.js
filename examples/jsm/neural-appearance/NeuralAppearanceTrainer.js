@@ -17,7 +17,7 @@ import {
 	evaluateNeuralAppearanceJson,
 	evaluateNeuralAppearanceOutputs
 } from './NeuralAppearanceRuntime.js';
-import { LEVELS, BASE_RESOLUTION, GROWTH_FACTOR, CHANNELS_PER_LEVEL, resolveOpacityMode } from './NeuralAppearanceFormat.js';
+import { LEVELS, BASE_RESOLUTION, GROWTH_FACTOR, CHANNELS_PER_LEVEL, DEFAULT_PE_OCTAVES, DEFAULT_INPUT_ENCODING, resolveOpacityMode } from './NeuralAppearanceFormat.js';
 import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { NeuralAppearanceGPUModel } from './NeuralAppearanceGPUModel.js';
 import {
@@ -36,6 +36,14 @@ const DEFAULT_OPTIONS = {
 	levels: LEVELS,
 	baseResolution: BASE_RESOLUTION,
 	growthFactor: GROWTH_FACTOR,
+	// NTC-style tiled positional-encoding octaves, used only when
+	// `inputEncoding === 'positional'` - see NeuralAppearanceFormat.js.
+	peOctaves: DEFAULT_PE_OCTAVES,
+	// Which UV-derived input (if any) is fed into the decoder/IBL/indirect
+	// heads: 'none' (default, matches this model's historical behavior),
+	// 'raw' (u, v), or 'positional' (`peOctaves` octaves of tiled positional
+	// encoding) - see NeuralGridModel.getUVEncodingInputSize.
+	inputEncoding: DEFAULT_INPUT_ENCODING,
 	iterations: 2000,
 	iblIterations: null,
 	iblTrainingRatio: 0.15,

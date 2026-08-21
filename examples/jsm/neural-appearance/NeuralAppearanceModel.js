@@ -12,7 +12,8 @@ import {
 	createMLP,
 	forwardMLP
 } from '../neural/NeuralMLP.js';
-import { computeGridLevels, createLatentGrid, triangleWaveEncode } from '../neural/NeuralGridModel.js';
+import { computeGridLevels, createLatentGrid } from '../neural/NeuralGridModel.js';
+import { computeUVEncoding } from './NeuralAppearanceUVEncoding.js';
 import { dot, cross, normalize } from '../neural/NeuralVectorMath.js';
 
 function createModel( options, random ) {
@@ -21,7 +22,7 @@ function createModel( options, random ) {
 	// comment: this is the single source of truth for these defaults,
 	// shared with computeModelLayout (GPU buffer layout) so the two can't
 	// silently disagree.
-	const { levels: requestedLevels, hiddenSize, iblHiddenSize, baseResolution, growthFactor, peOctaves, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
+	const { levels: requestedLevels, hiddenSize, iblHiddenSize, baseResolution, growthFactor, peOctaves, inputEncoding, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
 
 	// `computeGridLevels` may return fewer levels than requested when a
 	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
@@ -34,9 +35,9 @@ function createModel( options, random ) {
 	const latentGrids = resolutions.map( ( resolution ) => createLatentGrid( resolution, resolution, CHANNELS_PER_LEVEL, random ) );
 
 	const latentChannels = computeLatentChannels( levels );
-	const decoderInputSize = computeDecoderInputSize( levels, peOctaves );
-	const iblInputSize = computeIblInputSize( levels, peOctaves );
-	const indirectInputSize = computeIndirectInputSize( levels, peOctaves );
+	const decoderInputSize = computeDecoderInputSize( levels, peOctaves, inputEncoding );
+	const iblInputSize = computeIblInputSize( levels, peOctaves, inputEncoding );
+	const indirectInputSize = computeIndirectInputSize( levels, peOctaves, inputEncoding );
 
 	const decoder = createMLP( decoderInputSize, [ hiddenSize, hiddenSize ], 3, random, 'relu', 'linear' );
 	const iblHead = createMLP( iblInputSize, [ iblHiddenSize ], IBL_OUTPUT_SIZE, random, 'relu', 'linear' );
@@ -58,6 +59,7 @@ function createModel( options, random ) {
 		baseResolution,
 		growthFactor,
 		peOctaves,
+		inputEncoding,
 		resolutions,
 		latentGrids
 	};
@@ -86,7 +88,7 @@ function decorrelateLinearRgbHead( model ) {
 	for ( const probe of probes ) {
 
 		const latents = sampleLatents( model.latentGrids, probe.uv ).output;
-		const positionalEncoding = model.peOctaves > 0 ? triangleWaveEncode( probe.uv[ 0 ], probe.uv[ 1 ], model.peOctaves ) : [];
+		const positionalEncoding = computeUVEncoding( model.inputEncoding, probe.uv, model.peOctaves );
 		const input = forwardDecoderInput( latents, model.rotationWeights, probe.wi, probe.wo, positionalEncoding ).output;
 		const activations = forwardMLP( model.decoder, input ).activations;
 		const hidden = activations[ activations.length - 2 ];

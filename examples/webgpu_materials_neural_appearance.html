@@ -311,6 +311,8 @@
 				baseResolution: readNumberQuery( 'baseResolution', 16 ),
 				growthFactor: readNumberQuery( 'growthFactor', 2 ),
 				hiddenSize: readNumberQuery( 'hiddenSize', presetSettings.hiddenSize ),
+				peOctaves: readNumberQuery( 'peOctaves', 0 ),
+				inputEncoding: queryParams.get( 'inputEncoding' ) || 'none',
 				iterations: readNumberQuery( 'iterations', presetSettings.iterations ),
 				batchSize: readNumberQuery( 'batchSize', presetSettings.batchSize ),
 				learningRate: readNumberQuery( 'learningRate', 0.001 ),
@@ -482,6 +484,8 @@
 				trackSetting( 'baseResolution', networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'grid base res' ).onChange( updateTrainingEstimate ) );
 				trackSetting( 'growthFactor', networkFolder.add( params, 'growthFactor', GRID_GROWTH_FACTOR_OPTIONS ).name( 'grid growth factor' ).onChange( updateTrainingEstimate ) );
 				trackSetting( 'hiddenSize', networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'inputEncoding', networkFolder.add( params, 'inputEncoding', [ 'none', 'raw', 'positional' ] ).name( 'uv input encoding' ).onChange( updateTrainingEstimate ) );
+				trackSetting( 'peOctaves', networkFolder.add( params, 'peOctaves', 0, 8, 1 ).name( 'positional encoding octaves' ).onChange( updateTrainingEstimate ) );
 
 				// Mirrors neural-texture's "training" folder (same names,
 				// order, and option sets/ranges).
@@ -774,6 +778,8 @@
 						batchSize: Number( params.batchSize ),
 						learningRate: Number( params.learningRate ),
 						hiddenSize: Number( params.hiddenSize ),
+						peOctaves: Number( params.peOctaves ),
+						inputEncoding: params.inputEncoding,
 						previewSampleCount: Number( params.previewSamples ),
 						seed: Number( params.seed )
 					} );

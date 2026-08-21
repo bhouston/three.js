@@ -102,7 +102,7 @@
 			</div>
 
 			<small>
-				Fits ALL standard PBR channels of a MaterialX material (albedo, normal, roughness, metalness, clearcoat, transmission, emissive, anisotropy...) with one shared grid + MLP network, then drives a real MeshPhysicalNodeMaterial from it.
+				Fits ALL standard PBR channels of a MaterialX material (albedo, normal, roughness, metalness, clearcoat, iridescence, transmission, emissive, anisotropy...) with one shared grid + MLP network, then drives a real MeshPhysicalNodeMaterial from it.
 			</small>
 		</div>
 
@@ -185,10 +185,12 @@
 				learningRate: 0.01,
 				quantization: 'none',
 				debugView: 'shaded',
-				shape: 'torus'
+				shape: 'torus',
+				showBackground: true
 			};
 
 			const DEFAULT_MATERIALX_KEY = 'neural_train_checkerboard_normal';
+			const BACKGROUND_COLOR = 0x15171c;
 
 			const sourceName = document.getElementById( 'sourceName' );
 			const status = document.getElementById( 'status' );
@@ -226,7 +228,7 @@
 				camera.position.set( 0, 1.2, 5 );
 
 				scene = new THREE.Scene();
-				scene.background = new THREE.Color( 0x15171c );
+				scene.background = new THREE.Color( BACKGROUND_COLOR );
 
 				const keyLight = new THREE.DirectionalLight( 0xffffff, 0.9 );
 				keyLight.position.set( 3.2, 2.4, 2.6 );
@@ -303,6 +305,7 @@
 
 				const viewFolder = gui.addFolder( 'view' );
 				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS ] ).name( 'channel' ).onChange( updateDebugView );
+				viewFolder.add( params, 'showBackground' ).name( 'show background IBL' ).onChange( updateBackground );
 
 				builtInMaterial.addEventListener( 'change', () => loadBuiltInMaterial( builtInMaterial.value ) );
 				openMtlxButton.addEventListener( 'click', () => mtlxFileInput.click() );
@@ -829,6 +832,18 @@
 
 				scene.environment = environmentMap;
 				scene.environmentIntensity = 1;
+
+				updateBackground();
+
+			}
+
+			// Toggles whether the environment map itself is shown as the visible
+			// backdrop (params.showBackground) - scene.environment (IBL lighting
+			// on the meshes) stays on regardless, this only swaps what's behind
+			// them between the HDRI and the flat studio color.
+			function updateBackground() {
+
+				scene.background = params.showBackground ? environmentMap : new THREE.Color( BACKGROUND_COLOR );
 
 			}
 

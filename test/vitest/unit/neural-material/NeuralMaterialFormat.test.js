@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildChannelActivations, CHANNELS, getChannel, layoutChannels, MAX_TOTAL_CHANNELS } from '../../../../examples/jsm/neural-material/NeuralMaterialFormat.js';
+import { buildChannelActivations, CHANNELS, decodeConstantValues, getChannel, layoutChannels, MAX_TOTAL_CHANNELS } from '../../../../examples/jsm/neural-material/NeuralMaterialFormat.js';
 
 describe( 'Addons > Neural > NeuralMaterial > NeuralMaterialFormat', () => {
 
@@ -130,6 +130,180 @@ describe( 'Addons > Neural > NeuralMaterial > NeuralMaterialFormat', () => {
 		it( 'returns an empty array for an empty channel list', () => {
 
 			expect( buildChannelActivations( [] ) ).toEqual( [] );
+
+		} );
+
+	} );
+
+	describe( 'iridescenceThickness range metadata (never trained, never adapted)', () => {
+
+		it( 'iridescenceThicknessRangeMin/Max always classify as constant, never active, regardless of what nodes the material sets', () => {
+
+			const material = {
+				iridescenceThicknessNode: {},
+				iridescenceThicknessRange: [ 50, 900 ]
+			};
+
+			const rangeMin = getChannel( 'iridescenceThicknessRangeMin' );
+			const rangeMax = getChannel( 'iridescenceThicknessRangeMax' );
+
+			// No nodeKeys check can ever make these "active" - see
+			// NeuralMaterialFormat.js's `iridescenceThicknessRangeChannel` doc
+			// comment - so they always resolve straight off the source
+			// material's own declared range, verbatim.
+			expect( rangeMin.resolveConstant( material ) ).toBe( 50 );
+			expect( rangeMax.resolveConstant( material ) ).toBe( 900 );
+
+		} );
+
+		it( 'fall back to three.js\'s own default range ([100, 400]) when the material never set one', () => {
+
+			const rangeMin = getChannel( 'iridescenceThicknessRangeMin' );
+			const rangeMax = getChannel( 'iridescenceThicknessRangeMax' );
+
+			expect( rangeMin.resolveConstant( {} ) ).toBe( 100 );
+			expect( rangeMax.resolveConstant( {} ) ).toBe( 400 );
+
+		} );
+
+		it( 'applyConstant writes straight into targetMaterial.iridescenceThicknessRange at its own index, no decoding', () => {
+
+			const rangeMin = getChannel( 'iridescenceThicknessRangeMin' );
+			const rangeMax = getChannel( 'iridescenceThicknessRangeMax' );
+			const target = { iridescenceThicknessRange: [ 100, 400 ] };
+
+			rangeMin.applyConstant( target, 50 );
+			rangeMax.applyConstant( target, 900 );
+
+			expect( target.iridescenceThicknessRange ).toEqual( [ 50, 900 ] );
+
+		} );
+
+		it( 'iridescenceThickness itself resolves as a [0,1] fraction of the material\'s own range, not a raw nanometer value', () => {
+
+			const channel = getChannel( 'iridescenceThickness' );
+
+			// No map at all -> always fraction 1 (the declared maximum),
+			// matching MaterialNode.js's own IRIDESCENCE_THICKNESS fallback -
+			// never a raw nanometer default.
+			expect( channel.resolveConstant( {} ) ).toBe( 1 );
+			expect( channel.defaultValue ).toBe( 1 );
+			expect( channel.clampRange ).toEqual( [ 0, 1 ] );
+			expect( channel.activation ).toBe( 'sigmoid' );
+
+		} );
+
+		it( 'iridescenceThickness.applyConstant decodes the fraction back to nanometers using targetMaterial\'s own (already-applied) range', () => {
+
+			const channel = getChannel( 'iridescenceThickness' );
+			// Simulates the range channels above having already run first in
+			// the same apply loop (see NeuralMaterialNodeMaterial's
+			// constructor) - exactly the ordering `CHANNELS` itself relies on.
+			const target = { iridescenceThicknessRange: [ 50, 900 ] };
+
+			channel.applyConstant( target, 0.5 ); // fraction 0.5 -> halfway between 50 and 900
+			expect( target.iridescenceThicknessNode.node.value ).toBeCloseTo( 50 + 0.5 * ( 900 - 50 ), 5 );
+
+		} );
+
+	} );
+
+	describe( 'fixedRangeScalarChannel (iridescenceIOR, ior)', () => {
+
+		it( 'trains strictly within a fixed [min, max] window, not an unbounded value merely clamped after the fact', () => {
+
+			for ( const key of [ 'iridescenceIOR', 'ior' ] ) {
+
+				const channel = getChannel( key );
+
+				expect( channel.activation ).toBe( 'sigmoid' );
+				// The physical bound lives in the closure the trained slice is
+				// decoded through (applyActive), not in a separate post-hoc
+				// `clampRange` the way `simpleScalarChannel`-built channels use.
+				expect( channel.clampRange ).toBeNull();
+
+			}
+
+		} );
+
+		it( 'resolveConstant/applyConstant round-trip the real physical value (not a fraction) on the constant path', () => {
+
+			const channel = getChannel( 'iridescenceIOR' );
+
+			expect( channel.resolveConstant( {} ) ).toBe( channel.defaultValue ); // 1.3, unset
+			expect( channel.resolveConstant( { iridescenceIOR: 1.8 } ) ).toBe( 1.8 );
+
+			const target = {};
+			channel.applyConstant( target, 1.8 );
+			expect( target.iridescenceIORNode.node.value ).toBeCloseTo( 1.8, 5 );
+
+		} );
+
+	} );
+
+	describe( 'attenuationDistance', () => {
+
+		it( 'encodes an unset (Infinity) attenuationDistance as the finite sentinel, matching its own defaultValue', () => {
+
+			const channel = getChannel( 'attenuationDistance' );
+
+			expect( channel.resolveConstant( {} ) ).toBe( channel.defaultValue );
+			expect( Number.isFinite( channel.defaultValue ) ).toBe( true );
+
+		} );
+
+		it( 'encodes an explicit finite attenuationDistance as-is', () => {
+
+			const channel = getChannel( 'attenuationDistance' );
+
+			expect( channel.resolveConstant( { attenuationDistance: 2.5 } ) ).toBe( 2.5 );
+
+		} );
+
+		it( 'JSON round-trips the sentinel without loss (unlike Infinity itself)', () => {
+
+			const channel = getChannel( 'attenuationDistance' );
+			const encoded = channel.resolveConstant( {} );
+
+			expect( JSON.parse( JSON.stringify( { value: encoded } ) ).value ).toBe( encoded );
+			expect( JSON.parse( JSON.stringify( { value: Infinity } ) ).value ).toBeNull(); // what we're avoiding
+
+		} );
+
+	} );
+
+	describe( 'decodeConstantValues', () => {
+
+		it( 'decodes the attenuationDistance sentinel back into Infinity', () => {
+
+			const channel = getChannel( 'attenuationDistance' );
+			const decoded = decodeConstantValues( { attenuationDistance: channel.defaultValue } );
+
+			expect( decoded.attenuationDistance ).toBe( Infinity );
+
+		} );
+
+		it( 'leaves a non-sentinel attenuationDistance value untouched', () => {
+
+			const decoded = decodeConstantValues( { attenuationDistance: 2.5 } );
+
+			expect( decoded.attenuationDistance ).toBe( 2.5 );
+
+		} );
+
+		it( 'leaves channels without a decodeConstant hook untouched', () => {
+
+			const decoded = decodeConstantValues( { roughness: 0.4 } );
+
+			expect( decoded.roughness ).toBe( 0.4 );
+
+		} );
+
+		it( 'passes unknown keys through unchanged', () => {
+
+			const decoded = decodeConstantValues( { notAChannel: 42 } );
+
+			expect( decoded.notAChannel ).toBe( 42 );
 
 		} );
 

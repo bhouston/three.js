@@ -192,6 +192,7 @@
 
 			const queryParams = new URLSearchParams( window.location.search );
 			const DEFAULT_MATERIALX_KEY = 'neural_train_uv_grid';
+			const BACKGROUND_COLOR = 0x15171c;
 
 			// Network (grid + MLP) settings are shared, global GUI controls -
 			// mirroring examples/webgpu_materials_neural_texture.html, where
@@ -241,7 +242,8 @@
 				learningRate: readNumberQuery( 'learningRate', 0.001 ),
 				quantization: queryParams.get( 'quantization' ) || 'none',
 				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
-				seed: readNumberQuery( 'seed', 1 )
+				seed: readNumberQuery( 'seed', 1 ),
+				showBackground: true
 			};
 
 			window.__neuralAppearanceTrainingReady = false;
@@ -299,7 +301,7 @@
 				camera.position.set( 0, 1.2, 5 );
 
 				scene = new THREE.Scene();
-				scene.background = new THREE.Color( 0x15171c );
+				scene.background = new THREE.Color( BACKGROUND_COLOR );
 
 				const keyLight = new THREE.DirectionalLight( 0xffffff, 0.9 );
 				keyLight.position.set( 3.2, 2.4, 2.6 );
@@ -423,6 +425,7 @@
 				// output-mode toggle.
 				const viewFolder = gui.addFolder( 'view' );
 				viewFolder.add( params, 'debugView', [ 'shaded', 'normal', 'reflection', 'roughness', 'irradiance', 'ibl', 'iblRadiance', 'iblIrradiance' ] ).name( 'debug view' ).onChange( updateView );
+				viewFolder.add( params, 'showBackground' ).name( 'show background IBL' ).onChange( updateBackground );
 				// No "lighting" GUI folder: the debug-view render modes (normal,
 				// reflection, roughness, irradiance, ibl, iblRadiance,
 				// iblIrradiance) cover manual lighting inspection now, so direct
@@ -1194,6 +1197,18 @@
 					if ( neuralMaterial ) neuralMaterial.needsUpdate = true;
 
 				}
+
+				updateBackground();
+
+			}
+
+			// Toggles whether the environment map itself is shown as the visible
+			// backdrop (params.showBackground) - scene.environment (IBL lighting
+			// on the meshes) stays on regardless, this only swaps what's behind
+			// them between the HDRI and the flat studio color.
+			function updateBackground() {
+
+				scene.background = params.showBackground ? environmentMap : new THREE.Color( BACKGROUND_COLOR );
 
 			}
 

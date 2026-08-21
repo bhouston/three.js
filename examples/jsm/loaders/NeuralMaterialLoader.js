@@ -1,6 +1,6 @@
 import { FileLoader, Loader } from 'three';
 import { FORMAT, VERSION } from '../neural-material/NeuralMaterialManifest.js';
-import { getChannel, layoutChannels } from '../neural-material/NeuralMaterialFormat.js';
+import { getChannel, layoutChannels, decodeConstantValues } from '../neural-material/NeuralMaterialFormat.js';
 import { NeuralTextureLoader } from './NeuralTextureLoader.js';
 
 /**
@@ -109,6 +109,18 @@ function decodeChannelClassification( channels ) {
 	const activeList = channels.activeKeys.map( ( key ) => getChannel( key ) );
 	const { channels: activeChannels, totalChannels, packCount } = layoutChannels( activeList );
 
+	// Deliberately *not* run through `decodeConstantValues` here -
+	// `constantValues` is what feeds each channel's `applyConstant` (see
+	// NeuralMaterialNodeMaterial.js), which - for `attenuationDistance` -
+	// expects the same finite, JSON/shader-safe sentinel `resolveConstant`
+	// encoded on export (see NeuralMaterialFormat.js), not the real
+	// `Infinity` it stands in for; `float(Infinity)` is not valid generated
+	// shader source. This also keeps a loaded material's `constantValues`
+	// shaped exactly like a freshly-classified live material's (`
+	// classifyMaterialChannels` never decodes it either) - both are always
+	// the encoded form. A caller that wants the true semantic values back
+	// (e.g. for display) should call `decodeConstantValues` itself on a
+	// separate copy, not on what gets handed to `NeuralMaterialNodeMaterial`.
 	return { activeChannels, totalChannels, packCount, constantValues: channels.constantValues || {} };
 
 }
@@ -153,4 +165,10 @@ function validateManifest( manifest ) {
 
 }
 
-export { NeuralMaterialLoader };
+// Re-exported for convenience - see `decodeChannelClassification`'s doc
+// comment above for why `parse()` doesn't call this itself: a caller that
+// wants a loaded material's true semantic constant values (e.g. `Infinity`
+// instead of the encoded sentinel, for `attenuationDistance`) for display
+// purposes can call `decodeConstantValues( channelClassification.
+// constantValues )` on its own copy.
+export { NeuralMaterialLoader, decodeConstantValues };

@@ -233,6 +233,19 @@ export default ConditionalNode;
 /**
  * TSL function for creating a conditional node.
  *
+ * `select()` is a scalar `if`/`else` -- it is **not** a per-component blend.
+ * If `condNode` is a vector (e.g. a `bvec3` produced by `greaterThan()` or
+ * similar), it is coerced down to a single `bool` before branching, and
+ * whichever branch that single `bool` selects is returned *wholesale* (the
+ * whole `ifNode`/`elseNode` value, not a per-component mix of the two).
+ * Concretely: given a vector condition, the `elseNode` branch is returned in
+ * full as soon as *any* component of the condition is `false`, even if
+ * other components are `true`. Callers that want a true per-component
+ * select (GLSL's `mix(a, b, bvec)`-style behavior) need to build it
+ * themselves, e.g. component-wise via `mix()` cast from the boolean vector,
+ * or one scalar `select()` per component -- `select()` itself does not do
+ * this.
+ *
  * @tsl
  * @function
  * @param {Node} condNode - The node that defines the condition.

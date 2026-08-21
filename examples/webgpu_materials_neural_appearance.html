@@ -166,7 +166,7 @@
 			import { NeuralAppearanceTrainer, estimateTrainingMemory, disposeTrainingResult } from 'three/addons/neural-appearance/NeuralAppearanceTrainer.js';
 			import { NeuralTeacherIBLEnvironmentNode, NeuralTeacherIBLLightingModel } from 'three/addons/neural-appearance/NeuralAppearanceTeacherLightingModels.js';
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
-			import { formatBytes, computeMLPParamCount } from 'three/addons/neural/NeuralModelSize.js';
+			import { formatBytes, computeMLPParamCount, computeMLPFlops, computeLinearParamCount, computeLinearFlops, computeMLPLayoutStats, computeModelFootprint, formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
 			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
 			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/neural/NeuralMaterialXSamples.js';
 
@@ -196,38 +196,8 @@
 			// Network (grid + MLP) settings are shared, global GUI controls -
 			// mirroring examples/webgpu_materials_neural_texture.html, where
 			// only "source" (there: bakeResolution; here: the MaterialX file)
-			// is preset-specific and grid/MLP sizing is not. This table only
-			// hand-tunes training length/cost for the materials it was
-			// originally curated for (see NeuralMaterialXSamples.js for the
-			// full, alphabetical catalog of built-in files) - anything else
-			// picked from the dropdown falls back to DEFAULT_TRAINING_SETTINGS.
-			const DEFAULT_TRAINING_SETTINGS = { iterations: 2000, batchSize: 1024, hiddenSize: 32 };
-			const TRAINING_SETTINGS_OVERRIDES = {
-				neural_train_uv_grid: { iterations: 2000, batchSize: 1024, hiddenSize: 16 },
-				neural_train_uv_grid_glossy: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
-				neural_train_lambert_red: { iterations: 1200, batchSize: 1024, hiddenSize: 16 },
-				neural_train_glossy_red: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
-				neural_train_glossy_gold: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
-				neural_train_velvet: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
-				neural_train_checkerboard: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
-				neural_train_checkerboard_transparency: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
-				neural_train_checkerboard_normal: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
-				neural_train_normal_map: { iterations: 2000, batchSize: 1024, hiddenSize: 32 },
-				neural_train_emissive_grid: { iterations: 10000, batchSize: 1024, hiddenSize: 32 },
-				neural_train_alpha_cutoff: { iterations: 2000, batchSize: 1024, hiddenSize: 32 }
-			};
-
-			function getMaterialPreset( key ) {
-
-				const sample = getMaterialXSample( key );
-				if ( sample === undefined ) return undefined;
-
-				return { file: sample.file, settings: TRAINING_SETTINGS_OVERRIDES[ key ] || DEFAULT_TRAINING_SETTINGS };
-
-			}
-
+			// is preset-specific and grid/MLP sizing is not.
 			const initialMaterialKey = queryParams.get( 'test' ) || DEFAULT_MATERIALX_KEY;
-			const initialMaterialPreset = getMaterialPreset( initialMaterialKey ) || getMaterialPreset( DEFAULT_MATERIALX_KEY );
 			const autoTrain = queryParams.get( 'autoTrain' ) === '1';
 			const noRotate = queryParams.get( 'noRotate' ) !== '0';
 
@@ -259,18 +229,17 @@
 				{ legend: document.getElementById( 'lossLegend' ) }
 			);
 
-			const presetSettings = initialMaterialPreset.settings;
 			const params = {
 				view: 'MaterialX teacher',
 				debugView: queryParams.get( 'debugView' ) || 'shaded',
-				levels: readNumberQuery( 'levels', 4 ),
+				levels: readNumberQuery( 'levels', 3 ),
 				baseResolution: readNumberQuery( 'baseResolution', 16 ),
 				growthFactor: readNumberQuery( 'growthFactor', 2 ),
-				hiddenSize: readNumberQuery( 'hiddenSize', presetSettings.hiddenSize ),
+				hiddenSize: readNumberQuery( 'hiddenSize', 8 ),
 				peOctaves: readNumberQuery( 'peOctaves', 0 ),
 				inputEncoding: queryParams.get( 'inputEncoding' ) || 'none',
-				iterations: readNumberQuery( 'iterations', presetSettings.iterations ),
-				batchSize: readNumberQuery( 'batchSize', presetSettings.batchSize ),
+				iterations: readNumberQuery( 'iterations', 2000 ),
+				batchSize: readNumberQuery( 'batchSize', 1024 ),
 				learningRate: readNumberQuery( 'learningRate', 0.001 ),
 				quantization: queryParams.get( 'quantization' ) || 'none',
 				previewSamples: readNumberQuery( 'previewSamples', Infinity ),
@@ -490,13 +459,6 @@
 
 			async function loadDefaultMaterialX() {
 
-				if ( getMaterialPreset( initialMaterialKey ) === undefined ) {
-
-					status.textContent = `Unknown neural appearance training test material: ${initialMaterialKey}`;
-					return;
-
-				}
-
 				builtInMaterial.value = initialMaterialKey;
 				await loadBuiltInMaterial( initialMaterialKey );
 
@@ -504,34 +466,23 @@
 
 			async function onBuiltInMaterialSelected() {
 
-				applyMaterialPresetSettings( builtInMaterial.value );
 				await loadBuiltInMaterial( builtInMaterial.value );
-
-			}
-
-			function applyMaterialPresetSettings( key ) {
-
-				const preset = getMaterialPreset( key );
-				if ( preset === undefined ) return;
-
-				Object.assign( params, preset.settings );
-				updateTrainingEstimate();
-
-				for ( const { key, controller } of trainingSettingControllers ) controller.setValue( params[ key ] );
 
 			}
 
 			async function loadBuiltInMaterial( key ) {
 
+				const sample = getMaterialXSample( key );
+				if ( sample === undefined ) return;
+
+				const file = sample.file;
+
 				try {
 
-					const preset = getMaterialPreset( key );
-					if ( preset === undefined ) throw new Error( `Unknown built-in material: ${key}` );
-
 					builtInMaterial.disabled = true;
-					status.textContent = `Loading ${preset.file}...`;
+					status.textContent = `Loading ${file}...`;
 					const loader = new MaterialXLoader().setPath( 'materialx/' );
-					const asset = await loader.loadAsync( preset.file, {
+					const asset = await loader.loadAsync( file, {
 						uvSpace: 'top-left',
 						throwOnErrors: true
 					} );
@@ -545,7 +496,7 @@
 					// immediate training run sees a blank texture.
 					if ( asset.texturesReady ) await asset.texturesReady;
 
-					setMaterialXMaterial( asset, preset.file );
+					setMaterialXMaterial( asset, file );
 
 				} catch ( error ) {
 
@@ -1322,45 +1273,58 @@
 				const hiddenSize = Number( params.hiddenSize );
 				const latentChannels = memory.levels * 4;
 				const decoderInputSize = latentChannels + 12;
-				const rotationValues = latentChannels * 12;
-				const layerValues = computeMLPParamCount( { inputSize: decoderInputSize, hiddenSize, hiddenLayers: 2, outputSize: 3 } );
+				const rotationParams = computeLinearParamCount( latentChannels, 12, false );
+				const rotationFlops = computeLinearFlops( latentChannels, 12, false );
+				const decoderSpec = { inputSize: decoderInputSize, hiddenSize, hiddenLayers: 2, outputSize: 3 };
 				const iblHiddenSize = Math.min( Math.max( hiddenSize, 16 ), 32 );
 				const iblInputSize = latentChannels + 6;
 				const indirectInputSize = latentChannels + 6;
-				const iblLayerValues = computeMLPParamCount( { inputSize: iblInputSize, hiddenSize: iblHiddenSize, hiddenLayers: 1, outputSize: 4 } );
-				const indirectLayerValues = computeMLPParamCount( { inputSize: indirectInputSize, hiddenSize: iblHiddenSize, hiddenLayers: 1, outputSize: 3 } );
-				const representationBytes = memory.exportBytes + ( rotationValues + layerValues + iblLayerValues + indirectLayerValues ) * 4;
+				const iblSpec = { inputSize: iblInputSize, hiddenSize: iblHiddenSize, hiddenLayers: 1, outputSize: 4 };
+				const indirectSpec = { inputSize: indirectInputSize, hiddenSize: iblHiddenSize, hiddenLayers: 1, outputSize: 3 };
+				const mlpParams = rotationParams + computeMLPParamCount( decoderSpec ) + computeMLPParamCount( iblSpec ) + computeMLPParamCount( indirectSpec );
+				const flops = rotationFlops + computeMLPFlops( decoderSpec ) + computeMLPFlops( iblSpec ) + computeMLPFlops( indirectSpec );
 				const recordsPerIteration = Number( params.batchSize );
 				const records = recordsPerIteration * Number( params.iterations );
 
 				window.__neuralAppearanceMemoryEstimate = memory;
-				neuralRepresentationSize.textContent = `${representationBytes.toLocaleString()} bytes`;
+				neuralRepresentationSize.textContent = formatModelSizeSummary( computeModelFootprint( { gridParams: memory.latentTexels * 4, mlpParams, flops } ) );
 				const finestResolution = memory.resolutions[ memory.resolutions.length - 1 ];
 				estimate.textContent = `${memory.levels} levels (${memory.baseResolution}px - ${finestResolution}px, growth ${memory.growthFactor}x), ${memory.latentTexels.toLocaleString()} latent texels\n~${formatBytes( memory.trainingBytes )} training state + ${formatBytes( memory.exportBytes )} FP16 latents\n${recordsPerIteration.toLocaleString()} records/iteration, ${records.toLocaleString()} total`;
 
 			}
 
+			// `json` is the raw, still-compact manifest as parsed from the
+			// .neuralAppearance file - uint8-quantized latents and
+			// float16-packed MLP weights (see NeuralAppearanceManifest.js's
+			// `compactAppearanceJson`), *before* NeuralAppearanceLoader decodes
+			// it back to plain floats for rendering. Reading `mlp.layout`
+			// directly (rather than decoding every weight first) is enough to
+			// recover the exact parameter count/FLOPs for each head.
 			function updateNeuralRepresentationSize( json ) {
 
-				let bytes = 0;
-
-				for ( const level of json.latents.levels ) bytes += level.data.length * 2;
+				let gridParams = 0;
+				for ( const level of json.latents.levels ) gridParams += level.width * level.height * level.channels;
 
 				const outputs = json.outputs || {};
-				if ( outputs.brdf && outputs.brdf.rotation ) bytes += outputs.brdf.rotation.weights.length * 4;
+				let mlpParams = 0;
+				let flops = 0;
 
 				for ( const output of Object.values( outputs ) ) {
 
-					for ( const layer of output.layers ) {
+					const stats = computeMLPLayoutStats( output.mlp.layout );
+					mlpParams += stats.paramCount;
+					flops += stats.flops;
 
-						bytes += ( layer.weights.length + layer.biases.length ) * 4;
+					if ( output.rotation ) {
+
+						mlpParams += computeLinearParamCount( output.rotation.inputSize, output.rotation.outputSize, false );
+						flops += computeLinearFlops( output.rotation.inputSize, output.rotation.outputSize, false );
 
 					}
 
 				}
 
-				const outputNames = Object.keys( outputs ).join( ', ' );
-				neuralRepresentationSize.textContent = `${bytes.toLocaleString()} bytes (${outputNames})`;
+				neuralRepresentationSize.textContent = formatModelSizeSummary( computeModelFootprint( { gridParams, mlpParams, flops } ) );
 
 			}
 

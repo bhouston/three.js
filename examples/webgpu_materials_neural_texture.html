@@ -157,7 +157,7 @@
 			import { computeTextureModelLayout } from 'three/addons/neural-texture/NeuralTextureGPUModel.js';
 			import { computeGridLevels, computeTileOctaves, GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
-			import { formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
+			import { computeMLPFlops, computeModelFootprint, formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
 			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/neural/NeuralMaterialXSamples.js';
 
 			let camera, scene, renderer;
@@ -171,10 +171,10 @@
 				uvScaleY: 1,
 				uvOffsetX: 0,
 				uvOffsetY: 0,
-				levels: 4,
+				levels: 3,
 				baseResolution: 16,
 				growthFactor: 2,
-				hiddenSize: 16,
+				hiddenSize: 8,
 				inputEncoding: 'positional',
 				batchSize: 8192,
 				iterations: 3000,
@@ -332,14 +332,13 @@
 					inputEncoding: params.inputEncoding
 				} );
 
-				const latentTexels = layout.gridLevels.reduce( ( sum, level ) => sum + level.texelCount, 0 );
-				const latentBytes = layout.totalLatents * 2; // exported as fp16, like the neural appearance runtime
-				const weightBytes = layout.totalWeights * 4; // fp32
+				const flops = computeMLPFlops( { inputSize: layout.inputSize, hiddenSize: hidden, hiddenLayers: layout.hiddenSizes.length, outputSize: layout.outputChannels } );
 
-				document.getElementById( 'networkSize' ).textContent = formatModelSizeSummary( {
-					grid: { label: `${latentTexels.toLocaleString()} texels`, bytes: latentBytes },
-					heads: [ { label: 'MLP', bytes: weightBytes } ]
-				} );
+				document.getElementById( 'networkSize' ).textContent = formatModelSizeSummary( computeModelFootprint( {
+					gridParams: layout.totalLatents,
+					mlpParams: layout.totalWeights,
+					flops
+				} ) );
 
 			}
 

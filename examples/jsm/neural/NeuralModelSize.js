@@ -5,7 +5,29 @@
  * extra IBL/indirect heads for neural-appearance). Every example built its
  * own copy of the MLP weight-count formula and byte formatter; this module
  * is the one place that math lives now.
+ *
+ * Every model has two distinct footprints, both worth reporting:
+ *
+ *  - "Memory" - what's actually resident in JS/GPU memory while rendering:
+ *    latent grids as half-float (RGBA16F) textures (see
+ *    NeuralHalfFloatTexture.js) and MLP weights as plain fp32 arrays/
+ *    uniforms.
+ *  - "Storage" - the on-disk/exported .neuralTexture/.neuralMaterial/
+ *    .neuralAppearance manifest size after quantization-aware training:
+ *    latent grids packed to uint8 and MLP weights float16-packed (see
+ *    NeuralBinaryCodec.js's encodeUint8Base64/encodeMLPLayersBase64, and
+ *    NeuralQuantization.js for the QAT scheme that makes the uint8 rounding
+ *    "free" at inference time).
+ *
+ * Alongside those two byte counts, every example also reports the FLOPs
+ * (floating-point operations) needed to evaluate the network for a single
+ * texel/pixel - a cost the byte counts don't capture at all.
  */
+
+const GRID_MEMORY_BYTES_PER_CHANNEL = 2; // fp16 runtime latent texture (NeuralHalfFloatTexture.js)
+const GRID_STORAGE_BYTES_PER_CHANNEL = 1; // uint8-quantized export (NeuralBinaryCodec.encodeUint8Base64)
+const MLP_MEMORY_BYTES_PER_PARAM = 4; // fp32 runtime weight buffers/uniforms
+const MLP_STORAGE_BYTES_PER_PARAM = 2; // float16-packed export (NeuralBinaryCodec.encodeFloat16Base64)
 
 function formatBytes( bytes ) {
 
@@ -15,17 +37,63 @@ function formatBytes( bytes ) {
 
 }
 
+// Formats a FLOP count with the same K/M/G scaling as formatBytes, e.g.
+// `formatFlops( 12345 )` -> "12.3K FLOP".
+function formatFlops( flops ) {
+
+	if ( flops < 1000 ) return `${flops} FLOP`;
+	if ( flops < 1000 * 1000 ) return `${( flops / 1000 ).toFixed( 1 )}K FLOP`;
+	if ( flops < 1000 * 1000 * 1000 ) return `${( flops / ( 1000 * 1000 ) ).toFixed( 2 )}M FLOP`;
+	return `${( flops / ( 1000 * 1000 * 1000 ) ).toFixed( 2 )}G FLOP`;
+
+}
+
+// Parameter count / FLOPs for a single dense (fully-connected) layer mapping
+// `inputSize` -> `outputSize`, optionally without a bias term - most layers
+// have one, but e.g. neural-appearance's BRDF-frame rotation matrix is a
+// bias-free linear layer (see NeuralAppearanceManifest.js's `rotation`
+// block). FLOPs counts one multiply + one add per weight (the standard
+// "2x parameter count" convention for a forward matmul) plus one add per
+// bias.
+function computeLinearParamCount( inputSize, outputSize, hasBias = true ) {
+
+	return inputSize * outputSize + ( hasBias ? outputSize : 0 );
+
+}
+
+function computeLinearFlops( inputSize, outputSize, hasBias = true ) {
+
+	return 2 * inputSize * outputSize + ( hasBias ? outputSize : 0 );
+
+}
+
 // Weight + bias parameter count for a fully-connected MLP with `hiddenLayers`
 // hidden layers of width `hiddenSize`, mapping `inputSize` to `outputSize`.
 function computeMLPParamCount( { inputSize, hiddenSize, hiddenLayers = 2, outputSize } ) {
 
-	if ( hiddenLayers <= 0 ) return inputSize * outputSize + outputSize;
+	if ( hiddenLayers <= 0 ) return computeLinearParamCount( inputSize, outputSize );
 
-	let count = inputSize * hiddenSize + hiddenSize;
-	for ( let i = 1; i < hiddenLayers; i ++ ) count += hiddenSize * hiddenSize + hiddenSize;
-	count += hiddenSize * outputSize + outputSize;
+	let count = computeLinearParamCount( inputSize, hiddenSize );
+	for ( let i = 1; i < hiddenLayers; i ++ ) count += computeLinearParamCount( hiddenSize, hiddenSize );
+	count += computeLinearParamCount( hiddenSize, outputSize );
 
 	return count;
+
+}
+
+// FLOPs for one forward pass through the same MLP shape as
+// `computeMLPParamCount` (same `{ inputSize, hiddenSize, hiddenLayers,
+// outputSize }` spec) - i.e. the cost of evaluating this decoder once, for
+// one texel/pixel.
+function computeMLPFlops( { inputSize, hiddenSize, hiddenLayers = 2, outputSize } ) {
+
+	if ( hiddenLayers <= 0 ) return computeLinearFlops( inputSize, outputSize );
+
+	let flops = computeLinearFlops( inputSize, hiddenSize );
+	for ( let i = 1; i < hiddenLayers; i ++ ) flops += computeLinearFlops( hiddenSize, hiddenSize );
+	flops += computeLinearFlops( hiddenSize, outputSize );
+
+	return flops;
 
 }
 
@@ -37,18 +105,64 @@ function computeGridLatentTexels( resolutions ) {
 
 }
 
-// Builds a single "total (grid [...] + head + head...)" summary line shared
-// across the three examples' "network size" panels.
-//
-//   grid: { label, bytes }
-//   heads: [ { label, bytes } ]
-function formatModelSizeSummary( { grid, heads } ) {
+// Parameter count + FLOPs directly from a compact manifest's `mlp.layout`
+// array (see NeuralBinaryCodec.js's encodeMLPLayersBase64: alternating
+// `{ rows, cols, kind: 'weight' }` / `{ rows, cols, kind: 'bias' }` entries
+// per layer) - lets a loaded .neuralTexture/.neuralMaterial/.neuralAppearance
+// manifest report its *actual* size/cost without re-decoding every float16
+// weight first.
+function computeMLPLayoutStats( layout ) {
 
-	const totalBytes = grid.bytes + heads.reduce( ( sum, head ) => sum + head.bytes, 0 );
-	const headsText = heads.map( ( head ) => `${formatBytes( head.bytes )} ${head.label}` ).join( ' + ' );
+	let paramCount = 0;
+	let flops = 0;
 
-	return `${formatBytes( totalBytes )} (${formatBytes( grid.bytes )} grid [${grid.label}] + ${headsText})`;
+	for ( let i = 0; i < layout.length; i += 2 ) {
+
+		const weightEntry = layout[ i ];
+		paramCount += computeLinearParamCount( weightEntry.rows, weightEntry.cols );
+		flops += computeLinearFlops( weightEntry.rows, weightEntry.cols );
+
+	}
+
+	return { paramCount, flops };
 
 }
 
-export { formatBytes, computeMLPParamCount, computeGridLatentTexels, formatModelSizeSummary };
+// Rolls up a model's total grid-latent scalar count (texels * channels,
+// summed across every level) and total MLP parameter count/FLOPs (summed
+// across every head) into the two byte footprints described above, plus the
+// FLOPs passed through unchanged.
+function computeModelFootprint( { gridParams, mlpParams, flops } ) {
+
+	return {
+		memoryBytes: gridParams * GRID_MEMORY_BYTES_PER_CHANNEL + mlpParams * MLP_MEMORY_BYTES_PER_PARAM,
+		storageBytes: gridParams * GRID_STORAGE_BYTES_PER_CHANNEL + mlpParams * MLP_STORAGE_BYTES_PER_PARAM,
+		flops
+	};
+
+}
+
+// Builds the "Memory Size: ... Storage Size: ... N FLOP/Texel" summary line
+// shared across the three examples' "network size" panels.
+function formatModelSizeSummary( { memoryBytes, storageBytes, flops } ) {
+
+	return `Memory Size: ${formatBytes( memoryBytes )}   Storage Size: ${formatBytes( storageBytes )}   ${formatFlops( flops )}/Texel`;
+
+}
+
+export {
+	GRID_MEMORY_BYTES_PER_CHANNEL,
+	GRID_STORAGE_BYTES_PER_CHANNEL,
+	MLP_MEMORY_BYTES_PER_PARAM,
+	MLP_STORAGE_BYTES_PER_PARAM,
+	formatBytes,
+	formatFlops,
+	computeLinearParamCount,
+	computeLinearFlops,
+	computeMLPParamCount,
+	computeMLPFlops,
+	computeGridLatentTexels,
+	computeMLPLayoutStats,
+	computeModelFootprint,
+	formatModelSizeSummary
+};

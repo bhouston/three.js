@@ -160,7 +160,7 @@
 			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
 			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, buildChannelActivations } from 'three/addons/neural-material/NeuralMaterialFormat.js';
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
-			import { computeMLPParamCount, computeGridLatentTexels, formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
+			import { computeMLPParamCount, computeMLPFlops, computeGridLatentTexels, computeModelFootprint, formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
 			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/neural/NeuralMaterialXSamples.js';
 			import { exportNeuralMaterial } from 'three/addons/neural-material/NeuralMaterialManifest.js';
 			import { NeuralMaterialLoader } from 'three/addons/loaders/NeuralMaterialLoader.js';
@@ -176,10 +176,10 @@
 
 			const params = {
 				bakeResolution: 1024,
-				levels: 4,
+				levels: 3,
 				baseResolution: 16,
 				growthFactor: 2,
-				hiddenSize: 16,
+				hiddenSize: 8,
 				inputEncoding: 'positional',
 				batchSize: 8192,
 				iterations: 750,
@@ -419,7 +419,6 @@
 				const outputChannels = channelClassification ? channelClassification.totalChannels : MAX_TOTAL_CHANNELS;
 
 				const channels = 4;
-				const bytesPerTexel = channels * 2; // exported as fp16 (4 channels x 2 bytes)
 
 				// Once a network actually exists (trained here, or loaded from a
 				// JSON file whose grid/MLP dimensions may not match the current
@@ -437,22 +436,14 @@
 				const hidden = currentCpuModel ? currentCpuModel.hiddenSizes[ 0 ] : Number( params.hiddenSize );
 
 				const latentTexels = computeGridLatentTexels( resolutions );
-				const latentBytes = latentTexels * bytesPerTexel;
+				const gridParams = latentTexels * channels;
 
 				const inputSize = levels * channels;
-				const weightCount = computeMLPParamCount( { inputSize, hiddenSize: hidden, hiddenLayers: 2, outputSize: outputChannels } );
-				const weightBytes = weightCount * 4; // fp32
+				const mlpSpec = { inputSize, hiddenSize: hidden, hiddenLayers: 2, outputSize: outputChannels };
+				const mlpParams = computeMLPParamCount( mlpSpec );
+				const flops = computeMLPFlops( mlpSpec );
 
-				const channelText = channelClassification ?
-					`${outputChannels}/${MAX_TOTAL_CHANNELS} channels trained` :
-					`up to ${MAX_TOTAL_CHANNELS} channels`;
-
-				const gridText = `${resolutions.map( r => `${r}²` ).join( '+' )} px, ${bytesPerTexel} B/texel`;
-
-				document.getElementById( 'networkSize' ).textContent = formatModelSizeSummary( {
-					grid: { label: gridText, bytes: latentBytes },
-					heads: [ { label: `MLP (${channelText})`, bytes: weightBytes } ]
-				} );
+				document.getElementById( 'networkSize' ).textContent = formatModelSizeSummary( computeModelFootprint( { gridParams, mlpParams, flops } ) );
 
 			}
 

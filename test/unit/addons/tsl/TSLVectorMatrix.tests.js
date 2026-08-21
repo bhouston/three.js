@@ -1,18 +1,18 @@
 import {
-	float, vec3, mat3, mat4,
+	float, vec2, vec3, mat2, mat3, mat4,
 	dot, cross, length, distance, normalize,
 	reflect, refract, faceForward,
 	transpose, determinant, inverse, mul
 } from 'three/tsl';
 import { gpuTest } from './gpu-test-utils.js';
 
-// Vector and mat3/mat4 coverage. Expected values are hand-derived from
+// Vector and mat2/mat3/mat4 coverage. Expected values are hand-derived from
 // standard linear-algebra identities/formulas (not by re-running the node
 // under test), so a broken implementation that merely agrees with itself
 // can't pass -- see the "test theater" link in GPUTest.tests.js.
 //
-// mat3/mat4 assertions exercise gpu-test-utils.js's matrix support (see its
-// file header for how a mat3/mat4 value is threaded through the harness).
+// mat2/mat3/mat4 assertions exercise gpu-test-utils.js's matrix support (see
+// its file header for how a matrix value is threaded through the harness).
 export default QUnit.module( 'TSL', () => {
 
 	QUnit.module( 'vector functions', () => {
@@ -85,9 +85,28 @@ export default QUnit.module( 'TSL', () => {
 
 	} );
 
-	QUnit.module( 'matrix functions (mat3/mat4)', () => {
+	QUnit.module( 'matrix functions (mat2/mat3/mat4)', () => {
+
+		gpuTest( 'mat2: constructor, element access and mul(mat2, vec2) (first real exercise of gpu-test-utils.js mat2 support)', ( { assert } ) => {
+
+			// mat2(4 scalars) is row-major, same convention as mat3(9 scalars)/
+			// mat4(16 scalars) -- see the dedicated mat3 finding below.
+			const m = mat2( 1, 2, 3, 4 );
+			assert.eq( m.element( 0 ), vec2( 1, 3 ), 'column 0 == the first entry of each constructor row' );
+			assert.eq( m.element( 1 ), vec2( 2, 4 ), 'column 1 == the second entry of each constructor row' );
+
+			// A pure per-axis scale: m * (1,1) must be exactly (2,4).
+			const scale = mat2( 2, 0, 0, 4 );
+			assert.closeAbs( mul( scale, vec2( 1, 1 ) ), vec2( 2, 4 ), 1e-5, 'diagonal-scale mat2 times (1,1)' );
+
+		} );
 
 		gpuTest( 'identity matrix: transpose/determinant/inverse are all no-ops', ( { assert } ) => {
+
+			const I2 = mat2( 1, 0, 0, 1 );
+			assert.eq( transpose( I2 ), I2, 'transpose(I2) == I2' );
+			assert.closeAbs( determinant( I2 ), float( 1 ), 1e-5, 'determinant(I2) == 1' );
+			assert.closeAbs( inverse( I2 ), I2, 1e-5, 'inverse(I2) == I2' );
 
 			const I3 = mat3( 1, 0, 0, 0, 1, 0, 0, 0, 1 );
 			assert.eq( transpose( I3 ), I3, 'transpose(I3) == I3' );

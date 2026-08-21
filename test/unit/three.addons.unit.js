@@ -28,3 +28,4 @@ import './addons/tsl/TSLBlendModes.tests.js';
 import './addons/tsl/TSLColorAdjustmentExtra.tests.js';
 import './addons/tsl/TSLToneMapping.tests.js';
 import './addons/tsl/TSLProceduralUtils.tests.js';
+import './addons/tsl/TSLHalfPrecision.tests.js';

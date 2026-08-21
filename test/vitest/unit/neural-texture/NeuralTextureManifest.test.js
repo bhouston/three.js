@@ -30,9 +30,7 @@ function buildModel() {
 		baseResolution: 4,
 		growthFactor: 2,
 		hiddenSizes: [ 6, 6 ],
-		outputChannels: 3,
-		peOctaves: 2,
-		inputEncoding: 'positional'
+		outputChannels: 3
 	}, random );
 
 }
@@ -78,8 +76,6 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureManifest', () => {
 		expect( loaded.channels ).toBe( model.channels );
 		expect( loaded.levels ).toBe( model.grids.length );
 		expect( loaded.grids.length ).toBe( model.grids.length );
-		expect( loaded.peOctaves ).toBe( model.peOctaves );
-		expect( loaded.inputEncoding ).toBe( model.inputEncoding );
 		expect( loaded.outputChannels ).toBe( model.outputChannels );
 
 		for ( let g = 0; g < model.grids.length; g ++ ) {
@@ -178,11 +174,8 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureManifest', () => {
 
 		}
 
-		// evaluateNeuralTextureRaw: cpuModel.grids[i].channels, cpuModel.inputEncoding,
-		// cpuModel.peOctaves, cpuModel.decoder.layers[i].{weights,biases,inputSize,outputSize,activation}
-		expect( typeof loaded.inputEncoding ).toBe( 'string' );
-		expect( typeof loaded.peOctaves ).toBe( 'number' );
-
+		// evaluateNeuralTextureRaw: cpuModel.grids[i].channels,
+		// cpuModel.decoder.layers[i].{weights,biases,inputSize,outputSize,activation}
 		for ( const layer of loaded.decoder.layers ) {
 
 			expect( layer.weights instanceof Float32Array ).toBe( true );

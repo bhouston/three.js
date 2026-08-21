@@ -2,7 +2,7 @@ import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, uniform } from 'three/tsl';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 import { createAdamParameterBuffers, disposeAdamParameterBuffers } from '../neural/NeuralGPUComputeTSL.js';
-import { computeGridLevels, getUVEncodingInputSize } from '../neural/NeuralGridModel.js';
+import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { resolveNeuralTextureOptions } from './NeuralTextureModel.js';
 import { resolveQuantizationConfig } from '../neural/NeuralQuantization.js';
 
@@ -13,7 +13,7 @@ import { resolveQuantizationConfig } from '../neural/NeuralQuantization.js';
  */
 function computeTextureModelLayout( options = {} ) {
 
-	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels, peOctaves, inputEncoding } = resolveNeuralTextureOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels } = resolveNeuralTextureOptions( options );
 	// One entry per output channel naming its output nonlinearity (see
 	// ../neural/NeuralOutputActivations.js); undefined/omitted entries (the
 	// default, `options.channelActivations` unset) mean plain linear, i.e.
@@ -24,8 +24,7 @@ function computeTextureModelLayout( options = {} ) {
 	// `computeGridLevels` may return fewer levels than requested when a
 	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
 	// NeuralGridModel.js) - `levels` below is reassigned to the actual grid
-	// count so `peInputOffset`/`inputSize` match `NeuralTextureModel`'s CPU
-	// decoder exactly.
+	// count so `inputSize` matches `NeuralTextureModel`'s CPU decoder exactly.
 	const resolutions = computeGridLevels( baseResolution, growthFactor, requestedLevels );
 	const levels = resolutions.length;
 
@@ -43,11 +42,8 @@ function computeTextureModelLayout( options = {} ) {
 
 	const totalLatents = latentOffset;
 
-	// MLP weight layout: input = concatenated multiresolution grid features,
-	// followed by `peOctaves` octaves of tiled positional encoding (see
-	// NeuralTextureModel.js / NeuralGridModel.triangleWaveEncode for why).
-	const peInputOffset = levels * channels;
-	const inputSize = peInputOffset + getUVEncodingInputSize( inputEncoding, peOctaves );
+	// MLP weight layout: input = concatenated multiresolution grid features.
+	const inputSize = levels * channels;
 	const sizes = [ inputSize, ...hiddenSizes, outputChannels ];
 	const mlpLayers = [];
 	let weightOffset = 0;
@@ -115,10 +111,7 @@ function computeTextureModelLayout( options = {} ) {
 		hiddenSizes,
 		outputChannels,
 		channelActivations,
-		peOctaves,
-		inputEncoding,
 		inputSize,
-		peInputOffset,
 		gridLevels,
 		totalLatents,
 		mlpLayers,

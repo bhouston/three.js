@@ -111,29 +111,20 @@ class NeuralAppearanceLoader extends Loader {
 		const levelTextures = manifest.latents.levels.map( ( level, index ) => createLevelTexture( level, `latents.levels[${ index }]`, manifest.latents.wrap ) );
 
 		// Expected head input sizes are derived from *this manifest's own*
-		// level count, peOctaves, and inputEncoding (mirroring how
-		// NeuralAppearanceManifest.js wrote them), not NeuralAppearanceFormat's
-		// fixed LATENT_CHANNELS/etc. defaults - otherwise any model trained
-		// with a non-default number of grid levels, or a non-'none'
-		// inputEncoding, would fail to load even though its heads are
-		// perfectly consistent with its own grid/UV-derived input.
+		// level count (mirroring how NeuralAppearanceManifest.js wrote them),
+		// not NeuralAppearanceFormat's fixed LATENT_CHANNELS/etc. defaults -
+		// otherwise any model trained with a non-default number of grid levels
+		// would fail to load even though its heads are perfectly consistent
+		// with its own grid input.
 		const levels = levelTextures.length;
-		const peOctaves = Number.isInteger( manifest.peOctaves ) ? manifest.peOctaves : 0;
-		// Falls back to the pre-`inputEncoding` `peOctaves > 0` check for
-		// manifests written before `inputEncoding` was added to the format -
-		// same fallback NeuralAppearanceTSL.js/NeuralTextureNodeMaterial.js use.
-		const inputEncoding = manifest.inputEncoding !== undefined ?
-			manifest.inputEncoding : ( peOctaves > 0 ? 'positional' : 'none' );
 
 		return {
 			isNeuralAppearanceData: true,
 			name: manifest.name || '',
 			latentTextures: levelTextures,
 			levels,
-			peOctaves,
-			inputEncoding,
 			wrap: manifest.latents.wrap || 'repeat',
-			outputs: normalizeOutputs( manifest.outputs, levels, peOctaves, inputEncoding ),
+			outputs: normalizeOutputs( manifest.outputs, levels ),
 			referenceEvaluations: manifest.referenceEvaluations || []
 		};
 
@@ -162,7 +153,7 @@ function createLevelTexture( level, path, wrap ) {
 
 }
 
-function normalizeOutputs( outputs, levels, peOctaves, inputEncoding ) {
+function normalizeOutputs( outputs, levels ) {
 
 	if ( ! outputs || ! outputs.ibl || ! outputs.indirectRadiance || ! outputs.indirectIrradiance ) {
 
@@ -171,9 +162,9 @@ function normalizeOutputs( outputs, levels, peOctaves, inputEncoding ) {
 	}
 
 	const latentChannels = computeLatentChannels( levels );
-	const decoderInputSize = computeDecoderInputSize( levels, peOctaves, inputEncoding );
-	const iblInputSize = computeIblInputSize( levels, peOctaves, inputEncoding );
-	const indirectInputSize = computeIndirectInputSize( levels, peOctaves, inputEncoding );
+	const decoderInputSize = computeDecoderInputSize( levels );
+	const iblInputSize = computeIblInputSize( levels );
+	const indirectInputSize = computeIndirectInputSize( levels );
 
 	return {
 		brdf: normalizeOutputHead( outputs.brdf, 'outputs.brdf', decoderInputSize, 3, true, latentChannels ),
@@ -336,7 +327,7 @@ function validateManifest( manifest ) {
 	// level count, not a hard requirement (see that file's own doc comment on
 	// computeLatentChannels). The output heads' declared inputSize below is
 	// instead cross-checked against sizes derived from *this* manifest's own
-	// level count and peOctaves, in `parse()`.
+	// level count, in `parse()`.
 
 	for ( let levelIndex = 0; levelIndex < manifest.latents.levels.length; levelIndex ++ ) {
 

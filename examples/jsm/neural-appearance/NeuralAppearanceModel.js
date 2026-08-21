@@ -13,7 +13,6 @@ import {
 	forwardMLP
 } from '../neural/NeuralMLP.js';
 import { computeGridLevels, createLatentGrid } from '../neural/NeuralGridModel.js';
-import { computeUVEncoding } from './NeuralAppearanceUVEncoding.js';
 import { dot, cross, normalize } from '../neural/NeuralVectorMath.js';
 import { QUANTIZATION_SCHEMES } from '../neural/NeuralQuantization.js';
 
@@ -23,7 +22,7 @@ function createModel( options, random ) {
 	// comment: this is the single source of truth for these defaults,
 	// shared with computeModelLayout (GPU buffer layout) so the two can't
 	// silently disagree.
-	const { levels: requestedLevels, hiddenSize, iblHiddenSize, baseResolution, growthFactor, peOctaves, inputEncoding, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
+	const { levels: requestedLevels, hiddenSize, iblHiddenSize, baseResolution, growthFactor, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
 
 	// `computeGridLevels` may return fewer levels than requested when a
 	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
@@ -36,9 +35,9 @@ function createModel( options, random ) {
 	const latentGrids = resolutions.map( ( resolution ) => createLatentGrid( resolution, resolution, CHANNELS_PER_LEVEL, random ) );
 
 	const latentChannels = computeLatentChannels( levels );
-	const decoderInputSize = computeDecoderInputSize( levels, peOctaves, inputEncoding );
-	const iblInputSize = computeIblInputSize( levels, peOctaves, inputEncoding );
-	const indirectInputSize = computeIndirectInputSize( levels, peOctaves, inputEncoding );
+	const decoderInputSize = computeDecoderInputSize( levels );
+	const iblInputSize = computeIblInputSize( levels );
+	const indirectInputSize = computeIndirectInputSize( levels );
 
 	const decoder = createMLP( decoderInputSize, [ hiddenSize, hiddenSize ], 3, random, 'relu', 'linear' );
 	const iblHead = createMLP( iblInputSize, [ iblHiddenSize ], IBL_OUTPUT_SIZE, random, 'relu', 'linear' );
@@ -59,8 +58,6 @@ function createModel( options, random ) {
 		levels,
 		baseResolution,
 		growthFactor,
-		peOctaves,
-		inputEncoding,
 		resolutions,
 		latentGrids
 	};
@@ -89,8 +86,7 @@ function decorrelateLinearRgbHead( model ) {
 	for ( const probe of probes ) {
 
 		const latents = sampleLatents( model.latentGrids, probe.uv ).output;
-		const positionalEncoding = computeUVEncoding( model.inputEncoding, probe.uv, model.peOctaves );
-		const input = forwardDecoderInput( latents, model.rotationWeights, probe.wi, probe.wo, positionalEncoding ).output;
+		const input = forwardDecoderInput( latents, model.rotationWeights, probe.wi, probe.wo ).output;
 		const activations = forwardMLP( model.decoder, input ).activations;
 		const hidden = activations[ activations.length - 2 ];
 
@@ -211,16 +207,7 @@ function sampleLatents( grids, uv, quantization = null ) {
 
 }
 
-/**
- * `positionalEncoding` - the NTC-style tiled positional encoding for this
- * sample's uv (see NeuralGridModel.triangleWaveEncode), computed by the
- * caller (who alone knows the uv this decoder input is being built for) and
- * appended last, after the frame-projected direction dots - mirrors the a0
- * layout NeuralAppearanceGPUComputeTSL.js's training kernel builds: [latents]
- * [12 frame dots][peOctaves*2 PE values]. Defaults to `[]` (0 octaves), which
- * reproduces this function's pre-PE output byte-for-byte.
- */
-function forwardDecoderInput( latents, rotationWeights, wi, wo, positionalEncoding = [] ) {
+function forwardDecoderInput( latents, rotationWeights, wi, wo ) {
 
 	const output = latents.slice();
 	const frames = [];
@@ -249,19 +236,17 @@ function forwardDecoderInput( latents, rotationWeights, wi, wo, positionalEncodi
 
 	}
 
-	output.push( ...positionalEncoding );
-
 	return { output, latents, wi, wo, frames };
 
 }
 
-function buildDecoderInput( latents, rotationWeights, wi, wo, positionalEncoding = [] ) {
+function buildDecoderInput( latents, rotationWeights, wi, wo ) {
 
-	return forwardDecoderInput( latents, rotationWeights, wi, wo, positionalEncoding ).output;
+	return forwardDecoderInput( latents, rotationWeights, wi, wo ).output;
 
 }
 
-function forwardIBLInput( latents, rotationWeights, wo, positionalEncoding = [] ) {
+function forwardIBLInput( latents, rotationWeights, wo ) {
 
 	const decoderInput = forwardDecoderInput( latents, rotationWeights, [ 0, 0, 1 ], wo );
 	const output = latents.slice();
@@ -272,21 +257,18 @@ function forwardIBLInput( latents, rotationWeights, wo, positionalEncoding = [] 
 
 	}
 
-	output.push( ...positionalEncoding );
-
 	return { output, latents, wo, frames: decoderInput.frames };
 
 }
 
-function buildIBLInput( latents, rotationWeights, wo, positionalEncoding = [] ) {
+function buildIBLInput( latents, rotationWeights, wo ) {
 
-	const input = forwardIBLInput( latents, rotationWeights, wo, positionalEncoding ).output;
-	// Expected width is *this call's* latents.length + 6 + positionalEncoding.
-	// length (see computeIblInputSize in NeuralAppearanceFormat.js), not the
-	// fixed IBL_INPUT_SIZE constant - that constant is only correct when
-	// latents.length === LATENT_CHANNELS and positionalEncoding is empty
-	// (i.e. levels === LEVELS, peOctaves === 0).
-	const expectedSize = latents.length + 6 + positionalEncoding.length;
+	const input = forwardIBLInput( latents, rotationWeights, wo ).output;
+	// Expected width is *this call's* latents.length + 6 (see
+	// computeIblInputSize in NeuralAppearanceFormat.js), not the fixed
+	// IBL_INPUT_SIZE constant - that constant is only correct when
+	// latents.length === LATENT_CHANNELS (i.e. levels === LEVELS).
+	const expectedSize = latents.length + 6;
 
 	if ( input.length !== expectedSize ) {
 
@@ -298,18 +280,17 @@ function buildIBLInput( latents, rotationWeights, wo, positionalEncoding = [] ) 
 
 }
 
-function buildIndirectProbeInput( latents, wo, probe, positionalEncoding = [] ) {
+function buildIndirectProbeInput( latents, wo, probe ) {
 
 	const input = latents.slice();
 	const incoming = probe || [ 1, 1, 1 ];
 
 	input.push( wo[ 0 ], wo[ 1 ], wo[ 2 ] );
 	input.push( incoming[ 0 ], incoming[ 1 ], incoming[ 2 ] );
-	input.push( ...positionalEncoding );
 
 	// See buildIBLInput's comment above - derived from this call's actual
-	// latents.length + positionalEncoding.length, not a fixed constant.
-	const expectedSize = latents.length + 6 + positionalEncoding.length;
+	// latents.length, not a fixed constant.
+	const expectedSize = latents.length + 6;
 
 	if ( input.length !== expectedSize ) {
 

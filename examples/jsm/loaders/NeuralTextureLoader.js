@@ -10,9 +10,8 @@ import { decodeUint8Base64, decodeMLPLayersBase64 } from '../neural/NeuralBinary
  * `parse()`/`parseManifestObject()` reconstructs the exact CPU model object
  * shape `NeuralTextureNodeMaterial.js`'s `buildLevelTextures`/
  * `evaluateNeuralTextureRaw` already expect from a live `NeuralTextureTrainer`
- * run (`{ channels, levels, grids, decoder, outputChannels, peOctaves,
- * inputEncoding }`), so that module needs no changes to consume a loaded
- * model.
+ * run (`{ channels, levels, grids, decoder, outputChannels }`), so that
+ * module needs no changes to consume a loaded model.
  *
  * @augments Loader
  * @three_import import { NeuralTextureLoader } from 'three/addons/loaders/NeuralTextureLoader.js';
@@ -105,10 +104,6 @@ class NeuralTextureLoader extends Loader {
 		const grids = manifest.latents.levels.map( ( level, index ) => decodeLevel( level, `latents.levels[${ index }]` ) );
 		const decoderLayers = decodeMLPLayersBase64( manifest.mlp );
 
-		const peOctaves = Number.isInteger( manifest.peOctaves ) ? manifest.peOctaves : 0;
-		const inputEncoding = manifest.inputEncoding !== undefined ?
-			manifest.inputEncoding : ( peOctaves > 0 ? 'positional' : 'none' );
-
 		return {
 			channels: manifest.latents.channelsPerLevel,
 			levels: grids.length,
@@ -116,8 +111,6 @@ class NeuralTextureLoader extends Loader {
 			decoder: { layers: decoderLayers },
 			outputChannels: manifest.outputChannels !== undefined ?
 				manifest.outputChannels : decoderLayers[ decoderLayers.length - 1 ].outputSize,
-			peOctaves,
-			inputEncoding,
 			wrap: manifest.latents.wrap || 'repeat',
 			name: manifest.name || ''
 		};

@@ -1,5 +1,5 @@
 import { StorageBufferAttribute } from 'three/webgpu';
-import { Fn, If, Loop, abs, atomicAdd, atomicLoad, atomicStore, float, floor, instanceIndex, int, max, min, pow, select, sqrt, storage } from 'three/tsl';
+import { Fn, If, Loop, atomicAdd, atomicLoad, atomicStore, float, instanceIndex, int, max, min, pow, select, sqrt, storage } from 'three/tsl';
 import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from './NeuralGPUTrainingConstants.js';
 
 // Small WebGPU compute-kernel TSL builders shared by every neural trainer
@@ -13,43 +13,6 @@ import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from './NeuralGPUTrainingConst
 function wrapIndexTSL( val, size ) {
 
 	return val.mod( size ).add( size ).mod( size );
-
-}
-
-/**
- * GPU-side mirror of `triangleWave` in `NeuralGridModel.js` - must stay in
- * exact lockstep with it, since the CPU function is only used for the
- * (untrained, deterministic) reference model, while this TSL version is
- * what actually trains/infers on-device.
- */
-function triangleWaveTSL( x ) {
-
-	const wrapped = x.sub( floor( x.add( 0.5 ) ) );
-
-	return abs( wrapped ).mul( 4 ).sub( 1 );
-
-}
-
-/**
- * GPU-side mirror of `triangleWaveEncode` in `NeuralGridModel.js` - see its
- * doc comment for why this encoding is local/tiled rather than global, and
- * why it's concatenated alongside (never in place of) the grid features.
- * Returns a flat array of `octaves * 2` TSL scalar nodes: `octaves`
- * horizontal values followed by `octaves` vertical values.
- */
-function triangleWaveEncodeTSL( uNode, vNode, octaves ) {
-
-	const values = new Array( octaves * 2 );
-
-	for ( let o = 0; o < octaves; o ++ ) {
-
-		const frequency = Math.pow( 2, o );
-		values[ o ] = triangleWaveTSL( uNode.mul( frequency ) );
-		values[ octaves + o ] = triangleWaveTSL( vNode.mul( frequency ) );
-
-	}
-
-	return values;
 
 }
 
@@ -310,8 +273,6 @@ function createAdamComputeNode( {
 
 export {
 	wrapIndexTSL,
-	triangleWaveTSL,
-	triangleWaveEncodeTSL,
 	createAdamParameterBuffers,
 	disposeAdamParameterBuffers,
 	forwardDenseLayerTSL,

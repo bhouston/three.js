@@ -155,7 +155,7 @@
 			import { NeuralTextureNodeMaterial } from 'three/addons/neural-texture/NeuralTextureNodeMaterial.js';
 			import { NeuralTextureSource, extractBaseColorNode } from 'three/addons/neural-texture/NeuralTextureSource.js';
 			import { computeTextureModelLayout } from 'three/addons/neural-texture/NeuralTextureGPUModel.js';
-			import { computeGridLevels, computeTileOctaves, GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
+			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/neural/NeuralGridModel.js';
 			import { NeuralLossGraph } from 'three/addons/neural/NeuralLossGraph.js';
 			import { computeMLPFlops, computeModelFootprint, formatModelSizeSummary } from 'three/addons/neural/NeuralModelSize.js';
 			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/neural/NeuralMaterialXSamples.js';
@@ -175,7 +175,6 @@
 				baseResolution: 16,
 				growthFactor: 2,
 				hiddenSize: 8,
-				inputEncoding: 'positional',
 				batchSize: 8192,
 				iterations: 10000,
 				learningRate: 0.01,
@@ -267,7 +266,6 @@
 				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'grid base res' ).onChange( updateNetworkSize );
 				networkFolder.add( params, 'growthFactor', GRID_GROWTH_FACTOR_OPTIONS ).name( 'grid growth factor' ).onChange( updateNetworkSize );
 				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'inputEncoding', [ 'none', 'raw', 'positional' ] ).name( 'uv input encoding' ).onChange( updateNetworkSize );
 
 				const trainingFolder = gui.addFolder( 'training' );
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
@@ -304,20 +302,6 @@
 
 			}
 
-			// The finest grid level is very likely coarser than the actual bake
-			// resolution content is fit at - NTC-style tiled positional encoding
-			// (see NeuralGridModel.js) bridges that gap, sized automatically from
-			// how many octaves of upsampling separate the two (never fewer than
-			// the paper's own default of 3 octaves).
-			function currentPeOctaves() {
-
-				const resolutions = computeGridLevels( Number( params.baseResolution ), Number( params.growthFactor ), Number( params.levels ) );
-				const finestGridResolution = resolutions[ resolutions.length - 1 ];
-
-				return Math.max( 3, computeTileOctaves( finestGridResolution, Number( params.bakeResolution ) ) );
-
-			}
-
 			function updateNetworkSize() {
 
 				const hidden = Number( params.hiddenSize );
@@ -327,9 +311,7 @@
 					baseResolution: Number( params.baseResolution ),
 					growthFactor: Number( params.growthFactor ),
 					hiddenSizes: [ hidden, hidden ],
-					outputChannels: 3,
-					peOctaves: currentPeOctaves(),
-					inputEncoding: params.inputEncoding
+					outputChannels: 3
 				} );
 
 				const flops = computeMLPFlops( { inputSize: layout.inputSize, hiddenSize: hidden, hiddenLayers: layout.hiddenSizes.length, outputSize: layout.outputChannels } );
@@ -514,8 +496,6 @@
 						growthFactor: Number( params.growthFactor ),
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
 						outputChannels: 3,
-						peOctaves: currentPeOctaves(),
-						inputEncoding: params.inputEncoding,
 						batchSize: Number( params.batchSize ),
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),

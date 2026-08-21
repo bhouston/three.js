@@ -67,10 +67,8 @@ function simulateLatentIndices( layout ) {
 }
 
 /**
- * Replays the a0 (concatenated grid taps + tiled positional encoding)
- * addressing from the same forward pass: `a0Offset + g * channels + c` for
- * each level/channel, then `a0Offset + peInputOffset + i` for each of the
- * `peOctaves * 2` positional-encoding values.
+ * Replays the a0 (concatenated grid taps) addressing from the same forward
+ * pass: `a0Offset + g * channels + c` for each level/channel.
  */
 function simulateA0Indices( layout ) {
 
@@ -79,12 +77,6 @@ function simulateA0Indices( layout ) {
 	for ( let g = 0; g < layout.levels; g ++ ) {
 
 		for ( let c = 0; c < layout.channels; c ++ ) indices.add( layout.a0Offset + g * layout.channels + c );
-
-	}
-
-	for ( let i = 0; i < layout.peOctaves * 2; i ++ ) {
-
-		indices.add( layout.a0Offset + layout.peInputOffset + i );
 
 	}
 
@@ -185,40 +177,36 @@ function expectExactPartition( regions, total ) {
 
 const configs = {
 	'default options': {},
-	'positional encoding disabled': { peOctaves: 0 },
-	'extra positional encoding octaves': { peOctaves: 5 },
 	'single hidden layer': { hiddenSizes: [ 16 ] },
 	'deep MLP, 3 hidden layers': { hiddenSizes: [ 24, 24, 24 ] },
-	'material-style 9-channel output, extra PE octaves': { outputChannels: 9, peOctaves: 5, hiddenSizes: [ 48, 48 ] },
+	'material-style 9-channel output': { outputChannels: 9, hiddenSizes: [ 48, 48 ] },
 	'single grid level': { levels: 1, baseResolution: 8, growthFactor: 2 },
 	'channels = 2': { channels: 2 },
-	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, growthFactor: 2, channels: 1, outputChannels: 1, peOctaves: 0 }
+	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, growthFactor: 2, channels: 1, outputChannels: 1 }
 };
 
 describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout)', () => {
 
 	describe( 'computeTextureModelLayout - hand-computed layouts (worked out on paper, not re-derived from the source)', () => {
 
-		it( 'two-level grid, 1 PE octave, one hidden layer, 2-channel output', () => {
+		it( 'two-level grid, one hidden layer, 2-channel output', () => {
 
 			// channels=2, levels=2, baseResolution=2, growthFactor=2 ->
-			// resolutions [2, 4]. hiddenSizes=[3], outputChannels=2,
-			// peOctaves=1 (2 PE values - same total as the old raw-uv skip
-			// connection, so the rest of this hand-traced layout is unchanged).
+			// resolutions [2, 4]. hiddenSizes=[3], outputChannels=2.
 			// Hand-traced:
 			//   level0: 2x2 texels * 2 channels = 8 floats @ offset 0
 			//   level1: 4x4 texels * 2 channels = 32 floats @ offset 8
 			//   totalLatents = 40
-			//   peInputOffset = levels*channels = 4; inputSize = 4 + 2*1 (PE) = 6
-			//   layer sizes [6, 3, 2]:
-			//     layer0: 6*3=18 weights @0, 3 biases @18 -> next offset 21
-			//     layer1 (output): 3*2=6 weights @21, 2 biases @27 -> totalWeights 29
-			//   activation buffer: a0 [0,6) -> z0 [6,9) -> a0-layer [9,12) (hidden,
-			//   not output) -> z1(output) [12,14) -> delta0 [14,17) -> delta1 [17,19)
-			//   -> gradA0 [19,25) -> activationStride 25
+			//   inputSize = levels*channels = 4
+			//   layer sizes [4, 3, 2]:
+			//     layer0: 4*3=12 weights @0, 3 biases @12 -> next offset 15
+			//     layer1 (output): 3*2=6 weights @15, 2 biases @21 -> totalWeights 23
+			//   activation buffer: a0 [0,4) -> z0 [4,7) -> a0-layer [7,10) (hidden,
+			//   not output) -> z1(output) [10,12) -> delta0 [12,15) -> delta1 [15,17)
+			//   -> gradA0 [17,21) -> activationStride 21
 			const layout = computeTextureModelLayout( {
 				channels: 2, levels: 2, baseResolution: 2, growthFactor: 2,
-				hiddenSizes: [ 3 ], outputChannels: 2, peOctaves: 1
+				hiddenSizes: [ 3 ], outputChannels: 2
 			} );
 
 			expect( layout.resolutions ).toEqual( [ 2, 4 ] );
@@ -226,23 +214,22 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			expect( layout.gridLevels[ 1 ] ).toMatchObject( { width: 4, height: 4, offset: 8, texelCount: 16, floatCount: 32 } );
 			expect( layout.totalLatents ).toBe( 40 );
 
-			expect( layout.peInputOffset ).toBe( 4 );
-			expect( layout.inputSize ).toBe( 6 );
+			expect( layout.inputSize ).toBe( 4 );
 
 			expect( layout.mlpLayers[ 0 ] ).toMatchObject( {
-				inputSize: 6, outputSize: 3, weightsOffset: 0, weightsCount: 18, biasesOffset: 18, biasesCount: 3, isOutput: false
+				inputSize: 4, outputSize: 3, weightsOffset: 0, weightsCount: 12, biasesOffset: 12, biasesCount: 3, isOutput: false
 			} );
 			expect( layout.mlpLayers[ 1 ] ).toMatchObject( {
-				inputSize: 3, outputSize: 2, weightsOffset: 21, weightsCount: 6, biasesOffset: 27, biasesCount: 2, isOutput: true
+				inputSize: 3, outputSize: 2, weightsOffset: 15, weightsCount: 6, biasesOffset: 21, biasesCount: 2, isOutput: true
 			} );
-			expect( layout.totalWeights ).toBe( 29 );
+			expect( layout.totalWeights ).toBe( 23 );
 
 			expect( layout.a0Offset ).toBe( 0 );
-			expect( layout.layerActs[ 0 ] ).toEqual( { zOffset: 6, aOffset: 9 } );
-			expect( layout.layerActs[ 1 ] ).toEqual( { zOffset: 12, aOffset: - 1 } );
-			expect( layout.deltaOffsets ).toEqual( [ 14, 17 ] );
-			expect( layout.gradA0Offset ).toBe( 19 );
-			expect( layout.activationStride ).toBe( 25 );
+			expect( layout.layerActs[ 0 ] ).toEqual( { zOffset: 4, aOffset: 7 } );
+			expect( layout.layerActs[ 1 ] ).toEqual( { zOffset: 10, aOffset: - 1 } );
+			expect( layout.deltaOffsets ).toEqual( [ 12, 15 ] );
+			expect( layout.gradA0Offset ).toBe( 17 );
+			expect( layout.activationStride ).toBe( 21 );
 
 		} );
 
@@ -250,23 +237,22 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 
 			// channels=1, levels=1, baseResolution=1, growthFactor=2 (irrelevant
 			// with levels=1 - resolves to just [baseResolution]),
-			// hiddenSizes=[], outputChannels=1, peOctaves=0. Hand-traced:
+			// hiddenSizes=[], outputChannels=1. Hand-traced:
 			//   single 1x1 grid level -> 1 float @ offset 0 -> totalLatents 1
-			//   peInputOffset = 1*1 = 1; inputSize = 1 (no PE)
+			//   inputSize = 1
 			//   layer sizes [1, 1]: one layer, immediately the output:
 			//     1*1=1 weight @0, 1 bias @1 -> totalWeights 2
 			//   activation buffer: a0 [0,1) -> z0(output, no a-slot) [1,2) ->
 			//   delta0 [2,3) -> gradA0 [3,4) -> activationStride 4
 			const layout = computeTextureModelLayout( {
 				channels: 1, levels: 1, baseResolution: 1, growthFactor: 2,
-				hiddenSizes: [], outputChannels: 1, peOctaves: 0
+				hiddenSizes: [], outputChannels: 1
 			} );
 
 			expect( layout.resolutions ).toEqual( [ 1 ] );
 			expect( layout.gridLevels[ 0 ] ).toMatchObject( { width: 1, height: 1, offset: 0, texelCount: 1, floatCount: 1 } );
 			expect( layout.totalLatents ).toBe( 1 );
 
-			expect( layout.peInputOffset ).toBe( 1 );
 			expect( layout.inputSize ).toBe( 1 );
 
 			expect( layout.mlpLayers ).toHaveLength( 1 );
@@ -307,7 +293,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 
 				} );
 
-				it( 'the a0 addressing formula (grid taps + optional UV) exactly tiles [0, inputSize)', () => {
+				it( 'the a0 addressing formula (grid taps) exactly tiles [0, inputSize)', () => {
 
 					const a0Indices = simulateA0Indices( layout );
 					expect( a0Indices.size ).toBe( layout.inputSize );
@@ -353,7 +339,7 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUModel (storage buffer layout
 			// buffer allocation itself is plain JS.
 			expect( getRenderer() ).toBeTruthy();
 
-			const model = new NeuralTextureGPUModel( { batchSize: 64, peOctaves: 2, outputChannels: 5 } );
+			const model = new NeuralTextureGPUModel( { batchSize: 64, outputChannels: 5 } );
 			const { totalWeights, totalLatents, activationStride } = model.layout;
 
 			// These four pairs are independent JS expressions (`new

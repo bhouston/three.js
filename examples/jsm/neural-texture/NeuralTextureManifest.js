@@ -96,8 +96,6 @@ function createNeuralTextureManifest( cpuModel, options = {} ) {
 
 	} );
 
-	const inputEncoding = cpuModel.inputEncoding !== undefined ? cpuModel.inputEncoding : ( cpuModel.peOctaves > 0 ? 'positional' : 'none' );
-
 	return {
 		format: FORMAT,
 		version: VERSION,
@@ -108,8 +106,6 @@ function createNeuralTextureManifest( cpuModel, options = {} ) {
 			wrap: options.wrap || 'repeat',
 			levels
 		},
-		peOctaves: cpuModel.peOctaves || 0,
-		inputEncoding,
 		outputChannels: cpuModel.outputChannels,
 		mlp: encodeMLPLayersBase64( cpuModel.decoder.layers )
 	};

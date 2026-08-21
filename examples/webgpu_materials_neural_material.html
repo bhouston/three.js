@@ -180,7 +180,6 @@
 				baseResolution: 16,
 				growthFactor: 2,
 				hiddenSize: 8,
-				inputEncoding: 'positional',
 				batchSize: 8192,
 				iterations: 10000,
 				learningRate: 0.01,
@@ -292,7 +291,6 @@
 				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'grid base res' ).onChange( updateNetworkSize );
 				networkFolder.add( params, 'growthFactor', GRID_GROWTH_FACTOR_OPTIONS ).name( 'grid growth factor' ).onChange( updateNetworkSize );
 				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'inputEncoding', [ 'none', 'raw', 'positional' ] ).name( 'uv input encoding' ).onChange( updateNetworkSize );
 
 				const trainingFolder = gui.addFolder( 'training' );
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
@@ -687,7 +685,6 @@
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
 						outputChannels: channelClassification.totalChannels,
 						channelActivations: buildChannelActivations( channelClassification.activeChannels ),
-						inputEncoding: params.inputEncoding,
 						batchSize: Number( params.batchSize ),
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),

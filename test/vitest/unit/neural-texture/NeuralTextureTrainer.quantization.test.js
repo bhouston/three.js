@@ -51,9 +51,7 @@ const mocks = vi.hoisted( () => {
 } );
 
 vi.mock( '../../../../examples/jsm/neural-texture/NeuralTextureModel.js', () => ( {
-	createNeuralTextureModel: mocks.createNeuralTextureModel,
-	DEFAULT_PE_OCTAVES: 3,
-	DEFAULT_INPUT_ENCODING: 'positional'
+	createNeuralTextureModel: mocks.createNeuralTextureModel
 } ) );
 
 vi.mock( '../../../../examples/jsm/neural-texture/NeuralTextureGPUModel.js', () => ( {

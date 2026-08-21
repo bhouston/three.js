@@ -43,15 +43,13 @@ import { computeLatentRanges } from '../neural/NeuralQuantization.js';
 function createPlainAppearanceJson( model, options ) {
 
 	// Every inputSize below is derived from *this model's own* `model.levels`
-	// and `model.peOctaves` via the computeXXX helpers, not
-	// NeuralAppearanceFormat.js's fixed LATENT_CHANNELS/etc. constants - see
-	// that file's doc comment on these helpers for why.
-	const peOctaves = model.peOctaves || 0;
-	const inputEncoding = model.inputEncoding || 'none';
+	// via the computeXXX helpers, not NeuralAppearanceFormat.js's fixed
+	// LATENT_CHANNELS/etc. constants - see that file's doc comment on these
+	// helpers for why.
 	const latentChannels = computeLatentChannels( model.levels );
-	const decoderInputSize = computeDecoderInputSize( model.levels, peOctaves, inputEncoding );
-	const iblInputSize = computeIblInputSize( model.levels, peOctaves, inputEncoding );
-	const indirectInputSize = computeIndirectInputSize( model.levels, peOctaves, inputEncoding );
+	const decoderInputSize = computeDecoderInputSize( model.levels );
+	const iblInputSize = computeIblInputSize( model.levels );
+	const indirectInputSize = computeIndirectInputSize( model.levels );
 
 	const levels = model.latentGrids.map( ( grid ) => ( {
 		width: grid.width,
@@ -131,18 +129,6 @@ function createPlainAppearanceJson( model, options ) {
 			channelsPerLevel: CHANNELS_PER_LEVEL,
 			wrap: 'repeat'
 		},
-		// Persisted at the manifest root (not per-output) since it's a single
-		// model-wide constant, mirroring `latents.levels.length` - every output
-		// head's own `inputSize` above already bakes in `peOctaves * 2`, but the
-		// runtime/render-time consumers (NeuralAppearanceRuntime.js,
-		// NeuralAppearanceNodeMaterial.js) need the raw count too, to know how
-		// many tiled-positional-encoding values to compute from a sample's uv
-		// and append - see NeuralGridModel.triangleWaveEncode.
-		peOctaves,
-		// Which UV-derived input (if any) `peOctaves` above was combined with -
-		// see NeuralAppearanceUVEncoding.js / NeuralAppearanceFormat.js's
-		// `resolveNeuralAppearanceModelOptions`.
-		inputEncoding,
 		outputs
 	};
 
@@ -261,8 +247,6 @@ function compactAppearanceJson( plain, model, options ) {
 			wrap: plain.latents.wrap,
 			levels
 		},
-		peOctaves: plain.peOctaves,
-		inputEncoding: plain.inputEncoding,
 		outputs
 	};
 

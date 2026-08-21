@@ -45,12 +45,7 @@ const mocks = vi.hoisted( () => {
 } );
 
 vi.mock( '../../../../examples/jsm/neural-texture/NeuralTextureModel.js', () => ( {
-	createNeuralTextureModel: mocks.createNeuralTextureModel,
-	// Real (unmocked) constants, not spies - NeuralTextureTrainer.js's
-	// DEFAULT_OPTIONS reads these directly, so the mock module must still
-	// export them as-is or those imports resolve to undefined.
-	DEFAULT_PE_OCTAVES: 3,
-	DEFAULT_INPUT_ENCODING: 'positional'
+	createNeuralTextureModel: mocks.createNeuralTextureModel
 } ) );
 
 vi.mock( '../../../../examples/jsm/neural-texture/NeuralTextureGPUModel.js', () => ( {

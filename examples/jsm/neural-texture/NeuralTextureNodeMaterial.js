@@ -8,7 +8,6 @@ import {
 	evaluateLinearLayerMat4
 } from '../neural/NeuralMLPTSL.js';
 import { createHalfFloatLatentTexture } from '../neural/NeuralHalfFloatTexture.js';
-import { triangleWaveEncodeTSL } from '../neural/NeuralGPUComputeTSL.js';
 
 /**
  * Packs each trained latent grid level into an RGBA half-float DataTexture
@@ -44,24 +43,6 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 		if ( channels > 1 ) features.push( sample.y );
 		if ( channels > 2 ) features.push( sample.z );
 		if ( channels > 3 ) features.push( sample.w );
-
-	}
-
-	// Mirror the training kernel's step 1b: append the same UV-derived input
-	// after the grid taps that the model was trained with - either NTC-style
-	// tiled positional encoding (see NeuralGridModel.triangleWaveEncode /
-	// triangleWaveEncodeTSL) or the raw (u, v) coordinate. Falls back to the
-	// pre-`inputEncoding` `peOctaves > 0` check for backward compatibility
-	// with any model object not built via `createNeuralTextureModel`.
-	const inputEncoding = cpuModel.inputEncoding !== undefined ? cpuModel.inputEncoding : ( cpuModel.peOctaves > 0 ? 'positional' : 'none' );
-
-	if ( inputEncoding === 'positional' ) {
-
-		features.push( ...triangleWaveEncodeTSL( uvNode.x, uvNode.y, cpuModel.peOctaves ) );
-
-	} else if ( inputEncoding === 'raw' ) {
-
-		features.push( uvNode.x, uvNode.y );
 
 	}
 

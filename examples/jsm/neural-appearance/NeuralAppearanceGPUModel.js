@@ -12,7 +12,7 @@ import {
 	computeIndirectInputSize,
 	resolveNeuralAppearanceModelOptions
 } from './NeuralAppearanceFormat.js';
-import { computeGridLevels, getUVEncodingInputSize } from '../neural/NeuralGridModel.js';
+import { computeGridLevels } from '../neural/NeuralGridModel.js';
 import { FIXED_POINT_SCALE } from '../neural/NeuralGPUTrainingConstants.js';
 import { createAdamParameterBuffers, disposeAdamParameterBuffers } from '../neural/NeuralGPUComputeTSL.js';
 
@@ -54,7 +54,7 @@ function computeModelLayout( options = {} ) {
 	// comment: this is the single source of truth for these defaults,
 	// shared with createModel (CPU authoring) so the two can't silently
 	// disagree.
-	const { levels: requestedLevels, hiddenSize, iblHiddenSize, baseResolution, growthFactor, peOctaves, inputEncoding, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
+	const { levels: requestedLevels, hiddenSize, iblHiddenSize, baseResolution, growthFactor, supportsEmission, supportsOpacity } = resolveNeuralAppearanceModelOptions( options );
 
 	// `computeGridLevels` may return fewer levels than requested when a
 	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
@@ -65,18 +65,9 @@ function computeModelLayout( options = {} ) {
 	const resolutions = computeGridLevels( baseResolution, growthFactor, requestedLevels );
 	const levels = resolutions.length;
 	const latentChannels = computeLatentChannels( levels );
-	const decoderInputSize = computeDecoderInputSize( levels, peOctaves, inputEncoding );
-	const iblInputSize = computeIblInputSize( levels, peOctaves, inputEncoding );
-	const indirectInputSize = computeIndirectInputSize( levels, peOctaves, inputEncoding );
-	// Offset of the UV-derived input block (see `getUVEncodingInputSize`)
-	// within each of the 3 input vectors above - always immediately after
-	// that vector's fixed portion (12 frame dots for the decoder, 6 direction
-	// dots for IBL/indirect - see NeuralAppearanceGPUComputeTSL.js's forward
-	// pass for where these get written/copied).
-	const uvEncodingInputSize = getUVEncodingInputSize( inputEncoding, peOctaves );
-	const decoderPeOffset = decoderInputSize - uvEncodingInputSize;
-	const iblPeOffset = iblInputSize - uvEncodingInputSize;
-	const indirectPeOffset = indirectInputSize - uvEncodingInputSize;
+	const decoderInputSize = computeDecoderInputSize( levels );
+	const iblInputSize = computeIblInputSize( levels );
+	const indirectInputSize = computeIndirectInputSize( levels );
 
 	// Weights Layout:
 	// 0..(latentChannels*12-1): rotation weights (latentChannels channels * 12 outputs)
@@ -293,14 +284,9 @@ function computeModelLayout( options = {} ) {
 		opacityBiasesCount,
 		levels,
 		latentChannels,
-		peOctaves,
-		inputEncoding,
 		decoderInputSize,
 		iblInputSize,
 		indirectInputSize,
-		decoderPeOffset,
-		iblPeOffset,
-		indirectPeOffset,
 		gridLevels,
 		totalLatents,
 		activationStride,

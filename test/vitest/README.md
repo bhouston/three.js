@@ -62,7 +62,7 @@ Also covered, beyond the `neural/` primitives table above:
 
 | File | Project | Notes |
 |---|---|---|
-| `neural-texture/NeuralTextureModel.js` | unit | CPU decoder construction, `peOctaves` tiled-positional-encoding input-size effect, deterministic grid/decoder content for a seeded `random` |
+| `neural-texture/NeuralTextureModel.js` | unit | CPU decoder construction, decoder input-size arithmetic, deterministic grid/decoder content for a seeded `random` |
 | `neural-texture/NeuralTextureSource.js` | browser | `bakeColorNodeToTexture` sign preservation and raw-UV round-trip - this is where the real "brick preset missing normal-map slopes" bug lived, see the file's own comment |
 | `neural-texture/NeuralTextureTrainer.js` | browser | end-to-end sign-convergence (a tanh channel alone in its own packed render target, matching the real neural-material `normal` channel's layout) + convergence-rate regression (capacity/learning-rate/divergence ordering checks) |
 | `neural-appearance/NeuralAppearanceFormat.js` | unit | format constants, incl. every `*_SIZE` constant's exact arithmetic relationship to `LEVELS`/`CHANNELS_PER_LEVEL` |

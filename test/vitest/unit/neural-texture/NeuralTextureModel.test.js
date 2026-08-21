@@ -63,29 +63,12 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		} );
 
-		it( 'sizes the decoder input as levels * channels when peOctaves is 0', () => {
+		it( 'sizes the decoder input as levels * channels', () => {
 
-			const options = { channels: 4, levels: 3, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 5 ], outputChannels: 3, peOctaves: 0 };
+			const options = { channels: 4, levels: 3, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 5 ], outputChannels: 3 };
 			const model = createNeuralTextureModel( options, () => 0.5 );
 
 			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels );
-
-		} );
-
-		it( 'adds 2 * peOctaves to the decoder input size for the tiled positional encoding', () => {
-
-			const options = { channels: 4, levels: 3, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 5 ], outputChannels: 3, peOctaves: 5 };
-			const model = createNeuralTextureModel( options, () => 0.5 );
-
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels + 10 );
-
-		} );
-
-		it( 'defaults peOctaves to 3 (matching NTC) when omitted', () => {
-
-			const model = createNeuralTextureModel( {}, () => 0.5 );
-
-			expect( model.peOctaves ).toBe( 3 );
 
 		} );
 
@@ -109,16 +92,15 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 			expect( model.levels ).toBe( 4 );
 			expect( model.hiddenSizes ).toEqual( [ 32, 32 ] );
 			expect( model.outputChannels ).toBe( 3 );
-			expect( model.peOctaves ).toBe( 3 );
 
 			// baseResolution = 16, growthFactor = 2, levels = 4 -> 16, 32, 64, 128
 			expect( model.resolutions[ 0 ] ).toBe( 16 );
 			expect( model.resolutions[ model.resolutions.length - 1 ] ).toBe( 128 );
 			expect( model.resolutions.length ).toBe( 4 );
 
-			// decoder: input = levels * channels + 2 * peOctaves = 16 + 6 = 22, 2 hidden layers + 1 output layer
+			// decoder: input = levels * channels = 16, 2 hidden layers + 1 output layer
 			expect( model.decoder.layers.length ).toBe( 3 );
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 22 );
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 16 );
 			expect( model.decoder.layers[ model.decoder.layers.length - 1 ].outputSize ).toBe( 3 );
 
 		} );

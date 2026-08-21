@@ -1,4 +1,6 @@
-import { transformNormalToView, vec3, vec4 } from 'three/tsl';
+import * as THREE from 'three';
+import { float, transformNormalToView, vec2, vec3, vec4 } from 'three/tsl';
+import { OUTPUT_TYPES, channelEffectiveType, constantToNode, reconstructFinalNormal } from './NeuralOutputTypes.js';
 
 /**
  * Full vocabulary of standard PBR channels this trainer knows how to fit,
@@ -36,8 +38,7 @@ import { transformNormalToView, vec3, vec4 } from 'three/tsl';
  * `clampRange` and `defaultValue` (alongside `activation`/`nodeKeys`/`size`
  * above) are what let `NeuralMaterialNodeMaterial`'s constructor and
  * `NeuralMaterialSource`'s node/constant resolvers be driven by a loop
- * instead of one hand-written branch per channel - see `SIMPLE_SCALAR_KEYS`
- * below for which channels are regular enough to do that.
+ * instead of one hand-written branch per channel.
  *
  * `clampRange` is the range this channel's *trained* value is clamped to
  * before use (a trained value has no hard guarantee of landing in its
@@ -49,20 +50,214 @@ import { transformNormalToView, vec3, vec4 } from 'three/tsl';
  * `defaultValue` is what a *constant* (untrained) channel falls back to when
  * the source material doesn't set even the corresponding plain property -
  * matching three.js's own `MeshPhysicalMaterial` defaults for that property.
+ *
+ * A constant channel's resolved value is applied via `applyConstant` as a
+ * literal TSL constant node (`float(...)`/`vec2(...)`/`vec3(...)`) assigned
+ * onto the reconstructed material's `*Node` property - not the plain
+ * (non-`Node`) property. Setting the plain property (e.g. `material.roughness
+ * = 0.4`) would route through three.js's `MaterialReferenceNode` machinery
+ * (see `materialRoughness` in src/nodes/accessors/MaterialNode.js), which
+ * reads `material.roughness` back out as a live GPU uniform every frame - a
+ * value the shader compiler can never constant-fold, dead-code-eliminate
+ * around, or otherwise specialize on, because from its perspective it's
+ * indistinguishable from a value that might change later. Assigning a TSL
+ * constant node instead bakes the literal directly into the generated
+ * shader source, exactly like an *active* (trained) channel's slice does -
+ * so a constant channel and a trained one differ only in whether their value
+ * came from the network or from the source material, not in how "constant"
+ * either one is to the compiler.
+ *
+
+ * This is an *open, composable* vocabulary, not a hardcoded switch: every
+ * channel below carries its own `resolveNode`/`resolveConstant` (how to pull
+ * this channel's raw value off a source `MeshPhysicalNodeMaterial`, as a TSL
+ * node or a plain JS value respectively - see NeuralMaterialSource.js) and
+ * `applyActive`/`applyConstant` (how to apply a trained slice, or a resolved
+ * constant, onto a reconstructed `NeuralMaterialNodeMaterial` - see
+ * NeuralMaterialNodeMaterial.js). `NeuralMaterialSource.js` and
+ * `NeuralMaterialNodeMaterial.js` are both just generic loops driven by
+ * these four functions per channel - there's no per-key branching left in
+ * either file, so a caller can compose an entirely different channel array
+ * (new named outputs, with their own resolution/application logic) and pass
+ * it through `classifyMaterialChannels`/`resolveMaterialChannelNodes`/
+ * `NeuralMaterialNodeMaterial`'s constructor via their `channels` option,
+ * without editing this file at all. `CHANNELS` below is simply the built-in,
+ * default vocabulary those entry points fall back to.
+ *
+ * `type` is an optional label (see NeuralOutputTypes.js's `OUTPUT_TYPES`/
+ * `channelEffectiveType`) identifying a channel's reconstruction/preview
+ * shape beyond its raw trained `size` - e.g. `'normal'` for a channel that
+ * trains a 2-component tangent-space offset but reconstructs/previews as a
+ * full 3-component vector. Channels that don't need this can omit it; it
+ * defaults to a generic size-based label ('float'/'float2'/'float3').
  */
+
+function resolveScalarNode( material, nodeKey, propertyKey, fallback ) {
+
+	if ( material[ nodeKey ] ) return float( material[ nodeKey ] );
+	if ( material[ propertyKey ] !== undefined ) return float( material[ propertyKey ] );
+
+	return float( fallback );
+
+}
+
+function resolveColorNode( material, nodeKey, propertyKey, fallback ) {
+
+	if ( material[ nodeKey ] ) return vec3( material[ nodeKey ] );
+	if ( material[ propertyKey ] !== undefined ) return vec3( material[ propertyKey ] );
+
+	return vec3( fallback );
+
+}
+
+/**
+ * Builds a regular "single `${key}Node`/`${key}` node/property pair, scalar
+ * clamp range, scalar default" channel descriptor - the shape most PBR
+ * channels (roughness, metalness, transmission, ...) actually have. Channels
+ * that don't fit this shape (a Color + separate intensity property, a
+ * reconstructed vector, a decomposed strength/rotation pair) are written out
+ * by hand below instead of forcing them through this factory.
+ */
+function simpleScalarChannel( key, { activation, clampRange, defaultValue } ) {
+
+	return {
+		key,
+		size: 1,
+		activation,
+		nodeKeys: [ key + 'Node' ],
+		clampRange,
+		defaultValue,
+		resolveNode: ( material ) => resolveScalarNode( material, key + 'Node', key, defaultValue ),
+		resolveConstant: ( material ) => ( material[ key ] !== undefined ? material[ key ] : defaultValue ),
+		applyActive: ( targetMaterial, sliceNode ) => {
+
+			targetMaterial[ key + 'Node' ] = clampRange ? sliceNode.clamp( ...clampRange ) : sliceNode;
+
+		},
+		applyConstant: ( targetMaterial, constantValue ) => {
+
+			// A literal `float(...)` constant node, not the plain `key`
+			// property - see this file's top doc comment for why.
+			targetMaterial[ key + 'Node' ] = float( constantValue );
+
+		}
+	};
+
+}
+
+/**
+ * Builds a "Color property + separate scalar intensity property" channel
+ * descriptor - the shape `emissive`/`sheenColor` have (`emissive` +
+ * `emissiveIntensity`, `sheenColor` + `sheen`). The trained/resolved node and
+ * constant value are always the color already multiplied by its intensity -
+ * matching how the source material's own shading consumes them - so this
+ * channel doesn't separately reconstruct an intensity on the way back out;
+ * `applyConstant` (passed in by each caller below) writes only the `*Node`
+ * property, as a literal constant node with the intensity already folded in,
+ * matching this addon's existing behavior of not round-tripping a distinct
+ * intensity scalar for these two channels.
+ */
+function colorIntensityChannel( key, { nodeKey, colorProperty, intensityProperty, applyActive, applyConstant } ) {
+
+	return {
+		key,
+		size: 3,
+		activation: 'sigmoid',
+		type: 'color',
+		nodeKeys: [ nodeKey ],
+		clampRange: [ 0, 1 ],
+		defaultValue: [ 0, 0, 0 ],
+		resolveNode: ( material ) => {
+
+			const color = resolveColorNode( material, nodeKey, colorProperty, new THREE.Color( 0, 0, 0 ) );
+			const intensity = material[ intensityProperty ] !== undefined ? material[ intensityProperty ] : 1;
+			return color.mul( intensity );
+
+		},
+		resolveConstant: ( material ) => {
+
+			const c = material[ colorProperty ] || new THREE.Color( 0, 0, 0 );
+			const i = material[ intensityProperty ] !== undefined ? material[ intensityProperty ] : 1;
+			return [ c.r * i, c.g * i, c.b * i ];
+
+		},
+		applyActive,
+		applyConstant
+	};
+
+}
+
+/**
+ * Builds a `type: 'normal'` channel descriptor - a 2-component tangent-space
+ * (dx, dy) offset trained/packed by the network, but reconstructed into a
+ * full 3-component view-space vector at consumption time - see
+ * NeuralOutputTypes.js's `reconstructFinalNormal`/`OUTPUT_TYPES.normal`.
+ * Shared by `normal` and `clearcoatNormal` below, which differ only in which
+ * node/property pair they read from and write to.
+ */
+function normalChannel( key, materialNodeProperty ) {
+
+	return {
+		key,
+		size: 2,
+		activation: 'tanh',
+		type: 'normal',
+		nodeKeys: [ materialNodeProperty ],
+		clampRange: null,
+		defaultValue: [ 0, 0, 1 ],
+		resolveNode: ( material ) => ( material[ materialNodeProperty ] ? vec3( material[ materialNodeProperty ] ) : vec3( 0, 0, 1 ) ),
+		resolveConstant: () => [ 0, 0, 1 ],
+		applyActive: ( targetMaterial, sliceNode ) => {
+
+			targetMaterial[ materialNodeProperty ] = OUTPUT_TYPES.normal.reconstruct( sliceNode );
+
+		},
+		// A constant normal/clearcoatNormal channel means "no bump" - leave
+		// the corresponding *Node property unset entirely, rather than wiring
+		// up a node that always evaluates to the flat [0,0,1] default.
+		applyConstant: () => {}
+	};
+
+}
+
 const CHANNELS = [
-	{ key: 'albedo', size: 3, activation: 'sigmoid', nodeKeys: [ 'colorNode' ], clampRange: null, defaultValue: [ 1, 1, 1 ] },
-	{ key: 'opacity', size: 1, activation: 'sigmoid', nodeKeys: [ 'opacityNode' ], clampRange: [ 0, 1 ], defaultValue: 1 },
+	{
+		key: 'albedo', size: 3, activation: 'sigmoid', type: 'color', nodeKeys: [ 'colorNode' ], clampRange: null, defaultValue: [ 1, 1, 1 ],
+		resolveNode: ( material ) => ( material.colorNode ? vec3( material.colorNode ) : vec3( material.color || new THREE.Color( 1, 1, 1 ) ) ),
+		resolveConstant: ( material ) => {
+
+			const c = material.color || new THREE.Color( 1, 1, 1 );
+			return [ c.r, c.g, c.b ];
+
+		},
+		// Also stashed as `_shadedColorNode` - swapped back in by
+		// NeuralMaterialNodeMaterial.setDebugView('shaded') - since albedo is
+		// the one channel whose trained slice doubles as the material's real,
+		// lit `colorNode`.
+		applyActive: ( targetMaterial, sliceNode ) => {
+
+			targetMaterial._shadedColorNode = sliceNode;
+			targetMaterial.colorNode = sliceNode;
+
+		},
+		applyConstant: ( targetMaterial, constantValue ) => {
+
+			targetMaterial._shadedColorNode = vec3( ...constantValue );
+			targetMaterial.colorNode = targetMaterial._shadedColorNode;
+
+		}
+	},
+	simpleScalarChannel( 'opacity', { activation: 'sigmoid', clampRange: [ 0, 1 ], defaultValue: 1 } ),
 	// 2-component tangent-space (dx, dy) offset, not a full xyz vector - z is
 	// reconstructed at consumption time as sqrt(1 - dx*dx - dy*dy), see
-	// NeuralMaterialNodeMaterial.reconstructFinalNormal.
-	{ key: 'normal', size: 2, activation: 'tanh', nodeKeys: [ 'normalNode' ], clampRange: null, defaultValue: [ 0, 0, 1 ] },
-	{ key: 'roughness', size: 1, activation: 'sigmoid', nodeKeys: [ 'roughnessNode' ], clampRange: [ 0.02, 1 ], defaultValue: 1 },
-	{ key: 'metalness', size: 1, activation: 'sigmoid', nodeKeys: [ 'metalnessNode' ], clampRange: [ 0, 1 ], defaultValue: 0 },
-	{ key: 'clearcoat', size: 1, activation: 'sigmoid', nodeKeys: [ 'clearcoatNode' ], clampRange: [ 0, 1 ], defaultValue: 0 },
-	{ key: 'clearcoatRoughness', size: 1, activation: 'sigmoid', nodeKeys: [ 'clearcoatRoughnessNode' ], clampRange: [ 0.02, 1 ], defaultValue: 0 },
-	{ key: 'clearcoatNormal', size: 2, activation: 'tanh', nodeKeys: [ 'clearcoatNormalNode' ], clampRange: null, defaultValue: [ 0, 0, 1 ] },
-	{ key: 'transmission', size: 1, activation: 'sigmoid', nodeKeys: [ 'transmissionNode' ], clampRange: [ 0, 1 ], defaultValue: 0 },
+	// NeuralOutputTypes.reconstructFinalNormal.
+	normalChannel( 'normal', 'normalNode' ),
+	simpleScalarChannel( 'roughness', { activation: 'sigmoid', clampRange: [ 0.02, 1 ], defaultValue: 1 } ),
+	simpleScalarChannel( 'metalness', { activation: 'sigmoid', clampRange: [ 0, 1 ], defaultValue: 0 } ),
+	simpleScalarChannel( 'clearcoat', { activation: 'sigmoid', clampRange: [ 0, 1 ], defaultValue: 0 } ),
+	simpleScalarChannel( 'clearcoatRoughness', { activation: 'sigmoid', clampRange: [ 0.02, 1 ], defaultValue: 0 } ),
+	normalChannel( 'clearcoatNormal', 'clearcoatNormalNode' ),
+	simpleScalarChannel( 'transmission', { activation: 'sigmoid', clampRange: [ 0, 1 ], defaultValue: 0 } ),
 	// Dielectric specular reflectance multiplier - MeshPhysicalMaterial
 	// defaults this to 1 (full Fresnel reflectance at normal incidence, per
 	// `ior`), but a source material can turn its non-metal specular lobe down
@@ -72,33 +267,112 @@ const CHANNELS = [
 	// = 1` default regardless of what the source material set - producing a
 	// reconstruction that looks visibly shinier than a matte source despite
 	// matching roughness/metalness.
-	{ key: 'specularIntensity', size: 1, activation: 'sigmoid', nodeKeys: [ 'specularIntensityNode' ], clampRange: [ 0, 1 ], defaultValue: 1 },
-	{ key: 'emissive', size: 3, activation: 'softplus', nodeKeys: [ 'emissiveNode' ], clampRange: null, defaultValue: [ 0, 0, 0 ] },
+	simpleScalarChannel( 'specularIntensity', { activation: 'sigmoid', clampRange: [ 0, 1 ], defaultValue: 1 } ),
+	colorIntensityChannel( 'emissive', {
+		nodeKey: 'emissiveNode', colorProperty: 'emissive', intensityProperty: 'emissiveIntensity',
+		applyActive: ( targetMaterial, sliceNode ) => {
+
+			targetMaterial.emissiveNode = sliceNode;
+
+		},
+		applyConstant: ( targetMaterial, constantValue ) => {
+
+			targetMaterial.emissiveNode = vec3( ...constantValue );
+
+		}
+	} ),
 	// Anisotropy strength+rotation trained as a single signed 2D direction
 	// vector (ax, ay) = (cos(rotation)*strength, sin(rotation)*strength),
-	// exactly what MeshPhysicalMaterial.anisotropyNode itself consumes - see
-	// NeuralMaterialSource.resolveAnisotropyNodes. This avoids training a
-	// wrapping [0,1] angle (which has a hard 0/1 discontinuity and an
-	// atan2(0,0) singularity at zero strength) through a bounded activation.
-	{ key: 'anisotropy', size: 2, activation: 'tanh', nodeKeys: [ 'anisotropyNode' ], clampRange: null, defaultValue: [ 0, 0 ] },
-	{ key: 'sheenColor', size: 3, activation: 'sigmoid', nodeKeys: [ 'sheenNode' ], clampRange: [ 0, 1 ], defaultValue: [ 0, 0, 0 ] },
-	{ key: 'sheenRoughness', size: 1, activation: 'sigmoid', nodeKeys: [ 'sheenRoughnessNode' ], clampRange: [ 0.02, 1 ], defaultValue: 1 }
+	// exactly what MeshPhysicalMaterial.anisotropyNode itself consumes. This
+	// avoids training a wrapping [0,1] angle (which has a hard 0/1
+	// discontinuity and an atan2(0,0) singularity at zero strength) through a
+	// bounded activation.
+	{
+		key: 'anisotropy', size: 2, activation: 'tanh', type: 'anisotropyVector', nodeKeys: [ 'anisotropyNode' ], clampRange: null, defaultValue: [ 0, 0 ],
+		resolveNode: ( material ) => {
+
+			if ( material.anisotropyNode ) return vec2( material.anisotropyNode );
+
+			const strength = material.anisotropy !== undefined ? material.anisotropy : 0;
+			const rotation = material.anisotropyRotation !== undefined ? material.anisotropyRotation : 0;
+
+			return vec2( Math.cos( rotation ) * strength, Math.sin( rotation ) * strength );
+
+		},
+		resolveConstant: ( material ) => {
+
+			const strength = material.anisotropy !== undefined ? material.anisotropy : 0;
+			const rotation = material.anisotropyRotation !== undefined ? material.anisotropyRotation : 0;
+			return [ Math.cos( rotation ) * strength, Math.sin( rotation ) * strength ];
+
+		},
+		// Trained directly as a signed (ax, ay) direction vector, exactly the
+		// form MeshPhysicalMaterial.anisotropyNode itself expects - no cos/sin
+		// recombination needed.
+		applyActive: ( targetMaterial, sliceNode ) => {
+
+			targetMaterial.anisotropyNode = sliceNode;
+
+		},
+		// Applied as the same raw (ax, ay) direction node `anisotropyNode`
+		// itself expects - no hypot/atan2 decomposition into the legacy
+		// strength/rotation properties needed, since those would (like every
+		// other plain property) route through a live uniform instead of a
+		// literal constant node.
+		applyConstant: ( targetMaterial, constantValue ) => {
+
+			targetMaterial.anisotropyNode = vec2( ...constantValue );
+
+		}
+	},
+	colorIntensityChannel( 'sheenColor', {
+		nodeKey: 'sheenNode', colorProperty: 'sheenColor', intensityProperty: 'sheen',
+		applyActive: ( targetMaterial, sliceNode ) => {
+
+			targetMaterial.sheenNode = sliceNode.clamp( 0, 1 );
+
+		},
+		applyConstant: ( targetMaterial, constantValue ) => {
+
+			targetMaterial.sheenNode = vec3( ...constantValue );
+
+		}
+	} ),
+	simpleScalarChannel( 'sheenRoughness', { activation: 'sigmoid', clampRange: [ 0.02, 1 ], defaultValue: 1 } )
 ];
 
 /**
- * Channels regular enough - a single `${key}Node`/`${key}` node/property
- * pair, a scalar clamp range, and a scalar default - to be driven by one
- * loop in both `NeuralMaterialSource` (node/constant resolution) and
- * `NeuralMaterialNodeMaterial`'s constructor, instead of one hand-written
- * branch per channel. Channels left out of this list each need real
- * special-casing: `albedo`/`sheenColor` resolve from a `Color` + separate
- * intensity property, `normal`/`clearcoatNormal` reconstruct a full vector
- * from a 2-component offset, and `anisotropy` decomposes into legacy
- * strength/rotation properties - see `NeuralMaterialSource.
- * resolveMaterialChannelNodes` and `NeuralMaterialNodeMaterial`'s
- * constructor for each.
+ * The normal/clearcoatNormal channels' baked training target needs one extra
+ * per-component transform their y-component doesn't share with every other
+ * channel - see `flattenChannelComponents` in NeuralMaterialSource.js. Left
+ * as an explicit, opt-in hook (`transformBakeComponent`) on just those two
+ * descriptors, rather than a `type`-keyed lookup, since it's tied to how the
+ * training quad itself is baked (a UV/tangent convention artifact of
+ * `bakeColorNodeToTexture`), not to the `'normal'` output type's
+ * reconstruction semantics - a custom `type: 'normal'` channel that isn't
+ * baked the same way wouldn't want this by default.
  */
-const SIMPLE_SCALAR_KEYS = [ 'opacity', 'roughness', 'metalness', 'clearcoat', 'clearcoatRoughness', 'transmission', 'specularIntensity', 'sheenRoughness' ];
+for ( const channel of CHANNELS ) {
+
+	if ( channel.type !== 'normal' ) continue;
+
+	// The normal/clearcoatNormal offset is baked on a flat quad whose UV.v
+	// gets flipped before computeTangents() runs (see bakeColorNodeToTexture
+	// in NeuralTextureSource.js - that flip is required for correct
+	// scalar-channel UV round-tripping), which flips that quad's bitangent
+	// handedness relative to any real mesh's own (un-flipped) tangent basis.
+	// Since the quad sits at the identity transform, its tangent/bitangent/
+	// normal are otherwise meant to coincide with world X/Y/Z, so the baked y
+	// here is the *negated* tangent-space offset the network is meant to
+	// learn. Negate it back so the trained (dx, dy) matches the true
+	// tangent-space convention that OUTPUT_TYPES.normal.reconstruct blends
+	// through a real mesh's un-flipped tangentWorld/bitangentWorld at
+	// inference time - without this, the neural material's reconstructed
+	// normal disagrees in sign with the teacher's live-evaluated one (visible
+	// as a mismatched "normal" debug view between the two).
+	channel.transformBakeComponent = ( component, index ) => ( index === 1 ? component.negate() : component );
+
+}
 
 const MAX_TOTAL_CHANNELS = CHANNELS.reduce( ( sum, c ) => sum + c.size, 0 ); // 23, if every channel is active
 
@@ -115,9 +389,9 @@ const MAX_TOTAL_CHANNELS = CHANNELS.reduce( ( sum, c ) => sum + c.size, 0 ); // 
  */
 const FRAME_VIEWS = [ 'tangent', 'bitangent' ];
 
-function getChannel( key ) {
+function getChannel( key, channels = CHANNELS ) {
 
-	const channel = CHANNELS.find( ( c ) => c.key === key );
+	const channel = channels.find( ( c ) => c.key === key );
 	if ( channel === undefined ) throw new Error( `THREE.NeuralMaterialFormat: unknown channel "${key}".` );
 
 	return channel;
@@ -126,9 +400,12 @@ function getChannel( key ) {
 
 /**
  * Assigns contiguous flat offsets (and a total/pack count) to an arbitrary
- * subset of CHANNELS, in CHANNELS order - used both for the "active,
- * trained" subset (network output layout) and, incidentally, for computing
- * the full 24-channel layout when every channel is active.
+ * subset of channel descriptors, in the order given - used both for the
+ * "active, trained" subset (network output layout) and, incidentally, for
+ * computing the full layout when every channel is active. Fully generic:
+ * operates on any array of `{ key, size, activation }` objects, whether
+ * that's (a subset of) the built-in `CHANNELS` or an entirely caller-
+ * supplied channel array.
  */
 function layoutChannels( channelSubset ) {
 
@@ -202,21 +479,22 @@ function previewColor( valueNode, channel, alreadyEncoded ) {
 }
 
 /**
- * Builds one channel's unlit debug-view color node - widening `normal`/
- * `clearcoatNormal`'s described size to 3 first, since by the time a value
+ * Builds one channel's unlit debug-view color node - widening a `type:
+ * 'normal'` channel's described size to 3 first, since by the time a value
  * reaches here it's always the fully TBN-reconstructed 3-component vector
  * (whether trained-and-reconstructed or the [0,0,1] constant fallback), not
  * the raw 2-component (dx, dy) the network itself trains against - feeding
  * the real 2-component channel descriptor would hit `previewColor`'s
  * `size === 2` branch, which hardcodes blue to 0 and silently discards z.
- * Shared between `NeuralMaterialSource.buildChannelPreviewMaterials` (the
- * teacher side) and `NeuralMaterialNodeMaterial.setDebugView` (the neural
- * side) so the two can't drift apart on this widening.
+ * (See `OUTPUT_TYPES.normal.previewSize` in NeuralOutputTypes.js.) Shared
+ * between `NeuralMaterialSource.buildChannelPreviewMaterials` (the teacher
+ * side) and `NeuralMaterialNodeMaterial.setDebugView` (the neural side) so
+ * the two can't drift apart on this widening.
  */
 function buildDebugViewColorNode( channel, valueNode ) {
 
-	const isNormalChannel = channel.key === 'normal' || channel.key === 'clearcoatNormal';
-	const previewChannel = isNormalChannel ? { ...channel, size: 3 } : channel;
+	const outputType = OUTPUT_TYPES[ channelEffectiveType( channel ) ];
+	const previewChannel = outputType?.previewSize ? { ...channel, size: outputType.previewSize } : channel;
 
 	return vec4( previewColor( valueNode, previewChannel, false ), 1 );
 
@@ -235,7 +513,6 @@ function buildFrameViewColorNode( frameNode ) {
 
 export {
 	CHANNELS,
-	SIMPLE_SCALAR_KEYS,
 	MAX_TOTAL_CHANNELS,
 	FRAME_VIEWS,
 	getChannel,
@@ -243,5 +520,10 @@ export {
 	buildChannelActivations,
 	previewColor,
 	buildDebugViewColorNode,
-	buildFrameViewColorNode
+	buildFrameViewColorNode,
+	simpleScalarChannel,
+	colorIntensityChannel,
+	normalChannel,
+	constantToNode,
+	reconstructFinalNormal
 };

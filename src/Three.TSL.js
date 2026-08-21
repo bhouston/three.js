@@ -609,6 +609,7 @@ export const unpackUnorm2x16 = TSL.unpackUnorm2x16;
 export const unpackSnorm4x8 = TSL.unpackSnorm4x8;
 export const unpackUnorm4x8 = TSL.unpackUnorm4x8;
 export const unpackRGBToNormal = TSL.unpackRGBToNormal;
+export const unpackNormal = TSL.unpackNormal;
 export const unpremultiplyAlpha = TSL.unpremultiplyAlpha;
 export const userData = TSL.userData;
 export const uv = TSL.uv;

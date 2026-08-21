@@ -262,6 +262,12 @@ export const MATERIALX_SAMPLES = [
 		file: 'standard_surface_transmission_test.mtlx',
 		label: 'Transmission test',
 		description: 'MaterialX conformance test of high, slightly tinted transmission (clear glass/liquid).'
+	},
+	{
+		key: 'wood',
+		file: 'wood.mtlx',
+		label: 'Hardwood floor',
+		description: 'Tiled hardwood floor built from the webgpu_lights_physical.html diffuse/bump/roughness bitmaps.'
 	}
 ];
 

@@ -562,7 +562,8 @@
 					latestJson = json;
 					disposeNeuralMaterial();
 					neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, {
-						debugView: params.debugView
+						debugView: params.debugView,
+						renderer
 					} );
 					materialName.textContent = json.name || file.name;
 					updateNeuralRepresentationSize( json );
@@ -831,7 +832,8 @@
 
 				disposeNeuralMaterial();
 				neuralMaterial = new NeuralAppearanceNodeMaterial( neuralData, {
-					debugView: params.debugView
+					debugView: params.debugView,
+					renderer
 				} );
 
 			}

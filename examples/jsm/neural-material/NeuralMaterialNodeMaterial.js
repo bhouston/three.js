@@ -74,6 +74,10 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 	 * `CHANNELS` vocabulary, matching `classifyMaterialChannels`'s own
 	 * default, since `setDebugView` needs every channel descriptor (not just
 	 * the active ones) to resolve a debug view by key.
+	 *
+	 * `options.renderer`, when given (already `init()`-ed), lets the decoder
+	 * weights use a real fp16 storage buffer instead of an fp32 uniform
+	 * array on backends that support it - see evaluateNeuralTextureRaw.
 	 */
 	constructor( cpuModel, channelClassification, options = {} ) {
 
@@ -110,7 +114,7 @@ class NeuralMaterialNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		if ( uvOffsetNode ) coord = coord.add( uvOffsetNode );
 		const tiledUV = fract( coord );
 
-		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.levelTextures );
+		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.levelTextures, options.renderer );
 		const slices = sliceChannels( outputs, activeChannels );
 		this._slices = slices;
 		this._constantValues = constantValues;

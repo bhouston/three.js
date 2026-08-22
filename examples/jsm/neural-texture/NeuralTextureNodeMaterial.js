@@ -1,11 +1,14 @@
 import * as THREE from 'three';
-import { abs, fract, texture, uniformArray, uv, vec3, vec4 } from 'three/tsl';
+import { abs, fract, texture, uv, vec3, vec4 } from 'three/tsl';
 import {
 	packVec4Inputs,
 	unpackVec4Outputs,
 	packLayerWeightsMat4,
 	packLayerBiasesVec4,
-	evaluateLinearLayerMat4
+	evaluateLinearLayerMat4,
+	supportsHalfPrecisionStorage,
+	createMat4Storage,
+	createVec4Storage
 } from '../neural/NeuralMLPTSL.js';
 import { createHalfFloatLatentTexture } from '../neural/NeuralHalfFloatTexture.js';
 
@@ -29,8 +32,15 @@ function buildLevelTextures( cpuModel ) {
  * + MLP decoder at `uvNode`, returning the raw array of `outputChannels`
  * scalar nodes (one per trained channel - callers slice/decode these into
  * whatever physical quantities they represent, see NeuralMaterialFormat.js).
+ *
+ * `renderer`, when given (and already `init()`-ed), lets the decoder weights
+ * live in a real fp16 storage buffer instead of an fp32 uniform array
+ * wherever the backend actually supports it - see NeuralMLPTSL.js's
+ * createMat4Storage/createVec4Storage. Omit it (or pass a renderer that
+ * doesn't support half storage) to get the original fp32 uniformArray
+ * behavior unchanged.
  */
-function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
+function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures, renderer = null ) {
 
 	const features = [];
 
@@ -57,26 +67,28 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
 	// for the same WGSL "maximum parser recursive depth" failure the shared
 	// version's comment describes) with no principled reason for the two to
 	// differ.
-	let activations = packVec4Inputs( features );
+	const half = supportsHalfPrecisionStorage( renderer );
+	let activations = packVec4Inputs( features, half );
 
 	for ( let l = 0; l < cpuModel.decoder.layers.length; l ++ ) {
 
 		const layer = cpuModel.decoder.layers[ l ];
-		const weightsArray = uniformArray( packLayerWeightsMat4( layer.weights, layer.inputSize, layer.outputSize ), 'mat4' );
-		const biasesArray = uniformArray( packLayerBiasesVec4( layer.biases ), 'vec4' );
+		const weights = createMat4Storage( renderer, packLayerWeightsMat4( layer.weights, layer.inputSize, layer.outputSize ) );
+		const biases = createVec4Storage( renderer, packLayerBiasesVec4( layer.biases ) );
 		const inputVectorCount = Math.ceil( layer.inputSize / 4 );
 
 		activations = evaluateLinearLayerMat4(
 			activations, layer.inputSize, layer.outputSize, layer.activation,
-			( outputVector, inputVector ) => weightsArray.element( outputVector * inputVectorCount + inputVector ),
-			( outputVector ) => biasesArray.element( outputVector )
+			( outputVector, inputVector ) => weights.node.element( outputVector * inputVectorCount + inputVector ),
+			( outputVector ) => biases.node.element( outputVector ),
+			half
 		);
 
 	}
 
 	const lastLayer = cpuModel.decoder.layers[ cpuModel.decoder.layers.length - 1 ];
 
-	return unpackVec4Outputs( activations, lastLayer.outputSize );
+	return unpackVec4Outputs( activations, lastLayer.outputSize, half );
 
 }
 
@@ -84,9 +96,9 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures ) {
  * Convenience wrapper for the (outputChannels === 3) single-texture case:
  * evaluates the network and returns just a vec3 color.
  */
-function evaluateNeuralTexture( uvNode, cpuModel, levelTextures ) {
+function evaluateNeuralTexture( uvNode, cpuModel, levelTextures, renderer = null ) {
 
-	const activations = evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures );
+	const activations = evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures, renderer );
 
 	return vec3( activations[ 0 ], activations[ 1 ], activations[ 2 ] );
 
@@ -97,6 +109,11 @@ function evaluateNeuralTexture( uvNode, cpuModel, levelTextures ) {
  * the raw neural prediction, or (with `mode: 'diff'`) the absolute error
  * against a reference source texture, so both sides of the comparison view
  * can share the same tileable, scale/offset-able UV mapping.
+ *
+ * `options.renderer`, when given (already `init()`-ed), lets the decoder
+ * weights use a real fp16 storage buffer instead of an fp32 uniform array
+ * on backends that support it - see NeuralMLPTSL.js's createMat4Storage.
+ * Omit it to keep the original fp32 uniformArray path unconditionally.
  *
  * @three_import import { NeuralTextureNodeMaterial } from 'three/addons/neural-texture/NeuralTextureNodeMaterial.js';
  */
@@ -120,7 +137,7 @@ class NeuralTextureNodeMaterial extends THREE.NodeMaterial {
 		if ( uvOffsetNode ) coord = coord.add( uvOffsetNode );
 		const tiledUV = fract( coord );
 
-		const predicted = evaluateNeuralTexture( tiledUV, cpuModel, this.levelTextures );
+		const predicted = evaluateNeuralTexture( tiledUV, cpuModel, this.levelTextures, options.renderer );
 
 		if ( options.mode === 'diff' && options.sourceTexture ) {
 

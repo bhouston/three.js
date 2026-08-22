@@ -756,7 +756,7 @@
 				neuralMaterial = new NeuralMaterialNodeMaterial(
 					cpuModel,
 					channelClassification,
-					{ debugView: params.debugView }
+					{ debugView: params.debugView, renderer }
 				);
 				neuralMesh.material = neuralMaterial;
 				neuralMesh.visible = true;

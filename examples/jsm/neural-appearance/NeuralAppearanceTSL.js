@@ -5,7 +5,9 @@ import {
 	unpackVec4Outputs,
 	packLayerWeightsMat4,
 	packLayerBiasesVec4,
-	evaluateLinearLayerMat4
+	evaluateLinearLayerMat4,
+	createMat4Storage,
+	createVec4Storage
 } from '../neural/NeuralMLPTSL.js';
 import { sigmoidTSL } from '../neural/NeuralOutputActivations.js';
 
@@ -313,33 +315,46 @@ function createNeuralFragmentContext( material ) {
 
 }
 
-function createOutputUniforms( outputs ) {
+// `renderer`, when given (already `init()`-ed), lets every head's decoder
+// weights use a real fp16 storage buffer instead of an fp32 uniform array
+// on backends that support it - see NeuralMLPTSL.js's createMat4Storage.
+// Omit it to keep the original fp32 uniformArray path unconditionally.
+function createOutputUniforms( outputs, renderer = null ) {
 
 	const uniforms = {
-		brdf: createHeadUniforms( outputs.brdf ),
-		ibl: createHeadUniforms( outputs.ibl )
+		brdf: createHeadUniforms( outputs.brdf, renderer ),
+		ibl: createHeadUniforms( outputs.ibl, renderer )
 	};
 
-	if ( outputs.indirectRadiance ) uniforms.indirectRadiance = createHeadUniforms( outputs.indirectRadiance );
-	if ( outputs.indirectIrradiance ) uniforms.indirectIrradiance = createHeadUniforms( outputs.indirectIrradiance );
-	if ( outputs.emission ) uniforms.emission = createHeadUniforms( outputs.emission );
-	if ( outputs.opacity ) uniforms.opacity = createHeadUniforms( outputs.opacity );
+	if ( outputs.indirectRadiance ) uniforms.indirectRadiance = createHeadUniforms( outputs.indirectRadiance, renderer );
+	if ( outputs.indirectIrradiance ) uniforms.indirectIrradiance = createHeadUniforms( outputs.indirectIrradiance, renderer );
+	if ( outputs.emission ) uniforms.emission = createHeadUniforms( outputs.emission, renderer );
+	if ( outputs.opacity ) uniforms.opacity = createHeadUniforms( outputs.opacity, renderer );
 
 	return uniforms;
 
 }
 
-function createHeadUniforms( decoder ) {
+function createHeadUniforms( decoder, renderer = null ) {
 
 	const packed = packHeadParameters( decoder );
 
-	// Two parallel uniform buffers rather than one combined buffer: a
-	// `UniformArrayNode` is typed by a single `elementType`, so `mat4`
-	// weight blocks and `vec4` bias vectors can't share one array the way
-	// the old all-vec4 layout let them.
+	// Two parallel buffers rather than one combined buffer: both
+	// createMat4Storage/createVec4Storage (like the UniformArrayNode they
+	// can fall back to) are typed by a single element type, so `mat4`/`hmat4`
+	// weight blocks and `vec4`/`hvec4` bias vectors can't share one buffer
+	// the way the old all-vec4 layout let them. `weights.isHalf` and
+	// `biases.isHalf` always agree (both derive from the same renderer
+	// capability check), so `isHalf` is hoisted here once for every caller
+	// that needs to match this head's weight/bias precision (packing its
+	// MLP inputs, picking its Fn's parameter type, etc).
+	const weights = createMat4Storage( renderer, packed.weightsValues );
+	const biases = createVec4Storage( renderer, packed.biasesValues );
+
 	return {
-		weights: TSL.uniformArray( packed.weightsValues, 'mat4' ),
-		biases: TSL.uniformArray( packed.biasesValues, 'vec4' ),
+		weights,
+		biases,
+		isHalf: weights.isHalf,
 		rotationWeightsOffset: packed.rotationWeightsOffset,
 		layers: packed.layers
 	};
@@ -431,24 +446,8 @@ function updateHeadUniforms( uniforms, decoder ) {
 
 	const packed = packHeadParameters( decoder );
 
-	copyPackedVectors( uniforms.weights.array, packed.weightsValues );
-	copyPackedVectors( uniforms.biases.array, packed.biasesValues );
-
-}
-
-function copyPackedVectors( targetArray, packed ) {
-
-	if ( targetArray.length !== packed.length ) {
-
-		throw new Error( `THREE.NeuralAppearanceNodeMaterial: Packed uniform length mismatch (${ targetArray.length } !== ${ packed.length }).` );
-
-	}
-
-	for ( let i = 0; i < packed.length; i ++ ) {
-
-		targetArray[ i ].copy( packed[ i ] );
-
-	}
+	uniforms.weights.update( packed.weightsValues );
+	uniforms.biases.update( packed.biasesValues );
 
 }
 
@@ -511,9 +510,11 @@ function buildDecoderFrames( decoder, decoderUniforms, latents ) {
 
 	}
 
+	const half = decoderUniforms.isHalf;
 	const rotation = unpackVec4Outputs(
-		linearLayerPacked( packVec4Inputs( latents ), decoderUniforms, decoderUniforms.rotationWeightsOffset, null, latents.length, decoder.rotation.outputSize, 'linear' ),
-		decoder.rotation.outputSize
+		linearLayerPacked( packVec4Inputs( latents, half ), decoderUniforms, decoderUniforms.rotationWeightsOffset, null, latents.length, decoder.rotation.outputSize, 'linear' ),
+		decoder.rotation.outputSize,
+		half
 	);
 	const frames = [];
 
@@ -604,7 +605,7 @@ function evaluateIndirectProbeHead( material, head, uniforms, latents, wo, probe
 
 function evaluateMLP( layers, uniforms, inputs ) {
 
-	let activations = packVec4Inputs( inputs );
+	let activations = packVec4Inputs( inputs, uniforms.isHalf );
 
 	for ( let i = 0; i < layers.length; i ++ ) {
 
@@ -615,7 +616,7 @@ function evaluateMLP( layers, uniforms, inputs ) {
 
 	}
 
-	return unpackVec4Outputs( activations, layers[ layers.length - 1 ].outputSize );
+	return unpackVec4Outputs( activations, layers[ layers.length - 1 ].outputSize, uniforms.isHalf );
 
 }
 
@@ -641,8 +642,16 @@ function evaluateMLP( layers, uniforms, inputs ) {
 // return as a single value); every current MLP head fits one of those.
 function evaluateMLPViaFn( name, layers, uniforms, inputs, outputSize ) {
 
-	const packedInputs = packVec4Inputs( inputs );
+	const half = uniforms.isHalf;
+	const packedInputs = packVec4Inputs( inputs, half );
 	const inputNames = packedInputs.map( ( _, i ) => `in${ i }` );
+	// The Fn's own declared parameter type has to match what's actually
+	// passed to it below (`fn( ...packedInputs )`) - a `vec4`-declared
+	// parameter fed an `hvec4` argument (or vice versa) would otherwise get
+	// silently converted back at the call boundary, defeating the whole
+	// point of keeping this head's weight multiply chain half-typed inside
+	// the Fn body.
+	const inputType = half ? 'hvec4' : 'vec4';
 
 	const outputType = outputSize === 1 ? 'float' : outputSize === 3 ? 'vec3' :
 		outputSize === 4 ? 'vec4' : null;
@@ -666,7 +675,10 @@ function evaluateMLPViaFn( name, layers, uniforms, inputs, outputSize ) {
 
 		}
 
-		const unpacked = unpackVec4Outputs( activations, outputSize );
+		// Narrows back to float regardless of `half` (see unpackVec4Outputs) -
+		// this Fn's own return type is always plain float/vec3/vec4, so
+		// callers outside never need to know this head evaluated at fp16.
+		const unpacked = unpackVec4Outputs( activations, outputSize, half );
 
 		if ( outputType === 'float' ) return unpacked[ 0 ];
 		if ( outputType === 'vec3' ) return TSL.vec3( unpacked[ 0 ], unpacked[ 1 ], unpacked[ 2 ] );
@@ -675,7 +687,7 @@ function evaluateMLPViaFn( name, layers, uniforms, inputs, outputSize ) {
 	} ).setLayout( {
 		name,
 		type: outputType,
-		inputs: inputNames.map( n => ( { name: n, type: 'vec4' } ) )
+		inputs: inputNames.map( n => ( { name: n, type: inputType } ) )
 	} );
 
 	const result = fn( ...packedInputs );
@@ -704,8 +716,9 @@ function linearLayerPacked( inputs, uniforms, weightsOffset, biasesOffset, input
 
 	return evaluateLinearLayerMat4(
 		inputs, inputSize, outputSize, activation,
-		( outputVector, inputVector ) => uniforms.weights.element( weightsOffset + outputVector * inputVectorCount + inputVector ),
-		biasesOffset !== null ? ( outputVector ) => uniforms.biases.element( biasesOffset + outputVector ) : null
+		( outputVector, inputVector ) => uniforms.weights.node.element( weightsOffset + outputVector * inputVectorCount + inputVector ),
+		biasesOffset !== null ? ( outputVector ) => uniforms.biases.node.element( biasesOffset + outputVector ) : null,
+		uniforms.isHalf
 	);
 
 }

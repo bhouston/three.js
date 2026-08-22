@@ -144,14 +144,19 @@ describe( 'Addons', () => {
 			test( 'updates packed decoder uniforms in place', () => {
 
 				const uniforms = createOutputUniforms( fakeData( 0 ).outputs );
-				const firstWeights = uniforms.brdf.weights.array[ uniforms.brdf.layers[ 0 ].weightsOffset ];
-				const bias = uniforms.brdf.biases.array[ uniforms.brdf.layers[ 0 ].biasesOffset ];
+				// No renderer given, so this stays on the fp32 uniformArray fallback
+				// (uniforms.brdf.weights.isHalf === false) - the .node.array identity
+				// checked below is specific to that path (see NeuralMLPTSL.js's
+				// createMat4Storage/createVec4Storage).
+				expect( uniforms.brdf.weights.isHalf ).toBe( false );
+				const firstWeights = uniforms.brdf.weights.node.array[ uniforms.brdf.layers[ 0 ].weightsOffset ];
+				const bias = uniforms.brdf.biases.node.array[ uniforms.brdf.layers[ 0 ].biasesOffset ];
 
 				updateOutputUniforms( uniforms, fakeData( 7 ).outputs );
 
-				expect( uniforms.brdf.weights.array[ uniforms.brdf.layers[ 0 ].weightsOffset ] ).toBe( firstWeights );
+				expect( uniforms.brdf.weights.node.array[ uniforms.brdf.layers[ 0 ].weightsOffset ] ).toBe( firstWeights );
 				expect( firstWeights.elements[ 0 ] ).toBe( 7 );
-				expect( uniforms.brdf.biases.array[ uniforms.brdf.layers[ 0 ].biasesOffset ] ).toBe( bias );
+				expect( uniforms.brdf.biases.node.array[ uniforms.brdf.layers[ 0 ].biasesOffset ] ).toBe( bias );
 				expect( bias.x ).toBe( 7 );
 
 			} );

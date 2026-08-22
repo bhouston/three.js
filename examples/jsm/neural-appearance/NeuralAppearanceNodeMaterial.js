@@ -40,7 +40,11 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 	 * Constructs a new neural appearance node material.
 	 *
 	 * @param {Object} neuralAppearanceData - Data returned by `NeuralAppearanceLoader`.
-	 * @param {Object} [parameters] - Material parameters.
+	 * @param {Object} [parameters] - Material parameters. `parameters.renderer`, when given
+	 * (already `init()`-ed), lets every decoder head's weights use a real fp16 storage buffer
+	 * instead of an fp32 uniform array on backends that support it - see NeuralAppearanceTSL.js's
+	 * createOutputUniforms/createHeadUniforms. Omit it to keep the original fp32 uniformArray
+	 * path unconditionally.
 	 */
 	constructor( neuralAppearanceData, parameters = {} ) {
 
@@ -73,7 +77,7 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 		this.intensity = parameters.intensity !== undefined ? parameters.intensity : DEFAULT_PARAMETERS.intensity;
 		this.emissiveIntensity = parameters.emissiveIntensity !== undefined ? parameters.emissiveIntensity : DEFAULT_PARAMETERS.emissiveIntensity;
 		this.debugView = parameters.debugView || DEFAULT_PARAMETERS.debugView;
-		this._outputUniforms = createOutputUniforms( neuralAppearanceData.outputs );
+		this._outputUniforms = createOutputUniforms( neuralAppearanceData.outputs, parameters.renderer );
 
 		// Built once and shared with the BRDF/IBL lighting model (see
 		// NeuralAppearanceLightingModel.start(), which reuses this same
@@ -161,9 +165,11 @@ class NeuralAppearanceNodeMaterial extends THREE.NodeMaterial {
 
 	/**
 	 * Releases the latent grid textures this material owns. The decoder
-	 * weight/bias uniforms (`_outputUniforms`, built via `TSL.uniformArray`)
-	 * don't need an explicit release here - unlike `latentTextures`, they're
-	 * plain node-graph state torn down by the renderer's standard
+	 * weight/bias buffers (`_outputUniforms`, built via
+	 * NeuralAppearanceTSL.js's createOutputUniforms - a `TSL.uniformArray`
+	 * or, on backends that support it, an fp16 `instancedArray` storage
+	 * buffer) don't need an explicit release here - unlike `latentTextures`,
+	 * they're plain node-graph state torn down by the renderer's standard
 	 * node-disposal path when this material's own `dispose()` event fires
 	 * (via the inherited `Material.dispose()` below), not a GPU resource
 	 * this class owns directly.

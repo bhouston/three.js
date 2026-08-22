@@ -98,6 +98,17 @@ const glslMethods = {
 	floatunpack_unorm_4x8: 'tsl_unpackUnorm4x8'
 };
 
+// GLSL has no native fp16 compute type - half types always resolve to their fp32 equivalent.
+const glslHalfFallbackTypeLib = {
+	half: 'float',
+	hvec2: 'vec2',
+	hvec3: 'vec3',
+	hvec4: 'vec4',
+	hmat2: 'mat2',
+	hmat3: 'mat3',
+	hmat4: 'mat4'
+};
+
 const precisionLib = {
 	low: 'lowp',
 	medium: 'mediump',
@@ -247,6 +258,21 @@ class GLSLNodeBuilder extends NodeBuilder {
 		this.addInclude( codeNode );
 
 		return codeNode;
+
+	}
+
+	/**
+	 * Returns the GLSL type of the given node data type. GLSL has no native fp16 compute
+	 * type, so half-precision types are always upgraded to their fp32 equivalent here.
+	 *
+	 * @param {string} type - The node data type.
+	 * @return {string} The GLSL type.
+	 */
+	getType( type ) {
+
+		const floatType = glslHalfFallbackTypeLib[ type ];
+
+		return floatType !== undefined ? floatType : super.getType( type );
 
 	}
 
@@ -960,7 +986,13 @@ ${ flowData.code }
 						for ( const sharedUniform of sharedUniformGroup.uniforms ) {
 
 							const type = sharedUniform.getType();
-							const vectorType = this.getVectorType( type );
+							// this.getType() (not just getVectorType()) is required here so a
+							// half-precision type (which has no native GLSL fp16 compute type)
+							// is aliased to its fp32 equivalent - see this class's own
+							// getType() override. Omitting it previously let a literal 'half'/
+							// 'hvecN' leak straight into the generated GLSL, which doesn't
+							// compile.
+							const vectorType = this.getType( this.getVectorType( type ) );
 							const precision = sharedUniform.nodeUniform.node.precision;
 
 							let uniformSnippet = `${ vectorType } ${ sharedUniform.name };`;

@@ -128,6 +128,16 @@ export function getTypeFromLength( length ) {
  */
 export function getTypedArrayFromType( type ) {
 
+	// Half-precision (fp16) types are packed as raw Uint16Array bit patterns - see
+	// toHalfFloat()/fromHalfFloat() in extras/DataUtils.js, and Float16BufferAttribute, which
+	// uses the same convention (JS has no broadly-supported native fp16 typed array). This
+	// matters most for storage-buffer arrays (e.g. instancedArray(n, 'hmat4')), where real
+	// 2-byte-per-component packing in the `storage` address space is the whole point - unlike
+	// the `uniform` address space, WGSL doesn't force a 16-byte array-element-stride floor
+	// there, so packing genuinely halves the buffer size and, more importantly, lets the GPU
+	// do the matrix/vector math at native fp16 throughput.
+	if ( isHalfType( type ) ) return Uint16Array;
+
 	// Handle component type for vectors and matrices
 	if ( /[iu]?vec\d/.test( type ) ) {
 
@@ -153,6 +163,21 @@ export function getTypedArrayFromType( type ) {
 }
 
 /**
+ * Whether the given TSL type name is part of the half-precision (fp16) type family - the
+ * scalar `half`, the vectors `hvec2`/`hvec3`/`hvec4`, or the matrices `hmat2`/`hmat3`/`hmat4`.
+ *
+ * @private
+ * @method
+ * @param {string} type - The data type.
+ * @return {boolean} Whether the type is a half-precision type.
+ */
+export function isHalfType( type ) {
+
+	return type === 'half' || /^hvec[234]$/.test( type ) || /^hmat[234]$/.test( type );
+
+}
+
+/**
  * Returns the length for the given data type.
  *
  * @private
@@ -162,7 +187,7 @@ export function getTypedArrayFromType( type ) {
  */
 export function getLengthFromType( type ) {
 
-	if ( /float|int|uint|bool/.test( type ) ) return 1;
+	if ( /float|int|uint|bool|half/.test( type ) ) return 1;
 	if ( /vec2/.test( type ) ) return 2;
 	if ( /vec3/.test( type ) ) return 3;
 	if ( /vec4/.test( type ) ) return 4;
@@ -184,7 +209,7 @@ export function getLengthFromType( type ) {
  */
 export function getMemoryLengthFromType( type ) {
 
-	if ( /float|int|uint|bool/.test( type ) ) return 1;
+	if ( /float|int|uint|bool|half/.test( type ) ) return 1;
 	if ( /vec2/.test( type ) ) return 2;
 	if ( /vec3/.test( type ) ) return 3;
 	if ( /vec4/.test( type ) ) return 4;
@@ -206,7 +231,7 @@ export function getMemoryLengthFromType( type ) {
  */
 export function getAlignmentFromType( type ) {
 
-	if ( /float|int|uint|bool/.test( type ) ) return 1;
+	if ( /float|int|uint|bool|half/.test( type ) ) return 1;
 	if ( /vec2/.test( type ) ) return 2;
 	if ( /vec3/.test( type ) ) return 4;
 	if ( /vec4/.test( type ) ) return 4;
@@ -411,7 +436,7 @@ export function getValueFromType( type, ...params ) {
 
 		return params[ 0 ] || false;
 
-	} else if ( ( type === 'float' ) || ( type === 'int' ) || ( type === 'uint' ) ) {
+	} else if ( ( type === 'float' ) || ( type === 'int' ) || ( type === 'uint' ) || ( type === 'half' ) ) {
 
 		return params[ 0 ] || 0;
 

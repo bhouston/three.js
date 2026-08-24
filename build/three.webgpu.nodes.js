@@ -37385,6 +37385,56 @@ const hash = /*@__PURE__*/ Fn( ( [ seed ] ) => {
 } );
 
 /**
+ * Builds a symmetric covariance matrix from the packed upper-triangle representation
+ * used by Gaussian covariance data.
+ *
+ * @tsl
+ * @function
+ * @param {Node<vec4>} covA - The packed values `( c00, c01, c02, c11 )`.
+ * @param {Node<vec4>} covB - The packed values `( c12, c22, unused, unused )`.
+ * @return {Node<mat3>} The covariance matrix.
+ */
+const covarianceToMatrix = ( covA, covB ) => mat3(
+	vec3( covA.x, covA.y, covA.z ),
+	vec3( covA.y, covA.w, covB.x ),
+	vec3( covA.z, covB.x, covB.y )
+);
+
+/**
+ * Packs a symmetric covariance matrix into two `vec4` nodes.
+ *
+ * @tsl
+ * @function
+ * @param {Node<mat3>} covariance - The covariance matrix.
+ * @return {{covA: Node<vec4>, covB: Node<vec4>}} The packed covariance.
+ */
+const covarianceFromMatrix = ( covariance ) => ( {
+	covA: vec4(
+		covariance[ 0 ].x,
+		covariance[ 0 ].y,
+		covariance[ 0 ].z,
+		covariance[ 1 ].y
+	),
+	covB: vec4(
+		covariance[ 1 ].z,
+		covariance[ 2 ].z,
+		0,
+		0
+	)
+} );
+
+/**
+ * Transforms a covariance matrix by the given linear transform.
+ *
+ * @tsl
+ * @function
+ * @param {Node<mat3>} covariance - The covariance matrix.
+ * @param {Node<mat3>} matrix - The linear transform.
+ * @return {Node<mat3>} The transformed covariance matrix.
+ */
+const transformCovariance = ( covariance, matrix ) => matrix.mul( covariance ).mul( matrix.transpose() );
+
+/**
  * A function that remaps the `[0,1]` interval into the `[0,1]` interval.
  * The corners are mapped to `0` and the center to `1`.
  * Reference: {@link https://iquilezles.org/articles/functions/}.
@@ -49261,28 +49311,95 @@ const getParallaxCorrectNormal = /*@__PURE__*/ Fn( ( [ normal, cubeSize, cubePos
 
 } );
 
+function sphericalHarmonicsRadianceBand0( sh0 ) {
+
+	return sh0.mul( 0.282095 );
+
+}
+
+function sphericalHarmonicsRadianceBand1( shY, shZ, shX, direction ) {
+
+	const x = direction.x;
+	const y = direction.y;
+	const z = direction.z;
+
+	return shY.mul( y.mul( 0.4886025 ) )
+		.add( shZ.mul( z.mul( 0.4886025 ) ) )
+		.add( shX.mul( x.mul( 0.4886025 ) ) );
+
+}
+
+function sphericalHarmonicsRadianceBand2( shXY, shYZ, shZZ, shXZ, shXXYY, direction ) {
+
+	const x = direction.x;
+	const y = direction.y;
+	const z = direction.z;
+	const xx = x.mul( x ).toVar( 'sh2XX' );
+	const yy = y.mul( y ).toVar( 'sh2YY' );
+	const zz = z.mul( z ).toVar( 'sh2ZZ' );
+
+	return shXY.mul( x.mul( y ).mul( 1.0925484 ) )
+		.add( shYZ.mul( y.mul( z ).mul( 1.0925484 ) ) )
+		.add( shZZ.mul( zz.mul( 2 ).sub( xx ).sub( yy ).mul( 0.3153915 ) ) )
+		.add( shXZ.mul( x.mul( z ).mul( 1.0925484 ) ) )
+		.add( shXXYY.mul( xx.sub( yy ).mul( 0.5462742 ) ) );
+
+}
+
+function sphericalHarmonicsRadianceBand3( sh0, sh1, sh2, sh3, sh4, sh5, sh6, direction ) {
+
+	const x = direction.x;
+	const y = direction.y;
+	const z = direction.z;
+	const xx = x.mul( x ).toVar( 'sh3XX' );
+	const yy = y.mul( y ).toVar( 'sh3YY' );
+	const zz = z.mul( z ).toVar( 'sh3ZZ' );
+	const xy = x.mul( y ).toVar( 'sh3XY' );
+
+	return sh0.mul( y.mul( xx.mul( 3 ).sub( yy ) ).mul( -0.5900436 ) )
+		.add( sh1.mul( xy.mul( z ).mul( 2.8906114 ) ) )
+		.add( sh2.mul( y.mul( zz.mul( 4 ).sub( xx ).sub( yy ) ).mul( -0.4570458 ) ) )
+		.add( sh3.mul( z.mul( zz.mul( 2 ).sub( xx.mul( 3 ) ).sub( yy.mul( 3 ) ) ).mul( 0.3731763 ) ) )
+		.add( sh4.mul( x.mul( zz.mul( 4 ).sub( xx ).sub( yy ) ).mul( -0.4570458 ) ) )
+		.add( sh5.mul( z.mul( xx.sub( yy ) ).mul( 1.4453057 ) ) )
+		.add( sh6.mul( x.mul( xx.sub( yy.mul( 3 ) ) ).mul( -0.5900436 ) ) );
+
+}
+
+function sphericalHarmonicsIrradianceAt( normal, sh0, sh1, sh2, sh3, sh4, sh5, sh6, sh7, sh8 ) {
+
+	const x = normal.x;
+	const y = normal.y;
+	const z = normal.z;
+
+	return sh0.mul( 0.886227 )
+		.add( sh1.mul( 2.0 * 0.511664 ).mul( y ) )
+		.add( sh2.mul( 2.0 * 0.511664 ).mul( z ) )
+		.add( sh3.mul( 2.0 * 0.511664 ).mul( x ) )
+		.add( sh4.mul( 2.0 * 0.429043 ).mul( x ).mul( y ) )
+		.add( sh5.mul( 2.0 * 0.429043 ).mul( y ).mul( z ) )
+		.add( sh6.mul( z.mul( z ).mul( 0.743125 ).sub( 0.247708 ) ) )
+		.add( sh7.mul( 2.0 * 0.429043 ).mul( x ).mul( z ) )
+		.add( sh8.mul( 0.429043 ).mul( x.mul( x ).sub( y.mul( y ) ) ) );
+
+}
+
 const getShIrradianceAt = /*@__PURE__*/ Fn( ( [ normal, shCoefficients ] ) => {
 
 	// normal is assumed to have unit length
 
-	const x = normal.x, y = normal.y, z = normal.z;
-
-	// band 0
-	let result = shCoefficients.element( 0 ).mul( 0.886227 );
-
-	// band 1
-	result = result.add( shCoefficients.element( 1 ).mul( 2.0 * 0.511664 ).mul( y ) );
-	result = result.add( shCoefficients.element( 2 ).mul( 2.0 * 0.511664 ).mul( z ) );
-	result = result.add( shCoefficients.element( 3 ).mul( 2.0 * 0.511664 ).mul( x ) );
-
-	// band 2
-	result = result.add( shCoefficients.element( 4 ).mul( 2.0 * 0.429043 ).mul( x ).mul( y ) );
-	result = result.add( shCoefficients.element( 5 ).mul( 2.0 * 0.429043 ).mul( y ).mul( z ) );
-	result = result.add( shCoefficients.element( 6 ).mul( z.mul( z ).mul( 0.743125 ).sub( 0.247708 ) ) );
-	result = result.add( shCoefficients.element( 7 ).mul( 2.0 * 0.429043 ).mul( x ).mul( z ) );
-	result = result.add( shCoefficients.element( 8 ).mul( 0.429043 ).mul( mul( x, x ).sub( mul( y, y ) ) ) );
-
-	return result;
+	return sphericalHarmonicsIrradianceAt(
+		normal,
+		shCoefficients.element( 0 ),
+		shCoefficients.element( 1 ),
+		shCoefficients.element( 2 ),
+		shCoefficients.element( 3 ),
+		shCoefficients.element( 4 ),
+		shCoefficients.element( 5 ),
+		shCoefficients.element( 6 ),
+		shCoefficients.element( 7 ),
+		shCoefficients.element( 8 )
+	);
 
 } );
 
@@ -49442,6 +49559,8 @@ var TSL = /*#__PURE__*/Object.freeze({
 	countLeadingZeros: countLeadingZeros,
 	countOneBits: countOneBits,
 	countTrailingZeros: countTrailingZeros,
+	covarianceFromMatrix: covarianceFromMatrix,
+	covarianceToMatrix: covarianceToMatrix,
 	cross: cross,
 	cubeTexture: cubeTexture,
 	cubeTextureBase: cubeTextureBase,
@@ -49824,6 +49943,11 @@ var TSL = /*#__PURE__*/Object.freeze({
 	specularColor: specularColor,
 	specularColorBlended: specularColorBlended,
 	specularF90: specularF90,
+	sphericalHarmonicsIrradianceAt: sphericalHarmonicsIrradianceAt,
+	sphericalHarmonicsRadianceBand0: sphericalHarmonicsRadianceBand0,
+	sphericalHarmonicsRadianceBand1: sphericalHarmonicsRadianceBand1,
+	sphericalHarmonicsRadianceBand2: sphericalHarmonicsRadianceBand2,
+	sphericalHarmonicsRadianceBand3: sphericalHarmonicsRadianceBand3,
 	spherizeUV: spherizeUV,
 	split: split,
 	spritesheetUV: spritesheetUV,
@@ -49883,6 +50007,7 @@ var TSL = /*#__PURE__*/Object.freeze({
 	toneMapping: toneMapping,
 	toneMappingExposure: toneMappingExposure,
 	toonOutlinePass: toonOutlinePass,
+	transformCovariance: transformCovariance,
 	transformDirection: transformDirection,
 	transformNormal: transformNormal,
 	transformNormalByInverseViewMatrix: transformNormalByInverseViewMatrix,
@@ -89121,6 +89246,10 @@ class WebGPURenderer extends Renderer {
  * Render Bundle API of WebGPU. The group with all its descendant nodes
  * are considered as one render bundle and processed as such by
  * the renderer.
+ *
+ * Only renderable 3D objects are allowed in a bundle group. Other
+ * types like lights are not supported and must be added to the scene
+ * outside of the group.
  *
  * This module is only fully supported by `WebGPURenderer` with a WebGPU backend.
  * With a WebGL backend, the group can technically be rendered but without

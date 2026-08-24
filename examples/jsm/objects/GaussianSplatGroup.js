@@ -194,10 +194,16 @@ class GaussianSplatGroup extends Mesh {
 		} );
 
 		// id -> { geometry, buffers, count, base, matrix, visible, included, matrixDirty,
-		// sphericalHarmonicsDegree, shLocalCameraPosition, lastSHCameraMatrix,
-		// lastSHGroupWorldMatrix, lastSHMatrix, lastSHBase } - see `addSplat` and `_rebuildLayout`.
+		// sphericalHarmonicsDegree, shLocalCameraPosition, shDirty } - see `addSplat` and
+		// `_rebuildLayout`.
 		this._instances = new Map();
 		this._nextId = 0;
+
+		// Whether the camera or this group has moved since the last spherical harmonics
+		// update - a single group-wide condition (every instance's local camera position
+		// depends on it) tracked once here rather than per instance. See `_updateSphericalHarmonics`.
+		this._lastSHCameraMatrix = null;
+		this._lastSHGroupWorldMatrix = null;
 
 		// Set by addSplat/deleteSplat/setVisibleAt: which splat ranges are packed into the
 		// shared buffers, and at what offsets, changes - so every included instance needs
@@ -252,10 +258,9 @@ class GaussianSplatGroup extends Mesh {
 			included: false,
 			matrixDirty: true,
 			shLocalCameraPosition: new Vector3(),
-			lastSHCameraMatrix: null,
-			lastSHGroupWorldMatrix: null,
-			lastSHMatrix: null,
-			lastSHBase: - 1
+			// Always re-merged (spherical harmonics included) the next time this instance is
+			// included - see `_rebuildLayout`, `setMatrixAt` and `_updateSphericalHarmonics`.
+			shDirty: true
 		} );
 
 		this._layoutDirty = true;
@@ -294,6 +299,7 @@ class GaussianSplatGroup extends Mesh {
 
 		record.matrix.copy( matrix );
 		record.matrixDirty = true;
+		record.shDirty = true;
 
 	}
 
@@ -586,6 +592,12 @@ class GaussianSplatGroup extends Mesh {
 				total += record.count;
 				maxDegree = Math.max( maxDegree, record.sphericalHarmonicsDegree );
 
+			} else {
+
+				// No buffer range belongs to an excluded instance - don't leave its last
+				// offset lying around to be mistaken for something still meaningful.
+				record.base = - 1;
+
 			}
 
 		}
@@ -632,9 +644,15 @@ class GaussianSplatGroup extends Mesh {
 			if ( record.included === false ) continue;
 
 			// base offsets may have shifted for any included instance, even ones whose own
-			// transform didn't change - always remerge on a layout rebuild
+			// transform didn't change - always remerge (spherical harmonics included) on a
+			// layout rebuild. This isn't just about the base actually shifting: an instance
+			// that was previously excluded (e.g. hidden via `setVisibleAt`) may be reusing
+			// buffer slots a different instance wrote into in the meantime, so there is no
+			// safe way to tell from the base number alone whether a re-merge can be skipped -
+			// always redo it instead of trying to track that.
 			record.base = base;
 			record.matrixDirty = true;
+			record.shDirty = true;
 
 			base += record.count;
 
@@ -653,11 +671,9 @@ class GaussianSplatGroup extends Mesh {
 	}
 
 	// Reallocates the shared buffers to `capacity` and marks every currently-included
-	// instance for a full re-merge - both the transform/color merge (`matrixDirty`) and the
-	// spherical harmonics contribution (`lastSHBase` reset to an impossible value) - since
-	// `resizeGroupBufferState` allocates fresh, zeroed buffers rather than copying old
-	// contents forward (the group's buffers are a derived cache, not owned data - see the
-	// class documentation).
+	// instance for a full re-merge (spherical harmonics included) since `resizeGroupBufferState`
+	// allocates fresh, zeroed buffers rather than copying old contents forward (the group's
+	// buffers are a derived cache, not owned data - see the class documentation).
 	_resizeBuffers( capacity ) {
 
 		resizeGroupBufferState( this._buffers, capacity );
@@ -667,7 +683,7 @@ class GaussianSplatGroup extends Mesh {
 			if ( record.included === false ) continue;
 
 			record.matrixDirty = true;
-			record.lastSHBase = - 1;
+			record.shDirty = true;
 
 		}
 
@@ -723,31 +739,27 @@ class GaussianSplatGroup extends Mesh {
 		_groupWorldMatrixInverse.copy( this.matrixWorld ).invert();
 		_cameraPositionInGroup.setFromMatrixPosition( camera.matrixWorld ).applyMatrix4( _groupWorldMatrixInverse );
 
+		// Every instance's local camera position depends on the camera and this group having
+		// stayed put, so whether either moved since the last update is one condition shared by
+		// every instance - checked once here rather than re-derived per instance.
+		const cameraOrGroupMoved = this._lastSHCameraMatrix === null ||
+			camera.matrixWorld.equals( this._lastSHCameraMatrix ) === false ||
+			this._lastSHGroupWorldMatrix === null ||
+			this.matrixWorld.equals( this._lastSHGroupWorldMatrix ) === false;
+
+		this._lastSHCameraMatrix = ( this._lastSHCameraMatrix || new Matrix4() ).copy( camera.matrixWorld );
+		this._lastSHGroupWorldMatrix = ( this._lastSHGroupWorldMatrix || new Matrix4() ).copy( this.matrixWorld );
+
 		for ( const record of this._instances.values() ) {
 
 			if ( record.included === false || record.sphericalHarmonicsDegree === 0 ) continue;
 
-			// record.base can change - shifting where this instance's contribution belongs
-			// in the shared buffer - on a layout rebuild that never touches this instance's
-			// own camera/group/instance matrices at all (e.g. a *different* instance's
-			// visibility was toggled), so it has to be checked independently of them.
-			const needsUpdate = record.lastSHCameraMatrix === null ||
-				camera.matrixWorld.equals( record.lastSHCameraMatrix ) === false ||
-				record.lastSHGroupWorldMatrix === null ||
-				this.matrixWorld.equals( record.lastSHGroupWorldMatrix ) === false ||
-				record.lastSHMatrix === null ||
-				record.matrix.equals( record.lastSHMatrix ) === false ||
-				record.base !== record.lastSHBase;
+			if ( record.shDirty === false && cameraOrGroupMoved === false ) continue;
 
-			if ( needsUpdate === false ) continue;
+			record.shDirty = false;
 
 			_instanceMatrixInverse.copy( record.matrix ).invert();
 			record.shLocalCameraPosition.copy( _cameraPositionInGroup ).applyMatrix4( _instanceMatrixInverse );
-
-			record.lastSHCameraMatrix = ( record.lastSHCameraMatrix || new Matrix4() ).copy( camera.matrixWorld );
-			record.lastSHGroupWorldMatrix = ( record.lastSHGroupWorldMatrix || new Matrix4() ).copy( this.matrixWorld );
-			record.lastSHMatrix = ( record.lastSHMatrix || new Matrix4() ).copy( record.matrix );
-			record.lastSHBase = record.base;
 
 			const childBuffers = record.buffers;
 			const degree = record.sphericalHarmonicsDegree;

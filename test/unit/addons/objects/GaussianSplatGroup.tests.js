@@ -1,10 +1,11 @@
 import { createGaussianSplatGeometry } from '../../../../examples/jsm/utils/GaussianSplatUtils.js';
 import { GaussianSplatGroup } from '../../../../examples/jsm/objects/GaussianSplatGroup.js';
+import { packSphericalHarmonicsBand } from '../utils/GaussianSplatTestUtils.js';
 
 // Builds a minimal splat cloud geometry with `count` splats - real enough to drive
 // `GaussianSplatGroup`'s buffer bookkeeping without needing a GPU (these tests never call
 // `onBeforeRender`/`renderer.compute`, only the CPU-side layout/capacity logic).
-function createTestSplatGeometry( count ) {
+function createTestSplatGeometry( count, { sh1 = false } = {} ) {
 
 	const centers = new Float32Array( count * 3 );
 	const covariances = new Float32Array( count * 6 );
@@ -18,7 +19,11 @@ function createTestSplatGeometry( count ) {
 
 	}
 
-	return createGaussianSplatGeometry( centers, covariances, colors );
+	const sphericalHarmonics = {};
+
+	if ( sh1 === true ) sphericalHarmonics.sh1 = packSphericalHarmonicsBand( new Uint8ClampedArray( count * 9 ).fill( 128 ), count, 1 );
+
+	return createGaussianSplatGeometry( centers, covariances, colors, sphericalHarmonics );
 
 }
 
@@ -210,6 +215,54 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.strictEqual( sync( group ), 0, 'splatCount is 0 with nothing left' );
 				assert.strictEqual( group.capacity, 1, 'turning autoCompact back on shrinks on the next change' );
+
+				group.dispose();
+
+			} );
+
+			QUnit.test( 're-showing a hidden splat cloud always re-merges it, spherical harmonics included', ( assert ) => {
+
+				// Regression test: hiding lion, then re-showing it with nothing else changing,
+				// used to leave the view-dependent (spherical harmonics) lighting wrong until
+				// some other event (e.g. a sort) forced a recompute. Root cause: lion happened
+				// to land back on the exact same shared-buffer `base` offset it had before being
+				// hidden, and a cached "last known base" comparison (incorrectly) treated that as
+				// nothing having changed - even though, while hidden, a different splat cloud
+				// (tomatoes) could shift into and overwrite that same buffer range. Rather than
+				// track buffer ranges across a hide/show cycle at all, `_rebuildLayout` now always
+				// marks every included instance dirty (`shDirty`) on every layout change, and
+				// resets an excluded instance's `base` to `-1` instead of leaving it lying around.
+				const group = new GaussianSplatGroup( { autoCompact: false } );
+
+				const lionId = group.addSplat( createTestSplatGeometry( 10, { sh1: true } ) );
+				const tomatoesId = group.addSplat( createTestSplatGeometry( 5, { sh1: true } ) );
+
+				sync( group );
+
+				const lion = group._instances.get( lionId );
+				const tomatoes = group._instances.get( tomatoesId );
+
+				assert.strictEqual( lion.base, 0, 'lion starts at base 0' );
+
+				// Simulate a completed spherical harmonics compute for both, as
+				// `_updateSphericalHarmonics` would do after a real render.
+				lion.shDirty = false;
+				tomatoes.shDirty = false;
+
+				group.setVisibleAt( lionId, false );
+				sync( group );
+
+				assert.strictEqual( lion.base, - 1, 'an excluded instance\'s base is reset rather than left lying around' );
+				assert.strictEqual( tomatoes.base, 0, 'tomatoes shifts into lion\'s old base range while lion is hidden' );
+				assert.strictEqual( tomatoes.shDirty, true, 'tomatoes is marked dirty by the layout rebuild even though it stayed included' );
+
+				tomatoes.shDirty = false;
+
+				group.setVisibleAt( lionId, true );
+				sync( group );
+
+				assert.strictEqual( lion.base, 0, 'lion lands back on the same base it had before being hidden' );
+				assert.strictEqual( lion.shDirty, true, 'lion is marked dirty on re-inclusion despite landing back on the same base, forcing a recompute' );
 
 				group.dispose();
 

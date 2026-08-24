@@ -30,6 +30,9 @@ jobs:
       - name: === Lint testing ===
         run: npm run lint
 
+      - name: === Build ===
+        run: npm run build
+
       - name: === Unit testing ===
         run: npm run test-unit
 

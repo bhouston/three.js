@@ -3,7 +3,7 @@
  * Copyright 2010-2026 Three.js Authors
  * SPDX-License-Identifier: MIT
  */
-import { DynamicDrawUsage, RenderObjectRefreshType, Color, Vector2, Vector3, Vector4, Matrix2, Matrix3, Matrix4, error, UnsignedIntType, IntType, RedFormat, RedIntegerFormat, DepthFormat, DepthStencilFormat, AlphaFormat, RGFormat, RGIntegerFormat, RGBFormat, RGBIntegerFormat, EventDispatcher, MathUtils, warn, WebGLCoordinateSystem, WebGPUCoordinateSystem, ColorManagement, SRGBTransfer, NoToneMapping, StaticDrawUsage, InterleavedBufferAttribute, InterleavedBuffer, NoColorSpace, log as log$1, warnOnce, Texture, Compatibility, LessCompare, LessEqualCompare, GreaterCompare, GreaterEqualCompare, NearestFilter, Sphere, BackSide, DoubleSide, CubeTexture, CubeReflectionMapping, CubeRefractionMapping, TangentSpaceNormalMap, NoNormalPacking, NormalRGPacking, NormalGAPacking, ObjectSpaceNormalMap, RED_GREEN_RGTC2_Format, RG11_EAC_Format, InstancedBufferAttribute, InstancedInterleavedBuffer, DataTexture, RGBAFormat, FloatType, DataArrayTexture, FramebufferTexture, LinearMipmapLinearFilter, DepthTexture, Material, LineBasicMaterial, LineDashedMaterial, NoBlending, MeshNormalMaterial, SRGBColorSpace, RenderTarget, BoxGeometry, Mesh, Scene, LinearFilter, CubeCamera, EquirectangularReflectionMapping, EquirectangularRefractionMapping, AddOperation, MixOperation, MultiplyOperation, MeshBasicMaterial, MeshLambertMaterial, MeshPhongMaterial, HalfFloatType, ClampToEdgeWrapping, BufferGeometry, OrthographicCamera, PerspectiveCamera, LinearSRGBColorSpace, CubeUVReflectionMapping, BufferAttribute, MeshStandardMaterial, MeshPhysicalMaterial, MeshToonMaterial, MeshMatcapMaterial, SpriteMaterial, PointsMaterial, ShadowMaterial, Uint32BufferAttribute, Uint16BufferAttribute, ByteType, UnsignedByteType, ShortType, UnsignedShortType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedInt101111Type, NormalBlending, SrcAlphaFactor, OneMinusSrcAlphaFactor, AddEquation, MaterialBlending, Object3D, LinearMipMapLinearFilter, Plane, Float32BufferAttribute, UVMapping, VSMShadowMap, PCFShadowMap, BasicShadowMap, CubeDepthTexture, SphereGeometry, LinearMipmapNearestFilter, NearestMipmapLinearFilter, Float16BufferAttribute, yieldToMain, REVISION, ArrayCamera, PlaneGeometry, FrontSide, CustomBlending, ZeroFactor, CylinderGeometry, Quaternion, WebXRController, RAD2DEG, PCFSoftShadowMap, FrustumArray, Frustum, RGBAIntegerFormat, TimestampQuery, createCanvasElement, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, OneMinusConstantAlphaFactor, ConstantAlphaFactor, OneMinusConstantColorFactor, ConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcColorFactor, DstAlphaFactor, DstColorFactor, SrcAlphaSaturateFactor, SrcColorFactor, OneFactor, CullFaceNone, CullFaceBack, CullFaceFront, MultiplyBlending, SubtractiveBlending, AdditiveBlending, NotEqualDepth, GreaterDepth, GreaterEqualDepth, EqualDepth, LessEqualDepth, LessDepth, AlwaysDepth, NeverDepth, ReversedDepthFuncs, RGB_S3TC_DXT1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGB_PVRTC_4BPPV1_Format, RGB_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_PVRTC_2BPPV1_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGBA_ETC2_EAC_Format, R11_EAC_Format, SIGNED_R11_EAC_Format, SIGNED_RG11_EAC_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_10x10_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_BPTC_Format, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RED_RGTC1_Format, SIGNED_RED_RGTC1_Format, SIGNED_RED_GREEN_RGTC2_Format, MirroredRepeatWrapping, RepeatWrapping, NearestMipmapNearestFilter, NotEqualCompare, EqualCompare, AlwaysCompare, NeverCompare, LinearTransfer, getByteLength, isTypedArray, NotEqualStencilFunc, GreaterStencilFunc, GreaterEqualStencilFunc, EqualStencilFunc, LessEqualStencilFunc, LessStencilFunc, AlwaysStencilFunc, NeverStencilFunc, DecrementWrapStencilOp, IncrementWrapStencilOp, DecrementStencilOp, IncrementStencilOp, InvertStencilOp, ReplaceStencilOp, ZeroStencilOp, KeepStencilOp, SpotLight, PointLight, DirectionalLight, RectAreaLight, AmbientLight, HemisphereLight, LightProbe, LinearToneMapping, ReinhardToneMapping, CineonToneMapping, ACESFilmicToneMapping, AgXToneMapping, NeutralToneMapping, Group, Loader, FileLoader, MaterialLoader, ObjectLoader } from './three.core.js';
+import { DynamicDrawUsage, RenderObjectRefreshType, Color, Vector2, Vector3, Vector4, Matrix2, Matrix3, Matrix4, error, UnsignedIntType, IntType, RedFormat, RedIntegerFormat, DepthFormat, DepthStencilFormat, AlphaFormat, RGFormat, RGIntegerFormat, RGBFormat, RGBIntegerFormat, EventDispatcher, MathUtils, warn, WebGLCoordinateSystem, WebGPUCoordinateSystem, ColorManagement, SRGBTransfer, NoToneMapping, StaticDrawUsage, InterleavedBufferAttribute, InterleavedBuffer, NoColorSpace, log as log$1, warnOnce, Texture, Compatibility, LessCompare, LessEqualCompare, GreaterCompare, GreaterEqualCompare, NearestFilter, Sphere, BackSide, DoubleSide, CubeTexture, CubeReflectionMapping, CubeRefractionMapping, TangentSpaceNormalMap, NoNormalPacking, NormalRGPacking, NormalGAPacking, ObjectSpaceNormalMap, RED_GREEN_RGTC2_Format, RG11_EAC_Format, InstancedBufferAttribute, InstancedInterleavedBuffer, DataTexture, RGBAFormat, FloatType, DataArrayTexture, FramebufferTexture, LinearMipmapLinearFilter, DepthTexture, Material, LineBasicMaterial, LineDashedMaterial, NoBlending, MeshNormalMaterial, SRGBColorSpace, RenderTarget, BoxGeometry, Mesh, Scene, LinearFilter, CubeCamera, EquirectangularReflectionMapping, EquirectangularRefractionMapping, AddOperation, MixOperation, MultiplyOperation, MeshBasicMaterial, MeshLambertMaterial, MeshPhongMaterial, HalfFloatType, ClampToEdgeWrapping, BufferGeometry, OrthographicCamera, PerspectiveCamera, LinearSRGBColorSpace, CubeUVReflectionMapping, BufferAttribute, MeshStandardMaterial, MeshPhysicalMaterial, MeshToonMaterial, MeshMatcapMaterial, SpriteMaterial, PointsMaterial, ShadowMaterial, Uint32BufferAttribute, Uint16BufferAttribute, ByteType, UnsignedByteType, ShortType, UnsignedShortType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedInt101111Type, NormalBlending, SrcAlphaFactor, OneMinusSrcAlphaFactor, AddEquation, MaterialBlending, Object3D, LinearMipMapLinearFilter, Plane, Float32BufferAttribute, UVMapping, VSMShadowMap, PCFShadowMap, BasicShadowMap, CubeDepthTexture, SphereGeometry, LinearMipmapNearestFilter, NearestMipmapLinearFilter, Float16BufferAttribute, yieldToMain, REVISION, ArrayCamera, PlaneGeometry, FrontSide, CustomBlending, ZeroFactor, CylinderGeometry, Quaternion, WebXRController, RAD2DEG, PCFSoftShadowMap, FrustumArray, Frustum, toHalfFloat, RGBAIntegerFormat, TimestampQuery, createCanvasElement, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, OneMinusConstantAlphaFactor, ConstantAlphaFactor, OneMinusConstantColorFactor, ConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcColorFactor, DstAlphaFactor, DstColorFactor, SrcAlphaSaturateFactor, SrcColorFactor, OneFactor, CullFaceNone, CullFaceBack, CullFaceFront, MultiplyBlending, SubtractiveBlending, AdditiveBlending, NotEqualDepth, GreaterDepth, GreaterEqualDepth, EqualDepth, LessEqualDepth, LessDepth, AlwaysDepth, NeverDepth, ReversedDepthFuncs, RGB_S3TC_DXT1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGB_PVRTC_4BPPV1_Format, RGB_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_PVRTC_2BPPV1_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGBA_ETC2_EAC_Format, R11_EAC_Format, SIGNED_R11_EAC_Format, SIGNED_RG11_EAC_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_10x10_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_BPTC_Format, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RED_RGTC1_Format, SIGNED_RED_RGTC1_Format, SIGNED_RED_GREEN_RGTC2_Format, MirroredRepeatWrapping, RepeatWrapping, NearestMipmapNearestFilter, NotEqualCompare, EqualCompare, AlwaysCompare, NeverCompare, LinearTransfer, getByteLength, isTypedArray, NotEqualStencilFunc, GreaterStencilFunc, GreaterEqualStencilFunc, EqualStencilFunc, LessEqualStencilFunc, LessStencilFunc, AlwaysStencilFunc, NeverStencilFunc, DecrementWrapStencilOp, IncrementWrapStencilOp, DecrementStencilOp, IncrementStencilOp, InvertStencilOp, ReplaceStencilOp, ZeroStencilOp, KeepStencilOp, SpotLight, PointLight, DirectionalLight, RectAreaLight, AmbientLight, HemisphereLight, LightProbe, LinearToneMapping, ReinhardToneMapping, CineonToneMapping, ACESFilmicToneMapping, AgXToneMapping, NeutralToneMapping, Group, Loader, FileLoader, MaterialLoader, ObjectLoader } from './three.core.js';
 export { AdditiveAnimationBlendMode, AnimationAction, AnimationClip, AnimationLoader, AnimationMixer, AnimationObjectGroup, AnimationUtils, ArcCurve, ArrowHelper, AttachedBindMode, Audio, AudioAnalyser, AudioContext, AudioListener, AudioLoader, AxesHelper, BasicDepthPacking, BatchedMesh, BezierInterpolant, Bone, BooleanKeyframeTrack, Box2, Box3, Box3Helper, BoxHelper, BufferGeometryLoader, Cache, Camera, CameraHelper, CanvasTexture, CapsuleGeometry, CatmullRomCurve3, CircleGeometry, Clock, ColorKeyframeTrack, CompressedArrayTexture, CompressedCubeTexture, CompressedTexture, CompressedTextureLoader, ConeGeometry, Controls, CubeTextureLoader, CubicBezierCurve, CubicBezierCurve3, CubicInterpolant, CullFaceFrontBack, Curve, CurvePath, CustomToneMapping, Cylindrical, Data3DTexture, DataTextureLoader, DataUtils, DefaultLoadingManager, DetachedBindMode, DirectionalLightHelper, DiscreteInterpolant, DodecahedronGeometry, DynamicCopyUsage, DynamicReadUsage, EdgesGeometry, EllipseCurve, Euler, ExternalTexture, ExtrudeGeometry, Fog, FogExp2, GLBufferAttribute, GLSL1, GLSL3, GridHelper, HTMLTexture, HemisphereLightHelper, IcosahedronGeometry, ImageBitmapLoader, ImageLoader, ImageUtils, InstancedBufferGeometry, InstancedMesh, Int16BufferAttribute, Int32BufferAttribute, Int8BufferAttribute, Interpolant, InterpolateBezier, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, InterpolationSamplingMode, InterpolationSamplingType, KeyframeTrack, LOD, LatheGeometry, Layers, Light, LightShadow, Line, Line3, LineCurve, LineCurve3, LineLoop, LineSegments, LinearInterpolant, LinearMipMapNearestFilter, LoaderUtils, LoadingManager, LoopOnce, LoopPingPong, LoopRepeat, MOUSE, MeshDepthMaterial, MeshDistanceMaterial, NearestMipMapLinearFilter, NearestMipMapNearestFilter, NormalAnimationBlendMode, NumberKeyframeTrack, OctahedronGeometry, Path, PlaneHelper, PointLightHelper, Points, PolarGridHelper, PolyhedronGeometry, PositionalAudio, PropertyBinding, PropertyMixer, QuadraticBezierCurve, QuadraticBezierCurve3, QuaternionKeyframeTrack, QuaternionLinearInterpolant, RGBADepthPacking, RGBDepthPacking, RGDepthPacking, RawShaderMaterial, Ray, Raycaster, RenderTarget3D, RingGeometry, ShaderMaterial, Shape, ShapeGeometry, ShapePath, ShapeUtils, Skeleton, SkeletonHelper, SkinnedMesh, Source, Spherical, SphericalHarmonics3, SplineCurve, SpotLightHelper, Sprite, StaticCopyUsage, StaticReadUsage, StereoCamera, StreamCopyUsage, StreamDrawUsage, StreamReadUsage, StringKeyframeTrack, TOUCH, TetrahedronGeometry, TextureLoader, TextureSource, TextureUtils, Timer, TorusGeometry, TorusKnotGeometry, Triangle, TriangleFanDrawMode, TriangleStripDrawMode, TrianglesDrawMode, TubeGeometry, Uint8BufferAttribute, Uint8ClampedBufferAttribute, Uniform, UniformsGroup, VectorKeyframeTrack, VideoFrameTexture, VideoTexture, WebGL3DRenderTarget, WebGLArrayRenderTarget, WebGLRenderTarget, WireframeGeometry, WrapAroundEnding, ZeroCurvatureEnding, ZeroSlopeEnding, getConsoleFunction, setConsoleFunction } from './three.core.js';
 
 const refreshUniforms = [
@@ -793,11 +793,15 @@ class NodeMaterialObserver {
 			for ( let i = 0; i < lightsData.length; i ++ ) {
 
 				const lightData = renderObjectData.lights[ i ];
+				const currentLightData = lightsData[ i ];
 
-				if ( lightData.map !== lightsData[ i ].map || lightData.cacheVersion !== lightsData[ i ].cacheVersion ) {
+				if ( lightData.map !== currentLightData.map || lightData.cacheVersion !== currentLightData.cacheVersion ||
+					lightData.shadowMapWidth !== currentLightData.shadowMapWidth || lightData.shadowMapHeight !== currentLightData.shadowMapHeight ) {
 
-					lightData.map = lightsData[ i ].map;
-					lightData.cacheVersion = lightsData[ i ].cacheVersion;
+					lightData.map = currentLightData.map;
+					lightData.cacheVersion = currentLightData.cacheVersion;
+					lightData.shadowMapWidth = currentLightData.shadowMapWidth;
+					lightData.shadowMapHeight = currentLightData.shadowMapHeight;
 
 					return false;
 
@@ -863,13 +867,29 @@ class NodeMaterialObserver {
 
 		for ( const light of materialLights ) {
 
+			let data = null;
+
 			if ( light.isSpotLight === true && light.map !== null ) {
 
 				// only add lights that have a map
 
-				lights.push( { map: light.map.version, cacheVersion: this.getTextureData( light.map )._version } );
+				data = { map: light.map.version, cacheVersion: this.getTextureData( light.map )._version };
 
 			}
+
+			if ( light.castShadow === true && light.shadow !== undefined ) {
+
+				// resizing a shadow map recreates its textures so the bindings
+				// of all related render objects must be updated
+
+				if ( data === null ) data = {};
+
+				data.shadowMapWidth = light.shadow.mapSize.width;
+				data.shadowMapHeight = light.shadow.mapSize.height;
+
+			}
+
+			if ( data !== null ) lights.push( data );
 
 		}
 
@@ -1200,6 +1220,16 @@ function getTypeFromLength( length ) {
  */
 function getTypedArrayFromType( type ) {
 
+	// Half-precision (fp16) types are packed as raw Uint16Array bit patterns - see
+	// toHalfFloat()/fromHalfFloat() in extras/DataUtils.js, and Float16BufferAttribute, which
+	// uses the same convention (JS has no broadly-supported native fp16 typed array). This
+	// matters most for storage-buffer arrays (e.g. instancedArray(n, 'hmat4')), where real
+	// 2-byte-per-component packing in the `storage` address space is the whole point - unlike
+	// the `uniform` address space, WGSL doesn't force a 16-byte array-element-stride floor
+	// there, so packing genuinely halves the buffer size and, more importantly, lets the GPU
+	// do the matrix/vector math at native fp16 throughput.
+	if ( isHalfType( type ) ) return Uint16Array;
+
 	// Handle component type for vectors and matrices
 	if ( /[iu]?vec\d/.test( type ) ) {
 
@@ -1225,6 +1255,21 @@ function getTypedArrayFromType( type ) {
 }
 
 /**
+ * Whether the given TSL type name is part of the half-precision (fp16) type family - the
+ * scalar `half`, the vectors `hvec2`/`hvec3`/`hvec4`, or the matrices `hmat2`/`hmat3`/`hmat4`.
+ *
+ * @private
+ * @method
+ * @param {string} type - The data type.
+ * @return {boolean} Whether the type is a half-precision type.
+ */
+function isHalfType( type ) {
+
+	return type === 'half' || /^hvec[234]$/.test( type ) || /^hmat[234]$/.test( type );
+
+}
+
+/**
  * Returns the length for the given data type.
  *
  * @private
@@ -1234,7 +1279,7 @@ function getTypedArrayFromType( type ) {
  */
 function getLengthFromType( type ) {
 
-	if ( /float|int|uint|bool/.test( type ) ) return 1;
+	if ( /float|int|uint|bool|half/.test( type ) ) return 1;
 	if ( /vec2/.test( type ) ) return 2;
 	if ( /vec3/.test( type ) ) return 3;
 	if ( /vec4/.test( type ) ) return 4;
@@ -1256,7 +1301,7 @@ function getLengthFromType( type ) {
  */
 function getMemoryLengthFromType( type ) {
 
-	if ( /float|int|uint|bool/.test( type ) ) return 1;
+	if ( /float|int|uint|bool|half/.test( type ) ) return 1;
 	if ( /vec2/.test( type ) ) return 2;
 	if ( /vec3/.test( type ) ) return 3;
 	if ( /vec4/.test( type ) ) return 4;
@@ -1278,7 +1323,7 @@ function getMemoryLengthFromType( type ) {
  */
 function getAlignmentFromType( type ) {
 
-	if ( /float|int|uint|bool/.test( type ) ) return 1;
+	if ( /float|int|uint|bool|half/.test( type ) ) return 1;
 	if ( /vec2/.test( type ) ) return 2;
 	if ( /vec3/.test( type ) ) return 4;
 	if ( /vec4/.test( type ) ) return 4;
@@ -1483,7 +1528,7 @@ function getValueFromType( type, ...params ) {
 
 		return params[ 0 ] || false;
 
-	} else if ( ( type === 'float' ) || ( type === 'int' ) || ( type === 'uint' ) ) {
+	} else if ( ( type === 'float' ) || ( type === 'int' ) || ( type === 'uint' ) || ( type === 'half' ) ) {
 
 		return params[ 0 ] || 0;
 
@@ -1583,7 +1628,8 @@ var NodeUtils = /*#__PURE__*/Object.freeze({
 	hash: hash$1,
 	hashArray: hashArray,
 	hashString: hashString,
-	isArrayAsParameter: isArrayAsParameter
+	isArrayAsParameter: isArrayAsParameter,
+	isHalfType: isHalfType
 });
 
 /**
@@ -4829,7 +4875,7 @@ const ConvertType = function ( type, cacheMap = null ) {
 
 		}
 
-		if ( params.length === 0 || ( ! [ 'bool', 'float', 'int', 'uint' ].includes( type ) && params.every( param => {
+		if ( params.length === 0 || ( ! [ 'bool', 'float', 'int', 'uint', 'half' ].includes( type ) && params.every( param => {
 
 			const paramType = typeof param;
 
@@ -5134,6 +5180,16 @@ const int = new ConvertType( 'int', cacheMaps.ints );
 const uint = new ConvertType( 'uint', cacheMaps.uint );
 const bool = new ConvertType( 'bool', cacheMaps.bool );
 
+/**
+ * Constructs a half-precision (fp16) scalar. On backends/hardware that don't support
+ * native fp16 shader math (e.g. WebGL, or WebGPU without the `shader-f16` feature),
+ * this transparently falls back to fp32.
+ *
+ * @tsl
+ * @function
+ */
+const half = new ConvertType( 'half' );
+
 const vec2 = new ConvertType( 'vec2' );
 const ivec2 = new ConvertType( 'ivec2' );
 const uvec2 = new ConvertType( 'uvec2' );
@@ -5153,26 +5209,42 @@ const mat2 = new ConvertType( 'mat2' );
 const mat3 = new ConvertType( 'mat3' );
 const mat4 = new ConvertType( 'mat4' );
 
+// half-precision (fp16) vector/matrix types - see `half` above for fallback behavior.
+const hvec2 = new ConvertType( 'hvec2' );
+const hvec3 = new ConvertType( 'hvec3' );
+const hvec4 = new ConvertType( 'hvec4' );
+
+const hmat2 = new ConvertType( 'hmat2' );
+const hmat3 = new ConvertType( 'hmat3' );
+const hmat4 = new ConvertType( 'hmat4' );
+
 addMethodChaining( 'toColor', color );
 addMethodChaining( 'toFloat', float );
 addMethodChaining( 'toInt', int );
 addMethodChaining( 'toUint', uint );
 addMethodChaining( 'toBool', bool );
+addMethodChaining( 'toHalf', half );
 addMethodChaining( 'toVec2', vec2 );
 addMethodChaining( 'toIVec2', ivec2 );
 addMethodChaining( 'toUVec2', uvec2 );
 addMethodChaining( 'toBVec2', bvec2 );
+addMethodChaining( 'toHVec2', hvec2 );
 addMethodChaining( 'toVec3', vec3 );
 addMethodChaining( 'toIVec3', ivec3 );
 addMethodChaining( 'toUVec3', uvec3 );
 addMethodChaining( 'toBVec3', bvec3 );
+addMethodChaining( 'toHVec3', hvec3 );
 addMethodChaining( 'toVec4', vec4 );
 addMethodChaining( 'toIVec4', ivec4 );
 addMethodChaining( 'toUVec4', uvec4 );
 addMethodChaining( 'toBVec4', bvec4 );
+addMethodChaining( 'toHVec4', hvec4 );
 addMethodChaining( 'toMat2', mat2 );
 addMethodChaining( 'toMat3', mat3 );
 addMethodChaining( 'toMat4', mat4 );
+addMethodChaining( 'toHMat2', hmat2 );
+addMethodChaining( 'toHMat3', hmat3 );
+addMethodChaining( 'toHMat4', hmat4 );
 
 // basic nodes
 
@@ -7453,7 +7525,7 @@ class MathNode extends TempNode {
 
 		const method = this.method;
 
-		if ( method === MathNode.LENGTH || method === MathNode.DISTANCE || method === MathNode.DOT ) {
+		if ( method === MathNode.LENGTH || method === MathNode.DISTANCE || method === MathNode.DOT || method === MathNode.DETERMINANT ) {
 
 			return 'float';
 
@@ -10923,7 +10995,7 @@ const instancedBufferAttribute = ( array, type = null, stride = 0, offset = 0 ) 
  */
 const instancedDynamicBufferAttribute = ( array, type = null, stride = 0, offset = 0 ) => createBufferAttribute( array, type, stride, offset, DynamicDrawUsage, true );
 
-addMethodChaining( 'toAttribute', ( bufferNode ) => bufferAttribute( bufferNode.value ) );
+addMethodChaining( 'toAttribute', ( bufferNode ) => bufferAttribute( bufferNode.value, bufferNode.bufferType ) );
 
 /**
  * This class represents shader indices of different types. The following predefined node
@@ -18548,6 +18620,26 @@ class StorageBufferNode extends BufferNode {
 	}
 
 	/**
+	 * Backends without real storage-buffer support (e.g. the WebGL fallback) instead convert
+	 * this node into a per-invocation `bufferAttribute()`/`varying()` pair - a fundamentally
+	 * different access mechanism with no real indexed array semantics. On top of that, a
+	 * half-precision element type's CPU-side data is a raw `Uint16Array` of packed fp16 bit
+	 * patterns (see `NodeUtils.getTypedArrayFromType()`), which that fallback path has no
+	 * concept of unpacking - it would just read the wrong bytes as fp32. Rather than silently
+	 * misinterpreting that data, fail loudly and explain why.
+	 *
+	 */
+	_assertNoUnsupportedHalfPrecision() {
+
+		if ( isHalfType( this.nodeType ) ) {
+
+			throw new Error( `THREE.StorageBufferNode: Half-precision storage buffer type "${ this.nodeType }" requires a backend with real storage buffer support (WebGPU with the 'shader-f16' GPU feature) - it has no fp32 fallback on this backend.` );
+
+		}
+
+	}
+
+	/**
 	 * This method is overwritten since the node type from the availability of storage buffers
 	 * and the attribute data.
 	 *
@@ -18567,6 +18659,8 @@ class StorageBufferNode extends BufferNode {
 			return super.generateNodeType( builder );
 
 		}
+
+		this._assertNoUnsupportedHalfPrecision( builder );
 
 		const { attribute } = this.getAttributeData();
 
@@ -18608,6 +18702,8 @@ class StorageBufferNode extends BufferNode {
 			return super.generate( builder );
 
 		}
+
+		this._assertNoUnsupportedHalfPrecision( builder );
 
 		const { attribute, varying } = this.getAttributeData();
 
@@ -25050,7 +25146,7 @@ const LTC_Evaluate_Volume = /*@__PURE__*/ Fn( ( { P, p0, p1, p2, p3 } ) => {
 	return result;
 
 } ).setLayout( {
-	name: 'LTC_Evaluate',
+	name: 'LTC_Evaluate_Volume',
 	type: 'vec3',
 	inputs: [
 		{ name: 'P', type: 'vec3' },
@@ -28968,8 +29064,9 @@ class RotateNode extends TempNode {
 	 * @param {Node} positionNode - The position node.
 	 * @param {Node} rotationNode - Represents the rotation that is applied to the position node. Depending
 	 * on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
+	 * @param {string} [order='XYZ'] - The Euler rotation order. Only used for 3D rotation.
 	 */
-	constructor( positionNode, rotationNode ) {
+	constructor( positionNode, rotationNode, order = 'XYZ' ) {
 
 		super();
 
@@ -28981,12 +29078,58 @@ class RotateNode extends TempNode {
 		this.positionNode = positionNode;
 
 		/**
-		 *  Represents the rotation that is applied to the position node.
-		 *  Depending on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
+		 * Represents the rotation that is applied to the position node.
+		 * Depending on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
 		 *
 		 * @type {Node}
 		 */
 		this.rotationNode = rotationNode;
+
+		/**
+		 * The Euler rotation order.
+		 *
+		 * @private
+		 * @type {string}
+		 * @default 'XYZ'
+		 */
+		this._order = order;
+
+	}
+
+	/**
+	 * Overwrites the default `customCacheKey()` implementation by including the
+	 * Euler order into the cache key.
+	 *
+	 * @return {number} The hash.
+	 */
+	customCacheKey() {
+
+		return hashString( this._order );
+
+	}
+
+	/**
+	 * Sets the Euler rotation order.
+	 *
+	 * @param {string} value - The Euler rotation order.
+	 * @return {RotateNode} A reference to this node.
+	 */
+	setOrder( value ) {
+
+		this._order = value;
+
+		return this;
+
+	}
+
+	/**
+	 * Gets the Euler rotation order.
+	 *
+	 * @return {string} The Euler rotation order.
+	 */
+	getOrder() {
+
+		return this._order;
 
 	}
 
@@ -29023,13 +29166,41 @@ class RotateNode extends TempNode {
 		} else {
 
 			const rotation = rotationNode;
-			const rotationXMatrix = mat4( vec4( 1.0, 0.0, 0.0, 0.0 ), vec4( 0.0, cos( rotation.x ), sin( rotation.x ).negate(), 0.0 ), vec4( 0.0, sin( rotation.x ), cos( rotation.x ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
-			const rotationYMatrix = mat4( vec4( cos( rotation.y ), 0.0, sin( rotation.y ), 0.0 ), vec4( 0.0, 1.0, 0.0, 0.0 ), vec4( sin( rotation.y ).negate(), 0.0, cos( rotation.y ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
-			const rotationZMatrix = mat4( vec4( cos( rotation.z ), sin( rotation.z ).negate(), 0.0, 0.0 ), vec4( sin( rotation.z ), cos( rotation.z ), 0.0, 0.0 ), vec4( 0.0, 0.0, 1.0, 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+			const order = this._order;
 
-			return rotationXMatrix.mul( rotationYMatrix ).mul( rotationZMatrix ).mul( vec4( positionNode, 1.0 ) ).xyz;
+			const rotationXMatrix = mat4( vec4( 1.0, 0.0, 0.0, 0.0 ), vec4( 0.0, cos( rotation.x ), sin( rotation.x ), 0.0 ), vec4( 0.0, sin( rotation.x ).negate(), cos( rotation.x ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+			const rotationYMatrix = mat4( vec4( cos( rotation.y ), 0.0, sin( rotation.y ).negate(), 0.0 ), vec4( 0.0, 1.0, 0.0, 0.0 ), vec4( sin( rotation.y ), 0.0, cos( rotation.y ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+			const rotationZMatrix = mat4( vec4( cos( rotation.z ), sin( rotation.z ), 0.0, 0.0 ), vec4( sin( rotation.z ).negate(), cos( rotation.z ), 0.0, 0.0 ), vec4( 0.0, 0.0, 1.0, 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+
+			const matrixMap = {
+				'X': rotationXMatrix,
+				'Y': rotationYMatrix,
+				'Z': rotationZMatrix
+			};
+
+			const matrixChain = matrixMap[ order.charAt( 0 ) ]
+				.mul( matrixMap[ order.charAt( 1 ) ] )
+				.mul( matrixMap[ order.charAt( 2 ) ] );
+
+			return matrixChain.mul( vec4( positionNode, 1.0 ) ).xyz;
 
 		}
+
+	}
+
+	serialize( data ) {
+
+		super.serialize( data );
+
+		data.order = this._order;
+
+	}
+
+	deserialize( data ) {
+
+		super.deserialize( data );
+
+		this._order = data.order;
 
 	}
 
@@ -29043,9 +29214,10 @@ class RotateNode extends TempNode {
  * @param {Node} positionNode - The position node.
  * @param {Node} rotationNode - Represents the rotation that is applied to the position node. Depending
  * on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
+ * @param {string} [order='XYZ'] - The Euler rotation order. Only used for 3D rotation.
  * @returns {RotateNode}
  */
-const rotate = /*@__PURE__*/ nodeProxy( RotateNode ).setParameterLength( 2 );
+const rotate = /*@__PURE__*/ nodeProxy( RotateNode ).setParameterLength( 2, 3 );
 
 const _defaultValues$2 = /*@__PURE__*/ new SpriteMaterial();
 
@@ -37085,6 +37257,12 @@ class BitcountNode extends MathNode {
 
 		const fnDef = Fn( ( [ value ] ) => {
 
+			If( value.equal( uint( 0 ) ), () => {
+
+				return uint( 32 );
+
+			} );
+
 			const v = uint( 0.0 );
 
 			this._resolveElementType( value, v, elementType );
@@ -37443,7 +37621,11 @@ const parabola = ( x, k ) => pow( mul( 4.0, x.mul( sub( 1.0, x ) ) ), k );
  * @param {Node<float>} k - `k=1` is the identity curve,`k<1` produces the classic `gain()` shape, and `k>1` produces "s" shaped curves.
  * @return {Node<float>} The remapped value.
  */
-const gain = ( x, k ) => x.lessThan( 0.5 ) ? parabola( x.mul( 2.0 ), k ).div( 2.0 ) : sub( 1.0, parabola( mul( sub( 1.0, x ), 2.0 ), k ).div( 2.0 ) );
+const gain = ( x, k ) => select(
+	x.lessThan( 0.5 ),
+	pow( mul( 2.0, x ), k ).mul( 0.5 ),
+	sub( 1.0, pow( mul( 2.0, sub( 1.0, x ) ), k ).mul( 0.5 ) )
+);
 
 /**
  * A function that remaps the `[0,1]` interval into the `[0,1]` interval.
@@ -37457,7 +37639,7 @@ const gain = ( x, k ) => x.lessThan( 0.5 ) ? parabola( x.mul( 2.0 ), k ).div( 2.
  * @param {Node<float>} b - Second control parameter.
  * @return {Node<float>} The remapped value.
  */
-const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub( 1.0, x ), b ) ) ), 1.0 / a );
+const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub( 1.0, x ), b ) ) ), div( 1.0, a ) );
 
 /**
  * A phase shifted sinus curve that starts at zero and ends at zero, with bouncing behavior.
@@ -37469,7 +37651,13 @@ const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub(
  * @param {Node<float>} k - Controls the amount of bounces.
  * @return {Node<float>} The result value.
  */
-const sinc = ( x, k ) => sin( PI.mul( k.mul( x ).sub( 1.0 ) ) ).div( PI.mul( k.mul( x ).sub( 1.0 ) ) );
+const sinc = ( x, k ) => {
+
+	const arg = abs( PI.mul( k.mul( x ).sub( 1.0 ) ) ).max( 1e-6 ).toConst();
+
+	return sin( arg ).div( arg );
+
+};
 
 /**
  * This node represents an operation that packs floating-point values of a vector into an unsigned 32-bit integer
@@ -39042,7 +39230,7 @@ class RTTNode extends TextureNode {
 	 * Constructs a new RTT node.
 	 *
 	 * @param {Node} node - The node to render a texture with.
-	 * @param {?number} [width=null] - The width of the internal render target. If not width is applied, the render target is automatically resized.
+	 * @param {?number} [width=null] - The width of the internal render target. If no width is applied, the render target is automatically resized.
 	 * @param {?number} [height=null] - The height of the internal render target.
 	 * @param {Object} [options={}] - The options for the internal render target.
 	 * @param {number} [options.type=HalfFloatType] - The texture type.
@@ -39134,13 +39322,13 @@ class RTTNode extends TextureNode {
 		this._quadMesh = new QuadMesh( new NodeMaterial() );
 
 		/**
-		 * The `updateBeforeType` is set to `NodeUpdateType.RENDER` since the node updates
-		 * the texture once per render in its {@link RTTNode#updateBefore} method.
+		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node updates
+		 * the texture once per frame in its {@link RTTNode#updateBefore} method.
 		 *
 		 * @type {string}
-		 * @default 'render'
+		 * @default 'frame'
 		 */
-		this.updateBeforeType = NodeUpdateType.RENDER;
+		this.updateBeforeType = NodeUpdateType.FRAME;
 
 	}
 
@@ -39169,10 +39357,10 @@ class RTTNode extends TextureNode {
 	}
 
 	/**
-	 * Sets the size of the internal render target
+	 * Sets the size of the internal render target.
 	 *
 	 * @param {number} width - The width to set.
-	 * @param {number} height - The width to set.
+	 * @param {number} height - The height to set.
 	 */
 	setSize( width, height ) {
 
@@ -39217,7 +39405,42 @@ class RTTNode extends TextureNode {
 
 	}
 
-	updateBefore( { renderer } ) {
+	/**
+	 * Overwritten since the value is defined by the internal render target.
+	 *
+	 * @param {Texture} value - The texture value.
+	 */
+	set value( value ) {
+
+		if ( this.renderTarget && value !== this.renderTarget.texture ) {
+
+			error( 'TSL: "rtt()" does not allow overwriting the value.' );
+
+		}
+
+	}
+
+	/**
+	 * The texture of the internal render target.
+	 *
+	 * @type {Texture}
+	 */
+	get value() {
+
+		return this.renderTarget ? this.renderTarget.texture : null;
+
+	}
+
+	/**
+	 * Renders the node's output into the internal render target before the main render pass.
+	 * Handles automatic resizing of the render target when `autoResize` is enabled,
+	 * and skips rendering if neither `textureNeedsUpdate` nor `autoUpdate` is true.
+	 *
+	 * @param {NodeFrame} frame - The current node frame, providing access to the renderer and other frame data.
+	 */
+	updateBefore( frame ) {
+
+		const { renderer } = frame;
 
 		if ( this.textureNeedsUpdate === false && this.autoUpdate === false ) return;
 
@@ -39248,9 +39471,11 @@ class RTTNode extends TextureNode {
 
 		let name = 'RTT';
 
-		if ( this.node.name ) {
+		const callName = this.name || this.node.name;
 
-			name = this.node.name + ' [ ' + name + ' ]';
+		if ( callName ) {
+
+			name = callName + ' [ ' + name + ' ]';
 
 		}
 
@@ -39276,6 +39501,18 @@ class RTTNode extends TextureNode {
 
 	}
 
+	/**
+	 * Frees internal resources. Should be called when the node is no longer in use.
+	 */
+	dispose() {
+
+		this.renderTarget.dispose();
+		this._quadMesh.material.dispose();
+
+		super.dispose();
+
+	}
+
 }
 
 /**
@@ -39284,7 +39521,7 @@ class RTTNode extends TextureNode {
  * @tsl
  * @function
  * @param {Node} node - The node to render a texture with.
- * @param {?number} [width=null] - The width of the internal render target. If not width is applied, the render target is automatically resized.
+ * @param {?number} [width=null] - The width of the internal render target. If no width is applied, the render target is automatically resized.
  * @param {?number} [height=null] - The height of the internal render target.
  * @param {Object} [options={}] - The options for the internal render target.
  * @param {number} [options.type=HalfFloatType] - The texture type.
@@ -39300,7 +39537,7 @@ const rtt = ( node, ...params ) => new RTTNode( nodeObject( node ), ...params );
  * @tsl
  * @function
  * @param {Node} node - The node to render a texture with.
- * @param {?number} [width=null] - The width of the internal render target. If not width is applied, the render target is automatically resized.
+ * @param {?number} [width=null] - The width of the internal render target. If no width is applied, the render target is automatically resized.
  * @param {?number} [height=null] - The height of the internal render target.
  * @param {Object} [options={}] - The options for the internal render target.
  * @param {number} [options.type=HalfFloatType] - The texture type.
@@ -39659,6 +39896,20 @@ class StorageBufferAttribute extends BufferAttribute {
 
 }
 
+// Half-precision (fp16) storage-buffer arrays are backed by a raw Uint16Array of packed fp16
+// bit patterns (see NodeUtils.getTypedArrayFromType()), not integer data - this flag tells
+// WebGPUAttributeUtils.createAttribute() not to widen it to a Uint32Array the way a genuine
+// Uint16 integer attribute would be (see that method's "patch for INT16 and UINT16"). It's the
+// same duck-typed flag Float16BufferAttribute itself sets, just applied here to a storage
+// attribute rather than a vertex attribute.
+function tagHalfPrecision( buffer, type ) {
+
+	if ( isHalfType( type ) ) buffer.isFloat16BufferAttribute = true;
+
+	return buffer;
+
+}
+
 /**
  * TSL function for creating a storage buffer node with a configured `StorageBufferAttribute`.
  *
@@ -39684,7 +39935,7 @@ const attributeArray = ( count, type = 'float' ) => {
 
 	}
 
-	const buffer = new StorageBufferAttribute( count, itemSize, typedArray );
+	const buffer = tagHalfPrecision( new StorageBufferAttribute( count, itemSize, typedArray ), type );
 	const node = storage( buffer, type, count );
 
 	return node;
@@ -39716,7 +39967,7 @@ const instancedArray = ( count, type = 'float' ) => {
 
 	}
 
-	const buffer = new StorageInstancedBufferAttribute( count, itemSize, typedArray );
+	const buffer = tagHalfPrecision( new StorageInstancedBufferAttribute( count, itemSize, typedArray ), type );
 	const node = storage( buffer, type, buffer.count );
 
 	return node;
@@ -49553,6 +49804,9 @@ var TSL = /*#__PURE__*/Object.freeze({
 	HALF_PI: HALF_PI,
 	INFINITY: INFINITY,
 	If: If,
+	LTC_Evaluate: LTC_Evaluate,
+	LTC_Evaluate_Volume: LTC_Evaluate_Volume,
+	LTC_Uv: LTC_Uv,
 	Loop: Loop,
 	NodeAccess: NodeAccess,
 	NodeShaderStage: NodeShaderStage,
@@ -49765,11 +50019,18 @@ var TSL = /*#__PURE__*/Object.freeze({
 	grayscale: grayscale,
 	greaterThan: greaterThan,
 	greaterThanEqual: greaterThanEqual,
+	half: half,
 	hardwareClipping: hardwareClipping,
 	hash: hash,
 	highpModelNormalViewMatrix: highpModelNormalViewMatrix,
 	highpModelViewMatrix: highpModelViewMatrix,
+	hmat2: hmat2,
+	hmat3: hmat3,
+	hmat4: hmat4,
 	hue: hue,
+	hvec2: hvec2,
+	hvec3: hvec3,
+	hvec4: hvec4,
 	increment: increment,
 	incrementBefore: incrementBefore,
 	inspect: inspect,
@@ -51273,6 +51534,161 @@ class ColorUniform extends Uniform {
 }
 
 /**
+ * Represents a half-precision (fp16) scalar uniform. Used only when the backend genuinely
+ * supports native fp16 shader math (WGSL's `shader-f16` feature) - otherwise `half`-typed
+ * uniforms are represented as a plain {@link NumberUniform} instead (see
+ * `NodeBuilder.getNodeUniform()`), so this class only ever exists on WebGPU with `shader-f16`
+ * enabled.
+ *
+ * A single fp16 value is packed into the low 16 bits of one 4-byte buffer slot (the high 16
+ * bits are unused padding) so it can share the existing 4-byte-element layout machinery in
+ * {@link UniformsGroup} without a wider rewrite - see `UniformsGroup.updateHalf()`.
+ *
+ * @private
+ * @augments Uniform
+ */
+class HalfUniform extends Uniform {
+
+	/**
+	 * Constructs a new half-precision uniform.
+	 *
+	 * @param {string} name - The uniform's name.
+	 * @param {number} value - The uniform's value.
+	 */
+	constructor( name, value = 0 ) {
+
+		super( name, value );
+
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
+		this.isHalfUniform = true;
+
+		this.boundary = 4;
+		this.itemSize = 1;
+
+	}
+
+}
+
+/**
+ * Represents a half-precision (fp16) 2-component vector uniform. Both components are bit-packed
+ * into a single 4-byte buffer slot (`vec2<f16>`'s natural WGSL alignment/size, 4 bytes, already
+ * matches one slot exactly) - see `UniformsGroup.updateHVec2()`. Only used when `shader-f16` is
+ * genuinely available; see the note on {@link HalfUniform}.
+ *
+ * @private
+ * @augments Uniform
+ */
+class HVec2Uniform extends Uniform {
+
+	/**
+	 * Constructs a new half-precision Vector2 uniform.
+	 *
+	 * @param {string} name - The uniform's name.
+	 * @param {Vector2} value - The uniform's value.
+	 */
+	constructor( name, value = new Vector2() ) {
+
+		super( name, value );
+
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
+		this.isHVec2Uniform = true;
+
+		this.boundary = 4;
+		this.itemSize = 1;
+
+	}
+
+}
+
+/**
+ * Represents a half-precision (fp16) 3-component vector uniform. `vec3<f16>`'s natural WGSL
+ * size (6 bytes) is inflated to 8 bytes (an explicit `@size(8)` override, see
+ * `WGSLNodeBuilder.getUniforms()`) so it always occupies exactly 2 of the existing 4-byte
+ * slots: slot 0 packs x/y, slot 1 packs z (with 16 bits of unused padding) - see
+ * `UniformsGroup.updateHVec3()`. Only used when `shader-f16` is genuinely available; see the
+ * note on {@link HalfUniform}.
+ *
+ * @private
+ * @augments Uniform
+ */
+class HVec3Uniform extends Uniform {
+
+	/**
+	 * Constructs a new half-precision Vector3 uniform.
+	 *
+	 * @param {string} name - The uniform's name.
+	 * @param {Vector3} value - The uniform's value.
+	 */
+	constructor( name, value = new Vector3() ) {
+
+		super( name, value );
+
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
+		this.isHVec3Uniform = true;
+
+		this.boundary = 8;
+		this.itemSize = 2;
+
+	}
+
+}
+
+/**
+ * Represents a half-precision (fp16) 4-component vector uniform. `vec4<f16>`'s natural WGSL
+ * alignment/size (8 bytes) already matches 2 of the existing 4-byte slots exactly: slot 0
+ * packs x/y, slot 1 packs z/w - see `UniformsGroup.updateHVec4()`. Only used when `shader-f16`
+ * is genuinely available; see the note on {@link HalfUniform}.
+ *
+ * @private
+ * @augments Uniform
+ */
+class HVec4Uniform extends Uniform {
+
+	/**
+	 * Constructs a new half-precision Vector4 uniform.
+	 *
+	 * @param {string} name - The uniform's name.
+	 * @param {Vector4} value - The uniform's value.
+	 */
+	constructor( name, value = new Vector4() ) {
+
+		super( name, value );
+
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
+		this.isHVec4Uniform = true;
+
+		this.boundary = 8;
+		this.itemSize = 2;
+
+	}
+
+}
+
+/**
  * Represents a Matrix2 uniform.
  *
  * @private
@@ -51539,6 +51955,210 @@ class Vector4NodeUniform extends Vector4Uniform {
 
 	/**
 	 * Constructs a new node-based Vector4 uniform.
+	 *
+	 * @param {NodeUniform} nodeUniform - The node uniform.
+	 */
+	constructor( nodeUniform ) {
+
+		super( nodeUniform.name, nodeUniform.value );
+
+		/**
+		 * The node uniform.
+		 *
+		 * @type {NodeUniform}
+		 */
+		this.nodeUniform = nodeUniform;
+
+	}
+
+	/**
+	 * Overwritten to return the value of the node uniform.
+	 *
+	 * @return {Vector4} The value.
+	 */
+	getValue() {
+
+		return this.nodeUniform.value;
+
+	}
+
+	/**
+	 * Returns the node uniform data type.
+	 *
+	 * @return {string} The data type.
+	 */
+	getType() {
+
+		return this.nodeUniform.type;
+
+	}
+
+}
+
+/**
+ * A special form of half-precision (fp16) scalar uniform binding type.
+ * It's value is managed by a node object.
+ *
+ * @private
+ * @augments HalfUniform
+ */
+class HalfNodeUniform extends HalfUniform {
+
+	/**
+	 * Constructs a new node-based half-precision uniform.
+	 *
+	 * @param {NodeUniform} nodeUniform - The node uniform.
+	 */
+	constructor( nodeUniform ) {
+
+		super( nodeUniform.name, nodeUniform.value );
+
+		/**
+		 * The node uniform.
+		 *
+		 * @type {NodeUniform}
+		 */
+		this.nodeUniform = nodeUniform;
+
+	}
+
+	/**
+	 * Overwritten to return the value of the node uniform.
+	 *
+	 * @return {number} The value.
+	 */
+	getValue() {
+
+		return this.nodeUniform.value;
+
+	}
+
+	/**
+	 * Returns the node uniform data type.
+	 *
+	 * @return {string} The data type.
+	 */
+	getType() {
+
+		return this.nodeUniform.type;
+
+	}
+
+}
+
+/**
+ * A special form of half-precision (fp16) Vector2 uniform binding type.
+ * It's value is managed by a node object.
+ *
+ * @private
+ * @augments HVec2Uniform
+ */
+class HVec2NodeUniform extends HVec2Uniform {
+
+	/**
+	 * Constructs a new node-based half-precision Vector2 uniform.
+	 *
+	 * @param {NodeUniform} nodeUniform - The node uniform.
+	 */
+	constructor( nodeUniform ) {
+
+		super( nodeUniform.name, nodeUniform.value );
+
+		/**
+		 * The node uniform.
+		 *
+		 * @type {NodeUniform}
+		 */
+		this.nodeUniform = nodeUniform;
+
+	}
+
+	/**
+	 * Overwritten to return the value of the node uniform.
+	 *
+	 * @return {Vector2} The value.
+	 */
+	getValue() {
+
+		return this.nodeUniform.value;
+
+	}
+
+	/**
+	 * Returns the node uniform data type.
+	 *
+	 * @return {string} The data type.
+	 */
+	getType() {
+
+		return this.nodeUniform.type;
+
+	}
+
+}
+
+/**
+ * A special form of half-precision (fp16) Vector3 uniform binding type.
+ * It's value is managed by a node object.
+ *
+ * @private
+ * @augments HVec3Uniform
+ */
+class HVec3NodeUniform extends HVec3Uniform {
+
+	/**
+	 * Constructs a new node-based half-precision Vector3 uniform.
+	 *
+	 * @param {NodeUniform} nodeUniform - The node uniform.
+	 */
+	constructor( nodeUniform ) {
+
+		super( nodeUniform.name, nodeUniform.value );
+
+		/**
+		 * The node uniform.
+		 *
+		 * @type {NodeUniform}
+		 */
+		this.nodeUniform = nodeUniform;
+
+	}
+
+	/**
+	 * Overwritten to return the value of the node uniform.
+	 *
+	 * @return {Vector3} The value.
+	 */
+	getValue() {
+
+		return this.nodeUniform.value;
+
+	}
+
+	/**
+	 * Returns the node uniform data type.
+	 *
+	 * @return {string} The data type.
+	 */
+	getType() {
+
+		return this.nodeUniform.type;
+
+	}
+
+}
+
+/**
+ * A special form of half-precision (fp16) Vector4 uniform binding type.
+ * It's value is managed by a node object.
+ *
+ * @private
+ * @augments HVec4Uniform
+ */
+class HVec4NodeUniform extends HVec4Uniform {
+
+	/**
+	 * Constructs a new node-based half-precision Vector4 uniform.
 	 *
 	 * @param {NodeUniform} nodeUniform - The node uniform.
 	 */
@@ -53163,16 +53783,16 @@ class NodeBuilder {
 
 		if ( value === null ) {
 
-			if ( type === 'float' || type === 'int' || type === 'uint' ) value = 0;
+			if ( type === 'float' || type === 'int' || type === 'uint' || type === 'half' ) value = 0;
 			else if ( type === 'bool' ) value = false;
 			else if ( type === 'color' ) value = new Color();
-			else if ( type === 'vec2' || type === 'uvec2' || type === 'ivec2' ) value = new Vector2();
-			else if ( type === 'vec3' || type === 'uvec3' || type === 'ivec3' ) value = new Vector3();
-			else if ( type === 'vec4' || type === 'uvec4' || type === 'ivec4' ) value = new Vector4();
+			else if ( type === 'vec2' || type === 'uvec2' || type === 'ivec2' || type === 'hvec2' ) value = new Vector2();
+			else if ( type === 'vec3' || type === 'uvec3' || type === 'ivec3' || type === 'hvec3' ) value = new Vector3();
+			else if ( type === 'vec4' || type === 'uvec4' || type === 'ivec4' || type === 'hvec4' ) value = new Vector4();
 
 		}
 
-		if ( type === 'float' ) return _toFloat( value );
+		if ( type === 'float' || type === 'half' ) return _toFloat( value );
 		if ( type === 'int' ) return `${ Math.round( value ) }`;
 		if ( type === 'uint' ) return value >= 0 ? `${ Math.round( value ) }u` : '0u';
 		if ( type === 'bool' ) return value ? 'true' : 'false';
@@ -53192,13 +53812,18 @@ class NodeBuilder {
 
 			return `${ this.getType( type ) }( ${ generateConst( value.x ) }, ${ generateConst( value.y ) }, ${ generateConst( value.z ) } )`;
 
-		} else if ( typeLength === 4 && type !== 'mat2' ) {
-
-			return `${ this.getType( type ) }( ${ generateConst( value.x ) }, ${ generateConst( value.y ) }, ${ generateConst( value.z ) }, ${ generateConst( value.w ) } )`;
-
 		} else if ( typeLength >= 4 && value && ( value.isMatrix2 || value.isMatrix3 || value.isMatrix4 ) ) {
 
+			// Checked ahead of the plain vec4 branch below (rather than via a hardcoded
+			// `type !== 'mat2'` string check) because mat2 - and any prefixed variant of it,
+			// e.g. `hmat2` - has the same 4-component length as vec4. Dispatching on the
+			// actual value's shape rather than the type name string handles every such
+			// variant generically.
 			return `${ this.getType( type ) }( ${ value.elements.map( generateConst ).join( ', ' ) } )`;
+
+		} else if ( typeLength === 4 ) {
+
+			return `${ this.getType( type ) }( ${ generateConst( value.x ) }, ${ generateConst( value.y ) }, ${ generateConst( value.z ) }, ${ generateConst( value.w ) } )`;
 
 		} else if ( typeLength > 4 ) {
 
@@ -53375,9 +54000,9 @@ class NodeBuilder {
 	 */
 	getElementType( type ) {
 
-		if ( type === 'mat2' ) return 'vec2';
-		if ( type === 'mat3' ) return 'vec3';
-		if ( type === 'mat4' ) return 'vec4';
+		if ( type === 'mat2' || type === 'hmat2' ) return this.changeComponentType( 'vec2', this.getComponentType( type ) );
+		if ( type === 'mat3' || type === 'hmat3' ) return this.changeComponentType( 'vec3', this.getComponentType( type ) );
+		if ( type === 'mat4' || type === 'hmat4' ) return this.changeComponentType( 'vec4', this.getComponentType( type ) );
 
 		return this.getComponentType( type );
 
@@ -53393,15 +54018,16 @@ class NodeBuilder {
 
 		type = this.getVectorType( type );
 
-		if ( type === 'float' || type === 'bool' || type === 'int' || type === 'uint' ) return type;
+		if ( type === 'float' || type === 'bool' || type === 'int' || type === 'uint' || type === 'half' ) return type;
 
-		const componentType = /(b|i|u|)(vec|mat)([2-4])/.exec( type );
+		const componentType = /(b|i|u|h|)(vec|mat)([2-4])/.exec( type );
 
 		if ( componentType === null ) return null;
 
 		if ( componentType[ 1 ] === 'b' ) return 'bool';
 		if ( componentType[ 1 ] === 'i' ) return 'int';
 		if ( componentType[ 1 ] === 'u' ) return 'uint';
+		if ( componentType[ 1 ] === 'h' ) return 'half';
 
 		return 'float';
 
@@ -53511,7 +54137,7 @@ class NodeBuilder {
 		const vecNum = /vec([2-4])/.exec( vecType );
 
 		if ( vecNum !== null ) return Number( vecNum[ 1 ] );
-		if ( vecType === 'float' || vecType === 'bool' || vecType === 'int' || vecType === 'uint' ) return 1;
+		if ( vecType === 'float' || vecType === 'bool' || vecType === 'int' || vecType === 'uint' || vecType === 'half' ) return 1;
 		if ( /mat2/.test( type ) === true ) return 4;
 		if ( /mat3/.test( type ) === true ) return 9;
 		if ( /mat4/.test( type ) === true ) return 16;
@@ -55081,7 +55707,32 @@ class NodeBuilder {
 			else if ( type === 'mat2' ) node = new Matrix2NodeUniform( uniformNode );
 			else if ( type === 'mat3' ) node = new Matrix3NodeUniform( uniformNode );
 			else if ( type === 'mat4' ) node = new Matrix4NodeUniform( uniformNode );
-			else {
+			else if ( type === 'half' || type === 'hvec2' || type === 'hvec3' || type === 'hvec4' ) {
+
+				// Half-precision uniforms only get a real, bit-packed fp16 CPU representation
+				// when the backend genuinely supports native fp16 shader math (WGSL's
+				// `shader-f16` feature - see WGSLNodeBuilder.getType()/enableShaderF16()).
+				// Otherwise the exact same fp32 uniform classes used for `float`/`vec2/3/4`
+				// are reused as-is: the shader-side type is already transparently aliased to
+				// its fp32 equivalent in that case, so the CPU-side value needs no special
+				// handling at all.
+				if ( this.isAvailable( 'shaderF16' ) ) {
+
+					if ( type === 'half' ) node = new HalfNodeUniform( uniformNode );
+					else if ( type === 'hvec2' ) node = new HVec2NodeUniform( uniformNode );
+					else if ( type === 'hvec3' ) node = new HVec3NodeUniform( uniformNode );
+					else node = new HVec4NodeUniform( uniformNode );
+
+				} else {
+
+					if ( type === 'half' ) node = new NumberNodeUniform( uniformNode );
+					else if ( type === 'hvec2' ) node = new Vector2NodeUniform( uniformNode );
+					else if ( type === 'hvec3' ) node = new Vector3NodeUniform( uniformNode );
+					else node = new Vector4NodeUniform( uniformNode );
+
+				}
+
+			} else {
 
 				throw new Error( `THREE.NodeBuilder: Uniform "${ type }" not implemented.` );
 
@@ -56339,7 +56990,7 @@ const parse$1 = ( source ) => {
 
 	const pragmaMainIndex = source.indexOf( pragmaMain );
 
-	const mainCode = pragmaMainIndex !== -1 ? source.slice( pragmaMainIndex + pragmaMain.length ) : source;
+	const mainCode = ( pragmaMainIndex !== -1 ? source.slice( pragmaMainIndex + pragmaMain.length ) : source ).replace( /^(?:\s*\/\/[^\r\n]*|\s*\/\*[\s\S]*?\*\/|\s*)+/, '' );
 
 	const declaration = mainCode.match( declarationRegexp$1 );
 
@@ -65266,6 +65917,11 @@ class UniformsGroup extends UniformBuffer {
 		if ( uniform.isVector3Uniform ) return this.updateVector3( uniform );
 		if ( uniform.isVector4Uniform ) return this.updateVector4( uniform );
 		if ( uniform.isColorUniform ) return this.updateColor( uniform );
+		if ( uniform.isHalfUniform ) return this.updateHalf( uniform );
+		if ( uniform.isHVec2Uniform ) return this.updateHVec2( uniform );
+		if ( uniform.isHVec3Uniform ) return this.updateHVec3( uniform );
+		if ( uniform.isHVec4Uniform ) return this.updateHVec4( uniform );
+		if ( uniform.isMatrix2Uniform ) return this.updateMatrix2( uniform );
 		if ( uniform.isMatrix3Uniform ) return this.updateMatrix3( uniform );
 		if ( uniform.isMatrix4Uniform ) return this.updateMatrix4( uniform );
 
@@ -65423,6 +66079,167 @@ class UniformsGroup extends UniformBuffer {
 			b[ offset + 0 ] = a[ offset + 0 ] = c.r;
 			b[ offset + 1 ] = a[ offset + 1 ] = c.g;
 			b[ offset + 2 ] = a[ offset + 2 ] = c.b;
+
+			updated = true;
+
+			this.addUniformUpdateRange( uniform );
+
+		}
+
+		return updated;
+
+	}
+
+	/**
+	 * Updates a given half-precision (fp16) scalar uniform. Only ever called for a real
+	 * {@link HalfUniform} instance, i.e. only when the backend genuinely supports `shader-f16`
+	 * (see `NodeBuilder.getNodeUniform()`) - a `half` uniform on an unsupporting backend is a
+	 * plain {@link NumberUniform} and goes through `updateNumber()` instead.
+	 *
+	 * The fp16 value is bit-packed into the low 16 bits of its 4-byte buffer slot (see the
+	 * class doc on {@link HalfUniform}), so this bypasses the shared `this.values` shadow
+	 * array (which is float32-per-slot and can't represent a packed half value) and tracks its
+	 * own last-written value on the uniform instance instead.
+	 *
+	 * @param {HalfUniform} uniform - The half-precision uniform.
+	 * @return {boolean} Whether the uniform has been updated or not.
+	 */
+	updateHalf( uniform ) {
+
+		const v = uniform.getValue();
+
+		if ( uniform._cachedValue === v ) return false;
+
+		const view = new Uint32Array( this.buffer.buffer );
+		const offset = uniform.offset;
+
+		view[ offset ] = toHalfFloat( v ) & 0xffff;
+
+		uniform._cachedValue = v;
+
+		this.addUniformUpdateRange( uniform );
+
+		return true;
+
+	}
+
+	/**
+	 * Updates a given half-precision (fp16) Vector2 uniform. Both components are bit-packed
+	 * into the single 4-byte slot this uniform occupies (see {@link HVec2Uniform}). Only ever
+	 * called for a real `HVec2Uniform` instance - see the note on `updateHalf()`.
+	 *
+	 * @param {HVec2Uniform} uniform - The half-precision Vector2 uniform.
+	 * @return {boolean} Whether the uniform has been updated or not.
+	 */
+	updateHVec2( uniform ) {
+
+		const v = uniform.getValue();
+
+		if ( uniform._cachedX === v.x && uniform._cachedY === v.y ) return false;
+
+		const view = new Uint32Array( this.buffer.buffer );
+		const offset = uniform.offset;
+
+		view[ offset ] = ( toHalfFloat( v.x ) & 0xffff ) | ( ( toHalfFloat( v.y ) & 0xffff ) << 16 );
+
+		uniform._cachedX = v.x;
+		uniform._cachedY = v.y;
+
+		this.addUniformUpdateRange( uniform );
+
+		return true;
+
+	}
+
+	/**
+	 * Updates a given half-precision (fp16) Vector3 uniform. x/y are bit-packed into the first
+	 * of this uniform's two 4-byte slots, z into the low 16 bits of the second (see
+	 * {@link HVec3Uniform}). Only ever called for a real `HVec3Uniform` instance - see the note
+	 * on `updateHalf()`.
+	 *
+	 * @param {HVec3Uniform} uniform - The half-precision Vector3 uniform.
+	 * @return {boolean} Whether the uniform has been updated or not.
+	 */
+	updateHVec3( uniform ) {
+
+		const v = uniform.getValue();
+
+		if ( uniform._cachedX === v.x && uniform._cachedY === v.y && uniform._cachedZ === v.z ) return false;
+
+		const view = new Uint32Array( this.buffer.buffer );
+		const offset = uniform.offset;
+
+		view[ offset + 0 ] = ( toHalfFloat( v.x ) & 0xffff ) | ( ( toHalfFloat( v.y ) & 0xffff ) << 16 );
+		view[ offset + 1 ] = toHalfFloat( v.z ) & 0xffff;
+
+		uniform._cachedX = v.x;
+		uniform._cachedY = v.y;
+		uniform._cachedZ = v.z;
+
+		this.addUniformUpdateRange( uniform );
+
+		return true;
+
+	}
+
+	/**
+	 * Updates a given half-precision (fp16) Vector4 uniform. x/y are bit-packed into the first
+	 * of this uniform's two 4-byte slots, z/w into the second (see {@link HVec4Uniform}). Only
+	 * ever called for a real `HVec4Uniform` instance - see the note on `updateHalf()`.
+	 *
+	 * @param {HVec4Uniform} uniform - The half-precision Vector4 uniform.
+	 * @return {boolean} Whether the uniform has been updated or not.
+	 */
+	updateHVec4( uniform ) {
+
+		const v = uniform.getValue();
+
+		if ( uniform._cachedX === v.x && uniform._cachedY === v.y && uniform._cachedZ === v.z && uniform._cachedW === v.w ) return false;
+
+		const view = new Uint32Array( this.buffer.buffer );
+		const offset = uniform.offset;
+
+		view[ offset + 0 ] = ( toHalfFloat( v.x ) & 0xffff ) | ( ( toHalfFloat( v.y ) & 0xffff ) << 16 );
+		view[ offset + 1 ] = ( toHalfFloat( v.z ) & 0xffff ) | ( ( toHalfFloat( v.w ) & 0xffff ) << 16 );
+
+		uniform._cachedX = v.x;
+		uniform._cachedY = v.y;
+		uniform._cachedZ = v.z;
+		uniform._cachedW = v.w;
+
+		this.addUniformUpdateRange( uniform );
+
+		return true;
+
+	}
+
+	/**
+	 * Updates a given Matrix2 uniform.
+	 *
+	 * Note: this was previously missing from `updateByType()`'s dispatch entirely, meaning a
+	 * plain `mat2` uniform threw `'Unsupported uniform type.'` - fixed here alongside adding
+	 * half-precision uniform support, since `hmat2` uniforms would otherwise inherit the same
+	 * gap.
+	 *
+	 * @param {Matrix2Uniform} uniform - The Matrix2 uniform.
+	 * @return {boolean} Whether the uniform has been updated or not.
+	 */
+	updateMatrix2( uniform ) {
+
+		let updated = false;
+
+		const a = this.values;
+		const e = uniform.getValue().elements;
+		const offset = uniform.offset;
+
+		if ( a[ offset + 0 ] !== e[ 0 ] || a[ offset + 1 ] !== e[ 1 ] || a[ offset + 2 ] !== e[ 2 ] || a[ offset + 3 ] !== e[ 3 ] ) {
+
+			const b = this.buffer;
+
+			b[ offset + 0 ] = a[ offset + 0 ] = e[ 0 ];
+			b[ offset + 1 ] = a[ offset + 1 ] = e[ 1 ];
+			b[ offset + 2 ] = a[ offset + 2 ] = e[ 2 ];
+			b[ offset + 3 ] = a[ offset + 3 ] = e[ 3 ];
 
 			updated = true;
 
@@ -66019,6 +66836,17 @@ const glslMethods = {
 	floatunpack_unorm_4x8: 'tsl_unpackUnorm4x8'
 };
 
+// GLSL has no native fp16 compute type - half types always resolve to their fp32 equivalent.
+const glslHalfFallbackTypeLib = {
+	half: 'float',
+	hvec2: 'vec2',
+	hvec3: 'vec3',
+	hvec4: 'vec4',
+	hmat2: 'mat2',
+	hmat3: 'mat3',
+	hmat4: 'mat4'
+};
+
 const precisionLib = {
 	low: 'lowp',
 	medium: 'mediump',
@@ -66168,6 +66996,21 @@ class GLSLNodeBuilder extends NodeBuilder {
 		this.addInclude( codeNode );
 
 		return codeNode;
+
+	}
+
+	/**
+	 * Returns the GLSL type of the given node data type. GLSL has no native fp16 compute
+	 * type, so half-precision types are always upgraded to their fp32 equivalent here.
+	 *
+	 * @param {string} type - The node data type.
+	 * @return {string} The GLSL type.
+	 */
+	getType( type ) {
+
+		const floatType = glslHalfFallbackTypeLib[ type ];
+
+		return floatType !== undefined ? floatType : super.getType( type );
 
 	}
 
@@ -66881,7 +67724,13 @@ ${ flowData.code }
 						for ( const sharedUniform of sharedUniformGroup.uniforms ) {
 
 							const type = sharedUniform.getType();
-							const vectorType = this.getVectorType( type );
+							// this.getType() (not just getVectorType()) is required here so a
+							// half-precision type (which has no native GLSL fp16 compute type)
+							// is aliased to its fp32 equivalent - see this class's own
+							// getType() override. Omitting it previously let a literal 'half'/
+							// 'hvecN' leak straight into the generated GLSL, which doesn't
+							// compile.
+							const vectorType = this.getType( this.getVectorType( type ) );
 							const precision = sharedUniform.nodeUniform.node.precision;
 
 							let uniformSnippet = `${ vectorType } ${ sharedUniform.name };`;
@@ -80181,6 +81030,26 @@ const wgslTypeLib$1 = {
 	'mat4x4<f32>': 'mat4',
 	'mat4x4f': 'mat4',
 
+	'f16': 'half',
+
+	'vec2<f16>': 'hvec2',
+	'vec2h': 'hvec2',
+
+	'vec3<f16>': 'hvec3',
+	'vec3h': 'hvec3',
+
+	'vec4<f16>': 'hvec4',
+	'vec4h': 'hvec4',
+
+	'mat2x2<f16>': 'hmat2',
+	'mat2x2h': 'hmat2',
+
+	'mat3x3<f16>': 'hmat3',
+	'mat3x3h': 'hmat3',
+
+	'mat4x4<f16>': 'hmat4',
+	'mat4x4h': 'hmat4',
+
 	'sampler': 'sampler',
 	'sampler_comparison': 'samplerComparison',
 
@@ -80210,7 +81079,7 @@ const wgslTypeLib$1 = {
 
 const parse = ( source ) => {
 
-	source = source.trim();
+	source = source.replace( /^(?:\s*\/\/[^\r\n]*|\s*\/\*[\s\S]*?\*\/|\s*)+/, '' );
 
 	const declaration = source.match( declarationRegexp );
 
@@ -80390,7 +81259,27 @@ const wgslTypeLib = {
 
 	mat2: 'mat2x2<f32>',
 	mat3: 'mat3x3<f32>',
-	mat4: 'mat4x4<f32>'
+	mat4: 'mat4x4<f32>',
+
+	half: 'f16',
+	hvec2: 'vec2<f16>',
+	hvec3: 'vec3<f16>',
+	hvec4: 'vec4<f16>',
+	hmat2: 'mat2x2<f16>',
+	hmat3: 'mat3x3<f16>',
+	hmat4: 'mat4x4<f16>'
+};
+
+// Fallback mapping used when the `shader-f16` GPU feature is unavailable - half types are
+// transparently upgraded to their fp32 equivalent so authored TSL code doesn't have to branch.
+const wgslHalfFallbackTypeLib = {
+	half: 'float',
+	hvec2: 'vec2',
+	hvec3: 'vec3',
+	hvec4: 'vec4',
+	hmat2: 'mat2',
+	hmat3: 'mat3',
+	hmat4: 'mat4'
 };
 
 const wgslCodeCache = {};
@@ -80548,6 +81437,7 @@ const wgslMethods = {
 	inverse_mat3: 'tsl_inverse_mat3',
 	inverse_mat4: 'tsl_inverse_mat4',
 	inversesqrt: 'inverseSqrt',
+	faceforward: 'faceForward',
 	bitcast: 'bitcast<f32>',
 	floatpack_snorm_2x16: 'pack2x16snorm',
 	floatpack_unorm_2x16: 'pack2x16unorm',
@@ -82537,7 +83427,20 @@ ${ flowData.code }
 			} else if ( uniform.type === 'buffer' || uniform.type === 'storageBuffer' || uniform.type === 'indirectStorageBuffer' ) {
 
 				const bufferNode = uniform.node;
-				const bufferType = this.getType( bufferNode.getNodeType( this ) );
+				const rawBufferType = bufferNode.getNodeType( this );
+
+				// Unlike shader-internal half-precision math or half uniforms, a half-typed
+				// storage buffer's CPU-side data is packed as raw fp16 bit patterns (see
+				// NodeUtils.getTypedArrayFromType()) - there's no safe fp32 fallback to alias
+				// to the way getType() does elsewhere, since the bytes themselves would be
+				// misinterpreted. Fail loudly here rather than silently reading garbage.
+				if ( isHalfType( rawBufferType ) && this.isAvailable( 'shaderF16' ) === false ) {
+
+					throw new Error( `THREE.WGSLNodeBuilder: Half-precision storage buffer type "${ rawBufferType }" requires the 'shader-f16' GPU feature, which is not available on this device.` );
+
+				}
+
+				const bufferType = this.getType( rawBufferType );
 				const bufferCount = bufferNode.bufferCount;
 				const bufferCountSnippet = bufferCount > 0 && uniform.type === 'buffer' ? ', ' + bufferCount : '';
 				const bufferAccessMode = bufferNode.isStorageBufferNode ? `storage, ${ this.getStorageAccess( bufferNode, shaderStage ) }` : 'uniform';
@@ -82574,7 +83477,8 @@ ${ flowData.code }
 
 							const type = sharedUniform.getType();
 							const vectorType = this.getType( this.getVectorType( type ) );
-							snippets.push( `\t${ sharedUniform.name } : ${ vectorType }` );
+							const layoutAttribute = this._getHalfUniformLayoutAttribute( type );
+							snippets.push( `\t${ layoutAttribute }${ sharedUniform.name } : ${ vectorType }` );
 
 						}
 
@@ -82823,7 +83727,48 @@ ${ flowData.code }
 	 */
 	getType( type ) {
 
+		if ( wgslHalfFallbackTypeLib[ type ] !== undefined ) {
+
+			if ( this.isAvailable( 'shaderF16' ) ) {
+
+				this.enableShaderF16();
+
+			} else {
+
+				type = wgslHalfFallbackTypeLib[ type ];
+
+			}
+
+		}
+
 		return wgslTypeLib[ type ] || type;
+
+	}
+
+	/**
+	 * Returns the WGSL `@align`/`@size` attribute prefix (if any) a uniform-buffer struct
+	 * member needs for a half-precision type. This exists purely to match the packed CPU-side
+	 * layout `UniformsGroup`'s half-precision uniform classes use (see `Uniform.js`'s
+	 * `HalfUniform`/`HVec3Uniform` docs): a scalar `half` naturally has WGSL align/size 2/2, but
+	 * is packed into a full 4-byte slot on the CPU side, so it needs `@align(4) @size(4)`; a
+	 * `hvec3` naturally has size 6, but is packed into 8 bytes (2 slots) on the CPU side, so it
+	 * needs `@size(8)`. `hvec2`/`hvec4`'s natural WGSL align/size already exactly match their
+	 * CPU-side packed layout, so they need no override. Only relevant when `shader-f16` is
+	 * genuinely available - when it isn't, half types are aliased to their fp32 equivalent by
+	 * `getType()` and the CPU-side uniform is a plain fp32 uniform to match (see
+	 * `NodeBuilder.getNodeUniform()`), so no attribute override is needed either.
+	 *
+	 * @param {string} type - The node data type.
+	 * @return {string} The attribute prefix (including a trailing space), or an empty string.
+	 */
+	_getHalfUniformLayoutAttribute( type ) {
+
+		if ( this.isAvailable( 'shaderF16' ) === false ) return '';
+
+		if ( type === 'half' ) return '@align(4) @size(4) ';
+		if ( type === 'hvec3' ) return '@size(8) ';
+
+		return '';
 
 	}
 
@@ -82846,6 +83791,10 @@ ${ flowData.code }
 			} else if ( name === 'clipDistance' ) {
 
 				result = this.renderer.hasFeature( 'clip-distances' );
+
+			} else if ( name === 'shaderF16' ) {
+
+				result = this.renderer.hasFeature( 'shader-f16' );
 
 			}
 
@@ -82947,6 +83896,9 @@ fn main( ${shaderData.attributes} ) -> VaryingsStruct {
 	_getWGSLFragmentCode( shaderData ) {
 
 		return `${ this.getSignature() }
+// directives
+${shaderData.directives}
+
 // global
 ${ diagnostics }
 
@@ -83140,8 +84092,11 @@ class WebGPUAttributeUtils {
 
 			let array = bufferAttribute.array;
 
-			// patch for INT16 and UINT16
-			if ( attribute.normalized === false && attribute.isInterleavedBufferAttribute !== true ) {
+			// patch for INT16 and UINT16 - explicitly excludes Float16BufferAttribute, whose
+			// backing Uint16Array holds fp16 *bit patterns*, not integers: widening it to
+			// Uint32Array here would corrupt every value (each 2-byte half float would land in
+			// a 4-byte slot the GPU still reads as raw fp16 lanes at the wrong stride/alignment).
+			if ( attribute.normalized === false && attribute.isInterleavedBufferAttribute !== true && attribute.isFloat16BufferAttribute !== true ) {
 
 				if ( array.constructor === Int16Array || array.constructor === Int8Array ) {
 
@@ -83578,7 +84533,19 @@ class WebGPUAttributeUtils {
 
 		if ( itemSize === 1 ) {
 
-			format = typeArraysToVertexFormatPrefixForItemSize1.get( ArrayType );
+			// Float16BufferAttribute's backing array is a Uint16Array (see its class doc),
+			// which would otherwise be misread as 'uint16' here - checked by attribute
+			// constructor, same as the itemSize > 1 branch below does via
+			// typedAttributeToVertexFormatPrefix.
+			if ( AttributeType === Float16BufferAttribute ) {
+
+				format = 'float16';
+
+			} else {
+
+				format = typeArraysToVertexFormatPrefixForItemSize1.get( ArrayType );
+
+			}
 
 		} else {
 

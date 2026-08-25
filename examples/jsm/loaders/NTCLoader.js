@@ -95,7 +95,15 @@ class NTCLoader extends Loader {
 			decoder: { layers: decoderLayers },
 			outputChannels: manifest.outputChannels !== undefined ?
 				manifest.outputChannels : decoderLayers[ decoderLayers.length - 1 ].outputSize,
-			wrap: manifest.latents.wrap || 'repeat'
+			wrap: manifest.latents.wrap || 'repeat',
+			// Optional mip-pyramid metadata (see NTCManifest.js's matching
+			// comment) - `null` (not `undefined`) for a manifest that never had
+			// it, matching `createNTCGridPyramidModel`'s own `mipPyramid: null`
+			// for `enableMipPyramid: false`, so every downstream consumer
+			// (NTCDecoderTSL.js/NTCNodeMaterial.js) can treat "no mip pyramid"
+			// identically regardless of whether the model was just trained or
+			// loaded from disk.
+			mipPyramid: manifest.latents.mipPyramid || null
 		};
 
 		const channelClassification = decodeChannelClassification( manifest.channels, manifest.renderFlags );

@@ -5,15 +5,22 @@ import { createAdamParameterBuffers, disposeAdamParameterBuffers } from './NTCGP
 import { computeGridLevels } from './NTCGridModel.js';
 import { resolveNTCGridPyramidOptions } from './NTCGridPyramidModel.js';
 import { resolveQuantizationConfig } from './NTCQuantization.js';
+import { computeAllNaturalLods } from '../NTCMipPyramid.js';
 
 /**
  * Computes buffer layouts and offsets for GPU-based neural texture training:
  * a multiresolution feature grid pyramid plus a small MLP decoder, sized
  * generically from an arbitrary hidden-layer configuration.
+ *
+ * Mirrors `createNTCGridPyramidModel` (NTCGridPyramidModel.js) exactly for
+ * `mipPyramid`/`inputSize` - both derive the CPU model and this GPU layout
+ * from the same `resolveNTCGridPyramidOptions`, so a trainer's CPU model and
+ * its GPU buffer layout can never disagree about whether an LOD input slot
+ * exists or how many grid levels feed it.
  */
 function computeTextureModelLayout( options = {} ) {
 
-	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels } = resolveNTCGridPyramidOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels, enableMipPyramid, textureResolution } = resolveNTCGridPyramidOptions( options );
 	// One entry per output channel naming its output nonlinearity (see
 	// ./NTCOutputActivations.js); undefined/omitted entries (the
 	// default, `options.channelActivations` unset) mean plain linear, i.e.
@@ -42,8 +49,24 @@ function computeTextureModelLayout( options = {} ) {
 
 	const totalLatents = latentOffset;
 
-	// MLP weight layout: input = concatenated multiresolution grid features.
-	const inputSize = levels * channels;
+	// Mip-pyramid metadata (see NTCMipPyramid.js) - `null` when disabled,
+	// matching `createNTCGridPyramidModel`'s `mipPyramid` field exactly.
+	let mipPyramid = null;
+
+	if ( enableMipPyramid ) {
+
+		const resolvedTextureResolution = textureResolution || resolutions[ resolutions.length - 1 ];
+		const naturalLods = computeAllNaturalLods( resolutions, resolvedTextureResolution );
+		const maxLod = Math.max( 1, Math.ceil( Math.log2( Math.max( 1, resolvedTextureResolution ) ) ) );
+		mipPyramid = { textureResolution: resolvedTextureResolution, naturalLods, maxLod };
+
+	}
+
+	// MLP weight layout: input = concatenated multiresolution grid features,
+	// plus one extra slot for the normalized LOD value when mip-pyramid
+	// training is enabled (see NTCGPUComputeTSL.js step 1, which appends it
+	// after every grid level's taps).
+	const inputSize = levels * channels + ( mipPyramid ? 1 : 0 );
 	const sizes = [ inputSize, ...hiddenSizes, outputChannels ];
 	const mlpLayers = [];
 	let weightOffset = 0;
@@ -111,6 +134,7 @@ function computeTextureModelLayout( options = {} ) {
 		hiddenSizes,
 		outputChannels,
 		channelActivations,
+		mipPyramid,
 		inputSize,
 		gridLevels,
 		totalLatents,

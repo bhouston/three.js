@@ -85,6 +85,12 @@ describe( 'Addons > Neural > NeuralTexture > NTCTrainer convergence rate (real W
 			iterations: 200,
 			learningRate: 0.02,
 			seed: 1,
+			// This file tests basic gradient-descent convergence against a
+			// mip-0-only texture (`generateMipmaps: false` above) - orthogonal
+			// to mip-pyramid training (default true, see NTCTrainer.js), which
+			// would sample other mip levels this texture deliberately doesn't
+			// have.
+			enableMipPyramid: false,
 			...overrides
 		} );
 

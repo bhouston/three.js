@@ -63,12 +63,22 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		} );
 
-		it( 'sizes the decoder input as levels * channels', () => {
+		it( 'sizes the decoder input as levels * channels when mip-pyramid training is disabled', () => {
+
+			const options = { channels: 4, levels: 3, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 5 ], outputChannels: 3, enableMipPyramid: false };
+			const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels );
+			expect( model.mipPyramid ).toBeNull();
+
+		} );
+
+		it( 'sizes the decoder input as levels * channels + 1 when mip-pyramid training is enabled (the default)', () => {
 
 			const options = { channels: 4, levels: 3, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 5 ], outputChannels: 3 };
 			const model = createNTCGridPyramidModel( options, () => 0.5 );
 
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels );
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels + 1 );
 
 		} );
 
@@ -84,7 +94,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		} );
 
-		it( 'applies documented defaults when options are omitted', () => {
+		it( 'applies documented defaults when options are omitted (mip-pyramid training enabled by default)', () => {
 
 			const model = createNTCGridPyramidModel( {}, () => 0.5 );
 
@@ -98,10 +108,54 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 			expect( model.resolutions[ model.resolutions.length - 1 ] ).toBe( 128 );
 			expect( model.resolutions.length ).toBe( 4 );
 
-			// decoder: input = levels * channels = 16, 2 hidden layers + 1 output layer
+			// decoder: input = levels * channels + 1 (LOD, see mipPyramid below)
+			// = 17, 2 hidden layers + 1 output layer
 			expect( model.decoder.layers.length ).toBe( 3 );
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 16 );
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 17 );
 			expect( model.decoder.layers[ model.decoder.layers.length - 1 ].outputSize ).toBe( 3 );
+
+			// mip-pyramid metadata (see NTCMipPyramid.js) - textureResolution
+			// falls back to the finest grid resolution (128) when not given.
+			expect( model.mipPyramid ).not.toBeNull();
+			expect( model.mipPyramid.textureResolution ).toBe( 128 );
+			expect( model.mipPyramid.naturalLods.length ).toBe( model.resolutions.length );
+
+		} );
+
+		it( 'enableMipPyramid: false reproduces the pre-mip-pyramid decoder input size exactly', () => {
+
+			const options = { hiddenSizes: [ 32, 32 ], outputChannels: 3, enableMipPyramid: false };
+			const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+			expect( model.mipPyramid ).toBeNull();
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 16 );
+
+		} );
+
+		describe( 'mipPyramid metadata', () => {
+
+			it( 'computes one naturalLod per grid level, non-decreasing as resolution shrinks', () => {
+
+				// resolutions (baseResolution=8, growthFactor=2, levels=4): 8, 16, 32, 64
+				const options = { channels: 2, levels: 4, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 4 ], outputChannels: 2, textureResolution: 64 };
+				const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+				expect( model.resolutions ).toEqual( [ 8, 16, 32, 64 ] );
+				// naturalLod = log2(textureResolution / gridResolution)
+				expect( model.mipPyramid.naturalLods ).toEqual( [ 3, 2, 1, 0 ] );
+				expect( model.mipPyramid.textureResolution ).toBe( 64 );
+
+			} );
+
+			it( 'respects an explicit textureResolution over the finest-grid-resolution fallback', () => {
+
+				const options = { channels: 2, levels: 2, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 4 ], outputChannels: 2, textureResolution: 4096 };
+				const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+				expect( model.mipPyramid.textureResolution ).toBe( 4096 );
+				expect( model.mipPyramid.maxLod ).toBe( Math.ceil( Math.log2( 4096 ) ) );
+
+			} );
 
 		} );
 

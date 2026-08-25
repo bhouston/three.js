@@ -118,7 +118,7 @@ describe( 'Addons > NTC > NTCDecoderTSL (real WebGPU)', () => {
 	it( 'matches NTCGridPyramidModel.js\'s CPU forward pass at every latent-grid texel (single level)', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 4, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3 };
+		const options = { channels: 4, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3, enableMipPyramid: false };
 		const cpuModel = createNTCGridPyramidModel( options, makeRandom( 1.7 ) );
 
 		const pixels = await renderRawOutputs( renderer, cpuModel, gridSize );
@@ -147,7 +147,7 @@ describe( 'Addons > NTC > NTCDecoderTSL (real WebGPU)', () => {
 		// growthFactor: 1 forces every level to the same resolution, which
 		// keeps texel-center addressing identical for both levels while still
 		// exercising real multi-level concatenation order.
-		const options = { channels: 2, levels: 2, baseResolution: gridSize, growthFactor: 1, hiddenSizes: [ 4 ], outputChannels: 3 };
+		const options = { channels: 2, levels: 2, baseResolution: gridSize, growthFactor: 1, hiddenSizes: [ 4 ], outputChannels: 3, enableMipPyramid: false };
 		const cpuModel = createNTCGridPyramidModel( options, makeRandom( 0.9 ) );
 
 		expect( cpuModel.grids.length ).toBe( 2 );
@@ -178,7 +178,7 @@ describe( 'Addons > NTC > NTCDecoderTSL (real WebGPU)', () => {
 	it( 'evaluateNeuralTextureRaw\'s 4th output channel matches the CPU forward pass (not just the first 3)', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 3, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 4 };
+		const options = { channels: 3, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 4, enableMipPyramid: false };
 		const cpuModel = createNTCGridPyramidModel( options, makeRandom( 3.1 ) );
 
 		const pixels = await renderRawOutputs( renderer, cpuModel, gridSize );

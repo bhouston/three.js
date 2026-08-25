@@ -10,8 +10,51 @@
     <input name="thickness" type="float" value="0.8" />
     <input name="attenuation_distance" type="float" value="0.75" />
     <input name="attenuation_color" type="color3" value="0.85, 0.95, 1.0" />
+    <input name="normal" type="vector3" output="out" nodegraph="normal_map_graph" />
   </gltf_pbr>
   <surfacematerial name="PBR_Dispersion_Test" type="material">
     <input name="surfaceshader" type="surfaceshader" nodename="SR_dispersion_test" />
   </surfacematerial>
+  <nodegraph name="normal_map_graph">
+    <texcoord name="texcoord1" type="vector2" />
+    <separate2 name="uv_components" type="vector2">
+      <input name="in" type="vector2" nodename="texcoord1" />
+    </separate2>
+    <multiply name="u_phase" type="float">
+      <input name="in1" type="float" nodename="uv_components" output="outx" />
+      <input name="in2" type="float" value="50.265482" />
+    </multiply>
+    <multiply name="v_phase" type="float">
+      <input name="in1" type="float" nodename="uv_components" output="outy" />
+      <input name="in2" type="float" value="37.699112" />
+    </multiply>
+    <sin name="u_wave" type="float">
+      <input name="in" type="float" nodename="u_phase" />
+    </sin>
+    <sin name="v_wave" type="float">
+      <input name="in" type="float" nodename="v_phase" />
+    </sin>
+    <add name="combined_wave" type="float">
+      <input name="in1" type="float" nodename="u_wave" />
+      <input name="in2" type="float" nodename="v_wave" />
+    </add>
+    <multiply name="wave_amplitude" type="float">
+      <input name="in1" type="float" nodename="combined_wave" />
+      <input name="in2" type="float" value="0.25" />
+    </multiply>
+    <add name="height_wave" type="float">
+      <input name="in1" type="float" nodename="wave_amplitude" />
+      <input name="in2" type="float" value="0.5" />
+    </add>
+    <heighttonormal name="tangent_normal" type="vector3">
+      <input name="in" type="float" nodename="height_wave" />
+      <input name="scale" type="float" value="1.5" />
+      <input name="texcoord" type="vector2" nodename="texcoord1" />
+    </heighttonormal>
+    <normalmap name="world_normal" type="vector3">
+      <input name="in" type="vector3" nodename="tangent_normal" />
+      <input name="scale" type="float" value="0.5" />
+    </normalmap>
+    <output name="out" type="vector3" nodename="world_normal" />
+  </nodegraph>
 </materialx>

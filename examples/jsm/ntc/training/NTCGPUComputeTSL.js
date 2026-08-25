@@ -9,6 +9,7 @@ import {
 	fract,
 	instanceIndex,
 	int,
+	log,
 	sin,
 	textureLevel,
 	vec2
@@ -23,6 +24,7 @@ import {
 } from './NTCGPUKernelsTSL.js';
 import { applyChannelActivation, channelActivationDerivativeFromOutput } from '../NTCOutputActivations.js';
 import { QUANTIZATION_SCHEMES } from './NTCQuantization.js';
+import { computeLevelLodWeightTSL } from '../NTCMipPyramid.js';
 
 function hash1( seed ) {
 
@@ -46,6 +48,33 @@ function randomStratifiedUV( sampleIdx, stepUniform, gridSize ) {
 	const v = float( cellY ).add( jy ).div( float( gridSize ) );
 
 	return vec2( u, v );
+
+}
+
+/**
+ * Samples a per-training-sample LOD (mip index) from `seedBase`, following
+ * the NVIDIA neural texture compression paper's own batch-LOD distribution
+ * (Section 5.1): `LOD = floor(-log4(X))`, `X ~ U(0,1)` - this biases sampling
+ * toward finer mips, which is correct since they cover proportionally more
+ * texels (a mip is 4x the texel count of the next-coarser one), so a uniform
+ * *texel* sampling density across the whole pyramid naturally means most
+ * *samples* land at fine LODs. A separate 5% of samples instead draw LOD
+ * uniformly across `[0, maxLod]`, so the coarsest mips - which the area-
+ * biased distribution alone would sample increasingly rarely as `maxLod`
+ * grows - still get enough training signal to actually converge, rather than
+ * their feature levels/decoder weights merely drifting from initialization.
+ * Both draws (and the 5% selector) are re-derived from `seedBase`, so the
+ * whole thing changes every sample/training-step exactly like
+ * `randomStratifiedUV`'s jitter does.
+ */
+function sampleTrainingLod( seedBase, maxLod ) {
+
+	const x = hash1( seedBase ).max( 1e-6 );
+	const areaLod = floor( log( x ).div( Math.log( 4 ) ).negate() );
+	const uniformLod = floor( hash1( seedBase.add( 131.71 ) ).mul( maxLod + 1 ) );
+	const useUniform = hash1( seedBase.add( 257.13 ) ).lessThan( 0.05 );
+
+	return useUniform.select( uniformLod, areaLod ).clamp( 0, maxLod );
 
 }
 
@@ -108,7 +137,8 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		gradA0Offset,
 		activationStride,
 		outputChannels,
-		channelActivations
+		channelActivations,
+		mipPyramid
 	} = layout;
 
 	const gridSize = Math.max( 1, Math.ceil( Math.sqrt( batchSize ) ) );
@@ -119,11 +149,22 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		const uv = randomStratifiedUV( sampleIdx, stepUniform, gridSize );
 		const actBase = sampleIdx.mul( int( activationStride ) );
 
+		// Mip-pyramid-aware training (see NTCMipPyramid.js): each sample trains
+		// against a stochastically chosen mip level of the source texture(s),
+		// not always mip 0 - and every grid level's contribution to a0 is
+		// faded by how much detail it can still usefully add at that LOD (full
+		// weight up to its "natural" LOD, fading to 0 one mip further - see
+		// computeLevelLodWeightTSL). `lodNode` is `null` when mip-pyramid
+		// training is disabled, in which case every weight below is simply
+		// omitted (not multiplied by a literal 1) so the generated kernel for
+		// that path is byte-identical to before this feature existed.
+		const lodNode = mipPyramid !== null ? sampleTrainingLod( float( sampleIdx ).mul( 12.9898 ).add( stepUniform.mul( 78.233 ) ), mipPyramid.maxLod ) : null;
+
 		const targetComponents = [];
 
 		for ( const sourceTexture of sourceTextures ) {
 
-			const sample = textureLevel( sourceTexture, uv, 0 );
+			const sample = lodNode !== null ? textureLevel( sourceTexture, uv, lodNode ) : textureLevel( sourceTexture, uv, 0 );
 			const remaining = outputChannels - targetComponents.length;
 
 			if ( remaining > 0 ) targetComponents.push( sample.x );
@@ -166,7 +207,12 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 			const off2 = int( level.offset ).add( tapY2.mul( level.width ).add( tapX2 ).mul( channels ) );
 			const off3 = int( level.offset ).add( tapY3.mul( level.width ).add( tapX3 ).mul( channels ) );
 
-			levelTaps.push( { off0, off1, off2, off3, w0, w1, w2, w3 } );
+			// LOD fade weight for this level (see this function's doc comment
+			// above) - `null` (never referenced) when mip-pyramid training is
+			// disabled.
+			const levelWeight = lodNode !== null ? computeLevelLodWeightTSL( lodNode, mipPyramid.naturalLods[ g ] ) : null;
+
+			levelTaps.push( { off0, off1, off2, off3, w0, w1, w2, w3, weight: levelWeight } );
 
 			for ( let c = 0; c < channels; c ++ ) {
 
@@ -179,13 +225,31 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 				// below still targets the *raw* latentsStorage taps untouched,
 				// exactly as it did before QAT: only this forward-read value
 				// changes.
-				const a0_c = quantizeLatent !== null ?
+				const quantized_c = quantizeLatent !== null ?
 					quantizeLatent( z_c, quantizationRangeUniforms[ g ].min, quantizationRangeUniforms[ g ].max ) :
 					z_c;
+
+				// Fading this level's contribution here (rather than only at
+				// inference) is what teaches the network to reconstruct
+				// correctly *without* relying on it once the target LOD exceeds
+				// what this level can resolve - see this function's doc comment.
+				const a0_c = levelWeight !== null ? quantized_c.mul( levelWeight ) : quantized_c;
 
 				activationsStorage.element( actBase.add( int( a0Offset + g * channels + c ) ) ).assign( a0_c );
 
 			}
+
+		}
+
+		// Append the normalized LOD value as the decoder's final input
+		// component (see NTCGridPyramidModel.js's `inputSize = levels *
+		// channels + (mipPyramid ? 1 : 0)`) - conditions the shared decoder on
+		// which mip level it's currently reconstructing, matching the paper's
+		// own decoder input layout (Section 4.4: "... and a LOD value").
+		if ( lodNode !== null ) {
+
+			const lodInputIndex = gridLevels.length * channels;
+			activationsStorage.element( actBase.add( int( a0Offset + lodInputIndex ) ) ).assign( lodNode.div( mipPyramid.maxLod ) );
 
 		}
 
@@ -300,7 +364,12 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		}
 
 		// 5. Scatter gradA0 back into the latent grids using the same bilinear
-		// taps/weights computed in the forward pass.
+		// taps/weights computed in the forward pass. When this level's LOD
+		// fade weight is present, the chain rule needs it here too - forward
+		// computed `a0_c = weight_g * bilinear(...)`, and `weight_g` doesn't
+		// depend on the latents themselves, so `d(a0_c)/d(latent) = weight_g *
+		// d(bilinear)/d(latent)`, i.e. exactly `gradZ_c * weight_g` scattered
+		// through the same bilinear taps below.
 		const gradA0Base = actBase.add( int( gradA0Offset ) );
 
 		for ( let g = 0; g < gridLevels.length; g ++ ) {
@@ -309,7 +378,9 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 
 			for ( let c = 0; c < channels; c ++ ) {
 
-				const gradZ_c = activationsStorage.element( gradA0Base.add( int( g * channels + c ) ) );
+				let gradZ_c = activationsStorage.element( gradA0Base.add( int( g * channels + c ) ) );
+				if ( taps.weight !== null ) gradZ_c = gradZ_c.mul( taps.weight );
+
 				atomicAdd( gradLatentsAtomic.element( taps.off0.add( c ) ), int( gradZ_c.mul( taps.w0 ).mul( float( FIXED_POINT_SCALE ) ) ) );
 				atomicAdd( gradLatentsAtomic.element( taps.off1.add( c ) ), int( gradZ_c.mul( taps.w1 ).mul( float( FIXED_POINT_SCALE ) ) ) );
 				atomicAdd( gradLatentsAtomic.element( taps.off2.add( c ) ), int( gradZ_c.mul( taps.w2 ).mul( float( FIXED_POINT_SCALE ) ) ) );

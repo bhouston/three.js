@@ -111,7 +111,13 @@ describe( 'Addons > Neural > NeuralTexture > NTCTrainer sign convergence (real W
 			batchSize: 2048,
 			iterations: 500,
 			learningRate: 0.02,
-			seed: 1
+			seed: 1,
+			// This file tests channel-sign correctness against mip-0-only
+			// textures (`generateMipmaps: false` above) - orthogonal to
+			// mip-pyramid training (default true, see NTCTrainer.js), which
+			// would sample other mip levels these textures deliberately don't
+			// have.
+			enableMipPyramid: false
 		} );
 
 		const result = await trainer.train( { renderer, sourceTextures: [ pack0, pack1 ] } );

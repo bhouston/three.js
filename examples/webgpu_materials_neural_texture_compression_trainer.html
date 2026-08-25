@@ -190,6 +190,11 @@
 				iterations: 10000,
 				learningRate: 0.01,
 				quantization: 'uint8',
+				// Trains the decoder across the whole mip chain (not just mip 0)
+				// so the resulting material anti-aliases correctly when viewed
+				// from a distance - see NTCTrainer.js / NTCMipPyramid.js. Defaults
+				// to on, matching NTCTrainer's own default.
+				enableMipPyramid: true,
 				debugView: 'shaded',
 				shape: 'torus',
 				showBackground: true
@@ -305,6 +310,7 @@
 				trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' );
 				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
 				trainingFolder.add( params, 'quantization', { 'Off': 'none', '8-bit': 'uint8' } ).name( 'quantization' );
+				trainingFolder.add( params, 'enableMipPyramid' ).name( 'mip pyramid (anti-alias)' );
 
 				const objectFolder = gui.addFolder( 'object' );
 				objectFolder.add( params, 'shape', [ 'torus', 'sphere', 'plane' ] ).name( 'shape' ).onChange( updateShape );
@@ -461,7 +467,12 @@
 				const latentTexels = computeGridLatentTexels( resolutions );
 				const gridParams = latentTexels * channels;
 
-				const inputSize = levels * channels;
+				// +1 for the concatenated LOD value when mip-pyramid training is
+				// enabled (see NTCGridPyramidModel.js) - matches the real model's
+				// `mipPyramid` field when previewing a trained model, and the GUI
+				// checkbox otherwise.
+				const mipPyramidEnabled = useModel ? currentCpuModel.mipPyramid !== null : params.enableMipPyramid;
+				const inputSize = levels * channels + ( mipPyramidEnabled ? 1 : 0 );
 				const mlpSpec = { inputSize, hiddenSize: hidden, hiddenLayers: 2, outputSize: outputChannels };
 				const mlpParams = computeMLPParamCount( mlpSpec );
 				const flops = computeMLPFlops( mlpSpec );
@@ -717,6 +728,7 @@
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),
 						quantization: { mode: params.quantization },
+						enableMipPyramid: params.enableMipPyramid,
 						seed: 1
 					} );
 					activeTrainer = trainer;

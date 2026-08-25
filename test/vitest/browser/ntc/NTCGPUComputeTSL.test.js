@@ -77,7 +77,15 @@ function createTinyGPUModel() {
 		growthFactor: 2,
 		hiddenSizes: [],
 		outputChannels: 1,
-		batchSize: 1
+		batchSize: 1,
+		// This file's hand-derived expectations assume a single-weight
+		// `z = w * a0 + b` model sampling the source texture at mip 0 every
+		// time (see e.g. this function's own doc comment) - mip-pyramid
+		// training (default true, see NTCTrainer.js) would append a second
+		// decoder input and stochastically sample other mip levels of a
+		// texture that deliberately has none (`generateMipmaps: false` below),
+		// which is orthogonal to what these kernel-correctness tests check.
+		enableMipPyramid: false
 	} );
 
 }

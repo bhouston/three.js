@@ -57,7 +57,17 @@ function encodeNTC( cpuModel, channelClassification, options = {} ) {
 		latents: {
 			channelsPerLevel: cpuModel.channels,
 			wrap: options.wrap || 'repeat',
-			levels
+			levels,
+			// Optional, additive mip-pyramid metadata (see NTCMipPyramid.js /
+			// NTCGridPyramidModel.js) - the key itself is omitted entirely
+			// (not just `undefined`-valued) for a model trained with
+			// `enableMipPyramid: false`, and for every `.ntc` file written
+			// before this feature existed. NTCLoader.js/NTCDecoderTSL.js treat
+			// a missing `mipPyramid` exactly like an explicit "disabled" -
+			// deliberately *not* a `VERSION` bump, since an older loader
+			// reading a newer file (or a newer loader reading an older one)
+			// only ever sees one extra, safely-ignorable key.
+			...( cpuModel.mipPyramid ? { mipPyramid: cpuModel.mipPyramid } : {} )
 		},
 		outputChannels: cpuModel.outputChannels,
 		mlp: encodeMLPLayersBase64( cpuModel.decoder.layers ),

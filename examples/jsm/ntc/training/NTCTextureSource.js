@@ -74,7 +74,18 @@ async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512 ) {
 		type: THREE.HalfFloatType,
 		format: THREE.RGBAFormat,
 		colorSpace: THREE.NoColorSpace,
-		minFilter: THREE.LinearFilter,
+		// Mip-pyramid-aware training (see NTCMipPyramid.js / NTCTrainer.js)
+		// samples this baked texture at LOD > 0 (NTCGPUComputeTSL.js's
+		// `textureLevel(sourceTexture, uv, lodNode)`), which needs a real
+		// prefiltered mip chain to exist - `generateMipmaps: true` here has
+		// the renderer build one (hardware box-filtered, not the paper's own
+		// Lanczos downsampling - a reasonable, much simpler stand-in) after
+		// every render into this target, and `LinearMipmapLinearFilter`
+		// matches that a mip chain now exists. `magFilter` stays `LinearFilter`
+		// - it only applies to LOD 0, which is always sampled at native
+		// resolution here (no magnification).
+		generateMipmaps: true,
+		minFilter: THREE.LinearMipmapLinearFilter,
 		magFilter: THREE.LinearFilter,
 		wrapS: THREE.RepeatWrapping,
 		wrapT: THREE.RepeatWrapping,
@@ -126,6 +137,11 @@ function loadImageTexture( url ) {
 		texture.colorSpace = THREE.SRGBColorSpace;
 		texture.wrapS = THREE.RepeatWrapping;
 		texture.wrapT = THREE.RepeatWrapping;
+		// Explicit even though these match THREE.Texture's own defaults -
+		// mip-pyramid-aware training (see the RenderTarget's matching comment
+		// above) needs a real mip chain to sample at LOD > 0.
+		texture.generateMipmaps = true;
+		texture.minFilter = THREE.LinearMipmapLinearFilter;
 		texture.needsUpdate = true;
 
 		return texture;

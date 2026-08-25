@@ -171,6 +171,42 @@ describe( 'Addons > NTC > NTCManifest', () => {
 
 	} );
 
+	it( 'round-trips mipPyramid metadata through export -> JSON -> load (mip-pyramid training enabled, the default)', () => {
+
+		const classification = buildChannelClassification();
+		const model = buildModel( classification.totalChannels );
+
+		expect( model.mipPyramid ).not.toBeNull();
+
+		const manifest = encodeNTC( model, classification, { name: 'mip pyramid roundtrip' } );
+		expect( manifest.latents.mipPyramid ).toEqual( model.mipPyramid );
+
+		const json = JSON.parse( JSON.stringify( manifest ) );
+		const loaded = new NTCLoader().parse( json );
+
+		expect( loaded.cpuModel.mipPyramid ).toEqual( model.mipPyramid );
+
+	} );
+
+	it( 'a manifest saved without mipPyramid (enableMipPyramid: false, or pre-existing files) loads with mipPyramid null - not a version bump', () => {
+
+		const classification = buildChannelClassification();
+		const model = createNTCGridPyramidModel( {
+			channels: 4, levels: 2, baseResolution: 4, growthFactor: 2, hiddenSizes: [ 6 ],
+			outputChannels: classification.totalChannels, enableMipPyramid: false
+		}, () => 0.5 );
+
+		expect( model.mipPyramid ).toBeNull();
+
+		const manifest = encodeNTC( model, classification, { name: 'no mip pyramid' } );
+		expect( manifest.version ).toBe( VERSION );
+		expect( 'mipPyramid' in manifest.latents ).toBe( false );
+
+		const loaded = new NTCLoader().parse( JSON.parse( JSON.stringify( manifest ) ) );
+		expect( loaded.cpuModel.mipPyramid ).toBeNull();
+
+	} );
+
 	it( 'loader rejects a manifest with an unknown channel key', () => {
 
 		const classification = buildChannelClassification();

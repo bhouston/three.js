@@ -21,6 +21,28 @@ import { DEFAULT_QUANTIZATION_OPTIONS, resolveQuantizationConfig, refreshGPUQuan
 // cadence below).
 const QUANTIZATION_RANGE_REFRESH_INTERVAL = 64;
 
+/**
+ * Reads the largest dimension off the first source texture that actually has
+ * one available - a plain `Texture.image` (`{ width, height }`, the loaded-
+ * image path) or a render-target texture's `.image` (set by
+ * `THREE.RenderTarget` to its own `width`/`height`, the baked-color-node
+ * path - see NTCTextureSource.js). Returns `null` (rather than throwing) when
+ * no source texture exposes a usable size, in which case the caller falls
+ * back to `createNTCGridPyramidModel`'s own fallback instead.
+ */
+function resolveSourceTextureResolution( textures ) {
+
+	for ( const texture of textures ) {
+
+		const image = texture.image;
+		if ( image && image.width && image.height ) return Math.max( image.width, image.height );
+
+	}
+
+	return null;
+
+}
+
 const DEFAULT_OPTIONS = {
 	channels: 4,
 	levels: 4,
@@ -45,7 +67,16 @@ const DEFAULT_OPTIONS = {
 	// Quantization-Aware Training (QAT) of the latent grid - see
 	// NeuralQuantization.js. Defaults to `mode: 'none'` (a byte-for-byte
 	// no-op vs. training without QAT at all).
-	quantization: DEFAULT_QUANTIZATION_OPTIONS
+	quantization: DEFAULT_QUANTIZATION_OPTIONS,
+	// Mip-pyramid-aware training (see NTCMipPyramid.js /
+	// NTCGridPyramidModel.js) - defaults to `true` so a texture trained
+	// without any special setup is, by default, trained across its whole mip
+	// chain (not just mip 0) and anti-aliases correctly when viewed from a
+	// distance, instead of aliasing the way a mip-0-only-trained model does.
+	// Set `false` to fall back to the original mip-0-only behavior
+	// byte-for-byte (e.g. for a texture that's never viewed minified, where
+	// the extra decoder input/training cost isn't worth paying for).
+	enableMipPyramid: true
 };
 
 /**
@@ -109,8 +140,19 @@ class NTCTrainer {
 		const quantization = resolveQuantizationConfig( settings );
 		this.quantizationRange = null;
 
-		const cpuModel = createNTCGridPyramidModel( settings, this.random );
-		const gpuModel = new NTCGPUModel( settings );
+		// Mip-pyramid training (see NTCMipPyramid.js) needs the real source
+		// texture resolution to know each grid level's "natural" LOD -
+		// resolved here from the actual GPU texture(s) rather than left to
+		// createNTCGridPyramidModel's fallback (the finest grid resolution),
+		// which is only ever a stand-in for when the true texture size isn't
+		// known. An explicit `settings.textureResolution` always wins.
+		const modelSettings = settings.textureResolution ? settings : {
+			...settings,
+			textureResolution: resolveSourceTextureResolution( textures ) || undefined
+		};
+
+		const cpuModel = createNTCGridPyramidModel( modelSettings, this.random );
+		const gpuModel = new NTCGPUModel( modelSettings );
 		gpuModel.initFromCPUModel( cpuModel );
 
 		try {

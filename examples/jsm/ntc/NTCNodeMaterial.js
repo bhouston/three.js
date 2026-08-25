@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { bitangentWorld, fract, tangentWorld, uv, vec2, vec3 } from 'three/tsl';
+import { bitangentWorld, fract, log, max, tangentWorld, uv, vec2, vec3 } from 'three/tsl';
 import { buildLevelTextures, evaluateNeuralTextureRaw } from './NTCDecoderTSL.js';
 import { applyChannelActivation } from './NTCOutputActivations.js';
 import { CHANNELS, FRAME_VIEWS, getChannel, buildDebugViewColorNode, buildFrameViewColorNode } from './NTCFormat.js';
@@ -33,6 +33,25 @@ function sliceChannels( outputs, activeChannels ) {
 	}
 
 	return slices;
+
+}
+
+/**
+ * Estimates a screen-space LOD (mip index) node from `coord`'s own
+ * screen-space derivatives, the same way hardware texture filtering picks a
+ * mip level - `max(|d(coord)/dx|, |d(coord)/dy|)` in texel units, log2'd.
+ * Deliberately derived from `coord` (the *pre*-`fract()` tiled UV, still
+ * continuous across a repeat-wrapped tile boundary) rather than the final
+ * wrapped UV fed to `texture()` - `fract()`'s wraparound discontinuity would
+ * otherwise show up as a spurious huge derivative (and therefore a spurious
+ * max-LOD spike) at every tile seam.
+ */
+function computeAutoLodNode( coord, textureResolution, maxLod ) {
+
+	const texelCoord = coord.mul( textureResolution );
+	const footprint = max( texelCoord.dFdx().length(), texelCoord.dFdy().length() ).max( 1e-6 );
+
+	return log( footprint ).div( Math.LN2 ).clamp( 0, maxLod );
 
 }
 
@@ -77,6 +96,18 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 	 * weights use a real fp16 storage buffer instead of an fp32 uniform
 	 * array on backends that support it - see evaluateNeuralTextureRaw.
 	 */
+	// `options.lodNode`, for a `cpuModel` trained with mip-pyramid support
+	// (see NTCMipPyramid.js / NTCGridPyramidModel.js - `cpuModel.mipPyramid`,
+	// `null` for a model trained with `enableMipPyramid: false` or loaded
+	// from a `.ntc` file predating this feature), overrides the LOD (mip
+	// index) this material reconstructs at - a TSL float node, useful for an
+	// explicit distance-based LOD or for debugging a specific mip level.
+	// Defaults to an automatic screen-space-derivative estimate
+	// (`computeAutoLodNode` above), the same way hardware mipmapping picks a
+	// level - which is what makes a mip-pyramid-trained material anti-alias
+	// correctly when viewed from a distance instead of always reconstructing
+	// at full (finest-LOD) detail. Ignored entirely for a `cpuModel` without
+	// `mipPyramid`.
 	constructor( cpuModel, channelClassification, options = {} ) {
 
 		super();
@@ -112,7 +143,16 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		if ( uvOffsetNode ) coord = coord.add( uvOffsetNode );
 		const tiledUV = fract( coord );
 
-		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.levelTextures, options.renderer );
+		// Auto-LOD (see computeAutoLodNode above) needs `coord` (pre-`fract()`,
+		// still continuous across a tile seam) - only actually built when this
+		// model is mip-pyramid-aware and the caller didn't already supply an
+		// explicit override.
+		const mipPyramid = cpuModel.mipPyramid || null;
+		const lodNode = mipPyramid ?
+			( options.lodNode || computeAutoLodNode( coord, mipPyramid.textureResolution, mipPyramid.maxLod ) ) :
+			null;
+
+		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.levelTextures, options.renderer, lodNode );
 		const slices = sliceChannels( outputs, activeChannels );
 		this._slices = slices;
 		this._constantValues = constantValues;

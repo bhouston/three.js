@@ -175,14 +175,20 @@ function expectExactPartition( regions, total ) {
 
 }
 
+// `enableMipPyramid: false` throughout this file - it cross-checks
+// `computeTextureModelLayout`'s buffer-offset *arithmetic* against the
+// training kernel's own addressing formulas, which is orthogonal to
+// mip-pyramid training (default true, see NTCTrainer.js/
+// NTCGridPyramidModel.js) appending an extra decoder input slot - that's
+// covered separately (see NTCGridPyramidModel.test.js's mip-pyramid tests).
 const configs = {
-	'default options': {},
-	'single hidden layer': { hiddenSizes: [ 16 ] },
-	'deep MLP, 3 hidden layers': { hiddenSizes: [ 24, 24, 24 ] },
-	'material-style 9-channel output': { outputChannels: 9, hiddenSizes: [ 48, 48 ] },
-	'single grid level': { levels: 1, baseResolution: 8, growthFactor: 2 },
-	'channels = 2': { channels: 2 },
-	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, growthFactor: 2, channels: 1, outputChannels: 1 }
+	'default options': { enableMipPyramid: false },
+	'single hidden layer': { hiddenSizes: [ 16 ], enableMipPyramid: false },
+	'deep MLP, 3 hidden layers': { hiddenSizes: [ 24, 24, 24 ], enableMipPyramid: false },
+	'material-style 9-channel output': { outputChannels: 9, hiddenSizes: [ 48, 48 ], enableMipPyramid: false },
+	'single grid level': { levels: 1, baseResolution: 8, growthFactor: 2, enableMipPyramid: false },
+	'channels = 2': { channels: 2, enableMipPyramid: false },
+	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, growthFactor: 2, channels: 1, outputChannels: 1, enableMipPyramid: false }
 };
 
 describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => {
@@ -206,7 +212,7 @@ describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => 
 			//   -> gradA0 [17,21) -> activationStride 21
 			const layout = computeTextureModelLayout( {
 				channels: 2, levels: 2, baseResolution: 2, growthFactor: 2,
-				hiddenSizes: [ 3 ], outputChannels: 2
+				hiddenSizes: [ 3 ], outputChannels: 2, enableMipPyramid: false
 			} );
 
 			expect( layout.resolutions ).toEqual( [ 2, 4 ] );
@@ -246,7 +252,7 @@ describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => 
 			//   delta0 [2,3) -> gradA0 [3,4) -> activationStride 4
 			const layout = computeTextureModelLayout( {
 				channels: 1, levels: 1, baseResolution: 1, growthFactor: 2,
-				hiddenSizes: [], outputChannels: 1
+				hiddenSizes: [], outputChannels: 1, enableMipPyramid: false
 			} );
 
 			expect( layout.resolutions ).toEqual( [ 1 ] );
@@ -339,7 +345,7 @@ describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => 
 			// buffer allocation itself is plain JS.
 			expect( getRenderer() ).toBeTruthy();
 
-			const model = new NTCGPUModel( { batchSize: 64, outputChannels: 5 } );
+			const model = new NTCGPUModel( { batchSize: 64, outputChannels: 5, enableMipPyramid: false } );
 			const { totalWeights, totalLatents, activationStride } = model.layout;
 
 			// These four pairs are independent JS expressions (`new

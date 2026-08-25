@@ -51,6 +51,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
+			import { uniform } from 'three/tsl';
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -75,6 +76,16 @@
 			];
 
 			const BACKGROUND_COLOR = 0x15171c;
+
+			// Shared across every asset's material (see loadAsset) as a live TSL
+			// uniform, not a plain number, precisely so the GUI slider below can
+			// retune it after the materials are already built - see
+			// NTCNodeMaterial.js's `options.lodBias` doc comment. Default of 1
+			// keeps the reconstruction one mip level finer than the raw screen-
+			// space-derivative estimate at every distance; the un-biased (0)
+			// estimate switches to coarser stored levels sooner than looks good
+			// on these spheres at this camera distance/FOV.
+			const lodBiasUniform = uniform( 1 );
 
 			let camera, scene, renderer, labelRenderer, controls;
 
@@ -103,6 +114,10 @@
 				renderer.inspector = new Inspector();
 				document.body.appendChild( renderer.domElement );
 				await renderer.init();
+
+				const gui = renderer.inspector.createParameters( 'Neural Texture Compression' );
+				const viewFolder = gui.addFolder( 'view' );
+				viewFolder.add( lodBiasUniform, 'value', - 2, 4, 0.05 ).name( 'LOD bias' );
 
 				labelRenderer = new CSS2DRenderer();
 				labelRenderer.setSize( window.innerWidth, window.innerHeight );
@@ -157,7 +172,10 @@
 					const geometry = new THREE.SphereGeometry( 1, 128, 64 );
 					geometry.computeTangents();
 
-					const material = new NTCNodeMaterial( cpuModel, channelClassification, { renderer } );
+					// lodBias: the shared `lodBiasUniform` (see its own doc comment
+					// above) - every asset's material reads the same live uniform,
+					// so the GUI's "LOD bias" slider retunes all seven at once.
+					const material = new NTCNodeMaterial( cpuModel, channelClassification, { renderer, lodBias: lodBiasUniform } );
 
 					const mesh = new THREE.Mesh( geometry, material );
 					mesh.position.copy( position );

@@ -8,28 +8,8 @@ import {
 	createMat4Storage,
 	createVec4Storage
 } from './NTCMLPTSL.js';
-import { createHalfFloatLatentTexture } from './NTCHalfFloatTexture.js';
-import { float, int, texture } from 'three/tsl';
-import { selectFeatureLevelTSL } from './NTCMipBands.js';
-
-/**
- * Packs each trained latent grid level into an RGBA half-float DataTexture
- * so the runtime can rely on ordinary hardware bilinear filtering + repeat
- * wrap addressing for both interpolation and seamless tiling - no manual
- * bilinear/wrap math needed at inference time (unlike the training kernel,
- * which must hand-roll it for the backward pass). One `DataTexture` per
- * stored feature level - *not* one real GPU mipmap chain (this pyramid's
- * levels each cover a band of several physical mips, via LOD conditioning in
- * the MLP - see NTCMipBands.js - not one level per physical mip, so a real
- * hardware mip chain wouldn't apply here).
- */
-function buildLevelTextures( cpuModel ) {
-
-	return cpuModel.grids.map( ( grid ) =>
-		createHalfFloatLatentTexture( grid.data, grid.width, grid.height, { channels: grid.channels } )
-	);
-
-}
+import { buildMipChainTexture } from './NTCHalfFloatTexture.js';
+import { float, textureLevel } from 'three/tsl';
 
 /**
  * Builds the TSL expression that evaluates the trained mip pyramid + MLP
@@ -46,44 +26,25 @@ function buildLevelTextures( cpuModel ) {
  * `lodNode` is the requested LOD (mip index, a TSL float node - e.g. derived
  * from screen-space UV derivatives or an explicit distance-based estimate,
  * see NTCNodeMaterial.js) this decode should reconstruct - defaults to
- * `float(0)` (finest/closest LOD) when omitted. It selects exactly one
- * stored grid level (`selectFeatureLevelTSL`, see NTCMipBands.js - the same
- * mapping the training kernel used, see NTCGPUComputeTSL.js's step 1): every
- * other level's hardware-bilinear-sampled tap is multiplied by an exact 0/1
- * selector and summed into a single shared `channels`-wide feature vector,
- * and the normalized LOD is concatenated onto the decoder's input - this
- * must match training bit-for-bit, or the decoder sees an input distribution
- * it was never fit against.
+ * `float(0)` (finest/closest LOD) when omitted. It drives one single
+ * hardware `textureSampleLevel` call against `mipChainTexture` (built by
+ * NTCHalfFloatTexture.js's `buildMipChainTexture`): the GPU brackets
+ * `lodNode` between its two nearest physical mip levels and blends them
+ * (genuine trilinear - bilinear within each mip, linear between the two),
+ * so a fractional LOD - including one that straddles two *different* stored
+ * feature levels' bands - reconstructs a smooth cross-fade instead of the
+ * old hard 0/1 level-equality switch. The normalized LOD is still
+ * concatenated onto the decoder's input exactly as before - this must match
+ * training bit-for-bit, or the decoder sees an input distribution it was
+ * never fit against.
  */
-function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures, renderer = null, lodNode = null ) {
+function evaluateNeuralTextureRaw( uvNode, cpuModel, mipChainTexture, renderer = null, lodNode = null ) {
 
 	const resolvedLodNode = lodNode || float( 0 );
-	const selectedLevel = selectFeatureLevelTSL( resolvedLodNode, levelTextures.length, cpuModel.mipsPerLevel );
 	const channels = cpuModel.channels;
 
-	// Built as a plain summed expression tree (`.add(...)`), not `.toVar()` +
-	// `.addAssign()`: `evaluateNeuralTextureRaw` is called directly while
-	// constructing a material's node graph, outside any `Fn()` block, and
-	// `.addAssign()` needs a `Fn()` builder stack to record the assignment -
-	// used here it silently fails ("No stack defined for assign operation"),
-	// leaving every feature at its `.toVar()` initial value (0) regardless of
-	// which level's weight was 1, which reads as a UV-independent constant
-	// output. A summed `.add()` chain is a pure expression, not a statement,
-	// so it doesn't need that stack at all - only the training kernel (which
-	// *does* run inside `Fn()`, see NTCGPUComputeTSL.js) uses `.addAssign()`.
-	const featureSums = new Array( channels ).fill( null );
-
-	for ( let i = 0; i < levelTextures.length; i ++ ) {
-
-		const sample = texture( levelTextures[ i ], uvNode );
-		const weight = selectedLevel.equal( int( i ) ).select( float( 1 ), float( 0 ) );
-		const weighted = [ sample.x, sample.y, sample.z, sample.w ].slice( 0, channels ).map( ( c ) => c.mul( weight ) );
-
-		for ( let c = 0; c < channels; c ++ ) featureSums[ c ] = featureSums[ c ] ? featureSums[ c ].add( weighted[ c ] ) : weighted[ c ];
-
-	}
-
-	const features = featureSums;
+	const sample = textureLevel( mipChainTexture, uvNode, resolvedLodNode );
+	const features = [ sample.x, sample.y, sample.z, sample.w ].slice( 0, channels );
 
 	// Append the normalized LOD value as the decoder's final input component
 	// - must match NTCGridPyramidModel.js's `inputSize = channels + 1` /
@@ -127,4 +88,4 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures, renderer = n
 
 }
 
-export { evaluateNeuralTextureRaw, buildLevelTextures };
+export { evaluateNeuralTextureRaw, buildMipChainTexture };

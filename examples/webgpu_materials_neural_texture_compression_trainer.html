@@ -55,6 +55,16 @@
 				display: none;
 			}
 
+			#lossPanelHeader {
+				display: flex;
+				justify-content: space-between;
+				align-items: baseline;
+			}
+
+			#lossIps {
+				color: #fff;
+			}
+
 			#modelLabels {
 				position: absolute;
 				left: 0;
@@ -128,7 +138,7 @@
 		</div>
 
 		<div id="lossPanel" hidden>
-			<div><strong>Training loss</strong></div>
+			<div id="lossPanelHeader"><strong>Training loss</strong><span id="lossIps"></span></div>
 			<canvas id="lossGraph" width="396" height="120"></canvas>
 			<div id="lossLegend"></div>
 		</div>
@@ -212,7 +222,10 @@
 			const lossGraph = new NTCLossGraph(
 				document.getElementById( 'lossGraph' ),
 				[ { key: 'loss', label: 'L2 loss (log)', color: '#50c8ff' } ],
-				{ legend: document.getElementById( 'lossLegend' ) }
+				{
+					legend: document.getElementById( 'lossLegend' ),
+					ips: document.getElementById( 'lossIps' )
+				}
 			);
 
 			init();

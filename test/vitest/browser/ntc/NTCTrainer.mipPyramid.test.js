@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { float, fract, step, uv, vec3 } from 'three/tsl';
 import { NTCTrainer } from '../../../../examples/jsm/ntc/training/NTCTrainer.js';
 import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/training/NTCTextureSource.js';
-import { buildLevelTextures, evaluateNeuralTextureRaw } from '../../../../examples/jsm/ntc/NTCDecoderTSL.js';
+import { buildMipChainTexture, evaluateNeuralTextureRaw } from '../../../../examples/jsm/ntc/NTCDecoderTSL.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
 
 // End-to-end coverage for the mip-pyramid-of-feature-grids design (see
@@ -105,15 +105,15 @@ describe( 'Addons > NTC > NTCTrainer mip-pyramid training (real WebGPU)', () => 
 		expect( cpuModel.maxLod ).toBe( Math.ceil( Math.log2( bakeResolution ) ) );
 		expect( cpuModel.decoder.layers[ 0 ].inputSize ).toBe( cpuModel.channels + 1 );
 
-		const levelTextures = buildLevelTextures( cpuModel );
+		const mipChainTexture = buildMipChainTexture( cpuModel );
 
-		const fineOutputs = evaluateNeuralTextureRaw( uv(), cpuModel, levelTextures, null, float( 0 ) );
-		const coarseOutputs = evaluateNeuralTextureRaw( uv(), cpuModel, levelTextures, null, float( cpuModel.maxLod ) );
+		const fineOutputs = evaluateNeuralTextureRaw( uv(), cpuModel, mipChainTexture, null, float( 0 ) );
+		const coarseOutputs = evaluateNeuralTextureRaw( uv(), cpuModel, mipChainTexture, null, float( cpuModel.maxLod ) );
 
 		const fineValues = await readRedChannel( vec3( fineOutputs[ 0 ], fineOutputs[ 1 ], fineOutputs[ 2 ] ), 32 );
 		const coarseValues = await readRedChannel( vec3( coarseOutputs[ 0 ], coarseOutputs[ 1 ], coarseOutputs[ 2 ] ), 32 );
 
-		for ( const texture of levelTextures ) texture.dispose();
+		mipChainTexture.dispose();
 
 		const fineVariance = variance( fineValues );
 		const coarseVariance = variance( coarseValues );
@@ -133,5 +133,70 @@ describe( 'Addons > NTC > NTCTrainer mip-pyramid training (real WebGPU)', () => 
 		expect( coarseMean ).toBeLessThan( 0.7 );
 
 	}, 60000 );
+
+	it( 'reconstructs continuously across a stored-level band boundary - no discontinuous "pop" as LOD crosses it', async () => {
+
+		// A gradient-plus-fine-detail pattern gives every stored level
+		// something genuinely different to learn (unlike a flat color, which
+		// would make every level converge to the same trivial output and
+		// hide a real discontinuity).
+		const bakeResolution = 64;
+		const period = 6;
+		const detail = step( 0.5, fract( uv().x.mul( period ).add( uv().y.mul( period ) ) ) );
+		const patternColorNode = vec3( uv().x, uv().y, detail );
+
+		const sourceRenderTarget = await bakeColorNodeToTexture( renderer, patternColorNode, bakeResolution, { generateMipmaps: true } );
+
+		// levels: 3, mipsPerLevel (default 2) -> the boundary between the
+		// first two stored levels' bands sits at physical mip 2 (see
+		// NTCMipBands.js's `selectFeatureLevel`) - this is what
+		// `evaluateNeuralTextureRaw`'s old per-level equality-mask selection
+		// used to switch discontinuously across.
+		const trainer = new NTCTrainer( {
+			channels: 4,
+			levels: 3,
+			hiddenSizes: [ 16, 16 ],
+			outputChannels: 3,
+			batchSize: 1024,
+			iterations: 400,
+			learningRate: 0.02,
+			seed: 2
+		} );
+
+		const result = await trainer.train( { renderer, sourceTextures: [ sourceRenderTarget.texture ] } );
+		sourceRenderTarget.dispose();
+
+		const cpuModel = result.cpuModel;
+		const boundaryLod = cpuModel.mipsPerLevel;
+
+		const mipChainTexture = buildMipChainTexture( cpuModel );
+
+		const sampleMeanAt = async ( lod ) => {
+
+			const outputs = evaluateNeuralTextureRaw( uv(), cpuModel, mipChainTexture, null, float( lod ) );
+			const values = await readRedChannel( vec3( outputs[ 0 ], outputs[ 1 ], outputs[ 2 ] ), 32 );
+			return mean( values );
+
+		};
+
+		const step_ = 0.05;
+		const farBefore = await sampleMeanAt( boundaryLod - 4 * step_ );
+		const before = await sampleMeanAt( boundaryLod - step_ );
+		const after = await sampleMeanAt( boundaryLod + step_ );
+
+		mipChainTexture.dispose();
+
+		// The change across a small +-step straddling the boundary should be
+		// in the same ballpark as the change across an equally small step
+		// entirely inside one band - not a discontinuous multiple of it, which
+		// is what the old hard 0/1 level-equality switch produced (an
+		// arbitrarily large jump concentrated at a single LOD value, since the
+		// two neighboring levels are trained fully independently).
+		const boundaryJump = Math.abs( after - before );
+		const withinBandJump = Math.abs( before - farBefore );
+
+		expect( boundaryJump ).toBeLessThan( withinBandJump * 5 + 0.05 );
+
+	}, 30000 );
 
 } );

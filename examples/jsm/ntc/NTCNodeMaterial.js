@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { bitangentWorld, fract, log, max, tangentWorld, uv, vec2, vec3 } from 'three/tsl';
-import { buildLevelTextures, evaluateNeuralTextureRaw } from './NTCDecoderTSL.js';
+import { buildMipChainTexture, evaluateNeuralTextureRaw } from './NTCDecoderTSL.js';
 import { applyChannelActivation } from './NTCOutputActivations.js';
 import { CHANNELS, FRAME_VIEWS, getChannel, buildDebugViewColorNode, buildFrameViewColorNode } from './NTCFormat.js';
 import { constantToNode, reconstructFinalNormal } from './NTCOutputTypes.js';
@@ -53,13 +53,25 @@ function sliceChannels( outputs, activeChannels ) {
  * space LOD heuristic, and it means this only needs `maxLod`, which (unlike
  * the source texture's exact pixel size) is always available, including for
  * a model loaded from a `.ntc` file (see NTCLoader.js).
+ *
+ * `lodBias` (mip levels, default 0) is subtracted from the raw footprint-
+ * derived estimate before clamping - the same sign convention as WebGL/
+ * WebGPU's own sampler LOD bias (positive lowers the *reconstructed* LOD,
+ * i.e. keeps a finer/higher-resolution stored level in use for longer as
+ * the surface recedes; negative pushes toward coarser levels sooner). This
+ * addon's own reconstruction can afford to stay fine longer than ordinary
+ * mipmapped textures would: since the last stored level absorbs every LOD
+ * past its own band as an open-ended tail (see NTCMipBands.js), aliasing
+ * from under-blurring at a moderate positive bias is bounded by the MLP's
+ * own reconstruction, not by an unfiltered raw texture read - a positive
+ * bias here is a legitimate quality/aliasing trade-off, not just a hack.
  */
-function computeAutoLodNode( coord, maxLod ) {
+function computeAutoLodNode( coord, maxLod, lodBias = 0 ) {
 
 	const texelCoord = coord.mul( Math.pow( 2, maxLod ) );
 	const footprint = max( texelCoord.dFdx().length(), texelCoord.dFdy().length() ).max( 1e-6 );
 
-	return log( footprint ).div( Math.LN2 ).clamp( 0, maxLod );
+	return log( footprint ).div( Math.LN2 ).sub( lodBias ).clamp( 0, maxLod );
 
 }
 
@@ -111,6 +123,18 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 	// above), the same way hardware mipmapping picks a level - which is what
 	// makes this material anti-alias correctly when viewed from a distance
 	// instead of always reconstructing at full (finest-LOD) detail.
+	//
+	// `options.lodBias` (mip levels, default 0) only applies to that
+	// automatic estimate (ignored when `options.lodNode` is supplied) - see
+	// `computeAutoLodNode`'s doc comment. A positive value delays the switch
+	// to coarser stored levels as a surface recedes; e.g. `lodBias: 1` keeps
+	// this material one full mip level finer than the raw screen-space
+	// estimate at every distance. May be a plain JS number (baked into the
+	// node graph at construction time) or a TSL node (e.g. `uniform(1)`) -
+	// passing a `uniform()` node lets a live GUI control (see
+	// webgpu_materials_neural_texture_compression.html) retune this after
+	// the material's already built, by writing `.value` on that same node,
+	// shared across every material constructed with it, with no rebuild.
 	constructor( cpuModel, channelClassification, options = {} ) {
 
 		super();
@@ -136,7 +160,7 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		this.cpuModel = cpuModel;
 		this.activeChannels = activeChannels;
 		this.channels = channels;
-		this.levelTextures = buildLevelTextures( cpuModel );
+		this.mipChainTexture = buildMipChainTexture( cpuModel );
 
 		const uvScaleNode = options.uvScaleNode;
 		const uvOffsetNode = options.uvOffsetNode;
@@ -149,9 +173,9 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		// Auto-LOD (see computeAutoLodNode above) needs `coord` (pre-`fract()`,
 		// still continuous across a tile seam) - built unless the caller
 		// already supplied an explicit override.
-		const lodNode = options.lodNode || computeAutoLodNode( coord, cpuModel.maxLod );
+		const lodNode = options.lodNode || computeAutoLodNode( coord, cpuModel.maxLod, options.lodBias || 0 );
 
-		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.levelTextures, options.renderer, lodNode );
+		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.mipChainTexture, options.renderer, lodNode );
 		const slices = sliceChannels( outputs, activeChannels );
 		this._slices = slices;
 		this._constantValues = constantValues;
@@ -274,7 +298,7 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
 	dispose() {
 
-		for ( const levelTexture of this.levelTextures ) levelTexture.dispose();
+		this.mipChainTexture.dispose();
 
 		super.dispose();
 

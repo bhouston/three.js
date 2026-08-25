@@ -12,12 +12,13 @@ class NTCLossGraph {
 	// `series` is an array of `{ key, label, color }`: `key` selects the value
 	// out of each history point, `label`/`color` drive both the drawn line and,
 	// if `legend` is given, an auto-built legend entry.
-	constructor( canvas, series, { legend = null } = {} ) {
+	constructor( canvas, series, { legend = null, ips = null } = {} ) {
 
 		this.canvas = canvas;
 		this.context = canvas.getContext( '2d' );
 		this.series = series;
 		this.legendElement = legend;
+		this.ipsElement = ips;
 		this.history = [];
 
 		// When left null, the x axis scales against the last recorded point's
@@ -25,6 +26,11 @@ class NTCLossGraph {
 		// setIterationBasis() lets a caller pin it to the configured training
 		// length instead, so the axis doesn't keep rescaling as points arrive.
 		this.iterationBasis = null;
+
+		// Rolling window of { time, iteration } samples covering roughly the
+		// last second, used to derive an iterations/second readout without
+		// needing the caller to track timing itself.
+		this.iterationSamples = [];
 
 		if ( this.legendElement ) this.buildLegend();
 
@@ -54,6 +60,8 @@ class NTCLossGraph {
 	reset() {
 
 		this.history = [];
+		this.iterationSamples = [];
+		if ( this.ipsElement ) this.ipsElement.textContent = '';
 		this.draw();
 
 	}
@@ -61,6 +69,42 @@ class NTCLossGraph {
 	addPoint( point ) {
 
 		this.history.push( point );
+
+		const now = performance.now();
+		this.iterationSamples.push( { time: now, iteration: point.iteration } );
+
+		// Drop samples older than one second, but always keep at least one
+		// sample past the window edge so the elapsed time used below spans
+		// (approximately) a full second rather than whatever's left inside it.
+		while ( this.iterationSamples.length > 2 && now - this.iterationSamples[ 1 ].time > 1000 ) {
+
+			this.iterationSamples.shift();
+
+		}
+
+		if ( this.ipsElement ) {
+
+			const ips = this.getIterationsPerSecond();
+			this.ipsElement.textContent = ips !== null ? `${ ips.toFixed( 1 ) } it/s` : '';
+
+		}
+
+	}
+
+	// Iterations per second, averaged over the current rolling window
+	// (spanning up to the last second of addPoint() calls). Returns null
+	// until at least two samples have been recorded.
+	getIterationsPerSecond() {
+
+		if ( this.iterationSamples.length < 2 ) return null;
+
+		const first = this.iterationSamples[ 0 ];
+		const last = this.iterationSamples[ this.iterationSamples.length - 1 ];
+		const elapsedSeconds = ( last.time - first.time ) / 1000;
+
+		if ( elapsedSeconds <= 0 ) return null;
+
+		return ( last.iteration - first.iteration ) / elapsedSeconds;
 
 	}
 

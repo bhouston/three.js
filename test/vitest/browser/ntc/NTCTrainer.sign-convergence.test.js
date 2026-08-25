@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { vec2, vec4 } from 'three/tsl';
 import { NTCTrainer } from '../../../../examples/jsm/ntc/training/NTCTrainer.js';
-import { evaluateNeuralTextureRaw, buildLevelTextures } from '../../../../examples/jsm/ntc/NTCDecoderTSL.js';
+import { evaluateNeuralTextureRaw, buildMipChainTexture } from '../../../../examples/jsm/ntc/NTCDecoderTSL.js';
 import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/training/NTCTextureSource.js';
 import { applyChannelActivation } from '../../../../examples/jsm/ntc/NTCOutputActivations.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
@@ -121,11 +121,11 @@ describe( 'Addons > Neural > NeuralTexture > NTCTrainer sign convergence (real W
 
 		const result = await trainer.train( { renderer, sourceTextures: [ pack0, pack1 ] } );
 		const cpuModel = result.cpuModel;
-		const levelTextures = buildLevelTextures( cpuModel );
+		const mipChainTexture = buildMipChainTexture( cpuModel );
 
 		async function queryDxDy( u, v ) {
 
-			const activations = evaluateNeuralTextureRaw( vec2( u, v ), cpuModel, levelTextures );
+			const activations = evaluateNeuralTextureRaw( vec2( u, v ), cpuModel, mipChainTexture );
 			const dxPred = applyChannelActivation( activations[ 3 ], 'tanh' );
 			const dyPred = applyChannelActivation( activations[ 4 ], 'tanh' );
 			const colorNode = vec4( dxPred, dyPred, 0, 1 );
@@ -167,7 +167,7 @@ describe( 'Addons > Neural > NeuralTexture > NTCTrainer sign convergence (real W
 
 		}
 
-		for ( const levelTexture of levelTextures ) levelTexture.dispose();
+		mipChainTexture.dispose();
 		pack0.dispose();
 		pack1.dispose();
 

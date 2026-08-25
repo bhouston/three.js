@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { vec2, vec3 } from 'three/tsl';
-import { previewColor } from '../../../../examples/jsm/ntc/NTCFormat.js';
+import { previewColor, buildUvGridColorNode } from '../../../../examples/jsm/ntc/NTCFormat.js';
 import { withTestRenderer, evalFloats } from '../helpers/webgpuEval.js';
 
 // Regression coverage for a real bug found while debugging the neural-material
@@ -103,6 +103,65 @@ describe( 'Addons > Neural > NeuralMaterial > NTCFormat.previewColor (real WebGP
 		expect( r ).toBe( 1 );
 		expect( g ).toBe( 0 );
 		expect( b ).toBe( 1 );
+
+	} );
+
+} );
+
+describe( 'Addons > NTC > NTCFormat.buildUvGridColorNode (real WebGPU)', () => {
+
+	const getRenderer = withTestRenderer( { beforeAll, afterAll } );
+
+	async function sampleAt( u, v, cellCount ) {
+
+		const [ r, g, b ] = await evalFloats( getRenderer(), 3, ( out ) => {
+
+			const color = buildUvGridColorNode( vec2( u, v ), cellCount );
+			out.element( 0 ).assign( color.x );
+			out.element( 1 ).assign( color.y );
+			out.element( 2 ).assign( color.z );
+
+		} );
+
+		return { r, g, b };
+
+	}
+
+	it( 'the red/green channels track the wrapped UV coordinate (ratio-preserving under the shared checker shade)', async () => {
+
+		// Kept off exact cell boundaries (0.23/0.61, not 0.2/0.6 at
+		// cellCount=10) to avoid a floor() edge case at an exact integer -
+		// r/g == u/v regardless of which cell's shade multiplies both,
+		// so this doesn't need to know the checker's actual shade value.
+		const { r, g } = await sampleAt( 0.23, 0.61, 10 );
+
+		expect( r / g ).toBeCloseTo( 0.23 / 0.61, 4 );
+
+	} );
+
+	it( 'wraps coordinates outside [0, 1) via fract(), matching the periodic grid it visualizes', async () => {
+
+		const inside = await sampleAt( 0.23, 0.61, 10 );
+		const wrapped = await sampleAt( 1.23, - 0.39, 10 ); // 1.23 -> 0.23, -0.39 -> 0.61
+
+		expect( wrapped.r ).toBeCloseTo( inside.r, 4 );
+		expect( wrapped.g ).toBeCloseTo( inside.g, 4 );
+		expect( wrapped.b ).toBeCloseTo( inside.b, 4 );
+
+	} );
+
+	it( 'shades adjacent cells differently (a real checkerboard, not a flat gradient)', async () => {
+
+		// cellCount=2: (0.2, 0.2) and (0.7, 0.2) land in cell (0,0) and (1,0) -
+		// adjacent cells, opposite checker parity.
+		const cellA = await sampleAt( 0.2, 0.2, 2 );
+		const cellB = await sampleAt( 0.7, 0.2, 2 );
+
+		// Isolate the checker shading from the red-channel gradient (which
+		// differs between these two points anyway) by comparing blue - the
+		// constant-0.5-before-shading channel, so any difference is purely the
+		// checkerboard's doing.
+		expect( Math.abs( cellA.b - cellB.b ) ).toBeGreaterThan( 0.05 );
 
 	} );
 

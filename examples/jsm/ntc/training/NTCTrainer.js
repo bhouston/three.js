@@ -10,7 +10,13 @@ import {
 import { createResetGradientNormComputeNode } from './NTCGPUKernelsTSL.js';
 import { getLearningRate, createRandom, yieldToBrowser } from './NTCTrainingUtils.js';
 import { DEFAULT_QUANTIZATION_OPTIONS, resolveQuantizationConfig, refreshGPUQuantizationRange } from './NTCQuantization.js';
-import { NTCUvTransformTrainer } from './NTCUvTransformTrainer.js';
+import {
+	createUvTransformGPUState,
+	createUvTransformAdamComputeNode,
+	readUvTransformParams,
+	readUvTransformMatrix,
+	disposeUvTransformGPUState
+} from './NTCUvTransformGPU.js';
 
 // Default number of extra tiles (per axis, each side) training's UV sampling
 // widens to when a UV transform is being trained (see
@@ -162,30 +168,40 @@ class NTCTrainer {
 		gpuModel.initFromCPUModel( cpuModel );
 
 		// Learned per-material UV transform (see NTCUvTransform.js /
-		// NTCUvTransformTrainer.js) - only constructed when
+		// NTCUvTransformGPU.js) - only constructed when
 		// `createNTCGridPyramidModel` actually put a `uvTransform` field on
 		// the CPU model (i.e. `settings.enableUvTransform` was true); `null`
 		// otherwise, which makes every uvTransform-specific branch below a
 		// true no-op, byte-for-byte identical to training without this
-		// feature.
-		const uvTransformTrainer = cpuModel.uvTransform ?
-			new NTCUvTransformTrainer( settings.uvTransformSpsa || {} ) :
+		// feature. Trained by a real analytic gradient inside the same
+		// compute dispatch as everything else (see
+		// createTextureTrainBatchComputeNode's step "5.5") - not a separate
+		// outer loop - so it needs no special-cased iteration logic below,
+		// just one more Adam compute() call alongside the weight/latent ones.
+		const uvTransformState = cpuModel.uvTransform ?
+			createUvTransformGPUState( {
+				maxGradientNorm: settings.uvTransformMaxGradientNorm,
+				accumulationIterations: settings.uvTransformAccumulationIterations,
+				batchSize: gpuModel.batchSize
+			} ) :
 			null;
-		const uvTransformTileRange = uvTransformTrainer ?
+		const uvTransformTileRange = uvTransformState ?
 			( settings.uvTransformTileRange ?? DEFAULT_UV_TRANSFORM_TILE_RANGE ) :
 			0;
 
 		try {
 
 			const trainBatchNode = createTextureTrainBatchComputeNode(
-				gpuModel, textures,
-				uvTransformTrainer ? uvTransformTrainer.matrixNode : null,
-				uvTransformTileRange
+				gpuModel, textures, uvTransformState, uvTransformTileRange
 			);
 			const resetGradientNormNode = createResetGradientNormComputeNode( gpuModel );
 			const accumulateGradientNormNode = createAccumulateGradientNormComputeNode( gpuModel );
 			const adamWeightsNode = createTextureAdamWeightsComputeNode( gpuModel );
 			const adamLatentsNode = createTextureAdamLatentsComputeNode( gpuModel );
+			const adamUvTransformNode = uvTransformState ? createUvTransformAdamComputeNode( uvTransformState, {
+				learningRateUniform: gpuModel.learningRateUniform,
+				stepUniform: gpuModel.stepUniform
+			} ) : null;
 
 			const iterations = settings.iterations;
 			let lastLoss = NaN;
@@ -200,31 +216,26 @@ class NTCTrainer {
 				gpuModel.stepUniform.value = iteration + 1;
 				gpuModel.maxGradientNormUniform.value = settings.maxGradientNorm;
 
-				// On an SPSA outer-step iteration, NTCUvTransformTrainer.step()
-				// itself runs the full compute()+readLoss sequence twice (once
-				// per +/- perturbation, see its doc comment) and returns the
-				// resulting loss directly - the ordinary single-pass sequence
-				// below is skipped entirely for that iteration, not run in
-				// addition to it.
-				const runUvTransformStep = uvTransformTrainer !== null &&
-					iteration % uvTransformTrainer.options.interval === 0;
+				gpuModel.resetLoss();
+				renderer.compute( trainBatchNode );
+				renderer.compute( resetGradientNormNode );
+				renderer.compute( accumulateGradientNormNode );
+				renderer.compute( adamWeightsNode );
+				renderer.compute( adamLatentsNode );
 
-				if ( runUvTransformStep ) {
+				// Every iteration's forward/backward pass (above) always
+				// accumulates this sample's contribution to the UV
+				// transform's gradient (see createTextureTrainBatchComputeNode's
+				// step "5.5") - but the Adam step that actually consumes and
+				// resets that accumulator only runs once every
+				// `accumulationIterations` iterations, letting the gradient
+				// pile up across several batches first - see
+				// createUvTransformGPUState's doc comment for why a single
+				// iteration's worth is too noisy an estimate for these 3
+				// heavily-pooled global scalars specifically.
+				if ( adamUvTransformNode && ( iteration + 1 ) % uvTransformState.accumulationIterations === 0 ) {
 
-					( { loss: lastLoss } = await uvTransformTrainer.step( {
-						renderer, gpuModel, trainBatchNode,
-						resetGradientNormNode, accumulateGradientNormNode,
-						adamWeightsNode, adamLatentsNode
-					} ) );
-
-				} else {
-
-					gpuModel.resetLoss();
-					renderer.compute( trainBatchNode );
-					renderer.compute( resetGradientNormNode );
-					renderer.compute( accumulateGradientNormNode );
-					renderer.compute( adamWeightsNode );
-					renderer.compute( adamLatentsNode );
+					renderer.compute( adamUvTransformNode );
 
 				}
 
@@ -234,22 +245,34 @@ class NTCTrainer {
 
 				if ( shouldSync ) {
 
-					// `lastLoss` is already known (and the GPU loss buffer
-					// already reset) for an SPSA-step iteration - reading it
-					// again here would just read back the zero the second
-					// SPSA evaluation's own readLoss() left behind.
-					if ( runUvTransformStep ) {
+					// `gpuModel.syncToCPU` only knows about weights/latents
+					// (see NTCGPUModel.js's `copyModel`) - it has no idea
+					// `uvTransformState` exists, since that's a separate
+					// buffer bundle this feature owns (see
+					// NTCUvTransformGPU.js). Without this, `cpuModel.
+					// uvTransform` would stay frozen at its identity init for
+					// the entire run and only update once, after the loop -
+					// which is what made a live `onProgress` preview (e.g.
+					// `NTCNodeMaterial`'s `UV_DEBUG_VIEW`) look like the
+					// transform was never training at all.
+					const syncPromises = [
+						gpuModel.readLoss( renderer ),
+						gpuModel.syncToCPU( cpuModel, renderer )
+					];
 
-						await gpuModel.syncToCPU( cpuModel, renderer );
+					if ( uvTransformState ) {
 
-					} else {
+						syncPromises.push(
+							readUvTransformParams( uvTransformState, renderer ).then( ( params ) => {
 
-						[ lastLoss ] = await Promise.all( [
-							gpuModel.readLoss( renderer ),
-							gpuModel.syncToCPU( cpuModel, renderer )
-						] );
+								cpuModel.uvTransform = params;
+
+							} )
+						);
 
 					}
+
+					[ lastLoss ] = await Promise.all( syncPromises );
 
 					if ( onProgress ) {
 
@@ -287,7 +310,7 @@ class NTCTrainer {
 			// decomposed `{ rotation, scale }` shape createNTCGridPyramidModel
 			// initialized `cpuModel.uvTransform` with, since nothing past
 			// this point (export, NTCNodeMaterial) needs the decomposed form.
-			if ( uvTransformTrainer ) cpuModel.uvTransform = uvTransformTrainer.bakeMatrix();
+			if ( uvTransformState ) cpuModel.uvTransform = await readUvTransformMatrix( uvTransformState, renderer );
 
 			// Freeze the final QAT range (see NeuralQuantization.js) so a
 			// later export phase can quantize the exported latent grid against
@@ -320,6 +343,7 @@ class NTCTrainer {
 		} finally {
 
 			gpuModel.dispose();
+			if ( uvTransformState ) disposeUvTransformGPUState( uvTransformState );
 
 		}
 

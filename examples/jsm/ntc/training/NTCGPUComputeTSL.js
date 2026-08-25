@@ -4,6 +4,8 @@ import {
 	Loop,
 	atomicAdd,
 	atomicLoad,
+	cos,
+	exp,
 	float,
 	floor,
 	fract,
@@ -151,18 +153,21 @@ function sampleTrainingLod( seedBase, maxLod ) {
  * softplus) instead of forcing every channel through the same unbounded
  * linear output.
  *
- * `uvTransformNode`, when given (a flat 6-entry array from
- * NTCUvTransform.composeUvTransformMatrixTSL, rebuilt every invocation from
- * the live rotation/scale uniforms this sample's outer SPSA loop is
- * optimizing - see NTCTrainer.js), is applied to a *copy* of `uv` used only
- * for the grid-level taps below (step 1) - never to the ground-truth
- * source-texture sample above, which must stay in the mesh's real UV space
- * (what we're trying to reproduce output *for*, not an input the grid gets
- * to reparameterize). `tileRange`, only meaningful alongside a non-null
- * `uvTransformNode` (see `randomStratifiedUV`'s doc comment for why), widens
- * where `uv` itself is drawn from.
+ * `uvTransformState`, when given (see NTCUvTransformGPU.
+ * createUvTransformGPUState), applies its live `matrixNode` to a *copy* of
+ * `uv` used only for the grid-level taps below (step 1) - never to the
+ * ground-truth source-texture sample above, which must stay in the mesh's
+ * real UV space (what we're trying to reproduce output *for*, not an input
+ * the grid gets to reparameterize). This function's backward pass (step
+ * "5.5", after the usual latent-grid gradient scatter) additionally
+ * computes the analytic gradient of the loss with respect to
+ * `uvTransformState`'s 3 scalars and atomically accumulates it into
+ * `uvTransformState.buffers.gradAtomic` - see that step's own doc comment
+ * for the derivation. `tileRange`, only meaningful alongside a non-null
+ * `uvTransformState` (see `randomStratifiedUV`'s doc comment for why),
+ * widens where `uv` itself is drawn from.
  */
-function createTextureTrainBatchComputeNode( gpuModel, sourceTextures, uvTransformNode = null, tileRange = 0 ) {
+function createTextureTrainBatchComputeNode( gpuModel, sourceTextures, uvTransformState = null, tileRange = 0 ) {
 
 	const {
 		layout,
@@ -212,7 +217,7 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures, uvTransfo
 		// when one is in play (see this function's doc comment above),
 		// otherwise identical to `uv` - the ground-truth sample below always
 		// uses plain `uv`, never this.
-		const canonicalUv = uvTransformNode !== null ? applyUvTransformTSL( uv, uvTransformNode ) : uv;
+		const canonicalUv = uvTransformState !== null ? applyUvTransformTSL( uv, uvTransformState.matrixNode ) : uv;
 		const actBase = sampleIdx.mul( int( activationStride ) );
 
 		// This sample's stochastically chosen, exact-integer training LOD,
@@ -456,6 +461,93 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures, uvTransfo
 				atomicAdd( gradLatentsAtomic.element( taps.off3.add( c ) ), int( gradZ_c.mul( taps.w3 ).mul( float( FIXED_POINT_SCALE ) ) ) );
 
 			}
+
+		}
+
+		// 5.5. Analytic gradient of the loss w.r.t. the UV transform's 3
+		// scalars (rotation, log-scale x, log-scale y - see
+		// NTCUvTransformGPU.js), when one is in play. Two chain-rule stages:
+		//
+		//  a) d(a0_c)/d(canonicalUv) - the standard bilinear-sample
+		//     coordinate gradient (the same one used to backprop through
+		//     `grid_sample` in e.g. PyTorch's Spatial Transformer tutorial):
+		//     treating each tap's integer texel index as locally constant
+		//     (the same Straight-Through-Estimator-style approximation the
+		//     forward pass's own bilinear weights already are, since a
+		//     `floor()` has no useful derivative), `d(bilinear)/d(tx) =
+		//     (1-ty)*(L10-L00) + ty*(L11-L01)` and symmetrically for `ty` -
+		//     `tx`/`ty` are recovered here as `w1+w3`/`w2+w3` (algebraically
+		//     equal to the same fractional taps step 1 computed, see its
+		//     `w0..w3` - not recomputed as a new floor/fract) - chained
+		//     through `d(tx)/d(canonicalUv.x) = level.width` (from step 1's
+		//     `x = canonicalUv.x * level.width - 0.5`) and `d(ty)/d(
+		//     canonicalUv.y) = level.height` likewise. Reusing `gradA0`
+		//     (already computed above, `dL/d(a0_c)`) and `levelTaps`/
+		//     `latentsStorage` (from step 1) gives `dL/d(canonicalUv)`
+		//     without re-deriving anything step 1/4 didn't already compute.
+		//
+		//  b) d(canonicalUv)/d(rotation, log-scale) - the analytic Jacobian
+		//     of `canonicalUv = M(rotation, exp(logScale)) . uv` (see
+		//     NTCUvTransform.composeUvTransformMatrixTSL's `[a,b,c,d,e,f]` =
+		//     `[cosθ·sx, -sinθ·sy, sinθ·sx, cosθ·sy, 0, 0]`), evaluated at
+		//     this sample's own `uv` (the *original*, untransformed
+		//     coordinate - the same one step 1 fed into the transform) and
+		//     the transform's current live `rotationNode`/`logScaleX/YNode`
+		//     values.
+		if ( uvTransformState !== null ) {
+
+			const gradUvX = float( 0.0 ).toVar();
+			const gradUvY = float( 0.0 ).toVar();
+
+			for ( let g = 0; g < gridLevels.length; g ++ ) {
+
+				const level = gridLevels[ g ];
+				const taps = levelTaps[ g ];
+				const tx = taps.w1.add( taps.w3 );
+				const ty = taps.w2.add( taps.w3 );
+
+				for ( let c = 0; c < channels; c ++ ) {
+
+					const gradA0_c = activationsStorage.element( gradA0Base.add( c ) ).mul( taps.weight );
+
+					const l00 = latentsStorage.element( taps.off0.add( c ) );
+					const l10 = latentsStorage.element( taps.off1.add( c ) );
+					const l01 = latentsStorage.element( taps.off2.add( c ) );
+					const l11 = latentsStorage.element( taps.off3.add( c ) );
+
+					const dTapDx = float( 1.0 ).sub( ty ).mul( l10.sub( l00 ) ).add( ty.mul( l11.sub( l01 ) ) );
+					const dTapDy = float( 1.0 ).sub( tx ).mul( l01.sub( l00 ) ).add( tx.mul( l11.sub( l10 ) ) );
+
+					gradUvX.addAssign( gradA0_c.mul( dTapDx ).mul( level.width ) );
+					gradUvY.addAssign( gradA0_c.mul( dTapDy ).mul( level.height ) );
+
+				}
+
+			}
+
+			const theta = uvTransformState.rotationNode;
+			const sx = exp( uvTransformState.logScaleXNode );
+			const sy = exp( uvTransformState.logScaleYNode );
+			const cosT = cos( theta );
+			const sinT = sin( theta );
+
+			const dCxDTheta = sinT.negate().mul( sx ).mul( uv.x ).sub( cosT.mul( sy ).mul( uv.y ) );
+			const dCyDTheta = cosT.mul( sx ).mul( uv.x ).sub( sinT.mul( sy ).mul( uv.y ) );
+			const dCxDLogSx = cosT.mul( sx ).mul( uv.x );
+			const dCyDLogSx = sinT.mul( sx ).mul( uv.x );
+			const dCxDLogSy = sinT.negate().mul( sy ).mul( uv.y );
+			const dCyDLogSy = cosT.mul( sy ).mul( uv.y );
+
+			const gradTheta = gradUvX.mul( dCxDTheta ).add( gradUvY.mul( dCyDTheta ) );
+			const gradLogSx = gradUvX.mul( dCxDLogSx ).add( gradUvY.mul( dCyDLogSx ) );
+			const gradLogSy = gradUvX.mul( dCxDLogSy ).add( gradUvY.mul( dCyDLogSy ) );
+
+			// Same raw, un-batch-averaged fixed-point atomic accumulation
+			// convention as every other gradient in this kernel - see this
+			// function's step-3 doc comment for why.
+			atomicAdd( uvTransformState.buffers.gradAtomic.element( 0 ), int( gradTheta.mul( float( FIXED_POINT_SCALE ) ) ) );
+			atomicAdd( uvTransformState.buffers.gradAtomic.element( 1 ), int( gradLogSx.mul( float( FIXED_POINT_SCALE ) ) ) );
+			atomicAdd( uvTransformState.buffers.gradAtomic.element( 2 ), int( gradLogSy.mul( float( FIXED_POINT_SCALE ) ) ) );
 
 		}
 

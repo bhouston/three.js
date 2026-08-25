@@ -128,6 +128,7 @@
 			<button id="saveJsonButton" disabled>Save .ntc</button>
 			<button id="loadJsonButton">Load .ntc</button>
 			<div id="status">Ready.</div>
+			<div id="uvTransformStatus" hidden></div>
 			<input id="mtlxFileInput" type="file" accept=".mtlx,.zip,.mtlx.zip" hidden>
 			<input id="jsonFileInput" type="file" accept=".ntc,.json" hidden>
 		</div>
@@ -168,7 +169,7 @@
 			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/ntc/training/NTCSource.js';
 			import { computeGridLevels } from 'three/addons/ntc/training/NTCGridPyramidModel.js';
 			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/ntc/training/NTCGridModel.js';
-			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, buildChannelActivations } from 'three/addons/ntc/NTCFormat.js';
+			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, UV_DEBUG_VIEW, buildChannelActivations } from 'three/addons/ntc/NTCFormat.js';
 			import { NTCLossGraph } from 'three/addons/ntc/training/NTCLossGraph.js';
 			import { computeMLPParamCount, computeMLPFlops, computeGridLatentTexels, computeModelFootprint, formatModelSizeSummary } from 'three/addons/ntc/training/NTCModelSize.js';
 			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/ntc/training/NTCMaterialXSamples.js';
@@ -200,7 +201,7 @@
 				learningRate: 0.01,
 				quantization: 'uint8',
 				// Learned per-material UV transform (rotation + anisotropic
-				// scale, see NTCUvTransform.js/NTCUvTransformTrainer.js) -
+				// scale, see NTCUvTransform.js/NTCUvTransformGPU.js) -
 				// off by default (a true no-op vs. training without this
 				// feature). Try it on `standard_surface_rotate2d_test.mtlx`
 				// (rotates its image texture 45 degrees before sampling), a
@@ -224,6 +225,7 @@
 			const saveJsonButton = document.getElementById( 'saveJsonButton' );
 			const loadJsonButton = document.getElementById( 'loadJsonButton' );
 			const jsonFileInput = document.getElementById( 'jsonFileInput' );
+			const uvTransformStatus = document.getElementById( 'uvTransformStatus' );
 			const modelLabels = document.getElementById( 'modelLabels' );
 			const lossPanel = document.getElementById( 'lossPanel' );
 			const lossGraph = new NTCLossGraph(
@@ -329,7 +331,7 @@
 				objectFolder.add( params, 'shape', [ 'torus', 'sphere', 'plane' ] ).name( 'shape' ).onChange( updateShape );
 
 				const viewFolder = gui.addFolder( 'view' );
-				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS ] ).name( 'channel' ).onChange( updateDebugView );
+				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS, UV_DEBUG_VIEW ] ).name( 'channel' ).onChange( updateDebugView );
 				viewFolder.add( params, 'showBackground' ).name( 'show background IBL' ).onChange( updateBackground );
 
 				builtInMaterial.addEventListener( 'change', () => loadBuiltInMaterial( builtInMaterial.value ) );
@@ -679,6 +681,7 @@
 				comparisonVisible = false;
 				modelLabels.hidden = true;
 				lossPanel.hidden = true;
+				uvTransformStatus.hidden = true;
 				lossGraph.reset();
 				trainButton.disabled = false;
 				saveJsonButton.disabled = true;
@@ -711,6 +714,7 @@
 				setTrainingUi( true );
 				modelLabels.hidden = false;
 				lossPanel.hidden = false;
+				uvTransformStatus.hidden = true; // cleared until the first progress tick, so a fresh run never shows the previous run's stale readout
 				lossGraph.reset();
 				status.textContent = 'Baking material channels...';
 
@@ -791,11 +795,53 @@
 
 			}
 
+			// Live, human-readable readout of the learned UV transform (see
+			// NTCUvTransform.js) - independent of the `UV_DEBUG_VIEW`
+			// checkerboard, so it's easy to confirm training is actually
+			// moving the transform even when that visual change is subtle
+			// (a fraction of a degree per progress tick, early on) or the
+			// debug view isn't currently selected. `cpuModel.uvTransform` is
+			// the decomposed `{ rotation, scale }` shape mid-training and the
+			// baked flat 6-float matrix once training finishes (see
+			// NTCTrainer.js) - handles both.
+			function formatUvTransformStatus( uvTransform ) {
+
+				if ( ! uvTransform ) return null;
+
+				let rotation, scale;
+
+				if ( Array.isArray( uvTransform ) ) {
+
+					const [ a, b, c, d ] = uvTransform;
+					rotation = Math.atan2( c, a );
+					scale = [ Math.hypot( a, c ), Math.hypot( b, d ) ];
+
+				} else {
+
+					rotation = uvTransform.rotation;
+					scale = uvTransform.scale;
+
+				}
+
+				const degrees = ( rotation * 180 / Math.PI ).toFixed( 1 );
+				return `Learned UV transform: rotation ${degrees}°, scale (${scale[ 0 ].toFixed( 3 )}, ${scale[ 1 ].toFixed( 3 )})`;
+
+			}
+
+			function updateUvTransformStatus( cpuModel ) {
+
+				const text = cpuModel ? formatUvTransformStatus( cpuModel.uvTransform ) : null;
+				uvTransformStatus.hidden = text === null;
+				if ( text !== null ) uvTransformStatus.textContent = text;
+
+			}
+
 			function rebuildNeuralMaterial( cpuModel, sideBySide = true ) {
 
 				disposeNeuralMaterial();
 				currentCpuModel = cpuModel;
 				networkSizeMatchesModel = true;
+				updateUvTransformStatus( cpuModel );
 				neuralMaterial = new NTCNodeMaterial(
 					cpuModel,
 					channelClassification,

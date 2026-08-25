@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { bitangentWorld, fract, log, max, tangentWorld, uv, vec2, vec3 } from 'three/tsl';
 import { buildMipChainTexture, evaluateNeuralTextureRaw } from './NTCDecoderTSL.js';
 import { applyChannelActivation } from './NTCOutputActivations.js';
-import { CHANNELS, FRAME_VIEWS, getChannel, buildDebugViewColorNode, buildFrameViewColorNode } from './NTCFormat.js';
+import { CHANNELS, FRAME_VIEWS, UV_DEBUG_VIEW, getChannel, buildDebugViewColorNode, buildFrameViewColorNode, buildUvGridColorNode } from './NTCFormat.js';
 import { constantToNode, reconstructFinalNormal } from './NTCOutputTypes.js';
 import { applyUvTransformTSL, resolveUvTransformMatrix } from './NTCUvTransform.js';
 
@@ -189,6 +189,12 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		const uvTransformMatrix = options.uvTransformNode || resolveUvTransformMatrix( cpuModel.uvTransform );
 		if ( uvTransformMatrix ) coord = applyUvTransformTSL( coord, uvTransformMatrix );
 
+		// Stashed for `setDebugView(UV_DEBUG_VIEW)` below - `coord` at this
+		// point is exactly the canonical grid-space coordinate (mesh UV, with
+		// any uvScale/uvOffset/learned-transform already applied, pre-`fract`)
+		// the feature grid is actually indexed by.
+		this._canonicalCoord = coord;
+
 		const tiledUV = fract( coord );
 
 		// Auto-LOD (see computeAutoLodNode above) needs `coord` (pre-`fract()`,
@@ -260,6 +266,18 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 			this.toneMapped = false;
 			const frameNode = view === 'tangent' ? tangentWorld : bitangentWorld;
 			this.colorNode = buildFrameViewColorNode( frameNode );
+
+		} else if ( view === UV_DEBUG_VIEW ) {
+
+			// A checkerboard/color-gradient rendering of the canonical
+			// grid-space coordinate itself (see `this._canonicalCoord` above
+			// and buildUvGridColorNode's doc comment) - entirely bypasses the
+			// trained network, unlike every other (channel) debug view below,
+			// so this reads correctly even for a completely untrained/
+			// hand-assembled model.
+			this.lights = false;
+			this.toneMapped = false;
+			this.colorNode = buildUvGridColorNode( this._canonicalCoord );
 
 		} else {
 

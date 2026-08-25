@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { float, transformNormalToView, vec2, vec3, vec4 } from 'three/tsl';
+import { float, fract, floor, mod, transformNormalToView, vec2, vec3, vec4 } from 'three/tsl';
 import { OUTPUT_TYPES, channelEffectiveType, constantToNode, reconstructFinalNormal } from './NTCOutputTypes.js';
 
 /**
@@ -771,6 +771,17 @@ const MAX_TOTAL_CHANNELS = CHANNELS.reduce( ( sum, c ) => sum + c.size, 0 );
  */
 const FRAME_VIEWS = [ 'tangent', 'bitangent' ];
 
+/**
+ * A debug-only view of the *canonical grid-space coordinate* - i.e. the
+ * mesh's UV after any learned per-material affine transform (see
+ * NTCUvTransform.js/NTCGridPyramidModel.js's `enableUvTransform` option) has
+ * already been applied, but before the network is touched at all - so this
+ * is literally "what does the feature grid see". Same idea as `FRAME_VIEWS`
+ * (bypasses the trained network entirely), but geometric rather than
+ * lighting-frame-derived. See `buildUvGridColorNode` below.
+ */
+const UV_DEBUG_VIEW = 'uvGrid';
+
 function getChannel( key, channels = CHANNELS ) {
 
 	const channel = channels.find( ( c ) => c.key === key );
@@ -927,12 +938,42 @@ function buildFrameViewColorNode( frameNode ) {
 
 }
 
+/**
+ * Builds the `UV_DEBUG_VIEW` color node: a classic "UV test grid" - a
+ * checkerboard for grid density/skew, tinted red along U and green along V
+ * so *rotation* is unambiguous too (a plain black/white checker looks
+ * identical under many rotations; the color gradient's sweep direction
+ * doesn't). `coordNode` is meant to be the *pre*-`fract()` canonical
+ * coordinate (see NTCNodeMaterial.js's `coord`, after any learned UV
+ * transform has already been applied to it) - `fract()`'d here, once, so
+ * this always shows a properly wrapped, periodic grid regardless of what
+ * the caller passed in.
+ *
+ * Reading this view: an untransformed material (or `enableUvTransform:
+ * false`) shows a plain axis-aligned grid. A learned rotation tilts the
+ * checker/color-gradient boundaries; a learned anisotropic scale changes
+ * cell density differently along U vs. V - i.e. this view *is* a direct
+ * visualization of what the learned transform did, independent of anything
+ * the network itself reconstructed.
+ */
+function buildUvGridColorNode( coordNode, cellCount = 10 ) {
+
+	const wrapped = fract( coordNode );
+	const cell = wrapped.mul( cellCount );
+	const parity = mod( floor( cell.x ).add( floor( cell.y ) ), 2 );
+	const shade = float( 1 ).sub( parity ).mul( 0.5 ).add( 0.35 );
+
+	return vec4( vec3( wrapped.x, wrapped.y, 0.5 ).mul( shade ), 1 );
+
+}
+
 export {
 	FORMAT,
 	VERSION,
 	CHANNELS,
 	MAX_TOTAL_CHANNELS,
 	FRAME_VIEWS,
+	UV_DEBUG_VIEW,
 	getChannel,
 	decodeConstantValues,
 	layoutChannels,
@@ -940,6 +981,7 @@ export {
 	previewColor,
 	buildDebugViewColorNode,
 	buildFrameViewColorNode,
+	buildUvGridColorNode,
 	simpleScalarChannel,
 	fixedRangeScalarChannel,
 	colorIntensityChannel,

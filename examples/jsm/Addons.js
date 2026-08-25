@@ -38,6 +38,7 @@ export * from './exporters/DRACOExporter.js';
 export * from './exporters/EXRExporter.js';
 export * from './exporters/GLTFExporter.js';
 export * from './exporters/KTX2Exporter.js';
+export * from './exporters/NTCExporter.js';
 export * from './exporters/OBJExporter.js';
 export * from './exporters/PLYExporter.js';
 export * from './exporters/STLExporter.js';
@@ -110,6 +111,7 @@ export * from './loaders/MD2Loader.js';
 export * from './loaders/MDDLoader.js';
 export * from './loaders/MTLLoader.js';
 export * from './loaders/NRRDLoader.js';
+export * from './loaders/NTCLoader.js';
 export * from './loaders/OBJLoader.js';
 export * from './loaders/PCDLoader.js';
 export * from './loaders/PDBLoader.js';
@@ -133,21 +135,9 @@ export * from './loaders/XYZLoader.js';
 
 export * from './materials/LDrawConditionalLineMaterial.js';
 
-export * from './neural/NeuralGPUTrainingConstants.js';
-export * from './neural/NeuralMLP.js';
+export * from './ntc/NTCGPUTrainingConstants.js';
+export * from './ntc/NTCMLP.js';
 
-export * from './neural-appearance/NeuralAppearanceFormat.js';
-export * from './neural-appearance/NeuralAppearanceManifest.js';
-export * from './neural-appearance/NeuralAppearanceModel.js';
-export * from './neural-appearance/NeuralAppearanceNodeMaterial.js';
-export * from './neural-appearance/NeuralAppearanceRuntime.js';
-export * from './neural-appearance/NeuralAppearanceSampler.js';
-export * from './neural-appearance/NeuralAppearanceTeacherAtlas.js';
-export * from './neural-appearance/NeuralAppearanceTeacherEvaluator.js';
-export * from './neural-appearance/NeuralAppearanceTeacherReadback.js';
-export * from './neural-appearance/NeuralAppearanceTrainer.js';
-export * from './neural-appearance/NeuralAppearanceTSL.js';
-export * from './neural-appearance/NeuralAppearanceValidator.js';
 
 export * from './math/Capsule.js';
 export * from './math/ColorConverter.js';

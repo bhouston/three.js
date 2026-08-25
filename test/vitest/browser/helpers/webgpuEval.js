@@ -4,12 +4,12 @@ import { Fn, storage } from 'three/tsl';
 // Minimal "evaluate one TSL node graph, read the number(s) back" harness for
 // the vitest browser project (real Chromium + real WebGPU, see
 // vitest.config.js). This is deliberately generic - it doesn't know anything
-// about neural-appearance/neural-material/neural-texture - so any test file
-// that needs to check a TSL node builder's actual numeric output (as opposed
-// to just the JS object it returns) can reuse it instead of re-deriving the
+// about the NTC framework specifically - so any test file that needs to
+// check a TSL node builder's actual numeric output (as opposed to just the
+// JS object it returns) can reuse it instead of re-deriving the
 // storage()/compute()/getArrayBufferAsync() boilerplate every time.
 //
-// Why this exists: functions like NeuralOutputActivations.applyChannelActivation
+// Why this exists: functions like NTCOutputActivations.applyChannelActivation
 // build a node *graph* (they return a TSL node, not a number) and had no unit
 // coverage under the old QUnit harness because QUnit had no way to actually
 // run that graph on a GPU and read the result back - every existing test of

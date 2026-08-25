@@ -9,11 +9,11 @@ const testUtils = fileURLToPath( new URL( './test/unit/utils', import.meta.url )
 // project (real Chromium), everything else in unit-node (plain Node).
 // See test/unit/VITEST_MIGRATION.md for the full rationale and playbook.
 //
-// Two extra projects, "unit" and "browser", cover the neural-texture /
-// neural-material / neural-appearance framework (examples/jsm/neural*) -
-// kept separate from the unit-node/unit-browser lanes above since they
-// exercise the public examples/jsm surface (not src/) and, for "browser",
-// need real WebGPU rather than plain Chromium. See test/vitest/README.md.
+// Two extra projects, "unit" and "browser", cover the NTC (Neural Texture
+// Compression) framework (examples/jsm/ntc/*) - kept separate from the
+// unit-node/unit-browser lanes above since they exercise the public
+// examples/jsm surface (not src/) and, for "browser", need real WebGPU
+// rather than plain Chromium. See test/vitest/README.md.
 const webgpuLaunchArgs = [
 	// Playwright's bundled Chromium ships WebGPU behind these flags; without
 	// them navigator.gpu.requestAdapter() resolves to null on every platform.
@@ -106,8 +106,8 @@ export default defineConfig( {
 					// specifier (matching the repo's own examples/*.html importmaps,
 					// which all point "three" at build/three.webgpu.js) even for
 					// WebGPU-only classes like NodeMaterial - see e.g.
-					// NeuralTextureSource.js / NeuralTextureNodeMaterial.js /
-					// NeuralMaterialSource.js. Outside an importmap-driven page,
+					// NTCTextureSource.js / NTCDecoderTSL.js / NTCSource.js.
+					// Outside an importmap-driven page,
 					// though, 'three' resolves via package.json's own "exports"
 					// field to build/three.module.js (the WebGPU-less core build),
 					// so any addon module reached from a test - even transitively,

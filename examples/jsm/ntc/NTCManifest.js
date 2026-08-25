@@ -1,0 +1,140 @@
+// Exported as .ntc (JSON content, format: 'three-ntc') - see FORMAT/VERSION
+// below.
+
+import { encodeUint8Base64, encodeMLPLayersBase64 } from './NTCBinaryCodec.js';
+import { computeLatentRanges } from './NTCQuantization.js';
+
+const FORMAT = 'three-ntc';
+const VERSION = 1;
+
+/**
+ * A `.ntc` (Neural Texture Compression) asset is one shared multiresolution
+ * latent grid + MLP decoder (NVIDIA NTC style: one small decoder, many
+ * jointly-fit, correlated PBR output channels), plus the channel layout/
+ * constant-value metadata needed to slice that decoder's output back into
+ * named PBR channels at load time (see NTCLoader.js / NTCNodeMaterial.js).
+ *
+ * `cpuModel` is `{ channels, grids, decoder: { layers }, outputChannels }` -
+ * exactly what `NTCTrainer`/`NTCNodeMaterial.fit()` produces.
+ * `channelClassification` is `{ activeChannels, constantValues,
+ * totalChannels, packCount, renderFlags }` - the layout that model's output
+ * was trained against (see `NTCSource.classifyMaterialChannels`).
+ *
+ * Only the channel *keys* need to be persisted, in layout order - every
+ * other field on an `activeChannels` entry (`size`, `activation`,
+ * `nodeKeys`, `clampRange`, `defaultValue`, `offset`) is a fixed property of
+ * that key already declared in `NTCFormat.CHANNELS`/`getChannel`, and
+ * `offset`/`totalChannels`/`packCount` are re-derived deterministically from
+ * the key list alone via `layoutChannels` - see NTCLoader.js. Storing only
+ * the keys means this manifest can never disagree with NTCFormat.js about
+ * what a channel's own size/activation/clampRange is.
+ */
+function encodeNTC( cpuModel, channelClassification, options = {} ) {
+
+	const ranges = resolveQuantizationRanges( cpuModel, options );
+
+	const levels = cpuModel.grids.map( ( grid, index ) => {
+
+		const [ min, max ] = ranges[ index ];
+
+		return {
+			width: grid.width,
+			height: grid.height,
+			channels: grid.channels,
+			wrap: options.wrap || 'repeat',
+			dtype: 'uint8',
+			min,
+			max,
+			dataBase64: encodeUint8Base64( grid.data, min, max )
+		};
+
+	} );
+
+	return {
+		format: FORMAT,
+		version: VERSION,
+		name: options.name,
+		source: options.source || 'THREE.NTCNodeMaterial',
+		latents: {
+			channelsPerLevel: cpuModel.channels,
+			wrap: options.wrap || 'repeat',
+			levels
+		},
+		outputChannels: cpuModel.outputChannels,
+		mlp: encodeMLPLayersBase64( cpuModel.decoder.layers ),
+		// See NTCSource.resolveRenderFlags's doc comment - `side`/
+		// `transparent` aren't channels (nothing for the network to fit), but
+		// still need to round-trip so a loaded material's transmission pass
+		// count (and therefore its attenuation tint strength) matches the
+		// source material it was fit against. `undefined` on a
+		// classification built without a source material (e.g. hand-assembled
+		// constant-only classification) round-trips as a plain `null`.
+		renderFlags: channelClassification.renderFlags || null,
+		channels: {
+			activeKeys: channelClassification.activeChannels.map( ( channel ) => channel.key ),
+			constantValues: channelClassification.constantValues
+		}
+	};
+
+}
+
+/**
+ * Resolves the per-level `[min, max]` quantization range used to encode the
+ * exported latent grid as uint8: an explicit `options.quantizationRanges`,
+ * else `cpuModel.quantizationRange` (set by `NTCTrainer.train()` when
+ * quantization-aware training - QAT - was actually used, see
+ * NTCQuantization.js), else a plain min/max scan over the model's *final*
+ * (post-training) latents via `computeLatentRanges`.
+ *
+ * Note: scanning a range at export time for a model that was never trained
+ * with QAT still produces a numerically valid uint8-quantized manifest, but
+ * the network's weights were never exposed to the rounding error that
+ * quantization introduces - so the exported model may reconstruct slightly
+ * less accurately than one actually trained with `quantization.mode:
+ * 'uint8'` (see NTCTrainer.js's `quantization` option). Prefer training
+ * with QAT enabled when export-time compactness matters.
+ */
+function resolveQuantizationRanges( cpuModel, options ) {
+
+	if ( options.quantizationRanges ) return options.quantizationRanges;
+	if ( cpuModel.quantizationRange ) return cpuModel.quantizationRange;
+
+	const { flat, gridLevels } = concatenateGridData( cpuModel.grids );
+
+	return computeLatentRanges( flat, gridLevels, true );
+
+}
+
+/**
+ * Concatenates every grid level's flat `Float32Array`/`Array` `data` into a
+ * single flat `Float32Array`, alongside the `{ offset, floatCount }` layout
+ * `NTCQuantization.computeLatentRanges` expects (the same shape
+ * `NTCGPUModel.computeTextureModelLayout`'s `layout.gridLevels` already
+ * uses) - so a plain export-time min/max scan can reuse that shared helper
+ * instead of re-deriving its own reduction loop.
+ */
+function concatenateGridData( grids ) {
+
+	let offset = 0;
+	const gridLevels = [];
+
+	for ( const grid of grids ) {
+
+		gridLevels.push( { offset, floatCount: grid.data.length } );
+		offset += grid.data.length;
+
+	}
+
+	const flat = new Float32Array( offset );
+
+	for ( let g = 0; g < grids.length; g ++ ) {
+
+		flat.set( grids[ g ].data, gridLevels[ g ].offset );
+
+	}
+
+	return { flat, gridLevels };
+
+}
+
+export { FORMAT, VERSION, encodeNTC };

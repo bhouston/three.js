@@ -7,17 +7,18 @@ import { encodeUint8Base64, encodeMLPLayersBase64 } from '../NTCBinaryCodec.js';
 import { computeLatentRanges } from './NTCQuantization.js';
 
 /**
- * A `.ntc` (Neural Texture Compression) asset is one shared multiresolution
- * latent grid + MLP decoder (NVIDIA NTC style: one small decoder, many
- * jointly-fit, correlated PBR output channels), plus the channel layout/
- * constant-value metadata needed to slice that decoder's output back into
- * named PBR channels at load time (see NTCLoader.js / NTCNodeMaterial.js).
+ * A `.ntc` (Neural Texture Compression) asset is one shared mip pyramid of
+ * latent feature grids + MLP decoder (NVIDIA NTC style: one small decoder,
+ * many jointly-fit, correlated PBR output channels), plus the channel
+ * layout/constant-value metadata needed to slice that decoder's output back
+ * into named PBR channels at load time (see NTCLoader.js / NTCNodeMaterial.js).
  *
- * `cpuModel` is `{ channels, grids, decoder: { layers }, outputChannels }` -
- * exactly what `NTCTrainer`/`NTCFit.fitNTCMaterial()` produces.
- * `channelClassification` is `{ activeChannels, constantValues,
- * totalChannels, packCount, renderFlags }` - the layout that model's output
- * was trained against (see `NTCSource.classifyMaterialChannels`).
+ * `cpuModel` is `{ channels, levels, mipsPerLevel, grids, decoder: { layers },
+ * outputChannels, textureResolution, maxLod }` - exactly what
+ * `NTCTrainer`/`NTCFit.fitNTCMaterial()` produces (see
+ * NTCGridPyramidModel.js). `channelClassification` is `{ activeChannels,
+ * constantValues, totalChannels, packCount, renderFlags }` - the layout that
+ * model's output was trained against (see `NTCSource.classifyMaterialChannels`).
  *
  * Only the channel *keys* need to be persisted, in layout order - every
  * other field on an `activeChannels` entry (`size`, `activation`,
@@ -58,16 +59,16 @@ function encodeNTC( cpuModel, channelClassification, options = {} ) {
 			channelsPerLevel: cpuModel.channels,
 			wrap: options.wrap || 'repeat',
 			levels,
-			// Optional, additive mip-pyramid metadata (see NTCMipPyramid.js /
-			// NTCGridPyramidModel.js) - the key itself is omitted entirely
-			// (not just `undefined`-valued) for a model trained with
-			// `enableMipPyramid: false`, and for every `.ntc` file written
-			// before this feature existed. NTCLoader.js/NTCDecoderTSL.js treat
-			// a missing `mipPyramid` exactly like an explicit "disabled" -
-			// deliberately *not* a `VERSION` bump, since an older loader
-			// reading a newer file (or a newer loader reading an older one)
-			// only ever sees one extra, safely-ignorable key.
-			...( cpuModel.mipPyramid ? { mipPyramid: cpuModel.mipPyramid } : {} )
+			// Required mip-pyramid metadata (see NTCGridPyramidModel.js /
+			// NTCMipBands.js) - `mipsPerLevel` + the stored level count
+			// (`levels.length`) determine which physical mip a given LOD maps
+			// onto, and `maxLod` is the total physical mip range this model
+			// was trained to support. Without these a loader can't correctly
+			// reconstruct the decoder's LOD input at all, which is why this is
+			// a `VERSION` bump (2) rather than an optional/additive field like
+			// most other manifest additions - see NTCFormat.js.
+			mipsPerLevel: cpuModel.mipsPerLevel,
+			maxLod: cpuModel.maxLod
 		},
 		outputChannels: cpuModel.outputChannels,
 		mlp: encodeMLPLayersBase64( cpuModel.decoder.layers ),

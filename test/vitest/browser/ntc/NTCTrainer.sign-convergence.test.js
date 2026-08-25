@@ -104,7 +104,6 @@ describe( 'Addons > Neural > NeuralTexture > NTCTrainer sign convergence (real W
 			channels: 4,
 			levels: 3,
 			baseResolution: 8,
-			growthFactor: 2,
 			hiddenSizes: [ 16, 16 ],
 			outputChannels: 5,
 			channelActivations: [ 'sigmoid', 'sigmoid', 'sigmoid', 'tanh', 'tanh' ],
@@ -112,12 +111,12 @@ describe( 'Addons > Neural > NeuralTexture > NTCTrainer sign convergence (real W
 			iterations: 500,
 			learningRate: 0.02,
 			seed: 1,
-			// This file tests channel-sign correctness against mip-0-only
-			// textures (`generateMipmaps: false` above) - orthogonal to
-			// mip-pyramid training (default true, see NTCTrainer.js), which
-			// would sample other mip levels these textures deliberately don't
-			// have.
-			enableMipPyramid: false
+			// Forces maxLod to 0 (see NTCGridPyramidModel.js), so every sample's
+			// LOD is always 0 - this file tests channel-sign correctness against
+			// textures with no real mip chain (`generateMipmaps: false` above);
+			// a genuinely sampled LOD > 0 would be reading an undefined mip
+			// level.
+			textureResolution: 1
 		} );
 
 		const result = await trainer.train( { renderer, sourceTextures: [ pack0, pack1 ] } );

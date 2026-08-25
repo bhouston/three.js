@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { computeGridLevels, createLatentGrid, createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js';
 
-describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
+describe( 'Addons > NTC > NTCGridPyramidModel', () => {
 
 	describe( 'createNTCGridPyramidModel', () => {
 
 		it( 'derives resolutions from computeGridLevels and produces one grid per resolution', () => {
 
-			const options = { channels: 2, levels: 3, baseResolution: 8, growthFactor: 2 };
+			const options = { channels: 2, levels: 3, baseResolution: 8, mipsPerLevel: 1 };
 			const model = createNTCGridPyramidModel( options, () => 0.5 );
 
-			const expectedResolutions = computeGridLevels( options.baseResolution, options.growthFactor, options.levels );
+			const expectedResolutions = computeGridLevels( options.baseResolution, options.levels, options.mipsPerLevel );
 
 			expect( model.resolutions ).toEqual( expectedResolutions );
 			expect( model.grids.length ).toBe( expectedResolutions.length );
@@ -42,7 +42,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 			};
 
-			const options = { channels: 2, levels: 2, baseResolution: 4, growthFactor: 2, hiddenSizes: [ 3 ], outputChannels: 2 };
+			const options = { channels: 2, levels: 2, baseResolution: 4, mipsPerLevel: 1, hiddenSizes: [ 3 ], outputChannels: 2 };
 			const model = createNTCGridPyramidModel( options, random );
 
 			let independentCalls = 0;
@@ -63,28 +63,22 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		} );
 
-		it( 'sizes the decoder input as levels * channels when mip-pyramid training is disabled', () => {
+		it( 'sizes the decoder input as channels + 1 (one selected level tap + LOD), regardless of level count', () => {
 
-			const options = { channels: 4, levels: 3, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 5 ], outputChannels: 3, enableMipPyramid: false };
-			const model = createNTCGridPyramidModel( options, () => 0.5 );
+			for ( const levels of [ 1, 2, 3, 5 ] ) {
 
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels );
-			expect( model.mipPyramid ).toBeNull();
+				const options = { channels: 4, levels, baseResolution: 8, hiddenSizes: [ 5 ], outputChannels: 3 };
+				const model = createNTCGridPyramidModel( options, () => 0.5 );
 
-		} );
+				expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.channels + 1 );
 
-		it( 'sizes the decoder input as levels * channels + 1 when mip-pyramid training is enabled (the default)', () => {
-
-			const options = { channels: 4, levels: 3, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 5 ], outputChannels: 3 };
-			const model = createNTCGridPyramidModel( options, () => 0.5 );
-
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels + 1 );
+			}
 
 		} );
 
 		it( 'sizes the decoder output layer to match options.outputChannels', () => {
 
-			const options = { channels: 2, levels: 2, baseResolution: 4, growthFactor: 4, hiddenSizes: [ 6, 6 ], outputChannels: 7 };
+			const options = { channels: 2, levels: 2, baseResolution: 4, hiddenSizes: [ 6, 6 ], outputChannels: 7 };
 			const model = createNTCGridPyramidModel( options, () => 0.5 );
 
 			const outputLayer = model.decoder.layers[ model.decoder.layers.length - 1 ];
@@ -94,74 +88,30 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 		} );
 
-		it( 'applies documented defaults when options are omitted (mip-pyramid training enabled by default)', () => {
+		it( 'applies documented defaults when options are omitted', () => {
 
 			const model = createNTCGridPyramidModel( {}, () => 0.5 );
 
 			expect( model.channels ).toBe( 4 );
 			expect( model.levels ).toBe( 4 );
+			expect( model.mipsPerLevel ).toBe( 2 );
 			expect( model.hiddenSizes ).toEqual( [ 32, 32 ] );
 			expect( model.outputChannels ).toBe( 3 );
 
-			// baseResolution = 16, growthFactor = 2, levels = 4 -> 16, 32, 64, 128
-			expect( model.resolutions[ 0 ] ).toBe( 16 );
-			expect( model.resolutions[ model.resolutions.length - 1 ] ).toBe( 128 );
-			expect( model.resolutions.length ).toBe( 4 );
+			// baseResolution = 128 (finest, no textureResolution given), mipsPerLevel = 2, levels = 4
+			// -> 128, 32, 8, 2 (each level a quarter the resolution of the last).
+			expect( model.resolutions ).toEqual( [ 128, 32, 8, 2 ] );
 
-			// decoder: input = levels * channels + 1 (LOD, see mipPyramid below)
-			// = 17, 2 hidden layers + 1 output layer
+			// decoder: input = channels + 1 = 5, 2 hidden layers + 1 output layer
 			expect( model.decoder.layers.length ).toBe( 3 );
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 17 );
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 5 );
 			expect( model.decoder.layers[ model.decoder.layers.length - 1 ].outputSize ).toBe( 3 );
-
-			// mip-pyramid metadata (see NTCMipPyramid.js) - textureResolution
-			// falls back to the finest grid resolution (128) when not given.
-			expect( model.mipPyramid ).not.toBeNull();
-			expect( model.mipPyramid.textureResolution ).toBe( 128 );
-			expect( model.mipPyramid.naturalLods.length ).toBe( model.resolutions.length );
-
-		} );
-
-		it( 'enableMipPyramid: false reproduces the pre-mip-pyramid decoder input size exactly', () => {
-
-			const options = { hiddenSizes: [ 32, 32 ], outputChannels: 3, enableMipPyramid: false };
-			const model = createNTCGridPyramidModel( options, () => 0.5 );
-
-			expect( model.mipPyramid ).toBeNull();
-			expect( model.decoder.layers[ 0 ].inputSize ).toBe( 16 );
-
-		} );
-
-		describe( 'mipPyramid metadata', () => {
-
-			it( 'computes one naturalLod per grid level, non-decreasing as resolution shrinks', () => {
-
-				// resolutions (baseResolution=8, growthFactor=2, levels=4): 8, 16, 32, 64
-				const options = { channels: 2, levels: 4, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 4 ], outputChannels: 2, textureResolution: 64 };
-				const model = createNTCGridPyramidModel( options, () => 0.5 );
-
-				expect( model.resolutions ).toEqual( [ 8, 16, 32, 64 ] );
-				// naturalLod = log2(textureResolution / gridResolution)
-				expect( model.mipPyramid.naturalLods ).toEqual( [ 3, 2, 1, 0 ] );
-				expect( model.mipPyramid.textureResolution ).toBe( 64 );
-
-			} );
-
-			it( 'respects an explicit textureResolution over the finest-grid-resolution fallback', () => {
-
-				const options = { channels: 2, levels: 2, baseResolution: 8, growthFactor: 2, hiddenSizes: [ 4 ], outputChannels: 2, textureResolution: 4096 };
-				const model = createNTCGridPyramidModel( options, () => 0.5 );
-
-				expect( model.mipPyramid.textureResolution ).toBe( 4096 );
-				expect( model.mipPyramid.maxLod ).toBe( Math.ceil( Math.log2( 4096 ) ) );
-
-			} );
 
 		} );
 
 		it( 'produces deterministic grid and decoder contents for random() = 0.5 (midpoint => all zero weights)', () => {
 
-			const options = { channels: 2, levels: 2, baseResolution: 4, growthFactor: 2, hiddenSizes: [ 4 ], outputChannels: 3 };
+			const options = { channels: 2, levels: 2, baseResolution: 4, mipsPerLevel: 1, hiddenSizes: [ 4 ], outputChannels: 3 };
 			const model = createNTCGridPyramidModel( options, () => 0.5 );
 
 			for ( const grid of model.grids ) {
@@ -205,7 +155,7 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 
 			};
 
-			const options = { channels: 3, levels: 3, baseResolution: 4, growthFactor: 2, hiddenSizes: [ 6 ], outputChannels: 2 };
+			const options = { channels: 3, levels: 3, baseResolution: 4, mipsPerLevel: 1, hiddenSizes: [ 6 ], outputChannels: 2 };
 
 			const modelA = createNTCGridPyramidModel( options, makeRandom() );
 			const modelB = createNTCGridPyramidModel( options, makeRandom() );
@@ -222,6 +172,54 @@ describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 				expect( modelA.decoder.layers[ i ].biases ).toEqual( modelB.decoder.layers[ i ].biases );
 
 			}
+
+		} );
+
+	} );
+
+	describe( 'maxLod / textureResolution', () => {
+
+		it( 'derives maxLod from an explicit textureResolution as ceil(log2(textureResolution))', () => {
+
+			const options = { channels: 2, levels: 2, baseResolution: 8, textureResolution: 4096 };
+			const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+			expect( model.textureResolution ).toBe( 4096 );
+			expect( model.maxLod ).toBe( Math.ceil( Math.log2( 4096 ) ) );
+
+		} );
+
+		it( 'falls back to the finest stored grid resolution when textureResolution is omitted', () => {
+
+			const options = { channels: 2, levels: 3, baseResolution: 64, mipsPerLevel: 2 };
+			const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+			expect( model.textureResolution ).toBe( 64 );
+			expect( model.maxLod ).toBe( Math.ceil( Math.log2( 64 ) ) );
+
+		} );
+
+		it( 'can be exactly 0 for a 1x1 texture (no artificial floor at 1)', () => {
+
+			const model = createNTCGridPyramidModel( { textureResolution: 1, levels: 1 }, () => 0.5 );
+
+			expect( model.maxLod ).toBe( 0 );
+
+		} );
+
+		it( 'defaults baseResolution (the finest grid level) to the resolved textureResolution when not given explicitly', () => {
+
+			const model = createNTCGridPyramidModel( { textureResolution: 512, levels: 1 }, () => 0.5 );
+
+			expect( model.resolutions[ 0 ] ).toBe( 512 );
+
+		} );
+
+		it( 'an explicit baseResolution still overrides the textureResolution-derived default', () => {
+
+			const model = createNTCGridPyramidModel( { textureResolution: 512, baseResolution: 64, levels: 1 }, () => 0.5 );
+
+			expect( model.resolutions[ 0 ] ).toBe( 64 );
 
 		} );
 

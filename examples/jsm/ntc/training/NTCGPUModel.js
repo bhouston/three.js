@@ -5,22 +5,20 @@ import { createAdamParameterBuffers, disposeAdamParameterBuffers } from './NTCGP
 import { computeGridLevels } from './NTCGridModel.js';
 import { resolveNTCGridPyramidOptions } from './NTCGridPyramidModel.js';
 import { resolveQuantizationConfig } from './NTCQuantization.js';
-import { computeAllNaturalLods } from '../NTCMipPyramid.js';
 
 /**
  * Computes buffer layouts and offsets for GPU-based neural texture training:
- * a multiresolution feature grid pyramid plus a small MLP decoder, sized
+ * a genuine mip pyramid of feature grids plus a small MLP decoder, sized
  * generically from an arbitrary hidden-layer configuration.
  *
  * Mirrors `createNTCGridPyramidModel` (NTCGridPyramidModel.js) exactly for
- * `mipPyramid`/`inputSize` - both derive the CPU model and this GPU layout
- * from the same `resolveNTCGridPyramidOptions`, so a trainer's CPU model and
- * its GPU buffer layout can never disagree about whether an LOD input slot
- * exists or how many grid levels feed it.
+ * `inputSize` - both derive it from the same `resolveNTCGridPyramidOptions`,
+ * so a trainer's CPU model and its GPU buffer layout can never disagree about
+ * the decoder's input shape.
  */
 function computeTextureModelLayout( options = {} ) {
 
-	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels, enableMipPyramid, textureResolution } = resolveNTCGridPyramidOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, outputChannels, textureResolution } = resolveNTCGridPyramidOptions( options );
 	// One entry per output channel naming its output nonlinearity (see
 	// ./NTCOutputActivations.js); undefined/omitted entries (the
 	// default, `options.channelActivations` unset) mean plain linear, i.e.
@@ -28,12 +26,13 @@ function computeTextureModelLayout( options = {} ) {
 	// this - only neural-material does (see NeuralMaterialFormat.js).
 	const channelActivations = options.channelActivations || null;
 
-	// `computeGridLevels` may return fewer levels than requested when a
-	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
-	// NeuralGridModel.js) - `levels` below is reassigned to the actual grid
-	// count so `inputSize` matches `NeuralTextureModel`'s CPU decoder exactly.
-	const resolutions = computeGridLevels( baseResolution, growthFactor, requestedLevels );
+	const resolutions = computeGridLevels( baseResolution, requestedLevels, mipsPerLevel );
 	const levels = resolutions.length;
+
+	// Mirrors NTCGridPyramidModel.js's `maxLod` derivation exactly - see its
+	// doc comment.
+	const resolvedTextureResolution = textureResolution || resolutions[ 0 ];
+	const maxLod = Math.ceil( Math.log2( Math.max( 1, resolvedTextureResolution ) ) );
 
 	const gridLevels = [];
 	let latentOffset = 0;
@@ -49,24 +48,12 @@ function computeTextureModelLayout( options = {} ) {
 
 	const totalLatents = latentOffset;
 
-	// Mip-pyramid metadata (see NTCMipPyramid.js) - `null` when disabled,
-	// matching `createNTCGridPyramidModel`'s `mipPyramid` field exactly.
-	let mipPyramid = null;
-
-	if ( enableMipPyramid ) {
-
-		const resolvedTextureResolution = textureResolution || resolutions[ resolutions.length - 1 ];
-		const naturalLods = computeAllNaturalLods( resolutions, resolvedTextureResolution );
-		const maxLod = Math.max( 1, Math.ceil( Math.log2( Math.max( 1, resolvedTextureResolution ) ) ) );
-		mipPyramid = { textureResolution: resolvedTextureResolution, naturalLods, maxLod };
-
-	}
-
-	// MLP weight layout: input = concatenated multiresolution grid features,
-	// plus one extra slot for the normalized LOD value when mip-pyramid
-	// training is enabled (see NTCGPUComputeTSL.js step 1, which appends it
-	// after every grid level's taps).
-	const inputSize = levels * channels + ( mipPyramid ? 1 : 0 );
+	// MLP weight layout: input = one grid level's `channels`-wide feature
+	// vector (the level selected by this sample's LOD, see
+	// NTCGPUComputeTSL.js step 1) plus the normalized LOD itself - fixed
+	// width regardless of how many mip levels the pyramid has (see
+	// NTCGridPyramidModel.js's doc comment).
+	const inputSize = channels + 1;
 	const sizes = [ inputSize, ...hiddenSizes, outputChannels ];
 	const mlpLayers = [];
 	let weightOffset = 0;
@@ -130,11 +117,13 @@ function computeTextureModelLayout( options = {} ) {
 	return {
 		channels,
 		levels,
+		mipsPerLevel,
 		resolutions,
 		hiddenSizes,
 		outputChannels,
 		channelActivations,
-		mipPyramid,
+		textureResolution: resolvedTextureResolution,
+		maxLod,
 		inputSize,
 		gridLevels,
 		totalLatents,

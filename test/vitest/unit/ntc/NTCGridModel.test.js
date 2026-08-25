@@ -3,54 +3,58 @@ import {
 	computeGridLevels,
 	createLatentGrid,
 	LATENT_INIT_SCALE,
-	MAX_GRID_RESOLUTION
+	MAX_GRID_RESOLUTION,
+	DEFAULT_MIPS_PER_LEVEL
 } from '../../../../examples/jsm/ntc/training/NTCGridModel.js';
 
-describe( 'Addons > Neural > NeuralGridModel', () => {
+describe( 'Addons > NTC > NTCGridModel', () => {
 
 	describe( 'computeGridLevels', () => {
 
-		it( 'starts at baseResolution and multiplies by growthFactor each level', () => {
+		it( 'starts at baseResolution (finest, mip 0) and halves mipsPerLevel times per level', () => {
 
-			expect( computeGridLevels( 16, 2, 4 ) ).toEqual( [ 16, 32, 64, 128 ] );
+			expect( computeGridLevels( 128, 4, 2 ) ).toEqual( [ 128, 32, 8, 2 ] );
 
 		} );
 
-		it( 'returns a single resolution equal to baseResolution when levels <= 1, ignoring growthFactor', () => {
+		it( 'defaults mipsPerLevel to DEFAULT_MIPS_PER_LEVEL when omitted', () => {
 
-			expect( computeGridLevels( 16, 2, 1 ) ).toEqual( [ 16 ] );
-			expect( computeGridLevels( 16, 3, 1 ) ).toEqual( [ 16 ] );
+			expect( computeGridLevels( 128, 4 ) ).toEqual( computeGridLevels( 128, 4, DEFAULT_MIPS_PER_LEVEL ) );
+			expect( DEFAULT_MIPS_PER_LEVEL ).toBe( 2 );
+
+		} );
+
+		it( 'mipsPerLevel = 1 matches a plain per-mip halving chain', () => {
+
+			expect( computeGridLevels( 128, 4, 1 ) ).toEqual( [ 128, 64, 32, 16 ] );
+
+		} );
+
+		it( 'returns a single resolution equal to baseResolution when levels <= 1', () => {
+
+			expect( computeGridLevels( 16, 1, 2 ) ).toEqual( [ 16 ] );
 
 		} );
 
 		it( 'clamps levels <= 0 to a single baseResolution level', () => {
 
-			expect( computeGridLevels( 16, 2, 0 ) ).toEqual( [ 16 ] );
-			expect( computeGridLevels( 16, 2, - 3 ) ).toEqual( [ 16 ] );
+			expect( computeGridLevels( 16, 0, 2 ) ).toEqual( [ 16 ] );
+			expect( computeGridLevels( 16, - 3, 2 ) ).toEqual( [ 16 ] );
 
 		} );
 
-		it( 'produces a flat sequence when growthFactor is 1', () => {
+		it( 'never produces a resolution below 1, even for a level count deep enough to underflow', () => {
 
-			expect( computeGridLevels( 16, 1, 4 ) ).toEqual( [ 16, 16, 16, 16 ] );
+			const levels = computeGridLevels( 8, 6, 2 );
 
-		} );
-
-		it( 'is monotonically non-decreasing across levels for any growthFactor >= 1', () => {
-
-			const levels = computeGridLevels( 8, 1.5, 6 );
-
-			for ( let i = 1; i < levels.length; i ++ ) {
-
-				expect( levels[ i ] ).toBeGreaterThanOrEqual( levels[ i - 1 ] );
-
-			}
+			expect( levels ).toEqual( [ 8, 2, 1, 1, 1, 1 ] );
+			expect( levels.every( ( r ) => r >= 1 ) ).toBe( true );
 
 		} );
 
 		it( 'produces every resolution as a positive integer', () => {
 
-			const levels = computeGridLevels( 4, 2.3, 7 );
+			const levels = computeGridLevels( 100, 5, 2 );
 
 			for ( const resolution of levels ) {
 
@@ -61,21 +65,9 @@ describe( 'Addons > Neural > NeuralGridModel', () => {
 
 		} );
 
-		it( 'every combination of baseResolution/growthFactor/levels is valid - no base > target degenerate case', () => {
-
-			// Under the old (baseResolution, targetResolution, levels) API this
-			// kind of input (a "target" smaller than the base) had to be special-
-			// cased. Under the growthFactor API there's no such concept - any
-			// growthFactor >= 1 just produces a non-decreasing sequence.
-			const levels = computeGridLevels( 200, 2, 4 );
-
-			expect( levels ).toEqual( [ 200, 400, 800, 1600 ] );
-
-		} );
-
 		it( 'treats baseResolution <= 0 as 1 rather than producing 0/NaN', () => {
 
-			const levels = computeGridLevels( 0, 2, 3 );
+			const levels = computeGridLevels( 0, 3, 2 );
 
 			expect( levels.every( Number.isFinite ) ).toBe( true );
 			expect( levels.every( ( r ) => r >= 1 ) ).toBe( true );
@@ -85,31 +77,21 @@ describe( 'Addons > Neural > NeuralGridModel', () => {
 
 		it( 'rounds a non-integer baseResolution', () => {
 
-			expect( computeGridLevels( 16.6, 2, 1 ) ).toEqual( [ 17 ] );
+			expect( computeGridLevels( 16.6, 1, 2 ) ).toEqual( [ 17 ] );
 
 		} );
 
-		it( 'omits levels whose resolution would exceed MAX_GRID_RESOLUTION rather than clamping them down', () => {
+		it( 'clamps baseResolution to MAX_GRID_RESOLUTION rather than exceeding it', () => {
 
-			// 64, 320, 1600, 8000, ... - the 4th level (8000) exceeds the cap, so
-			// it (and every level after it, since resolution only grows) is
-			// dropped instead of being clamped down to MAX_GRID_RESOLUTION.
-			const levels = computeGridLevels( 64, 5, 8 );
+			const levels = computeGridLevels( MAX_GRID_RESOLUTION + 1000, 1, 2 );
 
-			expect( levels ).toEqual( [ 64, 320, 1600 ] );
-			expect( levels.every( ( r ) => r <= MAX_GRID_RESOLUTION ) ).toBe( true );
-
-		} );
-
-		it( 'returns an empty array when baseResolution itself already exceeds MAX_GRID_RESOLUTION', () => {
-
-			expect( computeGridLevels( MAX_GRID_RESOLUTION + 1, 2, 4 ) ).toEqual( [] );
+			expect( levels ).toEqual( [ MAX_GRID_RESOLUTION ] );
 
 		} );
 
 		it( 'returns exactly [ MAX_GRID_RESOLUTION ] when baseResolution is exactly at the cap', () => {
 
-			expect( computeGridLevels( MAX_GRID_RESOLUTION, 2, 4 ) ).toEqual( [ MAX_GRID_RESOLUTION ] );
+			expect( computeGridLevels( MAX_GRID_RESOLUTION, 1, 2 ) ).toEqual( [ MAX_GRID_RESOLUTION ] );
 
 		} );
 

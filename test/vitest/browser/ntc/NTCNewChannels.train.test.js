@@ -86,7 +86,6 @@ describe( 'Addons > Neural > NeuralMaterial > new channels train end-to-end (rea
 			resolution: 64,
 			levels: 2,
 			baseResolution: 8,
-			growthFactor: 2,
 			hiddenSizes: [ 16, 16 ],
 			batchSize: 2048,
 			iterations: 300,

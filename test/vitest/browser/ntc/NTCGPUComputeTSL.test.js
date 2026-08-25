@@ -74,18 +74,21 @@ function createTinyGPUModel() {
 		channels: 1,
 		levels: 1,
 		baseResolution: 2,
-		growthFactor: 2,
+		// Forces maxLod to exactly 0 (see NTCGridPyramidModel.js), so every
+		// sample's LOD is always 0 - this file's hand-derived expectations
+		// assume a single-weight `z = w * a0 + b` model sampling the source
+		// texture at mip 0 every time (see this function's own doc comment),
+		// and the source texture deliberately has no real mip chain
+		// (`generateMipmaps: false` below) - a genuinely sampled LOD > 0
+		// would be reading an undefined mip level. The decoder's second
+		// (LOD) input weight is never touched by these tests, so it stays at
+		// its zero-initialized default regardless of the LOD value itself -
+		// but forcing maxLod to 0 keeps the *texture* sampling well-defined
+		// too.
+		textureResolution: 1,
 		hiddenSizes: [],
 		outputChannels: 1,
-		batchSize: 1,
-		// This file's hand-derived expectations assume a single-weight
-		// `z = w * a0 + b` model sampling the source texture at mip 0 every
-		// time (see e.g. this function's own doc comment) - mip-pyramid
-		// training (default true, see NTCTrainer.js) would append a second
-		// decoder input and stochastically sample other mip levels of a
-		// texture that deliberately has none (`generateMipmaps: false` below),
-		// which is orthogonal to what these kernel-correctness tests check.
-		enableMipPyramid: false
+		batchSize: 1
 	} );
 
 }
@@ -312,12 +315,17 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			const gpuModel = createTinyGPUModel();
 			const { layout } = gpuModel;
 
-			// Single MLP layer (no hidden layers): weightsOffset 0 = the one
-			// input->output weight, weightsOffset 1 = the bias (see
-			// computeTextureModelLayout: weightsCount = inSize*outSize = 1*1 = 1,
-			// followed immediately by biasesCount = 1).
+			// Single MLP layer (no hidden layers): inputSize is channels + 1 = 2
+			// (the selected grid level's one data channel, plus the LOD value -
+			// see NTCGridPyramidModel.js), so weightsCount = inSize*outSize =
+			// 2*1 = 2 - weightsOffset+0 is the data-channel weight (`w` below),
+			// weightsOffset+1 is the LOD weight (deliberately left at its
+			// zero-initialized default and never touched by this test, so it
+			// contributes 0 to z regardless of the LOD value the kernel
+			// actually samples - see createTinyGPUModel's doc comment),
+			// followed immediately by biasesCount = 1.
 			const weightLayer = layout.mlpLayers[ 0 ];
-			expect( weightLayer.weightsCount ).toBe( 1 );
+			expect( weightLayer.weightsCount ).toBe( 2 );
 			expect( weightLayer.biasesCount ).toBe( 1 );
 
 			const w = 0.6;

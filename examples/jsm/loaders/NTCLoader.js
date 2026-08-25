@@ -91,19 +91,13 @@ class NTCLoader extends Loader {
 		const cpuModel = {
 			channels: manifest.latents.channelsPerLevel,
 			levels: grids.length,
+			mipsPerLevel: manifest.latents.mipsPerLevel,
+			maxLod: manifest.latents.maxLod,
 			grids,
 			decoder: { layers: decoderLayers },
 			outputChannels: manifest.outputChannels !== undefined ?
 				manifest.outputChannels : decoderLayers[ decoderLayers.length - 1 ].outputSize,
-			wrap: manifest.latents.wrap || 'repeat',
-			// Optional mip-pyramid metadata (see NTCManifest.js's matching
-			// comment) - `null` (not `undefined`) for a manifest that never had
-			// it, matching `createNTCGridPyramidModel`'s own `mipPyramid: null`
-			// for `enableMipPyramid: false`, so every downstream consumer
-			// (NTCDecoderTSL.js/NTCNodeMaterial.js) can treat "no mip pyramid"
-			// identically regardless of whether the model was just trained or
-			// loaded from disk.
-			mipPyramid: manifest.latents.mipPyramid || null
+			wrap: manifest.latents.wrap || 'repeat'
 		};
 
 		const channelClassification = decodeChannelClassification( manifest.channels, manifest.renderFlags );
@@ -167,6 +161,14 @@ function validateManifest( manifest ) {
 		throw new Error( 'THREE.NTCLoader: Manifest must define a non-empty latents.levels array.' );
 
 	}
+
+	// Required since VERSION 2 (see NTCFormat.js) - without these a loaded
+	// model's LOD input (NTCDecoderTSL.js) can't be correctly reconstructed
+	// at all: `mipsPerLevel` (with `latents.levels.length`) determines which
+	// stored grid a given LOD selects, and `maxLod` is the physical mip range
+	// the decoder's LOD input was normalized against.
+	assertInteger( manifest.latents.mipsPerLevel, 'latents.mipsPerLevel', 1 );
+	assertInteger( manifest.latents.maxLod, 'latents.maxLod', 1 );
 
 	if ( ! manifest.mlp || typeof manifest.mlp.dataBase64 !== 'string' || ! Array.isArray( manifest.mlp.layout ) ) {
 

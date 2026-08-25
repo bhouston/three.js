@@ -78,19 +78,18 @@ describe( 'Addons > Neural > NeuralTexture > NTCTrainer convergence rate (real W
 			channels: 4,
 			levels: 3,
 			baseResolution: 8,
-			growthFactor: 2,
 			hiddenSizes: [ 16, 16 ],
 			outputChannels: 3,
 			batchSize: 2048,
 			iterations: 200,
 			learningRate: 0.02,
 			seed: 1,
-			// This file tests basic gradient-descent convergence against a
-			// mip-0-only texture (`generateMipmaps: false` above) - orthogonal
-			// to mip-pyramid training (default true, see NTCTrainer.js), which
-			// would sample other mip levels this texture deliberately doesn't
-			// have.
-			enableMipPyramid: false,
+			// Forces maxLod to 0 (see NTCGridPyramidModel.js), so every sample's
+			// LOD is always 0 - this file tests basic gradient-descent
+			// convergence against a texture with no real mip chain
+			// (`generateMipmaps: false` above); a genuinely sampled LOD > 0
+			// would be reading an undefined mip level.
+			textureResolution: 1,
 			...overrides
 		} );
 

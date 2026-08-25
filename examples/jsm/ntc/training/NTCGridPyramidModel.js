@@ -1,6 +1,5 @@
 import { createMLP } from './NTCMLP.js';
-import { computeGridLevels, createLatentGrid, LATENT_INIT_SCALE } from './NTCGridModel.js';
-import { computeAllNaturalLods } from '../NTCMipPyramid.js';
+import { computeGridLevels, createLatentGrid, LATENT_INIT_SCALE, DEFAULT_MIPS_PER_LEVEL, MAX_GRID_RESOLUTION } from './NTCGridModel.js';
 
 /**
  * Single source of truth for the model-shape options shared by the CPU
@@ -8,88 +7,75 @@ import { computeAllNaturalLods } from '../NTCMipPyramid.js';
  * these once here - rather than each of those three re-declaring the same
  * defaults independently - means they can't silently drift apart.
  *
- * `enableMipPyramid` (default `true`) turns on mip-pyramid-aware training
- * (see NTCMipPyramid.js): the finest grid levels fade out and a normalized
- * LOD value is concatenated onto the decoder's input as the requested LOD
- * coarsens, so the trained network reconstructs a correctly anti-aliased
- * result at every mip level instead of only being trained/evaluated at mip
- * 0. `textureResolution`, when mip-pyramid training is enabled, is the
- * source texture's largest dimension (falls back to the finest grid
- * resolution when omitted - the caller normally passes the real source
- * texture size, see NTCTrainer.js).
+ * `textureResolution` (the source texture's largest dimension) determines
+ * `maxLod` - the total mip range this model is meant to support, down to
+ * 1x1 - independently of how many feature levels are actually *stored*
+ * (`levels`/`mipsPerLevel`, see NTCGridModel.js/NTCMipBands.js): a handful of
+ * stored levels can still be asked to reconstruct a much deeper mip chain,
+ * each level just gets reused for more than one of those mips.
+ *
+ * `baseResolution` (the *finest* stored grid's resolution) defaults to
+ * `textureResolution` itself (capped at `MAX_GRID_RESOLUTION`) when not given
+ * explicitly - this matters: LOD 0 always means "reconstruct the source
+ * texture's own mip 0", so if the finest grid were left far coarser than the
+ * texture (e.g. a fixed small default while the texture is large), the model
+ * would be asked to reconstruct much more detail at LOD 0 than its finest
+ * grid could ever hold, and - since `levels`/`mipsPerLevel` only cover a
+ * `levels * mipsPerLevel`-mip-deep band before the *last* stored level
+ * becomes an open-ended tail (see NTCMipBands.js) - most realistic viewing
+ * distances would land on that same tiny tail level, looking close to a flat
+ * color. Tying the default finest resolution to the real texture resolution
+ * keeps LOD 0 meaningful without the caller having to know to set
+ * `baseResolution` explicitly. Falls back to a fixed 128 only when neither
+ * `baseResolution` nor `textureResolution` is known (e.g. a model built by
+ * hand, with no real texture in the picture at all).
  */
 function resolveNTCGridPyramidOptions( options = {} ) {
+
+	const textureResolution = options.textureResolution;
 
 	return {
 		channels: options.channels || 4,
 		levels: options.levels || 4,
-		baseResolution: options.baseResolution || 16,
-		growthFactor: options.growthFactor || 2,
+		baseResolution: options.baseResolution || ( textureResolution ? Math.min( textureResolution, MAX_GRID_RESOLUTION ) : 128 ),
+		mipsPerLevel: options.mipsPerLevel || DEFAULT_MIPS_PER_LEVEL,
 		hiddenSizes: options.hiddenSizes || [ 32, 32 ],
 		outputChannels: options.outputChannels || 3,
-		enableMipPyramid: options.enableMipPyramid !== undefined ? options.enableMipPyramid : true,
-		textureResolution: options.textureResolution
+		textureResolution
 	};
 
 }
 
 /**
- * Creates the CPU-side reference model: a multiresolution feature grid pyramid
- * (instant-ngp / NVIDIA NTC style, one grid per level, features concatenated
- * across levels) feeding a small MLP decoder.
+ * Creates the CPU-side reference model: a genuine mip pyramid of feature
+ * grids (`resolutions`/`grids`, finest-first - see `computeGridLevels`) plus
+ * a small MLP decoder.
  *
- * When mip-pyramid training is enabled (see `resolveNTCGridPyramidOptions`),
- * the returned model also carries a `mipPyramid` descriptor -
- * `{ textureResolution, naturalLods, maxLod }` - and the decoder's input is
- * one wider than `levels * channels` to make room for the concatenated LOD
- * value (see NTCMipPyramid.js / NTCGPUComputeTSL.js /
- * NTCDecoderTSL.js). `mipPyramid` is `null` when disabled, so a
- * consumer only needs a single truthiness check to know whether a model is
- * mip-pyramid-aware - including a model loaded from a `.ntc` file that
- * predates this feature (see NTCManifest.js / NTCLoader.js), which decodes
- * with `mipPyramid: null` and behaves exactly as before.
+ * At any given LOD, exactly one grid level's `channels`-wide feature vector
+ * (selected via `NTCMipBands.selectFeatureLevel` - not concatenated with any
+ * other level's) feeds the decoder, alongside the normalized LOD itself -
+ * which the decoder needs because a single stored level is reused to
+ * reconstruct several different physical mips (see NTCMipBands.js's doc
+ * comment). This is what makes the decoder's input a fixed `channels + 1`
+ * wide regardless of how many mip levels the pyramid stores, and it mirrors
+ * the NVIDIA neural texture compression paper's own decoder input (Section
+ * 4.4: one feature level's taps plus a LOD value).
  */
 function createNTCGridPyramidModel( options, random ) {
 
-	const { channels, levels: requestedLevels, baseResolution, growthFactor, hiddenSizes, outputChannels, enableMipPyramid, textureResolution } = resolveNTCGridPyramidOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, outputChannels, textureResolution } = resolveNTCGridPyramidOptions( options );
 
-	// `computeGridLevels` may return fewer levels than requested when a
-	// level's resolution would exceed `MAX_GRID_RESOLUTION` (see
-	// NeuralGridModel.js) - `levels` below is reassigned to the actual grid
-	// count so `inputSize` (and the returned `levels` field, which
-	// `NTCGPUModel`'s layout must match) reflect what was really
-	// built, not what was requested.
-	const resolutions = computeGridLevels( baseResolution, growthFactor, requestedLevels );
+	const resolutions = computeGridLevels( baseResolution, requestedLevels, mipsPerLevel );
 	const levels = resolutions.length;
 	const grids = resolutions.map( ( resolution ) => createLatentGrid( resolution, resolution, channels, random ) );
 
-	const mipPyramid = enableMipPyramid ? buildMipPyramidInfo( resolutions, textureResolution ) : null;
+	const resolvedTextureResolution = textureResolution || resolutions[ 0 ];
+	const maxLod = Math.ceil( Math.log2( Math.max( 1, resolvedTextureResolution ) ) );
 
-	const inputSize = levels * channels + ( mipPyramid ? 1 : 0 );
+	const inputSize = channels + 1;
 	const decoder = createMLP( inputSize, hiddenSizes, outputChannels, random, 'relu', 'linear' );
 
-	return { channels, levels, resolutions, grids, decoder, hiddenSizes, outputChannels, mipPyramid };
-
-}
-
-/**
- * Builds the `mipPyramid` descriptor attached to a mip-pyramid-aware model -
- * `naturalLods` (see `computeAllNaturalLods`, one entry per grid level, in
- * the same order as `resolutions`/`grids`) and `maxLod`, the coarsest LOD
- * the model is meant to be evaluated at (the mip index of a 4x4 texel tile,
- * matching the paper's own mip-chain floor - see NTCMipPyramid.js's module
- * doc comment). `textureResolution` defaults to the finest (largest) grid
- * resolution when not supplied - a reasonable stand-in when the caller
- * doesn't know the real source texture size, though `NTCTrainer.js` always
- * passes the true one.
- */
-function buildMipPyramidInfo( resolutions, textureResolution ) {
-
-	const resolvedTextureResolution = textureResolution || resolutions[ resolutions.length - 1 ];
-	const naturalLods = computeAllNaturalLods( resolutions, resolvedTextureResolution );
-	const maxLod = Math.max( 1, Math.ceil( Math.log2( Math.max( 1, resolvedTextureResolution ) ) ) );
-
-	return { textureResolution: resolvedTextureResolution, naturalLods, maxLod };
+	return { channels, levels, mipsPerLevel, resolutions, grids, decoder, hiddenSizes, outputChannels, textureResolution: resolvedTextureResolution, maxLod };
 
 }
 

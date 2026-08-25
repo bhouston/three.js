@@ -1,53 +1,70 @@
 const LATENT_INIT_SCALE = 0.35;
 
-// Single source of truth for the acceptable/offered values of the four grid
-// + MLP shape options (grid levels, grid base resolution, per-level growth
-// factor, MLP hidden width) - shared by every example's GUI dropdown
-// (neural-texture, neural-material, neural-appearance) so their offered
-// ranges can't silently drift apart. These are display/GUI option lists, not
-// hard validation: `computeGridLevels` itself accepts any positive
-// `baseResolution`/`growthFactor`/`levels` combination, not just these.
+// Single source of truth for the acceptable/offered values of the grid + MLP
+// shape options (grid feature levels, grid finest resolution, MLP hidden
+// width) - shared by every example's GUI dropdown so their offered ranges
+// can't silently drift apart. These are display/GUI option lists, not hard
+// validation: `computeGridLevels` itself accepts any positive
+// `baseResolution`/`levels`/`mipsPerLevel` combination, not just these.
 const GRID_LEVELS_OPTIONS = [ 1, 2, 3, 4, 5, 6, 8 ];
-const GRID_BASE_RESOLUTION_OPTIONS = [ 4, 8, 16, 32, 64 ];
-const GRID_GROWTH_FACTOR_OPTIONS = [ 2, 3, 4, 5 ];
+const GRID_BASE_RESOLUTION_OPTIONS = [ 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 ];
 const MLP_HIDDEN_SIZE_OPTIONS = [ 8, 16, 32, 64, 128 ];
 
-// Hard ceiling on any single grid level's resolution - independent of the GUI
-// option lists above, this is enforced by `computeGridLevels` itself so no
-// caller (GUI-driven or programmatic) can ever request a latent grid texture
-// large enough to be impractical (a 4096x4096 level alone is already 64x the
-// texel count of a 512x512 one).
+// How many mip levels of an actual mipmap chain each stored feature level
+// covers by default (see this file's module doc comment, and
+// NTCMipBands.js's `selectFeatureLevel`) - the NVIDIA neural texture
+// compression paper's own Table 1 uses 2 for every level but its first
+// (which is wider, since it has no finer neighbor to share the load with)
+// and its last (an open-ended tail). We use a uniform width for every level
+// including the first - a deliberate simplification, not a faithful copy of
+// Table 1's asymmetric widths - while still keeping the paper's core
+// mechanism: a level's grid is reused, via the decoder's explicit LOD input,
+// to reconstruct more than one physical mip level, and the *last* stored
+// level absorbs every mip past its own band as a tail (see
+// `selectFeatureLevel`), matching "the last feature level ... cannot be
+// further downsampled".
+const DEFAULT_MIPS_PER_LEVEL = 2;
+
+// Hard ceiling on the finest (base) grid level's resolution - independent of
+// the GUI option list above, this is enforced by `computeGridLevels` itself
+// so no caller (GUI-driven or programmatic) can ever request a latent grid
+// texture large enough to be impractical (a 4096x4096 level alone is already
+// 64x the texel count of a 512x512 one). Every subsequent (coarser) level's
+// resolution only ever shrinks from the previous one's, so it's only the
+// finest level that needs this ceiling.
 const MAX_GRID_RESOLUTION = 4096;
 
 /**
- * Computes the per-level grid resolutions for a multiresolution feature grid
- * (instant-ngp / NVIDIA neural texture compression style). Starts at
- * `baseResolution` and multiplies by `growthFactor` for each additional
- * level, e.g. `computeGridLevels( 16, 2, 4 )` -> `[ 16, 32, 64, 128 ]`. When
- * `levels <= 1` this just returns `[ baseResolution ]` - there's no separate
- * "target resolution" to special-case. Resolutions are always clamped to
- * >= 1 and rounded to integers. Any level that would exceed
- * `MAX_GRID_RESOLUTION` is simply omitted rather than clamped down to it -
- * since resolution only grows (or stays flat) from one level to the next,
- * once a level is dropped every subsequent one would exceed the cap too, so
- * the returned array may be shorter than `levels` (or, in the degenerate
- * case of a `baseResolution` already over the cap, empty). Shared by every
- * trainer that uses a multiresolution grid positional encoding
- * (neural-texture, neural-material, neural-appearance) so the geometry never
- * drifts between them.
+ * Computes the per-level grid resolutions for a genuine (paper-style) mip
+ * pyramid: `baseResolution` is the finest (mip 0) level's resolution, and
+ * each subsequent stored *feature* level is `mipsPerLevel` mip-halvings
+ * coarser than the previous one - e.g. `computeGridLevels(128, 3, 2)` ->
+ * `[128, 32, 8]` (each level a quarter the resolution of the last, i.e. 2
+ * halvings apart). This is deliberately not a 1:1 grid-level-per-mip-level
+ * mapping - see NTCMipBands.js's `selectFeatureLevel`, which maps a
+ * continuous/discrete target LOD down onto one of these (far fewer) stored
+ * levels, exactly like the NVIDIA neural texture compression paper's Table 1
+ * (a handful of feature levels, each reused via the decoder's LOD input to
+ * reconstruct several physical mips - see that file's doc comment for how
+ * this reproduces the paper's actual storage-compression mechanism).
+ *
+ * Level 0 (index 0, the array's first entry) is always the finest/base
+ * resolution. `baseResolution` is clamped to `[1, MAX_GRID_RESOLUTION]` and
+ * rounded to the nearest integer; `levels` and `mipsPerLevel` are each
+ * clamped to >= 1 and rounded.
  */
-function computeGridLevels( baseResolution, growthFactor, levels ) {
+function computeGridLevels( baseResolution, levels, mipsPerLevel = DEFAULT_MIPS_PER_LEVEL ) {
 
 	const resolutions = [];
 	const count = Math.max( 1, Math.round( levels ) );
-	let resolution = Math.max( 1, Math.round( baseResolution ) );
+	const step = Math.max( 1, Math.round( mipsPerLevel ) );
+	let resolution = Math.min( MAX_GRID_RESOLUTION, Math.max( 1, Math.round( baseResolution ) ) );
 
 	for ( let i = 0; i < count; i ++ ) {
 
-		if ( resolution > MAX_GRID_RESOLUTION ) break;
-
 		resolutions.push( resolution );
-		resolution = Math.max( 1, Math.round( resolution * growthFactor ) );
+
+		for ( let k = 0; k < step; k ++ ) resolution = Math.max( 1, Math.floor( resolution / 2 ) );
 
 	}
 
@@ -75,7 +92,7 @@ export {
 	LATENT_INIT_SCALE,
 	GRID_LEVELS_OPTIONS,
 	GRID_BASE_RESOLUTION_OPTIONS,
-	GRID_GROWTH_FACTOR_OPTIONS,
 	MLP_HIDDEN_SIZE_OPTIONS,
-	MAX_GRID_RESOLUTION
+	MAX_GRID_RESOLUTION,
+	DEFAULT_MIPS_PER_LEVEL
 };

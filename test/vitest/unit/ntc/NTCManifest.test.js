@@ -43,7 +43,6 @@ function buildModel( outputChannels ) {
 		channels: 4,
 		levels: 2,
 		baseResolution: 4,
-		growthFactor: 2,
 		hiddenSizes: [ 6 ],
 		outputChannels
 	}, random );
@@ -55,7 +54,7 @@ describe( 'Addons > NTC > NTCManifest', () => {
 	it( 'FORMAT/VERSION are the expected identifiers', () => {
 
 		expect( FORMAT ).toBe( 'three-ntc' );
-		expect( VERSION ).toBe( 1 );
+		expect( VERSION ).toBe( 2 );
 
 	} );
 
@@ -171,39 +170,33 @@ describe( 'Addons > NTC > NTCManifest', () => {
 
 	} );
 
-	it( 'round-trips mipPyramid metadata through export -> JSON -> load (mip-pyramid training enabled, the default)', () => {
+	it( 'round-trips mipsPerLevel/maxLod through export -> JSON -> load', () => {
 
 		const classification = buildChannelClassification();
 		const model = buildModel( classification.totalChannels );
 
-		expect( model.mipPyramid ).not.toBeNull();
-
 		const manifest = encodeNTC( model, classification, { name: 'mip pyramid roundtrip' } );
-		expect( manifest.latents.mipPyramid ).toEqual( model.mipPyramid );
+		expect( manifest.latents.mipsPerLevel ).toBe( model.mipsPerLevel );
+		expect( manifest.latents.maxLod ).toBe( model.maxLod );
 
 		const json = JSON.parse( JSON.stringify( manifest ) );
 		const loaded = new NTCLoader().parse( json );
 
-		expect( loaded.cpuModel.mipPyramid ).toEqual( model.mipPyramid );
+		expect( loaded.cpuModel.mipsPerLevel ).toBe( model.mipsPerLevel );
+		expect( loaded.cpuModel.maxLod ).toBe( model.maxLod );
 
 	} );
 
-	it( 'a manifest saved without mipPyramid (enableMipPyramid: false, or pre-existing files) loads with mipPyramid null - not a version bump', () => {
+	it( 'loader rejects a manifest missing mipsPerLevel/maxLod (e.g. a version-1 file - see NTCFormat.js)', () => {
 
 		const classification = buildChannelClassification();
-		const model = createNTCGridPyramidModel( {
-			channels: 4, levels: 2, baseResolution: 4, growthFactor: 2, hiddenSizes: [ 6 ],
-			outputChannels: classification.totalChannels, enableMipPyramid: false
-		}, () => 0.5 );
+		const model = buildModel( classification.totalChannels );
+		const manifest = encodeNTC( model, classification, { name: 'missing mip fields' } );
 
-		expect( model.mipPyramid ).toBeNull();
+		delete manifest.latents.mipsPerLevel;
 
-		const manifest = encodeNTC( model, classification, { name: 'no mip pyramid' } );
-		expect( manifest.version ).toBe( VERSION );
-		expect( 'mipPyramid' in manifest.latents ).toBe( false );
-
-		const loaded = new NTCLoader().parse( JSON.parse( JSON.stringify( manifest ) ) );
-		expect( loaded.cpuModel.mipPyramid ).toBeNull();
+		const loader = new NTCLoader();
+		expect( () => loader.parse( manifest ) ).toThrow( /latents\.mipsPerLevel/ );
 
 	} );
 

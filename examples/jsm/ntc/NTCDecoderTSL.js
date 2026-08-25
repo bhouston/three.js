@@ -9,15 +9,19 @@ import {
 	createVec4Storage
 } from './NTCMLPTSL.js';
 import { createHalfFloatLatentTexture } from './NTCHalfFloatTexture.js';
-import { float, texture } from 'three/tsl';
-import { computeLevelLodWeightTSL } from './NTCMipPyramid.js';
+import { float, int, texture } from 'three/tsl';
+import { selectFeatureLevelTSL } from './NTCMipBands.js';
 
 /**
  * Packs each trained latent grid level into an RGBA half-float DataTexture
  * so the runtime can rely on ordinary hardware bilinear filtering + repeat
  * wrap addressing for both interpolation and seamless tiling - no manual
  * bilinear/wrap math needed at inference time (unlike the training kernel,
- * which must hand-roll it for the backward pass).
+ * which must hand-roll it for the backward pass). One `DataTexture` per
+ * stored feature level - *not* one real GPU mipmap chain (this pyramid's
+ * levels each cover a band of several physical mips, via LOD conditioning in
+ * the MLP - see NTCMipBands.js - not one level per physical mip, so a real
+ * hardware mip chain wouldn't apply here).
  */
 function buildLevelTextures( cpuModel ) {
 
@@ -28,10 +32,10 @@ function buildLevelTextures( cpuModel ) {
 }
 
 /**
- * Builds the TSL expression that evaluates the trained multiresolution grid
- * + MLP decoder at `uvNode`, returning the raw array of `outputChannels`
- * scalar nodes (one per trained channel - callers slice/decode these into
- * whatever physical quantities they represent, see NTCFormat.js).
+ * Builds the TSL expression that evaluates the trained mip pyramid + MLP
+ * decoder at `uvNode`, returning the raw array of `outputChannels` scalar
+ * nodes (one per trained channel - callers slice/decode these into whatever
+ * physical quantities they represent, see NTCFormat.js).
  *
  * `renderer`, when given (and already `init()`-ed), lets the decoder weights
  * live in a real fp16 storage buffer instead of an fp32 uniform array
@@ -39,56 +43,56 @@ function buildLevelTextures( cpuModel ) {
  * createMat4Storage/createVec4Storage. Omit it to get the original fp32
  * uniformArray behavior unchanged.
  *
- * `lodNode`, when `cpuModel.mipPyramid` is present (see NTCMipPyramid.js /
- * NTCGridPyramidModel.js - `null`/absent for a model trained with
- * `enableMipPyramid: false`, or loaded from a `.ntc` file predating this
- * feature), is the requested LOD (mip index, a TSL float node - e.g. derived
+ * `lodNode` is the requested LOD (mip index, a TSL float node - e.g. derived
  * from screen-space UV derivatives or an explicit distance-based estimate,
- * see NTCNodeMaterial.js) this decode should reconstruct: every level's
- * sampled feature is scaled by the same LOD fade weight the trainer applied
- * (`computeLevelLodWeightTSL`), and the normalized LOD is concatenated onto
- * the decoder's input, exactly mirroring the training kernel's forward pass
- * (see NTCGPUComputeTSL.js's step 1) - the whole point being that this must
- * match training bit-for-bit, or the decoder sees an input distribution it
- * was never fit against. Defaults to `float(0)` (finest/closest LOD, i.e.
- * every level fully weighted) when `cpuModel.mipPyramid` is present but no
- * `lodNode` was supplied - the same "always full detail" behavior a
- * non-mip-pyramid model has, just paying the (small) extra decoder input
- * width for it. Ignored entirely (no extra input, no per-level fade) when
- * `cpuModel.mipPyramid` is absent, so evaluating a pre-mip-pyramid `.ntc`
- * model is byte-for-byte unchanged.
+ * see NTCNodeMaterial.js) this decode should reconstruct - defaults to
+ * `float(0)` (finest/closest LOD) when omitted. It selects exactly one
+ * stored grid level (`selectFeatureLevelTSL`, see NTCMipBands.js - the same
+ * mapping the training kernel used, see NTCGPUComputeTSL.js's step 1): every
+ * other level's hardware-bilinear-sampled tap is multiplied by an exact 0/1
+ * selector and summed into a single shared `channels`-wide feature vector,
+ * and the normalized LOD is concatenated onto the decoder's input - this
+ * must match training bit-for-bit, or the decoder sees an input distribution
+ * it was never fit against.
  */
 function evaluateNeuralTextureRaw( uvNode, cpuModel, levelTextures, renderer = null, lodNode = null ) {
 
-	const mipPyramid = cpuModel.mipPyramid || null;
-	const resolvedLodNode = mipPyramid ? ( lodNode || float( 0 ) ) : null;
+	const resolvedLodNode = lodNode || float( 0 );
+	const selectedLevel = selectFeatureLevelTSL( resolvedLodNode, levelTextures.length, cpuModel.mipsPerLevel );
+	const channels = cpuModel.channels;
 
-	const features = [];
+	// Built as a plain summed expression tree (`.add(...)`), not `.toVar()` +
+	// `.addAssign()`: `evaluateNeuralTextureRaw` is called directly while
+	// constructing a material's node graph, outside any `Fn()` block, and
+	// `.addAssign()` needs a `Fn()` builder stack to record the assignment -
+	// used here it silently fails ("No stack defined for assign operation"),
+	// leaving every feature at its `.toVar()` initial value (0) regardless of
+	// which level's weight was 1, which reads as a UV-independent constant
+	// output. A summed `.add()` chain is a pure expression, not a statement,
+	// so it doesn't need that stack at all - only the training kernel (which
+	// *does* run inside `Fn()`, see NTCGPUComputeTSL.js) uses `.addAssign()`.
+	const featureSums = new Array( channels ).fill( null );
 
 	for ( let i = 0; i < levelTextures.length; i ++ ) {
 
-		let sample = texture( levelTextures[ i ], uvNode );
+		const sample = texture( levelTextures[ i ], uvNode );
+		const weight = selectedLevel.equal( int( i ) ).select( float( 1 ), float( 0 ) );
+		const weighted = [ sample.x, sample.y, sample.z, sample.w ].slice( 0, channels ).map( ( c ) => c.mul( weight ) );
 
-		if ( mipPyramid ) {
-
-			const weight = computeLevelLodWeightTSL( resolvedLodNode, mipPyramid.naturalLods[ i ] );
-			sample = sample.mul( weight );
-
-		}
-
-		const channels = cpuModel.grids[ i ].channels;
-
-		if ( channels > 0 ) features.push( sample.x );
-		if ( channels > 1 ) features.push( sample.y );
-		if ( channels > 2 ) features.push( sample.z );
-		if ( channels > 3 ) features.push( sample.w );
+		for ( let c = 0; c < channels; c ++ ) featureSums[ c ] = featureSums[ c ] ? featureSums[ c ].add( weighted[ c ] ) : weighted[ c ];
 
 	}
 
+	const features = featureSums;
+
 	// Append the normalized LOD value as the decoder's final input component
-	// - must match NTCGridPyramidModel.js's `inputSize = levels * channels +
-	// (mipPyramid ? 1 : 0)` / NTCGPUComputeTSL.js's forward pass exactly.
-	if ( mipPyramid ) features.push( resolvedLodNode.div( mipPyramid.maxLod ) );
+	// - must match NTCGridPyramidModel.js's `inputSize = channels + 1` /
+	// NTCGPUComputeTSL.js's forward pass exactly.
+	// Math.max(1, ...) guards against a genuine maxLod of 0 (a model that
+	// only ever supports LOD 0, see NTCGridPyramidModel.js) - dividing by 0
+	// there would produce a NaN feature, matching the same guard
+	// NTCGPUComputeTSL.js's training kernel already applies.
+	features.push( resolvedLodNode.div( Math.max( 1, cpuModel.maxLod ) ) );
 
 	// Shared mat4-packed MLP evaluator (see NTCMLPTSL.js). Packing weights
 	// into 4x4 blocks and evaluating each layer with a native mat4 * vec4

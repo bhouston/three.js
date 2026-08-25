@@ -1,21 +1,23 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { uv, vec4 } from 'three/tsl';
+import { float, uv, vec4 } from 'three/tsl';
 import { evaluateNeuralTextureRaw, buildLevelTextures } from '../../../../examples/jsm/ntc/NTCDecoderTSL.js';
+import { selectFeatureLevel } from '../../../../examples/jsm/ntc/NTCMipBands.js';
 import { createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js';
 import { forwardMLP } from '../../../../examples/jsm/ntc/training/NTCMLP.js';
 import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/training/NTCTextureSource.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
 
-// evaluateNeuralTextureRaw's whole job at inference time is: sample the
-// trained multiresolution latent grid (as ordinary hardware-filtered
-// textures) at a UV, concatenate the taps, and run that through the trained
-// MLP decoder - all as a TSL node graph. The only way to know that graph
-// computes the *same* thing as NTCGridPyramidModel.js's CPU decoder (the
-// thing actually trained, and the thing any offline tooling would use to
-// sanity-check a model) is to run both on identical inputs and compare,
-// which is what this file does (see the roadmap entry in
-// test/vitest/README.md for this exact cross-check pattern).
+// evaluateNeuralTextureRaw's whole job at inference time is: pick the one
+// stored grid level a given LOD selects (NTCMipBands.selectFeatureLevel),
+// sample it (as an ordinary hardware-filtered texture) at a UV, and run that
+// - plus the normalized LOD itself - through the trained MLP decoder, all as
+// a TSL node graph. The only way to know that graph computes the *same*
+// thing as NTCGridPyramidModel.js's CPU decoder (the thing actually trained,
+// and the thing any offline tooling would use to sanity-check a model) is to
+// run both on identical inputs and compare, which is what this file does
+// (see the roadmap entry in test/vitest/README.md for this exact cross-check
+// pattern).
 //
 // To make the comparison exact rather than approximate, every test samples
 // exactly at latent-grid texel centers: with LinearFilter + RepeatWrapping,
@@ -54,32 +56,28 @@ function toHalfPrecision( value ) {
 
 }
 
-// Builds the plain-JS reference input vector for the decoder at grid texel
-// (col, row): the concatenated (half-float-rounded) latent features across
-// every level, in the same order evaluateNeuralTextureRaw concatenates them.
-function referenceDecoderInput( cpuModel, gridSize, col, row ) {
+// Builds the plain-JS reference input vector for the decoder at texel
+// (col, row) of the grid level `lod` selects: the selected level's
+// (half-float-rounded) channels, followed by the normalized LOD - in the
+// same order evaluateNeuralTextureRaw builds them.
+function referenceDecoderInput( cpuModel, lod, col, row ) {
+
+	const levelIndex = selectFeatureLevel( lod, cpuModel.grids.length, cpuModel.mipsPerLevel );
+	const grid = cpuModel.grids[ levelIndex ];
+	const p = row * grid.width + col;
 
 	const features = [];
-
-	for ( const grid of cpuModel.grids ) {
-
-		const p = row * grid.width + col;
-		for ( let c = 0; c < grid.channels; c ++ ) {
-
-			features.push( toHalfPrecision( grid.data[ p * grid.channels + c ] ) );
-
-		}
-
-	}
+	for ( let c = 0; c < grid.channels; c ++ ) features.push( toHalfPrecision( grid.data[ p * grid.channels + c ] ) );
+	features.push( lod / cpuModel.maxLod );
 
 	return features;
 
 }
 
-async function renderRawOutputs( renderer, cpuModel, gridSize ) {
+async function renderRawOutputs( renderer, cpuModel, lod, gridSize ) {
 
 	const levelTextures = buildLevelTextures( cpuModel );
-	const raw = evaluateNeuralTextureRaw( uv(), cpuModel, levelTextures );
+	const raw = evaluateNeuralTextureRaw( uv(), cpuModel, levelTextures, null, float( lod ) );
 	// TSL's vec4() only spreads its own varargs into components - handing it
 	// the raw JS array as a single argument would treat that array as one
 	// opaque const value instead of 4 components, so every component beyond
@@ -95,6 +93,24 @@ async function renderRawOutputs( renderer, cpuModel, gridSize ) {
 	for ( const levelTexture of levelTextures ) levelTexture.dispose();
 
 	return pixels;
+
+}
+
+function expectMatchesCpuForward( pixels, cpuModel, lod, gridSize, componentCount = 3 ) {
+
+	for ( let row = 0; row < gridSize; row ++ ) {
+
+		for ( let col = 0; col < gridSize; col ++ ) {
+
+			const input = referenceDecoderInput( cpuModel, lod, col, row );
+			const expected = forwardMLP( cpuModel.decoder, input ).output;
+
+			const i = row * gridSize + col;
+			for ( let c = 0; c < componentCount; c ++ ) expect( pixels[ i * 4 + c ] ).toBeCloseTo( expected[ c ], 2 );
+
+		}
+
+	}
 
 }
 
@@ -115,87 +131,57 @@ describe( 'Addons > NTC > NTCDecoderTSL (real WebGPU)', () => {
 
 	} );
 
-	it( 'matches NTCGridPyramidModel.js\'s CPU forward pass at every latent-grid texel (single level)', async () => {
+	it( 'matches NTCGridPyramidModel.js\'s CPU forward pass at every latent-grid texel (single level, LOD 0)', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 4, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3, enableMipPyramid: false };
+		const options = { channels: 4, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3 };
 		const cpuModel = createNTCGridPyramidModel( options, makeRandom( 1.7 ) );
 
-		const pixels = await renderRawOutputs( renderer, cpuModel, gridSize );
+		expect( cpuModel.decoder.layers[ 0 ].inputSize ).toBe( options.channels + 1 );
 
-		for ( let row = 0; row < gridSize; row ++ ) {
+		const pixels = await renderRawOutputs( renderer, cpuModel, 0, gridSize );
 
-			for ( let col = 0; col < gridSize; col ++ ) {
-
-				const input = referenceDecoderInput( cpuModel, gridSize, col, row );
-				const expected = forwardMLP( cpuModel.decoder, input ).output;
-
-				const i = row * gridSize + col;
-				expect( pixels[ i * 4 + 0 ] ).toBeCloseTo( expected[ 0 ], 2 );
-				expect( pixels[ i * 4 + 1 ] ).toBeCloseTo( expected[ 1 ], 2 );
-				expect( pixels[ i * 4 + 2 ] ).toBeCloseTo( expected[ 2 ], 2 );
-
-			}
-
-		}
+		expectMatchesCpuForward( pixels, cpuModel, 0, gridSize );
 
 	} );
 
-	it( 'concatenates multiple grid levels in the same order as the CPU model (levels * channels input)', async () => {
+	it( 'selects the correct stored grid level per LOD, matching NTCMipBands.selectFeatureLevel', async () => {
 
-		const gridSize = 32;
-		// growthFactor: 1 forces every level to the same resolution, which
-		// keeps texel-center addressing identical for both levels while still
-		// exercising real multi-level concatenation order.
-		const options = { channels: 2, levels: 2, baseResolution: gridSize, growthFactor: 1, hiddenSizes: [ 4 ], outputChannels: 3, enableMipPyramid: false };
+		// mipsPerLevel: 1 gives a plain per-mip halving chain (64, 32) - LOD 0
+		// selects level 0 (64x64), LOD 1 selects level 1 (32x32). Each is
+		// checked at its own resolution, texel-exact. Both resolutions are
+		// deliberately kept at >= 32: a render target narrower than 32 texels
+		// has an RGBA16F row byte size below 256 (16 texels * 4 channels * 2
+		// bytes = 128), which has been observed to hit a WebGPU pixel-readback
+		// row-alignment bug unrelated to this addon (reproduces with a bare
+		// `uv()` bake, no texture sampling involved at all) - not something to
+		// work around here, just avoided by testing at safely-aligned sizes.
+		const finestSize = 64;
+		const options = { channels: 2, levels: 2, baseResolution: finestSize, mipsPerLevel: 1, hiddenSizes: [ 4 ], outputChannels: 3 };
 		const cpuModel = createNTCGridPyramidModel( options, makeRandom( 0.9 ) );
 
-		expect( cpuModel.grids.length ).toBe( 2 );
-		expect( cpuModel.decoder.layers[ 0 ].inputSize ).toBe( options.levels * options.channels );
+		expect( cpuModel.resolutions ).toEqual( [ 64, 32 ] );
+		expect( selectFeatureLevel( 0, cpuModel.grids.length, cpuModel.mipsPerLevel ) ).toBe( 0 );
+		expect( selectFeatureLevel( 1, cpuModel.grids.length, cpuModel.mipsPerLevel ) ).toBe( 1 );
 
-		const pixels = await renderRawOutputs( renderer, cpuModel, gridSize );
+		const finePixels = await renderRawOutputs( renderer, cpuModel, 0, finestSize );
+		expectMatchesCpuForward( finePixels, cpuModel, 0, finestSize );
 
-		for ( let row = 0; row < gridSize; row ++ ) {
-
-			for ( let col = 0; col < gridSize; col ++ ) {
-
-				const input = referenceDecoderInput( cpuModel, gridSize, col, row );
-				expect( input.length ).toBe( options.levels * options.channels );
-
-				const expected = forwardMLP( cpuModel.decoder, input ).output;
-
-				const i = row * gridSize + col;
-				expect( pixels[ i * 4 + 0 ] ).toBeCloseTo( expected[ 0 ], 2 );
-				expect( pixels[ i * 4 + 1 ] ).toBeCloseTo( expected[ 1 ], 2 );
-				expect( pixels[ i * 4 + 2 ] ).toBeCloseTo( expected[ 2 ], 2 );
-
-			}
-
-		}
+		const coarseSize = 32;
+		const coarsePixels = await renderRawOutputs( renderer, cpuModel, 1, coarseSize );
+		expectMatchesCpuForward( coarsePixels, cpuModel, 1, coarseSize );
 
 	} );
 
 	it( 'evaluateNeuralTextureRaw\'s 4th output channel matches the CPU forward pass (not just the first 3)', async () => {
 
 		const gridSize = 32;
-		const options = { channels: 3, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 4, enableMipPyramid: false };
+		const options = { channels: 3, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 4 };
 		const cpuModel = createNTCGridPyramidModel( options, makeRandom( 3.1 ) );
 
-		const pixels = await renderRawOutputs( renderer, cpuModel, gridSize );
+		const pixels = await renderRawOutputs( renderer, cpuModel, 0, gridSize );
 
-		for ( let row = 0; row < gridSize; row ++ ) {
-
-			for ( let col = 0; col < gridSize; col ++ ) {
-
-				const input = referenceDecoderInput( cpuModel, gridSize, col, row );
-				const expected = forwardMLP( cpuModel.decoder, input ).output;
-
-				const i = row * gridSize + col;
-				for ( let c = 0; c < 4; c ++ ) expect( pixels[ i * 4 + c ] ).toBeCloseTo( expected[ c ], 2 );
-
-			}
-
-		}
+		expectMatchesCpuForward( pixels, cpuModel, 0, gridSize, 4 );
 
 	} );
 

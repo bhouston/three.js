@@ -221,7 +221,9 @@ async function bakeMaterialToTextures( renderer, material, resolution, activeCha
 
 	for ( const colorNode of colorNodes ) {
 
-		renderTargets.push( await bakeColorNodeToTexture( renderer, colorNode, resolution ) );
+		// `generateMipmaps: true` - these are training-source textures (see
+		// bakeColorNodeToTexture's doc comment on its default).
+		renderTargets.push( await bakeColorNodeToTexture( renderer, colorNode, resolution, { generateMipmaps: true } ) );
 
 	}
 

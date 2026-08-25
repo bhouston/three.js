@@ -1,4 +1,5 @@
 import { createNTCGridPyramidModel } from './NTCGridPyramidModel.js';
+import { DEFAULT_MIPS_PER_LEVEL } from './NTCGridModel.js';
 import { NTCGPUModel } from './NTCGPUModel.js';
 import {
 	createTextureTrainBatchComputeNode,
@@ -46,8 +47,13 @@ function resolveSourceTextureResolution( textures ) {
 const DEFAULT_OPTIONS = {
 	channels: 4,
 	levels: 4,
-	baseResolution: 16,
-	growthFactor: 2,
+	baseResolution: 128,
+	// How many physical mip levels each stored grid level is reused to
+	// reconstruct - see NTCGridModel.js/NTCMipBands.js. Training is always
+	// mip-aware (there is no "off" switch): every model is trained across its
+	// whole physical mip range (see `textureResolution`/`maxLod` below), not
+	// just mip 0, so it anti-aliases correctly when viewed from a distance.
+	mipsPerLevel: DEFAULT_MIPS_PER_LEVEL,
 	hiddenSizes: [ 32, 32 ],
 	outputChannels: 3,
 	batchSize: 4096,
@@ -67,24 +73,16 @@ const DEFAULT_OPTIONS = {
 	// Quantization-Aware Training (QAT) of the latent grid - see
 	// NeuralQuantization.js. Defaults to `mode: 'none'` (a byte-for-byte
 	// no-op vs. training without QAT at all).
-	quantization: DEFAULT_QUANTIZATION_OPTIONS,
-	// Mip-pyramid-aware training (see NTCMipPyramid.js /
-	// NTCGridPyramidModel.js) - defaults to `true` so a texture trained
-	// without any special setup is, by default, trained across its whole mip
-	// chain (not just mip 0) and anti-aliases correctly when viewed from a
-	// distance, instead of aliasing the way a mip-0-only-trained model does.
-	// Set `false` to fall back to the original mip-0-only behavior
-	// byte-for-byte (e.g. for a texture that's never viewed minified, where
-	// the extra decoder input/training cost isn't worth paying for).
-	enableMipPyramid: true
+	quantization: DEFAULT_QUANTIZATION_OPTIONS
 };
 
 /**
- * Browser-side trainer that fits a small multiresolution-grid + MLP neural
- * representation to a single static GPU texture (e.g. a material's
+ * Browser-side trainer that fits a small mip-pyramid-of-feature-grids + MLP
+ * neural representation to a single static GPU texture (e.g. a material's
  * albedo/base-color channel), following the NVIDIA neural texture
- * compression / instant-ngp recipe: a trainable feature-grid positional
- * encoding feeding a shallow MLP decoder, trained with Adam + L2 loss.
+ * compression recipe: a handful of trainable feature grids, each reused (via
+ * an explicit LOD input) to reconstruct several physical mip levels, feeding
+ * a shallow shared MLP decoder, trained with Adam + L2 loss.
  *
  * Unlike `NeuralAppearanceTrainer` (which distills an entire BRDF's shading
  * response and therefore needs a rendered "teacher atlas" + CPU readback),
@@ -140,9 +138,9 @@ class NTCTrainer {
 		const quantization = resolveQuantizationConfig( settings );
 		this.quantizationRange = null;
 
-		// Mip-pyramid training (see NTCMipPyramid.js) needs the real source
-		// texture resolution to know each grid level's "natural" LOD -
-		// resolved here from the actual GPU texture(s) rather than left to
+		// Training needs the real source texture resolution to know the full
+		// physical mip range (`maxLod`) this model should support - resolved
+		// here from the actual GPU texture(s) rather than left to
 		// createNTCGridPyramidModel's fallback (the finest grid resolution),
 		// which is only ever a stand-in for when the true texture size isn't
 		// known. An explicit `settings.textureResolution` always wins.

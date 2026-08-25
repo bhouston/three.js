@@ -10,7 +10,14 @@ import { OUTPUT_TYPES, channelEffectiveType, constantToNode, reconstructFinalNor
  * runtime decode path and the training/export path already build on.
  */
 const FORMAT = 'three-ntc';
-const VERSION = 1;
+// Bumped to 2 for the mip-pyramid-of-feature-grids redesign (see
+// NTCGridPyramidModel.js/NTCMipBands.js): `.ntc` files now store `levels`,
+// `mipsPerLevel`, and `maxLod` as required `latents` fields, the grid
+// resolution ordering is finest-first, and the decoder input is fixed at
+// `channels + 1` rather than scaling with level count - a genuinely
+// incompatible change from version 1 files, which this loader deliberately
+// does not attempt to read (see NTCLoader.js's `validateManifest`).
+const VERSION = 2;
 
 /**
  * Full vocabulary of standard PBR channels this trainer knows how to fit,

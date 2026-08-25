@@ -9,7 +9,7 @@ import { vec4 } from 'three/tsl';
  * appearance teacher-atlas renderer, simplified to a single full-resolution
  * pass since there's no per-sample atlas tiling to do here.
  */
-async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512 ) {
+async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512, { generateMipmaps = false } = {} ) {
 
 	const scene = new THREE.Scene();
 	const camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 4 );
@@ -74,18 +74,27 @@ async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512 ) {
 		type: THREE.HalfFloatType,
 		format: THREE.RGBAFormat,
 		colorSpace: THREE.NoColorSpace,
-		// Mip-pyramid-aware training (see NTCMipPyramid.js / NTCTrainer.js)
+		// Mip-pyramid-aware training (see NTCGridPyramidModel.js / NTCTrainer.js)
 		// samples this baked texture at LOD > 0 (NTCGPUComputeTSL.js's
-		// `textureLevel(sourceTexture, uv, lodNode)`), which needs a real
-		// prefiltered mip chain to exist - `generateMipmaps: true` here has
-		// the renderer build one (hardware box-filtered, not the paper's own
-		// Lanczos downsampling - a reasonable, much simpler stand-in) after
-		// every render into this target, and `LinearMipmapLinearFilter`
-		// matches that a mip chain now exists. `magFilter` stays `LinearFilter`
-		// - it only applies to LOD 0, which is always sampled at native
-		// resolution here (no magnification).
-		generateMipmaps: true,
-		minFilter: THREE.LinearMipmapLinearFilter,
+		// `textureLevel(sourceTexture, uv, lod)`), which needs a real
+		// prefiltered mip chain to exist when `generateMipmaps: true` is
+		// requested (hardware box-filtered, not the paper's own Lanczos
+		// downsampling - a reasonable, much simpler stand-in) - defaults to
+		// `false` (matching `LinearFilter`, no mip chain) since this function
+		// is also used generically to bake/read back arbitrary color nodes
+		// (tests, debug views) that never sample past mip 0, and generating
+		// mipmaps for a render target that then gets its pixels read back
+		// (even at its own base resolution) has been observed to
+		// intermittently corrupt part of that readback (some rows silently
+		// zeroed) - presumably a synchronization gap between the automatic
+		// mipmap-generation pass and the readback command. Only the actual
+		// training-source bake call sites (NTCTextureSource.
+		// fromBakedColorNode / NTCSource.bakeMaterialToTextures) opt in -
+		// they only ever *sample* the result later (via `texture()`/
+		// `textureLevel()` in the training kernel), never read its pixels
+		// back to the CPU, so this hazard doesn't apply to them.
+		generateMipmaps,
+		minFilter: generateMipmaps ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter,
 		magFilter: THREE.LinearFilter,
 		wrapS: THREE.RepeatWrapping,
 		wrapT: THREE.RepeatWrapping,
@@ -168,7 +177,9 @@ class NTCTextureSource {
 
 	static async fromBakedColorNode( renderer, colorNode, resolution = 512 ) {
 
-		const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, resolution );
+		// `generateMipmaps: true` - this is the actual training-source bake
+		// path (see bakeColorNodeToTexture's doc comment on its default).
+		const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, resolution, { generateMipmaps: true } );
 		return new NTCTextureSource( renderTarget.texture, renderTarget );
 
 	}

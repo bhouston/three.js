@@ -45,10 +45,18 @@ function sliceChannels( outputs, activeChannels ) {
  * wrapped UV fed to `texture()` - `fract()`'s wraparound discontinuity would
  * otherwise show up as a spurious huge derivative (and therefore a spurious
  * max-LOD spike) at every tile seam.
+ *
+ * Texel-unit scaling uses `2^maxLod` as a stand-in for the source texture's
+ * actual resolution: `maxLod` is derived from it as `ceil(log2(
+ * textureResolution))` (see NTCGridPyramidModel.js), so `2^maxLod` is always
+ * within a factor of 2 of the true resolution - close enough for a screen-
+ * space LOD heuristic, and it means this only needs `maxLod`, which (unlike
+ * the source texture's exact pixel size) is always available, including for
+ * a model loaded from a `.ntc` file (see NTCLoader.js).
  */
-function computeAutoLodNode( coord, textureResolution, maxLod ) {
+function computeAutoLodNode( coord, maxLod ) {
 
-	const texelCoord = coord.mul( textureResolution );
+	const texelCoord = coord.mul( Math.pow( 2, maxLod ) );
 	const footprint = max( texelCoord.dFdx().length(), texelCoord.dFdy().length() ).max( 1e-6 );
 
 	return log( footprint ).div( Math.LN2 ).clamp( 0, maxLod );
@@ -96,18 +104,13 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 	 * weights use a real fp16 storage buffer instead of an fp32 uniform
 	 * array on backends that support it - see evaluateNeuralTextureRaw.
 	 */
-	// `options.lodNode`, for a `cpuModel` trained with mip-pyramid support
-	// (see NTCMipPyramid.js / NTCGridPyramidModel.js - `cpuModel.mipPyramid`,
-	// `null` for a model trained with `enableMipPyramid: false` or loaded
-	// from a `.ntc` file predating this feature), overrides the LOD (mip
-	// index) this material reconstructs at - a TSL float node, useful for an
-	// explicit distance-based LOD or for debugging a specific mip level.
-	// Defaults to an automatic screen-space-derivative estimate
-	// (`computeAutoLodNode` above), the same way hardware mipmapping picks a
-	// level - which is what makes a mip-pyramid-trained material anti-alias
-	// correctly when viewed from a distance instead of always reconstructing
-	// at full (finest-LOD) detail. Ignored entirely for a `cpuModel` without
-	// `mipPyramid`.
+	// `options.lodNode` overrides the LOD (mip index) this material
+	// reconstructs at - a TSL float node, useful for an explicit distance-
+	// based LOD or for debugging a specific mip level. Defaults to an
+	// automatic screen-space-derivative estimate (`computeAutoLodNode`
+	// above), the same way hardware mipmapping picks a level - which is what
+	// makes this material anti-alias correctly when viewed from a distance
+	// instead of always reconstructing at full (finest-LOD) detail.
 	constructor( cpuModel, channelClassification, options = {} ) {
 
 		super();
@@ -144,13 +147,9 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		const tiledUV = fract( coord );
 
 		// Auto-LOD (see computeAutoLodNode above) needs `coord` (pre-`fract()`,
-		// still continuous across a tile seam) - only actually built when this
-		// model is mip-pyramid-aware and the caller didn't already supply an
-		// explicit override.
-		const mipPyramid = cpuModel.mipPyramid || null;
-		const lodNode = mipPyramid ?
-			( options.lodNode || computeAutoLodNode( coord, mipPyramid.textureResolution, mipPyramid.maxLod ) ) :
-			null;
+		// still continuous across a tile seam) - built unless the caller
+		// already supplied an explicit override.
+		const lodNode = options.lodNode || computeAutoLodNode( coord, cpuModel.maxLod );
 
 		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.levelTextures, options.renderer, lodNode );
 		const slices = sliceChannels( outputs, activeChannels );

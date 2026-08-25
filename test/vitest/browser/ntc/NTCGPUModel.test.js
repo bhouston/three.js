@@ -67,18 +67,19 @@ function simulateLatentIndices( layout ) {
 }
 
 /**
- * Replays the a0 (concatenated grid taps) addressing from the same forward
- * pass: `a0Offset + g * channels + c` for each level/channel.
+ * Replays the a0 addressing from the same forward pass: the *selected*
+ * grid level's `channels`-wide tap always lands at the same shared
+ * `a0Offset + c` slot (not a per-level slot - every level's contribution is
+ * summed into it, gated by an exact 0/1 selector, see
+ * createTextureTrainBatchComputeNode step 1), followed by the LOD value at
+ * `a0Offset + channels`.
  */
 function simulateA0Indices( layout ) {
 
 	const indices = new Set();
 
-	for ( let g = 0; g < layout.levels; g ++ ) {
-
-		for ( let c = 0; c < layout.channels; c ++ ) indices.add( layout.a0Offset + g * layout.channels + c );
-
-	}
+	for ( let c = 0; c < layout.channels; c ++ ) indices.add( layout.a0Offset + c );
+	indices.add( layout.a0Offset + layout.channels );
 
 	return indices;
 
@@ -175,20 +176,14 @@ function expectExactPartition( regions, total ) {
 
 }
 
-// `enableMipPyramid: false` throughout this file - it cross-checks
-// `computeTextureModelLayout`'s buffer-offset *arithmetic* against the
-// training kernel's own addressing formulas, which is orthogonal to
-// mip-pyramid training (default true, see NTCTrainer.js/
-// NTCGridPyramidModel.js) appending an extra decoder input slot - that's
-// covered separately (see NTCGridPyramidModel.test.js's mip-pyramid tests).
 const configs = {
-	'default options': { enableMipPyramid: false },
-	'single hidden layer': { hiddenSizes: [ 16 ], enableMipPyramid: false },
-	'deep MLP, 3 hidden layers': { hiddenSizes: [ 24, 24, 24 ], enableMipPyramid: false },
-	'material-style 9-channel output': { outputChannels: 9, hiddenSizes: [ 48, 48 ], enableMipPyramid: false },
-	'single grid level': { levels: 1, baseResolution: 8, growthFactor: 2, enableMipPyramid: false },
-	'channels = 2': { channels: 2, enableMipPyramid: false },
-	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, growthFactor: 2, channels: 1, outputChannels: 1, enableMipPyramid: false }
+	'default options': {},
+	'single hidden layer': { hiddenSizes: [ 16 ] },
+	'deep MLP, 3 hidden layers': { hiddenSizes: [ 24, 24, 24 ] },
+	'material-style 9-channel output': { outputChannels: 9, hiddenSizes: [ 48, 48 ] },
+	'single grid level': { levels: 1, baseResolution: 8 },
+	'channels = 2': { channels: 2 },
+	'no hidden layers (direct input -> output)': { hiddenSizes: [], levels: 1, baseResolution: 2, channels: 1, outputChannels: 1 }
 };
 
 describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => {
@@ -197,80 +192,80 @@ describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => 
 
 		it( 'two-level grid, one hidden layer, 2-channel output', () => {
 
-			// channels=2, levels=2, baseResolution=2, growthFactor=2 ->
-			// resolutions [2, 4]. hiddenSizes=[3], outputChannels=2.
-			// Hand-traced:
+			// channels=2, levels=2, baseResolution=2, mipsPerLevel=2 (default) ->
+			// resolutions [2, 1] (2 halvings per level: 2 -> 1 -> floor(0.5)=>1).
+			// hiddenSizes=[3], outputChannels=2. Hand-traced:
 			//   level0: 2x2 texels * 2 channels = 8 floats @ offset 0
-			//   level1: 4x4 texels * 2 channels = 32 floats @ offset 8
-			//   totalLatents = 40
-			//   inputSize = levels*channels = 4
-			//   layer sizes [4, 3, 2]:
-			//     layer0: 4*3=12 weights @0, 3 biases @12 -> next offset 15
-			//     layer1 (output): 3*2=6 weights @15, 2 biases @21 -> totalWeights 23
-			//   activation buffer: a0 [0,4) -> z0 [4,7) -> a0-layer [7,10) (hidden,
-			//   not output) -> z1(output) [10,12) -> delta0 [12,15) -> delta1 [15,17)
-			//   -> gradA0 [17,21) -> activationStride 21
+			//   level1: 1x1 texels * 2 channels = 2 floats @ offset 8
+			//   totalLatents = 10
+			//   inputSize = channels + 1 = 3 (one selected level's tap + LOD -
+			//   fixed regardless of level count, see NTCGridPyramidModel.js)
+			//   layer sizes [3, 3, 2]:
+			//     layer0: 3*3=9 weights @0, 3 biases @9 -> next offset 12
+			//     layer1 (output): 3*2=6 weights @12, 2 biases @18 -> totalWeights 20
+			//   activation buffer: a0 [0,3) -> z0 [3,6) -> a0-layer [6,9) (hidden,
+			//   not output) -> z1(output) [9,11) -> delta0 [11,14) -> delta1 [14,16)
+			//   -> gradA0 [16,19) -> activationStride 19
 			const layout = computeTextureModelLayout( {
-				channels: 2, levels: 2, baseResolution: 2, growthFactor: 2,
-				hiddenSizes: [ 3 ], outputChannels: 2, enableMipPyramid: false
+				channels: 2, levels: 2, baseResolution: 2,
+				hiddenSizes: [ 3 ], outputChannels: 2
 			} );
 
-			expect( layout.resolutions ).toEqual( [ 2, 4 ] );
+			expect( layout.resolutions ).toEqual( [ 2, 1 ] );
 			expect( layout.gridLevels[ 0 ] ).toMatchObject( { width: 2, height: 2, offset: 0, texelCount: 4, floatCount: 8 } );
-			expect( layout.gridLevels[ 1 ] ).toMatchObject( { width: 4, height: 4, offset: 8, texelCount: 16, floatCount: 32 } );
-			expect( layout.totalLatents ).toBe( 40 );
+			expect( layout.gridLevels[ 1 ] ).toMatchObject( { width: 1, height: 1, offset: 8, texelCount: 1, floatCount: 2 } );
+			expect( layout.totalLatents ).toBe( 10 );
 
-			expect( layout.inputSize ).toBe( 4 );
+			expect( layout.inputSize ).toBe( 3 );
 
 			expect( layout.mlpLayers[ 0 ] ).toMatchObject( {
-				inputSize: 4, outputSize: 3, weightsOffset: 0, weightsCount: 12, biasesOffset: 12, biasesCount: 3, isOutput: false
+				inputSize: 3, outputSize: 3, weightsOffset: 0, weightsCount: 9, biasesOffset: 9, biasesCount: 3, isOutput: false
 			} );
 			expect( layout.mlpLayers[ 1 ] ).toMatchObject( {
-				inputSize: 3, outputSize: 2, weightsOffset: 15, weightsCount: 6, biasesOffset: 21, biasesCount: 2, isOutput: true
+				inputSize: 3, outputSize: 2, weightsOffset: 12, weightsCount: 6, biasesOffset: 18, biasesCount: 2, isOutput: true
 			} );
-			expect( layout.totalWeights ).toBe( 23 );
+			expect( layout.totalWeights ).toBe( 20 );
 
 			expect( layout.a0Offset ).toBe( 0 );
-			expect( layout.layerActs[ 0 ] ).toEqual( { zOffset: 4, aOffset: 7 } );
-			expect( layout.layerActs[ 1 ] ).toEqual( { zOffset: 10, aOffset: - 1 } );
-			expect( layout.deltaOffsets ).toEqual( [ 12, 15 ] );
-			expect( layout.gradA0Offset ).toBe( 17 );
-			expect( layout.activationStride ).toBe( 21 );
+			expect( layout.layerActs[ 0 ] ).toEqual( { zOffset: 3, aOffset: 6 } );
+			expect( layout.layerActs[ 1 ] ).toEqual( { zOffset: 9, aOffset: - 1 } );
+			expect( layout.deltaOffsets ).toEqual( [ 11, 14 ] );
+			expect( layout.gradA0Offset ).toBe( 16 );
+			expect( layout.activationStride ).toBe( 19 );
 
 		} );
 
 		it( 'minimal degenerate config: single 1x1 texel level, no hidden layers, 1-channel everything', () => {
 
-			// channels=1, levels=1, baseResolution=1, growthFactor=2 (irrelevant
-			// with levels=1 - resolves to just [baseResolution]),
-			// hiddenSizes=[], outputChannels=1. Hand-traced:
+			// channels=1, levels=1, baseResolution=1, hiddenSizes=[],
+			// outputChannels=1. Hand-traced:
 			//   single 1x1 grid level -> 1 float @ offset 0 -> totalLatents 1
-			//   inputSize = 1
-			//   layer sizes [1, 1]: one layer, immediately the output:
-			//     1*1=1 weight @0, 1 bias @1 -> totalWeights 2
-			//   activation buffer: a0 [0,1) -> z0(output, no a-slot) [1,2) ->
-			//   delta0 [2,3) -> gradA0 [3,4) -> activationStride 4
+			//   inputSize = channels + 1 = 2
+			//   layer sizes [2, 1]: one layer, immediately the output:
+			//     2*1=2 weights @0, 1 bias @2 -> totalWeights 3
+			//   activation buffer: a0 [0,2) -> z0(output, no a-slot) [2,3) ->
+			//   delta0 [3,4) -> gradA0 [4,6) -> activationStride 6
 			const layout = computeTextureModelLayout( {
-				channels: 1, levels: 1, baseResolution: 1, growthFactor: 2,
-				hiddenSizes: [], outputChannels: 1, enableMipPyramid: false
+				channels: 1, levels: 1, baseResolution: 1,
+				hiddenSizes: [], outputChannels: 1
 			} );
 
 			expect( layout.resolutions ).toEqual( [ 1 ] );
 			expect( layout.gridLevels[ 0 ] ).toMatchObject( { width: 1, height: 1, offset: 0, texelCount: 1, floatCount: 1 } );
 			expect( layout.totalLatents ).toBe( 1 );
 
-			expect( layout.inputSize ).toBe( 1 );
+			expect( layout.inputSize ).toBe( 2 );
 
 			expect( layout.mlpLayers ).toHaveLength( 1 );
 			expect( layout.mlpLayers[ 0 ] ).toMatchObject( {
-				inputSize: 1, outputSize: 1, weightsOffset: 0, weightsCount: 1, biasesOffset: 1, biasesCount: 1, isOutput: true
+				inputSize: 2, outputSize: 1, weightsOffset: 0, weightsCount: 2, biasesOffset: 2, biasesCount: 1, isOutput: true
 			} );
-			expect( layout.totalWeights ).toBe( 2 );
+			expect( layout.totalWeights ).toBe( 3 );
 
-			expect( layout.layerActs[ 0 ] ).toEqual( { zOffset: 1, aOffset: - 1 } );
-			expect( layout.deltaOffsets ).toEqual( [ 2 ] );
-			expect( layout.gradA0Offset ).toBe( 3 );
-			expect( layout.activationStride ).toBe( 4 );
+			expect( layout.layerActs[ 0 ] ).toEqual( { zOffset: 2, aOffset: - 1 } );
+			expect( layout.deltaOffsets ).toEqual( [ 3 ] );
+			expect( layout.gradA0Offset ).toBe( 4 );
+			expect( layout.activationStride ).toBe( 6 );
 
 		} );
 
@@ -345,7 +340,7 @@ describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => 
 			// buffer allocation itself is plain JS.
 			expect( getRenderer() ).toBeTruthy();
 
-			const model = new NTCGPUModel( { batchSize: 64, outputChannels: 5, enableMipPyramid: false } );
+			const model = new NTCGPUModel( { batchSize: 64, outputChannels: 5 } );
 			const { totalWeights, totalLatents, activationStride } = model.layout;
 
 			// These four pairs are independent JS expressions (`new
@@ -384,7 +379,7 @@ describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => 
 
 		it( 'initFromCPUModel/syncToCPU round-trip through the real WebGPU device, placing each MLP layer and grid level at the layout offsets the kernels read/write', async () => {
 
-			const model = new NTCGPUModel( { batchSize: 16, hiddenSizes: [ 8 ], levels: 2, baseResolution: 4, growthFactor: 2 } );
+			const model = new NTCGPUModel( { batchSize: 16, hiddenSizes: [ 8 ], levels: 2, baseResolution: 4 } );
 
 			// A tiny stand-in CPU model with recognizable, distinct weight/bias/
 			// grid values per layer/level so a mislaid offset would show up as a

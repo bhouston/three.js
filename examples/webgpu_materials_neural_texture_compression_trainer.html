@@ -170,6 +170,12 @@
 			let teacherMesh, neuralMesh, neuralMaterial, placeholderMaterial;
 			let materialXMaterial = null, sourceTextures = null, teacherDebugMaterials = null, channelClassification = null;
 			let currentCpuModel = null;
+			// True once `currentCpuModel`'s real dimensions match what the network
+			// GUI sliders currently say - set on train/load, cleared the moment any
+			// of those sliders change (see the `network (grid + MLP)` folder below)
+			// so `updateNetworkSize()` falls back to previewing the slider values
+			// instead of continuing to show the stale trained/loaded model size.
+			let networkSizeMatchesModel = false;
 			let environmentMap = null;
 			const directLights = [];
 			let isTraining = false, activeTrainer = null, comparisonVisible = false;
@@ -289,10 +295,10 @@
 				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024, 2048, 4096 ] ).name( 'bake resolution' );
 
 				const networkFolder = gui.addFolder( 'network (grid + MLP)' );
-				networkFolder.add( params, 'levels', GRID_LEVELS_OPTIONS ).name( 'grid levels' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'grid base res' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'growthFactor', GRID_GROWTH_FACTOR_OPTIONS ).name( 'grid growth factor' ).onChange( updateNetworkSize );
-				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).onChange( updateNetworkSize );
+				networkFolder.add( params, 'levels', GRID_LEVELS_OPTIONS ).name( 'grid levels' ).onChange( onNetworkParamChange );
+				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'grid base res' ).onChange( onNetworkParamChange );
+				networkFolder.add( params, 'growthFactor', GRID_GROWTH_FACTOR_OPTIONS ).name( 'grid growth factor' ).onChange( onNetworkParamChange );
+				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).onChange( onNetworkParamChange );
 
 				const trainingFolder = gui.addFolder( 'training' );
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
@@ -411,6 +417,17 @@
 
 			}
 
+			// Network GUI sliders (levels/baseResolution/growthFactor/hiddenSize)
+			// changed since the last train/load - invalidate the "real model"
+			// dimensions so `updateNetworkSize()` previews the new slider values
+			// instead of continuing to report the stale trained/loaded model.
+			function onNetworkParamChange() {
+
+				networkSizeMatchesModel = false;
+				updateNetworkSize();
+
+			}
+
 			function updateNetworkSize() {
 
 				// Output width follows the *active* (trained) channel count for
@@ -423,9 +440,14 @@
 
 				// Once a network actually exists (trained here, or loaded from a
 				// JSON file whose grid/MLP dimensions may not match the current
-				// GUI sliders at all), report its *real* dimensions rather than
-				// what the sliders would currently produce.
-				const resolutions = currentCpuModel ?
+				// GUI sliders at all) *and* the GUI sliders haven't been touched
+				// since, report its *real* dimensions rather than what the sliders
+				// would currently produce. The moment a network slider changes,
+				// `networkSizeMatchesModel` goes false (see `onNetworkParamChange`)
+				// and this falls back to previewing the new slider values.
+				const useModel = currentCpuModel !== null && networkSizeMatchesModel;
+
+				const resolutions = useModel ?
 					currentCpuModel.resolutions :
 					computeGridLevels( Number( params.baseResolution ), Number( params.growthFactor ), Number( params.levels ) );
 				// `computeGridLevels` may return fewer levels than requested when a
@@ -433,8 +455,8 @@
 				// NTCGridModel.js) - use the actual grid's level count
 				// (`resolutions.length`), not the raw GUI setting, so `inputSize`
 				// below matches what the real model would build.
-				const levels = currentCpuModel ? currentCpuModel.levels : resolutions.length;
-				const hidden = currentCpuModel ? currentCpuModel.hiddenSizes[ 0 ] : Number( params.hiddenSize );
+				const levels = useModel ? currentCpuModel.levels : resolutions.length;
+				const hidden = useModel ? currentCpuModel.hiddenSizes[ 0 ] : Number( params.hiddenSize );
 
 				const latentTexels = computeGridLatentTexels( resolutions );
 				const gridParams = latentTexels * channels;
@@ -644,6 +666,7 @@
 				trainButton.disabled = false;
 				saveJsonButton.disabled = true;
 				currentCpuModel = null;
+				networkSizeMatchesModel = false;
 				updateDebugView();
 				updateNetworkSize();
 
@@ -755,6 +778,7 @@
 
 				disposeNeuralMaterial();
 				currentCpuModel = cpuModel;
+				networkSizeMatchesModel = true;
 				neuralMaterial = new NTCNodeMaterial(
 					cpuModel,
 					channelClassification,

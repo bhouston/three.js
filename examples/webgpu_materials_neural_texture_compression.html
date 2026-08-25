@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>threejs webgpu - materials - neural texture compression</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="threejs webgpu - materials - neural texture compression">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_materials_neural_texture_compression.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_materials_neural_texture_compression.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>webgpu - materials - neural texture compression</span>
+			</div>
+
+			<small>
+				Loads a pre-trained <a href="https://github.com/mrdoob/three.js/tree/dev/examples/ntc" target="_blank" rel="noopener">.ntc</a>
+				(Neural Texture Compression) asset - a small multiresolution latent grid + MLP decoder, NVIDIA NTC style - and evaluates it
+				directly on a real <code>THREE.MeshPhysicalNodeMaterial</code> (<a href="jsm/loaders/NTCLoader.js" target="_blank" rel="noopener">NTCLoader.js</a> /
+				<a href="jsm/ntc/NTCMLPNode.js" target="_blank" rel="noopener">NTCMLPNode.js</a>). The decoder's weights live in a real fp16 storage buffer
+				wherever the backend supports it (native WebGPU + the <code>shader-f16</code> feature), falling back to fp32 otherwise.
+			</small>
+			<small id="status"></small>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+			import { NTCLoader } from 'three/addons/loaders/NTCLoader.js';
+			import { applyNTCToMaterial } from 'three/addons/ntc/NTCMLPNode.js';
+
+			const ASSETS = {
+				brick: { name: 'Brick', file: 'ntc/brick.ntc' },
+				glass_dispersion: { name: 'Glass Dispersion', file: 'ntc/glass_dispersion.ntc' },
+				gold: { name: 'Gold', file: 'ntc/gold.ntc' },
+				rainbow_emissive: { name: 'Rainbow Emissive', file: 'ntc/rainbow_emissive.ntc' },
+				wave_normal: { name: 'Wave Normal', file: 'ntc/wave_normal.ntc' }
+			};
+			const assetNames = Object.values( ASSETS ).map( ( asset ) => asset.name );
+
+			const params = { asset: ASSETS.brick.name };
+
+			const BACKGROUND_COLOR = 0x15171c;
+
+			let camera, scene, renderer, controls;
+			let mesh = null;
+			let levelTextures = [];
+
+			const status = document.getElementById( 'status' );
+
+			init();
+
+			async function init() {
+
+				if ( WebGPU.isAvailable() === false ) {
+
+					document.body.appendChild( WebGPU.getErrorMessage() );
+					throw new Error( 'No WebGPU support' );
+
+				}
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 0.4, 3.2 );
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( BACKGROUND_COLOR );
+
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 0.9;
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+				await renderer.init();
+
+				const environmentMap = await new HDRLoader()
+					.setPath( 'textures/equirectangular/' )
+					.loadAsync( 'san_giuseppe_bridge_2k.hdr' );
+				environmentMap.mapping = THREE.EquirectangularReflectionMapping;
+				scene.environment = environmentMap;
+				scene.background = environmentMap;
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 0, 0 );
+				controls.update();
+
+				const gui = renderer.inspector.createParameters( 'Neural Texture Compression' );
+				gui.add( params, 'asset', assetNames ).name( 'NTC asset' ).onChange( async ( value ) => {
+
+					await loadAsset( getAssetKeyByName( value ) );
+
+				} );
+
+				window.addEventListener( 'resize', onWindowResize );
+
+				await loadAsset( getAssetKeyByName( params.asset ) );
+
+				renderer.setAnimationLoop( render );
+
+			}
+
+			function getAssetKeyByName( name ) {
+
+				return Object.keys( ASSETS ).find( ( key ) => ASSETS[ key ].name === name );
+
+			}
+
+			async function loadAsset( key ) {
+
+				const asset = ASSETS[ key ];
+				if ( asset === undefined ) return;
+
+				status.textContent = `Loading ${asset.file}...`;
+
+				try {
+
+					const { name, cpuModel, channelClassification } = await new NTCLoader().loadAsync( asset.file );
+
+					disposeMesh();
+
+					// normal/clearcoatNormal channels decode in tangent space and
+					// need a real tangentWorld/bitangentWorld basis - computeTangents()
+					// requires uv + normal attributes and an index buffer, all of
+					// which SphereGeometry already provides.
+					const geometry = new THREE.SphereGeometry( 1, 128, 64 );
+					geometry.computeTangents();
+
+					const material = new THREE.MeshPhysicalNodeMaterial();
+					const result = applyNTCToMaterial( material, cpuModel, channelClassification, { renderer } );
+					levelTextures = result.levelTextures;
+
+					mesh = new THREE.Mesh( geometry, material );
+					scene.add( mesh );
+
+					const activeKeys = channelClassification.activeChannels.map( ( c ) => c.key ).join( ', ' ) || 'none';
+					const hasHalfPrecision = renderer.backend.isWebGPUBackend === true && renderer.hasFeature( 'shader-f16' ) === true;
+					status.textContent = `Loaded "${name || asset.name}". Active channels: ${activeKeys}. MLP weights: ${hasHalfPrecision ? 'fp16 storage buffer' : 'fp32 fallback'}.`;
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
+
+			}
+
+			function disposeMesh() {
+
+				if ( mesh === null ) return;
+
+				scene.remove( mesh );
+				mesh.geometry.dispose();
+				mesh.material.dispose();
+				for ( const levelTexture of levelTextures ) levelTexture.dispose();
+				levelTextures = [];
+				mesh = null;
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function render() {
+
+				controls.update();
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activate, createMLP, forwardMLP, powerLog, sigmoid } from '../../../../examples/jsm/ntc/NTCMLP.js';
+import { activate, createMLP, forwardMLP, powerLog, sigmoid } from '../../../../examples/jsm/ntc/training/NTCMLP.js';
 
 describe( 'Addons > Neural > NeuralMLP', () => {
 

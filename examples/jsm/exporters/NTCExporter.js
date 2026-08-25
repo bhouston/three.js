@@ -1,4 +1,4 @@
-import { encodeNTC } from '../ntc/NTCManifest.js';
+import { encodeNTC } from '../ntc/training/NTCManifest.js';
 
 /**
  * An exporter for `.ntc` (Neural Texture Compression) assets.

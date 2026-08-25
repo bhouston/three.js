@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildChannelActivations, getChannel } from '../../../../examples/jsm/ntc/NTCFormat.js';
-import { classifyMaterialChannels, resolveMaterialChannelNodes } from '../../../../examples/jsm/ntc/NTCSource.js';
+import { classifyMaterialChannels, resolveMaterialChannelNodes } from '../../../../examples/jsm/ntc/training/NTCSource.js';
 
 /**
  * Proves the actual feature this refactor is for: a caller can compose an

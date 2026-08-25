@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { NTCTrainer } from '../../../../examples/jsm/ntc/NTCTrainer.js';
+import { NTCTrainer } from '../../../../examples/jsm/ntc/training/NTCTrainer.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
 
 // Convergence-rate regression coverage: trains the same synthetic target

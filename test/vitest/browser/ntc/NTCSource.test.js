@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { vec3 } from 'three/tsl';
-import { buildPackedColorNodes } from '../../../../examples/jsm/ntc/NTCSource.js';
+import { buildPackedColorNodes } from '../../../../examples/jsm/ntc/training/NTCSource.js';
 import { getChannel, layoutChannels } from '../../../../examples/jsm/ntc/NTCFormat.js';
 import { withTestRenderer, evalFloats } from '../helpers/webgpuEval.js';
 

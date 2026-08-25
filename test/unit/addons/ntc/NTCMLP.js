@@ -5,7 +5,7 @@ import {
 	activate,
 	sigmoid,
 	powerLog
-} from '../../../../examples/jsm/ntc/NTCMLP.js';
+} from '../../../../examples/jsm/ntc/training/NTCMLP.js';
 
 describe( 'Addons', () => {
 

@@ -135,8 +135,8 @@ export * from './loaders/XYZLoader.js';
 
 export * from './materials/LDrawConditionalLineMaterial.js';
 
-export * from './ntc/NTCGPUTrainingConstants.js';
-export * from './ntc/NTCMLP.js';
+export * from './ntc/training/NTCGPUTrainingConstants.js';
+export * from './ntc/training/NTCMLP.js';
 
 
 export * from './math/Capsule.js';

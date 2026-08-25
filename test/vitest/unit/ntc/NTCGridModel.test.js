@@ -4,7 +4,7 @@ import {
 	createLatentGrid,
 	LATENT_INIT_SCALE,
 	MAX_GRID_RESOLUTION
-} from '../../../../examples/jsm/ntc/NTCGridModel.js';
+} from '../../../../examples/jsm/ntc/training/NTCGridModel.js';
 
 describe( 'Addons > Neural > NeuralGridModel', () => {
 

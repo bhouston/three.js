@@ -21,7 +21,7 @@ import {
 	backwardDenseLayerReLUTSL,
 	createAdamComputeNode
 } from './NTCGPUKernelsTSL.js';
-import { applyChannelActivation, channelActivationDerivativeFromOutput } from './NTCOutputActivations.js';
+import { applyChannelActivation, channelActivationDerivativeFromOutput } from '../NTCOutputActivations.js';
 import { QUANTIZATION_SCHEMES } from './NTCQuantization.js';
 
 function hash1( seed ) {

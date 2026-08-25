@@ -5,9 +5,9 @@ import {
 	createAccumulateGradientNormComputeNode,
 	createTextureAdamWeightsComputeNode,
 	createTextureAdamLatentsComputeNode
-} from '../../../../examples/jsm/ntc/NTCGPUComputeTSL.js';
-import { NTCGPUModel } from '../../../../examples/jsm/ntc/NTCGPUModel.js';
-import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from '../../../../examples/jsm/ntc/NTCGPUTrainingConstants.js';
+} from '../../../../examples/jsm/ntc/training/NTCGPUComputeTSL.js';
+import { NTCGPUModel } from '../../../../examples/jsm/ntc/training/NTCGPUModel.js';
+import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from '../../../../examples/jsm/ntc/training/NTCGPUTrainingConstants.js';
 import { withTestRenderer } from '../helpers/webgpuEval.js';
 
 // NeuralTextureGPUComputeTSL.js is the actual training-step compute kernel

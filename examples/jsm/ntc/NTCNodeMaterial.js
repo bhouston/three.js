@@ -1,11 +1,9 @@
 import * as THREE from 'three';
 import { bitangentWorld, fract, tangentWorld, uv, vec2, vec3 } from 'three/tsl';
 import { buildLevelTextures, evaluateNeuralTextureRaw } from './NTCDecoderTSL.js';
-import { NTCTrainer } from './NTCTrainer.js';
 import { applyChannelActivation } from './NTCOutputActivations.js';
-import { CHANNELS, FRAME_VIEWS, getChannel, buildDebugViewColorNode, buildFrameViewColorNode, buildChannelActivations } from './NTCFormat.js';
+import { CHANNELS, FRAME_VIEWS, getChannel, buildDebugViewColorNode, buildFrameViewColorNode } from './NTCFormat.js';
 import { constantToNode, reconstructFinalNormal } from './NTCOutputTypes.js';
-import { bakeMaterialToTextures, classifyMaterialChannels } from './NTCSource.js';
 
 /**
  * Slices the raw per-channel output array (see evaluateNeuralTextureRaw)
@@ -243,89 +241,12 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 
 	}
 
-	/**
-	 * End-to-end convenience path covering the sequence every consumer of
-	 * this addon otherwise has to hand-assemble from five separate low-level
-	 * pieces: classify the material's channels, bake the active ones to
-	 * textures, train a `NTCTrainer` against them, and construct
-	 * (and, on every progress tick, re-construct and dispose the previous)
-	 * `NTCNodeMaterial`.
-	 *
-	 * `options` is passed straight through to `NTCTrainer` (so
-	 * `levels`, `hiddenSizes`, `iterations`, `learningRate`, etc. all apply),
-	 * plus a few fit()-specific fields: `resolution` (bake resolution,
-	 * default 512), `debugView` (default 'shaded'), `channels` (the channel
-	 * vocabulary to fit against, default the built-in `CHANNELS` - see
-	 * NTCFormat.js), and `onProgress`, called with the usual
-	 * `NTCTrainer` progress payload plus a `material` field holding
-	 * the current (already-disposing-its-predecessor) in-progress material,
-	 * suitable for live preview during training.
-	 *
-	 * Throws if every channel on `material` classifies as constant - see
-	 * `NTCSource.classifyMaterialChannels` - since there's then
-	 * nothing for a network to fit; construct directly from a
-	 * classification's `constantValues` in that case instead.
-	 */
-	static async fit( renderer, material, options = {} ) {
-
-		const { onProgress, resolution = 512, debugView = 'shaded', channels = CHANNELS, ...trainerOptions } = options;
-
-		const channelClassification = classifyMaterialChannels( material, channels );
-
-		if ( channelClassification.activeChannels.length === 0 ) {
-
-			throw new Error( 'THREE.NTCNodeMaterial.fit: every channel on this material is constant - there is nothing for a network to fit. Use NTCSource.classifyMaterialChannels() directly instead.' );
-
-		}
-
-		const renderTargets = await bakeMaterialToTextures( renderer, material, resolution, channelClassification.activeChannels );
-
-		const trainer = new NTCTrainer( {
-			outputChannels: channelClassification.totalChannels,
-			channelActivations: buildChannelActivations( channelClassification.activeChannels ),
-			...trainerOptions
-		} );
-
-		let current = null;
-
-		const rebuild = ( cpuModel ) => {
-
-			const previous = current;
-			current = new NTCNodeMaterial( cpuModel, channelClassification, { debugView, channels } );
-			if ( previous ) previous.dispose();
-
-			return current;
-
-		};
-
-		try {
-
-			const result = await trainer.train( {
-				renderer,
-				sourceTextures: renderTargets.map( ( renderTarget ) => renderTarget.texture ),
-				onProgress: onProgress ? ( progress ) => onProgress( { ...progress, material: rebuild( progress.cpuModel ) } ) : null
-			} );
-
-			rebuild( result.cpuModel );
-
-			return {
-				material: current,
-				channelClassification,
-				cpuModel: result.cpuModel,
-				loss: result.loss,
-				iteration: result.iteration,
-				iterations: result.iterations,
-				stoppedEarly: result.stoppedEarly
-			};
-
-		} finally {
-
-			for ( const renderTarget of renderTargets ) renderTarget.dispose();
-
-		}
-
-	}
-
 }
+
+// The end-to-end classify -> bake -> train -> reconstruct convenience path
+// (formerly a `static fit()` here) lives in `training/NTCFit.js` - it pulls
+// in `NTCTrainer`/`NTCSource`, which this file deliberately doesn't: every
+// other export here only *decodes* an already-trained model (loader- and
+// inference-example-facing), with no training-side dependencies at all.
 
 export { NTCNodeMaterial, sliceChannels, reconstructFinalNormal };

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { uv } from 'three/tsl';
-import { NTCNodeMaterial } from '../../../../examples/jsm/ntc/NTCNodeMaterial.js';
-import { classifyMaterialChannels } from '../../../../examples/jsm/ntc/NTCSource.js';
+import { classifyMaterialChannels } from '../../../../examples/jsm/ntc/training/NTCSource.js';
+import { fitNTCMaterial } from '../../../../examples/jsm/ntc/training/NTCFit.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
 
 // End-to-end coverage that the trainer actually fits the channels added on
@@ -16,9 +16,9 @@ import { createTestRenderer } from '../helpers/webgpuEval.js';
 // converges: finite, decreasing loss, exactly like the pre-existing channels
 // this trainer was already known to handle.
 //
-// This is the only test in the suite that drives `NTCNodeMaterial
-// .fit()` - the full classify -> bake -> train -> reconstruct pipeline - for
-// these specific channels, so it's what actually answers "is the trainer set
+// This is the only test in the suite that drives `fitNTCMaterial()` - the
+// full classify -> bake -> train -> reconstruct pipeline - for these
+// specific channels, so it's what actually answers "is the trainer set
 // up to train these new channels", as opposed to inferring it from the
 // generic (channel-agnostic) shape of NTCSource.js/
 // NTCTrainer.js.
@@ -82,7 +82,7 @@ describe( 'Addons > Neural > NeuralMaterial > new channels train end-to-end (rea
 
 		const lossHistory = [];
 
-		const { material: neuralMaterial, loss } = await NTCNodeMaterial.fit( renderer, material, {
+		const { material: neuralMaterial, loss } = await fitNTCMaterial( renderer, material, {
 			resolution: 64,
 			levels: 2,
 			baseResolution: 8,

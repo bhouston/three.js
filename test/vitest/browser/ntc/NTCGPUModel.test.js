@@ -3,7 +3,7 @@ import { Fn, instanceIndex } from 'three/tsl';
 import {
 	computeTextureModelLayout,
 	NTCGPUModel
-} from '../../../../examples/jsm/ntc/NTCGPUModel.js';
+} from '../../../../examples/jsm/ntc/training/NTCGPUModel.js';
 import { withTestRenderer } from '../helpers/webgpuEval.js';
 
 // NTCGPUModel.js only *computes* a storage-buffer layout (offsets,

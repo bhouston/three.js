@@ -1,11 +1,10 @@
-// Exported as .ntc (JSON content, format: 'three-ntc') - see FORMAT/VERSION
-// below.
+// Exported as .ntc (JSON content, format: 'three-ntc') - FORMAT/VERSION
+// live in ../NTCFormat.js, since ../loaders/NTCLoader.js (runtime, no
+// training dependencies) needs them too.
 
-import { encodeUint8Base64, encodeMLPLayersBase64 } from './NTCBinaryCodec.js';
+import { FORMAT, VERSION } from '../NTCFormat.js';
+import { encodeUint8Base64, encodeMLPLayersBase64 } from '../NTCBinaryCodec.js';
 import { computeLatentRanges } from './NTCQuantization.js';
-
-const FORMAT = 'three-ntc';
-const VERSION = 1;
 
 /**
  * A `.ntc` (Neural Texture Compression) asset is one shared multiresolution
@@ -15,7 +14,7 @@ const VERSION = 1;
  * named PBR channels at load time (see NTCLoader.js / NTCNodeMaterial.js).
  *
  * `cpuModel` is `{ channels, grids, decoder: { layers }, outputChannels }` -
- * exactly what `NTCTrainer`/`NTCNodeMaterial.fit()` produces.
+ * exactly what `NTCTrainer`/`NTCFit.fitNTCMaterial()` produces.
  * `channelClassification` is `{ activeChannels, constantValues,
  * totalChannels, packCount, renderFlags }` - the layout that model's output
  * was trained against (see `NTCSource.classifyMaterialChannels`).

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CHANNELS, layoutChannels } from '../../../../examples/jsm/ntc/NTCFormat.js';
-import { classifyMaterialChannels } from '../../../../examples/jsm/ntc/NTCSource.js';
+import { classifyMaterialChannels } from '../../../../examples/jsm/ntc/training/NTCSource.js';
 
 describe( 'Addons > Neural > NeuralMaterial > NTCSource', () => {
 

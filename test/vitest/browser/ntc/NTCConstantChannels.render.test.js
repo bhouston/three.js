@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { cos, sin, uv, vec2 } from 'three/tsl';
 import { CHANNELS } from '../../../../examples/jsm/ntc/NTCFormat.js';
-import { classifyMaterialChannels } from '../../../../examples/jsm/ntc/NTCSource.js';
+import { classifyMaterialChannels } from '../../../../examples/jsm/ntc/training/NTCSource.js';
 import { reconstructFinalNormal } from '../../../../examples/jsm/ntc/NTCNodeMaterial.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
 

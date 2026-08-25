@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DataUtils } from 'three';
 import { uv, vec4 } from 'three/tsl';
-import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/NTCTextureSource.js';
+import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/training/NTCTextureSource.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
 
 // bakeColorNodeToTexture's render targets are HalfFloatType, so

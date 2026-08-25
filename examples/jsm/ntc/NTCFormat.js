@@ -3,6 +3,16 @@ import { float, transformNormalToView, vec2, vec3, vec4 } from 'three/tsl';
 import { OUTPUT_TYPES, channelEffectiveType, constantToNode, reconstructFinalNormal } from './NTCOutputTypes.js';
 
 /**
+ * The `.ntc` file format identifier/version - see `training/NTCManifest.js`
+ * (encoder) and `../loaders/NTCLoader.js` (decoder). Declared here, not in
+ * NTCManifest.js, since NTCLoader.js (runtime, no training dependencies)
+ * needs it too, and this file is the one shared foundation both the
+ * runtime decode path and the training/export path already build on.
+ */
+const FORMAT = 'three-ntc';
+const VERSION = 1;
+
+/**
  * Full vocabulary of standard PBR channels this trainer knows how to fit,
  * jointly, with one shared grid + MLP network (NVIDIA neural texture
  * compression style: one small decoder, many correlated output channels).
@@ -911,6 +921,8 @@ function buildFrameViewColorNode( frameNode ) {
 }
 
 export {
+	FORMAT,
+	VERSION,
 	CHANNELS,
 	MAX_TOTAL_CHANNELS,
 	FRAME_VIEWS,

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DataUtils } from 'three';
 import { vec2, vec4 } from 'three/tsl';
 import { reconstructFinalNormal } from '../../../../examples/jsm/ntc/NTCNodeMaterial.js';
-import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/NTCTextureSource.js';
+import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/training/NTCTextureSource.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
 
 // reconstructFinalNormal blends a trained tangent-space (dx, dy) offset

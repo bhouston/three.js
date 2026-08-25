@@ -1,6 +1,5 @@
 import { FileLoader, Loader } from 'three';
-import { FORMAT, VERSION } from '../ntc/NTCManifest.js';
-import { getChannel, layoutChannels } from '../ntc/NTCFormat.js';
+import { FORMAT, VERSION, getChannel, layoutChannels } from '../ntc/NTCFormat.js';
 import { decodeUint8Base64, decodeMLPLayersBase64 } from '../ntc/NTCBinaryCodec.js';
 
 /**
@@ -12,7 +11,7 @@ import { decodeUint8Base64, decodeMLPLayersBase64 } from '../ntc/NTCBinaryCodec.
  * `parse()` reconstructs `{ name, cpuModel, channelClassification }` -
  * exactly what `new NTCNodeMaterial( cpuModel, channelClassification,
  * options )` expects (see NTCNodeMaterial.js) - the same shape a live
- * `NTCTrainer` run / `NTCNodeMaterial.fit()` call produces.
+ * `NTCTrainer` run / `NTCFit.fitNTCMaterial()` call produces.
  *
  * @augments Loader
  * @three_import import { NTCLoader } from 'three/addons/loaders/NTCLoader.js';

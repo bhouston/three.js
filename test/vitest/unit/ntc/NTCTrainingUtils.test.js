@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRandom, getLearningRate, yieldToBrowser } from '../../../../examples/jsm/ntc/NTCTrainingUtils.js';
+import { createRandom, getLearningRate, yieldToBrowser } from '../../../../examples/jsm/ntc/training/NTCTrainingUtils.js';
 
 describe( 'Addons > Neural > NeuralTrainingUtils', () => {
 

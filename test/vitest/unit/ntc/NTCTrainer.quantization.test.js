@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createLatentGrid } from '../../../../examples/jsm/ntc/NTCGridModel.js';
-import { createMLP, forwardMLP } from '../../../../examples/jsm/ntc/NTCMLP.js';
-import { QUANTIZATION_SCHEMES, DEFAULT_QUANTIZATION_OPTIONS, computeLatentRanges } from '../../../../examples/jsm/ntc/NTCQuantization.js';
+import { createLatentGrid } from '../../../../examples/jsm/ntc/training/NTCGridModel.js';
+import { createMLP, forwardMLP } from '../../../../examples/jsm/ntc/training/NTCMLP.js';
+import { QUANTIZATION_SCHEMES, DEFAULT_QUANTIZATION_OPTIONS, computeLatentRanges } from '../../../../examples/jsm/ntc/training/NTCQuantization.js';
 
 // Part 1: config plumbing (Task D) - mocks every GPU delegate point exactly
 // like NTCTrainer.test.js, so `train()`'s orchestration (including
@@ -50,32 +50,32 @@ const mocks = vi.hoisted( () => {
 
 } );
 
-vi.mock( '../../../../examples/jsm/ntc/NTCGridPyramidModel.js', () => ( {
+vi.mock( '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js', () => ( {
 	createNTCGridPyramidModel: mocks.createNTCGridPyramidModel
 } ) );
 
-vi.mock( '../../../../examples/jsm/ntc/NTCGPUModel.js', () => ( {
+vi.mock( '../../../../examples/jsm/ntc/training/NTCGPUModel.js', () => ( {
 	NTCGPUModel: mocks.NTCGPUModel
 } ) );
 
-vi.mock( '../../../../examples/jsm/ntc/NTCGPUComputeTSL.js', () => ( {
+vi.mock( '../../../../examples/jsm/ntc/training/NTCGPUComputeTSL.js', () => ( {
 	createTextureTrainBatchComputeNode: mocks.createTextureTrainBatchComputeNode,
 	createAccumulateGradientNormComputeNode: mocks.createAccumulateGradientNormComputeNode,
 	createTextureAdamWeightsComputeNode: mocks.createTextureAdamWeightsComputeNode,
 	createTextureAdamLatentsComputeNode: mocks.createTextureAdamLatentsComputeNode
 } ) );
 
-vi.mock( '../../../../examples/jsm/ntc/NTCGPUKernelsTSL.js', () => ( {
+vi.mock( '../../../../examples/jsm/ntc/training/NTCGPUKernelsTSL.js', () => ( {
 	createResetGradientNormComputeNode: mocks.createResetGradientNormComputeNode
 } ) );
 
-vi.mock( '../../../../examples/jsm/ntc/NTCTrainingUtils.js', () => ( {
+vi.mock( '../../../../examples/jsm/ntc/training/NTCTrainingUtils.js', () => ( {
 	getLearningRate: mocks.getLearningRate,
 	createRandom: mocks.createRandom,
 	yieldToBrowser: mocks.yieldToBrowser
 } ) );
 
-const { NTCTrainer } = await import( '../../../../examples/jsm/ntc/NTCTrainer.js' );
+const { NTCTrainer } = await import( '../../../../examples/jsm/ntc/training/NTCTrainer.js' );
 
 function createRenderer() {
 

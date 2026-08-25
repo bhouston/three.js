@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/NTCGridPyramidModel.js';
+import { createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js';
 import { CHANNELS, layoutChannels, getChannel } from '../../../../examples/jsm/ntc/NTCFormat.js';
-import { encodeNTC, FORMAT, VERSION } from '../../../../examples/jsm/ntc/NTCManifest.js';
+import { encodeNTC, FORMAT, VERSION } from '../../../../examples/jsm/ntc/training/NTCManifest.js';
 import { NTCLoader } from '../../../../examples/jsm/loaders/NTCLoader.js';
 
 // Mirrors what `NTCSource.classifyMaterialChannels` would return

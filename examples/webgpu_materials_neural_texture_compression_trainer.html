@@ -115,8 +115,8 @@
 			<button id="stopButton" disabled>Stop training</button>
 			<div><span id="networkSize">—</span></div>
 			<div><strong>Trained network:</strong></div>
-			<button id="saveJsonButton" disabled>Save JSON</button>
-			<button id="loadJsonButton">Load JSON</button>
+			<button id="saveJsonButton" disabled>Save .ntc</button>
+			<button id="loadJsonButton">Load .ntc</button>
 			<div id="status">Ready.</div>
 			<input id="mtlxFileInput" type="file" accept=".mtlx,.zip,.mtlx.zip" hidden>
 			<input id="jsonFileInput" type="file" accept=".ntc,.json" hidden>
@@ -153,15 +153,15 @@
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
-			import { NTCTrainer } from 'three/addons/ntc/NTCTrainer.js';
+			import { NTCTrainer } from 'three/addons/ntc/training/NTCTrainer.js';
 			import { NTCNodeMaterial } from 'three/addons/ntc/NTCNodeMaterial.js';
-			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/ntc/NTCSource.js';
-			import { computeGridLevels } from 'three/addons/ntc/NTCGridPyramidModel.js';
-			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/ntc/NTCGridModel.js';
+			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/ntc/training/NTCSource.js';
+			import { computeGridLevels } from 'three/addons/ntc/training/NTCGridPyramidModel.js';
+			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, GRID_GROWTH_FACTOR_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/ntc/training/NTCGridModel.js';
 			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, buildChannelActivations } from 'three/addons/ntc/NTCFormat.js';
-			import { NTCLossGraph } from 'three/addons/ntc/NTCLossGraph.js';
-			import { computeMLPParamCount, computeMLPFlops, computeGridLatentTexels, computeModelFootprint, formatModelSizeSummary } from 'three/addons/ntc/NTCModelSize.js';
-			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/ntc/NTCMaterialXSamples.js';
+			import { NTCLossGraph } from 'three/addons/ntc/training/NTCLossGraph.js';
+			import { computeMLPParamCount, computeMLPFlops, computeGridLatentTexels, computeModelFootprint, formatModelSizeSummary } from 'three/addons/ntc/training/NTCModelSize.js';
+			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/ntc/training/NTCMaterialXSamples.js';
 			import { NTCExporter } from 'three/addons/exporters/NTCExporter.js';
 			import { NTCLoader } from 'three/addons/loaders/NTCLoader.js';
 
@@ -592,7 +592,7 @@
 				const { name, cpuModel, channelClassification: loadedClassification } = new NTCLoader().parse( payload );
 
 				// `NTCLoader.parse()` returns the exact `cpuModel` shape
-				// the same shape a live `NTCTrainer`/`NTCNodeMaterial.fit()` run produces (see that
+				// the same shape a live `NTCTrainer`/`NTCFit.fitNTCMaterial()` run produces (see that
 				// module) - it doesn't carry `resolutions`/`hiddenSizes`, which
 				// `updateNetworkSize()` reads directly off `currentCpuModel`, so
 				// they're re-derived here from the decoded grids/decoder layers.

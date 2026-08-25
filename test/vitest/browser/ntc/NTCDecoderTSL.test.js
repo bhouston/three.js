@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { uv, vec4 } from 'three/tsl';
 import { evaluateNeuralTextureRaw, buildLevelTextures } from '../../../../examples/jsm/ntc/NTCDecoderTSL.js';
-import { createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/NTCGridPyramidModel.js';
-import { forwardMLP } from '../../../../examples/jsm/ntc/NTCMLP.js';
-import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/NTCTextureSource.js';
+import { createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js';
+import { forwardMLP } from '../../../../examples/jsm/ntc/training/NTCMLP.js';
+import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/training/NTCTextureSource.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
 
 // evaluateNeuralTextureRaw's whole job at inference time is: sample the

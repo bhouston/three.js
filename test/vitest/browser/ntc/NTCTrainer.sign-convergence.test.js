@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { vec2, vec4 } from 'three/tsl';
-import { NTCTrainer } from '../../../../examples/jsm/ntc/NTCTrainer.js';
+import { NTCTrainer } from '../../../../examples/jsm/ntc/training/NTCTrainer.js';
 import { evaluateNeuralTextureRaw, buildLevelTextures } from '../../../../examples/jsm/ntc/NTCDecoderTSL.js';
-import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/NTCTextureSource.js';
+import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/training/NTCTextureSource.js';
 import { applyChannelActivation } from '../../../../examples/jsm/ntc/NTCOutputActivations.js';
 import { createTestRenderer } from '../helpers/webgpuEval.js';
 

@@ -1,5 +1,5 @@
 import { float, min, max, round } from 'three/tsl';
-import { encodeUint8Base64, decodeUint8Base64 } from './NTCBinaryCodec.js';
+import { encodeUint8Base64, decodeUint8Base64 } from '../NTCBinaryCodec.js';
 
 // Quantization-Aware Training (QAT) scheme registry, shared by every
 // neural-* trainer (texture, material, appearance). Because every trainer's

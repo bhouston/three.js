@@ -3,7 +3,7 @@ import {
 	QUANTIZATION_SCHEMES,
 	DEFAULT_QUANTIZATION_OPTIONS,
 	resolveQuantizationConfig
-} from '../../../../examples/jsm/ntc/NTCQuantization.js';
+} from '../../../../examples/jsm/ntc/training/NTCQuantization.js';
 
 describe( 'Addons > Neural > NeuralQuantization', () => {
 

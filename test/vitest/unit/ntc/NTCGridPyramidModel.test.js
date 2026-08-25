@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeGridLevels, createLatentGrid, createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/NTCGridPyramidModel.js';
+import { computeGridLevels, createLatentGrid, createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js';
 
 describe( 'Addons > Neural > Neural-Texture > NeuralTextureModel', () => {
 

@@ -1,7 +1,7 @@
 import { bitangentWorld, float, tangentWorld, vec4 } from 'three/tsl';
 import { bakeColorNodeToTexture } from './NTCTextureSource.js';
-import { CHANNELS, FRAME_VIEWS, layoutChannels, buildDebugViewColorNode, buildFrameViewColorNode } from './NTCFormat.js';
-import { constantToNode } from './NTCOutputTypes.js';
+import { CHANNELS, FRAME_VIEWS, layoutChannels, buildDebugViewColorNode, buildFrameViewColorNode } from '../NTCFormat.js';
+import { constantToNode } from '../NTCOutputTypes.js';
 
 /**
  * Resolves every channel in a channel array (see NTCFormat.

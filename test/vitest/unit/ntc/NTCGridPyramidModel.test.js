@@ -225,4 +225,24 @@ describe( 'Addons > NTC > NTCGridPyramidModel', () => {
 
 	} );
 
+	describe( 'enableUvTransform', () => {
+
+		it( 'omits uvTransform entirely by default (byte-for-byte no-op vs. before this feature existed)', () => {
+
+			const model = createNTCGridPyramidModel( { channels: 2, levels: 2, baseResolution: 4 }, () => 0.5 );
+
+			expect( model.uvTransform ).toBeUndefined();
+
+		} );
+
+		it( 'adds an identity-initialized uvTransform (rotation 0, scale [1, 1]) when enabled', () => {
+
+			const model = createNTCGridPyramidModel( { channels: 2, levels: 2, baseResolution: 4, enableUvTransform: true }, () => 0.5 );
+
+			expect( model.uvTransform ).toEqual( { rotation: 0, scale: [ 1, 1 ] } );
+
+		} );
+
+	} );
+
 } );

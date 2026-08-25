@@ -199,6 +199,13 @@
 				iterations: 10000,
 				learningRate: 0.01,
 				quantization: 'uint8',
+				// Learned per-material UV transform (rotation + anisotropic
+				// scale, see NTCUvTransform.js/NTCUvTransformTrainer.js) -
+				// off by default (a true no-op vs. training without this
+				// feature). Try it on `standard_surface_rotate2d_test.mtlx`
+				// (rotates its image texture 45 degrees before sampling), a
+				// good, deliberately UV-misaligned test case for it.
+				enableUvTransform: false,
 				debugView: 'shaded',
 				shape: 'torus',
 				showBackground: true
@@ -316,6 +323,7 @@
 				trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' );
 				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
 				trainingFolder.add( params, 'quantization', { 'Off': 'none', '8-bit': 'uint8' } ).name( 'quantization' );
+				trainingFolder.add( params, 'enableUvTransform' ).name( 'learn UV transform (experimental)' );
 
 				const objectFolder = gui.addFolder( 'object' );
 				objectFolder.add( params, 'shape', [ 'torus', 'sphere', 'plane' ] ).name( 'shape' ).onChange( updateShape );
@@ -725,6 +733,7 @@
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),
 						quantization: { mode: params.quantization },
+						enableUvTransform: params.enableUvTransform,
 						seed: 1
 					} );
 					activeTrainer = trainer;

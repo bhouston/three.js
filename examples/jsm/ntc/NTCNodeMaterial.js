@@ -4,6 +4,7 @@ import { buildMipChainTexture, evaluateNeuralTextureRaw } from './NTCDecoderTSL.
 import { applyChannelActivation } from './NTCOutputActivations.js';
 import { CHANNELS, FRAME_VIEWS, getChannel, buildDebugViewColorNode, buildFrameViewColorNode } from './NTCFormat.js';
 import { constantToNode, reconstructFinalNormal } from './NTCOutputTypes.js';
+import { applyUvTransformTSL, resolveUvTransformMatrix } from './NTCUvTransform.js';
 
 /**
  * Slices the raw per-channel output array (see evaluateNeuralTextureRaw)
@@ -168,6 +169,26 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		let coord = uv();
 		if ( uvScaleNode ) coord = coord.mul( uvScaleNode );
 		if ( uvOffsetNode ) coord = coord.add( uvOffsetNode );
+
+		// Learned per-material affine UV transform (see NTCUvTransform.js /
+		// NTCGridPyramidModel.js's `enableUvTransform` option) - baked into
+		// `cpuModel.uvTransform` (a flat 6-float matrix) once training
+		// finishes, `null`/absent for every `.ntc` file predating this
+		// feature - but still the *decomposed* `{ rotation, scale }` shape
+		// for any `cpuModel` a live `onProgress` preview sees mid-training
+		// (see NTCTrainer.js), so `resolveUvTransformMatrix` normalizes
+		// either shape to the flat matrix `applyUvTransformTSL` needs (or
+		// `null`). `options.uvTransformNode` overrides it with a live TSL
+		// matrix (6 nodes) instead, the same override pattern as
+		// `options.lodNode`/`lodBias` below. Applied *before* `fract()`, at
+		// the same point `uvScaleNode`/`uvOffsetNode` already compose, so
+		// `computeAutoLodNode` below (which reads this same pre-`fract`
+		// `coord`) automatically picks up the transform's Jacobian too - an
+		// anisotropic scale changes the reconstructed footprint size, and
+		// this needs no extra code to account for that.
+		const uvTransformMatrix = options.uvTransformNode || resolveUvTransformMatrix( cpuModel.uvTransform );
+		if ( uvTransformMatrix ) coord = applyUvTransformTSL( coord, uvTransformMatrix );
+
 		const tiledUV = fract( coord );
 
 		// Auto-LOD (see computeAutoLodNode above) needs `coord` (pre-`fract()`,

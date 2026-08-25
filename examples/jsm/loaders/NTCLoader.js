@@ -97,7 +97,12 @@ class NTCLoader extends Loader {
 			decoder: { layers: decoderLayers },
 			outputChannels: manifest.outputChannels !== undefined ?
 				manifest.outputChannels : decoderLayers[ decoderLayers.length - 1 ].outputSize,
-			wrap: manifest.latents.wrap || 'repeat'
+			wrap: manifest.latents.wrap || 'repeat',
+			// Learned per-material affine UV transform (see NTCUvTransform.js) -
+			// a flat 6-float matrix, or `null` for every manifest predating this
+			// feature (see NTCManifest.js's `encodeNTC`) - passed straight
+			// through, no decoding needed (plain JSON numbers already).
+			uvTransform: manifest.uvTransform || null
 		};
 
 		const channelClassification = decodeChannelClassification( manifest.channels, manifest.renderFlags );

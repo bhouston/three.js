@@ -25,6 +25,7 @@ import {
 import { applyChannelActivation, channelActivationDerivativeFromOutput } from '../NTCOutputActivations.js';
 import { QUANTIZATION_SCHEMES } from './NTCQuantization.js';
 import { selectFeatureLevelTSL } from '../NTCMipBands.js';
+import { applyUvTransformTSL } from '../NTCUvTransform.js';
 
 function hash1( seed ) {
 
@@ -36,16 +37,43 @@ function hash1( seed ) {
  * Generates a stratified-random UV in [0,1)^2 for training sample `sampleIdx`,
  * re-jittered every training step via `stepUniform` so the same texel isn't
  * sampled every iteration.
+ *
+ * `tileRange` (default 0 - a byte-for-byte no-op, only ever non-zero when
+ * `uvTransformNode` is in play, see createTextureTrainBatchComputeNode's doc
+ * comment on why) additionally offsets the sample by a random *integer*
+ * number of tiles in `[-tileRange, tileRange]` along each axis, re-drawn
+ * every sample/step exactly like the fractional jitter above. Both the
+ * source-texture ground-truth sample and the (`wrapIndexTSL`-addressed) grid
+ * taps already wrap correctly for any real coordinate - see this file's other
+ * doc comments - so widening the sampled range costs nothing but a couple
+ * extra hashes; it exists purely to fix *coverage*, not correctness: a
+ * learned rotation/anisotropic scale generally isn't in `GL(2,Z)`, so folding
+ * a single UV tile's transformed image back onto the grid's periodic (`mod
+ * 1`) canonical space does not tile it evenly - some grid cells would get
+ * systematically over/under-sampled if training only ever drew from one
+ * tile. Sampling a handful of tiles and letting the existing wrap addressing
+ * do the folding is enough for that non-uniformity to average out over many
+ * steps.
  */
-function randomStratifiedUV( sampleIdx, stepUniform, gridSize ) {
+function randomStratifiedUV( sampleIdx, stepUniform, gridSize, tileRange = 0 ) {
 
 	const cellX = sampleIdx.mod( int( gridSize ) );
 	const cellY = int( floor( float( sampleIdx ).div( float( gridSize ) ) ) );
 	const jitterSeed = float( sampleIdx ).mul( 12.9898 ).add( stepUniform.mul( 78.233 ) );
 	const jx = hash1( jitterSeed );
 	const jy = hash1( jitterSeed.add( 91.345 ) );
-	const u = float( cellX ).add( jx ).div( float( gridSize ) );
-	const v = float( cellY ).add( jy ).div( float( gridSize ) );
+	let u = float( cellX ).add( jx ).div( float( gridSize ) );
+	let v = float( cellY ).add( jy ).div( float( gridSize ) );
+
+	if ( tileRange > 0 ) {
+
+		const tileSpan = float( 2 * tileRange + 1 );
+		const tileX = float( int( hash1( jitterSeed.add( 171.23 ) ).mul( tileSpan ) ) ).sub( tileRange );
+		const tileY = float( int( hash1( jitterSeed.add( 254.67 ) ).mul( tileSpan ) ) ).sub( tileRange );
+		u = u.add( tileX );
+		v = v.add( tileY );
+
+	}
 
 	return vec2( u, v );
 
@@ -122,8 +150,19 @@ function sampleTrainingLod( seedBase, maxLod ) {
  * via sigmoid, signed tangent-space offsets via tanh, HDR emission via
  * softplus) instead of forcing every channel through the same unbounded
  * linear output.
+ *
+ * `uvTransformNode`, when given (a flat 6-entry array from
+ * NTCUvTransform.composeUvTransformMatrixTSL, rebuilt every invocation from
+ * the live rotation/scale uniforms this sample's outer SPSA loop is
+ * optimizing - see NTCTrainer.js), is applied to a *copy* of `uv` used only
+ * for the grid-level taps below (step 1) - never to the ground-truth
+ * source-texture sample above, which must stay in the mesh's real UV space
+ * (what we're trying to reproduce output *for*, not an input the grid gets
+ * to reparameterize). `tileRange`, only meaningful alongside a non-null
+ * `uvTransformNode` (see `randomStratifiedUV`'s doc comment for why), widens
+ * where `uv` itself is drawn from.
  */
-function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
+function createTextureTrainBatchComputeNode( gpuModel, sourceTextures, uvTransformNode = null, tileRange = 0 ) {
 
 	const {
 		layout,
@@ -168,7 +207,12 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 	return Fn( () => {
 
 		const sampleIdx = int( instanceIndex );
-		const uv = randomStratifiedUV( sampleIdx, stepUniform, gridSize );
+		const uv = randomStratifiedUV( sampleIdx, stepUniform, gridSize, tileRange );
+		// Grid-tap coordinate: `uv` re-aligned by the learned UV transform
+		// when one is in play (see this function's doc comment above),
+		// otherwise identical to `uv` - the ground-truth sample below always
+		// uses plain `uv`, never this.
+		const canonicalUv = uvTransformNode !== null ? applyUvTransformTSL( uv, uvTransformNode ) : uv;
 		const actBase = sampleIdx.mul( int( activationStride ) );
 
 		// This sample's stochastically chosen, exact-integer training LOD,
@@ -211,8 +255,8 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		for ( let g = 0; g < gridLevels.length; g ++ ) {
 
 			const level = gridLevels[ g ];
-			const x = uv.x.mul( level.width ).sub( 0.5 );
-			const y = uv.y.mul( level.height ).sub( 0.5 );
+			const x = canonicalUv.x.mul( level.width ).sub( 0.5 );
+			const y = canonicalUv.y.mul( level.height ).sub( 0.5 );
 			const x0 = int( floor( x ) );
 			const y0 = int( floor( y ) );
 			const tx = x.sub( float( x0 ) );

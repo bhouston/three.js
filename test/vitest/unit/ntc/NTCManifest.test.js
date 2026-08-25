@@ -200,6 +200,36 @@ describe( 'Addons > NTC > NTCManifest', () => {
 
 	} );
 
+	it( 'round-trips uvTransform through export -> JSON -> load', () => {
+
+		const classification = buildChannelClassification();
+		const model = buildModel( classification.totalChannels );
+		model.uvTransform = [ 0.7071, - 0.7071, 0.7071, 0.7071, 0, 0 ]; // 45deg rotation, unit scale
+
+		const manifest = encodeNTC( model, classification, { name: 'uvTransform roundtrip' } );
+		expect( manifest.uvTransform ).toEqual( model.uvTransform );
+
+		const json = JSON.parse( JSON.stringify( manifest ) );
+		const loaded = new NTCLoader().parse( json );
+
+		expect( loaded.cpuModel.uvTransform ).toEqual( model.uvTransform );
+
+	} );
+
+	it( 'a manifest saved without uvTransform (pre-existing files, or a model trained with enableUvTransform: false) loads with uvTransform null', () => {
+
+		const classification = buildChannelClassification();
+		const model = buildModel( classification.totalChannels );
+
+		const manifest = encodeNTC( model, classification, { name: 'no uvTransform' } );
+		expect( manifest.uvTransform ).toBeNull();
+
+		const loaded = new NTCLoader().parse( JSON.parse( JSON.stringify( manifest ) ) );
+
+		expect( loaded.cpuModel.uvTransform ).toBeNull();
+
+	} );
+
 	it( 'loader rejects a manifest with an unknown channel key', () => {
 
 		const classification = buildChannelClassification();

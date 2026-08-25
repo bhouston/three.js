@@ -41,7 +41,13 @@ function resolveNTCGridPyramidOptions( options = {} ) {
 		mipsPerLevel: options.mipsPerLevel || DEFAULT_MIPS_PER_LEVEL,
 		hiddenSizes: options.hiddenSizes || [ 32, 32 ],
 		outputChannels: options.outputChannels || 3,
-		textureResolution
+		textureResolution,
+		// Learned per-material affine UV transform (see NTCUvTransform.js) -
+		// off by default, a true no-op vs. every model built before this
+		// feature existed (no `uvTransform` field on the CPU model at all,
+		// see createNTCGridPyramidModel below, and no extra training-kernel
+		// work, see NTCGPUComputeTSL.js).
+		enableUvTransform: options.enableUvTransform || false
 	};
 
 }
@@ -63,7 +69,7 @@ function resolveNTCGridPyramidOptions( options = {} ) {
  */
 function createNTCGridPyramidModel( options, random ) {
 
-	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, outputChannels, textureResolution } = resolveNTCGridPyramidOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, outputChannels, textureResolution, enableUvTransform } = resolveNTCGridPyramidOptions( options );
 
 	const resolutions = computeGridLevels( baseResolution, requestedLevels, mipsPerLevel );
 	const levels = resolutions.length;
@@ -75,7 +81,21 @@ function createNTCGridPyramidModel( options, random ) {
 	const inputSize = channels + 1;
 	const decoder = createMLP( inputSize, hiddenSizes, outputChannels, random, 'relu', 'linear' );
 
-	return { channels, levels, mipsPerLevel, resolutions, grids, decoder, hiddenSizes, outputChannels, textureResolution: resolvedTextureResolution, maxLod };
+	const model = { channels, levels, mipsPerLevel, resolutions, grids, decoder, hiddenSizes, outputChannels, textureResolution: resolvedTextureResolution, maxLod };
+
+	// Identity-initialized (rotation 0, scale 1) - standard Spatial
+	// Transformer Networks practice (Jaderberg et al. 2015): training starts
+	// out byte-for-byte equivalent to no transform at all, and only diverges
+	// from identity if doing so actually reduces loss. `scale` is stored here
+	// in real (not log) units for readability; the trainer that actually
+	// optimizes it keeps a log-scale internally (see NTCGPUComputeTSL.js's
+	// doc comment on why) and overwrites this field with the exponentiated
+	// result each sync. Absent entirely when `enableUvTransform` is `false`,
+	// so every other consumer of this model (manifest export, the runtime
+	// material) sees exactly the same shape as before this feature existed.
+	if ( enableUvTransform ) model.uvTransform = { rotation: 0, scale: [ 1, 1 ] };
+
+	return model;
 
 }
 

@@ -165,7 +165,10 @@ describe( 'Addons > Neural > Neural-Texture > NTCTrainer', () => {
 
 			await trainer.train( { renderer, sourceTexture: texture } );
 
-			expect( mocks.createTextureTrainBatchComputeNode ).toHaveBeenCalledWith( mocks.gpuModelInstance, [ texture ] );
+			// Trailing `null, 0` are the (disabled-by-default) learned UV
+			// transform node + tile range - see NTCGPUComputeTSL.js /
+			// NTCUvTransform.js.
+			expect( mocks.createTextureTrainBatchComputeNode ).toHaveBeenCalledWith( mocks.gpuModelInstance, [ texture ], null, 0 );
 
 		} );
 
@@ -177,7 +180,7 @@ describe( 'Addons > Neural > Neural-Texture > NTCTrainer', () => {
 
 			await trainer.train( { renderer, sourceTextures: textures } );
 
-			expect( mocks.createTextureTrainBatchComputeNode ).toHaveBeenCalledWith( mocks.gpuModelInstance, textures );
+			expect( mocks.createTextureTrainBatchComputeNode ).toHaveBeenCalledWith( mocks.gpuModelInstance, textures, null, 0 );
 
 		} );
 

@@ -5,6 +5,7 @@
 import { FORMAT, VERSION } from '../NTCFormat.js';
 import { encodeUint8Base64, encodeMLPLayersBase64 } from '../NTCBinaryCodec.js';
 import { computeLatentRanges } from './NTCQuantization.js';
+import { resolveUvTransformMatrix } from '../NTCUvTransform.js';
 
 /**
  * A `.ntc` (Neural Texture Compression) asset is one shared mip pyramid of
@@ -72,6 +73,21 @@ function encodeNTC( cpuModel, channelClassification, options = {} ) {
 		},
 		outputChannels: cpuModel.outputChannels,
 		mlp: encodeMLPLayersBase64( cpuModel.decoder.layers ),
+		// Learned per-material affine UV transform (see NTCUvTransform.js /
+		// NTCGridPyramidModel.js's `enableUvTransform` option), baked to its
+		// flat 6-float matrix form by NTCTrainer.js at the end of training -
+		// an optional, additive, non-`VERSION`-bump field (mirroring
+		// `renderFlags` below, not `mipsPerLevel`/`maxLod` above, which *are*
+		// a `VERSION` bump): `null`/absent round-trips as "no transform",
+		// exactly matching every `.ntc` file predating this feature, and an
+		// older loader reading a newer file just ignores the extra key.
+		// `resolveUvTransformMatrix` (rather than a plain `|| null`) also
+		// tolerates exporting a `cpuModel` whose `uvTransform` is still the
+		// decomposed `{ rotation, scale }` shape (e.g. `encodeNTC` called
+		// directly on a training `onProgress` snapshot, before
+		// NTCTrainer.js's end-of-train() bake step runs) - see
+		// NTCUvTransform.js's doc comment.
+		uvTransform: resolveUvTransformMatrix( cpuModel.uvTransform ),
 		// See NTCSource.resolveRenderFlags's doc comment - `side`/
 		// `transparent` aren't channels (nothing for the network to fit), but
 		// still need to round-trip so a loaded material's transmission pass

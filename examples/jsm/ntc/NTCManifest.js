@@ -81,7 +81,11 @@ function computeRange( data ) {
 
 	}
 
-	if ( min > max ) { min = 0; max = 0; } // empty grid, shouldn't happen in practice
+	if ( min > max ) {
+
+		min = 0; max = 0;
+
+	} // empty grid, shouldn't happen in practice
 
 	return [ min, max ];
 

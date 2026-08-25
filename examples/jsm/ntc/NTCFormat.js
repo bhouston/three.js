@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { float, vec2, vec3 } from 'three/tsl';
 import { OUTPUT_TYPES, channelEffectiveType, constantToNode, reconstructFinalNormal } from './NTCOutputTypes.js';
 

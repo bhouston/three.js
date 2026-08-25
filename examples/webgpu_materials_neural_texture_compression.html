@@ -60,16 +60,16 @@
 			import { NTCLoader } from 'three/addons/loaders/NTCLoader.js';
 			import { NTCNodeMaterial } from 'three/addons/ntc/NTCNodeMaterial.js';
 
-			// Two rows - 3 on top, 2 on bottom - laid out on a grid wide/tall
-			// enough for a radius-1 sphere plus a bit of breathing room between
-			// neighbors.
+			// Two rows of 3 laid out on a grid wide/tall enough for a radius-1
+			// sphere plus a bit of breathing room between neighbors.
 			const SPACING = 2.6;
 			const ASSETS = [
 				{ name: 'Brick', file: 'ntc/brick.ntc', row: 0, col: 0 },
 				{ name: 'Gold', file: 'ntc/gold.ntc', row: 0, col: 1 },
 				{ name: 'Wave Normal', file: 'ntc/wave_normal.ntc', row: 0, col: 2 },
-				{ name: 'Glass Dispersion', file: 'ntc/glass_dispersion.ntc', row: 1, col: 0.5 },
-				{ name: 'Rainbow Emissive', file: 'ntc/rainbow_emissive.ntc', row: 1, col: 1.5 }
+				{ name: 'Glass Dispersion', file: 'ntc/glass_dispersion.ntc', row: 1, col: 0 },
+				{ name: 'Rainbow Emissive', file: 'ntc/rainbow_emissive.ntc', row: 1, col: 1 },
+				{ name: 'Pearl', file: 'ntc/pearl.ntc', row: 1, col: 2 }
 			];
 
 			const BACKGROUND_COLOR = 0x15171c;
@@ -128,9 +128,8 @@
 
 			}
 
-			// Grid position for an asset's { row, col } - row 0 (3 columns) is
-			// centered over row 1 (2 columns, offset by half a column) so both
-			// rows read as one balanced 3-over-2 arrangement.
+			// Grid position for an asset's { row, col } - both rows have 3
+			// columns, giving a balanced 3x2 arrangement.
 			function gridPosition( asset ) {
 
 				const x = ( asset.col - 1 ) * SPACING;

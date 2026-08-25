@@ -123,7 +123,7 @@ export const MATERIALX_SAMPLES = [
 		key: 'neural_train_velvet',
 		file: 'neural_train_velvet.mtlx',
 		label: 'Velvet',
-		description: 'Sheen-driven velvet cloth look with a deep red diffuse base.'
+		description: 'Blue velvet with gold crown embroidery; luminance drives roughness and bump, blueness drives sheen.'
 	},
 	{
 		key: 'open_pbr_surface_honey',

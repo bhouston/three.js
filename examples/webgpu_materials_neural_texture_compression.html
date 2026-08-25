@@ -31,7 +31,7 @@
 
 			<small>
 				<a href="https://research.nvidia.com/labs/rtr/neural_texture_compression/" target="_blank" rel="noopener">Neural texture compression</a>
-				loader/decoder by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>. Each of the 5 materials is
+				loader/decoder by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>. Each of the 7 materials is
 				represented by 32KB of data (a 3-level multiresolution feature grid + a multi-layer perceptron), requiring ~500 FLOPs
 				per texel to decode.
 			</small>
@@ -60,8 +60,9 @@
 			import { NTCLoader } from 'three/addons/loaders/NTCLoader.js';
 			import { NTCNodeMaterial } from 'three/addons/ntc/NTCNodeMaterial.js';
 
-			// Two rows of 3 laid out on a grid wide/tall enough for a radius-1
-			// sphere plus a bit of breathing room between neighbors.
+			// Three rows on a 3-column grid (the last row holds a single,
+			// centered item) laid out wide/tall enough for a radius-1 sphere
+			// plus a bit of breathing room between neighbors.
 			const SPACING = 2.6;
 			const ASSETS = [
 				{ name: 'Brick', file: 'ntc/brick.ntc', row: 0, col: 0 },
@@ -69,7 +70,8 @@
 				{ name: 'Wave Normal', file: 'ntc/wave_normal.ntc', row: 0, col: 2 },
 				{ name: 'Glass Dispersion', file: 'ntc/glass_dispersion.ntc', row: 1, col: 0 },
 				{ name: 'Rainbow Emissive', file: 'ntc/rainbow_emissive.ntc', row: 1, col: 1 },
-				{ name: 'Pearl', file: 'ntc/pearl.ntc', row: 1, col: 2 }
+				{ name: 'Pearl', file: 'ntc/pearl.ntc', row: 1, col: 2 },
+				{ name: 'Wood Flooring', file: 'ntc/wood_flooring.ntc', row: 2, col: 1 }
 			];
 
 			const BACKGROUND_COLOR = 0x15171c;
@@ -128,12 +130,13 @@
 
 			}
 
-			// Grid position for an asset's { row, col } - both rows have 3
-			// columns, giving a balanced 3x2 arrangement.
+			// Grid position for an asset's { row, col } - columns are centered
+			// on a 3-wide row (col 1 is the middle), rows are centered on 3
+			// total rows (row 1 is the middle).
 			function gridPosition( asset ) {
 
 				const x = ( asset.col - 1 ) * SPACING;
-				const y = ( 0.5 - asset.row ) * SPACING;
+				const y = ( 1 - asset.row ) * SPACING;
 
 				return new THREE.Vector3( x, y, 0 );
 

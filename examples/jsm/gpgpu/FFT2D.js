@@ -396,6 +396,14 @@ class FFT2D {
 		this._attributeA = new StorageBufferAttribute( count, 2 );
 		this._attributeB = new StorageBufferAttribute( count, 2 );
 
+		// Every butterfly/transpose/conjugate stage is built as a fixed `AtoB`/`BtoA` pair (see
+		// `_ensureButterfliesBuilt`), each bound permanently to these 4 nodes -- not a shared,
+		// runtime-repointed pair. A single pair of nodes repointed via `.value` immediately before
+		// each dispatch was tried and reverted: for the non-fused fallback path (many per-stage
+		// dispatches, back-to-back with no `await` between them -- see `buildMultiDispatchStage`),
+		// it produced intermittent data corruption on real hardware, most visible on larger
+		// (non-fused) transforms. Fixed nodes avoid that risk entirely, at the cost of compiling
+		// two kernel variants per stage instead of one.
 		this._readA = storage( this._attributeA, 'vec2', count ).toReadOnly();
 		this._writeA = storage( this._attributeA, 'vec2', count );
 		this._readB = storage( this._attributeB, 'vec2', count ).toReadOnly();
@@ -557,23 +565,27 @@ class FFT2D {
 	 * live data, entirely on the GPU. The texture is sampled with an exact texel fetch, so it
 	 * must be exactly `width` by `height`.
 	 *
+	 * The kernels are built once, on first use, then reused for every call -- only the texture
+	 * node's `.value` is repointed at `sourceTexture` each time (a single dispatch, so this is safe
+	 * -- unlike the fixed `AtoB`/`BtoA` storage nodes above, no storage buffer node is repointed).
+	 *
 	 * @private
 	 * @param {Renderer} renderer
 	 * @param {Texture} sourceTexture - A float texture, `width` by `height`, with at least 2 channels.
 	 */
 	_load( renderer, sourceTexture ) {
 
-		if ( this._loadNode === undefined ) {
+		if ( this._loadToA === undefined ) {
 
 			const width = this.width;
-			this._loadNode = texture( sourceTexture );
+			this._loadTextureNode = texture( sourceTexture );
 
 			const build = ( writeNode ) => Fn( () => {
 
 				const x = instanceIndex.mod( uint( width ) );
 				const y = instanceIndex.div( uint( width ) );
 
-				writeNode.element( instanceIndex ).assign( this._loadNode.load( ivec2( int( x ), int( y ) ) ).rg );
+				writeNode.element( instanceIndex ).assign( this._loadTextureNode.load( ivec2( int( x ), int( y ) ) ).rg );
 
 			} )().compute( this.count, [ DEFAULT_WORKGROUP_SIZE ] );
 
@@ -582,7 +594,7 @@ class FFT2D {
 
 		}
 
-		this._loadNode.value = sourceTexture;
+		this._loadTextureNode.value = sourceTexture;
 
 		renderer.compute( this._current === 'A' ? this._loadToA : this._loadToB );
 
@@ -592,16 +604,19 @@ class FFT2D {
 	 * Writes whichever ping-pong buffer currently holds the live data into `destinationTexture`'s
 	 * `.rg` channels, leaving other channels as `(0, 1)`.
 	 *
+	 * The kernels are built once, on first use, then reused for every call -- only the storage
+	 * texture node's `.value` is repointed at `destinationTexture` each time.
+	 *
 	 * @private
 	 * @param {Renderer} renderer
 	 * @param {StorageTexture} destinationTexture - Must be exactly `width` by `height` in size.
 	 */
 	_store( renderer, destinationTexture ) {
 
-		if ( this._storeNode === undefined ) {
+		if ( this._storeFromA === undefined ) {
 
 			const { width, count } = this;
-			this._storeNode = storageTexture( destinationTexture ).setAccess( NodeAccess.WRITE_ONLY );
+			this._storeTextureNode = storageTexture( destinationTexture ).setAccess( NodeAccess.WRITE_ONLY );
 
 			const build = ( readNode ) => Fn( () => {
 
@@ -610,7 +625,7 @@ class FFT2D {
 
 				const v = readNode.element( instanceIndex );
 
-				textureStore( this._storeNode, uvec2( x, y ), vec4( v.x, v.y, 0, 1 ) );
+				textureStore( this._storeTextureNode, uvec2( x, y ), vec4( v.x, v.y, 0, 1 ) );
 
 			} )().compute( count, [ DEFAULT_WORKGROUP_SIZE ] );
 
@@ -619,7 +634,7 @@ class FFT2D {
 
 		}
 
-		this._storeNode.value = destinationTexture;
+		this._storeTextureNode.value = destinationTexture;
 
 		renderer.compute( this._current === 'A' ? this._storeFromA : this._storeFromB );
 

@@ -242,10 +242,6 @@ const BACKEND_OPTIONS = {
 // so availability is detected empirically per backend rather than assumed.
 const sharedRenderers = {};
 
-// Exported (in addition to being used internally by declareTest) so suites that need real
-// multi-pass orchestration -- several dependent `renderer.compute()` calls with CPU-side state
-// changed in between, e.g. TSLFFT.tests.js's Stockham FFT stages -- can drive a real renderer
-// directly rather than going through gpuTest/gpuFuzzTest's single-kernel-dispatch model.
 export async function getSharedRenderer( backend ) {
 
 	if ( BACKEND_OPTIONS[ backend ] === undefined ) {

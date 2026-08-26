@@ -392,6 +392,16 @@ class Bindings extends DataMap {
 
 				}
 
+				// Fold the attribute's identity/version into the cache key, mirroring the
+				// isSampledTexture branch below. Without this, a bind group cached under a key
+				// derived only from the *other* bindings (e.g. a texture that hasn't changed)
+				// could be reused even though this storage buffer's node has been repointed at a
+				// different attribute (`node.value = otherAttribute`) since that bind group was
+				// created -- silently binding the wrong GPU buffer.
+
+				cacheKey += attribute.id + ',';
+				version += attribute.version;
+
 			}
 
 			if ( binding.isUniformBuffer ) {

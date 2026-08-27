@@ -55,6 +55,10 @@ const DEFAULT_OPTIONS = {
 	// just mip 0, so it anti-aliases correctly when viewed from a distance.
 	mipsPerLevel: DEFAULT_MIPS_PER_LEVEL,
 	hiddenSizes: [ 32, 32 ],
+	// See NTCGridPyramidModel.js's `hiddenActivation` option - 'relu' (the
+	// default) or 'hgelu' (the NVIDIA neural texture compression paper's own
+	// cheap GELU approximation, Section 4.4).
+	hiddenActivation: 'relu',
 	outputChannels: 3,
 	batchSize: 4096,
 	learningRate: 0.01,

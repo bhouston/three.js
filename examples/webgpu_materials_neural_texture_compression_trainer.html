@@ -169,7 +169,8 @@
 			import { inferAlbedoUvTransform } from 'three/addons/ntc/training/NTCMaterialXUvTransform.js';
 			import { uniform } from 'three/tsl';
 			import { computeGridLevels } from 'three/addons/ntc/training/NTCGridPyramidModel.js';
-			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/ntc/training/NTCGridModel.js';
+			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS, MLP_ACTIVATION_OPTIONS } from 'three/addons/ntc/training/NTCGridModel.js';
+			import { NTC_PROFILES, NTC_PROFILE_NAMES, getNTCProfile } from 'three/addons/ntc/training/NTCProfiles.js';
 			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, buildChannelActivations } from 'three/addons/ntc/NTCFormat.js';
 			import { NTCLossGraph } from 'three/addons/ntc/training/NTCLossGraph.js';
 			import { computeMLPParamCount, computeMLPFlops, computeGridLatentTexels, computeModelFootprint, formatModelSizeSummary } from 'three/addons/ntc/training/NTCModelSize.js';
@@ -203,6 +204,7 @@
 				levels: 3,
 				baseResolution: 256,
 				hiddenSize: 8,
+				hiddenActivation: 'relu',
 				batchSize: 8192,
 				iterations: 10000,
 				learningRate: 0.01,
@@ -341,9 +343,32 @@
 				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024, 2048, 4096 ] ).name( 'bake resolution' );
 
 				const networkFolder = gui.addFolder( 'network (grid + MLP)' );
-				networkFolder.add( params, 'levels', GRID_LEVELS_OPTIONS ).name( 'feature levels' ).onChange( onNetworkParamChange );
-				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'finest grid res' ).onChange( onNetworkParamChange );
-				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).onChange( onNetworkParamChange );
+				// Named presets (see NTCProfiles.js) - a one-shot convenience that
+				// just fills in the sliders below with a documented combination,
+				// rather than a persistent mode: picking one updates
+				// levels/baseResolution/hiddenSize/hiddenActivation exactly as if
+				// they'd been dragged individually, and any of those sliders can
+				// still be freely adjusted afterward. This example always trains
+				// exactly 2 hidden layers (see the 'hiddenSize' slider below), so
+				// applying a profile with a different stored hidden-layer count
+				// (e.g. 'mobile-fast''s single layer) uses that profile's own
+				// (widest) hidden width for both of this demo's layers rather than
+				// changing the layer count - NTCTrainer.js itself supports any
+				// hiddenSizes array length, this simplification is specific to
+				// this example page's fixed-2-layer slider UI.
+				const profileOptions = {};
+				for ( const name of NTC_PROFILE_NAMES ) profileOptions[ NTC_PROFILES[ name ].label ] = name;
+				networkFolder.add( { profile: 'mobile-balanced' }, 'profile', profileOptions ).name( 'preset' ).onChange( applyNTCProfilePreset );
+
+				// .listen() makes each controller poll `params` every frame and
+				// refresh its displayed value on any external change (see
+				// Inspector.js's ParametersGroup editor.listen()) - needed since
+				// applyNTCProfilePreset below writes straight into `params`
+				// without going through these controllers' own onChange path.
+				networkFolder.add( params, 'levels', GRID_LEVELS_OPTIONS ).name( 'feature levels' ).listen().onChange( onNetworkParamChange );
+				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'finest grid res' ).listen().onChange( onNetworkParamChange );
+				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).listen().onChange( onNetworkParamChange );
+				networkFolder.add( params, 'hiddenActivation', MLP_ACTIVATION_OPTIONS ).name( 'MLP hidden activation' ).listen();
 
 				const trainingFolder = gui.addFolder( 'training' );
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
@@ -487,6 +512,26 @@
 
 				networkSizeMatchesModel = false;
 				updateNetworkSize();
+
+			}
+
+			// Applies a named NTCProfiles.js preset to the network sliders (see
+			// the 'preset' dropdown's doc comment above). Writes straight into
+			// `params` - the affected controllers are all created with
+			// `.listen()` (see the 'network (grid + MLP)' folder above), which
+			// polls `params` every frame and refreshes its own displayed value,
+			// so no separate "tell the GUI to redraw" step is needed here.
+			function applyNTCProfilePreset( name ) {
+
+				const profile = getNTCProfile( name );
+				if ( ! profile ) return;
+
+				params.levels = profile.levels;
+				params.baseResolution = profile.baseResolution;
+				params.hiddenSize = profile.hiddenSizes[ profile.hiddenSizes.length - 1 ];
+				params.hiddenActivation = profile.hiddenActivation;
+
+				onNetworkParamChange();
 
 			}
 
@@ -785,6 +830,7 @@
 						levels: Number( params.levels ),
 						baseResolution: Number( params.baseResolution ),
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
+						hiddenActivation: params.hiddenActivation,
 						outputChannels: channelClassification.totalChannels,
 						channelActivations: buildChannelActivations( channelClassification.activeChannels ),
 						batchSize: Number( params.batchSize ),

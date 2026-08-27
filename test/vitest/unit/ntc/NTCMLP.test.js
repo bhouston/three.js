@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activate, createMLP, forwardMLP, powerLog, sigmoid } from '../../../../examples/jsm/ntc/training/NTCMLP.js';
+import { activate, createMLP, forwardMLP, hardGELU, hardGELUDerivative, powerLog, sigmoid } from '../../../../examples/jsm/ntc/training/NTCMLP.js';
 
 describe( 'Addons > Neural > NeuralMLP', () => {
 
@@ -64,6 +64,98 @@ describe( 'Addons > Neural > NeuralMLP', () => {
 		it( 'falls back to linear (unchanged) for an unrecognized activation name', () => {
 
 			expect( activate( 8, 'not-a-real-activation' ) ).toBe( 8 );
+
+		} );
+
+		it( 'hgelu matches hardGELU directly', () => {
+
+			for ( const value of [ - 3, - 1.5, - 0.5, 0, 0.5, 1.5, 3 ] ) {
+
+				expect( activate( value, 'hgelu' ) ).toBe( hardGELU( value ) );
+
+			}
+
+		} );
+
+	} );
+
+	describe( 'hardGELU', () => {
+
+		it( 'clamps to exactly zero below -1.5', () => {
+
+			expect( hardGELU( - 1.5 ) ).toBe( 0 );
+			expect( hardGELU( - 2 ) ).toBe( 0 );
+			expect( hardGELU( - 100 ) ).toBe( 0 );
+
+		} );
+
+		it( 'passes values above 1.5 through unchanged (identity)', () => {
+
+			expect( hardGELU( 1.5 ) ).toBeCloseTo( 1.5, 10 );
+			expect( hardGELU( 2 ) ).toBe( 2 );
+			expect( hardGELU( 100 ) ).toBe( 100 );
+
+		} );
+
+		it( 'is continuous at both breakpoints (-1.5 and 1.5)', () => {
+
+			// Middle branch: x/3 * (x + 1.5). At x = -1.5 this is 0 (matches the
+			// lower branch); at x = 1.5 this is 1.5 (matches the upper branch,
+			// identity).
+			expect( hardGELU( - 1.5 ) ).toBeCloseTo( 0, 10 );
+			expect( hardGELU( 1.5 ) ).toBeCloseTo( 1.5, 10 );
+
+		} );
+
+		it( 'is zero at x = 0 (matches ReLU\'s own zero-crossing)', () => {
+
+			expect( hardGELU( 0 ) ).toBe( 0 );
+
+		} );
+
+		it( 'matches the exact middle-branch formula at a hand-picked point', () => {
+
+			// x = 0.6: 0.6/3 * (0.6 + 1.5) = 0.2 * 2.1 = 0.42
+			expect( hardGELU( 0.6 ) ).toBeCloseTo( 0.42, 10 );
+
+		} );
+
+		it( 'dips slightly negative just above -1.5, unlike ReLU', () => {
+
+			// x = -1: -1/3 * (-1 + 1.5) = -1/3 * 0.5 = -1/6
+			expect( hardGELU( - 1 ) ).toBeCloseTo( - 1 / 6, 10 );
+			expect( hardGELU( - 1 ) ).toBeLessThan( 0 );
+
+		} );
+
+	} );
+
+	describe( 'hardGELUDerivative', () => {
+
+		it( 'is exactly zero below -1.5', () => {
+
+			expect( hardGELUDerivative( - 1.5 ) ).toBe( 0 );
+			expect( hardGELUDerivative( - 5 ) ).toBe( 0 );
+
+		} );
+
+		it( 'is exactly one above 1.5', () => {
+
+			expect( hardGELUDerivative( 1.5 ) ).toBeCloseTo( 1, 10 );
+			expect( hardGELUDerivative( 5 ) ).toBe( 1 );
+
+		} );
+
+		it( 'matches a numerical (finite-difference) derivative of hardGELU across the middle branch', () => {
+
+			const epsilon = 1e-6;
+
+			for ( const x of [ - 1.4, - 0.75, - 0.2, 0, 0.3, 0.9, 1.4 ] ) {
+
+				const numerical = ( hardGELU( x + epsilon ) - hardGELU( x - epsilon ) ) / ( 2 * epsilon );
+				expect( hardGELUDerivative( x ) ).toBeCloseTo( numerical, 4 );
+
+			}
 
 		} );
 
@@ -306,6 +398,22 @@ describe( 'Addons > Neural > NeuralMLP', () => {
 			expect( run.preActivations[ 0 ] ).toEqual( [ - 5 ] );
 			expect( run.activations[ 1 ] ).toEqual( [ 0 ] );
 			expect( run.output ).toEqual( [ 0 ] );
+
+		} );
+
+		it( 'applies hgelu when requested as the hidden activation', () => {
+
+			const mlp = createMLP( 1, [ 1 ], 1, () => 0, 'hgelu', 'linear' );
+			mlp.layers[ 0 ].weights = [ 1 ];
+			mlp.layers[ 0 ].biases = [ 0 ];
+			mlp.layers[ 1 ].weights = [ 1 ];
+			mlp.layers[ 1 ].biases = [ 0 ];
+
+			const run = forwardMLP( mlp, [ 0.6 ] ); // pre-activation = 0.6
+
+			expect( run.preActivations[ 0 ] ).toEqual( [ 0.6 ] );
+			expect( run.activations[ 1 ][ 0 ] ).toBeCloseTo( hardGELU( 0.6 ), 10 );
+			expect( run.output[ 0 ] ).toBeCloseTo( hardGELU( 0.6 ), 10 );
 
 		} );
 

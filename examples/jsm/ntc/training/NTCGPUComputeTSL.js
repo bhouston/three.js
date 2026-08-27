@@ -19,7 +19,7 @@ import {
 	wrapIndexTSL,
 	forwardDenseLayerTSL,
 	accumulateDenseLayerGradTSL,
-	backwardDenseLayerReLUTSL,
+	backwardDenseLayerTSL,
 	createAdamComputeNode
 } from './NTCGPUKernelsTSL.js';
 import { applyChannelActivation, channelActivationDerivativeFromOutput } from '../NTCOutputActivations.js';
@@ -276,7 +276,9 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		// decoder input layout (Section 4.4: "... and a LOD value").
 		activationsStorage.element( actBase.add( int( a0Offset + channels ) ) ).assign( lod.div( Math.max( 1, maxLod ) ) );
 
-		// 2. Forward MLP (ReLU hidden layers, linear output).
+		// 2. Forward MLP (hidden layers activated per layer.activation - 'relu'
+		// by default, or 'hgelu' - see NTCGridPyramidModel.js's
+		// `hiddenActivation` option; linear output).
 		for ( let l = 0; l < mlpLayers.length; l ++ ) {
 
 			const layer = mlpLayers[ l ];
@@ -288,7 +290,7 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 				activationsStorage, weightsStorage,
 				inputBase: inBase, inputSize: layer.inputSize, outputSize: layer.outputSize,
 				weightsOffset: layer.weightsOffset, biasesOffset: layer.biasesOffset,
-				zBase, aBase
+				zBase, aBase, activation: layer.activation
 			} );
 
 		}
@@ -354,11 +356,11 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 				const prevZBase = actBase.add( int( layerActs[ l - 1 ].zOffset ) );
 				const prevDeltaBase = actBase.add( int( deltaOffsets[ l - 1 ] ) );
 
-				backwardDenseLayerReLUTSL( {
+				backwardDenseLayerTSL( {
 					activationsStorage, weightsStorage,
 					deltaBase, deltaSize: layer.outputSize,
 					weightsOffset: layer.weightsOffset, prevSize: layer.inputSize,
-					prevZBase, outDeltaBase: prevDeltaBase
+					prevZBase, outDeltaBase: prevDeltaBase, activation: mlpLayers[ l - 1 ].activation
 				} );
 
 			} else {

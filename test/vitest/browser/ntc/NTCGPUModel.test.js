@@ -271,6 +271,50 @@ describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => 
 
 	} );
 
+	describe( 'computeTextureModelLayout - per-layer activation (see NTCGPUComputeTSL.js\'s forward/backward activation threading)', () => {
+
+		it( 'defaults every hidden layer to relu and the output layer to linear', () => {
+
+			const layout = computeTextureModelLayout( {
+				channels: 2, levels: 1, baseResolution: 2,
+				hiddenSizes: [ 3, 3 ], outputChannels: 2
+			} );
+
+			expect( layout.hiddenActivation ).toBe( 'relu' );
+			expect( layout.mlpLayers[ 0 ].activation ).toBe( 'relu' );
+			expect( layout.mlpLayers[ 1 ].activation ).toBe( 'relu' );
+			expect( layout.mlpLayers[ 2 ].activation ).toBe( 'linear' );
+
+		} );
+
+		it( 'applies an explicit hiddenActivation (e.g. hgelu) to every hidden layer, leaving the output layer linear', () => {
+
+			const layout = computeTextureModelLayout( {
+				channels: 2, levels: 1, baseResolution: 2,
+				hiddenSizes: [ 3, 3 ], outputChannels: 2, hiddenActivation: 'hgelu'
+			} );
+
+			expect( layout.hiddenActivation ).toBe( 'hgelu' );
+			expect( layout.mlpLayers[ 0 ].activation ).toBe( 'hgelu' );
+			expect( layout.mlpLayers[ 1 ].activation ).toBe( 'hgelu' );
+			expect( layout.mlpLayers[ 2 ].activation ).toBe( 'linear' );
+
+		} );
+
+		it( 'a config with no hidden layers has only the linear output layer, regardless of hiddenActivation', () => {
+
+			const layout = computeTextureModelLayout( {
+				channels: 1, levels: 1, baseResolution: 1,
+				hiddenSizes: [], outputChannels: 1, hiddenActivation: 'hgelu'
+			} );
+
+			expect( layout.mlpLayers ).toHaveLength( 1 );
+			expect( layout.mlpLayers[ 0 ].activation ).toBe( 'linear' );
+
+		} );
+
+	} );
+
 	describe( 'cross-check against NeuralTextureGPUComputeTSL.js kernel index formulas', () => {
 
 		for ( const [ label, options ] of Object.entries( configs ) ) {

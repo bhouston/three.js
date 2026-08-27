@@ -793,11 +793,15 @@ class NodeMaterialObserver {
 			for ( let i = 0; i < lightsData.length; i ++ ) {
 
 				const lightData = renderObjectData.lights[ i ];
+				const currentLightData = lightsData[ i ];
 
-				if ( lightData.map !== lightsData[ i ].map || lightData.cacheVersion !== lightsData[ i ].cacheVersion ) {
+				if ( lightData.map !== currentLightData.map || lightData.cacheVersion !== currentLightData.cacheVersion ||
+					lightData.shadowMapWidth !== currentLightData.shadowMapWidth || lightData.shadowMapHeight !== currentLightData.shadowMapHeight ) {
 
-					lightData.map = lightsData[ i ].map;
-					lightData.cacheVersion = lightsData[ i ].cacheVersion;
+					lightData.map = currentLightData.map;
+					lightData.cacheVersion = currentLightData.cacheVersion;
+					lightData.shadowMapWidth = currentLightData.shadowMapWidth;
+					lightData.shadowMapHeight = currentLightData.shadowMapHeight;
 
 					return false;
 
@@ -863,13 +867,29 @@ class NodeMaterialObserver {
 
 		for ( const light of materialLights ) {
 
+			let data = null;
+
 			if ( light.isSpotLight === true && light.map !== null ) {
 
 				// only add lights that have a map
 
-				lights.push( { map: light.map.version, cacheVersion: this.getTextureData( light.map )._version } );
+				data = { map: light.map.version, cacheVersion: this.getTextureData( light.map )._version };
 
 			}
+
+			if ( light.castShadow === true && light.shadow !== undefined ) {
+
+				// resizing a shadow map recreates its textures so the bindings
+				// of all related render objects must be updated
+
+				if ( data === null ) data = {};
+
+				data.shadowMapWidth = light.shadow.mapSize.width;
+				data.shadowMapHeight = light.shadow.mapSize.height;
+
+			}
+
+			if ( data !== null ) lights.push( data );
 
 		}
 
@@ -7453,7 +7473,7 @@ class MathNode extends TempNode {
 
 		const method = this.method;
 
-		if ( method === MathNode.LENGTH || method === MathNode.DISTANCE || method === MathNode.DOT ) {
+		if ( method === MathNode.LENGTH || method === MathNode.DISTANCE || method === MathNode.DOT || method === MathNode.DETERMINANT ) {
 
 			return 'float';
 
@@ -10923,7 +10943,7 @@ const instancedBufferAttribute = ( array, type = null, stride = 0, offset = 0 ) 
  */
 const instancedDynamicBufferAttribute = ( array, type = null, stride = 0, offset = 0 ) => createBufferAttribute( array, type, stride, offset, DynamicDrawUsage, true );
 
-addMethodChaining( 'toAttribute', ( bufferNode ) => bufferAttribute( bufferNode.value ) );
+addMethodChaining( 'toAttribute', ( bufferNode ) => bufferAttribute( bufferNode.value, bufferNode.bufferType ) );
 
 /**
  * This class represents shader indices of different types. The following predefined node
@@ -12086,11 +12106,6 @@ class InspectorBase extends EventDispatcher {
 	}
 
 	/**
-	 * Initializes the inspector.
-	 */
-	init() { }
-
-	/**
 	 * Called when a frame begins.
 	 */
 	begin() {
@@ -12170,6 +12185,17 @@ class InspectorBase extends EventDispatcher {
 	 * @param {Texture} framebufferTexture - The texture associated with the framebuffer.
 	 */
 	copyFramebufferToTexture( /*framebufferTexture*/ ) { }
+
+	/**
+	 * Frees all internal resources of the inspector.
+	 */
+	dispose() {
+
+		if ( this.isRunning === true ) this.finish();
+
+		this.dispatchEvent( { type: 'dispose' } );
+
+	}
 
 }
 
@@ -15164,6 +15190,8 @@ const objectViewPosition = /*@__PURE__*/ nodeProxy( Object3DNode, Object3DNode.V
  */
 const objectRadius = /*@__PURE__*/ nodeProxy( Object3DNode, Object3DNode.RADIUS ).setParameterLength( 1 );
 
+const _modelViewMatrix = /*@__PURE__*/ new Matrix4();
+
 /**
  * This type of node is a specialized version of `Object3DNode`
  * with larger set of model related metrics. Unlike `Object3DNode`,
@@ -15306,11 +15334,46 @@ const highpModelViewMatrix = /*@__PURE__*/ ( Fn( ( builder ) => {
 
 	builder.context.isHighPrecisionModelViewMatrix = true;
 
-	return uniform( 'mat4' ).onObjectUpdate( ( { object, camera } ) => {
+	const camera = builder.camera;
 
-		return object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
+	let highpModelViewMatrix;
 
-	} );
+	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
+
+		const matrices = [];
+
+		for ( let i = 0; i < camera.cameras.length; i ++ ) {
+
+			matrices.push( new Matrix4() );
+
+		}
+
+		const modelViewMatrices = uniformArray( matrices ).onObjectUpdate( ( { object, camera }, self ) => {
+
+			const subCameras = camera.cameras;
+			const array = self.array;
+
+			for ( let i = 0, l = subCameras.length; i < l; i ++ ) {
+
+				array[ i ].multiplyMatrices( subCameras[ i ].matrixWorldInverse, object.matrixWorld );
+
+			}
+
+		} );
+
+		highpModelViewMatrix = modelViewMatrices.element( camera.isMultiViewCamera ? builtin( 'gl_ViewID_OVR' ) : cameraIndex );
+
+	} else {
+
+		highpModelViewMatrix = uniform( 'mat4' ).onObjectUpdate( ( { object, camera } ) => {
+
+			return object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
+
+		} );
+
+	}
+
+	return highpModelViewMatrix;
 
 } ).once() )().toVar( 'highpModelViewMatrix' );
 
@@ -15325,17 +15388,54 @@ const highpModelNormalViewMatrix = /*@__PURE__*/ ( Fn( ( builder ) => {
 
 	const isHighPrecisionModelViewMatrix = builder.context.isHighPrecisionModelViewMatrix;
 
-	return uniform( 'mat3' ).onObjectUpdate( ( { object, camera } ) => {
+	const camera = builder.camera;
 
-		if ( isHighPrecisionModelViewMatrix !== true ) {
+	let highpModelNormalViewMatrix;
 
-			object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
+	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
+
+		const matrices = [];
+
+		for ( let i = 0; i < camera.cameras.length; i ++ ) {
+
+			matrices.push( new Matrix3() );
 
 		}
 
-		return object.normalMatrix.getNormalMatrix( object.modelViewMatrix );
+		const normalViewMatrices = uniformArray( matrices ).onObjectUpdate( ( { object, camera }, self ) => {
 
-	} );
+			const subCameras = camera.cameras;
+			const array = self.array;
+
+			for ( let i = 0, l = subCameras.length; i < l; i ++ ) {
+
+				_modelViewMatrix.multiplyMatrices( subCameras[ i ].matrixWorldInverse, object.matrixWorld );
+
+				array[ i ].getNormalMatrix( _modelViewMatrix );
+
+			}
+
+		} );
+
+		highpModelNormalViewMatrix = normalViewMatrices.element( camera.isMultiViewCamera ? builtin( 'gl_ViewID_OVR' ) : cameraIndex );
+
+	} else {
+
+		highpModelNormalViewMatrix = uniform( 'mat3' ).onObjectUpdate( ( { object, camera } ) => {
+
+			if ( isHighPrecisionModelViewMatrix !== true ) {
+
+				object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
+
+			}
+
+			return object.normalMatrix.getNormalMatrix( object.modelViewMatrix );
+
+		} );
+
+	}
+
+	return highpModelNormalViewMatrix;
 
 } ).once() )().toVar( 'highpModelNormalViewMatrix' );
 
@@ -25050,7 +25150,7 @@ const LTC_Evaluate_Volume = /*@__PURE__*/ Fn( ( { P, p0, p1, p2, p3 } ) => {
 	return result;
 
 } ).setLayout( {
-	name: 'LTC_Evaluate',
+	name: 'LTC_Evaluate_Volume',
 	type: 'vec3',
 	inputs: [
 		{ name: 'P', type: 'vec3' },
@@ -28968,8 +29068,9 @@ class RotateNode extends TempNode {
 	 * @param {Node} positionNode - The position node.
 	 * @param {Node} rotationNode - Represents the rotation that is applied to the position node. Depending
 	 * on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
+	 * @param {string} [order='XYZ'] - The Euler rotation order. Only used for 3D rotation.
 	 */
-	constructor( positionNode, rotationNode ) {
+	constructor( positionNode, rotationNode, order = 'XYZ' ) {
 
 		super();
 
@@ -28981,12 +29082,58 @@ class RotateNode extends TempNode {
 		this.positionNode = positionNode;
 
 		/**
-		 *  Represents the rotation that is applied to the position node.
-		 *  Depending on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
+		 * Represents the rotation that is applied to the position node.
+		 * Depending on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
 		 *
 		 * @type {Node}
 		 */
 		this.rotationNode = rotationNode;
+
+		/**
+		 * The Euler rotation order.
+		 *
+		 * @private
+		 * @type {string}
+		 * @default 'XYZ'
+		 */
+		this._order = order;
+
+	}
+
+	/**
+	 * Overwrites the default `customCacheKey()` implementation by including the
+	 * Euler order into the cache key.
+	 *
+	 * @return {number} The hash.
+	 */
+	customCacheKey() {
+
+		return hashString( this._order );
+
+	}
+
+	/**
+	 * Sets the Euler rotation order.
+	 *
+	 * @param {string} value - The Euler rotation order.
+	 * @return {RotateNode} A reference to this node.
+	 */
+	setOrder( value ) {
+
+		this._order = value;
+
+		return this;
+
+	}
+
+	/**
+	 * Gets the Euler rotation order.
+	 *
+	 * @return {string} The Euler rotation order.
+	 */
+	getOrder() {
+
+		return this._order;
 
 	}
 
@@ -29023,13 +29170,41 @@ class RotateNode extends TempNode {
 		} else {
 
 			const rotation = rotationNode;
-			const rotationXMatrix = mat4( vec4( 1.0, 0.0, 0.0, 0.0 ), vec4( 0.0, cos( rotation.x ), sin( rotation.x ).negate(), 0.0 ), vec4( 0.0, sin( rotation.x ), cos( rotation.x ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
-			const rotationYMatrix = mat4( vec4( cos( rotation.y ), 0.0, sin( rotation.y ), 0.0 ), vec4( 0.0, 1.0, 0.0, 0.0 ), vec4( sin( rotation.y ).negate(), 0.0, cos( rotation.y ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
-			const rotationZMatrix = mat4( vec4( cos( rotation.z ), sin( rotation.z ).negate(), 0.0, 0.0 ), vec4( sin( rotation.z ), cos( rotation.z ), 0.0, 0.0 ), vec4( 0.0, 0.0, 1.0, 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+			const order = this._order;
 
-			return rotationXMatrix.mul( rotationYMatrix ).mul( rotationZMatrix ).mul( vec4( positionNode, 1.0 ) ).xyz;
+			const rotationXMatrix = mat4( vec4( 1.0, 0.0, 0.0, 0.0 ), vec4( 0.0, cos( rotation.x ), sin( rotation.x ), 0.0 ), vec4( 0.0, sin( rotation.x ).negate(), cos( rotation.x ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+			const rotationYMatrix = mat4( vec4( cos( rotation.y ), 0.0, sin( rotation.y ).negate(), 0.0 ), vec4( 0.0, 1.0, 0.0, 0.0 ), vec4( sin( rotation.y ), 0.0, cos( rotation.y ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+			const rotationZMatrix = mat4( vec4( cos( rotation.z ), sin( rotation.z ), 0.0, 0.0 ), vec4( sin( rotation.z ).negate(), cos( rotation.z ), 0.0, 0.0 ), vec4( 0.0, 0.0, 1.0, 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+
+			const matrixMap = {
+				'X': rotationXMatrix,
+				'Y': rotationYMatrix,
+				'Z': rotationZMatrix
+			};
+
+			const matrixChain = matrixMap[ order.charAt( 0 ) ]
+				.mul( matrixMap[ order.charAt( 1 ) ] )
+				.mul( matrixMap[ order.charAt( 2 ) ] );
+
+			return matrixChain.mul( vec4( positionNode, 1.0 ) ).xyz;
 
 		}
+
+	}
+
+	serialize( data ) {
+
+		super.serialize( data );
+
+		data.order = this._order;
+
+	}
+
+	deserialize( data ) {
+
+		super.deserialize( data );
+
+		this._order = data.order;
 
 	}
 
@@ -29043,9 +29218,10 @@ class RotateNode extends TempNode {
  * @param {Node} positionNode - The position node.
  * @param {Node} rotationNode - Represents the rotation that is applied to the position node. Depending
  * on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
+ * @param {string} [order='XYZ'] - The Euler rotation order. Only used for 3D rotation.
  * @returns {RotateNode}
  */
-const rotate = /*@__PURE__*/ nodeProxy( RotateNode ).setParameterLength( 2 );
+const rotate = /*@__PURE__*/ nodeProxy( RotateNode ).setParameterLength( 2, 3 );
 
 const _defaultValues$2 = /*@__PURE__*/ new SpriteMaterial();
 
@@ -33562,6 +33738,8 @@ class Bindings extends DataMap {
 
 				}
 
+				cacheKey += attribute.id + ',';
+
 			}
 
 			if ( binding.isUniformBuffer ) {
@@ -37085,6 +37263,12 @@ class BitcountNode extends MathNode {
 
 		const fnDef = Fn( ( [ value ] ) => {
 
+			If( value.equal( uint( 0 ) ), () => {
+
+				return uint( 32 );
+
+			} );
+
 			const v = uint( 0.0 );
 
 			this._resolveElementType( value, v, elementType );
@@ -37443,7 +37627,11 @@ const parabola = ( x, k ) => pow( mul( 4.0, x.mul( sub( 1.0, x ) ) ), k );
  * @param {Node<float>} k - `k=1` is the identity curve,`k<1` produces the classic `gain()` shape, and `k>1` produces "s" shaped curves.
  * @return {Node<float>} The remapped value.
  */
-const gain = ( x, k ) => x.lessThan( 0.5 ) ? parabola( x.mul( 2.0 ), k ).div( 2.0 ) : sub( 1.0, parabola( mul( sub( 1.0, x ), 2.0 ), k ).div( 2.0 ) );
+const gain = ( x, k ) => select(
+	x.lessThan( 0.5 ),
+	pow( mul( 2.0, x ), k ).mul( 0.5 ),
+	sub( 1.0, pow( mul( 2.0, sub( 1.0, x ) ), k ).mul( 0.5 ) )
+);
 
 /**
  * A function that remaps the `[0,1]` interval into the `[0,1]` interval.
@@ -37457,7 +37645,7 @@ const gain = ( x, k ) => x.lessThan( 0.5 ) ? parabola( x.mul( 2.0 ), k ).div( 2.
  * @param {Node<float>} b - Second control parameter.
  * @return {Node<float>} The remapped value.
  */
-const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub( 1.0, x ), b ) ) ), 1.0 / a );
+const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub( 1.0, x ), b ) ) ), div( 1.0, a ) );
 
 /**
  * A phase shifted sinus curve that starts at zero and ends at zero, with bouncing behavior.
@@ -37469,7 +37657,13 @@ const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub(
  * @param {Node<float>} k - Controls the amount of bounces.
  * @return {Node<float>} The result value.
  */
-const sinc = ( x, k ) => sin( PI.mul( k.mul( x ).sub( 1.0 ) ) ).div( PI.mul( k.mul( x ).sub( 1.0 ) ) );
+const sinc = ( x, k ) => {
+
+	const arg = abs( PI.mul( k.mul( x ).sub( 1.0 ) ) ).max( 1e-6 ).toConst();
+
+	return sin( arg ).div( arg );
+
+};
 
 /**
  * This node represents an operation that packs floating-point values of a vector into an unsigned 32-bit integer
@@ -38685,7 +38879,7 @@ class ReflectorBaseNode extends Node {
 
 		if ( renderTarget === undefined ) {
 
-			renderTarget = new RenderTarget( 0, 0, { type: HalfFloatType, samples: this.samples } );
+			renderTarget = new RenderTarget( 1, 1, { type: HalfFloatType, samples: this.samples } );
 
 			if ( this.generateMipmaps === true ) {
 
@@ -39042,7 +39236,7 @@ class RTTNode extends TextureNode {
 	 * Constructs a new RTT node.
 	 *
 	 * @param {Node} node - The node to render a texture with.
-	 * @param {?number} [width=null] - The width of the internal render target. If not width is applied, the render target is automatically resized.
+	 * @param {?number} [width=null] - The width of the internal render target. If no width is applied, the render target is automatically resized.
 	 * @param {?number} [height=null] - The height of the internal render target.
 	 * @param {Object} [options={}] - The options for the internal render target.
 	 * @param {number} [options.type=HalfFloatType] - The texture type.
@@ -39056,7 +39250,7 @@ class RTTNode extends TextureNode {
 			resolutionScale = 1
 		} = options;
 
-		const renderTarget = new RenderTarget( width, height, { type: HalfFloatType, ...options } );
+		const renderTarget = new RenderTarget( width ?? 1, height ?? 1, { type: HalfFloatType, ...options } );
 
 		super( renderTarget.texture, uv$1() );
 
@@ -39134,13 +39328,13 @@ class RTTNode extends TextureNode {
 		this._quadMesh = new QuadMesh( new NodeMaterial() );
 
 		/**
-		 * The `updateBeforeType` is set to `NodeUpdateType.RENDER` since the node updates
-		 * the texture once per render in its {@link RTTNode#updateBefore} method.
+		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node updates
+		 * the texture once per frame in its {@link RTTNode#updateBefore} method.
 		 *
 		 * @type {string}
-		 * @default 'render'
+		 * @default 'frame'
 		 */
-		this.updateBeforeType = NodeUpdateType.RENDER;
+		this.updateBeforeType = NodeUpdateType.FRAME;
 
 	}
 
@@ -39169,10 +39363,10 @@ class RTTNode extends TextureNode {
 	}
 
 	/**
-	 * Sets the size of the internal render target
+	 * Sets the size of the internal render target.
 	 *
 	 * @param {number} width - The width to set.
-	 * @param {number} height - The width to set.
+	 * @param {number} height - The height to set.
 	 */
 	setSize( width, height ) {
 
@@ -39217,7 +39411,42 @@ class RTTNode extends TextureNode {
 
 	}
 
-	updateBefore( { renderer } ) {
+	/**
+	 * Overwritten since the value is defined by the internal render target.
+	 *
+	 * @param {Texture} value - The texture value.
+	 */
+	set value( value ) {
+
+		if ( this.renderTarget && value !== this.renderTarget.texture ) {
+
+			error( 'TSL: "rtt()" does not allow overwriting the value.' );
+
+		}
+
+	}
+
+	/**
+	 * The texture of the internal render target.
+	 *
+	 * @type {Texture}
+	 */
+	get value() {
+
+		return this.renderTarget ? this.renderTarget.texture : null;
+
+	}
+
+	/**
+	 * Renders the node's output into the internal render target before the main render pass.
+	 * Handles automatic resizing of the render target when `autoResize` is enabled,
+	 * and skips rendering if neither `textureNeedsUpdate` nor `autoUpdate` is true.
+	 *
+	 * @param {NodeFrame} frame - The current node frame, providing access to the renderer and other frame data.
+	 */
+	updateBefore( frame ) {
+
+		const { renderer } = frame;
 
 		if ( this.textureNeedsUpdate === false && this.autoUpdate === false ) return;
 
@@ -39248,9 +39477,11 @@ class RTTNode extends TextureNode {
 
 		let name = 'RTT';
 
-		if ( this.node.name ) {
+		const callName = this.name || this.node.name;
 
-			name = this.node.name + ' [ ' + name + ' ]';
+		if ( callName ) {
+
+			name = callName + ' [ ' + name + ' ]';
 
 		}
 
@@ -39276,6 +39507,18 @@ class RTTNode extends TextureNode {
 
 	}
 
+	/**
+	 * Frees internal resources. Should be called when the node is no longer in use.
+	 */
+	dispose() {
+
+		this.renderTarget.dispose();
+		this._quadMesh.material.dispose();
+
+		super.dispose();
+
+	}
+
 }
 
 /**
@@ -39284,7 +39527,7 @@ class RTTNode extends TextureNode {
  * @tsl
  * @function
  * @param {Node} node - The node to render a texture with.
- * @param {?number} [width=null] - The width of the internal render target. If not width is applied, the render target is automatically resized.
+ * @param {?number} [width=null] - The width of the internal render target. If no width is applied, the render target is automatically resized.
  * @param {?number} [height=null] - The height of the internal render target.
  * @param {Object} [options={}] - The options for the internal render target.
  * @param {number} [options.type=HalfFloatType] - The texture type.
@@ -39300,7 +39543,7 @@ const rtt = ( node, ...params ) => new RTTNode( nodeObject( node ), ...params );
  * @tsl
  * @function
  * @param {Node} node - The node to render a texture with.
- * @param {?number} [width=null] - The width of the internal render target. If not width is applied, the render target is automatically resized.
+ * @param {?number} [width=null] - The width of the internal render target. If no width is applied, the render target is automatically resized.
  * @param {?number} [height=null] - The height of the internal render target.
  * @param {Object} [options={}] - The options for the internal render target.
  * @param {number} [options.type=HalfFloatType] - The texture type.
@@ -49553,6 +49796,9 @@ var TSL = /*#__PURE__*/Object.freeze({
 	HALF_PI: HALF_PI,
 	INFINITY: INFINITY,
 	If: If,
+	LTC_Evaluate: LTC_Evaluate,
+	LTC_Evaluate_Volume: LTC_Evaluate_Volume,
+	LTC_Uv: LTC_Uv,
 	Loop: Loop,
 	NodeAccess: NodeAccess,
 	NodeShaderStage: NodeShaderStage,
@@ -56339,7 +56585,7 @@ const parse$1 = ( source ) => {
 
 	const pragmaMainIndex = source.indexOf( pragmaMain );
 
-	const mainCode = pragmaMainIndex !== -1 ? source.slice( pragmaMainIndex + pragmaMain.length ) : source;
+	const mainCode = ( pragmaMainIndex !== -1 ? source.slice( pragmaMainIndex + pragmaMain.length ) : source ).replace( /^(?:\s*\/\/[^\r\n]*|\s*\/\*[\s\S]*?\*\/|\s*)+/, '' );
 
 	const declaration = mainCode.match( declarationRegexp$1 );
 
@@ -61479,12 +61725,6 @@ class Renderer {
 			this._animation.start();
 			this._initialized = true;
 
-			//
-
-			this._inspector.init();
-
-			//
-
 			resolve( this );
 
 		} );
@@ -63333,12 +63573,13 @@ class Renderer {
 	 * Frees all internal resources of the renderer. Call this method if the renderer
 	 * is no longer in use by your app.
 	 */
-	dispose() {
+	async dispose() {
 
 		if ( this._initialized === true ) {
 
 			this.info.dispose();
 
+			this._inspector.dispose();
 			this._animation.dispose();
 			this._objects.dispose();
 			this._geometries.dispose();
@@ -63355,13 +63596,7 @@ class Renderer {
 
 			}
 
-			Object.values( this.backend.timestampQueryPool ).forEach( queryPool => {
-
-				if ( queryPool !== null ) queryPool.dispose();
-
-			} );
-
-			this.backend.dispose();
+			await this.backend.dispose();
 
 		}
 
@@ -68594,7 +68829,19 @@ class Backend {
 	 *
 	 * @abstract
 	 */
-	dispose() { }
+	async dispose() {
+
+		for ( const queryPool of Object.values( this.timestampQueryPool ) ) {
+
+			if ( queryPool !== null ) {
+
+				await queryPool.dispose();
+
+			}
+
+		}
+
+	}
 
 }
 
@@ -75890,7 +76137,9 @@ class WebGLBackend extends Backend {
 	/**
 	 * Frees internal resources.
 	 */
-	dispose() {
+	async dispose() {
+
+		await super.dispose();
 
 		if ( this.textureUtils !== null ) this.textureUtils.dispose();
 
@@ -80210,7 +80459,7 @@ const wgslTypeLib$1 = {
 
 const parse = ( source ) => {
 
-	source = source.trim();
+	source = source.replace( /^(?:\s*\/\/[^\r\n]*|\s*\/\*[\s\S]*?\*\/|\s*)+/, '' );
 
 	const declaration = source.match( declarationRegexp );
 
@@ -80548,6 +80797,7 @@ const wgslMethods = {
 	inverse_mat3: 'tsl_inverse_mat3',
 	inverse_mat4: 'tsl_inverse_mat4',
 	inversesqrt: 'inverseSqrt',
+	faceforward: 'faceForward',
 	bitcast: 'bitcast<f32>',
 	floatpack_snorm_2x16: 'pack2x16snorm',
 	floatpack_unorm_2x16: 'pack2x16unorm',
@@ -89156,7 +89406,9 @@ class WebGPUBackend extends Backend {
 
 	}
 
-	dispose() {
+	async dispose() {
+
+		await super.dispose();
 
 		this.bindingUtils.dispose();
 		this.textureUtils.dispose();
@@ -89170,16 +89422,6 @@ class WebGPUBackend extends Backend {
 			}
 
 			this.occludedResolveCache.clear();
-
-		}
-
-		if ( this.timestampQueryPool ) {
-
-			for ( const queryPool of Object.values( this.timestampQueryPool ) ) {
-
-				if ( queryPool !== null ) queryPool.dispose();
-
-			}
 
 		}
 

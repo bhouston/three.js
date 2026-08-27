@@ -9,6 +9,14 @@ const LATENT_INIT_SCALE = 0.35;
 const GRID_LEVELS_OPTIONS = [ 1, 2, 3, 4, 5, 6, 8 ];
 const GRID_BASE_RESOLUTION_OPTIONS = [ 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 ];
 const MLP_HIDDEN_SIZE_OPTIONS = [ 8, 16, 32, 64, 128 ];
+// Hidden-layer activations offered in the GUI (see
+// NTCGridPyramidModel.js's `hiddenActivation` option / NTCMLP.js's
+// hardGELU doc comment) - 'relu' is the cheapest (a single max() per
+// neuron, see NTCMLPTSL.js) and remains the default; 'hgelu' is the NVIDIA
+// neural texture compression paper's own hidden activation (Section 4.4), a
+// 3-piece GELU approximation, usually a quality win at a small extra ALU
+// cost per neuron.
+const MLP_ACTIVATION_OPTIONS = [ 'relu', 'hgelu' ];
 
 // How many mip levels of an actual mipmap chain each stored feature level
 // covers by default (see this file's module doc comment, and
@@ -93,6 +101,7 @@ export {
 	GRID_LEVELS_OPTIONS,
 	GRID_BASE_RESOLUTION_OPTIONS,
 	MLP_HIDDEN_SIZE_OPTIONS,
+	MLP_ACTIVATION_OPTIONS,
 	MAX_GRID_RESOLUTION,
 	DEFAULT_MIPS_PER_LEVEL
 };

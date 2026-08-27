@@ -17,6 +17,67 @@ function wrapIndexTSL( val, size ) {
 }
 
 /**
+ * Scalar TSL "hardGELU" - see NTCMLP.js's hardGELU doc comment for the exact
+ * piecewise formula (the NVIDIA neural texture compression paper's cheap
+ * GELU approximation) and NTCMLPTSL.js's hardGeluTSL for the vec4-flavored
+ * twin used at inference; this one operates on the plain scalar `float`
+ * activations the hand-written training kernels below read/write from
+ * storage buffers.
+ */
+function hardGeluTSL( x ) {
+
+	const middle = x.mul( x.add( 1.5 ) ).div( 3 );
+	const upper = select( x.greaterThanEqual( 1.5 ), x, middle );
+
+	return select( x.lessThanEqual( - 1.5 ), float( 0.0 ), upper );
+
+}
+
+/**
+ * Derivative of hardGeluTSL, for the hand-differentiated backward pass - see
+ * NTCMLP.js's hardGELUDerivative for the plain-JS reference (including its
+ * doc comment on the boundary convention at the two non-differentiable
+ * breakpoints) this must match.
+ */
+function hardGeluDerivativeTSL( x ) {
+
+	const middle = x.mul( 2.0 / 3.0 ).add( 0.5 );
+	const upper = select( x.greaterThanEqual( 1.5 ), float( 1.0 ), middle );
+
+	return select( x.lessThanEqual( - 1.5 ), float( 0.0 ), upper );
+
+}
+
+/**
+ * Applies a hidden-layer activation (forward direction) to a scalar
+ * pre-activation value `z`. `'relu'` (the default) and `'hgelu'` are the only
+ * two hidden activations any NTC trainer currently builds (see
+ * NTCGridPyramidModel.js's `hiddenActivation` option) - an unrecognized name
+ * falls back to `relu` rather than throwing, matching NTCMLP.js's `activate`
+ * being permissive about unknown names.
+ */
+function applyHiddenActivationTSL( z, activation ) {
+
+	if ( activation === 'hgelu' ) return hardGeluTSL( z );
+
+	return max( z, float( 0.0 ) );
+
+}
+
+/**
+ * Derivative of applyHiddenActivationTSL at pre-activation value `z` (i.e.
+ * gate a backward delta by this to propagate it through the same activation
+ * applyHiddenActivationTSL applied going forward).
+ */
+function activationDerivativeTSL( z, activation ) {
+
+	if ( activation === 'hgelu' ) return hardGeluDerivativeTSL( z );
+
+	return select( z.greaterThan( 0.0 ), float( 1.0 ), float( 0.0 ) );
+
+}
+
+/**
  * Allocates the 4 GPU StorageBuffers one Adam-optimized parameter block
  * needs (value, atomic gradient accumulator, and the 1st/2nd moment
  * buffers Adam maintains per parameter) plus their `storage()`-wrapped TSL
@@ -73,7 +134,8 @@ function disposeAdamParameterBuffers( buffers, renderer = null ) {
 
 /**
  * Forward pass through one dense layer: `out = W . in + b`, optionally
- * ReLU-activated. `inputBase`/`zBase`/`aBase` are absolute activation-buffer
+ * activated (see applyHiddenActivationTSL - `'relu'` by default, or
+ * `'hgelu'`). `inputBase`/`zBase`/`aBase` are absolute activation-buffer
  * indices (already offset by whatever per-sample/per-section offset applies)
  * rather than raw layout offsets, so this same helper covers both "this
  * layer's input starts partway through a shared activation buffer" and
@@ -85,7 +147,7 @@ function disposeAdamParameterBuffers( buffers, renderer = null ) {
  * indirect-probe heads (NeuralAppearanceGPUComputeTSL.js) and neural-
  * texture's MLP decoder (NeuralTextureGPUComputeTSL.js).
  */
-function forwardDenseLayerTSL( { activationsStorage, weightsStorage, inputBase, inputSize, outputSize, weightsOffset, biasesOffset, zBase, aBase = null } ) {
+function forwardDenseLayerTSL( { activationsStorage, weightsStorage, inputBase, inputSize, outputSize, weightsOffset, biasesOffset, zBase, aBase = null, activation = 'relu' } ) {
 
 	Loop( { start: 0, end: outputSize, type: 'int', name: 'j', condition: '<' }, ( { j } ) => {
 
@@ -99,7 +161,7 @@ function forwardDenseLayerTSL( { activationsStorage, weightsStorage, inputBase, 
 		} );
 
 		activationsStorage.element( zBase.add( j ) ).assign( val );
-		if ( aBase !== null ) activationsStorage.element( aBase.add( j ) ).assign( max( val, float( 0.0 ) ) );
+		if ( aBase !== null ) activationsStorage.element( aBase.add( j ) ).assign( applyHiddenActivationTSL( val, activation ) );
 
 	} );
 
@@ -132,13 +194,14 @@ function accumulateDenseLayerGradTSL( { activationsStorage, gradWeightsAtomic, d
 
 /**
  * Backward pass, delta-propagation half: for one dense layer whose *input*
- * came from a ReLU, propagates `delta` back through the weight matrix and
- * gates it by that input's own ReLU derivative, writing the previous
- * layer's delta. NOT a fit for a layer whose input is raw (unactivated)
- * features - those have no ReLU derivative to gate by - so those stay
- * hand-written at their call sites.
+ * came from an activated hidden layer, propagates `delta` back through the
+ * weight matrix and gates it by that input's own activation derivative (see
+ * activationDerivativeTSL - `'relu'` by default, or `'hgelu'`), writing the
+ * previous layer's delta. NOT a fit for a layer whose input is raw
+ * (unactivated) features - those have no activation derivative to gate by -
+ * so those stay hand-written at their call sites.
  */
-function backwardDenseLayerReLUTSL( { activationsStorage, weightsStorage, deltaBase, deltaSize, weightsOffset, prevSize, prevZBase, outDeltaBase } ) {
+function backwardDenseLayerTSL( { activationsStorage, weightsStorage, deltaBase, deltaSize, weightsOffset, prevSize, prevZBase, outDeltaBase, activation = 'relu' } ) {
 
 	Loop( { start: 0, end: prevSize, type: 'int', name: 'i', condition: '<' }, ( { i } ) => {
 
@@ -153,7 +216,7 @@ function backwardDenseLayerReLUTSL( { activationsStorage, weightsStorage, deltaB
 		} );
 
 		const z_i = activationsStorage.element( prevZBase.add( i ) );
-		const delta_i = select( z_i.greaterThan( 0.0 ), gradInput_i, float( 0.0 ) );
+		const delta_i = gradInput_i.mul( activationDerivativeTSL( z_i, activation ) );
 		activationsStorage.element( outDeltaBase.add( i ) ).assign( delta_i );
 
 	} );
@@ -273,11 +336,15 @@ function createAdamComputeNode( {
 
 export {
 	wrapIndexTSL,
+	hardGeluTSL,
+	hardGeluDerivativeTSL,
+	applyHiddenActivationTSL,
+	activationDerivativeTSL,
 	createAdamParameterBuffers,
 	disposeAdamParameterBuffers,
 	forwardDenseLayerTSL,
 	accumulateDenseLayerGradTSL,
-	backwardDenseLayerReLUTSL,
+	backwardDenseLayerTSL,
 	computeGradientClipScale,
 	createResetGradientNormComputeNode,
 	createResetGradientsComputeNode,

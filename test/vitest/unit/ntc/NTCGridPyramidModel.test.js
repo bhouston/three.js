@@ -88,6 +88,30 @@ describe( 'Addons > NTC > NTCGridPyramidModel', () => {
 
 		} );
 
+		it( 'defaults hiddenActivation to relu and applies it to every hidden layer', () => {
+
+			const options = { channels: 2, levels: 1, baseResolution: 4, hiddenSizes: [ 5, 5 ], outputChannels: 3 };
+			const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+			expect( model.hiddenActivation ).toBe( 'relu' );
+			expect( model.decoder.layers[ 0 ].activation ).toBe( 'relu' );
+			expect( model.decoder.layers[ 1 ].activation ).toBe( 'relu' );
+			expect( model.decoder.layers[ 2 ].activation ).toBe( 'linear' ); // output layer
+
+		} );
+
+		it( 'threads an explicit hiddenActivation (e.g. hgelu) to every hidden layer, leaving the output layer linear', () => {
+
+			const options = { channels: 2, levels: 1, baseResolution: 4, hiddenSizes: [ 5, 5 ], outputChannels: 3, hiddenActivation: 'hgelu' };
+			const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+			expect( model.hiddenActivation ).toBe( 'hgelu' );
+			expect( model.decoder.layers[ 0 ].activation ).toBe( 'hgelu' );
+			expect( model.decoder.layers[ 1 ].activation ).toBe( 'hgelu' );
+			expect( model.decoder.layers[ 2 ].activation ).toBe( 'linear' ); // output layer
+
+		} );
+
 		it( 'applies documented defaults when options are omitted', () => {
 
 			const model = createNTCGridPyramidModel( {}, () => 0.5 );
@@ -96,6 +120,7 @@ describe( 'Addons > NTC > NTCGridPyramidModel', () => {
 			expect( model.levels ).toBe( 4 );
 			expect( model.mipsPerLevel ).toBe( 2 );
 			expect( model.hiddenSizes ).toEqual( [ 32, 32 ] );
+			expect( model.hiddenActivation ).toBe( 'relu' );
 			expect( model.outputChannels ).toBe( 3 );
 
 			// baseResolution = 128 (finest, no textureResolution given), mipsPerLevel = 2, levels = 4

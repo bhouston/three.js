@@ -41,6 +41,13 @@ function resolveNTCGridPyramidOptions( options = {} ) {
 		baseResolution: options.baseResolution || ( textureResolution ? Math.min( textureResolution, MAX_GRID_RESOLUTION ) : 128 ),
 		mipsPerLevel: options.mipsPerLevel || DEFAULT_MIPS_PER_LEVEL,
 		hiddenSizes: options.hiddenSizes || [ 32, 32 ],
+		// Hidden-layer activation - 'relu' (the default, cheapest on mobile:
+		// see NTCMLPTSL.js's evaluateLinearLayerMat4) or 'hgelu' (the NVIDIA
+		// neural texture compression paper's own cheap GELU approximation,
+		// Section 4.4 - usually a quality win, at a small extra ALU cost per
+		// hidden neuron; see NTCMLP.js's hardGELU doc comment). The decoder's
+		// always-linear output layer is unaffected by this option.
+		hiddenActivation: options.hiddenActivation || 'relu',
 		outputChannels: options.outputChannels || 3,
 		textureResolution,
 		// The mesh/query-UV-to-local-space affine transform this model is
@@ -69,7 +76,7 @@ function resolveNTCGridPyramidOptions( options = {} ) {
  */
 function createNTCGridPyramidModel( options, random ) {
 
-	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, outputChannels, textureResolution, uvTransform } = resolveNTCGridPyramidOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, hiddenActivation, outputChannels, textureResolution, uvTransform } = resolveNTCGridPyramidOptions( options );
 
 	const resolutions = computeGridLevels( baseResolution, requestedLevels, mipsPerLevel );
 	const levels = resolutions.length;
@@ -79,9 +86,9 @@ function createNTCGridPyramidModel( options, random ) {
 	const maxLod = Math.ceil( Math.log2( Math.max( 1, resolvedTextureResolution ) ) );
 
 	const inputSize = channels + 1;
-	const decoder = createMLP( inputSize, hiddenSizes, outputChannels, random, 'relu', 'linear' );
+	const decoder = createMLP( inputSize, hiddenSizes, outputChannels, random, hiddenActivation, 'linear' );
 
-	return { channels, levels, mipsPerLevel, resolutions, grids, decoder, hiddenSizes, outputChannels, textureResolution: resolvedTextureResolution, maxLod, uvTransform };
+	return { channels, levels, mipsPerLevel, resolutions, grids, decoder, hiddenSizes, hiddenActivation, outputChannels, textureResolution: resolvedTextureResolution, maxLod, uvTransform };
 
 }
 

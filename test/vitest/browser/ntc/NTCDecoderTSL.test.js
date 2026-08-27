@@ -161,6 +161,24 @@ describe( 'Addons > NTC > NTCDecoderTSL (real WebGPU)', () => {
 
 	} );
 
+	it( 'matches the CPU forward pass when the hidden layer uses hgelu instead of relu', async () => {
+
+		// Same shape/assertions as the relu test above, but with
+		// hiddenActivation: 'hgelu' (see NTCGridPyramidModel.js) - confirms
+		// evaluateLinearLayerMat4's hgelu branch (NTCMLPTSL.js's hardGeluTSL)
+		// matches NTCMLP.js's plain-JS hardGELU exactly, not just relu.
+		const gridSize = 32;
+		const options = { channels: 4, levels: 1, baseResolution: gridSize, hiddenSizes: [ 4 ], outputChannels: 3, hiddenActivation: 'hgelu' };
+		const cpuModel = createNTCGridPyramidModel( options, makeRandom( 1.7 ) );
+
+		expect( cpuModel.decoder.layers[ 0 ].activation ).toBe( 'hgelu' );
+
+		const pixels = await renderRawOutputs( renderer, cpuModel, 0, gridSize );
+
+		expectMatchesCpuForward( pixels, cpuModel, 0, gridSize );
+
+	} );
+
 	it( 'selects the correct stored grid level per LOD, matching NTCMipBands.selectFeatureLevel', async () => {
 
 		// mipsPerLevel: 1 gives a plain per-mip halving chain (64, 32) - LOD 0

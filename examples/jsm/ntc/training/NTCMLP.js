@@ -80,8 +80,60 @@ function activate( value, activation ) {
 	if ( activation === 'relu' ) return Math.max( 0, value );
 	if ( activation === 'leakyRelu' ) return value >= 0 ? value : value * 0.01;
 	if ( activation === 'tanh' ) return Math.tanh( value );
+	if ( activation === 'hgelu' ) return hardGELU( value );
 
 	return value;
+
+}
+
+/**
+ * "hardGELU" - a cheap 3-piece approximation of GELU used by the NVIDIA
+ * neural texture compression paper (Section 4.4) in place of the true
+ * (erf-based) GELU, similar in shape to hard-Swish:
+ *
+ *   hardGELU(x) = 0                if x <= -1.5
+ *               = x                if x >= 1.5
+ *               = x/3 * (x + 1.5)  otherwise
+ *
+ * Continuous (C0) at both breakpoints - the middle branch evaluates to
+ * exactly 0 at x = -1.5 and to exactly 1.5 (= x) at x = 1.5, matching the
+ * outer branches' values there - but not differentiable (C1) at either
+ * breakpoint: the middle branch's own slope at x = -1.5 is -0.5, not the
+ * outer branch's 0, and at x = 1.5 is 1.5, not the outer branch's 1 (see
+ * hardGELUDerivative below, and compare ReLU's own single non-differentiable
+ * point at x = 0). The boundaries are written as `<=`/`>=` (closed on the
+ * outer branches) purely so both breakpoints evaluate through the flat/
+ * identity branch directly rather than the algebraically-equal middle-branch
+ * expression, which can otherwise land on IEEE-754 negative zero at x = -1.5
+ * (`-1.5/3 * 0 === -0`, not `0`).
+ */
+function hardGELU( value ) {
+
+	if ( value <= - 1.5 ) return 0;
+	if ( value >= 1.5 ) return value;
+
+	return value / 3 * ( value + 1.5 );
+
+}
+
+/**
+ * Derivative of hardGELU, for the hand-differentiated backward pass (see
+ * NTCGPUKernelsTSL.js's hardGeluDerivativeTSL, its GPU-side counterpart).
+ * Since hardGELU isn't differentiable at its two breakpoints (see its doc
+ * comment), the value returned there is a boundary convention - the outer
+ * (flat/identity) branch's own derivative, exactly like ReLU conventionally
+ * returning 0 (not 1) as its own derivative at x = 0:
+ *
+ *   hardGELU'(x) = 0            if x <= -1.5
+ *                = 1            if x >= 1.5
+ *                = (2x + 1.5)/3 otherwise
+ */
+function hardGELUDerivative( value ) {
+
+	if ( value <= - 1.5 ) return 0;
+	if ( value >= 1.5 ) return 1;
+
+	return ( 2 * value + 1.5 ) / 3;
 
 }
 
@@ -101,6 +153,8 @@ export {
 	createMLP,
 	forwardMLP,
 	activate,
+	hardGELU,
+	hardGELUDerivative,
 	sigmoid,
 	powerLog
 };

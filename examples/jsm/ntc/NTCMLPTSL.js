@@ -2,6 +2,28 @@ import * as THREE from 'three';
 import * as TSL from 'three/tsl';
 
 /**
+ * TSL "hardGELU" - see NTCMLP.js's hardGELU doc comment for the exact
+ * piecewise formula and rationale (the NVIDIA neural texture compression
+ * paper's cheap GELU approximation). Written with `select()` rather than
+ * `.clamp()` since the two outer branches return `x` itself and a literal
+ * `0`, not a clamped copy of the smooth middle branch - operates
+ * component-wise, so it works unchanged whether `x` is a scalar `float` or a
+ * `vec4`/`hvec4` (comparisons/select broadcast per-component for vector
+ * types). `x.mul(0)` (rather than a bare `TSL.float(0)`) produces a zero of
+ * whatever type `x` already is, so this needs no separate half/float variant
+ * the way packVec4Inputs/evaluateLinearLayerMat4 do.
+ */
+function hardGeluTSL( x ) {
+
+	const zero = x.mul( 0 );
+	const middle = x.mul( x.add( 1.5 ) ).div( 3 );
+	const upper = TSL.select( x.greaterThanEqual( 1.5 ), x, middle );
+
+	return TSL.select( x.lessThanEqual( - 1.5 ), zero, upper );
+
+}
+
+/**
  * True when `renderer` can back a real fp16 storage buffer
  * (`instancedArray(count, 'hmat4'|'hvec4')`) for MLP weights/biases: the
  * native WebGPU backend (not the WebGL2 fallback, which has no storage
@@ -350,6 +372,7 @@ function evaluateLinearLayerMat4( inputs, inputSize, outputSize, activation, get
 		}
 
 		if ( activation === 'relu' ) value = value.max( 0 );
+		else if ( activation === 'hgelu' ) value = hardGeluTSL( value );
 
 		outputs.push( value.toVar() );
 
@@ -367,5 +390,6 @@ export {
 	evaluateLinearLayerMat4,
 	supportsHalfPrecisionStorage,
 	createMat4Storage,
-	createVec4Storage
+	createVec4Storage,
+	hardGeluTSL
 };

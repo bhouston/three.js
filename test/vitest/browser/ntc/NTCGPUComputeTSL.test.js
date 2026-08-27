@@ -8,6 +8,7 @@ import {
 } from '../../../../examples/jsm/ntc/training/NTCGPUComputeTSL.js';
 import { NTCGPUModel } from '../../../../examples/jsm/ntc/training/NTCGPUModel.js';
 import { FIXED_POINT_SCALE, GRADIENT_NORM_SCALE } from '../../../../examples/jsm/ntc/training/NTCGPUTrainingConstants.js';
+import { hardGELU, hardGELUDerivative } from '../../../../examples/jsm/ntc/training/NTCMLP.js';
 import { withTestRenderer } from '../helpers/webgpuEval.js';
 
 // NeuralTextureGPUComputeTSL.js is the actual training-step compute kernel
@@ -87,6 +88,28 @@ function createTinyGPUModel() {
 		// too.
 		textureResolution: 1,
 		hiddenSizes: [],
+		outputChannels: 1,
+		batchSize: 1
+	} );
+
+}
+
+// Same idea as createTinyGPUModel, but with one hidden neuron activated by
+// 'hgelu' (see NTCGridPyramidModel.js's `hiddenActivation` option) between
+// the grid tap and the linear output - just enough to exercise
+// forwardDenseLayerTSL/backwardDenseLayerTSL's hgelu branch (see
+// NTCGPUKernelsTSL.js) end-to-end against an independent CPU reference
+// (NTCMLP.js's hardGELU/hardGELUDerivative, themselves unit-tested against
+// hand values and a finite-difference check in NTCMLP.test.js).
+function createTinyGPUModelWithHgeluHiddenLayer() {
+
+	return new NTCGPUModel( {
+		channels: 1,
+		levels: 1,
+		baseResolution: 2,
+		textureResolution: 1, // forces maxLod = 0, see createTinyGPUModel's doc comment
+		hiddenSizes: [ 1 ],
+		hiddenActivation: 'hgelu',
 		outputChannels: 1,
 		batchSize: 1
 	} );
@@ -399,6 +422,106 @@ describe( 'Addons > NeuralTexture > NeuralTextureGPUComputeTSL (real WebGPU)', (
 			expect( diff ).toBeLessThan( 0 );
 			expect( gpuWeightGrad ).toBeLessThan( 0 );
 			expect( gpuBiasGrad ).toBeLessThan( 0 );
+
+			sourceTexture.dispose();
+
+		} );
+
+		it( 'computes loss and gradients matching hand-derived backprop through a single hgelu hidden neuron', async () => {
+
+			const renderer = getRenderer();
+			const gpuModel = createTinyGPUModelWithHgeluHiddenLayer();
+			const { layout } = gpuModel;
+
+			const hiddenLayer = layout.mlpLayers[ 0 ];
+			const outputLayer = layout.mlpLayers[ 1 ];
+			expect( hiddenLayer.activation ).toBe( 'hgelu' );
+			expect( outputLayer.activation ).toBe( 'linear' );
+			// inputSize = channels + 1 = 2 (data-channel weight, LOD weight);
+			// hiddenLayer.weightsOffset+0 is the data-channel weight, +1 is the
+			// LOD weight - left at 0 below since LOD is always 0 here anyway
+			// (see createTinyGPUModelWithHgeluHiddenLayer's doc comment).
+			expect( hiddenLayer.weightsCount ).toBe( 2 );
+
+			const wData = 0.6;
+			const b0 = 0.2;
+			const w1 = - 0.4;
+			const b1 = 0.05;
+			const latentValue = 0.3;
+			const target = 0.5;
+
+			gpuModel.weightsBuffers.attribute.array[ hiddenLayer.weightsOffset ] = wData;
+			gpuModel.weightsBuffers.attribute.array[ hiddenLayer.weightsOffset + 1 ] = 0; // LOD weight, unused
+			gpuModel.weightsBuffers.attribute.array[ hiddenLayer.biasesOffset ] = b0;
+			gpuModel.weightsBuffers.attribute.array[ outputLayer.weightsOffset ] = w1;
+			gpuModel.weightsBuffers.attribute.array[ outputLayer.biasesOffset ] = b1;
+			gpuModel.weightsBuffers.attribute.needsUpdate = true;
+			gpuModel.latentsBuffers.attribute.array.fill( latentValue );
+			gpuModel.latentsBuffers.attribute.needsUpdate = true;
+			gpuModel.resetLoss();
+
+			const texSize = 2;
+			const data = new Uint16Array( texSize * texSize * 4 );
+			for ( let i = 0; i < texSize * texSize; i ++ ) {
+
+				data[ i * 4 + 0 ] = THREE.DataUtils.toHalfFloat( target );
+				data[ i * 4 + 1 ] = THREE.DataUtils.toHalfFloat( target );
+				data[ i * 4 + 2 ] = THREE.DataUtils.toHalfFloat( target );
+				data[ i * 4 + 3 ] = THREE.DataUtils.toHalfFloat( 1 );
+
+			}
+
+			const sourceTexture = new THREE.DataTexture( data, texSize, texSize, THREE.RGBAFormat, THREE.HalfFloatType );
+			sourceTexture.wrapS = THREE.RepeatWrapping;
+			sourceTexture.wrapT = THREE.RepeatWrapping;
+			sourceTexture.magFilter = THREE.LinearFilter;
+			sourceTexture.minFilter = THREE.LinearFilter;
+			sourceTexture.generateMipmaps = false;
+			sourceTexture.needsUpdate = true;
+
+			const kernel = createTextureTrainBatchComputeNode( gpuModel, [ sourceTexture ] );
+			await renderer.computeAsync( kernel );
+
+			// Independent first-principles reference through one hgelu hidden
+			// neuron, using NTCMLP.js's hardGELU/hardGELUDerivative as the known-
+			// good activation/derivative (see this file's own unit tests):
+			//   z0 = wData * a0 + b0        (a0 = latentValue; LOD contributes 0)
+			//   h0 = hardGELU(z0)
+			//   z1 = w1 * h0 + b1
+			//   pred = z1                   (linear output, no channel activation)
+			//   loss = 0.5 * (pred - target)^2
+			//   dL/dz1 = (pred - target)
+			//   dL/dw1 = dL/dz1 * h0, dL/db1 = dL/dz1
+			//   dL/dh0 = dL/dz1 * w1
+			//   dL/dz0 = dL/dh0 * hardGELUDerivative(z0)
+			//   dL/dwData = dL/dz0 * a0, dL/db0 = dL/dz0
+			const z0 = wData * latentValue + b0;
+			const h0 = hardGELU( z0 );
+			const z1 = w1 * h0 + b1;
+			const pred = z1;
+			const diff = pred - target;
+			const expectedLoss = 0.5 * diff * diff;
+
+			const dz1 = diff;
+			const expectedW1Grad = dz1 * h0;
+			const expectedB1Grad = dz1;
+
+			const dh0 = dz1 * w1;
+			const dz0 = dh0 * hardGELUDerivative( z0 );
+			const expectedWDataGrad = dz0 * latentValue;
+			const expectedB0Grad = dz0;
+
+			const gpuLoss = await gpuModel.readLoss( renderer );
+			const gpuW1Grad = ( await readInt( renderer, gpuModel.weightsBuffers.gradAttribute, outputLayer.weightsOffset ) ) / FIXED_POINT_SCALE;
+			const gpuB1Grad = ( await readInt( renderer, gpuModel.weightsBuffers.gradAttribute, outputLayer.biasesOffset ) ) / FIXED_POINT_SCALE;
+			const gpuWDataGrad = ( await readInt( renderer, gpuModel.weightsBuffers.gradAttribute, hiddenLayer.weightsOffset ) ) / FIXED_POINT_SCALE;
+			const gpuB0Grad = ( await readInt( renderer, gpuModel.weightsBuffers.gradAttribute, hiddenLayer.biasesOffset ) ) / FIXED_POINT_SCALE;
+
+			expect( gpuLoss ).toBeCloseTo( expectedLoss, 3 );
+			expect( gpuW1Grad ).toBeCloseTo( expectedW1Grad, 3 );
+			expect( gpuB1Grad ).toBeCloseTo( expectedB1Grad, 3 );
+			expect( gpuWDataGrad ).toBeCloseTo( expectedWDataGrad, 3 );
+			expect( gpuB0Grad ).toBeCloseTo( expectedB0Grad, 3 );
 
 			sourceTexture.dispose();
 

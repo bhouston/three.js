@@ -18,7 +18,7 @@ import { resolveQuantizationConfig } from './NTCQuantization.js';
  */
 function computeTextureModelLayout( options = {} ) {
 
-	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, outputChannels, textureResolution } = resolveNTCGridPyramidOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, hiddenActivation, outputChannels, textureResolution } = resolveNTCGridPyramidOptions( options );
 	// One entry per output channel naming its output nonlinearity (see
 	// ./NTCOutputActivations.js); undefined/omitted entries (the
 	// default, `options.channelActivations` unset) mean plain linear, i.e.
@@ -68,6 +68,8 @@ function computeTextureModelLayout( options = {} ) {
 		const biasesCount = outSize;
 		weightOffset = biasesOffset + biasesCount;
 
+		const isOutput = i === sizes.length - 2;
+
 		mlpLayers.push( {
 			inputSize: inSize,
 			outputSize: outSize,
@@ -75,7 +77,13 @@ function computeTextureModelLayout( options = {} ) {
 			weightsCount,
 			biasesOffset,
 			biasesCount,
-			isOutput: i === sizes.length - 2
+			isOutput,
+			// Mirrors NTCMLP.js's createMLP: every hidden layer uses
+			// `hiddenActivation` ('relu' by default, or 'hgelu'), the output
+			// layer is always linear - matched here so
+			// NTCGPUComputeTSL.js's forward/backward passes apply the same
+			// activation (and its derivative) the CPU reference model does.
+			activation: isOutput ? 'linear' : hiddenActivation
 		} );
 
 	}
@@ -120,6 +128,7 @@ function computeTextureModelLayout( options = {} ) {
 		mipsPerLevel,
 		resolutions,
 		hiddenSizes,
+		hiddenActivation,
 		outputChannels,
 		channelActivations,
 		textureResolution: resolvedTextureResolution,

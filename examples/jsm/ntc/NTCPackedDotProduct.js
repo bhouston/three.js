@@ -1,4 +1,4 @@
-import { wgslFn } from 'three/tsl';
+import { dot4I8Packed, dot4U8Packed } from 'three/tsl';
 
 /**
  * Optional, opt-in inference-time MLP decoder path using WebGPU's
@@ -14,6 +14,22 @@ import { wgslFn } from 'three/tsl';
  * cost of int8 numerical precision on the *hidden* layers only (never the
  * final linear output layer - see NTCMLPTSL.js's evaluateHiddenLayerDot4I8
  * doc comment for why).
+ *
+ * `dot4I8Packed`/`dot4U8Packed` are core `three/tsl` exports
+ * (`src/nodes/math/PackedDotProductNode.js`) as of this feature's
+ * investigation - initially prototyped in this addon via `wgslFn` (a raw-WGSL
+ * escape hatch), then promoted to a proper, reusable core TSL node once the
+ * approach proved out, since nothing about the operation is NTC-specific.
+ * The core node also ships a GLSL polyfill (`GLSLNodeBuilder.js`'s
+ * `glslPolyfills`/`glslMethods`), so - unlike this addon's own `wgslFn`-based
+ * prototype, which only ever worked on WebGPU - the same call now also works
+ * on the WebGL fallback backend. This addon's own gating
+ * (`supportsPackedDotProduct` below) is still WebGPU-only regardless,
+ * deliberately: the WebGL path is correct (see the core node's own tests)
+ * but its performance relative to this addon's existing fp32 `mat4 * vec4`
+ * path on WebGL has not been benchmarked, so enabling it there is left as a
+ * deliberate future step, not a side effect of the core node gaining a
+ * fallback.
  *
  * This is a **language feature**, not a GPU/device feature: it's checked via
  * `navigator.gpu.wgslLanguageFeatures.has(...)` (a property of the `GPU`
@@ -32,13 +48,13 @@ import { wgslFn } from 'three/tsl';
  * WGSL *language feature* needs no `enable` directive at all - the name only
  * shows up in `navigator.gpu.wgslLanguageFeatures` as a way to *detect*
  * support, not to opt into it. This was confirmed empirically, not just read
- * off the spec: an early version of this file tried emitting `enable
- * packed_4x8_integer_dot_product;` (mirroring how `shader-f16` needs
- * `enable f16;`) and Chromium's WGSL compiler rejected it outright with
- * "expected extension" - `dot4I8Packed`/`dot4U8Packed` are directly callable
- * the moment `supportsPackedDotProduct` returns true, no directive, no
- * special material-level wiring (e.g. no `NodeMaterial.setup(builder)`
- * override) required at all.
+ * off the spec: an early version of this file's original `wgslFn` prototype
+ * tried emitting `enable packed_4x8_integer_dot_product;` (mirroring how
+ * `shader-f16` needs `enable f16;`) and Chromium's WGSL compiler rejected it
+ * outright with "expected extension" - `dot4I8Packed`/`dot4U8Packed` are
+ * directly callable the moment `supportsPackedDotProduct` returns true, no
+ * directive, no special material-level wiring (e.g. no
+ * `NodeMaterial.setup(builder)` override) required at all.
  */
 
 /**
@@ -49,6 +65,12 @@ import { wgslFn } from 'three/tsl';
  * wgslLanguageFeatures`, not `renderer.hasFeature(...)`). `renderer` may be
  * omitted or not yet `init()`-ed - this just means "not supported", never a
  * throw, matching NTCMLPTSL.js's `supportsHalfPrecisionStorage` convention.
+ *
+ * Deliberately does not consider the WebGL fallback backend "supported"
+ * even though `dot4I8Packed`/`dot4U8Packed` now work correctly there too via
+ * a core GLSL polyfill - see this module's own doc comment for why enabling
+ * that combination for this addon's MLP evaluator is a deliberate future
+ * step, not implied by the core node's own capability.
  */
 function supportsPackedDotProduct( renderer ) {
 
@@ -64,22 +86,6 @@ function supportsPackedDotProduct( renderer ) {
 
 }
 
-// Raw WGSL wrappers for the two builtins this feature provides. Written as
-// trivial one-line pass-throughs (rather than calling the builtins directly
-// from a larger hand-written WGSL block) so the *only* thing routed through
-// raw WGSL is the builtin call itself - everything around it (packing,
-// scaling, accumulation) stays in ordinary TSL, tested and readable the same
-// way as the rest of this addon.
-const dot4I8PackedFn = /*@__PURE__*/ wgslFn( `
-fn ntc_dot4I8Packed( a: u32, b: u32 ) -> i32 {
-	return dot4I8Packed( a, b );
-}` );
-
-const dot4U8PackedFn = /*@__PURE__*/ wgslFn( `
-fn ntc_dot4U8Packed( a: u32, b: u32 ) -> u32 {
-	return dot4U8Packed( a, b );
-}` );
-
 /**
  * TSL wrapper: 4-wide signed-int8 packed dot product. `aNode`/`bNode` must be
  * `uint`-typed TSL nodes, each holding 4 signed 8-bit lanes packed
@@ -89,10 +95,15 @@ fn ntc_dot4U8Packed( a: u32, b: u32 ) -> u32 {
  * (no precision loss - int8*int8 accumulated in i32 can't overflow: the
  * largest possible term is 128*128=16384, times 4 terms is 65536, far inside
  * i32's range).
+ *
+ * A thin re-export of the core `three/tsl` `dot4I8Packed` under this
+ * addon's own established name (every call site in this addon/its tests
+ * already uses `dot4I8PackedTSL`) - see this module's own doc comment for
+ * where the actual node implementation now lives.
  */
 function dot4I8PackedTSL( aNode, bNode ) {
 
-	return dot4I8PackedFn( { a: aNode, b: bNode } );
+	return dot4I8Packed( aNode, bNode );
 
 }
 
@@ -102,7 +113,7 @@ function dot4I8PackedTSL( aNode, bNode ) {
  */
 function dot4U8PackedTSL( aNode, bNode ) {
 
-	return dot4U8PackedFn( { a: aNode, b: bNode } );
+	return dot4U8Packed( aNode, bNode );
 
 }
 

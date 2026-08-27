@@ -75,7 +75,16 @@ vec4 tsl_textureGatherCompare_array( sampler2DArrayShadow map, vec3 coord, ivec2
 	floatpack_snorm_4x8: new CodeNode( /* glsl */'uint tsl_packSnorm4x8( vec4 v ) { uvec4 u = uvec4( ivec4( round( clamp( v, -1.0, 1.0 ) * 127.0 ) ) & 0xff ); return u.x | u.y << 8 | u.z << 16 | u.w << 24; }' ),
 	floatpack_unorm_4x8: new CodeNode( /* glsl */'uint tsl_packUnorm4x8( vec4 v ) { uvec4 u = uvec4( round( clamp( v, 0.0, 1.0 ) * 255.0 ) ); return u.x | u.y << 8 | u.z << 16 | u.w << 24; }' ),
 	floatunpack_snorm_4x8: new CodeNode( /* glsl */'vec4 tsl_unpackSnorm4x8( uint x ) { return max( vec4( ivec4( x << 24, x << 16, x << 8, x ) >> 24 ) / 127.0, -1.0 ); }' ),
-	floatunpack_unorm_4x8: new CodeNode( /* glsl */'vec4 tsl_unpackUnorm4x8( uint x ) { return vec4( uvec4( x, x >> 8, x >> 16, x >> 24 ) & 0xffu ) / 255.0; }' )
+	floatunpack_unorm_4x8: new CodeNode( /* glsl */'vec4 tsl_unpackUnorm4x8( uint x ) { return vec4( uvec4( x, x >> 8, x >> 16, x >> 24 ) & 0xffu ) / 255.0; }' ),
+	// GLSL has no equivalent of WGSL's dot4I8Packed/dot4U8Packed (part of the
+	// "Packed 4x8 Integer Dot Product" WGSL language feature - see
+	// PackedDotProductNode.js) - emulated by unpacking the 4 lanes (reusing
+	// the exact same sign-extension/masking idioms as tsl_unpackSnorm4x8/
+	// tsl_unpackUnorm4x8 just above) and summing the pairwise products
+	// directly, rather than round-tripping through those unpack functions'
+	// own normalized-float output.
+	dot4I8Packed: new CodeNode( /* glsl */'int tsl_dot4I8Packed( uint a, uint b ) { ivec4 av = ivec4( a << 24, a << 16, a << 8, a ) >> 24; ivec4 bv = ivec4( b << 24, b << 16, b << 8, b ) >> 24; ivec4 p = av * bv; return p.x + p.y + p.z + p.w; }' ),
+	dot4U8Packed: new CodeNode( /* glsl */'uint tsl_dot4U8Packed( uint a, uint b ) { uvec4 av = uvec4( a, a >> 8, a >> 16, a >> 24 ) & 0xffu; uvec4 bv = uvec4( b, b >> 8, b >> 16, b >> 24 ) & 0xffu; uvec4 p = av * bv; return p.x + p.y + p.z + p.w; }' )
 };
 
 const glslMethods = {
@@ -95,7 +104,9 @@ const glslMethods = {
 	floatunpack_unorm_2x16: 'unpackUnorm2x16',
 	floatunpack_float16_2x16: 'unpackHalf2x16',
 	floatunpack_snorm_4x8: 'tsl_unpackSnorm4x8',
-	floatunpack_unorm_4x8: 'tsl_unpackUnorm4x8'
+	floatunpack_unorm_4x8: 'tsl_unpackUnorm4x8',
+	dot4I8Packed: 'tsl_dot4I8Packed',
+	dot4U8Packed: 'tsl_dot4U8Packed'
 };
 
 // GLSL has no native fp16 compute type - half types always resolve to their fp32 equivalent.

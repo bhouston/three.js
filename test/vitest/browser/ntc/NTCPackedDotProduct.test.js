@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { float, uint, uv, vec4 } from 'three/tsl';
-import { supportsPackedDotProduct, dot4I8PackedTSL, packInt8x4, quantizeSymmetricInt8, computeSymmetricScale } from '../../../../examples/jsm/ntc/NTCPackedDotProduct.js';
+import { supportsPackedDotProduct, dot4I8PackedTSL, dot4U8PackedTSL, packInt8x4, packUint8x4, quantizeSymmetricInt8, computeSymmetricScale } from '../../../../examples/jsm/ntc/NTCPackedDotProduct.js';
 import { evaluateHiddenLayerDot4I8 } from '../../../../examples/jsm/ntc/NTCMLPTSL.js';
 import { evaluateNeuralTextureRaw, buildMipChainTexture } from '../../../../examples/jsm/ntc/NTCDecoderTSL.js';
 import { createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js';
@@ -114,6 +114,47 @@ describe( 'Addons > NTC > NTCPackedDotProduct (real WebGPU)', () => {
 		const [ r ] = await bakeAndReadPixel( renderer, node );
 
 		expect( r ).toBeCloseTo( expectedDot, 5 );
+
+	} );
+
+	it( 'dot4U8PackedTSL matches a hand-computed unsigned uint8 dot product, if supported here', async () => {
+
+		if ( ! supportsPackedDotProduct( renderer ) ) return;
+
+		const a = [ 3, 200, 5, 250 ];
+		const b = [ 1, 2, 100, 4 ];
+		const expectedDot = a.reduce( ( sum, value, i ) => sum + value * b[ i ], 0 );
+
+		const packedA = packUint8x4( a );
+		const packedB = packUint8x4( b );
+
+		const node = float( dot4U8PackedTSL( uint( packedA ), uint( packedB ) ) );
+		const [ r ] = await bakeAndReadPixel( renderer, node );
+
+		expect( r ).toBeCloseTo( expectedDot, 5 );
+
+	} );
+
+	it( 'dot4U8PackedTSL and dot4I8PackedTSL diverge for a byte with the high bit set, confirming each reads its operands with the documented signedness', async () => {
+
+		if ( ! supportsPackedDotProduct( renderer ) ) return;
+
+		// 200 (as an unsigned byte) is -56 as a signed int8 (200 - 256) - the
+		// two builtins must disagree here, or one of them isn't actually
+		// applying the signedness NTCPackedDotProduct.js documents.
+		const a = [ 200, 0, 0, 0 ];
+		const b = [ 1, 0, 0, 0 ];
+		const packedA = packUint8x4( a ); // same bit pattern packInt8x4 would produce for [-56, 0, 0, 0]
+		const packedB = packUint8x4( b );
+
+		const unsignedNode = float( dot4U8PackedTSL( uint( packedA ), uint( packedB ) ) );
+		const signedNode = float( dot4I8PackedTSL( uint( packedA ), uint( packedB ) ) );
+
+		const [ unsignedResult ] = await bakeAndReadPixel( renderer, unsignedNode );
+		const [ signedResult ] = await bakeAndReadPixel( renderer, signedNode );
+
+		expect( unsignedResult ).toBeCloseTo( 200, 5 );
+		expect( signedResult ).toBeCloseTo( - 56, 5 );
 
 	} );
 

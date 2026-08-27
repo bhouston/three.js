@@ -132,6 +132,34 @@ function packInt8x4( values ) {
 }
 
 /**
+ * Packs up to 4 *unsigned* 8-bit integers (each expected in `[0, 255]`,
+ * clamped otherwise) into one little-endian-packed `u32`, zero-padding past
+ * `values.length` - the CPU-side mirror of what `dot4U8PackedTSL` expects.
+ * Unlike `packInt8x4`, no sign/two's-complement handling is needed: an
+ * unsigned byte's bit pattern already *is* its value, so `value & 0xFF` alone
+ * (no prior clamp-then-reinterpret step) is enough. Not currently used by
+ * this addon's own MLP evaluator (`NTCMLPTSL.js`'s `evaluateHiddenLayerDot4I8`
+ * only needs the signed path, since weights/activations are quantized
+ * symmetrically - see `quantizeSymmetricInt8`), but exported alongside
+ * `dot4U8PackedTSL` so that primitive has a real, testable CPU-side
+ * counterpart rather than being unusable dead weight.
+ */
+function packUint8x4( values ) {
+
+	let packed = 0;
+
+	for ( let i = 0; i < 4; i ++ ) {
+
+		const value = Math.max( 0, Math.min( 255, Math.round( values[ i ] || 0 ) ) );
+		packed |= ( value & 0xFF ) << ( 8 * i );
+
+	}
+
+	return packed >>> 0;
+
+}
+
+/**
  * Quantizes a single value to a signed int8 level given a symmetric scale
  * (`bound / 127`, see `computeSymmetricScale` below) - `round(x / scale)`,
  * clamped to `[-128, 127]`. Used identically for both weights and
@@ -171,6 +199,7 @@ export {
 	dot4I8PackedTSL,
 	dot4U8PackedTSL,
 	packInt8x4,
+	packUint8x4,
 	quantizeSymmetricInt8,
 	computeSymmetricScale
 };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	packInt8x4,
+	packUint8x4,
 	quantizeSymmetricInt8,
 	computeSymmetricScale
 } from '../../../../examples/jsm/ntc/NTCPackedDotProduct.js';
@@ -150,6 +151,81 @@ describe( 'Addons > NTC > NTCPackedDotProduct', () => {
 			// test/vitest/browser/ntc/NTCPackedDotProduct.test.js.
 			const unpackedA = unpackInt8x4( packedA );
 			const unpackedB = unpackInt8x4( packedB );
+			const manualDot = unpackedA.reduce( ( sum, value, i ) => sum + value * unpackedB[ i ], 0 );
+
+			expect( manualDot ).toBe( expectedDot );
+
+		} );
+
+	} );
+
+	describe( 'packUint8x4 / unpacking by hand', () => {
+
+		function unpackUint8x4( packed ) {
+
+			const values = new Array( 4 );
+			for ( let i = 0; i < 4; i ++ ) values[ i ] = ( packed >>> ( 8 * i ) ) & 0xFF; // no sign-extension - unsigned
+
+			return values;
+
+		}
+
+		it( 'round-trips values across the full unsigned byte range exactly', () => {
+
+			const values = [ 0, 1, 128, 255 ];
+			const packed = packUint8x4( values );
+			expect( unpackUint8x4( packed ) ).toEqual( values );
+
+		} );
+
+		it( 'treats a missing/undefined value as 0', () => {
+
+			const packed = packUint8x4( [ 3, undefined, 9 ] ); // index 3 omitted entirely
+			expect( unpackUint8x4( packed ) ).toEqual( [ 3, 0, 9, 0 ] );
+
+		} );
+
+		it( 'clamps out-of-range inputs (including negative values) to [0, 255] before packing', () => {
+
+			const packed = packUint8x4( [ 300, - 50, 0, 0 ] );
+			expect( unpackUint8x4( packed ) ).toEqual( [ 255, 0, 0, 0 ] );
+
+		} );
+
+		it( 'is always a non-negative (unsigned bit-pattern) JS number', () => {
+
+			const packed = packUint8x4( [ 255, 255, 255, 255 ] );
+			expect( packed ).toBeGreaterThanOrEqual( 0 );
+			expect( Number.isInteger( packed ) ).toBe( true );
+
+		} );
+
+		it( 'matches a hand-computed packing for a known case', () => {
+
+			// [1, 2, 3, 4] -> bytes 0x01, 0x02, 0x03, 0x04 -> little-endian u32
+			// 0x04030201 = 67305985 - same bit layout as packInt8x4 for
+			// non-negative values, since an unsigned byte's bit pattern already
+			// is its value.
+			expect( packUint8x4( [ 1, 2, 3, 4 ] ) ).toBe( 0x04030201 );
+
+		} );
+
+		it( 'dot4U8Packed semantics: the packed dot product (computed by hand) matches a plain sum of products', () => {
+
+			const a = [ 3, 200, 5, 250 ];
+			const b = [ 1, 2, 100, 4 ];
+			const packedA = packUint8x4( a );
+			const packedB = packUint8x4( b );
+
+			const expectedDot = a.reduce( ( sum, value, i ) => sum + value * b[ i ], 0 );
+
+			// Manual dot4U8Packed reference implementation (byte-by-byte,
+			// unsigned) - an independent re-derivation of what the GPU builtin
+			// computes, used here purely to confirm packUint8x4 packs bytes in
+			// the order dot4U8Packed expects - the actual GPU builtin itself is
+			// exercised in test/vitest/browser/ntc/NTCPackedDotProduct.test.js.
+			const unpackedA = unpackUint8x4( packedA );
+			const unpackedB = unpackUint8x4( packedB );
 			const manualDot = unpackedA.reduce( ( sum, value, i ) => sum + value * unpackedB[ i ], 0 );
 
 			expect( manualDot ).toBe( expectedDot );

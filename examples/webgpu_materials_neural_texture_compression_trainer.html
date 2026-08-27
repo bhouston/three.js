@@ -167,6 +167,7 @@
 			import { NTCNodeMaterial } from 'three/addons/ntc/NTCNodeMaterial.js';
 			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/ntc/training/NTCSource.js';
 			import { inferAlbedoUvTransform } from 'three/addons/ntc/training/NTCMaterialXUvTransform.js';
+			import { uniform } from 'three/tsl';
 			import { computeGridLevels } from 'three/addons/ntc/training/NTCGridPyramidModel.js';
 			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/ntc/training/NTCGridModel.js';
 			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, buildChannelActivations } from 'three/addons/ntc/NTCFormat.js';
@@ -214,9 +215,28 @@
 				// bilinear blur - purely a display setting, not part of the
 				// trained model.
 				interpolation: true,
+				// See NTCNodeMaterial.js's computeAutoLodNode - subtracted from
+				// the auto-computed (screen-space-derivative) LOD estimate
+				// before clamping to [0, maxLod]; a large positive value pins
+				// reconstruction to the finest stored level regardless of how
+				// tiled/repeated the material's uvTransform makes it, which is
+				// what actually lets the feature grid's own stored texels be
+				// inspected (via the 'textureUv' debug view + interpolation
+				// off) independent of the tiling-driven auto-LOD coarsening
+				// that's otherwise entirely expected (any tiled, mipmapped
+				// texture behaves the same way - more repeats need a coarser
+				// mip to stay anti-aliased).
+				lodBias: 0,
 				shape: 'torus',
 				showBackground: true
 			};
+
+			// A live-updatable uniform (rather than a plain number) so the
+			// 'LOD bias' slider below can retune this after the material's
+			// already built - see NTCNodeMaterial.js's constructor doc comment
+			// on `options.lodBias` - instead of triggering a full material
+			// rebuild on every drag.
+			const lodBiasUniform = uniform( 0 );
 
 			const DEFAULT_MATERIALX_KEY = 'neural_train_checkerboard_normal';
 			const BACKGROUND_COLOR = 0x15171c;
@@ -342,6 +362,17 @@
 				// normally shaded while only the neural mesh switches to it.
 				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS, 'textureUv' ] ).name( 'channel' ).onChange( updateDebugView );
 				viewFolder.add( params, 'interpolation' ).name( 'interpolation (feature grid)' ).onChange( updateInterpolation );
+				// Positive values pin reconstruction to a finer stored level than
+				// the screen-space-derivative auto-estimate would pick - see
+				// `lodBiasUniform`'s doc comment above. Useful for inspecting the
+				// feature grid's own texels (with interpolation off) on a tiled/
+				// repeated material, where auto-LOD correctly (not a bug - see
+				// that comment) goes coarser as the tiling gets denser.
+				viewFolder.add( params, 'lodBias', - 4, 16, 0.25 ).name( 'LOD bias (force finer)' ).onChange( ( value ) => {
+
+					lodBiasUniform.value = value;
+
+				} );
 				viewFolder.add( params, 'showBackground' ).name( 'show background IBL' ).onChange( updateBackground );
 
 				builtInMaterial.addEventListener( 'change', () => loadBuiltInMaterial( builtInMaterial.value ) );
@@ -826,7 +857,7 @@
 				neuralMaterial = new NTCNodeMaterial(
 					cpuModel,
 					channelClassification,
-					{ debugView: params.debugView, interpolation: params.interpolation, renderer }
+					{ debugView: params.debugView, interpolation: params.interpolation, lodBias: lodBiasUniform, renderer }
 				);
 				neuralMesh.material = neuralMaterial;
 				neuralMesh.visible = true;

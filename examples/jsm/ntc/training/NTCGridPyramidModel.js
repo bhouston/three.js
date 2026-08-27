@@ -1,3 +1,4 @@
+import { Matrix3 } from 'three';
 import { createMLP } from './NTCMLP.js';
 import { computeGridLevels, createLatentGrid, LATENT_INIT_SCALE, DEFAULT_MIPS_PER_LEVEL, MAX_GRID_RESOLUTION } from './NTCGridModel.js';
 
@@ -41,7 +42,12 @@ function resolveNTCGridPyramidOptions( options = {} ) {
 		mipsPerLevel: options.mipsPerLevel || DEFAULT_MIPS_PER_LEVEL,
 		hiddenSizes: options.hiddenSizes || [ 32, 32 ],
 		outputChannels: options.outputChannels || 3,
-		textureResolution
+		textureResolution,
+		// The mesh/query-UV-to-local-space affine transform this model is
+		// meant to be queried through (see NTCNodeMaterial.js) - defaults to
+		// identity, carried on `cpuModel.uvTransform` all the way through
+		// export (NTCManifest.js) so a caller never has to re-supply it.
+		uvTransform: options.uvTransform || new Matrix3()
 	};
 
 }
@@ -63,7 +69,7 @@ function resolveNTCGridPyramidOptions( options = {} ) {
  */
 function createNTCGridPyramidModel( options, random ) {
 
-	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, outputChannels, textureResolution } = resolveNTCGridPyramidOptions( options );
+	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, outputChannels, textureResolution, uvTransform } = resolveNTCGridPyramidOptions( options );
 
 	const resolutions = computeGridLevels( baseResolution, requestedLevels, mipsPerLevel );
 	const levels = resolutions.length;
@@ -75,7 +81,7 @@ function createNTCGridPyramidModel( options, random ) {
 	const inputSize = channels + 1;
 	const decoder = createMLP( inputSize, hiddenSizes, outputChannels, random, 'relu', 'linear' );
 
-	return { channels, levels, mipsPerLevel, resolutions, grids, decoder, hiddenSizes, outputChannels, textureResolution: resolvedTextureResolution, maxLod };
+	return { channels, levels, mipsPerLevel, resolutions, grids, decoder, hiddenSizes, outputChannels, textureResolution: resolvedTextureResolution, maxLod, uvTransform };
 
 }
 

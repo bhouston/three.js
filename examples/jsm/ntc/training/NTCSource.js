@@ -214,7 +214,7 @@ function buildPackedColorNodes( activeChannels, material ) {
  * render per pack (see NTCFormat.js for how flat channel indices
  * map onto them).
  */
-async function bakeMaterialToTextures( renderer, material, resolution, activeChannels ) {
+async function bakeMaterialToTextures( renderer, material, resolution, activeChannels, uvTransform = null ) {
 
 	const colorNodes = buildPackedColorNodes( activeChannels, material );
 	const renderTargets = [];
@@ -222,8 +222,11 @@ async function bakeMaterialToTextures( renderer, material, resolution, activeCha
 	for ( const colorNode of colorNodes ) {
 
 		// `generateMipmaps: true` - these are training-source textures (see
-		// bakeColorNodeToTexture's doc comment on its default).
-		renderTargets.push( await bakeColorNodeToTexture( renderer, colorNode, resolution, { generateMipmaps: true } ) );
+		// bakeColorNodeToTexture's doc comment on its default). `uvTransform`
+		// (see its doc comment there) bakes every channel in its local,
+		// untransformed space - the same space `NTCNodeMaterial` maps query
+		// UV into at render time.
+		renderTargets.push( await bakeColorNodeToTexture( renderer, colorNode, resolution, { generateMipmaps: true, uvTransform } ) );
 
 	}
 

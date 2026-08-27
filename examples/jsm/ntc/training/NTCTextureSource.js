@@ -9,7 +9,7 @@ import { vec4 } from 'three/tsl';
  * appearance teacher-atlas renderer, simplified to a single full-resolution
  * pass since there's no per-sample atlas tiling to do here.
  */
-async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512, { generateMipmaps = false } = {} ) {
+async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512, { generateMipmaps = false, uvTransform = null } = {} ) {
 
 	const scene = new THREE.Scene();
 	const camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 4 );
@@ -63,8 +63,32 @@ async function bakeColorNodeToTexture( renderer, colorNode, resolution = 512, { 
 	// channel, since none of those consumers know to undo it. Flipping V here
 	// once, at the source, keeps the whole pipeline working in plain raw-UV
 	// space so the neural mesh's material lines up with the teacher's.
+	//
+	// `uvTransform`, when given, is applied here too - inverted - in that
+	// same raw-UV space: baking at raw-UV `x` with the material's own graph
+	// unmodified produces `graph(x)`, but the graph already contains
+	// whatever UV-transform nodes (rotate2d/place2d/tiling, see
+	// NTCMaterialXUvTransform.js) feed its image lookup(s), so baking that
+	// way would bake the *transformed* (e.g. already-tiled) appearance into
+	// the training target - wasting grid capacity re-learning repeated
+	// content instead of storing it once. Baking at `uvTransform^-1(x)`
+	// instead makes this texel equal `graph(uvTransform^-1(x))`, which -
+	// since `graph = imageLookup(uvTransform(...))` - simplifies to
+	// `imageLookup(x)`: the untransformed content, in the same local space
+	// `NTCNodeMaterial` maps query UV *into* via `uvTransform` at render
+	// time. No graph editing needed - this is a pure sampling-side inverse.
 	const uvAttribute = geometry.attributes.uv;
-	for ( let i = 0; i < uvAttribute.count; i ++ ) uvAttribute.setY( i, 1 - uvAttribute.getY( i ) );
+	const inverseUvTransform = uvTransform ? new THREE.Matrix3().copy( uvTransform ).invert() : null;
+	const uvPoint = new THREE.Vector2();
+
+	for ( let i = 0; i < uvAttribute.count; i ++ ) {
+
+		uvPoint.set( uvAttribute.getX( i ), 1 - uvAttribute.getY( i ) );
+		if ( inverseUvTransform ) uvPoint.applyMatrix3( inverseUvTransform );
+		uvAttribute.setXY( i, uvPoint.x, uvPoint.y );
+
+	}
+
 	uvAttribute.needsUpdate = true;
 	geometry.computeTangents();
 	const mesh = new THREE.Mesh( geometry, material );
@@ -175,11 +199,11 @@ class NTCTextureSource {
 
 	}
 
-	static async fromBakedColorNode( renderer, colorNode, resolution = 512 ) {
+	static async fromBakedColorNode( renderer, colorNode, resolution = 512, uvTransform = null ) {
 
 		// `generateMipmaps: true` - this is the actual training-source bake
 		// path (see bakeColorNodeToTexture's doc comment on its default).
-		const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, resolution, { generateMipmaps: true } );
+		const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, resolution, { generateMipmaps: true, uvTransform } );
 		return new NTCTextureSource( renderTarget.texture, renderTarget );
 
 	}

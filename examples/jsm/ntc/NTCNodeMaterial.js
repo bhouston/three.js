@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { bitangentWorld, fract, log, max, tangentWorld, uv, vec2, vec3 } from 'three/tsl';
+import { bitangentWorld, fract, log, max, min, step, tangentWorld, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { buildMipChainTexture, evaluateNeuralTextureRaw } from './NTCDecoderTSL.js';
 import { applyChannelActivation } from './NTCOutputActivations.js';
 import { CHANNELS, FRAME_VIEWS, getChannel, buildDebugViewColorNode, buildFrameViewColorNode } from './NTCFormat.js';
@@ -72,6 +72,36 @@ function computeAutoLodNode( coord, maxLod, lodBias = 0 ) {
 	const footprint = max( texelCoord.dFdx().length(), texelCoord.dFdy().length() ).max( 1e-6 );
 
 	return log( footprint ).div( Math.LN2 ).sub( lodBias ).clamp( 0, maxLod );
+
+}
+
+/**
+ * A synthetic "UV checker" color node for the 'textureUv' debug view (see
+ * setDebugView) - no texture asset needed. A red/green gradient across each
+ * unit tile (`vec3(u, v, 0.25)`) makes the local space's orientation legible
+ * at a glance - e.g. a correctly detected 90deg `rotate2d` should visibly
+ * swap which mesh edge reads red vs green versus an identity transform -
+ * and `fract()`'s wraparound at the query-time transform (see the
+ * constructor's `tiledUV`) already turns any tiling/repeat baked into
+ * `uvTransform` into repeated ramps across the surface. The overlaid dark
+ * grid (10 cells per tile) makes both the tile boundaries and any shear/
+ * non-uniform scale in the transform easier to read than the gradient
+ * alone would.
+ */
+function buildTextureUvDebugColorNode( uvNode ) {
+
+	const cell = fract( uvNode.mul( 10 ) );
+	const distanceToNearestGridLine = min( cell, cell.oneMinus() );
+	const lineHalfWidth = 0.04;
+	const onGridLine = max(
+		step( distanceToNearestGridLine.x, lineHalfWidth ),
+		step( distanceToNearestGridLine.y, lineHalfWidth )
+	);
+
+	const gradient = vec3( uvNode.x, uvNode.y, 0.25 );
+	const color = gradient.mix( vec3( 0 ), onGridLine );
+
+	return vec4( color, 1 );
 
 }
 
@@ -162,13 +192,28 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		this.channels = channels;
 		this.mipChainTexture = buildMipChainTexture( cpuModel );
 
-		const uvScaleNode = options.uvScaleNode;
-		const uvOffsetNode = options.uvOffsetNode;
+		// Maps mesh/query UV into the local space this model's grids + MLP
+		// were actually fit against - `options.uvTransform` overrides
+		// `cpuModel.uvTransform` (the transform persisted with/detected for
+		// this model, see NTCFormat.js's decodeUvTransform and
+		// training/NTCTextureSource.js's inverse-transformed bake), both
+		// defaulting to identity. Uploaded as a `mat3` uniform and applied
+		// the same way `TextureNode.getTransformedUV` applies `texture.
+		// matrix` - `matrix.mul(vec3(uv,1)).xy` - rather than a bespoke
+		// scale+offset pair, so this material can express the same rotate/
+		// scale/offset-around-a-pivot transforms `THREE.Texture`/MaterialX's
+		// `place2d` already support.
+		this.uvTransform = options.uvTransform || cpuModel.uvTransform || new THREE.Matrix3();
+		const uvTransformUniform = uniform( this.uvTransform );
 
-		let coord = uv();
-		if ( uvScaleNode ) coord = coord.mul( uvScaleNode );
-		if ( uvOffsetNode ) coord = coord.add( uvOffsetNode );
+		const coord = uvTransformUniform.mul( vec3( uv(), 1 ) ).xy;
 		const tiledUV = fract( coord );
+
+		// Stashed for the 'textureUv' debug view (see setDebugView) - exactly
+		// the UV this material actually queries the feature grid + MLP with,
+		// so that view doubles as a visual check on whether `this.uvTransform`
+		// (detected or explicit) is correct.
+		this._localUv = tiledUV;
 
 		// Auto-LOD (see computeAutoLodNode above) needs `coord` (pre-`fract()`,
 		// still continuous across a tile seam) - built unless the caller
@@ -239,6 +284,23 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 			this.toneMapped = false;
 			const frameNode = view === 'tangent' ? tangentWorld : bitangentWorld;
 			this.colorNode = buildFrameViewColorNode( frameNode );
+
+		} else if ( view === 'textureUv' ) {
+
+			// Debug-only, neural-material-only (see this module's export
+			// comment and webgpu_materials_neural_texture_compression_
+			// trainer.html's viewFolder options) - not a trained channel, and
+			// not mirrored on the teacher side the way FRAME_VIEWS is: the
+			// teacher's albedo/etc. graph has no equivalent "local UV space",
+			// only whatever raw mesh UV its own image lookups use. Visualizes
+			// `this._localUv` - the exact post-`uvTransform`, tiled UV this
+			// material queries the feature grid + MLP with (see the
+			// constructor) - so a detected/explicit `uvTransform` can be
+			// judged visually: a correct one should show this grid oriented/
+			// tiled exactly the way the source image's own UV space was.
+			this.lights = false;
+			this.toneMapped = false;
+			this.colorNode = buildTextureUvDebugColorNode( this._localUv );
 
 		} else {
 

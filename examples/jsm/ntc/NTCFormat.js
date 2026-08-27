@@ -927,6 +927,60 @@ function buildFrameViewColorNode( frameNode ) {
 
 }
 
+/**
+ * The per-material UV transform every `.ntc` model carries: a 2D affine map
+ * from mesh/query UV into the local space the trained feature grids + MLP
+ * were actually fit against (see `NTCNodeMaterial.js`'s query-time coord
+ * build, and `training/NTCTextureSource.js`'s inverse-transformed bake).
+ * Stored/serialized as 6 numbers - the affine part of a `THREE.Matrix3`
+ * (`[a, b, c, d, e, f]` such that `local.x = a*u + b*v + c`, `local.y = d*u +
+ * e*v + f`; the matrix's third row is always the implicit `[0, 0, 1]`) rather
+ * than the full 9-element `Matrix3`, since a UV transform can never carry a
+ * projective (non-affine) third row - see `encodeUvTransform`/
+ * `decodeUvTransform` below. Defaults to identity - a material with no
+ * detected/explicit UV transform behaves exactly as before this field
+ * existed.
+ */
+function decodeUvTransform( array ) {
+
+	if ( ! array ) return new THREE.Matrix3();
+
+	const [ a, b, c, d, e, f ] = array;
+	return new THREE.Matrix3().set( a, b, c, d, e, f, 0, 0, 1 );
+
+}
+
+/**
+ * Inverse of `decodeUvTransform` - reads the affine part (row 1: `[a, b,
+ * c]`, row 2: `[d, e, f]`) out of a `THREE.Matrix3`'s column-major
+ * `elements` array (`[n11, n21, n31, n12, n22, n32, n13, n23, n33]`, see
+ * `Matrix3`'s own doc comment on row-/column-major storage).
+ */
+function encodeUvTransform( matrix3 ) {
+
+	const e = matrix3.elements;
+	return [ e[ 0 ], e[ 3 ], e[ 6 ], e[ 1 ], e[ 4 ], e[ 7 ] ];
+
+}
+
+/**
+ * True for an identity (or missing) UV transform - used to keep a `.ntc`
+ * manifest's `uvTransform` field additive/optional (omitted entirely for
+ * the common case where nothing was detected/supplied) rather than always
+ * present, matching how `renderFlags` was introduced without a `VERSION`
+ * bump (see NTCManifest.js's `encodeNTC`).
+ */
+function isIdentityUvTransform( matrix3 ) {
+
+	if ( ! matrix3 ) return true;
+
+	const e = matrix3.elements;
+	return e[ 0 ] === 1 && e[ 1 ] === 0 && e[ 2 ] === 0 &&
+		e[ 3 ] === 0 && e[ 4 ] === 1 && e[ 5 ] === 0 &&
+		e[ 6 ] === 0 && e[ 7 ] === 0 && e[ 8 ] === 1;
+
+}
+
 export {
 	FORMAT,
 	VERSION,
@@ -947,5 +1001,8 @@ export {
 	normalChannel,
 	iridescenceThicknessRangeChannel,
 	constantToNode,
-	reconstructFinalNormal
+	reconstructFinalNormal,
+	decodeUvTransform,
+	encodeUvTransform,
+	isIdentityUvTransform
 };

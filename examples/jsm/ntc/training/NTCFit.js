@@ -15,8 +15,11 @@ import { bakeMaterialToTextures, classifyMaterialChannels } from './NTCSource.js
  * `hiddenSizes`, `iterations`, `learningRate`, etc. all apply), plus a few
  * fit-specific fields: `resolution` (bake resolution, default 512),
  * `debugView` (default 'shaded'), `channels` (the channel vocabulary to fit
- * against, default the built-in `CHANNELS` - see `../NTCFormat.js`), and
- * `onProgress`, called with the usual `NTCTrainer` progress payload plus a
+ * against, default the built-in `CHANNELS` - see `../NTCFormat.js`),
+ * `uvTransform` (a `THREE.Matrix3` mapping mesh/query UV into local space,
+ * default identity - see `NTCTextureSource.bakeColorNodeToTexture`'s doc
+ * comment and `NTCMaterialXUvTransform.js` for how one gets detected from a
+ * MaterialX graph), and `onProgress`, called with the usual `NTCTrainer` progress payload plus a
  * `material` field holding the current (already-disposing-its-predecessor)
  * in-progress material, suitable for live preview during training.
  *
@@ -27,7 +30,7 @@ import { bakeMaterialToTextures, classifyMaterialChannels } from './NTCSource.js
  */
 async function fitNTCMaterial( renderer, material, options = {} ) {
 
-	const { onProgress, resolution = 512, debugView = 'shaded', channels = CHANNELS, ...trainerOptions } = options;
+	const { onProgress, resolution = 512, debugView = 'shaded', channels = CHANNELS, uvTransform = null, ...trainerOptions } = options;
 
 	const channelClassification = classifyMaterialChannels( material, channels );
 
@@ -37,11 +40,17 @@ async function fitNTCMaterial( renderer, material, options = {} ) {
 
 	}
 
-	const renderTargets = await bakeMaterialToTextures( renderer, material, resolution, channelClassification.activeChannels );
+	// `uvTransform` (see NTCTextureSource.bakeColorNodeToTexture's doc
+	// comment) bakes every channel in its local, untransformed space, and is
+	// carried onto the trained cpuModel (below, via NTCTrainer's own
+	// `uvTransform` option -> NTCGridPyramidModel.js) so `NTCNodeMaterial`
+	// maps query UV back into that same space at render time.
+	const renderTargets = await bakeMaterialToTextures( renderer, material, resolution, channelClassification.activeChannels, uvTransform );
 
 	const trainer = new NTCTrainer( {
 		outputChannels: channelClassification.totalChannels,
 		channelActivations: buildChannelActivations( channelClassification.activeChannels ),
+		uvTransform,
 		...trainerOptions
 	} );
 

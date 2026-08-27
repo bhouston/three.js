@@ -62,6 +62,7 @@ class NTCExporter {
  * @property {string} [source] - A free-form provenance string embedded in the manifest.
  * @property {('repeat'|'clamp')} [wrap='repeat'] - The latent grid's wrap mode.
  * @property {Array<[number,number]>} [quantizationRanges] - Explicit per-level `[min, max]` quantization ranges, overriding both `material.cpuModel.quantizationRange` (QAT) and a plain min/max scan.
+ * @property {Matrix3} [uvTransform] - Overrides `material.cpuModel.uvTransform` (see `NTCNodeMaterial.js`) - a mesh/query-UV-to-local-space affine transform. Omitted from the manifest when identity/not supplied.
  **/
 
 export { NTCExporter };

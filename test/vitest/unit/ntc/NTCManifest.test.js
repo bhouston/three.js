@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Matrix3 } from 'three';
 import { createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js';
 import { CHANNELS, layoutChannels, getChannel } from '../../../../examples/jsm/ntc/NTCFormat.js';
 import { encodeNTC, FORMAT, VERSION } from '../../../../examples/jsm/ntc/training/NTCManifest.js';
@@ -210,6 +211,72 @@ describe( 'Addons > NTC > NTCManifest', () => {
 		const loader = new NTCLoader();
 
 		expect( () => loader.parse( manifest ) ).toThrow( /unknown channel/ );
+
+	} );
+
+	it( 'a model with an identity uvTransform (the default) omits the field entirely', () => {
+
+		const classification = buildChannelClassification();
+		const model = buildModel( classification.totalChannels );
+
+		expect( model.uvTransform.equals( new Matrix3() ) ).toBe( true );
+
+		const manifest = encodeNTC( model, classification, { name: 'identity uvTransform' } );
+
+		expect( manifest.uvTransform ).toBeUndefined();
+
+		const loaded = new NTCLoader().parse( JSON.parse( JSON.stringify( manifest ) ) );
+		expect( loaded.cpuModel.uvTransform.equals( new Matrix3() ) ).toBe( true );
+
+	} );
+
+	it( 'round-trips a non-identity uvTransform through export -> JSON -> load', () => {
+
+		const classification = buildChannelClassification();
+		const model = buildModel( classification.totalChannels );
+
+		// 4x tiling + a (0.25, 0.1) offset - the kind of transform
+		// NTCMaterialXUvTransform.js would infer from a MaterialX <place2d>.
+		const uvTransform = new Matrix3().set(
+			4, 0, 0.25,
+			0, 4, 0.1,
+			0, 0, 1
+		);
+
+		const manifest = encodeNTC( model, classification, { name: 'tiled uvTransform', uvTransform } );
+
+		expect( manifest.uvTransform ).toEqual( [ 4, 0, 0.25, 0, 4, 0.1 ] );
+
+		const json = JSON.parse( JSON.stringify( manifest ) );
+		const loaded = new NTCLoader().parse( json );
+
+		expect( loaded.cpuModel.uvTransform.equals( uvTransform ) ).toBe( true );
+
+	} );
+
+	it( 'options.uvTransform overrides cpuModel.uvTransform', () => {
+
+		const classification = buildChannelClassification();
+		const model = buildModel( classification.totalChannels );
+		model.uvTransform = new Matrix3().set( 2, 0, 0, 0, 2, 0, 0, 0, 1 );
+
+		const overrideTransform = new Matrix3().set( 3, 0, 0, 0, 3, 0, 0, 0, 1 );
+		const manifest = encodeNTC( model, classification, { name: 'override', uvTransform: overrideTransform } );
+
+		expect( manifest.uvTransform ).toEqual( [ 3, 0, 0, 0, 3, 0 ] );
+
+	} );
+
+	it( 'loader rejects a uvTransform that is not a 6-element array', () => {
+
+		const classification = buildChannelClassification();
+		const model = buildModel( classification.totalChannels );
+		const manifest = encodeNTC( model, classification, { name: 'bad uvTransform' } );
+		manifest.uvTransform = [ 1, 2, 3 ];
+
+		const loader = new NTCLoader();
+
+		expect( () => loader.parse( manifest ) ).toThrow( /uvTransform must be a 6-element array/ );
 
 	} );
 

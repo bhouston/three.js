@@ -210,10 +210,28 @@ export const MATERIALX_SAMPLES = [
 		description: 'MaterialX conformance test of a 3D rotation node graph feeding base color.'
 	},
 	{
+		key: 'standard_surface_rotate_scale2d_test',
+		file: 'standard_surface_rotate_scale2d_test.mtlx',
+		label: 'Rotate+Scale2D test',
+		description: 'MaterialX conformance test chaining rotate2d then a non-uniform scale before sampling - the opposite node order from scale_rotate2d_test.mtlx.'
+	},
+	{
 		key: 'standard_surface_roughness_test',
 		file: 'standard_surface_roughness_test.mtlx',
 		label: 'Roughness map test',
 		description: 'MaterialX conformance test driving specular roughness from a procedural map.'
+	},
+	{
+		key: 'standard_surface_scale2d_test',
+		file: 'standard_surface_scale2d_test.mtlx',
+		label: 'Scale2D test',
+		description: 'MaterialX conformance test applying a non-uniform 2D scale to a texture coordinate before sampling.'
+	},
+	{
+		key: 'standard_surface_scale_rotate2d_test',
+		file: 'standard_surface_scale_rotate2d_test.mtlx',
+		label: 'Scale+Rotate2D test',
+		description: 'MaterialX conformance test chaining a non-uniform scale then rotate2d before sampling - the opposite node order from rotate_scale2d_test.mtlx.'
 	},
 	{
 		key: 'standard_surface_sheen_test',

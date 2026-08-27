@@ -166,6 +166,7 @@
 			import { NTCTrainer } from 'three/addons/ntc/training/NTCTrainer.js';
 			import { NTCNodeMaterial } from 'three/addons/ntc/NTCNodeMaterial.js';
 			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/ntc/training/NTCSource.js';
+			import { inferAlbedoUvTransform } from 'three/addons/ntc/training/NTCMaterialXUvTransform.js';
 			import { computeGridLevels } from 'three/addons/ntc/training/NTCGridPyramidModel.js';
 			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS } from 'three/addons/ntc/training/NTCGridModel.js';
 			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, buildChannelActivations } from 'three/addons/ntc/NTCFormat.js';
@@ -179,6 +180,12 @@
 			let geometry;
 			let teacherMesh, neuralMesh, neuralMaterial, placeholderMaterial;
 			let materialXMaterial = null, sourceTextures = null, teacherDebugMaterials = null, channelClassification = null;
+			// The mesh/query-UV-to-local-space transform inferred from the loaded
+			// MaterialX graph's albedo chain (rotate2d/place2d/tiling - see
+			// NTCMaterialXUvTransform.js), or identity for a built-in material /
+			// a graph with no detected transform. Baked into the training targets
+			// (inverted) and persisted onto the trained model - see setSourceMaterial/train.
+			let materialXUvTransform = new THREE.Matrix3();
 			let currentCpuModel = null;
 			// True once `currentCpuModel`'s real dimensions match what the network
 			// GUI sliders currently say - set on train/load, cleared the moment any
@@ -321,7 +328,12 @@
 				objectFolder.add( params, 'shape', [ 'torus', 'sphere', 'plane' ] ).name( 'shape' ).onChange( updateShape );
 
 				const viewFolder = gui.addFolder( 'view' );
-				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS ] ).name( 'channel' ).onChange( updateDebugView );
+				// 'textureUv' is neural-material-only (see NTCNodeMaterial.js's
+				// setDebugView) - there's no teacher-side equivalent, so
+				// updateDebugView's `teacherDebugMaterials[params.debugView] ||
+				// materialXMaterial` fallback leaves the teacher mesh shown
+				// normally shaded while only the neural mesh switches to it.
+				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS, 'textureUv' ] ).name( 'channel' ).onChange( updateDebugView );
 				viewFolder.add( params, 'showBackground' ).name( 'show background IBL' ).onChange( updateBackground );
 
 				builtInMaterial.addEventListener( 'change', () => loadBuiltInMaterial( builtInMaterial.value ) );
@@ -631,6 +643,7 @@
 				cpuModel.hiddenSizes = cpuModel.decoder.layers.slice( 0, - 1 ).map( ( layer ) => layer.outputSize );
 
 				materialXMaterial = null;
+				materialXUvTransform = new THREE.Matrix3();
 				disposeTeacherDebugMaterials();
 				disposeSourceTextures();
 				builtInMaterial.value = '';
@@ -661,6 +674,18 @@
 
 				materialXMaterial = material;
 				channelClassification = classifyMaterialChannels( material );
+
+				// See NTCMaterialXUvTransform.js's doc comment - only present for a
+				// MaterialX-loaded material (see MaterialXDocument.js's
+				// toPhysicalMaterial), and only ever non-identity when its albedo
+				// chain has a recognized, all-constant rotate2d/place2d/tiling
+				// transform. Falls back to identity for the built-in demo material
+				// or an unrecognized/dynamic graph.
+				const surfaceShaderNode = material.materialXSurfaceShaderNode;
+				const materialXDocument = material.materialXDocument;
+				materialXUvTransform = ( surfaceShaderNode && materialXDocument ) ?
+					inferAlbedoUvTransform( materialXDocument, surfaceShaderNode ) : new THREE.Matrix3();
+
 				sourceName.textContent = material.name || name;
 				disposeTeacherDebugMaterials();
 				teacherDebugMaterials = buildChannelPreviewMaterials( material );
@@ -680,7 +705,9 @@
 				updateNetworkSize();
 
 				const activeKeys = channelClassification.activeChannels.map( ( c ) => c.key ).join( ', ' ) || 'none';
-				status.textContent = `MaterialX loaded. Training ${channelClassification.totalChannels}/${MAX_TOTAL_CHANNELS} channels: ${activeKeys}.\nPress Train to fit.`;
+				const uvTransformNote = materialXUvTransform.equals( new THREE.Matrix3() ) ?
+					'' : ' A UV transform was detected on the albedo graph and will be baked out / re-applied at render time.';
+				status.textContent = `MaterialX loaded. Training ${channelClassification.totalChannels}/${MAX_TOTAL_CHANNELS} channels: ${activeKeys}.${uvTransformNote}\nPress Train to fit.`;
 
 			}
 
@@ -709,7 +736,7 @@
 				try {
 
 					disposeSourceTextures();
-					const renderTargets = await bakeMaterialToTextures( renderer, materialXMaterial, Number( params.bakeResolution ), channelClassification.activeChannels );
+					const renderTargets = await bakeMaterialToTextures( renderer, materialXMaterial, Number( params.bakeResolution ), channelClassification.activeChannels, materialXUvTransform );
 					sourceTextures = renderTargets;
 
 					status.textContent = 'Training...';
@@ -725,6 +752,7 @@
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),
 						quantization: { mode: params.quantization },
+						uvTransform: materialXUvTransform,
 						seed: 1
 					} );
 					activeTrainer = trainer;

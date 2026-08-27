@@ -731,6 +731,24 @@ class MaterialXNode {
 
 			shaderProperties.setMaterial( material );
 
+			// Stashed as plain (non-enumerable-by-clone) instance properties -
+			// deliberately *not* under `material.userData`, which `Material.
+			// copy()` deep-clones via `JSON.parse(JSON.stringify(...))` (see
+			// Material.js): the MaterialX graph is a cyclic object (parent/
+			// child/document back-references), so putting it there would break
+			// `material.clone()` for every consumer, not just this one. Not
+			// part of the public parse()/loadAsync() return shape either - this
+			// exists so a caller that needs the *uncompiled* MaterialX graph
+			// itself - e.g. NTC's NTCMaterialXUvTransform.js, which has to run
+			// before compilation since a <rotate2d>/<place2d> node is
+			// indistinguishable from generic arithmetic once compiled to TSL -
+			// can walk it from the resulting material alone, without this
+			// loader needing to know anything about that use case. Absent (not
+			// copied) on any `.clone()` of this material, which is fine - only
+			// the original, freshly-loaded material is ever inspected for this.
+			material.materialXSurfaceShaderNode = shaderProperties;
+			material.materialXDocument = this.materialX;
+
 		}
 
 		return material;

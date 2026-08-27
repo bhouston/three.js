@@ -2,7 +2,7 @@
 // live in ../NTCFormat.js, since ../loaders/NTCLoader.js (runtime, no
 // training dependencies) needs them too.
 
-import { FORMAT, VERSION } from '../NTCFormat.js';
+import { FORMAT, VERSION, encodeUvTransform, isIdentityUvTransform } from '../NTCFormat.js';
 import { encodeUint8Base64, encodeMLPLayersBase64 } from '../NTCBinaryCodec.js';
 import { computeLatentRanges } from './NTCQuantization.js';
 
@@ -20,6 +20,13 @@ import { computeLatentRanges } from './NTCQuantization.js';
  * constantValues, totalChannels, packCount, renderFlags }` - the layout that
  * model's output was trained against (see `NTCSource.classifyMaterialChannels`).
  *
+ * `options.uvTransform` (or, if absent, `cpuModel.uvTransform`) is an
+ * optional `THREE.Matrix3` mapping mesh/query UV into the local space this
+ * model's grids + MLP were fit against - see `NTCFormat.js`'s
+ * `decodeUvTransform`/`encodeUvTransform`/`isIdentityUvTransform` and
+ * `NTCNodeMaterial.js`'s query-time coord build. Omitted from the manifest
+ * (defaulting to identity on load) when identity or not supplied.
+ *
  * Only the channel *keys* need to be persisted, in layout order - every
  * other field on an `activeChannels` entry (`size`, `activation`,
  * `nodeKeys`, `clampRange`, `defaultValue`, `offset`) is a fixed property of
@@ -32,6 +39,7 @@ import { computeLatentRanges } from './NTCQuantization.js';
 function encodeNTC( cpuModel, channelClassification, options = {} ) {
 
 	const ranges = resolveQuantizationRanges( cpuModel, options );
+	const uvTransform = options.uvTransform || cpuModel.uvTransform;
 
 	const levels = cpuModel.grids.map( ( grid, index ) => {
 
@@ -71,6 +79,11 @@ function encodeNTC( cpuModel, channelClassification, options = {} ) {
 			maxLod: cpuModel.maxLod
 		},
 		outputChannels: cpuModel.outputChannels,
+		// Omitted entirely (rather than always written as the 6-number
+		// identity) for an identity/absent transform - see
+		// NTCFormat.isIdentityUvTransform's doc comment on why this is an
+		// additive/optional field rather than a VERSION bump.
+		uvTransform: ( uvTransform && ! isIdentityUvTransform( uvTransform ) ) ? encodeUvTransform( uvTransform ) : undefined,
 		mlp: encodeMLPLayersBase64( cpuModel.decoder.layers ),
 		// See NTCSource.resolveRenderFlags's doc comment - `side`/
 		// `transparent` aren't channels (nothing for the network to fit), but

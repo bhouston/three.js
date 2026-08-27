@@ -1,5 +1,5 @@
 import { FileLoader, Loader } from 'three';
-import { FORMAT, VERSION, getChannel, layoutChannels } from '../ntc/NTCFormat.js';
+import { FORMAT, VERSION, getChannel, layoutChannels, decodeUvTransform } from '../ntc/NTCFormat.js';
 import { decodeUint8Base64, decodeMLPLayersBase64 } from '../ntc/NTCBinaryCodec.js';
 
 /**
@@ -97,7 +97,12 @@ class NTCLoader extends Loader {
 			decoder: { layers: decoderLayers },
 			outputChannels: manifest.outputChannels !== undefined ?
 				manifest.outputChannels : decoderLayers[ decoderLayers.length - 1 ].outputSize,
-			wrap: manifest.latents.wrap || 'repeat'
+			wrap: manifest.latents.wrap || 'repeat',
+			// Defaults to identity when absent (manifests saved before this
+			// field existed, or one that never had a detected/explicit UV
+			// transform) - see NTCFormat.js's decodeUvTransform and
+			// NTCNodeMaterial.js's query-time coord build.
+			uvTransform: decodeUvTransform( manifest.uvTransform )
 		};
 
 		const channelClassification = decodeChannelClassification( manifest.channels, manifest.renderFlags );
@@ -185,6 +190,15 @@ function validateManifest( manifest ) {
 	for ( const key of manifest.channels.activeKeys ) {
 
 		getChannel( key ); // throws a clear error on an unknown channel key
+
+	}
+
+	// Optional/additive field (see NTCFormat.js's isIdentityUvTransform) -
+	// only shape-checked when present at all.
+	if ( manifest.uvTransform !== undefined &&
+		( ! Array.isArray( manifest.uvTransform ) || manifest.uvTransform.length !== 6 ) ) {
+
+		throw new Error( 'THREE.NTCLoader: uvTransform must be a 6-element array when present.' );
 
 	}
 

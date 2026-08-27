@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as TSL from 'three/tsl';
+import { dot4I8PackedTSL } from './NTCPackedDotProduct.js';
 
 /**
  * TSL "hardGELU" - see NTCMLP.js's hardGELU doc comment for the exact
@@ -382,6 +383,115 @@ function evaluateLinearLayerMat4( inputs, inputSize, outputSize, activation, get
 
 }
 
+/**
+ * Quantizes up to 4 real-valued TSL scalar nodes to signed int8 (`round(x /
+ * scaleNode)`, clamped to `[-128, 127]`) and packs them little-endian into
+ * one `uint` node - the live, per-invocation GPU-side counterpart to
+ * NTCPackedDotProduct.js's `packInt8x4`/`quantizeSymmetricInt8` (which do the
+ * same thing for *weights*, once, on the CPU, ahead of time - see
+ * NTCMLPQuantization.js). `values` shorter than 4 are zero-padded, matching
+ * that CPU-side packer's own zero-padding for a partial last group.
+ */
+function quantizeAndPackInt8TSL( values, scaleNode ) {
+
+	let packed = TSL.uint( 0 );
+
+	for ( let i = 0; i < 4; i ++ ) {
+
+		const value = values[ i ] !== undefined ? values[ i ] : TSL.float( 0 );
+		const level = TSL.round( value.div( scaleNode ) ).clamp( - 128, 127 );
+		// A clamped-to-[-128,127] float converted to `int` and masked to its
+		// low 8 bits (`& 0xFF`) yields exactly the same little-endian
+		// two's-complement byte packInt8x4 produces on the CPU (JS's `& 0xFF`
+		// on a 32-bit int does the same masking) - see this function's CPU-side
+		// counterpart for the identical bit-level reasoning.
+		const byte = TSL.int( level ).bitAnd( 0xFF );
+		packed = packed.bitOr( TSL.uint( byte ).shiftLeft( 8 * i ) );
+
+	}
+
+	return packed;
+
+}
+
+/**
+ * Evaluates one *hidden* MLP layer using WebGPU's `dot4I8Packed` WGSL
+ * builtin (see NTCPackedDotProduct.js's module doc comment for the full
+ * background/rationale, and NTCMLPQuantization.js for how `layerSpec` -
+ * `{ inputSize, outputSize, activation, inputScale, weightScale,
+ * getWeightPacked, biases }` - is derived from a trained layer's real
+ * weights). Unlike `evaluateLinearLayerMat4`, this always operates on plain
+ * scalar `float` inputs/outputs (never `vec4`-packed) since the actual
+ * per-lane math happens inside the packed `uint` dot product itself, not via
+ * a native `vec4` multiply.
+ *
+ * `inputs` is a flat array of `layerSpec.inputSize` real-valued (already
+ * dequantized/physical-units) TSL scalar nodes - typically either the
+ * decoder's raw input vector (grid taps + LOD + optional positional
+ * encoding) or the previous int8 hidden layer's own (dequantized) output.
+ * `getWeightPacked(outputIndex, groupIndex)` returns the `uint` node holding
+ * that output neuron's already-CPU-quantized-and-packed weights for input
+ * group `groupIndex` (4 inputs per group, zero-padded past `inputSize` -
+ * see NTCMLPQuantization.js's `packLayerWeightsInt8`), and `getBias
+ * (outputIndex)` returns that output neuron's (never-quantized) fp32 bias -
+ * both closures for the same reason `evaluateLinearLayerMat4`'s
+ * `getWeightMat4`/`getBiasVec4` are: so callers upload them as real
+ * `uniformArray`s (letting two differently-*trained* models of the same
+ * shape at least share generated shader text) rather than baking per-model
+ * values in as shader literals.
+ *
+ * Returns `layerSpec.outputSize` real-valued (dequantized, activated) TSL
+ * scalar nodes - ready to feed either the next int8 hidden layer, or
+ * `evaluateLinearLayerMat4`'s always-fp32 final output layer (packed back
+ * into vec4s by the caller, exactly as that function already expects).
+ */
+function evaluateHiddenLayerDot4I8( inputs, layerSpec ) {
+
+	const { inputSize, outputSize, activation, inputScale, weightScale, getWeightPacked, getBias } = layerSpec;
+	const groupCount = Math.ceil( inputSize / 4 );
+	const inputScaleNode = TSL.float( inputScale );
+
+	// Quantize + pack the (shared, real-valued) input vector once - every
+	// output neuron below reads the same packed groups, only the weights
+	// differ per neuron.
+	const packedInputs = [];
+	for ( let g = 0; g < groupCount; g ++ ) {
+
+		packedInputs.push( quantizeAndPackInt8TSL( inputs.slice( g * 4, g * 4 + 4 ), inputScaleNode ) );
+
+	}
+
+	const outputs = [];
+
+	for ( let j = 0; j < outputSize; j ++ ) {
+
+		let accumulator = TSL.int( 0 ).toVar();
+
+		for ( let g = 0; g < groupCount; g ++ ) {
+
+			accumulator = accumulator.add( dot4I8PackedTSL( getWeightPacked( j, g ), packedInputs[ g ] ) );
+
+		}
+
+		// Dequantize the exact integer dot product back to physical units in
+		// one multiply (`result * weightScale * inputScale` - see
+		// NTCMLPQuantization.js's module doc comment for why a single
+		// symmetric per-tensor scale on each side makes this valid), then add
+		// the (never-quantized, always-fp32) bias, exactly like
+		// evaluateLinearLayerMat4 keeps biases in fp32.
+		let value = TSL.float( accumulator ).mul( weightScale ).mul( inputScaleNode ).add( getBias( j ) );
+
+		if ( activation === 'relu' ) value = value.max( 0 );
+		else if ( activation === 'hgelu' ) value = hardGeluTSL( value );
+
+		outputs.push( value.toVar() );
+
+	}
+
+	return outputs;
+
+}
+
 export {
 	packVec4Inputs,
 	unpackVec4Outputs,
@@ -391,5 +501,7 @@ export {
 	supportsHalfPrecisionStorage,
 	createMat4Storage,
 	createVec4Storage,
-	hardGeluTSL
+	hardGeluTSL,
+	quantizeAndPackInt8TSL,
+	evaluateHiddenLayerDot4I8
 };

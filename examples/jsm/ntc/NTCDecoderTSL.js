@@ -4,6 +4,7 @@ import {
 	packLayerWeightsMat4,
 	packLayerBiasesVec4,
 	evaluateLinearLayerMat4,
+	evaluateHiddenLayerDot4I8,
 	supportsHalfPrecisionStorage,
 	createMat4Storage,
 	createVec4Storage
@@ -12,6 +13,8 @@ import { buildMipChainTexture } from './NTCHalfFloatTexture.js';
 import { float, fract, round, textureLevel, uniformArray } from 'three/tsl';
 import { selectFeatureLevelTSL } from './NTCMipBands.js';
 import { computePositionalEncodingTSL } from './NTCPositionalEncoding.js';
+import { supportsPackedDotProduct } from './NTCPackedDotProduct.js';
+import { buildInt8HiddenLayers } from './NTCMLPQuantization.js';
 
 /**
  * Builds the TSL expression that evaluates the trained mip pyramid + MLP
@@ -39,8 +42,21 @@ import { computePositionalEncodingTSL } from './NTCPositionalEncoding.js';
  * concatenated onto the decoder's input exactly as before - this must match
  * training bit-for-bit, or the decoder sees an input distribution it was
  * never fit against.
+ *
+ * `options.useInt8DotProduct` (default `false`) opts into evaluating every
+ * *hidden* layer with WebGPU's `dot4I8Packed` builtin instead of the default
+ * fp32/fp16 `mat4 * vec4` path - see NTCPackedDotProduct.js's module doc
+ * comment for the full background, and this repo's plan doc
+ * (.cursor/plans/ntc_paper_gap_04_packed_int8_dot_product.plan.md) for the
+ * numerical tradeoffs. Silently falls back to the existing mat4 path
+ * (exactly as if this option were `false`) whenever
+ * `supportsPackedDotProduct(renderer)` is false - unsupported hardware/
+ * browsers, or WebGL2 - so callers can leave this on unconditionally without
+ * a separate capability check of their own. The final (always-linear)
+ * output layer is never quantized either way - see
+ * NTCMLPQuantization.js's `buildInt8HiddenLayers` doc comment.
  */
-function evaluateNeuralTextureRaw( uvNode, cpuModel, mipChainTexture, renderer = null, lodNode = null ) {
+function evaluateNeuralTextureRaw( uvNode, cpuModel, mipChainTexture, renderer = null, lodNode = null, options = {} ) {
 
 	const resolvedLodNode = lodNode || float( 0 );
 	const channels = cpuModel.channels;
@@ -97,6 +113,42 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, mipChainTexture, renderer =
 
 	}
 
+	const int8Active = ( options.useInt8DotProduct || false ) && supportsPackedDotProduct( renderer );
+	const hiddenLayerCount = cpuModel.decoder.layers.length - 1;
+
+	// Optional int8-packed-dot-product path for the hidden layers only - see
+	// this function's doc comment / NTCPackedDotProduct.js's module doc
+	// comment. Operates on `scalarActivations`, a flat array of scalar TSL
+	// nodes (evaluateHiddenLayerDot4I8's own input/output shape), entirely
+	// separate from the vec4-packed `activations` the mat4 path below uses -
+	// the two representations are bridged back together (via
+	// packVec4Inputs) only once, right before the always-fp32 final layer.
+	let scalarActivations = features;
+
+	if ( int8Active ) {
+
+		const int8Layers = buildInt8HiddenLayers( cpuModel );
+
+		for ( let l = 0; l < hiddenLayerCount; l ++ ) {
+
+			const int8Layer = int8Layers[ l ];
+			const packedWeightsNode = uniformArray( int8Layer.packedWeights, 'uint' );
+			const biasesNode = uniformArray( int8Layer.biases, 'float' );
+
+			scalarActivations = evaluateHiddenLayerDot4I8( scalarActivations, {
+				inputSize: int8Layer.inputSize,
+				outputSize: int8Layer.outputSize,
+				activation: int8Layer.activation,
+				inputScale: int8Layer.inputScale,
+				weightScale: int8Layer.weightScale,
+				getWeightPacked: ( outputIndex, groupIndex ) => packedWeightsNode.element( outputIndex * int8Layer.groupCount + groupIndex ),
+				getBias: ( outputIndex ) => biasesNode.element( outputIndex )
+			} );
+
+		}
+
+	}
+
 	// Shared mat4-packed MLP evaluator (see NTCMLPTSL.js). Packing weights
 	// into 4x4 blocks and evaluating each layer with a native mat4 * vec4
 	// multiply maps to one hardware FMA-chain instruction per input quad
@@ -104,11 +156,14 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, mipChainTexture, renderer =
 	// evaluateLinearLayerMat4 materializes each layer's output with .toVar()
 	// before the next layer consumes it - see that function's doc comment
 	// for the "maximum parser recursive depth" WGSL failure this works
-	// around.
+	// around. Always used for the final (linear, un-activated) output layer;
+	// used for every layer when `int8Active` is false.
 	const half = supportsHalfPrecisionStorage( renderer );
-	let activations = packVec4Inputs( features, half );
+	let activations = packVec4Inputs( scalarActivations, half );
 
-	for ( let l = 0; l < cpuModel.decoder.layers.length; l ++ ) {
+	const firstMat4Layer = int8Active ? hiddenLayerCount : 0;
+
+	for ( let l = firstMat4Layer; l < cpuModel.decoder.layers.length; l ++ ) {
 
 		const layer = cpuModel.decoder.layers[ l ];
 		const weights = createMat4Storage( renderer, packLayerWeightsMat4( layer.weights, layer.inputSize, layer.outputSize ) );

@@ -145,6 +145,19 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 	 * `options.renderer`, when given (already `init()`-ed), lets the decoder
 	 * weights use a real fp16 storage buffer instead of an fp32 uniform
 	 * array on backends that support it - see evaluateNeuralTextureRaw.
+	 *
+	 * `options.useInt8DotProduct` (default `false`) opts into evaluating the
+	 * decoder's hidden layers with WebGPU's `dot4I8Packed` builtin instead of
+	 * the default fp32/fp16 path - see NTCPackedDotProduct.js's module doc
+	 * comment and this repo's plan doc (.cursor/plans/ntc_paper_gap_04_
+	 * packed_int8_dot_product.plan.md). Silently has no effect when
+	 * unsupported (see NTCDecoderTSL.js's evaluateNeuralTextureRaw) - no
+	 * special material-level wiring is needed beyond passing this through,
+	 * since (despite first appearances) `packed_4x8_integer_dot_product` is a
+	 * WGSL *language feature*, not a gated *extension* - it needs no
+	 * `enable` directive at all, unlike e.g. `f16` (see
+	 * NTCPackedDotProduct.js's module doc comment for how this was actually
+	 * confirmed empirically, not just inferred from the spec).
 	 */
 	// `options.lodNode` overrides the LOD (mip index) this material
 	// reconstructs at - a TSL float node, useful for an explicit distance-
@@ -228,7 +241,9 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		// already supplied an explicit override.
 		const lodNode = options.lodNode || computeAutoLodNode( coord, cpuModel.maxLod, options.lodBias || 0 );
 
-		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.mipChainTexture, options.renderer, lodNode );
+		const outputs = evaluateNeuralTextureRaw( tiledUV, cpuModel, this.mipChainTexture, options.renderer, lodNode, {
+			useInt8DotProduct: options.useInt8DotProduct || false
+		} );
 		const slices = sliceChannels( outputs, activeChannels );
 		this._slices = slices;
 		this._constantValues = constantValues;

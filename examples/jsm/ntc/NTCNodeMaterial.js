@@ -190,7 +190,15 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		this.cpuModel = cpuModel;
 		this.activeChannels = activeChannels;
 		this.channels = channels;
-		this.mipChainTexture = buildMipChainTexture( cpuModel );
+		// See buildMipChainTexture's doc comment / setInterpolation below -
+		// `false` swaps to nearest-neighbor sampling *within* each stored mip
+		// level (still blending *between* levels) so the trained feature
+		// grid's actual texels can be inspected without bilinear blur hiding
+		// them. Not part of the trained model or the `.ntc` format - a pure
+		// display-time sampler setting, so toggling it later (setInterpolation)
+		// never needs a reload/retrain.
+		this.interpolation = options.interpolation !== false;
+		this.mipChainTexture = buildMipChainTexture( cpuModel, { interpolation: this.interpolation } );
 
 		// Maps mesh/query UV into the local space this model's grids + MLP
 		// were actually fit against - `options.uvTransform` overrides
@@ -355,6 +363,31 @@ class NTCNodeMaterial extends THREE.MeshPhysicalNodeMaterial {
 		}
 
 		this.needsUpdate = true;
+
+	}
+
+	/**
+	 * Toggles whether the feature grid's mip-chain texture (`this.
+	 * mipChainTexture`, see `buildMipChainTexture`) is sampled with bilinear
+	 * filtering within each stored mip level (`true`, the default) or plain
+	 * nearest-neighbor (`false`) - mip levels are still blended into each
+	 * other either way, only the filtering *within* one level changes. Useful
+	 * for visually inspecting the trained feature grid's actual stored texels
+	 * (e.g. via the 'textureUv' debug view) without bilinear blur hiding them.
+	 *
+	 * This purely reassigns the existing texture's `minFilter`/`magFilter` -
+	 * the GPU sampler these select is looked up/created by a filter-mode key
+	 * (see `updateSampler` in src/renderers/webgpu/utils/WebGPUTextureUtils.
+	 * js), so no rebuild of this material, its node graph, or the underlying
+	 * grid/MLP data is needed; `needsUpdate` is set only to make sure a
+	 * pending render picks up the change.
+	 */
+	setInterpolation( enabled ) {
+
+		this.interpolation = Boolean( enabled );
+		this.mipChainTexture.magFilter = this.interpolation ? THREE.LinearFilter : THREE.NearestFilter;
+		this.mipChainTexture.minFilter = this.interpolation ? THREE.LinearMipmapLinearFilter : THREE.NearestMipmapLinearFilter;
+		this.mipChainTexture.needsUpdate = true;
 
 	}
 

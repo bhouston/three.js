@@ -1,4 +1,4 @@
-import { DataTexture, DataUtils, HalfFloatType, LinearFilter, LinearMipmapLinearFilter, RepeatWrapping, RGBAFormat } from 'three';
+import { DataTexture, DataUtils, HalfFloatType, LinearFilter, LinearMipmapLinearFilter, NearestFilter, NearestMipmapLinearFilter, RepeatWrapping, RGBAFormat } from 'three';
 import { selectFeatureLevel } from './NTCMipBands.js';
 
 /**
@@ -216,8 +216,20 @@ function buildMipChainLevels( cpuModel ) {
  * exactly matching `NTCMipBands.selectFeatureLevel`'s own clamp) - its box-
  * filter pyramid is simply built deep enough to reach the chain's actual
  * end instead of stopping after `mipsPerLevel` steps.
+ *
+ * `interpolation` (default `true`) controls filtering *within* each physical
+ * mip level only - `true` is genuine trilinear (`LinearMipmapLinearFilter` +
+ * `LinearFilter`, as above); `false` swaps to nearest-neighbor within a level
+ * (`NearestMipmapLinearFilter` + `NearestFilter`) while still blending
+ * *between* mip levels exactly as before - useful for visually inspecting
+ * the trained feature grid's actual stored texels (see NTCNodeMaterial.js's
+ * `setInterpolation`) without the bilinear blur that otherwise always hides
+ * them. This only ever changes the GPU sampler's filter mode, never the
+ * texture's data - see `updateSampler`'s per-binding `samplerKey`
+ * (src/renderers/webgpu/utils/WebGPUTextureUtils.js), so toggling it doesn't
+ * require rebuilding the texture, the model, or reloading anything.
  */
-function buildMipChainTexture( cpuModel ) {
+function buildMipChainTexture( cpuModel, { interpolation = true } = {} ) {
 
 	const levels = buildMipChainLevels( cpuModel );
 	const mipmaps = levels.map( ( level ) => ( {
@@ -231,8 +243,8 @@ function buildMipChainTexture( cpuModel ) {
 	texture.mipmaps = mipmaps;
 	texture.wrapS = RepeatWrapping;
 	texture.wrapT = RepeatWrapping;
-	texture.magFilter = LinearFilter;
-	texture.minFilter = LinearMipmapLinearFilter;
+	texture.magFilter = interpolation ? LinearFilter : NearestFilter;
+	texture.minFilter = interpolation ? LinearMipmapLinearFilter : NearestMipmapLinearFilter;
 	texture.generateMipmaps = false;
 	texture.needsUpdate = true;
 

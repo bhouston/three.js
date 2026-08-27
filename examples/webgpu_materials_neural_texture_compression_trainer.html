@@ -207,6 +207,13 @@
 				learningRate: 0.01,
 				quantization: 'uint8',
 				debugView: 'shaded',
+				// See NTCNodeMaterial.js's setInterpolation - `false` swaps the
+				// feature grid's mip-chain texture to nearest-neighbor sampling
+				// within each stored level (mip levels still blend into each
+				// other) so its actual trained texels can be inspected without
+				// bilinear blur - purely a display setting, not part of the
+				// trained model.
+				interpolation: true,
 				shape: 'torus',
 				showBackground: true
 			};
@@ -334,6 +341,7 @@
 				// materialXMaterial` fallback leaves the teacher mesh shown
 				// normally shaded while only the neural mesh switches to it.
 				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS, 'textureUv' ] ).name( 'channel' ).onChange( updateDebugView );
+				viewFolder.add( params, 'interpolation' ).name( 'interpolation (feature grid)' ).onChange( updateInterpolation );
 				viewFolder.add( params, 'showBackground' ).name( 'show background IBL' ).onChange( updateBackground );
 
 				builtInMaterial.addEventListener( 'change', () => loadBuiltInMaterial( builtInMaterial.value ) );
@@ -818,7 +826,7 @@
 				neuralMaterial = new NTCNodeMaterial(
 					cpuModel,
 					channelClassification,
-					{ debugView: params.debugView, renderer }
+					{ debugView: params.debugView, interpolation: params.interpolation, renderer }
 				);
 				neuralMesh.material = neuralMaterial;
 				neuralMesh.visible = true;
@@ -885,6 +893,16 @@
 
 				if ( teacherDebugMaterials ) teacherMesh.material = teacherDebugMaterials[ params.debugView ] || materialXMaterial;
 				if ( neuralMaterial ) neuralMaterial.setDebugView( params.debugView );
+
+			}
+
+			// Neural-material-only (there's no equivalent "feature grid" on the
+			// teacher side) - see NTCNodeMaterial.js's setInterpolation. A pure
+			// sampler-filter toggle on the already-built mip-chain texture, so
+			// this never needs to rebuild the material or retrain.
+			function updateInterpolation() {
+
+				if ( neuralMaterial ) neuralMaterial.setInterpolation( params.interpolation );
 
 			}
 

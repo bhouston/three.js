@@ -85,7 +85,14 @@ class NTCLoader extends Loader {
 
 		validateManifest( manifest );
 
-		const grids = manifest.latents.levels.map( ( level, index ) => decodeLevel( level, `latents.levels[${ index }]` ) );
+		// Additive fields (see NTCManifest.js's encodeNTC) - absent on
+		// manifests exported before they existed, or exported with the
+		// original 8-bit/non-zero-preserving defaults, both of which decode
+		// identically with these fallbacks.
+		const bits = manifest.latents.bits !== undefined ? manifest.latents.bits : 8;
+		const zeroPreserving = manifest.latents.zeroPreserving === true;
+
+		const grids = manifest.latents.levels.map( ( level, index ) => decodeLevel( level, `latents.levels[${ index }]`, bits, zeroPreserving ) );
 		const decoderLayers = decodeMLPLayersBase64( manifest.mlp );
 
 		const cpuModel = {
@@ -122,7 +129,7 @@ function decodeChannelClassification( channels, renderFlags ) {
 
 }
 
-function decodeLevel( level, path ) {
+function decodeLevel( level, path, bits, zeroPreserving ) {
 
 	assertInteger( level.width, `${ path }.width`, 1 );
 	assertInteger( level.height, `${ path }.height`, 1 );
@@ -135,7 +142,7 @@ function decodeLevel( level, path ) {
 	}
 
 	const expectedLength = level.width * level.height * level.channels;
-	const data = decodeUint8Base64( level.dataBase64, level.min, level.max, expectedLength );
+	const data = decodeUint8Base64( level.dataBase64, level.min, level.max, expectedLength, bits, zeroPreserving );
 
 	return { width: level.width, height: level.height, channels: level.channels, data };
 
@@ -164,6 +171,25 @@ function validateManifest( manifest ) {
 	if ( ! manifest.latents || ! Array.isArray( manifest.latents.levels ) || manifest.latents.levels.length === 0 ) {
 
 		throw new Error( 'THREE.NTCLoader: Manifest must define a non-empty latents.levels array.' );
+
+	}
+
+	// Optional/additive field (see NTCManifest.js's encodeNTC) - only
+	// shape-checked when present; absent means the original implicit 8-bit
+	// default (see decodeLevel's fallback above). Not restricted to the
+	// training-side BITS_OPTIONS list (2/4/6/8) since this loader is
+	// deliberately kept free of any training-module dependency - any bit
+	// depth `encodeUint8Base64` could actually produce (1-8, one byte/value)
+	// is accepted here.
+	if ( manifest.latents.bits !== undefined ) {
+
+		assertInteger( manifest.latents.bits, 'latents.bits', 1, 8 );
+
+	}
+
+	if ( manifest.latents.zeroPreserving !== undefined && typeof manifest.latents.zeroPreserving !== 'boolean' ) {
+
+		throw new Error( 'THREE.NTCLoader: latents.zeroPreserving must be a boolean when present.' );
 
 	}
 

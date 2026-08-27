@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	QUANTIZATION_SCHEMES,
 	DEFAULT_QUANTIZATION_OPTIONS,
+	BITS_OPTIONS,
 	resolveQuantizationConfig
 } from '../../../../examples/jsm/ntc/training/NTCQuantization.js';
 
@@ -60,6 +61,60 @@ describe( 'Addons > Neural > NeuralQuantization', () => {
 		it( 'handles min === max without producing NaN', () => {
 
 			expect( QUANTIZATION_SCHEMES.uint8.quantizeForwardCPU( 5, 5, 5 ) ).toBe( 5 );
+
+		} );
+
+		it( 'defaults to 8 bits (256 levels), matching passing bits: 8 explicitly', () => {
+
+			const lo = - 2, hi = 3;
+			for ( const value of [ - 2, - 0.4, 0, 1.7, 3 ] ) {
+
+				const implicit = QUANTIZATION_SCHEMES.uint8.quantizeForwardCPU( value, lo, hi );
+				const explicit = QUANTIZATION_SCHEMES.uint8.quantizeForwardCPU( value, lo, hi, 8 );
+				expect( implicit ).toBe( explicit );
+
+			}
+
+		} );
+
+		it( 'a lower bit depth quantizes to visibly coarser (fewer) levels', () => {
+
+			const lo = 0, hi = 1;
+			// Sweeping a fine step should hit far fewer *distinct* quantized
+			// outputs at 2 bits (4 levels) than at 8 bits (256 levels).
+			const distinct = ( bits ) => {
+
+				const values = new Set();
+				for ( let i = 0; i <= 1000; i ++ ) values.add( QUANTIZATION_SCHEMES.uint8.quantizeForwardCPU( i / 1000, lo, hi, bits ) );
+				return values.size;
+
+			};
+
+			expect( distinct( 2 ) ).toBeLessThanOrEqual( 4 );
+			expect( distinct( 4 ) ).toBeLessThanOrEqual( 16 );
+			expect( distinct( 8 ) ).toBeGreaterThan( distinct( 4 ) );
+
+		} );
+
+		it( 'zeroPreserving recovers exactly 0 at a low bit depth, unlike plain quantization', () => {
+
+			// hi is deliberately not a "nice" number relative to lo/bits (unlike
+			// e.g. [-2, 3] at 4 bits, where 0 happens to land exactly on a
+			// plain-quantization level anyway) - this range genuinely does not
+			// let plain linear quantization recover 0 exactly.
+			const lo = - 2, hi = 3.7, bits = 4;
+
+			const plain = QUANTIZATION_SCHEMES.uint8.quantizeForwardCPU( 0, lo, hi, bits, false );
+			const zeroPreserving = QUANTIZATION_SCHEMES.uint8.quantizeForwardCPU( 0, lo, hi, bits, true );
+
+			expect( zeroPreserving ).toBe( 0 );
+			expect( plain ).not.toBe( 0 );
+
+		} );
+
+		it( 'zeroPreserving handles min === max without producing NaN', () => {
+
+			expect( QUANTIZATION_SCHEMES.uint8.quantizeForwardCPU( 5, 5, 5, 4, true ) ).toBe( 5 );
 
 		} );
 
@@ -123,6 +178,48 @@ describe( 'Addons > Neural > NeuralQuantization', () => {
 
 			expect( () => resolveQuantizationConfig( { quantization: { perLevel: 'yes' } } ) )
 				.toThrow( /quantization\.perLevel/ );
+
+		} );
+
+		it( 'defaults bits to 8 and zeroPreserving to false', () => {
+
+			const resolved = resolveQuantizationConfig( { quantization: { mode: 'uint8' } } );
+			expect( resolved.bits ).toBe( 8 );
+			expect( resolved.zeroPreserving ).toBe( false );
+
+		} );
+
+		it( 'accepts every documented bits option', () => {
+
+			for ( const bits of BITS_OPTIONS ) {
+
+				const resolved = resolveQuantizationConfig( { quantization: { mode: 'uint8', bits } } );
+				expect( resolved.bits ).toBe( bits );
+
+			}
+
+		} );
+
+		it( 'accepts zeroPreserving: true', () => {
+
+			const resolved = resolveQuantizationConfig( { quantization: { mode: 'uint8', zeroPreserving: true } } );
+			expect( resolved.zeroPreserving ).toBe( true );
+
+		} );
+
+		it( 'throws a clear error for an invalid bits value', () => {
+
+			expect( () => resolveQuantizationConfig( { quantization: { bits: 5 } } ) )
+				.toThrow( /quantization\.bits/ );
+			expect( () => resolveQuantizationConfig( { quantization: { bits: 16 } } ) )
+				.toThrow( /quantization\.bits/ );
+
+		} );
+
+		it( 'throws a clear error for an invalid zeroPreserving', () => {
+
+			expect( () => resolveQuantizationConfig( { quantization: { zeroPreserving: 'yes' } } ) )
+				.toThrow( /quantization\.zeroPreserving/ );
 
 		} );
 

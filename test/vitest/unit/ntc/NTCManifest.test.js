@@ -280,4 +280,112 @@ describe( 'Addons > NTC > NTCManifest', () => {
 
 	} );
 
+	describe( 'quantization bits / zeroPreserving (see NTCQuantization.js)', () => {
+
+		it( 'omits bits/zeroPreserving from the manifest entirely at the original 8-bit, non-zero-preserving defaults', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModel( classification.totalChannels );
+
+			const manifest = encodeNTC( model, classification, { name: 'default quantization' } );
+			const json = JSON.parse( JSON.stringify( manifest ) );
+
+			// Byte-for-byte compatible with a manifest exported before this
+			// option existed - no new keys appear when nothing non-default was
+			// requested.
+			expect( 'bits' in json.latents ).toBe( false );
+			expect( 'zeroPreserving' in json.latents ).toBe( false );
+
+		} );
+
+		it( 'records a non-default bits/zeroPreserving from cpuModel (as NTCTrainer.js sets them after training)', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModel( classification.totalChannels );
+			model.quantizationBits = 4;
+			model.quantizationZeroPreserving = true;
+
+			const manifest = encodeNTC( model, classification, { name: 'trained with 4-bit QAT' } );
+
+			expect( manifest.latents.bits ).toBe( 4 );
+			expect( manifest.latents.zeroPreserving ).toBe( true );
+
+			const json = JSON.parse( JSON.stringify( manifest ) );
+			const loaded = new NTCLoader().parse( json );
+
+			// The loaded grids must actually have been decoded with 4-bit/
+			// zero-preserving semantics, not silently defaulted back to 8-bit -
+			// spot-checked by confirming the round-tripped data only takes on
+			// at most 2**4 = 16 distinct values per grid (a plain 8-bit decode
+			// of the same bytes would produce up to 256).
+			for ( const grid of loaded.cpuModel.grids ) {
+
+				const distinct = new Set( Array.from( grid.data ) );
+				expect( distinct.size ).toBeLessThanOrEqual( 16 );
+
+			}
+
+		} );
+
+		it( 'options.quantizationBits/options.quantizationZeroPreserving override cpuModel\'s own values', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModel( classification.totalChannels );
+			model.quantizationBits = 4;
+			model.quantizationZeroPreserving = true;
+
+			const manifest = encodeNTC( model, classification, {
+				name: 'explicit override',
+				quantizationBits: 8,
+				quantizationZeroPreserving: false
+			} );
+
+			// 8/false are the defaults, so they're omitted from the actually
+			// serialized manifest entirely (see the "omits ... at the original
+			// defaults" test above) - `manifest.latents.bits` itself is present
+			// as an explicit `undefined` on the plain object (dropped only by
+			// JSON.stringify), so the round-trip is what's checked here.
+			const json = JSON.parse( JSON.stringify( manifest ) );
+			expect( 'bits' in json.latents ).toBe( false );
+			expect( 'zeroPreserving' in json.latents ).toBe( false );
+
+		} );
+
+		it( 'a manifest with no bits/zeroPreserving fields at all (pre-existing format) still loads, defaulting to 8-bit/non-zero-preserving', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModel( classification.totalChannels );
+
+			const manifest = encodeNTC( model, classification, { name: 'legacy manifest' } );
+			const json = JSON.parse( JSON.stringify( manifest ) );
+			expect( 'bits' in json.latents ).toBe( false );
+
+			expect( () => new NTCLoader().parse( json ) ).not.toThrow();
+
+		} );
+
+		it( 'loader rejects an out-of-range latents.bits', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModel( classification.totalChannels );
+			const manifest = encodeNTC( model, classification, { name: 'bad bits' } );
+			manifest.latents.bits = 0;
+
+			expect( () => new NTCLoader().parse( manifest ) ).toThrow( /latents\.bits/ );
+
+		} );
+
+		it( 'loader rejects a non-boolean latents.zeroPreserving', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModel( classification.totalChannels );
+			const manifest = encodeNTC( model, classification, { name: 'bad zeroPreserving' } );
+			manifest.latents.zeroPreserving = 'yes';
+
+			expect( () => new NTCLoader().parse( manifest ) ).toThrow( /latents\.zeroPreserving/ );
+
+		} );
+
+	} );
+
 } );

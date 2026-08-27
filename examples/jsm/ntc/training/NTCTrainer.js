@@ -243,6 +243,14 @@ class NTCTrainer {
 			}
 
 			cpuModel.quantizationRange = this.quantizationRange;
+			// Recorded unconditionally (even when quantization is disabled,
+			// where they're just the harmless defaults) so NTCManifest.js's
+			// encodeNTC can always find a value here rather than special-casing
+			// "was this model ever trained with QAT at all" - see
+			// resolveQuantizationRanges's analogous fallback for
+			// `quantizationRange`.
+			cpuModel.quantizationBits = quantization.bits;
+			cpuModel.quantizationZeroPreserving = quantization.zeroPreserving;
 
 			return {
 				cpuModel,

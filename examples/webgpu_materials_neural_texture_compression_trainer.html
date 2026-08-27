@@ -164,6 +164,7 @@
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
 			import { NTCTrainer } from 'three/addons/ntc/training/NTCTrainer.js';
+			import { BITS_OPTIONS } from 'three/addons/ntc/training/NTCQuantization.js';
 			import { NTCNodeMaterial } from 'three/addons/ntc/NTCNodeMaterial.js';
 			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/ntc/training/NTCSource.js';
 			import { inferAlbedoUvTransform } from 'three/addons/ntc/training/NTCMaterialXUvTransform.js';
@@ -209,6 +210,14 @@
 				iterations: 10000,
 				learningRate: 0.01,
 				quantization: 'uint8',
+				// See NTCQuantization.js's `bits`/`zeroPreserving` options -
+				// only meaningful when quantization is 'uint8'. 8 (256 levels)
+				// matches this addon's original behavior; lower values trade
+				// reconstruction fidelity for a lower-entropy byte stream,
+				// moving toward the NVIDIA neural texture compression paper's
+				// own 2-4 bit latents (Table 2).
+				quantizationBits: 8,
+				quantizationZeroPreserving: false,
 				debugView: 'shaded',
 				// See NTCNodeMaterial.js's setInterpolation - `false` swaps the
 				// feature grid's mip-chain texture to nearest-neighbor sampling
@@ -375,6 +384,8 @@
 				trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' );
 				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
 				trainingFolder.add( params, 'quantization', { 'Off': 'none', '8-bit': 'uint8' } ).name( 'quantization' );
+				trainingFolder.add( params, 'quantizationBits', BITS_OPTIONS ).name( 'quantization bit depth' );
+				trainingFolder.add( params, 'quantizationZeroPreserving' ).name( 'quantization: preserve zero' );
 
 				const objectFolder = gui.addFolder( 'object' );
 				objectFolder.add( params, 'shape', [ 'torus', 'sphere', 'plane' ] ).name( 'shape' ).onChange( updateShape );
@@ -836,7 +847,11 @@
 						batchSize: Number( params.batchSize ),
 						iterations: Number( params.iterations ),
 						learningRate: Number( params.learningRate ),
-						quantization: { mode: params.quantization },
+						quantization: {
+							mode: params.quantization,
+							bits: Number( params.quantizationBits ),
+							zeroPreserving: params.quantizationZeroPreserving
+						},
 						uvTransform: materialXUvTransform,
 						seed: 1
 					} );

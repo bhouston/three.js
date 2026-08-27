@@ -40,6 +40,15 @@ function encodeNTC( cpuModel, channelClassification, options = {} ) {
 
 	const ranges = resolveQuantizationRanges( cpuModel, options );
 	const uvTransform = options.uvTransform || cpuModel.uvTransform;
+	// See resolveQuantizationRanges' doc comment for the same
+	// options-then-cpuModel-then-fallback precedence, applied here to the
+	// bit depth / zero-preserving scheme used to train against (see
+	// NTCTrainer.js, which records these on `cpuModel` unconditionally) -
+	// exporting with the same settings the network was actually
+	// (QAT-)trained against avoids introducing a second, mismatched round of
+	// quantization error at export time.
+	const bits = options.quantizationBits !== undefined ? options.quantizationBits : ( cpuModel.quantizationBits !== undefined ? cpuModel.quantizationBits : 8 );
+	const zeroPreserving = options.quantizationZeroPreserving !== undefined ? options.quantizationZeroPreserving : ( cpuModel.quantizationZeroPreserving || false );
 
 	const levels = cpuModel.grids.map( ( grid, index ) => {
 
@@ -53,7 +62,7 @@ function encodeNTC( cpuModel, channelClassification, options = {} ) {
 			dtype: 'uint8',
 			min,
 			max,
-			dataBase64: encodeUint8Base64( grid.data, min, max )
+			dataBase64: encodeUint8Base64( grid.data, min, max, bits, zeroPreserving )
 		};
 
 	} );
@@ -76,7 +85,15 @@ function encodeNTC( cpuModel, channelClassification, options = {} ) {
 			// a `VERSION` bump (2) rather than an optional/additive field like
 			// most other manifest additions - see NTCFormat.js.
 			mipsPerLevel: cpuModel.mipsPerLevel,
-			maxLod: cpuModel.maxLod
+			maxLod: cpuModel.maxLod,
+			// Additive fields (see NTCLoader.js's decodeLevel, which defaults
+			// both to their pre-existing implicit values when absent) - only
+			// written when they actually differ from that default, so a
+			// manifest exported with today's ordinary settings is
+			// byte-for-byte identical to one exported before this option
+			// existed.
+			bits: bits !== 8 ? bits : undefined,
+			zeroPreserving: zeroPreserving ? true : undefined
 		},
 		outputChannels: cpuModel.outputChannels,
 		// Omitted entirely (rather than always written as the 6-number

@@ -253,7 +253,7 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 				// exactly as it did before QAT: only this forward-read value
 				// changes.
 				const quantized_c = quantizeLatent !== null ?
-					quantizeLatent( z_c, quantizationRangeUniforms[ g ].min, quantizationRangeUniforms[ g ].max ) :
+					quantizeLatent( z_c, quantizationRangeUniforms[ g ].min, quantizationRangeUniforms[ g ].max, quantization.bits, quantization.zeroPreserving ) :
 					z_c;
 
 				a0Vars[ c ].addAssign( quantized_c.mul( weight ) );

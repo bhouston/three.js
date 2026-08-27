@@ -126,21 +126,87 @@ function decodeFloat16Base64( str, length ) {
 }
 
 /**
- * Quantizes a Float32Array to a base64 string of Uint8 bytes: per-element
- * `clamp((x - min) / (max - min), 0, 1)`, rounded to the nearest of 256
- * discrete levels - used for latent-grid blobs. `min === max` (a constant
- * grid) is handled by treating every value as level 0, rather than dividing
- * by zero.
+ * Computes the "zero point" (the integer quantization level that dequantizes
+ * to exactly 0) for a given `[min, max]` range and level count `N`, using
+ * the standard affine/asymmetric quantization convention (as used by e.g.
+ * TensorFlow Lite's integer quantization): `scale = (max - min) / (N - 1)`,
+ * `zeroPoint = round(-min / scale)`, clamped to a valid level index. Shared
+ * by `encodeUint8Base64`/`decodeUint8Base64`'s `zeroPreserving` mode below
+ * and mirrored (in TSL form) by NTCQuantization.js's `quantizeForwardTSL`,
+ * which both need the exact same zero point to agree on what a given byte
+ * means.
+ *
+ * This is the practical implementation of the NVIDIA neural texture
+ * compression paper's asymmetric quantization (Section 4.2): rather than the
+ * paper's fixed `[-((N-1)/2)*Q, (N/2)*Q]` range (chosen for a fixed step
+ * size `Q` independent of the actual data), this computes an equivalent
+ * zero-preserving offset for an arbitrary *measured* `[min, max]` range -
+ * preserving the paper's core guarantee (a latent value of exactly 0
+ * quantizes with no error) while still fitting the plain data-driven
+ * `range: 'auto'`/`[min, max]` scheme the rest of this codebase already
+ * uses, at low bit depths where that guarantee matters most.
  */
-function encodeUint8Base64( data, min, max ) {
+function computeZeroPoint( min, max, levelCount ) {
+
+	const scale = ( max - min ) / ( levelCount - 1 );
+	if ( scale === 0 ) return 0;
+
+	return Math.min( levelCount - 1, Math.max( 0, Math.round( - min / scale ) ) );
+
+}
+
+/**
+ * Quantizes a Float32Array to a base64 string of Uint8 bytes: per-element
+ * `clamp((x - min) / (max - min), 0, 1)`, rounded to the nearest of
+ * `2**bits` discrete levels (256 when `bits` is the default of 8) - used for
+ * latent-grid blobs. `min === max` (a constant grid) is handled by treating
+ * every value as level 0, rather than dividing by zero.
+ *
+ * `bits` only changes how many discrete levels the byte range `[0, 255]` is
+ * divided into - every level is still stored as one full byte regardless of
+ * `bits` (no sub-byte packing), so a `bits < 8` blob is the same size on
+ * disk as a `bits: 8` one; it exists purely to trade reconstruction fidelity
+ * for a lower-entropy (more compressible, and closer to the NVIDIA neural
+ * texture compression paper's 2-4 bit latents) byte stream. Sub-byte packing
+ * (multiple values per byte) is a possible follow-up, not implemented here.
+ *
+ * `zeroPreserving` (default `false`, matching every caller's pre-existing
+ * behavior byte-for-byte) switches to the asymmetric/zero-point scheme (see
+ * `computeZeroPoint`) instead of plain linear quantization - the paper notes
+ * this "produces better results especially when we quantize to four levels
+ * or less" (Section 4.2), at the cost of very slightly under-utilizing the
+ * levels nearest one end of `[min, max]` (the well-known accuracy trade-off
+ * of zero-point/affine quantization: `min` and `max` are only recovered to
+ * within one quantization step, not exactly, once a level is reserved for an
+ * exact zero).
+ */
+function encodeUint8Base64( data, min, max, bits = 8, zeroPreserving = false ) {
 
 	const bytes = new Uint8Array( data.length );
 	const range = max - min;
+	const levelCount = 2 ** bits;
+	const maxLevel = levelCount - 1;
 
-	for ( let i = 0; i < data.length; i ++ ) {
+	if ( zeroPreserving ) {
 
-		const t = range !== 0 ? Math.min( 1, Math.max( 0, ( data[ i ] - min ) / range ) ) : 0;
-		bytes[ i ] = Math.round( t * 255 );
+		const scale = range / maxLevel;
+		const zeroPoint = computeZeroPoint( min, max, levelCount );
+
+		for ( let i = 0; i < data.length; i ++ ) {
+
+			const rawLevel = scale !== 0 ? Math.round( data[ i ] / scale ) + zeroPoint : zeroPoint;
+			bytes[ i ] = Math.min( maxLevel, Math.max( 0, rawLevel ) );
+
+		}
+
+	} else {
+
+		for ( let i = 0; i < data.length; i ++ ) {
+
+			const t = range !== 0 ? Math.min( 1, Math.max( 0, ( data[ i ] - min ) / range ) ) : 0;
+			bytes[ i ] = Math.round( t * maxLevel );
+
+		}
 
 	}
 
@@ -150,17 +216,51 @@ function encodeUint8Base64( data, min, max ) {
 
 /**
  * Decodes a base64 Uint8 blob (as produced by `encodeUint8Base64`) back into
- * a Float32Array of `length` values, using the same `min`/`max` range.
+ * a Float32Array of `length` values, using the same `min`/`max` range and
+ * `bits`/`zeroPreserving` scheme the data was encoded with - all three must
+ * match the encode call exactly, or the decoded values will be silently
+ * wrong (scaled/offset against the wrong level count or zero point).
  */
-function decodeUint8Base64( str, min, max, length ) {
+function decodeUint8Base64( str, min, max, length, bits = 8, zeroPreserving = false ) {
 
 	const bytes = bytesFromBase64( str );
 	const out = new Float32Array( length );
 	const range = max - min;
+	const levelCount = 2 ** bits;
+	const maxLevel = levelCount - 1;
 
-	for ( let i = 0; i < length; i ++ ) {
+	if ( zeroPreserving ) {
 
-		out[ i ] = min + ( bytes[ i ] / 255 ) * range;
+		const scale = range / maxLevel;
+
+		if ( scale === 0 ) {
+
+			// Degenerate (min === max) range - matches encodeUint8Base64's own
+			// guard and the plain-linear branch's fallback below: every value
+			// decodes back to the single constant the grid actually held,
+			// rather than `(0 - 0) * 0 === 0` regardless of what that constant
+			// was.
+			out.fill( min );
+
+		} else {
+
+			const zeroPoint = computeZeroPoint( min, max, levelCount );
+
+			for ( let i = 0; i < length; i ++ ) {
+
+				out[ i ] = ( bytes[ i ] - zeroPoint ) * scale;
+
+			}
+
+		}
+
+	} else {
+
+		for ( let i = 0; i < length; i ++ ) {
+
+			out[ i ] = min + ( bytes[ i ] / maxLevel ) * range;
+
+		}
 
 	}
 
@@ -259,6 +359,7 @@ export {
 	float16ToFloat32,
 	encodeFloat16Base64,
 	decodeFloat16Base64,
+	computeZeroPoint,
 	encodeUint8Base64,
 	decodeUint8Base64,
 	encodeMLPLayersBase64,

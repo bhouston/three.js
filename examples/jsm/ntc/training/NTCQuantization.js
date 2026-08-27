@@ -1,5 +1,15 @@
 import { float, min, max, round } from 'three/tsl';
-import { encodeUint8Base64, decodeUint8Base64 } from '../NTCBinaryCodec.js';
+import { encodeUint8Base64, decodeUint8Base64, computeZeroPoint } from '../NTCBinaryCodec.js';
+
+// Bit depths offered for the 'uint8' scheme (see QUANTIZATION_SCHEMES below
+// and NTCBinaryCodec.js's encodeUint8Base64/decodeUint8Base64) - every value
+// is still stored as one full byte on disk regardless of `bits` (no
+// sub-byte packing, see those functions' doc comments), this only changes
+// how many discrete levels that byte range is divided into. 8 (256 levels)
+// is this addon's original, still-default behavior; 2/4/6 trade
+// reconstruction fidelity for a lower-entropy byte stream, moving toward the
+// NVIDIA neural texture compression paper's own 2-4 bit latents (Table 2).
+const BITS_OPTIONS = [ 2, 4, 6, 8 ];
 
 // Quantization-Aware Training (QAT) scheme registry, shared by every
 // neural-* trainer (texture, material, appearance). Because every trainer's
@@ -25,25 +35,71 @@ const QUANTIZATION_SCHEMES = {
 	},
 	uint8: {
 		// Mirrors `encodeUint8Base64`/`decodeUint8Base64` composed together:
-		// clamp to [min, max], quantize to one of 256 levels, decode back to
-		// float - the exact "simulated quantization" a Straight-Through
-		// Estimator forward pass needs.
-		quantizeForwardCPU: ( x, lo, hi ) => {
+		// clamp to [min, max], quantize to one of `2**bits` levels (256 when
+		// `bits` is the default of 8), decode back to float - the exact
+		// "simulated quantization" a Straight-Through Estimator forward pass
+		// needs. `zeroPreserving` (default false, matching every pre-existing
+		// caller's behavior byte-for-byte) switches to the asymmetric/
+		// zero-point scheme instead - see NTCBinaryCodec.js's
+		// `computeZeroPoint` doc comment for the exact formula and rationale
+		// (the NVIDIA neural texture compression paper's Section 4.2).
+		quantizeForwardCPU: ( x, lo, hi, bits = 8, zeroPreserving = false ) => {
 
 			const range = hi - lo;
-			const t = range !== 0 ? Math.min( 1, Math.max( 0, ( x - lo ) / range ) ) : 0;
-			const level = Math.round( t * 255 );
+			const levelCount = 2 ** bits;
+			const maxLevel = levelCount - 1;
 
-			return lo + ( level / 255 ) * range;
+			if ( zeroPreserving ) {
+
+				const scale = range / maxLevel;
+				if ( scale === 0 ) return lo;
+
+				const zeroPoint = computeZeroPoint( lo, hi, levelCount );
+				const rawLevel = Math.round( x / scale ) + zeroPoint;
+				const level = Math.min( maxLevel, Math.max( 0, rawLevel ) );
+
+				return ( level - zeroPoint ) * scale;
+
+			}
+
+			const t = range !== 0 ? Math.min( 1, Math.max( 0, ( x - lo ) / range ) ) : 0;
+			const level = Math.round( t * maxLevel );
+
+			return lo + ( level / maxLevel ) * range;
 
 		},
-		quantizeForwardTSL: ( xNode, minNode, maxNode ) => {
+		quantizeForwardTSL: ( xNode, minNode, maxNode, bits = 8, zeroPreserving = false ) => {
 
+			const levelCount = 2 ** bits;
+			const maxLevel = float( levelCount - 1 );
 			const range = maxNode.sub( minNode );
-			const t = min( float( 1.0 ), max( float( 0.0 ), xNode.sub( minNode ).div( range ) ) );
-			const level = round( t.mul( float( 255.0 ) ) );
 
-			return minNode.add( level.div( float( 255.0 ) ).mul( range ) );
+			if ( zeroPreserving ) {
+
+				// zeroPoint must be a *live* TSL expression derived from
+				// minNode/maxNode, not a JS-side constant baked in at kernel-
+				// build time (e.g. by reading `minNode.value` once here): with
+				// `quantization.range: 'auto'`, these uniforms' `.value` is
+				// refreshed periodically (see NTCTrainer.js's
+				// QUANTIZATION_RANGE_REFRESH_INTERVAL) *without* rebuilding the
+				// compute kernel, so a baked-in zero point would silently go
+				// stale the moment the range next changes. Recomputing it here
+				// mirrors NTCBinaryCodec.js's computeZeroPoint exactly, just in
+				// TSL form.
+				const scale = range.div( maxLevel );
+				const rawZeroPoint = round( minNode.negate().div( scale ) );
+				const zeroPoint = min( maxLevel, max( float( 0.0 ), rawZeroPoint ) );
+				const rawLevel = round( xNode.div( scale ) ).add( zeroPoint );
+				const level = min( maxLevel, max( float( 0.0 ), rawLevel ) );
+
+				return level.sub( zeroPoint ).mul( scale );
+
+			}
+
+			const t = min( float( 1.0 ), max( float( 0.0 ), xNode.sub( minNode ).div( range ) ) );
+			const level = round( t.mul( maxLevel ) );
+
+			return minNode.add( level.div( maxLevel ).mul( range ) );
 
 		}
 	}
@@ -56,7 +112,17 @@ const DEFAULT_QUANTIZATION_OPTIONS = {
 	mode: 'none',
 	target: 'latents',
 	range: 'auto',
-	perLevel: true
+	perLevel: true,
+	// See BITS_OPTIONS/QUANTIZATION_SCHEMES.uint8 above - 8 (256 levels) is
+	// this addon's original behavior, kept as the default so an existing
+	// `quantization: { mode: 'uint8' }` config (with no `bits` given) is
+	// completely unaffected by this option's addition.
+	bits: 8,
+	// See QUANTIZATION_SCHEMES.uint8's zeroPreserving branch / NTCBinaryCodec.
+	// js's computeZeroPoint doc comment - off by default (matching every
+	// pre-existing caller's behavior byte-for-byte); most useful turned on
+	// together with a low `bits` value.
+	zeroPreserving: false
 };
 
 /**
@@ -75,10 +141,24 @@ function resolveQuantizationConfig( options = {} ) {
 	const target = input.target !== undefined ? input.target : DEFAULT_QUANTIZATION_OPTIONS.target;
 	const range = input.range !== undefined ? input.range : DEFAULT_QUANTIZATION_OPTIONS.range;
 	const perLevel = input.perLevel !== undefined ? input.perLevel : DEFAULT_QUANTIZATION_OPTIONS.perLevel;
+	const bits = input.bits !== undefined ? input.bits : DEFAULT_QUANTIZATION_OPTIONS.bits;
+	const zeroPreserving = input.zeroPreserving !== undefined ? input.zeroPreserving : DEFAULT_QUANTIZATION_OPTIONS.zeroPreserving;
 
 	if ( QUANTIZATION_SCHEMES[ mode ] === undefined ) {
 
 		throw new Error( `THREE.NTCQuantization: quantization.mode must be one of [${ VALID_MODES.join( ', ' ) }], got "${ mode }".` );
+
+	}
+
+	if ( BITS_OPTIONS.includes( bits ) === false ) {
+
+		throw new Error( `THREE.NTCQuantization: quantization.bits must be one of [${ BITS_OPTIONS.join( ', ' ) }], got "${ bits }".` );
+
+	}
+
+	if ( typeof zeroPreserving !== 'boolean' ) {
+
+		throw new Error( 'THREE.NTCQuantization: quantization.zeroPreserving must be a boolean.' );
 
 	}
 
@@ -113,7 +193,7 @@ function resolveQuantizationConfig( options = {} ) {
 
 	}
 
-	return { mode, target, range, perLevel };
+	return { mode, target, range, perLevel, bits, zeroPreserving };
 
 }
 
@@ -203,6 +283,7 @@ async function refreshGPUQuantizationRange( gpuModel, renderer ) {
 export {
 	QUANTIZATION_SCHEMES,
 	DEFAULT_QUANTIZATION_OPTIONS,
+	BITS_OPTIONS,
 	resolveQuantizationConfig,
 	computeLatentRanges,
 	refreshGPUQuantizationRange

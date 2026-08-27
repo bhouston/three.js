@@ -5,6 +5,7 @@ import { createAdamParameterBuffers, disposeAdamParameterBuffers } from './NTCGP
 import { computeGridLevels } from './NTCGridModel.js';
 import { resolveNTCGridPyramidOptions } from './NTCGridPyramidModel.js';
 import { resolveQuantizationConfig } from './NTCQuantization.js';
+import { positionalEncodingSize } from '../NTCPositionalEncoding.js';
 
 /**
  * Computes buffer layouts and offsets for GPU-based neural texture training:
@@ -18,7 +19,10 @@ import { resolveQuantizationConfig } from './NTCQuantization.js';
  */
 function computeTextureModelLayout( options = {} ) {
 
-	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, hiddenActivation, outputChannels, textureResolution } = resolveNTCGridPyramidOptions( options );
+	const {
+		channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, hiddenActivation,
+		outputChannels, textureResolution, positionalEncoding, positionalEncodingOctaves
+	} = resolveNTCGridPyramidOptions( options );
 	// One entry per output channel naming its output nonlinearity (see
 	// ./NTCOutputActivations.js); undefined/omitted entries (the
 	// default, `options.channelActivations` unset) mean plain linear, i.e.
@@ -52,8 +56,10 @@ function computeTextureModelLayout( options = {} ) {
 	// vector (the level selected by this sample's LOD, see
 	// NTCGPUComputeTSL.js step 1) plus the normalized LOD itself - fixed
 	// width regardless of how many mip levels the pyramid has (see
-	// NTCGridPyramidModel.js's doc comment).
-	const inputSize = channels + 1;
+	// NTCGridPyramidModel.js's doc comment) - plus, when `positionalEncoding`
+	// is enabled, the selected level's own triangle-wave-encoded fractional
+	// texel position (see NTCPositionalEncoding.js).
+	const inputSize = channels + 1 + ( positionalEncoding ? positionalEncodingSize( positionalEncodingOctaves ) : 0 );
 	const sizes = [ inputSize, ...hiddenSizes, outputChannels ];
 	const mlpLayers = [];
 	let weightOffset = 0;
@@ -131,6 +137,8 @@ function computeTextureModelLayout( options = {} ) {
 		hiddenActivation,
 		outputChannels,
 		channelActivations,
+		positionalEncoding,
+		positionalEncodingOctaves,
 		textureResolution: resolvedTextureResolution,
 		maxLod,
 		inputSize,

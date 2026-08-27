@@ -9,7 +9,9 @@ import {
 	createVec4Storage
 } from './NTCMLPTSL.js';
 import { buildMipChainTexture } from './NTCHalfFloatTexture.js';
-import { float, textureLevel } from 'three/tsl';
+import { float, fract, round, textureLevel, uniformArray } from 'three/tsl';
+import { selectFeatureLevelTSL } from './NTCMipBands.js';
+import { computePositionalEncodingTSL } from './NTCPositionalEncoding.js';
 
 /**
  * Builds the TSL expression that evaluates the trained mip pyramid + MLP
@@ -54,6 +56,46 @@ function evaluateNeuralTextureRaw( uvNode, cpuModel, mipChainTexture, renderer =
 	// there would produce a NaN feature, matching the same guard
 	// NTCGPUComputeTSL.js's training kernel already applies.
 	features.push( resolvedLodNode.div( Math.max( 1, cpuModel.maxLod ) ) );
+
+	// Optional positional encoding (see NTCPositionalEncoding.js /
+	// NTCGridPyramidModel.js's `positionalEncoding` option) - the selected
+	// level's own triangle-wave-encoded fractional texel position, appended
+	// right after the LOD value (matching NTCGridPyramidModel.js's
+	// `inputSize`).
+	//
+	// Training (NTCGPUComputeTSL.js) always samples one *exact* integer LOD
+	// per training example, never a blend - so the decoder was never fit
+	// against a tx/ty blended across two levels either. Since `resolvedLodNode`
+	// here can be fractional (hardware trilinear smoothly blends the actual
+	// sampled *feature* between two physical mips - see this function's own
+	// doc comment), the level used for tx/ty is instead resolved from
+	// `round(resolvedLodNode)` - the single nearest physical mip's own stored
+	// level - matching training's input distribution as closely as possible
+	// rather than inventing a "blended tx/ty" training never produced. This
+	// does mean the positional-encoding phase can take a small discontinuous
+	// step exactly at a mip transition even though the sampled feature itself
+	// blends smoothly through it - an accepted approximation, not a bug (see
+	// this repo's plan docs, .cursor/plans/ntc_paper_gap_02_*, for the
+	// broader context: this whole feature is an isolated, incremental step
+	// that intentionally does not yet change how corners/mips are sampled).
+	if ( cpuModel.positionalEncoding ) {
+
+		const roundedLod = round( resolvedLodNode ).clamp( 0, cpuModel.maxLod );
+		const selectedLevel = selectFeatureLevelTSL( roundedLod, cpuModel.grids.length, cpuModel.mipsPerLevel );
+		// Derived from `cpuModel.grids` (always populated, whether this model
+		// came from a live NTCTrainer run or NTCLoader.js) rather than a
+		// separate `cpuModel.resolutions` array, which only training-time
+		// models carry - grids are always square (width === height, see
+		// NTCGridModel.js's createLatentGrid), so either dimension works.
+		const levelResolutions = uniformArray( cpuModel.grids.map( ( grid ) => grid.width ), 'float' );
+		const resolution = levelResolutions.element( selectedLevel );
+
+		const tx = fract( uvNode.x.mul( resolution ).sub( 0.5 ) );
+		const ty = fract( uvNode.y.mul( resolution ).sub( 0.5 ) );
+
+		features.push( ...computePositionalEncodingTSL( tx, ty, cpuModel.positionalEncodingOctaves ) );
+
+	}
 
 	// Shared mat4-packed MLP evaluator (see NTCMLPTSL.js). Packing weights
 	// into 4x4 blocks and evaluating each layer with a native mat4 * vec4

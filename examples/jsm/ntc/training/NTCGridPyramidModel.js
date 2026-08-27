@@ -1,6 +1,7 @@
 import { Matrix3 } from 'three';
 import { createMLP } from './NTCMLP.js';
 import { computeGridLevels, createLatentGrid, LATENT_INIT_SCALE, DEFAULT_MIPS_PER_LEVEL, MAX_GRID_RESOLUTION } from './NTCGridModel.js';
+import { positionalEncodingSize } from '../NTCPositionalEncoding.js';
 
 /**
  * Single source of truth for the model-shape options shared by the CPU
@@ -49,6 +50,14 @@ function resolveNTCGridPyramidOptions( options = {} ) {
 		// always-linear output layer is unaffected by this option.
 		hiddenActivation: options.hiddenActivation || 'relu',
 		outputChannels: options.outputChannels || 3,
+		// Opt-in extra decoder input (see NTCPositionalEncoding.js's module
+		// doc comment / this repo's .cursor/plans/ntc_paper_gap_02_* plan) -
+		// off by default, so an existing config's `inputSize` (and therefore
+		// its exported/trained decoder shape) is completely unaffected by
+		// this option's addition. `positionalEncodingOctaves` only matters
+		// when `positionalEncoding` is true.
+		positionalEncoding: options.positionalEncoding || false,
+		positionalEncodingOctaves: options.positionalEncodingOctaves || 2,
 		textureResolution,
 		// The mesh/query-UV-to-local-space affine transform this model is
 		// meant to be queried through (see NTCNodeMaterial.js) - defaults to
@@ -73,10 +82,19 @@ function resolveNTCGridPyramidOptions( options = {} ) {
  * wide regardless of how many mip levels the pyramid stores, and it mirrors
  * the NVIDIA neural texture compression paper's own decoder input (Section
  * 4.4: one feature level's taps plus a LOD value).
+ *
+ * When `positionalEncoding` is enabled, `positionalEncodingSize(
+ * positionalEncodingOctaves)` further values are appended - the triangle-
+ * wave encoding of the selected level's own fractional texel position (see
+ * NTCPositionalEncoding.js) - so `inputSize` becomes `channels + 1 +
+ * positionalEncodingSize(...)`. Off by default (`inputSize` unchanged).
  */
 function createNTCGridPyramidModel( options, random ) {
 
-	const { channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, hiddenActivation, outputChannels, textureResolution, uvTransform } = resolveNTCGridPyramidOptions( options );
+	const {
+		channels, levels: requestedLevels, baseResolution, mipsPerLevel, hiddenSizes, hiddenActivation,
+		outputChannels, textureResolution, uvTransform, positionalEncoding, positionalEncodingOctaves
+	} = resolveNTCGridPyramidOptions( options );
 
 	const resolutions = computeGridLevels( baseResolution, requestedLevels, mipsPerLevel );
 	const levels = resolutions.length;
@@ -85,10 +103,13 @@ function createNTCGridPyramidModel( options, random ) {
 	const resolvedTextureResolution = textureResolution || resolutions[ 0 ];
 	const maxLod = Math.ceil( Math.log2( Math.max( 1, resolvedTextureResolution ) ) );
 
-	const inputSize = channels + 1;
+	const inputSize = channels + 1 + ( positionalEncoding ? positionalEncodingSize( positionalEncodingOctaves ) : 0 );
 	const decoder = createMLP( inputSize, hiddenSizes, outputChannels, random, hiddenActivation, 'linear' );
 
-	return { channels, levels, mipsPerLevel, resolutions, grids, decoder, hiddenSizes, hiddenActivation, outputChannels, textureResolution: resolvedTextureResolution, maxLod, uvTransform };
+	return {
+		channels, levels, mipsPerLevel, resolutions, grids, decoder, hiddenSizes, hiddenActivation, outputChannels,
+		textureResolution: resolvedTextureResolution, maxLod, uvTransform, positionalEncoding, positionalEncodingOctaves
+	};
 
 }
 

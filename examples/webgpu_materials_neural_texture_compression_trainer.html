@@ -206,6 +206,11 @@
 				baseResolution: 256,
 				hiddenSize: 8,
 				hiddenActivation: 'relu',
+				// See NTCPositionalEncoding.js / NTCGridPyramidModel.js's
+				// `positionalEncoding`/`positionalEncodingOctaves` options - off
+				// by default (this addon's original decoder input shape).
+				positionalEncoding: false,
+				positionalEncodingOctaves: 2,
 				batchSize: 8192,
 				iterations: 10000,
 				learningRate: 0.01,
@@ -378,6 +383,8 @@
 				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'finest grid res' ).listen().onChange( onNetworkParamChange );
 				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).listen().onChange( onNetworkParamChange );
 				networkFolder.add( params, 'hiddenActivation', MLP_ACTIVATION_OPTIONS ).name( 'MLP hidden activation' ).listen();
+				networkFolder.add( params, 'positionalEncoding' ).name( 'positional encoding' ).onChange( onNetworkParamChange );
+				networkFolder.add( params, 'positionalEncodingOctaves', [ 1, 2, 3, 4 ] ).name( 'positional encoding octaves' );
 
 				const trainingFolder = gui.addFolder( 'training' );
 				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
@@ -842,6 +849,8 @@
 						baseResolution: Number( params.baseResolution ),
 						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
 						hiddenActivation: params.hiddenActivation,
+						positionalEncoding: params.positionalEncoding,
+						positionalEncodingOctaves: Number( params.positionalEncodingOctaves ),
 						outputChannels: channelClassification.totalChannels,
 						channelActivations: buildChannelActivations( channelClassification.activeChannels ),
 						batchSize: Number( params.batchSize ),

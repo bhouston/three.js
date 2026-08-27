@@ -96,6 +96,17 @@ function encodeNTC( cpuModel, channelClassification, options = {} ) {
 			zeroPreserving: zeroPreserving ? true : undefined
 		},
 		outputChannels: cpuModel.outputChannels,
+		// Additive field (see NTCLoader.js's parse, which defaults it to
+		// `false`/absent when missing) - omitted entirely when the model
+		// wasn't trained with positional encoding, so an ordinary manifest is
+		// byte-for-byte unaffected by this option's addition. See
+		// NTCPositionalEncoding.js / NTCGridPyramidModel.js's
+		// `positionalEncoding`/`positionalEncodingOctaves` options - required
+		// (not just cosmetic) when present, since NTCDecoderTSL.js's
+		// `evaluateNeuralTextureRaw` needs to know to compute and append these
+		// extra decoder inputs, matching the wider input layer already baked
+		// into `mlp` below.
+		positionalEncoding: cpuModel.positionalEncoding ? { octaves: cpuModel.positionalEncodingOctaves } : undefined,
 		// Omitted entirely (rather than always written as the 6-number
 		// identity) for an identity/absent transform - see
 		// NTCFormat.isIdentityUvTransform's doc comment on why this is an

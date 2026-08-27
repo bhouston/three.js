@@ -105,6 +105,12 @@ class NTCLoader extends Loader {
 			outputChannels: manifest.outputChannels !== undefined ?
 				manifest.outputChannels : decoderLayers[ decoderLayers.length - 1 ].outputSize,
 			wrap: manifest.latents.wrap || 'repeat',
+			// Additive field (see NTCManifest.js's encodeNTC) - absent means
+			// this model wasn't trained with positional encoding, matching
+			// NTCDecoderTSL.js's `evaluateNeuralTextureRaw`'s own
+			// `cpuModel.positionalEncoding` falsy check.
+			positionalEncoding: manifest.positionalEncoding !== undefined,
+			positionalEncodingOctaves: manifest.positionalEncoding !== undefined ? manifest.positionalEncoding.octaves : undefined,
 			// Defaults to identity when absent (manifests saved before this
 			// field existed, or one that never had a detected/explicit UV
 			// transform) - see NTCFormat.js's decodeUvTransform and
@@ -200,6 +206,17 @@ function validateManifest( manifest ) {
 	// the decoder's LOD input was normalized against.
 	assertInteger( manifest.latents.mipsPerLevel, 'latents.mipsPerLevel', 1 );
 	assertInteger( manifest.latents.maxLod, 'latents.maxLod', 1 );
+
+	// Optional/additive field (see NTCManifest.js's encodeNTC) - absent means
+	// no positional encoding (see NTCPositionalEncoding.js); when present,
+	// required (not just shape-checked) since NTCDecoderTSL.js needs the
+	// exact octave count to build the same encoding the decoder was trained
+	// against.
+	if ( manifest.positionalEncoding !== undefined ) {
+
+		assertInteger( manifest.positionalEncoding.octaves, 'positionalEncoding.octaves', 1 );
+
+	}
 
 	if ( ! manifest.mlp || typeof manifest.mlp.dataBase64 !== 'string' || ! Array.isArray( manifest.mlp.layout ) ) {
 

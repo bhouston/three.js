@@ -388,4 +388,91 @@ describe( 'Addons > NTC > NTCManifest', () => {
 
 	} );
 
+	describe( 'positionalEncoding (see NTCPositionalEncoding.js)', () => {
+
+		function buildModelWithPositionalEncoding( outputChannels, octaves ) {
+
+			const random = ( () => {
+
+				let seed = 13579;
+				return () => {
+
+					seed = ( seed * 1103515245 + 12345 ) & 0x7fffffff;
+					return seed / 0x7fffffff;
+
+				};
+
+			} )();
+
+			return createNTCGridPyramidModel( {
+				channels: 4,
+				levels: 2,
+				baseResolution: 4,
+				hiddenSizes: [ 6 ],
+				outputChannels,
+				positionalEncoding: true,
+				positionalEncodingOctaves: octaves
+			}, random );
+
+		}
+
+		it( 'omits positionalEncoding from the manifest entirely when disabled (the default)', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModel( classification.totalChannels );
+
+			const manifest = encodeNTC( model, classification, { name: 'no positional encoding' } );
+			const json = JSON.parse( JSON.stringify( manifest ) );
+
+			expect( 'positionalEncoding' in json ).toBe( false );
+
+		} );
+
+		it( 'records positionalEncoding.octaves in the manifest when enabled, and round-trips through the loader', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModelWithPositionalEncoding( classification.totalChannels, 3 );
+
+			const manifest = encodeNTC( model, classification, { name: 'with positional encoding' } );
+			expect( manifest.positionalEncoding ).toEqual( { octaves: 3 } );
+
+			const json = JSON.parse( JSON.stringify( manifest ) );
+			const loaded = new NTCLoader().parse( json );
+
+			expect( loaded.cpuModel.positionalEncoding ).toBe( true );
+			expect( loaded.cpuModel.positionalEncodingOctaves ).toBe( 3 );
+
+			// The wider input layer is already baked into the MLP weight
+			// shapes, independent of the positionalEncoding flag - both must
+			// agree for NTCDecoderTSL.js to build a consistent input vector.
+			expect( loaded.cpuModel.decoder.layers[ 0 ].inputSize ).toBe( model.decoder.layers[ 0 ].inputSize );
+
+		} );
+
+		it( 'a manifest with no positionalEncoding field at all (pre-existing format) still loads, defaulting to disabled', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModel( classification.totalChannels );
+
+			const manifest = encodeNTC( model, classification, { name: 'legacy manifest' } );
+			const json = JSON.parse( JSON.stringify( manifest ) );
+			const loaded = new NTCLoader().parse( json );
+
+			expect( loaded.cpuModel.positionalEncoding ).toBe( false );
+
+		} );
+
+		it( 'loader rejects a positionalEncoding.octaves that is not a positive integer', () => {
+
+			const classification = buildChannelClassification();
+			const model = buildModelWithPositionalEncoding( classification.totalChannels, 2 );
+			const manifest = encodeNTC( model, classification, { name: 'bad octaves' } );
+			manifest.positionalEncoding.octaves = 0;
+
+			expect( () => new NTCLoader().parse( manifest ) ).toThrow( /positionalEncoding\.octaves/ );
+
+		} );
+
+	} );
+
 } );

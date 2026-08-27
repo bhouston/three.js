@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeGridLevels, createLatentGrid, createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js';
+import { positionalEncodingSize } from '../../../../examples/jsm/ntc/NTCPositionalEncoding.js';
 
 describe( 'Addons > NTC > NTCGridPyramidModel', () => {
 
@@ -112,6 +113,37 @@ describe( 'Addons > NTC > NTCGridPyramidModel', () => {
 
 		} );
 
+		it( 'defaults positionalEncoding to false, leaving inputSize at channels + 1', () => {
+
+			const options = { channels: 4, levels: 1, baseResolution: 8, hiddenSizes: [ 5 ], outputChannels: 3 };
+			const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+			expect( model.positionalEncoding ).toBe( false );
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.channels + 1 );
+
+		} );
+
+		it( 'positionalEncoding: true widens inputSize by positionalEncodingSize(octaves)', () => {
+
+			const options = { channels: 4, levels: 1, baseResolution: 8, hiddenSizes: [ 5 ], outputChannels: 3, positionalEncoding: true };
+			const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+			expect( model.positionalEncoding ).toBe( true );
+			expect( model.positionalEncodingOctaves ).toBe( 2 ); // documented default
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.channels + 1 + positionalEncodingSize( 2 ) );
+
+		} );
+
+		it( 'an explicit positionalEncodingOctaves changes the widened inputSize accordingly', () => {
+
+			const options = { channels: 2, levels: 1, baseResolution: 8, hiddenSizes: [ 5 ], outputChannels: 3, positionalEncoding: true, positionalEncodingOctaves: 3 };
+			const model = createNTCGridPyramidModel( options, () => 0.5 );
+
+			expect( model.positionalEncodingOctaves ).toBe( 3 );
+			expect( model.decoder.layers[ 0 ].inputSize ).toBe( options.channels + 1 + positionalEncodingSize( 3 ) );
+
+		} );
+
 		it( 'applies documented defaults when options are omitted', () => {
 
 			const model = createNTCGridPyramidModel( {}, () => 0.5 );
@@ -121,6 +153,7 @@ describe( 'Addons > NTC > NTCGridPyramidModel', () => {
 			expect( model.mipsPerLevel ).toBe( 2 );
 			expect( model.hiddenSizes ).toEqual( [ 32, 32 ] );
 			expect( model.hiddenActivation ).toBe( 'relu' );
+			expect( model.positionalEncoding ).toBe( false );
 			expect( model.outputChannels ).toBe( 3 );
 
 			// baseResolution = 128 (finest, no textureResolution given), mipsPerLevel = 2, levels = 4

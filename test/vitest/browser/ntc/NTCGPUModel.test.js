@@ -5,6 +5,7 @@ import {
 	NTCGPUModel
 } from '../../../../examples/jsm/ntc/training/NTCGPUModel.js';
 import { withTestRenderer } from '../helpers/webgpuEval.js';
+import { positionalEncodingSize } from '../../../../examples/jsm/ntc/NTCPositionalEncoding.js';
 
 // NTCGPUModel.js only *computes* a storage-buffer layout (offsets,
 // counts) and allocates buffers sized from it - the actual GPU kernels that
@@ -266,6 +267,36 @@ describe( 'Addons > NeuralTexture > NTCGPUModel (storage buffer layout)', () => 
 			expect( layout.deltaOffsets ).toEqual( [ 3 ] );
 			expect( layout.gradA0Offset ).toBe( 4 );
 			expect( layout.activationStride ).toBe( 6 );
+
+		} );
+
+	} );
+
+	describe( 'computeTextureModelLayout - positional encoding (see NTCPositionalEncoding.js)', () => {
+
+		it( 'defaults positionalEncoding to false, leaving inputSize at channels + 1', () => {
+
+			const layout = computeTextureModelLayout( {
+				channels: 4, levels: 1, baseResolution: 8,
+				hiddenSizes: [ 5 ], outputChannels: 3
+			} );
+
+			expect( layout.positionalEncoding ).toBe( false );
+			expect( layout.inputSize ).toBe( 5 );
+
+		} );
+
+		it( 'positionalEncoding: true widens inputSize by positionalEncodingSize(octaves), matching the input layer\'s inputSize', () => {
+
+			const layout = computeTextureModelLayout( {
+				channels: 4, levels: 1, baseResolution: 8,
+				hiddenSizes: [ 5 ], outputChannels: 3, positionalEncoding: true
+			} );
+
+			expect( layout.positionalEncoding ).toBe( true );
+			expect( layout.positionalEncodingOctaves ).toBe( 2 );
+			expect( layout.inputSize ).toBe( 4 + 1 + positionalEncodingSize( 2 ) );
+			expect( layout.mlpLayers[ 0 ].inputSize ).toBe( layout.inputSize );
 
 		} );
 

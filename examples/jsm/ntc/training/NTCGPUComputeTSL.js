@@ -25,6 +25,7 @@ import {
 import { applyChannelActivation, channelActivationDerivativeFromOutput } from '../NTCOutputActivations.js';
 import { QUANTIZATION_SCHEMES } from './NTCQuantization.js';
 import { selectFeatureLevelTSL } from '../NTCMipBands.js';
+import { computePositionalEncodingTSL } from '../NTCPositionalEncoding.js';
 
 function hash1( seed ) {
 
@@ -160,7 +161,9 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		outputChannels,
 		channelActivations,
 		mipsPerLevel,
-		maxLod
+		maxLod,
+		positionalEncoding,
+		positionalEncodingOctaves
 	} = layout;
 
 	const gridSize = Math.max( 1, Math.ceil( Math.sqrt( batchSize ) ) );
@@ -208,6 +211,15 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		const a0Vars = [];
 		for ( let c = 0; c < channels; c ++ ) a0Vars.push( float( 0.0 ).toVar() );
 
+		// Accumulated the same weighted-sum way as a0Vars above (see that
+		// block's doc comment) - only the selected level's own tx/ty survive
+		// the sum, since `weight` is 0 for every other level. Only needed (and
+		// only allocated) when positional encoding is actually enabled - see
+		// NTCPositionalEncoding.js/NTCGridPyramidModel.js's `positionalEncoding`
+		// option.
+		const txSelected = positionalEncoding ? float( 0.0 ).toVar() : null;
+		const tySelected = positionalEncoding ? float( 0.0 ).toVar() : null;
+
 		for ( let g = 0; g < gridLevels.length; g ++ ) {
 
 			const level = gridLevels[ g ];
@@ -240,6 +252,13 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 			const weight = selectedLevel.equal( int( g ) ).select( float( 1 ), float( 0 ) );
 
 			levelTaps.push( { off0, off1, off2, off3, w0, w1, w2, w3, weight } );
+
+			if ( positionalEncoding ) {
+
+				txSelected.addAssign( tx.mul( weight ) );
+				tySelected.addAssign( ty.mul( weight ) );
+
+			}
 
 			for ( let c = 0; c < channels; c ++ ) {
 
@@ -275,6 +294,23 @@ function createTextureTrainBatchComputeNode( gpuModel, sourceTextures ) {
 		// the shared decoder disambiguate that, matching the paper's own
 		// decoder input layout (Section 4.4: "... and a LOD value").
 		activationsStorage.element( actBase.add( int( a0Offset + channels ) ) ).assign( lod.div( Math.max( 1, maxLod ) ) );
+
+		// Append the triangle-wave positional encoding of the selected level's
+		// own fractional texel position, when enabled (see
+		// NTCPositionalEncoding.js / NTCGridPyramidModel.js's
+		// `positionalEncoding` option) - occupies the input slots immediately
+		// after the LOD value, matching NTCGridPyramidModel.js's `inputSize`.
+		if ( positionalEncoding ) {
+
+			const encoded = computePositionalEncodingTSL( txSelected, tySelected, positionalEncodingOctaves );
+
+			for ( let i = 0; i < encoded.length; i ++ ) {
+
+				activationsStorage.element( actBase.add( int( a0Offset + channels + 1 + i ) ) ).assign( encoded[ i ] );
+
+			}
+
+		}
 
 		// 2. Forward MLP (hidden layers activated per layer.activation - 'relu'
 		// by default, or 'hgelu' - see NTCGridPyramidModel.js's

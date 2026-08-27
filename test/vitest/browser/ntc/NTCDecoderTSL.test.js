@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { float, uv, vec4 } from 'three/tsl';
+import { float, uv, vec2, vec4 } from 'three/tsl';
 import { evaluateNeuralTextureRaw, buildMipChainTexture } from '../../../../examples/jsm/ntc/NTCDecoderTSL.js';
 import { selectFeatureLevel } from '../../../../examples/jsm/ntc/NTCMipBands.js';
+import { computePositionalEncoding } from '../../../../examples/jsm/ntc/NTCPositionalEncoding.js';
 import { createNTCGridPyramidModel } from '../../../../examples/jsm/ntc/training/NTCGridPyramidModel.js';
 import { forwardMLP } from '../../../../examples/jsm/ntc/training/NTCMLP.js';
 import { bakeColorNodeToTexture } from '../../../../examples/jsm/ntc/training/NTCTextureSource.js';
@@ -281,6 +282,111 @@ describe( 'Addons > NTC > NTCDecoderTSL (real WebGPU)', () => {
 			for ( let c = 0; c < 3; c ++ ) expect( pixels[ i * 4 + c ] ).toBeCloseTo( expected[ c ], 2 );
 
 		}
+
+	} );
+
+	describe( 'positional encoding (see NTCPositionalEncoding.js)', () => {
+
+		// Evaluates evaluateNeuralTextureRaw at a single, explicit (non-varying)
+		// UV - passed as a constant vec2 rather than the per-pixel `uv()` node
+		// the tests above use - so every pixel of the render target evaluates
+		// identically and pixel (0,0) alone is a clean readout, at a UV chosen
+		// freely (not constrained to a texel center like the tests above).
+		// The grid is filled with a flat per-channel constant (fillGridConstant)
+		// so the bilinearly-sampled *feature* input is UV-independent - already
+		// covered by the other tests in this file - isolating what this block
+		// actually checks: that the positional-encoding terms
+		// evaluateNeuralTextureRaw appends match NTCPositionalEncoding.js's
+		// plain-JS computePositionalEncoding, computed from the exact same
+		// (uv, resolution, lod) inputs.
+		async function checkPositionalEncodingAt( renderer, ux, uy, lod ) {
+
+			const octaves = 2;
+			const options = { channels: 2, levels: 1, baseResolution: 16, hiddenSizes: [ 4 ], outputChannels: 3, positionalEncoding: true, positionalEncodingOctaves: octaves };
+			const cpuModel = createNTCGridPyramidModel( options, makeRandom( 4.2 ) );
+
+			const constantFeature = [ 0.15, - 0.4 ];
+			fillGridConstant( cpuModel.grids[ 0 ], constantFeature );
+
+			const resolution = cpuModel.grids[ 0 ].width;
+			const x = ux * resolution - 0.5;
+			const y = uy * resolution - 0.5;
+			const tx = x - Math.floor( x );
+			const ty = y - Math.floor( y );
+
+			const expectedInput = [
+				...constantFeature.map( toHalfPrecision ),
+				lod / cpuModel.maxLod,
+				...computePositionalEncoding( tx, ty, octaves )
+			];
+			const expected = forwardMLP( cpuModel.decoder, expectedInput ).output;
+
+			const gridSize = 32; // avoids the RGBA16F readback alignment issue noted above - every pixel is identical anyway
+			const mipChainTexture = buildMipChainTexture( cpuModel );
+			const raw = evaluateNeuralTextureRaw( vec2( ux, uy ), cpuModel, mipChainTexture, null, float( lod ) );
+			const colorNode = vec4( raw[ 0 ], raw[ 1 ], raw[ 2 ], 0 );
+
+			const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, gridSize );
+			const pixels = readHalfFloatPixels( await renderer.readRenderTargetPixelsAsync( renderTarget, 0, 0, gridSize, gridSize ) );
+			renderTarget.dispose();
+			mipChainTexture.dispose();
+
+			for ( let c = 0; c < 3; c ++ ) expect( pixels[ c ] ).toBeCloseTo( expected[ c ], 2 );
+
+		}
+
+		it( 'matches the CPU reference at a texel-center UV (tx = ty = 0)', async () => {
+
+			await checkPositionalEncodingAt( renderer, 0.5 / 16, 0.5 / 16, 0 );
+
+		} );
+
+		it( 'matches the CPU reference at an arbitrary, non-texel-center UV', async () => {
+
+			await checkPositionalEncodingAt( renderer, 0.2, 0.6, 0 );
+
+		} );
+
+		it( 'matches the CPU reference at a different arbitrary UV and a nonzero LOD', async () => {
+
+			await checkPositionalEncodingAt( renderer, 0.83, 0.07, 1 );
+
+		} );
+
+		it( 'produces a decoder output that actually differs between two UVs landing in different positional-encoding phases (the feature grid alone can\'t distinguish them - both fall within the same, constant-filled grid cell)', async () => {
+
+			const octaves = 2;
+			const options = { channels: 2, levels: 1, baseResolution: 16, hiddenSizes: [ 4 ], outputChannels: 3, positionalEncoding: true, positionalEncodingOctaves: octaves };
+			const cpuModel = createNTCGridPyramidModel( options, makeRandom( 4.2 ) );
+			fillGridConstant( cpuModel.grids[ 0 ], [ 0.15, - 0.4 ] );
+
+			const mipChainTexture = buildMipChainTexture( cpuModel );
+			const gridSize = 32;
+
+			const renderAt = async ( ux, uy ) => {
+
+				const raw = evaluateNeuralTextureRaw( vec2( ux, uy ), cpuModel, mipChainTexture, null, float( 0 ) );
+				const colorNode = vec4( raw[ 0 ], raw[ 1 ], raw[ 2 ], 0 );
+				const renderTarget = await bakeColorNodeToTexture( renderer, colorNode, gridSize );
+				const pixels = readHalfFloatPixels( await renderer.readRenderTargetPixelsAsync( renderTarget, 0, 0, gridSize, gridSize ) );
+				renderTarget.dispose();
+				return pixels.slice( 0, 3 );
+
+			};
+
+			// Both UVs fall within the same grid cell (texel (0,0) of a 16-wide
+			// grid spans u in [0/16, 1/16)) - a bilinearly-sampled *feature*
+			// alone (this grid is flat/constant anyway) cannot distinguish them,
+			// but their sub-texel positions (tx/ty) differ substantially.
+			const a = await renderAt( 0.3 / 16, 0.3 / 16 );
+			const b = await renderAt( 0.7 / 16, 0.8 / 16 );
+
+			mipChainTexture.dispose();
+
+			const differs = a.some( ( value, i ) => Math.abs( value - b[ i ] ) > 1e-3 );
+			expect( differs ).toBe( true );
+
+		} );
 
 	} );
 

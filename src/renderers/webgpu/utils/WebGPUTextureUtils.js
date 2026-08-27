@@ -809,10 +809,11 @@ class WebGPUTextureUtils {
 		const format = textureData.textureDescriptorGPU.format;
 		const bytesPerTexel = this._getBytesPerTexel( format );
 
-		let bytesPerRow = width * bytesPerTexel;
+		const unpaddedBytesPerRow = width * bytesPerTexel;
+		let bytesPerRow = unpaddedBytesPerRow;
 		bytesPerRow = Math.ceil( bytesPerRow / 256 ) * 256; // Align to 256 bytes
 
-		_bufferDescriptor.size = ( ( height - 1 ) * bytesPerRow ) + ( width * bytesPerTexel ); // see https://github.com/mrdoob/three.js/issues/31658#issuecomment-3229442010
+		_bufferDescriptor.size = ( ( height - 1 ) * bytesPerRow ) + unpaddedBytesPerRow; // see https://github.com/mrdoob/three.js/issues/31658#issuecomment-3229442010
 		_bufferDescriptor.usage = GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ;
 
 		const readBuffer = device.createBuffer( _bufferDescriptor );
@@ -852,7 +853,35 @@ class WebGPUTextureUtils {
 
 		readBuffer.destroy();
 
-		return new typedArrayType( buffer );
+		// WebGPU requires `bytesPerRow` to be a multiple of 256
+		// (COPY_BYTES_PER_ROW_ALIGNMENT) - for a copy region narrower than
+		// that (`unpaddedBytesPerRow < 256`), each row above is followed by
+		// unused padding bytes the GPU inserted purely to satisfy that
+		// requirement; they are not part of the pixel data. Every caller of
+		// this method assumes a tightly-packed `width * height` array, so
+		// that padding has to be stripped back out here before returning -
+		// skipped entirely when there is none (the common case: a
+		// large-enough copy region, or one whose row size already happens to
+		// be a multiple of 256), so this adds no overhead there.
+		if ( bytesPerRow === unpaddedBytesPerRow ) {
+
+			return new typedArrayType( buffer );
+
+		}
+
+		const packedBuffer = new ArrayBuffer( height * unpaddedBytesPerRow );
+		const paddedBytes = new Uint8Array( buffer );
+		const packedBytes = new Uint8Array( packedBuffer );
+
+		for ( let row = 0; row < height; row ++ ) {
+
+			const srcOffset = row * bytesPerRow;
+			const dstOffset = row * unpaddedBytesPerRow;
+			packedBytes.set( paddedBytes.subarray( srcOffset, srcOffset + unpaddedBytesPerRow ), dstOffset );
+
+		}
+
+		return new typedArrayType( packedBuffer );
 
 	}
 

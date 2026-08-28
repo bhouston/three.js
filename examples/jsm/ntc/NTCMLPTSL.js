@@ -391,26 +391,29 @@ function evaluateLinearLayerMat4( inputs, inputSize, outputSize, activation, get
  * same thing for *weights*, once, on the CPU, ahead of time - see
  * NTCMLPQuantization.js). `values` shorter than 4 are zero-padded, matching
  * that CPU-side packer's own zero-padding for a partial last group.
+ *
+ * The actual little-endian two's-complement packing is delegated to the core
+ * `three/tsl` `pack4xI8` node (`src/nodes/math/PackIntegerNode.js`, backed by
+ * WGSL's `pack4xI8` builtin on WebGPU with a GLSL polyfill on the WebGL
+ * fallback backend) - this function only does the quantize-to-int8-level
+ * step (`round`/`div`/`clamp`) that's specific to this addon's scale-based
+ * scheme, ahead of that generic, reusable packing primitive. An earlier
+ * version of this function hand-rolled the packing itself via a manual
+ * `bitAnd`/`shiftLeft`/`bitOr` loop, written before `pack4xI8` existed as a
+ * core node.
  */
 function quantizeAndPackInt8TSL( values, scaleNode ) {
 
-	let packed = TSL.uint( 0 );
+	const levels = [];
 
 	for ( let i = 0; i < 4; i ++ ) {
 
 		const value = values[ i ] !== undefined ? values[ i ] : TSL.float( 0 );
-		const level = TSL.round( value.div( scaleNode ) ).clamp( - 128, 127 );
-		// A clamped-to-[-128,127] float converted to `int` and masked to its
-		// low 8 bits (`& 0xFF`) yields exactly the same little-endian
-		// two's-complement byte packInt8x4 produces on the CPU (JS's `& 0xFF`
-		// on a 32-bit int does the same masking) - see this function's CPU-side
-		// counterpart for the identical bit-level reasoning.
-		const byte = TSL.int( level ).bitAnd( 0xFF );
-		packed = packed.bitOr( TSL.uint( byte ).shiftLeft( 8 * i ) );
+		levels.push( TSL.int( TSL.round( value.div( scaleNode ) ).clamp( - 128, 127 ) ) );
 
 	}
 
-	return packed;
+	return TSL.pack4xI8( TSL.ivec4( levels[ 0 ], levels[ 1 ], levels[ 2 ], levels[ 3 ] ) );
 
 }
 

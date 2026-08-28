@@ -4,14 +4,7 @@ import * as TSL from 'three/tsl';
 /**
  * TSL "hardGELU" - see NTCMLP.js's hardGELU doc comment for the exact
  * piecewise formula and rationale (the NVIDIA neural texture compression
- * paper's cheap GELU approximation). Written with `select()` rather than
- * `.clamp()` since the two outer branches return `x` itself and a literal
- * `0`, not a clamped copy of the smooth middle branch - operates
- * component-wise, so it works unchanged whether `x` is a scalar `float` or a
- * `vec4`/`hvec4` (comparisons/select broadcast per-component for vector
- * types). `x.mul(0)` (rather than a bare `TSL.float(0)`) produces a zero of
- * whatever type `x` already is, so this needs no separate half/float variant
- * the way packVec4Inputs/evaluateLinearLayerMat4 do.
+ * paper's cheap GELU approximation). 
  */
 function hardGeluTSL( x ) {
 

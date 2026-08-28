@@ -37923,6 +37923,113 @@ const packSnorm4x8 = /*@__PURE__*/ nodeProxyIntent( PackFloatNode, 'snorm', null
 const packUnorm4x8 = /*@__PURE__*/ nodeProxyIntent( PackFloatNode, 'unorm', null, { layout: '4x8' } ).setParameterLength( 1 );
 
 /**
+ * This node represents an operation that packs 4 8-bit integers of a vector
+ * into a single unsigned 32-bit integer - backed by WGSL's `pack4xI8`/
+ * `pack4xU8` builtins (the same "Packed 4x8 Integer Dot Product" WGSL
+ * language feature that {@link PackedDotProductNode} wraps - see
+ * https://developer.mozilla.org/en-US/docs/Web/API/WGSLLanguageFeatures) on
+ * WebGPU, with a hand-written GLSL polyfill so the same TSL call also works
+ * on the WebGL fallback backend.
+ *
+ * Like `dot4I8Packed`/`dot4U8Packed`, this is a WGSL *language feature*, not
+ * an *extension* - no `enable` directive is required, confirmed empirically
+ * the same way (see `PackedDotProductNode.js`'s doc comment for the full
+ * investigation).
+ *
+ * Complements the existing `packSnorm4x8`/`packUnorm4x8` (`PackFloatNode.js`)
+ * pair, which pack *normalized floats* into 8-bit lanes; this node packs
+ * *integers already in `[-128, 127]`/`[0, 255]`* directly, with no float
+ * normalization step - useful when the source values are already quantized
+ * integers (e.g. this repo's NTC addon's int8 MLP evaluator), where an extra
+ * round-trip through a normalized float would be wasted work.
+ *
+ * @augments MathNode
+ */
+class PackIntegerNode extends MathNode {
+
+	static get type() {
+
+		return 'PackIntegerNode';
+
+	}
+
+	/**
+	 * Constructs a new pack integer node.
+	 *
+	 * @param {'pack4xI8'|'pack4xU8'} method - The method name.
+	 * @param {Node<ivec4|uvec4>} aNode - The 4-component integer vector to pack.
+	 */
+	constructor( method, aNode ) {
+
+		super( method, aNode );
+
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
+		this.isPackIntegerNode = true;
+
+	}
+
+	generateNodeType() {
+
+		return 'uint';
+
+	}
+
+	generate( builder, output ) {
+
+		const { method, aNode } = this;
+
+		const inputType = method === PackIntegerNode.PACK4X_I8 ? 'ivec4' : 'uvec4';
+		const type = this.getNodeType( builder );
+		const a = aNode.build( builder, inputType );
+
+		const nativeMethod = builder.getMethod( method );
+
+		return builder.format( `${ nativeMethod }( ${ a } )`, type, output );
+
+	}
+
+}
+
+PackIntegerNode.PACK4X_I8 = 'pack4xI8';
+PackIntegerNode.PACK4X_U8 = 'pack4xU8';
+
+/**
+ * Packs a 4-component vector of signed 8-bit integers (each expected in
+ * `[-128, 127]`) into a single `uint`, little-endian (component `x` occupies
+ * bits `[0, 8)`, ... `w` occupies bits `[24, 32)`).
+ *
+ * Native on WebGPU (WGSL's `pack4xI8`); emulated with a small GLSL polyfill
+ * on the WebGL fallback backend.
+ *
+ * @tsl
+ * @function
+ * @param {Node<ivec4>} a - The 4-component signed integer vector to pack.
+ * @returns {Node<uint>}
+ */
+const pack4xI8 = /*@__PURE__*/ nodeProxyIntent( PackIntegerNode, PackIntegerNode.PACK4X_I8 ).setParameterLength( 1 );
+
+/**
+ * Packs a 4-component vector of unsigned 8-bit integers (each expected in
+ * `[0, 255]`) into a single `uint` - see {@link pack4xI8}, unsigned lanes
+ * instead of signed.
+ *
+ * Native on WebGPU (WGSL's `pack4xU8`); emulated with a small GLSL polyfill
+ * on the WebGL fallback backend.
+ *
+ * @tsl
+ * @function
+ * @param {Node<uvec4>} a - The 4-component unsigned integer vector to pack.
+ * @returns {Node<uint>}
+ */
+const pack4xU8 = /*@__PURE__*/ nodeProxyIntent( PackIntegerNode, PackIntegerNode.PACK4X_U8 ).setParameterLength( 1 );
+
+/**
  * This node represents an operation that unpacks values from a 32-bit unsigned integer, reinterpreting the results as a floating-point vector
  *
  * @augments TempNode
@@ -38041,6 +38148,111 @@ const unpackSnorm4x8 = /*@__PURE__*/ nodeProxyIntent( UnpackFloatNode, 'snorm', 
  * @returns {Node}
  */
 const unpackUnorm4x8 = /*@__PURE__*/ nodeProxyIntent( UnpackFloatNode, 'unorm', null, { layout: '4x8' } ).setParameterLength( 1 );
+
+/**
+ * This node represents an operation that unpacks a single unsigned 32-bit
+ * integer into 4 8-bit integer lanes - backed by WGSL's `unpack4xI8`/
+ * `unpack4xU8` builtins, the inverse of {@link PackIntegerNode}'s
+ * `pack4xI8`/`pack4xU8` (both part of the "Packed 4x8 Integer Dot Product"
+ * WGSL language feature - see
+ * https://developer.mozilla.org/en-US/docs/Web/API/WGSLLanguageFeatures) on
+ * WebGPU, with a hand-written GLSL polyfill so the same TSL call also works
+ * on the WebGL fallback backend.
+ *
+ * Complements the existing `unpackSnorm4x8`/`unpackUnorm4x8`
+ * (`UnpackFloatNode.js`) pair, which unpack 8-bit lanes into *normalized
+ * floats*; this node unpacks the lanes as plain integers, with no float
+ * normalization step.
+ *
+ * @augments MathNode
+ */
+class UnpackIntegerNode extends MathNode {
+
+	static get type() {
+
+		return 'UnpackIntegerNode';
+
+	}
+
+	/**
+	 * Constructs a new unpack integer node.
+	 *
+	 * @param {'unpack4xI8'|'unpack4xU8'} method - The method name.
+	 * @param {Node<uint>} aNode - The packed unsigned integer to unpack.
+	 */
+	constructor( method, aNode ) {
+
+		super( method, aNode );
+
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
+		this.isUnpackIntegerNode = true;
+
+	}
+
+	/**
+	 * The signed variant (`unpack4xI8`) returns a signed `ivec4`; the unsigned
+	 * variant (`unpack4xU8`) returns `uvec4`.
+	 *
+	 * @return {string} The node type.
+	 */
+	generateNodeType() {
+
+		return this.method === UnpackIntegerNode.UNPACK4X_I8 ? 'ivec4' : 'uvec4';
+
+	}
+
+	generate( builder, output ) {
+
+		const { method, aNode } = this;
+
+		const type = this.getNodeType( builder );
+		const a = aNode.build( builder, 'uint' );
+
+		const nativeMethod = builder.getMethod( method );
+
+		return builder.format( `${ nativeMethod }( ${ a } )`, type, output );
+
+	}
+
+}
+
+UnpackIntegerNode.UNPACK4X_I8 = 'unpack4xI8';
+UnpackIntegerNode.UNPACK4X_U8 = 'unpack4xU8';
+
+/**
+ * Unpacks a `uint` into a 4-component vector of signed 8-bit integers,
+ * little-endian (bits `[0, 8)` become component `x`, ... bits `[24, 32)`
+ * become `w`), each sign-extended to a full `int`.
+ *
+ * Native on WebGPU (WGSL's `unpack4xI8`); emulated with a small GLSL polyfill
+ * on the WebGL fallback backend.
+ *
+ * @tsl
+ * @function
+ * @param {Node<uint> | number} a - The packed integer to unpack.
+ * @returns {Node<ivec4>}
+ */
+const unpack4xI8 = /*@__PURE__*/ nodeProxyIntent( UnpackIntegerNode, UnpackIntegerNode.UNPACK4X_I8 ).setParameterLength( 1 );
+
+/**
+ * Unpacks a `uint` into a 4-component vector of unsigned 8-bit integers -
+ * see {@link unpack4xI8}, unsigned lanes instead of signed.
+ *
+ * Native on WebGPU (WGSL's `unpack4xU8`); emulated with a small GLSL polyfill
+ * on the WebGL fallback backend.
+ *
+ * @tsl
+ * @function
+ * @param {Node<uint> | number} a - The packed integer to unpack.
+ * @returns {Node<uvec4>}
+ */
+const unpack4xU8 = /*@__PURE__*/ nodeProxyIntent( UnpackIntegerNode, UnpackIntegerNode.UNPACK4X_U8 ).setParameterLength( 1 );
 
 // https://github.com/cabbibo/glsl-tri-noise-3d
 
@@ -50201,6 +50413,8 @@ var TSL = /*#__PURE__*/Object.freeze({
 	overloadingFn: overloadingFn,
 	overrideNode: overrideNode,
 	overrideNodes: overrideNodes,
+	pack4xI8: pack4xI8,
+	pack4xU8: pack4xU8,
 	packHalf2x16: packHalf2x16,
 	packNormalToRGB: packNormalToRGB,
 	packSnorm2x16: packSnorm2x16,
@@ -50383,6 +50597,8 @@ var TSL = /*#__PURE__*/Object.freeze({
 	uniformFlow: uniformFlow,
 	uniformGroup: uniformGroup,
 	uniformTexture: uniformTexture,
+	unpack4xI8: unpack4xI8,
+	unpack4xU8: unpack4xU8,
 	unpackHalf2x16: unpackHalf2x16,
 	unpackNormal: unpackNormal,
 	unpackRGBToNormal: unpackRGBToNormal,
@@ -66802,7 +67018,16 @@ vec4 tsl_textureGatherCompare_array( sampler2DArrayShadow map, vec3 coord, ivec2
 	// directly, rather than round-tripping through those unpack functions'
 	// own normalized-float output.
 	dot4I8Packed: new CodeNode( /* glsl */'int tsl_dot4I8Packed( uint a, uint b ) { ivec4 av = ivec4( a << 24, a << 16, a << 8, a ) >> 24; ivec4 bv = ivec4( b << 24, b << 16, b << 8, b ) >> 24; ivec4 p = av * bv; return p.x + p.y + p.z + p.w; }' ),
-	dot4U8Packed: new CodeNode( /* glsl */'uint tsl_dot4U8Packed( uint a, uint b ) { uvec4 av = uvec4( a, a >> 8, a >> 16, a >> 24 ) & 0xffu; uvec4 bv = uvec4( b, b >> 8, b >> 16, b >> 24 ) & 0xffu; uvec4 p = av * bv; return p.x + p.y + p.z + p.w; }' )
+	dot4U8Packed: new CodeNode( /* glsl */'uint tsl_dot4U8Packed( uint a, uint b ) { uvec4 av = uvec4( a, a >> 8, a >> 16, a >> 24 ) & 0xffu; uvec4 bv = uvec4( b, b >> 8, b >> 16, b >> 24 ) & 0xffu; uvec4 p = av * bv; return p.x + p.y + p.z + p.w; }' ),
+	// GLSL has no equivalent of WGSL's pack4xI8/pack4xU8/unpack4xI8/
+	// unpack4xU8 (the rest of the "Packed 4x8 Integer Dot Product" WGSL
+	// language feature - see PackIntegerNode.js/UnpackIntegerNode.js) -
+	// emulated with the same little-endian byte-lane idioms as
+	// tsl_dot4I8Packed/tsl_dot4U8Packed just above.
+	pack4xI8: new CodeNode( /* glsl */'uint tsl_pack4xI8( ivec4 v ) { uvec4 u = uvec4( v ) & 0xffu; return u.x | u.y << 8 | u.z << 16 | u.w << 24; }' ),
+	pack4xU8: new CodeNode( /* glsl */'uint tsl_pack4xU8( uvec4 v ) { uvec4 u = v & 0xffu; return u.x | u.y << 8 | u.z << 16 | u.w << 24; }' ),
+	unpack4xI8: new CodeNode( /* glsl */'ivec4 tsl_unpack4xI8( uint v ) { return ivec4( v << 24, v << 16, v << 8, v ) >> 24; }' ),
+	unpack4xU8: new CodeNode( /* glsl */'uvec4 tsl_unpack4xU8( uint v ) { return uvec4( v, v >> 8, v >> 16, v >> 24 ) & 0xffu; }' )
 };
 
 const glslMethods = {
@@ -66824,7 +67049,11 @@ const glslMethods = {
 	floatunpack_snorm_4x8: 'tsl_unpackSnorm4x8',
 	floatunpack_unorm_4x8: 'tsl_unpackUnorm4x8',
 	dot4I8Packed: 'tsl_dot4I8Packed',
-	dot4U8Packed: 'tsl_dot4U8Packed'
+	dot4U8Packed: 'tsl_dot4U8Packed',
+	pack4xI8: 'tsl_pack4xI8',
+	pack4xU8: 'tsl_pack4xU8',
+	unpack4xI8: 'tsl_unpack4xI8',
+	unpack4xU8: 'tsl_unpack4xU8'
 };
 
 // GLSL has no native fp16 compute type - half types always resolve to their fp32 equivalent.
@@ -91668,4 +91897,4 @@ class ClippingGroup extends Group {
 
 }
 
-export { ACESFilmicToneMapping, AONode, AddEquation, AddOperation, AdditiveBlending, AgXToneMapping, AlphaFormat, AlwaysCompare, AlwaysDepth, AlwaysStencilFunc, AmbientLight, AmbientLightNode, AnalyticLightNode, ArrayCamera, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BackSide, BarrierNode, BasicEnvironmentNode, BasicLightMapNode, BasicShadowMap, BitcastNode, BitcountNode, BlendMode, BoxGeometry, BufferAttribute, BufferAttributeNode, BufferGeometry, BufferNode, BuiltinNode, BumpMapNode, BundleGroup, BypassNode, ByteType, CanvasTarget, CineonToneMapping, ClampToEdgeWrapping, ClippingGroup, ClippingNode, CodeNode, Color, ColorManagement, ColorSpaceNode, Compatibility, ComputeBuiltinNode, ComputeNode, ConditionalNode, ConstNode, ConstantAlphaFactor, ConstantColorFactor, ContextNode, ConvertNode, CubeCamera, CubeDepthTexture, CubeMapNode, CubeReflectionMapping, CubeRefractionMapping, CubeTexture, CubeTextureNode, CubeUVReflectionMapping, CullFaceBack, CullFaceFront, CullFaceNone, CustomBlending, CylinderGeometry, DataArrayTexture, DataTexture, DebugNode, DecrementStencilOp, DecrementWrapStencilOp, DepthFormat, DepthStencilFormat, DepthTexture, DirectRenderPipeline, DirectionalLight, DirectionalLightNode, DoubleSide, DstAlphaFactor, DstColorFactor, DynamicDrawUsage, EnvironmentNode, EqualCompare, EqualDepth, EqualStencilFunc, EquirectangularReflectionMapping, EquirectangularRefractionMapping, EventDispatcher, EventNode, ExpressionNode, FileLoader, FlipNode, Float16BufferAttribute, Float32BufferAttribute, FloatType, FramebufferTexture, FrontFacingNode, FrontSide, Frustum, FrustumArray, FunctionCallNode, FunctionNode, FunctionOverloadingNode, GLSLNodeParser, GreaterCompare, GreaterDepth, GreaterEqualCompare, GreaterEqualDepth, GreaterEqualStencilFunc, GreaterStencilFunc, Group, HalfFloatType, HemisphereLight, HemisphereLightNode, IESSpotLight, IESSpotLightNode, IncrementStencilOp, IncrementWrapStencilOp, IndexNode, IndirectStorageBufferAttribute, InputNode, InspectorBase, InspectorNode, InstancedBufferAttribute, InstancedInterleavedBuffer, IntType, InterleavedBuffer, InterleavedBufferAttribute, InvertStencilOp, IrradianceNode, IsolateNode, JoinNode, KeepStencilOp, LessCompare, LessDepth, LessEqualCompare, LessEqualDepth, LessEqualStencilFunc, LessStencilFunc, LightProbe, LightProbeNode, Lighting, LightingContextNode, LightingModel, LightingNode, LightsNode, Line2NodeMaterial, LineBasicMaterial, LineBasicNodeMaterial, LineDashedMaterial, LineDashedNodeMaterial, LinearFilter, LinearMipMapLinearFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearSRGBColorSpace, LinearToneMapping, LinearTransfer, Loader, LoopNode, MRTNode, Material, MaterialBlending, MaterialLoader, MaterialNode, MaterialReferenceNode, MathNode, MathUtils, Matrix2, Matrix3, Matrix4, MaxEquation, MaxMipLevelNode, MemberNode, Mesh, MeshBasicMaterial, MeshBasicNodeMaterial, MeshLambertMaterial, MeshLambertNodeMaterial, MeshMatcapMaterial, MeshMatcapNodeMaterial, MeshNormalMaterial, MeshNormalNodeMaterial, MeshPhongMaterial, MeshPhongNodeMaterial, MeshPhysicalMaterial, MeshPhysicalNodeMaterial, MeshSSSNodeMaterial, MeshStandardMaterial, MeshStandardNodeMaterial, MeshToonMaterial, MeshToonNodeMaterial, MinEquation, MirroredRepeatWrapping, MixOperation, ModelNode, MultiplyBlending, MultiplyOperation, NearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, NeutralToneMapping, NeverCompare, NeverDepth, NeverStencilFunc, NoBlending, NoColorSpace, NoNormalPacking, NoToneMapping, Node, NodeAccess, NodeAttribute, NodeBuilder, NodeCache, NodeCode, NodeError, NodeFrame, NodeFunctionInput, NodeLoader, NodeMaterial, NodeMaterialLoader, NodeMaterialObserver, NodeObjectLoader, NodeShaderStage, NodeType, NodeUniform, NodeUpdateType, NodeUtils, NodeVar, NodeVarying, NormalBlending, NormalGAPacking, NormalMapNode, NormalRGPacking, NotEqualCompare, NotEqualDepth, NotEqualStencilFunc, Object3D, Object3DNode, ObjectLoader, ObjectSpaceNormalMap, OneFactor, OneMinusConstantAlphaFactor, OneMinusConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, OperatorNode, OrthographicCamera, OutputStructNode, OverrideContextNode, PCFShadowMap, PCFSoftShadowMap, PMREMGenerator, PMREMNode, PackFloatNode, PackedDotProductNode, ParameterNode, PassNode, PerspectiveCamera, PhongLightingModel, PhysicalLightingModel, Plane, PlaneGeometry, PointLight, PointLightNode, PointShadowNode, PointUVNode, PointsMaterial, PointsNodeMaterial, PostProcessing, ProjectorLight, ProjectorLightNode, PropertyNode, QuadMesh, Quaternion, R11_EAC_Format, RED_GREEN_RGTC2_Format, RED_RGTC1_Format, REVISION, RG11_EAC_Format, RGBAFormat, RGBAIntegerFormat, RGBA_ASTC_10x10_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_BPTC_Format, RGBA_ETC2_EAC_Format, RGBA_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGBFormat, RGBIntegerFormat, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGB_PVRTC_2BPPV1_Format, RGB_PVRTC_4BPPV1_Format, RGB_S3TC_DXT1_Format, RGFormat, RGIntegerFormat, RTTNode, RangeNode, ReadbackBuffer, RectAreaLight, RectAreaLightNode, RedFormat, RedIntegerFormat, ReferenceBaseNode, ReferenceElementNode, ReferenceNode, ReflectorNode, ReinhardToneMapping, RenderObjectRefreshType, RenderOutputNode, RenderPipeline, RenderTarget, RendererReferenceNode, RendererUtils, RepeatWrapping, ReplaceStencilOp, ReverseSubtractEquation, RotateNode, SIGNED_R11_EAC_Format, SIGNED_RED_GREEN_RGTC2_Format, SIGNED_RED_RGTC1_Format, SIGNED_RG11_EAC_Format, SRGBColorSpace, SRGBTransfer, SampleNode, Scene, ScreenNode, SemanticUVNode, SetNode, ShadowBaseNode, ShadowMaterial, ShadowNode, ShadowNodeMaterial, ShortType, Sphere, SphereGeometry, SplitNode, SpotLight, SpotLightNode, SpriteMaterial, SpriteNodeMaterial, SrcAlphaFactor, SrcAlphaSaturateFactor, SrcColorFactor, StackNode, StackTrace, StaticDrawUsage, StorageArrayElementNode, StorageBufferAttribute, StorageBufferNode, StorageInstancedBufferAttribute, StorageTexture, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, SubtractEquation, SubtractiveBlending, TSL, TangentSpaceNormalMap, TempNode, Texture, Texture3DNode, TextureNode, TextureSizeNode, TimestampQuery, ToneMappingNode, ToonOutlinePassNode, UVMapping, Uint16BufferAttribute, Uint32BufferAttribute, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UnsignedByteType, UnsignedInt101111Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedIntType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShortType, UserDataNode, VSMShadowMap, VarNode, VaryingNode, Vector2, Vector3, Vector4, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, VolumeNodeMaterial, WebGLBackend, WebGLCoordinateSystem, WebGPUBackend, WebGPUCoordinateSystem, WebGPURenderer, WebXRController, WorkgroupInfoNode, ZeroFactor, ZeroStencilOp, createCanvasElement, defaultBuildStages, defaultShaderStages, error, log$1 as log, shaderStages, vectorComponents, warn, warnOnce };
+export { ACESFilmicToneMapping, AONode, AddEquation, AddOperation, AdditiveBlending, AgXToneMapping, AlphaFormat, AlwaysCompare, AlwaysDepth, AlwaysStencilFunc, AmbientLight, AmbientLightNode, AnalyticLightNode, ArrayCamera, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BackSide, BarrierNode, BasicEnvironmentNode, BasicLightMapNode, BasicShadowMap, BitcastNode, BitcountNode, BlendMode, BoxGeometry, BufferAttribute, BufferAttributeNode, BufferGeometry, BufferNode, BuiltinNode, BumpMapNode, BundleGroup, BypassNode, ByteType, CanvasTarget, CineonToneMapping, ClampToEdgeWrapping, ClippingGroup, ClippingNode, CodeNode, Color, ColorManagement, ColorSpaceNode, Compatibility, ComputeBuiltinNode, ComputeNode, ConditionalNode, ConstNode, ConstantAlphaFactor, ConstantColorFactor, ContextNode, ConvertNode, CubeCamera, CubeDepthTexture, CubeMapNode, CubeReflectionMapping, CubeRefractionMapping, CubeTexture, CubeTextureNode, CubeUVReflectionMapping, CullFaceBack, CullFaceFront, CullFaceNone, CustomBlending, CylinderGeometry, DataArrayTexture, DataTexture, DebugNode, DecrementStencilOp, DecrementWrapStencilOp, DepthFormat, DepthStencilFormat, DepthTexture, DirectRenderPipeline, DirectionalLight, DirectionalLightNode, DoubleSide, DstAlphaFactor, DstColorFactor, DynamicDrawUsage, EnvironmentNode, EqualCompare, EqualDepth, EqualStencilFunc, EquirectangularReflectionMapping, EquirectangularRefractionMapping, EventDispatcher, EventNode, ExpressionNode, FileLoader, FlipNode, Float16BufferAttribute, Float32BufferAttribute, FloatType, FramebufferTexture, FrontFacingNode, FrontSide, Frustum, FrustumArray, FunctionCallNode, FunctionNode, FunctionOverloadingNode, GLSLNodeParser, GreaterCompare, GreaterDepth, GreaterEqualCompare, GreaterEqualDepth, GreaterEqualStencilFunc, GreaterStencilFunc, Group, HalfFloatType, HemisphereLight, HemisphereLightNode, IESSpotLight, IESSpotLightNode, IncrementStencilOp, IncrementWrapStencilOp, IndexNode, IndirectStorageBufferAttribute, InputNode, InspectorBase, InspectorNode, InstancedBufferAttribute, InstancedInterleavedBuffer, IntType, InterleavedBuffer, InterleavedBufferAttribute, InvertStencilOp, IrradianceNode, IsolateNode, JoinNode, KeepStencilOp, LessCompare, LessDepth, LessEqualCompare, LessEqualDepth, LessEqualStencilFunc, LessStencilFunc, LightProbe, LightProbeNode, Lighting, LightingContextNode, LightingModel, LightingNode, LightsNode, Line2NodeMaterial, LineBasicMaterial, LineBasicNodeMaterial, LineDashedMaterial, LineDashedNodeMaterial, LinearFilter, LinearMipMapLinearFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearSRGBColorSpace, LinearToneMapping, LinearTransfer, Loader, LoopNode, MRTNode, Material, MaterialBlending, MaterialLoader, MaterialNode, MaterialReferenceNode, MathNode, MathUtils, Matrix2, Matrix3, Matrix4, MaxEquation, MaxMipLevelNode, MemberNode, Mesh, MeshBasicMaterial, MeshBasicNodeMaterial, MeshLambertMaterial, MeshLambertNodeMaterial, MeshMatcapMaterial, MeshMatcapNodeMaterial, MeshNormalMaterial, MeshNormalNodeMaterial, MeshPhongMaterial, MeshPhongNodeMaterial, MeshPhysicalMaterial, MeshPhysicalNodeMaterial, MeshSSSNodeMaterial, MeshStandardMaterial, MeshStandardNodeMaterial, MeshToonMaterial, MeshToonNodeMaterial, MinEquation, MirroredRepeatWrapping, MixOperation, ModelNode, MultiplyBlending, MultiplyOperation, NearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, NeutralToneMapping, NeverCompare, NeverDepth, NeverStencilFunc, NoBlending, NoColorSpace, NoNormalPacking, NoToneMapping, Node, NodeAccess, NodeAttribute, NodeBuilder, NodeCache, NodeCode, NodeError, NodeFrame, NodeFunctionInput, NodeLoader, NodeMaterial, NodeMaterialLoader, NodeMaterialObserver, NodeObjectLoader, NodeShaderStage, NodeType, NodeUniform, NodeUpdateType, NodeUtils, NodeVar, NodeVarying, NormalBlending, NormalGAPacking, NormalMapNode, NormalRGPacking, NotEqualCompare, NotEqualDepth, NotEqualStencilFunc, Object3D, Object3DNode, ObjectLoader, ObjectSpaceNormalMap, OneFactor, OneMinusConstantAlphaFactor, OneMinusConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, OperatorNode, OrthographicCamera, OutputStructNode, OverrideContextNode, PCFShadowMap, PCFSoftShadowMap, PMREMGenerator, PMREMNode, PackFloatNode, PackIntegerNode, PackedDotProductNode, ParameterNode, PassNode, PerspectiveCamera, PhongLightingModel, PhysicalLightingModel, Plane, PlaneGeometry, PointLight, PointLightNode, PointShadowNode, PointUVNode, PointsMaterial, PointsNodeMaterial, PostProcessing, ProjectorLight, ProjectorLightNode, PropertyNode, QuadMesh, Quaternion, R11_EAC_Format, RED_GREEN_RGTC2_Format, RED_RGTC1_Format, REVISION, RG11_EAC_Format, RGBAFormat, RGBAIntegerFormat, RGBA_ASTC_10x10_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_BPTC_Format, RGBA_ETC2_EAC_Format, RGBA_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGBFormat, RGBIntegerFormat, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGB_PVRTC_2BPPV1_Format, RGB_PVRTC_4BPPV1_Format, RGB_S3TC_DXT1_Format, RGFormat, RGIntegerFormat, RTTNode, RangeNode, ReadbackBuffer, RectAreaLight, RectAreaLightNode, RedFormat, RedIntegerFormat, ReferenceBaseNode, ReferenceElementNode, ReferenceNode, ReflectorNode, ReinhardToneMapping, RenderObjectRefreshType, RenderOutputNode, RenderPipeline, RenderTarget, RendererReferenceNode, RendererUtils, RepeatWrapping, ReplaceStencilOp, ReverseSubtractEquation, RotateNode, SIGNED_R11_EAC_Format, SIGNED_RED_GREEN_RGTC2_Format, SIGNED_RED_RGTC1_Format, SIGNED_RG11_EAC_Format, SRGBColorSpace, SRGBTransfer, SampleNode, Scene, ScreenNode, SemanticUVNode, SetNode, ShadowBaseNode, ShadowMaterial, ShadowNode, ShadowNodeMaterial, ShortType, Sphere, SphereGeometry, SplitNode, SpotLight, SpotLightNode, SpriteMaterial, SpriteNodeMaterial, SrcAlphaFactor, SrcAlphaSaturateFactor, SrcColorFactor, StackNode, StackTrace, StaticDrawUsage, StorageArrayElementNode, StorageBufferAttribute, StorageBufferNode, StorageInstancedBufferAttribute, StorageTexture, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, SubtractEquation, SubtractiveBlending, TSL, TangentSpaceNormalMap, TempNode, Texture, Texture3DNode, TextureNode, TextureSizeNode, TimestampQuery, ToneMappingNode, ToonOutlinePassNode, UVMapping, Uint16BufferAttribute, Uint32BufferAttribute, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UnpackIntegerNode, UnsignedByteType, UnsignedInt101111Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedIntType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShortType, UserDataNode, VSMShadowMap, VarNode, VaryingNode, Vector2, Vector3, Vector4, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, VolumeNodeMaterial, WebGLBackend, WebGLCoordinateSystem, WebGPUBackend, WebGPUCoordinateSystem, WebGPURenderer, WebXRController, WorkgroupInfoNode, ZeroFactor, ZeroStencilOp, createCanvasElement, defaultBuildStages, defaultShaderStages, error, log$1 as log, shaderStages, vectorComponents, warn, warnOnce };

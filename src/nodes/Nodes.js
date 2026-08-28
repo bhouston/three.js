@@ -133,7 +133,9 @@ export { default as MathNode } from './math/MathNode.js';
 export { default as OperatorNode } from './math/OperatorNode.js';
 export { default as PackedDotProductNode } from './math/PackedDotProductNode.js';
 export { default as PackFloatNode } from './math/PackFloatNode.js';
+export { default as PackIntegerNode } from './math/PackIntegerNode.js';
 export { default as UnpackFloatNode } from './math/UnpackFloatNode.js';
+export { default as UnpackIntegerNode } from './math/UnpackIntegerNode.js';
 
 // parsers
 export { default as GLSLNodeParser } from './parsers/GLSLNodeParser.js'; // @TODO: Move to jsm/renderers/webgl.

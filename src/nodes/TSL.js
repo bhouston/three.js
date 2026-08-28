@@ -26,7 +26,9 @@ export * from './math/Hash.js';
 export * from './math/MathUtils.js';
 export * from './math/PackedDotProductNode.js';
 export * from './math/PackFloatNode.js';
+export * from './math/PackIntegerNode.js';
 export * from './math/UnpackFloatNode.js';
+export * from './math/UnpackIntegerNode.js';
 export * from './math/TriNoise3D.js';
 
 // utils

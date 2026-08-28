@@ -84,7 +84,16 @@ vec4 tsl_textureGatherCompare_array( sampler2DArrayShadow map, vec3 coord, ivec2
 	// directly, rather than round-tripping through those unpack functions'
 	// own normalized-float output.
 	dot4I8Packed: new CodeNode( /* glsl */'int tsl_dot4I8Packed( uint a, uint b ) { ivec4 av = ivec4( a << 24, a << 16, a << 8, a ) >> 24; ivec4 bv = ivec4( b << 24, b << 16, b << 8, b ) >> 24; ivec4 p = av * bv; return p.x + p.y + p.z + p.w; }' ),
-	dot4U8Packed: new CodeNode( /* glsl */'uint tsl_dot4U8Packed( uint a, uint b ) { uvec4 av = uvec4( a, a >> 8, a >> 16, a >> 24 ) & 0xffu; uvec4 bv = uvec4( b, b >> 8, b >> 16, b >> 24 ) & 0xffu; uvec4 p = av * bv; return p.x + p.y + p.z + p.w; }' )
+	dot4U8Packed: new CodeNode( /* glsl */'uint tsl_dot4U8Packed( uint a, uint b ) { uvec4 av = uvec4( a, a >> 8, a >> 16, a >> 24 ) & 0xffu; uvec4 bv = uvec4( b, b >> 8, b >> 16, b >> 24 ) & 0xffu; uvec4 p = av * bv; return p.x + p.y + p.z + p.w; }' ),
+	// GLSL has no equivalent of WGSL's pack4xI8/pack4xU8/unpack4xI8/
+	// unpack4xU8 (the rest of the "Packed 4x8 Integer Dot Product" WGSL
+	// language feature - see PackIntegerNode.js/UnpackIntegerNode.js) -
+	// emulated with the same little-endian byte-lane idioms as
+	// tsl_dot4I8Packed/tsl_dot4U8Packed just above.
+	pack4xI8: new CodeNode( /* glsl */'uint tsl_pack4xI8( ivec4 v ) { uvec4 u = uvec4( v ) & 0xffu; return u.x | u.y << 8 | u.z << 16 | u.w << 24; }' ),
+	pack4xU8: new CodeNode( /* glsl */'uint tsl_pack4xU8( uvec4 v ) { uvec4 u = v & 0xffu; return u.x | u.y << 8 | u.z << 16 | u.w << 24; }' ),
+	unpack4xI8: new CodeNode( /* glsl */'ivec4 tsl_unpack4xI8( uint v ) { return ivec4( v << 24, v << 16, v << 8, v ) >> 24; }' ),
+	unpack4xU8: new CodeNode( /* glsl */'uvec4 tsl_unpack4xU8( uint v ) { return uvec4( v, v >> 8, v >> 16, v >> 24 ) & 0xffu; }' )
 };
 
 const glslMethods = {
@@ -106,7 +115,11 @@ const glslMethods = {
 	floatunpack_snorm_4x8: 'tsl_unpackSnorm4x8',
 	floatunpack_unorm_4x8: 'tsl_unpackUnorm4x8',
 	dot4I8Packed: 'tsl_dot4I8Packed',
-	dot4U8Packed: 'tsl_dot4U8Packed'
+	dot4U8Packed: 'tsl_dot4U8Packed',
+	pack4xI8: 'tsl_pack4xI8',
+	pack4xU8: 'tsl_pack4xU8',
+	unpack4xI8: 'tsl_unpack4xI8',
+	unpack4xU8: 'tsl_unpack4xU8'
 };
 
 // GLSL has no native fp16 compute type - half types always resolve to their fp32 equivalent.

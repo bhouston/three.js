@@ -4,22 +4,44 @@ import * as TSL from 'three/tsl';
 /**
  * TSL "hardGELU" - see NTCMLP.js's hardGELU doc comment for the exact
  * piecewise formula and rationale (the NVIDIA neural texture compression
- * paper's cheap GELU approximation). Written with `select()` rather than
- * `.clamp()` since the two outer branches return `x` itself and a literal
- * `0`, not a clamped copy of the smooth middle branch - operates
- * component-wise, so it works unchanged whether `x` is a scalar `float` or a
- * `vec4`/`hvec4` (comparisons/select broadcast per-component for vector
- * types). `x.mul(0)` (rather than a bare `TSL.float(0)`) produces a zero of
- * whatever type `x` already is, so this needs no separate half/float variant
- * the way packVec4Inputs/evaluateLinearLayerMat4 do.
+ * paper's cheap GELU approximation).
+ *
+ * Deliberately branch-free arithmetic (`clamp`/`max`) rather than
+ * `select()`, unlike NTCGPUKernelsTSL.js's scalar `hardGeluTSL` twin: this
+ * one runs on the vec4/hvec4-packed pre-activations evaluateLinearLayerMat4
+ * evaluates 4 neurons at a time, and three.js's `select(cond, a, b)`
+ * (ConditionalNode) always narrows `cond` to a single scalar `bool` before
+ * branching - even when `cond` was itself a per-component `bvec4` comparison
+ * - so it picks one branch for the *entire* vector rather than selecting
+ * component-wise. With a per-component boolean condition (as
+ * `x.greaterThanEqual(1.5)`/`x.lessThanEqual(-1.5)` on a vec4 produce), that
+ * silently mis-selects whichever of the 4 packed neurons don't agree with
+ * whatever the narrowed condition happened to resolve to - invisible for
+ * small/random weights that never push any lane's pre-activation past the
+ * +-1.5 breakpoints, but badly wrong once real training pushes some (not
+ * all) lanes in a packed vec4 group past them, e.g. to represent sharp,
+ * high-contrast detail. (The scalar version below has no such problem -
+ * with a single float `x`, `cond` is already a scalar bool.)
+ *
+ * Equivalent closed form, using only per-component clamp/max (both
+ * genuinely component-wise for vector types, unlike select()):
+ * `hardGELU(x) = middle(clamp(x, -1.5, 1.5)) + max(x - 1.5, 0)`, where
+ * `middle(t) = t/3 * (t + 1.5)` is the same quadratic middle branch as
+ * before. Check each region: for `x <= -1.5`, `clamp(x,-1.5,1.5) = -1.5` so
+ * `middle(-1.5) = 0`, and `max(x-1.5,0) = 0` (since `x-1.5 <= -3`) -> `0`,
+ * matching the flat branch. For `x >= 1.5`, `clamp(x,-1.5,1.5) = 1.5` so
+ * `middle(1.5) = 1.5`, and `max(x-1.5,0) = x-1.5` -> `1.5 + (x-1.5) = x`,
+ * matching the identity branch. For `-1.5 < x < 1.5`, `clamp` is a no-op and
+ * `max(x-1.5,0) = 0` (since `x < 1.5`) -> `middle(x)`, matching the middle
+ * branch - continuous at both breakpoints by construction.
  */
 function hardGeluTSL( x ) {
 
-	const zero = x.mul( 0 );
-	const middle = x.mul( x.add( 1.5 ) ).div( 3 );
-	const upper = TSL.select( x.greaterThanEqual( 1.5 ), x, middle );
+	const clamped = x.clamp( - 1.5, 1.5 );
+	const middle = clamped.mul( clamped.add( 1.5 ) ).div( 3 );
+	const linearTail = x.sub( 1.5 ).max( 0 );
 
-	return TSL.select( x.lessThanEqual( - 1.5 ), zero, upper );
+	return middle.add( linearTail );
 
 }
 

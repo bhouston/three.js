@@ -51,8 +51,6 @@ import { SH_BAND_COMPONENTS, SH_BAND_WORDS } from './GaussianSplatUtils.js';
  * {@link GaussianSplat} and {@link GaussianSplatGroup}.
  */
 
-const BIN_COUNT = 4096;
-const WORKGROUP_SIZE = 256;
 const SORT_DIRECTION_THRESHOLD = 0.9995;
 const KERNEL_2D_SIZE = 0.3;
 const SPLAT_KERNEL_CUTOFF = 2;
@@ -448,9 +446,10 @@ function transformPackedCovariance( covA, covB, matrix, name ) {
  *
  * @param {Object} buffers - A storage buffer state returned by {@link createStorageBuffers}.
  * @param {UniformNode<vec3>} localCameraPosition - The camera position, in the same local space as `buffers.centerRead`.
+ * @param {number} workgroupSize - The workgroup size to dispatch with (see {@link GPGPUUtils#pickWorkgroupSize}).
  * @return {?ComputeNode} The compute node, or `null`.
  */
-function createSphericalHarmonicsComputeNode( buffers, localCameraPosition ) {
+function createSphericalHarmonicsComputeNode( buffers, localCameraPosition, workgroupSize ) {
 
 	if ( buffers.sphericalHarmonicsDegree === 0 ) return null;
 
@@ -463,7 +462,7 @@ function createSphericalHarmonicsComputeNode( buffers, localCameraPosition ) {
 		applySphericalHarmonics( rgb, center, localCameraPosition, splatIndex, buffers );
 		buffers.sphericalHarmonicsContributionWrite.element( splatIndex ).assign( vec4( rgb, 0 ) );
 
-	} )().compute( buffers.count, [ WORKGROUP_SIZE ] ).setName( 'GaussianSplatSphericalHarmonics' );
+	} )().compute( buffers.count, [ workgroupSize ] ).setName( 'GaussianSplatSphericalHarmonics' );
 
 }
 
@@ -785,8 +784,6 @@ function computeRayIntersection( positionAttribute, covarianceAttribute, colorAt
 }
 
 export {
-	BIN_COUNT,
-	WORKGROUP_SIZE,
 	SORT_DIRECTION_THRESHOLD,
 	SPLAT_KERNEL_CUTOFF,
 	MIN_RAYCAST_OPACITY,

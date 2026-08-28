@@ -16,8 +16,6 @@ import { instanceIndex, max, storage, uint, uniform, vec4 } from 'three/tsl';
 import { CountingSort } from '../gpgpu/CountingSort.js';
 import { SH_BAND_WORDS, getSphericalHarmonicsDegree } from '../utils/GaussianSplatUtils.js';
 import {
-	BIN_COUNT,
-	WORKGROUP_SIZE,
 	computeRayIntersection,
 	createAffineMatrix4,
 	createGeometry,
@@ -27,6 +25,11 @@ import {
 	updateLastSortDirection,
 	updateSortDepthRange
 } from '../utils/GaussianSplatShadingUtils.js';
+
+// The group's live splat total isn't known up front (it starts empty and grows/shrinks as splat
+// clouds are added/removed), so - unlike GaussianSplat, which can size its CountingSort's binCount
+// off its fixed count - the group needs its own default to pass through explicitly.
+const DEFAULT_BIN_COUNT = 4096;
 
 const _box = /*@__PURE__*/ new Box3();
 const _sphere = /*@__PURE__*/ new Sphere();
@@ -131,12 +134,11 @@ class GaussianSplatGroup extends Mesh {
 	 *
 	 * @param {Object} [options] - Options.
 	 * @param {number} [options.binCount=4096] - The number of depth bins used by the group's {@link CountingSort}. Larger values improve sort accuracy when splats are spread across a large combined depth range, at the cost of a longer (but still single-pass) prefix sum.
-	 * @param {number} [options.workgroupSize=256] - The workgroup size of the compute shaders used for merging and sorting.
-	 * @param {boolean} [options.autoCompact=true] - Whether the group's shared storage buffers are kept sized to exactly fit the current live splat total. When `true`, every add/remove/visibility change that changes the total resizes the buffers, growing or shrinking them to fit. When `false`, the buffers only grow - shrinking the live total never reallocates smaller buffers on its own; call {@link GaussianSplatGroup#compact} to shrink them to fit. Can be changed at any time; a change only takes effect the next time buffer sizes are checked, i.e. the next `addSplat`/`deleteSplat`/`setVisibleAt` (or explicit {@link GaussianSplatGroup#compact} call). Defaults to `false` when `initialSize` is given, since preallocating a fixed size and then having it silently shrink would defeat the point - pass `autoCompact: true` explicitly alongside `initialSize` if that's actually what's wanted.
-	 * @param {number} [options.initialSize] - Preallocates the shared storage buffers to this many splats up front, so the group doesn't reallocate as splat clouds are added until the live total exceeds it. Useful to size a group for its expected peak (e.g. 2,000,000) once, up front. Implies `autoCompact: false` unless `autoCompact` is explicitly passed.
+	 * @param {boolean} [options.autoCompact=true] - Whether the group's shared storage buffers - and its {@link CountingSort}'s order/bin buffers - are kept sized to exactly fit the current live splat total. When `true`, every add/remove/visibility change that changes the total resizes the buffers, growing or shrinking them to fit. When `false`, the buffers only grow - shrinking the live total never reallocates smaller buffers on its own; call {@link GaussianSplatGroup#compact} to shrink them to fit. Can be changed at any time; a change only takes effect the next time buffer sizes are checked, i.e. the next `addSplat`/`deleteSplat`/`setVisibleAt` (or explicit {@link GaussianSplatGroup#compact} call). Defaults to `false` when `initialSize` is given, since preallocating a fixed size and then having it silently shrink would defeat the point - pass `autoCompact: true` explicitly alongside `initialSize` if that's actually what's wanted.
+	 * @param {number} [options.initialSize] - Preallocates the shared storage buffers - and the {@link CountingSort}'s order/bin buffers - to this many splats up front, so the group doesn't reallocate as splat clouds are added until the live total exceeds it. Useful to size a group for its expected peak (e.g. 2,000,000) once, up front. Implies `autoCompact: false` unless `autoCompact` is explicitly passed.
 	 * @param {number} [options.shDegree=2] - Fixed spherical harmonics degree used by the group. Source splats with fewer bands are padded with neutral coefficients; source splats with more bands are truncated to this degree.
 	 */
-	constructor( { binCount = BIN_COUNT, workgroupSize = WORKGROUP_SIZE, autoCompact, initialSize, shDegree = 2 } = {} ) {
+	constructor( { binCount = DEFAULT_BIN_COUNT, autoCompact, initialSize, shDegree = 2 } = {} ) {
 
 		if ( Number.isInteger( shDegree ) === false || shDegree < 0 || shDegree > 3 ) {
 
@@ -154,7 +156,27 @@ class GaussianSplatGroup extends Mesh {
 		resizeGroupBufferState( buffers, Math.max( 1, initialSize || 1 ), 1, shDegree );
 
 		const localCameraPosition = uniform( new Vector3() );
-		const sort = new CountingSort( 0, { binCount, workgroupSize } );
+		const sortMatrix = uniform( new Matrix4() );
+		const sortDepthRange = uniform( new Vector2( 0, 1 ) );
+
+		// The sort's own growth/shrink behavior mirrors the group's buffers - same `autoCompact`/
+		// `initialSize` contract - so its order/bin buffers never need reallocating on their own
+		// schedule, independent of the rest of the group's storage.
+		const sort = new CountingSort( 0, () => {
+
+			const centerRecord = buffers.centerRead.element( instanceIndex ).toVar( 'centerRecord' );
+			const recordIndex = uint( centerRecord.w.add( 0.5 ) ).toVar( 'recordIndex' );
+			const center = transformCenter( centerRecord.xyz, buffers, recordIndex ).toVar( 'center' );
+			const viewCenter = sortMatrix.mul( vec4( center, 1 ) ).xyz.toVar( 'viewCenter' );
+			const depth = viewCenter.z.negate().toVar( 'depth' );
+			const range = max( sortDepthRange.y.sub( sortDepthRange.x ), 0.0001 ).toVar( 'range' );
+			const normalized = depth.sub( sortDepthRange.x ).div( range ).clamp( 0, 1 ).toVar( 'normalized' );
+			const depthBin = uint( normalized.mul( sort.binCount - 1 ) ).toVar( 'depthBin' );
+
+			return uint( sort.binCount - 1 ).sub( depthBin );
+
+		}, { binCount, autoCompact, initialSize } );
+
 		const materialNodes = createMaterialNodes( buffers, sort, localCameraPosition, buffers );
 		const material = createMaterial( materialNodes.vertexNode, materialNodes.fragmentNode );
 
@@ -176,25 +198,19 @@ class GaussianSplatGroup extends Mesh {
 		 *
 		 * @type {number}
 		 */
-		this.binCount = binCount;
+		this.binCount = sort.binCount;
 
 		/**
-		 * The workgroup size of the compute shaders used for merging and sorting.
-		 *
-		 * @type {number}
-		 */
-		this.workgroupSize = workgroupSize;
-
-		/**
-		 * Whether the group's shared storage buffers are kept sized to exactly fit the
-		 * current live splat total (see the constructor's `autoCompact` option for the full
-		 * contract). Safe to change at any time; takes effect the next time buffer sizes are
-		 * checked, i.e. the next `addSplat`/`deleteSplat`/`setVisibleAt`/{@link GaussianSplatGroup#compact}.
+		 * Whether the group's shared storage buffers - and its {@link CountingSort}'s order/bin
+		 * buffers - are kept sized to exactly fit the current live splat total (see the
+		 * constructor's `autoCompact` option for the full contract). Safe to change at any time;
+		 * takes effect the next time buffer sizes are checked, i.e. the next
+		 * `addSplat`/`deleteSplat`/`setVisibleAt`/{@link GaussianSplatGroup#compact}.
 		 *
 		 * @type {boolean}
 		 * @default true
 		 */
-		this.autoCompact = autoCompact !== undefined ? autoCompact : ( initialSize === undefined );
+		this._autoCompact = sort.autoCompact;
 
 		/**
 		 * The bounding box of the merged splats, in this group's local space. Not computed
@@ -220,24 +236,9 @@ class GaussianSplatGroup extends Mesh {
 		this._maxSphericalHarmonicsDegree = shDegree;
 
 		this._buffers = buffers;
-		this._sortMatrix = uniform( new Matrix4() );
-		this._sortDepthRange = uniform( new Vector2( 0, 1 ) );
-
+		this._sortMatrix = sortMatrix;
+		this._sortDepthRange = sortDepthRange;
 		this._sort = sort;
-		this._sort.setBinNode( () => {
-
-			const centerRecord = this._buffers.centerRead.element( instanceIndex ).toVar( 'centerRecord' );
-			const recordIndex = uint( centerRecord.w.add( 0.5 ) ).toVar( 'recordIndex' );
-			const center = transformCenter( centerRecord.xyz, this._buffers, recordIndex ).toVar( 'center' );
-			const viewCenter = this._sortMatrix.mul( vec4( center, 1 ) ).xyz.toVar( 'viewCenter' );
-			const depth = viewCenter.z.negate().toVar( 'depth' );
-			const range = max( this._sortDepthRange.y.sub( this._sortDepthRange.x ), 0.0001 ).toVar( 'range' );
-			const normalized = depth.sub( this._sortDepthRange.x ).div( range ).clamp( 0, 1 ).toVar( 'normalized' );
-			const depthBin = uint( normalized.mul( this.binCount - 1 ) ).toVar( 'depthBin' );
-
-			return uint( this.binCount - 1 ).sub( depthBin );
-
-		} );
 
 		this._records = new Map();
 		this._nextId = 0;
@@ -369,6 +370,26 @@ class GaussianSplatGroup extends Mesh {
 	}
 
 	/**
+	 * Whether the group's shared storage buffers - and its {@link CountingSort}'s order/bin
+	 * buffers - are kept sized to exactly fit the current live splat total. See the constructor's
+	 * `autoCompact` option for the full contract.
+	 *
+	 * @type {boolean}
+	 */
+	get autoCompact() {
+
+		return this._autoCompact;
+
+	}
+
+	set autoCompact( value ) {
+
+		this._autoCompact = value;
+		this._sort.autoCompact = value;
+
+	}
+
+	/**
 	 * The number of splats the group's shared storage buffers currently have room for.
 	 * Always `>=` {@link GaussianSplatGroup#splatCount}; the two are equal exactly when the
 	 * buffers are compact - always true while {@link GaussianSplatGroup#autoCompact} is
@@ -420,6 +441,8 @@ class GaussianSplatGroup extends Mesh {
 		}
 
 		recordTarget = Math.max( 1, recordTarget );
+
+		this._sort.compact();
 
 		if ( target === this._buffers.capacity && recordTarget === this._buffers.recordCapacity ) return;
 

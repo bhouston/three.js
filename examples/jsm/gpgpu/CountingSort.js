@@ -1,6 +1,15 @@
-import { StorageBufferAttribute, DynamicDrawUsage } from 'three/webgpu';
+import { StorageBufferAttribute, DynamicDrawUsage, MathUtils } from 'three/webgpu';
 import { Fn, atomicAdd, atomicStore, instanceIndex, storage, uint } from 'three/tsl';
 import { PrefixSum } from './PrefixSum.js';
+import { pickWorkgroupSize } from './GPGPUUtils.js';
+
+// binCount is chosen to target this many elements per bin on average. Every element sharing a bin
+// contends on the same atomic counter during the scatter pass, so too few bins serializes scatter
+// at large `count`; too many wastes the reset/histogram/prefix-sum passes, which are O(binCount)
+// regardless of `count`.
+const TARGET_ELEMENTS_PER_BIN = 64;
+const MIN_BIN_COUNT = 256; // floor for small `count`, where contention isn't the concern
+const MAX_BIN_COUNT = 1 << 20; // safety ceiling; TARGET_ELEMENTS_PER_BIN keeps realistic counts well under this
 
 /**
  * A reusable GPU counting sort.
@@ -13,14 +22,17 @@ import { PrefixSum } from './PrefixSum.js';
  * `count`, at the cost of only being accurate to the resolution of `binCount` - elements that land
  * in the same bin end up in an unspecified relative order.
  *
- * This class does not compute the sort key itself. Instead, a TSL function is supplied via
- * {@link CountingSort#setBinNode} that maps the current `instanceIndex` to a bin, and an equivalent
+ * This class does not compute the sort key itself. Instead, a TSL function is supplied as the
+ * `binNode` constructor argument that maps the current `instanceIndex` to a bin, and an equivalent
  * plain JavaScript function can be supplied to {@link CountingSort#computeCPU} for platforms without
  * compute shader support (e.g. the WebGL backend of {@link WebGPURenderer}).
  *
+ * `binCount` and `workgroupSize` are always derived automatically -- from `count` and the
+ * renderer's actual device limits, respectively -- so that a `CountingSort` is optimally tuned
+ * out of the box; neither is user-configurable.
+ *
  * ```js
- * const sort = new CountingSort( count, { binCount: 4096 } );
- * sort.setBinNode( () => {
+ * const sort = new CountingSort( count, () => {
  *
  * 	// return a `Node<uint>` bin index for `instanceIndex`, e.g. derived from a depth value.
  *
@@ -39,11 +51,9 @@ class CountingSort {
 	 * Constructs a new counting sort.
 	 *
 	 * @param {number} count - The number of elements to sort.
-	 * @param {Object} [options={}] - Options that modify the counting sort.
-	 * @param {number} [options.binCount=4096] - The number of bins/buckets the sort key is quantized into. Larger values improve sort accuracy at the cost of a longer (but still single-pass) prefix sum.
-	 * @param {number} [options.workgroupSize=256] - The workgroup size of the compute shaders executed during the sort.
+	 * @param {Function} binNode - A parameterless function returning a `Node<uint>` bin index for `instanceIndex`, in `[0, binCount)`.
 	 */
-	constructor( count, { binCount = 4096, workgroupSize = 256 } = {} ) {
+	constructor( count, binNode ) {
 
 		/**
 		 * The number of elements to sort.
@@ -52,19 +62,28 @@ class CountingSort {
 		 */
 		this.count = count;
 
-		/**
-		 * The number of bins/buckets the sort key is quantized into.
-		 *
-		 * @type {number}
-		 */
-		this.binCount = binCount;
+		this._binNode = binNode;
 
 		/**
-		 * The workgroup size of the compute shaders executed during the sort.
+		 * The number of bins/buckets the sort key is quantized into. Scales with `count` to bound
+		 * scatter-pass atomic contention (see `TARGET_ELEMENTS_PER_BIN`).
 		 *
 		 * @type {number}
 		 */
-		this.workgroupSize = workgroupSize;
+		this.binCount = MathUtils.clamp(
+			MathUtils.ceilPowerOfTwo( Math.ceil( count / TARGET_ELEMENTS_PER_BIN ) ),
+			MIN_BIN_COUNT, MAX_BIN_COUNT
+		);
+
+		/**
+		 * The workgroup size of the compute shaders executed during the sort. Chosen automatically
+		 * from the device's compute limits (see {@link GPGPUUtils#pickWorkgroupSize}). Only available
+		 * once {@link CountingSort#compute} has been called for the first time -- see
+		 * {@link CountingSort#_ensureBuilt}.
+		 *
+		 * @type {number|undefined}
+		 */
+		this.workgroupSize = undefined;
 
 		const orderData = new Uint32Array( count );
 		for ( let i = 0; i < count; i ++ ) orderData[ i ] = i;
@@ -78,8 +97,8 @@ class CountingSort {
 		this.orderAttribute = new StorageBufferAttribute( orderData, 1, Uint32Array );
 
 		const binAttribute = new StorageBufferAttribute( new Uint32Array( count ), 1, Uint32Array );
-		const histogramAttribute = new StorageBufferAttribute( new Uint32Array( binCount ), 1, Uint32Array );
-		const offsetAttribute = new StorageBufferAttribute( new Uint32Array( binCount ), 1, Uint32Array );
+		const histogramAttribute = new StorageBufferAttribute( new Uint32Array( this.binCount ), 1, Uint32Array );
+		const offsetAttribute = new StorageBufferAttribute( new Uint32Array( this.binCount ), 1, Uint32Array );
 
 		/**
 		 * A read-only storage node for the sorted order buffer.
@@ -114,7 +133,7 @@ class CountingSort {
 		 *
 		 * @type {StorageBufferNode}
 		 */
-		this.histogramAtomic = storage( histogramAttribute, 'uint', binCount ).toAtomic();
+		this.histogramAtomic = storage( histogramAttribute, 'uint', this.binCount ).toAtomic();
 
 		/**
 		 * An atomic storage node used both for the exclusive prefix sum of the histogram and, during
@@ -122,7 +141,7 @@ class CountingSort {
 		 *
 		 * @type {StorageBufferNode}
 		 */
-		this.offsetAtomic = storage( offsetAttribute, 'uint', binCount ).toAtomic();
+		this.offsetAtomic = storage( offsetAttribute, 'uint', this.binCount ).toAtomic();
 
 		/**
 		 * The prefix sum turning the histogram into the per-bin write offsets. It is handed the raw
@@ -134,31 +153,39 @@ class CountingSort {
 		 */
 		this._prefixSum = new PrefixSum( histogramAttribute, {
 			outputAttribute: offsetAttribute,
-			isInclusive: false,
-			workgroupSize
+			isInclusive: false
 		} );
-
-		console.log( this._prefixSum );
 
 		this._webGLBuffersEnabled = false;
 
 		this._cpuBins = new Uint32Array( count );
-		this._cpuCounts = new Uint32Array( binCount );
-		this._cpuOffsets = new Uint32Array( binCount );
+		this._cpuCounts = new Uint32Array( this.binCount );
+		this._cpuOffsets = new Uint32Array( this.binCount );
 
 		this._resetNode = null;
 		this._histogramNode = null;
 		this._scatterNode = null;
 
+		this._built = false;
+
 	}
 
 	/**
-	 * Sets the TSL function used to compute the bin of the element currently referenced by
-	 * `instanceIndex`, and (re)builds the compute nodes used by {@link CountingSort#compute}.
+	 * Resolves {@link CountingSort#workgroupSize} against the renderer's actual compute limits, and
+	 * builds the reset/histogram/scatter compute shaders that depend on it and on `binNode`.
+	 * Deferred out of the constructor since the constructor doesn't take a renderer; guarded so it
+	 * only runs once, the first time {@link CountingSort#compute} is called.
 	 *
-	 * @param {Function} binNode - A parameterless function returning a `Node<uint>` in `[0, binCount)`.
+	 * @private
+	 * @param {Renderer} renderer
 	 */
-	setBinNode( binNode ) {
+	_ensureBuilt( renderer ) {
+
+		if ( this._built ) return;
+
+		this._built = true;
+
+		this.workgroupSize = pickWorkgroupSize( renderer );
 
 		const { binCount, workgroupSize, count } = this;
 
@@ -171,7 +198,7 @@ class CountingSort {
 
 		this._histogramNode = Fn( () => {
 
-			const bin = binNode().toVar( 'bin' );
+			const bin = this._binNode().toVar( 'bin' );
 
 			this.binWrite.element( instanceIndex ).assign( bin );
 			atomicAdd( this.histogramAtomic.element( bin ), uint( 1 ) );
@@ -190,11 +217,14 @@ class CountingSort {
 	}
 
 	/**
-	 * Executes a complete counting sort on the GPU, updating {@link CountingSort#orderRead}.
+	 * Executes a complete counting sort on the GPU, updating {@link CountingSort#orderRead}. Builds
+	 * the compute shaders (tuned to the renderer's actual device limits) on the first call.
 	 *
 	 * @param {Renderer} renderer - The current scene's renderer.
 	 */
 	compute( renderer ) {
+
+		this._ensureBuilt( renderer );
 
 		renderer.compute( this._resetNode );
 		renderer.compute( this._histogramNode );

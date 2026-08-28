@@ -1,4 +1,28 @@
 import { Fn, uvec2, If, instancedArray, instanceIndex, invocationLocalIndex, Loop, workgroupArray, workgroupBarrier, workgroupId, uint, select, min, max } from 'three/tsl';
+import { pickWorkgroupSizeForSharedMemory } from './GPGPUUtils.js';
+
+// Workgroup-shared-memory bytes consumed per invocation by `localStorage` (two elements of
+// `dataBuffer.nodeType` per invocation - see `BitonicSort#_ensureBuilt`).
+const TYPE_BYTE_SIZE = {
+	float: 4, int: 4, uint: 4,
+	vec2: 8, ivec2: 8, uvec2: 8,
+	vec3: 12, ivec3: 12, uvec3: 12,
+	vec4: 16, ivec4: 16, uvec4: 16,
+};
+
+function getTypeByteSize( type ) {
+
+	const size = TYPE_BYTE_SIZE[ type ];
+
+	if ( size === undefined ) {
+
+		throw new Error( `BitonicSort: unsupported data type "${ type }".` );
+
+	}
+
+	return size;
+
+}
 
 const StepType = {
 	NONE: 0,
@@ -74,58 +98,56 @@ export const getBitonicDisperseIndices = /*@__PURE__*/ Fn( ( [ index, swapSpan ]
 	]
 } );
 
+/**
+ * A reusable in-place GPU bitonic sort, an exact comparison sort (unlike {@link CountingSort}'s
+ * approximate, bin-based ordering) at `O(n log^2 n)` cost. `dataBuffer`'s element count must be a
+ * power of two.
+ *
+ * Call {@link BitonicSort#compute} to run a full sort in one call, or step through it one dispatch
+ * at a time with {@link BitonicSort#computeStep} (e.g. to spread the cost across frames).
+ *
+ * @three_import import { BitonicSort } from 'three/addons/gpgpu/BitonicSort.js';
+ */
 export class BitonicSort {
 
 	/**
-	 * Constructs a new light probe helper.
+	 * Constructs a new bitonic sort.
 	 *
-	 * @param {StorageBufferNode} dataBuffer - The data buffer to sort.
-	 * @param {Object} [options={}] - Options that modify the bitonic sort.
+	 * @param {StorageBufferNode} dataBuffer - The data buffer to sort, in place. Its element count must be a power of two.
 	 */
-	constructor( dataBuffer, options = {} ) {
+	constructor( dataBuffer ) {
 
 		/**
-		 * A reference to the StorageBufferNode holding the data that will be sorted  .
+		 * A reference to the StorageBufferNode holding the data that will be sorted.
 		 *
 		 * @type {StorageBufferNode}
 		 */
 		this.dataBuffer = dataBuffer;
 
 		/**
-		 * The size of the data.
+		 * The number of elements in `dataBuffer`.
 		 *
-		 * @type {StorageBufferNode}
+		 * @type {number}
 		 */
 		this.count = dataBuffer.value.count;
 
 		/**
-		 *
 		 * The size of each compute dispatch.
+		 *
 		 * @type {number}
 		 */
-
 		this.dispatchSize = this.count / 2;
 
 		/**
-		 * The workgroup size of the compute shaders executed during the sort.
+		 * The workgroup size of the compute shaders executed during the sort. Chosen automatically
+		 * from the device's compute limits and `localStorage`'s shared-memory footprint (see
+		 * {@link GPGPUUtils#pickWorkgroupSizeForSharedMemory}). Only available once
+		 * {@link BitonicSort#compute} or {@link BitonicSort#computeStep} has been called for the
+		 * first time -- see {@link BitonicSort#_ensureBuilt}.
 		 *
-		 * @type {StorageBufferNode}
+		 * @type {number|undefined}
 		*/
-		this.workgroupSize = options.workgroupSize ? Math.min( this.dispatchSize, options.workgroupSize ) : Math.min( this.dispatchSize, 64 );
-
-		/**
-		 * A node representing a workgroup scoped buffer that holds locally sorted elements.
-		 *
-		 * @type {WorkgroupInfoNode}
-		*/
-		this.localStorage = workgroupArray( dataBuffer.nodeType, this.workgroupSize * 2 );
-
-		this._tempArray = new Uint32Array( this.count );
-		for ( let i = 0; i < this.count; i ++ ) {
-
-			this._tempArray[ i ] = 0;
-
-		}
+		this.workgroupSize = undefined;
 
 		/**
 		 * A node representing a storage buffer used for transferring the result of the global sort back to the original data buffer.
@@ -141,7 +163,6 @@ export class BitonicSort {
 		*/
 		this.infoStorage = instancedArray( new Uint32Array( [ 1, 2, 2 ] ), 'uint' ).setName( 'BitonicSortInfo' );
 
-
 		/**
 		 * The number of distinct swap operations ('flips' and 'disperses') executed in an in-place
 		 * bitonic sort of the current data buffer.
@@ -151,18 +172,71 @@ export class BitonicSort {
 		this.swapOpCount = this._getSwapOpCount();
 
 		/**
-		 * The number of steps (i.e prepping and/or executing a swap) needed to fully execute an in-place bitonic sort of the current data buffer.
-		 *
-		 * @type {number}
-		*/
-		this.stepCount = this._getStepCount();
-
-		/**
 		 * The number of the buffer being read from.
 		 *
 		 * @type {string}
 		*/
 		this.readBufferName = 'Data';
+
+		/**
+		 * The current compute shader dispatch within the list of dispatches needed to complete the sort.
+		 *
+		 * @type {number}
+		*/
+		this.currentDispatch = 0;
+
+		/**
+		 * The number of global swap operations that must be executed before the sort
+		 * can swap in local address space.
+		 *
+		 * @type {number}
+		*/
+		this.globalOpsRemaining = 0;
+
+		/**
+		 * The total number of global operations needed to sort elements within the current swap span.
+		 *
+		 * @type {number}
+		*/
+		this.globalOpsInSpan = 0;
+
+		this._built = false;
+
+	}
+
+	/**
+	 * Resolves {@link BitonicSort#workgroupSize} against the renderer's actual compute limits and
+	 * `localStorage`'s shared-memory footprint, and builds every node and compute shader that
+	 * depends on it. Deferred out of the constructor since the constructor doesn't take a renderer;
+	 * guarded so it only runs once, the first time {@link BitonicSort#compute} or
+	 * {@link BitonicSort#computeStep} is called.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 */
+	_ensureBuilt( renderer ) {
+
+		if ( this._built ) return;
+
+		this._built = true;
+
+		const bytesPerInvocation = getTypeByteSize( this.dataBuffer.nodeType ) * 2; // localStorage holds workgroupSize * 2 elements
+
+		this.workgroupSize = pickWorkgroupSizeForSharedMemory( renderer, bytesPerInvocation, this.dispatchSize );
+
+		/**
+		 * A node representing a workgroup scoped buffer that holds locally sorted elements.
+		 *
+		 * @type {WorkgroupInfoNode}
+		*/
+		this.localStorage = workgroupArray( this.dataBuffer.nodeType, this.workgroupSize * 2 );
+
+		/**
+		 * The number of steps (i.e prepping and/or executing a swap) needed to fully execute an in-place bitonic sort of the current data buffer.
+		 *
+		 * @type {number}
+		*/
+		this.stepCount = this._getStepCount();
 
 		/**
 		 * An object containing compute shaders that execute a 'flip' swap within a global address space on elements in the data buffer.
@@ -201,8 +275,6 @@ export class BitonicSort {
 			'Temp': this._getDisperseLocal( this.tempBuffer ),
 		};
 
-		// Utility functions
-
 		/**
 		 * A compute shader that sets up the algorithm and the swap span for the next swap operation.
 		 *
@@ -217,37 +289,12 @@ export class BitonicSort {
 		*/
 		this.alignFn = this._getAlignFn();
 
-
 		/**
 		 * A compute shader that resets the algorithm and swap span information.
 		 *
 		 * @type {ComputeNode}
 		*/
 		this.resetFn = this._getResetFn();
-
-
-		/**
-		 * The current compute shader dispatch within the list of dispatches needed to complete the sort.
-		 *
-		 * @type {number}
-		*/
-		this.currentDispatch = 0;
-
-		/**
-		 * The number of global swap operations that must be executed before the sort
-		 * can swap in local address space.
-		 *
-		 * @type {number}
-		*/
-		this.globalOpsRemaining = 0;
-
-		/**
-		 * The total number of global operations needed to sort elements within the current swap span.
-		 *
-		 * @type {number}
-		*/
-		this.globalOpsInSpan = 0;
-
 
 	}
 
@@ -401,8 +448,7 @@ export class BitonicSort {
 
 		const fnDef = Fn( () => {
 
-			// Get ids of indices needed to populate workgroup local buffer.
-			// Use .toVar() to prevent these values from being recalculated multiple times.
+			// .toVar() so this is computed once per invocation rather than at every use below.
 			const localOffset = uint( workgroupSize ).mul( 2 ).mul( workgroupId.x ).toVar();
 
 			const localID1 = invocationLocalIndex.mul( 2 );
@@ -411,16 +457,14 @@ export class BitonicSort {
 			localStorage.element( localID1 ).assign( dataBuffer.element( localOffset.add( localID1 ) ) );
 			localStorage.element( localID2 ).assign( dataBuffer.element( localOffset.add( localID2 ) ) );
 
-			// Ensure that all local data has been populated
 			workgroupBarrier();
 
-			// Perform a chunk of the sort in a single pass that operates entirely in workgroup local space
-			// SWAP_LOCAL will always be first pass, so we start with known block height of 2
+			// Sorts entirely within workgroup-local memory. SWAP_LOCAL is always the first pass, so
+			// the block height starts at the known value 2 rather than being read from infoStorage.
 			const flipBlockHeight = uint( 2 );
 
 			Loop( { start: uint( 2 ), end: uint( workgroupSize * 2 ), type: 'uint', condition: '<=', update: '<<= 1' }, () => {
 
-				// Ensure that last dispatch block executed
 				workgroupBarrier();
 
 				const flipIdx = getBitonicFlipIndices( invocationLocalIndex, flipBlockHeight );
@@ -431,7 +475,6 @@ export class BitonicSort {
 
 				Loop( { start: localBlockHeight, end: uint( 1 ), type: 'uint', condition: '>', update: '>>= 1' }, () => {
 
-					// Ensure that last dispatch op executed
 					workgroupBarrier();
 
 					const disperseIdx = getBitonicDisperseIndices( invocationLocalIndex, localBlockHeight );
@@ -441,12 +484,10 @@ export class BitonicSort {
 
 				} );
 
-				// flipBlockHeight *= 2;
-				flipBlockHeight.shiftLeftAssign( 1 );
+				flipBlockHeight.shiftLeftAssign( 1 ); // flipBlockHeight *= 2
 
 			} );
 
-			// Ensure that all invocations have swapped their own regions of data
 			workgroupBarrier();
 
 			dataBuffer.element( localOffset.add( localID1 ) ).assign( localStorage.element( localID1 ) );
@@ -471,8 +512,6 @@ export class BitonicSort {
 
 		const fnDef = Fn( () => {
 
-			// Get ids of indices needed to populate workgroup local buffer.
-			// Use .toVar() to prevent these values from being recalculated multiple times.
 			const localOffset = uint( workgroupSize ).mul( 2 ).mul( workgroupId.x ).toVar();
 
 			const localID1 = invocationLocalIndex.mul( 2 );
@@ -481,14 +520,12 @@ export class BitonicSort {
 			localStorage.element( localID1 ).assign( readWriteBuffer.element( localOffset.add( localID1 ) ) );
 			localStorage.element( localID2 ).assign( readWriteBuffer.element( localOffset.add( localID2 ) ) );
 
-			// Ensure that all local data has been populated
 			workgroupBarrier();
 
 			const localBlockHeight = uint( workgroupSize * 2 );
 
 			Loop( { start: localBlockHeight, end: uint( 1 ), type: 'uint', condition: '>', update: '>>= 1' }, () => {
 
-				// Ensure that last dispatch op executed
 				workgroupBarrier();
 
 				const disperseIdx = getBitonicDisperseIndices( invocationLocalIndex, localBlockHeight );
@@ -498,7 +535,6 @@ export class BitonicSort {
 
 			} );
 
-			// Ensure that all invocations have swapped their own regions of data
 			workgroupBarrier();
 
 			readWriteBuffer.element( localOffset.add( localID1 ) ).assign( localStorage.element( localID1 ) );
@@ -612,11 +648,14 @@ export class BitonicSort {
 	}
 
 	/**
-	 * Executes a step of the bitonic sort operation.
+	 * Executes a step of the bitonic sort operation. Builds the compute shaders (tuned to the
+	 * renderer's actual device limits) on the first call.
 	 *
 	 * @param {Renderer} renderer - The current scene's renderer.
 	 */
 	computeStep( renderer ) {
+
+		this._ensureBuilt( renderer );
 
 		// Swap local only runs once
 		if ( this.currentDispatch === 0 ) {
@@ -660,8 +699,8 @@ export class BitonicSort {
 
 		if ( this.currentDispatch === this.stepCount ) {
 
-			// If our last swap addressed only addressed the temp buffer, then re-align it with the data buffer
-			// to fulfill the requirement of an in-place sort.
+			// If the last swap only touched the temp buffer, re-align it with the data buffer to
+			// fulfill the requirement of an in-place sort.
 			if ( this.readBufferName === 'Temp' ) {
 
 				renderer.compute( this.alignFn );
@@ -669,7 +708,6 @@ export class BitonicSort {
 
 			}
 
-			// Just reset the algorithm information
 			renderer.compute( this.resetFn );
 
 			this.currentDispatch = 0;
@@ -678,7 +716,6 @@ export class BitonicSort {
 
 		} else {
 
-			// Otherwise, determine what next swap span is
 			renderer.compute( this.setAlgoFn );
 
 		}
@@ -691,6 +728,8 @@ export class BitonicSort {
 	 * @param {Renderer} renderer - The current scene's renderer.
 	 */
 	compute( renderer ) {
+
+		this._ensureBuilt( renderer );
 
 		this.globalOpsRemaining = 0;
 		this.globalOpsInSpan = 0;

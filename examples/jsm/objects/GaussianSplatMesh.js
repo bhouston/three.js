@@ -41,14 +41,12 @@ import {
 } from 'three/tsl';
 
 import { CountingSort } from '../gpgpu/CountingSort.js';
+import { pickWorkgroupSize } from '../gpgpu/GPGPUUtils.js';
 import {
 	SH_BAND_COMPONENTS,
 	SH_BAND_WORDS,
 	getSphericalHarmonicsDegree
 } from '../utils/GaussianSplatUtils.js';
-
-const BIN_COUNT = 4096;
-const WORKGROUP_SIZE = 256;
 const SORT_DIRECTION_THRESHOLD = 0.9995;
 const KERNEL_2D_SIZE = 0.3;
 const SPLAT_KERNEL_CUTOFF = 2;
@@ -108,8 +106,24 @@ class GaussianSplatMesh extends Mesh {
 			sh3: sphericalHarmonicsDegree >= 3 ? splatGeometry.getAttribute( 'sphericalHarmonics3' ).array : undefined
 		} );
 		const localCameraPosition = uniform( new Vector3() );
-		const sphericalHarmonicsComputeNode = createSphericalHarmonicsComputeNode( buffers, localCameraPosition );
-		const sort = new CountingSort( count, { binCount: BIN_COUNT, workgroupSize: WORKGROUP_SIZE } );
+
+		const sortMatrix = uniform( new Matrix4() );
+		const sortDepthRange = uniform( new Vector2( 0, 1 ) );
+		const centerRead = buffers.centerRead;
+
+		const sort = new CountingSort( count, () => {
+
+			const center = centerRead.element( instanceIndex ).xyz.toVar( 'center' );
+			const viewCenter = sortMatrix.mul( vec4( center, 1 ) ).xyz.toVar( 'viewCenter' );
+			const depth = viewCenter.z.negate().toVar( 'depth' );
+			const range = max( sortDepthRange.y.sub( sortDepthRange.x ), 0.0001 ).toVar( 'range' );
+			const normalized = depth.sub( sortDepthRange.x ).div( range ).clamp( 0, 1 ).toVar( 'normalized' );
+			const depthBin = uint( normalized.mul( sort.binCount - 1 ) ).toVar( 'depthBin' );
+
+			return uint( sort.binCount - 1 ).sub( depthBin );
+
+		} );
+
 		const materialNodes = createMaterialNodes( buffers, sort, localCameraPosition );
 		const material = createMaterial( materialNodes.vertexNode, materialNodes.fragmentNode );
 
@@ -158,35 +172,19 @@ class GaussianSplatMesh extends Mesh {
 
 		this._buffers = buffers;
 		this._sort = sort;
-		this._sortMatrix = uniform( new Matrix4() );
-		this._sortDepthRange = uniform( new Vector2( 0, 1 ) );
+		this._sortMatrix = sortMatrix;
+		this._sortDepthRange = sortDepthRange;
 		this._sortInitialized = false;
 		this._lastSortDirection = new Vector3();
 		this._localCameraPosition = localCameraPosition;
-		this._sphericalHarmonicsComputeNode = sphericalHarmonicsComputeNode;
+		this._hasSphericalHarmonics = buffers.sphericalHarmonicsDegree > 0;
+		this._sphericalHarmonicsComputeNode = null;
 		this._sphericalHarmonicsInitialized = false;
 		this._lastSphericalHarmonicsCameraMatrix = new Matrix4();
 		this._lastSphericalHarmonicsWorldMatrix = new Matrix4();
 		this._sphericalHarmonicsVertexNode = materialNodes.sphericalHarmonicsVertexNode;
 		this._precomputedSphericalHarmonicsVertexNode = materialNodes.vertexNode;
 		this._positionAttribute = positionAttribute;
-
-		const centerRead = buffers.centerRead;
-		const sortMatrix = this._sortMatrix;
-		const sortDepthRange = this._sortDepthRange;
-
-		sort.setBinNode( () => {
-
-			const center = centerRead.element( instanceIndex ).xyz.toVar( 'center' );
-			const viewCenter = sortMatrix.mul( vec4( center, 1 ) ).xyz.toVar( 'viewCenter' );
-			const depth = viewCenter.z.negate().toVar( 'depth' );
-			const range = max( sortDepthRange.y.sub( sortDepthRange.x ), 0.0001 ).toVar( 'range' );
-			const normalized = depth.sub( sortDepthRange.x ).div( range ).clamp( 0, 1 ).toVar( 'normalized' );
-			const depthBin = uint( normalized.mul( BIN_COUNT - 1 ) ).toVar( 'depthBin' );
-
-			return uint( BIN_COUNT - 1 ).sub( depthBin );
-
-		} );
 
 		this.onBeforeRender = ( renderer, scene, camera ) => {
 
@@ -223,7 +221,7 @@ class GaussianSplatMesh extends Mesh {
 	 */
 	updateSphericalHarmonics( renderer, camera ) {
 
-		if ( this._sphericalHarmonicsComputeNode === null ) return false;
+		if ( this._hasSphericalHarmonics === false ) return false;
 
 		const isWebGLBackend = renderer.backend && renderer.backend.isWebGLBackend === true;
 
@@ -250,6 +248,16 @@ class GaussianSplatMesh extends Mesh {
 		this._sphericalHarmonicsInitialized = true;
 
 		if ( isWebGLBackend === true ) return false;
+
+		if ( this._sphericalHarmonicsComputeNode === null ) {
+
+			// Deferred out of the constructor since the constructor doesn't take a renderer, and the
+			// workgroup size (see createSphericalHarmonicsComputeNode) needs the device's real limits.
+			this._sphericalHarmonicsComputeNode = createSphericalHarmonicsComputeNode(
+				this._buffers, this._localCameraPosition, pickWorkgroupSize( renderer, Infinity )
+			);
+
+		}
 
 		ensureSphericalHarmonicsContributionBuffer( this._buffers );
 		renderer.compute( this._sphericalHarmonicsComputeNode );
@@ -414,15 +422,16 @@ class GaussianSplatMesh extends Mesh {
 		const matrix = this._sortMatrix.value.elements;
 		const nearDepth = this._sortDepthRange.value.x;
 		const range = Math.max( this._sortDepthRange.value.y - nearDepth, 0.0001 );
-		const scale = ( BIN_COUNT - 1 ) / range;
+		const binCount = this._sort.binCount;
+		const scale = ( binCount - 1 ) / range;
 
 		this._sort.computeCPU( ( i ) => {
 
 			const i3 = i * 3;
 			const depth = - ( matrix[ 2 ] * centers[ i3 ] + matrix[ 6 ] * centers[ i3 + 1 ] + matrix[ 10 ] * centers[ i3 + 2 ] + matrix[ 14 ] );
-			const depthBin = Math.min( BIN_COUNT - 1, Math.max( 0, Math.floor( ( depth - nearDepth ) * scale ) ) );
+			const depthBin = Math.min( binCount - 1, Math.max( 0, Math.floor( ( depth - nearDepth ) * scale ) ) );
 
-			return BIN_COUNT - 1 - depthBin;
+			return binCount - 1 - depthBin;
 
 		} );
 
@@ -679,9 +688,7 @@ function applySphericalHarmonics( rgb, center, localCameraPosition, splatIndex, 
 
 }
 
-function createSphericalHarmonicsComputeNode( buffers, localCameraPosition ) {
-
-	if ( buffers.sphericalHarmonicsDegree === 0 ) return null;
+function createSphericalHarmonicsComputeNode( buffers, localCameraPosition, workgroupSize ) {
 
 	return Fn( () => {
 
@@ -692,7 +699,7 @@ function createSphericalHarmonicsComputeNode( buffers, localCameraPosition ) {
 		applySphericalHarmonics( rgb, center, localCameraPosition, splatIndex, buffers );
 		buffers.sphericalHarmonicsContributionWrite.element( splatIndex ).assign( vec4( rgb, 0 ) );
 
-	} )().compute( buffers.count, [ WORKGROUP_SIZE ] ).setName( 'GaussianSplatSphericalHarmonics' );
+	} )().compute( buffers.count, [ workgroupSize ] ).setName( 'GaussianSplatSphericalHarmonics' );
 
 }
 

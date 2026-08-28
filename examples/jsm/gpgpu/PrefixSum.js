@@ -2,12 +2,19 @@ import {
 	StorageInstancedBufferAttribute,
 } from 'three/webgpu';
 import { Fn, If, instancedArray, invocationLocalIndex, countTrailingZeros, Loop, workgroupArray, subgroupSize, workgroupBarrier, workgroupId, uint, select, invocationSubgroupIndex, dot, uvec4, vec4, float, subgroupAdd, array, subgroupShuffle, subgroupInclusiveAdd, subgroupBroadcast, subgroupIndex, storage, int, ivec4 } from 'three/tsl';
+import { pickWorkgroupSizeForSharedMemory } from './GPGPUUtils.js';
 
 const divRoundUp = ( size, part_size ) => {
 
 	return Math.floor( ( size + part_size - 1 ) / part_size );
 
 };
+
+// The number of vec4 elements read per invocation in the reduction/downsweep steps.
+const WORK_PER_INVOCATION = 4;
+
+// All supported element types (float/int/uint) are 4 bytes.
+const TYPE_BYTE_SIZE = 4;
 
 const intType = { type: 'int', vecType: 'ivec4', scalarNode: int, vectorNode: ivec4 };
 const uintType = { type: 'uint', vecType: 'uvec4', scalarNode: uint, vectorNode: uvec4 };
@@ -24,14 +31,13 @@ const typeFromArray = new Map( [
 ] );
 
 /**
-	* A reusable GPU Prefix Sum which runs the most optimal prefix sum algorithm for the target device.
-	* By default, this class will run an inclusive prefix sum on the GPU. Currently, prefix sums are
-	* limited to one-dimensional data buffers ('float', 'int', 'uint') and will run either a serial or a reduce/scan prefix
-	* sum depending on the capabilities of the client device.
-	*
-	* @param {BufferAttribute|TypedArray} input - The data to sum.
-	* @param {Object} [options={}] - Options that modify the reduce/scan prefix sum.
-	*/
+ * A reusable GPU prefix sum. Runs either a serial (single-invocation) or a parallel
+ * reduce/scan algorithm depending on the capabilities of the client device, chosen automatically
+ * the first time {@link PrefixSum#compute} is called. By default computes an inclusive prefix sum;
+ * currently limited to one-dimensional `float`/`int`/`uint` data buffers.
+ *
+ * @three_import import { PrefixSum } from 'three/addons/gpgpu/PrefixSum.js';
+ */
 export class PrefixSum {
 
 	/**
@@ -40,8 +46,6 @@ export class PrefixSum {
 	 * @param {BufferAttribute} [options.outputAttribute] - The attribute the prefix sum is written into.
 	 * Defaults to a new attribute matching the size and type of the input.
 	 * @param {boolean} [options.isInclusive=true] - A flag determining whether to execute an exclusive prefix sum instead of the default inclusive prefix sum.
-	 * @param {number} [options.workPerInvocation=4] - The number of vec4 elements read per invocation.
-	 * @param {number} [options.workgroupSize=64] - The workgroup size of the compute shaders.
 	 */
 	constructor( input, options = {} ) {
 
@@ -79,8 +83,6 @@ export class PrefixSum {
 		 */
 		this.vecType = typeInformation.vecType;
 
-		// Create corresponding nodes for the data types
-
 		this._scalarNode = typeInformation.scalarNode;
 		this._vectorNode = typeInformation.vectorNode;
 
@@ -94,7 +96,7 @@ export class PrefixSum {
 		/**
 		 * A flag designating whether the module will execute an exclusive or inclusive prefix sum.
 		 *
-		 * @type {number}
+		 * @type {boolean}
 		 */
 		this.isInclusive = options.isInclusive !== undefined ? options.isInclusive : true;
 
@@ -107,11 +109,10 @@ export class PrefixSum {
 
 		/**
 		 * The number of 4-dimensional vectors that will be read from global storage in each invocation of the reduction/downsweep step.
-		 * Defaults to 4.
 		 *
 		 * @type {number}
 		*/
-		this.workPerInvocation = options.workPerInvocation ? options.workPerInvocation : 4;
+		this.workPerInvocation = WORK_PER_INVOCATION;
 
 		/**
 		 * The number of unvectorized values to be read from the reduction buffer in each invocation of the spine/scan step.
@@ -122,13 +123,46 @@ export class PrefixSum {
 		this.unvectorizedWorkPerInvocation = this.workPerInvocation * 4;
 
 		/**
-		 * The workgroup size of the compute shaders executed during the prefix sum.
-		 * If no workgroupSize is defined, the workgroupSize defaults to the minimumn between the number of elements in the
-		 * data buffer and 64.
+		 * The workgroup size of the compute shaders executed during the prefix sum: the largest
+		 * power of two the device's compute limits allow (see {@link PrefixSum#_ensureBuilt} for why).
+		 * Only available once {@link PrefixSum#compute} has been called for the first time.
 		 *
-		 * @type {number}
+		 * @type {number|undefined}
 		*/
-		this.workgroupSize = options.workgroupSize !== undefined ? options.workgroupSize : 64;
+		this.workgroupSize = undefined;
+
+		this._storageBuffers = {};
+		this._computeFunctions = {};
+		this._utilityNodes = {};
+
+		this._built = false;
+
+	}
+
+	/**
+	 * Resolves {@link PrefixSum#workgroupSize} against the renderer's actual compute limits, and
+	 * builds every storage buffer, utility node and compute shader that depends on it. Deferred out
+	 * of the constructor since the constructor doesn't take a renderer; guarded so it only runs
+	 * once, the first time {@link PrefixSum#compute} is called.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 */
+	_ensureBuilt( renderer ) {
+
+		if ( this._built ) return;
+
+		this._built = true;
+
+		// Must be a power of two: the subgroup-aligned spine math (`_getSubgroupAlignedSize`,
+		// `_subgroupScanReductionBlock`) derives log2 values from workgroupSize/subgroupSize via
+		// `countTrailingZeros`, which is only correct for a power of two. Beyond that, the reduce and
+		// downsweep passes (the bulk of the cost, O(count)) are invocation-bound, not shared-memory-
+		// bound -- `subgroupReductionArray` only costs `workgroupSize/4` elements of shared memory --
+		// so there's no benefit to staying small; a larger workgroupSize also shrinks numWorkgroups
+		// for a given count, making the cheap single-pass spine scan (see `_handleSubgroupInfo`) more
+		// likely to apply instead of the multi-pass fallback. So: as large as the device allows.
+		this.workgroupSize = pickWorkgroupSizeForSharedMemory( renderer, TYPE_BYTE_SIZE / 4 );
 
 		/**
 		 * The maximum number of elements that will be read by an individual workgroup in the reduction step.
@@ -153,21 +187,13 @@ export class PrefixSum {
 		*/
 		this.dispatchSize = this.numWorkgroups * this.workgroupSize;
 
-		/**
-		 * A function that takes a renderer and either runs a prefix sum or uses the renderer
-		 * information to determine which prefix sum to run.
-		 *
-		 * @type {function(Renderer):void}
-		*/
-		this.compute = this._computeInitial;
-
-		this._storageBuffers = {};
-		this._computeFunctions = {};
-		this._utilityNodes = {};
-
 		this._createStorageBuffers();
 		this._createUtilityNodes();
 		this._createComputeFunctions();
+
+		this._computeVariant = ( renderer.hasFeature( 'subgroups' ) && this._handleSubgroupInfo( renderer ) )
+			? this._computeWithSubgroups
+			: this._computeWithSingleInvocation;
 
 	}
 
@@ -620,7 +646,6 @@ export class PrefixSum {
 
 			Loop( { start: uint( 0 ), end: uint( workPerInvocation ), type: 'uint', condition: '<', name: 'currentSubgroupInBlock' }, ( { currentSubgroupInBlock } ) => {
 
-				// previous greatest accumulated value
 				const prevAccGreatestValue = subgroupShuffle(
 					subgroupInclusiveAdd( tScan.element( currentSubgroupInBlock ).w ),
 					clockwiseShift
@@ -720,23 +745,17 @@ export class PrefixSum {
 
 	}
 
-	_computeInitial( renderer ) {
+	/**
+	 * Executes a complete prefix sum on the GPU, building the compute shaders (tuned to the
+	 * renderer's actual device limits) on the first call.
+	 *
+	 * @param {Renderer} renderer - The current scene's renderer.
+	 */
+	compute( renderer ) {
 
-		if ( renderer.hasFeature( 'subgroups' ) ) {
+		this._ensureBuilt( renderer );
 
-			const hasParsedSubgroupInfo = this._handleSubgroupInfo( renderer );
-			if ( hasParsedSubgroupInfo ) {
-
-				this._computeWithSubgroups( renderer );
-				this.compute = this._computeWithSubgroups;
-				return;
-
-			}
-
-		}
-
-		this._computeWithSingleInvocation( renderer );
-		this.compute = this._computeWithSingleInvocation;
+		this._computeVariant( renderer );
 
 	}
 

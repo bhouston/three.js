@@ -14,3 +14,7 @@ import './addons/loaders/SPZLoader.tests.js';
 import './addons/loaders/USDLoader.tests.js';
 import './addons/exporters/USDZExporter.tests.js';
 import './addons/tsl/WebGLNodesHandler.tests.js';
+import './addons/gpgpu/GPGPUUtils.tests.js';
+import './addons/gpgpu/CountingSort.tests.js';
+import './addons/gpgpu/PrefixSum.tests.js';
+import './addons/gpgpu/BitonicSort.tests.js';

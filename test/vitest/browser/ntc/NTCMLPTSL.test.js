@@ -28,9 +28,10 @@ import { createTestRenderer } from '../helpers/webgpuEval.js';
 // blows up (the unbounded-outside-its-domain quadratic middle branch). This
 // exact test - hand-built pre-activations straddling +-1.5 within a single
 // packed vec4 group - reproduced a CPU-vs-GPU divergence of MAE ~110, max
-// abs ~1100 on the pre-fix code, and passes tightly post-fix; see
-// NTCMLPTSL.js's current `hardGeluTSL` (branch-free clamp/max form) for the
-// fix and its doc comment for the full mechanism.
+// abs ~1100 pre-fix, and passes tightly now that `select()` (ConditionalNode)
+// itself selects per-component for vector conditions instead of narrowing
+// them to a single scalar bool; `hardGeluTSL` is back to its original
+// `select()`-based form (see its doc comment).
 //
 // Deliberately hand-constructs decoder weights (rather than actually
 // training) so the straddling pre-activations are exact and deterministic,
@@ -110,7 +111,7 @@ describe( 'Addons > NTC > NTCMLPTSL hardGeluTSL vec4 packing (real WebGPU)', () 
 		// deep in the flat branch, the middle branch (twice), and deep in the
 		// identity branch.
 		hidden.weights.fill( 0 );
-		hidden.biases = [ -5, -1, 0.5, 5 ];
+		hidden.biases = [ - 5, - 1, 0.5, 5 ];
 
 		// Output layer (linear, 3 outputs from 4 hidden inputs): mix all 4
 		// hidden neurons across the 3 outputs so every one of them (including
@@ -147,10 +148,10 @@ describe( 'Addons > NTC > NTCMLPTSL hardGeluTSL vec4 packing (real WebGPU)', () 
 		// comparison above would pass vacuously (both paths agreeing on a
 		// non-straddling case proves nothing about the bug this test targets).
 		const { preActivations, activations } = forwardMLP( cpuModel.decoder, zeroFeatures );
-		expect( preActivations[ 0 ] ).toEqual( [ -5, -1, 0.5, 5 ] );
+		expect( preActivations[ 0 ] ).toEqual( [ - 5, - 1, 0.5, 5 ] );
 		expect( activations[ 1 ][ 0 ] ).toBeCloseTo( 0, 5 ); // hardGELU(-5) - flat branch
 		expect( activations[ 1 ][ 3 ] ).toBeCloseTo( 5, 5 ); // hardGELU(5) - identity branch
-		expect( activations[ 1 ][ 1 ] ).toBeCloseTo( -1 / 3 * 0.5, 5 ); // hardGELU(-1) - middle branch
+		expect( activations[ 1 ][ 1 ] ).toBeCloseTo( - 1 / 3 * 0.5, 5 ); // hardGELU(-1) - middle branch
 		expect( activations[ 1 ][ 2 ] ).toBeCloseTo( 0.5 / 3 * 2, 5 ); // hardGELU(0.5) - middle branch
 
 	} );

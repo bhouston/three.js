@@ -532,6 +532,7 @@ export const select = TSL.select;
 export const semanticUV = TSL.semanticUV;
 export const setCurrentStack = TSL.setCurrentStack;
 export const setName = TSL.setName;
+export const setPackedIntegerDotProductFeatureOverrideForTesting = TSL.setPackedIntegerDotProductFeatureOverrideForTesting;
 export const shaderStages = TSL.shaderStages;
 export const shadow = TSL.shadow;
 export const shadowPositionWorld = TSL.shadowPositionWorld;

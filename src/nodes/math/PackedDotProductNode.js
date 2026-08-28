@@ -1,5 +1,7 @@
 import { nodeProxyIntent } from '../tsl/TSLCore.js';
 import MathNode from './MathNode.js';
+import supportsPackedIntegerDotProductFeature from './PackedIntegerFeatureDetection.js';
+import { unpack4xI8Fallback, unpack4xU8Fallback } from './UnpackIntegerNode.js';
 
 /**
  * This node represents a 4-wide dot product of two operands, each packed as
@@ -11,11 +13,20 @@ import MathNode from './MathNode.js';
  * on the WebGL fallback backend.
  *
  * Unlike a WGSL *extension* (e.g. `f16`, `subgroups`), this WGSL *language
- * feature* needs no `enable` directive - it's simply always callable, so
- * (unlike some other WebGPU-only capabilities in this codebase) this node
- * needs no renderer/device capability check of its own; callers that need to
- * know whether the *native* (rather than polyfilled) path is in use can
- * check `renderer.backend.isWebGPUBackend` directly.
+ * feature* needs no `enable` directive - it's simply always callable
+ * *once supported* - so (unlike some other WebGPU-only capabilities in this
+ * codebase) this node needs no capability check to know *which directive* to
+ * emit. It does, however, still need one to know whether the builtin exists
+ * at all: this is an optional WGSL language feature, not something every
+ * WebGPU implementation is guaranteed to support (see
+ * `PackedIntegerFeatureDetection.js`) - `setup()` below checks for that and
+ * falls back to a hand-written TSL polyfill (built by unpacking both
+ * operands via `UnpackIntegerNode.js`'s own fallback and multiplying
+ * component-wise) when running on WebGPU without it, rather than assuming
+ * WebGPU always implies support the way an earlier version of this node
+ * did. Callers that need to know whether the *native* (rather than
+ * polyfilled) path is in use can check `renderer.backend.isWebGPUBackend`
+ * together with `supportsPackedIntegerDotProductFeature()` directly.
  *
  * @augments MathNode
  */
@@ -65,7 +76,52 @@ class PackedDotProductNode extends MathNode {
 
 	}
 
+	/**
+	 * On WebGPU without the "Packed 4x8 Integer Dot Product" language
+	 * feature, falls back to unpacking both operands (via
+	 * `UnpackIntegerNode.js`'s own fallback) and computing the dot product
+	 * manually, rather than emitting a call to a builtin that may not exist -
+	 * see this class's own doc comment. Otherwise defers to
+	 * `MathNode.setup()`/this class's own `generate()`, unchanged (native
+	 * call on WebGPU with the feature, GLSL polyfill via
+	 * `builder.getMethod()` on the WebGL fallback backend).
+	 *
+	 * @param {NodeBuilder} builder - The current node builder.
+	 * @return {?Node} The output node, or `null` to defer to `generate()`.
+	 */
+	setup( builder ) {
+
+		const { renderer } = builder;
+
+		if ( renderer.backend.isWebGPUBackend && ! supportsPackedIntegerDotProductFeature() ) {
+
+			const unpackFn = this.method === PackedDotProductNode.DOT4_I8_PACKED ? unpack4xI8Fallback : unpack4xU8Fallback;
+
+			const av = unpackFn( this.aNode );
+			const bv = unpackFn( this.bNode );
+			const p = av.mul( bv );
+
+			return p.x.add( p.y ).add( p.z ).add( p.w );
+
+		}
+
+		return super.setup( builder );
+
+	}
+
 	generate( builder, output ) {
+
+		const properties = builder.getNodeProperties( this );
+
+		if ( properties.outputNode ) {
+
+			// `setup()` above already built a fallback subgraph (WebGPU
+			// without the language feature) - build that instead of the
+			// native call below. See PackIntegerNode.js's own copy of this
+			// same check for why it's needed here.
+			return super.generate( builder, output );
+
+		}
 
 		const { method, aNode, bNode } = this;
 

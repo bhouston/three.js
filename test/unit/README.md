@@ -15,6 +15,15 @@ You can run the unit tests in two ways:
 
 See [Installation](https://threejs.org/docs/#manual/introduction/Installation) for more information.
 
+## Performance tests
+
+The GPGPU addons (`PrefixSum`, `CountingSort`, `BitonicSort`) also have performance tests, separate
+from the regular addons suite since they need a real GPU and run large (~1M element) benchmarks
+repeatedly. Run them with `npm run test-unit-addons-perf` (headless) or
+`npm run test-unit-addons-perf-headful` (opens a browser window). Each test logs timing stats
+(min/max/mean/median over many runs) to the console; see `test/unit/addons/gpgpu/perf-utils.js`
+and the `*.perf.tests.js` files to add more or change sizes/run counts.
+
 ## Notes
 
 A small number of tests can only be run in a browser environment.

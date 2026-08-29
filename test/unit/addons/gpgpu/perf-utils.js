@@ -1,4 +1,4 @@
-// Shared helpers for the GPGPU performance tests (PrefixSum/CountingSort/BitonicSort). Unlike the
+// Shared helpers for the GPGPU performance tests (CountingSort/BitonicSort). Unlike the
 // correctness tests next to these files, these need a real GPU: they build a real WebGPURenderer
 // and time actual dispatches, so they only run in a browser with WebGPU available - see
 // `test/unit/UnitTestsAddonsPerf.html` and the `test-unit-addons-perf*` npm scripts.

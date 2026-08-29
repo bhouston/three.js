@@ -39,7 +39,10 @@ export default QUnit.module( 'Addons', () => {
 					const dataAttribute = new StorageBufferAttribute( randomUint32Array( count ), 1, Uint32Array );
 					const dataBuffer = storage( dataAttribute, 'uint', count );
 
-					const sort = new BitonicSort( dataBuffer );
+					// This branch's BitonicSort builds its compute kernels eagerly in the constructor
+					// (workgroupSize is a fixed option/default, not resolved from device limits), and
+					// takes the renderer there rather than at compute() time.
+					const sort = new BitonicSort( renderer, dataBuffer );
 
 					const stats = await benchmark(
 						() => sort.compute( renderer ),

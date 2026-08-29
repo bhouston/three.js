@@ -17,7 +17,7 @@ See [Installation](https://threejs.org/docs/#manual/introduction/Installation) f
 
 ## Performance tests
 
-The GPGPU addons (`PrefixSum`, `CountingSort`, `BitonicSort`) also have performance tests, separate
+The GPGPU addons (`CountingSort`, `BitonicSort`) also have performance tests, separate
 from the regular addons suite since they need a real GPU and run large (~1M element) benchmarks
 repeatedly. Run them with `npm run test-unit-addons-perf` (headless) or
 `npm run test-unit-addons-perf-headful` (opens a browser window). Each test logs timing stats

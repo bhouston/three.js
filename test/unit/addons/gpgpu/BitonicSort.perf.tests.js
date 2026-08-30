@@ -2,19 +2,11 @@ import { StorageBufferAttribute } from 'three/webgpu';
 import { storage } from 'three/tsl';
 
 import { BitonicSort } from '../../../../examples/jsm/gpgpu/BitonicSort.js';
-import { isWebGPUAvailable, createRenderer, benchmark, report } from './perf-utils.js';
+import { isWebGPUAvailable, createRenderer, benchmark, report, seededUint32Array } from './perf-utils.js';
 
 // Sizes to benchmark, largest last. Must be powers of two - BitonicSort's requirement. Edit this
 // to try other scales. 2**20 = 1,048,576, the nearest power of two to 1M.
 const SIZES = [ 1 << 20 ];
-
-function randomUint32Array( count ) {
-
-	const array = new Uint32Array( count );
-	for ( let i = 0; i < count; i ++ ) array[ i ] = Math.floor( Math.random() * 0xffffffff );
-	return array;
-
-}
 
 export default QUnit.module( 'Addons', () => {
 
@@ -36,7 +28,7 @@ export default QUnit.module( 'Addons', () => {
 					}
 
 					const renderer = await createRenderer();
-					const dataAttribute = new StorageBufferAttribute( randomUint32Array( count ), 1, Uint32Array );
+					const dataAttribute = new StorageBufferAttribute( seededUint32Array( count, 0xffffffff ), 1, Uint32Array );
 					const dataBuffer = storage( dataAttribute, 'uint', count );
 
 					const sort = new BitonicSort( dataBuffer );

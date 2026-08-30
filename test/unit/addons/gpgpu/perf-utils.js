@@ -33,6 +33,44 @@ export async function createRenderer() {
 
 }
 
+// A fixed default seed so every perf test file, on every branch, generates the exact same input
+// data unless told otherwise - that keeps cross-branch timing comparisons apples-to-apples (same
+// bin distribution, same comparison outcomes) instead of mixing in run-to-run and branch-to-branch
+// data variance on top of the timing variance we actually care about.
+const DEFAULT_SEED = 0x1234abcd;
+
+// mulberry32: a small, fast, deterministic PRNG - good enough for generating benchmark inputs
+// (not for anything security-sensitive). Returns a function yielding floats in [0, 1).
+function mulberry32( seed ) {
+
+	let a = seed >>> 0;
+
+	return function () {
+
+		a |= 0; a = ( a + 0x6D2B79F5 ) | 0;
+		let t = Math.imul( a ^ ( a >>> 15 ), 1 | a );
+		t = ( t + Math.imul( t ^ ( t >>> 7 ), 61 | t ) ) ^ t;
+		return ( ( t ^ ( t >>> 14 ) ) >>> 0 ) / 4294967296;
+
+	};
+
+}
+
+/**
+ * A deterministically-seeded `Uint32Array` of `count` values in `[0, max)`. Same `count`/`max`/
+ * `seed` always produces the same array, on any branch or run.
+ */
+export function seededUint32Array( count, max, seed = DEFAULT_SEED ) {
+
+	const random = mulberry32( seed );
+	const array = new Uint32Array( count );
+
+	for ( let i = 0; i < count; i ++ ) array[ i ] = Math.floor( random() * max );
+
+	return array;
+
+}
+
 /**
  * Times repeated runs of `fn`, syncing to the GPU after each one so the measured interval
  * includes actual device execution time, not just CPU-side command submission.

@@ -1,16 +1,8 @@
 import { PrefixSum } from '../../../../examples/jsm/gpgpu/PrefixSum.js';
-import { isWebGPUAvailable, createRenderer, benchmark, report } from './perf-utils.js';
+import { isWebGPUAvailable, createRenderer, benchmark, report, seededUint32Array } from './perf-utils.js';
 
 // Sizes to benchmark, largest last. Edit this to try other scales.
 const SIZES = [ 1_000_000 ];
-
-function randomUint32Array( count ) {
-
-	const array = new Uint32Array( count );
-	for ( let i = 0; i < count; i ++ ) array[ i ] = Math.floor( Math.random() * 1000 );
-	return array;
-
-}
 
 export default QUnit.module( 'Addons', () => {
 
@@ -32,7 +24,7 @@ export default QUnit.module( 'Addons', () => {
 					}
 
 					const renderer = await createRenderer();
-					const sum = new PrefixSum( randomUint32Array( count ) );
+					const sum = new PrefixSum( seededUint32Array( count, 1000 ) );
 
 					const stats = await benchmark(
 						() => sum.compute( renderer ),

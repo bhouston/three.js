@@ -144,3 +144,70 @@ until the workload is large enough to be genuinely compute-bound rather than ove
 matches expectations: FFT cost is `O(n log n)`, so halving the element count run through the
 row/transpose/column/transpose-back passes approaches (but, per the log factor, never quite
 reaches) a full 2x, and that only shows up once dispatch overhead stops dominating.
+
+## Discovery: every number above was measured against WebGPU's spec-*minimum* limits, not this M3's real ones
+
+Digging into *why* `computeForwardReal` only won at 1024/2048, not 256/512, surfaced something
+that changes every number above: `renderer.backend.device.limits` - what `FFT2D`'s adaptive
+sizing (`getComputeLimits`/`computeMaxFusedLineLength`) reads - was reporting
+`maxComputeInvocationsPerWorkgroup: 256`, `maxComputeWorkgroupStorageSize: 16384`. Those are
+WebGPU's spec-guaranteed *minimum* limits, not this M3's real ones - `WebGPURenderer`'s
+`requiredLimits` defaults to `{}`, and per spec, `requestDevice({requiredLimits: {}})` gives the
+device the floor for every limit not explicitly requested, not the adapter's actual capabilities.
+Querying `navigator.gpu.requestAdapter()` directly shows this M3's real limits are
+`maxComputeInvocationsPerWorkgroup: 1024`, `maxComputeWorkgroupStorageSize: 32768`.
+
+With the floor limits, `computeMaxFusedLineLength` (the largest line length the fast, single-
+dispatch, shared-memory-fused butterfly kernel can handle) works out to 512 - so 256/512 used the
+fused kernel on both axes, while 1024/2048 fell back to the slower per-stage, global-memory
+multi-dispatch kernel (`log2(N)` dispatches per axis instead of 1) on both axes. That's the real
+reason `computeForwardReal` only won big at 1024/2048: at those sizes its internal half-height
+instance's *column* axis (`height/2`) could cross back under the 512 fusion threshold even though
+the *row* axis (`width`, unchanged) couldn't - at 1024, halving 1024 rows to 512 flips the column
+pass from 10 fallback dispatches to 1 fused one, on top of the general halved-data-volume win. At
+2048, halving 2048 to 1024 doesn't cross the threshold either way, so that case was measuring pure
+`O(n log n)` scaling with no dispatch-count change at all. Dispatch counts, worked out from the
+pass structure (`load`/`loadRowPairs` -> row-pass -> `transpose` -> col-pass -> `transpose-back`
+-> `recombine`/`store`, each pass counting as 1 dispatch if fused or `log2(N)` if not):
+
+| Size | `computeForward` dispatches | `computeForwardReal` dispatches |
+|---|---|---|
+| 256x256 | 1+**1**+1+**1**+1+1 = 6 | 1+**1**+1+**1**+1+1+1 = 7 |
+| 512x512 | 1+**1**+1+**1**+1+1 = 6 | 1+**1**+1+**1**+1+1+1 = 7 |
+| 1024x1024 | 1+**10**+1+**10**+1+1 = 24 | 1+**10**+1+**1**+1+1+1 = 16 |
+| 2048x2048 | 1+**11**+1+**11**+1+1 = 26 | 1+**11**+1+**10**+1+1+1 = 26 |
+
+At 256/512, `computeForwardReal` issues *one more* dispatch than `computeForward` (the extra
+`recombine` pass) for the same all-fused structure on both, explaining the flat/negative result
+there.
+
+Fixed by having `perf-utils.js`'s `createRenderer()` and `webgpu_fft_2d.html`'s renderer setup
+both request a throwaway adapter first and pass its real limits as `requiredLimits`, so the actual
+device gets them (see that commit). Confirmed the fix works (`device.limits` now reports
+1024/32768) and re-ran every benchmark above under it - visual output is unaffected (0.0% e2e
+screenshot diff), only performance:
+
+| Size | `computeForward` mean (ms) | `computeForwardReal` mean (ms) | `computeInverseReal` mean (ms) |
+|---|---|---|---|
+| 256x256 | 0.902 | 0.793 | 0.694 |
+| 512x512 | 0.882 | 0.837 | 0.728 |
+| 1024x1024 | 1.776 | 1.447 | 1.359 |
+| 2048x2048 | 5.839 | 4.706 | 4.287 |
+
+(Mean of 2 runs at each size.) Two things jump out:
+
+- **`computeForward` itself got dramatically faster** at 1024/2048 - 5.226ms -> 1.776ms (~2.9x) at
+  1024x1024, 21.470ms -> 5.839ms (~3.7x) at 2048x2048 - since both now use the fast fused kernel
+  instead of the 10-11-dispatch fallback. 256/512 are unchanged (already fused either way).
+- **`computeForwardReal`'s advantage over `computeForward` shrank** at 1024/2048 (now ~1.23x and
+  ~1.24x, down from ~2.15x/~1.79x) since the fusion-threshold-crossing bonus is gone - with real
+  limits, `computeMaxFusedLineLength` is large enough (2048) that *every* size here fuses on both
+  axes regardless, so the remaining gap is purely the `O(n log n)` benefit of halving the row
+  count, the same effect the pre-fix 2048x2048 case saw in isolation. `computeForwardReal` is
+  still faster than `computeForward` everywhere except being roughly break-even at 256/512, where
+  the extra `recombine` dispatch's fixed cost is the whole story again.
+
+The headline finding: getting the renderer's device to actually report real hardware limits
+mattered far more here than either of `FFT2D`'s own optimizations (the twiddle table, or even
+`computeForwardReal`'s halved workload) - it's what let the *existing* adaptive fused/fallback
+logic (already in `FFT2D.js` before any of this work) do its job in the first place.

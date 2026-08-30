@@ -2,7 +2,7 @@ import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, instanceIndex } from 'three/tsl';
 
 import { CountingSort } from '../../../../examples/jsm/gpgpu/CountingSort.js';
-import { isWebGPUAvailable, createRenderer, seededUint32Array, captureConsoleErrors } from './perf-utils.js';
+import { isWebGPUAvailable, createRenderer, seededUint32Array } from './perf-utils.js';
 
 // End-to-end regression test through the real `CountingSort` API for the two bugs documented in
 // PrefixSum.gpu.tests.js. `CountingSort`'s internal prefix sum (turning its `binCount`-sized
@@ -79,18 +79,10 @@ export default QUnit.module( 'Addons', () => {
 					const sort = new CountingSort( count, { binCount } );
 					sort.setBinNode( () => keysRead.element( instanceIndex ) );
 
-					const { result: order, errors } = await captureConsoleErrors( async () => {
-
-						sort.compute( renderer );
-						return new Uint32Array( await renderer.getArrayBufferAsync( sort.orderAttribute ) );
-
-					} );
+					sort.compute( renderer );
+					const order = new Uint32Array( await renderer.getArrayBufferAsync( sort.orderAttribute ) );
 
 					assertValidSort( assert, order, keysArray, count );
-					assert.deepEqual(
-						errors, [],
-						'no console.error calls (e.g. a WGSL validation error from CountingSort\'s internal PrefixSum)'
-					);
 
 					renderer.dispose();
 

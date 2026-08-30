@@ -163,33 +163,17 @@ export function report( assert, label, count, stats ) {
 
 }
 
-/**
- * Runs `fn`, capturing anything logged via `console.error` while it runs instead of letting it
- * reach the real console - WebGPU reports invalid submissions (e.g. a WGSL validation error from
- * a compute pipeline) this way rather than throwing a catchable JS exception, so a test that only
- * checks its numeric output can miss a dispatch that was silently rejected. Restores the original
- * `console.error` afterward even if `fn` throws.
- *
- * @param {Function} fn - May be async; awaited before restoring `console.error`.
- * @returns {Promise<{result: *, errors: Array<Array<*>>}>} `fn`'s return value, and every
- * `console.error` call's arguments made while it ran.
- */
-export async function captureConsoleErrors( fn ) {
-
-	const errors = [];
-	const original = console.error;
-
-	console.error = ( ...args ) => errors.push( args );
-
-	try {
-
-		const result = await fn();
-		return { result, errors };
-
-	} finally {
-
-		console.error = original;
-
-	}
-
-}
+// A note on GPU-side validation errors (e.g. a WGSL uniformity violation from an invalid compute
+// pipeline): WebGPU reports these to `device.onuncapturederror`/`addEventListener(
+// 'uncapturederror', ... )` rather than throwing a catchable JS exception - in principle a good
+// fit for asserting "this dispatch didn't just silently get rejected" in a test. In practice,
+// neither observably fires in this environment (confirmed empirically: wrapping
+// `device.onuncapturederror` - even preserving and forwarding to `WebGPUBackend`'s own handler,
+// which already claims that slot to log these itself - stays correctly installed throughout a
+// call that we independently know triggers a validation error, and is still never invoked), nor
+// does monkey-patching `console.error` (Chrome logs these through an internal, engine-level
+// binding that bypasses the page's own `window.console` object entirely). So the GPU correctness
+// tests next to this file rely solely on checking actual output values against a CPU reference,
+// which is sufficient on its own - a rejected dispatch leaves stale/zeroed data behind rather than
+// the right answer, so it fails those checks regardless of whether the error that caused it was
+// ever observed.

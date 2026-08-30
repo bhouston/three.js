@@ -1,14 +1,16 @@
 import { PrefixSum } from '../../../../examples/jsm/gpgpu/PrefixSum.js';
-import { isWebGPUAvailable, createRenderer, seededUint32Array, captureConsoleErrors } from './perf-utils.js';
+import { isWebGPUAvailable, createRenderer, seededUint32Array } from './perf-utils.js';
 
 // Regression tests for two real-GPU-only bugs found while profiling PrefixSum/CountingSort (see
 // profiling_results.md at the repo root for the full investigation):
 //
 //  1. The subgroup "short spine scan" path (`_getSpineScanShortFn`, selected whenever
 //     `numWorkgroups` is small - see `_handleSubgroupInfo`) called a subgroup op from inside
-//     branchy control flow, which WGSL disallows. The backend logged a GPUValidationError and
-//     silently rejected the dispatch instead of throwing in JS, so a test that only checks the
-//     numeric result can miss it entirely - see `captureConsoleErrors` in ./perf-utils.js.
+//     branchy control flow, which WGSL disallows. The backend rejected the dispatch (logging a
+//     GPUValidationError through a channel that turns out not to be observable from page JS in
+//     this environment - see the note in ./perf-utils.js) instead of throwing in JS, leaving
+//     stale/zeroed data behind - which the correctness checks below still catch, since a rejected
+//     dispatch never produces the right answer.
 //  2. Independently, the downsweep pass's exclusive mode (`isInclusive: false`) shifts every
 //     write right by one slot; for the last vec4 group that shift pushes a write to
 //     `unvectorizedOutputBuffer[count]` - one past the buffer's real size - silently corrupting
@@ -72,21 +74,13 @@ export default QUnit.module( 'Addons', () => {
 					const input = seededUint32Array( n, 10 );
 					const expected = cpuPrefixSum( input, false );
 
-					const { result: output, errors } = await captureConsoleErrors( async () => {
-
-						const sum = new PrefixSum( input.slice(), { isInclusive: false } );
-						sum.compute( renderer );
-						return new Uint32Array( await renderer.getArrayBufferAsync( sum.outputAttribute ) );
-
-					} );
+					const sum = new PrefixSum( input.slice(), { isInclusive: false } );
+					sum.compute( renderer );
+					const output = new Uint32Array( await renderer.getArrayBufferAsync( sum.outputAttribute ) );
 
 					assert.deepEqual(
 						Array.from( output ), Array.from( expected ),
 						'matches a CPU-computed exclusive prefix sum'
-					);
-					assert.deepEqual(
-						errors, [],
-						'no console.error calls (e.g. a WGSL validation error from a rejected compute dispatch)'
 					);
 
 					renderer.dispose();
@@ -111,16 +105,11 @@ export default QUnit.module( 'Addons', () => {
 				const input = seededUint32Array( n, 10 );
 				const expected = cpuPrefixSum( input, true );
 
-				const { result: output, errors } = await captureConsoleErrors( async () => {
-
-					const sum = new PrefixSum( input.slice(), { isInclusive: true } );
-					sum.compute( renderer );
-					return new Uint32Array( await renderer.getArrayBufferAsync( sum.outputAttribute ) );
-
-				} );
+				const sum = new PrefixSum( input.slice(), { isInclusive: true } );
+				sum.compute( renderer );
+				const output = new Uint32Array( await renderer.getArrayBufferAsync( sum.outputAttribute ) );
 
 				assert.deepEqual( Array.from( output ), Array.from( expected ), 'matches a CPU-computed inclusive prefix sum' );
-				assert.deepEqual( errors, [], 'no console.error calls' );
 
 				renderer.dispose();
 
@@ -142,16 +131,11 @@ export default QUnit.module( 'Addons', () => {
 				const input = seededUint32Array( n, 10 );
 				const expected = cpuPrefixSum( input, false );
 
-				const { result: output, errors } = await captureConsoleErrors( async () => {
-
-					const sum = new PrefixSum( input.slice(), { isInclusive: false } );
-					sum.compute( renderer );
-					return new Uint32Array( await renderer.getArrayBufferAsync( sum.outputAttribute ) );
-
-				} );
+				const sum = new PrefixSum( input.slice(), { isInclusive: false } );
+				sum.compute( renderer );
+				const output = new Uint32Array( await renderer.getArrayBufferAsync( sum.outputAttribute ) );
 
 				assert.deepEqual( Array.from( output ), Array.from( expected ), 'matches a CPU-computed exclusive prefix sum at n=1,000,000' );
-				assert.deepEqual( errors, [], 'no console.error calls' );
 
 				renderer.dispose();
 

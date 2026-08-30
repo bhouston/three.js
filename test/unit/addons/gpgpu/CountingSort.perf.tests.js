@@ -2,7 +2,7 @@ import { StorageBufferAttribute } from 'three/webgpu';
 import { storage, instanceIndex } from 'three/tsl';
 
 import { CountingSort } from '../../../../examples/jsm/gpgpu/CountingSort.js';
-import { isWebGPUAvailable, createRenderer, benchmark, report } from './perf-utils.js';
+import { isWebGPUAvailable, createRenderer, benchmark, report, seededUint32Array } from './perf-utils.js';
 
 // Sizes to benchmark, largest last. Edit this to try other scales.
 const SIZES = [ 1_000_000 ];
@@ -30,9 +30,8 @@ export default QUnit.module( 'Addons', () => {
 
 					const renderer = await createRenderer();
 
-					// Random bin keys, one per element, read back by `binNode` below.
-					const keysArray = new Uint32Array( count );
-					for ( let i = 0; i < count; i ++ ) keysArray[ i ] = Math.floor( Math.random() * BIN_COUNT );
+					// Deterministic bin keys, one per element, read back by `binNode` below.
+					const keysArray = seededUint32Array( count, BIN_COUNT );
 					const keysRead = storage( new StorageBufferAttribute( keysArray, 1, Uint32Array ), 'uint', count ).toReadOnly();
 
 					const sort = new CountingSort( count, () => keysRead.element( instanceIndex ), { binCount: BIN_COUNT } );

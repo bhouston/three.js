@@ -120,12 +120,19 @@
 
 			}
 
-			// Builds everything one (width, height) needs: FFT2D instances (3 for the image's color
-			// channels, 1 for the filter mask), their complex textures, the display targets, the
-			// filter's own Canvas 2D mask, and the pack/multiply/combine/probe kernels.
+			// Builds everything one (width, height) needs: FFT2D instances (one shared by the R/G
+			// channel pair via computeForwardReal2/computeInverseReal2 -- see FFT2D's docstring --
+			// plus one for the odd-channel-out B, and one for the filter mask), their complex
+			// textures, the display targets, the filter's own Canvas 2D mask, and the pack/
+			// multiply/combine/probe kernels.
 			function buildResources( width, height, sourceTexture ) {
 
-				const ffts = buildPerChannel( () => new FFT2D( width, height ) );
+				// R and G are transformed together, packed into one complex FFT2D (real2); B is the
+				// odd channel out and gets its own, ordinary complex FFT2D. Halves the FFT work
+				// (2 transforms instead of 3) for the price of one small elementwise pack/split pass.
+				const fftPair = new FFT2D( width, height );
+				const fftOdd = new FFT2D( width, height );
+
 				const filterFFT = new FFT2D( width, height );
 
 				const complexSource = buildPerChannel( () => createComplexTexture( width, height ) );
@@ -167,7 +174,7 @@
 				filterCanvasTexture.wrapT = THREE.ClampToEdgeWrapping;
 
 				return {
-					width, height, ffts, filterFFT,
+					width, height, fftPair, fftOdd, filterFFT,
 					complexSource, complexSpectrum, complexConvolution, complexReconstructed,
 					complexFilterSource, complexFilterSpectrum,
 					spectrumTexture, filterSpectrumTexture, convolutionTexture, reconstructedTexture,
@@ -358,19 +365,25 @@
 			// along the way. For a non-negative-real input the DC bin always has the largest
 			// magnitude (triangle inequality on the DFT sum), so the largest of the 3 feeds a shared
 			// log-scale below -- normalizing per-channel instead would wash out the R:G:B color
-			// balance. Awaited per channel since all 3 share one cached probe kernel/buffer.
+			// balance. R/G are transformed together via computeForwardReal2 (see buildResources);
+			// only their two DC-bin readbacks need awaiting one at a time since they still share one
+			// cached probe kernel/buffer.
 			async function computeSourceSpectrum( renderer, resources, myGeneration ) {
 
-				const { ffts, complexSource, complexSpectrum, spectrumTexture } = resources;
-
-				const dcMagnitudes = [];
+				const { fftPair, fftOdd, complexSource, complexSpectrum, spectrumTexture } = resources;
 
 				for ( let i = 0; i < CHANNELS.length; i ++ ) {
 
-					const c = CHANNELS[ i ];
+					packChannel( renderer, resources, loadedTexture, complexSource[ CHANNELS[ i ] ], i );
 
-					packChannel( renderer, resources, loadedTexture, complexSource[ c ], i );
-					ffts[ c ].computeForward( renderer, complexSource[ c ], complexSpectrum[ c ] );
+				}
+
+				fftPair.computeForwardReal2( renderer, complexSource.r, complexSource.g, complexSpectrum.r, complexSpectrum.g );
+				fftOdd.computeForward( renderer, complexSource.b, complexSpectrum.b );
+
+				const dcMagnitudes = [];
+
+				for ( const c of CHANNELS ) {
 
 					const dc = await readBin( renderer, resources, complexSpectrum[ c ], 0 );
 					dcMagnitudes.push( Math.hypot( dc.real, dc.imag ) );
@@ -395,7 +408,7 @@
 
 				const {
 					filterFFT, complexFilterSource, complexFilterSpectrum, filterCanvas, filterCanvasTexture,
-					complexSpectrum, complexConvolution, complexReconstructed, ffts,
+					complexSpectrum, complexConvolution, complexReconstructed, fftPair, fftOdd,
 					filterSpectrumTexture, convolutionTexture, reconstructedTexture
 				} = resources;
 
@@ -444,7 +457,11 @@
 
 				combineChannels( renderer, resources, complexConvolution, convolutionTexture, { mode: 'log', scale: 1 / Math.log( 1 + convMaxMagnitude ), shift: true } );
 
-				for ( const c of CHANNELS ) ffts[ c ].computeInverse( renderer, complexConvolution[ c ], complexReconstructed[ c ] );
+				// R/G's convolution spectra are each still Hermitian (the pointwise product of two
+				// Hermitian spectra -- source channel and grayscale filter -- is itself Hermitian),
+				// so computeInverseReal2 applies here exactly as it did to the source spectra.
+				fftPair.computeInverseReal2( renderer, complexConvolution.r, complexConvolution.g, complexReconstructed.r, complexReconstructed.g );
+				fftOdd.computeInverse( renderer, complexConvolution.b, complexReconstructed.b );
 
 				combineChannels( renderer, resources, complexReconstructed, reconstructedTexture, { mode: 'linear', scale: 1 } );
 

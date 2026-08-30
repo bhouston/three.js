@@ -426,6 +426,14 @@ function buildTransposeStage( { rows, cols, tile, conjugateScaleOutput = false, 
  * await fft.computeInverse( renderer, spectrumTexture, reconstructedTexture );
  * ```
  *
+ * `computeForwardReal`/`computeInverseReal` transform a *real*-valued image (`sourceTexture`'s
+ * `.r` channel; no imaginary part needed) for about half the cost of `computeForward`/
+ * `computeInverse`, via a row-pair-packing trick reusing the same complex-signal-pair conjugate
+ * symmetry as above, applied to one image's own even/odd rows rather than two separate images --
+ * see `computeForwardReal`'s docstring for the algorithm. Worth using any time the input (for
+ * forward) or the known-real output (for inverse) is real-valued, which includes most of what an
+ * `FFT2D` is used for -- images, per-channel filtering, convolution.
+ *
  * @three_import import { FFT2D } from 'three/addons/gpgpu/FFT2D.js';
  */
 class FFT2D {
@@ -755,6 +763,315 @@ class FFT2D {
 	}
 
 	/**
+	 * Builds `_halfFFT`, a nested `FFT2D` half this instance's height, on first use -- the engine
+	 * behind `computeForwardReal`/`computeInverseReal` (see `computeForwardReal`'s docstring for
+	 * the algorithm). No-op after the first call.
+	 *
+	 * @private
+	 */
+	_ensureHalfFFT() {
+
+		if ( this._halfFFT !== undefined ) return;
+
+		if ( this.height < 2 ) {
+
+			throw new Error( 'FFT2D: computeForwardReal/computeInverseReal require height >= 2.' );
+
+		}
+
+		this._halfFFT = new FFT2D( this.width, this.height / 2 );
+
+	}
+
+	/**
+	 * Packs pairs of rows of a real-valued `sourceTexture` (`.r` channel, `width` by `height`) as
+	 * one complex `(width x height/2)` signal, `z[p] = row[2p] + i*row[2p+1]`, into `_halfFFT`'s
+	 * ping-pong buffer -- the loading half of `computeForwardReal`'s packing trick.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 * @param {Texture} sourceTexture
+	 */
+	_loadRowPairs( renderer, sourceTexture ) {
+
+		this._ensureHalfFFT();
+
+		const half = this._halfFFT;
+		half._ensureButterfliesBuilt( renderer );
+
+		if ( this._loadRowPairsKernel === undefined ) {
+
+			const width = this.width;
+			this._loadRowPairsTextureNode = texture( sourceTexture );
+
+			this._loadRowPairsKernel = Fn( () => {
+
+				const x = instanceIndex.mod( uint( width ) );
+				const p = instanceIndex.div( uint( width ) );
+
+				const rowA = this._loadRowPairsTextureNode.load( ivec2( int( x ), int( p.mul( 2 ) ) ) ).r;
+				const rowB = this._loadRowPairsTextureNode.load( ivec2( int( x ), int( p.mul( 2 ).add( 1 ) ) ) ).r;
+
+				half._writeNode.element( instanceIndex ).assign( vec2( rowA, rowB ) );
+
+			} )().compute( half.count, [ half._workgroupSize ] );
+
+		}
+
+		this._loadRowPairsTextureNode.value = sourceTexture;
+		half._writeNode.value = half._current === 'A' ? half._attributeA : half._attributeB;
+
+		renderer.compute( this._loadRowPairsKernel );
+
+	}
+
+	/**
+	 * Combines `_halfFFT`'s finished `(width x height/2)` spectrum `Z` -- the transform of the
+	 * row-pair-packed signal `z = a + i*b`, where `a`/`b` are this image's even/odd rows -- into
+	 * this instance's own `(width x height)` buffer as the true full spectrum `X`, using real-signal
+	 * conjugate symmetry plus one radix-2 recombine stage:
+	 *
+	 * `A[k1,k2] = (Z[k1,k2] + conj(Z[-k1,-k2])) / 2`, `B[k1,k2] = -i * (Z[k1,k2] - conj(Z[-k1,-k2])) / 2`
+	 * (`-k1`/`-k2` meaning reflection through the origin in `_halfFFT`'s own `(height/2, width)`
+	 * domain) recover `A`/`B`, the 2D spectra of the even/odd row sub-images, from `Z`: this is the
+	 * standard real-signal-pair unmixing identity -- for any two real-valued signals `a`/`b` packed
+	 * as one complex signal `z = a + i*b`, their spectra are conjugate-symmetric, and this formula
+	 * recovers each from `Z = FFT(z)`. Here `a`/`b` are one image's even/odd rows rather than two
+	 * separate images, but the math doesn't care which.
+	 *
+	 * Then the standard radix-2 decimation-in-space combine, using twiddle factors of the *full*
+	 * height (from the shared `_twiddleNode`, not `_halfFFT`'s own): `X[k1,k2] = A[k1,k2] +
+	 * W_height^k1 * B[k1,k2]`, `X[k1+height/2,k2] = A[k1,k2] - W_height^k1 * B[k1,k2]`, for
+	 * `k1` in `0..height/2-1`.
+	 *
+	 * The store half of `computeForwardReal`'s packing trick.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 */
+	_recombineRowsForward( renderer ) {
+
+		this._ensureButterfliesBuilt( renderer );
+
+		const half = this._halfFFT;
+
+		if ( this._recombineRowsForwardKernel === undefined ) {
+
+			const width = this.width;
+			const halfHeight = this.height / 2;
+			const maxN = this._halfMax * 2;
+			const twiddleStride = maxN / this.height;
+			const dispatchCount = halfHeight * width;
+
+			this._recombineRowsForwardKernel = Fn( () => {
+
+				const t = instanceIndex;
+				const k2 = t.mod( uint( width ) );
+				const k1 = t.div( uint( width ) );
+
+				const mk1 = uint( halfHeight ).sub( k1 ).mod( uint( halfHeight ) );
+				const mk2 = uint( width ).sub( k2 ).mod( uint( width ) );
+				const mirrorIndex = mk1.mul( uint( width ) ).add( mk2 );
+
+				const z = half._readNode.element( t ).toVar( 'z' ); // Z[k1,k2]
+				const zm = half._readNode.element( mirrorIndex ).toVar( 'zm' ); // Z[-k1,-k2], not yet conjugated
+
+				// a = (z + conj(zm)) / 2; b = -i * (z - conj(zm)) / 2 -- see this method's docstring.
+				const a = vec2( z.x.add( zm.x ), z.y.sub( zm.y ) ).mul( 0.5 );
+				const b = vec2( z.y.add( zm.y ), zm.x.sub( z.x ) ).mul( 0.5 );
+
+				const tw = this._twiddleNode.element( k1.mul( uint( twiddleStride ) ) );
+				const twB = vec2( tw.x.mul( b.x ).sub( tw.y.mul( b.y ) ), tw.x.mul( b.y ).add( tw.y.mul( b.x ) ) );
+
+				const x0 = vec2( a.x.add( twB.x ), a.y.add( twB.y ) );
+				const x1 = vec2( a.x.sub( twB.x ), a.y.sub( twB.y ) );
+
+				this._writeNode.element( t ).assign( x0 );
+				this._writeNode.element( k1.add( uint( halfHeight ) ).mul( uint( width ) ).add( k2 ) ).assign( x1 );
+
+			} )().compute( dispatchCount, [ this._workgroupSize ] );
+
+		}
+
+		half._readNode.value = half._current === 'A' ? half._attributeA : half._attributeB;
+		this._writeNode.value = this._current === 'A' ? this._attributeA : this._attributeB;
+
+		renderer.compute( this._recombineRowsForwardKernel );
+
+	}
+
+	/**
+	 * Computes the forward 2D FFT of a real-valued image for about half the cost of
+	 * `computeForward`, via row-pair packing: pack pairs of rows of `sourceTexture` (`.r`) as one
+	 * complex `(width x height/2)` signal, run one *ordinary* full 2D complex FFT on it (a nested
+	 * `FFT2D` instance, `_halfFFT`, reusing every existing kernel unchanged), then recombine that
+	 * smaller spectrum into the true full `(width x height)` spectrum with one cheap elementwise
+	 * pass (`_recombineRowsForward`). Since FFT cost is `O(n log n)`, halving the element count run
+	 * through the row/transpose/column/transpose-back passes is close to, if not quite, a full 2x
+	 * -- plus the one small recombine pass. Writes the result into `destinationTexture`'s `.rg`
+	 * channels, same format `computeForward` produces (fully usable with `computeInverse`, or with
+	 * `computeInverseReal` when the caller knows the spectrum will inverse-transform back to a
+	 * purely real image, e.g. after multiplying by another real-signal spectrum).
+	 *
+	 * @param {Renderer} renderer
+	 * @param {Texture} sourceTexture - A float texture, `width` by `height`, real-valued in `.r`.
+	 * @param {StorageTexture} destinationTexture - A float `StorageTexture`, `width` by `height`, with at least 2 channels.
+	 */
+	computeForwardReal( renderer, sourceTexture, destinationTexture ) {
+
+		this._ensureHalfFFT();
+
+		this._loadRowPairs( renderer, sourceTexture );
+		this._halfFFT._runButterflyPasses( renderer );
+		this._recombineRowsForward( renderer );
+		this._store( renderer, destinationTexture );
+
+	}
+
+	/**
+	 * Reads a full `(width x height)` complex spectrum `X` directly out of `sourceTexture`'s `.rg`
+	 * channels (no intermediate buffer needed) and splits+combines it into `_halfFFT`'s ping-pong
+	 * buffer as one composite `(width x height/2)` spectrum `Z = A + i*B`, where `A`/`B` are the
+	 * spectra of `X`'s (unknown, to be recovered) even/odd row sub-images -- the inverse of
+	 * `_recombineRowsForward`'s combine step: solving `X[k1,k2] = A[k1,k2] + W_height^k1 *
+	 * B[k1,k2]`, `X[k1+height/2,k2] = A[k1,k2] - W_height^k1 * B[k1,k2]` for `A`/`B` gives
+	 * `A[k1,k2] = (X[k1,k2] + X[k1+height/2,k2]) / 2`, `B[k1,k2] = (X[k1,k2] - X[k1+height/2,k2]) *
+	 * conj(W_height^k1) / 2`; then `Z = A + i*B` packs them back into one composite spectrum, ready
+	 * for a single ordinary inverse FFT (see `computeInverseReal`'s docstring for why that recovers
+	 * both `a` and `b` at once). The loading half of `computeInverseReal`'s trick.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 * @param {Texture} sourceTexture - `X`, a float texture, `width` by `height`, with at least 2 channels.
+	 */
+	_loadSplitRowsFromTexture( renderer, sourceTexture ) {
+
+		this._ensureHalfFFT();
+
+		const half = this._halfFFT;
+		half._ensureButterfliesBuilt( renderer );
+
+		if ( this._loadSplitRowsKernel === undefined ) {
+
+			const width = this.width;
+			const halfHeight = this.height / 2;
+			const maxN = this._halfMax * 2;
+			const twiddleStride = maxN / this.height;
+
+			this._loadSplitRowsTextureNode = texture( sourceTexture );
+
+			this._loadSplitRowsKernel = Fn( () => {
+
+				const t = instanceIndex;
+				const k2 = t.mod( uint( width ) );
+				const k1 = t.div( uint( width ) );
+
+				const x0 = this._loadSplitRowsTextureNode.load( ivec2( int( k2 ), int( k1 ) ) ).rg;
+				const x1 = this._loadSplitRowsTextureNode.load( ivec2( int( k2 ), int( k1.add( uint( halfHeight ) ) ) ) ).rg;
+
+				const a = x0.add( x1 ).mul( 0.5 );
+				const d = x0.sub( x1 );
+
+				const tw = this._twiddleNode.element( k1.mul( uint( twiddleStride ) ) );
+
+				// b = d * conj(tw) / 2
+				const bx = d.x.mul( tw.x ).add( d.y.mul( tw.y ) ).mul( 0.5 );
+				const by = d.y.mul( tw.x ).sub( d.x.mul( tw.y ) ).mul( 0.5 );
+
+				// z = a + i*b
+				const z = vec2( a.x.sub( by ), a.y.add( bx ) );
+
+				half._writeNode.element( t ).assign( z );
+
+			} )().compute( half.count, [ half._workgroupSize ] );
+
+		}
+
+		this._loadSplitRowsTextureNode.value = sourceTexture;
+		half._writeNode.value = half._current === 'A' ? half._attributeA : half._attributeB;
+
+		renderer.compute( this._loadSplitRowsKernel );
+
+	}
+
+	/**
+	 * Writes `_halfFFT`'s finished buffer -- `z = a + i*b`, both real-valued (see
+	 * `computeInverseReal`'s docstring) -- into a single real-valued `destinationTexture`'s `.r`
+	 * channel, interleaved back into `width` by `height` rows: `Re(z[p])` into row `2p`, `Im(z[p])`
+	 * into row `2p+1`. The store half of `computeInverseReal`'s trick.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 * @param {StorageTexture} destinationTexture - Must be exactly `width` by `height` in size.
+	 */
+	_storeInterleaveRows( renderer, destinationTexture ) {
+
+		const half = this._halfFFT;
+
+		if ( this._storeInterleaveRowsKernel === undefined ) {
+
+			const width = this.width;
+			this._storeInterleaveRowsTextureNode = storageTexture( destinationTexture ).setAccess( NodeAccess.WRITE_ONLY );
+
+			this._storeInterleaveRowsKernel = Fn( () => {
+
+				const t = instanceIndex;
+				const x = t.mod( uint( width ) );
+				const p = t.div( uint( width ) );
+
+				const z = half._readNode.element( t );
+
+				textureStore( this._storeInterleaveRowsTextureNode, uvec2( x, p.mul( 2 ) ), vec4( z.x, 0, 0, 1 ) );
+				textureStore( this._storeInterleaveRowsTextureNode, uvec2( x, p.mul( 2 ).add( 1 ) ), vec4( z.y, 0, 0, 1 ) );
+
+			} )().compute( half.count, [ half._workgroupSize ] );
+
+		}
+
+		this._storeInterleaveRowsTextureNode.value = destinationTexture;
+		half._readNode.value = half._current === 'A' ? half._attributeA : half._attributeB;
+
+		renderer.compute( this._storeInterleaveRowsKernel );
+
+	}
+
+	/**
+	 * Computes the inverse 2D FFT of a spectrum known to correspond to a real-valued image, for
+	 * about half the cost of `computeInverse` -- the counterpart to `computeForwardReal`. Splits
+	 * `sourceTexture`'s full spectrum `X` into the composite spectrum `Z = A + i*B` of its even/odd
+	 * row sub-images (`_loadSplitRowsFromTexture`), runs one *ordinary* full inverse 2D complex FFT
+	 * on it via `_halfFFT` (by linearity, `ifft(A + i*B) = ifft(A) + i*ifft(B) = a + i*b`; both `a`
+	 * and `b` come out purely real since `A`/`B` are each, individually, the spectrum of a
+	 * real-valued row sub-image), then interleaves `_halfFFT`'s real result back into
+	 * `destinationTexture`'s rows
+	 * (`_storeInterleaveRows`). Not applicable to a spectrum that doesn't correspond to a real
+	 * image -- use `computeInverse` for that.
+	 *
+	 * @param {Renderer} renderer
+	 * @param {Texture} sourceTexture - `X`, a float texture, `width` by `height`, with at least 2 channels (typically a spectrum produced by `computeForwardReal`, or one derived from it, e.g. by spectral multiplication with another real-signal spectrum).
+	 * @param {StorageTexture} destinationTexture - A float `StorageTexture`, `width` by `height`, real-valued output written to `.r`.
+	 */
+	computeInverseReal( renderer, sourceTexture, destinationTexture ) {
+
+		this._ensureHalfFFT();
+
+		const half = this._halfFFT;
+
+		this._loadSplitRowsFromTexture( renderer, sourceTexture );
+
+		if ( ! half._rowFused ) {
+
+			half._dispatchPingPong( renderer, half._conjugateKernel );
+
+		}
+
+		half._runButterflyPasses( renderer, true );
+
+		this._storeInterleaveRows( renderer, destinationTexture );
+
+	}
+
+	/**
 	 * Frees the GPU buffers backing this transform.
 	 */
 	dispose() {
@@ -762,6 +1079,7 @@ class FFT2D {
 		this._attributeA.dispose?.();
 		this._attributeB.dispose?.();
 		this._twiddleAttribute.dispose?.();
+		this._halfFFT?.dispose();
 
 	}
 

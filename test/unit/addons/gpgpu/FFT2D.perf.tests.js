@@ -33,6 +33,30 @@ function seededComplexTexture( width, height ) {
 
 }
 
+// A float source texture packed with deterministic pseudo-random real values in `.r` -- FFT2D's
+// real-valued image format for `computeForwardReal`.
+function seededRealTexture( width, height ) {
+
+	const data = seededFloat32Array( width * height * 4 );
+
+	for ( let i = 0; i < width * height; i ++ ) {
+
+		data[ i * 4 + 1 ] = 0;
+		data[ i * 4 + 2 ] = 0;
+		data[ i * 4 + 3 ] = 1;
+
+	}
+
+	const tex = new DataTexture( data, width, height, undefined, FloatType );
+	tex.magFilter = NearestFilter;
+	tex.minFilter = NearestFilter;
+	tex.generateMipmaps = false;
+	tex.needsUpdate = true;
+
+	return tex;
+
+}
+
 function createComplexStorageTexture( width, height ) {
 
 	const tex = new StorageTexture( width, height );
@@ -111,6 +135,93 @@ export default QUnit.module( 'Addons', () => {
 
 					fft.dispose();
 					sourceTexture.dispose();
+					destinationTexture.dispose();
+					renderer.dispose();
+
+				} );
+
+				QUnit.test( `computeForwardReal() over ${ size }x${ size }`, async ( assert ) => {
+
+					assert.timeout( 180000 );
+
+					if ( ! ( await isWebGPUAvailable() ) ) {
+
+						assert.ok( true, 'skipped: WebGPU is not available in this environment' );
+						return;
+
+					}
+
+					const renderer = await createRenderer();
+
+					const sourceTexture = seededRealTexture( size, size );
+					const destinationTexture = createComplexStorageTexture( size, size );
+
+					const fft = new FFT2D( size, size );
+
+					const { kernel: probeKernel, probeAttribute } = buildProbe( size, destinationTexture );
+
+					const stats = await benchmark(
+						() => fft.computeForwardReal( renderer, sourceTexture, destinationTexture ),
+						async () => {
+
+							renderer.compute( probeKernel );
+							await renderer.getArrayBufferAsync( probeAttribute );
+
+						},
+						{ runs: 50, warmup: 5 },
+					);
+
+					report( assert, 'FFT2D.computeForwardReal()', size * size, stats );
+
+					fft.dispose();
+					sourceTexture.dispose();
+					destinationTexture.dispose();
+					renderer.dispose();
+
+				} );
+
+				QUnit.test( `computeInverseReal() over ${ size }x${ size }`, async ( assert ) => {
+
+					assert.timeout( 180000 );
+
+					if ( ! ( await isWebGPUAvailable() ) ) {
+
+						assert.ok( true, 'skipped: WebGPU is not available in this environment' );
+						return;
+
+					}
+
+					const renderer = await createRenderer();
+
+					const sourceTexture = seededRealTexture( size, size );
+					const spectrumTexture = createComplexStorageTexture( size, size );
+					const destinationTexture = createComplexStorageTexture( size, size );
+
+					const fft = new FFT2D( size, size );
+
+					// The benchmark below only cares about timing, not the values, but seeding a genuine
+					// forward-transformed (Hermitian) spectrum keeps this representative of real usage.
+					// Run once, untimed, before the benchmark loop.
+					fft.computeForwardReal( renderer, sourceTexture, spectrumTexture );
+
+					const { kernel: probeKernel, probeAttribute } = buildProbe( size, destinationTexture );
+
+					const stats = await benchmark(
+						() => fft.computeInverseReal( renderer, spectrumTexture, destinationTexture ),
+						async () => {
+
+							renderer.compute( probeKernel );
+							await renderer.getArrayBufferAsync( probeAttribute );
+
+						},
+						{ runs: 50, warmup: 5 },
+					);
+
+					report( assert, 'FFT2D.computeInverseReal()', size * size, stats );
+
+					fft.dispose();
+					sourceTexture.dispose();
+					spectrumTexture.dispose();
 					destinationTexture.dispose();
 					renderer.dispose();
 

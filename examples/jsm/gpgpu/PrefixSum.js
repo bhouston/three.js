@@ -596,7 +596,7 @@ export class PrefixSum {
 
 		const { dataBuffer, reductionBuffer, unvectorizedOutputBuffer } = this._storageBuffers;
 		const { subgroupOffset, workgroupOffset, subgroupReductionArray } = this._utilityNodes;
-		const { workPerInvocation, vecCount, isInclusive, _scalarNode, _vectorNode } = this;
+		const { count, workPerInvocation, vecCount, isInclusive, _scalarNode, _vectorNode } = this;
 
 		const outputIndexOffset = isInclusive ? 0 : 1;
 
@@ -691,10 +691,39 @@ export class PrefixSum {
 				const outputIndex = startThread.mul( 4 ).add( uint( outputIndexOffset ) ).toVar();
 				const outputValueToWrite = tScan.element( currentSubgroupInBlock ).add( prev ).toVar();
 
-				unvectorizedOutputBuffer.element( outputIndex ).assign( outputValueToWrite.x );
-				unvectorizedOutputBuffer.element( outputIndex.add( 1 ) ).assign( outputValueToWrite.y );
-				unvectorizedOutputBuffer.element( outputIndex.add( 2 ) ).assign( outputValueToWrite.z );
-				unvectorizedOutputBuffer.element( outputIndex.add( 3 ) ).assign( outputValueToWrite.w );
+				// In exclusive mode (`outputIndexOffset` = 1), every write is shifted right by one
+				// slot - element `i`'s exclusive sum lands at output index `i + 1`, since it's the
+				// inclusive sum through `i` that becomes the *next* element's exclusive prefix. For
+				// the very last vec4 group, that shift pushes the `.w` component's target index to
+				// `unvectorizedOutputBuffer[count]` - one past the buffer's actual size (valid
+				// indices are `[0, count)`). That write's outcome is backend-defined (observed here
+				// clobbering the real last element rather than being safely dropped), and the
+				// vec4-group-level guard in `_workPerInvocationBlock`'s tail callback only checks
+				// the group index, not each of the four shifted output positions a group produces -
+				// so bounds-check every write individually instead.
+				If( outputIndex.lessThan( uint( count ) ), () => {
+
+					unvectorizedOutputBuffer.element( outputIndex ).assign( outputValueToWrite.x );
+
+				} );
+
+				If( outputIndex.add( 1 ).lessThan( uint( count ) ), () => {
+
+					unvectorizedOutputBuffer.element( outputIndex.add( 1 ) ).assign( outputValueToWrite.y );
+
+				} );
+
+				If( outputIndex.add( 2 ).lessThan( uint( count ) ), () => {
+
+					unvectorizedOutputBuffer.element( outputIndex.add( 2 ) ).assign( outputValueToWrite.z );
+
+				} );
+
+				If( outputIndex.add( 3 ).lessThan( uint( count ) ), () => {
+
+					unvectorizedOutputBuffer.element( outputIndex.add( 3 ) ).assign( outputValueToWrite.w );
+
+				} );
 
 				startThread.addAssign( subgroupSize );
 

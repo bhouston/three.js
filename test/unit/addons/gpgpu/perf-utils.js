@@ -1,7 +1,9 @@
-// Shared helpers for the GPGPU performance tests (PrefixSum/CountingSort/BitonicSort). Unlike the
-// correctness tests next to these files, these need a real GPU: they build a real WebGPURenderer
-// and time actual dispatches, so they only run in a browser with WebGPU available - see
-// `test/unit/UnitTestsAddonsPerf.html` and the `test-unit-addons-perf*` npm scripts.
+// Shared helpers for the GPGPU tests that need a real GPU (PrefixSum/CountingSort/BitonicSort
+// perf tests, and the `*.gpu.tests.js` correctness regression tests next to them). Unlike the
+// mocked-renderer correctness tests also next to these files, these build a real WebGPURenderer
+// and run actual dispatches, so they only run in a browser with WebGPU available - see
+// `test/unit/UnitTestsAddonsPerf.html`/`UnitTestsAddonsGPU.html` and the `test-unit-addons-perf*`/
+// `test-unit-addons-gpu*` npm scripts.
 
 import { WebGPURenderer } from 'three/webgpu';
 
@@ -158,5 +160,36 @@ export function report( assert, label, count, stats ) {
 
 	console.log( line );
 	assert.ok( true, line );
+
+}
+
+/**
+ * Runs `fn`, capturing anything logged via `console.error` while it runs instead of letting it
+ * reach the real console - WebGPU reports invalid submissions (e.g. a WGSL validation error from
+ * a compute pipeline) this way rather than throwing a catchable JS exception, so a test that only
+ * checks its numeric output can miss a dispatch that was silently rejected. Restores the original
+ * `console.error` afterward even if `fn` throws.
+ *
+ * @param {Function} fn - May be async; awaited before restoring `console.error`.
+ * @returns {Promise<{result: *, errors: Array<Array<*>>}>} `fn`'s return value, and every
+ * `console.error` call's arguments made while it ran.
+ */
+export async function captureConsoleErrors( fn ) {
+
+	const errors = [];
+	const original = console.error;
+
+	console.error = ( ...args ) => errors.push( args );
+
+	try {
+
+		const result = await fn();
+		return { result, errors };
+
+	} finally {
+
+		console.error = original;
+
+	}
 
 }

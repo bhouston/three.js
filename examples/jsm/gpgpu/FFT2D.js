@@ -1,9 +1,41 @@
 import { StorageBufferAttribute, MathUtils } from 'three/webgpu';
 import {
-	Fn, If, instanceIndex, storage, texture, uint, int, ivec2, uvec2, uniform, float, vec2, vec4, cos, sin,
+	Fn, If, instanceIndex, storage, texture, uint, int, ivec2, uvec2, uniform, vec2, vec4,
 	storageTexture, textureStore, NodeAccess,
 	workgroupArray, workgroupBarrier, workgroupId, invocationLocalIndex, globalId, localId
 } from 'three/tsl';
+
+/**
+ * Builds the `(cos, sin)` twiddle-factor lookup table shared by every butterfly stage, both row
+ * and column, at every size this `FFT2D` instance ever dispatches: for stage span `p` (a power of
+ * two, `1..N/2`) and butterfly-local offset `lo` (`0..p-1`), the twiddle factor is
+ * `exp(-i*pi*lo/p)`. Substituting `k = lo * (halfMax/p)` -- an integer since every `p` here
+ * divides `halfMax` (both are powers of two, and `N` -- `width` or `height` -- always divides
+ * `maxN = max(width,height)`, so `p <= N/2` always divides `halfMax = maxN/2` too) -- turns that
+ * into `exp(-i*pi*k/halfMax)` for `k` in `0..halfMax-1`: exactly the `halfMax`-point table built
+ * here, one lookup replacing a `cos`/`sin` pair per butterfly. Computed once on the CPU since it
+ * depends only on `width`/`height`, not on any transform's data. Inspired by the precomputed
+ * twiddle-factor texture in Token-Gremlin/natural-disasters' `OceanFFT.js`, adapted from its
+ * WebGL fragment-shader texture lookup to a WebGPU storage-buffer one.
+ *
+ * @param {number} halfMax - `max(width,height) / 2`.
+ * @returns {Float32Array} `halfMax` `(cos, sin)` pairs, interleaved.
+ */
+function buildTwiddleTable( halfMax ) {
+
+	const table = new Float32Array( halfMax * 2 );
+
+	for ( let k = 0; k < halfMax; k ++ ) {
+
+		const angle = - Math.PI * k / halfMax;
+		table[ k * 2 ] = Math.cos( angle );
+		table[ k * 2 + 1 ] = Math.sin( angle );
+
+	}
+
+	return table;
+
+}
 
 /**
  * Reads a named compute limit off `renderer`'s real WebGPU device, throwing rather than silently
@@ -147,11 +179,13 @@ function computeTransposeTileSize( limits ) {
  * @param {number} params.lineCount - Number of lines transformed in parallel.
  * @param {Node<uint>} params.pUniform - Per-stage span uniform (doubles every stage, 1..N/2).
  * @param {number} workgroupSize - Workgroup size to dispatch with (see `pickWorkgroupSize`).
+ * @param {StorageBufferNode} params.twiddleNode - `halfMax`-entry twiddle-factor table (see `buildTwiddleTable`).
+ * @param {number} params.halfMax - `max(width,height) / 2`; the twiddle table's entry count.
  * @param {StorageBufferNode} readNode - Buffer to read from.
  * @param {StorageBufferNode} writeNode - Buffer to write to.
  * @returns {Function} A parameterless TSL function, `.compute()`-d with `workgroupSize`.
  */
-function buildMultiDispatchStage( { N, lineStride, elementStride, lineCount, pUniform, workgroupSize }, readNode, writeNode ) {
+function buildMultiDispatchStage( { N, lineStride, elementStride, lineCount, pUniform, workgroupSize, twiddleNode, halfMax }, readNode, writeNode ) {
 
 	const half = N / 2;
 	const dispatchCount = half * lineCount;
@@ -175,10 +209,12 @@ function buildMultiDispatchStage( { N, lineStride, elementStride, lineCount, pUn
 		const v1 = readNode.element( idx2 ).toVar( 'v1' );
 
 		// Forward-transform sign convention; the inverse reuses this kernel by conjugating
-		// input and output around it (see FFT2D#computeInverse).
-		const angle = float( -Math.PI ).mul( float( lo ) ).div( float( p ) );
-		const c = cos( angle );
-		const s = sin( angle );
+		// input and output around it (see FFT2D#computeInverse). `p` divides `halfMax` (see
+		// `buildTwiddleTable`), so this stride is always an exact integer division.
+		const twiddleStride = uint( halfMax ).div( p );
+		const tw = twiddleNode.element( lo.mul( twiddleStride ) );
+		const c = tw.x;
+		const s = tw.y;
 
 		const v1r = v1.x.mul( c ).sub( v1.y.mul( s ) );
 		const v1i = v1.x.mul( s ).add( v1.y.mul( c ) );
@@ -211,11 +247,13 @@ function buildMultiDispatchStage( { N, lineStride, elementStride, lineCount, pUn
  * @param {number} params.elementStride - Address increment between consecutive elements of a line (always `1` here).
  * @param {number} params.lineCount - Number of lines (one workgroup each).
  * @param {boolean} [params.conjugateInput=false] - Negate the imaginary part on load, folding the inverse transform's leading conjugate pass in (see `FFT2D#computeInverse`).
+ * @param {StorageBufferNode} params.twiddleNode - `halfMax`-entry twiddle-factor table (see `buildTwiddleTable`).
+ * @param {number} params.halfMax - `max(width,height) / 2`; the twiddle table's entry count.
  * @param {StorageBufferNode} readNode - Buffer to read from.
  * @param {StorageBufferNode} writeNode - Buffer to write to.
  * @returns {Function} A parameterless TSL function ready to `.compute( dispatchCount, [ half ] )`.
  */
-function buildFusedLineStage( { N, lineStride, elementStride, lineCount, conjugateInput = false }, readNode, writeNode ) {
+function buildFusedLineStage( { N, lineStride, elementStride, lineCount, conjugateInput = false, twiddleNode, halfMax }, readNode, writeNode ) {
 
 	const half = N / 2;
 	const stages = Math.log2( N );
@@ -261,9 +299,11 @@ function buildFusedLineStage( { N, lineStride, elementStride, lineCount, conjuga
 			const v0 = readBuf.element( idx1 ).toVar( `v0_${ s }` );
 			const v1 = readBuf.element( idx2 ).toVar( `v1_${ s }` );
 
-			const angle = float( -Math.PI ).mul( float( lo ) ).div( float( p ) );
-			const c = cos( angle );
-			const si = sin( angle );
+			// `p` is a compile-time constant here (the JS loop is unrolled), so the twiddle
+			// stride is plain JS arithmetic -- see `buildTwiddleTable`.
+			const tw = twiddleNode.element( lo.mul( uint( halfMax / p ) ) );
+			const c = tw.x;
+			const si = tw.y;
 
 			const v1r = v1.x.mul( c ).sub( v1.y.mul( si ) );
 			const v1i = v1.x.mul( si ).add( v1.y.mul( c ) );
@@ -433,6 +473,13 @@ class FFT2D {
 		this._readNode = storage( this._attributeA, 'vec2', count ).toReadOnly();
 		this._writeNode = storage( this._attributeB, 'vec2', count );
 
+		// Shared twiddle-factor table for every butterfly stage, row and column alike -- see
+		// `buildTwiddleTable`. Built here (not lazily) since it depends only on width/height, not
+		// on the renderer/device.
+		this._halfMax = Math.max( width, height ) / 2;
+		this._twiddleAttribute = new StorageBufferAttribute( buildTwiddleTable( this._halfMax ), 2 );
+		this._twiddleNode = storage( this._twiddleAttribute, 'vec2', this._halfMax ).toReadOnly();
+
 		this._pUniform = uniform( 1, 'uint' );
 
 		this._stagesRow = Math.log2( width );
@@ -536,21 +583,21 @@ class FFT2D {
 		const buildRow = this._rowFused ? buildFusedLineStage : buildMultiDispatchStage;
 		const buildCol = this._colFused ? buildFusedLineStage : buildMultiDispatchStage;
 
-		this._rowKernel = buildRow( { N: width, lineStride: width, elementStride: 1, lineCount: height, pUniform: this._pUniform, workgroupSize }, this._readNode, this._writeNode );
+		this._rowKernel = buildRow( { N: width, lineStride: width, elementStride: 1, lineCount: height, pUniform: this._pUniform, workgroupSize, twiddleNode: this._twiddleNode, halfMax: this._halfMax }, this._readNode, this._writeNode );
 
 		// Only worth building a conjugate-input row variant when the row axis is fused; the
 		// fallback path's kernel is reused across stages via `_pUniform`, so a standalone
 		// `_conjugateKernel` pass handles that case instead.
 		if ( this._rowFused ) {
 
-			this._rowConjKernel = buildFusedLineStage( { N: width, lineStride: width, elementStride: 1, lineCount: height, conjugateInput: true }, this._readNode, this._writeNode );
+			this._rowConjKernel = buildFusedLineStage( { N: width, lineStride: width, elementStride: 1, lineCount: height, conjugateInput: true, twiddleNode: this._twiddleNode, halfMax: this._halfMax }, this._readNode, this._writeNode );
 
 		}
 
 		// After this, the buffer is `width` lines of length `height` (row-major, row length `height`).
 		this._transposeFwdKernel = buildTransposeStage( { rows: height, cols: width, tile }, this._readNode, this._writeNode );
 
-		this._colKernel = buildCol( { N: height, lineStride: height, elementStride: 1, lineCount: width, pUniform: this._pUniform, workgroupSize }, this._readNode, this._writeNode );
+		this._colKernel = buildCol( { N: height, lineStride: height, elementStride: 1, lineCount: width, pUniform: this._pUniform, workgroupSize, twiddleNode: this._twiddleNode, halfMax: this._halfMax }, this._readNode, this._writeNode );
 
 		// Transpose back to the original `height` lines of length `width` layout. This stage is
 		// always a single dispatch, so the trailing conjugate-and-scale always folds into it.
@@ -714,6 +761,7 @@ class FFT2D {
 
 		this._attributeA.dispose?.();
 		this._attributeB.dispose?.();
+		this._twiddleAttribute.dispose?.();
 
 	}
 

@@ -73,14 +73,13 @@ Two ideas stood out:
   of the WebGL/WebGPU or fragment/compute-shader difference - implemented below as a twiddle
   lookup table.
 
-- **Packing two real signals into one complex FFT.** Since a real-valued signal's spectrum is
-  conjugate-symmetric, two independent real inputs can be packed as `f + i*g` into a single
-  complex FFT and separated back out afterwards via that symmetry, roughly halving the work versus
-  running two full complex FFTs. `webgpu_fft_2d.html` runs one `FFT2D` per RGB channel (3 full
-  complex FFTs) on real-valued image data, so this would apply - but it's `FFT2D`'s
-  *caller's* concern (the example, or any real-input use case), not something `FFT2D` itself,
-  which is deliberately a generic complex-to-complex transform, should special-case. Left as a
-  possible follow-up for the example rather than done here.
+- **Real-signal conjugate symmetry, exploited for a single real image.** A real-valued signal's
+  spectrum is conjugate-symmetric, which lets *any* two real signals packed as `f + i*g` share one
+  complex FFT - initially implemented (and profiled) here as `computeForwardReal2`/
+  `computeInverseReal2`, packing two *different* real images (e.g. an RGB image's R and G
+  channels) together. That wasn't actually what was wanted, though: reverted in favor of
+  `computeForwardReal`/`computeInverseReal` below, which get the same kind of win for *one* real
+  image at a time (row-pair packing, not two-image packing) - see that section.
 
 Not applicable: bit-reversal permutation and butterfly-index precomputation. `FFT2D` already uses
 the Stockham autosort formulation (ping-ponging between two buffers each stage), which produces
@@ -106,3 +105,42 @@ these GPU-bound dispatches were never ALU-bound on `cos`/`sin` in the first plac
 have fast native transcendental units, so trading that for an extra memory indirection nets out
 close to even here. Verified correct via the forward+inverse round-trip sanity check
 (`FFT2D.sanity.tests.js`) throughout.
+
+## `computeForwardReal`/`computeInverseReal`: a real FFT for a single real image
+
+Real-valued images are `FFT2D`'s main use case (`webgpu_fft_2d.html`, and image/filter FFTs
+generally), so a genuine speedup for *one* real image, not just for pairs of them, is worth having
+in `FFT2D` itself. The technique: pack pairs of rows of the one real image into one complex signal
+half the height (`z[p] = row[2p] + i*row[2p+1]`), run one *ordinary* full 2D complex FFT on that
+half-height array (a nested half-height `FFT2D` instance, reusing every row/column/transpose
+kernel completely unchanged), then recombine that smaller spectrum into the true full spectrum
+with one cheap elementwise pass - real-signal conjugate-symmetry unmixing (the same math the
+reverted `computeForwardReal2` used, just applied to one image's own row parities instead of two
+images) plus a single radix-2 twiddle-recombine stage. `computeInverseReal` mirrors this exactly
+in reverse. See `computeForwardReal`'s docstring in `examples/jsm/gpgpu/FFT2D.js` for the full
+derivation. Verified against `computeForward` (matching spectra) and via its own forward+inverse
+round trip (`FFT2D.sanity.tests.js`).
+
+| Size | Elements | `computeForward` mean (ms) | `computeForwardReal` mean (ms) | Forward speedup | `computeInverseReal` mean (ms) |
+|---|---|---|---|---|---|
+| 256x256 | 65,536 | 0.798 | 0.818 | 0.98x | 0.770 |
+| 512x512 | 262,144 | 0.844 | 0.834 | 1.01x | 0.722 |
+| 1024x1024 | 1,048,576 | 5.226 | 2.426 | 2.15x | 2.126 |
+| 2048x2048 | 4,194,304 | 21.470 | 11.994 | 1.79x | 11.836 |
+
+(`computeInverse` isn't included as a reference column since there's no complex-input equivalent
+call to compare `computeInverseReal` against here - it's benchmarked against a real spectrum
+produced by `computeForwardReal`, which `computeInverse` can also consume, at the same cost as
+`computeForward`.)
+
+Unlike the twiddle table, this one shows a real, substantial win at the two larger sizes - up to
+~2.15x at 1024x1024, and holding at ~1.8x at 2048x2048 (both forward and inverse, as expected since
+they're structurally near-mirror-images of each other). At 256x256 and 512x512 there's no
+measurable difference: these sizes are small enough that fixed per-dispatch overhead (pipeline
+setup, command submission) dominates over actual GPU compute time, and the row-pair-packing
+approach doesn't reduce dispatch *count* (it still runs the same six passes: pack, row, transpose,
+column, transpose-back, recombine - just on half the row count) - so there's nothing for it to save
+until the workload is large enough to be genuinely compute-bound rather than overhead-bound. This
+matches expectations: FFT cost is `O(n log n)`, so halving the element count run through the
+row/transpose/column/transpose-back passes approaches (but, per the log factor, never quite
+reaches) a full 2x, and that only shows up once dispatch overhead stops dominating.

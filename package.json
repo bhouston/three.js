@@ -62,6 +62,8 @@
     "test-unit-headful": "node test/unit/puppeteer.unit.js --testPage=UnitTests.html --mode=headful",
     "test-unit-addons": "node test/unit/puppeteer.unit.js --testPage=UnitTestsAddons.html --mode=headless",
     "test-unit-addons-headful": "node test/unit/puppeteer.unit.js --testPage=UnitTestsAddons.html --mode=headful",
+    "test-unit-addons-gpu": "node test/unit/puppeteer.unit.js --testPage=UnitTestsAddonsGPU.html --mode=headless --failOnConsoleErrors",
+    "test-unit-addons-gpu-headful": "node test/unit/puppeteer.unit.js --testPage=UnitTestsAddonsGPU.html --mode=headful --failOnConsoleErrors",
     "test-e2e": "node test/e2e/puppeteer.js",
     "test-e2e-cov": "node test/e2e/check-coverage.js",
     "test-e2e-webgpu": "node test/e2e/puppeteer.js --webgpu",

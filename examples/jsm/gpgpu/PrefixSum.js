@@ -397,10 +397,39 @@ export class PrefixSum {
 	_getSpineScanShortFn() {
 
 		const { reductionBuffer } = this._storageBuffers;
+		const { numWorkgroups, _scalarNode } = this;
 
 		return Fn( () => {
 
-			reductionBuffer.element( invocationSubgroupIndex ).assign( subgroupInclusiveAdd( reductionBuffer.element( invocationSubgroupIndex ) ) );
+			// Only `numWorkgroups` of `reductionBuffer`'s elements are valid - since this path only
+			// runs when `numWorkgroups <= subgroupMinSize` (see `_handleSubgroupInfo`), a single
+			// workgroup/subgroup covers all of them. Dispatching `numWorkgroups` invocations makes
+			// the compute node insert its own bounds guard (`if ( instanceIndex >= count ) return;`).
+			// `BarrierNode`/`SubgroupFunctionNode` both set `builder.allowEarlyReturns = false` in
+			// `setup()` to suppress that guard, since WGSL disallows calling a subgroup op from
+			// inside a branch guarded that way - but `setup()` only runs once per node, and every
+			// other subgroup pass in this file (see `_getReduceFn`/`_getSpineScanLongFn`) happens to
+			// call `workgroupBarrier()` ahead of its first subgroup op, which is what actually flips
+			// the flag in time here; this function had neither, so the guard stayed enabled. An
+			// explicit barrier below (harmless - single subgroup, no shared data to synchronize)
+			// fixes that.
+			workgroupBarrier();
+
+			const value = _scalarNode( 0 ).toVar( 'value' );
+
+			If( invocationSubgroupIndex.lessThan( uint( numWorkgroups ) ), () => {
+
+				value.assign( reductionBuffer.element( invocationSubgroupIndex ) );
+
+			} );
+
+			const sum = subgroupInclusiveAdd( value ).toVar( 'sum' );
+
+			If( invocationSubgroupIndex.lessThan( uint( numWorkgroups ) ), () => {
+
+				reductionBuffer.element( invocationSubgroupIndex ).assign( sum );
+
+			} );
 
 		} )().compute( this.numWorkgroups, [ this.workgroupSize ] ).setName( 'PrefixSumSpineScanShort' );
 

@@ -35,7 +35,8 @@ export default QUnit.module( 'Addons', () => {
 					for ( let i = 0; i < count; i ++ ) keysArray[ i ] = Math.floor( Math.random() * BIN_COUNT );
 					const keysRead = storage( new StorageBufferAttribute( keysArray, 1, Uint32Array ), 'uint', count ).toReadOnly();
 
-					const sort = new CountingSort( count, () => keysRead.element( instanceIndex ), { binCount: BIN_COUNT } );
+					const sort = new CountingSort( count, { binCount: BIN_COUNT } );
+					sort.setBinNode( () => keysRead.element( instanceIndex ) );
 
 					const stats = await benchmark(
 						() => sort.compute( renderer ),

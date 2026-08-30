@@ -426,6 +426,14 @@ function buildTransposeStage( { rows, cols, tile, conjugateScaleOutput = false, 
  * await fft.computeInverse( renderer, spectrumTexture, reconstructedTexture );
  * ```
  *
+ * `computeForwardReal2`/`computeInverseReal2` transform *two* independent real-valued signals
+ * (e.g. two color channels) for about the cost of one complex transform, via the classic "pack
+ * two reals into one complex FFT" trick (real-signal spectra are conjugate-symmetric, so two of
+ * them fit into one complex spectrum with no information lost) -- see `computeForwardReal2`'s
+ * docstring for the details. Worth using whenever there are two real-valued inputs to transform
+ * together; not applicable to already-complex data or a lone odd-channel-out input, which should
+ * still use `computeForward`/`computeInverse`.
+ *
  * @three_import import { FFT2D } from 'three/addons/gpgpu/FFT2D.js';
  */
 class FFT2D {
@@ -711,6 +719,200 @@ class FFT2D {
 	}
 
 	/**
+	 * Packs two real-valued textures' `.r` channels into whichever ping-pong buffer currently
+	 * holds the live data as one complex signal, `z = a + i*b`, entirely on the GPU -- the loading
+	 * half of `computeForwardReal2`'s "pack two reals into one complex FFT" trick (see its
+	 * docstring). Textures are sampled with an exact texel fetch, so both must be exactly `width`
+	 * by `height`.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 * @param {Texture} sourceTextureA
+	 * @param {Texture} sourceTextureB
+	 */
+	_loadReal2( renderer, sourceTextureA, sourceTextureB ) {
+
+		this._ensureButterfliesBuilt( renderer );
+
+		if ( this._loadReal2Kernel === undefined ) {
+
+			const width = this.width;
+			this._loadReal2TextureNodeA = texture( sourceTextureA );
+			this._loadReal2TextureNodeB = texture( sourceTextureB );
+
+			this._loadReal2Kernel = Fn( () => {
+
+				const x = instanceIndex.mod( uint( width ) );
+				const y = instanceIndex.div( uint( width ) );
+				const coord = ivec2( int( x ), int( y ) );
+
+				const a = this._loadReal2TextureNodeA.load( coord ).r;
+				const b = this._loadReal2TextureNodeB.load( coord ).r;
+
+				this._writeNode.element( instanceIndex ).assign( vec2( a, b ) );
+
+			} )().compute( this.count, [ this._workgroupSize ] );
+
+		}
+
+		this._loadReal2TextureNodeA.value = sourceTextureA;
+		this._loadReal2TextureNodeB.value = sourceTextureB;
+		this._writeNode.value = this._current === 'A' ? this._attributeA : this._attributeB;
+
+		renderer.compute( this._loadReal2Kernel );
+
+	}
+
+	/**
+	 * Splits whichever ping-pong buffer currently holds the live data -- `Z`, the spectrum of the
+	 * packed complex signal `z = a + i*b` (see `_loadReal2`) -- back into the two real signals'
+	 * own complex spectra `A`/`B`, using real-signal conjugate (Hermitian) symmetry:
+	 * `A[k] = (Z[k] + conj(Z[-k])) / 2`, `B[k] = -i * (Z[k] - conj(Z[-k])) / 2`, where `-k` means
+	 * `(width - kx) mod width, (height - ky) mod height` -- point reflection through the origin,
+	 * wrapping. The DC and Nyquist bins are self-mirrored (`-k == k`); the same formula still
+	 * produces the right (purely real-valued-input-implied) answer there without special-casing.
+	 * The store half of `computeForwardReal2`'s packing trick.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 * @param {StorageTexture} destinationTextureA - Must be exactly `width` by `height` in size.
+	 * @param {StorageTexture} destinationTextureB - Must be exactly `width` by `height` in size.
+	 */
+	_storeSplitReal2( renderer, destinationTextureA, destinationTextureB ) {
+
+		this._ensureButterfliesBuilt( renderer );
+
+		if ( this._storeSplitReal2Kernel === undefined ) {
+
+			const width = this.width;
+			const height = this.height;
+			this._storeSplitReal2TextureNodeA = storageTexture( destinationTextureA ).setAccess( NodeAccess.WRITE_ONLY );
+			this._storeSplitReal2TextureNodeB = storageTexture( destinationTextureB ).setAccess( NodeAccess.WRITE_ONLY );
+
+			this._storeSplitReal2Kernel = Fn( () => {
+
+				const x = instanceIndex.mod( uint( width ) );
+				const y = instanceIndex.div( uint( width ) );
+
+				const mx = uint( width ).sub( x ).mod( uint( width ) );
+				const my = uint( height ).sub( y ).mod( uint( height ) );
+				const mirrorIndex = my.mul( uint( width ) ).add( mx );
+
+				const z = this._readNode.element( instanceIndex ).toVar( 'z' ); // Z[k]
+				const zm = this._readNode.element( mirrorIndex ).toVar( 'zm' ); // Z[-k], not yet conjugated
+
+				// a = (z + conj(zm)) / 2; conj(zm) only negates zm's y component, folded in directly.
+				const a = vec2( z.x.add( zm.x ), z.y.sub( zm.y ) ).mul( 0.5 );
+				// b = -i * (z - conj(zm)) / 2, expanded the same way.
+				const b = vec2( z.y.add( zm.y ), zm.x.sub( z.x ) ).mul( 0.5 );
+
+				textureStore( this._storeSplitReal2TextureNodeA, uvec2( x, y ), vec4( a.x, a.y, 0, 1 ) );
+				textureStore( this._storeSplitReal2TextureNodeB, uvec2( x, y ), vec4( b.x, b.y, 0, 1 ) );
+
+			} )().compute( this.count, [ this._workgroupSize ] );
+
+		}
+
+		this._storeSplitReal2TextureNodeA.value = destinationTextureA;
+		this._storeSplitReal2TextureNodeB.value = destinationTextureB;
+		this._readNode.value = this._current === 'A' ? this._attributeA : this._attributeB;
+
+		renderer.compute( this._storeSplitReal2Kernel );
+
+	}
+
+	/**
+	 * Combines two complex spectra `X`/`Y` into whichever ping-pong buffer currently holds the
+	 * live data as one composite spectrum, `W = X + i*Y`, entirely on the GPU -- the loading half
+	 * of `computeInverseReal2`'s packing trick (see `computeForwardReal2`'s docstring: by
+	 * linearity, `ifft(X + i*Y) = ifft(X) + i*ifft(Y) = a + i*b`, both real, so a *normal* inverse
+	 * FFT of `W` directly produces both real signals at once, no unmixing needed on the way out --
+	 * see `_storeSplitReal`). Textures are sampled with an exact texel fetch, so both must be
+	 * exactly `width` by `height`.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 * @param {Texture} sourceTextureA - `X`, `width` by `height`, with at least 2 channels.
+	 * @param {Texture} sourceTextureB - `Y`, `width` by `height`, with at least 2 channels.
+	 */
+	_loadCombineReal2( renderer, sourceTextureA, sourceTextureB ) {
+
+		this._ensureButterfliesBuilt( renderer );
+
+		if ( this._loadCombineReal2Kernel === undefined ) {
+
+			const width = this.width;
+			this._loadCombineReal2TextureNodeA = texture( sourceTextureA );
+			this._loadCombineReal2TextureNodeB = texture( sourceTextureB );
+
+			this._loadCombineReal2Kernel = Fn( () => {
+
+				const x = instanceIndex.mod( uint( width ) );
+				const y = instanceIndex.div( uint( width ) );
+				const coord = ivec2( int( x ), int( y ) );
+
+				const xv = this._loadCombineReal2TextureNodeA.load( coord ).rg;
+				const yv = this._loadCombineReal2TextureNodeB.load( coord ).rg;
+
+				// w = x + i*y = (xv.x - yv.y) + i*(xv.y + yv.x)
+				this._writeNode.element( instanceIndex ).assign( vec2( xv.x.sub( yv.y ), xv.y.add( yv.x ) ) );
+
+			} )().compute( this.count, [ this._workgroupSize ] );
+
+		}
+
+		this._loadCombineReal2TextureNodeA.value = sourceTextureA;
+		this._loadCombineReal2TextureNodeB.value = sourceTextureB;
+		this._writeNode.value = this._current === 'A' ? this._attributeA : this._attributeB;
+
+		renderer.compute( this._loadCombineReal2Kernel );
+
+	}
+
+	/**
+	 * Writes whichever ping-pong buffer currently holds the live data -- `w = a + i*b`, both
+	 * real-valued (see `_loadCombineReal2`) -- into two real-valued destination textures' `.r`
+	 * channels, `Re(w)` and `Im(w)` respectively, leaving other channels as `(0, 1)`. The store
+	 * half of `computeInverseReal2`'s packing trick.
+	 *
+	 * @private
+	 * @param {Renderer} renderer
+	 * @param {StorageTexture} destinationTextureA - Must be exactly `width` by `height` in size.
+	 * @param {StorageTexture} destinationTextureB - Must be exactly `width` by `height` in size.
+	 */
+	_storeSplitReal( renderer, destinationTextureA, destinationTextureB ) {
+
+		this._ensureButterfliesBuilt( renderer );
+
+		if ( this._storeSplitRealKernel === undefined ) {
+
+			const width = this.width;
+			this._storeSplitRealTextureNodeA = storageTexture( destinationTextureA ).setAccess( NodeAccess.WRITE_ONLY );
+			this._storeSplitRealTextureNodeB = storageTexture( destinationTextureB ).setAccess( NodeAccess.WRITE_ONLY );
+
+			this._storeSplitRealKernel = Fn( () => {
+
+				const x = instanceIndex.mod( uint( width ) );
+				const y = instanceIndex.div( uint( width ) );
+
+				const w = this._readNode.element( instanceIndex );
+
+				textureStore( this._storeSplitRealTextureNodeA, uvec2( x, y ), vec4( w.x, 0, 0, 1 ) );
+				textureStore( this._storeSplitRealTextureNodeB, uvec2( x, y ), vec4( w.y, 0, 0, 1 ) );
+
+			} )().compute( this.count, [ this._workgroupSize ] );
+
+		}
+
+		this._storeSplitRealTextureNodeA.value = destinationTextureA;
+		this._storeSplitRealTextureNodeB.value = destinationTextureB;
+		this._readNode.value = this._current === 'A' ? this._attributeA : this._attributeB;
+
+		renderer.compute( this._storeSplitRealKernel );
+
+	}
+
+	/**
 	 * Computes the forward 2D FFT: reads `sourceTexture`'s `.rg` channels as `width * height`
 	 * complex numbers, transforms them, and writes the result into `destinationTexture`'s `.rg`
 	 * channels.
@@ -724,6 +926,31 @@ class FFT2D {
 		this._load( renderer, sourceTexture );
 		this._runButterflyPasses( renderer );
 		this._store( renderer, destinationTexture );
+
+	}
+
+	/**
+	 * Computes two forward 2D FFTs of real-valued inputs for the price of about one, via the
+	 * classic "pack two reals into one complex FFT" trick: reads `sourceTextureA`/`sourceTextureB`
+	 * `.r` channels as two `width * height` real-valued signals `a`/`b`, packs them as one complex
+	 * signal `z = a + i*b`, runs a single forward transform on `z`, then splits the result `Z`
+	 * back into `a`'s and `b`'s own complex spectra using real-signal conjugate symmetry (see
+	 * `_storeSplitReal2`), writing them into `destinationTextureA`/`destinationTextureB`'s `.rg`
+	 * channels. About twice as fast as calling `computeForward` twice for two independent
+	 * real-valued inputs (e.g. two color channels of an image) -- not applicable to
+	 * already-complex or single odd-channel-out data, which should still use `computeForward`.
+	 *
+	 * @param {Renderer} renderer
+	 * @param {Texture} sourceTextureA - A float texture, `width` by `height`, real-valued in `.r`.
+	 * @param {Texture} sourceTextureB - A float texture, `width` by `height`, real-valued in `.r`.
+	 * @param {StorageTexture} destinationTextureA - A float `StorageTexture`, `width` by `height`, with at least 2 channels.
+	 * @param {StorageTexture} destinationTextureB - A float `StorageTexture`, `width` by `height`, with at least 2 channels.
+	 */
+	computeForwardReal2( renderer, sourceTextureA, sourceTextureB, destinationTextureA, destinationTextureB ) {
+
+		this._loadReal2( renderer, sourceTextureA, sourceTextureB );
+		this._runButterflyPasses( renderer );
+		this._storeSplitReal2( renderer, destinationTextureA, destinationTextureB );
 
 	}
 
@@ -751,6 +978,43 @@ class FFT2D {
 		this._runButterflyPasses( renderer, true );
 
 		this._store( renderer, destinationTexture );
+
+	}
+
+	/**
+	 * Computes two inverse 2D FFTs for the price of about one, the counterpart to
+	 * `computeForwardReal2`: reads `sourceTextureA`/`sourceTextureB`'s `.rg` channels as two
+	 * complex spectra `X`/`Y` (typically produced by `computeForwardReal2`, or any pair of spectra
+	 * known to both be real-valued in the spatial domain -- e.g. after independently filtering two
+	 * such spectra), combines them into one composite spectrum `W = X + i*Y`, and runs a single
+	 * *normal* inverse transform on it. By linearity `ifft(W) = ifft(X) + i*ifft(Y) = a + i*b`,
+	 * both real since `X`/`Y` are real-signal spectra -- so `Re`/`Im` of that one inverse
+	 * transform's result are `a`/`b` directly, no unmixing needed on the way out (unlike
+	 * `computeForwardReal2`'s split step, which does need real-signal conjugate symmetry to
+	 * separate `A`/`B` out of `Z`). Writes `a`/`b` into `destinationTextureA`/`destinationTextureB`'s
+	 * `.r` channels.
+	 *
+	 * @param {Renderer} renderer
+	 * @param {Texture} sourceTextureA - `X`, a float texture, `width` by `height`, with at least 2 channels.
+	 * @param {Texture} sourceTextureB - `Y`, a float texture, `width` by `height`, with at least 2 channels.
+	 * @param {StorageTexture} destinationTextureA - A float `StorageTexture`, `width` by `height`, with at least 2 channels.
+	 * @param {StorageTexture} destinationTextureB - A float `StorageTexture`, `width` by `height`, with at least 2 channels.
+	 */
+	computeInverseReal2( renderer, sourceTextureA, sourceTextureB, destinationTextureA, destinationTextureB ) {
+
+		this._ensureButterfliesBuilt( renderer );
+
+		this._loadCombineReal2( renderer, sourceTextureA, sourceTextureB );
+
+		if ( ! this._rowFused ) {
+
+			this._dispatchPingPong( renderer, this._conjugateKernel );
+
+		}
+
+		this._runButterflyPasses( renderer, true );
+
+		this._storeSplitReal( renderer, destinationTextureA, destinationTextureB );
 
 	}
 

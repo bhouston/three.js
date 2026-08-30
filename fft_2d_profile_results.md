@@ -56,3 +56,53 @@ resolves to 256, the same value the old hardcoded constant used. The change is a
 correctness one rather than a speedup here - it removes a silent fallback that could pick an
 invalid workgroup size on a device with smaller real limits (e.g. some mobile GPUs), and would
 have masked that with wrong output instead of a clear error.
+
+## Studying `Token-Gremlin/natural-disasters`' `OceanFFT.js`
+
+That implementation is a WebGL2 fragment-shader Cooley-Tukey FFT (no compute shaders, so its
+workgroup-sizing concerns don't transfer at all) built for real-time ocean simulation, with a
+different problem shape than a generic complex 2D FFT: it always runs a small, fixed set of
+transform sizes repeatedly every frame, and its input is always real-valued (a height/slope
+field), never arbitrary complex data.
+
+Two ideas stood out:
+
+- **Precomputed twiddle-factor + butterfly-index texture.** It precomputes a `(stages x N) x 4`
+  texture of twiddle factors and shuffled indices on the CPU once, then every butterfly stage is
+  just a texture fetch, no per-invocation `cos`/`sin`. This one is directly applicable regardless
+  of the WebGL/WebGPU or fragment/compute-shader difference - implemented below as a twiddle
+  lookup table.
+
+- **Packing two real signals into one complex FFT.** Since a real-valued signal's spectrum is
+  conjugate-symmetric, two independent real inputs can be packed as `f + i*g` into a single
+  complex FFT and separated back out afterwards via that symmetry, roughly halving the work versus
+  running two full complex FFTs. `webgpu_fft_2d.html` runs one `FFT2D` per RGB channel (3 full
+  complex FFTs) on real-valued image data, so this would apply - but it's `FFT2D`'s
+  *caller's* concern (the example, or any real-input use case), not something `FFT2D` itself,
+  which is deliberately a generic complex-to-complex transform, should special-case. Left as a
+  possible follow-up for the example rather than done here.
+
+Not applicable: bit-reversal permutation and butterfly-index precomputation. `FFT2D` already uses
+the Stockham autosort formulation (ping-ponging between two buffers each stage), which produces
+correctly-ordered output without a separate bit-reversal pass - the exact problem that technique
+solves for the classic Cooley-Tukey layout `OceanFFT.js` uses.
+
+## After the twiddle-factor lookup table
+
+Implemented the first idea (see `examples/jsm/gpgpu/FFT2D.js`'s `buildTwiddleTable`): every
+stage's `cos`/`sin` pair is now a lookup into a `max(width,height)/2`-entry table built once per
+`FFT2D` instance, shared by every stage, row and column alike, instead of two transcendental calls
+per invocation per stage.
+
+| Size | Elements | Mean (ms) | Median (ms) | Min (ms) | Max (ms) |
+|---|---|---|---|---|---|
+| 256x256 | 65,536 | 0.855 | 0.800 | 0.600 | 2.700 |
+| 512x512 | 262,144 | 1.173 | 1.100 | 1.000 | 1.900 |
+| 1024x1024 | 1,048,576 | 5.083 | 5.075 | 4.950 | 5.650 |
+| 2048x2048 | 4,194,304 | 20.999 | 20.750 | 20.250 | 22.900 |
+
+(Mean of 3 runs at each size.) No measurable difference from the adaptive-sizing numbers above -
+these GPU-bound dispatches were never ALU-bound on `cos`/`sin` in the first place; modern GPUs
+have fast native transcendental units, so trading that for an extra memory indirection nets out
+close to even here. Verified correct via the forward+inverse round-trip sanity check
+(`FFT2D.sanity.tests.js`) throughout.

@@ -28,7 +28,7 @@ const yellow = color( 33 );
 const blue = color( 34 );
 const cyan = color( 36 );
 
-const captureConsole = ( page ) => {
+const captureConsole = ( page, consoleErrors ) => {
 
 	const colors = {
 		LOG: white,
@@ -43,6 +43,26 @@ const captureConsole = ( page ) => {
 		const color = colors[ type ] || blue;
 
 		color( `${type}: ${message.text()} ` );
+
+		// Chrome's WebGPU implementation reports some errors (e.g. a WGSL validation error from an
+		// invalid compute pipeline) only through the DevTools console, not through any channel a
+		// page-JS test can observe (confirmed: neither `window.console.error`,
+		// `addEventListener( 'uncapturederror', ... )`, nor `device.onuncapturederror` ever fire
+		// for them here) - so a QUnit assertion inside the page can't catch a rejected dispatch
+		// that happens not to also produce a numerically wrong result. Tracking ERROR-type console
+		// messages out here, at the puppeteer/CDP level, is currently the only way to catch those -
+		// see the `--failOnConsoleErrors` flag below.
+		//
+		// Caveat, also confirmed empirically: even this is not fully reliable. The same WGSL
+		// validation error that reliably appeared here on a first run stopped appearing on later
+		// runs of the exact same buggy shader (with a completely fresh `--userDataDir`, ruling out
+		// puppeteer's own profile as the cause) - almost certainly some GPU-driver/ANGLE-level
+		// shader-validation cache outside this script's control, deduplicating an identical
+		// message rather than genuinely not occurring (the dispatch was still visibly wrong in the
+		// numeric output every time). So `--failOnConsoleErrors` is a best-effort backstop, not a
+		// guaranteed catch - correctness assertions on the actual computed values remain the
+		// reliable way to catch a rejected dispatch; this can supplement them, not replace them.
+		if ( type === 'ERROR' ) consoleErrors.push( message.text() );
 
 	} );
 
@@ -82,6 +102,15 @@ function main() {
 
 		}
 
+		// Opt-in per test page (not a default): fails the run if the browser logged any console
+		// errors, on top of the normal QUnit pass/fail count. Off by default because three.js's
+		// own library code intentionally calls console.warn/error in a number of places
+		// (deprecation notices, validation warnings - see src/utils.js), and some existing tests
+		// exercise that as expected behavior; enabling this blindly for every test page would risk
+		// failing runs that are actually fine. Only turn it on for a page that's been checked to
+		// be console-clean when passing.
+		const failOnConsoleErrors = process.argv.includes( '--failOnConsoleErrors' );
+
 		browser = await puppeteer.launch( {
 			headless: testMode === 'headless',
 			args: flags,
@@ -105,7 +134,8 @@ function main() {
 
 		const page = await browser.newPage();
 
-		captureConsole( page );
+		const consoleErrors = [];
+		captureConsole( page, consoleErrors );
 
 		const testUrl = `http://localhost:${port}/test/unit/${testPage}`;
 
@@ -136,8 +166,16 @@ function main() {
 		cyan( `# todo ${stats.todo}` );
 		red( `# fail ${stats.failed}` );
 
+		if ( failOnConsoleErrors ) {
+
+			red( `# console errors ${consoleErrors.length}` );
+
+		}
+
+		const failed = stats.failed > 0 || ( failOnConsoleErrors && consoleErrors.length > 0 );
+
 		// Keep the process running if testing in headful mode, otherwise close it.
-		testMode === 'headless' && close( stats.failed > 0 ? 1 : 0 );
+		testMode === 'headless' && close( failed ? 1 : 0 );
 
 	} )();
 

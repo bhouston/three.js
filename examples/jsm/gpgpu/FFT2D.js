@@ -6,45 +6,78 @@ import {
 } from 'three/tsl';
 
 /**
- * Default workgroup size for elementwise/fallback kernels. 256 is the WebGPU spec's
- * guaranteed-minimum invocation/workgroup-size limit and a multiple of every real-world
- * subgroup width, so it's safe and efficient on any conformant device.
- *
- * @type {number}
- */
-const DEFAULT_WORKGROUP_SIZE = 256;
-
-/**
- * WebGPU's guaranteed-minimum compute limits, used as a fallback when a device's real limits
- * aren't available yet.
- *
- * @type {{maxComputeInvocationsPerWorkgroup: number, maxComputeWorkgroupSizeX: number, maxComputeWorkgroupSizeY: number, maxComputeWorkgroupStorageSize: number}}
- */
-const MINIMUM_COMPUTE_LIMITS = {
-	maxComputeInvocationsPerWorkgroup: 256,
-	maxComputeWorkgroupSizeX: 256,
-	maxComputeWorkgroupSizeY: 256,
-	maxComputeWorkgroupStorageSize: 16384
-};
-
-/**
- * Reads the real `GPUDevice.limits` behind a renderer, falling back to `MINIMUM_COMPUTE_LIMITS`
- * if unavailable.
+ * Reads a named compute limit off `renderer`'s real WebGPU device, throwing rather than silently
+ * falling back to a guessed/hardcoded value if it's unavailable. `_ensureButterfliesBuilt` (and
+ * the other call sites below) only run after `renderer.init()` has resolved, so the device is
+ * expected to be present; a throw here means this renderer isn't backed by WebGPU.
  *
  * @param {Renderer} renderer
- * @returns {Object} A `GPUSupportedLimits`-shaped object.
+ * @param {string} name - e.g. `'maxComputeInvocationsPerWorkgroup'`.
+ * @returns {number}
  */
-function getComputeLimits( renderer ) {
+function requireLimit( renderer, name ) {
 
 	const backend = renderer.backend;
 
-	if ( backend.isWebGPUBackend === true && backend.device !== null ) {
+	if ( backend.isWebGPUBackend !== true || backend.device === null ) {
 
-		return backend.device.limits;
+		throw new Error( 'FFT2D requires a WebGPU renderer with an initialized device.' );
 
 	}
 
-	return MINIMUM_COMPUTE_LIMITS;
+	const value = backend.device.limits[ name ];
+
+	if ( typeof value !== 'number' ) {
+
+		throw new Error( `FFT2D: renderer.backend.device.limits.${ name } is not a number (got ${ value }).` );
+
+	}
+
+	return value;
+
+}
+
+/**
+ * Reads all of the real `GPUDevice.limits` this module sizes kernels against.
+ *
+ * @param {Renderer} renderer
+ * @returns {{maxComputeInvocationsPerWorkgroup: number, maxComputeWorkgroupSizeX: number, maxComputeWorkgroupSizeY: number, maxComputeWorkgroupStorageSize: number}}
+ */
+function getComputeLimits( renderer ) {
+
+	return {
+		maxComputeInvocationsPerWorkgroup: requireLimit( renderer, 'maxComputeInvocationsPerWorkgroup' ),
+		maxComputeWorkgroupSizeX: requireLimit( renderer, 'maxComputeWorkgroupSizeX' ),
+		maxComputeWorkgroupSizeY: requireLimit( renderer, 'maxComputeWorkgroupSizeY' ),
+		maxComputeWorkgroupStorageSize: requireLimit( renderer, 'maxComputeWorkgroupStorageSize' )
+	};
+
+}
+
+/**
+ * Picks a workgroup size for elementwise/fallback kernels (the conjugate/load/store passes and
+ * `buildMultiDispatchStage`'s per-stage dispatch): the largest power of two, up to `preferred`,
+ * that fits the device's actual invocation limits. There's no correctness requirement on this
+ * size (unlike the fused/transpose kernels' shared-memory-derived sizes) -- `preferred` is just a
+ * reasonable upper bound picked to keep occupancy high on typical hardware without relying on it.
+ *
+ * @param {Object} limits - A `GPUSupportedLimits`-shaped object, from `getComputeLimits`.
+ * @param {number} [preferred=256]
+ * @returns {number}
+ */
+function pickWorkgroupSize( limits, preferred = 256 ) {
+
+	const maxInvocations = Math.min( limits.maxComputeInvocationsPerWorkgroup, limits.maxComputeWorkgroupSizeX );
+
+	let size = 1;
+
+	while ( size * 2 <= maxInvocations && size * 2 <= preferred ) {
+
+		size *= 2;
+
+	}
+
+	return size;
 
 }
 
@@ -113,11 +146,12 @@ function computeTransposeTileSize( limits ) {
  * @param {number} params.elementStride - Address increment between consecutive elements of a line (always `1` here).
  * @param {number} params.lineCount - Number of lines transformed in parallel.
  * @param {Node<uint>} params.pUniform - Per-stage span uniform (doubles every stage, 1..N/2).
+ * @param {number} workgroupSize - Workgroup size to dispatch with (see `pickWorkgroupSize`).
  * @param {StorageBufferNode} readNode - Buffer to read from.
  * @param {StorageBufferNode} writeNode - Buffer to write to.
- * @returns {Function} A parameterless TSL function, `.compute()`-d with `DEFAULT_WORKGROUP_SIZE`.
+ * @returns {Function} A parameterless TSL function, `.compute()`-d with `workgroupSize`.
  */
-function buildMultiDispatchStage( { N, lineStride, elementStride, lineCount, pUniform }, readNode, writeNode ) {
+function buildMultiDispatchStage( { N, lineStride, elementStride, lineCount, pUniform, workgroupSize }, readNode, writeNode ) {
 
 	const half = N / 2;
 	const dispatchCount = half * lineCount;
@@ -158,7 +192,7 @@ function buildMultiDispatchStage( { N, lineStride, elementStride, lineCount, pUn
 		writeNode.element( j ).assign( out0 );
 		writeNode.element( j2 ).assign( out1 );
 
-	} )().compute( dispatchCount, [ DEFAULT_WORKGROUP_SIZE ] );
+	} )().compute( dispatchCount, [ workgroupSize ] );
 
 }
 
@@ -404,16 +438,11 @@ class FFT2D {
 		this._stagesRow = Math.log2( width );
 		this._stagesCol = Math.log2( height );
 
-		// Butterfly kernels are built lazily in `_ensureButterfliesBuilt` since the fused/
-		// fallback choice needs the real device's compute limits, not known until `renderer.init()`.
+		// Butterfly kernels (and the elementwise conjugate/load/store ones below) are all built
+		// lazily in `_ensureButterfliesBuilt` since sizing any of them -- fused-vs-fallback choice,
+		// workgroup size -- needs the real device's compute limits, not known until
+		// `renderer.init()`, which the constructor doesn't have access to.
 		this._built = false;
-
-		this._conjugateKernel = Fn( () => {
-
-			const v = this._readNode.element( instanceIndex ).toVar();
-			this._writeNode.element( instanceIndex ).assign( vec2( v.x, v.y.negate() ) );
-
-		} )().compute( count, [ DEFAULT_WORKGROUP_SIZE ] );
 
 		this._current = 'A';
 
@@ -467,10 +496,13 @@ class FFT2D {
 	}
 
 	/**
-	 * Builds the row/transpose/column/transpose-back kernels on first use, choosing -- per axis
-	 * -- between `buildFusedLineStage` and `buildMultiDispatchStage` based on the real device's
-	 * compute limits. Deferred out of the constructor since the constructor doesn't take a
-	 * renderer. No-op after the first call.
+	 * Builds the row/transpose/column/transpose-back kernels (and the standalone elementwise
+	 * conjugate kernel) on first use, choosing -- per axis -- between `buildFusedLineStage` and
+	 * `buildMultiDispatchStage`, and sizing every workgroup, entirely from the real device's
+	 * compute limits (`getComputeLimits`/`pickWorkgroupSize`), with no hardcoded fallback. Also
+	 * called (as a no-op after the first time) from `_load`/`_store`, since those may run before
+	 * `computeForward` reaches the butterfly passes. Deferred out of the constructor since the
+	 * constructor doesn't take a renderer.
 	 *
 	 * @private
 	 * @param {Renderer} renderer
@@ -487,6 +519,16 @@ class FFT2D {
 		const limits = getComputeLimits( renderer );
 		const maxFusedLineLength = computeMaxFusedLineLength( limits );
 		const tile = computeTransposeTileSize( limits );
+		const workgroupSize = pickWorkgroupSize( limits );
+
+		this._workgroupSize = workgroupSize;
+
+		this._conjugateKernel = Fn( () => {
+
+			const v = this._readNode.element( instanceIndex ).toVar();
+			this._writeNode.element( instanceIndex ).assign( vec2( v.x, v.y.negate() ) );
+
+		} )().compute( count, [ workgroupSize ] );
 
 		this._rowFused = width <= maxFusedLineLength;
 		this._colFused = height <= maxFusedLineLength;
@@ -494,7 +536,7 @@ class FFT2D {
 		const buildRow = this._rowFused ? buildFusedLineStage : buildMultiDispatchStage;
 		const buildCol = this._colFused ? buildFusedLineStage : buildMultiDispatchStage;
 
-		this._rowKernel = buildRow( { N: width, lineStride: width, elementStride: 1, lineCount: height, pUniform: this._pUniform }, this._readNode, this._writeNode );
+		this._rowKernel = buildRow( { N: width, lineStride: width, elementStride: 1, lineCount: height, pUniform: this._pUniform, workgroupSize }, this._readNode, this._writeNode );
 
 		// Only worth building a conjugate-input row variant when the row axis is fused; the
 		// fallback path's kernel is reused across stages via `_pUniform`, so a standalone
@@ -508,7 +550,7 @@ class FFT2D {
 		// After this, the buffer is `width` lines of length `height` (row-major, row length `height`).
 		this._transposeFwdKernel = buildTransposeStage( { rows: height, cols: width, tile }, this._readNode, this._writeNode );
 
-		this._colKernel = buildCol( { N: height, lineStride: height, elementStride: 1, lineCount: width, pUniform: this._pUniform }, this._readNode, this._writeNode );
+		this._colKernel = buildCol( { N: height, lineStride: height, elementStride: 1, lineCount: width, pUniform: this._pUniform, workgroupSize }, this._readNode, this._writeNode );
 
 		// Transpose back to the original `height` lines of length `width` layout. This stage is
 		// always a single dispatch, so the trailing conjugate-and-scale always folds into it.
@@ -559,6 +601,8 @@ class FFT2D {
 	 */
 	_load( renderer, sourceTexture ) {
 
+		this._ensureButterfliesBuilt( renderer );
+
 		if ( this._loadKernel === undefined ) {
 
 			const width = this.width;
@@ -571,7 +615,7 @@ class FFT2D {
 
 				this._writeNode.element( instanceIndex ).assign( this._loadTextureNode.load( ivec2( int( x ), int( y ) ) ).rg );
 
-			} )().compute( this.count, [ DEFAULT_WORKGROUP_SIZE ] );
+			} )().compute( this.count, [ this._workgroupSize ] );
 
 		}
 
@@ -592,6 +636,8 @@ class FFT2D {
 	 */
 	_store( renderer, destinationTexture ) {
 
+		this._ensureButterfliesBuilt( renderer );
+
 		if ( this._storeKernel === undefined ) {
 
 			const width = this.width;
@@ -606,7 +652,7 @@ class FFT2D {
 
 				textureStore( this._storeTextureNode, uvec2( x, y ), vec4( v.x, v.y, 0, 1 ) );
 
-			} )().compute( this.count, [ DEFAULT_WORKGROUP_SIZE ] );
+			} )().compute( this.count, [ this._workgroupSize ] );
 
 		}
 

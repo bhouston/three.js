@@ -23,11 +23,38 @@ export async function isWebGPUAvailable() {
 }
 
 /**
- * @returns {Promise<WebGPURenderer>} A real, initialized WebGPURenderer.
+ * A `WebGPUBackend`'s device defaults to `requiredLimits: {}`, which per the WebGPU spec gives the
+ * device only the guaranteed-minimum limits (e.g. 256 max compute invocations per workgroup, 16KB
+ * max workgroup storage) - not the adapter's real, usually much higher, limits (e.g. 1024/32KB on
+ * an Apple M-series GPU). This branch's `PrefixSum`/`CountingSort`/`BitonicSort` use fixed
+ * workgroup sizes rather than reading device limits, so it has no measurable effect here - but
+ * matching the other branches' perf harness avoids silently comparing different device
+ * configurations if that ever changes.
+ *
+ * @returns {Promise<Object>} A plain object with every limit the adapter actually supports,
+ * suitable for `requiredLimits`. (`{ ...adapter.limits }` doesn't work - `GPUSupportedLimits`'
+ * properties are getters on its prototype, not its own enumerable properties, so spread/
+ * `Object.assign` silently copy nothing; a `for...in` loop is needed to actually read them.)
+ */
+async function getAdapterLimits() {
+
+	const adapter = await navigator.gpu.requestAdapter();
+	const limits = {};
+
+	for ( const key in adapter.limits ) limits[ key ] = adapter.limits[ key ];
+
+	return limits;
+
+}
+
+/**
+ * @returns {Promise<WebGPURenderer>} A real, initialized WebGPURenderer, requested with the
+ * adapter's real limits (see {@link getAdapterLimits}) rather than the WebGPU spec's
+ * guaranteed-minimum defaults.
  */
 export async function createRenderer() {
 
-	const renderer = new WebGPURenderer();
+	const renderer = new WebGPURenderer( { requiredLimits: await getAdapterLimits() } );
 	await renderer.init();
 	return renderer;
 

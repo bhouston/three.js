@@ -198,6 +198,30 @@
 				filterRotation: 0
 			};
 
+			// A GPUDevice, by default, only gets WebGPU's spec-guaranteed *minimum* limits
+			// (requestDevice's requiredLimits defaults to {}) -- not this GPU's real capabilities.
+			// FFT2D sizes its workgroups/shared-memory usage off the real device.limits (see its
+			// getComputeLimits), so it only actually adapts to this hardware if the renderer's
+			// device was asked for that hardware's real limits. Requests a throwaway adapter just
+			// to read them, then returns them as a requiredLimits dict WebGPURenderer's own
+			// internal requestAdapter/requestDevice call can pass straight through -- copied
+			// field-by-field since a GPUSupportedLimits instance isn't itself a plain object
+			// requiredLimits can use directly.
+			async function requestMaxLimits() {
+
+				const adapter = await navigator.gpu.requestAdapter();
+				const requiredLimits = {};
+
+				for ( const name in adapter.limits ) {
+
+					requiredLimits[ name ] = adapter.limits[ name ];
+
+				}
+
+				return requiredLimits;
+
+			}
+
 			init();
 
 			async function init() {
@@ -237,7 +261,7 @@
 					labelOriginal, labelFilter, labelSpectrum, labelFilterSpectrum, labelConvolution, labelReconstructed
 				);
 
-				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer = new THREE.WebGPURenderer( { antialias: true, requiredLimits: await requestMaxLimits() } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.inspector = new Inspector();

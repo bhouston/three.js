@@ -23,11 +23,43 @@ export async function isWebGPUAvailable() {
 }
 
 /**
- * @returns {Promise<WebGPURenderer>} A real, initialized WebGPURenderer.
+ * A `GPUDevice`, by default, only gets WebGPU's spec-guaranteed *minimum* limits
+ * (`requestDevice`'s `requiredLimits` defaults to `{}`, i.e. "give me the floor") -- not the real
+ * adapter's actual capabilities. Code that reads `renderer.backend.device.limits` to size itself
+ * adaptively (see `FFT2D.js`'s `getComputeLimits`) only really adapts to real hardware if the
+ * renderer's device was asked for that hardware's real limits. Requests a throwaway adapter just
+ * to read them, then returns them as a `requiredLimits` dict `requestDevice` (via
+ * `WebGPURenderer`'s own internal `requestAdapter`/`requestDevice` call) can pass straight
+ * through -- copied field-by-field since a `GPUSupportedLimits` instance isn't itself a plain
+ * object `requiredLimits` can use directly.
+ *
+ * @returns {Promise<Object>}
+ */
+async function requestMaxLimits() {
+
+	const adapter = await navigator.gpu.requestAdapter();
+	const requiredLimits = {};
+
+	for ( const name in adapter.limits ) {
+
+		requiredLimits[ name ] = adapter.limits[ name ];
+
+	}
+
+	return requiredLimits;
+
+}
+
+/**
+ * @returns {Promise<WebGPURenderer>} A real, initialized WebGPURenderer, requesting the adapter's
+ * real supported limits rather than settling for WebGPU's spec-default (minimum-guaranteed) ones
+ * -- see `requestMaxLimits`.
  */
 export async function createRenderer() {
 
-	const renderer = new WebGPURenderer();
+	const requiredLimits = await requestMaxLimits();
+
+	const renderer = new WebGPURenderer( { requiredLimits } );
 	await renderer.init();
 	return renderer;
 

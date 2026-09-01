@@ -171,7 +171,7 @@ SubgroupFunctionNode.SUBGROUP_ELECT = 'subgroupElect';
 SubgroupFunctionNode.SUBGROUP_BALLOT = 'subgroupBallot';
 SubgroupFunctionNode.SUBGROUP_ADD = 'subgroupAdd';
 SubgroupFunctionNode.SUBGROUP_INCLUSIVE_ADD = 'subgroupInclusiveAdd';
-SubgroupFunctionNode.SUBGROUP_EXCLUSIVE_AND = 'subgroupExclusiveAdd';
+SubgroupFunctionNode.SUBGROUP_EXCLUSIVE_ADD = 'subgroupExclusiveAdd';
 SubgroupFunctionNode.SUBGROUP_MUL = 'subgroupMul';
 SubgroupFunctionNode.SUBGROUP_INCLUSIVE_MUL = 'subgroupInclusiveMul';
 SubgroupFunctionNode.SUBGROUP_EXCLUSIVE_MUL = 'subgroupExclusiveMul';
@@ -248,7 +248,7 @@ export const subgroupInclusiveAdd = /*@__PURE__*/ nodeProxyIntent( SubgroupFunct
  * @param {number} e - The value provided to the exclusive scan by the current invocation.
  * @return {number} The accumulated result of the exclusive scan operation.
  */
-export const subgroupExclusiveAdd = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_EXCLUSIVE_AND ).setParameterLength( 1 );
+export const subgroupExclusiveAdd = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_EXCLUSIVE_ADD ).setParameterLength( 1 );
 
 /**
  * A reduction that multiplies e among all active invocations and returns that result.

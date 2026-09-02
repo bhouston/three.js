@@ -3006,6 +3006,12 @@ class TempNode extends Node {
 
 			if ( nodeData.propertyName !== undefined ) {
 
+				if ( builder.context.nodeBlock !== undefined ) {
+
+					builder.addFlowCodeHierarchy( this, builder.context.nodeBlock );
+
+				}
+
 				return builder.format( nodeData.propertyName, type, output );
 
 			} else if ( type !== 'void' && output !== 'void' && this.hasDependencies( builder ) ) {
@@ -53746,10 +53752,10 @@ class NodeBuilder {
 
 		const { flowCodes, flowCodeBlock } = this.getDataFromNode( node );
 
-		let needsFlowCode = true;
+		let needsFlowCode = flowCodeBlock !== undefined;
 		let nodeBlockHierarchy = nodeBlock;
 
-		while ( nodeBlockHierarchy ) {
+		while ( needsFlowCode && nodeBlockHierarchy ) {
 
 			if ( flowCodeBlock.get( nodeBlockHierarchy ) === true ) {
 

@@ -2344,10 +2344,10 @@ class NodeBuilder {
 
 		const { flowCodes, flowCodeBlock } = this.getDataFromNode( node );
 
-		let needsFlowCode = true;
+		let needsFlowCode = flowCodeBlock !== undefined;
 		let nodeBlockHierarchy = nodeBlock;
 
-		while ( nodeBlockHierarchy ) {
+		while ( needsFlowCode && nodeBlockHierarchy ) {
 
 			if ( flowCodeBlock.get( nodeBlockHierarchy ) === true ) {
 

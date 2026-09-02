@@ -1,7 +1,10 @@
 import { StorageBufferAttribute, WebGPURenderer } from 'three/webgpu';
 import { storage } from 'three/tsl';
 
+import { GPT2CPURunner } from '../../../../examples/jsm/gpgpu/llm/GPT2CPURunner.js';
 import { GPT2Tokenizer } from '../../../../examples/jsm/gpgpu/llm/GPT2Tokenizer.js';
+import { GPT2TSLRunner } from '../../../../examples/jsm/gpgpu/llm/GPT2TSLRunner.js';
+import { GPT2Weights } from '../../../../examples/jsm/gpgpu/llm/GPT2Weights.js';
 import { geluNew, layerNorm, linear, sampleTopK, softmax } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
 import { parseSafeTensors } from '../../../../examples/jsm/gpgpu/llm/SafeTensorsLoader.js';
 import { TSLAdd } from '../../../../examples/jsm/gpgpu/llm/TSLAdd.js';
@@ -438,6 +441,39 @@ export default QUnit.module( 'Addons', () => {
 					1e-4,
 					'TSLAttention token 1'
 				);
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'CPU TinyStories greedy continuation stays on the prompt', async ( assert ) => {
+
+				const weights = await GPT2Weights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
+				const result = new GPT2CPURunner( weights ).generate( 'Once upon a time,', {
+					maxNewTokens: 24,
+					temperature: 0,
+					topK: 1
+				} );
+
+				assert.strictEqual(
+					result.text,
+					'Once upon a time, there was a little girl named Lily. She loved to play with her toys. One day, she saw a big,'
+				);
+
+			} );
+
+			QUnit.test( 'TSL TinyStories greedy continuation matches the CPU runner', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const weights = await GPT2Weights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
+				const prompt = 'Once upon a time,';
+				const options = { maxNewTokens: 8, temperature: 0, topK: 1 };
+				const cpu = new GPT2CPURunner( weights, { maxTokens: 128 } ).generate( prompt, options );
+				const gpu = await new GPT2TSLRunner( weights, { maxTokens: 128 } ).generate( renderer, prompt, options );
+
+				assert.strictEqual( gpu.text, cpu.text, 'GPU greedy text matches CPU' );
+				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'GPU token ids match CPU' );
 				renderer.dispose();
 
 			} );

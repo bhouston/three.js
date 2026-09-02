@@ -30,7 +30,10 @@ function closeServer( server ) {
 
 const models = argument( 'models', 'tinystories,smollm2' ).split( ',' ).filter( Boolean );
 const trials = Math.max( 1, Number( argument( 'trials', '3' ) ) );
-const tokens = Math.max( 2, Number( argument( 'tokens', '16' ) ) );
+const tokens = Math.max( 0, Number( argument( 'tokens', '16' ) ) );
+const promptTokens = argument( 'promptTokens', argument( 'promptLength', '' ) );
+const gpuSampling = argument( 'gpuSampling', '' );
+const prefillMode = argument( 'prefillMode', '' );
 const outputPath = argument( 'output', '' );
 const port = Math.max( 1024, Number( argument( 'port', '1236' ) ) );
 const headless = process.argv.includes( '--headless' );
@@ -72,6 +75,9 @@ try {
 		url.searchParams.set( 'model', model );
 		url.searchParams.set( 'trials', String( trials ) );
 		url.searchParams.set( 'tokens', String( tokens ) );
+		if ( promptTokens ) url.searchParams.set( 'promptTokens', promptTokens );
+		if ( gpuSampling ) url.searchParams.set( 'gpuSampling', gpuSampling );
+		if ( prefillMode ) url.searchParams.set( 'prefillMode', prefillMode );
 		console.log( `Benchmarking ${ model } (${ trials } trials, ${ tokens } tokens)...` );
 
 		await page.goto( url.href, { waitUntil: 'domcontentloaded', timeout: 120000 } );

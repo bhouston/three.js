@@ -1,0 +1,1636 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-02T18:50:20.046Z",
+  "gitCommit": "052adadb8e4f37ff3ef56e63271d090f24c0fdbb",
+  "reports": [
+    {
+      "schemaVersion": 1,
+      "model": {
+        "id": "smollm2",
+        "name": "SmolLM2 135M",
+        "url": "http://localhost:1276/examples/models/llm/smollm2-135m/"
+      },
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+        "platform": "MacIntel",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": ""
+        }
+      },
+      "parameters": {
+        "prompt": "Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.",
+        "promptTokenLength": 128,
+        "trialCount": 5,
+        "maxNewTokens": 0,
+        "gpuSampling": false,
+        "prefillMode": false
+      },
+      "load": {
+        "rendererInitMs": 2.5,
+        "modelLoadMs": 2605.3,
+        "resourceBytes": 270329823,
+        "progress": [
+          {
+            "timeMs": 0.3,
+            "message": "LLMFactory: Loading config http://localhost:1276/examples/models/llm/smollm2-135m/config.json"
+          },
+          {
+            "timeMs": 4.2,
+            "message": "LLMFactory: Using llama map for model_type \"llama\""
+          },
+          {
+            "timeMs": 4.7,
+            "message": "LLMFactory: 30 layers, hidden 576, vocab 49152"
+          },
+          {
+            "timeMs": 4.9,
+            "message": "LLMFactory: Loading tokenizer http://localhost:1276/examples/models/llm/smollm2-135m/vocab.json"
+          },
+          {
+            "timeMs": 52.5,
+            "message": "LLMFactory: Loading shard 1 / 1: model.safetensors"
+          },
+          {
+            "timeMs": 53.9,
+            "message": "SafeTensorsLoader: Downloading http://localhost:1276/examples/models/llm/smollm2-135m/model.safetensors (256.6 MB)..."
+          },
+          {
+            "timeMs": 483.4,
+            "message": "SafeTensorsLoader: Downloaded 256.6 MB"
+          },
+          {
+            "timeMs": 515.5,
+            "message": "LLMFactory: Converting 272 BF16 tensors (256.6 MB)..."
+          },
+          {
+            "timeMs": 517.5,
+            "message": "LLMFactory: Converting BF16 1% (2.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 518.7,
+            "message": "LLMFactory: Converting BF16 2% (4.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 519.7,
+            "message": "LLMFactory: Converting BF16 2% (6.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 520.8,
+            "message": "LLMFactory: Converting BF16 3% (8.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 521.7,
+            "message": "LLMFactory: Converting BF16 4% (10.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 527.9,
+            "message": "LLMFactory: Converting BF16 5% (12.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 533.2,
+            "message": "LLMFactory: Converting BF16 5% (14.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 538.3,
+            "message": "LLMFactory: Converting BF16 6% (16.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 543.9,
+            "message": "LLMFactory: Converting BF16 7% (18.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 549.6,
+            "message": "LLMFactory: Converting BF16 8% (20.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 555.3,
+            "message": "LLMFactory: Converting BF16 9% (22.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 560.8,
+            "message": "LLMFactory: Converting BF16 9% (24.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 566.2,
+            "message": "LLMFactory: Converting BF16 10% (26.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 571.7,
+            "message": "LLMFactory: Converting BF16 11% (28.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 577.3,
+            "message": "LLMFactory: Converting BF16 12% (30.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 583.1,
+            "message": "LLMFactory: Converting BF16 12% (32.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 588.7,
+            "message": "LLMFactory: Converting BF16 13% (34.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 594.2,
+            "message": "LLMFactory: Converting BF16 14% (36.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 600,
+            "message": "LLMFactory: Converting BF16 15% (38.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 605.5,
+            "message": "LLMFactory: Converting BF16 16% (40.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 610.6,
+            "message": "LLMFactory: Converting BF16 16% (42.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 616.6,
+            "message": "LLMFactory: Converting BF16 17% (44.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 622.3,
+            "message": "LLMFactory: Converting BF16 18% (46.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 627.8,
+            "message": "LLMFactory: Converting BF16 19% (48.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 633.3,
+            "message": "LLMFactory: Converting BF16 19% (50.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 638.7,
+            "message": "LLMFactory: Converting BF16 20% (52.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 644.3,
+            "message": "LLMFactory: Converting BF16 21% (54.0 MB / 256.6 MB) — 1/272 model.embed_tokens.weight"
+          },
+          {
+            "timeMs": 649,
+            "message": "LLMFactory: Converting BF16 21% (54.0 MB / 256.6 MB) — 2/272 model.layers.0.input_layernorm.weight"
+          },
+          {
+            "timeMs": 654.8,
+            "message": "LLMFactory: Converting BF16 22% (55.7 MB / 256.6 MB) — 3/272 model.layers.0.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 660.3,
+            "message": "LLMFactory: Converting BF16 22% (57.4 MB / 256.6 MB) — 4/272 model.layers.0.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 666.1,
+            "message": "LLMFactory: Converting BF16 23% (59.1 MB / 256.6 MB) — 5/272 model.layers.0.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 670.7,
+            "message": "LLMFactory: Converting BF16 23% (59.1 MB / 256.6 MB) — 6/272 model.layers.0.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 674.9,
+            "message": "LLMFactory: Converting BF16 23% (59.3 MB / 256.6 MB) — 7/272 model.layers.0.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 679.9,
+            "message": "LLMFactory: Converting BF16 23% (59.9 MB / 256.6 MB) — 8/272 model.layers.0.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 684.9,
+            "message": "LLMFactory: Converting BF16 24% (60.5 MB / 256.6 MB) — 9/272 model.layers.0.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 689.6,
+            "message": "LLMFactory: Converting BF16 24% (60.8 MB / 256.6 MB) — 10/272 model.layers.0.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 694.2,
+            "message": "LLMFactory: Converting BF16 24% (60.8 MB / 256.6 MB) — 11/272 model.layers.1.input_layernorm.weight"
+          },
+          {
+            "timeMs": 699.6,
+            "message": "LLMFactory: Converting BF16 24% (62.4 MB / 256.6 MB) — 12/272 model.layers.1.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 705.3,
+            "message": "LLMFactory: Converting BF16 25% (64.1 MB / 256.6 MB) — 13/272 model.layers.1.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 711,
+            "message": "LLMFactory: Converting BF16 26% (65.8 MB / 256.6 MB) — 14/272 model.layers.1.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 715.7,
+            "message": "LLMFactory: Converting BF16 26% (65.8 MB / 256.6 MB) — 15/272 model.layers.1.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 720.4,
+            "message": "LLMFactory: Converting BF16 26% (66.0 MB / 256.6 MB) — 16/272 model.layers.1.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 725.4,
+            "message": "LLMFactory: Converting BF16 26% (66.7 MB / 256.6 MB) — 17/272 model.layers.1.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 730.1,
+            "message": "LLMFactory: Converting BF16 26% (67.3 MB / 256.6 MB) — 18/272 model.layers.1.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 735,
+            "message": "LLMFactory: Converting BF16 26% (67.5 MB / 256.6 MB) — 19/272 model.layers.1.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 739.6,
+            "message": "LLMFactory: Converting BF16 26% (67.5 MB / 256.6 MB) — 20/272 model.layers.10.input_layernorm.weight"
+          },
+          {
+            "timeMs": 745.3,
+            "message": "LLMFactory: Converting BF16 27% (69.2 MB / 256.6 MB) — 21/272 model.layers.10.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 751.3,
+            "message": "LLMFactory: Converting BF16 28% (70.9 MB / 256.6 MB) — 22/272 model.layers.10.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 757,
+            "message": "LLMFactory: Converting BF16 28% (72.6 MB / 256.6 MB) — 23/272 model.layers.10.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 761.6,
+            "message": "LLMFactory: Converting BF16 28% (72.6 MB / 256.6 MB) — 24/272 model.layers.10.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 767,
+            "message": "LLMFactory: Converting BF16 28% (72.8 MB / 256.6 MB) — 25/272 model.layers.10.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 772.2,
+            "message": "LLMFactory: Converting BF16 29% (73.4 MB / 256.6 MB) — 26/272 model.layers.10.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 781,
+            "message": "LLMFactory: Converting BF16 29% (74.0 MB / 256.6 MB) — 27/272 model.layers.10.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 785.9,
+            "message": "LLMFactory: Converting BF16 29% (74.3 MB / 256.6 MB) — 28/272 model.layers.10.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 790.6,
+            "message": "LLMFactory: Converting BF16 29% (74.3 MB / 256.6 MB) — 29/272 model.layers.11.input_layernorm.weight"
+          },
+          {
+            "timeMs": 796.6,
+            "message": "LLMFactory: Converting BF16 30% (75.9 MB / 256.6 MB) — 30/272 model.layers.11.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 803.2,
+            "message": "LLMFactory: Converting BF16 30% (77.6 MB / 256.6 MB) — 31/272 model.layers.11.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 808.7,
+            "message": "LLMFactory: Converting BF16 31% (79.3 MB / 256.6 MB) — 32/272 model.layers.11.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 813.1,
+            "message": "LLMFactory: Converting BF16 31% (79.3 MB / 256.6 MB) — 33/272 model.layers.11.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 818.1,
+            "message": "LLMFactory: Converting BF16 31% (79.5 MB / 256.6 MB) — 34/272 model.layers.11.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 823.1,
+            "message": "LLMFactory: Converting BF16 31% (80.2 MB / 256.6 MB) — 35/272 model.layers.11.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 828,
+            "message": "LLMFactory: Converting BF16 31% (80.8 MB / 256.6 MB) — 36/272 model.layers.11.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 832.7,
+            "message": "LLMFactory: Converting BF16 32% (81.0 MB / 256.6 MB) — 37/272 model.layers.11.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 837.3,
+            "message": "LLMFactory: Converting BF16 32% (81.0 MB / 256.6 MB) — 38/272 model.layers.12.input_layernorm.weight"
+          },
+          {
+            "timeMs": 842.9,
+            "message": "LLMFactory: Converting BF16 32% (82.7 MB / 256.6 MB) — 39/272 model.layers.12.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 849.1,
+            "message": "LLMFactory: Converting BF16 33% (84.4 MB / 256.6 MB) — 40/272 model.layers.12.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 854.8,
+            "message": "LLMFactory: Converting BF16 34% (86.1 MB / 256.6 MB) — 41/272 model.layers.12.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 859.4,
+            "message": "LLMFactory: Converting BF16 34% (86.1 MB / 256.6 MB) — 42/272 model.layers.12.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 863.8,
+            "message": "LLMFactory: Converting BF16 34% (86.3 MB / 256.6 MB) — 43/272 model.layers.12.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 868.5,
+            "message": "LLMFactory: Converting BF16 34% (86.9 MB / 256.6 MB) — 44/272 model.layers.12.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 873.6,
+            "message": "LLMFactory: Converting BF16 34% (87.6 MB / 256.6 MB) — 45/272 model.layers.12.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 878.2,
+            "message": "LLMFactory: Converting BF16 34% (87.8 MB / 256.6 MB) — 46/272 model.layers.12.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 883.5,
+            "message": "LLMFactory: Converting BF16 34% (87.8 MB / 256.6 MB) — 47/272 model.layers.13.input_layernorm.weight"
+          },
+          {
+            "timeMs": 889.3,
+            "message": "LLMFactory: Converting BF16 35% (89.4 MB / 256.6 MB) — 48/272 model.layers.13.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 894.9,
+            "message": "LLMFactory: Converting BF16 36% (91.1 MB / 256.6 MB) — 49/272 model.layers.13.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 901.4,
+            "message": "LLMFactory: Converting BF16 36% (92.8 MB / 256.6 MB) — 50/272 model.layers.13.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 905.9,
+            "message": "LLMFactory: Converting BF16 36% (92.8 MB / 256.6 MB) — 51/272 model.layers.13.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 910.6,
+            "message": "LLMFactory: Converting BF16 36% (93.0 MB / 256.6 MB) — 52/272 model.layers.13.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 916,
+            "message": "LLMFactory: Converting BF16 37% (93.7 MB / 256.6 MB) — 53/272 model.layers.13.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 921.2,
+            "message": "LLMFactory: Converting BF16 37% (94.3 MB / 256.6 MB) — 54/272 model.layers.13.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 925.9,
+            "message": "LLMFactory: Converting BF16 37% (94.5 MB / 256.6 MB) — 55/272 model.layers.13.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 930.4,
+            "message": "LLMFactory: Converting BF16 37% (94.5 MB / 256.6 MB) — 56/272 model.layers.14.input_layernorm.weight"
+          },
+          {
+            "timeMs": 936,
+            "message": "LLMFactory: Converting BF16 37% (96.2 MB / 256.6 MB) — 57/272 model.layers.14.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 941.6,
+            "message": "LLMFactory: Converting BF16 38% (97.9 MB / 256.6 MB) — 58/272 model.layers.14.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 947.7,
+            "message": "LLMFactory: Converting BF16 39% (99.6 MB / 256.6 MB) — 59/272 model.layers.14.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 952.3,
+            "message": "LLMFactory: Converting BF16 39% (99.6 MB / 256.6 MB) — 60/272 model.layers.14.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 956.8,
+            "message": "LLMFactory: Converting BF16 39% (99.8 MB / 256.6 MB) — 61/272 model.layers.14.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 961.8,
+            "message": "LLMFactory: Converting BF16 39% (100.4 MB / 256.6 MB) — 62/272 model.layers.14.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 966.7,
+            "message": "LLMFactory: Converting BF16 39% (101.1 MB / 256.6 MB) — 63/272 model.layers.14.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 971.5,
+            "message": "LLMFactory: Converting BF16 39% (101.3 MB / 256.6 MB) — 64/272 model.layers.14.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 976,
+            "message": "LLMFactory: Converting BF16 39% (101.3 MB / 256.6 MB) — 65/272 model.layers.15.input_layernorm.weight"
+          },
+          {
+            "timeMs": 982.3,
+            "message": "LLMFactory: Converting BF16 40% (103.0 MB / 256.6 MB) — 66/272 model.layers.15.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 988,
+            "message": "LLMFactory: Converting BF16 41% (104.6 MB / 256.6 MB) — 67/272 model.layers.15.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 993.5,
+            "message": "LLMFactory: Converting BF16 41% (106.3 MB / 256.6 MB) — 68/272 model.layers.15.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 998.3,
+            "message": "LLMFactory: Converting BF16 41% (106.3 MB / 256.6 MB) — 69/272 model.layers.15.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1003.2,
+            "message": "LLMFactory: Converting BF16 42% (106.5 MB / 256.6 MB) — 70/272 model.layers.15.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1008,
+            "message": "LLMFactory: Converting BF16 42% (107.2 MB / 256.6 MB) — 71/272 model.layers.15.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1013.1,
+            "message": "LLMFactory: Converting BF16 42% (107.8 MB / 256.6 MB) — 72/272 model.layers.15.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1018,
+            "message": "LLMFactory: Converting BF16 42% (108.0 MB / 256.6 MB) — 73/272 model.layers.15.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1022.6,
+            "message": "LLMFactory: Converting BF16 42% (108.0 MB / 256.6 MB) — 74/272 model.layers.16.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1028.2,
+            "message": "LLMFactory: Converting BF16 43% (109.7 MB / 256.6 MB) — 75/272 model.layers.16.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1034,
+            "message": "LLMFactory: Converting BF16 43% (111.4 MB / 256.6 MB) — 76/272 model.layers.16.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1039.8,
+            "message": "LLMFactory: Converting BF16 44% (113.1 MB / 256.6 MB) — 77/272 model.layers.16.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1044.4,
+            "message": "LLMFactory: Converting BF16 44% (113.1 MB / 256.6 MB) — 78/272 model.layers.16.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1049.3,
+            "message": "LLMFactory: Converting BF16 44% (113.3 MB / 256.6 MB) — 79/272 model.layers.16.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1054.3,
+            "message": "LLMFactory: Converting BF16 44% (113.9 MB / 256.6 MB) — 80/272 model.layers.16.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1059.4,
+            "message": "LLMFactory: Converting BF16 45% (114.6 MB / 256.6 MB) — 81/272 model.layers.16.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1064.4,
+            "message": "LLMFactory: Converting BF16 45% (114.8 MB / 256.6 MB) — 82/272 model.layers.16.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1069,
+            "message": "LLMFactory: Converting BF16 45% (114.8 MB / 256.6 MB) — 83/272 model.layers.17.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1074.6,
+            "message": "LLMFactory: Converting BF16 45% (116.5 MB / 256.6 MB) — 84/272 model.layers.17.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1080.2,
+            "message": "LLMFactory: Converting BF16 46% (118.1 MB / 256.6 MB) — 85/272 model.layers.17.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1085.9,
+            "message": "LLMFactory: Converting BF16 47% (119.8 MB / 256.6 MB) — 86/272 model.layers.17.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1090.5,
+            "message": "LLMFactory: Converting BF16 47% (119.8 MB / 256.6 MB) — 87/272 model.layers.17.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1095.2,
+            "message": "LLMFactory: Converting BF16 47% (120.0 MB / 256.6 MB) — 88/272 model.layers.17.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1100.5,
+            "message": "LLMFactory: Converting BF16 47% (120.7 MB / 256.6 MB) — 89/272 model.layers.17.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1105.2,
+            "message": "LLMFactory: Converting BF16 47% (121.3 MB / 256.6 MB) — 90/272 model.layers.17.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1109.9,
+            "message": "LLMFactory: Converting BF16 47% (121.5 MB / 256.6 MB) — 91/272 model.layers.17.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1114.1,
+            "message": "LLMFactory: Converting BF16 47% (121.5 MB / 256.6 MB) — 92/272 model.layers.18.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1119.8,
+            "message": "LLMFactory: Converting BF16 48% (123.2 MB / 256.6 MB) — 93/272 model.layers.18.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1125.3,
+            "message": "LLMFactory: Converting BF16 49% (124.9 MB / 256.6 MB) — 94/272 model.layers.18.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1130.6,
+            "message": "LLMFactory: Converting BF16 49% (126.6 MB / 256.6 MB) — 95/272 model.layers.18.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1135.2,
+            "message": "LLMFactory: Converting BF16 49% (126.6 MB / 256.6 MB) — 96/272 model.layers.18.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1140,
+            "message": "LLMFactory: Converting BF16 49% (126.8 MB / 256.6 MB) — 97/272 model.layers.18.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1144.9,
+            "message": "LLMFactory: Converting BF16 50% (127.4 MB / 256.6 MB) — 98/272 model.layers.18.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1150.2,
+            "message": "LLMFactory: Converting BF16 50% (128.1 MB / 256.6 MB) — 99/272 model.layers.18.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1154.9,
+            "message": "LLMFactory: Converting BF16 50% (128.3 MB / 256.6 MB) — 100/272 model.layers.18.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1159.5,
+            "message": "LLMFactory: Converting BF16 50% (128.3 MB / 256.6 MB) — 101/272 model.layers.19.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1165.6,
+            "message": "LLMFactory: Converting BF16 51% (130.0 MB / 256.6 MB) — 102/272 model.layers.19.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1171.4,
+            "message": "LLMFactory: Converting BF16 51% (131.7 MB / 256.6 MB) — 103/272 model.layers.19.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1177,
+            "message": "LLMFactory: Converting BF16 52% (133.3 MB / 256.6 MB) — 104/272 model.layers.19.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1181.2,
+            "message": "LLMFactory: Converting BF16 52% (133.3 MB / 256.6 MB) — 105/272 model.layers.19.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1185.9,
+            "message": "LLMFactory: Converting BF16 52% (133.5 MB / 256.6 MB) — 106/272 model.layers.19.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1191,
+            "message": "LLMFactory: Converting BF16 52% (134.2 MB / 256.6 MB) — 107/272 model.layers.19.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1196,
+            "message": "LLMFactory: Converting BF16 53% (134.8 MB / 256.6 MB) — 108/272 model.layers.19.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1200.5,
+            "message": "LLMFactory: Converting BF16 53% (135.0 MB / 256.6 MB) — 109/272 model.layers.19.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1205.1,
+            "message": "LLMFactory: Converting BF16 53% (135.0 MB / 256.6 MB) — 110/272 model.layers.2.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1210.6,
+            "message": "LLMFactory: Converting BF16 53% (136.7 MB / 256.6 MB) — 111/272 model.layers.2.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1216.6,
+            "message": "LLMFactory: Converting BF16 54% (138.4 MB / 256.6 MB) — 112/272 model.layers.2.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1222.4,
+            "message": "LLMFactory: Converting BF16 55% (140.1 MB / 256.6 MB) — 113/272 model.layers.2.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1227.2,
+            "message": "LLMFactory: Converting BF16 55% (140.1 MB / 256.6 MB) — 114/272 model.layers.2.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1232.6,
+            "message": "LLMFactory: Converting BF16 55% (140.3 MB / 256.6 MB) — 115/272 model.layers.2.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1237.6,
+            "message": "LLMFactory: Converting BF16 55% (140.9 MB / 256.6 MB) — 116/272 model.layers.2.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1242.6,
+            "message": "LLMFactory: Converting BF16 55% (141.6 MB / 256.6 MB) — 117/272 model.layers.2.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1246.8,
+            "message": "LLMFactory: Converting BF16 55% (141.8 MB / 256.6 MB) — 118/272 model.layers.2.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1251.4,
+            "message": "LLMFactory: Converting BF16 55% (141.8 MB / 256.6 MB) — 119/272 model.layers.20.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1257.3,
+            "message": "LLMFactory: Converting BF16 56% (143.5 MB / 256.6 MB) — 120/272 model.layers.20.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1262.8,
+            "message": "LLMFactory: Converting BF16 57% (145.2 MB / 256.6 MB) — 121/272 model.layers.20.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1268.8,
+            "message": "LLMFactory: Converting BF16 57% (146.8 MB / 256.6 MB) — 122/272 model.layers.20.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1273.3,
+            "message": "LLMFactory: Converting BF16 57% (146.8 MB / 256.6 MB) — 123/272 model.layers.20.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1278.1,
+            "message": "LLMFactory: Converting BF16 57% (147.1 MB / 256.6 MB) — 124/272 model.layers.20.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1283,
+            "message": "LLMFactory: Converting BF16 58% (147.7 MB / 256.6 MB) — 125/272 model.layers.20.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1287.6,
+            "message": "LLMFactory: Converting BF16 58% (148.3 MB / 256.6 MB) — 126/272 model.layers.20.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1292,
+            "message": "LLMFactory: Converting BF16 58% (148.5 MB / 256.6 MB) — 127/272 model.layers.20.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1296.9,
+            "message": "LLMFactory: Converting BF16 58% (148.5 MB / 256.6 MB) — 128/272 model.layers.21.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1302.8,
+            "message": "LLMFactory: Converting BF16 59% (150.2 MB / 256.6 MB) — 129/272 model.layers.21.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1308.4,
+            "message": "LLMFactory: Converting BF16 59% (151.9 MB / 256.6 MB) — 130/272 model.layers.21.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1313.7,
+            "message": "LLMFactory: Converting BF16 60% (153.6 MB / 256.6 MB) — 131/272 model.layers.21.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1318.4,
+            "message": "LLMFactory: Converting BF16 60% (153.6 MB / 256.6 MB) — 132/272 model.layers.21.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1323.1,
+            "message": "LLMFactory: Converting BF16 60% (153.8 MB / 256.6 MB) — 133/272 model.layers.21.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1328.1,
+            "message": "LLMFactory: Converting BF16 60% (154.4 MB / 256.6 MB) — 134/272 model.layers.21.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1333,
+            "message": "LLMFactory: Converting BF16 60% (155.1 MB / 256.6 MB) — 135/272 model.layers.21.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1337.7,
+            "message": "LLMFactory: Converting BF16 61% (155.3 MB / 256.6 MB) — 136/272 model.layers.21.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1342.3,
+            "message": "LLMFactory: Converting BF16 61% (155.3 MB / 256.6 MB) — 137/272 model.layers.22.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1348.6,
+            "message": "LLMFactory: Converting BF16 61% (157.0 MB / 256.6 MB) — 138/272 model.layers.22.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1354.8,
+            "message": "LLMFactory: Converting BF16 62% (158.7 MB / 256.6 MB) — 139/272 model.layers.22.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1360.1,
+            "message": "LLMFactory: Converting BF16 62% (160.3 MB / 256.6 MB) — 140/272 model.layers.22.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1365.2,
+            "message": "LLMFactory: Converting BF16 62% (160.3 MB / 256.6 MB) — 141/272 model.layers.22.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1370,
+            "message": "LLMFactory: Converting BF16 63% (160.6 MB / 256.6 MB) — 142/272 model.layers.22.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1374.9,
+            "message": "LLMFactory: Converting BF16 63% (161.2 MB / 256.6 MB) — 143/272 model.layers.22.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1379.8,
+            "message": "LLMFactory: Converting BF16 63% (161.8 MB / 256.6 MB) — 144/272 model.layers.22.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1384.7,
+            "message": "LLMFactory: Converting BF16 63% (162.0 MB / 256.6 MB) — 145/272 model.layers.22.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1389.3,
+            "message": "LLMFactory: Converting BF16 63% (162.0 MB / 256.6 MB) — 146/272 model.layers.23.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1394.8,
+            "message": "LLMFactory: Converting BF16 64% (163.7 MB / 256.6 MB) — 147/272 model.layers.23.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1400.3,
+            "message": "LLMFactory: Converting BF16 64% (165.4 MB / 256.6 MB) — 148/272 model.layers.23.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1406.5,
+            "message": "LLMFactory: Converting BF16 65% (167.1 MB / 256.6 MB) — 149/272 model.layers.23.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1411.1,
+            "message": "LLMFactory: Converting BF16 65% (167.1 MB / 256.6 MB) — 150/272 model.layers.23.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1415.6,
+            "message": "LLMFactory: Converting BF16 65% (167.3 MB / 256.6 MB) — 151/272 model.layers.23.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1420.8,
+            "message": "LLMFactory: Converting BF16 65% (167.9 MB / 256.6 MB) — 152/272 model.layers.23.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1425.8,
+            "message": "LLMFactory: Converting BF16 66% (168.6 MB / 256.6 MB) — 153/272 model.layers.23.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1430.3,
+            "message": "LLMFactory: Converting BF16 66% (168.8 MB / 256.6 MB) — 154/272 model.layers.23.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1434.9,
+            "message": "LLMFactory: Converting BF16 66% (168.8 MB / 256.6 MB) — 155/272 model.layers.24.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1440.9,
+            "message": "LLMFactory: Converting BF16 66% (170.5 MB / 256.6 MB) — 156/272 model.layers.24.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1447,
+            "message": "LLMFactory: Converting BF16 67% (172.2 MB / 256.6 MB) — 157/272 model.layers.24.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1453,
+            "message": "LLMFactory: Converting BF16 68% (173.9 MB / 256.6 MB) — 158/272 model.layers.24.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1457.6,
+            "message": "LLMFactory: Converting BF16 68% (173.9 MB / 256.6 MB) — 159/272 model.layers.24.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1462,
+            "message": "LLMFactory: Converting BF16 68% (174.1 MB / 256.6 MB) — 160/272 model.layers.24.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1467,
+            "message": "LLMFactory: Converting BF16 68% (174.7 MB / 256.6 MB) — 161/272 model.layers.24.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1472.2,
+            "message": "LLMFactory: Converting BF16 68% (175.3 MB / 256.6 MB) — 162/272 model.layers.24.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1476.8,
+            "message": "LLMFactory: Converting BF16 68% (175.5 MB / 256.6 MB) — 163/272 model.layers.24.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1481.2,
+            "message": "LLMFactory: Converting BF16 68% (175.5 MB / 256.6 MB) — 164/272 model.layers.25.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1487.5,
+            "message": "LLMFactory: Converting BF16 69% (177.2 MB / 256.6 MB) — 165/272 model.layers.25.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1493.2,
+            "message": "LLMFactory: Converting BF16 70% (178.9 MB / 256.6 MB) — 166/272 model.layers.25.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1499.7,
+            "message": "LLMFactory: Converting BF16 70% (180.6 MB / 256.6 MB) — 167/272 model.layers.25.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1504.3,
+            "message": "LLMFactory: Converting BF16 70% (180.6 MB / 256.6 MB) — 168/272 model.layers.25.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1508.7,
+            "message": "LLMFactory: Converting BF16 70% (180.8 MB / 256.6 MB) — 169/272 model.layers.25.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1514,
+            "message": "LLMFactory: Converting BF16 71% (181.4 MB / 256.6 MB) — 170/272 model.layers.25.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1519,
+            "message": "LLMFactory: Converting BF16 71% (182.1 MB / 256.6 MB) — 171/272 model.layers.25.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1523.8,
+            "message": "LLMFactory: Converting BF16 71% (182.3 MB / 256.6 MB) — 172/272 model.layers.25.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1528.1,
+            "message": "LLMFactory: Converting BF16 71% (182.3 MB / 256.6 MB) — 173/272 model.layers.26.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1534.7,
+            "message": "LLMFactory: Converting BF16 72% (184.0 MB / 256.6 MB) — 174/272 model.layers.26.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1541,
+            "message": "LLMFactory: Converting BF16 72% (185.7 MB / 256.6 MB) — 175/272 model.layers.26.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1547.3,
+            "message": "LLMFactory: Converting BF16 73% (187.4 MB / 256.6 MB) — 176/272 model.layers.26.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1551.6,
+            "message": "LLMFactory: Converting BF16 73% (187.4 MB / 256.6 MB) — 177/272 model.layers.26.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1556.5,
+            "message": "LLMFactory: Converting BF16 73% (187.6 MB / 256.6 MB) — 178/272 model.layers.26.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1561.4,
+            "message": "LLMFactory: Converting BF16 73% (188.2 MB / 256.6 MB) — 179/272 model.layers.26.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1566.2,
+            "message": "LLMFactory: Converting BF16 74% (188.8 MB / 256.6 MB) — 180/272 model.layers.26.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1570.8,
+            "message": "LLMFactory: Converting BF16 74% (189.0 MB / 256.6 MB) — 181/272 model.layers.26.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1575.4,
+            "message": "LLMFactory: Converting BF16 74% (189.0 MB / 256.6 MB) — 182/272 model.layers.27.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1581.8,
+            "message": "LLMFactory: Converting BF16 74% (190.7 MB / 256.6 MB) — 183/272 model.layers.27.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1588.1,
+            "message": "LLMFactory: Converting BF16 75% (192.4 MB / 256.6 MB) — 184/272 model.layers.27.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1593.8,
+            "message": "LLMFactory: Converting BF16 76% (194.1 MB / 256.6 MB) — 185/272 model.layers.27.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1598.6,
+            "message": "LLMFactory: Converting BF16 76% (194.1 MB / 256.6 MB) — 186/272 model.layers.27.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1603.4,
+            "message": "LLMFactory: Converting BF16 76% (194.3 MB / 256.6 MB) — 187/272 model.layers.27.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1608.4,
+            "message": "LLMFactory: Converting BF16 76% (195.0 MB / 256.6 MB) — 188/272 model.layers.27.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1613.7,
+            "message": "LLMFactory: Converting BF16 76% (195.6 MB / 256.6 MB) — 189/272 model.layers.27.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1618.6,
+            "message": "LLMFactory: Converting BF16 76% (195.8 MB / 256.6 MB) — 190/272 model.layers.27.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1622.9,
+            "message": "LLMFactory: Converting BF16 76% (195.8 MB / 256.6 MB) — 191/272 model.layers.28.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1628.5,
+            "message": "LLMFactory: Converting BF16 77% (197.5 MB / 256.6 MB) — 192/272 model.layers.28.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1634.2,
+            "message": "LLMFactory: Converting BF16 78% (199.2 MB / 256.6 MB) — 193/272 model.layers.28.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1639.8,
+            "message": "LLMFactory: Converting BF16 78% (200.9 MB / 256.6 MB) — 194/272 model.layers.28.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1644.4,
+            "message": "LLMFactory: Converting BF16 78% (200.9 MB / 256.6 MB) — 195/272 model.layers.28.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1649.7,
+            "message": "LLMFactory: Converting BF16 78% (201.1 MB / 256.6 MB) — 196/272 model.layers.28.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1654.6,
+            "message": "LLMFactory: Converting BF16 79% (201.7 MB / 256.6 MB) — 197/272 model.layers.28.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1659.6,
+            "message": "LLMFactory: Converting BF16 79% (202.3 MB / 256.6 MB) — 198/272 model.layers.28.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1664.7,
+            "message": "LLMFactory: Converting BF16 79% (202.5 MB / 256.6 MB) — 199/272 model.layers.28.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1669.4,
+            "message": "LLMFactory: Converting BF16 79% (202.5 MB / 256.6 MB) — 200/272 model.layers.29.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1675,
+            "message": "LLMFactory: Converting BF16 80% (204.2 MB / 256.6 MB) — 201/272 model.layers.29.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1680.8,
+            "message": "LLMFactory: Converting BF16 80% (205.9 MB / 256.6 MB) — 202/272 model.layers.29.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1686.3,
+            "message": "LLMFactory: Converting BF16 81% (207.6 MB / 256.6 MB) — 203/272 model.layers.29.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1690.6,
+            "message": "LLMFactory: Converting BF16 81% (207.6 MB / 256.6 MB) — 204/272 model.layers.29.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1695.4,
+            "message": "LLMFactory: Converting BF16 81% (207.8 MB / 256.6 MB) — 205/272 model.layers.29.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1700.5,
+            "message": "LLMFactory: Converting BF16 81% (208.5 MB / 256.6 MB) — 206/272 model.layers.29.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1705.4,
+            "message": "LLMFactory: Converting BF16 81% (209.1 MB / 256.6 MB) — 207/272 model.layers.29.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1710.1,
+            "message": "LLMFactory: Converting BF16 82% (209.3 MB / 256.6 MB) — 208/272 model.layers.29.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1714.5,
+            "message": "LLMFactory: Converting BF16 82% (209.3 MB / 256.6 MB) — 209/272 model.layers.3.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1720.1,
+            "message": "LLMFactory: Converting BF16 82% (211.0 MB / 256.6 MB) — 210/272 model.layers.3.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1725.5,
+            "message": "LLMFactory: Converting BF16 83% (212.7 MB / 256.6 MB) — 211/272 model.layers.3.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1730.6,
+            "message": "LLMFactory: Converting BF16 84% (214.4 MB / 256.6 MB) — 212/272 model.layers.3.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1735.3,
+            "message": "LLMFactory: Converting BF16 84% (214.4 MB / 256.6 MB) — 213/272 model.layers.3.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1739.8,
+            "message": "LLMFactory: Converting BF16 84% (214.6 MB / 256.6 MB) — 214/272 model.layers.3.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1744.9,
+            "message": "LLMFactory: Converting BF16 84% (215.2 MB / 256.6 MB) — 215/272 model.layers.3.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1750.7,
+            "message": "LLMFactory: Converting BF16 84% (215.8 MB / 256.6 MB) — 216/272 model.layers.3.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1755.4,
+            "message": "LLMFactory: Converting BF16 84% (216.1 MB / 256.6 MB) — 217/272 model.layers.3.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1760,
+            "message": "LLMFactory: Converting BF16 84% (216.1 MB / 256.6 MB) — 218/272 model.layers.4.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1766.2,
+            "message": "LLMFactory: Converting BF16 85% (217.7 MB / 256.6 MB) — 219/272 model.layers.4.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1771.6,
+            "message": "LLMFactory: Converting BF16 86% (219.4 MB / 256.6 MB) — 220/272 model.layers.4.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1777.1,
+            "message": "LLMFactory: Converting BF16 86% (221.1 MB / 256.6 MB) — 221/272 model.layers.4.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1781.7,
+            "message": "LLMFactory: Converting BF16 86% (221.1 MB / 256.6 MB) — 222/272 model.layers.4.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1786.4,
+            "message": "LLMFactory: Converting BF16 86% (221.3 MB / 256.6 MB) — 223/272 model.layers.4.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1791.3,
+            "message": "LLMFactory: Converting BF16 87% (222.0 MB / 256.6 MB) — 224/272 model.layers.4.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1796.1,
+            "message": "LLMFactory: Converting BF16 87% (222.6 MB / 256.6 MB) — 225/272 model.layers.4.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1801.2,
+            "message": "LLMFactory: Converting BF16 87% (222.8 MB / 256.6 MB) — 226/272 model.layers.4.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1805.8,
+            "message": "LLMFactory: Converting BF16 87% (222.8 MB / 256.6 MB) — 227/272 model.layers.5.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1811,
+            "message": "LLMFactory: Converting BF16 87% (224.5 MB / 256.6 MB) — 228/272 model.layers.5.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1816.5,
+            "message": "LLMFactory: Converting BF16 88% (226.2 MB / 256.6 MB) — 229/272 model.layers.5.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1822,
+            "message": "LLMFactory: Converting BF16 89% (227.9 MB / 256.6 MB) — 230/272 model.layers.5.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1826.3,
+            "message": "LLMFactory: Converting BF16 89% (227.9 MB / 256.6 MB) — 231/272 model.layers.5.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1831.3,
+            "message": "LLMFactory: Converting BF16 89% (228.1 MB / 256.6 MB) — 232/272 model.layers.5.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1836.2,
+            "message": "LLMFactory: Converting BF16 89% (228.7 MB / 256.6 MB) — 233/272 model.layers.5.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1841.2,
+            "message": "LLMFactory: Converting BF16 89% (229.3 MB / 256.6 MB) — 234/272 model.layers.5.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1845.8,
+            "message": "LLMFactory: Converting BF16 89% (229.6 MB / 256.6 MB) — 235/272 model.layers.5.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1851.2,
+            "message": "LLMFactory: Converting BF16 89% (229.6 MB / 256.6 MB) — 236/272 model.layers.6.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1856.8,
+            "message": "LLMFactory: Converting BF16 90% (231.2 MB / 256.6 MB) — 237/272 model.layers.6.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1862.3,
+            "message": "LLMFactory: Converting BF16 91% (232.9 MB / 256.6 MB) — 238/272 model.layers.6.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1869,
+            "message": "LLMFactory: Converting BF16 91% (234.6 MB / 256.6 MB) — 239/272 model.layers.6.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1873.6,
+            "message": "LLMFactory: Converting BF16 91% (234.6 MB / 256.6 MB) — 240/272 model.layers.6.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1878.4,
+            "message": "LLMFactory: Converting BF16 92% (234.8 MB / 256.6 MB) — 241/272 model.layers.6.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1883.1,
+            "message": "LLMFactory: Converting BF16 92% (235.5 MB / 256.6 MB) — 242/272 model.layers.6.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1888.1,
+            "message": "LLMFactory: Converting BF16 92% (236.1 MB / 256.6 MB) — 243/272 model.layers.6.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1892.6,
+            "message": "LLMFactory: Converting BF16 92% (236.3 MB / 256.6 MB) — 244/272 model.layers.6.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1897.4,
+            "message": "LLMFactory: Converting BF16 92% (236.3 MB / 256.6 MB) — 245/272 model.layers.7.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1903,
+            "message": "LLMFactory: Converting BF16 93% (238.0 MB / 256.6 MB) — 246/272 model.layers.7.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1908.1,
+            "message": "LLMFactory: Converting BF16 93% (239.7 MB / 256.6 MB) — 247/272 model.layers.7.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1913.9,
+            "message": "LLMFactory: Converting BF16 94% (241.4 MB / 256.6 MB) — 248/272 model.layers.7.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1918.8,
+            "message": "LLMFactory: Converting BF16 94% (241.4 MB / 256.6 MB) — 249/272 model.layers.7.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1923.5,
+            "message": "LLMFactory: Converting BF16 94% (241.6 MB / 256.6 MB) — 250/272 model.layers.7.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1928.3,
+            "message": "LLMFactory: Converting BF16 94% (242.2 MB / 256.6 MB) — 251/272 model.layers.7.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1933.2,
+            "message": "LLMFactory: Converting BF16 95% (242.9 MB / 256.6 MB) — 252/272 model.layers.7.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1937.9,
+            "message": "LLMFactory: Converting BF16 95% (243.1 MB / 256.6 MB) — 253/272 model.layers.7.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1942.4,
+            "message": "LLMFactory: Converting BF16 95% (243.1 MB / 256.6 MB) — 254/272 model.layers.8.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1947.6,
+            "message": "LLMFactory: Converting BF16 95% (244.8 MB / 256.6 MB) — 255/272 model.layers.8.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1953.1,
+            "message": "LLMFactory: Converting BF16 96% (246.4 MB / 256.6 MB) — 256/272 model.layers.8.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 1958.7,
+            "message": "LLMFactory: Converting BF16 97% (248.1 MB / 256.6 MB) — 257/272 model.layers.8.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 1962.8,
+            "message": "LLMFactory: Converting BF16 97% (248.1 MB / 256.6 MB) — 258/272 model.layers.8.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 1967.5,
+            "message": "LLMFactory: Converting BF16 97% (248.3 MB / 256.6 MB) — 259/272 model.layers.8.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 1972.5,
+            "message": "LLMFactory: Converting BF16 97% (249.0 MB / 256.6 MB) — 260/272 model.layers.8.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 1977.6,
+            "message": "LLMFactory: Converting BF16 97% (249.6 MB / 256.6 MB) — 261/272 model.layers.8.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 1982.3,
+            "message": "LLMFactory: Converting BF16 97% (249.8 MB / 256.6 MB) — 262/272 model.layers.8.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 1986.8,
+            "message": "LLMFactory: Converting BF16 97% (249.8 MB / 256.6 MB) — 263/272 model.layers.9.input_layernorm.weight"
+          },
+          {
+            "timeMs": 1992.6,
+            "message": "LLMFactory: Converting BF16 98% (251.5 MB / 256.6 MB) — 264/272 model.layers.9.mlp.down_proj.weight"
+          },
+          {
+            "timeMs": 1998.4,
+            "message": "LLMFactory: Converting BF16 99% (253.2 MB / 256.6 MB) — 265/272 model.layers.9.mlp.gate_proj.weight"
+          },
+          {
+            "timeMs": 2004.4,
+            "message": "LLMFactory: Converting BF16 99% (254.9 MB / 256.6 MB) — 266/272 model.layers.9.mlp.up_proj.weight"
+          },
+          {
+            "timeMs": 2009,
+            "message": "LLMFactory: Converting BF16 99% (254.9 MB / 256.6 MB) — 267/272 model.layers.9.post_attention_layernorm.weight"
+          },
+          {
+            "timeMs": 2013.3,
+            "message": "LLMFactory: Converting BF16 99% (255.1 MB / 256.6 MB) — 268/272 model.layers.9.self_attn.k_proj.weight"
+          },
+          {
+            "timeMs": 2018.4,
+            "message": "LLMFactory: Converting BF16 100% (255.7 MB / 256.6 MB) — 269/272 model.layers.9.self_attn.o_proj.weight"
+          },
+          {
+            "timeMs": 2023.8,
+            "message": "LLMFactory: Converting BF16 100% (256.4 MB / 256.6 MB) — 270/272 model.layers.9.self_attn.q_proj.weight"
+          },
+          {
+            "timeMs": 2028.5,
+            "message": "LLMFactory: Converting BF16 100% (256.6 MB / 256.6 MB) — 271/272 model.layers.9.self_attn.v_proj.weight"
+          },
+          {
+            "timeMs": 2033.1,
+            "message": "LLMFactory: Converting BF16 100% (256.6 MB / 256.6 MB) — 272/272 model.norm.weight"
+          },
+          {
+            "timeMs": 2037.7,
+            "message": "LLMFactory: Using llama loader for model_type \"llama\""
+          },
+          {
+            "timeMs": 2042.6,
+            "message": "DecoderWeights: Transposing output projection (49152 x 576); UI may pause..."
+          },
+          {
+            "timeMs": 2226.1,
+            "message": "DecoderWeights: Unpacked layer 1 / 30"
+          },
+          {
+            "timeMs": 2238.7,
+            "message": "DecoderWeights: Unpacked layer 2 / 30"
+          },
+          {
+            "timeMs": 2251.1,
+            "message": "DecoderWeights: Unpacked layer 3 / 30"
+          },
+          {
+            "timeMs": 2263.4,
+            "message": "DecoderWeights: Unpacked layer 4 / 30"
+          },
+          {
+            "timeMs": 2276.2,
+            "message": "DecoderWeights: Unpacked layer 5 / 30"
+          },
+          {
+            "timeMs": 2289.2,
+            "message": "DecoderWeights: Unpacked layer 6 / 30"
+          },
+          {
+            "timeMs": 2301.9,
+            "message": "DecoderWeights: Unpacked layer 7 / 30"
+          },
+          {
+            "timeMs": 2314.4,
+            "message": "DecoderWeights: Unpacked layer 8 / 30"
+          },
+          {
+            "timeMs": 2326.7,
+            "message": "DecoderWeights: Unpacked layer 9 / 30"
+          },
+          {
+            "timeMs": 2338.1,
+            "message": "DecoderWeights: Unpacked layer 10 / 30"
+          },
+          {
+            "timeMs": 2349.2,
+            "message": "DecoderWeights: Unpacked layer 11 / 30"
+          },
+          {
+            "timeMs": 2361.2,
+            "message": "DecoderWeights: Unpacked layer 12 / 30"
+          },
+          {
+            "timeMs": 2373.4,
+            "message": "DecoderWeights: Unpacked layer 13 / 30"
+          },
+          {
+            "timeMs": 2385.6,
+            "message": "DecoderWeights: Unpacked layer 14 / 30"
+          },
+          {
+            "timeMs": 2397.7,
+            "message": "DecoderWeights: Unpacked layer 15 / 30"
+          },
+          {
+            "timeMs": 2409.8,
+            "message": "DecoderWeights: Unpacked layer 16 / 30"
+          },
+          {
+            "timeMs": 2422.4,
+            "message": "DecoderWeights: Unpacked layer 17 / 30"
+          },
+          {
+            "timeMs": 2434.2,
+            "message": "DecoderWeights: Unpacked layer 18 / 30"
+          },
+          {
+            "timeMs": 2446.2,
+            "message": "DecoderWeights: Unpacked layer 19 / 30"
+          },
+          {
+            "timeMs": 2457.7,
+            "message": "DecoderWeights: Unpacked layer 20 / 30"
+          },
+          {
+            "timeMs": 2468.6,
+            "message": "DecoderWeights: Unpacked layer 21 / 30"
+          },
+          {
+            "timeMs": 2480.6,
+            "message": "DecoderWeights: Unpacked layer 22 / 30"
+          },
+          {
+            "timeMs": 2492,
+            "message": "DecoderWeights: Unpacked layer 23 / 30"
+          },
+          {
+            "timeMs": 2504.7,
+            "message": "DecoderWeights: Unpacked layer 24 / 30"
+          },
+          {
+            "timeMs": 2516.7,
+            "message": "DecoderWeights: Unpacked layer 25 / 30"
+          },
+          {
+            "timeMs": 2528.5,
+            "message": "DecoderWeights: Unpacked layer 26 / 30"
+          },
+          {
+            "timeMs": 2539.8,
+            "message": "DecoderWeights: Unpacked layer 27 / 30"
+          },
+          {
+            "timeMs": 2551.2,
+            "message": "DecoderWeights: Unpacked layer 28 / 30"
+          },
+          {
+            "timeMs": 2563.8,
+            "message": "DecoderWeights: Unpacked layer 29 / 30"
+          },
+          {
+            "timeMs": 2575.6,
+            "message": "DecoderWeights: Unpacked layer 30 / 30"
+          },
+          {
+            "timeMs": 2579.8,
+            "message": "LLMFactory: Building llama GPU runner (30 layers, vocab 49152)..."
+          },
+          {
+            "timeMs": 2601.2,
+            "message": "LLMFactory: GPU runner ready"
+          }
+        ]
+      },
+      "firstUse": {
+        "durationMs": 1684.6,
+        "ttftMs": null,
+        "prefillDurationMs": 264.2,
+        "promptTokens": 128,
+        "generatedTokens": 0,
+        "prefillTokensPerSecond": 484.481,
+        "endToEndTokensPerSecond": null,
+        "decodeTokensPerSecond": null,
+        "tokenLatencyMs": {
+          "median": null,
+          "mean": null,
+          "p95": null,
+          "stddev": null
+        },
+        "prefillSubmissions": 128,
+        "prefillDispatches": 53760,
+        "prefillReadbacks": 0,
+        "submissions": 128,
+        "dispatches": 53760,
+        "readbacks": 0,
+        "syncReadbacks": 1,
+        "submissionsPerForward": 1,
+        "dispatchesPerForward": 420
+      },
+      "summary": {
+        "ttftMs": {
+          "median": null,
+          "mean": null,
+          "p95": null,
+          "stddev": null
+        },
+        "prefillDurationMs": {
+          "min": 47.5,
+          "median": 49.1,
+          "mean": 54.1,
+          "p95": 69.4,
+          "max": 69.4,
+          "stddev": 8.422
+        },
+        "prefillTokensPerSecond": {
+          "min": 1844.38,
+          "median": 2606.925,
+          "mean": 2417.279,
+          "p95": 2694.737,
+          "max": 2694.737,
+          "stddev": 330.942
+        },
+        "decodeTokensPerSecond": {
+          "median": null,
+          "mean": null,
+          "p95": null,
+          "stddev": null
+        },
+        "endToEndTokensPerSecond": {
+          "median": null,
+          "mean": null,
+          "p95": null,
+          "stddev": null
+        },
+        "submissionsPerForward": {
+          "min": 1,
+          "median": 1,
+          "mean": 1,
+          "p95": 1,
+          "max": 1,
+          "stddev": 0
+        },
+        "dispatchesPerForward": {
+          "min": 420,
+          "median": 420,
+          "mean": 420,
+          "p95": 420,
+          "max": 420,
+          "stddev": 0
+        },
+        "prefillSubmissions": {
+          "min": 128,
+          "median": 128,
+          "mean": 128,
+          "p95": 128,
+          "max": 128,
+          "stddev": 0
+        },
+        "prefillDispatches": {
+          "min": 53760,
+          "median": 53760,
+          "mean": 53760,
+          "p95": 53760,
+          "max": 53760,
+          "stddev": 0
+        },
+        "prefillReadbacks": {
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "p95": 0,
+          "max": 0,
+          "stddev": 0
+        },
+        "readbacks": {
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "p95": 0,
+          "max": 0,
+          "stddev": 0
+        }
+      },
+      "trials": [
+        {
+          "durationMs": 1167,
+          "ttftMs": null,
+          "prefillDurationMs": 57,
+          "promptTokens": 128,
+          "generatedTokens": 0,
+          "prefillTokensPerSecond": 2245.614,
+          "endToEndTokensPerSecond": null,
+          "decodeTokensPerSecond": null,
+          "tokenLatencyMs": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "stddev": null
+          },
+          "prefillSubmissions": 128,
+          "prefillDispatches": 53760,
+          "prefillReadbacks": 0,
+          "submissions": 128,
+          "dispatches": 53760,
+          "readbacks": 0,
+          "syncReadbacks": 1,
+          "submissionsPerForward": 1,
+          "dispatchesPerForward": 420
+        },
+        {
+          "durationMs": 1126.5,
+          "ttftMs": null,
+          "prefillDurationMs": 47.5,
+          "promptTokens": 128,
+          "generatedTokens": 0,
+          "prefillTokensPerSecond": 2694.737,
+          "endToEndTokensPerSecond": null,
+          "decodeTokensPerSecond": null,
+          "tokenLatencyMs": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "stddev": null
+          },
+          "prefillSubmissions": 128,
+          "prefillDispatches": 53760,
+          "prefillReadbacks": 0,
+          "submissions": 128,
+          "dispatches": 53760,
+          "readbacks": 0,
+          "syncReadbacks": 1,
+          "submissionsPerForward": 1,
+          "dispatchesPerForward": 420
+        },
+        {
+          "durationMs": 1166.7,
+          "ttftMs": null,
+          "prefillDurationMs": 49.1,
+          "promptTokens": 128,
+          "generatedTokens": 0,
+          "prefillTokensPerSecond": 2606.925,
+          "endToEndTokensPerSecond": null,
+          "decodeTokensPerSecond": null,
+          "tokenLatencyMs": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "stddev": null
+          },
+          "prefillSubmissions": 128,
+          "prefillDispatches": 53760,
+          "prefillReadbacks": 0,
+          "submissions": 128,
+          "dispatches": 53760,
+          "readbacks": 0,
+          "syncReadbacks": 1,
+          "submissionsPerForward": 1,
+          "dispatchesPerForward": 420
+        },
+        {
+          "durationMs": 1247.7,
+          "ttftMs": null,
+          "prefillDurationMs": 69.4,
+          "promptTokens": 128,
+          "generatedTokens": 0,
+          "prefillTokensPerSecond": 1844.38,
+          "endToEndTokensPerSecond": null,
+          "decodeTokensPerSecond": null,
+          "tokenLatencyMs": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "stddev": null
+          },
+          "prefillSubmissions": 128,
+          "prefillDispatches": 53760,
+          "prefillReadbacks": 0,
+          "submissions": 128,
+          "dispatches": 53760,
+          "readbacks": 0,
+          "syncReadbacks": 1,
+          "submissionsPerForward": 1,
+          "dispatchesPerForward": 420
+        },
+        {
+          "durationMs": 1219,
+          "ttftMs": null,
+          "prefillDurationMs": 47.5,
+          "promptTokens": 128,
+          "generatedTokens": 0,
+          "prefillTokensPerSecond": 2694.737,
+          "endToEndTokensPerSecond": null,
+          "decodeTokensPerSecond": null,
+          "tokenLatencyMs": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "stddev": null
+          },
+          "prefillSubmissions": 128,
+          "prefillDispatches": 53760,
+          "prefillReadbacks": 0,
+          "submissions": 128,
+          "dispatches": 53760,
+          "readbacks": 0,
+          "syncReadbacks": 1,
+          "submissionsPerForward": 1,
+          "dispatchesPerForward": 420
+        }
+      ]
+    }
+  ]
+}

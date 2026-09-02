@@ -25,7 +25,10 @@
 			const params = new URLSearchParams( window.location.search );
 			const modelId = params.get( 'model' ) || 'tinystories';
 			const trialCount = Math.max( 1, Number( params.get( 'trials' ) ) || 3 );
-			const maxNewTokens = Math.max( 2, Number( params.get( 'tokens' ) ) || 16 );
+			const maxNewTokens = Math.max( 0, params.has( 'tokens' ) ? Number( params.get( 'tokens' ) ) : 16 );
+			const promptTokenLength = Math.max( 0, Number( params.get( 'promptTokens' ) || params.get( 'promptLength' ) ) || 0 );
+			const gpuSampling = params.get( 'gpuSampling' ) !== 'false';
+			const prefillMode = params.get( 'prefillMode' ) !== 'false';
 			const prompt = params.get( 'prompt' ) || 'Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.';
 			const model = MODEL_CATALOG.find( ( entry ) => entry.id === modelId );
 
@@ -102,7 +105,30 @@
 
 			}
 
-			async function runGeneration( runner, renderer, counters, tokens ) {
+			function promptTokensForLength( runner, length ) {
+
+				if ( length <= 0 ) return null;
+
+				const encoded = runner.weights.tokenizer.encode( prompt );
+				const tokens = [];
+
+				while ( tokens.length < length ) {
+
+					tokens.push( ...encoded );
+
+				}
+
+				return tokens.slice( 0, length );
+
+			}
+
+			function summarizePresent( values ) {
+
+				return summarize( values.filter( ( value ) => value !== null && value !== undefined ) );
+
+			}
+
+			async function runGeneration( runner, renderer, counters, tokens, inputTokens ) {
 
 				runner.resetCache();
 				counters.submissions = 0;
@@ -111,14 +137,39 @@
 
 				const tokenTimes = [];
 				const start = performance.now();
+				let prefillCompleteMs = null;
+				let prefillSubmissions = null;
+				let prefillDispatches = null;
+				let prefillReadbacks = null;
 				const result = await runner.generate( renderer, prompt, {
 					maxNewTokens: tokens,
+					inputTokens,
+					gpuSampling,
+					prefillMode,
 					temperature: 0,
 					topK: 1,
 					repetitionPenalty: 1,
 					noRepeatNgramSize: 0,
+					onPrefillComplete: () => {
+
+						prefillCompleteMs = performance.now() - start;
+						prefillSubmissions = counters.submissions;
+						prefillDispatches = counters.dispatches;
+						prefillReadbacks = counters.readbacks;
+
+					},
 					onToken: () => tokenTimes.push( performance.now() )
 				} );
+				let syncReadbacks = 0;
+
+				if ( tokens === 0 ) {
+
+					const readbacksBeforeSync = counters.readbacks;
+					await renderer.getArrayBufferAsync( runner.embeddingAttribute, null, 0, 4 );
+					syncReadbacks = counters.readbacks - readbacksBeforeSync;
+
+				}
+
 				const end = performance.now();
 				const latencies = [];
 
@@ -127,19 +178,25 @@
 				const generatedTokens = result.generatedTokens.length;
 				const ttftMs = tokenTimes.length > 0 ? tokenTimes[ 0 ] - start : null;
 				const decodeWindowMs = tokenTimes.length > 1 ? tokenTimes[ tokenTimes.length - 1 ] - tokenTimes[ 0 ] : null;
+				const prefillDurationMs = prefillCompleteMs !== null ? prefillCompleteMs : ( tokens === 0 ? end - start : null );
 
 				return {
 					durationMs: end - start,
 					ttftMs,
+					prefillDurationMs,
 					promptTokens: result.promptTokens,
 					generatedTokens,
-					prefillTokensPerSecond: ttftMs > 0 ? result.promptTokens * 1000 / ttftMs : null,
-					endToEndTokensPerSecond: generatedTokens * 1000 / ( end - start ),
+					prefillTokensPerSecond: prefillDurationMs > 0 ? result.promptTokens * 1000 / prefillDurationMs : null,
+					endToEndTokensPerSecond: generatedTokens > 0 ? generatedTokens * 1000 / ( end - start ) : null,
 					decodeTokensPerSecond: decodeWindowMs > 0 ? ( generatedTokens - 1 ) * 1000 / decodeWindowMs : null,
 					tokenLatencyMs: summarize( latencies ),
+					prefillSubmissions,
+					prefillDispatches,
+					prefillReadbacks,
 					submissions: counters.submissions,
 					dispatches: counters.dispatches,
-					readbacks: counters.readbacks,
+					readbacks: counters.readbacks - syncReadbacks,
+					syncReadbacks,
 					submissionsPerForward: counters.submissions / ( result.promptTokens + generatedTokens ),
 					dispatchesPerForward: counters.dispatches / ( result.promptTokens + generatedTokens )
 				};
@@ -179,19 +236,20 @@
 					onProgress: ( message ) => progress.push( { timeMs: performance.now() - loadStart, message } )
 				} );
 				const modelLoadMs = performance.now() - loadStart;
+				const inputTokens = promptTokensForLength( runner, promptTokenLength );
 
 				output.textContent = `Loaded ${ model.name }. Compiling and warming GPU...`;
-				const firstUse = await runGeneration( runner, renderer, counters, 2 );
+				const firstUse = await runGeneration( runner, renderer, counters, Math.min( 2, maxNewTokens ), inputTokens );
 				const trials = [];
 
 				for ( let i = 0; i < trialCount; i ++ ) {
 
 					output.textContent = `Running ${ model.name } trial ${ i + 1 }/${ trialCount }...`;
-					trials.push( await runGeneration( runner, renderer, counters, maxNewTokens ) );
+					trials.push( await runGeneration( runner, renderer, counters, maxNewTokens, inputTokens ) );
 
 				}
 
-				const completedTrials = trials.filter( ( trial ) => trial.generatedTokens > 1 );
+				const completedTrials = trials.filter( ( trial ) => maxNewTokens === 0 || trial.generatedTokens > 1 );
 				const report = roundNumbers( {
 					schemaVersion: 1,
 					model: { id: model.id, name: model.name, url: modelURL( model ) },
@@ -200,7 +258,7 @@
 						platform: navigator.platform,
 						adapter: await adapterInfo()
 					},
-					parameters: { prompt, trialCount, maxNewTokens },
+					parameters: { prompt, promptTokenLength: inputTokens ? inputTokens.length : null, trialCount, maxNewTokens, gpuSampling, prefillMode },
 					load: {
 						rendererInitMs,
 						modelLoadMs,
@@ -209,13 +267,17 @@
 					},
 					firstUse,
 					summary: {
-						ttftMs: summarize( completedTrials.map( ( trial ) => trial.ttftMs ) ),
-						prefillTokensPerSecond: summarize( completedTrials.map( ( trial ) => trial.prefillTokensPerSecond ) ),
-						decodeTokensPerSecond: summarize( completedTrials.map( ( trial ) => trial.decodeTokensPerSecond ) ),
-						endToEndTokensPerSecond: summarize( completedTrials.map( ( trial ) => trial.endToEndTokensPerSecond ) ),
-						submissionsPerForward: summarize( completedTrials.map( ( trial ) => trial.submissionsPerForward ) ),
-						dispatchesPerForward: summarize( completedTrials.map( ( trial ) => trial.dispatchesPerForward ) ),
-						readbacks: summarize( completedTrials.map( ( trial ) => trial.readbacks ) )
+						ttftMs: summarizePresent( completedTrials.map( ( trial ) => trial.ttftMs ) ),
+						prefillDurationMs: summarizePresent( completedTrials.map( ( trial ) => trial.prefillDurationMs ) ),
+						prefillTokensPerSecond: summarizePresent( completedTrials.map( ( trial ) => trial.prefillTokensPerSecond ) ),
+						decodeTokensPerSecond: summarizePresent( completedTrials.map( ( trial ) => trial.decodeTokensPerSecond ) ),
+						endToEndTokensPerSecond: summarizePresent( completedTrials.map( ( trial ) => trial.endToEndTokensPerSecond ) ),
+						submissionsPerForward: summarizePresent( completedTrials.map( ( trial ) => trial.submissionsPerForward ) ),
+						dispatchesPerForward: summarizePresent( completedTrials.map( ( trial ) => trial.dispatchesPerForward ) ),
+						prefillSubmissions: summarizePresent( completedTrials.map( ( trial ) => trial.prefillSubmissions ) ),
+						prefillDispatches: summarizePresent( completedTrials.map( ( trial ) => trial.prefillDispatches ) ),
+						prefillReadbacks: summarizePresent( completedTrials.map( ( trial ) => trial.prefillReadbacks ) ),
+						readbacks: summarizePresent( completedTrials.map( ( trial ) => trial.readbacks ) )
 					},
 					trials
 				} );

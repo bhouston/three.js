@@ -203,3 +203,75 @@ The vec4 implementation was not retained in the production LLM path. A vec4 dot 
 The four-output vec4 approach is actively worse because the existing scalar layout already lets adjacent GPU invocations read adjacent coefficients, while one invocation accumulating four outputs reduces available parallelism and increases register pressure.
 
 A future implementation should avoid runtime repacking by preserving `[output, input]` checkpoint layout during loading, then retest vec4-dot as part of an F16 or quantized kernel where reduced weight bandwidth can compound the vectorization benefit.
+
+## Optimization 3: GPU greedy sampling and small top-k candidates
+
+The TSL runners now add a GPU-side logit candidate reducer after the chunked vocabulary projection. Greedy sampling uses a workgroup reduction per vocabulary chunk, merges the chunk maxima on the GPU, and reads back one token ID per sampled token instead of reading every chunk of full-vocabulary logits. A small exact top-k candidate path is also available for top-k values within the runner's candidate budget; sampling modes that need repetition, presence, frequency, or no-repeat-ngram penalties still fall back to the full-logit CPU path.
+
+The isolated benchmark used the current harness with chunked prefill disabled so this section measures sampling only:
+
+```sh
+npm run test-performance-llm -- --models=tinystories,smollm2 --trials=5 --tokens=32 --headless --gpuSampling=false --prefillMode=false --output=test/benchmark/results/tsl-gpu-sampling-baseline.json
+npm run test-performance-llm -- --models=tinystories,smollm2 --trials=5 --tokens=32 --headless --prefillMode=false --output=test/benchmark/results/tsl-gpu-sampling.json
+```
+
+### Paired TinyStories and SmolLM2 results
+
+| Model | Mode | Warm TTFT median | Warm decode median | Warm end-to-end median | Readbacks per trial | Dispatches per forward |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| TinyStories GPT-2 3M | CPU full-logit sampling | 36.7 ms | 232.558 tok/s | 182.753 tok/s | 231 | 108.475 |
+| TinyStories GPT-2 3M | GPU greedy sampling | 23.8 ms | 509.868 tok/s | 372.960 tok/s | 32 | 112.949 |
+| SmolLM2 135M | CPU full-logit sampling | 262.7 ms | 79.446 tok/s | 48.331 tok/s | 198 | 423.915 |
+| SmolLM2 135M | GPU greedy sampling | 263.1 ms | 82.250 tok/s | 49.953 tok/s | 32 | 427.831 |
+
+### Qwen3.5 high-vocabulary check
+
+The Qwen run used three trials and 16 generated tokens to keep the larger checkpoint iteration time practical:
+
+```sh
+npm run test-performance-llm -- --models=qwen3.5-0.8b --trials=3 --tokens=16 --headless --prefillMode=false --gpuSampling=false --output=test/benchmark/results/tsl-gpu-sampling-qwen-baseline.json
+npm run test-performance-llm -- --models=qwen3.5-0.8b --trials=3 --tokens=16 --headless --prefillMode=false --output=test/benchmark/results/tsl-gpu-sampling-qwen.json
+```
+
+| Model | Mode | Warm TTFT median | Warm decode median | Readbacks per trial | Dispatches per forward |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Qwen3.5 0.8B | CPU full-logit sampling | 850.0 ms | 20.298 tok/s | 527 | 456.651 |
+| Qwen3.5 0.8B | GPU greedy sampling | 851.1 ms | 21.904 tok/s | 16 | 469.302 |
+
+### Result
+
+GPU greedy sampling removed the readback bottleneck exactly as intended: SmolLM2 dropped from 198 to 32 readbacks per 27-prompt + 32-generated-token trial, and Qwen dropped from 527 to 16 readbacks per 27-prompt + 16-generated-token trial. The extra candidate-reduction dispatches are worthwhile for Qwen (+7.9% decode) and modestly positive for SmolLM2 in the paired run (+3.5% decode). TinyStories remains noisy across runs because the whole trial is short, but the paired run improved decode by 119.2%.
+
+The result also narrows the next target: once readbacks are reduced to one token ID per sampled token, remaining decode cost is again dominated by model kernels and dispatch count rather than CPU-side logit transfer.
+
+## Optimization 4: chunked sequential prefill mode
+
+The TSL runners now expose a prompt-ingestion path that uploads a chunk of prompt embeddings once, advances a GPU-visible position cursor, and replays the existing logits-free layer graph in a single compute submission per prefill chunk. This keeps the same one-token math as the previous prefill path, but changes prompt ingestion from one CPU embedding upload and one compute submission per prompt token to one upload and one submission per 32-token chunk.
+
+The benchmark harness now supports exact synthetic prompt lengths with `--promptTokens=...` and `--tokens=0`. Pure prefill runs add one explicit synchronization readback after the prompt graph so the measured duration includes GPU completion; that sync read is reported separately and excluded from model readback counts.
+
+```sh
+npm run test-performance-llm -- --models=smollm2 --trials=5 --tokens=0 --promptTokens=32 --headless --gpuSampling=false --prefillMode=false --output=test/benchmark/results/tsl-prefill-old-32.json
+npm run test-performance-llm -- --models=smollm2 --trials=5 --tokens=0 --promptTokens=32 --headless --gpuSampling=false --output=test/benchmark/results/tsl-prefill-32.json
+npm run test-performance-llm -- --models=smollm2 --trials=5 --tokens=0 --promptTokens=128 --headless --gpuSampling=false --prefillMode=false --output=test/benchmark/results/tsl-prefill-old-128.json
+npm run test-performance-llm -- --models=smollm2 --trials=5 --tokens=0 --promptTokens=128 --headless --gpuSampling=false --output=test/benchmark/results/tsl-prefill-128.json
+npm run test-performance-llm -- --models=smollm2 --trials=5 --tokens=0 --promptTokens=512 --headless --gpuSampling=false --prefillMode=false --output=test/benchmark/results/tsl-prefill-old-512.json
+npm run test-performance-llm -- --models=smollm2 --trials=5 --tokens=0 --promptTokens=512 --headless --gpuSampling=false --output=test/benchmark/results/tsl-prefill-512.json
+```
+
+### SmolLM2 pure prefill sweep
+
+| Prompt tokens | Mode | Prefill duration median | Prefill throughput median | Prefill submissions | Prefill dispatches | Model readbacks |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 32 | old per-token loop | 25.2 ms | 1269.841 tok/s | 32 | 13,440 | 0 |
+| 32 | chunked prefill | 23.5 ms | 1361.702 tok/s | 1 | 13,504 | 0 |
+| 128 | old per-token loop | 49.1 ms | 2606.925 tok/s | 128 | 53,760 | 0 |
+| 128 | chunked prefill | 62.6 ms | 2044.728 tok/s | 4 | 54,016 | 0 |
+| 512 | old per-token loop | 1840.8 ms | 278.140 tok/s | 512 | 215,040 | 0 |
+| 512 | chunked prefill | 279.1 ms | 1834.468 tok/s | 16 | 216,064 | 0 |
+
+### Result
+
+Chunked prefill realizes the intended submission reduction: `N` prompt submissions become `ceil(N / 32)`. The extra copy and cursor-advance kernels add two dispatches per prompt token, so short prompts are close to neutral: 32 tokens improved 6.7%, while 128 tokens regressed 21.5% in this run. At 512 tokens the reduced submission overhead dominates and prefill duration improved 84.8%.
+
+This is still sequential prefill, not batched GEMM. It makes the existing one-token graph cheaper to drive for long prompts and gives a benchmark harness that can measure future true batched-prefill kernels at 32, 128, and 512 prompt tokens.

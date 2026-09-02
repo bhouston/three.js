@@ -105,7 +105,7 @@ class GemmaCPURunner {
 
 		for ( let i = 0; i < newTokenBudget; i ++ ) {
 
-			const nextToken = sampleTopK( logits, options );
+			const nextToken = sampleTopK( logits, { ...options, tokens: allTokens } );
 
 			if ( nextToken === this.weights.endOfTextTokenId ) break;
 

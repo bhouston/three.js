@@ -795,6 +795,14 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( sampleTopK( new Float32Array( [ 1, 4, 3 ] ), { temperature: 0, topK: 40 } ), 1, 'temperature=0 returns argmax' );
 				assert.strictEqual( sampleTopK( new Float32Array( [ 1, 2, 3, 4 ] ), { topK: 2, temperature: 1, random: () => 0 } ), 3, 'random() == 0 picks the top candidate' );
 				assert.strictEqual( sampleTopK( new Float32Array( [ 1, 2, 3, 4 ] ), { temperature: 1e-8, topK: 40, random: () => 0.5 } ), 3, 'near-zero temperature picks argmax' );
+				assert.strictEqual( sampleTopK( new Float32Array( [ 5, 4 ] ), { temperature: 0, tokens: [ 0 ], repetitionPenalty: 2 } ), 1, 'repetition penalty downweights seen tokens' );
+				assert.strictEqual( sampleTopK( new Float32Array( [ 3, 2, 1 ] ), { temperature: 0, tokens: [ 0, 0 ], frequencyPenalty: 1 } ), 1, 'frequency penalty scales with token count' );
+				assert.strictEqual( sampleTopK( new Float32Array( [ 0, 0, 10, 1 ] ), {
+					temperature: 0,
+					tokens: [ 0, 1, 2, 0, 1 ],
+					noRepeatNgramSize: 3
+				} ), 3, 'no-repeat n-grams ban the completing token' );
+				assert.strictEqual( sampleTopK( new Float32Array( [ 5, 4 ] ), { temperature: 0, tokens: [ 0 ], repetitionPenalty: 1 } ), 0, 'repetitionPenalty=1 leaves logits unchanged' );
 
 				const normalized = layerNorm(
 					new Float32Array( [ 1, 2, 3 ] ),

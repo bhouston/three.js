@@ -33,6 +33,10 @@
 				<input id="temperature" type="number" min="0" max="2" step="0.1" value="0.7">
 				<label for="topK">Top K</label>
 				<input id="topK" type="number" min="1" max="100" value="10">
+				<label for="repetition">Repetition</label>
+				<input id="repetition" type="number" min="1" max="2" step="0.05" value="1.1" title="Penalty for tokens that already appeared. 1 disables it.">
+				<label for="ngram">N-gram</label>
+				<input id="ngram" type="number" min="0" max="8" value="3" title="Block repeating n-grams. 0 disables it.">
 				<button id="generate" disabled>Loading model...</button>
 				<button id="stop" disabled>Stop</button>
 			</div>
@@ -46,13 +50,21 @@
 				left: 50%;
 				top: 52%;
 				width: min(720px, calc(100% - 32px));
+				max-height: calc(100vh - 96px);
 				transform: translate(-50%, -50%);
+				display: flex;
+				flex-direction: column;
 				padding: 18px;
 				box-sizing: border-box;
 				border-radius: 8px;
 				background: rgba(0, 0, 0, 0.72);
 				color: #fff;
 				font-family: system-ui, sans-serif;
+				overflow: hidden;
+			}
+
+			#panel > * {
+				flex-shrink: 0;
 			}
 
 			#panel label {
@@ -92,19 +104,28 @@
 			}
 
 			#prompt {
+				max-height: 30vh;
+				min-height: 4.5em;
 				padding: 10px;
+				overflow-y: auto;
 				resize: vertical;
+				flex: 0 1 auto;
 			}
 
 			#output {
-				min-height: 180px;
+				min-height: 120px;
+				max-height: 40vh;
 				margin: 14px 0 8px;
 				padding: 12px;
+				overflow: auto;
 				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+				flex: 1 1 auto;
 			}
 
 			.row {
 				display: flex;
+				flex-wrap: wrap;
 				align-items: end;
 				gap: 10px;
 				margin-top: 12px;
@@ -165,6 +186,8 @@
 			const tokenInput = document.getElementById( 'tokens' );
 			const temperatureInput = document.getElementById( 'temperature' );
 			const topKInput = document.getElementById( 'topK' );
+			const repetitionInput = document.getElementById( 'repetition' );
+			const ngramInput = document.getElementById( 'ngram' );
 			const generateButton = document.getElementById( 'generate' );
 			const stopButton = document.getElementById( 'stop' );
 			const output = document.getElementById( 'output' );
@@ -307,6 +330,8 @@
 						maxNewTokens,
 						temperature: Number( temperatureInput.value ),
 						topK: Number( topKInput.value ),
+						repetitionPenalty: Number( repetitionInput.value ) || 1,
+						noRepeatNgramSize: Math.max( 0, Number( ngramInput.value ) || 0 ),
 						signal: abortController.signal,
 						onToken: ( text ) => {
 

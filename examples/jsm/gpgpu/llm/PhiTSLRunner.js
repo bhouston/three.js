@@ -187,7 +187,7 @@ class PhiTSLRunner {
 
 			if ( signal !== undefined && signal.aborted ) break;
 
-			const nextToken = sampleTopK( logits, options );
+			const nextToken = sampleTopK( logits, { ...options, tokens: allTokens } );
 
 			if ( nextToken === this.weights.endOfTextTokenId ) break;
 

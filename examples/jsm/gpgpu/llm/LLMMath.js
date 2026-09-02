@@ -434,7 +434,106 @@ function rmsNormGated( input, gate, weight, headCount, headDim, epsilon = 1e-6 )
 
 }
 
-function sampleTopK( logits, { temperature = 0.8, topK = 40, random = Math.random } = {} ) {
+function applyRepeatPenalties( logits, tokens, {
+	repetitionPenalty = 1,
+	presencePenalty = 0,
+	frequencyPenalty = 0,
+	repeatLastN = 64,
+	noRepeatNgramSize = 0
+} = {} ) {
+
+	if ( tokens === undefined || tokens.length === 0 ) return logits;
+
+	const useRepetition = repetitionPenalty !== 1 && repetitionPenalty > 0;
+	const usePresence = presencePenalty !== 0;
+	const useFrequency = frequencyPenalty !== 0;
+	const ngramSize = Math.max( 0, Math.floor( noRepeatNgramSize ) );
+	const useNgrams = ngramSize >= 2 && tokens.length >= ngramSize - 1;
+
+	if ( ! useRepetition && ! usePresence && ! useFrequency && ! useNgrams ) return logits;
+
+	const penalized = logits.slice();
+
+	if ( useRepetition || usePresence || useFrequency ) {
+
+		const windowStart = repeatLastN > 0 ? Math.max( 0, tokens.length - repeatLastN ) : 0;
+		const counts = new Map();
+
+		for ( let i = windowStart; i < tokens.length; i ++ ) {
+
+			const tokenId = tokens[ i ];
+			counts.set( tokenId, ( counts.get( tokenId ) || 0 ) + 1 );
+
+		}
+
+		for ( const [ tokenId, count ] of counts ) {
+
+			let score = penalized[ tokenId ];
+
+			if ( useRepetition ) {
+
+				score = score < 0 ? score * repetitionPenalty : score / repetitionPenalty;
+
+			}
+
+			if ( usePresence ) score -= presencePenalty;
+			if ( useFrequency ) score -= frequencyPenalty * count;
+
+			penalized[ tokenId ] = score;
+
+		}
+
+	}
+
+	if ( useNgrams ) {
+
+		const prefixLength = ngramSize - 1;
+		const prefixStart = tokens.length - prefixLength;
+
+		for ( let i = 0; i <= tokens.length - ngramSize; i ++ ) {
+
+			let match = true;
+
+			for ( let j = 0; j < prefixLength; j ++ ) {
+
+				if ( tokens[ i + j ] !== tokens[ prefixStart + j ] ) {
+
+					match = false;
+					break;
+
+				}
+
+			}
+
+			if ( match ) penalized[ tokens[ i + prefixLength ] ] = - Infinity;
+
+		}
+
+	}
+
+	return penalized;
+
+}
+
+function sampleTopK( logits, {
+	temperature = 0.8,
+	topK = 40,
+	random = Math.random,
+	tokens,
+	repetitionPenalty = 1,
+	presencePenalty = 0,
+	frequencyPenalty = 0,
+	repeatLastN = 64,
+	noRepeatNgramSize = 0
+} = {} ) {
+
+	logits = applyRepeatPenalties( logits, tokens, {
+		repetitionPenalty,
+		presencePenalty,
+		frequencyPenalty,
+		repeatLastN,
+		noRepeatNgramSize
+	} );
 
 	const k = Math.min( topK, logits.length );
 	const candidates = [];

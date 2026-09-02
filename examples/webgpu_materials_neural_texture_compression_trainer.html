@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - materials - neural texture compression trainer</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - materials - neural texture compression trainer">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_materials_neural_texture_compression_trainer.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_materials_neural_texture_compression_trainer.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#panel {
+				position: absolute;
+				left: 16px;
+				bottom: 16px;
+				padding: 12px;
+				width: 320px;
+				background: rgba( 0, 0, 0, 0.7 );
+				color: #fff;
+				font: 12px/1.45 monospace;
+				border-radius: 4px;
+				z-index: 2;
+			}
+
+			#panel button {
+				margin: 4px 4px 4px 0;
+			}
+
+			#panel select {
+				box-sizing: border-box;
+				margin: 4px 0;
+				width: 100%;
+			}
+
+			#status {
+				margin-top: 8px;
+				white-space: pre-line;
+			}
+
+			#lossPanel {
+				position: absolute;
+				right: 16px;
+				bottom: 16px;
+				padding: 12px;
+				background: rgba( 0, 0, 0, 0.7 );
+				color: #fff;
+				font: 12px/1.45 monospace;
+				border-radius: 4px;
+				z-index: 2;
+			}
+
+			#lossPanel[hidden],
+			#modelLabels[hidden] {
+				display: none;
+			}
+
+			#lossPanelHeader {
+				display: flex;
+				justify-content: space-between;
+				align-items: baseline;
+			}
+
+			#lossIps {
+				color: #fff;
+			}
+
+			#modelLabels {
+				position: absolute;
+				left: 0;
+				right: 0;
+				top: 120px;
+				display: flex;
+				justify-content: center;
+				gap: min( 35vw, 420px );
+				color: #fff;
+				font: 13px/1.45 monospace;
+				pointer-events: none;
+				z-index: 1;
+			}
+
+			#modelLabels span {
+				width: 180px;
+				text-align: center;
+				text-shadow: 0 1px 3px #000;
+			}
+
+			#lossGraph {
+				display: block;
+				width: 396px;
+				height: 120px;
+				background: #050505;
+				border: 1px solid rgba( 255, 255, 255, 0.25 );
+			}
+
+			#lossLegend {
+				display: flex;
+				justify-content: center;
+				gap: 12px;
+				margin-top: 4px;
+				color: #bbb;
+			}
+		</style>
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Neural Texture Compression trainer</span>
+			</div>
+
+			<small>
+				Fits ALL standard PBR channels of a MaterialX material (albedo, normal, roughness, metalness, clearcoat, iridescence, transmission, emissive, anisotropy...) with one shared grid + MLP network, then drives a real MeshPhysicalNodeMaterial from it.
+			</small>
+		</div>
+
+		<div id="panel">
+			<div><strong>Source:</strong> <span id="sourceName">loading default</span></div>
+			<label for="builtInMaterial"><strong>Built-in MaterialX:</strong></label>
+			<select id="builtInMaterial"></select>
+			<button id="openMtlxButton">Open .mtlx</button>
+			<button id="trainButton">Train</button>
+			<button id="stopButton" disabled>Stop training</button>
+			<div><span id="networkSize">—</span></div>
+			<div><strong>Trained network:</strong></div>
+			<button id="saveJsonButton" disabled>Save .ntc</button>
+			<button id="loadJsonButton">Load .ntc</button>
+			<div id="status">Ready.</div>
+			<input id="mtlxFileInput" type="file" accept=".mtlx,.zip,.mtlx.zip" hidden>
+			<input id="jsonFileInput" type="file" accept=".ntc,.json" hidden>
+		</div>
+
+		<div id="modelLabels" hidden>
+			<span>MaterialX teacher</span>
+			<span>NTC material</span>
+		</div>
+
+		<div id="lossPanel" hidden>
+			<div id="lossPanelHeader"><strong>Training loss</strong><span id="lossIps"></span></div>
+			<canvas id="lossGraph" width="396" height="120"></canvas>
+			<div id="lossLegend"></div>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+			import { MaterialXLoader } from 'three/addons/loaders/MaterialXLoader.js';
+			import { NTCTrainer } from 'three/addons/ntc/training/NTCTrainer.js';
+			import { NTCNodeMaterial } from 'three/addons/ntc/NTCNodeMaterial.js';
+			import { bakeMaterialToTextures, buildChannelPreviewMaterials, classifyMaterialChannels } from 'three/addons/ntc/training/NTCSource.js';
+			import { inferAlbedoUvTransform } from 'three/addons/ntc/training/NTCMaterialXUvTransform.js';
+			import { uniform } from 'three/tsl';
+			import { computeGridLevels } from 'three/addons/ntc/training/NTCGridPyramidModel.js';
+			import { GRID_LEVELS_OPTIONS, GRID_BASE_RESOLUTION_OPTIONS, MLP_HIDDEN_SIZE_OPTIONS, MLP_ACTIVATION_OPTIONS } from 'three/addons/ntc/training/NTCGridModel.js';
+			import { NTC_PROFILES, NTC_PROFILE_NAMES, getNTCProfile } from 'three/addons/ntc/training/NTCProfiles.js';
+			import { CHANNELS, MAX_TOTAL_CHANNELS, FRAME_VIEWS, buildChannelActivations } from 'three/addons/ntc/NTCFormat.js';
+			import { NTCLossGraph } from 'three/addons/ntc/training/NTCLossGraph.js';
+			import { computeMLPParamCount, computeMLPFlops, computeGridLatentTexels, computeModelFootprint, formatModelSizeSummary } from 'three/addons/ntc/training/NTCModelSize.js';
+			import { getMaterialXSample, populateMaterialXSelect } from 'three/addons/ntc/training/NTCMaterialXSamples.js';
+			import { NTCExporter } from 'three/addons/exporters/NTCExporter.js';
+			import { NTCLoader } from 'three/addons/loaders/NTCLoader.js';
+
+			let camera, scene, renderer;
+			let geometry;
+			let teacherMesh, neuralMesh, neuralMaterial, placeholderMaterial;
+			let materialXMaterial = null, sourceTextures = null, teacherDebugMaterials = null, channelClassification = null;
+			// The mesh/query-UV-to-local-space transform inferred from the loaded
+			// MaterialX graph's albedo chain (rotate2d/place2d/tiling - see
+			// NTCMaterialXUvTransform.js), or identity for a built-in material /
+			// a graph with no detected transform. Baked into the training targets
+			// (inverted) and persisted onto the trained model - see setSourceMaterial/train.
+			let materialXUvTransform = new THREE.Matrix3();
+			let currentCpuModel = null;
+			// True once `currentCpuModel`'s real dimensions match what the network
+			// GUI sliders currently say - set on train/load, cleared the moment any
+			// of those sliders change (see the `network (grid + MLP)` folder below)
+			// so `updateNetworkSize()` falls back to previewing the slider values
+			// instead of continuing to show the stale trained/loaded model size.
+			let networkSizeMatchesModel = false;
+			let environmentMap = null;
+			const directLights = [];
+			let isTraining = false, activeTrainer = null;
+
+			const params = {
+				bakeResolution: 1024,
+				levels: 3,
+				baseResolution: 256,
+				hiddenSize: 8,
+				hiddenActivation: 'relu',
+				batchSize: 8192,
+				iterations: 10000,
+				learningRate: 0.01,
+				quantization: 'uint8',
+				debugView: 'shaded',
+				// See NTCNodeMaterial.js's setInterpolation - `false` swaps the
+				// feature grid's mip-chain texture to nearest-neighbor sampling
+				// within each stored level (mip levels still blend into each
+				// other) so its actual trained texels can be inspected without
+				// bilinear blur - purely a display setting, not part of the
+				// trained model.
+				interpolation: true,
+				// See NTCNodeMaterial.js's computeAutoLodNode - subtracted from
+				// the auto-computed (screen-space-derivative) LOD estimate
+				// before clamping to [0, maxLod]; a large positive value pins
+				// reconstruction to the finest stored level regardless of how
+				// tiled/repeated the material's uvTransform makes it, which is
+				// what actually lets the feature grid's own stored texels be
+				// inspected (via the 'textureUv' debug view + interpolation
+				// off) independent of the tiling-driven auto-LOD coarsening
+				// that's otherwise entirely expected (any tiled, mipmapped
+				// texture behaves the same way - more repeats need a coarser
+				// mip to stay anti-aliased).
+				lodBias: 0,
+				shape: 'torus',
+				showBackground: true
+			};
+
+			// A live-updatable uniform (rather than a plain number) so the
+			// 'LOD bias' slider below can retune this after the material's
+			// already built - see NTCNodeMaterial.js's constructor doc comment
+			// on `options.lodBias` - instead of triggering a full material
+			// rebuild on every drag.
+			const lodBiasUniform = uniform( 0 );
+
+			const DEFAULT_MATERIALX_KEY = 'neural_train_checkerboard_normal';
+			const BACKGROUND_COLOR = 0x15171c;
+
+			const sourceName = document.getElementById( 'sourceName' );
+			const status = document.getElementById( 'status' );
+			const builtInMaterial = document.getElementById( 'builtInMaterial' );
+			const mtlxFileInput = document.getElementById( 'mtlxFileInput' );
+			const openMtlxButton = document.getElementById( 'openMtlxButton' );
+			const trainButton = document.getElementById( 'trainButton' );
+			const stopButton = document.getElementById( 'stopButton' );
+			const saveJsonButton = document.getElementById( 'saveJsonButton' );
+			const loadJsonButton = document.getElementById( 'loadJsonButton' );
+			const jsonFileInput = document.getElementById( 'jsonFileInput' );
+			const modelLabels = document.getElementById( 'modelLabels' );
+			const lossPanel = document.getElementById( 'lossPanel' );
+			const lossGraph = new NTCLossGraph(
+				document.getElementById( 'lossGraph' ),
+				[ { key: 'loss', label: 'L2 loss (log)', color: '#50c8ff' } ],
+				{
+					legend: document.getElementById( 'lossLegend' ),
+					ips: document.getElementById( 'lossIps' )
+				}
+			);
+
+			init();
+
+			async function init() {
+
+				if ( WebGPU.isAvailable() === false ) {
+
+					document.body.appendChild( WebGPU.getErrorMessage() );
+					throw new Error( 'No WebGPU support' );
+
+				}
+
+				const container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 1.2, 5 );
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( BACKGROUND_COLOR );
+
+				const keyLight = new THREE.DirectionalLight( 0xffffff, 0.9 );
+				keyLight.position.set( 3.2, 2.4, 2.6 );
+				keyLight.userData.baseIntensity = keyLight.intensity;
+				scene.add( keyLight );
+				directLights.push( keyLight );
+
+				const fillLight = new THREE.DirectionalLight( 0xffffff, 0.32 );
+				fillLight.position.set( - 2.8, 0.6, 2.2 );
+				fillLight.userData.baseIntensity = fillLight.intensity;
+				scene.add( fillLight );
+				directLights.push( fillLight );
+
+				const rimLight = new THREE.DirectionalLight( 0xffffff, 0.45 );
+				rimLight.position.set( - 1.4, 3.2, - 2.8 );
+				rimLight.userData.baseIntensity = rimLight.intensity;
+				scene.add( rimLight );
+				directLights.push( rimLight );
+
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 0.9;
+				renderer.domElement.id = 'neuralParametersMaterialCanvas';
+				renderer.inspector = new Inspector();
+				container.appendChild( renderer.domElement );
+				await renderer.init();
+
+				environmentMap = await new HDRLoader()
+					.setPath( 'textures/equirectangular/' )
+					.loadAsync( 'san_giuseppe_bridge_2k.hdr' );
+				environmentMap.mapping = THREE.EquirectangularReflectionMapping;
+				applyLights();
+
+				const controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 0, 0 );
+				controls.enableZoom = false;
+				controls.enablePan = false;
+				controls.update();
+
+				geometry = buildGeometry( params.shape );
+
+				placeholderMaterial = new THREE.MeshPhysicalNodeMaterial( { color: 0x222222, roughness: 0.8 } );
+
+				teacherMesh = new THREE.Mesh( geometry, placeholderMaterial );
+				teacherMesh.rotation.x = - 0.35;
+				scene.add( teacherMesh );
+
+				neuralMesh = new THREE.Mesh( geometry, placeholderMaterial );
+				neuralMesh.rotation.copy( teacherMesh.rotation );
+				neuralMesh.visible = false;
+				scene.add( neuralMesh );
+
+				const gui = renderer.inspector.createParameters( 'Neural Texture Compression' );
+
+				const sourceFolder = gui.addFolder( 'source' );
+				sourceFolder.add( params, 'bakeResolution', [ 128, 256, 512, 1024, 2048, 4096 ] ).name( 'bake resolution' );
+
+				const networkFolder = gui.addFolder( 'network (grid + MLP)' );
+				// Named presets (see NTCProfiles.js) - a one-shot convenience that
+				// just fills in the sliders below with a documented combination,
+				// rather than a persistent mode: picking one updates
+				// levels/baseResolution/hiddenSize/hiddenActivation exactly as if
+				// they'd been dragged individually, and any of those sliders can
+				// still be freely adjusted afterward. This example always trains
+				// exactly 2 hidden layers (see the 'hiddenSize' slider below), so
+				// applying a profile with a different stored hidden-layer count
+				// (e.g. 'mobile-fast''s single layer) uses that profile's own
+				// (widest) hidden width for both of this demo's layers rather than
+				// changing the layer count - NTCTrainer.js itself supports any
+				// hiddenSizes array length, this simplification is specific to
+				// this example page's fixed-2-layer slider UI.
+				const profileOptions = {};
+				for ( const name of NTC_PROFILE_NAMES ) profileOptions[ NTC_PROFILES[ name ].label ] = name;
+				networkFolder.add( { profile: 'mobile-balanced' }, 'profile', profileOptions ).name( 'preset' ).onChange( applyNTCProfilePreset );
+
+				// .listen() makes each controller poll `params` every frame and
+				// refresh its displayed value on any external change (see
+				// Inspector.js's ParametersGroup editor.listen()) - needed since
+				// applyNTCProfilePreset below writes straight into `params`
+				// without going through these controllers' own onChange path.
+				networkFolder.add( params, 'levels', GRID_LEVELS_OPTIONS ).name( 'feature levels' ).listen().onChange( onNetworkParamChange );
+				networkFolder.add( params, 'baseResolution', GRID_BASE_RESOLUTION_OPTIONS ).name( 'finest grid res' ).listen().onChange( onNetworkParamChange );
+				networkFolder.add( params, 'hiddenSize', MLP_HIDDEN_SIZE_OPTIONS ).name( 'MLP hidden width (x2 layers)' ).listen().onChange( onNetworkParamChange );
+				networkFolder.add( params, 'hiddenActivation', MLP_ACTIVATION_OPTIONS ).name( 'MLP hidden activation' ).listen();
+
+				const trainingFolder = gui.addFolder( 'training' );
+				trainingFolder.add( params, 'batchSize', [ 1024, 2048, 4096, 8192, 16384 ] ).name( 'batch size' );
+				trainingFolder.add( params, 'iterations', 200, 20000, 100 ).name( 'iterations' );
+				trainingFolder.add( params, 'learningRate', 0.001, 0.05, 0.001 ).name( 'learning rate' );
+				trainingFolder.add( params, 'quantization', { 'Off': 'none', '8-bit': 'uint8' } ).name( 'quantization' );
+
+				const objectFolder = gui.addFolder( 'object' );
+				objectFolder.add( params, 'shape', [ 'torus', 'sphere', 'plane' ] ).name( 'shape' ).onChange( updateShape );
+
+				const viewFolder = gui.addFolder( 'view' );
+				// 'textureUv' is neural-material-only (see NTCNodeMaterial.js's
+				// setDebugView) - there's no teacher-side equivalent, so
+				// updateDebugView's `teacherDebugMaterials[params.debugView] ||
+				// materialXMaterial` fallback leaves the teacher mesh shown
+				// normally shaded while only the neural mesh switches to it.
+				viewFolder.add( params, 'debugView', [ 'shaded', ...CHANNELS.map( ( c ) => c.key ), ...FRAME_VIEWS, 'textureUv' ] ).name( 'channel' ).onChange( updateDebugView );
+				viewFolder.add( params, 'interpolation' ).name( 'interpolation (feature grid)' ).onChange( updateInterpolation );
+				// Positive values pin reconstruction to a finer stored level than
+				// the screen-space-derivative auto-estimate would pick - see
+				// `lodBiasUniform`'s doc comment above. Useful for inspecting the
+				// feature grid's own texels (with interpolation off) on a tiled/
+				// repeated material, where auto-LOD correctly (not a bug - see
+				// that comment) goes coarser as the tiling gets denser.
+				viewFolder.add( params, 'lodBias', - 4, 16, 0.25 ).name( 'LOD bias (force finer)' ).onChange( ( value ) => {
+
+					lodBiasUniform.value = value;
+
+				} );
+				viewFolder.add( params, 'showBackground' ).name( 'show background IBL' ).onChange( updateBackground );
+
+				builtInMaterial.addEventListener( 'change', () => loadBuiltInMaterial( builtInMaterial.value ) );
+				openMtlxButton.addEventListener( 'click', () => mtlxFileInput.click() );
+				mtlxFileInput.addEventListener( 'change', onMtlxFileSelected );
+				trainButton.addEventListener( 'click', train );
+				stopButton.addEventListener( 'click', stopTraining );
+				saveJsonButton.addEventListener( 'click', saveJson );
+				loadJsonButton.addEventListener( 'click', () => jsonFileInput.click() );
+				jsonFileInput.addEventListener( 'change', onJsonFileSelected );
+				window.addEventListener( 'resize', onWindowResize );
+
+				populateMaterialXSelect( builtInMaterial );
+
+				updateNetworkSize();
+				builtInMaterial.value = DEFAULT_MATERIALX_KEY;
+				await loadBuiltInMaterial( DEFAULT_MATERIALX_KEY );
+
+				// Started only once every mesh/material is in place - starting
+				// this any earlier risks a frame firing mid-await (e.g. while
+				// the HDRI or MaterialX preset is still loading) and crashing
+				// on teacherMesh/neuralMesh still being undefined.
+				renderer.setAnimationLoop( render );
+
+			}
+
+			// Builds the mesh geometry for the selected "object" shape - every
+			// shape gets computeTangents() run on it since normal/clearcoatNormal
+			// channels are decoded in tangent space (see
+			// NTCNodeMaterial.reconstructFinalNormal) and need a real
+			// tangentWorld/bitangentWorld basis to blend through.
+			//
+			// 'plane' is deliberately a flat, seamless quad with the untouched
+			// (already 0-1 on both axes) PlaneGeometry UVs and a single constant
+			// tangent basis across its whole surface - useful as a control case
+			// when debugging normal-channel artifacts that show up on 'torus':
+			// if an artifact (e.g. bump detail only along two of four brick
+			// edges) disappears on the plane, the bug is in the torus knot's UV
+			// seams/tangent basis, not in the trained (dx, dy) normal encoding
+			// itself; if it persists on the plane, the encoding/training is the
+			// real culprit.
+			function buildGeometry( shape ) {
+
+				if ( shape === 'sphere' ) {
+
+					const geo = new THREE.SphereGeometry( 1, 64, 32 );
+					geo.computeTangents();
+					return geo;
+
+				}
+
+				if ( shape === 'plane' ) {
+
+					const geo = new THREE.PlaneGeometry( 3, 3 );
+					geo.computeTangents();
+					return geo;
+
+				}
+
+				const geo = new THREE.TorusKnotGeometry( 1, 0.36, 192, 32 );
+
+				// Scale UV.x (the tubular/length direction) so tiling textures
+				// repeat instead of stretching once around the knot's long path.
+				const uvAttribute = geo.attributes.uv;
+				for ( let i = 0; i < uvAttribute.count; i ++ ) {
+
+					uvAttribute.setX( i, uvAttribute.getX( i ) * 6 );
+
+				}
+
+				uvAttribute.needsUpdate = true;
+
+				geo.computeTangents();
+				return geo;
+
+			}
+
+			function updateShape() {
+
+				const oldGeometry = geometry;
+				geometry = buildGeometry( params.shape );
+
+				teacherMesh.geometry = geometry;
+				neuralMesh.geometry = geometry;
+
+				if ( params.shape === 'plane' ) {
+
+					// Orientation is driven every frame in render() (billboarded
+					// to face the camera) - reset here so it doesn't inherit
+					// whatever rotation another shape left behind.
+					teacherMesh.rotation.set( 0, 0, 0 );
+					neuralMesh.rotation.set( 0, 0, 0 );
+					teacherMesh.quaternion.identity();
+					neuralMesh.quaternion.identity();
+
+				} else {
+
+					teacherMesh.rotation.set( - 0.35, 0, 0 );
+					neuralMesh.rotation.copy( teacherMesh.rotation );
+
+				}
+
+				if ( oldGeometry && oldGeometry !== geometry ) oldGeometry.dispose();
+
+			}
+
+			// Network GUI sliders (levels/baseResolution/hiddenSize) changed
+			// since the last train/load - invalidate the "real model"
+			// dimensions so `updateNetworkSize()` previews the new slider values
+			// instead of continuing to report the stale trained/loaded model.
+			function onNetworkParamChange() {
+
+				networkSizeMatchesModel = false;
+				updateNetworkSize();
+
+			}
+
+			// Applies a named NTCProfiles.js preset to the network sliders (see
+			// the 'preset' dropdown's doc comment above). Writes straight into
+			// `params` - the affected controllers are all created with
+			// `.listen()` (see the 'network (grid + MLP)' folder above), which
+			// polls `params` every frame and refreshes its own displayed value,
+			// so no separate "tell the GUI to redraw" step is needed here.
+			function applyNTCProfilePreset( name ) {
+
+				const profile = getNTCProfile( name );
+				if ( ! profile ) return;
+
+				params.levels = profile.levels;
+				params.baseResolution = profile.baseResolution;
+				params.hiddenSize = profile.hiddenSizes[ profile.hiddenSizes.length - 1 ];
+				params.hiddenActivation = profile.hiddenActivation;
+
+				onNetworkParamChange();
+
+			}
+
+			function updateNetworkSize() {
+
+				// Output width follows the *active* (trained) channel count for
+				// the current source material - see classifyMaterialChannels -
+				// falling back to the full vocabulary before any material has
+				// loaded yet.
+				const outputChannels = channelClassification ? channelClassification.totalChannels : MAX_TOTAL_CHANNELS;
+
+				const channels = 4;
+
+				// Once a network actually exists (trained here, or loaded from a
+				// JSON file whose grid/MLP dimensions may not match the current
+				// GUI sliders at all) *and* the GUI sliders haven't been touched
+				// since, report its *real* dimensions rather than what the sliders
+				// would currently produce. The moment a network slider changes,
+				// `networkSizeMatchesModel` goes false (see `onNetworkParamChange`)
+				// and this falls back to previewing the new slider values.
+				const useModel = currentCpuModel !== null && networkSizeMatchesModel;
+
+				const resolutions = useModel ?
+					currentCpuModel.resolutions :
+					computeGridLevels( Number( params.baseResolution ), Number( params.levels ) );
+				const hidden = useModel ? currentCpuModel.hiddenSizes[ 0 ] : Number( params.hiddenSize );
+
+				const latentTexels = computeGridLatentTexels( resolutions );
+				const gridParams = latentTexels * channels;
+
+				// The decoder's input is fixed at `channels + 1` (one selected
+				// feature level's tap plus the LOD value) regardless of how many
+				// mip levels the pyramid stores - see NTCGridPyramidModel.js's doc
+				// comment.
+				const inputSize = channels + 1;
+				const mlpSpec = { inputSize, hiddenSize: hidden, hiddenLayers: 2, outputSize: outputChannels };
+				const mlpParams = computeMLPParamCount( mlpSpec );
+				const flops = computeMLPFlops( mlpSpec );
+
+				document.getElementById( 'networkSize' ).textContent = formatModelSizeSummary( computeModelFootprint( { gridParams, mlpParams, flops } ) );
+
+			}
+
+			async function loadBuiltInMaterial( key ) {
+
+				const sample = getMaterialXSample( key );
+				if ( sample === undefined ) return;
+
+				const file = sample.file;
+
+				try {
+
+					builtInMaterial.disabled = true;
+					status.textContent = `Loading ${file}...`;
+					const loader = new MaterialXLoader().setPath( 'materialx/' );
+					const asset = await loader.loadAsync( file, { uvSpace: 'top-left', throwOnErrors: true } );
+					const materials = asset && asset.materials ? asset.materials : asset;
+					const material = Object.values( materials ).find( isPhysicalNodeMaterial ) || Object.values( materials )[ 0 ];
+
+					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
+
+					// <image>-backed nodes load their bitmap asynchronously in the
+					// background - loadAsync() above only waits for the MaterialX
+					// document itself to parse. bakeMaterialToTextures() (see
+					// train()) is a one-shot render, not a continuous one, so it
+					// must wait for any such bitmap to actually arrive first or it
+					// bakes whatever was there before the image loaded (usually
+					// blank).
+					if ( asset.texturesReady ) await asset.texturesReady;
+
+					setSourceMaterial( material, file );
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				} finally {
+
+					builtInMaterial.disabled = isTraining;
+
+				}
+
+			}
+
+			async function onMtlxFileSelected( event ) {
+
+				const file = event.target.files[ 0 ];
+				if ( file === undefined ) return;
+
+				try {
+
+					status.textContent = `Loading ${file.name}...`;
+					const loader = new MaterialXLoader();
+					const asset = loader.parseBuffer( await file.arrayBuffer(), file.name, { uvSpace: 'top-left', throwOnErrors: true } );
+					const materials = asset && asset.materials ? asset.materials : asset;
+					const material = Object.values( materials ).find( isPhysicalNodeMaterial ) || Object.values( materials )[ 0 ];
+
+					if ( material === undefined ) throw new Error( 'MaterialXLoader did not produce any materials.' );
+
+					// See the loadBuiltInMaterial() comment above - wait for any
+					// <image>-backed textures to finish loading before baking.
+					if ( asset.texturesReady ) await asset.texturesReady;
+
+					builtInMaterial.value = '';
+					setSourceMaterial( material, file.name );
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
+
+				event.target.value = '';
+
+			}
+
+			// Builds the compact `.ntc` manifest (see `NTCExporter`) -
+			// uint8-quantized latent grid + float16 MLP, embedding the current
+			// channel layout. There's no compact-format equivalent for the
+			// "every channel is constant, no grid/MLP was trained at all" case
+			// (`currentCpuModel === null`) - `NTCExporter.parse` requires a
+			// real trained material - so saving stays disabled then; see
+			// `saveJsonButton` state managed in
+			// `rebuildNeuralMaterial`/`setSourceMaterial`.
+			const ntcExporter = new NTCExporter();
+
+			function saveJson() {
+
+				if ( currentCpuModel === null || channelClassification === null || neuralMaterial === undefined ) return;
+
+				const name = sourceName.textContent || 'Untitled neural material';
+				const manifest = ntcExporter.parse( neuralMaterial, {
+					name,
+					source: 'Exported from three.js webgpu_materials_neural_texture_compression_trainer example.'
+				} );
+
+				const safeName = name.trim().replace( /[^a-z0-9-_]+/gi, '_' );
+				const filename = `${safeName || 'neural-material'}.ntc`;
+
+				const blob = new Blob( [ JSON.stringify( manifest ) ], { type: 'application/json' } );
+				const url = URL.createObjectURL( blob );
+				const link = document.createElement( 'a' );
+				link.href = url;
+				link.download = filename;
+				link.click();
+				URL.revokeObjectURL( url );
+
+				status.textContent = `Saved ${filename}.`;
+
+			}
+
+			async function onJsonFileSelected( event ) {
+
+				const file = event.target.files[ 0 ];
+				if ( file === undefined ) return;
+
+				try {
+
+					status.textContent = `Loading ${file.name}...`;
+					const payload = JSON.parse( await file.text() );
+					loadNeuralMaterialFromJson( payload, file.name );
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
+
+				event.target.value = '';
+
+			}
+
+			// Inverse of saveJson() - decodes a `.ntc` manifest via
+			// `NTCLoader` into a cpuModel/channelClassification pair
+			// and hands them to rebuildNeuralMaterial. There is no MaterialX
+			// teacher to compare against for a loaded file (that source material
+			// was never part of the export), so the neural mesh is shown alone
+			// (sideBySide: false) and "Train" stays disabled until a MaterialX
+			// source is opened.
+			function loadNeuralMaterialFromJson( payload, fileName ) {
+
+				const { name, cpuModel, channelClassification: loadedClassification } = new NTCLoader().parse( payload );
+
+				// `NTCLoader.parse()` returns the exact `cpuModel` shape
+				// the same shape a live `NTCTrainer`/`NTCFit.fitNTCMaterial()` run produces (see that
+				// module) - it doesn't carry `resolutions`/`hiddenSizes`, which
+				// `updateNetworkSize()` reads directly off `currentCpuModel`, so
+				// they're re-derived here from the decoded grids/decoder layers.
+				cpuModel.resolutions = cpuModel.grids.map( ( grid ) => grid.width );
+				cpuModel.hiddenSizes = cpuModel.decoder.layers.slice( 0, - 1 ).map( ( layer ) => layer.outputSize );
+
+				materialXMaterial = null;
+				materialXUvTransform = new THREE.Matrix3();
+				disposeTeacherDebugMaterials();
+				disposeSourceTextures();
+				builtInMaterial.value = '';
+				trainButton.disabled = true; // no MaterialX source loaded to (re)train against
+				modelLabels.hidden = true;
+				lossPanel.hidden = true;
+				lossGraph.reset();
+
+				channelClassification = loadedClassification;
+				sourceName.textContent = name || fileName;
+
+				rebuildNeuralMaterial( cpuModel, false );
+				updateNetworkSize();
+
+				const activeKeys = channelClassification.activeChannels.map( ( c ) => c.key ).join( ', ' ) || 'none';
+				status.textContent = `Loaded "${sourceName.textContent}" (${channelClassification.totalChannels}/${MAX_TOTAL_CHANNELS} channels: ${activeKeys}).`;
+
+			}
+
+			function isPhysicalNodeMaterial( material ) {
+
+				return material !== undefined && ( material.isMeshPhysicalNodeMaterial === true || material.type === 'MeshPhysicalNodeMaterial' );
+
+			}
+
+			function setSourceMaterial( material, name ) {
+
+				materialXMaterial = material;
+				channelClassification = classifyMaterialChannels( material );
+
+				// See NTCMaterialXUvTransform.js's doc comment - only present for a
+				// MaterialX-loaded material (see MaterialXDocument.js's
+				// toPhysicalMaterial), and only ever non-identity when its albedo
+				// chain has a recognized, all-constant rotate2d/place2d/tiling
+				// transform. Falls back to identity for the built-in demo material
+				// or an unrecognized/dynamic graph.
+				const surfaceShaderNode = material.materialXSurfaceShaderNode;
+				const materialXDocument = material.materialXDocument;
+				materialXUvTransform = ( surfaceShaderNode && materialXDocument ) ?
+					inferAlbedoUvTransform( materialXDocument, surfaceShaderNode ) : new THREE.Matrix3();
+
+				sourceName.textContent = material.name || name;
+				disposeTeacherDebugMaterials();
+				teacherDebugMaterials = buildChannelPreviewMaterials( material );
+				disposeNeuralMaterial();
+				neuralMesh.material = placeholderMaterial;
+				neuralMesh.visible = false;
+				teacherMesh.visible = true;
+				modelLabels.hidden = true;
+				lossPanel.hidden = true;
+				lossGraph.reset();
+				trainButton.disabled = false;
+				saveJsonButton.disabled = true;
+				currentCpuModel = null;
+				networkSizeMatchesModel = false;
+				updateDebugView();
+				updateNetworkSize();
+
+				const activeKeys = channelClassification.activeChannels.map( ( c ) => c.key ).join( ', ' ) || 'none';
+				const uvTransformNote = materialXUvTransform.equals( new THREE.Matrix3() ) ?
+					'' : ' A UV transform was detected on the albedo graph and will be baked out / re-applied at render time.';
+				status.textContent = `MaterialX loaded. Training ${channelClassification.totalChannels}/${MAX_TOTAL_CHANNELS} channels: ${activeKeys}.${uvTransformNote}\nPress Train to fit.`;
+
+			}
+
+			async function train() {
+
+				if ( materialXMaterial === null ) return;
+
+				if ( channelClassification.activeChannels.length === 0 ) {
+
+					// Every channel measured constant - nothing for a network to
+					// fit. Skip straight to a "trained" material built entirely
+					// from the measured constants (no grid/MLP needed at all).
+					rebuildNeuralMaterial( null );
+					status.textContent = 'Every channel is constant on this material - nothing to train; applying measured constants directly.';
+					return;
+
+				}
+
+				setTrainingUi( true );
+				modelLabels.hidden = false;
+				lossPanel.hidden = false;
+				lossGraph.reset();
+				status.textContent = 'Baking material channels...';
+
+				try {
+
+					disposeSourceTextures();
+					const renderTargets = await bakeMaterialToTextures( renderer, materialXMaterial, Number( params.bakeResolution ), channelClassification.activeChannels, materialXUvTransform );
+					sourceTextures = renderTargets;
+
+					status.textContent = 'Training...';
+
+					const trainer = new NTCTrainer( {
+						channels: 4,
+						levels: Number( params.levels ),
+						baseResolution: Number( params.baseResolution ),
+						hiddenSizes: [ Number( params.hiddenSize ), Number( params.hiddenSize ) ],
+						hiddenActivation: params.hiddenActivation,
+						outputChannels: channelClassification.totalChannels,
+						channelActivations: buildChannelActivations( channelClassification.activeChannels ),
+						batchSize: Number( params.batchSize ),
+						iterations: Number( params.iterations ),
+						learningRate: Number( params.learningRate ),
+						quantization: { mode: params.quantization },
+						uvTransform: materialXUvTransform,
+						seed: 1
+					} );
+					activeTrainer = trainer;
+
+					const result = await trainer.train( {
+						renderer,
+						sourceTextures: renderTargets.map( ( rt ) => rt.texture ),
+						onProgress: ( progress ) => {
+
+							// The current iteration and primary loss are shown on the
+							// loss graph itself (top-right / bottom-right) rather than
+							// duplicated in the status text - see NTCLossGraph.js.
+							lossGraph.addPoint( { iteration: progress.iteration, loss: progress.loss } );
+							lossGraph.draw();
+							rebuildNeuralMaterial( progress.cpuModel );
+
+						}
+					} );
+
+					rebuildNeuralMaterial( result.cpuModel );
+					status.textContent = result.stoppedEarly ? 'Stopped.' : 'Training complete.';
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				} finally {
+
+					activeTrainer = null;
+					setTrainingUi( false );
+
+				}
+
+			}
+
+			function stopTraining() {
+
+				if ( activeTrainer === null ) return;
+				activeTrainer.abort();
+				stopButton.disabled = true;
+				status.textContent = 'Stopping...';
+
+			}
+
+			function setTrainingUi( active ) {
+
+				isTraining = active;
+				stopButton.disabled = ! active;
+				trainButton.disabled = active || materialXMaterial === null;
+				builtInMaterial.disabled = active;
+				openMtlxButton.disabled = active;
+
+			}
+
+			function rebuildNeuralMaterial( cpuModel, sideBySide = true ) {
+
+				disposeNeuralMaterial();
+				currentCpuModel = cpuModel;
+				networkSizeMatchesModel = true;
+				neuralMaterial = new NTCNodeMaterial(
+					cpuModel,
+					channelClassification,
+					{ debugView: params.debugView, interpolation: params.interpolation, lodBias: lodBiasUniform, renderer }
+				);
+				neuralMesh.material = neuralMaterial;
+				neuralMesh.visible = true;
+				// Saving needs a real grid+MLP model to export via
+				// `NTCExporter` (see saveJson) - the "every channel is
+				// constant" case (`cpuModel === null`) has nothing to save.
+				saveJsonButton.disabled = cpuModel === null;
+
+				if ( sideBySide ) {
+
+					teacherMesh.visible = true;
+					teacherMesh.position.x = - 1.25;
+					neuralMesh.position.x = 1.25;
+					teacherMesh.scale.setScalar( 0.58 );
+					neuralMesh.scale.setScalar( 0.58 );
+
+				} else {
+
+					// Loaded straight from a JSON file with no MaterialX teacher to
+					// compare against - show the neural mesh alone, centered.
+					teacherMesh.visible = false;
+					neuralMesh.position.x = 0;
+					neuralMesh.scale.setScalar( 1 );
+
+				}
+
+			}
+
+			function disposeNeuralMaterial() {
+
+				if ( neuralMaterial === null || neuralMaterial === undefined ) return;
+				neuralMaterial.dispose();
+				neuralMaterial = null;
+
+			}
+
+			function disposeSourceTextures() {
+
+				if ( sourceTextures === null ) return;
+				for ( const renderTarget of sourceTextures ) renderTarget.dispose();
+				sourceTextures = null;
+
+			}
+
+			function disposeTeacherDebugMaterials() {
+
+				if ( teacherDebugMaterials === null ) return;
+
+				for ( const [ key, material ] of Object.entries( teacherDebugMaterials ) ) {
+
+					if ( key !== 'shaded' ) material.dispose();
+
+				}
+
+				teacherDebugMaterials = null;
+
+			}
+
+			// Applies the selected "view" (full shaded result, or one isolated
+			// channel) to both the teacher and, if trained, the neural mesh - so
+			// e.g. "normal" can be compared directly between the MaterialX
+			// source and what the network learned for that channel alone.
+			function updateDebugView() {
+
+				if ( teacherDebugMaterials ) teacherMesh.material = teacherDebugMaterials[ params.debugView ] || materialXMaterial;
+				if ( neuralMaterial ) neuralMaterial.setDebugView( params.debugView );
+
+			}
+
+			// Neural-material-only (there's no equivalent "feature grid" on the
+			// teacher side) - see NTCNodeMaterial.js's setInterpolation. A pure
+			// sampler-filter toggle on the already-built mip-chain texture, so
+			// this never needs to rebuild the material or retrain.
+			function updateInterpolation() {
+
+				if ( neuralMaterial ) neuralMaterial.setInterpolation( params.interpolation );
+
+			}
+
+			function applyLights() {
+
+				for ( const light of directLights ) light.intensity = light.userData.baseIntensity;
+
+				scene.environment = environmentMap;
+				scene.environmentIntensity = 1;
+
+				updateBackground();
+
+			}
+
+			// Toggles whether the environment map itself is shown as the visible
+			// backdrop (params.showBackground) - scene.environment (IBL lighting
+			// on the meshes) stays on regardless, this only swaps what's behind
+			// them between the HDRI and the flat studio color.
+			function updateBackground() {
+
+				scene.background = params.showBackground ? environmentMap : new THREE.Color( BACKGROUND_COLOR );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function render() {
+
+				const time = performance.now() * 0.001;
+
+				if ( params.shape === 'plane' ) {
+
+					// Billboard: always face the camera regardless of orbit angle,
+					// so the plane's UV.xy stays aligned with screen x/y and the
+					// normal encoding can be inspected head-on.
+					teacherMesh.quaternion.copy( camera.quaternion );
+					neuralMesh.quaternion.copy( camera.quaternion );
+
+				} else if ( isTraining === false ) {
+
+					teacherMesh.rotation.y = time * 0.15;
+					neuralMesh.rotation.y = teacherMesh.rotation.y;
+
+				}
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>

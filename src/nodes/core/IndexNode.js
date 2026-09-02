@@ -12,6 +12,8 @@ import { varying } from './VaryingNode.js';
  * - `invocationLocalIndex`: The index of a compute invocation within the scope of a workgroup load.
  * - `invocationSubgroupIndex`: The index of a compute invocation within the scope of a subgroup.
  * - `subgroupIndex`: The index of a compute invocation's subgroup within its workgroup.
+ *   Prefer `subgroupIndex` from `three/addons/tsl/gpgpu/SubgroupIdNode.js`, which
+ *   falls back when the `subgroup_id` WGSL language extension is missing.
  *
  * @augments Node
  */
@@ -134,6 +136,10 @@ export const instanceIndex = /*@__PURE__*/ nodeImmutable( IndexNode, IndexNode.I
 
 /**
  * TSL object that represents the index of the subgroup the current compute invocation belongs to.
+ *
+ * This core node always emits `@builtin(subgroup_id)` and has no fallback when the
+ * `subgroup_id` WGSL language extension is unavailable. Prefer the helpers in
+ * `three/addons/tsl/gpgpu/SubgroupIdNode.js`.
  *
  * @tsl
  * @type {IndexNode}

@@ -1,0 +1,231 @@
+<html lang="en">
+	<head>
+		<title>three.js webgpu - llm</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - llm">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_llm.html">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>WebGPU LLM</span>
+			</div>
+
+			<small>Tiny GPT-2-style text generation using TSL compute shaders.</small>
+		</div>
+
+		<div id="panel">
+			<label for="prompt">Prompt</label>
+			<textarea id="prompt" rows="4">Once upon a time,</textarea>
+			<div class="row">
+				<label for="tokens">New tokens</label>
+				<input id="tokens" type="number" min="1" max="64" value="24">
+				<label for="temperature">Temperature</label>
+				<input id="temperature" type="number" min="0.1" max="2" step="0.1" value="0.8">
+				<button id="generate" disabled>Loading model...</button>
+			</div>
+			<pre id="output"></pre>
+			<div id="status">Initializing WebGPU...</div>
+		</div>
+
+		<style>
+			#panel {
+				position: absolute;
+				left: 50%;
+				top: 52%;
+				width: min(720px, calc(100% - 32px));
+				transform: translate(-50%, -50%);
+				padding: 18px;
+				box-sizing: border-box;
+				border-radius: 8px;
+				background: rgba(0, 0, 0, 0.72);
+				color: #fff;
+				font-family: system-ui, sans-serif;
+			}
+
+			#panel label {
+				display: block;
+				margin-bottom: 6px;
+				font-size: 13px;
+				color: #bbb;
+			}
+
+			#prompt,
+			#output {
+				width: 100%;
+				box-sizing: border-box;
+				border: 1px solid #333;
+				border-radius: 4px;
+				background: #111;
+				color: #fff;
+				font: 14px/1.4 monospace;
+			}
+
+			#prompt {
+				padding: 10px;
+				resize: vertical;
+			}
+
+			#output {
+				min-height: 180px;
+				margin: 14px 0 8px;
+				padding: 12px;
+				white-space: pre-wrap;
+			}
+
+			.row {
+				display: flex;
+				align-items: end;
+				gap: 10px;
+				margin-top: 12px;
+			}
+
+			.row label {
+				margin-bottom: 4px;
+			}
+
+			input,
+			button {
+				height: 32px;
+			}
+
+			input {
+				width: 76px;
+				background: #111;
+				color: #fff;
+				border: 1px solid #333;
+				border-radius: 4px;
+				padding: 4px 8px;
+			}
+
+			button {
+				margin-left: auto;
+				padding: 0 14px;
+			}
+
+			#status {
+				color: #aaa;
+				font-size: 13px;
+			}
+		</style>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+			import { GPT2TSLRunner } from 'three/addons/gpgpu/llm/GPT2TSLRunner.js';
+
+			const promptInput = document.getElementById( 'prompt' );
+			const tokenInput = document.getElementById( 'tokens' );
+			const temperatureInput = document.getElementById( 'temperature' );
+			const generateButton = document.getElementById( 'generate' );
+			const output = document.getElementById( 'output' );
+			const status = document.getElementById( 'status' );
+
+			let renderer, runner;
+
+			init();
+
+			async function init() {
+
+				if ( WebGPU.isAvailable() === false ) {
+
+					document.body.appendChild( WebGPU.getErrorMessage() );
+					throw new Error( 'No WebGPU support' );
+
+				}
+
+				const scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x111111 );
+
+				const camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
+				const material = new THREE.MeshBasicMaterial( { color: 0x222244 } );
+				const mesh = new THREE.Mesh( new THREE.PlaneGeometry( 2, 2 ), material );
+				scene.add( mesh );
+
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( () => {
+
+					renderer.render( scene, camera );
+
+				} );
+				document.body.appendChild( renderer.domElement );
+
+				await renderer.init();
+
+				status.textContent = 'Loading TinyStories GPT-2 model...';
+				runner = await GPT2TSLRunner.fromURL( './models/llm/tinystories-gpt2-0.1-3m/', {
+					maxTokens: 128
+				} );
+
+				status.textContent = 'Ready.';
+				generateButton.textContent = 'Generate';
+				generateButton.disabled = false;
+
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			generateButton.addEventListener( 'click', async () => {
+
+				generateButton.disabled = true;
+				output.textContent = promptInput.value;
+				status.textContent = 'Generating...';
+
+				try {
+
+					const result = await runner.generate( renderer, promptInput.value, {
+						maxNewTokens: Number( tokenInput.value ),
+						temperature: Number( temperatureInput.value ),
+						topK: 40,
+						onToken: ( text ) => {
+
+							output.textContent = text;
+
+						}
+					} );
+
+					output.textContent = result.text;
+					status.textContent = `Generated ${ result.generatedTokens.length } token(s).`;
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				} finally {
+
+					generateButton.disabled = false;
+
+				}
+
+			} );
+
+			function onWindowResize() {
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+		</script>
+	</body>
+</html>

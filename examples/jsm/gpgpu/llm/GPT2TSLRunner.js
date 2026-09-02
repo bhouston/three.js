@@ -175,9 +175,12 @@ class GPT2TSLRunner {
 		);
 		const allTokens = inputTokens.slice();
 		const generatedTokens = [];
+		const signal = options.signal;
 		let logits = null;
 
 		for ( let i = 0; i < inputTokens.length; i ++ ) {
+
+			if ( signal !== undefined && signal.aborted ) break;
 
 			this.computeToken( renderer, inputTokens[ i ], i );
 			logits = await this.readLogits( renderer );
@@ -185,6 +188,8 @@ class GPT2TSLRunner {
 		}
 
 		for ( let i = 0; i < newTokenBudget; i ++ ) {
+
+			if ( signal !== undefined && signal.aborted ) break;
 
 			const nextToken = sampleTopK( logits, options );
 
@@ -208,7 +213,8 @@ class GPT2TSLRunner {
 			tokens: allTokens,
 			generatedTokens,
 			text: this.weights.tokenizer.decode( allTokens ),
-			generatedText: this.weights.tokenizer.decode( generatedTokens )
+			generatedText: this.weights.tokenizer.decode( generatedTokens ),
+			aborted: signal !== undefined && signal.aborted
 		};
 
 	}

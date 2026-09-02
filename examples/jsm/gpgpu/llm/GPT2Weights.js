@@ -1,6 +1,6 @@
 import { SafeTensorsLoader } from './SafeTensorsLoader.js';
 import { GPT2Tokenizer } from './GPT2Tokenizer.js';
-import { fetchJSON, prepareGeneration, tensorToFloat32, transpose2D } from './LLMTensors.js';
+import { fetchJSON, prepareGeneration, tensorToFloat32, transpose2D, createProgress } from './LLMTensors.js';
 
 /**
  * Loads a tiny GPT-2 model directory exported in Hugging Face format.
@@ -47,16 +47,21 @@ class GPT2Weights {
 
 	}
 
-	static async fromURL( baseURL ) {
+	static async fromURL( baseURL, options = {} ) {
 
 		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
-		const [ config, safeTensors, tokenizer ] = await Promise.all( [
-			fetchJSON( `${ root }config.json`, 'GPT2Weights' ),
-			new SafeTensorsLoader().load( `${ root }model.safetensors` ),
-			GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt` )
-		] );
+		const report = createProgress( 'GPT2Weights', options.onProgress );
 
-		return new GPT2Weights( config, safeTensors.tensors, tokenizer );
+		await report( `Loading config ${ root }config.json` );
+		const config = await fetchJSON( `${ root }config.json`, 'GPT2Weights' );
+		await report( `${ config.n_layer } layers, hidden ${ config.n_embd }, vocab ${ config.vocab_size }` );
+		await report( `Loading tokenizer ${ root }vocab.json` );
+		const tokenizer = await GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt` );
+		const safeTensors = await new SafeTensorsLoader().load( `${ root }model.safetensors`, options );
+		await report( 'Transposing token embeddings...' );
+		const weights = new GPT2Weights( config, safeTensors.tensors, tokenizer );
+		await report( 'Weights ready' );
+		return weights;
 
 	}
 

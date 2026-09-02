@@ -1,3 +1,5 @@
+import { createProgress } from './LLMTensors.js';
+
 /**
  * Hugging Face `tokenizer.json` loader for Unigram and SentencePiece-style BPE.
  *
@@ -87,6 +89,9 @@ class UnigramTokenizer {
 	static async fromURL( baseURL, options = {} ) {
 
 		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
+		const report = createProgress( 'UnigramTokenizer', options.onProgress );
+
+		await report( `Fetching ${ root }tokenizer.json` );
 		const tokenizerResponse = await fetch( `${ root }tokenizer.json` );
 
 		if ( tokenizerResponse.ok === false ) {
@@ -95,12 +100,20 @@ class UnigramTokenizer {
 
 		}
 
+		await report( `Parsing tokenizer.json (${ tokenizerResponse.headers.get( 'Content-Length' ) || 'unknown size' })` );
+		const tokenizerJSON = await tokenizerResponse.json();
+
 		let tokenizerConfig = options.tokenizerConfig || {};
 
 		try {
 
 			const configResponse = await fetch( `${ root }tokenizer_config.json` );
-			if ( configResponse.ok ) tokenizerConfig = { ...await configResponse.json(), ...tokenizerConfig };
+			if ( configResponse.ok ) {
+
+				await report( 'Parsing tokenizer_config.json' );
+				tokenizerConfig = { ...await configResponse.json(), ...tokenizerConfig };
+
+			}
 
 		} catch ( error ) {
 
@@ -108,7 +121,8 @@ class UnigramTokenizer {
 
 		}
 
-		return new UnigramTokenizer( await tokenizerResponse.json(), tokenizerConfig );
+		await report( `Building ${ tokenizerJSON.model?.type || 'tokenizer' } tables` );
+		return new UnigramTokenizer( tokenizerJSON, tokenizerConfig );
 
 	}
 

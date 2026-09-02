@@ -46,12 +46,34 @@ function float16ToFloat32( value ) {
 
 }
 
+const _bf16Bits = new Uint32Array( 1 );
+const _bf16Float = new Float32Array( _bf16Bits.buffer );
+const CONVERT_CHUNK_ELEMENTS = 1 << 20; // 1,048,576 values ≈ 2 MB of BF16
+
 function bfloat16ToFloat32( value ) {
 
-	const bits = new Uint32Array( 1 );
-	bits[ 0 ] = value << 16;
+	_bf16Bits[ 0 ] = value << 16;
+	return _bf16Float[ 0 ];
 
-	return new Float32Array( bits.buffer )[ 0 ];
+}
+
+function convertBF16Range( source, target, start, end ) {
+
+	const bits = _bf16Bits;
+	const float = _bf16Float;
+
+	for ( let i = start; i < end; i ++ ) {
+
+		bits[ 0 ] = source[ i ] << 16;
+		target[ i ] = float[ 0 ];
+
+	}
+
+}
+
+function convertF16Range( source, target, start, end ) {
+
+	for ( let i = start; i < end; i ++ ) target[ i ] = float16ToFloat32( source[ i ] );
 
 }
 
@@ -64,11 +86,11 @@ function tensorToFloat32( tensor ) {
 
 	if ( tensor.dtype === 'F16' ) {
 
-		for ( let i = 0; i < source.length; i ++ ) target[ i ] = float16ToFloat32( source[ i ] );
+		convertF16Range( source, target, 0, source.length );
 
 	} else if ( tensor.dtype === 'BF16' ) {
 
-		for ( let i = 0; i < source.length; i ++ ) target[ i ] = bfloat16ToFloat32( source[ i ] );
+		convertBF16Range( source, target, 0, source.length );
 
 	} else {
 
@@ -77,6 +99,55 @@ function tensorToFloat32( tensor ) {
 	}
 
 	return target;
+
+}
+
+async function convertAllTensors( tensors, onProgress, label = 'LLMTensors' ) {
+
+	const names = Object.keys( tensors ).filter( ( name ) => {
+
+		const dtype = tensors[ name ].dtype;
+		return dtype === 'BF16' || dtype === 'F16';
+
+	} );
+
+	if ( names.length === 0 ) return 0;
+
+	let total = 0;
+
+	for ( let i = 0; i < names.length; i ++ ) total += tensors[ names[ i ] ].data.length;
+
+	const dtype = tensors[ names[ 0 ] ].dtype;
+	const report = createProgress( label, onProgress );
+	let done = 0;
+
+	await report( `Converting ${ names.length } ${ dtype } tensors (${ formatBytes( total * 2 ) })...` );
+
+	for ( let n = 0; n < names.length; n ++ ) {
+
+		const name = names[ n ];
+		const tensor = tensors[ name ];
+		const source = tensor.data;
+		const target = new Float32Array( source.length );
+		const convertRange = tensor.dtype === 'BF16' ? convertBF16Range : convertF16Range;
+
+		for ( let start = 0; start < source.length; start += CONVERT_CHUNK_ELEMENTS ) {
+
+			const end = Math.min( start + CONVERT_CHUNK_ELEMENTS, source.length );
+			convertRange( source, target, start, end );
+			done += end - start;
+
+			const pct = Math.min( 100, Math.round( ( 100 * done ) / total ) );
+			await report( `Converting ${ tensor.dtype } ${ pct }% (${ formatBytes( done * 2 ) } / ${ formatBytes( total * 2 ) }) — ${ n + 1 }/${ names.length } ${ name }` );
+
+		}
+
+		tensor.data = target;
+		tensor.dtype = 'F32';
+
+	}
+
+	return names.length;
 
 }
 
@@ -166,9 +237,7 @@ function createProgress( label, onProgress ) {
 
 	return async function report( message ) {
 
-		const line = `${ label }: ${ message }`;
-		console.log( line );
-		if ( onProgress ) onProgress( line );
+		if ( onProgress ) onProgress( `${ label }: ${ message }` );
 		await yieldToBrowser();
 
 	};
@@ -237,6 +306,7 @@ async function fetchArrayBuffer( url, label = 'LLM', onProgress ) {
 
 export {
 	bfloat16ToFloat32,
+	convertAllTensors,
 	createProgress,
 	fetchArrayBuffer,
 	fetchJSON,

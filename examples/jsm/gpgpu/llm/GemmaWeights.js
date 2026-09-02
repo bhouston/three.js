@@ -1,5 +1,5 @@
 import { SafeTensorsLoader } from './SafeTensorsLoader.js';
-import { fetchJSON, packProjections, prepareGeneration, tensorToFloat32, transpose2D } from './LLMTensors.js';
+import { fetchJSON, packProjections, prepareGeneration, tensorToFloat32, transpose2D, convertAllTensors, createProgress } from './LLMTensors.js';
 import { UnigramTokenizer } from './UnigramTokenizer.js';
 
 /**
@@ -13,7 +13,7 @@ import { UnigramTokenizer } from './UnigramTokenizer.js';
  */
 class GemmaWeights {
 
-	constructor( config, tensors, tokenizer ) {
+	constructor( config, tensors, tokenizer, options = {} ) {
 
 		this.architecture = 'gemma3';
 		this.config = config;
@@ -40,18 +40,44 @@ class GemmaWeights {
 		this.attnScale = ( config.query_pre_attn_scalar || this.headDim ) ** - 0.5;
 		this.endOfTextTokenId = config.eos_token_id ?? tokenizer.endOfTextTokenId ?? 1;
 		this._float32 = new Map();
+		this.logitWeight = null;
+		this._blocks = [];
+
+		if ( options.deferUnpack !== true ) this.unpackSync();
+
+	}
+
+	lmHeadTensor() {
 
 		const embedding = this.tensor( 'embed_tokens.weight' );
-		const lmHead = this.hasTensor( 'lm_head.weight' ) && config.tie_word_embeddings !== true
+		return this.hasTensor( 'lm_head.weight' ) && this.config.tie_word_embeddings !== true
 			? this.tensor( 'lm_head.weight' )
 			: embedding;
 
-		this.logitWeight = transpose2D( lmHead, this.vocabSize, this.hiddenSize );
-		this._blocks = [];
+	}
+
+	unpackSync() {
+
+		this.logitWeight = transpose2D( this.lmHeadTensor(), this.vocabSize, this.hiddenSize );
 
 		for ( let i = 0; i < this.layerCount; i ++ ) {
 
 			this._blocks[ i ] = this.createBlock( i );
+
+		}
+
+	}
+
+	async unpack( onProgress ) {
+
+		const report = createProgress( 'GemmaWeights', onProgress );
+		await report( `Transposing output projection (${ this.vocabSize } x ${ this.hiddenSize }); UI may pause...` );
+		this.logitWeight = transpose2D( this.lmHeadTensor(), this.vocabSize, this.hiddenSize );
+
+		for ( let i = 0; i < this.layerCount; i ++ ) {
+
+			this._blocks[ i ] = this.createBlock( i );
+			await report( `Unpacked layer ${ i + 1 } / ${ this.layerCount }` );
 
 		}
 
@@ -69,14 +95,20 @@ class GemmaWeights {
 
 	}
 
-	static async fromURL( baseURL ) {
+	static async fromURL( baseURL, options = {} ) {
 
 		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
-		const [ config, safeTensors, tokenizer ] = await Promise.all( [
-			fetchJSON( `${ root }config.json`, 'GemmaWeights' ),
-			new SafeTensorsLoader().load( `${ root }model.safetensors` ),
-			UnigramTokenizer.fromURL( root )
-		] );
+		const report = createProgress( 'GemmaWeights', options.onProgress );
+
+		await report( `Loading config ${ root }config.json` );
+		const config = await fetchJSON( `${ root }config.json`, 'GemmaWeights' );
+		await report( `${ config.num_hidden_layers } layers, hidden ${ config.hidden_size }, vocab ${ config.vocab_size }, head_dim ${ config.head_dim }` );
+		await report( `Loading tokenizer ${ root }tokenizer.json (this file is large)` );
+		const tokenizer = await UnigramTokenizer.fromURL( root, options );
+		const safeTensors = await new SafeTensorsLoader().load( `${ root }model.safetensors`, options );
+		await convertAllTensors( safeTensors.tensors, options.onProgress, 'GemmaWeights' );
+		await report( 'Packing layers...' );
+		const weights = new GemmaWeights( config, safeTensors.tensors, tokenizer, { deferUnpack: true } );
 
 		if ( config.bos_token_id !== undefined ) tokenizer.bosTokenId = config.bos_token_id;
 		if ( config.eos_token_id !== undefined ) {
@@ -86,7 +118,9 @@ class GemmaWeights {
 
 		}
 
-		return new GemmaWeights( config, safeTensors.tensors, tokenizer );
+		await weights.unpack( options.onProgress );
+		await report( 'Weights ready' );
+		return weights;
 
 	}
 

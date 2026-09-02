@@ -13,7 +13,7 @@ import { LlamaTSLRunner } from '../../../../examples/jsm/gpgpu/llm/LlamaTSLRunne
 import { LlamaWeights } from '../../../../examples/jsm/gpgpu/llm/LlamaWeights.js';
 import { architectureFor } from '../../../../examples/jsm/gpgpu/llm/LLMFactory.js';
 import { applyRoPE, causalAttention, geluNew, layerNorm, linear, rmsNorm, sampleTopK, silu, softmax } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
-import { bfloat16ToFloat32, float16ToFloat32, tensorToFloat32 } from '../../../../examples/jsm/gpgpu/llm/LLMTensors.js';
+import { bfloat16ToFloat32, convertAllTensors, float16ToFloat32, tensorToFloat32 } from '../../../../examples/jsm/gpgpu/llm/LLMTensors.js';
 import { PhiCPURunner } from '../../../../examples/jsm/gpgpu/llm/PhiCPURunner.js';
 import { PhiTSLRunner } from '../../../../examples/jsm/gpgpu/llm/PhiTSLRunner.js';
 import { PhiWeights } from '../../../../examples/jsm/gpgpu/llm/PhiWeights.js';
@@ -669,6 +669,25 @@ export default QUnit.module( 'Addons', () => {
 					dtype: 'BF16',
 					data: new Uint16Array( [ 0x4000 ] )
 				} )[ 0 ] - 2 ) < 1e-6, 'tensorToFloat32 BF16 2.0' );
+
+			} );
+
+			QUnit.test( 'convertAllTensors reports BF16 progress and rewrites tensors as F32', async ( assert ) => {
+
+				const tensors = {
+					small: { name: 'small', dtype: 'BF16', data: new Uint16Array( [ 0x3f80, 0x4000 ] ) },
+					left: { name: 'left', dtype: 'F32', data: new Float32Array( [ 9 ] ) }
+				};
+				const messages = [];
+
+				const count = await convertAllTensors( tensors, ( message ) => messages.push( message ), 'Test' );
+
+				assert.strictEqual( count, 1 );
+				assert.strictEqual( tensors.small.dtype, 'F32' );
+				assert.ok( Math.abs( tensors.small.data[ 0 ] - 1 ) < 1e-6 );
+				assert.ok( Math.abs( tensors.small.data[ 1 ] - 2 ) < 1e-6 );
+				assert.strictEqual( tensors.left.dtype, 'F32' );
+				assert.ok( messages.some( ( message ) => message.includes( 'Converting BF16' ) ), 'progress mentions BF16 conversion' );
 
 			} );
 

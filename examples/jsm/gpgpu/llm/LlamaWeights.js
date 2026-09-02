@@ -1,6 +1,6 @@
 import { SafeTensorsLoader } from './SafeTensorsLoader.js';
 import { GPT2Tokenizer } from './GPT2Tokenizer.js';
-import { fetchJSON, packProjections, prepareGeneration, tensorToFloat32, transpose2D, createProgress } from './LLMTensors.js';
+import { fetchJSON, packProjections, prepareGeneration, tensorToFloat32, transpose2D, convertAllTensors, createProgress } from './LLMTensors.js';
 
 /**
  * Loads a Hugging Face Llama-style causal LM (SmolLM, TinyLlama, Llama).
@@ -35,16 +35,66 @@ class LlamaWeights {
 		this.mlpActivation = config.hidden_act || 'silu';
 		this.endOfTextTokenId = config.eos_token_id ?? tokenizer.endOfTextTokenId ?? 0;
 		this._float32 = new Map();
-
-		const embedding = this.tensor( 'embed_tokens.weight' );
-		const lmHead = this.hasTensor( 'lm_head.weight' ) && config.tie_word_embeddings !== true
-			? this.tensor( 'lm_head.weight' )
-			: embedding;
-
 		this.logitWeight = null;
 		this._blocks = [];
 
 		if ( options.deferUnpack !== true ) this.unpackSync();
+
+	}
+
+	lmHeadTensor() {
+
+		const embedding = this.tensor( 'embed_tokens.weight' );
+		return this.hasTensor( 'lm_head.weight' ) && this.config.tie_word_embeddings !== true
+			? this.tensor( 'lm_head.weight' )
+			: embedding;
+
+	}
+
+	unpackSync() {
+
+		this.logitWeight = transpose2D( this.lmHeadTensor(), this.vocabSize, this.hiddenSize );
+
+		for ( let i = 0; i < this.layerCount; i ++ ) {
+
+			this._blocks[ i ] = this.createBlock( i );
+
+		}
+
+	}
+
+	async unpack( onProgress ) {
+
+		const report = createProgress( 'LlamaWeights', onProgress );
+		await report( `Transposing output projection (${ this.vocabSize } x ${ this.hiddenSize }); UI may pause...` );
+		this.logitWeight = transpose2D( this.lmHeadTensor(), this.vocabSize, this.hiddenSize );
+
+		for ( let i = 0; i < this.layerCount; i ++ ) {
+
+			this._blocks[ i ] = this.createBlock( i );
+			await report( `Unpacked layer ${ i + 1 } / ${ this.layerCount }` );
+
+		}
+
+	}
+
+	static async fromURL( baseURL, options = {} ) {
+
+		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
+		const report = createProgress( 'LlamaWeights', options.onProgress );
+
+		await report( `Loading config ${ root }config.json` );
+		const config = await fetchJSON( `${ root }config.json`, 'LlamaWeights' );
+		await report( `${ config.num_hidden_layers } layers, hidden ${ config.hidden_size }, vocab ${ config.vocab_size }` );
+		await report( `Loading tokenizer ${ root }vocab.json` );
+		const tokenizer = await GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt` );
+		const safeTensors = await new SafeTensorsLoader().load( `${ root }model.safetensors`, options );
+		await convertAllTensors( safeTensors.tensors, options.onProgress, 'LlamaWeights' );
+		await report( 'Packing layers...' );
+		const weights = new LlamaWeights( config, safeTensors.tensors, tokenizer, { deferUnpack: true } );
+		await weights.unpack( options.onProgress );
+		await report( 'Weights ready' );
+		return weights;
 
 	}
 
@@ -57,19 +107,6 @@ class LlamaWeights {
 	prepareGeneration( prompt, maxTokens, maxNewTokens ) {
 
 		return prepareGeneration( this.tokenizer, prompt, maxTokens, maxNewTokens, this.endOfTextTokenId );
-
-	}
-
-	static async fromURL( baseURL ) {
-
-		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
-		const [ config, safeTensors, tokenizer ] = await Promise.all( [
-			fetchJSON( `${ root }config.json`, 'LlamaWeights' ),
-			new SafeTensorsLoader().load( `${ root }model.safetensors` ),
-			GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt` )
-		] );
-
-		return new LlamaWeights( config, safeTensors.tensors, tokenizer );
 
 	}
 

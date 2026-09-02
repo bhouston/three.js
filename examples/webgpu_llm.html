@@ -28,12 +28,13 @@
 			<textarea id="prompt" rows="4">Once upon a time,</textarea>
 			<div class="row">
 				<label for="tokens">New tokens</label>
-				<input id="tokens" type="number" min="1" max="256" value="24">
+				<input id="tokens" type="number" min="1" max="2048" value="128">
 				<label for="temperature">Temperature</label>
 				<input id="temperature" type="number" min="0" max="2" step="0.1" value="0.7">
 				<label for="topK">Top K</label>
 				<input id="topK" type="number" min="1" max="100" value="10">
 				<button id="generate" disabled>Loading model...</button>
+				<button id="stop" disabled>Stop</button>
 			</div>
 			<pre id="output"></pre>
 			<div id="status">Initializing WebGPU...</div>
@@ -128,8 +129,11 @@
 			}
 
 			button {
-				margin-left: auto;
 				padding: 0 14px;
+			}
+
+			#generate {
+				margin-left: auto;
 			}
 
 			#status {
@@ -162,10 +166,11 @@
 			const temperatureInput = document.getElementById( 'temperature' );
 			const topKInput = document.getElementById( 'topK' );
 			const generateButton = document.getElementById( 'generate' );
+			const stopButton = document.getElementById( 'stop' );
 			const output = document.getElementById( 'output' );
 			const status = document.getElementById( 'status' );
 
-			let renderer, runner;
+			let renderer, runner, abortController;
 			const model = selectedModel();
 
 			for ( const entry of MODEL_CATALOG ) {
@@ -235,19 +240,29 @@
 
 				try {
 
+					status.textContent = `Resolving ${ model.name }...`;
 					const modelURL = await resolveModelURL( model );
 					status.textContent = `Loading ${ model.name } from ${ modelURL }...`;
-					runner = await createTSLRunner( modelURL );
+					runner = await createTSLRunner( modelURL, {
+						onProgress: ( message ) => {
 
-					tokenInput.max = String( Math.max( 1, runner.maxTokens - 1 ) );
+							status.textContent = message;
+
+						}
+					} );
+
+					const maxNewTokens = Math.max( 1, runner.maxTokens - 1 );
+					tokenInput.max = String( maxNewTokens );
+					tokenInput.value = String( maxNewTokens );
 					status.textContent = `Ready. Context ${ runner.maxTokens } tokens.`;
 					generateButton.textContent = 'Generate';
 					generateButton.disabled = false;
 
 				} catch ( error ) {
 
-					console.error( error );
-					status.textContent = error.message;
+					status.textContent = `Load failed: ${ error.message }`;
+					generateButton.textContent = 'Load failed';
+					generateButton.disabled = true;
 
 				}
 
@@ -255,9 +270,17 @@
 
 			}
 
+			stopButton.addEventListener( 'click', () => {
+
+				if ( abortController !== undefined ) abortController.abort();
+
+			} );
+
 			generateButton.addEventListener( 'click', async () => {
 
+				abortController = new AbortController();
 				generateButton.disabled = true;
+				stopButton.disabled = false;
 				output.textContent = promptInput.value;
 				status.textContent = 'Generating...';
 
@@ -274,10 +297,17 @@
 
 				try {
 
+					const maxNewTokens = Math.min(
+						Math.max( 1, Number( tokenInput.value ) || 1 ),
+						Math.max( 1, runner.maxTokens - 1 )
+					);
+					tokenInput.value = String( maxNewTokens );
+
 					const result = await runner.generate( renderer, promptInput.value, {
-						maxNewTokens: Number( tokenInput.value ),
+						maxNewTokens,
 						temperature: Number( temperatureInput.value ),
 						topK: Number( topKInput.value ),
+						signal: abortController.signal,
 						onToken: ( text ) => {
 
 							output.textContent = text;
@@ -289,16 +319,26 @@
 
 					output.textContent = result.text;
 					generatedCount = result.generatedTokens.length;
-					status.textContent = `Generated ${ result.generatedTokens.length } token(s).${ tokenRateText() }`;
+
+					if ( result.aborted ) {
+
+						status.textContent = `Stopped after ${ result.generatedTokens.length } token(s).${ tokenRateText() }`;
+
+					} else {
+
+						status.textContent = `Generated ${ result.generatedTokens.length } token(s).${ tokenRateText() }`;
+
+					}
 
 				} catch ( error ) {
 
-					console.error( error );
 					status.textContent = error.message;
 
 				} finally {
 
+					abortController = undefined;
 					generateButton.disabled = false;
+					stopButton.disabled = true;
 
 				}
 

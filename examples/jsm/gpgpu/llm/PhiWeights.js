@@ -1,6 +1,6 @@
 import { SafeTensorsLoader } from './SafeTensorsLoader.js';
 import { GPT2Tokenizer } from './GPT2Tokenizer.js';
-import { fetchJSON, packBiases, packProjections, prepareGeneration, tensorToFloat32, transpose2D } from './LLMTensors.js';
+import { fetchJSON, packBiases, packProjections, prepareGeneration, tensorToFloat32, transpose2D, convertAllTensors, createProgress } from './LLMTensors.js';
 
 /**
  * Loads a Hugging Face Phi-1/Phi-2 causal LM.
@@ -57,16 +57,22 @@ class PhiWeights {
 
 	}
 
-	static async fromURL( baseURL ) {
+	static async fromURL( baseURL, options = {} ) {
 
 		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
-		const [ config, safeTensors, tokenizer ] = await Promise.all( [
-			fetchJSON( `${ root }config.json`, 'PhiWeights' ),
-			new SafeTensorsLoader().load( `${ root }model.safetensors` ),
-			GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt` )
-		] );
+		const report = createProgress( 'PhiWeights', options.onProgress );
 
-		return new PhiWeights( config, safeTensors.tensors, tokenizer );
+		await report( `Loading config ${ root }config.json` );
+		const config = await fetchJSON( `${ root }config.json`, 'PhiWeights' );
+		await report( `${ config.num_hidden_layers } layers, hidden ${ config.hidden_size }, vocab ${ config.vocab_size }` );
+		await report( `Loading tokenizer ${ root }vocab.json` );
+		const tokenizer = await GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt` );
+		const safeTensors = await new SafeTensorsLoader().load( `${ root }model.safetensors`, options );
+		await convertAllTensors( safeTensors.tensors, options.onProgress, 'PhiWeights' );
+		await report( 'Packing layers...' );
+		const weights = new PhiWeights( config, safeTensors.tensors, tokenizer );
+		await report( 'Weights ready' );
+		return weights;
 
 	}
 

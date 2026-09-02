@@ -1,4 +1,4 @@
-import { fetchJSON } from './LLMTensors.js';
+import { createProgress, fetchJSON } from './LLMTensors.js';
 import { GemmaCPURunner } from './GemmaCPURunner.js';
 import { GemmaTSLRunner } from './GemmaTSLRunner.js';
 import { GemmaWeights } from './GemmaWeights.js';
@@ -64,34 +64,53 @@ function architectureFor( config ) {
 
 }
 
-async function loadWeights( baseURL ) {
+async function loadWeights( baseURL, options = {} ) {
 
-	const config = await fetchJSON( `${ normalizeRoot( baseURL ) }config.json`, 'LLMFactory' );
-	const architecture = architectureFor( config );
+	const root = normalizeRoot( baseURL );
+	const report = createProgress( 'LLMFactory', options.onProgress );
 
-	if ( architecture === 'gpt2' ) return GPT2Weights.fromURL( baseURL );
-	if ( architecture === 'phi' ) return PhiWeights.fromURL( baseURL );
-	if ( architecture === 'gemma3' ) return GemmaWeights.fromURL( baseURL );
+	try {
 
-	return LlamaWeights.fromURL( baseURL );
+		await report( `Reading ${ root }config.json` );
+		const config = await fetchJSON( `${ root }config.json`, 'LLMFactory' );
+		const architecture = architectureFor( config );
+		await report( `Using ${ architecture } loader for model_type "${ config.model_type }"` );
+
+		if ( architecture === 'gpt2' ) return GPT2Weights.fromURL( baseURL, options );
+		if ( architecture === 'phi' ) return PhiWeights.fromURL( baseURL, options );
+		if ( architecture === 'gemma3' ) return GemmaWeights.fromURL( baseURL, options );
+
+		return LlamaWeights.fromURL( baseURL, options );
+
+	} catch ( error ) {
+
+		throw new Error( `LLMFactory: failed to load "${ root }": ${ error.message }` );
+
+	}
 
 }
 
-async function createTSLRunner( baseURL, options ) {
+async function createTSLRunner( baseURL, options = {} ) {
 
-	const weights = await loadWeights( baseURL );
+	const report = createProgress( 'LLMFactory', options.onProgress );
+	const weights = await loadWeights( baseURL, options );
+	await report( `Building ${ weights.architecture } GPU runner (${ weights.layerCount } layers, vocab ${ weights.vocabSize })...` );
 
-	if ( weights.architecture === 'gpt2' ) return new GPT2TSLRunner( weights, options );
-	if ( weights.architecture === 'phi' ) return new PhiTSLRunner( weights, options );
-	if ( weights.architecture === 'gemma3' ) return new GemmaTSLRunner( weights, options );
+	let runner;
 
-	return new LlamaTSLRunner( weights, options );
+	if ( weights.architecture === 'gpt2' ) runner = new GPT2TSLRunner( weights, options );
+	else if ( weights.architecture === 'phi' ) runner = new PhiTSLRunner( weights, options );
+	else if ( weights.architecture === 'gemma3' ) runner = new GemmaTSLRunner( weights, options );
+	else runner = new LlamaTSLRunner( weights, options );
+
+	await report( 'GPU runner ready' );
+	return runner;
 
 }
 
-async function createCPURunner( baseURL, options ) {
+async function createCPURunner( baseURL, options = {} ) {
 
-	const weights = await loadWeights( baseURL );
+	const weights = await loadWeights( baseURL, options );
 
 	if ( weights.architecture === 'gpt2' ) return new GPT2CPURunner( weights, options );
 	if ( weights.architecture === 'phi' ) return new PhiCPURunner( weights, options );

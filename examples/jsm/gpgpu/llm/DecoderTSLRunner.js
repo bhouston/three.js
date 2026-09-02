@@ -3,10 +3,12 @@ import { storage } from 'three/tsl';
 
 import { DecoderWeights } from './DecoderWeights.js';
 import { generateAsync } from './LLMGenerate.js';
+import { logitSoftcap } from './LLMMath.js';
 import { TSLAdd } from './TSLAdd.js';
 import { TSLAttention } from './TSLAttention.js';
 import { TSLGatedMLP } from './TSLGatedMLP.js';
 import { TSLLinear } from './TSLLinear.js';
+import { createChunkedLogitLayers, readChunkedLogits } from './TSLLogits.js';
 import { TSLMLP } from './TSLMLP.js';
 import { TSLNormalize } from './TSLNormalize.js';
 import { TSLRMSNorm } from './TSLRMSNorm.js';
@@ -42,7 +44,7 @@ class DecoderTSLRunner {
 		}
 
 		this.finalNorm = this.buildFinalNorm( currentNode );
-		this.logits = this.createLogitLayers();
+		this.logits = createChunkedLogitLayers( this.finalNorm.outputNode, weights, this.logitChunkSize, `${ weights.architecture }Logits` );
 
 	}
 
@@ -259,48 +261,8 @@ class DecoderTSLRunner {
 
 	async readLogits( renderer ) {
 
-		const logits = new Float32Array( this.weights.vocabSize );
-
-		for ( const logit of this.logits ) {
-
-			const chunk = new Float32Array( await renderer.getArrayBufferAsync( logit.layer.outputAttribute ) );
-			logits.set( chunk.subarray( 0, logit.size ), logit.offset );
-
-		}
-
-		return logits;
-
-	}
-
-	createLogitLayers() {
-
-		const logits = [];
-		const { weights, hiddenSize, logitChunkSize } = this;
-
-		for ( let offset = 0; offset < weights.vocabSize; offset += logitChunkSize ) {
-
-			const size = Math.min( logitChunkSize, weights.vocabSize - offset );
-			const chunkWeight = new Float32Array( hiddenSize * size );
-
-			for ( let i = 0; i < hiddenSize; i ++ ) {
-
-				const sourceOffset = i * weights.vocabSize + offset;
-				chunkWeight.set( weights.logitWeight.subarray( sourceOffset, sourceOffset + size ), i * size );
-
-			}
-
-			logits.push( {
-				offset,
-				size,
-				layer: new TSLLinear( this.finalNorm.outputNode, chunkWeight, null, hiddenSize, size, {
-					name: `${ weights.architecture }Logits${ offset }`,
-					workgroupSize: 256
-				} )
-			} );
-
-		}
-
-		return logits;
+		const logits = await readChunkedLogits( renderer, this.logits, this.weights.vocabSize );
+		return logitSoftcap( logits, this.recipe.finalLogitSoftcap );
 
 	}
 

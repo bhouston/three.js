@@ -80,7 +80,7 @@ class QwenCPURunner {
 
 		}
 
-		const normed = rmsNorm( x, weights.tensor( 'norm.weight' ), weights.rmsNormEps, true );
+		const normed = rmsNorm( x, weights.outputNormWeight, weights.rmsNormEps, true );
 		this.lastHidden = normed;
 		return linear( normed, weights.logitWeight, null, hiddenSize, weights.vocabSize );
 

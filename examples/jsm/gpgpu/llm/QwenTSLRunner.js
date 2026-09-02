@@ -8,6 +8,7 @@ import { TSLConcat } from './TSLConcat.js';
 import { TSLGatedDeltaNet } from './TSLGatedDeltaNet.js';
 import { TSLGatedMLP } from './TSLGatedMLP.js';
 import { TSLLinear } from './TSLLinear.js';
+import { createChunkedLogitLayers, readChunkedLogits } from './TSLLogits.js';
 import { TSLRMSNorm } from './TSLRMSNorm.js';
 import { TSLSplitHeadGate } from './TSLSplitHeadGate.js';
 import { QwenWeights } from './QwenWeights.js';
@@ -137,13 +138,13 @@ class QwenTSLRunner {
 
 		}
 
-		this.finalNorm = new TSLRMSNorm( currentNode, weights.tensor( 'norm.weight' ), this.hiddenSize, {
+		this.finalNorm = new TSLRMSNorm( currentNode, weights.outputNormWeight, this.hiddenSize, {
 			epsilon: weights.rmsNormEps,
 			offsetWeight: true,
 			name: 'QwenFinalNorm',
 			workgroupSize: this.workgroupSize
 		} );
-		this.logits = this.createLogitLayers();
+		this.logits = createChunkedLogitLayers( this.finalNorm.outputNode, weights, this.logitChunkSize, 'QwenLogits' );
 
 	}
 
@@ -180,16 +181,7 @@ class QwenTSLRunner {
 
 	async readLogits( renderer ) {
 
-		const logits = new Float32Array( this.weights.vocabSize );
-
-		for ( const logit of this.logits ) {
-
-			const chunk = new Float32Array( await renderer.getArrayBufferAsync( logit.layer.outputAttribute ) );
-			logits.set( chunk.subarray( 0, logit.size ), logit.offset );
-
-		}
-
-		return logits;
+		return readChunkedLogits( renderer, this.logits, this.weights.vocabSize );
 
 	}
 
@@ -201,38 +193,6 @@ class QwenTSLRunner {
 			else layer.mixer.attention.reset();
 
 		}
-
-	}
-
-	createLogitLayers() {
-
-		const logits = [];
-		const { weights, hiddenSize, logitChunkSize } = this;
-
-		for ( let offset = 0; offset < weights.vocabSize; offset += logitChunkSize ) {
-
-			const size = Math.min( logitChunkSize, weights.vocabSize - offset );
-			const chunkWeight = new Float32Array( hiddenSize * size );
-
-			for ( let i = 0; i < hiddenSize; i ++ ) {
-
-				const sourceOffset = i * weights.vocabSize + offset;
-				chunkWeight.set( weights.logitWeight.subarray( sourceOffset, sourceOffset + size ), i * size );
-
-			}
-
-			logits.push( {
-				offset,
-				size,
-				layer: new TSLLinear( this.finalNorm.outputNode, chunkWeight, null, hiddenSize, size, {
-					name: `QwenLogits${ offset }`,
-					workgroupSize: 256
-				} )
-			} );
-
-		}
-
-		return logits;
 
 	}
 

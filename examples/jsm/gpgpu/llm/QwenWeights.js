@@ -1,4 +1,4 @@
-import { loadHFModelBundle } from './HFModelBundle.js';
+import { detectPrefix, loadHFModelBundle } from './HFModelBundle.js';
 import { packProjections, prepareGeneration, tensorToFloat32, transpose2D, unwrapTextConfig, createProgress } from './LLMTensors.js';
 import { resolveTensor } from './TensorNameMap.js';
 import { recipeFor } from './DecoderRecipe.js';
@@ -21,7 +21,7 @@ class QwenWeights {
 		this.recipe = recipeFor( config );
 		this.tensors = tensors;
 		this.tokenizer = tokenizer;
-		this.tensorPrefix = options.prefix !== undefined ? options.prefix : detectPrefix( tensors );
+		this.tensorPrefix = options.prefix !== undefined ? options.prefix : detectPrefix( tensors, this.architecture );
 		this.hiddenSize = this.recipe.hiddenSize;
 		this.innerSize = this.recipe.innerSize;
 		this.layerCount = this.recipe.layerCount;
@@ -57,6 +57,7 @@ class QwenWeights {
 		}
 
 		this.logitWeight = null;
+		this.outputNormWeight = null;
 		this._blocks = [];
 
 		if ( options.deferUnpack !== true ) this.unpackSync();
@@ -106,7 +107,13 @@ class QwenWeights {
 	static async fromURL( baseURL, options = {} ) {
 
 		const bundle = await loadHFModelBundle( baseURL, { ...options, label: 'QwenWeights' } );
-		const weights = new QwenWeights( bundle.rawConfig, bundle.tensors, bundle.tokenizer, {
+		return this.fromBundle( bundle, options );
+
+	}
+
+	static async fromBundle( bundle, options = {} ) {
+
+		const weights = new this( bundle.rawConfig, bundle.tensors, bundle.tokenizer, {
 			deferUnpack: true,
 			prefix: bundle.prefix
 		} );
@@ -118,6 +125,7 @@ class QwenWeights {
 	unpackSync() {
 
 		this.logitWeight = this.loadOutputWeight();
+		this.outputNormWeight = this.mappedFloat( 'output_norm' );
 		for ( let i = 0; i < this.layerCount; i ++ ) this._blocks[ i ] = this.createBlock( i );
 
 	}
@@ -127,6 +135,7 @@ class QwenWeights {
 		const report = createProgress( 'QwenWeights', onProgress );
 		await report( `Transposing output projection (${ this.vocabSize } x ${ this.hiddenSize }); UI may pause...` );
 		this.logitWeight = this.loadOutputWeight();
+		this.outputNormWeight = this.mappedFloat( 'output_norm' );
 
 		for ( let i = 0; i < this.layerCount; i ++ ) {
 
@@ -247,17 +256,6 @@ class QwenWeights {
 		return target;
 
 	}
-
-}
-
-function detectPrefix( tensors ) {
-
-	if ( tensors[ 'model.language_model.embed_tokens.weight' ] !== undefined ) return 'model.language_model.';
-	if ( tensors[ 'language_model.embed_tokens.weight' ] !== undefined ) return 'language_model.';
-	if ( tensors[ 'model.embed_tokens.weight' ] !== undefined ) return 'model.';
-	if ( tensors[ 'embed_tokens.weight' ] !== undefined ) return '';
-
-	return 'model.';
 
 }
 

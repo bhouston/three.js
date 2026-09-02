@@ -645,7 +645,14 @@ async function loadLocalCheckpoint( assert, Loader, root ) {
 
 	}
 
-	if ( localCheckpoints.has( root ) ) return localCheckpoints.get( root );
+	if ( localCheckpoints.has( root ) ) {
+
+		const loaded = localCheckpoints.get( root );
+
+		if ( loaded === null ) assert.ok( true, `SKIPPED: checkpoint unavailable within test capacity limits at ${ root }` );
+		return loaded;
+
+	}
 
 	if ( await localCheckpointReady( assert, root ) === false ) {
 
@@ -991,6 +998,27 @@ export default QUnit.module( 'Addons', () => {
 					head_dim: 4,
 					vocab_size: 16
 				} );
+				const qwen = recipeFor( {
+					model_type: 'qwen3_5_text',
+					hidden_size: 8,
+					intermediate_size: 16,
+					num_hidden_layers: 8,
+					num_attention_heads: 2,
+					num_key_value_heads: 1,
+					head_dim: 4,
+					vocab_size: 16,
+					full_attention_interval: 4
+				} );
+				const mistral = recipeFor( {
+					model_type: 'mistral',
+					hidden_size: 8,
+					intermediate_size: 16,
+					num_hidden_layers: 1,
+					num_attention_heads: 2,
+					vocab_size: 16,
+					partial_rotary_factor: 0.5,
+					sliding_window: 32
+				} );
 
 				assert.strictEqual( gpt2.position, 'learned', 'GPT-2 uses learned positions' );
 				assert.strictEqual( gpt2.packedQKV, true, 'GPT-2 keeps packed Conv1D QKV' );
@@ -998,6 +1026,11 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( phi.rotaryDim, 2, 'Phi applies partial RoPE' );
 				assert.strictEqual( gemma.norm, 'rms_offset', 'Gemma uses offset RMSNorm weights' );
 				assert.strictEqual( gemma.layerTypes[ 5 ], 'full_attention', 'Gemma defaults every sixth layer to global attention' );
+				assert.strictEqual( qwen.layerTypes[ 0 ], 'linear_attention', 'Qwen defaults non-interval layers to linear attention' );
+				assert.strictEqual( qwen.layerTypes[ 3 ], 'full_attention', 'Qwen derives full-attention layers from the interval' );
+				assert.strictEqual( mistral.rotaryDim, 2, 'Llama-family recipes honor partial RoPE' );
+				assert.strictEqual( mistral.slidingWindow, 32, 'Mistral preserves its sliding window' );
+				assert.throws( () => architectureFor( { model_type: 'gemma2' } ), /Unsupported model_type "gemma2"/, 'unsupported Gemma 2 is rejected instead of decoded incorrectly' );
 
 			} );
 
@@ -1288,6 +1321,13 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.strictEqual( second.text, fresh.text, 'cached continuation matches a cold run' );
 				assert.ok( second.cachedPromptTokens > 0, 'second generate reused prompt tokens' );
+
+				const edited = first.text + ' He';
+				const rewound = runner.generate( edited, options );
+				const freshEdited = new DecoderCPURunner( weights, { maxTokens: 64 } ).generate( edited, options );
+
+				assert.strictEqual( rewound.text, freshEdited.text, 'rewinding after a changed prompt suffix matches a cold run' );
+				assert.ok( rewound.cachedPromptTokens > 0, 'changed suffix still reuses the safe prefix' );
 
 				runner.resetCache();
 				const afterReset = runner.generate( continued, options );

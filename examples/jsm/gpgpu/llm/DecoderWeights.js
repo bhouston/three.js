@@ -1,5 +1,5 @@
 import { architectureFor, recipeFor } from './DecoderRecipe.js';
-import { loadHFModelBundle } from './HFModelBundle.js';
+import { detectPrefix, loadHFModelBundle } from './HFModelBundle.js';
 import { createProgress, packBiases, packProjections, prepareGeneration, tensorToFloat32, transpose2D, unwrapTextConfig } from './LLMTensors.js';
 import { hasMappedTensor, resolveTensor } from './TensorNameMap.js';
 
@@ -48,6 +48,7 @@ class DecoderWeights {
 			this.endOfTextTokenId = this.endOfTextTokenId[ 0 ];
 
 		}
+
 		this._float32 = new Map();
 		this.logitWeight = null;
 		this.outputNormWeight = null;
@@ -73,6 +74,12 @@ class DecoderWeights {
 	static async fromURL( baseURL, options = {} ) {
 
 		const bundle = await loadHFModelBundle( baseURL, options );
+		return this.fromBundle( bundle, options );
+
+	}
+
+	static async fromBundle( bundle, options = {} ) {
+
 		const weights = new this( bundle.rawConfig, bundle.tensors, bundle.tokenizer, {
 			deferUnpack: true,
 			prefix: bundle.prefix,
@@ -219,12 +226,14 @@ class DecoderWeights {
 			const q = this.linearMapped( 'attn_q', index, qSize, hiddenSize );
 			const k = this.linearMapped( 'attn_k', index, kvSize, hiddenSize );
 			const v = this.linearMapped( 'attn_v', index, kvSize, hiddenSize );
+			const lnWeight = this.mappedFloat( 'attn_norm', index );
+			const lnBias = this.mappedFloat( 'attn_norm_bias', index );
 
 			return {
-				lnWeight: this.mappedFloat( 'attn_norm', index ),
-				lnBias: this.mappedFloat( 'attn_norm_bias', index ),
-				ln1Weight: this.mappedFloat( 'attn_norm', index ),
-				ln1Bias: this.mappedFloat( 'attn_norm_bias', index ),
+				lnWeight,
+				lnBias,
+				ln1Weight: lnWeight,
+				ln1Bias: lnBias,
 				attnQKVWeight: packProjections( [ q, k, v ], hiddenSize ),
 				attnQKVBias: packBiases( [
 					this.optionalBias( 'attn_q_bias', index, qSize ),
@@ -248,7 +257,9 @@ class DecoderWeights {
 		const ropeTheta = architecture === 'gemma3'
 			? ( layerType === 'full_attention' ? this.globalRopeTheta : this.localRopeTheta )
 			: this.ropeTheta;
-		const slidingWindow = architecture === 'gemma3' && layerType === 'sliding_attention' ? this.slidingWindow : 0;
+		const slidingWindow = architecture === 'gemma3'
+			? ( layerType === 'sliding_attention' ? this.slidingWindow : 0 )
+			: ( recipe.slidingWindow || 0 );
 
 		const block = {
 			layerType,
@@ -323,23 +334,6 @@ class DecoderWeights {
 		return target;
 
 	}
-
-}
-
-function detectPrefix( tensors, architecture ) {
-
-	if ( architecture === 'gpt2' ) {
-
-		return tensors[ 'transformer.wte.weight' ] !== undefined ? 'transformer.' : '';
-
-	}
-
-	if ( tensors[ 'model.language_model.embed_tokens.weight' ] !== undefined ) return 'model.language_model.';
-	if ( tensors[ 'language_model.embed_tokens.weight' ] !== undefined ) return 'language_model.';
-	if ( tensors[ 'model.embed_tokens.weight' ] !== undefined ) return 'model.';
-	if ( tensors[ 'embed_tokens.weight' ] !== undefined ) return '';
-
-	return 'model.';
 
 }
 

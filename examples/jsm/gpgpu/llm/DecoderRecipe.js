@@ -1,6 +1,8 @@
 import { unwrapTextConfig } from './LLMTensors.js';
 import { keepQwenTensor } from './TensorNameMap.js';
 
+const DEFAULT_EXAMPLE_CONTEXT_LIMIT = 2048;
+
 /**
  * Maps Hugging Face `config.json` onto a decode recipe: graph family plus
  * kernel flags. Close cousins share a recipe; hybrids (Qwen 3.5) stay plugins.
@@ -17,10 +19,10 @@ function architectureFor( config ) {
 	if ( type === 'gpt2' ) return 'gpt2';
 	if ( type === 'gemma3_text' || type === 'gemma3' ) return 'gemma3';
 	if ( type === 'qwen3_5' || type === 'qwen3_5_text' || parent === 'qwen3_5' ) return 'qwen3_5';
-	if ( type === 'llama' || type === 'mistral' || type === 'qwen2' || type === 'gemma' || type === 'gemma2' ) return 'llama';
+	if ( type === 'llama' || type === 'mistral' || type === 'qwen2' || type === 'gemma' ) return 'llama';
 	if ( type === 'phi' ) return 'phi';
 
-	throw new Error( `LLMFactory: Unsupported model_type "${ config.model_type }".` );
+	throw new Error( `LLMFactory: Unsupported model_type "${ type }".` );
 
 }
 
@@ -31,6 +33,20 @@ function defaultGemmaLayerTypes( layerCount ) {
 	for ( let i = 0; i < layerCount; i ++ ) {
 
 		types.push( ( i + 1 ) % 6 === 0 ? 'full_attention' : 'sliding_attention' );
+
+	}
+
+	return types;
+
+}
+
+function defaultQwenLayerTypes( layerCount, fullAttentionInterval ) {
+
+	const types = [];
+
+	for ( let i = 0; i < layerCount; i ++ ) {
+
+		types.push( ( i + 1 ) % fullAttentionInterval === 0 ? 'full_attention' : 'linear_attention' );
 
 	}
 
@@ -140,7 +156,7 @@ function recipeFor( config ) {
 			kvHeadCount: text.num_key_value_heads || headCount,
 			headDim,
 			vocabSize: text.vocab_size,
-			contextLimit: Math.min( text.max_position_embeddings || 2048, 2048 ),
+			contextLimit: Math.min( text.max_position_embeddings || DEFAULT_EXAMPLE_CONTEXT_LIMIT, DEFAULT_EXAMPLE_CONTEXT_LIMIT ),
 			norm: 'rms_offset',
 			normEps: text.rms_norm_eps || 1e-6,
 			mlp: 'gated',
@@ -158,6 +174,7 @@ function recipeFor( config ) {
 			rotaryDim: headDim,
 			slidingWindow: text.sliding_window || 512,
 			layerTypes: text.layer_types || defaultGemmaLayerTypes( layerCount ),
+			finalLogitSoftcap: text.final_logit_softcapping,
 			endOfTextTokenId: firstEos( text.eos_token_id, 1 )
 		};
 
@@ -170,6 +187,7 @@ function recipeFor( config ) {
 		const headDim = text.head_dim || ( hiddenSize / headCount );
 		const rope = text.rope_parameters || {};
 		const partialRotaryFactor = rope.partial_rotary_factor ?? 0.25;
+		const fullAttentionInterval = text.full_attention_interval || 4;
 
 		return {
 			architecture,
@@ -183,7 +201,7 @@ function recipeFor( config ) {
 			kvHeadCount: text.num_key_value_heads || headCount,
 			headDim,
 			vocabSize: text.vocab_size,
-			contextLimit: Math.min( text.max_position_embeddings || 2048, 2048 ),
+			contextLimit: Math.min( text.max_position_embeddings || DEFAULT_EXAMPLE_CONTEXT_LIMIT, DEFAULT_EXAMPLE_CONTEXT_LIMIT ),
 			norm: 'rms_offset',
 			normEps: text.rms_norm_eps || 1e-6,
 			mlp: 'gated',
@@ -198,7 +216,9 @@ function recipeFor( config ) {
 			attnScale: headDim ** - 0.5,
 			ropeTheta: rope.rope_theta || text.rope_theta || 10000000,
 			rotaryDim: Math.floor( headDim * partialRotaryFactor ),
-			layerTypes: text.layer_types || [],
+			layerTypes: text.layer_types && text.layer_types.length > 0
+				? text.layer_types
+				: defaultQwenLayerTypes( text.num_hidden_layers, fullAttentionInterval ),
 			linearKeyDim: text.linear_key_head_dim || 128,
 			linearValueDim: text.linear_value_head_dim || 128,
 			linearKeyHeads: text.linear_num_key_heads || 16,
@@ -211,6 +231,7 @@ function recipeFor( config ) {
 
 	const hiddenSize = text.hidden_size;
 	const headCount = text.num_attention_heads;
+	const headDim = text.head_dim || ( hiddenSize / headCount );
 	const modelType = text.model_type;
 
 	return {
@@ -222,23 +243,26 @@ function recipeFor( config ) {
 		layerCount: text.num_hidden_layers,
 		headCount,
 		kvHeadCount: text.num_key_value_heads || headCount,
-		headDim: text.head_dim || ( hiddenSize / headCount ),
+		headDim,
 		vocabSize: text.vocab_size,
 		contextLimit: text.max_position_embeddings || 2048,
-		norm: ( modelType === 'gemma' || modelType === 'gemma2' ) ? 'rms_offset' : 'rms',
+		norm: modelType === 'gemma' ? 'rms_offset' : 'rms',
 		normEps: text.rms_norm_eps || 1e-5,
 		mlp: 'gated',
-		mlpActivation: text.hidden_act || 'silu',
+		mlpActivation: text.hidden_act || ( modelType === 'gemma' ? 'gelu_pytorch_tanh' : 'silu' ),
 		residual: 'sequential',
 		position: 'rope',
 		packedQKV: false,
 		transposeLinears: true,
 		qkNorm: false,
 		postNorms: false,
-		embedScale: 1,
+		embedScale: modelType === 'gemma' ? Math.sqrt( hiddenSize ) : 1,
 		attnScale: undefined,
 		ropeTheta: text.rope_theta || 10000,
-		rotaryDim: text.head_dim || ( hiddenSize / headCount ),
+		rotaryDim: text.rotary_dim ?? ( text.partial_rotary_factor !== undefined
+			? Math.round( text.partial_rotary_factor * headDim )
+			: headDim ),
+		slidingWindow: text.sliding_window || 0,
 		endOfTextTokenId: firstEos( text.eos_token_id, 0 )
 	};
 

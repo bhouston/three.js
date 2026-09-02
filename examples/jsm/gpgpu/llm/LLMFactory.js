@@ -2,7 +2,8 @@ import { DecoderCPURunner } from './DecoderCPURunner.js';
 import { architectureFor } from './DecoderRecipe.js';
 import { DecoderTSLRunner } from './DecoderTSLRunner.js';
 import { DecoderWeights } from './DecoderWeights.js';
-import { createProgress, fetchJSON } from './LLMTensors.js';
+import { loadHFModelBundle, normalizeRoot } from './HFModelBundle.js';
+import { createProgress } from './LLMTensors.js';
 import { QwenCPURunner } from './QwenCPURunner.js';
 import { QwenTSLRunner } from './QwenTSLRunner.js';
 import { QwenWeights } from './QwenWeights.js';
@@ -56,31 +57,22 @@ const MODEL_CATALOG = [
 	}
 ];
 
-function normalizeRoot( baseURL ) {
-
-	return baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
-
-}
-
 async function loadWeights( baseURL, options = {} ) {
 
-	const root = normalizeRoot( baseURL );
 	const report = createProgress( 'LLMFactory', options.onProgress );
 
 	try {
 
-		await report( `Reading ${ root }config.json` );
-		const config = await fetchJSON( `${ root }config.json`, 'LLMFactory' );
-		const architecture = architectureFor( config );
-		await report( `Using ${ architecture } loader for model_type "${ config.model_type }"` );
+		const bundle = await loadHFModelBundle( baseURL, { ...options, label: 'LLMFactory' } );
+		await report( `Using ${ bundle.architecture } loader for model_type "${ bundle.rawConfig.model_type }"` );
 
-		if ( architecture === 'qwen3_5' ) return QwenWeights.fromURL( baseURL, options );
+		if ( bundle.recipe.graph === 'qwen35' ) return QwenWeights.fromBundle( bundle, options );
 
-		return DecoderWeights.fromURL( baseURL, options );
+		return DecoderWeights.fromBundle( bundle, options );
 
 	} catch ( error ) {
 
-		throw new Error( `LLMFactory: failed to load "${ root }": ${ error.message }` );
+		throw new Error( `LLMFactory: failed to load "${ normalizeRoot( baseURL ) }": ${ error.message }` );
 
 	}
 
@@ -92,7 +84,7 @@ async function createTSLRunner( baseURL, options = {} ) {
 	const weights = await loadWeights( baseURL, options );
 	await report( `Building ${ weights.architecture } GPU runner (${ weights.layerCount } layers, vocab ${ weights.vocabSize })...` );
 
-	const runner = weights.architecture === 'qwen3_5'
+	const runner = weights.recipe.graph === 'qwen35'
 		? new QwenTSLRunner( weights, options )
 		: new DecoderTSLRunner( weights, options );
 
@@ -105,7 +97,7 @@ async function createCPURunner( baseURL, options = {} ) {
 
 	const weights = await loadWeights( baseURL, options );
 
-	if ( weights.architecture === 'qwen3_5' ) return new QwenCPURunner( weights, options );
+	if ( weights.recipe.graph === 'qwen35' ) return new QwenCPURunner( weights, options );
 
 	return new DecoderCPURunner( weights, options );
 

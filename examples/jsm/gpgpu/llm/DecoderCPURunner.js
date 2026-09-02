@@ -1,4 +1,4 @@
-import { causalAttention, geluNew, layerNorm, linear, rmsNorm, silu } from './LLMMath.js';
+import { causalAttention, geluNew, layerNorm, linear, logitSoftcap, rmsNorm, silu } from './LLMMath.js';
 import { generateSync } from './LLMGenerate.js';
 
 /**
@@ -82,8 +82,9 @@ class DecoderCPURunner {
 				const gate = linear( preMlp, block.mlpGateWeight, null, hiddenSize, weights.innerSize );
 				const up = linear( preMlp, block.mlpUpWeight, null, hiddenSize, weights.innerSize );
 				const hidden = new Float32Array( weights.innerSize );
+				const activate = recipe.mlpActivation === 'silu' ? silu : geluNew;
 
-				for ( let dim = 0; dim < hidden.length; dim ++ ) hidden[ dim ] = geluNew( gate[ dim ] ) * up[ dim ];
+				for ( let dim = 0; dim < hidden.length; dim ++ ) hidden[ dim ] = activate( gate[ dim ] ) * up[ dim ];
 
 				let mlpOut = linear( hidden, block.mlpDownWeight, null, weights.innerSize, hiddenSize );
 				mlpOut = this.norm( mlpOut, block.postMlpNormWeight );
@@ -132,7 +133,8 @@ class DecoderCPURunner {
 		}
 
 		const normed = this.norm( x, weights.outputNormWeight, weights.outputNormBias );
-		return linear( normed, weights.logitWeight, null, hiddenSize, weights.vocabSize );
+		const logits = linear( normed, weights.logitWeight, null, hiddenSize, weights.vocabSize );
+		return logitSoftcap( logits, recipe.finalLogitSoftcap );
 
 	}
 

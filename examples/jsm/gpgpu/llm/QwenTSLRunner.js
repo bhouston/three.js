@@ -5,6 +5,7 @@ import { generateAsync } from './LLMGenerate.js';
 import { TSLAdd } from './TSLAdd.js';
 import { TSLAttention } from './TSLAttention.js';
 import { TSLConcat } from './TSLConcat.js';
+import { orderedComputeNodes } from './TSLCompute.js';
 import { TSLGatedDeltaNet } from './TSLGatedDeltaNet.js';
 import { TSLGatedMLP } from './TSLGatedMLP.js';
 import { TSLLinear } from './TSLLinear.js';
@@ -100,16 +101,26 @@ class QwenTSLRunner {
 					name: `${ name }AttnProj`,
 					workgroupSize: this.workgroupSize
 				} );
-				mixer = { qGate, split, kv, packed, attention, attnProj, outputNode: attnProj.outputNode, compute: ( renderer, position ) => {
+				mixer = {
+					qGate,
+					split,
+					kv,
+					packed,
+					attention,
+					attnProj,
+					outputNode: attnProj.outputNode,
+					computeNodes: orderedComputeNodes( qGate, split, kv, packed, attention, attnProj ),
+					compute: ( renderer, position ) => {
 
-					qGate.compute( renderer );
-					split.compute( renderer );
-					kv.compute( renderer );
-					packed.compute( renderer );
-					attention.compute( renderer, position );
-					attnProj.compute( renderer );
+						qGate.compute( renderer );
+						split.compute( renderer );
+						kv.compute( renderer );
+						packed.compute( renderer );
+						attention.compute( renderer, position );
+						attnProj.compute( renderer );
 
-				} };
+					}
+				};
 
 			}
 
@@ -145,6 +156,17 @@ class QwenTSLRunner {
 			workgroupSize: this.workgroupSize
 		} );
 		this.logits = createChunkedLogitLayers( this.finalNorm.outputNode, weights, this.logitChunkSize, 'QwenLogits' );
+		this.computeNodes = [];
+
+		for ( const layer of this.layers ) {
+
+			this.computeNodes.push( ...orderedComputeNodes(
+				layer.ln1, layer.mixer, layer.addAttention, layer.ln2, layer.mlp, layer.addMLP
+			) );
+
+		}
+
+		this.computeNodes.push( ...orderedComputeNodes( this.finalNorm, ...this.logits.map( ( logit ) => logit.layer ) ) );
 
 	}
 
@@ -161,21 +183,11 @@ class QwenTSLRunner {
 
 		for ( const layer of this.layers ) {
 
-			layer.ln1.compute( renderer );
-
-			if ( layer.layerType === 'linear_attention' ) layer.mixer.compute( renderer );
-			else layer.mixer.compute( renderer, position );
-
-			layer.addAttention.compute( renderer );
-			layer.ln2.compute( renderer );
-			layer.mlp.compute( renderer );
-			layer.addMLP.compute( renderer );
+			if ( layer.layerType !== 'linear_attention' ) layer.mixer.attention.setPosition( position );
 
 		}
 
-		this.finalNorm.compute( renderer );
-
-		for ( const logit of this.logits ) logit.layer.compute( renderer );
+		renderer.compute( this.computeNodes );
 
 	}
 

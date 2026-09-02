@@ -35,11 +35,14 @@ function createChunkedLogitLayers( inputNode, weights, chunkSize, name ) {
 async function readChunkedLogits( renderer, chunks, vocabSize ) {
 
 	const logits = new Float32Array( vocabSize );
+	const values = await Promise.all( chunks.map( async ( chunk ) => (
+		new Float32Array( await renderer.getArrayBufferAsync( chunk.layer.outputAttribute ) )
+	) ) );
 
-	for ( const chunk of chunks ) {
+	for ( let i = 0; i < chunks.length; i ++ ) {
 
-		const values = new Float32Array( await renderer.getArrayBufferAsync( chunk.layer.outputAttribute ) );
-		logits.set( values.subarray( 0, chunk.size ), chunk.offset );
+		const chunk = chunks[ i ];
+		logits.set( values[ i ].subarray( 0, chunk.size ), chunk.offset );
 
 	}
 

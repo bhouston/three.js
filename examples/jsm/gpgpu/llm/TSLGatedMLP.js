@@ -50,6 +50,13 @@ class TSLGatedMLP {
 			workgroupSize: options.workgroupSize
 		} );
 		this.outputNode = this.down.outputNode;
+		this.computeNodes = [
+			this.gate.computeNode,
+			this.up.computeNode,
+			...( this._geluThenMul ? [ this.activatedGate.computeNode ] : [] ),
+			this.hidden.computeNode,
+			this.down.computeNode
+		];
 
 	}
 

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>WebGPU LLM vec4 GEMV benchmark</title>
+	</head>
+	<body>
+		<pre id="output">Starting vec4 GEMV benchmark...</pre>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "/build/three.webgpu.js",
+					"three/webgpu": "/build/three.webgpu.js",
+					"three/tsl": "/build/three.tsl.js"
+				}
+			}
+		</script>
+		<script type="module">
+
+			import { StorageBufferAttribute, WebGPURenderer } from 'three/webgpu';
+			import { Fn, If, Loop, dot, instanceIndex, storage, uint, vec4 } from 'three/tsl';
+
+			const output = document.getElementById( 'output' );
+			const params = new URLSearchParams( window.location.search );
+			const iterations = Math.max( 1, Number( params.get( 'iterations' ) ) || 100 );
+			const trials = Math.max( 1, Number( params.get( 'trials' ) ) || 7 );
+			const workgroupSize = 64;
+			const shapes = [
+				{ name: 'up_projection', inputSize: 576, outputSize: 1536 },
+				{ name: 'down_projection', inputSize: 1536, outputSize: 576 },
+				{ name: 'logit_chunk', inputSize: 576, outputSize: 8192 }
+			];
+
+			function randomArray( size, seed ) {
+
+				const values = new Float32Array( size );
+				let state = seed >>> 0;
+
+				for ( let i = 0; i < size; i ++ ) {
+
+					state = ( Math.imul( state, 1664525 ) + 1013904223 ) >>> 0;
+					values[ i ] = ( state / 0xffffffff - 0.5 ) * 0.02;
+
+				}
+
+				return values;
+
+			}
+
+			function scalarKernel( inputNode, weights, bias, inputSize, outputSize, name ) {
+
+				const weightAttribute = new StorageBufferAttribute( weights, 1 );
+				const weightNode = storage( weightAttribute, 'float', weights.length ).toReadOnly();
+				const outputAttribute = new StorageBufferAttribute( new Float32Array( outputSize ), 1 );
+				const outputNode = storage( outputAttribute, 'float', outputSize );
+				const biasAttribute = new StorageBufferAttribute( bias, 1 );
+				const biasNode = storage( biasAttribute, 'float', outputSize ).toReadOnly();
+				const computeNode = Fn( () => {
+
+					const outputIndex = instanceIndex;
+
+					If( outputIndex.lessThan( uint( outputSize ) ), () => {
+
+						const sum = biasNode.element( outputIndex ).toVar( 'sum' );
+
+						Loop( { start: uint( 0 ), end: uint( inputSize ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+							sum.addAssign( inputNode.element( i ).mul( weightNode.element( i.mul( uint( outputSize ) ).add( outputIndex ) ) ) );
+
+						} );
+
+						outputNode.element( outputIndex ).assign( sum );
+
+					} );
+
+				} )().compute( outputSize, [ workgroupSize ] ).setName( name );
+
+				return { computeNode, outputAttribute };
+
+			}
+
+			function vec4OutputKernel( inputNode, weights, bias, inputSize, outputSize, name ) {
+
+				const outputVectors = outputSize / 4;
+				const weightAttribute = new StorageBufferAttribute( weights, 4 );
+				const weightNode = storage( weightAttribute, 'vec4', weights.length / 4 ).toReadOnly();
+				const outputAttribute = new StorageBufferAttribute( new Float32Array( outputSize ), 1 );
+				const outputNode = storage( outputAttribute, 'float', outputSize );
+				const biasAttribute = new StorageBufferAttribute( bias, 1 );
+				const biasNode = storage( biasAttribute, 'float', outputSize ).toReadOnly();
+				const computeNode = Fn( () => {
+
+					const vectorIndex = instanceIndex;
+
+					If( vectorIndex.lessThan( uint( outputVectors ) ), () => {
+
+						const base = vectorIndex.mul( uint( 4 ) );
+						const sum = vec4(
+							biasNode.element( base ),
+							biasNode.element( base.add( uint( 1 ) ) ),
+							biasNode.element( base.add( uint( 2 ) ) ),
+							biasNode.element( base.add( uint( 3 ) ) )
+						).toVar( 'sum' );
+
+						Loop( { start: uint( 0 ), end: uint( inputSize ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+							const weight = weightNode.element( i.mul( uint( outputVectors ) ).add( vectorIndex ) );
+							sum.addAssign( weight.mul( inputNode.element( i ) ) );
+
+						} );
+
+						outputNode.element( base ).assign( sum.x );
+						outputNode.element( base.add( uint( 1 ) ) ).assign( sum.y );
+						outputNode.element( base.add( uint( 2 ) ) ).assign( sum.z );
+						outputNode.element( base.add( uint( 3 ) ) ).assign( sum.w );
+
+					} );
+
+				} )().compute( outputVectors, [ workgroupSize ] ).setName( name );
+
+				return { computeNode, outputAttribute };
+
+			}
+
+			function vec4DotKernel( inputNode, weights, bias, inputSize, outputSize, name ) {
+
+				const inputVectors = inputSize / 4;
+				const packedWeights = new Float32Array( weights.length );
+				const packStart = performance.now();
+
+				for ( let outputIndex = 0; outputIndex < outputSize; outputIndex ++ ) {
+
+					for ( let inputIndex = 0; inputIndex < inputSize; inputIndex ++ ) {
+
+						packedWeights[ outputIndex * inputSize + inputIndex ] = weights[ inputIndex * outputSize + outputIndex ];
+
+					}
+
+				}
+
+				const packMs = performance.now() - packStart;
+				const weightAttribute = new StorageBufferAttribute( packedWeights, 4 );
+				const weightNode = storage( weightAttribute, 'vec4', packedWeights.length / 4 ).toReadOnly();
+				const outputAttribute = new StorageBufferAttribute( new Float32Array( outputSize ), 1 );
+				const outputNode = storage( outputAttribute, 'float', outputSize );
+				const biasAttribute = new StorageBufferAttribute( bias, 1 );
+				const biasNode = storage( biasAttribute, 'float', outputSize ).toReadOnly();
+				const computeNode = Fn( () => {
+
+					const outputIndex = instanceIndex;
+
+					If( outputIndex.lessThan( uint( outputSize ) ), () => {
+
+						const sum = biasNode.element( outputIndex ).toVar( 'sum' );
+
+						Loop( { start: uint( 0 ), end: uint( inputVectors ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+							const inputBase = i.mul( uint( 4 ) );
+							const input = vec4(
+								inputNode.element( inputBase ),
+								inputNode.element( inputBase.add( uint( 1 ) ) ),
+								inputNode.element( inputBase.add( uint( 2 ) ) ),
+								inputNode.element( inputBase.add( uint( 3 ) ) )
+							);
+							const weight = weightNode.element( outputIndex.mul( uint( inputVectors ) ).add( i ) );
+							sum.addAssign( dot( input, weight ) );
+
+						} );
+
+						outputNode.element( outputIndex ).assign( sum );
+
+					} );
+
+				} )().compute( outputSize, [ workgroupSize ] ).setName( name );
+
+				return { computeNode, outputAttribute, packMs };
+
+			}
+
+			async function readOutput( renderer, kernel ) {
+
+				return new Float32Array( await renderer.getArrayBufferAsync( kernel.outputAttribute ) );
+
+			}
+
+			async function benchmark( renderer, kernel ) {
+
+				renderer.compute( kernel.computeNode );
+				await readOutput( renderer, kernel );
+
+				const samples = [];
+				const batch = Array( iterations ).fill( kernel.computeNode );
+
+				for ( let i = 0; i < trials; i ++ ) {
+
+					const start = performance.now();
+					renderer.compute( batch );
+					await readOutput( renderer, kernel );
+					samples.push( ( performance.now() - start ) / iterations );
+
+				}
+
+				samples.sort( ( a, b ) => a - b );
+				return {
+					msPerDispatch: samples[ Math.floor( samples.length / 2 ) ],
+					samples
+				};
+
+			}
+
+			function maxError( reference, actual ) {
+
+				let error = 0;
+				for ( let i = 0; i < reference.length; i ++ ) error = Math.max( error, Math.abs( reference[ i ] - actual[ i ] ) );
+				return error;
+
+			}
+
+			try {
+
+				const renderer = new WebGPURenderer( { antialias: false } );
+				await renderer.init();
+				const results = [];
+
+				for ( const shape of shapes ) {
+
+					output.textContent = `Benchmarking ${ shape.name }...`;
+					const input = randomArray( shape.inputSize, 1 );
+					const weights = randomArray( shape.inputSize * shape.outputSize, 2 );
+					const bias = randomArray( shape.outputSize, 3 );
+					const inputAttribute = new StorageBufferAttribute( input, 1 );
+					const inputNode = storage( inputAttribute, 'float', shape.inputSize ).toReadOnly();
+					const scalar = scalarKernel( inputNode, weights, bias, shape.inputSize, shape.outputSize, `${ shape.name }Scalar` );
+					const vec4Output = vec4OutputKernel( inputNode, weights, bias, shape.inputSize, shape.outputSize, `${ shape.name }Vec4Output` );
+					const vec4Dot = vec4DotKernel( inputNode, weights, bias, shape.inputSize, shape.outputSize, `${ shape.name }Vec4Dot` );
+					const scalarTiming = await benchmark( renderer, scalar );
+					const scalarOutput = await readOutput( renderer, scalar );
+					const vec4OutputTiming = await benchmark( renderer, vec4Output );
+					const vec4OutputValues = await readOutput( renderer, vec4Output );
+					const vec4DotTiming = await benchmark( renderer, vec4Dot );
+					const vec4DotValues = await readOutput( renderer, vec4Dot );
+					const operations = 2 * shape.inputSize * shape.outputSize;
+
+					results.push( {
+						...shape,
+						scalar: {
+							...scalarTiming,
+							gflops: operations / scalarTiming.msPerDispatch / 1e6
+						},
+						vec4Output: {
+							...vec4OutputTiming,
+							gflops: operations / vec4OutputTiming.msPerDispatch / 1e6,
+							speedup: scalarTiming.msPerDispatch / vec4OutputTiming.msPerDispatch,
+							maxError: maxError( scalarOutput, vec4OutputValues )
+						},
+						vec4Dot: {
+							...vec4DotTiming,
+							gflops: operations / vec4DotTiming.msPerDispatch / 1e6,
+							speedup: scalarTiming.msPerDispatch / vec4DotTiming.msPerDispatch,
+							maxError: maxError( scalarOutput, vec4DotValues ),
+							packMs: vec4Dot.packMs
+						}
+					} );
+
+				}
+
+				const report = { iterations, trials, workgroupSize, results };
+				window.__vec4Benchmark = { done: true, report };
+				output.textContent = JSON.stringify( report, null, 2 );
+				renderer.dispose();
+
+			} catch ( error ) {
+
+				const message = String( error && error.stack || error );
+				window.__vec4Benchmark = { done: true, error: message };
+				output.textContent = message;
+
+			}
+
+		</script>
+	</body>
+</html>

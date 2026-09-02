@@ -6,6 +6,7 @@ import { generateAsync } from './LLMGenerate.js';
 import { logitSoftcap } from './LLMMath.js';
 import { TSLAdd } from './TSLAdd.js';
 import { TSLAttention } from './TSLAttention.js';
+import { orderedComputeNodes } from './TSLCompute.js';
 import { TSLGatedMLP } from './TSLGatedMLP.js';
 import { TSLLinear } from './TSLLinear.js';
 import { createChunkedLogitLayers, readChunkedLogits } from './TSLLogits.js';
@@ -45,6 +46,7 @@ class DecoderTSLRunner {
 
 		this.finalNorm = this.buildFinalNorm( currentNode );
 		this.logits = createChunkedLogitLayers( this.finalNorm.outputNode, weights, this.logitChunkSize, `${ weights.architecture }Logits` );
+		this.computeNodes = this.createComputeNodes();
 
 	}
 
@@ -208,54 +210,49 @@ class DecoderTSLRunner {
 
 	}
 
-	computeToken( renderer, tokenId, position ) {
+	createComputeNodes() {
 
-		this.weights.embedding( tokenId, position, this.embeddingBuffer );
-		this.embeddingAttribute.needsUpdate = true;
+		const nodes = [];
 
 		for ( const layer of this.layers ) {
 
 			if ( layer.kind === 'parallel' ) {
 
-				layer.ln.compute( renderer );
-				layer.qkv.compute( renderer );
-				layer.attention.compute( renderer, position );
-				layer.attnProj.compute( renderer );
-				layer.mlp.compute( renderer );
-				layer.addAttention.compute( renderer );
-				layer.addMLP.compute( renderer );
+				nodes.push( ...orderedComputeNodes(
+					layer.ln, layer.qkv, layer.attention, layer.attnProj, layer.mlp, layer.addAttention, layer.addMLP
+				) );
 
 			} else if ( layer.kind === 'gemma' ) {
 
-				layer.ln1.compute( renderer );
-				layer.qkv.compute( renderer );
-				layer.attention.compute( renderer, position );
-				layer.attnProj.compute( renderer );
-				layer.postAttnNorm.compute( renderer );
-				layer.addAttention.compute( renderer );
-				layer.preMlp.compute( renderer );
-				layer.mlp.compute( renderer );
-				layer.postMlpNorm.compute( renderer );
-				layer.addMLP.compute( renderer );
+				nodes.push( ...orderedComputeNodes(
+					layer.ln1, layer.qkv, layer.attention, layer.attnProj, layer.postAttnNorm,
+					layer.addAttention, layer.preMlp, layer.mlp, layer.postMlpNorm, layer.addMLP
+				) );
 
 			} else {
 
-				layer.ln1.compute( renderer );
-				layer.qkv.compute( renderer );
-				layer.attention.compute( renderer, position );
-				layer.attnProj.compute( renderer );
-				layer.addAttention.compute( renderer );
-				layer.ln2.compute( renderer );
-				layer.mlp.compute( renderer );
-				layer.addMLP.compute( renderer );
+				nodes.push( ...orderedComputeNodes(
+					layer.ln1, layer.qkv, layer.attention, layer.attnProj,
+					layer.addAttention, layer.ln2, layer.mlp, layer.addMLP
+				) );
 
 			}
 
 		}
 
-		this.finalNorm.compute( renderer );
+		nodes.push( ...orderedComputeNodes( this.finalNorm, ...this.logits.map( ( logit ) => logit.layer ) ) );
+		return nodes;
 
-		for ( const logit of this.logits ) logit.layer.compute( renderer );
+	}
+
+	computeToken( renderer, tokenId, position ) {
+
+		this.weights.embedding( tokenId, position, this.embeddingBuffer );
+		this.embeddingAttribute.needsUpdate = true;
+
+		for ( const layer of this.layers ) layer.attention.setPosition( position );
+
+		renderer.compute( this.computeNodes );
 
 	}
 

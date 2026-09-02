@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>WebGPU LLM benchmark</title>
+	</head>
+	<body>
+		<pre id="output">Starting benchmark...</pre>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "/build/three.webgpu.js",
+					"three/webgpu": "/build/three.webgpu.js",
+					"three/tsl": "/build/three.tsl.js",
+					"three/addons/": "/examples/jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+
+			import { WebGPURenderer } from 'three/webgpu';
+			import { MODEL_CATALOG, createTSLRunner } from 'three/addons/gpgpu/llm/LLMFactory.js';
+
+			const output = document.getElementById( 'output' );
+			const params = new URLSearchParams( window.location.search );
+			const modelId = params.get( 'model' ) || 'tinystories';
+			const trialCount = Math.max( 1, Number( params.get( 'trials' ) ) || 3 );
+			const maxNewTokens = Math.max( 2, Number( params.get( 'tokens' ) ) || 16 );
+			const prompt = params.get( 'prompt' ) || 'Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.';
+			const model = MODEL_CATALOG.find( ( entry ) => entry.id === modelId );
+
+			function percentile( sorted, fraction ) {
+
+				if ( sorted.length === 0 ) return null;
+				return sorted[ Math.min( sorted.length - 1, Math.floor( sorted.length * fraction ) ) ];
+
+			}
+
+			function summarize( values ) {
+
+				const sorted = values.slice().sort( ( a, b ) => a - b );
+				const mean = sorted.reduce( ( sum, value ) => sum + value, 0 ) / sorted.length;
+				const variance = sorted.reduce( ( sum, value ) => sum + ( value - mean ) ** 2, 0 ) / sorted.length;
+
+				return {
+					min: sorted[ 0 ],
+					median: percentile( sorted, 0.5 ),
+					mean,
+					p95: percentile( sorted, 0.95 ),
+					max: sorted[ sorted.length - 1 ],
+					stddev: Math.sqrt( variance )
+				};
+
+			}
+
+			function roundNumbers( value ) {
+
+				if ( typeof value === 'number' ) return Number( value.toFixed( 3 ) );
+				if ( Array.isArray( value ) ) return value.map( roundNumbers );
+				if ( value && typeof value === 'object' ) {
+
+					const rounded = {};
+					for ( const key in value ) rounded[ key ] = roundNumbers( value[ key ] );
+					return rounded;
+
+				}
+
+				return value;
+
+			}
+
+			async function adapterInfo() {
+
+				const adapter = await navigator.gpu.requestAdapter( { powerPreference: 'high-performance' } );
+				if ( adapter === null ) return null;
+
+				const info = adapter.info || {};
+				return {
+					vendor: info.vendor || '',
+					architecture: info.architecture || '',
+					device: info.device || '',
+					description: info.description || ''
+				};
+
+			}
+
+			function modelURL( entry ) {
+
+				const relative = entry.localUrl || entry.url;
+				return new URL( relative, new URL( '/examples/', window.location.href ) ).href;
+
+			}
+
+			function resourceBytes() {
+
+				return performance.getEntriesByType( 'resource' ).reduce( ( total, entry ) => {
+
+					if ( entry.name.includes( '/models/llm/' ) === false ) return total;
+					return total + ( entry.transferSize || entry.encodedBodySize || entry.decodedBodySize || 0 );
+
+				}, 0 );
+
+			}
+
+			async function runGeneration( runner, renderer, counters, tokens ) {
+
+				runner.resetCache();
+				counters.submissions = 0;
+				counters.dispatches = 0;
+				counters.readbacks = 0;
+
+				const tokenTimes = [];
+				const start = performance.now();
+				const result = await runner.generate( renderer, prompt, {
+					maxNewTokens: tokens,
+					temperature: 0,
+					topK: 1,
+					repetitionPenalty: 1,
+					noRepeatNgramSize: 0,
+					onToken: () => tokenTimes.push( performance.now() )
+				} );
+				const end = performance.now();
+				const latencies = [];
+
+				for ( let i = 1; i < tokenTimes.length; i ++ ) latencies.push( tokenTimes[ i ] - tokenTimes[ i - 1 ] );
+
+				const generatedTokens = result.generatedTokens.length;
+				const ttftMs = tokenTimes.length > 0 ? tokenTimes[ 0 ] - start : null;
+				const decodeWindowMs = tokenTimes.length > 1 ? tokenTimes[ tokenTimes.length - 1 ] - tokenTimes[ 0 ] : null;
+
+				return {
+					durationMs: end - start,
+					ttftMs,
+					promptTokens: result.promptTokens,
+					generatedTokens,
+					prefillTokensPerSecond: ttftMs > 0 ? result.promptTokens * 1000 / ttftMs : null,
+					endToEndTokensPerSecond: generatedTokens * 1000 / ( end - start ),
+					decodeTokensPerSecond: decodeWindowMs > 0 ? ( generatedTokens - 1 ) * 1000 / decodeWindowMs : null,
+					tokenLatencyMs: summarize( latencies ),
+					submissions: counters.submissions,
+					dispatches: counters.dispatches,
+					readbacks: counters.readbacks,
+					submissionsPerForward: counters.submissions / ( result.promptTokens + generatedTokens ),
+					dispatchesPerForward: counters.dispatches / ( result.promptTokens + generatedTokens )
+				};
+
+			}
+
+			try {
+
+				if ( model === undefined ) throw new Error( `Unknown model "${ modelId }".` );
+
+				const renderer = new WebGPURenderer( { antialias: false } );
+				const rendererStart = performance.now();
+				await renderer.init();
+				const rendererInitMs = performance.now() - rendererStart;
+				const counters = { submissions: 0, dispatches: 0, readbacks: 0 };
+				const compute = renderer.compute.bind( renderer );
+				const readback = renderer.getArrayBufferAsync.bind( renderer );
+
+				renderer.compute = ( nodes, dispatchSize ) => {
+
+					counters.submissions ++;
+					counters.dispatches += Array.isArray( nodes ) ? nodes.length : 1;
+					return compute( nodes, dispatchSize );
+
+				};
+
+				renderer.getArrayBufferAsync = ( ...args ) => {
+
+					counters.readbacks ++;
+					return readback( ...args );
+
+				};
+
+				const progress = [];
+				const loadStart = performance.now();
+				const runner = await createTSLRunner( modelURL( model ), {
+					onProgress: ( message ) => progress.push( { timeMs: performance.now() - loadStart, message } )
+				} );
+				const modelLoadMs = performance.now() - loadStart;
+
+				output.textContent = `Loaded ${ model.name }. Compiling and warming GPU...`;
+				const firstUse = await runGeneration( runner, renderer, counters, 2 );
+				const trials = [];
+
+				for ( let i = 0; i < trialCount; i ++ ) {
+
+					output.textContent = `Running ${ model.name } trial ${ i + 1 }/${ trialCount }...`;
+					trials.push( await runGeneration( runner, renderer, counters, maxNewTokens ) );
+
+				}
+
+				const completedTrials = trials.filter( ( trial ) => trial.generatedTokens > 1 );
+				const report = roundNumbers( {
+					schemaVersion: 1,
+					model: { id: model.id, name: model.name, url: modelURL( model ) },
+					environment: {
+						userAgent: navigator.userAgent,
+						platform: navigator.platform,
+						adapter: await adapterInfo()
+					},
+					parameters: { prompt, trialCount, maxNewTokens },
+					load: {
+						rendererInitMs,
+						modelLoadMs,
+						resourceBytes: resourceBytes(),
+						progress
+					},
+					firstUse,
+					summary: {
+						ttftMs: summarize( completedTrials.map( ( trial ) => trial.ttftMs ) ),
+						prefillTokensPerSecond: summarize( completedTrials.map( ( trial ) => trial.prefillTokensPerSecond ) ),
+						decodeTokensPerSecond: summarize( completedTrials.map( ( trial ) => trial.decodeTokensPerSecond ) ),
+						endToEndTokensPerSecond: summarize( completedTrials.map( ( trial ) => trial.endToEndTokensPerSecond ) ),
+						submissionsPerForward: summarize( completedTrials.map( ( trial ) => trial.submissionsPerForward ) ),
+						dispatchesPerForward: summarize( completedTrials.map( ( trial ) => trial.dispatchesPerForward ) ),
+						readbacks: summarize( completedTrials.map( ( trial ) => trial.readbacks ) )
+					},
+					trials
+				} );
+
+				window.__llmBenchmark = { done: true, report };
+				output.textContent = JSON.stringify( report, null, 2 );
+				renderer.dispose();
+
+			} catch ( error ) {
+
+				const message = String( error && error.stack || error );
+				window.__llmBenchmark = { done: true, error: message };
+				output.textContent = message;
+
+			}
+
+		</script>
+	</body>
+</html>

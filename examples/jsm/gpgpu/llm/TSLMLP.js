@@ -26,6 +26,7 @@ class TSLMLP {
 		} );
 
 		this.outputNode = this.proj.outputNode;
+		this.computeNodes = [ this.fc.computeNode, this.gelu.computeNode, this.proj.computeNode ];
 
 	}
 

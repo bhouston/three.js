@@ -88,6 +88,12 @@ class TSLAttention {
 		this.queryComputeNode = this.createQueryComputeNode( options.name ? `${ options.name }Query` : 'LLMAttentionQuery' );
 		this.scoreComputeNode = this.createScoreComputeNode( options.name ? `${ options.name }Scores` : 'LLMAttentionScores' );
 		this.computeNode = this.createSoftmaxComputeNode( options.name || 'LLMAttention' );
+		this.computeNodes = [
+			...( this.copyComputeNode ? [ this.copyComputeNode ] : [] ),
+			this.queryComputeNode,
+			this.scoreComputeNode,
+			this.computeNode
+		];
 
 	}
 
@@ -177,8 +183,7 @@ class TSLAttention {
 			qkvNode,
 			keyCacheNode,
 			valueCacheNode,
-			workgroupSize,
-			ropeTheta
+			workgroupSize
 		} = this;
 
 		return Fn( () => {
@@ -226,8 +231,7 @@ class TSLAttention {
 			position,
 			qkvNode,
 			queryNode,
-			workgroupSize,
-			ropeTheta
+			workgroupSize
 		} = this;
 
 		return Fn( () => {

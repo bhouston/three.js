@@ -85,6 +85,19 @@ class TSLGatedDeltaNet {
 		this.decayComputeNode = this.createDecayNode( options.name );
 		this.deltaComputeNode = this.createDeltaNode( options.name );
 		this.normComputeNode = this.createNormNode( options.name );
+		this.computeNodes = [
+			this.qkv.computeNode,
+			this.zProj.computeNode,
+			this.bProj.computeNode,
+			this.aProj.computeNode,
+			this.convComputeNode,
+			this.prepareComputeNode,
+			this.normQKComputeNode,
+			this.decayComputeNode,
+			this.deltaComputeNode,
+			this.normComputeNode,
+			this.outProj.computeNode
+		];
 
 	}
 

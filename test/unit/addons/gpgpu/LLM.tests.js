@@ -1,30 +1,19 @@
 import { StorageBufferAttribute, WebGPURenderer } from 'three/webgpu';
 import { storage } from 'three/tsl';
 
-import { GemmaCPURunner } from '../../../../examples/jsm/gpgpu/llm/GemmaCPURunner.js';
-import { GemmaTSLRunner } from '../../../../examples/jsm/gpgpu/llm/GemmaTSLRunner.js';
-import { GemmaWeights } from '../../../../examples/jsm/gpgpu/llm/GemmaWeights.js';
-import { Gemma4CPURunner } from '../../../../examples/jsm/gpgpu/llm/Gemma4CPURunner.js';
-import { Gemma4TSLRunner } from '../../../../examples/jsm/gpgpu/llm/Gemma4TSLRunner.js';
-import { Gemma4Weights } from '../../../../examples/jsm/gpgpu/llm/Gemma4Weights.js';
-import { GPT2CPURunner } from '../../../../examples/jsm/gpgpu/llm/GPT2CPURunner.js';
+import { DecoderCPURunner } from '../../../../examples/jsm/gpgpu/llm/DecoderCPURunner.js';
+import { DecoderTSLRunner } from '../../../../examples/jsm/gpgpu/llm/DecoderTSLRunner.js';
+import { DecoderWeights } from '../../../../examples/jsm/gpgpu/llm/DecoderWeights.js';
 import { GPT2Tokenizer } from '../../../../examples/jsm/gpgpu/llm/GPT2Tokenizer.js';
-import { GPT2TSLRunner } from '../../../../examples/jsm/gpgpu/llm/GPT2TSLRunner.js';
-import { GPT2Weights } from '../../../../examples/jsm/gpgpu/llm/GPT2Weights.js';
-import { LlamaCPURunner } from '../../../../examples/jsm/gpgpu/llm/LlamaCPURunner.js';
-import { LlamaTSLRunner } from '../../../../examples/jsm/gpgpu/llm/LlamaTSLRunner.js';
-import { LlamaWeights } from '../../../../examples/jsm/gpgpu/llm/LlamaWeights.js';
 import { architectureFor } from '../../../../examples/jsm/gpgpu/llm/LLMFactory.js';
 import { planPromptCache, sharedPrefixLength } from '../../../../examples/jsm/gpgpu/llm/LLMGenerate.js';
 import { applyRoPE, causalAttention, gatedDeltaRuleStep, geluNew, layerNorm, linear, logitSoftcap, rmsNorm, sampleTopK, silu, softmax, splitHeadGate } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
 import { bfloat16ToFloat32, convertAllTensors, float16ToFloat32, tensorToFloat32 } from '../../../../examples/jsm/gpgpu/llm/LLMTensors.js';
-import { PhiCPURunner } from '../../../../examples/jsm/gpgpu/llm/PhiCPURunner.js';
-import { PhiTSLRunner } from '../../../../examples/jsm/gpgpu/llm/PhiTSLRunner.js';
-import { PhiWeights } from '../../../../examples/jsm/gpgpu/llm/PhiWeights.js';
 import { QwenCPURunner } from '../../../../examples/jsm/gpgpu/llm/QwenCPURunner.js';
 import { QwenTSLRunner } from '../../../../examples/jsm/gpgpu/llm/QwenTSLRunner.js';
 import { QwenWeights } from '../../../../examples/jsm/gpgpu/llm/QwenWeights.js';
 import { parseSafeTensors } from '../../../../examples/jsm/gpgpu/llm/SafeTensorsLoader.js';
+import { resolveTensor } from '../../../../examples/jsm/gpgpu/llm/TensorNameMap.js';
 import { TSLAdd } from '../../../../examples/jsm/gpgpu/llm/TSLAdd.js';
 import { TSLAttention } from '../../../../examples/jsm/gpgpu/llm/TSLAttention.js';
 import { TSLGatedMLP } from '../../../../examples/jsm/gpgpu/llm/TSLGatedMLP.js';
@@ -266,7 +255,7 @@ function tinyTokenizer( eos = 0 ) {
 
 }
 
-function createTinyLlamaWeights() {
+function createTinyLlama() {
 
 	const hidden = 8;
 	const inner = 16;
@@ -297,7 +286,7 @@ function createTinyLlamaWeights() {
 
 	}
 
-	return new LlamaWeights( {
+	return new DecoderWeights( {
 		model_type: 'llama',
 		hidden_size: hidden,
 		intermediate_size: inner,
@@ -315,7 +304,7 @@ function createTinyLlamaWeights() {
 
 }
 
-function createTinyPhiWeights() {
+function createTinyPhi() {
 
 	const hidden = 8;
 	const inner = 8;
@@ -345,7 +334,7 @@ function createTinyPhiWeights() {
 	tensors[ `${ p }.mlp.fc2.weight` ] = makeTensor( 'fc2', [ hidden, inner ], 4.3 );
 	tensors[ `${ p }.mlp.fc2.bias` ] = makeTensor( 'fc2b', [ hidden ], 4.4 );
 
-	return new PhiWeights( {
+	return new DecoderWeights( {
 		model_type: 'phi',
 		hidden_size: hidden,
 		intermediate_size: inner,
@@ -361,7 +350,7 @@ function createTinyPhiWeights() {
 
 }
 
-function createTinyGemmaWeights() {
+function createTinyGemma() {
 
 	const hidden = 8;
 	const inner = 16;
@@ -396,7 +385,7 @@ function createTinyGemmaWeights() {
 
 	}
 
-	return new GemmaWeights( {
+	return new DecoderWeights( {
 		model_type: 'gemma3_text',
 		hidden_size: hidden,
 		intermediate_size: inner,
@@ -492,80 +481,6 @@ function createTinyQwenWeights() {
 
 }
 
-function createTinyGemma4Weights() {
-
-	const hidden = 8;
-	const inner = 8;
-	const heads = 2;
-	const kvHeads = 1;
-	const localHead = 4;
-	const globalHead = 8;
-	const layers = 2;
-	const vocab = 8;
-	const pleDim = 4;
-	const tensors = {
-		'model.language_model.embed_tokens.weight': makeTensor( 'embed', [ vocab, hidden ], 0.14 ),
-		'model.language_model.embed_tokens_per_layer.weight': makeTensor( 'ple', [ vocab, layers * pleDim ], 0.11 ),
-		'model.language_model.norm.weight': makeTensor( 'norm', [ hidden ], 1.14 ),
-		'model.language_model.per_layer_model_projection.weight': makeTensor( 'plep', [ layers * pleDim, hidden ], 0.21 ),
-		'model.language_model.per_layer_projection_norm.weight': makeTensor( 'plen', [ pleDim ], 1.05 )
-	};
-	const dims = [ localHead, globalHead ];
-
-	for ( let layer = 0; layer < layers; layer ++ ) {
-
-		const p = `model.language_model.layers.${ layer }`;
-		const headDim = dims[ layer ];
-		const qSize = heads * headDim;
-		const kvSize = kvHeads * headDim;
-		tensors[ `${ p }.input_layernorm.weight` ] = makeTensor( 'ln1', [ hidden ], 2.1 + layer );
-		tensors[ `${ p }.post_attention_layernorm.weight` ] = makeTensor( 'postA', [ hidden ], 2.2 + layer );
-		tensors[ `${ p }.pre_feedforward_layernorm.weight` ] = makeTensor( 'preM', [ hidden ], 2.3 + layer );
-		tensors[ `${ p }.post_feedforward_layernorm.weight` ] = makeTensor( 'postM', [ hidden ], 2.4 + layer );
-		tensors[ `${ p }.self_attn.q_norm.weight` ] = makeTensor( 'qn', [ headDim ], 2.5 + layer );
-		tensors[ `${ p }.self_attn.k_norm.weight` ] = makeTensor( 'kn', [ headDim ], 2.6 + layer );
-		tensors[ `${ p }.self_attn.q_proj.weight` ] = makeTensor( 'q', [ qSize, hidden ], 4 + layer );
-		tensors[ `${ p }.self_attn.k_proj.weight` ] = makeTensor( 'k', [ kvSize, hidden ], 5 + layer );
-		tensors[ `${ p }.self_attn.v_proj.weight` ] = makeTensor( 'v', [ kvSize, hidden ], 6 + layer );
-		tensors[ `${ p }.self_attn.o_proj.weight` ] = makeTensor( 'o', [ hidden, qSize ], 7 + layer );
-		tensors[ `${ p }.mlp.gate_proj.weight` ] = makeTensor( 'gate', [ inner, hidden ], 8 + layer );
-		tensors[ `${ p }.mlp.up_proj.weight` ] = makeTensor( 'up', [ inner, hidden ], 9 + layer );
-		tensors[ `${ p }.mlp.down_proj.weight` ] = makeTensor( 'down', [ hidden, inner ], 10 + layer );
-		tensors[ `${ p }.per_layer_input_gate.weight` ] = makeTensor( 'pg', [ pleDim, hidden ], 11 + layer );
-		tensors[ `${ p }.per_layer_projection.weight` ] = makeTensor( 'pp', [ hidden, pleDim ], 12 + layer );
-		tensors[ `${ p }.post_per_layer_input_norm.weight` ] = makeTensor( 'pn', [ hidden ], 13 + layer );
-
-	}
-
-	return new Gemma4Weights( {
-		model_type: 'gemma4_text',
-		hidden_size: hidden,
-		intermediate_size: inner,
-		num_hidden_layers: layers,
-		num_attention_heads: heads,
-		num_key_value_heads: kvHeads,
-		head_dim: localHead,
-		global_head_dim: globalHead,
-		vocab_size: vocab,
-		rms_norm_eps: 1e-6,
-		sliding_window: 2,
-		layer_types: [ 'sliding_attention', 'full_attention' ],
-		hidden_activation: 'gelu_pytorch_tanh',
-		hidden_size_per_layer_input: pleDim,
-		vocab_size_per_layer_input: vocab,
-		num_kv_shared_layers: 0,
-		use_double_wide_mlp: false,
-		final_logit_softcapping: 30,
-		rope_parameters: {
-			sliding_attention: { rope_theta: 10000, rope_type: 'default' },
-			full_attention: { rope_theta: 1000000, rope_type: 'proportional', partial_rotary_factor: 0.25 }
-		},
-		eos_token_id: 0,
-		max_position_embeddings: 16
-	}, tensors, tinyTokenizer() );
-
-}
-
 async function assertCausalSequence( assert, renderer, sequence, options, epsilon = 1e-4 ) {
 
 	const { headCount, maxTokens, workgroupSize } = options;
@@ -645,7 +560,6 @@ const SMOLLM2_ROOT = '/examples/models/llm/smollm2-135m/';
 const GEMMA3_ROOT = '/examples/models/llm/gemma-3-270m/';
 const QWEN35_ROOT = '/examples/models/llm/qwen3.5-0.8b/';
 const PHI15_ROOT = '/examples/models/llm/phi-1.5/';
-const GEMMA4_ROOT = '/examples/models/llm/gemma-4-e2b/';
 const STORY_PROMPT = 'Once upon a time,';
 const GREEDY = { maxNewTokens: 8, temperature: 0, topK: 1 };
 const GREEDY_SHORT = { maxNewTokens: 4, temperature: 0, topK: 1 };
@@ -885,9 +799,13 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( architectureFor( { model_type: 'phi' } ), 'phi' );
 				assert.strictEqual( architectureFor( { model_type: 'gemma3_text' } ), 'gemma3' );
 				assert.strictEqual( architectureFor( { model_type: 'qwen3_5' } ), 'qwen3_5' );
-				assert.strictEqual( architectureFor( { model_type: 'gemma4' } ), 'gemma4' );
 				assert.strictEqual( architectureFor( { model_type: 'qwen3_5', text_config: { model_type: 'qwen3_5_text' } } ), 'qwen3_5' );
-				assert.strictEqual( architectureFor( { model_type: 'gemma4', text_config: { model_type: 'gemma4_text' } } ), 'gemma4' );
+				assert.throws( () => architectureFor( { model_type: 'gemma4' } ), /Unsupported model_type "gemma4"/ );
+
+				const mapped = resolveTensor( {
+					'model.layers.0.self_attn.q_proj.weight': { name: 'q' }
+				}, 'model.', 'llama', 'attn_q', 0 );
+				assert.strictEqual( mapped.name, 'q', 'TensorNameMap resolves Llama HF q_proj aliases' );
 
 				const capped = logitSoftcap( new Float32Array( [ 60, - 60, 0 ] ), 30 );
 				assert.ok( Math.abs( capped[ 0 ] - 30 * Math.tanh( 2 ) ) < 1e-5, 'logit softcap saturates large values' );
@@ -1129,7 +1047,7 @@ export default QUnit.module( 'Addons', () => {
 
 			QUnit.test( 'prepareGeneration keeps the prompt when new tokens fill the window', async ( assert ) => {
 
-				const weights = await GPT2Weights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
+				const weights = await DecoderWeights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
 				const prompt = 'Once upon a time,';
 				const encoded = weights.tokenizer.encode( prompt );
 				const { inputTokens, newTokenBudget } = weights.prepareGeneration( prompt, 8, 128 );
@@ -1137,7 +1055,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.deepEqual( Array.from( inputTokens ), encoded, 'prompt is not sliced to make room for new tokens' );
 				assert.strictEqual( newTokenBudget, 8 - encoded.length, 'generation uses leftover context slots' );
 
-				const result = new GPT2CPURunner( weights, { maxTokens: 8 } ).generate( prompt, {
+				const result = new DecoderCPURunner( weights, { maxTokens: 8 } ).generate( prompt, {
 					maxNewTokens: 128,
 					temperature: 0,
 					topK: 1
@@ -1150,8 +1068,8 @@ export default QUnit.module( 'Addons', () => {
 
 			QUnit.test( 'CPU TinyStories greedy continuation stays on the prompt', async ( assert ) => {
 
-				const weights = await GPT2Weights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
-				const result = new GPT2CPURunner( weights ).generate( 'Once upon a time,', {
+				const weights = await DecoderWeights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
+				const result = new DecoderCPURunner( weights ).generate( 'Once upon a time,', {
 					maxNewTokens: 24,
 					temperature: 0,
 					topK: 1
@@ -1185,13 +1103,13 @@ export default QUnit.module( 'Addons', () => {
 
 			QUnit.test( 'CPU TinyStories reuses the KV cache on a longer prompt', async ( assert ) => {
 
-				const weights = await GPT2Weights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
+				const weights = await DecoderWeights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
 				const options = { maxNewTokens: 8, temperature: 0, topK: 1 };
-				const runner = new GPT2CPURunner( weights, { maxTokens: 64 } );
+				const runner = new DecoderCPURunner( weights, { maxTokens: 64 } );
 				const first = runner.generate( 'Once upon a time,', options );
 				const continued = first.text + ' She';
 				const second = runner.generate( continued, options );
-				const fresh = new GPT2CPURunner( weights, { maxTokens: 64 } ).generate( continued, options );
+				const fresh = new DecoderCPURunner( weights, { maxTokens: 64 } ).generate( continued, options );
 
 				assert.strictEqual( second.text, fresh.text, 'cached continuation matches a cold run' );
 				assert.ok( second.cachedPromptTokens > 0, 'second generate reused prompt tokens' );
@@ -1208,11 +1126,11 @@ export default QUnit.module( 'Addons', () => {
 				const renderer = await createRenderer( assert );
 				if ( renderer === null ) return;
 
-				const weights = await GPT2Weights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
+				const weights = await DecoderWeights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
 				const prompt = 'Once upon a time,';
 				const options = { maxNewTokens: 8, temperature: 0, topK: 1 };
-				const cpu = new GPT2CPURunner( weights, { maxTokens: 128 } ).generate( prompt, options );
-				const gpu = await new GPT2TSLRunner( weights, { maxTokens: 128 } ).generate( renderer, prompt, options );
+				const cpu = new DecoderCPURunner( weights, { maxTokens: 128 } ).generate( prompt, options );
+				const gpu = await new DecoderTSLRunner( weights, { maxTokens: 128 } ).generate( renderer, prompt, options );
 
 				assert.strictEqual( gpu.text, cpu.text, 'GPU greedy text matches CPU' );
 				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'GPU token ids match CPU' );
@@ -1224,8 +1142,8 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 60000 );
 
-				const weights = await GPT2Weights.fromURL( '/examples/models/llm/gpt2/' );
-				const result = new GPT2CPURunner( weights, { maxTokens: 32 } ).generate( 'Once upon a time,', {
+				const weights = await DecoderWeights.fromURL( '/examples/models/llm/gpt2/' );
+				const result = new DecoderCPURunner( weights, { maxTokens: 32 } ).generate( 'Once upon a time,', {
 					maxNewTokens: 8,
 					temperature: 0,
 					topK: 1
@@ -1242,11 +1160,11 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 180000 );
 
-				const weights = await GPT2Weights.fromURL( '/examples/models/llm/gpt2/' );
+				const weights = await DecoderWeights.fromURL( '/examples/models/llm/gpt2/' );
 				const prompt = 'Once upon a time,';
 				const options = { maxNewTokens: 8, temperature: 0, topK: 1 };
-				const cpu = new GPT2CPURunner( weights, { maxTokens: 32 } ).generate( prompt, options );
-				const gpu = await new GPT2TSLRunner( weights, { maxTokens: 32 } ).generate( renderer, prompt, options );
+				const cpu = new DecoderCPURunner( weights, { maxTokens: 32 } ).generate( prompt, options );
+				const gpu = await new DecoderTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, prompt, options );
 
 				assert.ok( cpu.text.startsWith( prompt ), 'CPU GPT-2 keeps the prompt' );
 				assert.strictEqual( gpu.text, cpu.text, 'GPU GPT-2 greedy text matches CPU' );
@@ -1259,7 +1177,7 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 120000 );
 
-				const weights = await loadLocalCheckpoint( assert, LlamaWeights, SMOLLM2_ROOT );
+				const weights = await loadLocalCheckpoint( assert, DecoderWeights, SMOLLM2_ROOT );
 				if ( weights === null ) return;
 
 				assert.strictEqual( architectureFor( weights.config ), 'llama' );
@@ -1288,10 +1206,10 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 180000 );
 
-				const weights = await loadLocalCheckpoint( assert, LlamaWeights, SMOLLM2_ROOT );
+				const weights = await loadLocalCheckpoint( assert, DecoderWeights, SMOLLM2_ROOT );
 				if ( weights === null ) return;
 
-				const result = new LlamaCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
+				const result = new DecoderCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
 
 				assert.ok( result.text.startsWith( STORY_PROMPT ), 'decoded SmolLM2 output still starts with the prompt' );
 				assert.strictEqual( result.generatedTokens.length, 8, 'SmolLM2 emits eight greedy tokens' );
@@ -1309,7 +1227,7 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 180000 );
 
-				const weights = await loadLocalCheckpoint( assert, LlamaWeights, SMOLLM2_ROOT );
+				const weights = await loadLocalCheckpoint( assert, DecoderWeights, SMOLLM2_ROOT );
 				if ( weights === null ) {
 
 					renderer.dispose();
@@ -1317,8 +1235,8 @@ export default QUnit.module( 'Addons', () => {
 
 				}
 
-				const cpu = new LlamaCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
-				const gpu = await new LlamaTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, STORY_PROMPT, GREEDY );
+				const cpu = new DecoderCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
+				const gpu = await new DecoderTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, STORY_PROMPT, GREEDY );
 
 				assert.ok( cpu.text.startsWith( STORY_PROMPT ), 'CPU SmolLM2 keeps the prompt' );
 				assert.strictEqual( gpu.text, cpu.text, 'GPU SmolLM2 greedy text matches CPU' );
@@ -1331,7 +1249,7 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 180000 );
 
-				const weights = await loadLocalCheckpoint( assert, GemmaWeights, GEMMA3_ROOT );
+				const weights = await loadLocalCheckpoint( assert, DecoderWeights, GEMMA3_ROOT );
 				if ( weights === null ) return;
 
 				assert.strictEqual( architectureFor( weights.config ), 'gemma3' );
@@ -1366,10 +1284,10 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 180000 );
 
-				const weights = await loadLocalCheckpoint( assert, GemmaWeights, GEMMA3_ROOT );
+				const weights = await loadLocalCheckpoint( assert, DecoderWeights, GEMMA3_ROOT );
 				if ( weights === null ) return;
 
-				const result = new GemmaCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
+				const result = new DecoderCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
 
 				assert.ok( result.text.startsWith( STORY_PROMPT ), 'decoded Gemma output still starts with the prompt' );
 				assert.strictEqual( result.generatedTokens.length, 8, 'Gemma emits eight greedy tokens' );
@@ -1387,7 +1305,7 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 300000 );
 
-				const weights = await loadLocalCheckpoint( assert, GemmaWeights, GEMMA3_ROOT );
+				const weights = await loadLocalCheckpoint( assert, DecoderWeights, GEMMA3_ROOT );
 				if ( weights === null ) {
 
 					renderer.dispose();
@@ -1395,8 +1313,8 @@ export default QUnit.module( 'Addons', () => {
 
 				}
 
-				const cpu = new GemmaCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
-				const gpu = await new GemmaTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, STORY_PROMPT, GREEDY );
+				const cpu = new DecoderCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
+				const gpu = await new DecoderTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, STORY_PROMPT, GREEDY );
 
 				assert.ok( cpu.text.startsWith( STORY_PROMPT ), 'CPU Gemma keeps the prompt' );
 				assert.strictEqual( gpu.text, cpu.text, 'GPU Gemma greedy text matches CPU' );
@@ -1511,10 +1429,10 @@ export default QUnit.module( 'Addons', () => {
 				const renderer = await createRenderer( assert );
 				if ( renderer === null ) return;
 
-				const weights = createTinyLlamaWeights();
+				const weights = createTinyLlama();
 				const options = { maxNewTokens: 4, temperature: 0, topK: 1 };
-				const cpu = new LlamaCPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
-				const gpu = await new LlamaTSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
+				const cpu = new DecoderCPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
+				const gpu = await new DecoderTSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
 
 				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'tiny Llama GPU tokens match CPU' );
 				assert.strictEqual( gpu.text, cpu.text );
@@ -1527,10 +1445,10 @@ export default QUnit.module( 'Addons', () => {
 				const renderer = await createRenderer( assert );
 				if ( renderer === null ) return;
 
-				const weights = createTinyPhiWeights();
+				const weights = createTinyPhi();
 				const options = { maxNewTokens: 4, temperature: 0, topK: 1 };
-				const cpu = new PhiCPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
-				const gpu = await new PhiTSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
+				const cpu = new DecoderCPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
+				const gpu = await new DecoderTSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
 
 				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'tiny Phi GPU tokens match CPU' );
 				assert.strictEqual( gpu.text, cpu.text );
@@ -1542,7 +1460,7 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 180000 );
 
-				const weights = await loadLocalCheckpoint( assert, PhiWeights, PHI15_ROOT );
+				const weights = await loadLocalCheckpoint( assert, DecoderWeights, PHI15_ROOT );
 				if ( weights === null ) return;
 
 				assert.strictEqual( architectureFor( weights.config ), 'phi' );
@@ -1572,10 +1490,10 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 300000 );
 
-				const weights = await loadLocalCheckpoint( assert, PhiWeights, PHI15_ROOT );
+				const weights = await loadLocalCheckpoint( assert, DecoderWeights, PHI15_ROOT );
 				if ( weights === null ) return;
 
-				const result = new PhiCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
+				const result = new DecoderCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
 
 				assert.ok( result.text.startsWith( STORY_PROMPT ), 'decoded Phi-1.5 output still starts with the prompt' );
 				assert.strictEqual( result.generatedTokens.length, 8, 'Phi-1.5 emits eight greedy tokens' );
@@ -1593,7 +1511,7 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.timeout( 300000 );
 
-				const weights = await loadLocalCheckpoint( assert, PhiWeights, PHI15_ROOT );
+				const weights = await loadLocalCheckpoint( assert, DecoderWeights, PHI15_ROOT );
 				if ( weights === null ) {
 
 					renderer.dispose();
@@ -1601,8 +1519,8 @@ export default QUnit.module( 'Addons', () => {
 
 				}
 
-				const cpu = new PhiCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
-				const gpu = await new PhiTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, STORY_PROMPT, GREEDY );
+				const cpu = new DecoderCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
+				const gpu = await new DecoderTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, STORY_PROMPT, GREEDY );
 
 				assert.ok( cpu.text.startsWith( STORY_PROMPT ), 'CPU Phi-1.5 keeps the prompt' );
 				assert.strictEqual( gpu.text, cpu.text, 'GPU Phi-1.5 greedy text matches CPU' );
@@ -1709,10 +1627,10 @@ export default QUnit.module( 'Addons', () => {
 				const renderer = await createRenderer( assert );
 				if ( renderer === null ) return;
 
-				const weights = createTinyGemmaWeights();
+				const weights = createTinyGemma();
 				const options = { maxNewTokens: 4, temperature: 0, topK: 1 };
-				const cpu = new GemmaCPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
-				const gpu = await new GemmaTSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
+				const cpu = new DecoderCPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
+				const gpu = await new DecoderTSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
 
 				assert.strictEqual( weights.block( 0 ).slidingWindow, 2, 'first layer is sliding-window' );
 				assert.strictEqual( weights.block( 1 ).slidingWindow, 0, 'second layer is global' );
@@ -1803,82 +1721,6 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'Gemma 4 E2B loads PLE and shared-KV weights from the local checkpoint', async ( assert ) => {
-
-				assert.timeout( 600000 );
-
-				const weights = await loadLocalCheckpoint( assert, Gemma4Weights, GEMMA4_ROOT );
-				if ( weights === null ) return;
-
-				assert.strictEqual( architectureFor( weights.config ), 'gemma4' );
-				assert.strictEqual( weights.architecture, 'gemma4' );
-				assert.strictEqual( weights.hiddenSize, 1536 );
-				assert.strictEqual( weights.innerSize, 6144 );
-				assert.strictEqual( weights.layerCount, 35 );
-				assert.strictEqual( weights.headCount, 8 );
-				assert.strictEqual( weights.kvHeadCount, 1 );
-				assert.strictEqual( weights.localHeadDim, 256 );
-				assert.strictEqual( weights.globalHeadDim, 512 );
-				assert.strictEqual( weights.vocabSize, 262144 );
-				assert.strictEqual( weights.pleDim, 256 );
-				assert.strictEqual( weights.firstKvSharedLayer, 15 );
-				assert.strictEqual( weights.slidingWindow, 512 );
-				assert.strictEqual( weights.mlpActivation, 'gelu_pytorch_tanh' );
-				assert.strictEqual( weights.finalLogitSoftcapping, 30 );
-				assert.strictEqual( weights.block( 0 ).layerType, 'sliding_attention' );
-				assert.strictEqual( weights.block( 4 ).layerType, 'full_attention' );
-				assert.strictEqual( weights.block( 0 ).isKVShared, false, 'early layers own KV' );
-				assert.strictEqual( weights.block( 15 ).isKVShared, true, 'later layers share KV' );
-				assert.strictEqual( weights.block( 15 ).innerSize, 12288, 'shared layers use a double-wide MLP' );
-				assert.strictEqual( weights.block( 15 ).sharedSource, 13, 'sliding layers reuse the last unique sliding KV' );
-				assert.strictEqual( weights.block( 19 ).sharedSource, 14, 'full layers reuse the last unique full KV' );
-				assert.ok( weights.hasTensor( 'embed_tokens_per_layer.weight' ), 'per-layer embeddings are present' );
-
-				const promptIds = weights.tokenizer.encode( STORY_PROMPT );
-				assert.ok( promptIds.length > 0, 'Gemma 4 tokenizer encodes the story prompt' );
-				assert.strictEqual( weights.tokenizer.decode( promptIds ), STORY_PROMPT, 'Gemma 4 tokenizer round-trips the prompt' );
-
-			} );
-
-			QUnit.test( 'CPU Gemma 4 E2B greedy continuation stays on the prompt', async ( assert ) => {
-
-				assert.timeout( 600000 );
-
-				const weights = await loadLocalCheckpoint( assert, Gemma4Weights, GEMMA4_ROOT );
-				if ( weights === null ) return;
-
-				const result = new Gemma4CPURunner( weights, { maxTokens: 16 } ).generate( STORY_PROMPT, GREEDY_SHORT );
-
-				assert.ok( result.text.startsWith( STORY_PROMPT ), 'decoded Gemma 4 output still starts with the prompt' );
-				assert.ok( result.generatedTokens.length > 0, 'Gemma 4 emits greedy tokens' );
-
-			} );
-
-			QUnit.test( 'TSL Gemma 4 E2B greedy continuation matches the CPU runner', async ( assert ) => {
-
-				const renderer = await createRenderer( assert );
-				if ( renderer === null ) return;
-
-				assert.timeout( 900000 );
-
-				const weights = await loadLocalCheckpoint( assert, Gemma4Weights, GEMMA4_ROOT );
-				if ( weights === null ) {
-
-					renderer.dispose();
-					return;
-
-				}
-
-				const cpu = new Gemma4CPURunner( weights, { maxTokens: 16 } ).generate( STORY_PROMPT, GREEDY_SHORT );
-				const gpu = await new Gemma4TSLRunner( weights, { maxTokens: 16 } ).generate( renderer, STORY_PROMPT, GREEDY_SHORT );
-
-				assert.ok( cpu.text.startsWith( STORY_PROMPT ), 'CPU Gemma 4 keeps the prompt' );
-				assert.strictEqual( gpu.text, cpu.text, 'GPU Gemma 4 greedy text matches CPU' );
-				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'GPU Gemma 4 token ids match CPU' );
-				renderer.dispose();
-
-			} );
-
 			QUnit.test( 'tiny Qwen3.5 greedy GPU matches CPU', async ( assert ) => {
 
 				const renderer = await createRenderer( assert );
@@ -1892,24 +1734,6 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( weights.block( 0 ).layerType, 'linear_attention' );
 				assert.strictEqual( weights.block( 1 ).layerType, 'full_attention' );
 				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'tiny Qwen GPU tokens match CPU' );
-				assert.strictEqual( gpu.text, cpu.text );
-				renderer.dispose();
-
-			} );
-
-			QUnit.test( 'tiny Gemma 4 greedy GPU matches CPU', async ( assert ) => {
-
-				const renderer = await createRenderer( assert );
-				if ( renderer === null ) return;
-
-				const weights = createTinyGemma4Weights();
-				const options = { maxNewTokens: 4, temperature: 0, topK: 1 };
-				const cpu = new Gemma4CPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
-				const gpu = await new Gemma4TSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
-
-				assert.strictEqual( weights.block( 0 ).headDim, 4, 'sliding layer uses local head dim' );
-				assert.strictEqual( weights.block( 1 ).headDim, 8, 'global layer uses global head dim' );
-				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'tiny Gemma 4 GPU tokens match CPU' );
 				assert.strictEqual( gpu.text, cpu.text );
 				renderer.dispose();
 

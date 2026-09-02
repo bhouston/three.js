@@ -1,19 +1,8 @@
+import { DecoderCPURunner } from './DecoderCPURunner.js';
+import { architectureFor } from './DecoderRecipe.js';
+import { DecoderTSLRunner } from './DecoderTSLRunner.js';
+import { DecoderWeights } from './DecoderWeights.js';
 import { createProgress, fetchJSON } from './LLMTensors.js';
-import { GemmaCPURunner } from './GemmaCPURunner.js';
-import { GemmaTSLRunner } from './GemmaTSLRunner.js';
-import { GemmaWeights } from './GemmaWeights.js';
-import { Gemma4CPURunner } from './Gemma4CPURunner.js';
-import { Gemma4TSLRunner } from './Gemma4TSLRunner.js';
-import { Gemma4Weights } from './Gemma4Weights.js';
-import { GPT2CPURunner } from './GPT2CPURunner.js';
-import { GPT2TSLRunner } from './GPT2TSLRunner.js';
-import { GPT2Weights } from './GPT2Weights.js';
-import { LlamaCPURunner } from './LlamaCPURunner.js';
-import { LlamaTSLRunner } from './LlamaTSLRunner.js';
-import { LlamaWeights } from './LlamaWeights.js';
-import { PhiCPURunner } from './PhiCPURunner.js';
-import { PhiTSLRunner } from './PhiTSLRunner.js';
-import { PhiWeights } from './PhiWeights.js';
 import { QwenCPURunner } from './QwenCPURunner.js';
 import { QwenTSLRunner } from './QwenTSLRunner.js';
 import { QwenWeights } from './QwenWeights.js';
@@ -64,36 +53,12 @@ const MODEL_CATALOG = [
 		localUrl: './models/llm/phi-1.5/',
 		prompt: 'Once upon a time,',
 		note: 'Microsoft Phi-1.5 (LayerNorm, partial RoPE, parallel attention + MLP). About 2.8 GB FP16 from Hugging Face.'
-	},
-	{
-		id: 'gemma4-e2b',
-		name: 'Gemma 4 E2B',
-		url: 'https://huggingface.co/google/gemma-4-E2B/resolve/main/',
-		localUrl: './models/llm/gemma-4-e2b/',
-		prompt: 'Once upon a time,',
-		note: 'Gemma 4 E2B (PLE, shared KV, proportional RoPE). About 10 GB BF16 — needs a lot of RAM. Text-only decode; vision/audio towers are skipped.'
 	}
 ];
 
 function normalizeRoot( baseURL ) {
 
 	return baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
-
-}
-
-function architectureFor( config ) {
-
-	const type = config.model_type;
-	const nested = config.text_config && config.text_config.model_type;
-
-	if ( type === 'gpt2' ) return 'gpt2';
-	if ( type === 'gemma3_text' || type === 'gemma3' ) return 'gemma3';
-	if ( type === 'gemma4' || type === 'gemma4_text' || nested === 'gemma4_text' ) return 'gemma4';
-	if ( type === 'qwen3_5' || type === 'qwen3_5_text' || nested === 'qwen3_5_text' ) return 'qwen3_5';
-	if ( type === 'llama' || type === 'mistral' || type === 'qwen2' || type === 'gemma' || type === 'gemma2' ) return 'llama';
-	if ( type === 'phi' ) return 'phi';
-
-	throw new Error( `LLMFactory: Unsupported model_type "${ type }".` );
 
 }
 
@@ -109,13 +74,9 @@ async function loadWeights( baseURL, options = {} ) {
 		const architecture = architectureFor( config );
 		await report( `Using ${ architecture } loader for model_type "${ config.model_type }"` );
 
-		if ( architecture === 'gpt2' ) return GPT2Weights.fromURL( baseURL, options );
-		if ( architecture === 'phi' ) return PhiWeights.fromURL( baseURL, options );
-		if ( architecture === 'gemma3' ) return GemmaWeights.fromURL( baseURL, options );
-		if ( architecture === 'gemma4' ) return Gemma4Weights.fromURL( baseURL, options );
 		if ( architecture === 'qwen3_5' ) return QwenWeights.fromURL( baseURL, options );
 
-		return LlamaWeights.fromURL( baseURL, options );
+		return DecoderWeights.fromURL( baseURL, options );
 
 	} catch ( error ) {
 
@@ -131,14 +92,9 @@ async function createTSLRunner( baseURL, options = {} ) {
 	const weights = await loadWeights( baseURL, options );
 	await report( `Building ${ weights.architecture } GPU runner (${ weights.layerCount } layers, vocab ${ weights.vocabSize })...` );
 
-	let runner;
-
-	if ( weights.architecture === 'gpt2' ) runner = new GPT2TSLRunner( weights, options );
-	else if ( weights.architecture === 'phi' ) runner = new PhiTSLRunner( weights, options );
-	else if ( weights.architecture === 'gemma3' ) runner = new GemmaTSLRunner( weights, options );
-	else if ( weights.architecture === 'gemma4' ) runner = new Gemma4TSLRunner( weights, options );
-	else if ( weights.architecture === 'qwen3_5' ) runner = new QwenTSLRunner( weights, options );
-	else runner = new LlamaTSLRunner( weights, options );
+	const runner = weights.architecture === 'qwen3_5'
+		? new QwenTSLRunner( weights, options )
+		: new DecoderTSLRunner( weights, options );
 
 	await report( 'GPU runner ready' );
 	return runner;
@@ -149,13 +105,9 @@ async function createCPURunner( baseURL, options = {} ) {
 
 	const weights = await loadWeights( baseURL, options );
 
-	if ( weights.architecture === 'gpt2' ) return new GPT2CPURunner( weights, options );
-	if ( weights.architecture === 'phi' ) return new PhiCPURunner( weights, options );
-	if ( weights.architecture === 'gemma3' ) return new GemmaCPURunner( weights, options );
-	if ( weights.architecture === 'gemma4' ) return new Gemma4CPURunner( weights, options );
 	if ( weights.architecture === 'qwen3_5' ) return new QwenCPURunner( weights, options );
 
-	return new LlamaCPURunner( weights, options );
+	return new DecoderCPURunner( weights, options );
 
 }
 

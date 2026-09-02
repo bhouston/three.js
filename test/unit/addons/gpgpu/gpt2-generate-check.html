@@ -18,9 +18,9 @@
 		<script type="module">
 
 			import { WebGPURenderer } from 'three/webgpu';
-			import { GPT2CPURunner } from 'three/addons/gpgpu/llm/GPT2CPURunner.js';
-			import { GPT2TSLRunner } from 'three/addons/gpgpu/llm/GPT2TSLRunner.js';
-			import { GPT2Weights } from 'three/addons/gpgpu/llm/GPT2Weights.js';
+			import { DecoderCPURunner } from 'three/addons/gpgpu/llm/DecoderCPURunner.js';
+			import { DecoderTSLRunner } from 'three/addons/gpgpu/llm/DecoderTSLRunner.js';
+			import { DecoderWeights } from 'three/addons/gpgpu/llm/DecoderWeights.js';
 
 			const out = document.getElementById( 'out' );
 			const prompt = 'Once upon a time,';
@@ -28,15 +28,15 @@
 
 			try {
 
-				const weights = await GPT2Weights.fromURL( '/examples/models/llm/gpt2/' );
+				const weights = await DecoderWeights.fromURL( '/examples/models/llm/gpt2/' );
 				out.textContent = 'Running CPU greedy...\n';
-				const cpu = new GPT2CPURunner( weights, { maxTokens: 32 } ).generate( prompt, options );
+				const cpu = new DecoderCPURunner( weights, { maxTokens: 32 } ).generate( prompt, options );
 				out.textContent += `CPU: ${ JSON.stringify( cpu.text ) }\n${ cpu.generatedTokens.join( ',' ) }\n`;
 
 				const renderer = new WebGPURenderer();
 				await renderer.init();
 				out.textContent += 'Running GPU greedy...\n';
-				const gpu = await new GPT2TSLRunner( weights, { maxTokens: 32 } ).generate( renderer, prompt, options );
+				const gpu = await new DecoderTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, prompt, options );
 				out.textContent += `GPU: ${ JSON.stringify( gpu.text ) }\n${ gpu.generatedTokens.join( ',' ) }\n`;
 
 				const match = cpu.text === gpu.text && cpu.generatedTokens.join( ',' ) === gpu.generatedTokens.join( ',' );

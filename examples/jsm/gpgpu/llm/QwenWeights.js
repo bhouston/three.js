@@ -1,6 +1,7 @@
-import { loadSafetensorsModel } from './SafeTensorsLoader.js';
-import { GPT2Tokenizer, QWEN_TOKEN_PATTERN } from './GPT2Tokenizer.js';
-import { fetchJSON, packProjections, prepareGeneration, tensorToFloat32, transpose2D, convertAllTensors, createProgress, unwrapTextConfig, detectLanguagePrefix } from './LLMTensors.js';
+import { loadHFModelBundle } from './HFModelBundle.js';
+import { packProjections, prepareGeneration, tensorToFloat32, transpose2D, unwrapTextConfig, createProgress } from './LLMTensors.js';
+import { resolveTensor } from './TensorNameMap.js';
+import { recipeFor } from './DecoderRecipe.js';
 
 /**
  * Loads a Hugging Face Qwen3.5 text backbone (`qwen3_5` / `qwen3_5_text`).
@@ -17,32 +18,33 @@ class QwenWeights {
 		this.architecture = 'qwen3_5';
 		this.config = unwrapTextConfig( config );
 		this.rawConfig = config;
+		this.recipe = recipeFor( config );
 		this.tensors = tensors;
 		this.tokenizer = tokenizer;
-		this.tensorPrefix = detectLanguagePrefix( tensors );
-		this.hiddenSize = this.config.hidden_size;
-		this.innerSize = this.config.intermediate_size;
-		this.layerCount = this.config.num_hidden_layers;
-		this.headCount = this.config.num_attention_heads;
-		this.kvHeadCount = this.config.num_key_value_heads || this.config.num_attention_heads;
-		this.headDim = this.config.head_dim || ( this.config.hidden_size / this.config.num_attention_heads );
+		this.tensorPrefix = options.prefix !== undefined ? options.prefix : detectPrefix( tensors );
+		this.hiddenSize = this.recipe.hiddenSize;
+		this.innerSize = this.recipe.innerSize;
+		this.layerCount = this.recipe.layerCount;
+		this.headCount = this.recipe.headCount;
+		this.kvHeadCount = this.recipe.kvHeadCount;
+		this.headDim = this.recipe.headDim;
 		this.qSize = this.headCount * this.headDim;
 		this.kvSize = this.kvHeadCount * this.headDim;
-		this.vocabSize = this.config.vocab_size;
-		this.layerTypes = this.config.layer_types || [];
-		this.rmsNormEps = this.config.rms_norm_eps || 1e-6;
+		this.vocabSize = this.recipe.vocabSize;
+		this.layerTypes = this.recipe.layerTypes;
+		this.rmsNormEps = this.recipe.normEps;
 		this.offsetRMSNorm = true;
-		this.mlpActivation = this.config.hidden_act || 'silu';
-		this.linearKeyDim = this.config.linear_key_head_dim || 128;
-		this.linearValueDim = this.config.linear_value_head_dim || 128;
-		this.linearKeyHeads = this.config.linear_num_key_heads || 16;
-		this.linearValueHeads = this.config.linear_num_value_heads || 16;
-		this.linearConvKernel = this.config.linear_conv_kernel_dim || 4;
-		this.ropeTheta = this.config.rope_parameters?.rope_theta || this.config.rope_theta || 10000000;
+		this.mlpActivation = this.recipe.mlpActivation;
+		this.linearKeyDim = this.recipe.linearKeyDim;
+		this.linearValueDim = this.recipe.linearValueDim;
+		this.linearKeyHeads = this.recipe.linearKeyHeads;
+		this.linearValueHeads = this.recipe.linearValueHeads;
+		this.linearConvKernel = this.recipe.linearConvKernel;
+		this.ropeTheta = this.recipe.ropeTheta;
 		this.partialRotaryFactor = this.config.rope_parameters?.partial_rotary_factor ?? 0.25;
-		this.rotaryDim = Math.floor( this.headDim * this.partialRotaryFactor );
-		this.attnScale = this.headDim ** - 0.5;
-		this.endOfTextTokenId = Array.isArray( this.config.eos_token_id ) ? this.config.eos_token_id[ 0 ] : ( this.config.eos_token_id ?? tokenizer.endOfTextTokenId ?? 248044 );
+		this.rotaryDim = this.recipe.rotaryDim;
+		this.attnScale = this.recipe.attnScale;
+		this.endOfTextTokenId = this.recipe.endOfTextTokenId ?? tokenizer.endOfTextTokenId ?? 248044;
 		this.stopTokenIds = [ this.endOfTextTokenId ];
 		this._float32 = new Map();
 
@@ -53,6 +55,7 @@ class QwenWeights {
 			this.stopTokenIds.push( imEndTokenId );
 
 		}
+
 		this.logitWeight = null;
 		this._blocks = [];
 
@@ -60,41 +63,9 @@ class QwenWeights {
 
 	}
 
-	lmHeadTensor() {
-
-		const embedding = this.tensor( 'embed_tokens.weight' );
-		return this.hasTensor( 'lm_head.weight' ) && this.config.tie_word_embeddings !== true
-			? this.tensor( 'lm_head.weight' )
-			: embedding;
-
-	}
-
-	unpackSync() {
-
-		this.logitWeight = transpose2D( this.lmHeadTensor(), this.vocabSize, this.hiddenSize );
-
-		for ( let i = 0; i < this.layerCount; i ++ ) this._blocks[ i ] = this.createBlock( i );
-
-	}
-
-	async unpack( onProgress ) {
-
-		const report = createProgress( 'QwenWeights', onProgress );
-		await report( `Transposing output projection (${ this.vocabSize } x ${ this.hiddenSize }); UI may pause...` );
-		this.logitWeight = transpose2D( this.lmHeadTensor(), this.vocabSize, this.hiddenSize );
-
-		for ( let i = 0; i < this.layerCount; i ++ ) {
-
-			this._blocks[ i ] = this.createBlock( i );
-			await report( `Unpacked layer ${ i + 1 } / ${ this.layerCount }` );
-
-		}
-
-	}
-
 	contextLimit() {
 
-		return Math.min( this.config.max_position_embeddings || 2048, 2048 );
+		return this.recipe.contextLimit;
 
 	}
 
@@ -134,53 +105,51 @@ class QwenWeights {
 
 	static async fromURL( baseURL, options = {} ) {
 
-		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
-		const report = createProgress( 'QwenWeights', options.onProgress );
+		const bundle = await loadHFModelBundle( baseURL, { ...options, label: 'QwenWeights' } );
+		const weights = new QwenWeights( bundle.rawConfig, bundle.tensors, bundle.tokenizer, {
+			deferUnpack: true,
+			prefix: bundle.prefix
+		} );
+		await weights.unpack( options.onProgress );
+		return weights;
 
-		await report( `Loading config ${ root }config.json` );
-		const config = await fetchJSON( `${ root }config.json`, 'QwenWeights' );
-		const text = unwrapTextConfig( config );
-		await report( `${ text.num_hidden_layers } layers, hidden ${ text.hidden_size }, vocab ${ text.vocab_size }` );
-		await report( `Loading tokenizer ${ root }vocab.json` );
-		let addedTokens = [];
+	}
 
-		try {
+	unpackSync() {
 
-			const tokenizerConfig = await fetchJSON( `${ root }tokenizer_config.json`, 'QwenWeights' );
-			const decoder = tokenizerConfig.added_tokens_decoder || {};
-			addedTokens = Object.keys( decoder ).map( ( id ) => ( {
-				id: Number( id ),
-				content: decoder[ id ].content
-			} ) );
+		this.logitWeight = this.loadOutputWeight();
+		for ( let i = 0; i < this.layerCount; i ++ ) this._blocks[ i ] = this.createBlock( i );
 
-		} catch ( error ) {
+	}
 
-			await report( 'tokenizer_config.json missing added tokens; chat specials may BPE-split' );
+	async unpack( onProgress ) {
+
+		const report = createProgress( 'QwenWeights', onProgress );
+		await report( `Transposing output projection (${ this.vocabSize } x ${ this.hiddenSize }); UI may pause...` );
+		this.logitWeight = this.loadOutputWeight();
+
+		for ( let i = 0; i < this.layerCount; i ++ ) {
+
+			this._blocks[ i ] = this.createBlock( i );
+			await report( `Unpacked layer ${ i + 1 } / ${ this.layerCount }` );
 
 		}
-
-		const tokenizer = await GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt`, {
-			tokenPattern: QWEN_TOKEN_PATTERN,
-			endOfTextToken: '<|endoftext|>',
-			addedTokens
-		} );
-		const tensors = await loadSafetensorsModel( root, {
-			onProgress: options.onProgress,
-			label: 'QwenWeights',
-			keepTensor: keepQwenTensor
-		} );
-		await convertAllTensors( tensors, options.onProgress, 'QwenWeights' );
-		await report( 'Packing layers...' );
-		const weights = new QwenWeights( config, tensors, tokenizer, { deferUnpack: true } );
-		await weights.unpack( options.onProgress );
-		await report( 'Weights ready' );
-		return weights;
 
 	}
 
 	hasTensor( name ) {
 
 		return this.tensors[ `${ this.tensorPrefix }${ name }` ] !== undefined || this.tensors[ name ] !== undefined;
+
+	}
+
+	mappedFloat( key, bid ) {
+
+		const cacheKey = bid === undefined ? key : `${ key }.${ bid }`;
+		if ( this._float32.has( cacheKey ) ) return this._float32.get( cacheKey );
+		const data = tensorToFloat32( resolveTensor( this.tensors, this.tensorPrefix, 'qwen3_5', key, bid ) );
+		this._float32.set( cacheKey, data );
+		return data;
 
 	}
 
@@ -202,9 +171,18 @@ class QwenWeights {
 
 	}
 
-	linearWeight( name, outFeatures, inFeatures ) {
+	linearMapped( key, bid, outFeatures, inFeatures ) {
 
-		return transpose2D( this.tensor( name ), outFeatures, inFeatures );
+		return transpose2D( this.mappedFloat( key, bid ), outFeatures, inFeatures );
+
+	}
+
+	loadOutputWeight() {
+
+		const source = this.hasTensor( 'lm_head.weight' ) && this.config.tie_word_embeddings !== true
+			? this.mappedFloat( 'output' )
+			: this.mappedFloat( 'token_embd' );
+		return transpose2D( source, this.vocabSize, this.hiddenSize );
 
 	}
 
@@ -216,46 +194,44 @@ class QwenWeights {
 
 	createBlock( index ) {
 
-		const prefix = `layers.${ index }`;
 		const layerType = this.layerTypes[ index ] || 'full_attention';
 		const { hiddenSize, innerSize } = this;
-
 		const block = {
 			layerType,
-			ln1Weight: this.tensor( `${ prefix }.input_layernorm.weight` ),
-			ln2Weight: this.tensor( `${ prefix }.post_attention_layernorm.weight` ),
-			mlpGateWeight: this.linearWeight( `${ prefix }.mlp.gate_proj.weight`, innerSize, hiddenSize ),
-			mlpUpWeight: this.linearWeight( `${ prefix }.mlp.up_proj.weight`, innerSize, hiddenSize ),
-			mlpDownWeight: this.linearWeight( `${ prefix }.mlp.down_proj.weight`, hiddenSize, innerSize )
+			ln1Weight: this.mappedFloat( 'attn_norm', index ),
+			ln2Weight: this.mappedFloat( 'ffn_norm', index ),
+			mlpGateWeight: this.linearMapped( 'ffn_gate', index, innerSize, hiddenSize ),
+			mlpUpWeight: this.linearMapped( 'ffn_up', index, innerSize, hiddenSize ),
+			mlpDownWeight: this.linearMapped( 'ffn_down', index, hiddenSize, innerSize )
 		};
 
 		if ( layerType === 'linear_attention' ) {
 
 			const convDim = this.linearKeyHeads * this.linearKeyDim * 2 + this.linearValueHeads * this.linearValueDim;
 			block.delta = {
-				qkvWeight: this.linearWeight( `${ prefix }.linear_attn.in_proj_qkv.weight`, convDim, hiddenSize ),
-				zWeight: this.linearWeight( `${ prefix }.linear_attn.in_proj_z.weight`, this.linearValueHeads * this.linearValueDim, hiddenSize ),
-				bWeight: this.linearWeight( `${ prefix }.linear_attn.in_proj_b.weight`, this.linearValueHeads, hiddenSize ),
-				aWeight: this.linearWeight( `${ prefix }.linear_attn.in_proj_a.weight`, this.linearValueHeads, hiddenSize ),
-				outWeight: this.linearWeight( `${ prefix }.linear_attn.out_proj.weight`, hiddenSize, this.linearValueHeads * this.linearValueDim ),
-				convWeight: this.tensor( `${ prefix }.linear_attn.conv1d.weight` ),
-				aLog: this.tensor( `${ prefix }.linear_attn.A_log` ),
-				dtBias: this.tensor( `${ prefix }.linear_attn.dt_bias` ),
-				normWeight: this.tensor( `${ prefix }.linear_attn.norm.weight` )
+				qkvWeight: this.linearMapped( 'delta_qkv', index, convDim, hiddenSize ),
+				zWeight: this.linearMapped( 'delta_z', index, this.linearValueHeads * this.linearValueDim, hiddenSize ),
+				bWeight: this.linearMapped( 'delta_b', index, this.linearValueHeads, hiddenSize ),
+				aWeight: this.linearMapped( 'delta_a', index, this.linearValueHeads, hiddenSize ),
+				outWeight: this.linearMapped( 'delta_out', index, hiddenSize, this.linearValueHeads * this.linearValueDim ),
+				convWeight: this.mappedFloat( 'delta_conv', index ),
+				aLog: this.mappedFloat( 'delta_a_log', index ),
+				dtBias: this.mappedFloat( 'delta_dt_bias', index ),
+				normWeight: this.mappedFloat( 'delta_norm', index )
 			};
 
 		} else {
 
-			const qGate = this.linearWeight( `${ prefix }.self_attn.q_proj.weight`, this.qSize * 2, hiddenSize );
-			const k = this.linearWeight( `${ prefix }.self_attn.k_proj.weight`, this.kvSize, hiddenSize );
-			const v = this.linearWeight( `${ prefix }.self_attn.v_proj.weight`, this.kvSize, hiddenSize );
+			const qGate = this.linearMapped( 'attn_q', index, this.qSize * 2, hiddenSize );
+			const k = this.linearMapped( 'attn_k', index, this.kvSize, hiddenSize );
+			const v = this.linearMapped( 'attn_v', index, this.kvSize, hiddenSize );
 			block.qGateWeight = qGate;
 			block.kWeight = k;
 			block.vWeight = v;
 			block.attnQKVWeight = packProjections( [ k, v ], hiddenSize );
-			block.attnProjWeight = this.linearWeight( `${ prefix }.self_attn.o_proj.weight`, hiddenSize, this.qSize );
-			block.qNormWeight = this.tensor( `${ prefix }.self_attn.q_norm.weight` );
-			block.kNormWeight = this.tensor( `${ prefix }.self_attn.k_norm.weight` );
+			block.attnProjWeight = this.linearMapped( 'attn_out', index, hiddenSize, this.qSize );
+			block.qNormWeight = this.mappedFloat( 'attn_q_norm', index );
+			block.kNormWeight = this.mappedFloat( 'attn_k_norm', index );
 
 		}
 
@@ -265,7 +241,7 @@ class QwenWeights {
 
 	embedding( tokenId, position, target = new Float32Array( this.hiddenSize ) ) {
 
-		const tokenEmbedding = this.tensor( 'embed_tokens.weight' );
+		const tokenEmbedding = this.mappedFloat( 'token_embd' );
 		const tokenOffset = tokenId * this.hiddenSize;
 		target.set( tokenEmbedding.subarray( tokenOffset, tokenOffset + this.hiddenSize ) );
 		return target;
@@ -274,9 +250,14 @@ class QwenWeights {
 
 }
 
-function keepQwenTensor( name ) {
+function detectPrefix( tensors ) {
 
-	return name.includes( 'language_model' ) && name.includes( 'visual' ) === false && name.startsWith( 'mtp.' ) === false;
+	if ( tensors[ 'model.language_model.embed_tokens.weight' ] !== undefined ) return 'model.language_model.';
+	if ( tensors[ 'language_model.embed_tokens.weight' ] !== undefined ) return 'language_model.';
+	if ( tensors[ 'model.embed_tokens.weight' ] !== undefined ) return 'model.';
+	if ( tensors[ 'embed_tokens.weight' ] !== undefined ) return '';
+
+	return 'model.';
 
 }
 

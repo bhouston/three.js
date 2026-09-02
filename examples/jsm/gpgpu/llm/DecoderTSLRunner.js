@@ -1,5 +1,5 @@
 import { StorageBufferAttribute } from 'three/webgpu';
-import { storage } from 'three/tsl';
+import { Fn, If, instanceIndex, storage, uint } from 'three/tsl';
 
 import { DecoderWeights } from './DecoderWeights.js';
 import { generateAsync } from './LLMGenerate.js';
@@ -9,7 +9,7 @@ import { TSLAttention } from './TSLAttention.js';
 import { orderedComputeNodes } from './TSLCompute.js';
 import { TSLGatedMLP } from './TSLGatedMLP.js';
 import { TSLLinear } from './TSLLinear.js';
-import { createChunkedLogitLayers, readChunkedLogits } from './TSLLogits.js';
+import { createChunkedLogitLayers, createLogitSampler, readChunkedLogits } from './TSLLogits.js';
 import { TSLMLP } from './TSLMLP.js';
 import { TSLNormalize } from './TSLNormalize.js';
 import { TSLRMSNorm } from './TSLRMSNorm.js';
@@ -28,10 +28,22 @@ class DecoderTSLRunner {
 		this.maxTokens = Math.min( options.maxTokens || weights.contextLimit(), weights.contextLimit() );
 		this.workgroupSize = options.workgroupSize || 64;
 		this.logitChunkSize = options.logitChunkSize || 8192;
+		this.prefillChunkSize = options.prefillChunkSize || 32;
 		this.hiddenSize = weights.hiddenSize;
 		this.embeddingBuffer = new Float32Array( this.hiddenSize );
 		this.embeddingAttribute = new StorageBufferAttribute( this.embeddingBuffer, 1 );
 		this.embeddingNode = storage( this.embeddingAttribute, 'float', this.hiddenSize ).setName( `${ weights.architecture }Embedding` );
+		this.positionBuffer = new Uint32Array( 1 );
+		this.positionAttribute = new StorageBufferAttribute( this.positionBuffer, 1 );
+		this.positionNode = storage( this.positionAttribute, 'uint', 1 ).setName( `${ weights.architecture }Position` );
+		this.prefillCursorBuffer = new Uint32Array( 1 );
+		this.prefillCursorAttribute = new StorageBufferAttribute( this.prefillCursorBuffer, 1 );
+		this.prefillCursorNode = storage( this.prefillCursorAttribute, 'uint', 1 ).setName( `${ weights.architecture }PrefillCursor` );
+		this.prefillEmbeddingBuffer = new Float32Array( this.prefillChunkSize * this.hiddenSize );
+		this.prefillEmbeddingAttribute = new StorageBufferAttribute( this.prefillEmbeddingBuffer, 1 );
+		this.prefillEmbeddingNode = storage( this.prefillEmbeddingAttribute, 'float', this.prefillEmbeddingBuffer.length ).setName( `${ weights.architecture }PrefillEmbeddings` );
+		this.prefillCopyNode = this.createPrefillCopyNode( `${ weights.architecture }PrefillCopy` );
+		this.prefillAdvanceNode = this.createPrefillAdvanceNode( `${ weights.architecture }PrefillAdvance` );
 		this.layers = [];
 
 		let currentNode = this.embeddingNode;
@@ -46,6 +58,11 @@ class DecoderTSLRunner {
 
 		this.finalNorm = this.buildFinalNorm( currentNode );
 		this.logits = createChunkedLogitLayers( this.finalNorm.outputNode, weights, this.logitChunkSize, `${ weights.architecture }Logits` );
+		this.logitSampler = createLogitSampler( this.logits, {
+			candidateCount: options.logitCandidateCount || 8,
+			logitSoftcap: this.recipe.finalLogitSoftcap,
+			name: `${ weights.architecture }Logits`
+		} );
 		this.prefillComputeNodes = this.createComputeNodes( false );
 		this.computeNodes = this.createComputeNodes();
 
@@ -94,8 +111,41 @@ class DecoderTSLRunner {
 			qNormWeight: block.qNormWeight,
 			kNormWeight: block.kNormWeight,
 			rmsEpsilon: recipe.normEps,
-			offsetRMSNorm: recipe.norm === 'rms_offset'
+			offsetRMSNorm: recipe.norm === 'rms_offset',
+			positionNode: this.positionNode.element( uint( 0 ) )
 		} );
+
+	}
+
+	createPrefillCopyNode( name ) {
+
+		const { hiddenSize, workgroupSize, embeddingNode, prefillCursorNode, prefillEmbeddingNode } = this;
+
+		return Fn( () => {
+
+			const dim = instanceIndex.toVar( 'dim' );
+
+			If( dim.lessThan( uint( hiddenSize ) ), () => {
+
+				const offset = prefillCursorNode.element( uint( 0 ) ).mul( uint( hiddenSize ) ).add( dim );
+				embeddingNode.element( dim ).assign( prefillEmbeddingNode.element( offset ) );
+
+			} );
+
+		} )().compute( hiddenSize, [ workgroupSize ] ).setName( name );
+
+	}
+
+	createPrefillAdvanceNode( name ) {
+
+		const { prefillCursorNode, positionNode } = this;
+
+		return Fn( () => {
+
+			prefillCursorNode.element( uint( 0 ) ).assign( prefillCursorNode.element( uint( 0 ) ).add( uint( 1 ) ) );
+			positionNode.element( uint( 0 ) ).assign( positionNode.element( uint( 0 ) ).add( uint( 1 ) ) );
+
+		} )().compute( 1, [ 1 ] ).setName( name );
 
 	}
 
@@ -251,14 +301,70 @@ class DecoderTSLRunner {
 
 	}
 
-	computeToken( renderer, tokenId, position, computeLogits = true ) {
+	sampleComputeNodes( candidateCount ) {
+
+		return this.computeNodes.concat( this.logitSampler.computeNodesFor( candidateCount ) );
+
+	}
+
+	prefillChunkComputeNodes( count ) {
+
+		const nodes = [];
+
+		for ( let i = 0; i < count; i ++ ) {
+
+			nodes.push( this.prefillCopyNode, ...this.prefillComputeNodes, this.prefillAdvanceNode );
+
+		}
+
+		return nodes;
+
+	}
+
+	setPosition( position ) {
+
+		this.positionBuffer[ 0 ] = position;
+		this.positionAttribute.needsUpdate = true;
+
+	}
+
+	computeToken( renderer, tokenId, position, computeLogits = true, sampleCandidateCount = 0 ) {
 
 		this.weights.embedding( tokenId, position, this.embeddingBuffer );
 		this.embeddingAttribute.needsUpdate = true;
+		this.setPosition( position );
 
 		for ( const layer of this.layers ) layer.attention.setPosition( position );
 
-		renderer.compute( computeLogits ? this.computeNodes : this.prefillComputeNodes );
+		renderer.compute( computeLogits
+			? ( sampleCandidateCount > 0 ? this.sampleComputeNodes( sampleCandidateCount ) : this.computeNodes )
+			: this.prefillComputeNodes );
+
+	}
+
+	async prefillTokens( renderer, inputTokens, start, end ) {
+
+		for ( let offset = start; offset < end; offset += this.prefillChunkSize ) {
+
+			const count = Math.min( this.prefillChunkSize, end - offset );
+
+			for ( let i = 0; i < count; i ++ ) {
+
+				this.weights.embedding(
+					inputTokens[ offset + i ],
+					offset + i,
+					this.prefillEmbeddingBuffer.subarray( i * this.hiddenSize, ( i + 1 ) * this.hiddenSize )
+				);
+
+			}
+
+			this.prefillEmbeddingAttribute.needsUpdate = true;
+			this.prefillCursorBuffer[ 0 ] = 0;
+			this.prefillCursorAttribute.needsUpdate = true;
+			this.setPosition( offset );
+			renderer.compute( this.prefillChunkComputeNodes( count ) );
+
+		}
 
 	}
 
@@ -266,6 +372,12 @@ class DecoderTSLRunner {
 
 		const logits = await readChunkedLogits( renderer, this.logits, this.weights.vocabSize );
 		return logitSoftcap( logits, this.recipe.finalLogitSoftcap );
+
+	}
+
+	async sampleToken( renderer, candidateCount, options ) {
+
+		return this.logitSampler.sampleToken( renderer, candidateCount, options );
 
 	}
 
@@ -283,8 +395,11 @@ class DecoderTSLRunner {
 		return generateAsync( this, prompt, options, {
 			rewindable: true,
 			resetCache: () => this.resetCache(),
-			computeToken: ( tokenId, position, computeLogits ) => this.computeToken( renderer, tokenId, position, computeLogits ),
-			readLogits: () => this.readLogits( renderer )
+			computeToken: ( tokenId, position, computeLogits, sampleCandidateCount ) => this.computeToken( renderer, tokenId, position, computeLogits, sampleCandidateCount ),
+			prefillTokens: ( inputTokens, start, end ) => this.prefillTokens( renderer, inputTokens, start, end ),
+			readLogits: () => this.readLogits( renderer ),
+			sampleToken: ( candidateCount, sampleOptions ) => this.sampleToken( renderer, candidateCount, sampleOptions ),
+			maxGpuCandidateCount: this.logitSampler.candidateCount
 		} );
 
 	}

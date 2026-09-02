@@ -1,4 +1,4 @@
-import { sampleTopK } from './LLMMath.js';
+import { needsFullLogitsForSampling, sampleTopK } from './LLMMath.js';
 
 function isStopToken( runner, tokenId ) {
 
@@ -77,6 +77,20 @@ function planPromptCache( cachedTokens, cachedLogits, inputTokens, rewindable ) 
 
 }
 
+function gpuCandidateCount( options, maxCandidateCount ) {
+
+	if ( maxCandidateCount === 0 || options.gpuSampling === false || needsFullLogitsForSampling( options ) ) return 0;
+
+	const temperature = options.temperature ?? 0.8;
+	const topK = Math.max( 1, Math.floor( options.topK ?? 40 ) );
+
+	if ( temperature <= 0 || topK === 1 ) return 1;
+	if ( topK <= maxCandidateCount ) return topK;
+
+	return 0;
+
+}
+
 function finishGeneration( runner, weights, allTokens, generatedTokens, logits, extra ) {
 
 	runner._cacheTokens = allTokens.slice();
@@ -143,10 +157,12 @@ function generateSync( runner, prompt, options = {}, controls ) {
 
 async function generateAsync( runner, prompt, options = {}, controls ) {
 
-	const { rewindable, resetCache, computeToken, readLogits } = controls;
+	const { rewindable, resetCache, computeToken, prefillTokens, readLogits, sampleToken, maxGpuCandidateCount = 0 } = controls;
 	const { inputTokens, newTokenBudget } = resolvePromptTokens( runner, prompt, options );
 	const plan = planPromptCache( runner._cacheTokens || [], runner._cacheLogits, inputTokens, rewindable );
 	const signal = options.signal;
+	const candidateCount = gpuCandidateCount( options, maxGpuCandidateCount );
+	const useGpuSampling = candidateCount > 0 && typeof sampleToken === 'function';
 
 	if ( plan.reset ) resetCache();
 
@@ -162,23 +178,44 @@ async function generateAsync( runner, prompt, options = {}, controls ) {
 	const allTokens = inputTokens.slice();
 	const generatedTokens = [];
 	let logits = plan.logits;
+	const needsPromptLogits = newTokenBudget > 0;
+	const prefillEnd = needsPromptLogits ? inputTokens.length - 1 : inputTokens.length;
+	let promptLoopStart = plan.start;
 
-	for ( let i = plan.start; i < inputTokens.length; i ++ ) {
+	if ( options.prefillMode !== false && typeof prefillTokens === 'function' && plan.start < prefillEnd ) {
+
+		await prefillTokens( inputTokens, plan.start, prefillEnd );
+		promptLoopStart = prefillEnd;
+
+	}
+
+	for ( let i = promptLoopStart; i < inputTokens.length; i ++ ) {
 
 		if ( signal !== undefined && signal.aborted ) break;
 
-		const computeLogits = i === inputTokens.length - 1;
-		await computeToken( inputTokens[ i ], i, computeLogits );
-		if ( computeLogits ) logits = await readLogits();
+		const computeLogits = needsPromptLogits && i === inputTokens.length - 1;
+		await computeToken( inputTokens[ i ], i, computeLogits, useGpuSampling ? candidateCount : 0 );
+		if ( computeLogits ) logits = useGpuSampling ? null : await readLogits();
+
+	}
+
+	if ( options.onPrefillComplete ) {
+
+		options.onPrefillComplete( {
+			cachedPromptTokens: plan.reused,
+			promptTokens: inputTokens.length
+		} );
 
 	}
 
 	for ( let i = 0; i < newTokenBudget; i ++ ) {
 
 		if ( signal !== undefined && signal.aborted ) break;
-		if ( logits === null ) break;
+		if ( useGpuSampling === false && logits === null ) break;
 
-		const nextToken = sampleTopK( logits, { ...options, tokens: allTokens } );
+		const nextToken = useGpuSampling
+			? await sampleToken( candidateCount, { ...options, tokens: allTokens } )
+			: sampleTopK( logits, { ...options, tokens: allTokens } );
 
 		if ( isStopToken( runner, nextToken ) ) break;
 
@@ -191,8 +228,8 @@ async function generateAsync( runner, prompt, options = {}, controls ) {
 
 		}
 
-		await computeToken( nextToken, allTokens.length - 1 );
-		logits = await readLogits();
+		await computeToken( nextToken, allTokens.length - 1, true, useGpuSampling ? candidateCount : 0 );
+		logits = useGpuSampling ? null : await readLogits();
 
 	}
 
@@ -207,6 +244,7 @@ async function generateAsync( runner, prompt, options = {}, controls ) {
 export {
 	generateAsync,
 	generateSync,
+	gpuCandidateCount,
 	planPromptCache,
 	prepareGenerationFromTokens,
 	sharedPrefixLength

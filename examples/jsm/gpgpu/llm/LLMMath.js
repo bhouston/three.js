@@ -515,6 +515,48 @@ function applyRepeatPenalties( logits, tokens, {
 
 }
 
+function needsFullLogitsForSampling( {
+	repetitionPenalty = 1,
+	presencePenalty = 0,
+	frequencyPenalty = 0,
+	noRepeatNgramSize = 0,
+	forceFullLogits = false
+} = {} ) {
+
+	return forceFullLogits === true ||
+		( repetitionPenalty !== 1 && repetitionPenalty > 0 ) ||
+		presencePenalty !== 0 ||
+		frequencyPenalty !== 0 ||
+		Math.max( 0, Math.floor( noRepeatNgramSize ) ) >= 2;
+
+}
+
+function sampleTopKCandidates( candidates, {
+	temperature = 0.8,
+	random = Math.random
+} = {} ) {
+
+	if ( candidates.length === 0 ) return 0;
+	if ( temperature <= 0 || candidates.length === 1 ) return candidates[ 0 ][ 0 ];
+
+	const values = new Float32Array( candidates.length );
+
+	for ( let i = 0; i < candidates.length; i ++ ) values[ i ] = candidates[ i ][ 1 ] / Math.max( temperature, 1e-6 );
+
+	const probabilities = softmax( values );
+	let r = random();
+
+	for ( let i = 0; i < probabilities.length; i ++ ) {
+
+		r -= probabilities[ i ];
+		if ( r <= 0 ) return candidates[ i ][ 0 ];
+
+	}
+
+	return candidates[ candidates.length - 1 ][ 0 ];
+
+}
+
 function sampleTopK( logits, {
 	temperature = 0.8,
 	topK = 40,
@@ -605,10 +647,12 @@ export {
 	layerNorm,
 	linear,
 	logitSoftcap,
+	needsFullLogitsForSampling,
 	rmsNorm,
 	rmsNormGated,
 	rmsNormPackedHeads,
 	rotaryAngle,
+	sampleTopKCandidates,
 	sampleTopK,
 	sigmoid,
 	silu,

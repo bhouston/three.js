@@ -20,6 +20,7 @@ import { TSLAttention } from '../../../../examples/jsm/gpgpu/llm/TSLAttention.js
 import { TSLGatedMLP } from '../../../../examples/jsm/gpgpu/llm/TSLGatedMLP.js';
 import { TSLGELU } from '../../../../examples/jsm/gpgpu/llm/TSLGELU.js';
 import { TSLLinear } from '../../../../examples/jsm/gpgpu/llm/TSLLinear.js';
+import { createLogitSampler } from '../../../../examples/jsm/gpgpu/llm/TSLLogits.js';
 import { TSLMLP } from '../../../../examples/jsm/gpgpu/llm/TSLMLP.js';
 import { TSLNormalize } from '../../../../examples/jsm/gpgpu/llm/TSLNormalize.js';
 import { TSLRMSNorm } from '../../../../examples/jsm/gpgpu/llm/TSLRMSNorm.js';
@@ -1068,6 +1069,52 @@ export default QUnit.module( 'Addons', () => {
 				layer.compute( renderer );
 
 				closeArray( assert, await readOutput( renderer, layer ), new Float32Array( [ 0.5, 1 ] ), 1e-5, 'TSLLinear 3->2, null bias' );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'TSL logit sampler returns greedy and top-k candidates', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const first = storageFromArray( new Float32Array( [ 1, 7, 7, - 2 ] ) );
+				const second = storageFromArray( new Float32Array( [ 8, 3, 6 ] ) );
+				const sampler = createLogitSampler( [
+					{ offset: 0, size: 4, layer: { outputNode: first.node } },
+					{ offset: 4, size: 3, layer: { outputNode: second.node } }
+				], { candidateCount: 3 } );
+
+				renderer.compute( sampler.computeNodesFor( 3 ) );
+
+				assert.strictEqual( await sampler.readToken( renderer ), 4, 'greedy token is selected globally' );
+				assert.deepEqual(
+					await sampler.readCandidates( renderer, 3 ),
+					[ [ 4, 8 ], [ 1, 7 ], [ 2, 7 ] ],
+					'top-k candidates preserve score order and lowest-token tie breaks'
+				);
+
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'TSL logit sampler applies softcap before ranking', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const logits = storageFromArray( new Float32Array( [ 10, 2, - 1 ] ) );
+				const sampler = createLogitSampler( [
+					{ offset: 0, size: 3, layer: { outputNode: logits.node } }
+				], { candidateCount: 2, logitSoftcap: 1 } );
+
+				renderer.compute( sampler.computeNodesFor( 2 ) );
+
+				const candidates = await sampler.readCandidates( renderer, 2 );
+				assert.strictEqual( candidates[ 0 ][ 0 ], 0, 'largest capped score keeps the same token' );
+				assert.ok( candidates[ 0 ][ 1 ] <= 1, 'softcap limits the candidate score' );
+				assert.strictEqual( candidates[ 1 ][ 0 ], 1, 'second candidate is also ranked after softcap' );
+
 				renderer.dispose();
 
 			} );

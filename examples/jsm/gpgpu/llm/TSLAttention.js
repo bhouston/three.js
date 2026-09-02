@@ -40,7 +40,8 @@ class TSLAttention {
 		this.gateNode = options.gateNode || null;
 		this.qNormNode = null;
 		this.kNormNode = null;
-		this.position = uniform( 0, 'uint' );
+		this.position = options.positionNode || uniform( 0, 'uint' );
+		this.positionUniform = options.positionNode ? null : this.position;
 
 		if ( options.qNormWeight ) {
 
@@ -376,7 +377,7 @@ class TSLAttention {
 
 	setPosition( position ) {
 
-		this.position.value = position;
+		if ( this.positionUniform !== null ) this.positionUniform.value = position;
 
 	}
 

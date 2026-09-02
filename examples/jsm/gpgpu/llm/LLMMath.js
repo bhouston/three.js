@@ -80,6 +80,26 @@ function sampleTopK( logits, { temperature = 0.8, topK = 40, random = Math.rando
 	const k = Math.min( topK, logits.length );
 	const candidates = [];
 
+	if ( temperature <= 0 || k === 1 ) {
+
+		let bestIndex = 0;
+		let bestValue = logits[ 0 ];
+
+		for ( let i = 1; i < logits.length; i ++ ) {
+
+			if ( logits[ i ] > bestValue ) {
+
+				bestIndex = i;
+				bestValue = logits[ i ];
+
+			}
+
+		}
+
+		return bestIndex;
+
+	}
+
 	for ( let i = 0; i < logits.length; i ++ ) {
 
 		const value = logits[ i ] / Math.max( temperature, 1e-6 );

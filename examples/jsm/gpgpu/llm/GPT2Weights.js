@@ -13,6 +13,7 @@ class GPT2Weights {
 		this.config = config;
 		this.tensors = tensors;
 		this.tokenizer = tokenizer;
+		this.tensorPrefix = tensors[ 'transformer.wte.weight' ] !== undefined ? 'transformer.' : '';
 		this.hiddenSize = config.n_embd;
 		this.innerSize = config.n_inner || config.n_embd * 4;
 		this.layerCount = config.n_layer;
@@ -20,7 +21,7 @@ class GPT2Weights {
 		this.vocabSize = config.vocab_size;
 		this.endOfTextTokenId = config.eos_token_id;
 
-		this.logitWeight = transpose2D( this.tensor( 'transformer.wte.weight' ), this.vocabSize, this.hiddenSize );
+		this.logitWeight = transpose2D( this.tensor( 'wte.weight' ), this.vocabSize, this.hiddenSize );
 
 	}
 
@@ -39,11 +40,11 @@ class GPT2Weights {
 
 	tensor( name ) {
 
-		const tensor = this.tensors[ name ];
+		const tensor = this.tensors[ `${ this.tensorPrefix }${ name }` ];
 
 		if ( tensor === undefined ) {
 
-			throw new Error( `GPT2Weights: Missing tensor "${ name }".` );
+			throw new Error( `GPT2Weights: Missing tensor "${ this.tensorPrefix }${ name }".` );
 
 		}
 
@@ -59,7 +60,7 @@ class GPT2Weights {
 
 	block( index ) {
 
-		const prefix = `transformer.h.${ index }`;
+		const prefix = `h.${ index }`;
 
 		return {
 			ln1Weight: this.tensor( `${ prefix }.ln_1.weight` ),
@@ -80,8 +81,8 @@ class GPT2Weights {
 
 	embedding( tokenId, position, target = new Float32Array( this.hiddenSize ) ) {
 
-		const tokenEmbedding = this.tensor( 'transformer.wte.weight' );
-		const positionEmbedding = this.tensor( 'transformer.wpe.weight' );
+		const tokenEmbedding = this.tensor( 'wte.weight' );
+		const positionEmbedding = this.tensor( 'wpe.weight' );
 		const tokenOffset = tokenId * this.hiddenSize;
 		const positionOffset = position * this.hiddenSize;
 

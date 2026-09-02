@@ -23,6 +23,7 @@ class GPT2TSLRunner {
 		this.weights = weights;
 		this.maxTokens = options.maxTokens || 128;
 		this.workgroupSize = options.workgroupSize || 64;
+		this.logitChunkSize = options.logitChunkSize || 8192;
 		this.hiddenSize = weights.hiddenSize;
 		this.embeddingBuffer = new Float32Array( this.hiddenSize );
 		this.embeddingAttribute = new StorageBufferAttribute( this.embeddingBuffer, 1 );
@@ -75,15 +76,12 @@ class GPT2TSLRunner {
 
 		}
 
-		this.finalNorm = new TSLNormalize( currentNode, weights.tensor( 'transformer.ln_f.weight' ), weights.tensor( 'transformer.ln_f.bias' ), this.hiddenSize, {
+		this.finalNorm = new TSLNormalize( currentNode, weights.tensor( 'ln_f.weight' ), weights.tensor( 'ln_f.bias' ), this.hiddenSize, {
 			epsilon: weights.config.layer_norm_epsilon,
 			name: 'GPT2FinalNorm',
 			workgroupSize: this.workgroupSize
 		} );
-		this.logits = new TSLLinear( this.finalNorm.outputNode, weights.logitWeight, null, this.hiddenSize, weights.vocabSize, {
-			name: 'GPT2Logits',
-			workgroupSize: 256
-		} );
+		this.logits = this.createLogitLayers();
 
 	}
 
@@ -112,13 +110,59 @@ class GPT2TSLRunner {
 		}
 
 		this.finalNorm.compute( renderer );
-		this.logits.compute( renderer );
+
+		for ( const logit of this.logits ) {
+
+			logit.layer.compute( renderer );
+
+		}
 
 	}
 
 	async readLogits( renderer ) {
 
-		return new Float32Array( await renderer.getArrayBufferAsync( this.logits.outputAttribute ) );
+		const logits = new Float32Array( this.weights.vocabSize );
+
+		for ( const logit of this.logits ) {
+
+			const chunk = new Float32Array( await renderer.getArrayBufferAsync( logit.layer.outputAttribute ) );
+			logits.set( chunk.subarray( 0, logit.size ), logit.offset );
+
+		}
+
+		return logits;
+
+	}
+
+	createLogitLayers() {
+
+		const logits = [];
+		const { weights, hiddenSize, logitChunkSize } = this;
+
+		for ( let offset = 0; offset < weights.vocabSize; offset += logitChunkSize ) {
+
+			const size = Math.min( logitChunkSize, weights.vocabSize - offset );
+			const chunkWeight = new Float32Array( hiddenSize * size );
+
+			for ( let i = 0; i < hiddenSize; i ++ ) {
+
+				const sourceOffset = i * weights.vocabSize + offset;
+				chunkWeight.set( weights.logitWeight.subarray( sourceOffset, sourceOffset + size ), i * size );
+
+			}
+
+			logits.push( {
+				offset,
+				size,
+				layer: new TSLLinear( this.finalNorm.outputNode, chunkWeight, null, hiddenSize, size, {
+					name: `GPT2Logits${ offset }`,
+					workgroupSize: 256
+				} )
+			} );
+
+		}
+
+		return logits;
 
 	}
 

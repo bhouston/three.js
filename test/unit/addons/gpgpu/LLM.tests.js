@@ -231,6 +231,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.ok( Math.abs( geluNew( - 20 ) ) < 1e-4, 'gelu_new(-20) ~= 0' );
 
 				assert.strictEqual( sampleTopK( new Float32Array( [ 1, 2, 3 ] ), { topK: 1 } ), 2, 'topK=1 returns argmax' );
+				assert.strictEqual( sampleTopK( new Float32Array( [ 1, 4, 3 ] ), { temperature: 0, topK: 40 } ), 1, 'temperature=0 returns argmax' );
 				assert.strictEqual( sampleTopK( new Float32Array( [ 1, 2, 3, 4 ] ), { topK: 2, temperature: 1, random: () => 0 } ), 3, 'random() == 0 picks the top candidate' );
 				assert.strictEqual( sampleTopK( new Float32Array( [ 1, 2, 3, 4 ] ), { temperature: 1e-8, topK: 40, random: () => 0.5 } ), 3, 'near-zero temperature picks argmax' );
 

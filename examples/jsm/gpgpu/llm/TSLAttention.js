@@ -31,7 +31,29 @@ class TSLAttention {
 		this.valueCacheNode = storage( this.valueCacheAttribute, 'float', cacheSize ).setName( options.name ? `${ options.name }ValueCache` : 'LLMValueCache' );
 		this.outputNode = storage( this.outputAttribute, 'float', hiddenSize ).setName( options.name ? `${ options.name }Output` : 'LLMAttentionOutput' );
 
+		this.copyComputeNode = this.createCopyComputeNode( qkvNode, options.name ? `${ options.name }CopyKV` : 'LLMAttentionCopyKV', options.workgroupSize || 64 );
 		this.computeNode = this.createComputeNode( qkvNode, options.name || 'LLMAttention', options.workgroupSize || 64 );
+
+	}
+
+	createCopyComputeNode( qkvNode, name, workgroupSize ) {
+
+		const {
+			hiddenSize,
+			position,
+			keyCacheNode,
+			valueCacheNode
+		} = this;
+
+		return Fn( () => {
+
+			const dim = instanceIndex.toVar( 'dim' );
+			const cacheOffset = position.mul( uint( hiddenSize ) ).add( dim );
+
+			keyCacheNode.element( cacheOffset ).assign( qkvNode.element( uint( hiddenSize ).add( dim ) ) );
+			valueCacheNode.element( cacheOffset ).assign( qkvNode.element( uint( hiddenSize * 2 ).add( dim ) ) );
+
+		} )().compute( hiddenSize, [ workgroupSize ] ).setName( name );
 
 	}
 
@@ -52,11 +74,6 @@ class TSLAttention {
 			const head = dim.div( uint( headSize ) );
 			const localDim = dim.mod( uint( headSize ) );
 			const headOffset = head.mul( uint( headSize ) );
-			const cacheOffset = position.mul( uint( hiddenSize ) ).add( dim );
-
-			keyCacheNode.element( cacheOffset ).assign( qkvNode.element( uint( hiddenSize ).add( dim ) ) );
-			valueCacheNode.element( cacheOffset ).assign( qkvNode.element( uint( hiddenSize * 2 ).add( dim ) ) );
-
 			const maxScore = float( - 3.4028234663852886e38 ).toVar( 'maxScore' );
 			const scale = float( 1 / Math.sqrt( headSize ) );
 
@@ -142,6 +159,7 @@ class TSLAttention {
 	compute( renderer, position ) {
 
 		this.setPosition( position );
+		renderer.compute( this.copyComputeNode );
 		renderer.compute( this.computeNode );
 
 		return this.outputNode;

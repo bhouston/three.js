@@ -17,7 +17,7 @@ class TSLGELU {
 
 			const x = inputNode.element( instanceIndex );
 			const cubic = x.mul( x ).mul( x ).mul( 0.044715 ).add( x );
-			const inner = cubic.mul( Math.sqrt( 2 / Math.PI ) );
+			const inner = cubic.mul( Math.sqrt( 2 / Math.PI ) ).clamp( - 10, 10 );
 			const value = x.mul( 0.5 ).mul( tanh( inner ).add( float( 1 ) ) );
 
 			this.outputNode.element( instanceIndex ).assign( value );

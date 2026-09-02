@@ -17,15 +17,18 @@
 				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>WebGPU LLM</span>
 			</div>
 
-			<small>Browser TSL decode for GPT-2, Llama-style (SmolLM2), Gemma, Qwen3.5, and Phi. Pick a model that fits in GPU memory.</small>
+			<small>Browser TSL chat for GPT-2, Llama-style (SmolLM2), Gemma, Qwen3.5, and Phi. Pick a model that fits in GPU memory.</small>
 		</div>
 
 		<div id="panel">
-			<label for="model">Model</label>
-			<select id="model"></select>
+			<div class="header">
+				<div class="header-model">
+					<label for="model">Model</label>
+					<select id="model"></select>
+				</div>
+				<button id="clear" type="button">Clear chat</button>
+			</div>
 			<p id="model-note"></p>
-			<label for="prompt">Prompt</label>
-			<textarea id="prompt" rows="4">Once upon a time,</textarea>
 			<div class="row">
 				<label for="tokens">New tokens</label>
 				<input id="tokens" type="number" min="1" max="2048" value="128">
@@ -37,10 +40,18 @@
 				<input id="repetition" type="number" min="1" max="2" step="0.05" value="1.1" title="Penalty for tokens that already appeared. 1 disables it.">
 				<label for="ngram">N-gram</label>
 				<input id="ngram" type="number" min="0" max="8" value="3" title="Block repeating n-grams. 0 disables it.">
-				<button id="generate" disabled>Loading model...</button>
-				<button id="stop" disabled>Stop</button>
 			</div>
-			<pre id="output"></pre>
+			<div id="messages">
+				<div id="messages-empty">Send a message to start the conversation.</div>
+			</div>
+			<div class="composer">
+				<label for="prompt">Prompt</label>
+				<textarea id="prompt" rows="3" placeholder="Once upon a time,"></textarea>
+				<div class="composer-actions">
+					<button id="generate" disabled>Loading model...</button>
+					<button id="stop" disabled>Stop</button>
+				</div>
+			</div>
 			<div id="status">Initializing WebGPU...</div>
 		</div>
 
@@ -48,10 +59,10 @@
 			#panel {
 				position: absolute;
 				left: 50%;
-				top: 52%;
+				top: 72px;
+				bottom: 16px;
 				width: min(720px, calc(100% - 32px));
-				max-height: calc(100vh - 96px);
-				transform: translate(-50%, -50%);
+				transform: translateX(-50%);
 				display: flex;
 				flex-direction: column;
 				padding: 18px;
@@ -74,53 +85,39 @@
 				color: #bbb;
 			}
 
-			#model,
-			#prompt,
-			#output {
-				width: 100%;
-				box-sizing: border-box;
-				border: 1px solid #333;
-				border-radius: 4px;
-				background: #111;
-				color: #fff;
-				font: 14px/1.4 monospace;
+			.header {
+				display: flex;
+				align-items: end;
+				gap: 10px;
+			}
+
+			.header-model {
+				flex: 1 1 auto;
+				min-width: 0;
 			}
 
 			#model {
 				width: 100%;
 				height: 32px;
-				margin-bottom: 8px;
+				margin-bottom: 0;
 				padding: 4px 8px;
+				box-sizing: border-box;
 				background: #111;
 				color: #fff;
 				border: 1px solid #333;
 				border-radius: 4px;
+				font: 14px/1.4 monospace;
+			}
+
+			#clear {
+				height: 32px;
+				padding: 0 14px;
 			}
 
 			#model-note {
-				margin: 0 0 12px;
+				margin: 8px 0 0;
 				font-size: 12px;
 				color: #888;
-			}
-
-			#prompt {
-				max-height: 30vh;
-				min-height: 4.5em;
-				padding: 10px;
-				overflow-y: auto;
-				resize: vertical;
-				flex: 0 1 auto;
-			}
-
-			#output {
-				min-height: 120px;
-				max-height: 40vh;
-				margin: 14px 0 8px;
-				padding: 12px;
-				overflow: auto;
-				white-space: pre-wrap;
-				overflow-wrap: anywhere;
-				flex: 1 1 auto;
 			}
 
 			.row {
@@ -133,6 +130,78 @@
 
 			.row label {
 				margin-bottom: 4px;
+			}
+
+			#messages {
+				flex: 1 1 auto;
+				display: flex;
+				flex-direction: column;
+				gap: 10px;
+				min-height: 120px;
+				margin: 14px 0 8px;
+				padding: 12px;
+				overflow: auto;
+				border: 1px solid #333;
+				border-radius: 4px;
+				background: #111;
+			}
+
+			#messages-empty {
+				margin: auto;
+				color: #666;
+				font-size: 13px;
+			}
+
+			.message {
+				max-width: 85%;
+				padding: 8px 12px;
+				border-radius: 8px;
+				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+				font: 14px/1.4 system-ui, sans-serif;
+			}
+
+			.message.user {
+				align-self: flex-end;
+				background: #2a3a6a;
+			}
+
+			.message.assistant {
+				align-self: flex-start;
+				background: #1c1c1c;
+				border: 1px solid #333;
+			}
+
+			.message.pending:empty::after {
+				content: '…';
+				color: #888;
+			}
+
+			.composer {
+				display: flex;
+				flex-direction: column;
+			}
+
+			#prompt {
+				width: 100%;
+				max-height: 30vh;
+				min-height: 4.5em;
+				padding: 10px;
+				box-sizing: border-box;
+				overflow-y: auto;
+				resize: vertical;
+				border: 1px solid #333;
+				border-radius: 4px;
+				background: #111;
+				color: #fff;
+				font: 14px/1.4 monospace;
+			}
+
+			.composer-actions {
+				display: flex;
+				justify-content: flex-end;
+				gap: 10px;
+				margin-top: 8px;
 			}
 
 			input,
@@ -153,11 +222,8 @@
 				padding: 0 14px;
 			}
 
-			#generate {
-				margin-left: auto;
-			}
-
 			#status {
+				margin-top: 8px;
 				color: #aaa;
 				font-size: 13px;
 			}
@@ -190,10 +256,13 @@
 			const ngramInput = document.getElementById( 'ngram' );
 			const generateButton = document.getElementById( 'generate' );
 			const stopButton = document.getElementById( 'stop' );
-			const output = document.getElementById( 'output' );
+			const clearButton = document.getElementById( 'clear' );
+			const messagesEl = document.getElementById( 'messages' );
+			const messagesEmpty = document.getElementById( 'messages-empty' );
 			const status = document.getElementById( 'status' );
 
 			let renderer, runner, abortController;
+			const history = [];
 			const model = selectedModel();
 
 			for ( const entry of MODEL_CATALOG ) {
@@ -220,7 +289,7 @@
 			}
 
 			modelNote.textContent = model.note || '';
-			promptInput.value = model.prompt || promptInput.value;
+			promptInput.placeholder = model.prompt || 'Send a message';
 
 			modelSelect.addEventListener( 'change', () => {
 
@@ -276,9 +345,9 @@
 
 					const maxNewTokens = Math.max( 1, runner.maxTokens - 1 );
 					tokenInput.max = String( maxNewTokens );
-					tokenInput.value = String( maxNewTokens );
+					if ( Number( tokenInput.value ) > maxNewTokens ) tokenInput.value = String( maxNewTokens );
 					status.textContent = `Ready. Context ${ runner.maxTokens } tokens.`;
-					generateButton.textContent = 'Generate';
+					generateButton.textContent = 'Send';
 					generateButton.disabled = false;
 
 				} catch ( error ) {
@@ -299,12 +368,45 @@
 
 			} );
 
+			clearButton.addEventListener( 'click', () => {
+
+				if ( abortController !== undefined ) abortController.abort();
+
+				history.length = 0;
+				messagesEl.replaceChildren( messagesEmpty );
+				messagesEmpty.hidden = false;
+				status.textContent = runner ? `Ready. Context ${ runner.maxTokens } tokens.` : status.textContent;
+
+			} );
+
+			promptInput.addEventListener( 'keydown', ( event ) => {
+
+				if ( event.key === 'Enter' && event.shiftKey === false ) {
+
+					event.preventDefault();
+					generateButton.click();
+
+				}
+
+			} );
+
 			generateButton.addEventListener( 'click', async () => {
+
+				const userText = promptInput.value.trim();
+				if ( userText === '' || runner === undefined || abortController !== undefined ) return;
 
 				abortController = new AbortController();
 				generateButton.disabled = true;
 				stopButton.disabled = false;
-				output.textContent = promptInput.value;
+				promptInput.value = '';
+
+				history.push( { role: 'user', text: userText } );
+				appendMessage( 'user', userText );
+
+				const assistantEl = appendMessage( 'assistant', '' );
+				assistantEl.classList.add( 'pending' );
+
+				const prompt = conversationPrompt( history );
 				status.textContent = 'Generating...';
 
 				let generatedCount = 0;
@@ -326,7 +428,7 @@
 					);
 					tokenInput.value = String( maxNewTokens );
 
-					const result = await runner.generate( renderer, promptInput.value, {
+					const result = await runner.generate( renderer, prompt, {
 						maxNewTokens,
 						temperature: Number( temperatureInput.value ),
 						topK: Number( topKInput.value ),
@@ -335,14 +437,19 @@
 						signal: abortController.signal,
 						onToken: ( text ) => {
 
-							output.textContent = text;
+							assistantEl.textContent = replyFrom( text, prompt );
+							scrollMessages();
 							generatedCount ++;
 							status.textContent = `Generating...${ tokenRateText() }`;
 
 						}
 					} );
 
-					output.textContent = result.text;
+					if ( assistantEl.isConnected === false ) return;
+
+					const reply = result.generatedText || assistantEl.textContent;
+					assistantEl.textContent = reply;
+					history.push( { role: 'assistant', text: reply } );
 					generatedCount = result.generatedTokens.length;
 
 					if ( result.aborted ) {
@@ -357,17 +464,67 @@
 
 				} catch ( error ) {
 
+					if ( assistantEl.isConnected === false ) return;
 					status.textContent = error.message;
+					if ( assistantEl.textContent === '' ) assistantEl.remove();
+					else history.push( { role: 'assistant', text: assistantEl.textContent } );
 
 				} finally {
 
+					assistantEl.classList.remove( 'pending' );
 					abortController = undefined;
 					generateButton.disabled = false;
 					stopButton.disabled = true;
+					promptInput.focus();
 
 				}
 
 			} );
+
+			function conversationPrompt( turns ) {
+
+				let prompt = '';
+
+				for ( const turn of turns ) {
+
+					const label = turn.role === 'user' ? 'User' : 'Assistant';
+					prompt += `${ label }: ${ turn.text }\n\n`;
+
+				}
+
+				return `${ prompt }Assistant:`;
+
+			}
+
+			function replyFrom( text, prompt ) {
+
+				if ( text.startsWith( prompt ) ) return text.slice( prompt.length );
+
+				const trimmed = prompt.trimEnd();
+				if ( text.startsWith( trimmed ) ) return text.slice( trimmed.length );
+
+				return text;
+
+			}
+
+			function appendMessage( role, text ) {
+
+				messagesEmpty.hidden = true;
+
+				const el = document.createElement( 'div' );
+				el.className = `message ${ role }`;
+				el.textContent = text;
+				messagesEl.appendChild( el );
+				scrollMessages();
+				return el;
+
+			}
+
+			function scrollMessages() {
+
+				messagesEl.scrollTop = messagesEl.scrollHeight;
+
+			}
 
 			function selectedModel() {
 

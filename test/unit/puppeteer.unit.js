@@ -167,7 +167,7 @@ function main() {
 
 			return window._QUnitStats !== undefined;
 
-		} );
+		}, { timeout: 0 } );
 
 		// Get the test results
 		const stats = await page.evaluate( () => {

@@ -85,7 +85,7 @@ function rmsNorm( input, weight, epsilon = 1e-5, offsetWeight = false, target = 
 
 	for ( let i = 0; i < input.length; i ++ ) {
 
-		const scale = offsetWeight ? 1 + weight[ i ] : weight[ i ];
+		const scale = weight === null ? 1 : ( offsetWeight ? 1 + weight[ i ] : weight[ i ] );
 		target[ i ] = input[ i ] * invRms * scale;
 
 	}
@@ -112,19 +112,29 @@ function rotaryAngle( position, freqIndex, rotaryDim, theta ) {
 
 }
 
-function applyRoPE( vector, headOffset, rotaryDim, position, theta ) {
+function applyRoPE( vector, headOffset, rotaryDim, position, theta, options = {} ) {
 
 	if ( rotaryDim <= 0 ) return vector;
 
 	const half = rotaryDim / 2;
+	const freqDim = options.ropeFreqDim || rotaryDim;
+	const pairCount = options.ropePairCount !== undefined ? options.ropePairCount : half;
 	const rotated = new Float32Array( rotaryDim );
 
 	for ( let i = 0; i < rotaryDim; i ++ ) {
 
 		const x = vector[ headOffset + i ];
-		const partner = i < half ? - vector[ headOffset + i + half ] : vector[ headOffset + i - half ];
 		const freqIndex = i < half ? i : i - half;
-		const angle = rotaryAngle( position, freqIndex, rotaryDim, theta );
+
+		if ( freqIndex >= pairCount ) {
+
+			rotated[ i ] = x;
+			continue;
+
+		}
+
+		const partner = i < half ? - vector[ headOffset + i + half ] : vector[ headOffset + i - half ];
+		const angle = rotaryAngle( position, freqIndex, freqDim, theta );
 
 		rotated[ i ] = x * Math.cos( angle ) + partner * Math.sin( angle );
 
@@ -164,37 +174,61 @@ function causalAttention( qkv, options ) {
 		qNormWeight = null,
 		kNormWeight = null,
 		rmsEpsilon = 1e-6,
-		offsetRMSNorm = false
+		offsetRMSNorm = false,
+		ropeFreqDim = rotaryDim,
+		ropePairCount,
+		queryOnly = false,
+		writeCache = true,
+		vNorm = false,
+		outputGate = null
 	} = options;
 	const qSize = headCount * headDim;
 	const kvSize = kvHeadCount * headDim;
 	const query = qkv.slice( 0, qSize );
-	const key = qkv.slice( qSize, qSize + kvSize );
+	const key = queryOnly ? null : qkv.slice( qSize, qSize + kvSize );
 	const firstToken = slidingWindow > 0 ? Math.max( 0, position - slidingWindow + 1 ) : 0;
+	const ropeOptions = { ropeFreqDim, ropePairCount };
 
 	if ( qNormWeight !== null ) rmsNormPackedHeads( query, headCount, headDim, qNormWeight, rmsEpsilon, offsetRMSNorm );
-	if ( kNormWeight !== null ) rmsNormPackedHeads( key, kvHeadCount, headDim, kNormWeight, rmsEpsilon, offsetRMSNorm );
+
+	if ( queryOnly === false && kNormWeight !== null ) {
+
+		rmsNormPackedHeads( key, kvHeadCount, headDim, kNormWeight, rmsEpsilon, offsetRMSNorm );
+
+	}
 
 	if ( ropeTheta > 0 ) {
 
 		for ( let head = 0; head < headCount; head ++ ) {
 
-			applyRoPE( query, head * headDim, rotaryDim, position, ropeTheta );
+			applyRoPE( query, head * headDim, rotaryDim, position, ropeTheta, ropeOptions );
 
 		}
 
-		for ( let head = 0; head < kvHeadCount; head ++ ) {
+		if ( queryOnly === false ) {
 
-			applyRoPE( key, head * headDim, rotaryDim, position, ropeTheta );
+			for ( let head = 0; head < kvHeadCount; head ++ ) {
+
+				applyRoPE( key, head * headDim, rotaryDim, position, ropeTheta, ropeOptions );
+
+			}
 
 		}
 
 	}
 
-	for ( let dim = 0; dim < kvSize; dim ++ ) {
+	if ( queryOnly === false && writeCache ) {
 
-		keyCache[ position * kvSize + dim ] = key[ dim ];
-		valueCache[ position * kvSize + dim ] = qkv[ qSize + kvSize + dim ];
+		const value = qkv.slice( qSize + kvSize, qSize + 2 * kvSize );
+
+		if ( vNorm ) rmsNormPackedHeads( value, kvHeadCount, headDim, null, rmsEpsilon, false );
+
+		for ( let dim = 0; dim < kvSize; dim ++ ) {
+
+			keyCache[ position * kvSize + dim ] = key[ dim ];
+			valueCache[ position * kvSize + dim ] = value[ dim ];
+
+		}
 
 	}
 
@@ -236,6 +270,163 @@ function causalAttention( qkv, options ) {
 			output[ qOffset + i ] = sum;
 
 		}
+
+	}
+
+	if ( outputGate !== null ) {
+
+		for ( let i = 0; i < output.length; i ++ ) output[ i ] *= sigmoid( outputGate[ i ] );
+
+	}
+
+	return output;
+
+}
+
+function sigmoid( x ) {
+
+	return 1 / ( 1 + Math.exp( - x ) );
+
+}
+
+function softplus( x ) {
+
+	if ( x > 20 ) return x;
+	if ( x < - 20 ) return Math.exp( x );
+	return Math.log( 1 + Math.exp( x ) );
+
+}
+
+function logitSoftcap( logits, cap ) {
+
+	if ( cap === null || cap === undefined ) return logits;
+
+	for ( let i = 0; i < logits.length; i ++ ) logits[ i ] = cap * Math.tanh( logits[ i ] / cap );
+
+	return logits;
+
+}
+
+function l2norm( vector, offset, size, epsilon = 1e-6 ) {
+
+	let sumSquares = 0;
+
+	for ( let i = 0; i < size; i ++ ) sumSquares += vector[ offset + i ] * vector[ offset + i ];
+
+	const inv = 1 / Math.sqrt( sumSquares + epsilon );
+
+	for ( let i = 0; i < size; i ++ ) vector[ offset + i ] *= inv;
+
+	return vector;
+
+}
+
+function splitHeadGate( packed, headCount, headDim ) {
+
+	const qSize = headCount * headDim;
+	const query = new Float32Array( qSize );
+	const gate = new Float32Array( qSize );
+
+	for ( let head = 0; head < headCount; head ++ ) {
+
+		const packedOffset = head * headDim * 2;
+		const headOffset = head * headDim;
+		query.set( packed.subarray( packedOffset, packedOffset + headDim ), headOffset );
+		gate.set( packed.subarray( packedOffset + headDim, packedOffset + headDim * 2 ), headOffset );
+
+	}
+
+	return { query, gate };
+
+}
+
+function causalConv1dStep( input, state, weight, kernelSize, activation = 'silu' ) {
+
+	const convDim = input.length;
+	const output = new Float32Array( convDim );
+	const window = new Float32Array( kernelSize );
+
+	for ( let channel = 0; channel < convDim; channel ++ ) {
+
+		const stateOffset = channel * kernelSize;
+		const weightOffset = channel * kernelSize;
+
+		for ( let k = 0; k < kernelSize; k ++ ) window[ k ] = state[ stateOffset + k ];
+
+		for ( let k = 0; k < kernelSize - 1; k ++ ) state[ stateOffset + k ] = window[ k + 1 ];
+
+		state[ stateOffset + kernelSize - 1 ] = input[ channel ];
+
+		let sum = 0;
+
+		for ( let k = 0; k < kernelSize - 1; k ++ ) sum += weight[ weightOffset + k ] * window[ k + 1 ];
+
+		sum += weight[ weightOffset + kernelSize - 1 ] * input[ channel ];
+		output[ channel ] = activation === 'silu' ? silu( sum ) : sum;
+
+	}
+
+	return output;
+
+}
+
+function gatedDeltaRuleStep( query, key, value, decay, beta, state, options ) {
+
+	const { numVHeads, keyDim, valueDim } = options;
+	const output = new Float32Array( numVHeads * valueDim );
+
+	for ( let head = 0; head < numVHeads; head ++ ) {
+
+		const decayH = decay[ head ];
+		const betaH = beta[ head ];
+		const qOffset = head * keyDim;
+		const vOffset = head * valueDim;
+		const stateOffset = head * keyDim * valueDim;
+
+		for ( let v = 0; v < valueDim; v ++ ) {
+
+			let kvMem = 0;
+
+			for ( let k = 0; k < keyDim; k ++ ) {
+
+				const index = stateOffset + k * valueDim + v;
+				state[ index ] *= decayH;
+				kvMem += state[ index ] * key[ qOffset + k ];
+
+			}
+
+			const delta = ( value[ vOffset + v ] - kvMem ) * betaH;
+			let mixed = 0;
+
+			for ( let k = 0; k < keyDim; k ++ ) {
+
+				const index = stateOffset + k * valueDim + v;
+				state[ index ] += key[ qOffset + k ] * delta;
+				mixed += state[ index ] * query[ qOffset + k ];
+
+			}
+
+			output[ vOffset + v ] = mixed;
+
+		}
+
+	}
+
+	return output;
+
+}
+
+function rmsNormGated( input, gate, weight, headCount, headDim, epsilon = 1e-6 ) {
+
+	const output = new Float32Array( input.length );
+
+	for ( let head = 0; head < headCount; head ++ ) {
+
+		const offset = head * headDim;
+		const slice = input.subarray( offset, offset + headDim );
+		const normed = rmsNorm( slice, weight, epsilon, false );
+
+		for ( let i = 0; i < headDim; i ++ ) output[ offset + i ] = normed[ i ] * silu( gate[ offset + i ] );
 
 	}
 
@@ -307,14 +498,22 @@ function sampleTopK( logits, { temperature = 0.8, topK = 40, random = Math.rando
 export {
 	applyRoPE,
 	causalAttention,
+	causalConv1dStep,
+	gatedDeltaRuleStep,
 	geluNew,
 	geluPytorchTanh,
+	l2norm,
 	layerNorm,
 	linear,
+	logitSoftcap,
 	rmsNorm,
+	rmsNormGated,
 	rmsNormPackedHeads,
 	rotaryAngle,
 	sampleTopK,
+	sigmoid,
 	silu,
-	softmax
+	softplus,
+	softmax,
+	splitHeadGate
 };

@@ -29,10 +29,15 @@ class TSLAttention {
 		this.workgroupSize = options.workgroupSize || 64;
 		this.ropeTheta = options.ropeTheta || 0;
 		this.rotaryDim = options.rotaryDim !== undefined ? options.rotaryDim : this.headDim;
+		this.ropeFreqDim = options.ropeFreqDim || this.rotaryDim;
+		this.ropePairCount = options.ropePairCount !== undefined ? options.ropePairCount : ( this.rotaryDim / 2 );
 		this.slidingWindow = options.slidingWindow || 0;
 		this.attnScale = options.attnScale !== undefined ? options.attnScale : ( 1 / Math.sqrt( this.headDim ) );
 		this.rmsEpsilon = options.rmsEpsilon || 1e-6;
 		this.offsetRMSNorm = options.offsetRMSNorm === true;
+		this.vNorm = options.vNorm === true;
+		this.sharedKV = options.sharedAttention !== undefined;
+		this.gateNode = options.gateNode || null;
 		this.qNormNode = null;
 		this.kNormNode = null;
 		this.position = uniform( 0, 'uint' );
@@ -53,20 +58,33 @@ class TSLAttention {
 
 		const cacheSize = this.kvSize * maxTokens;
 		const scoreSize = headCount * maxTokens;
+		const shared = options.sharedAttention;
 
-		this.keyCacheAttribute = new StorageBufferAttribute( new Float32Array( cacheSize ), 1 );
-		this.valueCacheAttribute = new StorageBufferAttribute( new Float32Array( cacheSize ), 1 );
+		if ( shared ) {
+
+			this.keyCacheAttribute = shared.keyCacheAttribute;
+			this.valueCacheAttribute = shared.valueCacheAttribute;
+			this.keyCacheNode = shared.keyCacheNode;
+			this.valueCacheNode = shared.valueCacheNode;
+
+		} else {
+
+			this.keyCacheAttribute = new StorageBufferAttribute( new Float32Array( cacheSize ), 1 );
+			this.valueCacheAttribute = new StorageBufferAttribute( new Float32Array( cacheSize ), 1 );
+			this.keyCacheNode = storage( this.keyCacheAttribute, 'float', cacheSize ).setName( options.name ? `${ options.name }KeyCache` : 'LLMKeyCache' );
+			this.valueCacheNode = storage( this.valueCacheAttribute, 'float', cacheSize ).setName( options.name ? `${ options.name }ValueCache` : 'LLMValueCache' );
+
+		}
+
 		this.scoreAttribute = new StorageBufferAttribute( new Float32Array( scoreSize ), 1 );
 		this.queryAttribute = new StorageBufferAttribute( new Float32Array( this.qSize ), 1 );
 		this.outputAttribute = new StorageBufferAttribute( new Float32Array( this.qSize ), 1 );
 
-		this.keyCacheNode = storage( this.keyCacheAttribute, 'float', cacheSize ).setName( options.name ? `${ options.name }KeyCache` : 'LLMKeyCache' );
-		this.valueCacheNode = storage( this.valueCacheAttribute, 'float', cacheSize ).setName( options.name ? `${ options.name }ValueCache` : 'LLMValueCache' );
 		this.scoreNode = storage( this.scoreAttribute, 'float', scoreSize ).setName( options.name ? `${ options.name }Scores` : 'LLMAttentionScores' );
 		this.queryNode = storage( this.queryAttribute, 'float', this.qSize ).setName( options.name ? `${ options.name }Query` : 'LLMAttentionQuery' );
 		this.outputNode = storage( this.outputAttribute, 'float', this.qSize ).setName( options.name ? `${ options.name }Output` : 'LLMAttentionOutput' );
 
-		this.copyComputeNode = this.createCopyComputeNode( options.name ? `${ options.name }CopyKV` : 'LLMAttentionCopyKV' );
+		this.copyComputeNode = this.sharedKV ? null : this.createCopyComputeNode( options.name ? `${ options.name }CopyKV` : 'LLMAttentionCopyKV' );
 		this.queryComputeNode = this.createQueryComputeNode( options.name ? `${ options.name }Query` : 'LLMAttentionQuery' );
 		this.scoreComputeNode = this.createScoreComputeNode( options.name ? `${ options.name }Scores` : 'LLMAttentionScores' );
 		this.computeNode = this.createSoftmaxComputeNode( options.name || 'LLMAttention' );
@@ -75,7 +93,7 @@ class TSLAttention {
 
 	headValue( vectorNode, headOffset, localDim, positionNode, normNode ) {
 
-		const { headDim, rotaryDim, ropeTheta, rmsEpsilon, offsetRMSNorm } = this;
+		const { headDim, rotaryDim, ropeTheta, rmsEpsilon, offsetRMSNorm, ropeFreqDim, ropePairCount } = this;
 		const xRaw = vectorNode.element( headOffset.add( localDim ) );
 
 		if ( ! normNode && ropeTheta <= 0 ) return xRaw;
@@ -107,7 +125,10 @@ class TSLAttention {
 			partnerRaw.mul( invRms ).mul( partnerScale ).negate(),
 			partnerRaw.mul( invRms ).mul( partnerScale )
 		);
-		const angle = float( positionNode ).mul( pow( float( ropeTheta ), float( freqIndex ).mul( float( - 2 / rotaryDim ) ) ) );
+		const angle = freqIndex.lessThan( uint( ropePairCount ) ).select(
+			float( positionNode ).mul( pow( float( ropeTheta ), float( freqIndex ).mul( float( - 2 / ropeFreqDim ) ) ) ),
+			float( 0 )
+		);
 		const rotated = x.mul( cos( angle ) ).add( partner.mul( sin( angle ) ) );
 
 		return inRotary.select( rotated, x );
@@ -116,7 +137,7 @@ class TSLAttention {
 
 	ropeValue( vectorNode, headOffset, localDim, positionNode ) {
 
-		const { rotaryDim, ropeTheta, qkvNode } = this;
+		const { rotaryDim, ropeTheta, qkvNode, ropeFreqDim, ropePairCount } = this;
 
 		if ( ropeTheta <= 0 || rotaryDim <= 0 ) {
 
@@ -136,7 +157,10 @@ class TSLAttention {
 			qkvNode.element( partnerIndex ).negate(),
 			qkvNode.element( partnerIndex )
 		);
-		const angle = float( positionNode ).mul( pow( float( ropeTheta ), float( freqIndex ).mul( float( - 2 / rotaryDim ) ) ) );
+		const angle = freqIndex.lessThan( uint( ropePairCount ) ).select(
+			float( positionNode ).mul( pow( float( ropeTheta ), float( freqIndex ).mul( float( - 2 / ropeFreqDim ) ) ) ),
+			float( 0 )
+		);
 		const rotated = x.mul( cos( angle ) ).add( partner.mul( sin( angle ) ) );
 
 		return inRotary.select( rotated, x );
@@ -167,9 +191,26 @@ class TSLAttention {
 				const headOffset = dim.div( uint( headDim ) ).mul( uint( headDim ) ).add( uint( qSize ) );
 				const localDim = dim.mod( uint( headDim ) );
 				const key = this.headValue( qkvNode, headOffset, localDim, position, this.kNormNode );
+				let value = qkvNode.element( uint( qSize + kvSize ).add( dim ) );
+
+				if ( this.vNorm ) {
+
+					const valueHead = dim.div( uint( headDim ) ).mul( uint( headDim ) ).add( uint( qSize + kvSize ) );
+					const sumSquares = float( 0 ).toVar( 'valueSumSquares' );
+
+					Loop( { start: uint( 0 ), end: uint( headDim ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+						const sample = qkvNode.element( valueHead.add( i ) );
+						sumSquares.addAssign( sample.mul( sample ) );
+
+					} );
+
+					value = value.mul( inversesqrt( sumSquares.div( float( headDim ) ).add( this.rmsEpsilon ) ) );
+
+				}
 
 				keyCacheNode.element( cacheOffset ).assign( key );
-				valueCacheNode.element( cacheOffset ).assign( qkvNode.element( uint( qSize + kvSize ).add( dim ) ) );
+				valueCacheNode.element( cacheOffset ).assign( value );
 
 			} );
 
@@ -319,7 +360,9 @@ class TSLAttention {
 
 				} );
 
-				outputNode.element( dim ).assign( value.div( denominator ) );
+				outputNode.element( dim ).assign( this.gateNode
+					? value.div( denominator ).mul( float( 1 ).div( float( 1 ).add( exp( this.gateNode.element( dim ).negate() ) ) ) )
+					: value.div( denominator ) );
 
 			} );
 
@@ -333,10 +376,21 @@ class TSLAttention {
 
 	}
 
+	reset() {
+
+		if ( this.sharedKV ) return;
+
+		this.keyCacheAttribute.array.fill( 0 );
+		this.valueCacheAttribute.array.fill( 0 );
+		this.keyCacheAttribute.needsUpdate = true;
+		this.valueCacheAttribute.needsUpdate = true;
+
+	}
+
 	compute( renderer, position ) {
 
 		this.setPosition( position );
-		renderer.compute( this.copyComputeNode );
+		if ( this.copyComputeNode ) renderer.compute( this.copyComputeNode );
 		renderer.compute( this.queryComputeNode );
 		renderer.compute( this.scoreComputeNode );
 		renderer.compute( this.computeNode );

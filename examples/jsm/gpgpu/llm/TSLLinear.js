@@ -1,5 +1,5 @@
 import { StorageBufferAttribute } from 'three/webgpu';
-import { Fn, Loop, instanceIndex, storage, uint } from 'three/tsl';
+import { Fn, If, Loop, instanceIndex, storage, uint } from 'three/tsl';
 
 /**
  * One-token dense layer implemented as a TSL compute pass.
@@ -37,16 +37,21 @@ class TSLLinear {
 		return Fn( () => {
 
 			const outputIndex = instanceIndex.toVar( 'outputIndex' );
-			const sum = biasNode.element( outputIndex ).toVar( 'sum' );
 
-			Loop( { start: uint( 0 ), end: uint( inputSize ), type: 'uint', condition: '<' }, ( { i } ) => {
+			If( outputIndex.lessThan( uint( outputSize ) ), () => {
 
-				const weightIndex = i.mul( uint( outputSize ) ).add( outputIndex );
-				sum.addAssign( inputNode.element( i ).mul( weightNode.element( weightIndex ) ) );
+				const sum = biasNode.element( outputIndex ).toVar( 'sum' );
+
+				Loop( { start: uint( 0 ), end: uint( inputSize ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+					const weightIndex = i.mul( uint( outputSize ) ).add( outputIndex );
+					sum.addAssign( inputNode.element( i ).mul( weightNode.element( weightIndex ) ) );
+
+				} );
+
+				outputNode.element( outputIndex ).assign( sum );
 
 			} );
-
-			outputNode.element( outputIndex ).assign( sum );
 
 		} )().compute( outputSize, [ workgroupSize ] ).setName( name );
 

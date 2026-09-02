@@ -4,6 +4,9 @@ import { storage } from 'three/tsl';
 import { GemmaCPURunner } from '../../../../examples/jsm/gpgpu/llm/GemmaCPURunner.js';
 import { GemmaTSLRunner } from '../../../../examples/jsm/gpgpu/llm/GemmaTSLRunner.js';
 import { GemmaWeights } from '../../../../examples/jsm/gpgpu/llm/GemmaWeights.js';
+import { Gemma4CPURunner } from '../../../../examples/jsm/gpgpu/llm/Gemma4CPURunner.js';
+import { Gemma4TSLRunner } from '../../../../examples/jsm/gpgpu/llm/Gemma4TSLRunner.js';
+import { Gemma4Weights } from '../../../../examples/jsm/gpgpu/llm/Gemma4Weights.js';
 import { GPT2CPURunner } from '../../../../examples/jsm/gpgpu/llm/GPT2CPURunner.js';
 import { GPT2Tokenizer } from '../../../../examples/jsm/gpgpu/llm/GPT2Tokenizer.js';
 import { GPT2TSLRunner } from '../../../../examples/jsm/gpgpu/llm/GPT2TSLRunner.js';
@@ -12,11 +15,14 @@ import { LlamaCPURunner } from '../../../../examples/jsm/gpgpu/llm/LlamaCPURunne
 import { LlamaTSLRunner } from '../../../../examples/jsm/gpgpu/llm/LlamaTSLRunner.js';
 import { LlamaWeights } from '../../../../examples/jsm/gpgpu/llm/LlamaWeights.js';
 import { architectureFor } from '../../../../examples/jsm/gpgpu/llm/LLMFactory.js';
-import { applyRoPE, causalAttention, geluNew, layerNorm, linear, rmsNorm, sampleTopK, silu, softmax } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
+import { applyRoPE, causalAttention, gatedDeltaRuleStep, geluNew, layerNorm, linear, logitSoftcap, rmsNorm, sampleTopK, silu, softmax, splitHeadGate } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
 import { bfloat16ToFloat32, convertAllTensors, float16ToFloat32, tensorToFloat32 } from '../../../../examples/jsm/gpgpu/llm/LLMTensors.js';
 import { PhiCPURunner } from '../../../../examples/jsm/gpgpu/llm/PhiCPURunner.js';
 import { PhiTSLRunner } from '../../../../examples/jsm/gpgpu/llm/PhiTSLRunner.js';
 import { PhiWeights } from '../../../../examples/jsm/gpgpu/llm/PhiWeights.js';
+import { QwenCPURunner } from '../../../../examples/jsm/gpgpu/llm/QwenCPURunner.js';
+import { QwenTSLRunner } from '../../../../examples/jsm/gpgpu/llm/QwenTSLRunner.js';
+import { QwenWeights } from '../../../../examples/jsm/gpgpu/llm/QwenWeights.js';
 import { parseSafeTensors } from '../../../../examples/jsm/gpgpu/llm/SafeTensorsLoader.js';
 import { TSLAdd } from '../../../../examples/jsm/gpgpu/llm/TSLAdd.js';
 import { TSLAttention } from '../../../../examples/jsm/gpgpu/llm/TSLAttention.js';
@@ -411,6 +417,154 @@ function createTinyGemmaWeights() {
 
 }
 
+function createTinyQwenWeights() {
+
+	const hidden = 8;
+	const inner = 8;
+	const heads = 2;
+	const kvHeads = 1;
+	const headDim = 4;
+	const layers = 2;
+	const vocab = 8;
+	const qSize = heads * headDim;
+	const kvSize = kvHeads * headDim;
+	const linHeads = 2;
+	const linDim = 4;
+	const kernel = 4;
+	const convDim = linHeads * linDim * 2 + linHeads * linDim;
+	const tensors = {
+		'model.language_model.embed_tokens.weight': makeTensor( 'embed', [ vocab, hidden ], 0.12 ),
+		'model.language_model.norm.weight': makeTensor( 'norm', [ hidden ], 1.12 )
+	};
+
+	const linearPrefix = 'model.language_model.layers.0';
+	tensors[ `${ linearPrefix }.input_layernorm.weight` ] = makeTensor( 'ln1', [ hidden ], 2.1 );
+	tensors[ `${ linearPrefix }.post_attention_layernorm.weight` ] = makeTensor( 'ln2', [ hidden ], 2.2 );
+	tensors[ `${ linearPrefix }.mlp.gate_proj.weight` ] = makeTensor( 'gate', [ inner, hidden ], 8.1 );
+	tensors[ `${ linearPrefix }.mlp.up_proj.weight` ] = makeTensor( 'up', [ inner, hidden ], 8.2 );
+	tensors[ `${ linearPrefix }.mlp.down_proj.weight` ] = makeTensor( 'down', [ hidden, inner ], 8.3 );
+	tensors[ `${ linearPrefix }.linear_attn.in_proj_qkv.weight` ] = makeTensor( 'dqkv', [ convDim, hidden ], 3.1 );
+	tensors[ `${ linearPrefix }.linear_attn.in_proj_z.weight` ] = makeTensor( 'dz', [ linHeads * linDim, hidden ], 3.2 );
+	tensors[ `${ linearPrefix }.linear_attn.in_proj_b.weight` ] = makeTensor( 'db', [ linHeads, hidden ], 3.3 );
+	tensors[ `${ linearPrefix }.linear_attn.in_proj_a.weight` ] = makeTensor( 'da', [ linHeads, hidden ], 3.4 );
+	tensors[ `${ linearPrefix }.linear_attn.out_proj.weight` ] = makeTensor( 'do', [ hidden, linHeads * linDim ], 3.5 );
+	tensors[ `${ linearPrefix }.linear_attn.conv1d.weight` ] = makeTensor( 'dc', [ convDim, 1, kernel ], 3.6 );
+	tensors[ `${ linearPrefix }.linear_attn.A_log` ] = makeTensor( 'alog', [ linHeads ], 0.4 );
+	tensors[ `${ linearPrefix }.linear_attn.dt_bias` ] = makeTensor( 'dt', [ linHeads ], 0.2 );
+	tensors[ `${ linearPrefix }.linear_attn.norm.weight` ] = makeTensor( 'dn', [ linDim ], 1.05 );
+
+	const fullPrefix = 'model.language_model.layers.1';
+	tensors[ `${ fullPrefix }.input_layernorm.weight` ] = makeTensor( 'fln1', [ hidden ], 2.3 );
+	tensors[ `${ fullPrefix }.post_attention_layernorm.weight` ] = makeTensor( 'fln2', [ hidden ], 2.4 );
+	tensors[ `${ fullPrefix }.mlp.gate_proj.weight` ] = makeTensor( 'fgate', [ inner, hidden ], 8.4 );
+	tensors[ `${ fullPrefix }.mlp.up_proj.weight` ] = makeTensor( 'fup', [ inner, hidden ], 8.5 );
+	tensors[ `${ fullPrefix }.mlp.down_proj.weight` ] = makeTensor( 'fdown', [ hidden, inner ], 8.6 );
+	tensors[ `${ fullPrefix }.self_attn.q_proj.weight` ] = makeTensor( 'q', [ qSize * 2, hidden ], 4.1 );
+	tensors[ `${ fullPrefix }.self_attn.k_proj.weight` ] = makeTensor( 'k', [ kvSize, hidden ], 4.2 );
+	tensors[ `${ fullPrefix }.self_attn.v_proj.weight` ] = makeTensor( 'v', [ kvSize, hidden ], 4.3 );
+	tensors[ `${ fullPrefix }.self_attn.o_proj.weight` ] = makeTensor( 'o', [ hidden, qSize ], 4.4 );
+	tensors[ `${ fullPrefix }.self_attn.q_norm.weight` ] = makeTensor( 'qn', [ headDim ], 0.3 );
+	tensors[ `${ fullPrefix }.self_attn.k_norm.weight` ] = makeTensor( 'kn', [ headDim ], 0.4 );
+
+	return new QwenWeights( {
+		model_type: 'qwen3_5_text',
+		hidden_size: hidden,
+		intermediate_size: inner,
+		num_hidden_layers: layers,
+		num_attention_heads: heads,
+		num_key_value_heads: kvHeads,
+		head_dim: headDim,
+		vocab_size: vocab,
+		hidden_act: 'silu',
+		rms_norm_eps: 1e-6,
+		layer_types: [ 'linear_attention', 'full_attention' ],
+		linear_conv_kernel_dim: kernel,
+		linear_key_head_dim: linDim,
+		linear_value_head_dim: linDim,
+		linear_num_key_heads: linHeads,
+		linear_num_value_heads: linHeads,
+		rope_parameters: { rope_theta: 10000, partial_rotary_factor: 0.5 },
+		tie_word_embeddings: true,
+		eos_token_id: 0,
+		max_position_embeddings: 16
+	}, tensors, tinyTokenizer() );
+
+}
+
+function createTinyGemma4Weights() {
+
+	const hidden = 8;
+	const inner = 8;
+	const heads = 2;
+	const kvHeads = 1;
+	const localHead = 4;
+	const globalHead = 8;
+	const layers = 2;
+	const vocab = 8;
+	const pleDim = 4;
+	const tensors = {
+		'model.language_model.embed_tokens.weight': makeTensor( 'embed', [ vocab, hidden ], 0.14 ),
+		'model.language_model.embed_tokens_per_layer.weight': makeTensor( 'ple', [ vocab, layers * pleDim ], 0.11 ),
+		'model.language_model.norm.weight': makeTensor( 'norm', [ hidden ], 1.14 ),
+		'model.language_model.per_layer_model_projection.weight': makeTensor( 'plep', [ layers * pleDim, hidden ], 0.21 ),
+		'model.language_model.per_layer_projection_norm.weight': makeTensor( 'plen', [ pleDim ], 1.05 )
+	};
+	const dims = [ localHead, globalHead ];
+
+	for ( let layer = 0; layer < layers; layer ++ ) {
+
+		const p = `model.language_model.layers.${ layer }`;
+		const headDim = dims[ layer ];
+		const qSize = heads * headDim;
+		const kvSize = kvHeads * headDim;
+		tensors[ `${ p }.input_layernorm.weight` ] = makeTensor( 'ln1', [ hidden ], 2.1 + layer );
+		tensors[ `${ p }.post_attention_layernorm.weight` ] = makeTensor( 'postA', [ hidden ], 2.2 + layer );
+		tensors[ `${ p }.pre_feedforward_layernorm.weight` ] = makeTensor( 'preM', [ hidden ], 2.3 + layer );
+		tensors[ `${ p }.post_feedforward_layernorm.weight` ] = makeTensor( 'postM', [ hidden ], 2.4 + layer );
+		tensors[ `${ p }.self_attn.q_norm.weight` ] = makeTensor( 'qn', [ headDim ], 2.5 + layer );
+		tensors[ `${ p }.self_attn.k_norm.weight` ] = makeTensor( 'kn', [ headDim ], 2.6 + layer );
+		tensors[ `${ p }.self_attn.q_proj.weight` ] = makeTensor( 'q', [ qSize, hidden ], 4 + layer );
+		tensors[ `${ p }.self_attn.k_proj.weight` ] = makeTensor( 'k', [ kvSize, hidden ], 5 + layer );
+		tensors[ `${ p }.self_attn.v_proj.weight` ] = makeTensor( 'v', [ kvSize, hidden ], 6 + layer );
+		tensors[ `${ p }.self_attn.o_proj.weight` ] = makeTensor( 'o', [ hidden, qSize ], 7 + layer );
+		tensors[ `${ p }.mlp.gate_proj.weight` ] = makeTensor( 'gate', [ inner, hidden ], 8 + layer );
+		tensors[ `${ p }.mlp.up_proj.weight` ] = makeTensor( 'up', [ inner, hidden ], 9 + layer );
+		tensors[ `${ p }.mlp.down_proj.weight` ] = makeTensor( 'down', [ hidden, inner ], 10 + layer );
+		tensors[ `${ p }.per_layer_input_gate.weight` ] = makeTensor( 'pg', [ pleDim, hidden ], 11 + layer );
+		tensors[ `${ p }.per_layer_projection.weight` ] = makeTensor( 'pp', [ hidden, pleDim ], 12 + layer );
+		tensors[ `${ p }.post_per_layer_input_norm.weight` ] = makeTensor( 'pn', [ hidden ], 13 + layer );
+
+	}
+
+	return new Gemma4Weights( {
+		model_type: 'gemma4_text',
+		hidden_size: hidden,
+		intermediate_size: inner,
+		num_hidden_layers: layers,
+		num_attention_heads: heads,
+		num_key_value_heads: kvHeads,
+		head_dim: localHead,
+		global_head_dim: globalHead,
+		vocab_size: vocab,
+		rms_norm_eps: 1e-6,
+		sliding_window: 2,
+		layer_types: [ 'sliding_attention', 'full_attention' ],
+		hidden_activation: 'gelu_pytorch_tanh',
+		hidden_size_per_layer_input: pleDim,
+		vocab_size_per_layer_input: vocab,
+		num_kv_shared_layers: 0,
+		use_double_wide_mlp: false,
+		final_logit_softcapping: 30,
+		rope_parameters: {
+			sliding_attention: { rope_theta: 10000, rope_type: 'default' },
+			full_attention: { rope_theta: 1000000, rope_type: 'proportional', partial_rotary_factor: 0.25 }
+		},
+		eos_token_id: 0,
+		max_position_embeddings: 16
+	}, tensors, tinyTokenizer() );
+
+}
+
 async function assertCausalSequence( assert, renderer, sequence, options, epsilon = 1e-4 ) {
 
 	const { headCount, maxTokens, workgroupSize } = options;
@@ -488,8 +642,11 @@ async function createRenderer( assert ) {
 
 const SMOLLM2_ROOT = '/examples/models/llm/smollm2-135m/';
 const GEMMA3_ROOT = '/examples/models/llm/gemma-3-270m/';
+const QWEN35_ROOT = '/examples/models/llm/qwen3.5-0.8b/';
+const GEMMA4_ROOT = '/examples/models/llm/gemma-4-e2b/';
 const STORY_PROMPT = 'Once upon a time,';
 const GREEDY = { maxNewTokens: 8, temperature: 0, topK: 1 };
+const GREEDY_SHORT = { maxNewTokens: 4, temperature: 0, topK: 1 };
 const localCheckpoints = new Map();
 
 async function localCheckpointReady( assert, root ) {
@@ -505,14 +662,13 @@ async function localCheckpointReady( assert, root ) {
 		}
 
 		const weightsResponse = await fetch( `${ root }model.safetensors`, { method: 'HEAD' } );
-		if ( weightsResponse.ok === false ) {
+		if ( weightsResponse.ok ) return true;
 
-			assert.ok( true, `SKIPPED: no model.safetensors at ${ root }` );
-			return false;
+		const indexResponse = await fetch( `${ root }model.safetensors.index.json`, { method: 'HEAD' } );
+		if ( indexResponse.ok ) return true;
 
-		}
-
-		return true;
+		assert.ok( true, `SKIPPED: no model.safetensors at ${ root }` );
+		return false;
 
 	} catch ( error ) {
 
@@ -559,6 +715,26 @@ export default QUnit.module( 'Addons', () => {
 				assert.deepEqual( parsed.tensors.values.shape, [ 2, 2 ], 'shape is parsed' );
 				assert.strictEqual( parsed.tensors.values.dtype, 'F32', 'dtype is parsed' );
 				assert.deepEqual( Array.from( parsed.tensors.values.data ), [ 1, 2, 3, 4 ], 'data is parsed' );
+
+			} );
+
+			QUnit.test( 'GPT2Tokenizer keeps hash-character BPE merges', ( assert ) => {
+
+				const tokenizer = new GPT2Tokenizer( {
+					'a': 0,
+					'#': 1,
+					'##': 2,
+					'a#': 3,
+					'<|endoftext|>': 4
+				}, [
+					'#version: 0.2',
+					'# #',
+					'a #'
+				] );
+
+				assert.strictEqual( tokenizer.bpe( '##' ), '##', 'hash pairs still merge after the version header' );
+				assert.strictEqual( tokenizer.bpe( 'a#' ), 'a#', 'later merges keep their ranks' );
+				assert.deepEqual( tokenizer.encode( '##' ), [ 2 ] );
 
 			} );
 
@@ -661,6 +837,30 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( architectureFor( { model_type: 'llama' } ), 'llama' );
 				assert.strictEqual( architectureFor( { model_type: 'phi' } ), 'phi' );
 				assert.strictEqual( architectureFor( { model_type: 'gemma3_text' } ), 'gemma3' );
+				assert.strictEqual( architectureFor( { model_type: 'qwen3_5' } ), 'qwen3_5' );
+				assert.strictEqual( architectureFor( { model_type: 'gemma4' } ), 'gemma4' );
+				assert.strictEqual( architectureFor( { model_type: 'qwen3_5', text_config: { model_type: 'qwen3_5_text' } } ), 'qwen3_5' );
+				assert.strictEqual( architectureFor( { model_type: 'gemma4', text_config: { model_type: 'gemma4_text' } } ), 'gemma4' );
+
+				const capped = logitSoftcap( new Float32Array( [ 60, - 60, 0 ] ), 30 );
+				assert.ok( Math.abs( capped[ 0 ] - 30 * Math.tanh( 2 ) ) < 1e-5, 'logit softcap saturates large values' );
+				assert.ok( Math.abs( capped[ 2 ] ) < 1e-6, 'logit softcap leaves zero at zero' );
+
+				const split = splitHeadGate( new Float32Array( [ 1, 2, 3, 4 ] ), 2, 1 );
+				closeArray( assert, split.query, new Float32Array( [ 1, 3 ] ), 1e-6, 'splitHeadGate query' );
+				closeArray( assert, split.gate, new Float32Array( [ 2, 4 ] ), 1e-6, 'splitHeadGate gate' );
+
+				const deltaState = new Float32Array( 4 );
+				const deltaOut = gatedDeltaRuleStep(
+					new Float32Array( [ 1, 0 ] ),
+					new Float32Array( [ 0, 1 ] ),
+					new Float32Array( [ 2, 3 ] ),
+					new Float32Array( [ 0.5 ] ),
+					new Float32Array( [ 1 ] ),
+					deltaState,
+					{ numVHeads: 1, keyDim: 2, valueDim: 2 }
+				);
+				assert.strictEqual( deltaOut.length, 2, 'gated delta rule writes a value-sized vector' );
 
 				assert.ok( Math.abs( float16ToFloat32( 0x3c00 ) - 1 ) < 1e-6, 'f16 1.0' );
 				assert.ok( Math.abs( bfloat16ToFloat32( 0x3f80 ) - 1 ) < 1e-6, 'bf16 1.0' );
@@ -991,6 +1191,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( weights.mlpActivation, 'silu' );
 				assert.strictEqual( weights.endOfTextTokenId, 0 );
 
+				const promptIds = weights.tokenizer.encode( STORY_PROMPT );
 				assert.deepEqual( promptIds, [ 6403, 1980, 253, 655, 28 ], 'SmolLM2 encodes the story prompt' );
 				assert.strictEqual( weights.tokenizer.decode( promptIds ), STORY_PROMPT, 'SmolLM2 BPE round-trips the prompt' );
 				assert.ok( weights.hasTensor( 'layers.0.self_attn.q_proj.weight' ), 'layer 0 Q projection is present' );
@@ -1357,6 +1558,191 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( weights.block( 0 ).slidingWindow, 2, 'first layer is sliding-window' );
 				assert.strictEqual( weights.block( 1 ).slidingWindow, 0, 'second layer is global' );
 				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'tiny Gemma GPU tokens match CPU' );
+				assert.strictEqual( gpu.text, cpu.text );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'Qwen3.5 0.8B loads hybrid weights from the local checkpoint', async ( assert ) => {
+
+				assert.timeout( 300000 );
+
+				const weights = await loadLocalCheckpoint( assert, QwenWeights, QWEN35_ROOT );
+				if ( weights === null ) return;
+
+				assert.strictEqual( architectureFor( weights.config ), 'qwen3_5' );
+				assert.strictEqual( weights.architecture, 'qwen3_5' );
+				assert.strictEqual( weights.hiddenSize, 1024 );
+				assert.strictEqual( weights.innerSize, 3584 );
+				assert.strictEqual( weights.layerCount, 24 );
+				assert.strictEqual( weights.headCount, 8 );
+				assert.strictEqual( weights.kvHeadCount, 2 );
+				assert.strictEqual( weights.headDim, 256 );
+				assert.strictEqual( weights.qSize, 2048 );
+				assert.strictEqual( weights.kvSize, 512 );
+				assert.strictEqual( weights.vocabSize, 248320 );
+				assert.strictEqual( weights.linearKeyHeads, 16 );
+				assert.strictEqual( weights.linearValueHeads, 16 );
+				assert.strictEqual( weights.linearKeyDim, 128 );
+				assert.strictEqual( weights.rotaryDim, 64 );
+				assert.strictEqual( weights.mlpActivation, 'silu' );
+				assert.strictEqual( weights.block( 0 ).layerType, 'linear_attention', 'first layer is Gated DeltaNet' );
+				assert.strictEqual( weights.block( 3 ).layerType, 'full_attention', 'every fourth layer is gated attention' );
+				assert.ok( weights.hasTensor( 'layers.0.linear_attn.in_proj_qkv.weight' ), 'linear attention QKV is present' );
+				assert.ok( weights.hasTensor( 'layers.3.self_attn.q_norm.weight' ), 'full attention QK-norm is present' );
+
+				const promptIds = weights.tokenizer.encode( STORY_PROMPT );
+				assert.deepEqual( promptIds, [ 12162, 5028, 264, 854, 11 ], 'Qwen BPE matches the checkpoint tokenizer' );
+				assert.strictEqual( weights.tokenizer.decode( promptIds ), STORY_PROMPT, 'Qwen BPE round-trips the prompt' );
+
+			} );
+
+			QUnit.test( 'CPU Qwen3.5 0.8B greedy continuation stays on the prompt', async ( assert ) => {
+
+				assert.timeout( 300000 );
+
+				const weights = await loadLocalCheckpoint( assert, QwenWeights, QWEN35_ROOT );
+				if ( weights === null ) return;
+
+				const result = new QwenCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY_SHORT );
+
+				assert.ok( result.text.startsWith( STORY_PROMPT ), 'decoded Qwen output still starts with the prompt' );
+				assert.ok( result.generatedTokens.length > 0, 'Qwen emits greedy tokens' );
+
+			} );
+
+			QUnit.test( 'TSL Qwen3.5 0.8B greedy continuation matches the CPU runner', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				assert.timeout( 300000 );
+
+				const weights = await loadLocalCheckpoint( assert, QwenWeights, QWEN35_ROOT );
+				if ( weights === null ) {
+
+					renderer.dispose();
+					return;
+
+				}
+
+				const cpu = new QwenCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY_SHORT );
+				const gpu = await new QwenTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, STORY_PROMPT, GREEDY_SHORT );
+
+				assert.ok( cpu.text.startsWith( STORY_PROMPT ), 'CPU Qwen keeps the prompt' );
+				assert.strictEqual( gpu.text, cpu.text, 'GPU Qwen greedy text matches CPU' );
+				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'GPU Qwen token ids match CPU' );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'Gemma 4 E2B loads PLE and shared-KV weights from the local checkpoint', async ( assert ) => {
+
+				assert.timeout( 600000 );
+
+				const weights = await loadLocalCheckpoint( assert, Gemma4Weights, GEMMA4_ROOT );
+				if ( weights === null ) return;
+
+				assert.strictEqual( architectureFor( weights.config ), 'gemma4' );
+				assert.strictEqual( weights.architecture, 'gemma4' );
+				assert.strictEqual( weights.hiddenSize, 1536 );
+				assert.strictEqual( weights.innerSize, 6144 );
+				assert.strictEqual( weights.layerCount, 35 );
+				assert.strictEqual( weights.headCount, 8 );
+				assert.strictEqual( weights.kvHeadCount, 1 );
+				assert.strictEqual( weights.localHeadDim, 256 );
+				assert.strictEqual( weights.globalHeadDim, 512 );
+				assert.strictEqual( weights.vocabSize, 262144 );
+				assert.strictEqual( weights.pleDim, 256 );
+				assert.strictEqual( weights.firstKvSharedLayer, 15 );
+				assert.strictEqual( weights.slidingWindow, 512 );
+				assert.strictEqual( weights.mlpActivation, 'gelu_pytorch_tanh' );
+				assert.strictEqual( weights.finalLogitSoftcapping, 30 );
+				assert.strictEqual( weights.block( 0 ).layerType, 'sliding_attention' );
+				assert.strictEqual( weights.block( 4 ).layerType, 'full_attention' );
+				assert.strictEqual( weights.block( 0 ).isKVShared, false, 'early layers own KV' );
+				assert.strictEqual( weights.block( 15 ).isKVShared, true, 'later layers share KV' );
+				assert.strictEqual( weights.block( 15 ).innerSize, 12288, 'shared layers use a double-wide MLP' );
+				assert.strictEqual( weights.block( 15 ).sharedSource, 13, 'sliding layers reuse the last unique sliding KV' );
+				assert.strictEqual( weights.block( 19 ).sharedSource, 14, 'full layers reuse the last unique full KV' );
+				assert.ok( weights.hasTensor( 'embed_tokens_per_layer.weight' ), 'per-layer embeddings are present' );
+
+				const promptIds = weights.tokenizer.encode( STORY_PROMPT );
+				assert.ok( promptIds.length > 0, 'Gemma 4 tokenizer encodes the story prompt' );
+				assert.strictEqual( weights.tokenizer.decode( promptIds ), STORY_PROMPT, 'Gemma 4 tokenizer round-trips the prompt' );
+
+			} );
+
+			QUnit.test( 'CPU Gemma 4 E2B greedy continuation stays on the prompt', async ( assert ) => {
+
+				assert.timeout( 600000 );
+
+				const weights = await loadLocalCheckpoint( assert, Gemma4Weights, GEMMA4_ROOT );
+				if ( weights === null ) return;
+
+				const result = new Gemma4CPURunner( weights, { maxTokens: 16 } ).generate( STORY_PROMPT, GREEDY_SHORT );
+
+				assert.ok( result.text.startsWith( STORY_PROMPT ), 'decoded Gemma 4 output still starts with the prompt' );
+				assert.ok( result.generatedTokens.length > 0, 'Gemma 4 emits greedy tokens' );
+
+			} );
+
+			QUnit.test( 'TSL Gemma 4 E2B greedy continuation matches the CPU runner', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				assert.timeout( 900000 );
+
+				const weights = await loadLocalCheckpoint( assert, Gemma4Weights, GEMMA4_ROOT );
+				if ( weights === null ) {
+
+					renderer.dispose();
+					return;
+
+				}
+
+				const cpu = new Gemma4CPURunner( weights, { maxTokens: 16 } ).generate( STORY_PROMPT, GREEDY_SHORT );
+				const gpu = await new Gemma4TSLRunner( weights, { maxTokens: 16 } ).generate( renderer, STORY_PROMPT, GREEDY_SHORT );
+
+				assert.ok( cpu.text.startsWith( STORY_PROMPT ), 'CPU Gemma 4 keeps the prompt' );
+				assert.strictEqual( gpu.text, cpu.text, 'GPU Gemma 4 greedy text matches CPU' );
+				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'GPU Gemma 4 token ids match CPU' );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'tiny Qwen3.5 greedy GPU matches CPU', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const weights = createTinyQwenWeights();
+				const options = { maxNewTokens: 4, temperature: 0, topK: 1 };
+				const cpu = new QwenCPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
+				const gpu = await new QwenTSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
+
+				assert.strictEqual( weights.block( 0 ).layerType, 'linear_attention' );
+				assert.strictEqual( weights.block( 1 ).layerType, 'full_attention' );
+				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'tiny Qwen GPU tokens match CPU' );
+				assert.strictEqual( gpu.text, cpu.text );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'tiny Gemma 4 greedy GPU matches CPU', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const weights = createTinyGemma4Weights();
+				const options = { maxNewTokens: 4, temperature: 0, topK: 1 };
+				const cpu = new Gemma4CPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
+				const gpu = await new Gemma4TSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
+
+				assert.strictEqual( weights.block( 0 ).headDim, 4, 'sliding layer uses local head dim' );
+				assert.strictEqual( weights.block( 1 ).headDim, 8, 'global layer uses global head dim' );
+				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'tiny Gemma 4 GPU tokens match CPU' );
 				assert.strictEqual( gpu.text, cpu.text );
 				renderer.dispose();
 

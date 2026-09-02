@@ -102,9 +102,11 @@ function tensorToFloat32( tensor ) {
 
 }
 
-async function convertAllTensors( tensors, onProgress, label = 'LLMTensors' ) {
+async function convertAllTensors( tensors, onProgress, label = 'LLMTensors', skipTensor ) {
 
 	const names = Object.keys( tensors ).filter( ( name ) => {
+
+		if ( skipTensor && skipTensor( name ) ) return false;
 
 		const dtype = tensors[ name ].dtype;
 		return dtype === 'BF16' || dtype === 'F16';
@@ -202,6 +204,33 @@ function prepareGeneration( tokenizer, prompt, maxTokens, maxNewTokens, endOfTex
 	const newTokenBudget = Math.max( 0, Math.min( maxNewTokens, maxTokens - inputTokens.length ) );
 
 	return { inputTokens, newTokenBudget };
+
+}
+
+function unwrapTextConfig( config ) {
+
+	if ( config && config.text_config && typeof config.text_config === 'object' ) {
+
+		return {
+			...config.text_config,
+			model_type: config.text_config.model_type || config.model_type,
+			_parent_model_type: config.model_type
+		};
+
+	}
+
+	return config;
+
+}
+
+function detectLanguagePrefix( tensors ) {
+
+	if ( tensors[ 'model.language_model.embed_tokens.weight' ] !== undefined ) return 'model.language_model.';
+	if ( tensors[ 'language_model.embed_tokens.weight' ] !== undefined ) return 'language_model.';
+	if ( tensors[ 'model.embed_tokens.weight' ] !== undefined ) return 'model.';
+	if ( tensors[ 'embed_tokens.weight' ] !== undefined ) return '';
+
+	return 'model.';
 
 }
 
@@ -308,6 +337,7 @@ export {
 	bfloat16ToFloat32,
 	convertAllTensors,
 	createProgress,
+	detectLanguagePrefix,
 	fetchArrayBuffer,
 	fetchJSON,
 	float16ToFloat32,
@@ -317,5 +347,6 @@ export {
 	prepareGeneration,
 	tensorToFloat32,
 	transpose2D,
+	unwrapTextConfig,
 	yieldToBrowser
 };

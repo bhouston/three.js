@@ -15,6 +15,7 @@ class GPT2Tokenizer {
 		this.unknownToken = options.unknownToken || '<|endoftext|>';
 		this.endOfTextToken = options.endOfTextToken || '<|endoftext|>';
 		this.endOfTextTokenId = this.encoder[ this.endOfTextToken ];
+		this.tokenPattern = options.tokenPattern || GPT2_TOKEN_PATTERN;
 
 		for ( const token in vocab ) {
 
@@ -34,7 +35,7 @@ class GPT2Tokenizer {
 
 			const merge = merges[ i ].trim();
 
-			if ( merge === '' || merge.startsWith( '#' ) ) continue;
+			if ( merge === '' || merge.startsWith( '#version' ) ) continue;
 
 			const pair = merge.split( /\s+/ );
 			this.bpeRanks.set( pair.join( '\u0000' ), this.bpeRanks.size );
@@ -69,7 +70,7 @@ class GPT2Tokenizer {
 	encode( text ) {
 
 		const tokens = [];
-		const matches = text.match( GPT2_TOKEN_PATTERN ) || [];
+		const matches = text.match( this.tokenPattern ) || [];
 
 		for ( const match of matches ) {
 
@@ -179,6 +180,7 @@ class GPT2Tokenizer {
 }
 
 const GPT2_TOKEN_PATTERN = /'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu;
+const QWEN_TOKEN_PATTERN = /(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu;
 
 function bytesToUnicode() {
 
@@ -246,4 +248,4 @@ function getPairs( word ) {
 
 }
 
-export { GPT2Tokenizer };
+export { GPT2Tokenizer, GPT2_TOKEN_PATTERN, QWEN_TOKEN_PATTERN };

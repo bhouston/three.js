@@ -1,0 +1,160 @@
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Qwen CPU vs GPU check</title>
+	</head>
+	<body>
+		<pre id="out">Loading Qwen3.5...</pre>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "/build/three.webgpu.js",
+					"three/webgpu": "/build/three.webgpu.js",
+					"three/tsl": "/build/three.tsl.js",
+					"three/addons/": "/examples/jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+
+			import { WebGPURenderer } from 'three/webgpu';
+			import { QwenCPURunner } from 'three/addons/gpgpu/llm/QwenCPURunner.js';
+			import { QwenTSLRunner } from 'three/addons/gpgpu/llm/QwenTSLRunner.js';
+			import { QwenWeights } from 'three/addons/gpgpu/llm/QwenWeights.js';
+
+			const out = document.getElementById( 'out' );
+			const prompt = 'Once upon a time,';
+			const options = { maxNewTokens: 8, temperature: 0, topK: 1 };
+
+			function stats( name, cpu, gpu ) {
+
+				let maxDiff = 0;
+				let maxAt = 0;
+				let nanCpu = 0;
+				let nanGpu = 0;
+				let cpuMax = - Infinity;
+				let gpuMax = - Infinity;
+				let cpuArg = 0;
+				let gpuArg = 0;
+
+				for ( let i = 0; i < cpu.length; i ++ ) {
+
+					if ( Number.isNaN( cpu[ i ] ) ) nanCpu ++;
+					if ( Number.isNaN( gpu[ i ] ) ) nanGpu ++;
+					if ( cpu[ i ] > cpuMax ) {
+
+						cpuMax = cpu[ i ];
+						cpuArg = i;
+
+					}
+
+					if ( gpu[ i ] > gpuMax ) {
+
+						gpuMax = gpu[ i ];
+						gpuArg = i;
+
+					}
+
+					const diff = Math.abs( cpu[ i ] - gpu[ i ] );
+					if ( diff > maxDiff ) {
+
+						maxDiff = diff;
+						maxAt = i;
+
+					}
+
+				}
+
+				return `${ name }: maxDiff=${ maxDiff.toExponential( 3 ) } at ${ maxAt }, cpuArgmax=${ cpuArg } (${ cpuMax.toFixed( 3 ) }), gpuArgmax=${ gpuArg } (${ gpuMax.toFixed( 3 ) }), nan cpu/gpu=${ nanCpu }/${ nanGpu }`;
+
+			}
+
+			try {
+
+				const weights = window.__qwenWeights || await QwenWeights.fromURL( '/examples/models/llm/qwen3.5-0.8b/', {
+					onProgress: ( msg ) => {
+
+						out.textContent = msg;
+
+					}
+				} );
+				window.__qwenWeights = weights;
+				const ids = weights.tokenizer.encode( prompt );
+				out.textContent = `ids ${ ids.join( ',' ) }\nRunning CPU first token...\n`;
+
+				const cpuRunner = new QwenCPURunner( weights, { maxTokens: 32 } );
+				const renderer = new WebGPURenderer();
+				await renderer.init();
+				out.textContent += 'Building GPU runner...\n';
+				const gpuRunner = new QwenTSLRunner( weights, { maxTokens: 32 } );
+				const { causalConv1dStep, linear, rmsNorm } = await import( 'three/addons/gpgpu/llm/LLMMath.js' );
+
+				const cpuEmbed = weights.embedding( ids[ 0 ], 0 );
+				gpuRunner.weights.embedding( ids[ 0 ], 0, gpuRunner.embeddingBuffer );
+				gpuRunner.embeddingAttribute.needsUpdate = true;
+				gpuRunner.layers[ 0 ].ln1.compute( renderer );
+				const gpuLn1 = new Float32Array( await renderer.getArrayBufferAsync( gpuRunner.layers[ 0 ].ln1.outputAttribute ) );
+				const cpuLn1 = rmsNorm( cpuEmbed, weights.block( 0 ).ln1Weight, weights.rmsNormEps, true );
+				out.textContent += stats( 'ln1', cpuLn1, gpuLn1.subarray( 0, cpuLn1.length ) ) + '\n';
+
+				const mixer = gpuRunner.layers[ 0 ].mixer;
+				mixer.reset();
+				mixer.qkv.compute( renderer );
+				const gpuQkv = new Float32Array( await renderer.getArrayBufferAsync( mixer.qkv.outputAttribute ) );
+				const cpuQkv = linear( cpuLn1, weights.block( 0 ).delta.qkvWeight, null, weights.hiddenSize, mixer.convDim );
+				out.textContent += stats( 'qkv', cpuQkv, gpuQkv.subarray( 0, cpuQkv.length ) ) + '\n';
+
+				mixer.zProj.compute( renderer );
+				mixer.bProj.compute( renderer );
+				mixer.aProj.compute( renderer );
+				renderer.compute( mixer.convComputeNode );
+				const gpuConv = new Float32Array( await renderer.getArrayBufferAsync( mixer.convOutAttribute ) );
+				const cpuConv = causalConv1dStep( cpuQkv, new Float32Array( mixer.convDim * mixer.kernelSize ), weights.block( 0 ).delta.convWeight, mixer.kernelSize, 'silu' );
+				out.textContent += stats( 'conv', cpuConv, gpuConv.subarray( 0, cpuConv.length ) ) + '\n';
+
+				renderer.compute( mixer.prepareComputeNode );
+				const gpuQuery = new Float32Array( await renderer.getArrayBufferAsync( mixer.queryAttribute ) );
+				out.textContent += `query max=${ Math.max( ...Array.from( gpuQuery ) )} [0]=${ gpuQuery[ 0 ] }\n`;
+				renderer.compute( mixer.normQKComputeNode );
+				const gpuQueryN = new Float32Array( await renderer.getArrayBufferAsync( mixer.queryAttribute ) );
+				out.textContent += `queryN max=${ Math.max( ...Array.from( gpuQueryN ) )} [0]=${ gpuQueryN[ 0 ] }\n`;
+				renderer.compute( mixer.decayComputeNode );
+				renderer.compute( mixer.deltaComputeNode );
+				const gpuMixed = new Float32Array( await renderer.getArrayBufferAsync( mixer.mixedAttribute ) );
+				out.textContent += `mixed max=${ Math.max( ...Array.from( gpuMixed ) )} [0]=${ gpuMixed[ 0 ] }\n`;
+				renderer.compute( mixer.normComputeNode );
+				const gpuGated = new Float32Array( await renderer.getArrayBufferAsync( mixer.mixedAttribute ) );
+				out.textContent += `gated max=${ Math.max( ...Array.from( gpuGated ) )} [0]=${ gpuGated[ 0 ] }\n`;
+				mixer.outProj.compute( renderer );
+				const gpuDelta = new Float32Array( await renderer.getArrayBufferAsync( mixer.outProj.outputAttribute ) );
+				const cpuDelta = cpuRunner.linearAttention( cpuLn1, weights.block( 0 ).delta, cpuRunner.caches[ 0 ] );
+				out.textContent += stats( 'delta0', cpuDelta, gpuDelta.subarray( 0, cpuDelta.length ) ) + '\n';
+
+				const options = { maxNewTokens: 8, temperature: 0, topK: 1 };
+				const cpu = cpuRunner.generate( prompt, options );
+				out.textContent += `CPU: ${ JSON.stringify( cpu.text ) }\n`;
+				const gpu = await gpuRunner.generate( renderer, prompt, options );
+				out.textContent += `GPU: ${ JSON.stringify( gpu.text ) }\n`;
+				out.textContent += cpu.text === gpu.text ? 'PASS\n' : 'FAIL\n';
+
+				window.__qwenCheck = {
+					ln1: stats( 'ln1', cpuLn1, gpuLn1.subarray( 0, cpuLn1.length ) ),
+					qkv: stats( 'qkv', cpuQkv, gpuQkv.subarray( 0, cpuQkv.length ) ),
+					conv: stats( 'conv', cpuConv, gpuConv.subarray( 0, cpuConv.length ) ),
+					delta0: stats( 'delta0', cpuDelta, gpuDelta.subarray( 0, cpuDelta.length ) ),
+					cpu: cpu.text,
+					gpu: gpu.text,
+					match: cpu.text === gpu.text
+				};
+				renderer.dispose();
+
+			} catch ( error ) {
+
+				out.textContent += String( error && error.stack || error );
+				window.__qwenCheck = { match: false, error: String( error ) };
+
+			}
+
+		</script>
+	</body>
+</html>

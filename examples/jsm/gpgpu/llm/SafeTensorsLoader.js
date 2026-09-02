@@ -1,4 +1,4 @@
-import { fetchArrayBuffer } from './LLMTensors.js';
+import { fetchArrayBuffer, fetchJSON, createProgress } from './LLMTensors.js';
 
 /**
  * Minimal SafeTensors loader for browser examples.
@@ -12,13 +12,13 @@ class SafeTensorsLoader {
 	async load( url, options = {} ) {
 
 		const buffer = await fetchArrayBuffer( url, 'SafeTensorsLoader', options.onProgress );
-		return this.parse( buffer );
+		return this.parse( buffer, options );
 
 	}
 
-	parse( buffer ) {
+	parse( buffer, options = {} ) {
 
-		return parseSafeTensors( buffer );
+		return parseSafeTensors( buffer, options );
 
 	}
 
@@ -80,7 +80,7 @@ function elementCount( shape ) {
 
 }
 
-function parseSafeTensors( buffer ) {
+function parseSafeTensors( buffer, options = {} ) {
 
 	const view = new DataView( buffer );
 	const headerLength = readHeaderLength( view );
@@ -90,10 +90,12 @@ function parseSafeTensors( buffer ) {
 	const header = JSON.parse( new TextDecoder().decode( headerBytes ) );
 	const dataStart = headerEnd;
 	const tensors = {};
+	const keepTensor = options.keepTensor;
 
 	for ( const name in header ) {
 
 		if ( name === '__metadata__' ) continue;
+		if ( keepTensor && keepTensor( name ) === false ) continue;
 
 		const descriptor = header[ name ];
 		const { dtype, shape, data_offsets: dataOffsets } = descriptor;
@@ -131,4 +133,35 @@ function parseSafeTensors( buffer ) {
 
 }
 
-export { SafeTensorsLoader, parseSafeTensors };
+async function loadSafetensorsModel( root, options = {} ) {
+
+	const report = createProgress( options.label || 'SafeTensorsLoader', options.onProgress );
+	const loader = new SafeTensorsLoader();
+	let files = [ 'model.safetensors' ];
+
+	try {
+
+		const index = await fetchJSON( `${ root }model.safetensors.index.json`, options.label || 'SafeTensorsLoader' );
+		files = [ ...new Set( Object.values( index.weight_map ) ) ];
+
+	} catch ( error ) {
+
+		// Single-file checkpoints do not ship an index.
+
+	}
+
+	const tensors = {};
+
+	for ( let i = 0; i < files.length; i ++ ) {
+
+		await report( `Loading shard ${ i + 1 } / ${ files.length }: ${ files[ i ] }` );
+		const parsed = await loader.load( `${ root }${ files[ i ] }`, options );
+		Object.assign( tensors, parsed.tensors );
+
+	}
+
+	return tensors;
+
+}
+
+export { SafeTensorsLoader, loadSafetensorsModel, parseSafeTensors };

@@ -2,6 +2,9 @@ import { createProgress, fetchJSON } from './LLMTensors.js';
 import { GemmaCPURunner } from './GemmaCPURunner.js';
 import { GemmaTSLRunner } from './GemmaTSLRunner.js';
 import { GemmaWeights } from './GemmaWeights.js';
+import { Gemma4CPURunner } from './Gemma4CPURunner.js';
+import { Gemma4TSLRunner } from './Gemma4TSLRunner.js';
+import { Gemma4Weights } from './Gemma4Weights.js';
 import { GPT2CPURunner } from './GPT2CPURunner.js';
 import { GPT2TSLRunner } from './GPT2TSLRunner.js';
 import { GPT2Weights } from './GPT2Weights.js';
@@ -11,6 +14,9 @@ import { LlamaWeights } from './LlamaWeights.js';
 import { PhiCPURunner } from './PhiCPURunner.js';
 import { PhiTSLRunner } from './PhiTSLRunner.js';
 import { PhiWeights } from './PhiWeights.js';
+import { QwenCPURunner } from './QwenCPURunner.js';
+import { QwenTSLRunner } from './QwenTSLRunner.js';
+import { QwenWeights } from './QwenWeights.js';
 
 const MODEL_CATALOG = [
 	{
@@ -42,6 +48,22 @@ const MODEL_CATALOG = [
 		localUrl: './models/llm/gemma-3-270m/',
 		prompt: 'Once upon a time,',
 		note: 'Google Gemma 3 270M (sliding-window GQA, QK-norm, GeGLU). Gated on Hugging Face — accept the license and put config.json, tokenizer.json, and model.safetensors in examples/models/llm/gemma-3-270m/. About 540 MB BF16.'
+	},
+	{
+		id: 'qwen3.5-0.8b',
+		name: 'Qwen3.5 0.8B',
+		url: 'https://huggingface.co/Qwen/Qwen3.5-0.8B/resolve/main/',
+		localUrl: './models/llm/qwen3.5-0.8b/',
+		prompt: 'Once upon a time,',
+		note: 'Qwen3.5 0.8B hybrid: Gated DeltaNet linear attention plus gated full attention. About 1.8 GB BF16. Text-only decode; vision tensors are skipped.'
+	},
+	{
+		id: 'gemma4-e2b',
+		name: 'Gemma 4 E2B',
+		url: 'https://huggingface.co/google/gemma-4-E2B/resolve/main/',
+		localUrl: './models/llm/gemma-4-e2b/',
+		prompt: 'Once upon a time,',
+		note: 'Gemma 4 E2B (PLE, shared KV, proportional RoPE). About 10 GB BF16 — needs a lot of RAM. Text-only decode; vision/audio towers are skipped.'
 	}
 ];
 
@@ -54,9 +76,12 @@ function normalizeRoot( baseURL ) {
 function architectureFor( config ) {
 
 	const type = config.model_type;
+	const nested = config.text_config && config.text_config.model_type;
 
 	if ( type === 'gpt2' ) return 'gpt2';
 	if ( type === 'gemma3_text' || type === 'gemma3' ) return 'gemma3';
+	if ( type === 'gemma4' || type === 'gemma4_text' || nested === 'gemma4_text' ) return 'gemma4';
+	if ( type === 'qwen3_5' || type === 'qwen3_5_text' || nested === 'qwen3_5_text' ) return 'qwen3_5';
 	if ( type === 'llama' || type === 'mistral' || type === 'qwen2' || type === 'gemma' || type === 'gemma2' ) return 'llama';
 	if ( type === 'phi' ) return 'phi';
 
@@ -79,6 +104,8 @@ async function loadWeights( baseURL, options = {} ) {
 		if ( architecture === 'gpt2' ) return GPT2Weights.fromURL( baseURL, options );
 		if ( architecture === 'phi' ) return PhiWeights.fromURL( baseURL, options );
 		if ( architecture === 'gemma3' ) return GemmaWeights.fromURL( baseURL, options );
+		if ( architecture === 'gemma4' ) return Gemma4Weights.fromURL( baseURL, options );
+		if ( architecture === 'qwen3_5' ) return QwenWeights.fromURL( baseURL, options );
 
 		return LlamaWeights.fromURL( baseURL, options );
 
@@ -101,6 +128,8 @@ async function createTSLRunner( baseURL, options = {} ) {
 	if ( weights.architecture === 'gpt2' ) runner = new GPT2TSLRunner( weights, options );
 	else if ( weights.architecture === 'phi' ) runner = new PhiTSLRunner( weights, options );
 	else if ( weights.architecture === 'gemma3' ) runner = new GemmaTSLRunner( weights, options );
+	else if ( weights.architecture === 'gemma4' ) runner = new Gemma4TSLRunner( weights, options );
+	else if ( weights.architecture === 'qwen3_5' ) runner = new QwenTSLRunner( weights, options );
 	else runner = new LlamaTSLRunner( weights, options );
 
 	await report( 'GPU runner ready' );
@@ -115,6 +144,8 @@ async function createCPURunner( baseURL, options = {} ) {
 	if ( weights.architecture === 'gpt2' ) return new GPT2CPURunner( weights, options );
 	if ( weights.architecture === 'phi' ) return new PhiCPURunner( weights, options );
 	if ( weights.architecture === 'gemma3' ) return new GemmaCPURunner( weights, options );
+	if ( weights.architecture === 'gemma4' ) return new Gemma4CPURunner( weights, options );
+	if ( weights.architecture === 'qwen3_5' ) return new QwenCPURunner( weights, options );
 
 	return new LlamaCPURunner( weights, options );
 

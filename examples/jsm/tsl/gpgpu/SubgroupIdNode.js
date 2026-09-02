@@ -45,10 +45,8 @@ function hasNativeSupport( renderer ) {
  * TSL node for one of the compute built-ins provided by WGSL's
  * `subgroup_id` language extension.
  *
- * Import these from this module rather than `three/tsl`'s `subgroupIndex`.
- * The core node always emits `@builtin(subgroup_id)` and will fail to compile
- * when the language extension is missing. This module uses the built-in when
- * advertised, and otherwise reconstructs:
+ * These are not exported from `three/tsl`. Import them from this module.
+ * Native WGSL built-ins are used when advertised, otherwise:
  *
  * `subgroup_id ≈ local_invocation_index / subgroup_size`
  * `num_subgroups ≈ ceil(workgroup_size / subgroup_size)`
@@ -107,7 +105,7 @@ class SubgroupIdNode extends Node {
 
 		if ( hasSubgroupsFeature( builder.renderer ) !== true ) {
 
-			error( 'TSL: subgroup_id built-ins require the WebGPU "subgroups" device feature. Import them from three/addons/tsl/gpgpu/SubgroupIdNode.js; there is no WebGL fallback.' );
+			error( 'TSL: subgroup_id built-ins require the WebGPU "subgroups" device feature. There is no WebGL fallback.' );
 
 			return uint( 0 );
 
@@ -206,8 +204,7 @@ export default SubgroupIdNode;
  * Index of the current invocation's subgroup within its workgroup.
  * Equivalent to WGSL's `subgroup_id`.
  *
- * Prefer this over `three/tsl`'s `subgroupIndex`, which has no fallback when
- * the `subgroup_id` language extension is missing.
+ * Not exported from `three/tsl`; import it from this module.
  *
  * @tsl
  * @type {SubgroupIdNode}

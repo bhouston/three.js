@@ -7,7 +7,7 @@ import { DecoderWeights } from '../../../../examples/jsm/gpgpu/llm/DecoderWeight
 import { recipeFor } from '../../../../examples/jsm/gpgpu/llm/DecoderRecipe.js';
 import { GPT2Tokenizer } from '../../../../examples/jsm/gpgpu/llm/GPT2Tokenizer.js';
 import { architectureFor } from '../../../../examples/jsm/gpgpu/llm/LLMFactory.js';
-import { generateSync, planPromptCache, prepareGenerationFromTokens, sharedPrefixLength } from '../../../../examples/jsm/gpgpu/llm/LLMGenerate.js';
+import { generateAsync, generateSync, planPromptCache, prepareGenerationFromTokens, sharedPrefixLength } from '../../../../examples/jsm/gpgpu/llm/LLMGenerate.js';
 import { applyRoPE, causalAttention, gatedDeltaRuleStep, geluNew, layerNorm, linear, logitSoftcap, rmsNorm, sampleTopK, silu, softmax, splitHeadGate } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
 import { bfloat16ToFloat32, convertAllTensors, float16ToFloat32, tensorToFloat32 } from '../../../../examples/jsm/gpgpu/llm/LLMTensors.js';
 import { QwenCPURunner } from '../../../../examples/jsm/gpgpu/llm/QwenCPURunner.js';
@@ -1090,7 +1090,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( await sampler.readToken( renderer ), 4, 'greedy token is selected globally' );
 				assert.deepEqual(
 					await sampler.readCandidates( renderer, 3 ),
-					[ [ 4, 8 ], [ 1, 7 ], [ 2, 7 ] ],
+					[[ 4, 8 ], [ 1, 7 ], [ 2, 7 ]],
 					'top-k candidates preserve score order and lowest-token tie breaks'
 				);
 
@@ -1353,6 +1353,57 @@ export default QUnit.module( 'Addons', () => {
 				assert.deepEqual( prepared.inputTokens, [ 1, 2 ], 'prompt tokens are retained' );
 				assert.strictEqual( prepared.newTokenBudget, 0, 'maxNewTokens: 0 is not replaced by the default' );
 				assert.strictEqual( requestedNewTokens, 0, 'the generation loop forwards the explicit zero' );
+
+			} );
+
+			QUnit.test( 'async generation reports prefill progress', async ( assert ) => {
+
+				const progress = [];
+				const computed = [];
+				const runner = {
+					maxTokens: 8,
+					weights: {
+						endOfTextTokenId: 0,
+						tokenizer: { decode: ( tokens ) => tokens.join( ',' ) },
+						prepareGeneration() {
+
+							return { inputTokens: [ 1, 2, 3, 4 ], newTokenBudget: 1 };
+
+						}
+					}
+				};
+
+				const result = await generateAsync( runner, 'prompt', {
+					temperature: 0,
+					topK: 1,
+					onPrefillProgress: ( event ) => progress.push( event.completedPromptTokens )
+				}, {
+					rewindable: true,
+					resetCache() {},
+					async prefillTokens( inputTokens, start, end, onProgress ) {
+
+						assert.deepEqual( inputTokens, [ 1, 2, 3, 4 ], 'prefill receives resolved tokens' );
+						assert.strictEqual( start, 0, 'prefill starts at the uncached prompt position' );
+						assert.strictEqual( end, 3, 'prefill leaves the final prompt token for logits' );
+						onProgress( 2 );
+						onProgress( 3 );
+
+					},
+					async computeToken( tokenId, position ) {
+
+						computed.push( [ tokenId, position ] );
+
+					},
+					async readLogits() {
+
+						return new Float32Array( [ 0, 1 ] );
+
+					}
+				} );
+
+				assert.deepEqual( progress, [ 2, 3, 4 ], 'progress includes prefill chunks and the final prompt token' );
+				assert.deepEqual( computed, [[ 4, 3 ], [ 1, 4 ]], 'final prompt and generated token still run normally' );
+				assert.deepEqual( result.generatedTokens, [ 1 ], 'generation still samples from the final prompt logits' );
 
 			} );
 

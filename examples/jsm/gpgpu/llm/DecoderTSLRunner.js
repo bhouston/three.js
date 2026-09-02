@@ -342,7 +342,7 @@ class DecoderTSLRunner {
 
 	}
 
-	async prefillTokens( renderer, inputTokens, start, end ) {
+	async prefillTokens( renderer, inputTokens, start, end, onProgress ) {
 
 		for ( let offset = start; offset < end; offset += this.prefillChunkSize ) {
 
@@ -363,6 +363,7 @@ class DecoderTSLRunner {
 			this.prefillCursorAttribute.needsUpdate = true;
 			this.setPosition( offset );
 			renderer.compute( this.prefillChunkComputeNodes( count ) );
+			if ( onProgress ) await onProgress( offset + count );
 
 		}
 
@@ -396,7 +397,7 @@ class DecoderTSLRunner {
 			rewindable: true,
 			resetCache: () => this.resetCache(),
 			computeToken: ( tokenId, position, computeLogits, sampleCandidateCount ) => this.computeToken( renderer, tokenId, position, computeLogits, sampleCandidateCount ),
-			prefillTokens: ( inputTokens, start, end ) => this.prefillTokens( renderer, inputTokens, start, end ),
+			prefillTokens: ( inputTokens, start, end, onProgress ) => this.prefillTokens( renderer, inputTokens, start, end, onProgress ),
 			readLogits: () => this.readLogits( renderer ),
 			sampleToken: ( candidateCount, sampleOptions ) => this.sampleToken( renderer, candidateCount, sampleOptions ),
 			maxGpuCandidateCount: this.logitSampler.candidateCount

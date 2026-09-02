@@ -91,6 +91,24 @@ function gpuCandidateCount( options, maxCandidateCount ) {
 
 }
 
+function yieldToBrowser() {
+
+	if ( typeof requestAnimationFrame === 'function' ) {
+
+		return new Promise( ( resolve ) => requestAnimationFrame( () => resolve() ) );
+
+	}
+
+	if ( typeof setTimeout === 'function' ) {
+
+		return new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+
+	}
+
+	return Promise.resolve();
+
+}
+
 function finishGeneration( runner, weights, allTokens, generatedTokens, logits, extra ) {
 
 	runner._cacheTokens = allTokens.slice();
@@ -181,10 +199,25 @@ async function generateAsync( runner, prompt, options = {}, controls ) {
 	const needsPromptLogits = newTokenBudget > 0;
 	const prefillEnd = needsPromptLogits ? inputTokens.length - 1 : inputTokens.length;
 	let promptLoopStart = plan.start;
+	const reportPrefillProgress = async ( completedPromptTokens ) => {
+
+		if ( options.onPrefillProgress ) {
+
+			options.onPrefillProgress( {
+				cachedPromptTokens: plan.reused,
+				completedPromptTokens,
+				freshPromptTokens: inputTokens.length - plan.start,
+				promptTokens: inputTokens.length
+			} );
+			await yieldToBrowser();
+
+		}
+
+	};
 
 	if ( options.prefillMode !== false && typeof prefillTokens === 'function' && plan.start < prefillEnd ) {
 
-		await prefillTokens( inputTokens, plan.start, prefillEnd );
+		await prefillTokens( inputTokens, plan.start, prefillEnd, reportPrefillProgress );
 		promptLoopStart = prefillEnd;
 
 	}
@@ -196,6 +229,7 @@ async function generateAsync( runner, prompt, options = {}, controls ) {
 		const computeLogits = needsPromptLogits && i === inputTokens.length - 1;
 		await computeToken( inputTokens[ i ], i, computeLogits, useGpuSampling ? candidateCount : 0 );
 		if ( computeLogits ) logits = useGpuSampling ? null : await readLogits();
+		await reportPrefillProgress( i + 1 );
 
 	}
 

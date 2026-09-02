@@ -354,6 +354,7 @@
 					const modelURL = await resolveModelURL( model );
 					status.textContent = `Loading ${ model.name } from ${ modelURL }...`;
 					runner = await createTSLRunner( modelURL, {
+						prefillChunkSize: 4,
 						onProgress: ( message ) => {
 
 							status.textContent = message;
@@ -461,8 +462,17 @@
 
 							const fresh = promptTokens - cachedPromptTokens;
 							status.textContent = cachedPromptTokens > 0
-								? `Prefill ${ fresh } new / ${ cachedPromptTokens } cached. Generating...`
-								: 'Generating...';
+								? `Prefilling ${ fresh } new prompt token(s); ${ cachedPromptTokens } cached...`
+								: `Prefilling ${ fresh } prompt token(s)...`;
+
+						},
+						onPrefillProgress: ( { cachedPromptTokens, completedPromptTokens, promptTokens } ) => {
+
+							const fresh = promptTokens - cachedPromptTokens;
+							const completed = Math.max( 0, completedPromptTokens - cachedPromptTokens );
+							status.textContent = cachedPromptTokens > 0
+								? `Prefilling ${ Math.min( completed, fresh ) }/${ fresh } new prompt token(s); ${ cachedPromptTokens } cached...`
+								: `Prefilling ${ completedPromptTokens }/${ promptTokens } prompt token(s)...`;
 
 						},
 						onToken: ( text, nextToken ) => {

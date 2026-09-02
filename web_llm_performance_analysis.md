@@ -10,7 +10,7 @@ This report compares the three.js TSL LLM implementation with WebLLM. It uses:
 - WebLLM commit `fa123eba72978920c6c9f1b1e96c0c7c6be41f0f`
 - WebLLM 0.2.84 and its WebLLM paper revision from March 2026
 
-No direct WebLLM versus TSL throughput ratio has been measured yet. A valid ratio requires the same model architecture, weight precision, context, sampling policy, browser, and hardware. WebLLM's published numbers compare WebLLM with native MLC-LLM, not with this project.
+Direct WebLLM versus TSL runs have now been measured on the same browser and GPU with the same raw prompt and greedy sampling. The SmolLM2 q0f32 decode comparison is close: WebLLM is 1.02x faster than TSL. WebLLM's lead is much larger for TTFT, prefill, and quantized larger models.
 
 ## Summary
 
@@ -257,7 +257,7 @@ npm run test-performance-llm -- --models=smollm2 --trials=5 --tokens=32 --headle
 npm run test-performance-webllm -- --models=SmolLM2-135M-Instruct-q0f32-MLC,SmolLM2-135M-Instruct-q0f16-MLC --trials=5 --tokens=32 --headless --output=webllm-smollm2.json
 ```
 
-The WebLLM harness imports WebLLM 0.2.84 from ESM by default. Pass `--module=<url>` to test a local bundle or another pinned build.
+The WebLLM driver serves `../web-llm/lib/index.js` when that local build exists. Pass `--module=<url>` to test another pinned browser bundle.
 
 ### Phase 2: exact larger-model comparison
 
@@ -286,13 +286,52 @@ This sequence distinguishes compiler scheduling, precision, synchronization, and
 
 Item 3 has been implemented for the TSL runners. Re-run the existing TSL benchmark and compare `dispatchesPerForward`, TTFT, and `prefillTokensPerSecond` against the earlier Optimization 2 numbers in `llm_performance.md`. Decode throughput should stay close to the previous result because generated tokens still require logits.
 
+## Measured results
+
+These runs use HeadlessChrome 152, Apple Metal 3, greedy sampling, a 27-token raw prompt, 32 requested output tokens, and five warm trials unless noted. WebLLM completion mode is used so its prompt token count matches the TSL prompt count. WebLLM load time includes first-time Cache API population in a fresh Puppeteer profile, so warm reload numbers need a separate persistent-profile run.
+
+| Runner | Model | Precision | Load | Warm TTFT | Prefill | Decode | End-to-end | Dispatches/forward | Readbacks/trial |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| TSL | SmolLM2-135M | BF16 checkpoint expanded to F32 | 2.66 s | 260.1 ms | 103.806 tok/s | 78.007 tok/s | 47.379 tok/s | 423.915 | 198 |
+| WebLLM | SmolLM2-135M-Instruct | q0f32 | 685.34 s | 34.4 ms | 789.474 tok/s | 79.794 tok/s | 73.148 tok/s | n/a | n/a |
+| WebLLM | SmolLM2-135M-Instruct | q0f16 | 625.25 s | 25.0 ms | 1088.710 tok/s | 85.517 tok/s | 78.145 tok/s | n/a | n/a |
+| TSL | Qwen3.5-0.8B | BF16 checkpoint expanded to F32 | 11.08 s | 854.1 ms | 31.612 tok/s | 19.991 tok/s | 13.051 tok/s | 461.898 | 1023 |
+| WebLLM | Qwen3.5-0.8B | q0f16 | 988.15 s | 63.1 ms | 429.253 tok/s | 35.813 tok/s | 33.290 tok/s | n/a | n/a |
+| WebLLM | Qwen3.5-0.8B | q4f32_1 | 241.07 s | 75.7 ms | 358.566 tok/s | 38.074 tok/s | 32.625 tok/s | n/a | n/a |
+| WebLLM | Qwen3.5-0.8B | q4f16_1 | 193.38 s | 57.2 ms | 473.684 tok/s | 53.365 tok/s | 48.324 tok/s | n/a | n/a |
+| TSL | Phi-1.5 1.3B | FP16 checkpoint expanded to F32 | 38.70 s | 1788.7 ms | 15.095 tok/s | 14.470 tok/s | 8.018 tok/s | 292.475 | 231 |
+| WebLLM | Phi-1.5 1.3B | q4f32_1 | 414.40 s | 82.1 ms | 329.670 tok/s | 58.546 tok/s | 50.374 tok/s | n/a | n/a |
+| WebLLM | Phi-1.5 1.3B | q4f16_1 | 355.80 s | 209.8 ms | 128.940 tok/s | 24.155 tok/s | 20.164 tok/s | n/a | n/a |
+
+The first WebLLM run used an ESM CDN bundle that failed in the browser with `createRequire is not defined`. The measurements above use a local WebLLM 0.2.84 Rollup build served by the benchmark driver. An earlier 20-minute Qwen3.5 attempt timed out during model load; the completed larger-model run used a 60-minute timeout.
+
+### What the results show
+
+The closest SmolLM2 decode comparison does not show a large WebLLM q0f32 lead. TSL reaches 78.007 tok/s and WebLLM q0f32 reaches 79.794 tok/s. WebLLM q0f16 reaches 85.517 tok/s, a 9.6% decode gain over TSL and 7.2% over WebLLM q0f32.
+
+WebLLM's clear lead is TTFT and prefill. On the matched raw prompt, WebLLM q0f32 TTFT is 34.4 ms versus TSL at 260.1 ms, and WebLLM q0f32 prefill is 789.474 tok/s versus TSL at 103.806 tok/s. The prefill-only logits skip improved TSL over the previous SmolLM2 median in `llm_performance.md` (293.1 ms TTFT, 92.119 tok/s prefill), but WebLLM still wins by using a compiled prefill path.
+
+The larger-model decode gap is much bigger. WebLLM Qwen3.5 q4f16 reaches 53.365 tok/s versus TSL Qwen3.5 at 19.991 tok/s, a 2.67x gain. WebLLM Phi q4f32 reaches 58.546 tok/s versus TSL Phi at 14.470 tok/s, a 4.05x gain. Phi q4f16 is slower than q4f32 on this run, so shader-f16 and 4-bit dequantization should be measured per architecture rather than assumed to win.
+
+The TSL larger-model data points at synchronization and vocabulary cost. Qwen3.5 performs 1023 logit readbacks per 27-prompt + 32-generated-token trial because its vocabulary is split into many chunks. Phi has fewer dispatches per forward than Qwen but still decodes at only 14.470 tok/s, which keeps reduced-precision weight bandwidth and model-specific schedules high on the list for larger models.
+
+The vec4 component benchmark does not justify a broad vec4 rewrite. The vec4-dot path is neutral for the up projection, 1.04x for the down projection, and 0.95x for a logit chunk. Four-output vec4 is slower for all measured shapes.
+
+### Recommendations
+
+1. Add a GPU greedy argmax path, then extend it to a small top-k candidate path. This preserves the current flexible HF-loading design and removes the readback bottleneck. Qwen3.5's 1023 readbacks per trial make this the best low-rework target for decode.
+2. Build a real prefill mode before attempting full batched GEMM. The logits-free prefill split is already in place; next, skip or specialize any decode-only cache/readback work during prompt ingestion and measure with 32, 128, and 512-token prompts.
+3. Add logical cache reset for KV and recurrent state. Clearing CPU mirrors and re-uploading large cache buffers costs memory bandwidth without changing model math.
+4. Treat F16 storage/compute as the first medium-sized precision project. Keep it as an adapter-selected path so F32 remains the portable baseline. The SmolLM2 q0f16 gain is modest, but Qwen's WebLLM q4f16 result shows reduced precision matters more as models grow.
+5. Avoid a general vec4 rewrite for now. The standalone numbers show too little gain, and the runtime repack cost works against flexibility.
+
 ## Conclusions
 
 WebLLM's main lead comes from an offline ML compiler pipeline. It specializes the model, precision, memory layout, prefill program, decode program, attention implementation, and sampling path before the browser loads the model. The current TSL runner makes those choices at runtime from reusable operators and F32 arrays.
 
 The TSL submission batching work closed a major runtime gap. The remaining high-value differences are GPU-side sampling, batched prefill, reduced-precision weights, and graph fusion. Quantization should dominate model capacity and larger-model decode. Batched prefill should dominate TTFT. GPU sampling offers the clearest small experiment because the existing measurements already show sensitivity to readback synchronization.
 
-No source evidence supports a numeric WebLLM-over-TSL throughput claim yet. The proposed SmolLM2 `q0f32` benchmark can supply that number without mixing compiler gains with quantization.
+The measurements split the work into two priorities. For small F32 decode, the current TSL runner is already close to WebLLM. For TTFT, prefill, and larger quantized models, WebLLM still has a large lead. Three.js should first remove synchronization and prefill waste while preserving runtime HF loading, then add optional reduced-precision paths for adapters that support them.
 
 ## References
 

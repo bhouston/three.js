@@ -1,0 +1,2732 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-02T18:55:25.845Z",
+  "gitCommit": "052adadb8e4f37ff3ef56e63271d090f24c0fdbb",
+  "reports": [
+    {
+      "schemaVersion": 1,
+      "benchmark": "webllm",
+      "model": {
+        "id": "Qwen3.5-0.8B-q0f16-MLC"
+      },
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+        "platform": "MacIntel",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "features": [
+            "bgra8unorm-storage",
+            "chromium-experimental-subgroup-matrix",
+            "clip-distances",
+            "core-features-and-limits",
+            "depth-clip-control",
+            "depth32float-stencil8",
+            "dual-source-blending",
+            "float32-blendable",
+            "float32-filterable",
+            "indirect-first-instance",
+            "primitive-index",
+            "rg11b10ufloat-renderable",
+            "shader-f16",
+            "subgroup-size-control",
+            "subgroups",
+            "texture-component-swizzle",
+            "texture-compression-astc",
+            "texture-compression-astc-sliced-3d",
+            "texture-compression-bc",
+            "texture-compression-bc-sliced-3d",
+            "texture-compression-etc2",
+            "texture-compression-unaligned",
+            "texture-formats-tier1",
+            "texture-formats-tier2",
+            "timestamp-query"
+          ]
+        }
+      },
+      "parameters": {
+        "prompt": "Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.",
+        "trialCount": 5,
+        "maxNewTokens": 32,
+        "contextWindowSize": 4096,
+        "mode": "completion",
+        "webllmModule": "http://localhost:1355/lib/index.js"
+      },
+      "load": {
+        "modelLoadMs": 988146.2,
+        "resourceBytes": 0,
+        "progress": [
+          {
+            "timeMs": 40403.2,
+            "text": "Start to fetch params",
+            "progress": 0
+          },
+          {
+            "timeMs": 174773.1,
+            "text": "Fetching param cache[1/41]: 21MB fetched. 1% completed, 135 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.015
+          },
+          {
+            "timeMs": 212904.3,
+            "text": "Fetching param cache[2/41]: 49MB fetched. 3% completed, 173 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.034
+          },
+          {
+            "timeMs": 215341.7,
+            "text": "Fetching param cache[3/41]: 70MB fetched. 4% completed, 175 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.049
+          },
+          {
+            "timeMs": 223562,
+            "text": "Fetching param cache[4/41]: 100MB fetched. 6% completed, 184 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.07
+          },
+          {
+            "timeMs": 306053.3,
+            "text": "Fetching param cache[5/41]: 121MB fetched. 8% completed, 266 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.084
+          },
+          {
+            "timeMs": 326515.6,
+            "text": "Fetching param cache[6/41]: 142MB fetched. 9% completed, 287 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.099
+          },
+          {
+            "timeMs": 374195.8,
+            "text": "Fetching param cache[7/41]: 172MB fetched. 11% completed, 334 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.12
+          },
+          {
+            "timeMs": 403537.6,
+            "text": "Fetching param cache[8/41]: 193MB fetched. 13% completed, 364 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.134
+          },
+          {
+            "timeMs": 415566.3,
+            "text": "Fetching param cache[9/41]: 214MB fetched. 14% completed, 376 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.149
+          },
+          {
+            "timeMs": 481659,
+            "text": "Fetching param cache[10/41]: 242MB fetched. 16% completed, 442 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.169
+          },
+          {
+            "timeMs": 485312.4,
+            "text": "Fetching param cache[11/41]: 263MB fetched. 18% completed, 445 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.183
+          },
+          {
+            "timeMs": 491965,
+            "text": "Fetching param cache[12/41]: 284MB fetched. 19% completed, 452 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.198
+          },
+          {
+            "timeMs": 581994.4,
+            "text": "Fetching param cache[13/41]: 305MB fetched. 21% completed, 542 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.213
+          },
+          {
+            "timeMs": 602711.9,
+            "text": "Fetching param cache[14/41]: 326MB fetched. 22% completed, 563 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.227
+          },
+          {
+            "timeMs": 619748.5,
+            "text": "Fetching param cache[15/41]: 356MB fetched. 24% completed, 580 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.248
+          },
+          {
+            "timeMs": 670349.7,
+            "text": "Fetching param cache[16/41]: 377MB fetched. 26% completed, 630 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.263
+          },
+          {
+            "timeMs": 687219.3,
+            "text": "Fetching param cache[17/41]: 398MB fetched. 27% completed, 647 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.277
+          },
+          {
+            "timeMs": 716037.5,
+            "text": "Fetching param cache[18/41]: 426MB fetched. 29% completed, 676 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.297
+          },
+          {
+            "timeMs": 729832.6,
+            "text": "Fetching param cache[19/41]: 447MB fetched. 31% completed, 690 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.311
+          },
+          {
+            "timeMs": 734681.6,
+            "text": "Fetching param cache[20/41]: 468MB fetched. 32% completed, 695 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.326
+          },
+          {
+            "timeMs": 735808.1,
+            "text": "Fetching param cache[21/41]: 953MB fetched. 66% completed, 696 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.664
+          },
+          {
+            "timeMs": 778565,
+            "text": "Fetching param cache[22/41]: 981MB fetched. 68% completed, 739 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.684
+          },
+          {
+            "timeMs": 780821.6,
+            "text": "Fetching param cache[23/41]: 1002MB fetched. 69% completed, 741 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.698
+          },
+          {
+            "timeMs": 782965.5,
+            "text": "Fetching param cache[24/41]: 1023MB fetched. 71% completed, 743 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.713
+          },
+          {
+            "timeMs": 787708,
+            "text": "Fetching param cache[25/41]: 1047MB fetched. 72% completed, 748 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.73
+          },
+          {
+            "timeMs": 816121.8,
+            "text": "Fetching param cache[26/41]: 1068MB fetched. 74% completed, 776 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.744
+          },
+          {
+            "timeMs": 825294.7,
+            "text": "Fetching param cache[27/41]: 1096MB fetched. 76% completed, 785 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.764
+          },
+          {
+            "timeMs": 826646.3,
+            "text": "Fetching param cache[28/41]: 1120MB fetched. 78% completed, 787 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.78
+          },
+          {
+            "timeMs": 828958.7,
+            "text": "Fetching param cache[29/41]: 1148MB fetched. 79% completed, 789 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.8
+          },
+          {
+            "timeMs": 854394.8,
+            "text": "Fetching param cache[30/41]: 1176MB fetched. 81% completed, 814 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.819
+          },
+          {
+            "timeMs": 855505.9,
+            "text": "Fetching param cache[31/41]: 1200MB fetched. 83% completed, 816 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.836
+          },
+          {
+            "timeMs": 856411.8,
+            "text": "Fetching param cache[32/41]: 1228MB fetched. 85% completed, 817 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.856
+          },
+          {
+            "timeMs": 889912.8,
+            "text": "Fetching param cache[33/41]: 1249MB fetched. 87% completed, 850 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.87
+          },
+          {
+            "timeMs": 897411.7,
+            "text": "Fetching param cache[34/41]: 1273MB fetched. 88% completed, 858 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.887
+          },
+          {
+            "timeMs": 899832.2,
+            "text": "Fetching param cache[35/41]: 1301MB fetched. 90% completed, 860 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.907
+          },
+          {
+            "timeMs": 922415.3,
+            "text": "Fetching param cache[36/41]: 1316MB fetched. 91% completed, 883 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.916
+          },
+          {
+            "timeMs": 933992.8,
+            "text": "Fetching param cache[37/41]: 1340MB fetched. 93% completed, 894 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.933
+          },
+          {
+            "timeMs": 946637.3,
+            "text": "Fetching param cache[38/41]: 1364MB fetched. 94% completed, 907 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.95
+          },
+          {
+            "timeMs": 957076.4,
+            "text": "Fetching param cache[39/41]: 1388MB fetched. 96% completed, 917 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.967
+          },
+          {
+            "timeMs": 972054.4,
+            "text": "Fetching param cache[40/41]: 1412MB fetched. 98% completed, 932 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.983
+          },
+          {
+            "timeMs": 985364.7,
+            "text": "Fetching param cache[41/41]: 1436MB fetched. 100% completed, 945 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 1
+          },
+          {
+            "timeMs": 986835.2,
+            "text": "Loading model from cache[1/41]: 485MB loaded. 33% completed, 947 secs elapsed.",
+            "progress": 0.338
+          },
+          {
+            "timeMs": 986911.2,
+            "text": "Loading model from cache[2/41]: 509MB loaded. 35% completed, 947 secs elapsed.",
+            "progress": 0.355
+          },
+          {
+            "timeMs": 986940.6,
+            "text": "Loading model from cache[3/41]: 533MB loaded. 37% completed, 947 secs elapsed.",
+            "progress": 0.371
+          },
+          {
+            "timeMs": 986968.3,
+            "text": "Loading model from cache[4/41]: 557MB loaded. 38% completed, 947 secs elapsed.",
+            "progress": 0.388
+          },
+          {
+            "timeMs": 986997.5,
+            "text": "Loading model from cache[5/41]: 581MB loaded. 40% completed, 947 secs elapsed.",
+            "progress": 0.405
+          },
+          {
+            "timeMs": 987025.2,
+            "text": "Loading model from cache[6/41]: 605MB loaded. 42% completed, 947 secs elapsed.",
+            "progress": 0.422
+          },
+          {
+            "timeMs": 987062.3,
+            "text": "Loading model from cache[7/41]: 629MB loaded. 43% completed, 947 secs elapsed.",
+            "progress": 0.438
+          },
+          {
+            "timeMs": 987100.7,
+            "text": "Loading model from cache[8/41]: 653MB loaded. 45% completed, 947 secs elapsed.",
+            "progress": 0.455
+          },
+          {
+            "timeMs": 987133.4,
+            "text": "Loading model from cache[9/41]: 677MB loaded. 47% completed, 947 secs elapsed.",
+            "progress": 0.472
+          },
+          {
+            "timeMs": 987163.8,
+            "text": "Loading model from cache[10/41]: 701MB loaded. 48% completed, 947 secs elapsed.",
+            "progress": 0.488
+          },
+          {
+            "timeMs": 987225.5,
+            "text": "Loading model from cache[11/41]: 731MB loaded. 50% completed, 947 secs elapsed.",
+            "progress": 0.509
+          },
+          {
+            "timeMs": 987257.5,
+            "text": "Loading model from cache[12/41]: 761MB loaded. 53% completed, 947 secs elapsed.",
+            "progress": 0.53
+          },
+          {
+            "timeMs": 987287.2,
+            "text": "Loading model from cache[13/41]: 789MB loaded. 54% completed, 947 secs elapsed.",
+            "progress": 0.55
+          },
+          {
+            "timeMs": 987310,
+            "text": "Loading model from cache[14/41]: 810MB loaded. 56% completed, 947 secs elapsed.",
+            "progress": 0.564
+          },
+          {
+            "timeMs": 987332.4,
+            "text": "Loading model from cache[15/41]: 831MB loaded. 57% completed, 947 secs elapsed.",
+            "progress": 0.579
+          },
+          {
+            "timeMs": 987355.4,
+            "text": "Loading model from cache[16/41]: 852MB loaded. 59% completed, 947 secs elapsed.",
+            "progress": 0.594
+          },
+          {
+            "timeMs": 987378.3,
+            "text": "Loading model from cache[17/41]: 873MB loaded. 60% completed, 947 secs elapsed.",
+            "progress": 0.608
+          },
+          {
+            "timeMs": 987402.5,
+            "text": "Loading model from cache[18/41]: 894MB loaded. 62% completed, 948 secs elapsed.",
+            "progress": 0.623
+          },
+          {
+            "timeMs": 987431.4,
+            "text": "Loading model from cache[19/41]: 922MB loaded. 64% completed, 948 secs elapsed.",
+            "progress": 0.642
+          },
+          {
+            "timeMs": 987455.4,
+            "text": "Loading model from cache[20/41]: 943MB loaded. 65% completed, 948 secs elapsed.",
+            "progress": 0.657
+          },
+          {
+            "timeMs": 987479.2,
+            "text": "Loading model from cache[21/41]: 964MB loaded. 67% completed, 948 secs elapsed.",
+            "progress": 0.672
+          },
+          {
+            "timeMs": 987502.6,
+            "text": "Loading model from cache[22/41]: 985MB loaded. 68% completed, 948 secs elapsed.",
+            "progress": 0.686
+          },
+          {
+            "timeMs": 987528.4,
+            "text": "Loading model from cache[23/41]: 1006MB loaded. 70% completed, 948 secs elapsed.",
+            "progress": 0.701
+          },
+          {
+            "timeMs": 987551.5,
+            "text": "Loading model from cache[24/41]: 1027MB loaded. 71% completed, 948 secs elapsed.",
+            "progress": 0.716
+          },
+          {
+            "timeMs": 987574.3,
+            "text": "Loading model from cache[25/41]: 1048MB loaded. 73% completed, 948 secs elapsed.",
+            "progress": 0.73
+          },
+          {
+            "timeMs": 987597.1,
+            "text": "Loading model from cache[26/41]: 1069MB loaded. 74% completed, 948 secs elapsed.",
+            "progress": 0.745
+          },
+          {
+            "timeMs": 987619.9,
+            "text": "Loading model from cache[27/41]: 1090MB loaded. 75% completed, 948 secs elapsed.",
+            "progress": 0.76
+          },
+          {
+            "timeMs": 987643,
+            "text": "Loading model from cache[28/41]: 1111MB loaded. 77% completed, 948 secs elapsed.",
+            "progress": 0.774
+          },
+          {
+            "timeMs": 987664.7,
+            "text": "Loading model from cache[29/41]: 1132MB loaded. 78% completed, 948 secs elapsed.",
+            "progress": 0.789
+          },
+          {
+            "timeMs": 987694.9,
+            "text": "Loading model from cache[30/41]: 1160MB loaded. 80% completed, 948 secs elapsed.",
+            "progress": 0.808
+          },
+          {
+            "timeMs": 987727,
+            "text": "Loading model from cache[31/41]: 1188MB loaded. 82% completed, 948 secs elapsed.",
+            "progress": 0.828
+          },
+          {
+            "timeMs": 987749.9,
+            "text": "Loading model from cache[32/41]: 1209MB loaded. 84% completed, 948 secs elapsed.",
+            "progress": 0.842
+          },
+          {
+            "timeMs": 987772.8,
+            "text": "Loading model from cache[33/41]: 1230MB loaded. 85% completed, 948 secs elapsed.",
+            "progress": 0.857
+          },
+          {
+            "timeMs": 987795.8,
+            "text": "Loading model from cache[34/41]: 1251MB loaded. 87% completed, 948 secs elapsed.",
+            "progress": 0.872
+          },
+          {
+            "timeMs": 987826.5,
+            "text": "Loading model from cache[35/41]: 1281MB loaded. 89% completed, 948 secs elapsed.",
+            "progress": 0.893
+          },
+          {
+            "timeMs": 987856.8,
+            "text": "Loading model from cache[36/41]: 1309MB loaded. 91% completed, 948 secs elapsed.",
+            "progress": 0.912
+          },
+          {
+            "timeMs": 987887.2,
+            "text": "Loading model from cache[37/41]: 1337MB loaded. 93% completed, 948 secs elapsed.",
+            "progress": 0.932
+          },
+          {
+            "timeMs": 987918.4,
+            "text": "Loading model from cache[38/41]: 1365MB loaded. 95% completed, 948 secs elapsed.",
+            "progress": 0.951
+          },
+          {
+            "timeMs": 987947.8,
+            "text": "Loading model from cache[39/41]: 1393MB loaded. 97% completed, 948 secs elapsed.",
+            "progress": 0.971
+          },
+          {
+            "timeMs": 987979.3,
+            "text": "Loading model from cache[40/41]: 1421MB loaded. 99% completed, 948 secs elapsed.",
+            "progress": 0.99
+          },
+          {
+            "timeMs": 988016.7,
+            "text": "Loading model from cache[41/41]: 1436MB loaded. 100% completed, 948 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 988146.2,
+            "text": "Loading GPU shader modules[9/9]: 100% completed, 1 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 988146.2,
+            "text": "Finish loading on WebGPU - apple",
+            "progress": 1
+          }
+        ]
+      },
+      "firstUse": {
+        "durationMs": 2252.6,
+        "ttftMs": 1708.7,
+        "promptTokens": 27,
+        "generatedTokens": 1,
+        "prefillTokensPerSecond": 15.823,
+        "decodeTokensPerSecond": 1.841,
+        "endToEndTokensPerSecond": 0.444,
+        "timeToFirstTokenMs": 1706.4,
+        "timePerOutputTokenMs": 543.1,
+        "tokenLatencyMs": {
+          "min": 543.8,
+          "median": 543.8,
+          "mean": 543.8,
+          "p95": 543.8,
+          "max": 543.8,
+          "stddev": 0
+        },
+        "usage": {
+          "completion_tokens": 1,
+          "prompt_tokens": 27,
+          "total_tokens": 28,
+          "extra": {
+            "e2e_latency_s": 2.252,
+            "prefill_tokens_per_s": 15.823,
+            "decode_tokens_per_s": 1.841,
+            "time_to_first_token_s": 1.706,
+            "time_per_output_token_s": 0.543
+          }
+        }
+      },
+      "summary": {
+        "ttftMs": {
+          "min": 62.3,
+          "median": 63.1,
+          "mean": 63.58,
+          "p95": 65.8,
+          "max": 65.8,
+          "stddev": 1.245
+        },
+        "webllmTimeToFirstTokenMs": {
+          "min": 62.3,
+          "median": 62.9,
+          "mean": 63.42,
+          "p95": 65.5,
+          "max": 65.5,
+          "stddev": 1.202
+        },
+        "prefillTokensPerSecond": {
+          "min": 412.214,
+          "median": 429.253,
+          "mean": 425.884,
+          "p95": 433.387,
+          "max": 433.387,
+          "stddev": 7.962
+        },
+        "decodeTokensPerSecond": {
+          "min": 35.223,
+          "median": 35.813,
+          "mean": 35.884,
+          "p95": 36.66,
+          "max": 36.66,
+          "stddev": 0.481
+        },
+        "endToEndTokensPerSecond": {
+          "min": 32.707,
+          "median": 33.29,
+          "mean": 33.298,
+          "p95": 33.995,
+          "max": 33.995,
+          "stddev": 0.441
+        },
+        "timePerOutputTokenMs": {
+          "min": 27.277,
+          "median": 27.923,
+          "mean": 27.872,
+          "p95": 28.39,
+          "max": 28.39,
+          "stddev": 0.372
+        }
+      },
+      "trials": [
+        {
+          "durationMs": 939.7,
+          "ttftMs": 65.8,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 412.214,
+          "decodeTokensPerSecond": 35.628,
+          "endToEndTokensPerSecond": 32.989,
+          "timeToFirstTokenMs": 65.5,
+          "timePerOutputTokenMs": 28.068,
+          "tokenLatencyMs": {
+            "min": 26.8,
+            "median": 28.1,
+            "mean": 28.187,
+            "p95": 30.1,
+            "max": 30.5,
+            "stddev": 0.88
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.939,
+              "prefill_tokens_per_s": 412.214,
+              "decode_tokens_per_s": 35.628,
+              "time_to_first_token_s": 0.066,
+              "time_per_output_token_s": 0.028
+            }
+          }
+        },
+        {
+          "durationMs": 947.8,
+          "ttftMs": 64,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 421.875,
+          "decodeTokensPerSecond": 35.223,
+          "endToEndTokensPerSecond": 32.707,
+          "timeToFirstTokenMs": 64,
+          "timePerOutputTokenMs": 28.39,
+          "tokenLatencyMs": {
+            "min": 25.6,
+            "median": 27.9,
+            "mean": 28.506,
+            "p95": 38.9,
+            "max": 39.4,
+            "stddev": 2.952
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.948,
+              "prefill_tokens_per_s": 421.875,
+              "decode_tokens_per_s": 35.223,
+              "time_to_first_token_s": 0.064,
+              "time_per_output_token_s": 0.028
+            }
+          }
+        },
+        {
+          "durationMs": 911.9,
+          "ttftMs": 62.7,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 432.692,
+          "decodeTokensPerSecond": 36.66,
+          "endToEndTokensPerSecond": 33.995,
+          "timeToFirstTokenMs": 62.4,
+          "timePerOutputTokenMs": 27.277,
+          "tokenLatencyMs": {
+            "min": 25.8,
+            "median": 27.2,
+            "mean": 27.39,
+            "p95": 30.1,
+            "max": 30.9,
+            "stddev": 1.018
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.912,
+              "prefill_tokens_per_s": 432.692,
+              "decode_tokens_per_s": 36.66,
+              "time_to_first_token_s": 0.062,
+              "time_per_output_token_s": 0.027
+            }
+          }
+        },
+        {
+          "durationMs": 931.2,
+          "ttftMs": 62.3,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 433.387,
+          "decodeTokensPerSecond": 35.813,
+          "endToEndTokensPerSecond": 33.29,
+          "timeToFirstTokenMs": 62.3,
+          "timePerOutputTokenMs": 27.923,
+          "tokenLatencyMs": {
+            "min": 26.6,
+            "median": 27.6,
+            "mean": 28.029,
+            "p95": 30.6,
+            "max": 31.8,
+            "stddev": 1.195
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.931,
+              "prefill_tokens_per_s": 433.387,
+              "decode_tokens_per_s": 35.813,
+              "time_to_first_token_s": 0.062,
+              "time_per_output_token_s": 0.028
+            }
+          }
+        },
+        {
+          "durationMs": 925.2,
+          "ttftMs": 63.1,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 429.253,
+          "decodeTokensPerSecond": 36.097,
+          "endToEndTokensPerSecond": 33.506,
+          "timeToFirstTokenMs": 62.9,
+          "timePerOutputTokenMs": 27.703,
+          "tokenLatencyMs": {
+            "min": 26.4,
+            "median": 27.7,
+            "mean": 27.806,
+            "p95": 29.5,
+            "max": 29.7,
+            "stddev": 0.77
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.925,
+              "prefill_tokens_per_s": 429.253,
+              "decode_tokens_per_s": 36.097,
+              "time_to_first_token_s": 0.063,
+              "time_per_output_token_s": 0.028
+            }
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "benchmark": "webllm",
+      "model": {
+        "id": "Qwen3.5-0.8B-q4f32_1-MLC"
+      },
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+        "platform": "MacIntel",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "features": [
+            "bgra8unorm-storage",
+            "chromium-experimental-subgroup-matrix",
+            "clip-distances",
+            "core-features-and-limits",
+            "depth-clip-control",
+            "depth32float-stencil8",
+            "dual-source-blending",
+            "float32-blendable",
+            "float32-filterable",
+            "indirect-first-instance",
+            "primitive-index",
+            "rg11b10ufloat-renderable",
+            "shader-f16",
+            "subgroup-size-control",
+            "subgroups",
+            "texture-component-swizzle",
+            "texture-compression-astc",
+            "texture-compression-astc-sliced-3d",
+            "texture-compression-bc",
+            "texture-compression-bc-sliced-3d",
+            "texture-compression-etc2",
+            "texture-compression-unaligned",
+            "texture-formats-tier1",
+            "texture-formats-tier2",
+            "timestamp-query"
+          ]
+        }
+      },
+      "parameters": {
+        "prompt": "Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.",
+        "trialCount": 5,
+        "maxNewTokens": 32,
+        "contextWindowSize": 4096,
+        "mode": "completion",
+        "webllmModule": "http://localhost:1355/lib/index.js"
+      },
+      "load": {
+        "modelLoadMs": 241068.7,
+        "resourceBytes": 0,
+        "progress": [
+          {
+            "timeMs": 17585,
+            "text": "Start to fetch params",
+            "progress": 0
+          },
+          {
+            "timeMs": 83347.2,
+            "text": "Fetching param cache[1/11]: 30MB fetched. 7% completed, 66 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.073
+          },
+          {
+            "timeMs": 84632.3,
+            "text": "Fetching param cache[2/11]: 61MB fetched. 14% completed, 68 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.149
+          },
+          {
+            "timeMs": 88073.8,
+            "text": "Fetching param cache[3/11]: 92MB fetched. 22% completed, 71 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.227
+          },
+          {
+            "timeMs": 163473.5,
+            "text": "Fetching param cache[4/11]: 124MB fetched. 30% completed, 146 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.305
+          },
+          {
+            "timeMs": 165959.5,
+            "text": "Fetching param cache[5/11]: 154MB fetched. 38% completed, 149 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.38
+          },
+          {
+            "timeMs": 172563.8,
+            "text": "Fetching param cache[6/11]: 186MB fetched. 45% completed, 156 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.458
+          },
+          {
+            "timeMs": 195300.9,
+            "text": "Fetching param cache[7/11]: 217MB fetched. 53% completed, 178 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.535
+          },
+          {
+            "timeMs": 220037.8,
+            "text": "Fetching param cache[8/11]: 338MB fetched. 83% completed, 203 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.835
+          },
+          {
+            "timeMs": 226418.7,
+            "text": "Fetching param cache[9/11]: 370MB fetched. 91% completed, 209 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.913
+          },
+          {
+            "timeMs": 231744.6,
+            "text": "Fetching param cache[10/11]: 373MB fetched. 92% completed, 215 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.922
+          },
+          {
+            "timeMs": 239734.6,
+            "text": "Fetching param cache[11/11]: 405MB fetched. 100% completed, 223 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 1
+          },
+          {
+            "timeMs": 240339.3,
+            "text": "Loading model from cache[1/11]: 122MB loaded. 29% completed, 223 secs elapsed.",
+            "progress": 0.3
+          },
+          {
+            "timeMs": 240410.4,
+            "text": "Loading model from cache[2/11]: 153MB loaded. 37% completed, 223 secs elapsed.",
+            "progress": 0.378
+          },
+          {
+            "timeMs": 240477.4,
+            "text": "Loading model from cache[3/11]: 184MB loaded. 45% completed, 223 secs elapsed.",
+            "progress": 0.454
+          },
+          {
+            "timeMs": 240544.2,
+            "text": "Loading model from cache[4/11]: 215MB loaded. 52% completed, 223 secs elapsed.",
+            "progress": 0.529
+          },
+          {
+            "timeMs": 240602,
+            "text": "Loading model from cache[5/11]: 246MB loaded. 60% completed, 224 secs elapsed.",
+            "progress": 0.607
+          },
+          {
+            "timeMs": 240655.4,
+            "text": "Loading model from cache[6/11]: 278MB loaded. 68% completed, 224 secs elapsed.",
+            "progress": 0.685
+          },
+          {
+            "timeMs": 240725.9,
+            "text": "Loading model from cache[7/11]: 307MB loaded. 75% completed, 224 secs elapsed.",
+            "progress": 0.758
+          },
+          {
+            "timeMs": 240783.2,
+            "text": "Loading model from cache[8/11]: 339MB loaded. 83% completed, 224 secs elapsed.",
+            "progress": 0.836
+          },
+          {
+            "timeMs": 240840,
+            "text": "Loading model from cache[9/11]: 370MB loaded. 91% completed, 224 secs elapsed.",
+            "progress": 0.913
+          },
+          {
+            "timeMs": 240908,
+            "text": "Loading model from cache[10/11]: 401MB loaded. 99% completed, 224 secs elapsed.",
+            "progress": 0.991
+          },
+          {
+            "timeMs": 240935,
+            "text": "Loading model from cache[11/11]: 405MB loaded. 100% completed, 224 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 241068.7,
+            "text": "Loading GPU shader modules[9/9]: 100% completed, 1 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 241068.7,
+            "text": "Finish loading on WebGPU - apple",
+            "progress": 1
+          }
+        ]
+      },
+      "firstUse": {
+        "durationMs": 2218.6,
+        "ttftMs": 1628.5,
+        "promptTokens": 27,
+        "generatedTokens": 1,
+        "prefillTokensPerSecond": 16.611,
+        "decodeTokensPerSecond": 1.697,
+        "endToEndTokensPerSecond": 0.451,
+        "timeToFirstTokenMs": 1625.4,
+        "timePerOutputTokenMs": 589.2,
+        "tokenLatencyMs": {
+          "min": 590,
+          "median": 590,
+          "mean": 590,
+          "p95": 590,
+          "max": 590,
+          "stddev": 0
+        },
+        "usage": {
+          "completion_tokens": 1,
+          "prompt_tokens": 27,
+          "total_tokens": 28,
+          "extra": {
+            "e2e_latency_s": 2.218,
+            "prefill_tokens_per_s": 16.611,
+            "decode_tokens_per_s": 1.697,
+            "time_to_first_token_s": 1.625,
+            "time_per_output_token_s": 0.589
+          }
+        }
+      },
+      "summary": {
+        "ttftMs": {
+          "min": 72.6,
+          "median": 75.7,
+          "mean": 86.62,
+          "p95": 120.4,
+          "max": 120.4,
+          "stddev": 18.022
+        },
+        "webllmTimeToFirstTokenMs": {
+          "min": 72.3,
+          "median": 75.3,
+          "mean": 86.2,
+          "p95": 119.7,
+          "max": 119.7,
+          "stddev": 17.863
+        },
+        "prefillTokensPerSecond": {
+          "min": 225.564,
+          "median": 358.566,
+          "mean": 324.688,
+          "p95": 373.444,
+          "max": 373.444,
+          "stddev": 55.724
+        },
+        "decodeTokensPerSecond": {
+          "min": 31.256,
+          "median": 38.074,
+          "mean": 38.766,
+          "p95": 53.81,
+          "max": 53.81,
+          "stddev": 8.053
+        },
+        "endToEndTokensPerSecond": {
+          "min": 28.682,
+          "median": 32.625,
+          "mean": 34.352,
+          "p95": 46.554,
+          "max": 46.554,
+          "stddev": 6.404
+        },
+        "timePerOutputTokenMs": {
+          "min": 18.584,
+          "median": 26.265,
+          "mean": 26.766,
+          "p95": 31.994,
+          "max": 31.994,
+          "stddev": 4.733
+        }
+      },
+      "trials": [
+        {
+          "durationMs": 908.3,
+          "ttftMs": 90.2,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 301.003,
+          "decodeTokensPerSecond": 38.319,
+          "endToEndTokensPerSecond": 34.13,
+          "timeToFirstTokenMs": 89.7,
+          "timePerOutputTokenMs": 26.097,
+          "tokenLatencyMs": {
+            "min": 21,
+            "median": 25.9,
+            "mean": 26.387,
+            "p95": 30.9,
+            "max": 31.3,
+            "stddev": 2.436
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.909,
+              "prefill_tokens_per_s": 301.003,
+              "decode_tokens_per_s": 38.319,
+              "time_to_first_token_s": 0.09,
+              "time_per_output_token_s": 0.026
+            }
+          }
+        },
+        {
+          "durationMs": 1041.4,
+          "ttftMs": 74.2,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 364.865,
+          "decodeTokensPerSecond": 32.373,
+          "endToEndTokensPerSecond": 29.768,
+          "timeToFirstTokenMs": 74,
+          "timePerOutputTokenMs": 30.89,
+          "tokenLatencyMs": {
+            "min": 23.7,
+            "median": 30.1,
+            "mean": 31.2,
+            "p95": 37.9,
+            "max": 52,
+            "stddev": 5.05
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 1.041,
+              "prefill_tokens_per_s": 364.865,
+              "decode_tokens_per_s": 32.373,
+              "time_to_first_token_s": 0.074,
+              "time_per_output_token_s": 0.031
+            }
+          }
+        },
+        {
+          "durationMs": 950.2,
+          "ttftMs": 120.4,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 225.564,
+          "decodeTokensPerSecond": 38.074,
+          "endToEndTokensPerSecond": 32.625,
+          "timeToFirstTokenMs": 119.7,
+          "timePerOutputTokenMs": 26.265,
+          "tokenLatencyMs": {
+            "min": 20.6,
+            "median": 26.8,
+            "mean": 26.768,
+            "p95": 32.4,
+            "max": 39.4,
+            "stddev": 3.653
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.95,
+              "prefill_tokens_per_s": 225.564,
+              "decode_tokens_per_s": 38.074,
+              "time_to_first_token_s": 0.12,
+              "time_per_output_token_s": 0.026
+            }
+          }
+        },
+        {
+          "durationMs": 1080.8,
+          "ttftMs": 75.7,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 358.566,
+          "decodeTokensPerSecond": 31.256,
+          "endToEndTokensPerSecond": 28.682,
+          "timeToFirstTokenMs": 75.3,
+          "timePerOutputTokenMs": 31.994,
+          "tokenLatencyMs": {
+            "min": 20.1,
+            "median": 28.4,
+            "mean": 32.423,
+            "p95": 75.7,
+            "max": 92.7,
+            "stddev": 14.937
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 1.08,
+              "prefill_tokens_per_s": 358.566,
+              "decode_tokens_per_s": 31.256,
+              "time_to_first_token_s": 0.075,
+              "time_per_output_token_s": 0.032
+            }
+          }
+        },
+        {
+          "durationMs": 665.9,
+          "ttftMs": 72.6,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 373.444,
+          "decodeTokensPerSecond": 53.81,
+          "endToEndTokensPerSecond": 46.554,
+          "timeToFirstTokenMs": 72.3,
+          "timePerOutputTokenMs": 18.584,
+          "tokenLatencyMs": {
+            "min": 18.1,
+            "median": 19,
+            "mean": 19.135,
+            "p95": 20.4,
+            "max": 22.7,
+            "stddev": 0.9
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.666,
+              "prefill_tokens_per_s": 373.444,
+              "decode_tokens_per_s": 53.81,
+              "time_to_first_token_s": 0.072,
+              "time_per_output_token_s": 0.019
+            }
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "benchmark": "webllm",
+      "model": {
+        "id": "Qwen3.5-0.8B-q4f16_1-MLC"
+      },
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+        "platform": "MacIntel",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "features": [
+            "bgra8unorm-storage",
+            "chromium-experimental-subgroup-matrix",
+            "clip-distances",
+            "core-features-and-limits",
+            "depth-clip-control",
+            "depth32float-stencil8",
+            "dual-source-blending",
+            "float32-blendable",
+            "float32-filterable",
+            "indirect-first-instance",
+            "primitive-index",
+            "rg11b10ufloat-renderable",
+            "shader-f16",
+            "subgroup-size-control",
+            "subgroups",
+            "texture-component-swizzle",
+            "texture-compression-astc",
+            "texture-compression-astc-sliced-3d",
+            "texture-compression-bc",
+            "texture-compression-bc-sliced-3d",
+            "texture-compression-etc2",
+            "texture-compression-unaligned",
+            "texture-formats-tier1",
+            "texture-formats-tier2",
+            "timestamp-query"
+          ]
+        }
+      },
+      "parameters": {
+        "prompt": "Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.",
+        "trialCount": 5,
+        "maxNewTokens": 32,
+        "contextWindowSize": 4096,
+        "mode": "completion",
+        "webllmModule": "http://localhost:1355/lib/index.js"
+      },
+      "load": {
+        "modelLoadMs": 193381.1,
+        "resourceBytes": 0,
+        "progress": [
+          {
+            "timeMs": 8491.7,
+            "text": "Start to fetch params",
+            "progress": 0
+          },
+          {
+            "timeMs": 65223.1,
+            "text": "Fetching param cache[1/11]: 31MB fetched. 7% completed, 57 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.076
+          },
+          {
+            "timeMs": 65488.9,
+            "text": "Fetching param cache[2/11]: 61MB fetched. 14% completed, 58 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.149
+          },
+          {
+            "timeMs": 66173,
+            "text": "Fetching param cache[3/11]: 92MB fetched. 22% completed, 58 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.227
+          },
+          {
+            "timeMs": 113242.3,
+            "text": "Fetching param cache[4/11]: 123MB fetched. 30% completed, 105 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.302
+          },
+          {
+            "timeMs": 117642.3,
+            "text": "Fetching param cache[5/11]: 154MB fetched. 38% completed, 110 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.38
+          },
+          {
+            "timeMs": 118693.8,
+            "text": "Fetching param cache[6/11]: 186MB fetched. 45% completed, 111 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.458
+          },
+          {
+            "timeMs": 145542.4,
+            "text": "Fetching param cache[7/11]: 217MB fetched. 53% completed, 138 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.535
+          },
+          {
+            "timeMs": 171047.4,
+            "text": "Fetching param cache[8/11]: 338MB fetched. 83% completed, 163 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.835
+          },
+          {
+            "timeMs": 174498.1,
+            "text": "Fetching param cache[9/11]: 370MB fetched. 91% completed, 167 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.913
+          },
+          {
+            "timeMs": 178457.2,
+            "text": "Fetching param cache[10/11]: 373MB fetched. 92% completed, 170 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.922
+          },
+          {
+            "timeMs": 192827.9,
+            "text": "Fetching param cache[11/11]: 405MB fetched. 100% completed, 185 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 1
+          },
+          {
+            "timeMs": 192974.2,
+            "text": "Loading model from cache[1/11]: 122MB loaded. 29% completed, 185 secs elapsed.",
+            "progress": 0.3
+          },
+          {
+            "timeMs": 193008,
+            "text": "Loading model from cache[2/11]: 153MB loaded. 37% completed, 185 secs elapsed.",
+            "progress": 0.378
+          },
+          {
+            "timeMs": 193050.8,
+            "text": "Loading model from cache[3/11]: 184MB loaded. 45% completed, 185 secs elapsed.",
+            "progress": 0.454
+          },
+          {
+            "timeMs": 193092.7,
+            "text": "Loading model from cache[4/11]: 215MB loaded. 52% completed, 185 secs elapsed.",
+            "progress": 0.529
+          },
+          {
+            "timeMs": 193136.5,
+            "text": "Loading model from cache[5/11]: 246MB loaded. 60% completed, 185 secs elapsed.",
+            "progress": 0.607
+          },
+          {
+            "timeMs": 193180.7,
+            "text": "Loading model from cache[6/11]: 278MB loaded. 68% completed, 185 secs elapsed.",
+            "progress": 0.685
+          },
+          {
+            "timeMs": 193218.8,
+            "text": "Loading model from cache[7/11]: 307MB loaded. 75% completed, 185 secs elapsed.",
+            "progress": 0.758
+          },
+          {
+            "timeMs": 193261,
+            "text": "Loading model from cache[8/11]: 339MB loaded. 83% completed, 185 secs elapsed.",
+            "progress": 0.836
+          },
+          {
+            "timeMs": 193298.7,
+            "text": "Loading model from cache[9/11]: 370MB loaded. 91% completed, 185 secs elapsed.",
+            "progress": 0.913
+          },
+          {
+            "timeMs": 193338.4,
+            "text": "Loading model from cache[10/11]: 401MB loaded. 99% completed, 185 secs elapsed.",
+            "progress": 0.991
+          },
+          {
+            "timeMs": 193358.8,
+            "text": "Loading model from cache[11/11]: 405MB loaded. 100% completed, 185 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 193381,
+            "text": "Loading GPU shader modules[9/9]: 100% completed, 1 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 193381.1,
+            "text": "Finish loading on WebGPU - apple",
+            "progress": 1
+          }
+        ]
+      },
+      "firstUse": {
+        "durationMs": 1041,
+        "ttftMs": 657.5,
+        "promptTokens": 27,
+        "generatedTokens": 1,
+        "prefillTokensPerSecond": 41.165,
+        "decodeTokensPerSecond": 2.611,
+        "endToEndTokensPerSecond": 0.961,
+        "timeToFirstTokenMs": 655.9,
+        "timePerOutputTokenMs": 383,
+        "tokenLatencyMs": {
+          "min": 383.4,
+          "median": 383.4,
+          "mean": 383.4,
+          "p95": 383.4,
+          "max": 383.4,
+          "stddev": 0
+        },
+        "usage": {
+          "completion_tokens": 1,
+          "prompt_tokens": 27,
+          "total_tokens": 28,
+          "extra": {
+            "e2e_latency_s": 1.041,
+            "prefill_tokens_per_s": 41.165,
+            "decode_tokens_per_s": 2.611,
+            "time_to_first_token_s": 0.656,
+            "time_per_output_token_s": 0.383
+          }
+        }
+      },
+      "summary": {
+        "ttftMs": {
+          "min": 56.4,
+          "median": 57.2,
+          "mean": 60.38,
+          "p95": 74,
+          "max": 74,
+          "stddev": 6.817
+        },
+        "webllmTimeToFirstTokenMs": {
+          "min": 56.3,
+          "median": 57,
+          "mean": 60.26,
+          "p95": 73.9,
+          "max": 73.9,
+          "stddev": 6.826
+        },
+        "prefillTokensPerSecond": {
+          "min": 365.359,
+          "median": 473.684,
+          "mean": 453.031,
+          "p95": 479.574,
+          "max": 479.574,
+          "stddev": 43.902
+        },
+        "decodeTokensPerSecond": {
+          "min": 53.028,
+          "median": 53.365,
+          "mean": 53.667,
+          "p95": 54.654,
+          "max": 54.654,
+          "stddev": 0.575
+        },
+        "endToEndTokensPerSecond": {
+          "min": 47.524,
+          "median": 48.324,
+          "mean": 48.35,
+          "p95": 49.45,
+          "max": 49.45,
+          "stddev": 0.627
+        },
+        "timePerOutputTokenMs": {
+          "min": 18.297,
+          "median": 18.739,
+          "mean": 18.635,
+          "p95": 18.858,
+          "max": 18.858,
+          "stddev": 0.198
+        }
+      },
+      "trials": [
+        {
+          "durationMs": 652.3,
+          "ttftMs": 74,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 365.359,
+          "decodeTokensPerSecond": 53.941,
+          "endToEndTokensPerSecond": 47.524,
+          "timeToFirstTokenMs": 73.9,
+          "timePerOutputTokenMs": 18.539,
+          "tokenLatencyMs": {
+            "min": 18.2,
+            "median": 18.5,
+            "mean": 18.655,
+            "p95": 19.5,
+            "max": 19.6,
+            "stddev": 0.377
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.652,
+              "prefill_tokens_per_s": 365.359,
+              "decode_tokens_per_s": 53.941,
+              "time_to_first_token_s": 0.074,
+              "time_per_output_token_s": 0.019
+            }
+          }
+        },
+        {
+          "durationMs": 644.8,
+          "ttftMs": 57.2,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 472.855,
+          "decodeTokensPerSecond": 53.028,
+          "endToEndTokensPerSecond": 48.077,
+          "timeToFirstTokenMs": 57.1,
+          "timePerOutputTokenMs": 18.858,
+          "tokenLatencyMs": {
+            "min": 18.1,
+            "median": 18.7,
+            "mean": 18.952,
+            "p95": 23,
+            "max": 23.6,
+            "stddev": 1.215
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.645,
+              "prefill_tokens_per_s": 472.855,
+              "decode_tokens_per_s": 53.028,
+              "time_to_first_token_s": 0.057,
+              "time_per_output_token_s": 0.019
+            }
+          }
+        },
+        {
+          "durationMs": 640.8,
+          "ttftMs": 56.4,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 479.574,
+          "decodeTokensPerSecond": 53.347,
+          "endToEndTokensPerSecond": 48.377,
+          "timeToFirstTokenMs": 56.3,
+          "timePerOutputTokenMs": 18.745,
+          "tokenLatencyMs": {
+            "min": 18,
+            "median": 18.8,
+            "mean": 18.852,
+            "p95": 19.4,
+            "max": 20.6,
+            "stddev": 0.472
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.641,
+              "prefill_tokens_per_s": 479.574,
+              "decode_tokens_per_s": 53.347,
+              "time_to_first_token_s": 0.056,
+              "time_per_output_token_s": 0.019
+            }
+          }
+        },
+        {
+          "durationMs": 641.5,
+          "ttftMs": 57.2,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 473.684,
+          "decodeTokensPerSecond": 53.365,
+          "endToEndTokensPerSecond": 48.324,
+          "timeToFirstTokenMs": 57,
+          "timePerOutputTokenMs": 18.739,
+          "tokenLatencyMs": {
+            "min": 17.5,
+            "median": 18.7,
+            "mean": 18.848,
+            "p95": 19.6,
+            "max": 22.5,
+            "stddev": 0.86
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.641,
+              "prefill_tokens_per_s": 473.684,
+              "decode_tokens_per_s": 53.365,
+              "time_to_first_token_s": 0.057,
+              "time_per_output_token_s": 0.019
+            }
+          }
+        },
+        {
+          "durationMs": 626.9,
+          "ttftMs": 57.1,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 473.684,
+          "decodeTokensPerSecond": 54.654,
+          "endToEndTokensPerSecond": 49.45,
+          "timeToFirstTokenMs": 57,
+          "timePerOutputTokenMs": 18.297,
+          "tokenLatencyMs": {
+            "min": 17.6,
+            "median": 18.4,
+            "mean": 18.377,
+            "p95": 19.3,
+            "max": 19.4,
+            "stddev": 0.488
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.627,
+              "prefill_tokens_per_s": 473.684,
+              "decode_tokens_per_s": 54.654,
+              "time_to_first_token_s": 0.057,
+              "time_per_output_token_s": 0.018
+            }
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "benchmark": "webllm",
+      "model": {
+        "id": "phi-1_5-q4f32_1-MLC"
+      },
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+        "platform": "MacIntel",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "features": [
+            "bgra8unorm-storage",
+            "chromium-experimental-subgroup-matrix",
+            "clip-distances",
+            "core-features-and-limits",
+            "depth-clip-control",
+            "depth32float-stencil8",
+            "dual-source-blending",
+            "float32-blendable",
+            "float32-filterable",
+            "indirect-first-instance",
+            "primitive-index",
+            "rg11b10ufloat-renderable",
+            "shader-f16",
+            "subgroup-size-control",
+            "subgroups",
+            "texture-component-swizzle",
+            "texture-compression-astc",
+            "texture-compression-astc-sliced-3d",
+            "texture-compression-bc",
+            "texture-compression-bc-sliced-3d",
+            "texture-compression-etc2",
+            "texture-compression-unaligned",
+            "texture-formats-tier1",
+            "texture-formats-tier2",
+            "timestamp-query"
+          ]
+        }
+      },
+      "parameters": {
+        "prompt": "Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.",
+        "trialCount": 5,
+        "maxNewTokens": 32,
+        "contextWindowSize": 4096,
+        "mode": "completion",
+        "webllmModule": "http://localhost:1355/lib/index.js"
+      },
+      "load": {
+        "modelLoadMs": 414396.5,
+        "resourceBytes": 0,
+        "progress": [
+          {
+            "timeMs": 6715,
+            "text": "Start to fetch params",
+            "progress": 0
+          },
+          {
+            "timeMs": 86146.8,
+            "text": "Fetching param cache[1/27]: 28MB fetched. 3% completed, 80 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.036
+          },
+          {
+            "timeMs": 92105.3,
+            "text": "Fetching param cache[2/27]: 55MB fetched. 7% completed, 86 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.071
+          },
+          {
+            "timeMs": 92300.4,
+            "text": "Fetching param cache[3/27]: 82MB fetched. 10% completed, 86 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.107
+          },
+          {
+            "timeMs": 136797.3,
+            "text": "Fetching param cache[4/27]: 132MB fetched. 17% completed, 131 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.172
+          },
+          {
+            "timeMs": 139483.9,
+            "text": "Fetching param cache[5/27]: 159MB fetched. 20% completed, 133 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.208
+          },
+          {
+            "timeMs": 140383.5,
+            "text": "Fetching param cache[6/27]: 186MB fetched. 24% completed, 134 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.243
+          },
+          {
+            "timeMs": 146124.7,
+            "text": "Fetching param cache[7/27]: 213MB fetched. 27% completed, 140 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.279
+          },
+          {
+            "timeMs": 180456,
+            "text": "Fetching param cache[8/27]: 237MB fetched. 31% completed, 174 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.311
+          },
+          {
+            "timeMs": 194445.2,
+            "text": "Fetching param cache[9/27]: 264MB fetched. 34% completed, 188 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.346
+          },
+          {
+            "timeMs": 194465.7,
+            "text": "Fetching param cache[10/27]: 291MB fetched. 38% completed, 188 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.382
+          },
+          {
+            "timeMs": 202196.7,
+            "text": "Fetching param cache[11/27]: 318MB fetched. 41% completed, 196 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.417
+          },
+          {
+            "timeMs": 231261.6,
+            "text": "Fetching param cache[12/27]: 345MB fetched. 45% completed, 225 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.453
+          },
+          {
+            "timeMs": 235556.8,
+            "text": "Fetching param cache[13/27]: 372MB fetched. 48% completed, 229 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.488
+          },
+          {
+            "timeMs": 237415,
+            "text": "Fetching param cache[14/27]: 399MB fetched. 52% completed, 231 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.524
+          },
+          {
+            "timeMs": 247900.3,
+            "text": "Fetching param cache[15/27]: 426MB fetched. 55% completed, 242 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.559
+          },
+          {
+            "timeMs": 274282.4,
+            "text": "Fetching param cache[16/27]: 453MB fetched. 59% completed, 268 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.595
+          },
+          {
+            "timeMs": 275035.9,
+            "text": "Fetching param cache[17/27]: 480MB fetched. 63% completed, 269 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.63
+          },
+          {
+            "timeMs": 285781.4,
+            "text": "Fetching param cache[18/27]: 507MB fetched. 66% completed, 280 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.666
+          },
+          {
+            "timeMs": 300780.9,
+            "text": "Fetching param cache[19/27]: 535MB fetched. 70% completed, 295 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.701
+          },
+          {
+            "timeMs": 329102.2,
+            "text": "Fetching param cache[20/27]: 562MB fetched. 73% completed, 323 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.737
+          },
+          {
+            "timeMs": 330150.1,
+            "text": "Fetching param cache[21/27]: 589MB fetched. 77% completed, 324 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.772
+          },
+          {
+            "timeMs": 333811.5,
+            "text": "Fetching param cache[22/27]: 616MB fetched. 80% completed, 328 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.808
+          },
+          {
+            "timeMs": 352129.1,
+            "text": "Fetching param cache[23/27]: 643MB fetched. 84% completed, 346 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.843
+          },
+          {
+            "timeMs": 364512.5,
+            "text": "Fetching param cache[24/27]: 670MB fetched. 87% completed, 358 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.879
+          },
+          {
+            "timeMs": 365987.7,
+            "text": "Fetching param cache[25/27]: 697MB fetched. 91% completed, 360 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.914
+          },
+          {
+            "timeMs": 404771.4,
+            "text": "Fetching param cache[26/27]: 747MB fetched. 97% completed, 399 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.98
+          },
+          {
+            "timeMs": 413240.9,
+            "text": "Fetching param cache[27/27]: 762MB fetched. 100% completed, 407 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 1
+          },
+          {
+            "timeMs": 413356.5,
+            "text": "Loading model from cache[1/27]: 50MB loaded. 6% completed, 407 secs elapsed.",
+            "progress": 0.066
+          },
+          {
+            "timeMs": 413398,
+            "text": "Loading model from cache[2/27]: 75MB loaded. 9% completed, 407 secs elapsed.",
+            "progress": 0.098
+          },
+          {
+            "timeMs": 413438.3,
+            "text": "Loading model from cache[3/27]: 102MB loaded. 13% completed, 407 secs elapsed.",
+            "progress": 0.133
+          },
+          {
+            "timeMs": 413475.1,
+            "text": "Loading model from cache[4/27]: 129MB loaded. 16% completed, 407 secs elapsed.",
+            "progress": 0.169
+          },
+          {
+            "timeMs": 413514.7,
+            "text": "Loading model from cache[5/27]: 156MB loaded. 20% completed, 407 secs elapsed.",
+            "progress": 0.204
+          },
+          {
+            "timeMs": 413550.1,
+            "text": "Loading model from cache[6/27]: 183MB loaded. 23% completed, 407 secs elapsed.",
+            "progress": 0.24
+          },
+          {
+            "timeMs": 413584.8,
+            "text": "Loading model from cache[7/27]: 210MB loaded. 27% completed, 407 secs elapsed.",
+            "progress": 0.275
+          },
+          {
+            "timeMs": 413619.8,
+            "text": "Loading model from cache[8/27]: 237MB loaded. 31% completed, 407 secs elapsed.",
+            "progress": 0.311
+          },
+          {
+            "timeMs": 413654.6,
+            "text": "Loading model from cache[9/27]: 264MB loaded. 34% completed, 407 secs elapsed.",
+            "progress": 0.346
+          },
+          {
+            "timeMs": 413687.4,
+            "text": "Loading model from cache[10/27]: 291MB loaded. 38% completed, 407 secs elapsed.",
+            "progress": 0.382
+          },
+          {
+            "timeMs": 413721.7,
+            "text": "Loading model from cache[11/27]: 318MB loaded. 41% completed, 408 secs elapsed.",
+            "progress": 0.417
+          },
+          {
+            "timeMs": 413756.6,
+            "text": "Loading model from cache[12/27]: 345MB loaded. 45% completed, 408 secs elapsed.",
+            "progress": 0.453
+          },
+          {
+            "timeMs": 413799.2,
+            "text": "Loading model from cache[13/27]: 372MB loaded. 48% completed, 408 secs elapsed.",
+            "progress": 0.488
+          },
+          {
+            "timeMs": 413837.6,
+            "text": "Loading model from cache[14/27]: 399MB loaded. 52% completed, 408 secs elapsed.",
+            "progress": 0.524
+          },
+          {
+            "timeMs": 413875.7,
+            "text": "Loading model from cache[15/27]: 426MB loaded. 55% completed, 408 secs elapsed.",
+            "progress": 0.559
+          },
+          {
+            "timeMs": 413913.5,
+            "text": "Loading model from cache[16/27]: 453MB loaded. 59% completed, 408 secs elapsed.",
+            "progress": 0.595
+          },
+          {
+            "timeMs": 413949.3,
+            "text": "Loading model from cache[17/27]: 480MB loaded. 63% completed, 408 secs elapsed.",
+            "progress": 0.63
+          },
+          {
+            "timeMs": 413982,
+            "text": "Loading model from cache[18/27]: 507MB loaded. 66% completed, 408 secs elapsed.",
+            "progress": 0.666
+          },
+          {
+            "timeMs": 414016.2,
+            "text": "Loading model from cache[19/27]: 535MB loaded. 70% completed, 408 secs elapsed.",
+            "progress": 0.701
+          },
+          {
+            "timeMs": 414049.7,
+            "text": "Loading model from cache[20/27]: 562MB loaded. 73% completed, 408 secs elapsed.",
+            "progress": 0.737
+          },
+          {
+            "timeMs": 414085.7,
+            "text": "Loading model from cache[21/27]: 589MB loaded. 77% completed, 408 secs elapsed.",
+            "progress": 0.772
+          },
+          {
+            "timeMs": 414118.9,
+            "text": "Loading model from cache[22/27]: 616MB loaded. 80% completed, 408 secs elapsed.",
+            "progress": 0.808
+          },
+          {
+            "timeMs": 414156.1,
+            "text": "Loading model from cache[23/27]: 643MB loaded. 84% completed, 408 secs elapsed.",
+            "progress": 0.843
+          },
+          {
+            "timeMs": 414189.6,
+            "text": "Loading model from cache[24/27]: 670MB loaded. 87% completed, 408 secs elapsed.",
+            "progress": 0.879
+          },
+          {
+            "timeMs": 414224.9,
+            "text": "Loading model from cache[25/27]: 697MB loaded. 91% completed, 408 secs elapsed.",
+            "progress": 0.914
+          },
+          {
+            "timeMs": 414272.1,
+            "text": "Loading model from cache[26/27]: 747MB loaded. 97% completed, 408 secs elapsed.",
+            "progress": 0.98
+          },
+          {
+            "timeMs": 414293.4,
+            "text": "Loading model from cache[27/27]: 762MB loaded. 100% completed, 408 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 414396.5,
+            "text": "Loading GPU shader modules[4/4]: 100% completed, 1 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 414396.5,
+            "text": "Finish loading on WebGPU - apple",
+            "progress": 1
+          }
+        ]
+      },
+      "firstUse": {
+        "durationMs": 1424.9,
+        "ttftMs": 1207.6,
+        "promptTokens": 27,
+        "generatedTokens": 1,
+        "prefillTokensPerSecond": 22.446,
+        "decodeTokensPerSecond": 4.615,
+        "endToEndTokensPerSecond": 0.702,
+        "timeToFirstTokenMs": 1202.9,
+        "timePerOutputTokenMs": 216.7,
+        "tokenLatencyMs": {
+          "min": 217.2,
+          "median": 217.2,
+          "mean": 217.2,
+          "p95": 217.2,
+          "max": 217.2,
+          "stddev": 0
+        },
+        "usage": {
+          "completion_tokens": 1,
+          "prompt_tokens": 27,
+          "total_tokens": 28,
+          "extra": {
+            "e2e_latency_s": 1.424,
+            "prefill_tokens_per_s": 22.446,
+            "decode_tokens_per_s": 4.615,
+            "time_to_first_token_s": 1.203,
+            "time_per_output_token_s": 0.217
+          }
+        }
+      },
+      "summary": {
+        "ttftMs": {
+          "min": 81.2,
+          "median": 82.1,
+          "mean": 82.5,
+          "p95": 84.2,
+          "max": 84.2,
+          "stddev": 1.024
+        },
+        "webllmTimeToFirstTokenMs": {
+          "min": 80.9,
+          "median": 81.9,
+          "mean": 82.26,
+          "p95": 84,
+          "max": 84,
+          "stddev": 1.059
+        },
+        "prefillTokensPerSecond": {
+          "min": 321.429,
+          "median": 329.67,
+          "mean": 328.282,
+          "p95": 333.745,
+          "max": 333.745,
+          "stddev": 4.204
+        },
+        "decodeTokensPerSecond": {
+          "min": 58.118,
+          "median": 58.546,
+          "mean": 59.199,
+          "p95": 60.642,
+          "max": 60.642,
+          "stddev": 1.036
+        },
+        "endToEndTokensPerSecond": {
+          "min": 49.871,
+          "median": 50.374,
+          "mean": 50.763,
+          "p95": 51.693,
+          "max": 51.693,
+          "stddev": 0.766
+        },
+        "timePerOutputTokenMs": {
+          "min": 16.49,
+          "median": 17.081,
+          "mean": 16.897,
+          "p95": 17.206,
+          "max": 17.206,
+          "stddev": 0.294
+        }
+      },
+      "trials": [
+        {
+          "durationMs": 600,
+          "ttftMs": 81.2,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 333.745,
+          "decodeTokensPerSecond": 60.642,
+          "endToEndTokensPerSecond": 51.667,
+          "timeToFirstTokenMs": 80.9,
+          "timePerOutputTokenMs": 16.49,
+          "tokenLatencyMs": {
+            "min": 16.1,
+            "median": 16.6,
+            "mean": 16.732,
+            "p95": 17.4,
+            "max": 18.3,
+            "stddev": 0.434
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.6,
+              "prefill_tokens_per_s": 333.745,
+              "decode_tokens_per_s": 60.642,
+              "time_to_first_token_s": 0.081,
+              "time_per_output_token_s": 0.016
+            }
+          }
+        },
+        {
+          "durationMs": 615.4,
+          "ttftMs": 82,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 329.67,
+          "decodeTokensPerSecond": 58.546,
+          "endToEndTokensPerSecond": 50.374,
+          "timeToFirstTokenMs": 81.9,
+          "timePerOutputTokenMs": 17.081,
+          "tokenLatencyMs": {
+            "min": 16.6,
+            "median": 17.1,
+            "mean": 17.206,
+            "p95": 18,
+            "max": 19.4,
+            "stddev": 0.536
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.615,
+              "prefill_tokens_per_s": 329.67,
+              "decode_tokens_per_s": 58.546,
+              "time_to_first_token_s": 0.082,
+              "time_per_output_token_s": 0.017
+            }
+          }
+        },
+        {
+          "durationMs": 599.7,
+          "ttftMs": 82.1,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 330.477,
+          "decodeTokensPerSecond": 60.253,
+          "endToEndTokensPerSecond": 51.693,
+          "timeToFirstTokenMs": 81.7,
+          "timePerOutputTokenMs": 16.597,
+          "tokenLatencyMs": {
+            "min": 15.9,
+            "median": 16.6,
+            "mean": 16.694,
+            "p95": 17.3,
+            "max": 17.3,
+            "stddev": 0.353
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.6,
+              "prefill_tokens_per_s": 330.477,
+              "decode_tokens_per_s": 60.253,
+              "time_to_first_token_s": 0.082,
+              "time_per_output_token_s": 0.017
+            }
+          }
+        },
+        {
+          "durationMs": 617.4,
+          "ttftMs": 83,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 326.087,
+          "decodeTokensPerSecond": 58.435,
+          "endToEndTokensPerSecond": 50.211,
+          "timeToFirstTokenMs": 82.8,
+          "timePerOutputTokenMs": 17.113,
+          "tokenLatencyMs": {
+            "min": 16.2,
+            "median": 17,
+            "mean": 17.239,
+            "p95": 18.6,
+            "max": 18.6,
+            "stddev": 0.695
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.618,
+              "prefill_tokens_per_s": 326.087,
+              "decode_tokens_per_s": 58.435,
+              "time_to_first_token_s": 0.083,
+              "time_per_output_token_s": 0.017
+            }
+          }
+        },
+        {
+          "durationMs": 621.6,
+          "ttftMs": 84.2,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 321.429,
+          "decodeTokensPerSecond": 58.118,
+          "endToEndTokensPerSecond": 49.871,
+          "timeToFirstTokenMs": 84,
+          "timePerOutputTokenMs": 17.206,
+          "tokenLatencyMs": {
+            "min": 16.4,
+            "median": 17.1,
+            "mean": 17.335,
+            "p95": 18.2,
+            "max": 25.3,
+            "stddev": 1.516
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.621,
+              "prefill_tokens_per_s": 321.429,
+              "decode_tokens_per_s": 58.118,
+              "time_to_first_token_s": 0.084,
+              "time_per_output_token_s": 0.017
+            }
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "benchmark": "webllm",
+      "model": {
+        "id": "phi-1_5-q4f16_1-MLC"
+      },
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+        "platform": "MacIntel",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "features": [
+            "bgra8unorm-storage",
+            "chromium-experimental-subgroup-matrix",
+            "clip-distances",
+            "core-features-and-limits",
+            "depth-clip-control",
+            "depth32float-stencil8",
+            "dual-source-blending",
+            "float32-blendable",
+            "float32-filterable",
+            "indirect-first-instance",
+            "primitive-index",
+            "rg11b10ufloat-renderable",
+            "shader-f16",
+            "subgroup-size-control",
+            "subgroups",
+            "texture-component-swizzle",
+            "texture-compression-astc",
+            "texture-compression-astc-sliced-3d",
+            "texture-compression-bc",
+            "texture-compression-bc-sliced-3d",
+            "texture-compression-etc2",
+            "texture-compression-unaligned",
+            "texture-formats-tier1",
+            "texture-formats-tier2",
+            "timestamp-query"
+          ]
+        }
+      },
+      "parameters": {
+        "prompt": "Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.",
+        "trialCount": 5,
+        "maxNewTokens": 32,
+        "contextWindowSize": 4096,
+        "mode": "completion",
+        "webllmModule": "http://localhost:1355/lib/index.js"
+      },
+      "load": {
+        "modelLoadMs": 355802.9,
+        "resourceBytes": 0,
+        "progress": [
+          {
+            "timeMs": 3829,
+            "text": "Start to fetch params",
+            "progress": 0
+          },
+          {
+            "timeMs": 46467.4,
+            "text": "Fetching param cache[1/27]: 28MB fetched. 3% completed, 43 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.036
+          },
+          {
+            "timeMs": 49034.7,
+            "text": "Fetching param cache[2/27]: 55MB fetched. 7% completed, 46 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.071
+          },
+          {
+            "timeMs": 49232.6,
+            "text": "Fetching param cache[3/27]: 82MB fetched. 10% completed, 46 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.107
+          },
+          {
+            "timeMs": 90948.9,
+            "text": "Fetching param cache[4/27]: 132MB fetched. 17% completed, 88 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.172
+          },
+          {
+            "timeMs": 96492.2,
+            "text": "Fetching param cache[5/27]: 159MB fetched. 20% completed, 93 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.208
+          },
+          {
+            "timeMs": 101474.5,
+            "text": "Fetching param cache[6/27]: 186MB fetched. 24% completed, 98 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.243
+          },
+          {
+            "timeMs": 101669.7,
+            "text": "Fetching param cache[7/27]: 213MB fetched. 27% completed, 98 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.279
+          },
+          {
+            "timeMs": 172888.4,
+            "text": "Fetching param cache[8/27]: 237MB fetched. 31% completed, 170 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.311
+          },
+          {
+            "timeMs": 190619.9,
+            "text": "Fetching param cache[9/27]: 264MB fetched. 34% completed, 187 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.346
+          },
+          {
+            "timeMs": 190969.4,
+            "text": "Fetching param cache[10/27]: 291MB fetched. 38% completed, 188 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.382
+          },
+          {
+            "timeMs": 191416,
+            "text": "Fetching param cache[11/27]: 318MB fetched. 41% completed, 188 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.417
+          },
+          {
+            "timeMs": 206837.9,
+            "text": "Fetching param cache[12/27]: 345MB fetched. 45% completed, 204 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.453
+          },
+          {
+            "timeMs": 228648.1,
+            "text": "Fetching param cache[13/27]: 372MB fetched. 48% completed, 225 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.488
+          },
+          {
+            "timeMs": 228823.8,
+            "text": "Fetching param cache[14/27]: 399MB fetched. 52% completed, 226 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.524
+          },
+          {
+            "timeMs": 228929.7,
+            "text": "Fetching param cache[15/27]: 426MB fetched. 55% completed, 226 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.559
+          },
+          {
+            "timeMs": 242402,
+            "text": "Fetching param cache[16/27]: 453MB fetched. 59% completed, 239 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.595
+          },
+          {
+            "timeMs": 271239.9,
+            "text": "Fetching param cache[17/27]: 480MB fetched. 63% completed, 268 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.63
+          },
+          {
+            "timeMs": 272721.5,
+            "text": "Fetching param cache[18/27]: 507MB fetched. 66% completed, 269 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.666
+          },
+          {
+            "timeMs": 277348.2,
+            "text": "Fetching param cache[19/27]: 535MB fetched. 70% completed, 274 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.701
+          },
+          {
+            "timeMs": 292804.3,
+            "text": "Fetching param cache[20/27]: 562MB fetched. 73% completed, 290 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.737
+          },
+          {
+            "timeMs": 309593.7,
+            "text": "Fetching param cache[21/27]: 589MB fetched. 77% completed, 306 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.772
+          },
+          {
+            "timeMs": 318654.6,
+            "text": "Fetching param cache[22/27]: 616MB fetched. 80% completed, 315 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.808
+          },
+          {
+            "timeMs": 318719.2,
+            "text": "Fetching param cache[23/27]: 643MB fetched. 84% completed, 315 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.843
+          },
+          {
+            "timeMs": 323813.9,
+            "text": "Fetching param cache[24/27]: 670MB fetched. 87% completed, 321 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.879
+          },
+          {
+            "timeMs": 331321.6,
+            "text": "Fetching param cache[25/27]: 697MB fetched. 91% completed, 328 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.914
+          },
+          {
+            "timeMs": 346311.3,
+            "text": "Fetching param cache[26/27]: 747MB fetched. 97% completed, 343 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.98
+          },
+          {
+            "timeMs": 351973.2,
+            "text": "Fetching param cache[27/27]: 762MB fetched. 100% completed, 349 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 1
+          },
+          {
+            "timeMs": 352198.4,
+            "text": "Loading model from cache[1/27]: 50MB loaded. 6% completed, 349 secs elapsed.",
+            "progress": 0.066
+          },
+          {
+            "timeMs": 352281.5,
+            "text": "Loading model from cache[2/27]: 75MB loaded. 9% completed, 349 secs elapsed.",
+            "progress": 0.098
+          },
+          {
+            "timeMs": 352371.4,
+            "text": "Loading model from cache[3/27]: 102MB loaded. 13% completed, 349 secs elapsed.",
+            "progress": 0.133
+          },
+          {
+            "timeMs": 352470,
+            "text": "Loading model from cache[4/27]: 129MB loaded. 16% completed, 349 secs elapsed.",
+            "progress": 0.169
+          },
+          {
+            "timeMs": 352581.1,
+            "text": "Loading model from cache[5/27]: 156MB loaded. 20% completed, 349 secs elapsed.",
+            "progress": 0.204
+          },
+          {
+            "timeMs": 352665.5,
+            "text": "Loading model from cache[6/27]: 183MB loaded. 23% completed, 349 secs elapsed.",
+            "progress": 0.24
+          },
+          {
+            "timeMs": 352766.6,
+            "text": "Loading model from cache[7/27]: 210MB loaded. 27% completed, 349 secs elapsed.",
+            "progress": 0.275
+          },
+          {
+            "timeMs": 352869.4,
+            "text": "Loading model from cache[8/27]: 237MB loaded. 31% completed, 350 secs elapsed.",
+            "progress": 0.311
+          },
+          {
+            "timeMs": 352975.7,
+            "text": "Loading model from cache[9/27]: 264MB loaded. 34% completed, 350 secs elapsed.",
+            "progress": 0.346
+          },
+          {
+            "timeMs": 353084.2,
+            "text": "Loading model from cache[10/27]: 291MB loaded. 38% completed, 350 secs elapsed.",
+            "progress": 0.382
+          },
+          {
+            "timeMs": 353200.9,
+            "text": "Loading model from cache[11/27]: 318MB loaded. 41% completed, 350 secs elapsed.",
+            "progress": 0.417
+          },
+          {
+            "timeMs": 353324.6,
+            "text": "Loading model from cache[12/27]: 345MB loaded. 45% completed, 350 secs elapsed.",
+            "progress": 0.453
+          },
+          {
+            "timeMs": 353468.3,
+            "text": "Loading model from cache[13/27]: 372MB loaded. 48% completed, 350 secs elapsed.",
+            "progress": 0.488
+          },
+          {
+            "timeMs": 353681.2,
+            "text": "Loading model from cache[14/27]: 399MB loaded. 52% completed, 350 secs elapsed.",
+            "progress": 0.524
+          },
+          {
+            "timeMs": 353795.7,
+            "text": "Loading model from cache[15/27]: 426MB loaded. 55% completed, 350 secs elapsed.",
+            "progress": 0.559
+          },
+          {
+            "timeMs": 353915.2,
+            "text": "Loading model from cache[16/27]: 453MB loaded. 59% completed, 351 secs elapsed.",
+            "progress": 0.595
+          },
+          {
+            "timeMs": 354027.7,
+            "text": "Loading model from cache[17/27]: 480MB loaded. 63% completed, 351 secs elapsed.",
+            "progress": 0.63
+          },
+          {
+            "timeMs": 354314.9,
+            "text": "Loading model from cache[18/27]: 507MB loaded. 66% completed, 351 secs elapsed.",
+            "progress": 0.666
+          },
+          {
+            "timeMs": 354421.4,
+            "text": "Loading model from cache[19/27]: 535MB loaded. 70% completed, 351 secs elapsed.",
+            "progress": 0.701
+          },
+          {
+            "timeMs": 354536.9,
+            "text": "Loading model from cache[20/27]: 562MB loaded. 73% completed, 351 secs elapsed.",
+            "progress": 0.737
+          },
+          {
+            "timeMs": 354663.3,
+            "text": "Loading model from cache[21/27]: 589MB loaded. 77% completed, 351 secs elapsed.",
+            "progress": 0.772
+          },
+          {
+            "timeMs": 354772,
+            "text": "Loading model from cache[22/27]: 616MB loaded. 80% completed, 351 secs elapsed.",
+            "progress": 0.808
+          },
+          {
+            "timeMs": 354873.8,
+            "text": "Loading model from cache[23/27]: 643MB loaded. 84% completed, 352 secs elapsed.",
+            "progress": 0.843
+          },
+          {
+            "timeMs": 354990.9,
+            "text": "Loading model from cache[24/27]: 670MB loaded. 87% completed, 352 secs elapsed.",
+            "progress": 0.879
+          },
+          {
+            "timeMs": 355139.5,
+            "text": "Loading model from cache[25/27]: 697MB loaded. 91% completed, 352 secs elapsed.",
+            "progress": 0.914
+          },
+          {
+            "timeMs": 355383.6,
+            "text": "Loading model from cache[26/27]: 747MB loaded. 97% completed, 352 secs elapsed.",
+            "progress": 0.98
+          },
+          {
+            "timeMs": 355461.7,
+            "text": "Loading model from cache[27/27]: 762MB loaded. 100% completed, 352 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 355802.8,
+            "text": "Loading GPU shader modules[4/4]: 100% completed, 1 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 355802.9,
+            "text": "Finish loading on WebGPU - apple",
+            "progress": 1
+          }
+        ]
+      },
+      "firstUse": {
+        "durationMs": 3584.9,
+        "ttftMs": 2803.1,
+        "promptTokens": 27,
+        "generatedTokens": 1,
+        "prefillTokensPerSecond": 9.648,
+        "decodeTokensPerSecond": 1.281,
+        "endToEndTokensPerSecond": 0.279,
+        "timeToFirstTokenMs": 2798.4,
+        "timePerOutputTokenMs": 780.4,
+        "tokenLatencyMs": {
+          "min": 781.5,
+          "median": 781.5,
+          "mean": 781.5,
+          "p95": 781.5,
+          "max": 781.5,
+          "stddev": 0
+        },
+        "usage": {
+          "completion_tokens": 1,
+          "prompt_tokens": 27,
+          "total_tokens": 28,
+          "extra": {
+            "e2e_latency_s": 3.585,
+            "prefill_tokens_per_s": 9.648,
+            "decode_tokens_per_s": 1.281,
+            "time_to_first_token_s": 2.798,
+            "time_per_output_token_s": 0.78
+          }
+        }
+      },
+      "summary": {
+        "ttftMs": {
+          "min": 92.7,
+          "median": 209.8,
+          "mean": 195.94,
+          "p95": 245.9,
+          "max": 245.9,
+          "stddev": 54.062
+        },
+        "webllmTimeToFirstTokenMs": {
+          "min": 92.3,
+          "median": 209.4,
+          "mean": 195.5,
+          "p95": 245.6,
+          "max": 245.6,
+          "stddev": 54.053
+        },
+        "prefillTokensPerSecond": {
+          "min": 109.935,
+          "median": 128.94,
+          "mean": 156.755,
+          "p95": 292.524,
+          "max": 292.524,
+          "stddev": 68.462
+        },
+        "decodeTokensPerSecond": {
+          "min": 16.064,
+          "median": 24.155,
+          "mean": 24.167,
+          "p95": 33.148,
+          "max": 33.148,
+          "stddev": 6.593
+        },
+        "endToEndTokensPerSecond": {
+          "min": 14.424,
+          "median": 20.164,
+          "mean": 20.895,
+          "p95": 29.917,
+          "max": 29.917,
+          "stddev": 5.645
+        },
+        "timePerOutputTokenMs": {
+          "min": 30.168,
+          "median": 41.4,
+          "mean": 44.745,
+          "p95": 62.252,
+          "max": 62.252,
+          "stddev": 12.52
+        }
+      },
+      "trials": [
+        {
+          "durationMs": 1953.3,
+          "ttftMs": 200,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 135.338,
+          "decodeTokensPerSecond": 17.791,
+          "endToEndTokensPerSecond": 15.871,
+          "timeToFirstTokenMs": 199.5,
+          "timePerOutputTokenMs": 56.21,
+          "tokenLatencyMs": {
+            "min": 33.2,
+            "median": 56.3,
+            "mean": 56.555,
+            "p95": 74.2,
+            "max": 76.3,
+            "stddev": 8.252
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 1.953,
+              "prefill_tokens_per_s": 135.338,
+              "decode_tokens_per_s": 17.791,
+              "time_to_first_token_s": 0.2,
+              "time_per_output_token_s": 0.056
+            }
+          }
+        },
+        {
+          "durationMs": 1537.4,
+          "ttftMs": 245.9,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 109.935,
+          "decodeTokensPerSecond": 24.155,
+          "endToEndTokensPerSecond": 20.164,
+          "timeToFirstTokenMs": 245.6,
+          "timePerOutputTokenMs": 41.4,
+          "tokenLatencyMs": {
+            "min": 26.1,
+            "median": 38.7,
+            "mean": 41.658,
+            "p95": 67.8,
+            "max": 72.4,
+            "stddev": 12.686
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 1.538,
+              "prefill_tokens_per_s": 109.935,
+              "decode_tokens_per_s": 24.155,
+              "time_to_first_token_s": 0.246,
+              "time_per_output_token_s": 0.041
+            }
+          }
+        },
+        {
+          "durationMs": 2149.2,
+          "ttftMs": 209.8,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 128.94,
+          "decodeTokensPerSecond": 16.064,
+          "endToEndTokensPerSecond": 14.424,
+          "timeToFirstTokenMs": 209.4,
+          "timePerOutputTokenMs": 62.252,
+          "tokenLatencyMs": {
+            "min": 31.4,
+            "median": 62.7,
+            "mean": 62.558,
+            "p95": 79.3,
+            "max": 79.8,
+            "stddev": 9.647
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 2.149,
+              "prefill_tokens_per_s": 128.94,
+              "decode_tokens_per_s": 16.064,
+              "time_to_first_token_s": 0.209,
+              "time_per_output_token_s": 0.062
+            }
+          }
+        },
+        {
+          "durationMs": 1286.3,
+          "ttftMs": 231.3,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 117.035,
+          "decodeTokensPerSecond": 29.679,
+          "endToEndTokensPerSecond": 24.1,
+          "timeToFirstTokenMs": 230.7,
+          "timePerOutputTokenMs": 33.694,
+          "tokenLatencyMs": {
+            "min": 22.7,
+            "median": 26.5,
+            "mean": 34.026,
+            "p95": 61.9,
+            "max": 71.9,
+            "stddev": 13.748
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 1.286,
+              "prefill_tokens_per_s": 117.035,
+              "decode_tokens_per_s": 29.679,
+              "time_to_first_token_s": 0.231,
+              "time_per_output_token_s": 0.034
+            }
+          }
+        },
+        {
+          "durationMs": 1036.2,
+          "ttftMs": 92.7,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 292.524,
+          "decodeTokensPerSecond": 33.148,
+          "endToEndTokensPerSecond": 29.917,
+          "timeToFirstTokenMs": 92.3,
+          "timePerOutputTokenMs": 30.168,
+          "tokenLatencyMs": {
+            "min": 27,
+            "median": 29.7,
+            "mean": 30.435,
+            "p95": 36.7,
+            "max": 43.5,
+            "stddev": 3.184
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 1.036,
+              "prefill_tokens_per_s": 292.524,
+              "decode_tokens_per_s": 33.148,
+              "time_to_first_token_s": 0.092,
+              "time_per_output_token_s": 0.03
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

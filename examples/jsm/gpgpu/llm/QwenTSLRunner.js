@@ -147,9 +147,9 @@ class QwenTSLRunner {
 
 	}
 
-	static async fromURL( baseURL, options ) {
+	static async fromURL( baseURL, options = {} ) {
 
-		return new QwenTSLRunner( await QwenWeights.fromURL( baseURL ), options );
+		return new this( await QwenWeights.fromURL( baseURL, options ), options );
 
 	}
 

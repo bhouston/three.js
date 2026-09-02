@@ -4,9 +4,10 @@ import { storage } from 'three/tsl';
 import { DecoderCPURunner } from '../../../../examples/jsm/gpgpu/llm/DecoderCPURunner.js';
 import { DecoderTSLRunner } from '../../../../examples/jsm/gpgpu/llm/DecoderTSLRunner.js';
 import { DecoderWeights } from '../../../../examples/jsm/gpgpu/llm/DecoderWeights.js';
+import { recipeFor } from '../../../../examples/jsm/gpgpu/llm/DecoderRecipe.js';
 import { GPT2Tokenizer } from '../../../../examples/jsm/gpgpu/llm/GPT2Tokenizer.js';
 import { architectureFor } from '../../../../examples/jsm/gpgpu/llm/LLMFactory.js';
-import { planPromptCache, sharedPrefixLength } from '../../../../examples/jsm/gpgpu/llm/LLMGenerate.js';
+import { generateSync, planPromptCache, prepareGenerationFromTokens, sharedPrefixLength } from '../../../../examples/jsm/gpgpu/llm/LLMGenerate.js';
 import { applyRoPE, causalAttention, gatedDeltaRuleStep, geluNew, layerNorm, linear, logitSoftcap, rmsNorm, sampleTopK, silu, softmax, splitHeadGate } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
 import { bfloat16ToFloat32, convertAllTensors, float16ToFloat32, tensorToFloat32 } from '../../../../examples/jsm/gpgpu/llm/LLMTensors.js';
 import { QwenCPURunner } from '../../../../examples/jsm/gpgpu/llm/QwenCPURunner.js';
@@ -183,26 +184,29 @@ async function assertAttentionSequence( assert, renderer, hiddenSize, headCount,
 
 }
 
-function createSafeTensorsFixture() {
+function createSafeTensorsFixture( dtype = 'F32', values = [ 1, 2, 3, 4 ] ) {
+
+	const bytesPerElement = dtype === 'F32' ? 4 : 2;
 
 	const header = {
 		values: {
-			dtype: 'F32',
+			dtype,
 			shape: [ 2, 2 ],
-			data_offsets: [ 0, 16 ]
+			data_offsets: [ 0, values.length * bytesPerElement ]
 		}
 	};
 	const headerBytes = new TextEncoder().encode( JSON.stringify( header ) );
-	const buffer = new ArrayBuffer( 8 + headerBytes.length + 16 );
+	const buffer = new ArrayBuffer( 8 + headerBytes.length + values.length * bytesPerElement );
 	const view = new DataView( buffer );
 
 	view.setUint32( 0, headerBytes.length, true );
 	view.setUint32( 4, 0, true );
 	new Uint8Array( buffer, 8, headerBytes.length ).set( headerBytes );
 
-	for ( let i = 0; i < 4; i ++ ) {
+	for ( let i = 0; i < values.length; i ++ ) {
 
-		view.setFloat32( 8 + headerBytes.length + i * 4, i + 1, true );
+		if ( dtype === 'F32' ) view.setFloat32( 8 + headerBytes.length + i * 4, values[ i ], true );
+		else view.setUint16( 8 + headerBytes.length + i * 2, values[ i ], true );
 
 	}
 
@@ -309,7 +313,6 @@ function createTinyPhi() {
 	const hidden = 8;
 	const inner = 8;
 	const heads = 2;
-	const headDim = 4;
 	const layers = 1;
 	const vocab = 8;
 	const tensors = {
@@ -564,7 +567,30 @@ const STORY_PROMPT = 'Once upon a time,';
 const GREEDY = { maxNewTokens: 8, temperature: 0, topK: 1 };
 const GREEDY_SHORT = { maxNewTokens: 4, temperature: 0, topK: 1 };
 const PHI15_GREEDY_TEXT = 'Once upon a time, in a small town called Sunnyville,';
+const MAX_TEST_CHECKPOINT_BYTES = 2 * 1024 * 1024 * 1024;
 const localCheckpoints = new Map();
+let currentCheckpointRoot = null;
+
+function isCapacityError( error ) {
+
+	const message = String( error && error.message || error );
+
+	return /allocation failed|out of memory|not enough memory|device lost|resource creation failed/i.test( message );
+
+}
+
+async function checkpointBytes( root, modelResponse, indexResponse ) {
+
+	if ( modelResponse.ok ) return Number( modelResponse.headers.get( 'Content-Length' ) ) || 0;
+	if ( indexResponse.ok === false ) return 0;
+
+	const index = await indexResponse.json();
+	const files = [ ...new Set( Object.values( index.weight_map ) ) ];
+	const responses = await Promise.all( files.map( ( file ) => fetch( `${ root }${ file }`, { method: 'HEAD' } ) ) );
+
+	return responses.reduce( ( total, response ) => total + ( Number( response.headers.get( 'Content-Length' ) ) || 0 ), 0 );
+
+}
 
 async function localCheckpointReady( assert, root ) {
 
@@ -578,11 +604,25 @@ async function localCheckpointReady( assert, root ) {
 
 		}
 
-		const weightsResponse = await fetch( `${ root }model.safetensors`, { method: 'HEAD' } );
-		if ( weightsResponse.ok ) return true;
+		const modelResponse = await fetch( `${ root }model.safetensors`, { method: 'HEAD' } );
+		const indexResponse = modelResponse.ok
+			? new Response( null, { status: 404 } )
+			: await fetch( `${ root }model.safetensors.index.json` );
 
-		const indexResponse = await fetch( `${ root }model.safetensors.index.json`, { method: 'HEAD' } );
-		if ( indexResponse.ok ) return true;
+		if ( modelResponse.ok || indexResponse.ok ) {
+
+			const bytes = await checkpointBytes( root, modelResponse, indexResponse );
+
+			if ( bytes > MAX_TEST_CHECKPOINT_BYTES ) {
+
+				assert.ok( true, `SKIPPED: checkpoint is ${ ( bytes / ( 1024 ** 3 ) ).toFixed( 1 ) } GiB; integration-test limit is 2 GiB` );
+				return false;
+
+			}
+
+			return true;
+
+		}
 
 		assert.ok( true, `SKIPPED: no model.safetensors at ${ root }` );
 		return false;
@@ -598,6 +638,13 @@ async function localCheckpointReady( assert, root ) {
 
 async function loadLocalCheckpoint( assert, Loader, root ) {
 
+	if ( currentCheckpointRoot !== root ) {
+
+		localCheckpoints.clear();
+		currentCheckpointRoot = root;
+
+	}
+
 	if ( localCheckpoints.has( root ) ) return localCheckpoints.get( root );
 
 	if ( await localCheckpointReady( assert, root ) === false ) {
@@ -609,7 +656,25 @@ async function loadLocalCheckpoint( assert, Loader, root ) {
 
 	const loaded = Loader.fromURL( root );
 	localCheckpoints.set( root, loaded );
-	return loaded;
+
+	try {
+
+		return await loaded;
+
+	} catch ( error ) {
+
+		if ( isCapacityError( error ) ) {
+
+			assert.ok( true, `SKIPPED: ${ root } exceeds available memory (${ error.message })` );
+			localCheckpoints.set( root, null );
+			return null;
+
+		}
+
+		localCheckpoints.delete( root );
+		throw error;
+
+	}
 
 }
 
@@ -632,6 +697,19 @@ export default QUnit.module( 'Addons', () => {
 				assert.deepEqual( parsed.tensors.values.shape, [ 2, 2 ], 'shape is parsed' );
 				assert.strictEqual( parsed.tensors.values.dtype, 'F32', 'dtype is parsed' );
 				assert.deepEqual( Array.from( parsed.tensors.values.data ), [ 1, 2, 3, 4 ], 'data is parsed' );
+
+			} );
+
+			QUnit.test( 'SafeTensorsLoader parses F16 tensors and rejects truncated data', ( assert ) => {
+
+				const parsed = parseSafeTensors( createSafeTensorsFixture( 'F16', [ 0x3c00, 0x4000, 0x4200, 0x4400 ] ) );
+
+				assert.strictEqual( parsed.tensors.values.dtype, 'F16', 'dtype is preserved for conversion' );
+				assert.deepEqual( Array.from( parsed.tensors.values.data ), [ 0x3c00, 0x4000, 0x4200, 0x4400 ], 'half-float bits are parsed' );
+
+				const truncated = createSafeTensorsFixture().slice( 0, - 1 );
+				assert.throws( () => parseSafeTensors( truncated ), /data extends beyond the file/, 'out-of-bounds tensor data fails clearly' );
+				assert.throws( () => parseSafeTensors( new ArrayBuffer( 7 ) ), /too small to contain a header/, 'truncated header fails clearly' );
 
 			} );
 
@@ -701,6 +779,35 @@ export default QUnit.module( 'Addons', () => {
 					'<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n',
 					'thinking mode leaves the think block open'
 				);
+
+			} );
+
+			QUnit.test( 'QwenTSLRunner.fromURL forwards loader options', async ( assert ) => {
+
+				const originalFromURL = QwenWeights.fromURL;
+				const options = { maxTokens: 7, onProgress() {} };
+				let receivedOptions;
+
+				QwenWeights.fromURL = async ( baseURL, loaderOptions ) => {
+
+					assert.strictEqual( baseURL, '/model/', 'base URL is forwarded' );
+					receivedOptions = loaderOptions;
+					return createTinyQwenWeights();
+
+				};
+
+				try {
+
+					const runner = await QwenTSLRunner.fromURL( '/model/', options );
+
+					assert.strictEqual( receivedOptions, options, 'the same options reach the weight loader' );
+					assert.strictEqual( runner.maxTokens, 7, 'runner options are also applied' );
+
+				} finally {
+
+					QwenWeights.fromURL = originalFromURL;
+
+				}
 
 			} );
 
@@ -853,6 +960,44 @@ export default QUnit.module( 'Addons', () => {
 				assert.ok( Math.abs( tensors.small.data[ 1 ] - 2 ) < 1e-6 );
 				assert.strictEqual( tensors.left.dtype, 'F32' );
 				assert.ok( messages.some( ( message ) => message.includes( 'Converting BF16' ) ), 'progress mentions BF16 conversion' );
+
+			} );
+
+			QUnit.test( 'DecoderRecipe preserves architecture-specific decode semantics', ( assert ) => {
+
+				const gpt2 = recipeFor( {
+					model_type: 'gpt2',
+					n_embd: 8,
+					n_head: 2,
+					n_layer: 1,
+					vocab_size: 16
+				} );
+				const phi = recipeFor( {
+					model_type: 'phi',
+					hidden_size: 8,
+					intermediate_size: 16,
+					num_hidden_layers: 1,
+					num_attention_heads: 2,
+					vocab_size: 16,
+					partial_rotary_factor: 0.5
+				} );
+				const gemma = recipeFor( {
+					model_type: 'gemma3_text',
+					hidden_size: 8,
+					intermediate_size: 16,
+					num_hidden_layers: 6,
+					num_attention_heads: 2,
+					num_key_value_heads: 1,
+					head_dim: 4,
+					vocab_size: 16
+				} );
+
+				assert.strictEqual( gpt2.position, 'learned', 'GPT-2 uses learned positions' );
+				assert.strictEqual( gpt2.packedQKV, true, 'GPT-2 keeps packed Conv1D QKV' );
+				assert.strictEqual( phi.residual, 'parallel', 'Phi uses parallel attention and MLP residuals' );
+				assert.strictEqual( phi.rotaryDim, 2, 'Phi applies partial RoPE' );
+				assert.strictEqual( gemma.norm, 'rms_offset', 'Gemma uses offset RMSNorm weights' );
+				assert.strictEqual( gemma.layerTypes[ 5 ], 'full_attention', 'Gemma defaults every sixth layer to global attention' );
 
 			} );
 
@@ -1098,6 +1243,36 @@ export default QUnit.module( 'Addons', () => {
 
 				const recurrent = planPromptCache( [ 1, 2, 3, 9 ], new Float32Array( [ 0 ] ), [ 1, 2, 4 ], false );
 				assert.strictEqual( recurrent.reset, true, 'linear-attention cache cannot rewind' );
+
+			} );
+
+			QUnit.test( 'generation accepts an explicit zero-token budget', ( assert ) => {
+
+				const prepared = prepareGenerationFromTokens( [ 1, 2 ], 8, 0, 0 );
+				let requestedNewTokens;
+				const runner = {
+					maxTokens: 8,
+					weights: {
+						endOfTextTokenId: 0,
+						prepareGeneration( prompt, maxTokens, maxNewTokens ) {
+
+							requestedNewTokens = maxNewTokens;
+							return { inputTokens: [ 1 ], newTokenBudget: maxNewTokens };
+
+						},
+						tokenizer: { decode: () => '' }
+					}
+				};
+
+				generateSync( runner, 'prompt', { maxNewTokens: 0 }, {
+					rewindable: true,
+					resetCache() {},
+					forwardToken: () => new Float32Array( [ 0, 1 ] )
+				} );
+
+				assert.deepEqual( prepared.inputTokens, [ 1, 2 ], 'prompt tokens are retained' );
+				assert.strictEqual( prepared.newTokenBudget, 0, 'maxNewTokens: 0 is not replaced by the default' );
+				assert.strictEqual( requestedNewTokens, 0, 'the generation loop forwards the explicit zero' );
 
 			} );
 
@@ -1387,6 +1562,39 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'TSLGatedMLP matches CPU GeGLU', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const input = new Float32Array( [ 1, - 0.5 ] );
+				const gateWeight = new Float32Array( [ 0.5, - 0.25, 1, 0.75, 0.5, - 1 ] );
+				const upWeight = new Float32Array( [ 1, 0, 0, 1, 0.5, - 0.5 ] );
+				const downWeight = new Float32Array( [ 1, 0, 0, 0.25, - 0.5, 0.5 ] );
+				const gate = linear( input, gateWeight, null, 2, 3 );
+				const up = linear( input, upWeight, null, 2, 3 );
+				const hidden = new Float32Array( 3 );
+
+				for ( let i = 0; i < 3; i ++ ) hidden[ i ] = geluNew( gate[ i ] ) * up[ i ];
+
+				const expected = linear( hidden, downWeight, null, 3, 2 );
+				const layer = new TSLGatedMLP(
+					storageFromArray( input ).node,
+					gateWeight,
+					upWeight,
+					downWeight,
+					2,
+					3,
+					{ activation: 'gelu_pytorch_tanh', workgroupSize: 3 }
+				);
+
+				layer.compute( renderer );
+
+				closeArray( assert, await readOutput( renderer, layer.down ), expected, 1e-4, 'TSLGatedMLP GeGLU' );
+				renderer.dispose();
+
+			} );
+
 			QUnit.test( 'TSLAttention matches GQA without RoPE', async ( assert ) => {
 
 				const renderer = await createRenderer( assert );
@@ -1421,6 +1629,27 @@ export default QUnit.module( 'Addons', () => {
 					fillSin( new Float32Array( 16 ), 0.5 ),
 					fillSin( new Float32Array( 16 ), 1.5 )
 				], { headCount: 4, kvHeadCount: 2, headDim: 2, maxTokens: 4, ropeTheta: 10000, rotaryDim: 2, workgroupSize: 16 } );
+
+			} );
+
+			QUnit.test( 'TSLAttention matches partial RoPE and an explicit attention scale', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				await assertCausalSequence( assert, renderer, [
+					fillSin( new Float32Array( 24 ), 0.6 ),
+					fillSin( new Float32Array( 24 ), 1.6 )
+				], {
+					headCount: 2,
+					kvHeadCount: 2,
+					headDim: 4,
+					maxTokens: 4,
+					ropeTheta: 10000,
+					rotaryDim: 2,
+					attnScale: 0.25,
+					workgroupSize: 16
+				} );
 
 			} );
 

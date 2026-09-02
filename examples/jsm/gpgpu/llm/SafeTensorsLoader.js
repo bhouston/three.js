@@ -82,10 +82,23 @@ function elementCount( shape ) {
 
 function parseSafeTensors( buffer, options = {} ) {
 
+	if ( buffer.byteLength < 8 ) {
+
+		throw new Error( 'SafeTensorsLoader: File is too small to contain a header.' );
+
+	}
+
 	const view = new DataView( buffer );
 	const headerLength = readHeaderLength( view );
 	const headerStart = 8;
 	const headerEnd = headerStart + headerLength;
+
+	if ( headerEnd > buffer.byteLength ) {
+
+		throw new Error( `SafeTensorsLoader: Header extends beyond the file (${ headerLength } bytes).` );
+
+	}
+
 	const headerBytes = new Uint8Array( buffer, headerStart, headerLength );
 	const header = JSON.parse( new TextDecoder().decode( headerBytes ) );
 	const dataStart = headerEnd;
@@ -98,6 +111,13 @@ function parseSafeTensors( buffer, options = {} ) {
 		if ( keepTensor && keepTensor( name ) === false ) continue;
 
 		const descriptor = header[ name ];
+
+		if ( descriptor === null || typeof descriptor !== 'object' ) {
+
+			throw new Error( `SafeTensorsLoader: Tensor "${ name }" has an invalid descriptor.` );
+
+		}
+
 		const { dtype, shape, data_offsets: dataOffsets } = descriptor;
 		const bytesPerElement = DTYPE_BYTES[ dtype ];
 
@@ -107,11 +127,30 @@ function parseSafeTensors( buffer, options = {} ) {
 
 		}
 
+		if ( Array.isArray( shape ) === false || shape.some( ( size ) => Number.isSafeInteger( size ) === false || size < 0 ) ) {
+
+			throw new Error( `SafeTensorsLoader: Tensor "${ name }" has an invalid shape.` );
+
+		}
+
+		if ( Array.isArray( dataOffsets ) === false || dataOffsets.length !== 2 ) {
+
+			throw new Error( `SafeTensorsLoader: Tensor "${ name }" has invalid data offsets.` );
+
+		}
+
 		const [ begin, end ] = dataOffsets;
+
+		if ( Number.isSafeInteger( begin ) === false || Number.isSafeInteger( end ) === false || begin < 0 || end < begin || dataStart + end > buffer.byteLength ) {
+
+			throw new Error( `SafeTensorsLoader: Tensor "${ name }" data extends beyond the file.` );
+
+		}
+
 		const byteLength = end - begin;
 		const expectedByteLength = elementCount( shape ) * bytesPerElement;
 
-		if ( byteLength !== expectedByteLength ) {
+		if ( Number.isSafeInteger( expectedByteLength ) === false || byteLength !== expectedByteLength ) {
 
 			throw new Error( `SafeTensorsLoader: Tensor "${ name }" has ${ byteLength } bytes, expected ${ expectedByteLength }.` );
 

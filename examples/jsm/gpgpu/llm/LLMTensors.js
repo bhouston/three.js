@@ -49,6 +49,7 @@ function float16ToFloat32( value ) {
 const _bf16Bits = new Uint32Array( 1 );
 const _bf16Float = new Float32Array( _bf16Bits.buffer );
 const CONVERT_CHUNK_ELEMENTS = 1 << 20; // 1,048,576 values ≈ 2 MB of BF16
+const STREAM_BUFFER_LIMIT = 256 * 1024 * 1024;
 
 function bfloat16ToFloat32( value ) {
 
@@ -286,10 +287,12 @@ async function fetchArrayBuffer( url, label = 'LLM', onProgress ) {
 	const total = Number( response.headers.get( 'Content-Length' ) ) || 0;
 	const report = createProgress( label, onProgress );
 
-	if ( response.body === null || typeof response.body.getReader !== 'function' ) {
+	if ( response.body === null || typeof response.body.getReader !== 'function' || total > STREAM_BUFFER_LIMIT ) {
 
 		await report( `Downloading ${ url }${ total ? ` (${ formatBytes( total ) })` : '' }...` );
-		return response.arrayBuffer();
+		const buffer = await response.arrayBuffer();
+		await report( `Downloaded ${ formatBytes( buffer.byteLength ) }` );
+		return buffer;
 
 	}
 

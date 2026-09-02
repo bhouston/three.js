@@ -37,7 +37,7 @@ function prepareGenerationFromTokens( tokens, maxTokens, maxNewTokens, endOfText
 
 function resolvePromptTokens( runner, prompt, options ) {
 
-	const maxNewTokens = options.maxNewTokens || 32;
+	const maxNewTokens = options.maxNewTokens ?? 32;
 
 	if ( options.inputTokens ) {
 

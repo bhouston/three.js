@@ -75,6 +75,160 @@ function softmax( values, target = new Float32Array( values.length ) ) {
 
 }
 
+function rmsNorm( input, weight, epsilon = 1e-5, offsetWeight = false, target = new Float32Array( input.length ) ) {
+
+	let sumSquares = 0;
+
+	for ( let i = 0; i < input.length; i ++ ) sumSquares += input[ i ] * input[ i ];
+
+	const invRms = 1 / Math.sqrt( sumSquares / input.length + epsilon );
+
+	for ( let i = 0; i < input.length; i ++ ) {
+
+		const scale = offsetWeight ? 1 + weight[ i ] : weight[ i ];
+		target[ i ] = input[ i ] * invRms * scale;
+
+	}
+
+	return target;
+
+}
+
+function silu( x ) {
+
+	return x / ( 1 + Math.exp( - x ) );
+
+}
+
+function geluPytorchTanh( x ) {
+
+	return geluNew( x );
+
+}
+
+function rotaryAngle( position, freqIndex, rotaryDim, theta ) {
+
+	return position * Math.pow( theta, - 2 * freqIndex / rotaryDim );
+
+}
+
+function applyRoPE( vector, headOffset, rotaryDim, position, theta ) {
+
+	if ( rotaryDim <= 0 ) return vector;
+
+	const half = rotaryDim / 2;
+	const rotated = new Float32Array( rotaryDim );
+
+	for ( let i = 0; i < rotaryDim; i ++ ) {
+
+		const x = vector[ headOffset + i ];
+		const partner = i < half ? - vector[ headOffset + i + half ] : vector[ headOffset + i - half ];
+		const freqIndex = i < half ? i : i - half;
+		const angle = rotaryAngle( position, freqIndex, rotaryDim, theta );
+
+		rotated[ i ] = x * Math.cos( angle ) + partner * Math.sin( angle );
+
+	}
+
+	for ( let i = 0; i < rotaryDim; i ++ ) vector[ headOffset + i ] = rotated[ i ];
+
+	return vector;
+
+}
+
+function causalAttention( qkv, options ) {
+
+	const {
+		headCount,
+		position,
+		keyCache,
+		valueCache,
+		headDim = options.hiddenSize / headCount,
+		kvHeadCount = headCount,
+		ropeTheta = 0,
+		rotaryDim = headDim,
+		slidingWindow = 0
+	} = options;
+	const qSize = headCount * headDim;
+	const kvSize = kvHeadCount * headDim;
+	const scale = 1 / Math.sqrt( headDim );
+	const query = qkv.slice( 0, qSize );
+	const firstToken = slidingWindow > 0 ? Math.max( 0, position - slidingWindow + 1 ) : 0;
+
+	if ( ropeTheta > 0 ) {
+
+		for ( let head = 0; head < headCount; head ++ ) {
+
+			applyRoPE( query, head * headDim, rotaryDim, position, ropeTheta );
+
+		}
+
+	}
+
+	for ( let dim = 0; dim < kvSize; dim ++ ) {
+
+		keyCache[ position * kvSize + dim ] = qkv[ qSize + dim ];
+		valueCache[ position * kvSize + dim ] = qkv[ qSize + kvSize + dim ];
+
+	}
+
+	if ( ropeTheta > 0 ) {
+
+		const cachedKey = keyCache.subarray( position * kvSize, position * kvSize + kvSize );
+
+		for ( let head = 0; head < kvHeadCount; head ++ ) {
+
+			applyRoPE( cachedKey, head * headDim, rotaryDim, position, ropeTheta );
+
+		}
+
+	}
+
+	const output = new Float32Array( qSize );
+
+	for ( let head = 0; head < headCount; head ++ ) {
+
+		const qOffset = head * headDim;
+		const kvHead = Math.floor( head * kvHeadCount / headCount );
+		const kvOffset = kvHead * headDim;
+		const scores = new Float32Array( position - firstToken + 1 );
+
+		for ( let token = firstToken; token <= position; token ++ ) {
+
+			let dot = 0;
+
+			for ( let i = 0; i < headDim; i ++ ) {
+
+				dot += query[ qOffset + i ] * keyCache[ token * kvSize + kvOffset + i ];
+
+			}
+
+			scores[ token - firstToken ] = dot * scale;
+
+		}
+
+		const weights = softmax( scores );
+
+		for ( let i = 0; i < headDim; i ++ ) {
+
+			let sum = 0;
+
+			for ( let token = firstToken; token <= position; token ++ ) {
+
+				sum += weights[ token - firstToken ] * valueCache[ token * kvSize + kvOffset + i ];
+
+			}
+
+			output[ qOffset + i ] = sum;
+
+		}
+
+	}
+
+	return output;
+
+}
+
 function sampleTopK( logits, { temperature = 0.8, topK = 40, random = Math.random } = {} ) {
 
 	const k = Math.min( topK, logits.length );
@@ -136,4 +290,16 @@ function sampleTopK( logits, { temperature = 0.8, topK = 40, random = Math.rando
 
 }
 
-export { geluNew, layerNorm, linear, sampleTopK, softmax };
+export {
+	applyRoPE,
+	causalAttention,
+	geluNew,
+	geluPytorchTanh,
+	layerNorm,
+	linear,
+	rmsNorm,
+	rotaryAngle,
+	sampleTopK,
+	silu,
+	softmax
+};

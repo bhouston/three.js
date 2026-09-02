@@ -17,10 +17,13 @@
 				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>WebGPU LLM</span>
 			</div>
 
-			<small>TinyStories 3M (children's stories only) via TSL compute shaders. Use <code>?model=./models/llm/gpt2/</code> for base GPT-2.</small>
+			<small>Browser TSL decode for GPT-2, Llama-style (SmolLM2), and Phi. Pick a model that fits in GPU memory.</small>
 		</div>
 
 		<div id="panel">
+			<label for="model">Model</label>
+			<select id="model"></select>
+			<p id="model-note"></p>
 			<label for="prompt">Prompt</label>
 			<textarea id="prompt" rows="4">Once upon a time,</textarea>
 			<div class="row">
@@ -58,6 +61,7 @@
 				color: #bbb;
 			}
 
+			#model,
 			#prompt,
 			#output {
 				width: 100%;
@@ -67,6 +71,23 @@
 				background: #111;
 				color: #fff;
 				font: 14px/1.4 monospace;
+			}
+
+			#model {
+				width: 100%;
+				height: 32px;
+				margin-bottom: 8px;
+				padding: 4px 8px;
+				background: #111;
+				color: #fff;
+				border: 1px solid #333;
+				border-radius: 4px;
+			}
+
+			#model-note {
+				margin: 0 0 12px;
+				font-size: 12px;
+				color: #888;
 			}
 
 			#prompt {
@@ -132,8 +153,10 @@
 
 			import * as THREE from 'three/webgpu';
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
-			import { GPT2TSLRunner } from 'three/addons/gpgpu/llm/GPT2TSLRunner.js';
+			import { MODEL_CATALOG, createTSLRunner } from 'three/addons/gpgpu/llm/LLMFactory.js';
 
+			const modelSelect = document.getElementById( 'model' );
+			const modelNote = document.getElementById( 'model-note' );
 			const promptInput = document.getElementById( 'prompt' );
 			const tokenInput = document.getElementById( 'tokens' );
 			const temperatureInput = document.getElementById( 'temperature' );
@@ -143,7 +166,41 @@
 			const status = document.getElementById( 'status' );
 
 			let renderer, runner;
-			const modelURL = new URLSearchParams( window.location.search ).get( 'model' ) || './models/llm/tinystories-gpt2-0.1-3m/';
+			const model = selectedModel();
+
+			for ( const entry of MODEL_CATALOG ) {
+
+				const option = document.createElement( 'option' );
+				option.value = entry.id;
+				option.textContent = entry.name;
+				modelSelect.appendChild( option );
+
+			}
+
+			if ( MODEL_CATALOG.some( ( entry ) => entry.id === model.id ) ) {
+
+				modelSelect.value = model.id;
+
+			} else {
+
+				const option = document.createElement( 'option' );
+				option.value = model.id;
+				option.textContent = `Custom: ${ model.url }`;
+				modelSelect.appendChild( option );
+				modelSelect.value = model.id;
+
+			}
+
+			modelNote.textContent = model.note || '';
+			promptInput.value = model.prompt || promptInput.value;
+
+			modelSelect.addEventListener( 'change', () => {
+
+				const url = new URL( window.location.href );
+				url.searchParams.set( 'model', modelSelect.value );
+				window.location.href = url.toString();
+
+			} );
 
 			init();
 
@@ -176,13 +233,23 @@
 
 				await renderer.init();
 
-				status.textContent = `Loading GPT-2 model from ${ modelURL }...`;
-				runner = await GPT2TSLRunner.fromURL( modelURL );
+				try {
 
-				tokenInput.max = String( Math.max( 1, runner.maxTokens - 1 ) );
-				status.textContent = `Ready. Context ${ runner.maxTokens } tokens.`;
-				generateButton.textContent = 'Generate';
-				generateButton.disabled = false;
+					const modelURL = await resolveModelURL( model );
+					status.textContent = `Loading ${ model.name } from ${ modelURL }...`;
+					runner = await createTSLRunner( modelURL );
+
+					tokenInput.max = String( Math.max( 1, runner.maxTokens - 1 ) );
+					status.textContent = `Ready. Context ${ runner.maxTokens } tokens.`;
+					generateButton.textContent = 'Generate';
+					generateButton.disabled = false;
+
+				} catch ( error ) {
+
+					console.error( error );
+					status.textContent = error.message;
+
+				}
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -222,6 +289,40 @@
 				}
 
 			} );
+
+			function selectedModel() {
+
+				const param = new URLSearchParams( window.location.search ).get( 'model' );
+
+				if ( param === null ) return MODEL_CATALOG[ 0 ];
+
+				const listed = MODEL_CATALOG.find( ( entry ) => entry.id === param );
+				if ( listed ) return listed;
+
+				return { id: 'custom', name: param, url: param, prompt: 'Once upon a time,' };
+
+			}
+
+			async function resolveModelURL( entry ) {
+
+				if ( entry.localUrl ) {
+
+					try {
+
+						const response = await fetch( `${ entry.localUrl }config.json` );
+						if ( response.ok ) return entry.localUrl;
+
+					} catch ( error ) {
+
+						// Fall through to the remote Hugging Face URL.
+
+					}
+
+				}
+
+				return entry.url;
+
+			}
 
 			function onWindowResize() {
 

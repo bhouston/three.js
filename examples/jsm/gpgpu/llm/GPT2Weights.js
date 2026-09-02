@@ -1,5 +1,6 @@
 import { SafeTensorsLoader } from './SafeTensorsLoader.js';
 import { GPT2Tokenizer } from './GPT2Tokenizer.js';
+import { fetchJSON, prepareGeneration, tensorToFloat32, transpose2D } from './LLMTensors.js';
 
 /**
  * Loads a tiny GPT-2 model directory exported in Hugging Face format.
@@ -10,6 +11,7 @@ class GPT2Weights {
 
 	constructor( config, tensors, tokenizer ) {
 
+		this.architecture = 'gpt2';
 		this.config = config;
 		this.tensors = tensors;
 		this.tokenizer = tokenizer;
@@ -18,8 +20,11 @@ class GPT2Weights {
 		this.innerSize = config.n_inner || config.n_embd * 4;
 		this.layerCount = config.n_layer;
 		this.headCount = config.n_head;
+		this.kvHeadCount = config.n_head;
+		this.headDim = config.n_embd / config.n_head;
 		this.vocabSize = config.vocab_size;
 		this.endOfTextTokenId = config.eos_token_id;
+		this._float32 = new Map();
 
 		this.logitWeight = transpose2D( this.tensor( 'wte.weight' ), this.vocabSize, this.hiddenSize );
 
@@ -38,12 +43,7 @@ class GPT2Weights {
 	 */
 	prepareGeneration( prompt, maxTokens, maxNewTokens ) {
 
-		const encoded = this.tokenizer.encode( prompt );
-		const promptBudget = Math.max( 1, maxTokens - 1 );
-		const inputTokens = encoded.length === 0 ? [ this.endOfTextTokenId ] : encoded.slice( - promptBudget );
-		const newTokenBudget = Math.max( 0, Math.min( maxNewTokens, maxTokens - inputTokens.length ) );
-
-		return { inputTokens, newTokenBudget };
+		return prepareGeneration( this.tokenizer, prompt, maxTokens, maxNewTokens, this.endOfTextTokenId );
 
 	}
 
@@ -51,7 +51,7 @@ class GPT2Weights {
 
 		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
 		const [ config, safeTensors, tokenizer ] = await Promise.all( [
-			fetchJSON( `${ root }config.json` ),
+			fetchJSON( `${ root }config.json`, 'GPT2Weights' ),
 			new SafeTensorsLoader().load( `${ root }model.safetensors` ),
 			GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt` )
 		] );
@@ -70,13 +70,12 @@ class GPT2Weights {
 
 		}
 
-		if ( tensor.dtype !== 'F32' ) {
+		if ( this._float32.has( name ) ) return this._float32.get( name );
 
-			throw new Error( `GPT2Weights: Tensor "${ name }" uses dtype "${ tensor.dtype }"; only F32 is supported by this toy loader.` );
+		const data = tensorToFloat32( tensor );
+		this._float32.set( name, data );
 
-		}
-
-		return tensor.data;
+		return data;
 
 	}
 
@@ -117,38 +116,6 @@ class GPT2Weights {
 		return target;
 
 	}
-
-}
-
-async function fetchJSON( url ) {
-
-	const response = await fetch( url );
-
-	if ( response.ok === false ) {
-
-		throw new Error( `GPT2Weights: Failed to load "${ url }" (${ response.status } ${ response.statusText })` );
-
-	}
-
-	return response.json();
-
-}
-
-function transpose2D( data, rows, columns ) {
-
-	const target = new Float32Array( data.length );
-
-	for ( let row = 0; row < rows; row ++ ) {
-
-		for ( let column = 0; column < columns; column ++ ) {
-
-			target[ column * rows + row ] = data[ row * columns + column ];
-
-		}
-
-	}
-
-	return target;
 
 }
 

@@ -3,7 +3,7 @@ import {
 	exp, hash, inversesqrt, tanh
 } from 'three/tsl';
 import { gpuTest, gpuFuzzTest } from '../tsl/gpu-test-utils.js';
-import { geluNew, layerNorm, linear, softmax } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
+import { geluNew, layerNorm, linear, rmsNorm, silu, softmax } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
 
 // GPU-native coverage of the GPT-2 math specs (gelu_new, softmax, layer
 // norm, Conv1D linear). Expected values come from the CPU helpers in
@@ -74,8 +74,20 @@ function tslLayerNorm( input, weight, bias, count, epsilon = 1e-5 ) {
 
 }
 
-// Dense layer with GPT-2 Conv1D / Hugging Face weight layout:
-// index = input * outputSize + output.
+function tslSilu( x ) {
+
+	return x.div( float( 1 ).add( exp( x.negate() ) ) );
+
+}
+
+function tslRmsNorm( input, weight, count, epsilon = 1e-5 ) {
+
+	const invRms = inversesqrt( tslSum( input.mul( input ), count ).div( count ).add( epsilon ) );
+
+	return input.mul( invRms ).mul( weight );
+
+}
+
 function tslLinear( input, inputSize, weightRows, bias ) {
 
 	let sum = bias;
@@ -319,6 +331,40 @@ export default QUnit.module( 'Addons', () => {
 					vec2( 13, 16 ),
 					1e-4,
 					'null bias is treated as zeros'
+				);
+
+			} );
+
+			gpuTest( 'silu matches LLMMath', ( { assert } ) => {
+
+				assert.closeAbs( tslSilu( float( 1 ) ), float( 1 / ( 1 + Math.exp( - 1 ) ) ), 1e-5, 'silu(1) closed form' );
+
+				for ( const x of [ - 2, - 1, 0, 0.5, 1, 2 ] ) {
+
+					assert.closeAbs( tslSilu( float( x ) ), float( silu( x ) ), 1e-5, `silu(${ x })` );
+
+				}
+
+			} );
+
+			gpuTest( 'rmsNorm matches LLMMath', ( { assert } ) => {
+
+				const invRms = 1 / Math.sqrt( 14 / 3 + 1e-5 );
+
+				assert.closeAbs(
+					tslRmsNorm( vec3( 1, 2, 3 ), vec3( 1, 1, 1 ), 3 ),
+					vec3( invRms, 2 * invRms, 3 * invRms ),
+					1e-4,
+					'rmsNorm([1, 2, 3]) closed form'
+				);
+
+				const cpu = rmsNorm( new Float32Array( [ 1, 2, 3 ] ), new Float32Array( [ 2, 0.5, 1 ] ) );
+
+				assert.closeAbs(
+					tslRmsNorm( vec3( 1, 2, 3 ), vec3( 2, 0.5, 1 ), 3 ),
+					tslVec( cpu ),
+					1e-4,
+					'rmsNorm with affine weight'
 				);
 
 			} );

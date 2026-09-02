@@ -5,14 +5,25 @@ import { GPT2CPURunner } from '../../../../examples/jsm/gpgpu/llm/GPT2CPURunner.
 import { GPT2Tokenizer } from '../../../../examples/jsm/gpgpu/llm/GPT2Tokenizer.js';
 import { GPT2TSLRunner } from '../../../../examples/jsm/gpgpu/llm/GPT2TSLRunner.js';
 import { GPT2Weights } from '../../../../examples/jsm/gpgpu/llm/GPT2Weights.js';
-import { geluNew, layerNorm, linear, sampleTopK, softmax } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
+import { LlamaCPURunner } from '../../../../examples/jsm/gpgpu/llm/LlamaCPURunner.js';
+import { LlamaTSLRunner } from '../../../../examples/jsm/gpgpu/llm/LlamaTSLRunner.js';
+import { LlamaWeights } from '../../../../examples/jsm/gpgpu/llm/LlamaWeights.js';
+import { architectureFor } from '../../../../examples/jsm/gpgpu/llm/LLMFactory.js';
+import { applyRoPE, causalAttention, geluNew, layerNorm, linear, rmsNorm, sampleTopK, silu, softmax } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
+import { bfloat16ToFloat32, float16ToFloat32, tensorToFloat32 } from '../../../../examples/jsm/gpgpu/llm/LLMTensors.js';
+import { PhiCPURunner } from '../../../../examples/jsm/gpgpu/llm/PhiCPURunner.js';
+import { PhiTSLRunner } from '../../../../examples/jsm/gpgpu/llm/PhiTSLRunner.js';
+import { PhiWeights } from '../../../../examples/jsm/gpgpu/llm/PhiWeights.js';
 import { parseSafeTensors } from '../../../../examples/jsm/gpgpu/llm/SafeTensorsLoader.js';
 import { TSLAdd } from '../../../../examples/jsm/gpgpu/llm/TSLAdd.js';
 import { TSLAttention } from '../../../../examples/jsm/gpgpu/llm/TSLAttention.js';
+import { TSLGatedMLP } from '../../../../examples/jsm/gpgpu/llm/TSLGatedMLP.js';
 import { TSLGELU } from '../../../../examples/jsm/gpgpu/llm/TSLGELU.js';
 import { TSLLinear } from '../../../../examples/jsm/gpgpu/llm/TSLLinear.js';
 import { TSLMLP } from '../../../../examples/jsm/gpgpu/llm/TSLMLP.js';
 import { TSLNormalize } from '../../../../examples/jsm/gpgpu/llm/TSLNormalize.js';
+import { TSLRMSNorm } from '../../../../examples/jsm/gpgpu/llm/TSLRMSNorm.js';
+import { TSLSiLUMul } from '../../../../examples/jsm/gpgpu/llm/TSLSiLUMul.js';
 
 function closeArray( assert, actual, expected, epsilon, message ) {
 
@@ -210,6 +221,181 @@ function storageFromArray( array ) {
 
 }
 
+function fillSin( array, seed ) {
+
+	for ( let i = 0; i < array.length; i ++ ) array[ i ] = Math.sin( seed + i * 0.17 ) * 0.35;
+
+	return array;
+
+}
+
+function makeTensor( name, shape, seed ) {
+
+	const data = fillSin( new Float32Array( shape.reduce( ( product, value ) => product * value, 1 ) ), seed );
+
+	return { name, dtype: 'F32', shape, data };
+
+}
+
+function tinyTokenizer( eos = 0 ) {
+
+	return {
+		endOfTextTokenId: eos,
+		encode() {
+
+			return [ 1, 2 ];
+
+		},
+		decode( ids ) {
+
+			return ids.join( ',' );
+
+		}
+	};
+
+}
+
+function createTinyLlamaWeights() {
+
+	const hidden = 8;
+	const inner = 16;
+	const heads = 4;
+	const kvHeads = 2;
+	const headDim = 2;
+	const layers = 2;
+	const vocab = 8;
+	const qSize = heads * headDim;
+	const kvSize = kvHeads * headDim;
+	const tensors = {
+		'model.embed_tokens.weight': makeTensor( 'embed', [ vocab, hidden ], 0.1 ),
+		'model.norm.weight': makeTensor( 'norm', [ hidden ], 1.1 )
+	};
+
+	for ( let layer = 0; layer < layers; layer ++ ) {
+
+		const p = `model.layers.${ layer }`;
+		tensors[ `${ p }.input_layernorm.weight` ] = makeTensor( 'ln1', [ hidden ], 2 + layer );
+		tensors[ `${ p }.post_attention_layernorm.weight` ] = makeTensor( 'ln2', [ hidden ], 3 + layer );
+		tensors[ `${ p }.self_attn.q_proj.weight` ] = makeTensor( 'q', [ qSize, hidden ], 4 + layer );
+		tensors[ `${ p }.self_attn.k_proj.weight` ] = makeTensor( 'k', [ kvSize, hidden ], 5 + layer );
+		tensors[ `${ p }.self_attn.v_proj.weight` ] = makeTensor( 'v', [ kvSize, hidden ], 6 + layer );
+		tensors[ `${ p }.self_attn.o_proj.weight` ] = makeTensor( 'o', [ hidden, qSize ], 7 + layer );
+		tensors[ `${ p }.mlp.gate_proj.weight` ] = makeTensor( 'gate', [ inner, hidden ], 8 + layer );
+		tensors[ `${ p }.mlp.up_proj.weight` ] = makeTensor( 'up', [ inner, hidden ], 9 + layer );
+		tensors[ `${ p }.mlp.down_proj.weight` ] = makeTensor( 'down', [ hidden, inner ], 10 + layer );
+
+	}
+
+	return new LlamaWeights( {
+		model_type: 'llama',
+		hidden_size: hidden,
+		intermediate_size: inner,
+		num_hidden_layers: layers,
+		num_attention_heads: heads,
+		num_key_value_heads: kvHeads,
+		vocab_size: vocab,
+		rms_norm_eps: 1e-5,
+		rope_theta: 10000,
+		hidden_act: 'silu',
+		tie_word_embeddings: true,
+		eos_token_id: 0,
+		max_position_embeddings: 16
+	}, tensors, tinyTokenizer() );
+
+}
+
+function createTinyPhiWeights() {
+
+	const hidden = 8;
+	const inner = 8;
+	const heads = 2;
+	const headDim = 4;
+	const layers = 1;
+	const vocab = 8;
+	const tensors = {
+		'model.embed_tokens.weight': makeTensor( 'embed', [ vocab, hidden ], 0.2 ),
+		'model.final_layernorm.weight': makeTensor( 'fnw', [ hidden ], 1.2 ),
+		'model.final_layernorm.bias': makeTensor( 'fnb', [ hidden ], 1.3 ),
+		'lm_head.weight': makeTensor( 'lm', [ vocab, hidden ], 0.4 )
+	};
+	const p = 'model.layers.0';
+	tensors[ `${ p }.input_layernorm.weight` ] = makeTensor( 'lnw', [ hidden ], 2.1 );
+	tensors[ `${ p }.input_layernorm.bias` ] = makeTensor( 'lnb', [ hidden ], 2.2 );
+	tensors[ `${ p }.self_attn.q_proj.weight` ] = makeTensor( 'q', [ hidden, hidden ], 3.1 );
+	tensors[ `${ p }.self_attn.k_proj.weight` ] = makeTensor( 'k', [ hidden, hidden ], 3.2 );
+	tensors[ `${ p }.self_attn.v_proj.weight` ] = makeTensor( 'v', [ hidden, hidden ], 3.3 );
+	tensors[ `${ p }.self_attn.q_proj.bias` ] = makeTensor( 'qb', [ hidden ], 3.4 );
+	tensors[ `${ p }.self_attn.k_proj.bias` ] = makeTensor( 'kb', [ hidden ], 3.5 );
+	tensors[ `${ p }.self_attn.v_proj.bias` ] = makeTensor( 'vb', [ hidden ], 3.6 );
+	tensors[ `${ p }.self_attn.dense.weight` ] = makeTensor( 'd', [ hidden, hidden ], 3.7 );
+	tensors[ `${ p }.self_attn.dense.bias` ] = makeTensor( 'db', [ hidden ], 3.8 );
+	tensors[ `${ p }.mlp.fc1.weight` ] = makeTensor( 'fc1', [ inner, hidden ], 4.1 );
+	tensors[ `${ p }.mlp.fc1.bias` ] = makeTensor( 'fc1b', [ inner ], 4.2 );
+	tensors[ `${ p }.mlp.fc2.weight` ] = makeTensor( 'fc2', [ hidden, inner ], 4.3 );
+	tensors[ `${ p }.mlp.fc2.bias` ] = makeTensor( 'fc2b', [ hidden ], 4.4 );
+
+	return new PhiWeights( {
+		model_type: 'phi',
+		hidden_size: hidden,
+		intermediate_size: inner,
+		num_hidden_layers: layers,
+		num_attention_heads: heads,
+		vocab_size: vocab,
+		layer_norm_eps: 1e-5,
+		rope_theta: 10000,
+		partial_rotary_factor: 0.5,
+		eos_token_id: 0,
+		max_position_embeddings: 16
+	}, tensors, tinyTokenizer() );
+
+}
+
+async function assertCausalSequence( assert, renderer, sequence, options, epsilon = 1e-4 ) {
+
+	const { headCount, maxTokens, workgroupSize } = options;
+	const headDim = options.headDim;
+	const kvHeadCount = options.kvHeadCount || headCount;
+	const qSize = headCount * headDim;
+	const kvSize = kvHeadCount * headDim;
+	const qkvBuffer = new Float32Array( qSize + 2 * kvSize );
+	const { attribute, node } = storageFromArray( qkvBuffer );
+	const layer = new TSLAttention( node, qSize, headCount, maxTokens, {
+		headDim,
+		kvHeadCount,
+		ropeTheta: options.ropeTheta || 0,
+		rotaryDim: options.rotaryDim,
+		slidingWindow: options.slidingWindow || 0,
+		workgroupSize
+	} );
+	const keyCache = new Float32Array( kvSize * maxTokens );
+	const valueCache = new Float32Array( kvSize * maxTokens );
+
+	for ( let position = 0; position < sequence.length; position ++ ) {
+
+		qkvBuffer.set( sequence[ position ] );
+		attribute.needsUpdate = true;
+		layer.compute( renderer, position );
+
+		const expected = causalAttention( qkvBuffer.slice(), {
+			headCount,
+			headDim,
+			kvHeadCount,
+			position,
+			keyCache,
+			valueCache,
+			ropeTheta: options.ropeTheta || 0,
+			rotaryDim: options.rotaryDim !== undefined ? options.rotaryDim : headDim,
+			slidingWindow: options.slidingWindow || 0
+		} );
+
+		closeArray( assert, await readOutput( renderer, layer ), expected, epsilon, `causal attention token ${ position }` );
+
+	}
+
+	renderer.dispose();
+
+}
+
 async function createRenderer( assert ) {
 
 	const renderer = new WebGPURenderer( { antialias: false } );
@@ -328,6 +514,35 @@ export default QUnit.module( 'Addons', () => {
 					normalized[ 1 ] * 0.5 - 0.2,
 					normalized[ 2 ] * 1 + 0.3
 				] ), 1e-5, 'layerNorm applies affine scale and shift' );
+
+				const rms = rmsNorm( new Float32Array( [ 1, 2, 3 ] ), new Float32Array( [ 1, 1, 1 ] ) );
+				const invRms = 1 / Math.sqrt( 14 / 3 + 1e-5 );
+				closeArray( assert, rms, new Float32Array( [ invRms, 2 * invRms, 3 * invRms ] ), 1e-5, 'rmsNorm' );
+
+				const gemmaRms = rmsNorm( new Float32Array( [ 1, 2, 3 ] ), new Float32Array( [ 0.5, 0, - 0.25 ] ), 1e-5, true );
+				closeArray( assert, gemmaRms, new Float32Array( [
+					invRms * 1.5,
+					2 * invRms,
+					3 * invRms * 0.75
+				] ), 1e-5, 'gemma rmsNorm uses 1 + weight' );
+
+				assert.ok( Math.abs( silu( 0 ) ) < 1e-6, 'silu(0) == 0' );
+				assert.ok( Math.abs( silu( 1 ) - 0.731058578 ) < 1e-6, 'silu(1) matches 1/(1+e^-1)' );
+
+				const rope = applyRoPE( new Float32Array( [ 1, 0, 0, 1 ] ), 0, 4, 1, 10000 );
+				assert.ok( Math.abs( rope[ 0 ] - Math.cos( 1 ) ) < 1e-5, 'RoPE rotates the first pair using theta^0' );
+
+				assert.strictEqual( architectureFor( { model_type: 'gpt2' } ), 'gpt2' );
+				assert.strictEqual( architectureFor( { model_type: 'llama' } ), 'llama' );
+				assert.strictEqual( architectureFor( { model_type: 'phi' } ), 'phi' );
+
+				assert.ok( Math.abs( float16ToFloat32( 0x3c00 ) - 1 ) < 1e-6, 'f16 1.0' );
+				assert.ok( Math.abs( bfloat16ToFloat32( 0x3f80 ) - 1 ) < 1e-6, 'bf16 1.0' );
+				assert.ok( Math.abs( tensorToFloat32( {
+					name: 'w',
+					dtype: 'BF16',
+					data: new Uint16Array( [ 0x4000 ] )
+				} )[ 0 ] - 2 ) < 1e-6, 'tensorToFloat32 BF16 2.0' );
 
 			} );
 
@@ -605,6 +820,139 @@ export default QUnit.module( 'Addons', () => {
 				assert.ok( cpu.text.startsWith( prompt ), 'CPU GPT-2 keeps the prompt' );
 				assert.strictEqual( gpu.text, cpu.text, 'GPU GPT-2 greedy text matches CPU' );
 				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'GPU GPT-2 token ids match CPU' );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'TSLRMSNorm matches CPU rmsNorm', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const input = new Float32Array( [ 1, 2, 3, - 1 ] );
+				const weight = new Float32Array( [ 2, 0.5, 1, 1.5 ] );
+				const layer = new TSLRMSNorm( storageFromArray( input ).node, weight, 4, { workgroupSize: 4 } );
+
+				layer.compute( renderer );
+
+				closeArray( assert, await readOutput( renderer, layer ), rmsNorm( input, weight ), 1e-5, 'TSLRMSNorm' );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'TSLSiLUMul matches silu(gate) * up', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const gate = new Float32Array( [ - 1, 0, 1, 2 ] );
+				const up = new Float32Array( [ 0.5, - 2, 3, 0.25 ] );
+				const expected = new Float32Array( gate.map( ( value, i ) => silu( value ) * up[ i ] ) );
+				const layer = new TSLSiLUMul( storageFromArray( gate ).node, storageFromArray( up ).node, 4, { workgroupSize: 4 } );
+
+				layer.compute( renderer );
+
+				closeArray( assert, await readOutput( renderer, layer ), expected, 1e-5, 'TSLSiLUMul' );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'TSLGatedMLP matches CPU SwiGLU', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const input = new Float32Array( [ 1, - 0.5 ] );
+				const gateWeight = new Float32Array( [ 0.5, - 0.25, 1, 0.75, 0.5, - 1 ] );
+				const upWeight = new Float32Array( [ 1, 0, 0, 1, 0.5, - 0.5 ] );
+				const downWeight = new Float32Array( [ 1, 0, 0, 0.25, - 0.5, 0.5 ] );
+				const gate = linear( input, gateWeight, null, 2, 3 );
+				const up = linear( input, upWeight, null, 2, 3 );
+				const hidden = new Float32Array( 3 );
+				for ( let i = 0; i < 3; i ++ ) hidden[ i ] = silu( gate[ i ] ) * up[ i ];
+				const expected = linear( hidden, downWeight, null, 3, 2 );
+				const layer = new TSLGatedMLP(
+					storageFromArray( input ).node,
+					gateWeight,
+					upWeight,
+					downWeight,
+					2,
+					3,
+					{ workgroupSize: 3 }
+				);
+
+				layer.compute( renderer );
+
+				closeArray( assert, await readOutput( renderer, layer.down ), expected, 1e-4, 'TSLGatedMLP SwiGLU' );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'TSLAttention matches GQA without RoPE', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				await assertCausalSequence( assert, renderer, [
+					fillSin( new Float32Array( 16 ), 0.3 ),
+					fillSin( new Float32Array( 16 ), 1.1 )
+				], { headCount: 4, kvHeadCount: 2, headDim: 2, maxTokens: 4, workgroupSize: 16 } );
+
+			} );
+
+			QUnit.test( 'TSLAttention matches RoPE multi-head attention', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				await assertCausalSequence( assert, renderer, [
+					fillSin( new Float32Array( 12 ), 0.2 ),
+					fillSin( new Float32Array( 12 ), 0.8 ),
+					fillSin( new Float32Array( 12 ), 1.4 )
+				], { headCount: 2, kvHeadCount: 2, headDim: 2, maxTokens: 8, ropeTheta: 10000, workgroupSize: 16 } );
+
+			} );
+
+			QUnit.test( 'TSLAttention matches grouped-query RoPE', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				await assertCausalSequence( assert, renderer, [
+					fillSin( new Float32Array( 16 ), 0.5 ),
+					fillSin( new Float32Array( 16 ), 1.5 )
+				], { headCount: 4, kvHeadCount: 2, headDim: 2, maxTokens: 4, ropeTheta: 10000, rotaryDim: 2, workgroupSize: 16 } );
+
+			} );
+
+			QUnit.test( 'tiny Llama greedy GPU matches CPU', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const weights = createTinyLlamaWeights();
+				const options = { maxNewTokens: 4, temperature: 0, topK: 1 };
+				const cpu = new LlamaCPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
+				const gpu = await new LlamaTSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
+
+				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'tiny Llama GPU tokens match CPU' );
+				assert.strictEqual( gpu.text, cpu.text );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'tiny Phi greedy GPU matches CPU', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const weights = createTinyPhiWeights();
+				const options = { maxNewTokens: 4, temperature: 0, topK: 1 };
+				const cpu = new PhiCPURunner( weights, { maxTokens: 8 } ).generate( 'hello', options );
+				const gpu = await new PhiTSLRunner( weights, { maxTokens: 8 } ).generate( renderer, 'hello', options );
+
+				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'tiny Phi GPU tokens match CPU' );
+				assert.strictEqual( gpu.text, cpu.text );
 				renderer.dispose();
 
 			} );

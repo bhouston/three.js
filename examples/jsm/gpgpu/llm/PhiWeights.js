@@ -1,4 +1,4 @@
-import { SafeTensorsLoader } from './SafeTensorsLoader.js';
+import { loadSafetensorsModel } from './SafeTensorsLoader.js';
 import { GPT2Tokenizer } from './GPT2Tokenizer.js';
 import { fetchJSON, packBiases, packProjections, prepareGeneration, tensorToFloat32, transpose2D, convertAllTensors, createProgress } from './LLMTensors.js';
 
@@ -67,10 +67,13 @@ class PhiWeights {
 		await report( `${ config.num_hidden_layers } layers, hidden ${ config.hidden_size }, vocab ${ config.vocab_size }` );
 		await report( `Loading tokenizer ${ root }vocab.json` );
 		const tokenizer = await GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt` );
-		const safeTensors = await new SafeTensorsLoader().load( `${ root }model.safetensors`, options );
-		await convertAllTensors( safeTensors.tensors, options.onProgress, 'PhiWeights' );
+		const tensors = await loadSafetensorsModel( root, {
+			onProgress: options.onProgress,
+			label: 'PhiWeights'
+		} );
+		await convertAllTensors( tensors, options.onProgress, 'PhiWeights' );
 		await report( 'Packing layers...' );
-		const weights = new PhiWeights( config, safeTensors.tensors, tokenizer );
+		const weights = new PhiWeights( config, tensors, tokenizer );
 		await report( 'Weights ready' );
 		return weights;
 

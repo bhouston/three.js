@@ -1,5 +1,19 @@
 import { sampleTopK } from './LLMMath.js';
 
+function isStopToken( runner, tokenId ) {
+
+	const stopTokenIds = runner.weights.stopTokenIds;
+
+	if ( Array.isArray( stopTokenIds ) && stopTokenIds.length > 0 ) {
+
+		return stopTokenIds.includes( tokenId );
+
+	}
+
+	return tokenId === runner.weights.endOfTextTokenId;
+
+}
+
 function sharedPrefixLength( a = [], b = [] ) {
 
 	const n = Math.min( a.length, b.length );
@@ -111,7 +125,7 @@ function generateSync( runner, prompt, options = {}, controls ) {
 
 		const nextToken = sampleTopK( logits, { ...options, tokens: allTokens } );
 
-		if ( nextToken === runner.weights.endOfTextTokenId ) break;
+		if ( isStopToken( runner, nextToken ) ) break;
 
 		allTokens.push( nextToken );
 		generatedTokens.push( nextToken );
@@ -165,7 +179,7 @@ async function generateAsync( runner, prompt, options = {}, controls ) {
 
 		const nextToken = sampleTopK( logits, { ...options, tokens: allTokens } );
 
-		if ( nextToken === runner.weights.endOfTextTokenId ) break;
+		if ( isStopToken( runner, nextToken ) ) break;
 
 		allTokens.push( nextToken );
 		generatedTokens.push( nextToken );

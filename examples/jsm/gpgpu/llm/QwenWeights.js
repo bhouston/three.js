@@ -43,7 +43,16 @@ class QwenWeights {
 		this.rotaryDim = Math.floor( this.headDim * this.partialRotaryFactor );
 		this.attnScale = this.headDim ** - 0.5;
 		this.endOfTextTokenId = Array.isArray( this.config.eos_token_id ) ? this.config.eos_token_id[ 0 ] : ( this.config.eos_token_id ?? tokenizer.endOfTextTokenId ?? 248044 );
+		this.stopTokenIds = [ this.endOfTextTokenId ];
 		this._float32 = new Map();
+
+		const imEndTokenId = tokenizer.encoder?.[ '<|im_end|>' ];
+
+		if ( imEndTokenId !== undefined && this.stopTokenIds.includes( imEndTokenId ) === false ) {
+
+			this.stopTokenIds.push( imEndTokenId );
+
+		}
 		this.logitWeight = null;
 		this._blocks = [];
 
@@ -95,6 +104,34 @@ class QwenWeights {
 
 	}
 
+	formatChat( messages, options = {} ) {
+
+		const enableThinking = options.enableThinking === true;
+		const addGenerationPrompt = options.addGenerationPrompt !== false;
+		let prompt = '';
+
+		for ( const message of messages ) {
+
+			const role = message.role;
+			const text = message.text ?? message.content ?? '';
+
+			if ( role !== 'system' && role !== 'user' && role !== 'assistant' ) continue;
+
+			prompt += `<|im_start|>${ role }\n${ text }<|im_end|>\n`;
+
+		}
+
+		if ( addGenerationPrompt ) {
+
+			prompt += '<|im_start|>assistant\n';
+			prompt += enableThinking ? '<think>\n' : '<think>\n\n</think>\n\n';
+
+		}
+
+		return prompt;
+
+	}
+
 	static async fromURL( baseURL, options = {} ) {
 
 		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
@@ -105,9 +142,27 @@ class QwenWeights {
 		const text = unwrapTextConfig( config );
 		await report( `${ text.num_hidden_layers } layers, hidden ${ text.hidden_size }, vocab ${ text.vocab_size }` );
 		await report( `Loading tokenizer ${ root }vocab.json` );
+		let addedTokens = [];
+
+		try {
+
+			const tokenizerConfig = await fetchJSON( `${ root }tokenizer_config.json`, 'QwenWeights' );
+			const decoder = tokenizerConfig.added_tokens_decoder || {};
+			addedTokens = Object.keys( decoder ).map( ( id ) => ( {
+				id: Number( id ),
+				content: decoder[ id ].content
+			} ) );
+
+		} catch ( error ) {
+
+			await report( 'tokenizer_config.json missing added tokens; chat specials may BPE-split' );
+
+		}
+
 		const tokenizer = await GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt`, {
 			tokenPattern: QWEN_TOKEN_PATTERN,
-			endOfTextToken: '<|endoftext|>'
+			endOfTextToken: '<|endoftext|>',
+			addedTokens
 		} );
 		const tensors = await loadSafetensorsModel( root, {
 			onProgress: options.onProgress,

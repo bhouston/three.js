@@ -7,19 +7,43 @@ class GPT2Tokenizer {
 
 	constructor( vocab, merges, options = {} ) {
 
-		this.encoder = vocab;
+		this.encoder = Object.assign( {}, vocab );
 		this.decoder = [];
 		this.cache = new Map();
 		this.byteEncoder = bytesToUnicode();
 		this.byteDecoder = {};
 		this.unknownToken = options.unknownToken || '<|endoftext|>';
 		this.endOfTextToken = options.endOfTextToken || '<|endoftext|>';
-		this.endOfTextTokenId = this.encoder[ this.endOfTextToken ];
 		this.tokenPattern = options.tokenPattern || GPT2_TOKEN_PATTERN;
+		this.addedTokenIds = new Map();
+		this.addedTokenPattern = null;
 
-		for ( const token in vocab ) {
+		const addedTokens = options.addedTokens || [];
 
-			this.decoder[ vocab[ token ] ] = token;
+		for ( const added of addedTokens ) {
+
+			if ( added === undefined || added.content === undefined || added.id === undefined ) continue;
+
+			this.encoder[ added.content ] = added.id;
+			this.addedTokenIds.set( added.content, added.id );
+
+		}
+
+		if ( this.addedTokenIds.size > 0 ) {
+
+			const escaped = Array.from( this.addedTokenIds.keys() )
+				.sort( ( a, b ) => b.length - a.length )
+				.map( escapeRegExp )
+				.join( '|' );
+			this.addedTokenPattern = new RegExp( `(${ escaped })` );
+
+		}
+
+		this.endOfTextTokenId = this.encoder[ this.endOfTextToken ];
+
+		for ( const token in this.encoder ) {
+
+			this.decoder[ this.encoder[ token ] ] = token;
 
 		}
 
@@ -70,17 +94,34 @@ class GPT2Tokenizer {
 	encode( text ) {
 
 		const tokens = [];
-		const matches = text.match( this.tokenPattern ) || [];
+		const chunks = this.addedTokenPattern === null
+			? [ text ]
+			: String( text ).split( this.addedTokenPattern );
 
-		for ( const match of matches ) {
+		for ( const chunk of chunks ) {
 
-			const encoded = byteEncode( match, this.byteEncoder );
-			const bpeTokens = this.bpe( encoded ).split( ' ' );
+			if ( chunk === '' ) continue;
 
-			for ( const token of bpeTokens ) {
+			if ( this.addedTokenIds.has( chunk ) ) {
 
-				const id = this.encoder[ token ];
-				tokens.push( id === undefined ? this.encoder[ this.unknownToken ] : id );
+				tokens.push( this.addedTokenIds.get( chunk ) );
+				continue;
+
+			}
+
+			const matches = chunk.match( this.tokenPattern ) || [];
+
+			for ( const match of matches ) {
+
+				const encoded = byteEncode( match, this.byteEncoder );
+				const bpeTokens = this.bpe( encoded ).split( ' ' );
+
+				for ( const token of bpeTokens ) {
+
+					const id = this.encoder[ token ];
+					tokens.push( id === undefined ? this.encoder[ this.unknownToken ] : id );
+
+				}
 
 			}
 
@@ -231,6 +272,12 @@ function byteEncode( text, byteEncoder ) {
 	}
 
 	return result;
+
+}
+
+function escapeRegExp( string ) {
+
+	return string.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' );
 
 }
 

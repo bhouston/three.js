@@ -644,10 +644,12 @@ async function createRenderer( assert ) {
 const SMOLLM2_ROOT = '/examples/models/llm/smollm2-135m/';
 const GEMMA3_ROOT = '/examples/models/llm/gemma-3-270m/';
 const QWEN35_ROOT = '/examples/models/llm/qwen3.5-0.8b/';
+const PHI15_ROOT = '/examples/models/llm/phi-1.5/';
 const GEMMA4_ROOT = '/examples/models/llm/gemma-4-e2b/';
 const STORY_PROMPT = 'Once upon a time,';
 const GREEDY = { maxNewTokens: 8, temperature: 0, topK: 1 };
 const GREEDY_SHORT = { maxNewTokens: 4, temperature: 0, topK: 1 };
+const PHI15_GREEDY_TEXT = 'Once upon a time, in a small town called Sunnyville,';
 const localCheckpoints = new Map();
 
 async function localCheckpointReady( assert, root ) {
@@ -749,6 +751,42 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.strictEqual( tokenizer.decode( tokenizer.encode( text ) ), text, 'text round-trips through GPT-2 BPE' );
 				assert.strictEqual( tokenizer.endOfTextTokenId, 50256, 'end-of-text token id is available' );
+
+			} );
+
+			QUnit.test( 'GPT2Tokenizer encodes added special tokens as whole ids', ( assert ) => {
+
+				const tokenizer = new GPT2Tokenizer( {
+					'a': 0,
+					'<|endoftext|>': 1
+				}, [], {
+					addedTokens: [
+						{ id: 10, content: '<|im_start|>' },
+						{ id: 11, content: '<think>' },
+						{ id: 12, content: '</think>' }
+					]
+				} );
+
+				assert.deepEqual( tokenizer.encode( '<|im_start|><think></think>' ), [ 10, 11, 12 ], 'added tokens are not BPE-split' );
+				assert.strictEqual( tokenizer.decode( [ 10, 11, 12 ] ), '<|im_start|><think></think>', 'added tokens decode to their content' );
+
+			} );
+
+			QUnit.test( 'QwenWeights formats chat with thinking disabled by default', ( assert ) => {
+
+				const weights = createTinyQwenWeights();
+				const messages = [ { role: 'user', text: 'Hi' } ];
+
+				assert.strictEqual(
+					weights.formatChat( messages ),
+					'<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n',
+					'default chat prompt closes an empty think block'
+				);
+				assert.strictEqual(
+					weights.formatChat( messages, { enableThinking: true } ),
+					'<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n',
+					'thinking mode leaves the think block open'
+				);
 
 			} );
 
@@ -1500,6 +1538,79 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'Phi-1.5 loads Phi-style weights from the local checkpoint', async ( assert ) => {
+
+				assert.timeout( 180000 );
+
+				const weights = await loadLocalCheckpoint( assert, PhiWeights, PHI15_ROOT );
+				if ( weights === null ) return;
+
+				assert.strictEqual( architectureFor( weights.config ), 'phi' );
+				assert.strictEqual( weights.architecture, 'phi' );
+				assert.strictEqual( weights.hiddenSize, 2048 );
+				assert.strictEqual( weights.innerSize, 8192 );
+				assert.strictEqual( weights.layerCount, 24 );
+				assert.strictEqual( weights.headCount, 32 );
+				assert.strictEqual( weights.kvHeadCount, 32 );
+				assert.strictEqual( weights.headDim, 64 );
+				assert.strictEqual( weights.qSize, 2048 );
+				assert.strictEqual( weights.kvSize, 2048 );
+				assert.strictEqual( weights.vocabSize, 51200 );
+				assert.strictEqual( weights.ropeTheta, 10000 );
+				assert.strictEqual( weights.rotaryDim, 32 );
+				assert.strictEqual( weights.endOfTextTokenId, 50256 );
+
+				const promptIds = weights.tokenizer.encode( STORY_PROMPT );
+				assert.deepEqual( promptIds, [ 7454, 2402, 257, 640, 11 ], 'Phi-1.5 encodes the story prompt with CodeGen BPE' );
+				assert.strictEqual( weights.tokenizer.decode( promptIds ), STORY_PROMPT, 'Phi-1.5 BPE round-trips the prompt' );
+				assert.ok( weights.tensors[ 'model.layers.0.self_attn.q_proj.weight' ], 'layer 0 Q projection is present' );
+				assert.ok( weights.tensors[ 'lm_head.weight' ], 'untied LM head is present' );
+
+			} );
+
+			QUnit.test( 'CPU Phi-1.5 greedy continuation stays on the prompt', async ( assert ) => {
+
+				assert.timeout( 300000 );
+
+				const weights = await loadLocalCheckpoint( assert, PhiWeights, PHI15_ROOT );
+				if ( weights === null ) return;
+
+				const result = new PhiCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
+
+				assert.ok( result.text.startsWith( STORY_PROMPT ), 'decoded Phi-1.5 output still starts with the prompt' );
+				assert.strictEqual( result.generatedTokens.length, 8, 'Phi-1.5 emits eight greedy tokens' );
+				assert.strictEqual(
+					result.text,
+					PHI15_GREEDY_TEXT
+				);
+
+			} );
+
+			QUnit.test( 'TSL Phi-1.5 greedy continuation matches the CPU runner', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				assert.timeout( 300000 );
+
+				const weights = await loadLocalCheckpoint( assert, PhiWeights, PHI15_ROOT );
+				if ( weights === null ) {
+
+					renderer.dispose();
+					return;
+
+				}
+
+				const cpu = new PhiCPURunner( weights, { maxTokens: 32 } ).generate( STORY_PROMPT, GREEDY );
+				const gpu = await new PhiTSLRunner( weights, { maxTokens: 32 } ).generate( renderer, STORY_PROMPT, GREEDY );
+
+				assert.ok( cpu.text.startsWith( STORY_PROMPT ), 'CPU Phi-1.5 keeps the prompt' );
+				assert.strictEqual( gpu.text, cpu.text, 'GPU Phi-1.5 greedy text matches CPU' );
+				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'GPU Phi-1.5 token ids match CPU' );
+				renderer.dispose();
+
+			} );
+
 			QUnit.test( 'UnigramTokenizer encodes Hugging Face BPE vocabs', ( assert ) => {
 
 				const tokenizer = new UnigramTokenizer( {
@@ -1642,6 +1753,14 @@ export default QUnit.module( 'Addons', () => {
 				const promptIds = weights.tokenizer.encode( STORY_PROMPT );
 				assert.deepEqual( promptIds, [ 12162, 5028, 264, 854, 11 ], 'Qwen BPE matches the checkpoint tokenizer' );
 				assert.strictEqual( weights.tokenizer.decode( promptIds ), STORY_PROMPT, 'Qwen BPE round-trips the prompt' );
+
+				const chat = weights.formatChat( [ { role: 'user', text: 'Hi' } ] );
+				const chatIds = weights.tokenizer.encode( chat );
+				assert.strictEqual( chatIds[ 0 ], 248045, 'chat prompt starts with im_start' );
+				assert.ok( chatIds.includes( 248068 ), 'disabled thinking includes the open think token' );
+				assert.ok( chatIds.includes( 248069 ), 'disabled thinking includes the close think token' );
+				assert.strictEqual( weights.tokenizer.decode( chatIds ), chat, 'Qwen chat template round-trips' );
+				assert.deepEqual( weights.stopTokenIds, [ 248044, 248046 ], 'Qwen stops on endoftext and im_end' );
 
 			} );
 

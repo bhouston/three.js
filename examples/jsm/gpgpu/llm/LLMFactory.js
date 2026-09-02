@@ -55,7 +55,15 @@ const MODEL_CATALOG = [
 		url: 'https://huggingface.co/Qwen/Qwen3.5-0.8B/resolve/main/',
 		localUrl: './models/llm/qwen3.5-0.8b/',
 		prompt: 'Once upon a time,',
-		note: 'Qwen3.5 0.8B hybrid: Gated DeltaNet linear attention plus gated full attention. About 1.8 GB BF16. Text-only decode; vision tensors are skipped.'
+		note: 'Qwen3.5 0.8B hybrid: Gated DeltaNet linear attention plus gated full attention. About 1.8 GB BF16. Text-only decode; vision tensors are skipped. Thinking is off by default so replies skip the <think> block.'
+	},
+	{
+		id: 'phi-1.5',
+		name: 'Phi-1.5 1.3B',
+		url: 'https://huggingface.co/microsoft/phi-1_5/resolve/main/',
+		localUrl: './models/llm/phi-1.5/',
+		prompt: 'Once upon a time,',
+		note: 'Microsoft Phi-1.5 (LayerNorm, partial RoPE, parallel attention + MLP). About 2.8 GB FP16 from Hugging Face.'
 	},
 	{
 		id: 'gemma4-e2b',

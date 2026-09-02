@@ -40,6 +40,10 @@
 				<input id="repetition" type="number" min="1" max="2" step="0.05" value="1.1" title="Penalty for tokens that already appeared. 1 disables it.">
 				<label for="ngram">N-gram</label>
 				<input id="ngram" type="number" min="0" max="8" value="3" title="Block repeating n-grams. 0 disables it.">
+				<span id="thinking-field" class="field" hidden>
+					<label for="thinking">Thinking</label>
+					<input id="thinking" type="checkbox" title="Qwen chain-of-thought. Off injects a closed think block so the model answers directly.">
+				</span>
 			</div>
 			<div id="messages">
 				<div id="messages-empty">Send a message to start the conversation.</div>
@@ -130,6 +134,17 @@
 
 			.row label {
 				margin-bottom: 4px;
+			}
+
+			.row .field {
+				display: flex;
+				flex-direction: column;
+			}
+
+			#thinking {
+				width: auto;
+				height: 18px;
+				margin: 7px 0;
 			}
 
 			#messages {
@@ -254,6 +269,8 @@
 			const topKInput = document.getElementById( 'topK' );
 			const repetitionInput = document.getElementById( 'repetition' );
 			const ngramInput = document.getElementById( 'ngram' );
+			const thinkingField = document.getElementById( 'thinking-field' );
+			const thinkingInput = document.getElementById( 'thinking' );
 			const generateButton = document.getElementById( 'generate' );
 			const stopButton = document.getElementById( 'stop' );
 			const clearButton = document.getElementById( 'clear' );
@@ -290,6 +307,7 @@
 
 			modelNote.textContent = model.note || '';
 			promptInput.placeholder = model.prompt || 'Send a message';
+			thinkingField.hidden = String( model.id ).includes( 'qwen' ) === false;
 
 			modelSelect.addEventListener( 'change', () => {
 
@@ -349,6 +367,7 @@
 					status.textContent = `Ready. Context ${ runner.maxTokens } tokens.`;
 					generateButton.textContent = 'Send';
 					generateButton.disabled = false;
+					thinkingField.hidden = runner.weights.architecture !== 'qwen3_5';
 
 				} catch ( error ) {
 
@@ -457,7 +476,7 @@
 						}
 					};
 
-					if ( conversationTokens !== undefined && conversationTokens.length > 0 ) {
+					if ( conversationTokens !== undefined && conversationTokens.length > 0 && runner.weights.formatChat === undefined ) {
 
 						generateOptions.inputTokens = conversationTokens.concat(
 							runner.weights.tokenizer.encode( `\n\nUser: ${ userText }\n\nAssistant:` )
@@ -509,6 +528,12 @@
 			} );
 
 			function conversationPrompt( turns ) {
+
+				if ( runner !== undefined && runner.weights.formatChat ) {
+
+					return runner.weights.formatChat( turns, { enableThinking: thinkingInput.checked } );
+
+				}
 
 				let prompt = '';
 

@@ -445,6 +445,27 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'prepareGeneration keeps the prompt when new tokens fill the window', async ( assert ) => {
+
+				const weights = await GPT2Weights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
+				const prompt = 'Once upon a time,';
+				const encoded = weights.tokenizer.encode( prompt );
+				const { inputTokens, newTokenBudget } = weights.prepareGeneration( prompt, 8, 128 );
+
+				assert.deepEqual( Array.from( inputTokens ), encoded, 'prompt is not sliced to make room for new tokens' );
+				assert.strictEqual( newTokenBudget, 8 - encoded.length, 'generation uses leftover context slots' );
+
+				const result = new GPT2CPURunner( weights, { maxTokens: 8 } ).generate( prompt, {
+					maxNewTokens: 128,
+					temperature: 0,
+					topK: 1
+				} );
+
+				assert.ok( result.text.startsWith( prompt ), 'decoded output still starts with the prompt' );
+				assert.strictEqual( result.generatedTokens.length, 8 - encoded.length );
+
+			} );
+
 			QUnit.test( 'CPU TinyStories greedy continuation stays on the prompt', async ( assert ) => {
 
 				const weights = await GPT2Weights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );

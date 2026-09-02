@@ -25,7 +25,7 @@
 			<textarea id="prompt" rows="4">Once upon a time,</textarea>
 			<div class="row">
 				<label for="tokens">New tokens</label>
-				<input id="tokens" type="number" min="1" max="64" value="24">
+				<input id="tokens" type="number" min="1" max="256" value="24">
 				<label for="temperature">Temperature</label>
 				<input id="temperature" type="number" min="0" max="2" step="0.1" value="0.7">
 				<label for="topK">Top K</label>
@@ -177,11 +177,10 @@
 				await renderer.init();
 
 				status.textContent = `Loading GPT-2 model from ${ modelURL }...`;
-				runner = await GPT2TSLRunner.fromURL( modelURL, {
-					maxTokens: 128
-				} );
+				runner = await GPT2TSLRunner.fromURL( modelURL );
 
-				status.textContent = 'Ready.';
+				tokenInput.max = String( Math.max( 1, runner.maxTokens - 1 ) );
+				status.textContent = `Ready. Context ${ runner.maxTokens } tokens.`;
 				generateButton.textContent = 'Generate';
 				generateButton.disabled = false;
 

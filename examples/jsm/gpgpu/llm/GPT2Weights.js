@@ -25,6 +25,28 @@ class GPT2Weights {
 
 	}
 
+	contextLimit() {
+
+		return this.config.n_positions || this.config.n_ctx || 1024;
+
+	}
+
+	/**
+	 * Keep the prompt (right-truncated only if it exceeds the context window)
+	 * and spend leftover slots on new tokens. Never shrink the prompt to make
+	 * room for a requested generation length.
+	 */
+	prepareGeneration( prompt, maxTokens, maxNewTokens ) {
+
+		const encoded = this.tokenizer.encode( prompt );
+		const promptBudget = Math.max( 1, maxTokens - 1 );
+		const inputTokens = encoded.length === 0 ? [ this.endOfTextTokenId ] : encoded.slice( - promptBudget );
+		const newTokenBudget = Math.max( 0, Math.min( maxNewTokens, maxTokens - inputTokens.length ) );
+
+		return { inputTokens, newTokenBudget };
+
+	}
+
 	static async fromURL( baseURL ) {
 
 		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;

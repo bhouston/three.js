@@ -21,7 +21,7 @@ class GPT2TSLRunner {
 	constructor( weights, options = {} ) {
 
 		this.weights = weights;
-		this.maxTokens = options.maxTokens || 128;
+		this.maxTokens = Math.min( options.maxTokens || weights.contextLimit(), weights.contextLimit() );
 		this.workgroupSize = options.workgroupSize || 64;
 		this.logitChunkSize = options.logitChunkSize || 8192;
 		this.hiddenSize = weights.hiddenSize;
@@ -168,14 +168,14 @@ class GPT2TSLRunner {
 
 	async generate( renderer, prompt, options = {} ) {
 
-		const maxNewTokens = options.maxNewTokens || 32;
-		const maxPromptTokens = Math.max( 1, this.maxTokens - maxNewTokens );
-		const inputTokens = this.weights.tokenizer.encode( prompt ).slice( - maxPromptTokens );
+		const { inputTokens, newTokenBudget } = this.weights.prepareGeneration(
+			prompt,
+			this.maxTokens,
+			options.maxNewTokens || 32
+		);
 		const allTokens = inputTokens.slice();
 		const generatedTokens = [];
 		let logits = null;
-
-		if ( inputTokens.length === 0 ) inputTokens.push( this.weights.endOfTextTokenId );
 
 		for ( let i = 0; i < inputTokens.length; i ++ ) {
 
@@ -184,7 +184,7 @@ class GPT2TSLRunner {
 
 		}
 
-		for ( let i = 0; i < maxNewTokens && allTokens.length < this.maxTokens; i ++ ) {
+		for ( let i = 0; i < newTokenBudget; i ++ ) {
 
 			const nextToken = sampleTopK( logits, options );
 

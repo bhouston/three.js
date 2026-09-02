@@ -11,7 +11,7 @@ class GPT2CPURunner {
 	constructor( weights, options = {} ) {
 
 		this.weights = weights;
-		this.maxTokens = options.maxTokens || 128;
+		this.maxTokens = Math.min( options.maxTokens || weights.contextLimit(), weights.contextLimit() );
 		this.hiddenSize = weights.hiddenSize;
 		this.caches = [];
 
@@ -68,12 +68,11 @@ class GPT2CPURunner {
 
 		}
 
-		const maxNewTokens = options.maxNewTokens || 32;
-		const maxPromptTokens = Math.max( 1, this.maxTokens - maxNewTokens );
-		const inputTokens = this.weights.tokenizer.encode( prompt ).slice( - maxPromptTokens );
-
-		if ( inputTokens.length === 0 ) inputTokens.push( this.weights.endOfTextTokenId );
-
+		const { inputTokens, newTokenBudget } = this.weights.prepareGeneration(
+			prompt,
+			this.maxTokens,
+			options.maxNewTokens || 32
+		);
 		const allTokens = inputTokens.slice();
 		const generatedTokens = [];
 		let logits = null;
@@ -84,7 +83,7 @@ class GPT2CPURunner {
 
 		}
 
-		for ( let i = 0; i < maxNewTokens && allTokens.length < this.maxTokens; i ++ ) {
+		for ( let i = 0; i < newTokenBudget; i ++ ) {
 
 			const nextToken = sampleTopK( logits, options );
 

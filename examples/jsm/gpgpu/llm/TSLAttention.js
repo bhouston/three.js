@@ -1,5 +1,5 @@
 import { StorageBufferAttribute } from 'three/webgpu';
-import { Fn, If, Loop, cos, exp, float, instanceIndex, pow, sin, storage, uint, uniform } from 'three/tsl';
+import { Fn, If, Loop, cos, exp, float, instanceIndex, inversesqrt, pow, sin, storage, uint, uniform } from 'three/tsl';
 
 /**
  * One-token causal self-attention for decode.
@@ -30,7 +30,26 @@ class TSLAttention {
 		this.ropeTheta = options.ropeTheta || 0;
 		this.rotaryDim = options.rotaryDim !== undefined ? options.rotaryDim : this.headDim;
 		this.slidingWindow = options.slidingWindow || 0;
+		this.attnScale = options.attnScale !== undefined ? options.attnScale : ( 1 / Math.sqrt( this.headDim ) );
+		this.rmsEpsilon = options.rmsEpsilon || 1e-6;
+		this.offsetRMSNorm = options.offsetRMSNorm === true;
+		this.qNormNode = null;
+		this.kNormNode = null;
 		this.position = uniform( 0, 'uint' );
+
+		if ( options.qNormWeight ) {
+
+			this.qNormAttribute = new StorageBufferAttribute( options.qNormWeight, 1 );
+			this.qNormNode = storage( this.qNormAttribute, 'float', this.headDim ).toReadOnly().setName( options.name ? `${ options.name }QNorm` : 'LLMQNorm' );
+
+		}
+
+		if ( options.kNormWeight ) {
+
+			this.kNormAttribute = new StorageBufferAttribute( options.kNormWeight, 1 );
+			this.kNormNode = storage( this.kNormAttribute, 'float', this.headDim ).toReadOnly().setName( options.name ? `${ options.name }KNorm` : 'LLMKNorm' );
+
+		}
 
 		const cacheSize = this.kvSize * maxTokens;
 		const scoreSize = headCount * maxTokens;
@@ -51,6 +70,47 @@ class TSLAttention {
 		this.queryComputeNode = this.createQueryComputeNode( options.name ? `${ options.name }Query` : 'LLMAttentionQuery' );
 		this.scoreComputeNode = this.createScoreComputeNode( options.name ? `${ options.name }Scores` : 'LLMAttentionScores' );
 		this.computeNode = this.createSoftmaxComputeNode( options.name || 'LLMAttention' );
+
+	}
+
+	headValue( vectorNode, headOffset, localDim, positionNode, normNode ) {
+
+		const { headDim, rotaryDim, ropeTheta, rmsEpsilon, offsetRMSNorm } = this;
+		const xRaw = vectorNode.element( headOffset.add( localDim ) );
+
+		if ( ! normNode && ropeTheta <= 0 ) return xRaw;
+
+		if ( ! normNode ) return this.ropeValue( vectorNode, headOffset, localDim, positionNode );
+
+		const sumSquares = float( 0 ).toVar( 'sumSquares' );
+
+		Loop( { start: uint( 0 ), end: uint( headDim ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+			const value = vectorNode.element( headOffset.add( i ) );
+			sumSquares.addAssign( value.mul( value ) );
+
+		} );
+
+		const invRms = inversesqrt( sumSquares.div( float( headDim ) ).add( rmsEpsilon ) );
+		const nScale = offsetRMSNorm ? normNode.element( localDim ).add( 1 ) : normNode.element( localDim );
+		const x = xRaw.mul( invRms ).mul( nScale );
+
+		if ( ropeTheta <= 0 || rotaryDim <= 0 ) return x;
+
+		const half = uint( rotaryDim / 2 );
+		const inRotary = localDim.lessThan( uint( rotaryDim ) );
+		const freqIndex = localDim.mod( half );
+		const partnerLocal = localDim.lessThan( half ).select( localDim.add( half ), localDim.sub( half ) );
+		const partnerRaw = vectorNode.element( headOffset.add( partnerLocal ) );
+		const partnerScale = offsetRMSNorm ? normNode.element( partnerLocal ).add( 1 ) : normNode.element( partnerLocal );
+		const partner = localDim.lessThan( half ).select(
+			partnerRaw.mul( invRms ).mul( partnerScale ).negate(),
+			partnerRaw.mul( invRms ).mul( partnerScale )
+		);
+		const angle = float( positionNode ).mul( pow( float( ropeTheta ), float( freqIndex ).mul( float( - 2 / rotaryDim ) ) ) );
+		const rotated = x.mul( cos( angle ) ).add( partner.mul( sin( angle ) ) );
+
+		return inRotary.select( rotated, x );
 
 	}
 
@@ -106,9 +166,7 @@ class TSLAttention {
 				const cacheOffset = position.mul( uint( kvSize ) ).add( dim );
 				const headOffset = dim.div( uint( headDim ) ).mul( uint( headDim ) ).add( uint( qSize ) );
 				const localDim = dim.mod( uint( headDim ) );
-				const key = ropeTheta > 0
-					? this.ropeValue( qkvNode, headOffset, localDim, position )
-					: qkvNode.element( uint( qSize ).add( dim ) );
+				const key = this.headValue( qkvNode, headOffset, localDim, position, this.kNormNode );
 
 				keyCacheNode.element( cacheOffset ).assign( key );
 				valueCacheNode.element( cacheOffset ).assign( qkvNode.element( uint( qSize + kvSize ).add( dim ) ) );
@@ -139,9 +197,7 @@ class TSLAttention {
 
 				const headOffset = dim.div( uint( headDim ) ).mul( uint( headDim ) );
 				const localDim = dim.mod( uint( headDim ) );
-				const query = ropeTheta > 0
-					? this.ropeValue( qkvNode, headOffset, localDim, position )
-					: qkvNode.element( dim );
+				const query = this.headValue( qkvNode, headOffset, localDim, position, this.qNormNode );
 
 				queryNode.element( dim ).assign( query );
 
@@ -168,7 +224,7 @@ class TSLAttention {
 		} = this;
 
 		const scoreCount = headCount * maxTokens;
-		const scale = 1 / Math.sqrt( headDim );
+		const scale = this.attnScale;
 
 		return Fn( () => {
 

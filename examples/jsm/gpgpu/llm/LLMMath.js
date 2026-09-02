@@ -136,6 +136,18 @@ function applyRoPE( vector, headOffset, rotaryDim, position, theta ) {
 
 }
 
+function rmsNormPackedHeads( vector, headCount, headDim, weight, epsilon, offsetWeight ) {
+
+	for ( let head = 0; head < headCount; head ++ ) {
+
+		const offset = head * headDim;
+		const slice = vector.subarray( offset, offset + headDim );
+		slice.set( rmsNorm( slice, weight, epsilon, offsetWeight ) );
+
+	}
+
+}
+
 function causalAttention( qkv, options ) {
 
 	const {
@@ -147,13 +159,21 @@ function causalAttention( qkv, options ) {
 		kvHeadCount = headCount,
 		ropeTheta = 0,
 		rotaryDim = headDim,
-		slidingWindow = 0
+		slidingWindow = 0,
+		attnScale = 1 / Math.sqrt( headDim ),
+		qNormWeight = null,
+		kNormWeight = null,
+		rmsEpsilon = 1e-6,
+		offsetRMSNorm = false
 	} = options;
 	const qSize = headCount * headDim;
 	const kvSize = kvHeadCount * headDim;
-	const scale = 1 / Math.sqrt( headDim );
 	const query = qkv.slice( 0, qSize );
+	const key = qkv.slice( qSize, qSize + kvSize );
 	const firstToken = slidingWindow > 0 ? Math.max( 0, position - slidingWindow + 1 ) : 0;
+
+	if ( qNormWeight !== null ) rmsNormPackedHeads( query, headCount, headDim, qNormWeight, rmsEpsilon, offsetRMSNorm );
+	if ( kNormWeight !== null ) rmsNormPackedHeads( key, kvHeadCount, headDim, kNormWeight, rmsEpsilon, offsetRMSNorm );
 
 	if ( ropeTheta > 0 ) {
 
@@ -163,24 +183,18 @@ function causalAttention( qkv, options ) {
 
 		}
 
+		for ( let head = 0; head < kvHeadCount; head ++ ) {
+
+			applyRoPE( key, head * headDim, rotaryDim, position, ropeTheta );
+
+		}
+
 	}
 
 	for ( let dim = 0; dim < kvSize; dim ++ ) {
 
-		keyCache[ position * kvSize + dim ] = qkv[ qSize + dim ];
+		keyCache[ position * kvSize + dim ] = key[ dim ];
 		valueCache[ position * kvSize + dim ] = qkv[ qSize + kvSize + dim ];
-
-	}
-
-	if ( ropeTheta > 0 ) {
-
-		const cachedKey = keyCache.subarray( position * kvSize, position * kvSize + kvSize );
-
-		for ( let head = 0; head < kvHeadCount; head ++ ) {
-
-			applyRoPE( cachedKey, head * headDim, rotaryDim, position, ropeTheta );
-
-		}
 
 	}
 
@@ -203,7 +217,7 @@ function causalAttention( qkv, options ) {
 
 			}
 
-			scores[ token - firstToken ] = dot * scale;
+			scores[ token - firstToken ] = dot * attnScale;
 
 		}
 
@@ -298,6 +312,7 @@ export {
 	layerNorm,
 	linear,
 	rmsNorm,
+	rmsNormPackedHeads,
 	rotaryAngle,
 	sampleTopK,
 	silu,

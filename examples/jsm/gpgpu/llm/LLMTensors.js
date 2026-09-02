@@ -148,13 +148,104 @@ async function fetchJSON( url, label = 'LLM' ) {
 
 }
 
+function formatBytes( bytes ) {
+
+	if ( bytes < 1024 ) return `${ bytes } B`;
+	if ( bytes < 1024 * 1024 ) return `${ ( bytes / 1024 ).toFixed( 1 ) } KB`;
+	return `${ ( bytes / ( 1024 * 1024 ) ).toFixed( 1 ) } MB`;
+
+}
+
+function yieldToBrowser() {
+
+	return new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+
+}
+
+function createProgress( label, onProgress ) {
+
+	return async function report( message ) {
+
+		const line = `${ label }: ${ message }`;
+		console.log( line );
+		if ( onProgress ) onProgress( line );
+		await yieldToBrowser();
+
+	};
+
+}
+
+async function fetchArrayBuffer( url, label = 'LLM', onProgress ) {
+
+	const response = await fetch( url );
+
+	if ( response.ok === false ) {
+
+		throw new Error( `${ label }: Failed to load "${ url }" (${ response.status } ${ response.statusText })` );
+
+	}
+
+	const total = Number( response.headers.get( 'Content-Length' ) ) || 0;
+	const report = createProgress( label, onProgress );
+
+	if ( response.body === null || typeof response.body.getReader !== 'function' ) {
+
+		await report( `Downloading ${ url }${ total ? ` (${ formatBytes( total ) })` : '' }...` );
+		return response.arrayBuffer();
+
+	}
+
+	const reader = response.body.getReader();
+	const chunks = [];
+	let received = 0;
+	let lastReport = 0;
+
+	await report( `Downloading ${ url }${ total ? ` (${ formatBytes( total ) })` : '' }...` );
+
+	while ( true ) {
+
+		const { done, value } = await reader.read();
+		if ( done ) break;
+
+		chunks.push( value );
+		received += value.byteLength;
+
+		if ( received - lastReport >= 8 * 1024 * 1024 || ( total > 0 && received === total ) ) {
+
+			lastReport = received;
+			const totalText = total > 0 ? ` / ${ formatBytes( total ) }` : '';
+			await report( `Downloading weights ${ formatBytes( received ) }${ totalText }` );
+
+		}
+
+	}
+
+	const bytes = new Uint8Array( received );
+	let offset = 0;
+
+	for ( let i = 0; i < chunks.length; i ++ ) {
+
+		bytes.set( chunks[ i ], offset );
+		offset += chunks[ i ].byteLength;
+
+	}
+
+	await report( `Downloaded ${ formatBytes( received ) }` );
+	return bytes.buffer;
+
+}
+
 export {
 	bfloat16ToFloat32,
+	createProgress,
+	fetchArrayBuffer,
 	fetchJSON,
 	float16ToFloat32,
+	formatBytes,
 	packBiases,
 	packProjections,
 	prepareGeneration,
 	tensorToFloat32,
-	transpose2D
+	transpose2D,
+	yieldToBrowser
 };

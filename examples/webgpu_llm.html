@@ -261,6 +261,17 @@
 				output.textContent = promptInput.value;
 				status.textContent = 'Generating...';
 
+				let generatedCount = 0;
+				const generationStart = performance.now();
+
+				function tokenRateText() {
+
+					const elapsed = ( performance.now() - generationStart ) / 1000;
+					if ( generatedCount === 0 || elapsed <= 0 ) return '';
+					return ` ${( generatedCount / elapsed ).toFixed( 1 )} tok/s`;
+
+				}
+
 				try {
 
 					const result = await runner.generate( renderer, promptInput.value, {
@@ -270,12 +281,15 @@
 						onToken: ( text ) => {
 
 							output.textContent = text;
+							generatedCount ++;
+							status.textContent = `Generating...${ tokenRateText() }`;
 
 						}
 					} );
 
 					output.textContent = result.text;
-					status.textContent = `Generated ${ result.generatedTokens.length } token(s).`;
+					generatedCount = result.generatedTokens.length;
+					status.textContent = `Generated ${ result.generatedTokens.length } token(s).${ tokenRateText() }`;
 
 				} catch ( error ) {
 

@@ -1,3 +1,5 @@
+import { fetchArrayBuffer } from './LLMTensors.js';
+
 /**
  * Minimal SafeTensors loader for browser examples.
  *
@@ -7,17 +9,10 @@
  */
 class SafeTensorsLoader {
 
-	async load( url ) {
+	async load( url, options = {} ) {
 
-		const response = await fetch( url );
-
-		if ( response.ok === false ) {
-
-			throw new Error( `SafeTensorsLoader: Failed to load "${ url }" (${ response.status } ${ response.statusText })` );
-
-		}
-
-		return this.parse( await response.arrayBuffer() );
+		const buffer = await fetchArrayBuffer( url, 'SafeTensorsLoader', options.onProgress );
+		return this.parse( buffer );
 
 	}
 

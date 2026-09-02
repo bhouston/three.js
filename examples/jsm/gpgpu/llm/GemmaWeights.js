@@ -1,25 +1,25 @@
 import { SafeTensorsLoader } from './SafeTensorsLoader.js';
-import { GPT2Tokenizer } from './GPT2Tokenizer.js';
-import { fetchJSON, packProjections, prepareGeneration, tensorToFloat32, transpose2D, createProgress } from './LLMTensors.js';
+import { fetchJSON, packProjections, prepareGeneration, tensorToFloat32, transpose2D } from './LLMTensors.js';
+import { UnigramTokenizer } from './UnigramTokenizer.js';
 
 /**
- * Loads a Hugging Face Llama-style causal LM (SmolLM, TinyLlama, Llama).
+ * Loads a Hugging Face Gemma 3 text model (`gemma3_text`).
  *
- * Linear weights are transposed from PyTorch `[out, in]` into the `[in, out]`
- * layout used by the TSL matmul kernels. Q/K/V projections are packed so the
- * existing fused attention kernels can run grouped-query attention.
+ * Differences from Llama: embeddings are scaled by `sqrt(hidden)`, Q/K are
+ * RMSNorm'd per head, local layers use sliding-window attention and a smaller
+ * RoPE base, and each residual branch has a post-norm.
  *
- * @three_import import { LlamaWeights } from 'three/addons/gpgpu/llm/LlamaWeights.js';
+ * @three_import import { GemmaWeights } from 'three/addons/gpgpu/llm/GemmaWeights.js';
  */
-class LlamaWeights {
+class GemmaWeights {
 
-	constructor( config, tensors, tokenizer, options = {} ) {
+	constructor( config, tensors, tokenizer ) {
 
-		this.architecture = 'llama';
+		this.architecture = 'gemma3';
 		this.config = config;
 		this.tensors = tensors;
 		this.tokenizer = tokenizer;
-		this.tensorPrefix = detectPrefix( tensors );
+		this.tensorPrefix = tensors[ 'model.embed_tokens.weight' ] !== undefined ? 'model.' : '';
 		this.hiddenSize = config.hidden_size;
 		this.innerSize = config.intermediate_size;
 		this.layerCount = config.num_hidden_layers;
@@ -29,11 +29,16 @@ class LlamaWeights {
 		this.qSize = this.headCount * this.headDim;
 		this.kvSize = this.kvHeadCount * this.headDim;
 		this.vocabSize = config.vocab_size;
-		this.ropeTheta = config.rope_theta || 10000;
-		this.rmsNormEps = config.rms_norm_eps || 1e-5;
-		this.offsetRMSNorm = config.model_type === 'gemma' || config.model_type === 'gemma2' || config.model_type === 'gemma3_text';
-		this.mlpActivation = config.hidden_act || 'silu';
-		this.endOfTextTokenId = config.eos_token_id ?? tokenizer.endOfTextTokenId ?? 0;
+		this.globalRopeTheta = config.rope_theta || 1000000;
+		this.localRopeTheta = config.rope_local_base_freq || 10000;
+		this.slidingWindow = config.sliding_window || 512;
+		this.layerTypes = config.layer_types || defaultLayerTypes( this.layerCount );
+		this.rmsNormEps = config.rms_norm_eps || 1e-6;
+		this.offsetRMSNorm = true;
+		this.mlpActivation = config.hidden_activation || config.hidden_act || 'gelu_pytorch_tanh';
+		this.embedScale = Math.sqrt( this.hiddenSize );
+		this.attnScale = ( config.query_pre_attn_scalar || this.headDim ) ** - 0.5;
+		this.endOfTextTokenId = config.eos_token_id ?? tokenizer.endOfTextTokenId ?? 1;
 		this._float32 = new Map();
 
 		const embedding = this.tensor( 'embed_tokens.weight' );
@@ -41,16 +46,20 @@ class LlamaWeights {
 			? this.tensor( 'lm_head.weight' )
 			: embedding;
 
-		this.logitWeight = null;
+		this.logitWeight = transpose2D( lmHead, this.vocabSize, this.hiddenSize );
 		this._blocks = [];
 
-		if ( options.deferUnpack !== true ) this.unpackSync();
+		for ( let i = 0; i < this.layerCount; i ++ ) {
+
+			this._blocks[ i ] = this.createBlock( i );
+
+		}
 
 	}
 
 	contextLimit() {
 
-		return this.config.max_position_embeddings || 2048;
+		return Math.min( this.config.max_position_embeddings || 2048, 2048 );
 
 	}
 
@@ -64,12 +73,20 @@ class LlamaWeights {
 
 		const root = baseURL.endsWith( '/' ) ? baseURL : `${ baseURL }/`;
 		const [ config, safeTensors, tokenizer ] = await Promise.all( [
-			fetchJSON( `${ root }config.json`, 'LlamaWeights' ),
+			fetchJSON( `${ root }config.json`, 'GemmaWeights' ),
 			new SafeTensorsLoader().load( `${ root }model.safetensors` ),
-			GPT2Tokenizer.fromURLs( `${ root }vocab.json`, `${ root }merges.txt` )
+			UnigramTokenizer.fromURL( root )
 		] );
 
-		return new LlamaWeights( config, safeTensors.tensors, tokenizer );
+		if ( config.bos_token_id !== undefined ) tokenizer.bosTokenId = config.bos_token_id;
+		if ( config.eos_token_id !== undefined ) {
+
+			tokenizer.eosTokenId = config.eos_token_id;
+			tokenizer.endOfTextTokenId = config.eos_token_id;
+
+		}
+
+		return new GemmaWeights( config, safeTensors.tensors, tokenizer );
 
 	}
 
@@ -87,7 +104,7 @@ class LlamaWeights {
 
 		if ( tensor === undefined ) {
 
-			throw new Error( `LlamaWeights: Missing tensor "${ this.tensorPrefix }${ name }".` );
+			throw new Error( `GemmaWeights: Missing tensor "${ this.tensorPrefix }${ name }".` );
 
 		}
 
@@ -114,17 +131,23 @@ class LlamaWeights {
 
 		const prefix = `layers.${ index }`;
 		const { hiddenSize, qSize, kvSize, innerSize } = this;
+		const layerType = this.layerTypes[ index ] || 'sliding_attention';
 		const q = this.linearWeight( `${ prefix }.self_attn.q_proj.weight`, qSize, hiddenSize );
 		const k = this.linearWeight( `${ prefix }.self_attn.k_proj.weight`, kvSize, hiddenSize );
 		const v = this.linearWeight( `${ prefix }.self_attn.v_proj.weight`, kvSize, hiddenSize );
 
 		return {
+			layerType,
+			ropeTheta: layerType === 'full_attention' ? this.globalRopeTheta : this.localRopeTheta,
+			slidingWindow: layerType === 'sliding_attention' ? this.slidingWindow : 0,
 			ln1Weight: this.tensor( `${ prefix }.input_layernorm.weight` ),
-			ln2Weight: this.tensor( `${ prefix }.post_attention_layernorm.weight` ),
+			postAttnNormWeight: this.tensor( `${ prefix }.post_attention_layernorm.weight` ),
+			preMlpNormWeight: this.tensor( `${ prefix }.pre_feedforward_layernorm.weight` ),
+			postMlpNormWeight: this.tensor( `${ prefix }.post_feedforward_layernorm.weight` ),
+			qNormWeight: this.tensor( `${ prefix }.self_attn.q_norm.weight` ),
+			kNormWeight: this.tensor( `${ prefix }.self_attn.k_norm.weight` ),
 			attnQKVWeight: packProjections( [ q, k, v ], hiddenSize ),
-			attnQKVBias: null,
 			attnProjWeight: this.linearWeight( `${ prefix }.self_attn.o_proj.weight`, hiddenSize, qSize ),
-			attnProjBias: null,
 			mlpGateWeight: this.linearWeight( `${ prefix }.mlp.gate_proj.weight`, innerSize, hiddenSize ),
 			mlpUpWeight: this.linearWeight( `${ prefix }.mlp.up_proj.weight`, innerSize, hiddenSize ),
 			mlpDownWeight: this.linearWeight( `${ prefix }.mlp.down_proj.weight`, hiddenSize, innerSize )
@@ -136,7 +159,12 @@ class LlamaWeights {
 
 		const tokenEmbedding = this.tensor( 'embed_tokens.weight' );
 		const tokenOffset = tokenId * this.hiddenSize;
-		target.set( tokenEmbedding.subarray( tokenOffset, tokenOffset + this.hiddenSize ) );
+
+		for ( let i = 0; i < this.hiddenSize; i ++ ) {
+
+			target[ i ] = tokenEmbedding[ tokenOffset + i ] * this.embedScale;
+
+		}
 
 		return target;
 
@@ -144,13 +172,18 @@ class LlamaWeights {
 
 }
 
-function detectPrefix( tensors ) {
+function defaultLayerTypes( layerCount ) {
 
-	if ( tensors[ 'model.embed_tokens.weight' ] !== undefined ) return 'model.';
-	if ( tensors[ 'embed_tokens.weight' ] !== undefined ) return '';
+	const types = [];
 
-	return 'model.';
+	for ( let i = 0; i < layerCount; i ++ ) {
+
+		types.push( ( i + 1 ) % 6 === 0 ? 'full_attention' : 'sliding_attention' );
+
+	}
+
+	return types;
 
 }
 
-export { LlamaWeights };
+export { GemmaWeights };

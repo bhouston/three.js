@@ -1,4 +1,7 @@
 import { fetchJSON } from './LLMTensors.js';
+import { GemmaCPURunner } from './GemmaCPURunner.js';
+import { GemmaTSLRunner } from './GemmaTSLRunner.js';
+import { GemmaWeights } from './GemmaWeights.js';
 import { GPT2CPURunner } from './GPT2CPURunner.js';
 import { GPT2TSLRunner } from './GPT2TSLRunner.js';
 import { GPT2Weights } from './GPT2Weights.js';
@@ -31,6 +34,14 @@ const MODEL_CATALOG = [
 		localUrl: './models/llm/smollm2-135m/',
 		prompt: 'Once upon a time,',
 		note: 'Llama-style: RMSNorm, RoPE, grouped-query attention, SwiGLU. ~270 MB BF16 from Hugging Face.'
+	},
+	{
+		id: 'gemma3-270m',
+		name: 'Gemma 3 270M',
+		url: 'https://huggingface.co/google/gemma-3-270m/resolve/main/',
+		localUrl: './models/llm/gemma-3-270m/',
+		prompt: 'Once upon a time,',
+		note: 'Google Gemma 3 270M (sliding-window GQA, QK-norm, GeGLU). Gated on Hugging Face — accept the license and put config.json, tokenizer.json, and model.safetensors in examples/models/llm/gemma-3-270m/. About 540 MB BF16.'
 	}
 ];
 
@@ -45,6 +56,7 @@ function architectureFor( config ) {
 	const type = config.model_type;
 
 	if ( type === 'gpt2' ) return 'gpt2';
+	if ( type === 'gemma3_text' || type === 'gemma3' ) return 'gemma3';
 	if ( type === 'llama' || type === 'mistral' || type === 'qwen2' || type === 'gemma' || type === 'gemma2' ) return 'llama';
 	if ( type === 'phi' ) return 'phi';
 
@@ -59,6 +71,7 @@ async function loadWeights( baseURL ) {
 
 	if ( architecture === 'gpt2' ) return GPT2Weights.fromURL( baseURL );
 	if ( architecture === 'phi' ) return PhiWeights.fromURL( baseURL );
+	if ( architecture === 'gemma3' ) return GemmaWeights.fromURL( baseURL );
 
 	return LlamaWeights.fromURL( baseURL );
 
@@ -70,6 +83,7 @@ async function createTSLRunner( baseURL, options ) {
 
 	if ( weights.architecture === 'gpt2' ) return new GPT2TSLRunner( weights, options );
 	if ( weights.architecture === 'phi' ) return new PhiTSLRunner( weights, options );
+	if ( weights.architecture === 'gemma3' ) return new GemmaTSLRunner( weights, options );
 
 	return new LlamaTSLRunner( weights, options );
 
@@ -81,6 +95,7 @@ async function createCPURunner( baseURL, options ) {
 
 	if ( weights.architecture === 'gpt2' ) return new GPT2CPURunner( weights, options );
 	if ( weights.architecture === 'phi' ) return new PhiCPURunner( weights, options );
+	if ( weights.architecture === 'gemma3' ) return new GemmaCPURunner( weights, options );
 
 	return new LlamaCPURunner( weights, options );
 

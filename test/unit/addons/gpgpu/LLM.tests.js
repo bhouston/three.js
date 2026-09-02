@@ -101,6 +101,77 @@ function cpuAttention( qkv, hiddenSize, headCount, keyCache, valueCache, positio
 
 }
 
+function cpuAttentionScores( qkv, hiddenSize, headCount, keyCache, position, maxTokens ) {
+
+	const headSize = hiddenSize / headCount;
+	const scale = 1 / Math.sqrt( headSize );
+	const scores = new Float32Array( headCount * maxTokens );
+
+	for ( let head = 0; head < headCount; head ++ ) {
+
+		const headOffset = head * headSize;
+
+		for ( let token = 0; token <= position; token ++ ) {
+
+			let dot = 0;
+
+			for ( let i = 0; i < headSize; i ++ ) {
+
+				dot += qkv[ headOffset + i ] * keyCache[ token * hiddenSize + headOffset + i ];
+
+			}
+
+			scores[ head * maxTokens + token ] = dot * scale;
+
+		}
+
+	}
+
+	return scores;
+
+}
+
+async function assertAttentionSequence( assert, renderer, hiddenSize, headCount, maxTokens, sequence, workgroupSize, epsilon = 1e-4 ) {
+
+	const qkvBuffer = new Float32Array( hiddenSize * 3 );
+	const { attribute, node } = storageFromArray( qkvBuffer );
+	const layer = new TSLAttention( node, hiddenSize, headCount, maxTokens, { workgroupSize } );
+	const keyCache = new Float32Array( hiddenSize * maxTokens );
+	const valueCache = new Float32Array( hiddenSize * maxTokens );
+
+	for ( let position = 0; position < sequence.length; position ++ ) {
+
+		qkvBuffer.set( sequence[ position ] );
+		attribute.needsUpdate = true;
+		layer.compute( renderer, position );
+
+		const expected = cpuAttention( qkvBuffer.slice(), hiddenSize, headCount, keyCache, valueCache, position );
+		const gpuOutput = await readOutput( renderer, layer );
+		const gpuScores = new Float32Array( await renderer.getArrayBufferAsync( layer.scoreAttribute ) );
+		const expectedScores = cpuAttentionScores( qkvBuffer, hiddenSize, headCount, keyCache, position, maxTokens );
+
+		closeArray( assert, gpuOutput, expected, epsilon, `attention output token ${ position }` );
+
+		for ( let head = 0; head < headCount; head ++ ) {
+
+			for ( let token = 0; token <= position; token ++ ) {
+
+				const index = head * maxTokens + token;
+				assert.ok(
+					Math.abs( gpuScores[ index ] - expectedScores[ index ] ) <= epsilon,
+					`attention scores head ${ head } token ${ token } @ ${ position }: ${ gpuScores[ index ] } ~= ${ expectedScores[ index ] }`
+				);
+
+			}
+
+		}
+
+	}
+
+	renderer.dispose();
+
+}
+
 function createSafeTensorsFixture() {
 
 	const header = {
@@ -406,42 +477,46 @@ export default QUnit.module( 'Addons', () => {
 				const renderer = await createRenderer( assert );
 				if ( renderer === null ) return;
 
-				const hiddenSize = 4;
-				const headCount = 2;
-				const maxTokens = 4;
-				const qkvBuffer = new Float32Array( hiddenSize * 3 );
-				const { attribute, node } = storageFromArray( qkvBuffer );
-				const layer = new TSLAttention( node, hiddenSize, headCount, maxTokens, { workgroupSize: hiddenSize } );
-				const keyCache = new Float32Array( hiddenSize * maxTokens );
-				const valueCache = new Float32Array( hiddenSize * maxTokens );
+				await assertAttentionSequence( assert, renderer, 4, 2, 4, [
+					[ 1, 0, 0, 1, 1, 0, 0, 1, 2, 3, 4, 5 ],
+					[ 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1 ]
+				], 4 );
 
-				// One token: softmax is a single 1, so the attention output is V.
-				qkvBuffer.set( [ 1, 0, 0, 1, 1, 0, 0, 1, 2, 3, 4, 5 ] );
-				attribute.needsUpdate = true;
-				layer.compute( renderer, 0 );
+			} );
 
-				const output0 = await readOutput( renderer, layer );
-				closeArray(
-					assert,
-					output0,
-					cpuAttention( qkvBuffer.slice(), hiddenSize, headCount, keyCache, valueCache, 0 ),
-					1e-4,
-					'TSLAttention token 0'
-				);
-				closeArray( assert, output0, new Float32Array( [ 2, 3, 4, 5 ] ), 1e-4, 'one-token attention returns V' );
+			QUnit.test( 'TSLAttention matches CPU reference over a longer cached sequence', async ( assert ) => {
 
-				qkvBuffer.set( [ 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1 ] );
-				attribute.needsUpdate = true;
-				layer.compute( renderer, 1 );
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
 
-				closeArray(
-					assert,
-					await readOutput( renderer, layer ),
-					cpuAttention( qkvBuffer.slice(), hiddenSize, headCount, keyCache, valueCache, 1 ),
-					1e-4,
-					'TSLAttention token 1'
-				);
-				renderer.dispose();
+				await assertAttentionSequence( assert, renderer, 4, 2, 8, [
+					[ 1, 0, 0, 1, 1, 0, 0, 1, 2, 3, 4, 5 ],
+					[ 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1 ],
+					[ 0.5, - 1, 2, 0, 0.25, 0.5, - 0.5, 1, 0, 2, - 1, 3 ],
+					[ - 2, 1, 0.5, 0.5, 1, - 1, 0, 0.25, 4, 0, 1, - 2 ]
+				], 64 );
+
+			} );
+
+			QUnit.test( 'TSLAttention matches CPU reference for GPT-2-sized heads', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				const hiddenSize = 128;
+				const sequence = [];
+
+				for ( let position = 0; position < 4; position ++ ) {
+
+					const qkv = new Float32Array( hiddenSize * 3 );
+
+					for ( let i = 0; i < qkv.length; i ++ ) qkv[ i ] = Math.sin( position * 19.1 + i * 0.17 ) * 0.35;
+
+					sequence.push( qkv );
+
+				}
+
+				await assertAttentionSequence( assert, renderer, hiddenSize, 2, 8, sequence, 64, 2e-4 );
 
 			} );
 
@@ -495,6 +570,41 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.strictEqual( gpu.text, cpu.text, 'GPU greedy text matches CPU' );
 				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'GPU token ids match CPU' );
+				renderer.dispose();
+
+			} );
+
+			QUnit.test( 'CPU GPT-2 greedy continuation stays on the prompt', async ( assert ) => {
+
+				assert.timeout( 60000 );
+
+				const weights = await GPT2Weights.fromURL( '/examples/models/llm/gpt2/' );
+				const result = new GPT2CPURunner( weights, { maxTokens: 32 } ).generate( 'Once upon a time,', {
+					maxNewTokens: 8,
+					temperature: 0,
+					topK: 1
+				} );
+
+				assert.strictEqual( result.text, 'Once upon a time, the world was a place of great beauty' );
+
+			} );
+
+			QUnit.test( 'TSL GPT-2 greedy continuation matches the CPU runner', async ( assert ) => {
+
+				const renderer = await createRenderer( assert );
+				if ( renderer === null ) return;
+
+				assert.timeout( 180000 );
+
+				const weights = await GPT2Weights.fromURL( '/examples/models/llm/gpt2/' );
+				const prompt = 'Once upon a time,';
+				const options = { maxNewTokens: 8, temperature: 0, topK: 1 };
+				const cpu = new GPT2CPURunner( weights, { maxTokens: 32 } ).generate( prompt, options );
+				const gpu = await new GPT2TSLRunner( weights, { maxTokens: 32 } ).generate( renderer, prompt, options );
+
+				assert.ok( cpu.text.startsWith( prompt ), 'CPU GPT-2 keeps the prompt' );
+				assert.strictEqual( gpu.text, cpu.text, 'GPU GPT-2 greedy text matches CPU' );
+				assert.deepEqual( gpu.generatedTokens, cpu.generatedTokens, 'GPU GPT-2 token ids match CPU' );
 				renderer.dispose();
 
 			} );

@@ -1,0 +1,56 @@
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>GPT-2 CPU vs GPU check</title>
+	</head>
+	<body>
+		<pre id="out">Loading GPT-2...</pre>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "/build/three.webgpu.js",
+					"three/webgpu": "/build/three.webgpu.js",
+					"three/tsl": "/build/three.tsl.js",
+					"three/addons/": "/examples/jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+
+			import { WebGPURenderer } from 'three/webgpu';
+			import { GPT2CPURunner } from 'three/addons/gpgpu/llm/GPT2CPURunner.js';
+			import { GPT2TSLRunner } from 'three/addons/gpgpu/llm/GPT2TSLRunner.js';
+			import { GPT2Weights } from 'three/addons/gpgpu/llm/GPT2Weights.js';
+
+			const out = document.getElementById( 'out' );
+			const prompt = 'Once upon a time,';
+			const options = { maxNewTokens: 8, temperature: 0, topK: 1 };
+
+			try {
+
+				const weights = await GPT2Weights.fromURL( '/examples/models/llm/gpt2/' );
+				out.textContent = 'Running CPU greedy...\n';
+				const cpu = new GPT2CPURunner( weights, { maxTokens: 32 } ).generate( prompt, options );
+				out.textContent += `CPU: ${ JSON.stringify( cpu.text ) }\n${ cpu.generatedTokens.join( ',' ) }\n`;
+
+				const renderer = new WebGPURenderer();
+				await renderer.init();
+				out.textContent += 'Running GPU greedy...\n';
+				const gpu = await new GPT2TSLRunner( weights, { maxTokens: 32 } ).generate( renderer, prompt, options );
+				out.textContent += `GPU: ${ JSON.stringify( gpu.text ) }\n${ gpu.generatedTokens.join( ',' ) }\n`;
+
+				const match = cpu.text === gpu.text && cpu.generatedTokens.join( ',' ) === gpu.generatedTokens.join( ',' );
+				out.textContent += match ? 'PASS\n' : 'FAIL\n';
+				window.__gpt2Check = { match, cpu: cpu.text, gpu: gpu.text, cpuTokens: cpu.generatedTokens, gpuTokens: gpu.generatedTokens };
+				renderer.dispose();
+
+			} catch ( error ) {
+
+				out.textContent += String( error && error.stack || error );
+				window.__gpt2Check = { match: false, error: String( error ) };
+
+			}
+
+		</script>
+	</body>
+</html>

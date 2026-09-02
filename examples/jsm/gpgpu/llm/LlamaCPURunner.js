@@ -1,4 +1,5 @@
-import { causalAttention, geluNew, linear, rmsNorm, sampleTopK, silu } from './LLMMath.js';
+import { causalAttention, geluNew, linear, rmsNorm, silu } from './LLMMath.js';
+import { generateSync } from './LLMGenerate.js';
 
 /**
  * CPU reference for Llama-style decode (RMSNorm, RoPE, GQA, SwiGLU).
@@ -74,7 +75,10 @@ class LlamaCPURunner {
 
 	}
 
-	generate( prompt, options = {} ) {
+	resetCache() {
+
+		this._cacheTokens = [];
+		this._cacheLogits = null;
 
 		for ( const cache of this.caches ) {
 
@@ -83,39 +87,15 @@ class LlamaCPURunner {
 
 		}
 
-		const { inputTokens, newTokenBudget } = this.weights.prepareGeneration(
-			prompt,
-			this.maxTokens,
-			options.maxNewTokens || 32
-		);
-		const allTokens = inputTokens.slice();
-		const generatedTokens = [];
-		let logits = null;
+	}
 
-		for ( let i = 0; i < inputTokens.length; i ++ ) {
+	generate( prompt, options = {} ) {
 
-			logits = this.forwardToken( inputTokens[ i ], i );
-
-		}
-
-		for ( let i = 0; i < newTokenBudget; i ++ ) {
-
-			const nextToken = sampleTopK( logits, { ...options, tokens: allTokens } );
-
-			if ( nextToken === this.weights.endOfTextTokenId ) break;
-
-			allTokens.push( nextToken );
-			generatedTokens.push( nextToken );
-			logits = this.forwardToken( nextToken, allTokens.length - 1 );
-
-		}
-
-		return {
-			tokens: allTokens,
-			generatedTokens,
-			text: this.weights.tokenizer.decode( allTokens ),
-			generatedText: this.weights.tokenizer.decode( generatedTokens )
-		};
+		return generateSync( this, prompt, options, {
+			rewindable: true,
+			resetCache: () => this.resetCache(),
+			forwardToken: ( tokenId, position ) => this.forwardToken( tokenId, position )
+		} );
 
 	}
 

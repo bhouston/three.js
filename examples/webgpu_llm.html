@@ -261,7 +261,7 @@
 			const messagesEmpty = document.getElementById( 'messages-empty' );
 			const status = document.getElementById( 'status' );
 
-			let renderer, runner, abortController;
+			let renderer, runner, abortController, conversationTokens;
 			const history = [];
 			const model = selectedModel();
 
@@ -373,6 +373,8 @@
 				if ( abortController !== undefined ) abortController.abort();
 
 				history.length = 0;
+				conversationTokens = undefined;
+				if ( runner !== undefined ) runner.resetCache();
 				messagesEl.replaceChildren( messagesEmpty );
 				messagesEmpty.hidden = false;
 				status.textContent = runner ? `Ready. Context ${ runner.maxTokens } tokens.` : status.textContent;
@@ -410,6 +412,7 @@
 				status.textContent = 'Generating...';
 
 				let generatedCount = 0;
+				const generatedIds = [];
 				const generationStart = performance.now();
 
 				function tokenRateText() {
@@ -428,37 +431,61 @@
 					);
 					tokenInput.value = String( maxNewTokens );
 
-					const result = await runner.generate( renderer, prompt, {
+					const generateOptions = {
 						maxNewTokens,
 						temperature: Number( temperatureInput.value ),
 						topK: Number( topKInput.value ),
 						repetitionPenalty: Number( repetitionInput.value ) || 1,
 						noRepeatNgramSize: Math.max( 0, Number( ngramInput.value ) || 0 ),
 						signal: abortController.signal,
-						onToken: ( text ) => {
+						onPrefill: ( { cachedPromptTokens, promptTokens } ) => {
 
-							assistantEl.textContent = replyFrom( text, prompt );
+							const fresh = promptTokens - cachedPromptTokens;
+							status.textContent = cachedPromptTokens > 0
+								? `Prefill ${ fresh } new / ${ cachedPromptTokens } cached. Generating...`
+								: 'Generating...';
+
+						},
+						onToken: ( text, nextToken ) => {
+
+							generatedIds.push( nextToken );
+							assistantEl.textContent = runner.weights.tokenizer.decode( generatedIds );
 							scrollMessages();
 							generatedCount ++;
 							status.textContent = `Generating...${ tokenRateText() }`;
 
 						}
-					} );
+					};
+
+					if ( conversationTokens !== undefined && conversationTokens.length > 0 ) {
+
+						generateOptions.inputTokens = conversationTokens.concat(
+							runner.weights.tokenizer.encode( `\n\nUser: ${ userText }\n\nAssistant:` )
+						);
+
+					}
+
+					const result = await runner.generate( renderer, prompt, generateOptions );
 
 					if ( assistantEl.isConnected === false ) return;
 
 					const reply = result.generatedText || assistantEl.textContent;
 					assistantEl.textContent = reply;
 					history.push( { role: 'assistant', text: reply } );
+					conversationTokens = result.tokens;
 					generatedCount = result.generatedTokens.length;
+
+					const cacheNote = result.cachedPromptTokens
+						? ` Cached ${ result.cachedPromptTokens }/${ result.promptTokens } prompt tokens.`
+						: '';
 
 					if ( result.aborted ) {
 
-						status.textContent = `Stopped after ${ result.generatedTokens.length } token(s).${ tokenRateText() }`;
+						status.textContent = `Stopped after ${ result.generatedTokens.length } token(s).${ tokenRateText() }${ cacheNote }`;
 
 					} else {
 
-						status.textContent = `Generated ${ result.generatedTokens.length } token(s).${ tokenRateText() }`;
+						status.textContent = `Generated ${ result.generatedTokens.length } token(s).${ tokenRateText() }${ cacheNote }`;
 
 					}
 
@@ -493,17 +520,6 @@
 				}
 
 				return `${ prompt }Assistant:`;
-
-			}
-
-			function replyFrom( text, prompt ) {
-
-				if ( text.startsWith( prompt ) ) return text.slice( prompt.length );
-
-				const trimmed = prompt.trimEnd();
-				if ( text.startsWith( trimmed ) ) return text.slice( trimmed.length );
-
-				return text;
 
 			}
 

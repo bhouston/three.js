@@ -15,6 +15,7 @@ import { LlamaCPURunner } from '../../../../examples/jsm/gpgpu/llm/LlamaCPURunne
 import { LlamaTSLRunner } from '../../../../examples/jsm/gpgpu/llm/LlamaTSLRunner.js';
 import { LlamaWeights } from '../../../../examples/jsm/gpgpu/llm/LlamaWeights.js';
 import { architectureFor } from '../../../../examples/jsm/gpgpu/llm/LLMFactory.js';
+import { planPromptCache, sharedPrefixLength } from '../../../../examples/jsm/gpgpu/llm/LLMGenerate.js';
 import { applyRoPE, causalAttention, gatedDeltaRuleStep, geluNew, layerNorm, linear, logitSoftcap, rmsNorm, sampleTopK, silu, softmax, splitHeadGate } from '../../../../examples/jsm/gpgpu/llm/LLMMath.js';
 import { bfloat16ToFloat32, convertAllTensors, float16ToFloat32, tensorToFloat32 } from '../../../../examples/jsm/gpgpu/llm/LLMTensors.js';
 import { PhiCPURunner } from '../../../../examples/jsm/gpgpu/llm/PhiCPURunner.js';
@@ -1122,6 +1123,45 @@ export default QUnit.module( 'Addons', () => {
 					result.text,
 					'Once upon a time, there was a little girl named Lily. She loved to play with her toys. One day, she saw a big,'
 				);
+
+			} );
+
+			QUnit.test( 'prompt cache reuses a matching prefix', ( assert ) => {
+
+				assert.strictEqual( sharedPrefixLength( [ 1, 2, 3 ], [ 1, 2, 9 ] ), 2 );
+				assert.strictEqual( sharedPrefixLength( [ 1, 2 ], [ 1, 2, 3 ] ), 2 );
+
+				const append = planPromptCache( [ 1, 2, 3 ], new Float32Array( [ 0 ] ), [ 1, 2, 3, 4 ], true );
+				assert.strictEqual( append.start, 3, 'append-only starts after the cached prefix' );
+				assert.strictEqual( append.reset, false );
+				assert.ok( append.logits !== null );
+
+				const rewind = planPromptCache( [ 1, 2, 3, 9 ], new Float32Array( [ 0 ] ), [ 1, 2, 4 ], true );
+				assert.strictEqual( rewind.start, 2, 'transformer cache can resume at the first mismatch' );
+				assert.strictEqual( rewind.reset, false );
+
+				const recurrent = planPromptCache( [ 1, 2, 3, 9 ], new Float32Array( [ 0 ] ), [ 1, 2, 4 ], false );
+				assert.strictEqual( recurrent.reset, true, 'linear-attention cache cannot rewind' );
+
+			} );
+
+			QUnit.test( 'CPU TinyStories reuses the KV cache on a longer prompt', async ( assert ) => {
+
+				const weights = await GPT2Weights.fromURL( '/examples/models/llm/tinystories-gpt2-0.1-3m/' );
+				const options = { maxNewTokens: 8, temperature: 0, topK: 1 };
+				const runner = new GPT2CPURunner( weights, { maxTokens: 64 } );
+				const first = runner.generate( 'Once upon a time,', options );
+				const continued = first.text + ' She';
+				const second = runner.generate( continued, options );
+				const fresh = new GPT2CPURunner( weights, { maxTokens: 64 } ).generate( continued, options );
+
+				assert.strictEqual( second.text, fresh.text, 'cached continuation matches a cold run' );
+				assert.ok( second.cachedPromptTokens > 0, 'second generate reused prompt tokens' );
+
+				runner.resetCache();
+				const afterReset = runner.generate( continued, options );
+				assert.strictEqual( afterReset.cachedPromptTokens, 0, 'resetCache drops the prompt prefix' );
+				assert.strictEqual( afterReset.text, fresh.text );
 
 			} );
 

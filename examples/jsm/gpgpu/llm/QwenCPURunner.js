@@ -6,12 +6,12 @@ import {
 	linear,
 	rmsNorm,
 	rmsNormGated,
-	sampleTopK,
 	sigmoid,
 	silu,
 	softplus,
 	splitHeadGate
 } from './LLMMath.js';
+import { generateSync } from './LLMGenerate.js';
 
 /**
  * CPU reference for Qwen3.5 hybrid decode.
@@ -165,7 +165,10 @@ class QwenCPURunner {
 
 	}
 
-	generate( prompt, options = {} ) {
+	resetCache() {
+
+		this._cacheTokens = [];
+		this._cacheLogits = null;
 
 		for ( const cache of this.caches ) {
 
@@ -183,33 +186,15 @@ class QwenCPURunner {
 
 		}
 
-		const { inputTokens, newTokenBudget } = this.weights.prepareGeneration(
-			prompt,
-			this.maxTokens,
-			options.maxNewTokens || 32
-		);
-		const allTokens = inputTokens.slice();
-		const generatedTokens = [];
-		let logits = null;
+	}
 
-		for ( let i = 0; i < inputTokens.length; i ++ ) logits = this.forwardToken( inputTokens[ i ], i );
+	generate( prompt, options = {} ) {
 
-		for ( let i = 0; i < newTokenBudget; i ++ ) {
-
-			const nextToken = sampleTopK( logits, { ...options, tokens: allTokens } );
-			if ( nextToken === this.weights.endOfTextTokenId ) break;
-			allTokens.push( nextToken );
-			generatedTokens.push( nextToken );
-			logits = this.forwardToken( nextToken, allTokens.length - 1 );
-
-		}
-
-		return {
-			tokens: allTokens,
-			generatedTokens,
-			text: this.weights.tokenizer.decode( allTokens ),
-			generatedText: this.weights.tokenizer.decode( generatedTokens )
-		};
+		return generateSync( this, prompt, options, {
+			rewindable: false,
+			resetCache: () => this.resetCache(),
+			forwardToken: ( tokenId, position ) => this.forwardToken( tokenId, position )
+		} );
 
 	}
 

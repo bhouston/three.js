@@ -1,7 +1,7 @@
 import { StorageBufferAttribute } from 'three/webgpu';
 import { storage } from 'three/tsl';
 
-import { sampleTopK } from './LLMMath.js';
+import { generateAsync } from './LLMGenerate.js';
 import { TSLAdd } from './TSLAdd.js';
 import { TSLAttention } from './TSLAttention.js';
 import { TSLGatedMLP } from './TSLGatedMLP.js';
@@ -172,56 +172,27 @@ class LlamaTSLRunner {
 
 	}
 
+	resetCache() {
+
+		this._cacheTokens = [];
+		this._cacheLogits = null;
+
+		for ( const layer of this.layers ) {
+
+			layer.attention.reset();
+
+		}
+
+	}
+
 	async generate( renderer, prompt, options = {} ) {
 
-		const { inputTokens, newTokenBudget } = this.weights.prepareGeneration(
-			prompt,
-			this.maxTokens,
-			options.maxNewTokens || 32
-		);
-		const allTokens = inputTokens.slice();
-		const generatedTokens = [];
-		const signal = options.signal;
-		let logits = null;
-
-		for ( let i = 0; i < inputTokens.length; i ++ ) {
-
-			if ( signal !== undefined && signal.aborted ) break;
-
-			this.computeToken( renderer, inputTokens[ i ], i );
-			logits = await this.readLogits( renderer );
-
-		}
-
-		for ( let i = 0; i < newTokenBudget; i ++ ) {
-
-			if ( signal !== undefined && signal.aborted ) break;
-
-			const nextToken = sampleTopK( logits, { ...options, tokens: allTokens } );
-
-			if ( nextToken === this.weights.endOfTextTokenId ) break;
-
-			allTokens.push( nextToken );
-			generatedTokens.push( nextToken );
-
-			if ( options.onToken ) {
-
-				options.onToken( this.weights.tokenizer.decode( allTokens ), nextToken );
-
-			}
-
-			this.computeToken( renderer, nextToken, allTokens.length - 1 );
-			logits = await this.readLogits( renderer );
-
-		}
-
-		return {
-			tokens: allTokens,
-			generatedTokens,
-			text: this.weights.tokenizer.decode( allTokens ),
-			generatedText: this.weights.tokenizer.decode( generatedTokens ),
-			aborted: signal !== undefined && signal.aborted
-		};
+		return generateAsync( this, prompt, options, {
+			rewindable: true,
+			resetCache: () => this.resetCache(),
+			computeToken: ( tokenId, position ) => this.computeToken( renderer, tokenId, position ),
+			readLogits: () => this.readLogits( renderer )
+		} );
 
 	}
 

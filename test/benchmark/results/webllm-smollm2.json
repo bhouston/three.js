@@ -1,0 +1,789 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-02T18:18:15.308Z",
+  "gitCommit": "3e9508febb9407c5f9ee9f9770c716dcb2134469",
+  "reports": [
+    {
+      "schemaVersion": 1,
+      "benchmark": "webllm",
+      "model": {
+        "id": "SmolLM2-135M-Instruct-q0f32-MLC"
+      },
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+        "platform": "MacIntel",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "features": [
+            "bgra8unorm-storage",
+            "chromium-experimental-subgroup-matrix",
+            "clip-distances",
+            "core-features-and-limits",
+            "depth-clip-control",
+            "depth32float-stencil8",
+            "dual-source-blending",
+            "float32-blendable",
+            "float32-filterable",
+            "indirect-first-instance",
+            "primitive-index",
+            "rg11b10ufloat-renderable",
+            "shader-f16",
+            "subgroup-size-control",
+            "subgroups",
+            "texture-component-swizzle",
+            "texture-compression-astc",
+            "texture-compression-astc-sliced-3d",
+            "texture-compression-bc",
+            "texture-compression-bc-sliced-3d",
+            "texture-compression-etc2",
+            "texture-compression-unaligned",
+            "texture-formats-tier1",
+            "texture-formats-tier2",
+            "timestamp-query"
+          ]
+        }
+      },
+      "parameters": {
+        "prompt": "Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.",
+        "trialCount": 5,
+        "maxNewTokens": 32,
+        "contextWindowSize": 4096,
+        "mode": "completion",
+        "webllmModule": "http://localhost:1354/lib/index.js"
+      },
+      "load": {
+        "modelLoadMs": 685337.5,
+        "resourceBytes": 0,
+        "progress": [
+          {
+            "timeMs": 35078.8,
+            "text": "Start to fetch params",
+            "progress": 0
+          },
+          {
+            "timeMs": 359283.8,
+            "text": "Fetching param cache[1/8]: 32MB fetched. 12% completed, 325 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.123
+          },
+          {
+            "timeMs": 361858.3,
+            "text": "Fetching param cache[2/8]: 63MB fetched. 24% completed, 327 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.245
+          },
+          {
+            "timeMs": 362619.7,
+            "text": "Fetching param cache[3/8]: 95MB fetched. 36% completed, 328 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.368
+          },
+          {
+            "timeMs": 409306.7,
+            "text": "Fetching param cache[4/8]: 149MB fetched. 57% completed, 375 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.578
+          },
+          {
+            "timeMs": 565667.2,
+            "text": "Fetching param cache[5/8]: 170MB fetched. 65% completed, 531 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.66
+          },
+          {
+            "timeMs": 661375.3,
+            "text": "Fetching param cache[6/8]: 199MB fetched. 77% completed, 627 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.774
+          },
+          {
+            "timeMs": 661735.4,
+            "text": "Fetching param cache[7/8]: 228MB fetched. 88% completed, 627 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.888
+          },
+          {
+            "timeMs": 684722.6,
+            "text": "Fetching param cache[8/8]: 257MB fetched. 100% completed, 650 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 1
+          },
+          {
+            "timeMs": 684917.7,
+            "text": "Loading model from cache[1/8]: 54MB loaded. 21% completed, 650 secs elapsed.",
+            "progress": 0.21
+          },
+          {
+            "timeMs": 684981.6,
+            "text": "Loading model from cache[2/8]: 83MB loaded. 32% completed, 650 secs elapsed.",
+            "progress": 0.322
+          },
+          {
+            "timeMs": 685047.5,
+            "text": "Loading model from cache[3/8]: 115MB loaded. 44% completed, 650 secs elapsed.",
+            "progress": 0.445
+          },
+          {
+            "timeMs": 685101.2,
+            "text": "Loading model from cache[4/8]: 144MB loaded. 55% completed, 651 secs elapsed.",
+            "progress": 0.559
+          },
+          {
+            "timeMs": 685164.7,
+            "text": "Loading model from cache[5/8]: 175MB loaded. 68% completed, 651 secs elapsed.",
+            "progress": 0.682
+          },
+          {
+            "timeMs": 685221.3,
+            "text": "Loading model from cache[6/8]: 205MB loaded. 79% completed, 651 secs elapsed.",
+            "progress": 0.796
+          },
+          {
+            "timeMs": 685281.2,
+            "text": "Loading model from cache[7/8]: 236MB loaded. 91% completed, 651 secs elapsed.",
+            "progress": 0.919
+          },
+          {
+            "timeMs": 685321.6,
+            "text": "Loading model from cache[8/8]: 257MB loaded. 100% completed, 651 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 685337.5,
+            "text": "Loading GPU shader modules[4/4]: 100% completed, 1 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 685337.5,
+            "text": "Finish loading on WebGPU - apple",
+            "progress": 1
+          }
+        ]
+      },
+      "firstUse": {
+        "durationMs": 200.9,
+        "ttftMs": 178.9,
+        "promptTokens": 27,
+        "generatedTokens": 1,
+        "prefillTokensPerSecond": 151.941,
+        "decodeTokensPerSecond": 46.512,
+        "endToEndTokensPerSecond": 4.978,
+        "timeToFirstTokenMs": 177.7,
+        "timePerOutputTokenMs": 21.5,
+        "tokenLatencyMs": {
+          "min": 21.9,
+          "median": 21.9,
+          "mean": 21.9,
+          "p95": 21.9,
+          "max": 21.9,
+          "stddev": 0
+        },
+        "usage": {
+          "completion_tokens": 1,
+          "prompt_tokens": 27,
+          "total_tokens": 28,
+          "extra": {
+            "e2e_latency_s": 0.201,
+            "prefill_tokens_per_s": 151.941,
+            "decode_tokens_per_s": 46.512,
+            "time_to_first_token_s": 0.178,
+            "time_per_output_token_s": 0.021
+          }
+        }
+      },
+      "summary": {
+        "ttftMs": {
+          "min": 28.2,
+          "median": 34.4,
+          "mean": 33.86,
+          "p95": 38.4,
+          "max": 38.4,
+          "stddev": 4.068
+        },
+        "webllmTimeToFirstTokenMs": {
+          "min": 28.1,
+          "median": 34.2,
+          "mean": 33.68,
+          "p95": 38.1,
+          "max": 38.1,
+          "stddev": 4.039
+        },
+        "prefillTokensPerSecond": {
+          "min": 708.661,
+          "median": 789.474,
+          "mean": 813.68,
+          "p95": 960.854,
+          "max": 960.854,
+          "stddev": 100.475
+        },
+        "decodeTokensPerSecond": {
+          "min": 70.041,
+          "median": 79.794,
+          "mean": 77.467,
+          "p95": 80.353,
+          "max": 80.353,
+          "stddev": 3.913
+        },
+        "endToEndTokensPerSecond": {
+          "min": 63.983,
+          "median": 73.148,
+          "mean": 70.917,
+          "p95": 73.897,
+          "max": 73.897,
+          "stddev": 3.794
+        },
+        "timePerOutputTokenMs": {
+          "min": 12.445,
+          "median": 12.532,
+          "mean": 12.944,
+          "p95": 14.277,
+          "max": 14.277,
+          "stddev": 0.696
+        }
+      },
+      "trials": [
+        {
+          "durationMs": 423.8,
+          "ttftMs": 34.4,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 789.474,
+          "decodeTokensPerSecond": 80.353,
+          "endToEndTokensPerSecond": 73.148,
+          "timeToFirstTokenMs": 34.2,
+          "timePerOutputTokenMs": 12.445,
+          "tokenLatencyMs": {
+            "min": 11.1,
+            "median": 12.1,
+            "mean": 12.558,
+            "p95": 15.3,
+            "max": 16,
+            "stddev": 1.209
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.424,
+              "prefill_tokens_per_s": 789.474,
+              "decode_tokens_per_s": 80.353,
+              "time_to_first_token_s": 0.034,
+              "time_per_output_token_s": 0.012
+            }
+          }
+        },
+        {
+          "durationMs": 484.5,
+          "ttftMs": 38,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 712.401,
+          "decodeTokensPerSecond": 70.041,
+          "endToEndTokensPerSecond": 63.983,
+          "timeToFirstTokenMs": 37.9,
+          "timePerOutputTokenMs": 14.277,
+          "tokenLatencyMs": {
+            "min": 12.7,
+            "median": 14.3,
+            "mean": 14.403,
+            "p95": 16.3,
+            "max": 16.7,
+            "stddev": 1.083
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.484,
+              "prefill_tokens_per_s": 712.401,
+              "decode_tokens_per_s": 70.041,
+              "time_to_first_token_s": 0.038,
+              "time_per_output_token_s": 0.014
+            }
+          }
+        },
+        {
+          "durationMs": 444.7,
+          "ttftMs": 38.4,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 708.661,
+          "decodeTokensPerSecond": 76.961,
+          "endToEndTokensPerSecond": 69.71,
+          "timeToFirstTokenMs": 38.1,
+          "timePerOutputTokenMs": 12.994,
+          "tokenLatencyMs": {
+            "min": 12.4,
+            "median": 13.1,
+            "mean": 13.103,
+            "p95": 13.9,
+            "max": 13.9,
+            "stddev": 0.381
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.445,
+              "prefill_tokens_per_s": 708.661,
+              "decode_tokens_per_s": 76.961,
+              "time_to_first_token_s": 0.038,
+              "time_per_output_token_s": 0.013
+            }
+          }
+        },
+        {
+          "durationMs": 419.8,
+          "ttftMs": 30.3,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 897.01,
+          "decodeTokensPerSecond": 80.186,
+          "endToEndTokensPerSecond": 73.845,
+          "timeToFirstTokenMs": 30.1,
+          "timePerOutputTokenMs": 12.471,
+          "tokenLatencyMs": {
+            "min": 11.9,
+            "median": 12.4,
+            "mean": 12.565,
+            "p95": 13.7,
+            "max": 14,
+            "stddev": 0.537
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.42,
+              "prefill_tokens_per_s": 897.01,
+              "decode_tokens_per_s": 80.186,
+              "time_to_first_token_s": 0.03,
+              "time_per_output_token_s": 0.012
+            }
+          }
+        },
+        {
+          "durationMs": 419.5,
+          "ttftMs": 28.2,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 960.854,
+          "decodeTokensPerSecond": 79.794,
+          "endToEndTokensPerSecond": 73.897,
+          "timeToFirstTokenMs": 28.1,
+          "timePerOutputTokenMs": 12.532,
+          "tokenLatencyMs": {
+            "min": 10.9,
+            "median": 12.5,
+            "mean": 12.623,
+            "p95": 14.8,
+            "max": 14.9,
+            "stddev": 1.073
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.419,
+              "prefill_tokens_per_s": 960.854,
+              "decode_tokens_per_s": 79.794,
+              "time_to_first_token_s": 0.028,
+              "time_per_output_token_s": 0.013
+            }
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "benchmark": "webllm",
+      "model": {
+        "id": "SmolLM2-135M-Instruct-q0f16-MLC"
+      },
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+        "platform": "MacIntel",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "features": [
+            "bgra8unorm-storage",
+            "chromium-experimental-subgroup-matrix",
+            "clip-distances",
+            "core-features-and-limits",
+            "depth-clip-control",
+            "depth32float-stencil8",
+            "dual-source-blending",
+            "float32-blendable",
+            "float32-filterable",
+            "indirect-first-instance",
+            "primitive-index",
+            "rg11b10ufloat-renderable",
+            "shader-f16",
+            "subgroup-size-control",
+            "subgroups",
+            "texture-component-swizzle",
+            "texture-compression-astc",
+            "texture-compression-astc-sliced-3d",
+            "texture-compression-bc",
+            "texture-compression-bc-sliced-3d",
+            "texture-compression-etc2",
+            "texture-compression-unaligned",
+            "texture-formats-tier1",
+            "texture-formats-tier2",
+            "timestamp-query"
+          ]
+        }
+      },
+      "parameters": {
+        "prompt": "Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.",
+        "trialCount": 5,
+        "maxNewTokens": 32,
+        "contextWindowSize": 4096,
+        "mode": "completion",
+        "webllmModule": "http://localhost:1354/lib/index.js"
+      },
+      "load": {
+        "modelLoadMs": 625247.9,
+        "resourceBytes": 0,
+        "progress": [
+          {
+            "timeMs": 62709.1,
+            "text": "Start to fetch params",
+            "progress": 0
+          },
+          {
+            "timeMs": 354067.9,
+            "text": "Fetching param cache[1/8]: 32MB fetched. 12% completed, 292 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.123
+          },
+          {
+            "timeMs": 354939.9,
+            "text": "Fetching param cache[2/8]: 63MB fetched. 24% completed, 293 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.245
+          },
+          {
+            "timeMs": 355862.2,
+            "text": "Fetching param cache[3/8]: 95MB fetched. 36% completed, 294 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.368
+          },
+          {
+            "timeMs": 517473.6,
+            "text": "Fetching param cache[4/8]: 116MB fetched. 44% completed, 455 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.449
+          },
+          {
+            "timeMs": 520110.3,
+            "text": "Fetching param cache[5/8]: 170MB fetched. 65% completed, 458 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.66
+          },
+          {
+            "timeMs": 541239.3,
+            "text": "Fetching param cache[6/8]: 199MB fetched. 77% completed, 479 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.774
+          },
+          {
+            "timeMs": 542131.3,
+            "text": "Fetching param cache[7/8]: 228MB fetched. 88% completed, 480 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 0.888
+          },
+          {
+            "timeMs": 624748.5,
+            "text": "Fetching param cache[8/8]: 257MB fetched. 100% completed, 563 secs elapsed. It can take a while when we first visit this page to populate the cache. Later refreshes will become faster.",
+            "progress": 1
+          },
+          {
+            "timeMs": 624925.6,
+            "text": "Loading model from cache[1/8]: 54MB loaded. 21% completed, 563 secs elapsed.",
+            "progress": 0.21
+          },
+          {
+            "timeMs": 624967.9,
+            "text": "Loading model from cache[2/8]: 83MB loaded. 32% completed, 563 secs elapsed.",
+            "progress": 0.322
+          },
+          {
+            "timeMs": 625016.3,
+            "text": "Loading model from cache[3/8]: 115MB loaded. 44% completed, 563 secs elapsed.",
+            "progress": 0.445
+          },
+          {
+            "timeMs": 625060.2,
+            "text": "Loading model from cache[4/8]: 144MB loaded. 55% completed, 563 secs elapsed.",
+            "progress": 0.559
+          },
+          {
+            "timeMs": 625106.1,
+            "text": "Loading model from cache[5/8]: 175MB loaded. 68% completed, 563 secs elapsed.",
+            "progress": 0.682
+          },
+          {
+            "timeMs": 625149,
+            "text": "Loading model from cache[6/8]: 205MB loaded. 79% completed, 563 secs elapsed.",
+            "progress": 0.796
+          },
+          {
+            "timeMs": 625198,
+            "text": "Loading model from cache[7/8]: 236MB loaded. 91% completed, 563 secs elapsed.",
+            "progress": 0.919
+          },
+          {
+            "timeMs": 625232.4,
+            "text": "Loading model from cache[8/8]: 257MB loaded. 100% completed, 563 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 625247.8,
+            "text": "Loading GPU shader modules[4/4]: 100% completed, 1 secs elapsed.",
+            "progress": 1
+          },
+          {
+            "timeMs": 625247.9,
+            "text": "Finish loading on WebGPU - apple",
+            "progress": 1
+          }
+        ]
+      },
+      "firstUse": {
+        "durationMs": 122.5,
+        "ttftMs": 104,
+        "promptTokens": 27,
+        "generatedTokens": 1,
+        "prefillTokensPerSecond": 263.93,
+        "decodeTokensPerSecond": 55.556,
+        "endToEndTokensPerSecond": 8.163,
+        "timeToFirstTokenMs": 102.3,
+        "timePerOutputTokenMs": 18,
+        "tokenLatencyMs": {
+          "min": 18.4,
+          "median": 18.4,
+          "mean": 18.4,
+          "p95": 18.4,
+          "max": 18.4,
+          "stddev": 0
+        },
+        "usage": {
+          "completion_tokens": 1,
+          "prompt_tokens": 27,
+          "total_tokens": 28,
+          "extra": {
+            "e2e_latency_s": 0.122,
+            "prefill_tokens_per_s": 263.93,
+            "decode_tokens_per_s": 55.556,
+            "time_to_first_token_s": 0.102,
+            "time_per_output_token_s": 0.018
+          }
+        }
+      },
+      "summary": {
+        "ttftMs": {
+          "min": 21.4,
+          "median": 25,
+          "mean": 25.58,
+          "p95": 31.7,
+          "max": 31.7,
+          "stddev": 3.791
+        },
+        "webllmTimeToFirstTokenMs": {
+          "min": 21.3,
+          "median": 24.8,
+          "mean": 25.44,
+          "p95": 31.5,
+          "max": 31.5,
+          "stddev": 3.762
+        },
+        "prefillTokensPerSecond": {
+          "min": 857.143,
+          "median": 1088.71,
+          "mean": 1083.798,
+          "p95": 1267.606,
+          "max": 1267.606,
+          "stddev": 152.908
+        },
+        "decodeTokensPerSecond": {
+          "min": 70.487,
+          "median": 85.517,
+          "mean": 87.595,
+          "p95": 113.387,
+          "max": 113.387,
+          "stddev": 14.756
+        },
+        "endToEndTokensPerSecond": {
+          "min": 65.887,
+          "median": 78.145,
+          "mean": 81.093,
+          "p95": 104.062,
+          "max": 104.062,
+          "stddev": 13.171
+        },
+        "timePerOutputTokenMs": {
+          "min": 8.819,
+          "median": 11.694,
+          "mean": 11.721,
+          "p95": 14.187,
+          "max": 14.187,
+          "stddev": 1.828
+        }
+      },
+      "trials": [
+        {
+          "durationMs": 297.9,
+          "ttftMs": 21.4,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 1267.606,
+          "decodeTokensPerSecond": 113.387,
+          "endToEndTokensPerSecond": 104.062,
+          "timeToFirstTokenMs": 21.3,
+          "timePerOutputTokenMs": 8.819,
+          "tokenLatencyMs": {
+            "min": 7.7,
+            "median": 8.5,
+            "mean": 8.919,
+            "p95": 10.9,
+            "max": 11.3,
+            "stddev": 1.058
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.298,
+              "prefill_tokens_per_s": 1267.606,
+              "decode_tokens_per_s": 113.387,
+              "time_to_first_token_s": 0.021,
+              "time_per_output_token_s": 0.009
+            }
+          }
+        },
+        {
+          "durationMs": 470.5,
+          "ttftMs": 27.7,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 978.261,
+          "decodeTokensPerSecond": 70.487,
+          "endToEndTokensPerSecond": 65.887,
+          "timeToFirstTokenMs": 27.6,
+          "timePerOutputTokenMs": 14.187,
+          "tokenLatencyMs": {
+            "min": 8.8,
+            "median": 14.9,
+            "mean": 14.284,
+            "p95": 20,
+            "max": 20.7,
+            "stddev": 2.95
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.471,
+              "prefill_tokens_per_s": 978.261,
+              "decode_tokens_per_s": 70.487,
+              "time_to_first_token_s": 0.028,
+              "time_per_output_token_s": 0.014
+            }
+          }
+        },
+        {
+          "durationMs": 363.3,
+          "ttftMs": 22.1,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 1227.273,
+          "decodeTokensPerSecond": 91.526,
+          "endToEndTokensPerSecond": 85.329,
+          "timeToFirstTokenMs": 22,
+          "timePerOutputTokenMs": 10.926,
+          "tokenLatencyMs": {
+            "min": 8.7,
+            "median": 11,
+            "mean": 11.003,
+            "p95": 13,
+            "max": 13.5,
+            "stddev": 1.323
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.363,
+              "prefill_tokens_per_s": 1227.273,
+              "decode_tokens_per_s": 91.526,
+              "time_to_first_token_s": 0.022,
+              "time_per_output_token_s": 0.011
+            }
+          }
+        },
+        {
+          "durationMs": 396.7,
+          "ttftMs": 31.7,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 857.143,
+          "decodeTokensPerSecond": 85.517,
+          "endToEndTokensPerSecond": 78.145,
+          "timeToFirstTokenMs": 31.5,
+          "timePerOutputTokenMs": 11.694,
+          "tokenLatencyMs": {
+            "min": 8.7,
+            "median": 10.9,
+            "mean": 11.774,
+            "p95": 15.5,
+            "max": 15.8,
+            "stddev": 2.305
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.397,
+              "prefill_tokens_per_s": 857.143,
+              "decode_tokens_per_s": 85.517,
+              "time_to_first_token_s": 0.032,
+              "time_per_output_token_s": 0.012
+            }
+          }
+        },
+        {
+          "durationMs": 430.3,
+          "ttftMs": 25,
+          "promptTokens": 27,
+          "generatedTokens": 31,
+          "prefillTokensPerSecond": 1088.71,
+          "decodeTokensPerSecond": 77.057,
+          "endToEndTokensPerSecond": 72.043,
+          "timeToFirstTokenMs": 24.8,
+          "timePerOutputTokenMs": 12.977,
+          "tokenLatencyMs": {
+            "min": 9.5,
+            "median": 12,
+            "mean": 13.074,
+            "p95": 16.8,
+            "max": 16.9,
+            "stddev": 2.494
+          },
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 27,
+            "total_tokens": 58,
+            "extra": {
+              "e2e_latency_s": 0.431,
+              "prefill_tokens_per_s": 1088.71,
+              "decode_tokens_per_s": 77.057,
+              "time_to_first_token_s": 0.025,
+              "time_per_output_token_s": 0.013
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -167,8 +167,9 @@ async function generateAsync( runner, prompt, options = {}, controls ) {
 
 		if ( signal !== undefined && signal.aborted ) break;
 
-		await computeToken( inputTokens[ i ], i );
-		if ( i === inputTokens.length - 1 ) logits = await readLogits();
+		const computeLogits = i === inputTokens.length - 1;
+		await computeToken( inputTokens[ i ], i, computeLogits );
+		if ( computeLogits ) logits = await readLogits();
 
 	}
 

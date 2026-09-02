@@ -66,6 +66,7 @@
     "test-e2e-cov": "node test/e2e/check-coverage.js",
     "test-e2e-webgpu": "node test/e2e/puppeteer.js --webgpu",
     "test-performance-llm": "node test/benchmark/llm.js",
+    "test-performance-webllm": "node test/benchmark/webllm.js",
     "test-performance-llm-vec4": "node test/benchmark/llm-vec4.js",
     "test-treeshake": "rollup -c test/rollup.treeshake.config.js",
     "make-screenshot": "node test/e2e/puppeteer.js --make"

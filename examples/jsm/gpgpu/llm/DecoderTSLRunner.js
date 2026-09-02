@@ -46,6 +46,7 @@ class DecoderTSLRunner {
 
 		this.finalNorm = this.buildFinalNorm( currentNode );
 		this.logits = createChunkedLogitLayers( this.finalNorm.outputNode, weights, this.logitChunkSize, `${ weights.architecture }Logits` );
+		this.prefillComputeNodes = this.createComputeNodes( false );
 		this.computeNodes = this.createComputeNodes();
 
 	}
@@ -210,7 +211,7 @@ class DecoderTSLRunner {
 
 	}
 
-	createComputeNodes() {
+	createComputeNodes( includeLogits = true ) {
 
 		const nodes = [];
 
@@ -240,19 +241,24 @@ class DecoderTSLRunner {
 
 		}
 
-		nodes.push( ...orderedComputeNodes( this.finalNorm, ...this.logits.map( ( logit ) => logit.layer ) ) );
+		if ( includeLogits ) {
+
+			nodes.push( ...orderedComputeNodes( this.finalNorm, ...this.logits.map( ( logit ) => logit.layer ) ) );
+
+		}
+
 		return nodes;
 
 	}
 
-	computeToken( renderer, tokenId, position ) {
+	computeToken( renderer, tokenId, position, computeLogits = true ) {
 
 		this.weights.embedding( tokenId, position, this.embeddingBuffer );
 		this.embeddingAttribute.needsUpdate = true;
 
 		for ( const layer of this.layers ) layer.attention.setPosition( position );
 
-		renderer.compute( this.computeNodes );
+		renderer.compute( computeLogits ? this.computeNodes : this.prefillComputeNodes );
 
 	}
 
@@ -277,7 +283,7 @@ class DecoderTSLRunner {
 		return generateAsync( this, prompt, options, {
 			rewindable: true,
 			resetCache: () => this.resetCache(),
-			computeToken: ( tokenId, position ) => this.computeToken( renderer, tokenId, position ),
+			computeToken: ( tokenId, position, computeLogits ) => this.computeToken( renderer, tokenId, position, computeLogits ),
 			readLogits: () => this.readLogits( renderer )
 		} );
 

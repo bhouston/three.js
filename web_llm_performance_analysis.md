@@ -39,13 +39,14 @@ The retained optimizations already produced large gains:
 
 Those results show that JavaScript-to-WebGPU submission and synchronization overhead dominated the original implementation. They also show that isolated kernel improvements do not guarantee a model-level gain. The attempted shared-workgroup normalization and vec4 GEMV kernels did not improve representative SmolLM2 throughput.
 
-The current SmolLM2 path still performs:
+The current SmolLM2 decode path still performs:
 
 - 427 compute dispatches per forward
 - six full-vocabulary readbacks per sampled token
 - one forward pass per prompt token
-- a full vocabulary projection for every prompt token, although only the final result is read
 - F32 storage and arithmetic after converting the BF16 checkpoint
+
+The worktree now removes one prefill-only cost: intermediate prompt tokens advance the layer and KV-cache state without running the final norm or vocabulary projection. The final prompt token still computes logits so sampling behavior does not change.
 
 Sources: `llm_performance.md`, `examples/jsm/gpgpu/llm/DecoderTSLRunner.js`, and `examples/jsm/gpgpu/llm/LLMGenerate.js`.
 
@@ -103,7 +104,7 @@ WebLLM loads separate `prefill` or `batch_prefill` and `decode` or `batch_decode
 
 Batched prefill converts repeated matrix-vector work into matrix-matrix work. GPUs can reuse weights across prompt tokens and expose more parallel work. A causal attention kernel can also process the prompt as a block instead of replaying one-token decode.
 
-The TSL prefill has another avoidable cost. `DecoderTSLRunner.createComputeNodes` always appends the final normalization and every logit chunk to the forward list (`examples/jsm/gpgpu/llm/DecoderTSLRunner.js:241-244`). `generateAsync` only reads logits after the final prompt token (`examples/jsm/gpgpu/llm/LLMGenerate.js:166-174`). SmolLM2 therefore computes its 49,152-entry vocabulary projection for every prompt token and discards all but the last result. A dedicated prefill path could omit the vocabulary head on intermediate tokens even before adding batched GEMM.
+The TSL prefill used to have another avoidable cost. `generateAsync` only reads logits after the final prompt token, but the runner computed final norm and every logit chunk for each intermediate prompt token. The current worktree adds a logits-free prefill compute list for decoder and Qwen runners. For SmolLM2 this skips seven dispatches per intermediate prompt token: one final RMSNorm plus six 8192-token vocabulary chunks. A 27-token prompt should therefore remove 182 prefill dispatches before any batched GEMM work.
 
 This should produce WebLLM's largest TTFT advantage on medium and long prompts. It contributes little to steady-state decode because decode still has one new token at each step.
 
@@ -225,7 +226,7 @@ The current TSL design also accepts ordinary Hugging Face checkpoints at runtime
 4. No browser-side BF16-to-F32 expansion
 5. Ahead-of-time layouts with no runtime transpose or repack
 
-## Recommended measurement plan before implementation
+## Phase execution plan
 
 ### Phase 1: closest full-model comparison
 
@@ -249,9 +250,25 @@ Run both with:
 
 Record GPU memory, command submissions, dispatches, and readback bytes if the runtime exposes them.
 
+Commands now available in this worktree:
+
+```sh
+npm run test-performance-llm -- --models=smollm2 --trials=5 --tokens=32 --headless --output=tsl-smollm2.json
+npm run test-performance-webllm -- --models=SmolLM2-135M-Instruct-q0f32-MLC,SmolLM2-135M-Instruct-q0f16-MLC --trials=5 --tokens=32 --headless --output=webllm-smollm2.json
+```
+
+The WebLLM harness imports WebLLM 0.2.84 from ESM by default. Pass `--module=<url>` to test a local bundle or another pinned build.
+
 ### Phase 2: exact larger-model comparison
 
 Both catalogs contain Qwen3.5-0.8B and Phi-1.5. These runs test the regime where weight bandwidth and memory capacity matter more. WebLLM provides Qwen3.5-0.8B `q0f16`, `q4f32`, and `q4f16` variants, while the current TSL loader expands BF16 weights to F32.
+
+Suggested commands:
+
+```sh
+npm run test-performance-llm -- --models=qwen3.5-0.8b,phi-1.5 --trials=5 --tokens=32 --headless --output=tsl-larger.json
+npm run test-performance-webllm -- --models=Qwen3.5-0.8B-q0f16-MLC,Qwen3.5-0.8B-q4f32_1-MLC,Qwen3.5-0.8B-q4f16_1-MLC,phi-1_5-q4f32_1-MLC,phi-1_5-q4f16_1-MLC --trials=5 --tokens=32 --headless --output=webllm-larger.json
+```
 
 ### Phase 3: component attribution
 
@@ -266,6 +283,8 @@ Use focused experiments to explain the full-model gap:
 7. Capture GPU timestamps by kernel category: linear, attention, normalization, pointwise, logits, and sampling.
 
 This sequence distinguishes compiler scheduling, precision, synchronization, and long-context attention instead of assigning the entire gap to quantization.
+
+Item 3 has been implemented for the TSL runners. Re-run the existing TSL benchmark and compare `dispatchesPerForward`, TTFT, and `prefillTokensPerSecond` against the earlier Optimization 2 numbers in `llm_performance.md`. Decode throughput should stay close to the previous result because generated tokens still require logits.
 
 ## Conclusions
 

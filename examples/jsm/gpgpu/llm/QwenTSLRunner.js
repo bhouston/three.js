@@ -166,6 +166,7 @@ class QwenTSLRunner {
 
 		}
 
+		this.prefillComputeNodes = this.computeNodes.slice();
 		this.computeNodes.push( ...orderedComputeNodes( this.finalNorm, ...this.logits.map( ( logit ) => logit.layer ) ) );
 
 	}
@@ -176,7 +177,7 @@ class QwenTSLRunner {
 
 	}
 
-	computeToken( renderer, tokenId, position ) {
+	computeToken( renderer, tokenId, position, computeLogits = true ) {
 
 		this.weights.embedding( tokenId, position, this.embeddingBuffer );
 		this.embeddingAttribute.needsUpdate = true;
@@ -187,7 +188,7 @@ class QwenTSLRunner {
 
 		}
 
-		renderer.compute( this.computeNodes );
+		renderer.compute( computeLogits ? this.computeNodes : this.prefillComputeNodes );
 
 	}
 
@@ -221,7 +222,7 @@ class QwenTSLRunner {
 		return generateAsync( this, prompt, options, {
 			rewindable: false,
 			resetCache: () => this.resetCache(),
-			computeToken: ( tokenId, position ) => this.computeToken( renderer, tokenId, position ),
+			computeToken: ( tokenId, position, computeLogits ) => this.computeToken( renderer, tokenId, position, computeLogits ),
 			readLogits: () => this.readLogits( renderer )
 		} );
 

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>WebGPU WebLLM benchmark</title>
+	</head>
+	<body>
+		<pre id="output">Starting WebLLM benchmark...</pre>
+		<script type="module">
+
+			const output = document.getElementById( 'output' );
+			const params = new URLSearchParams( window.location.search );
+			const webllmModule = params.get( 'module' ) || 'https://esm.sh/@mlc-ai/web-llm@0.2.84';
+			const modelId = params.get( 'model' ) || 'SmolLM2-135M-Instruct-q0f32-MLC';
+			const trialCount = Math.max( 1, Number( params.get( 'trials' ) ) || 3 );
+			const maxNewTokens = Math.max( 2, Number( params.get( 'tokens' ) ) || 16 );
+			const contextWindowSize = Math.max( 1, Number( params.get( 'context' ) ) || 4096 );
+			const mode = params.get( 'mode' ) || 'completion';
+			const prompt = params.get( 'prompt' ) || 'Once upon a time, in a quiet village by the sea, a curious child found a small brass key beneath an old oak tree.';
+
+			function percentile( sorted, fraction ) {
+
+				if ( sorted.length === 0 ) return null;
+				return sorted[ Math.min( sorted.length - 1, Math.floor( sorted.length * fraction ) ) ];
+
+			}
+
+			function summarize( values ) {
+
+				const finite = values.filter( ( value ) => typeof value === 'number' && Number.isFinite( value ) );
+				const sorted = finite.slice().sort( ( a, b ) => a - b );
+				if ( sorted.length === 0 ) return null;
+
+				const mean = sorted.reduce( ( sum, value ) => sum + value, 0 ) / sorted.length;
+				const variance = sorted.reduce( ( sum, value ) => sum + ( value - mean ) ** 2, 0 ) / sorted.length;
+
+				return {
+					min: sorted[ 0 ],
+					median: percentile( sorted, 0.5 ),
+					mean,
+					p95: percentile( sorted, 0.95 ),
+					max: sorted[ sorted.length - 1 ],
+					stddev: Math.sqrt( variance )
+				};
+
+			}
+
+			function roundNumbers( value ) {
+
+				if ( typeof value === 'number' ) return Number( value.toFixed( 3 ) );
+				if ( Array.isArray( value ) ) return value.map( roundNumbers );
+				if ( value && typeof value === 'object' ) {
+
+					const rounded = {};
+					for ( const key in value ) rounded[ key ] = roundNumbers( value[ key ] );
+					return rounded;
+
+				}
+
+				return value;
+
+			}
+
+			async function adapterInfo() {
+
+				const adapter = await navigator.gpu.requestAdapter( { powerPreference: 'high-performance' } );
+				if ( adapter === null ) return null;
+
+				const info = adapter.info || {};
+				return {
+					vendor: info.vendor || '',
+					architecture: info.architecture || '',
+					device: info.device || '',
+					description: info.description || '',
+					features: Array.from( adapter.features || [] ).sort()
+				};
+
+			}
+
+			function resourceBytes() {
+
+				return performance.getEntriesByType( 'resource' ).reduce( ( total, entry ) => {
+
+					if ( entry.name.startsWith( window.location.origin ) ) return total;
+					return total + ( entry.transferSize || entry.encodedBodySize || entry.decodedBodySize || 0 );
+
+				}, 0 );
+
+			}
+
+			async function runGeneration( engine, tokens ) {
+
+				const tokenTimes = [];
+				const start = performance.now();
+				let usage = null;
+				const request = mode === 'chat'
+					? {
+						messages: [ { role: 'user', content: prompt } ],
+						max_tokens: tokens,
+						temperature: 0,
+						top_p: 1,
+						stream: true,
+						stream_options: { include_usage: true }
+					}
+					: {
+						prompt,
+						max_tokens: tokens,
+						temperature: 0,
+						top_p: 1,
+						stream: true,
+						stream_options: { include_usage: true }
+					};
+
+				const chunks = mode === 'chat'
+					? await engine.chat.completions.create( request )
+					: await engine.completions.create( request );
+
+				for await ( const chunk of chunks ) {
+
+					if ( chunk.usage ) {
+
+						usage = chunk.usage;
+						continue;
+
+					}
+
+					const choice = chunk.choices && chunk.choices[ 0 ];
+					if ( choice && ( ( choice.delta && choice.delta.content ) || choice.text ) ) tokenTimes.push( performance.now() );
+
+				}
+
+				const end = performance.now();
+				const latencies = [];
+
+				for ( let i = 1; i < tokenTimes.length; i ++ ) latencies.push( tokenTimes[ i ] - tokenTimes[ i - 1 ] );
+
+				const completionTokens = usage ? usage.completion_tokens : tokenTimes.length;
+				const promptTokens = usage ? usage.prompt_tokens : null;
+				const ttftMs = tokenTimes.length > 0 ? tokenTimes[ 0 ] - start : null;
+				const decodeWindowMs = tokenTimes.length > 1 ? tokenTimes[ tokenTimes.length - 1 ] - tokenTimes[ 0 ] : null;
+				const extra = usage && usage.extra ? usage.extra : {};
+
+				return {
+					durationMs: end - start,
+					ttftMs,
+					promptTokens,
+					generatedTokens: completionTokens,
+					prefillTokensPerSecond: extra.prefill_tokens_per_s || ( promptTokens && ttftMs > 0 ? promptTokens * 1000 / ttftMs : null ),
+					decodeTokensPerSecond: extra.decode_tokens_per_s || ( decodeWindowMs > 0 ? ( completionTokens - 1 ) * 1000 / decodeWindowMs : null ),
+					endToEndTokensPerSecond: completionTokens * 1000 / ( end - start ),
+					timeToFirstTokenMs: extra.time_to_first_token_s !== undefined ? extra.time_to_first_token_s * 1000 : null,
+					timePerOutputTokenMs: extra.time_per_output_token_s !== undefined ? extra.time_per_output_token_s * 1000 : null,
+					tokenLatencyMs: summarize( latencies ),
+					usage
+				};
+
+			}
+
+			try {
+
+				const webllm = await import( webllmModule );
+				const progress = [];
+				const loadStart = performance.now();
+				const engine = await webllm.CreateMLCEngine( modelId, {
+					initProgressCallback: ( report ) => {
+
+						progress.push( { timeMs: performance.now() - loadStart, text: report.text, progress: report.progress } );
+						output.textContent = report.text;
+
+					},
+					logLevel: 'INFO'
+				}, {
+					context_window_size: contextWindowSize
+				} );
+				const modelLoadMs = performance.now() - loadStart;
+
+				output.textContent = `Loaded ${ modelId }. Running warm compile request...`;
+				const firstUse = await runGeneration( engine, 2 );
+				const trials = [];
+
+				for ( let i = 0; i < trialCount; i ++ ) {
+
+					output.textContent = `Running ${ modelId } trial ${ i + 1 }/${ trialCount }...`;
+					trials.push( await runGeneration( engine, maxNewTokens ) );
+
+				}
+
+				const completedTrials = trials.filter( ( trial ) => trial.generatedTokens > 1 );
+				const report = roundNumbers( {
+					schemaVersion: 1,
+					benchmark: 'webllm',
+					model: { id: modelId },
+					environment: {
+						userAgent: navigator.userAgent,
+						platform: navigator.platform,
+						adapter: await adapterInfo()
+					},
+					parameters: { prompt, trialCount, maxNewTokens, contextWindowSize, mode, webllmModule },
+					load: {
+						modelLoadMs,
+						resourceBytes: resourceBytes(),
+						progress
+					},
+					firstUse,
+					summary: {
+						ttftMs: summarize( completedTrials.map( ( trial ) => trial.ttftMs ) ),
+						webllmTimeToFirstTokenMs: summarize( completedTrials.map( ( trial ) => trial.timeToFirstTokenMs ) ),
+						prefillTokensPerSecond: summarize( completedTrials.map( ( trial ) => trial.prefillTokensPerSecond ) ),
+						decodeTokensPerSecond: summarize( completedTrials.map( ( trial ) => trial.decodeTokensPerSecond ) ),
+						endToEndTokensPerSecond: summarize( completedTrials.map( ( trial ) => trial.endToEndTokensPerSecond ) ),
+						timePerOutputTokenMs: summarize( completedTrials.map( ( trial ) => trial.timePerOutputTokenMs ) )
+					},
+					trials
+				} );
+
+				if ( engine.unload ) await engine.unload();
+				window.__webllmBenchmark = { done: true, report };
+				output.textContent = JSON.stringify( report, null, 2 );
+
+			} catch ( error ) {
+
+				const message = String( error && error.stack || error );
+				window.__webllmBenchmark = { done: true, error: message };
+				output.textContent = message;
+
+			}
+
+		</script>
+	</body>
+</html>

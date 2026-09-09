@@ -381,13 +381,19 @@ class WebGLBackend extends Backend {
 
 		const gl = this.gl;
 
-		this.set( renderTarget.texture, { textureGPU: colorTexture, glInternalFormat: gl.RGBA8 } ); // see #24698 why RGBA8 and not SRGB8_ALPHA8 is used
+		this.set( renderTarget.texture, {
+			textureGPU: colorTexture,
+			glTextureType: this.textureUtils.getGLTextureType( renderTarget.texture ),
+			glInternalFormat: gl.RGBA8 // see #24698 why RGBA8 and not SRGB8_ALPHA8 is used
+		} );
 
 		if ( depthTexture !== null ) {
 
-			const glInternalFormat = renderTarget.stencilBuffer ? gl.DEPTH24_STENCIL8 : gl.DEPTH_COMPONENT24;
-
-			this.set( renderTarget.depthTexture, { textureGPU: depthTexture, glInternalFormat: glInternalFormat } );
+			this.set( renderTarget.depthTexture, {
+				textureGPU: depthTexture,
+				glTextureType: this.textureUtils.getGLTextureType( renderTarget.depthTexture ),
+				glInternalFormat: renderTarget.stencilBuffer ? gl.DEPTH24_STENCIL8 : gl.DEPTH_COMPONENT24
+			} );
 
 			// The multisample_render_to_texture extension doesn't work properly if there
 			// are midframe flushes and an external depth texture.
@@ -821,10 +827,14 @@ class WebGLBackend extends Backend {
 			const clearStencil = renderer.getClearStencil();
 
 			if ( depth ) this.state.setDepthMask( true );
+			if ( stencil ) this.state.setStencilMask( 0xffffffff );
 
 			if ( descriptor.textures === null ) {
 
-				gl.clearColor( clearColor.r, clearColor.g, clearColor.b, clearColor.a );
+				if ( color ) gl.clearColor( clearColor.r, clearColor.g, clearColor.b, clearColor.a );
+				if ( depth ) gl.clearDepth( clearDepth );
+				if ( stencil ) gl.clearStencil( clearStencil );
+
 				gl.clear( clear );
 
 			} else {
@@ -1263,9 +1273,9 @@ class WebGLBackend extends Backend {
 
 			}
 
-			const pixelRatio = this.renderer.getPixelRatio();
-
 			const renderTarget = this._currentContext.renderTarget;
+
+			const pixelRatio = ( renderTarget === null || renderTarget.isPostProcessingRenderTarget === true ) ? this.renderer.getPixelRatio() : 1;
 			const isRenderCameraDepthArray = this._isRenderCameraDepthArray( this._currentContext );
 			const prevActiveCubeFace = this._currentContext.activeCubeFace;
 
@@ -1875,10 +1885,10 @@ class WebGLBackend extends Backend {
 	 *
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	createBindings( bindGroup, bindings /*, cacheIndex, version*/ ) {
+	createBindings( bindGroup, bindings /*, cacheKey, version*/ ) {
 
 		if ( this._knownBindings.has( bindings ) === false ) {
 
@@ -1914,10 +1924,10 @@ class WebGLBackend extends Backend {
 	 *
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	updateBindings( bindGroup /*, bindings, cacheIndex, version*/ ) {
+	updateBindings( bindGroup /*, bindings, cacheKey, version*/ ) {
 
 		const { gl } = this;
 
@@ -2248,8 +2258,6 @@ class WebGLBackend extends Backend {
 			const { depthBuffer, stencilBuffer } = renderTarget;
 
 			const isCube = renderTarget.isCubeRenderTarget === true;
-			const isRenderTarget3D = renderTarget.isRenderTarget3D === true;
-			const isRenderTargetArray = renderTarget.depth > 1;
 			const isXRRenderTarget = renderTarget.isXRRenderTarget === true;
 			const _hasExternalTextures = ( isXRRenderTarget === true && renderTarget._hasExternalTextures === true );
 
@@ -2331,7 +2339,7 @@ class WebGLBackend extends Backend {
 
 							multiviewExt.framebufferTextureMultisampleMultiviewOVR( gl.FRAMEBUFFER, attachment, textureData.textureGPU, 0, samples, 0, 2 );
 
-						} else if ( isRenderTarget3D || isRenderTargetArray ) {
+						} else if ( textureData.glTextureType === gl.TEXTURE_2D_ARRAY || textureData.glTextureType === gl.TEXTURE_3D ) {
 
 							const layer = this.renderer._activeCubeFace;
 							const mipLevel = this.renderer._activeMipmapLevel;
@@ -2928,7 +2936,9 @@ class WebGLBackend extends Backend {
 	/**
 	 * Frees internal resources.
 	 */
-	dispose() {
+	async dispose() {
+
+		await super.dispose();
 
 		if ( this.textureUtils !== null ) this.textureUtils.dispose();
 

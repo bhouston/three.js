@@ -842,12 +842,6 @@ class Renderer {
 			this._animation.start();
 			this._initialized = true;
 
-			//
-
-			this._inspector.init();
-
-			//
-
 			resolve( this );
 
 		} );
@@ -1169,6 +1163,7 @@ class Renderer {
 
 			await nodes.getForComputeAsync( computeNode );
 
+			nodes.updateBeforeForCompute( computeNode );
 			nodes.updateForCompute( computeNode );
 			bindings.updateForCompute( computeNode );
 
@@ -1177,6 +1172,8 @@ class Renderer {
 
 			pipelines.getForCompute( computeNode, computeBindings, compilationPromises );
 			await Promise.all( compilationPromises );
+
+			nodes.updateAfterForCompute( computeNode );
 
 			loaded ++;
 
@@ -1597,6 +1594,16 @@ class Renderer {
 
 				this._frameBufferTargets.delete( target );
 
+				const quadData = this._quadCache.get( frameBufferTarget );
+
+				if ( quadData !== undefined ) {
+
+					quadData.quad.material.dispose();
+
+					this._quadCache.delete( frameBufferTarget );
+
+				}
+
 			};
 
 			target.addEventListener( 'dispose', dispose );
@@ -1963,7 +1970,7 @@ class Renderer {
 
 		const cacheKey = this._nodes.getOutputCacheKey();
 
-		let quadData = this._quadCache.get( renderTarget.texture );
+		let quadData = this._quadCache.get( renderTarget );
 		let quad;
 
 		if ( quadData === undefined ) {
@@ -1979,21 +1986,7 @@ class Renderer {
 				cacheKey
 			};
 
-			this._quadCache.set( renderTarget.texture, quadData );
-
-			// dispose logic
-
-			const dispose = () => {
-
-				quad.material.dispose();
-
-				this._quadCache.delete( renderTarget.texture );
-
-				renderTarget.texture.removeEventListener( 'dispose', dispose );
-
-			};
-
-			renderTarget.texture.addEventListener( 'dispose', dispose );
+			this._quadCache.set( renderTarget, quadData );
 
 		} else {
 
@@ -2696,13 +2689,11 @@ class Renderer {
 	 * Frees all internal resources of the renderer. Call this method if the renderer
 	 * is no longer in use by your app.
 	 */
-	dispose() {
+	async dispose() {
 
 		if ( this._initialized === true ) {
 
-			this.info.dispose();
-			this.backend.dispose();
-
+			this._inspector.dispose();
 			this._animation.dispose();
 			this._objects.dispose();
 			this._geometries.dispose();
@@ -2711,7 +2702,6 @@ class Renderer {
 			this._bindings.dispose();
 			this._renderLists.dispose();
 			this._renderContexts.dispose();
-			this._textures.dispose();
 
 			for ( const canvasTarget of this._frameBufferTargets.keys() ) {
 
@@ -2719,11 +2709,10 @@ class Renderer {
 
 			}
 
-			Object.values( this.backend.timestampQueryPool ).forEach( queryPool => {
+			this._textures.dispose();
+			this.info.dispose();
 
-				if ( queryPool !== null ) queryPool.dispose();
-
-			} );
+			await this.backend.dispose();
 
 		}
 
@@ -2887,7 +2876,7 @@ class Renderer {
 
 		if ( this._initialized === false ) {
 
-			warn( 'Renderer: .compute() called before the backend is initialized. Try using .computeAsync() instead.' );
+			warn( 'Renderer: ".compute()" called before the backend is initialized. Try using ".computeAsync()" instead.' );
 
 			return this.computeAsync( computeNodes, dispatchSize );
 
@@ -2960,6 +2949,7 @@ class Renderer {
 
 			}
 
+			nodes.updateBeforeForCompute( computeNode );
 			nodes.updateForCompute( computeNode );
 			bindings.updateForCompute( computeNode );
 
@@ -2967,6 +2957,8 @@ class Renderer {
 			const computePipeline = pipelines.getForCompute( computeNode, computeBindings );
 
 			backend.compute( computeNodes, computeNode, computeBindings, computePipeline, dispatchSize );
+
+			nodes.updateAfterForCompute( computeNode );
 
 		}
 

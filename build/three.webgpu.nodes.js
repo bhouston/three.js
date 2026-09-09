@@ -3,8 +3,8 @@
  * Copyright 2010-2026 Three.js Authors
  * SPDX-License-Identifier: MIT
  */
-import { DynamicDrawUsage, RenderObjectRefreshType, Color, Vector2, Vector3, Vector4, Matrix2, Matrix3, Matrix4, UnsignedIntType, IntType, error, RedFormat, RedIntegerFormat, DepthFormat, DepthStencilFormat, AlphaFormat, RGFormat, RGIntegerFormat, RGBFormat, RGBIntegerFormat, EventDispatcher, MathUtils, warn, WebGLCoordinateSystem, WebGPUCoordinateSystem, ColorManagement, SRGBTransfer, NoToneMapping, StaticDrawUsage, InterleavedBufferAttribute, InterleavedBuffer, NoColorSpace, log as log$1, warnOnce, Texture, Compatibility, LessCompare, LessEqualCompare, GreaterCompare, GreaterEqualCompare, NearestFilter, Sphere, BackSide, DoubleSide, CubeTexture, CubeReflectionMapping, CubeRefractionMapping, TangentSpaceNormalMap, NoNormalPacking, NormalRGPacking, NormalGAPacking, ObjectSpaceNormalMap, RED_GREEN_RGTC2_Format, RG11_EAC_Format, InstancedBufferAttribute, InstancedInterleavedBuffer, DataTexture, RGBAFormat, FloatType, DataArrayTexture, FramebufferTexture, LinearMipmapLinearFilter, DepthTexture, Material, LineBasicMaterial, LineDashedMaterial, NoBlending, MeshNormalMaterial, SRGBColorSpace, RenderTarget, BoxGeometry, Mesh, Scene, LinearFilter, CubeCamera, EquirectangularReflectionMapping, EquirectangularRefractionMapping, AddOperation, MixOperation, MultiplyOperation, MeshBasicMaterial, MeshLambertMaterial, MeshPhongMaterial, HalfFloatType, ClampToEdgeWrapping, BufferGeometry, OrthographicCamera, PerspectiveCamera, LinearSRGBColorSpace, CubeUVReflectionMapping, BufferAttribute, MeshStandardMaterial, MeshPhysicalMaterial, MeshToonMaterial, MeshMatcapMaterial, SpriteMaterial, PointsMaterial, ShadowMaterial, Uint32BufferAttribute, Uint16BufferAttribute, ByteType, UnsignedByteType, ShortType, UnsignedShortType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedInt101111Type, NormalBlending, SrcAlphaFactor, OneMinusSrcAlphaFactor, AddEquation, MaterialBlending, Object3D, LinearMipMapLinearFilter, Plane, Float32BufferAttribute, UVMapping, PCFShadowMap, VSMShadowMap, BasicShadowMap, CubeDepthTexture, SphereGeometry, LinearMipmapNearestFilter, NearestMipmapLinearFilter, Float16BufferAttribute, yieldToMain, REVISION, ArrayCamera, PlaneGeometry, FrontSide, CustomBlending, ZeroFactor, CylinderGeometry, Quaternion, WebXRController, RAD2DEG, PCFSoftShadowMap, FrustumArray, Frustum, RGBAIntegerFormat, TimestampQuery, createCanvasElement, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, OneMinusConstantAlphaFactor, ConstantAlphaFactor, OneMinusConstantColorFactor, ConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcColorFactor, DstAlphaFactor, DstColorFactor, SrcAlphaSaturateFactor, SrcColorFactor, OneFactor, CullFaceNone, CullFaceBack, CullFaceFront, MultiplyBlending, SubtractiveBlending, AdditiveBlending, NotEqualDepth, GreaterDepth, GreaterEqualDepth, EqualDepth, LessEqualDepth, LessDepth, AlwaysDepth, NeverDepth, ReversedDepthFuncs, RGB_S3TC_DXT1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGB_PVRTC_4BPPV1_Format, RGB_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_PVRTC_2BPPV1_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGBA_ETC2_EAC_Format, R11_EAC_Format, SIGNED_R11_EAC_Format, SIGNED_RG11_EAC_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_10x10_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_BPTC_Format, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RED_RGTC1_Format, SIGNED_RED_RGTC1_Format, SIGNED_RED_GREEN_RGTC2_Format, MirroredRepeatWrapping, RepeatWrapping, NearestMipmapNearestFilter, NotEqualCompare, EqualCompare, AlwaysCompare, NeverCompare, LinearTransfer, getByteLength, isTypedArray, NotEqualStencilFunc, GreaterStencilFunc, GreaterEqualStencilFunc, EqualStencilFunc, LessEqualStencilFunc, LessStencilFunc, AlwaysStencilFunc, NeverStencilFunc, DecrementWrapStencilOp, IncrementWrapStencilOp, DecrementStencilOp, IncrementStencilOp, InvertStencilOp, ReplaceStencilOp, ZeroStencilOp, KeepStencilOp, SpotLight, PointLight, DirectionalLight, RectAreaLight, AmbientLight, HemisphereLight, LightProbe, LinearToneMapping, ReinhardToneMapping, CineonToneMapping, ACESFilmicToneMapping, AgXToneMapping, NeutralToneMapping, Group, Loader, FileLoader, MaterialLoader, ObjectLoader } from './three.core.js';
-export { AdditiveAnimationBlendMode, AnimationAction, AnimationClip, AnimationLoader, AnimationMixer, AnimationObjectGroup, AnimationUtils, ArcCurve, ArrowHelper, AttachedBindMode, Audio, AudioAnalyser, AudioContext, AudioListener, AudioLoader, AxesHelper, BasicDepthPacking, BatchedMesh, BezierInterpolant, Bone, BooleanKeyframeTrack, Box2, Box3, Box3Helper, BoxHelper, BufferGeometryLoader, Cache, Camera, CameraHelper, CanvasTexture, CapsuleGeometry, CatmullRomCurve3, CircleGeometry, Clock, ColorKeyframeTrack, CompressedArrayTexture, CompressedCubeTexture, CompressedTexture, CompressedTextureLoader, ConeGeometry, Controls, CubeTextureLoader, CubicBezierCurve, CubicBezierCurve3, CubicInterpolant, CullFaceFrontBack, Curve, CurvePath, CustomToneMapping, Cylindrical, Data3DTexture, DataTextureLoader, DataUtils, DefaultLoadingManager, DetachedBindMode, DirectionalLightHelper, DiscreteInterpolant, DodecahedronGeometry, DynamicCopyUsage, DynamicReadUsage, EdgesGeometry, EllipseCurve, Euler, ExternalTexture, ExtrudeGeometry, Fog, FogExp2, GLBufferAttribute, GLSL1, GLSL3, GridHelper, HTMLTexture, HemisphereLightHelper, IcosahedronGeometry, ImageBitmapLoader, ImageLoader, ImageUtils, InstancedBufferGeometry, InstancedMesh, Int16BufferAttribute, Int32BufferAttribute, Int8BufferAttribute, Interpolant, InterpolateBezier, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, InterpolationSamplingMode, InterpolationSamplingType, KeyframeTrack, LOD, LatheGeometry, Layers, Light, Line, Line3, LineCurve, LineCurve3, LineLoop, LineSegments, LinearInterpolant, LinearMipMapNearestFilter, LoaderUtils, LoadingManager, LoopOnce, LoopPingPong, LoopRepeat, MOUSE, MeshDepthMaterial, MeshDistanceMaterial, NearestMipMapLinearFilter, NearestMipMapNearestFilter, NormalAnimationBlendMode, NumberKeyframeTrack, OctahedronGeometry, Path, PlaneHelper, PointLightHelper, Points, PolarGridHelper, PolyhedronGeometry, PositionalAudio, PropertyBinding, PropertyMixer, QuadraticBezierCurve, QuadraticBezierCurve3, QuaternionKeyframeTrack, QuaternionLinearInterpolant, RGBADepthPacking, RGBDepthPacking, RGDepthPacking, RawShaderMaterial, Ray, Raycaster, RenderTarget3D, RingGeometry, ShaderMaterial, Shape, ShapeGeometry, ShapePath, ShapeUtils, Skeleton, SkeletonHelper, SkinnedMesh, Source, Spherical, SphericalHarmonics3, SplineCurve, SpotLightHelper, Sprite, StaticCopyUsage, StaticReadUsage, StereoCamera, StreamCopyUsage, StreamDrawUsage, StreamReadUsage, StringKeyframeTrack, SunLight, TOUCH, TetrahedronGeometry, TextureLoader, TextureSource, TextureUtils, Timer, TorusGeometry, TorusKnotGeometry, Triangle, TriangleFanDrawMode, TriangleStripDrawMode, TrianglesDrawMode, TubeGeometry, Uint8BufferAttribute, Uint8ClampedBufferAttribute, Uniform, UniformsGroup, VectorKeyframeTrack, VideoFrameTexture, VideoTexture, WebGL3DRenderTarget, WebGLArrayRenderTarget, WebGLRenderTarget, WireframeGeometry, WrapAroundEnding, ZeroCurvatureEnding, ZeroSlopeEnding, getConsoleFunction, setConsoleFunction } from './three.core.js';
+import { DynamicDrawUsage, RenderObjectRefreshType, Color, Vector2, Vector3, Vector4, Matrix2, Matrix3, Matrix4, error, UnsignedIntType, IntType, RedFormat, RedIntegerFormat, DepthFormat, DepthStencilFormat, AlphaFormat, RGFormat, RGIntegerFormat, RGBFormat, RGBIntegerFormat, EventDispatcher, MathUtils, warn, WebGLCoordinateSystem, WebGPUCoordinateSystem, ColorManagement, SRGBTransfer, NoToneMapping, StaticDrawUsage, InterleavedBufferAttribute, InterleavedBuffer, NoColorSpace, log as log$1, warnOnce, Texture, Compatibility, LessCompare, LessEqualCompare, GreaterCompare, GreaterEqualCompare, NearestFilter, Sphere, BackSide, DoubleSide, CubeTexture, CubeReflectionMapping, CubeRefractionMapping, TangentSpaceNormalMap, NoNormalPacking, NormalRGPacking, NormalGAPacking, ObjectSpaceNormalMap, RED_GREEN_RGTC2_Format, RG11_EAC_Format, InstancedBufferAttribute, InstancedInterleavedBuffer, DataTexture, RGBAFormat, FloatType, DataArrayTexture, FramebufferTexture, LinearMipmapLinearFilter, DepthTexture, Material, LineBasicMaterial, LineDashedMaterial, NoBlending, MeshNormalMaterial, SRGBColorSpace, RenderTarget, BoxGeometry, Mesh, Scene, LinearFilter, CubeCamera, EquirectangularReflectionMapping, EquirectangularRefractionMapping, AddOperation, MixOperation, MultiplyOperation, MeshBasicMaterial, MeshLambertMaterial, MeshPhongMaterial, HalfFloatType, ClampToEdgeWrapping, BufferGeometry, OrthographicCamera, PerspectiveCamera, LinearSRGBColorSpace, CubeUVReflectionMapping, BufferAttribute, MeshStandardMaterial, MeshPhysicalMaterial, MeshToonMaterial, MeshMatcapMaterial, SpriteMaterial, PointsMaterial, ShadowMaterial, Uint32BufferAttribute, Uint16BufferAttribute, ByteType, UnsignedByteType, ShortType, UnsignedShortType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedInt101111Type, NormalBlending, SrcAlphaFactor, OneMinusSrcAlphaFactor, AddEquation, MaterialBlending, Object3D, LinearMipMapLinearFilter, Plane, Float32BufferAttribute, UVMapping, VSMShadowMap, PCFShadowMap, BasicShadowMap, CubeDepthTexture, SphereGeometry, LinearMipmapNearestFilter, NearestMipmapLinearFilter, Float16BufferAttribute, yieldToMain, REVISION, ArrayCamera, PlaneGeometry, FrontSide, CustomBlending, ZeroFactor, CylinderGeometry, Quaternion, WebXRController, RAD2DEG, PCFSoftShadowMap, FrustumArray, Frustum, RGBAIntegerFormat, TimestampQuery, createCanvasElement, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, OneMinusConstantAlphaFactor, ConstantAlphaFactor, OneMinusConstantColorFactor, ConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcColorFactor, DstAlphaFactor, DstColorFactor, SrcAlphaSaturateFactor, SrcColorFactor, OneFactor, CullFaceNone, CullFaceBack, CullFaceFront, MultiplyBlending, SubtractiveBlending, AdditiveBlending, NotEqualDepth, GreaterDepth, GreaterEqualDepth, EqualDepth, LessEqualDepth, LessDepth, AlwaysDepth, NeverDepth, ReversedDepthFuncs, RGB_S3TC_DXT1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGB_PVRTC_4BPPV1_Format, RGB_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_PVRTC_2BPPV1_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGBA_ETC2_EAC_Format, R11_EAC_Format, SIGNED_R11_EAC_Format, SIGNED_RG11_EAC_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_10x10_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_BPTC_Format, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RED_RGTC1_Format, SIGNED_RED_RGTC1_Format, SIGNED_RED_GREEN_RGTC2_Format, MirroredRepeatWrapping, RepeatWrapping, NearestMipmapNearestFilter, NotEqualCompare, EqualCompare, AlwaysCompare, NeverCompare, LinearTransfer, getByteLength, isTypedArray, NotEqualStencilFunc, GreaterStencilFunc, GreaterEqualStencilFunc, EqualStencilFunc, LessEqualStencilFunc, LessStencilFunc, AlwaysStencilFunc, NeverStencilFunc, DecrementWrapStencilOp, IncrementWrapStencilOp, DecrementStencilOp, IncrementStencilOp, InvertStencilOp, ReplaceStencilOp, ZeroStencilOp, KeepStencilOp, SpotLight, PointLight, DirectionalLight, RectAreaLight, AmbientLight, HemisphereLight, LightProbe, LinearToneMapping, ReinhardToneMapping, CineonToneMapping, ACESFilmicToneMapping, AgXToneMapping, NeutralToneMapping, Group, Loader, FileLoader, MaterialLoader, ObjectLoader } from './three.core.js';
+export { AdditiveAnimationBlendMode, AnimationAction, AnimationClip, AnimationLoader, AnimationMixer, AnimationObjectGroup, AnimationUtils, ArcCurve, ArrowHelper, AttachedBindMode, Audio, AudioAnalyser, AudioContext, AudioListener, AudioLoader, AxesHelper, BasicDepthPacking, BatchedMesh, BezierInterpolant, Bone, BooleanKeyframeTrack, Box2, Box3, Box3Helper, BoxHelper, BufferGeometryLoader, Cache, Camera, CameraHelper, CanvasTexture, CapsuleGeometry, CatmullRomCurve3, CircleGeometry, Clock, ColorKeyframeTrack, CompressedArrayTexture, CompressedCubeTexture, CompressedTexture, CompressedTextureLoader, ConeGeometry, Controls, CubeTextureLoader, CubicBezierCurve, CubicBezierCurve3, CubicInterpolant, CullFaceFrontBack, Curve, CurvePath, CustomToneMapping, Cylindrical, Data3DTexture, DataTextureLoader, DataUtils, DefaultLoadingManager, DetachedBindMode, DirectionalLightHelper, DiscreteInterpolant, DodecahedronGeometry, DynamicCopyUsage, DynamicReadUsage, EdgesGeometry, EllipseCurve, Euler, ExternalTexture, ExtrudeGeometry, Fog, FogExp2, GLBufferAttribute, GLSL1, GLSL3, GridHelper, HTMLTexture, HemisphereLightHelper, IcosahedronGeometry, ImageBitmapLoader, ImageLoader, ImageUtils, InstancedBufferGeometry, InstancedMesh, Int16BufferAttribute, Int32BufferAttribute, Int8BufferAttribute, Interpolant, InterpolateBezier, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, InterpolationSamplingMode, InterpolationSamplingType, KeyframeTrack, LOD, LatheGeometry, Layers, Light, LightShadow, Line, Line3, LineCurve, LineCurve3, LineLoop, LineSegments, LinearInterpolant, LinearMipMapNearestFilter, LoaderUtils, LoadingManager, LoopOnce, LoopPingPong, LoopRepeat, MOUSE, MeshDepthMaterial, MeshDistanceMaterial, NearestMipMapLinearFilter, NearestMipMapNearestFilter, NormalAnimationBlendMode, NumberKeyframeTrack, OctahedronGeometry, Path, PlaneHelper, PointLightHelper, Points, PolarGridHelper, PolyhedronGeometry, PositionalAudio, PropertyBinding, PropertyMixer, QuadraticBezierCurve, QuadraticBezierCurve3, QuaternionKeyframeTrack, QuaternionLinearInterpolant, RGBADepthPacking, RGBDepthPacking, RGDepthPacking, RawShaderMaterial, Ray, Raycaster, RenderTarget3D, RingGeometry, ShaderMaterial, Shape, ShapeGeometry, ShapePath, ShapeUtils, Skeleton, SkeletonHelper, SkinnedMesh, Source, Spherical, SphericalHarmonics3, SplineCurve, SpotLightHelper, Sprite, StaticCopyUsage, StaticReadUsage, StereoCamera, StreamCopyUsage, StreamDrawUsage, StreamReadUsage, StringKeyframeTrack, TOUCH, TetrahedronGeometry, TextureLoader, TextureSource, TextureUtils, Timer, TorusGeometry, TorusKnotGeometry, Triangle, TriangleFanDrawMode, TriangleStripDrawMode, TrianglesDrawMode, TubeGeometry, Uint8BufferAttribute, Uint8ClampedBufferAttribute, Uniform, UniformsGroup, VectorKeyframeTrack, VideoFrameTexture, VideoTexture, WebGL3DRenderTarget, WebGLArrayRenderTarget, WebGLRenderTarget, WireframeGeometry, WrapAroundEnding, ZeroCurvatureEnding, ZeroSlopeEnding, getConsoleFunction, setConsoleFunction } from './three.core.js';
 
 const refreshUniforms = [
 	'alphaMap',
@@ -104,6 +104,14 @@ const _materialCache = new WeakMap();
  * @type {WeakMap<BufferGeometry,Object>}
  */
 const _geometryCache = new WeakMap();
+
+/**
+ * Holds the texture data for comparison.
+ *
+ * @private
+ * @type {WeakMap<Texture,Object>}
+ */
+const _textureCache = new WeakMap();
 
 /**
  * This class is used by {@link WebGPURenderer} as management component.
@@ -361,7 +369,56 @@ class NodeMaterialObserver {
 				drawRange: { start: geometry.drawRange.start, count: geometry.drawRange.count }
 			};
 
+			// force refresh on dispose
+
+			geometry.addEventListener( 'dispose', () => {
+
+				data._version ++;
+
+			} );
+
 			_geometryCache.set( geometry, data );
+
+		}
+
+		return data;
+
+	}
+
+	/**
+	 * Returns a texture data structure holding the texture state for
+	 * monitoring.
+	 *
+	 * @param {Texture} texture - The texture.
+	 * @return {Object} An object for monitoring the texture.
+	 */
+	getTextureData( texture ) {
+
+		let data = _textureCache.get( texture );
+
+		if ( data === undefined ) {
+
+			data = { _version: 0 };
+
+			// force refresh on dispose
+
+			const onDispose = () => {
+
+				data._version ++;
+
+			};
+
+			if ( texture.renderTarget !== null ) {
+
+				texture.renderTarget.addEventListener( 'dispose', onDispose );
+
+			} else {
+
+				texture.addEventListener( 'dispose', onDispose );
+
+			}
+
+			_textureCache.set( texture, data );
 
 		}
 
@@ -388,13 +445,17 @@ class NodeMaterialObserver {
 
 				const value = material[ property ];
 
-				if ( value === null || value === undefined ) continue;
+				if ( value === undefined ) continue;
 
-				if ( typeof value === 'object' && value.clone !== undefined ) {
+				if ( value === null ) {
+
+					data[ property ] = null; // track unset properties
+
+				} else if ( typeof value === 'object' && value.clone !== undefined ) {
 
 					if ( value.isTexture === true ) {
 
-						data[ property ] = { id: value.id, version: 0 };
+						data[ property ] = { id: value.id, version: 0, cacheVersion: this.getTextureData( value )._version };
 
 					} else {
 
@@ -462,7 +523,35 @@ class NodeMaterialObserver {
 				if ( property === '_renderId' ) continue;
 				if ( property === '_version' ) continue;
 
-				if ( value.equals !== undefined ) {
+				if ( value === null || mtlValue === null || mtlValue === undefined ) {
+
+					// a property was assigned or removed since the last observation so a new snapshot is required
+
+					if ( value !== ( mtlValue === undefined ? null : mtlValue ) ) {
+
+						if ( mtlValue === null || mtlValue === undefined ) {
+
+							materialData[ property ] = null;
+
+						} else if ( mtlValue.isTexture === true ) {
+
+							materialData[ property ] = { id: mtlValue.id, version: mtlValue.version, cacheVersion: this.getTextureData( mtlValue )._version };
+
+						} else if ( typeof mtlValue === 'object' && mtlValue.clone !== undefined ) {
+
+							materialData[ property ] = mtlValue.clone();
+
+						} else {
+
+							materialData[ property ] = mtlValue;
+
+						}
+
+						changed = true;
+
+					}
+
+				} else if ( value.equals !== undefined ) {
 
 					if ( value.equals( mtlValue ) === false ) {
 
@@ -474,10 +563,13 @@ class NodeMaterialObserver {
 
 				} else if ( mtlValue.isTexture === true ) {
 
-					if ( value.id !== mtlValue.id || value.version !== mtlValue.version ) {
+					const textureData = this.getTextureData( mtlValue );
+
+					if ( value.id !== mtlValue.id || value.version !== mtlValue.version || value.cacheVersion !== textureData._version ) {
 
 						value.id = mtlValue.id;
 						value.version = mtlValue.version;
+						value.cacheVersion = textureData._version;
 
 						changed = true;
 
@@ -527,6 +619,8 @@ class NodeMaterialObserver {
 		if ( renderObjectData.geometryId !== geometry.id ) {
 
 			renderObjectData.geometryId = geometry.id;
+			renderObjectData.geometryVersion = this.getGeometryData( geometry )._version;
+
 			return false;
 
 		}
@@ -698,7 +792,16 @@ class NodeMaterialObserver {
 
 			for ( let i = 0; i < lightsData.length; i ++ ) {
 
-				if ( renderObjectData.lights[ i ].map !== lightsData[ i ].map ) {
+				const lightData = renderObjectData.lights[ i ];
+				const currentLightData = lightsData[ i ];
+
+				if ( lightData.map !== currentLightData.map || lightData.cacheVersion !== currentLightData.cacheVersion ||
+					lightData.shadowMapWidth !== currentLightData.shadowMapWidth || lightData.shadowMapHeight !== currentLightData.shadowMapHeight ) {
+
+					lightData.map = currentLightData.map;
+					lightData.cacheVersion = currentLightData.cacheVersion;
+					lightData.shadowMapWidth = currentLightData.shadowMapWidth;
+					lightData.shadowMapHeight = currentLightData.shadowMapHeight;
 
 					return false;
 
@@ -764,13 +867,29 @@ class NodeMaterialObserver {
 
 		for ( const light of materialLights ) {
 
+			let data = null;
+
 			if ( light.isSpotLight === true && light.map !== null ) {
 
 				// only add lights that have a map
 
-				lights.push( { map: light.map.version } );
+				data = { map: light.map.version, cacheVersion: this.getTextureData( light.map )._version };
 
 			}
+
+			if ( light.castShadow === true && light.shadow !== undefined ) {
+
+				// resizing a shadow map recreates its textures so the bindings
+				// of all related render objects must be updated
+
+				if ( data === null ) data = {};
+
+				data.shadowMapWidth = light.shadow.mapSize.width;
+				data.shadowMapHeight = light.shadow.mapSize.height;
+
+			}
+
+			if ( data !== null ) lights.push( data );
 
 		}
 
@@ -2050,9 +2169,10 @@ class Node extends EventDispatcher {
 	/**
 	 * Returns the update type of {@link Node#update}.
 	 *
+	 * @param {NodeFrame} [frame] - The current node frame.
 	 * @return {NodeUpdateType} The update type.
 	 */
-	getUpdateType() {
+	getUpdateType( /*frame*/ ) {
 
 		return this.updateType;
 
@@ -2061,9 +2181,10 @@ class Node extends EventDispatcher {
 	/**
 	 * Returns the update type of {@link Node#updateBefore}.
 	 *
+	 * @param {NodeFrame} [frame] - The current node frame.
 	 * @return {NodeUpdateType} The update type.
 	 */
-	getUpdateBeforeType() {
+	getUpdateBeforeType( /*frame*/ ) {
 
 		return this.updateBeforeType;
 
@@ -2072,9 +2193,10 @@ class Node extends EventDispatcher {
 	/**
 	 * Returns the update type of {@link Node#updateAfter}.
 	 *
+	 * @param {NodeFrame} [frame] - The current node frame.
 	 * @return {NodeUpdateType} The update type.
 	 */
-	getUpdateAfterType() {
+	getUpdateAfterType( /*frame*/ ) {
 
 		return this.updateAfterType;
 
@@ -7146,7 +7268,7 @@ const shiftRight = /*@__PURE__*/ nodeProxyIntent( OperatorNode, '>>' ).setParame
  * @param {Node} a - The node to increment.
  * @returns {OperatorNode}
  */
-const incrementBefore = Fn( ( [ a ] ) => {
+const incrementBefore = /*@__PURE__*/ Fn( ( [ a ] ) => {
 
 	a.addAssign( 1 );
 	return a;
@@ -7161,7 +7283,7 @@ const incrementBefore = Fn( ( [ a ] ) => {
  * @param {Node} a - The node to decrement.
  * @returns {OperatorNode}
  */
-const decrementBefore = Fn( ( [ a ] ) => {
+const decrementBefore = /*@__PURE__*/ Fn( ( [ a ] ) => {
 
 	a.subAssign( 1 );
 	return a;
@@ -7360,7 +7482,7 @@ class MathNode extends TempNode {
 
 		const method = this.method;
 
-		if ( method === MathNode.LENGTH || method === MathNode.DISTANCE || method === MathNode.DOT ) {
+		if ( method === MathNode.LENGTH || method === MathNode.DISTANCE || method === MathNode.DOT || method === MathNode.DETERMINANT ) {
 
 			return 'float';
 
@@ -7512,7 +7634,7 @@ class MathNode extends TempNode {
 
 				if ( builder.shaderStage !== 'fragment' && ( method === MathNode.DFDX || method === MathNode.DFDY ) ) {
 
-					warn( `TSL: '${ method }' is not supported in the ${ builder.shaderStage } stage.`, this.stackTrace );
+					error( `TSL: '${ method }' is not supported in the ${ builder.shaderStage } stage.`, this.stackTrace );
 
 					method = '/*' + method + '*/';
 
@@ -8951,6 +9073,50 @@ function builtinAOContext( aoNode, node = null ) {
 }
 
 /**
+ * TSL function for defining a built-in global illumination context for a given node. The AO node
+ * modulates the indirect lighting of the materials, the GI node is added to their irradiance
+ * without being modulated by the AO since it already accounts for occlusion.
+ *
+ * @tsl
+ * @function
+ * @param {Node<float>} aoNode - The ambient occlusion value node to apply.
+ * @param {Node<vec3>} giNode - The indirect diffuse irradiance node to add.
+ * @param {Node} [node=null] - The node whose context should be modified.
+ * @returns {ContextNode}
+ */
+function builtinGIContext( aoNode, giNode, node = null ) {
+
+	// the lighting models multiply the whole indirect diffuse term by the AO, which would occlude
+	// the GI a second time. Dividing the GI by the AO cancels that out so only the environment
+	// lighting is modulated.
+
+	const ao = aoNode.max( 1e-3 );
+
+	return context( node, {
+
+		getAO: ( inputNode, { material } ) => {
+
+			if ( material.transparent === true ) return inputNode;
+
+			return inputNode !== null ? inputNode.mul( ao ) : ao;
+
+		},
+
+		getGI: ( inputNode, { material } ) => {
+
+			if ( material.transparent === true ) return inputNode;
+
+			const gi = giNode.div( ao );
+
+			return inputNode !== null ? inputNode.add( gi ) : gi;
+
+		}
+
+	} );
+
+}
+
+/**
  * TSL function for defining a label context value for a given node.
  *
  * @tsl
@@ -8974,6 +9140,7 @@ addMethodChaining( 'uniformFlow', uniformFlow );
 addMethodChaining( 'setName', setName );
 addMethodChaining( 'builtinShadowContext', ( node, shadowNode, light ) => builtinShadowContext( shadowNode, light, node ) );
 addMethodChaining( 'builtinAOContext', ( node, aoValue ) => builtinAOContext( aoValue, node ) );
+addMethodChaining( 'builtinGIContext', ( node, aoValue, giValue ) => builtinGIContext( aoValue, giValue, node ) );
 
 /**
  * Class for representing shader variables as nodes. Variables are created from
@@ -10830,7 +10997,7 @@ const instancedBufferAttribute = ( array, type = null, stride = 0, offset = 0 ) 
  */
 const instancedDynamicBufferAttribute = ( array, type = null, stride = 0, offset = 0 ) => createBufferAttribute( array, type, stride, offset, DynamicDrawUsage, true );
 
-addMethodChaining( 'toAttribute', ( bufferNode ) => bufferAttribute( bufferNode.value ) );
+addMethodChaining( 'toAttribute', ( bufferNode ) => bufferAttribute( bufferNode.value, bufferNode.bufferType ) );
 
 /**
  * This class represents shader indices of different types. The following predefined node
@@ -10839,7 +11006,7 @@ addMethodChaining( 'toAttribute', ( bufferNode ) => bufferAttribute( bufferNode.
  * - `vertexIndex`: The index of a vertex within a mesh.
  * - `instanceIndex`: The index of either a mesh instance or an invocation of a compute shader.
  * - `drawIndex`: The index of a draw call.
- * - `invocationLocalIndex`: The index of a compute invocation within the scope of a workgroup load.
+ * - `invocationLocalIndex`: The index of a compute invocation within the scope of a workgroup.
  * - `invocationSubgroupIndex`: The index of a compute invocation within the scope of a subgroup.
  * - `subgroupIndex`: The index of a compute invocation's subgroup within its workgroup.
  *
@@ -10856,7 +11023,7 @@ class IndexNode extends Node {
 	/**
 	 * Constructs a new index node.
 	 *
-	 * @param {('vertex'|'instance'|'subgroup'|'invocationLocal'|'invocationGlobal'|'invocationSubgroup'|'draw')} scope - The scope of the index node.
+	 * @param {('vertex'|'instance'|'subgroup'|'invocationLocal'|'invocationSubgroup'|'draw')} scope - The scope of the index node.
 	 */
 	constructor( scope ) {
 
@@ -10953,7 +11120,29 @@ IndexNode.DRAW = 'draw';
 const vertexIndex = /*@__PURE__*/ nodeImmutable( IndexNode, IndexNode.VERTEX );
 
 /**
- * TSL object that represents the index of either a mesh instance or an invocation of a compute shader.
+ * TSL object that contextually represents specific index data depending on the shader stage.
+ *
+ * Within the vertex and fragment stages, `instanceIndex` will represent the index of the current mesh instance being evaluated by the shader.
+ * In these stages, use `instanceIndex` to modify a mesh based on its instance or to select per-instance data.
+ *
+ * ```js
+ * // instanceIndex will equal the current mesh's instance index between 0-500
+ * const material = new THREE.BasicNodeMaterial();
+ * material.positionNode = vec3( instanceIndex.mod( 10 ), instanceIndex.div( 10 ), 0 );
+ * const mesh = new THREE.InstancedMesh( geometry, material, 500 );
+ * ```
+ *
+ * Within the compute stage, `instanceIndex` will represent the global index of a compute invocation within the 3-dimensional compute workgroup load.
+ * In this stage, use `instanceIndex` to modify or select data at a given index within a buffer, or derive values from the index itself.
+ *
+ * ```js
+ * // instanceIndex will equal value between 0 - 255
+ * const computeFn = Fn() => {
+ *
+ * 	storageBuffer.element( instanceIndex ).assign( instanceIndex );
+ *
+ * } )().compute( 255 )
+ * ```
  *
  * @tsl
  * @type {IndexNode}
@@ -10962,6 +11151,21 @@ const instanceIndex = /*@__PURE__*/ nodeImmutable( IndexNode, IndexNode.INSTANCE
 
 /**
  * TSL object that represents the index of the subgroup the current compute invocation belongs to.
+ * Subgroup indices are local to the workgroups to which they belong.
+ *
+ * ```js
+ * // Execute 12 compute threads with a workgroup size of 9. Example assumes a subgroup size of 3.
+ * const computeFn = Fn( () => {
+ *
+ * 	storageBufferOne.element( instanceIndex ).assign( subgroupIndex );
+ * 	storageBufferTwo.element( instanceIndex ).assign( workgroupId.x );
+ *
+ * } )().compute( 12, [ 9 ] );
+ *
+ * // instanceIndex =  [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 ];
+ * // Buffer One ( Subgroup Index ) =  [ 0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 0, 0 ];
+ * // Buffer Two ( Workgroup ID )   =  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1 ];
+ * ```
  *
  * @tsl
  * @type {IndexNode}
@@ -10971,13 +11175,41 @@ const subgroupIndex = /*@__PURE__*/ nodeImmutable( IndexNode, IndexNode.SUBGROUP
 /**
  * TSL object that represents the index of a compute invocation within the scope of a subgroup.
  *
+ * ```js
+ * // Execute 12 compute threads with a workgroup size of 12. Example assumes a subgroup size of 3.
+ * const computeFn = Fn( () => {
+ *
+ * 	storageBufferOne.element( instanceIndex ).assign( invocationSubgroupIndex );
+ * 	storageBufferTwo.element( instanceIndex ).assign( subgroupIndex );
+ *
+ * } )().compute( 12, [ 12 ] );
+ *
+ * // instanceIndex =  [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 ];
+ * // Buffer One ( Invocation Subgroup Index ) =  [ 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2 ];
+ * // Buffer Two ( Subgroup Index )            =  [ 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3 ];
+ * ```
+ *
  * @tsl
  * @type {IndexNode}
  */
 const invocationSubgroupIndex = /*@__PURE__*/ nodeImmutable( IndexNode, IndexNode.INVOCATION_SUBGROUP );
 
 /**
- * TSL object that represents the index of a compute invocation within the scope of a workgroup load.
+ * TSL object that represents the index of a compute invocation within the scope of a workgroup.
+ *
+ * ```js
+ * // Execute 12 compute threads with a workgroup size of 4.
+ * const computeFn = Fn( () => {
+ *
+ * 	storageBufferOne.element( instanceIndex ).assign( invocationLocalIndex );
+ * 	storageBufferTwo.element( instanceIndex ).assign( workgroupId.x );
+ *
+ * } )().compute( 12, [ 4 ] );
+ *
+ * // instanceIndex =  [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 ];
+ * // Buffer One ( Invocation Local Index ) =     [ 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3 ];
+ * // Buffer Two ( Workgroup ID )           =     [ 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2 ];
+ * ```
  *
  * @tsl
  * @type {IndexNode}
@@ -11071,15 +11303,6 @@ class ComputeNode extends Node {
 		this.name = '';
 
 		/**
-		 * The `updateBeforeType` is set to `NodeUpdateType.OBJECT` since {@link ComputeNode#updateBefore}
-		 * is executed once per object by default.
-		 *
-		 * @type {string}
-		 * @default 'object'
-		 */
-		this.updateBeforeType = NodeUpdateType.OBJECT;
-
-		/**
 		 * A callback executed when the compute node finishes initialization.
 		 *
 		 * @type {?Function}
@@ -11094,14 +11317,14 @@ class ComputeNode extends Node {
 		 */
 		this.countNode = null;
 
-	}
-
-	/**
-	 * Executes the `dispose` event for this node.
-	 */
-	dispose() {
-
-		this.dispatchEvent( { type: 'dispose' } );
+		/**
+		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node computes
+		 * once per frame.
+		 *
+		 * @type {string}
+		 * @default 'frame'
+		 */
+		this.updateBeforeType = NodeUpdateType.FRAME;
 
 	}
 
@@ -11145,6 +11368,18 @@ class ComputeNode extends Node {
 		this.onInitFunction = callback;
 
 		return this;
+
+	}
+
+	/**
+	 * Returns the update type of {@link Node#updateBefore}.
+	 *
+	 * @param {NodeFrame} [frame] - The current node frame.
+	 * @return {NodeUpdateType} The update type.
+	 */
+	getUpdateBeforeType( frame ) {
+
+		return frame.compute !== this ? this.updateBeforeType : NodeUpdateType.NONE;
 
 	}
 
@@ -11993,11 +12228,6 @@ class InspectorBase extends EventDispatcher {
 	}
 
 	/**
-	 * Initializes the inspector.
-	 */
-	init() { }
-
-	/**
 	 * Called when a frame begins.
 	 */
 	begin() {
@@ -12077,6 +12307,17 @@ class InspectorBase extends EventDispatcher {
 	 * @param {Texture} framebufferTexture - The texture associated with the framebuffer.
 	 */
 	copyFramebufferToTexture( /*framebufferTexture*/ ) { }
+
+	/**
+	 * Frees all internal resources of the inspector.
+	 */
+	dispose() {
+
+		if ( this.isRunning === true ) this.finish();
+
+		this.dispatchEvent( { type: 'dispose' } );
+
+	}
 
 }
 
@@ -12191,7 +12432,7 @@ class InspectorNode extends Node {
  * @param {Function|null} [callback=null] - Optional callback to modify the node during setup.
  * @returns {Node} The inspector node.
  */
-function inspector( node, name = '', callback = null ) {
+function inspect( node, name = '', callback = null ) {
 
 	node = nodeObject( node );
 
@@ -12199,7 +12440,7 @@ function inspector( node, name = '', callback = null ) {
 
 }
 
-addMethodChaining( 'toInspector', inspector );
+addMethodChaining( 'toInspector', inspect );
 
 function addNodeElement( name/*, nodeElement*/ ) {
 
@@ -14167,7 +14408,7 @@ class BuiltinNode extends Node {
  * @param {string} name - The name of the built-in shader variable.
  * @returns {BuiltinNode}
  */
-const builtin = nodeProxy( BuiltinNode ).setParameterLength( 1 );
+const builtin = /*@__PURE__*/ nodeProxy( BuiltinNode ).setParameterLength( 1 );
 
 let _screenSizeVec, _viewportVec;
 
@@ -14231,27 +14472,6 @@ class ScreenNode extends Node {
 	}
 
 	/**
-	 * This method is overwritten since the node's update type depends on the selected scope.
-	 *
-	 * @return {NodeUpdateType} The update type.
-	 */
-	getUpdateType() {
-
-		let updateType = NodeUpdateType.NONE;
-
-		if ( this.scope === ScreenNode.SIZE || this.scope === ScreenNode.VIEWPORT ) {
-
-			updateType = NodeUpdateType.RENDER;
-
-		}
-
-		this.updateType = updateType;
-
-		return updateType;
-
-	}
-
-	/**
 	 * `ScreenNode` implements {@link Node#update} to retrieve viewport and size information
 	 * from the current renderer.
 	 *
@@ -14311,6 +14531,20 @@ class ScreenNode extends Node {
 			output = vec2( screenCoordinate.div( screenSize ) );
 
 		}
+
+		//
+
+		let updateType = NodeUpdateType.NONE;
+
+		if ( this.scope === ScreenNode.SIZE || this.scope === ScreenNode.VIEWPORT ) {
+
+			updateType = NodeUpdateType.RENDER;
+
+		}
+
+		this.updateType = updateType;
+
+		//
 
 		return output;
 
@@ -15071,6 +15305,8 @@ const objectViewPosition = /*@__PURE__*/ nodeProxy( Object3DNode, Object3DNode.V
  */
 const objectRadius = /*@__PURE__*/ nodeProxy( Object3DNode, Object3DNode.RADIUS ).setParameterLength( 1 );
 
+const _modelViewMatrix = /*@__PURE__*/ new Matrix4();
+
 /**
  * This type of node is a specialized version of `Object3DNode`
  * with larger set of model related metrics. Unlike `Object3DNode`,
@@ -15213,11 +15449,46 @@ const highpModelViewMatrix = /*@__PURE__*/ ( Fn( ( builder ) => {
 
 	builder.context.isHighPrecisionModelViewMatrix = true;
 
-	return uniform( 'mat4' ).onObjectUpdate( ( { object, camera } ) => {
+	const camera = builder.camera;
 
-		return object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
+	let highpModelViewMatrix;
 
-	} );
+	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
+
+		const matrices = [];
+
+		for ( let i = 0; i < camera.cameras.length; i ++ ) {
+
+			matrices.push( new Matrix4() );
+
+		}
+
+		const modelViewMatrices = uniformArray( matrices ).onObjectUpdate( ( { object, camera }, self ) => {
+
+			const subCameras = camera.cameras;
+			const array = self.array;
+
+			for ( let i = 0, l = subCameras.length; i < l; i ++ ) {
+
+				array[ i ].multiplyMatrices( subCameras[ i ].matrixWorldInverse, object.matrixWorld );
+
+			}
+
+		} );
+
+		highpModelViewMatrix = modelViewMatrices.element( camera.isMultiViewCamera ? builtin( 'gl_ViewID_OVR' ) : cameraIndex );
+
+	} else {
+
+		highpModelViewMatrix = uniform( 'mat4' ).onObjectUpdate( ( { object, camera } ) => {
+
+			return object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
+
+		} );
+
+	}
+
+	return highpModelViewMatrix;
 
 } ).once() )().toVar( 'highpModelViewMatrix' );
 
@@ -15232,17 +15503,54 @@ const highpModelNormalViewMatrix = /*@__PURE__*/ ( Fn( ( builder ) => {
 
 	const isHighPrecisionModelViewMatrix = builder.context.isHighPrecisionModelViewMatrix;
 
-	return uniform( 'mat3' ).onObjectUpdate( ( { object, camera } ) => {
+	const camera = builder.camera;
 
-		if ( isHighPrecisionModelViewMatrix !== true ) {
+	let highpModelNormalViewMatrix;
 
-			object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
+	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
+
+		const matrices = [];
+
+		for ( let i = 0; i < camera.cameras.length; i ++ ) {
+
+			matrices.push( new Matrix3() );
 
 		}
 
-		return object.normalMatrix.getNormalMatrix( object.modelViewMatrix );
+		const normalViewMatrices = uniformArray( matrices ).onObjectUpdate( ( { object, camera }, self ) => {
 
-	} );
+			const subCameras = camera.cameras;
+			const array = self.array;
+
+			for ( let i = 0, l = subCameras.length; i < l; i ++ ) {
+
+				_modelViewMatrix.multiplyMatrices( subCameras[ i ].matrixWorldInverse, object.matrixWorld );
+
+				array[ i ].getNormalMatrix( _modelViewMatrix );
+
+			}
+
+		} );
+
+		highpModelNormalViewMatrix = normalViewMatrices.element( camera.isMultiViewCamera ? builtin( 'gl_ViewID_OVR' ) : cameraIndex );
+
+	} else {
+
+		highpModelNormalViewMatrix = uniform( 'mat3' ).onObjectUpdate( ( { object, camera } ) => {
+
+			if ( isHighPrecisionModelViewMatrix !== true ) {
+
+				object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
+
+			}
+
+			return object.normalMatrix.getNormalMatrix( object.modelViewMatrix );
+
+		} );
+
+	}
+
+	return highpModelNormalViewMatrix;
 
 } ).once() )().toVar( 'highpModelNormalViewMatrix' );
 
@@ -16867,7 +17175,7 @@ const normalMap = /*@__PURE__*/ nodeProxy( NormalMapNode ).setParameterLength( 1
 // Bump Mapping Unparametrized Surfaces on the GPU by Morten S. Mikkelsen
 // https://mmikk.github.io/papers3d/mm_sfgrad_bump.pdf
 
-const dHdxy_fwd = Fn( ( { textureNode, bumpScale } ) => {
+const dHdxy_fwd = /*@__PURE__*/ Fn( ( { textureNode, bumpScale } ) => {
 
 	// It's used to preserve the same TextureNode instance
 	const sampleTexture = ( callback ) => textureNode.isolate().context( { getUV: ( texNode ) => callback( texNode.uvNode || uv$1() ), forceUVContext: true } );
@@ -16883,7 +17191,7 @@ const dHdxy_fwd = Fn( ( { textureNode, bumpScale } ) => {
 
 // Evaluate the derivative of the height w.r.t. screen-space using forward differencing (listing 2)
 
-const perturbNormalArb = Fn( ( inputs ) => {
+const perturbNormalArb = /*@__PURE__*/ Fn( ( inputs ) => {
 
 	const { surf_pos, surf_norm, dHdxy } = inputs;
 
@@ -19347,7 +19655,7 @@ const computeSkinning = /*@__PURE__*/ Fn( ( [ skinnedMesh, toPosition = null ], 
  *
  * } );
  * ```
- * The module also provides `Break()` and `Continue()` TSL expression for loop control.
+ * The module also provides `Break()` and `Continue()` TSL expressions for loop control.
  * @augments Node
  */
 class LoopNode extends Node {
@@ -19361,7 +19669,7 @@ class LoopNode extends Node {
 	/**
 	 * Constructs a new loop node.
 	 *
-	 * @param {Array<any>} params - Depending on the loop type, array holds different parameterization values for the loop.
+	 * @param {Array<LoopNode~Params|loopBodyCallback>} params - Any number of loop parameters followed by the loop body.
 	 */
 	constructor( params = [] ) {
 
@@ -19649,13 +19957,13 @@ class LoopNode extends Node {
  *
  * @tsl
  * @function
- * @param {...any} params - A list of parameters.
+ * @param {...(LoopNode~Params|loopBodyCallback)} params - Any number of loop parameters followed by the loop body.
  * @returns {LoopNode}
  */
 const Loop = ( ...params ) => new LoopNode( nodeArray( params, 'int' ) ).toStack();
 
 /**
- * TSL function for creating a `Continue()` expression.
+ * TSL function for inserting a `continue` expression into the shader.
  *
  * @tsl
  * @function
@@ -19664,13 +19972,39 @@ const Loop = ( ...params ) => new LoopNode( nodeArray( params, 'int' ) ).toStack
 const Continue = () => expression( 'continue' ).toStack();
 
 /**
- * TSL function for creating a `Break()` expression.
+ * TSL function for inserting a `break` expression into the shader.
  *
  * @tsl
  * @function
  * @returns {ExpressionNode}
  */
 const Break = () => expression( 'break' ).toStack();
+
+/**
+ * The parameters of a loop. A number or int/uint node defines the loop's end value,
+ * a bool node defines a `while` loop and an object allows a more detailed configuration.
+ *
+ * @typedef {number|Node<int>|Node<uint>|Node<bool>|LoopNode~ObjectParams} LoopNode~Params
+ */
+
+/**
+ * A detailed loop configuration.
+ *
+ * @typedef {Object} LoopNode~ObjectParams
+ * @property {number|Node<int>|Node<uint>} [start=0] - The initial value of the loop variable.
+ * @property {number|Node<int>|Node<uint>} [end] - The value the loop variable is compared against. If omitted, the loop counts down from `start - 1` to `0`.
+ * @property {string} [name] - The name of the loop variable. Defaults to `i`, `j`, `k` and so on.
+ * @property {string} [type='int'] - The data type of the loop variable.
+ * @property {('<'|'<='|'>'|'>=')} [condition] - The comparison operator. The loop runs as long as the comparison is true. Inferred from `start` and `end` if not set.
+ * @property {string|number|Function|Node} [update] - Defines how the loop variable is updated after each iteration. Inferred from `condition` and `type` if not set.
+ */
+
+/**
+ * The loop body.
+ *
+ * @callback loopBodyCallback
+ * @param {Object<string, Node>} inputs - The loop variables of the current `Loop()` call, keyed by their name.
+ */
 
 const _morphTextures = /*@__PURE__*/ new WeakMap();
 const _morphVec4 = /*@__PURE__*/ new Vector4();
@@ -22227,6 +22561,18 @@ class NodeMaterial extends Material {
 
 		}
 
+		if ( builder.context.getGI ) {
+
+			const giNode = builder.context.getGI( null, builder );
+
+			if ( giNode !== null ) {
+
+				materialLightsNode.push( new IrradianceNode( giNode ) );
+
+			}
+
+		}
+
 		return materialLightsNode;
 
 	}
@@ -24771,7 +25117,7 @@ const D_Charlie = /*@__PURE__*/ Fn( ( { roughness, dotNH } ) => {
 const V_Neubelt = /*@__PURE__*/ Fn( ( { dotNV, dotNL } ) => {
 
 	// Neubelt and Pettineo 2013, "Crafting a Next-gen Material Pipeline for The Order: 1886"
-	return float( 1.0 ).div( float( 4.0 ).mul( dotNL.add( dotNV ).sub( dotNL.mul( dotNV ) ) ) );
+	return float( 1.0 ).div( float( 4.0 ).mul( dotNL.add( dotNV ).sub( dotNL.mul( dotNV ) ) ) ).clamp();
 
 } ).setLayout( {
 	name: 'V_Neubelt',
@@ -24957,7 +25303,7 @@ const LTC_Evaluate_Volume = /*@__PURE__*/ Fn( ( { P, p0, p1, p2, p3 } ) => {
 	return result;
 
 } ).setLayout( {
-	name: 'LTC_Evaluate',
+	name: 'LTC_Evaluate_Volume',
 	type: 'vec3',
 	inputs: [
 		{ name: 'P', type: 'vec3' },
@@ -27717,15 +28063,23 @@ class EnvironmentNode extends LightingNode {
 		const useAnisotropy = material.useAnisotropy === true || material.anisotropy > 0;
 		const radianceNormalView = useAnisotropy ? bentNormalView : normalView;
 
-		const radiance = envNode.context( createRadianceContext( roughness, radianceNormalView ) ).mul( materialEnvIntensity );
+		let radiance = isolate( envNode.context( createRadianceContext( roughness, radianceNormalView ) ).mul( materialEnvIntensity ) );
+
+		if ( material.useRetroreflection === true || material.retroreflectivity > 0 ) {
+
+			const retroRadiance = isolate( envNode.context( createRetroRadianceContext( roughness, radianceNormalView ) ).mul( materialEnvIntensity ) );
+
+			radiance = retroreflectivity.clamp().mix( radiance, retroRadiance );
+
+		}
+
 		const irradiance = envNode.context( createIrradianceContext( normalWorld ) ).mul( Math.PI ).mul( materialEnvIntensity );
 
-		const isolateRadiance = isolate( radiance );
 		const isolateIrradiance = isolate( irradiance );
 
 		//
 
-		builder.context.radiance.addAssign( isolateRadiance );
+		builder.context.radiance.addAssign( radiance );
 
 		builder.context.iblIrradiance.addAssign( isolateIrradiance );
 
@@ -27788,6 +28142,34 @@ const createRadianceContext = ( roughnessNode, normalViewNode ) => {
 			}
 
 			return reflectVec;
+
+		},
+		getTextureLevel: () => {
+
+			return roughnessNode;
+
+		}
+	};
+
+};
+
+const createRetroRadianceContext = ( roughnessNode, normalViewNode ) => {
+
+	let retroVec = null;
+
+	return {
+		getUV: () => {
+
+			if ( retroVec === null ) {
+
+				// The retroreflective lobe returns light toward its source, so the environment is sampled along the view direction
+				retroVec = pow4( roughnessNode ).mix( positionViewDirection, normalViewNode ).normalize();
+
+				retroVec = retroVec.transformDirection( cameraWorldMatrix );
+
+			}
+
+			return retroVec;
 
 		},
 		getTextureLevel: () => {
@@ -28875,8 +29257,9 @@ class RotateNode extends TempNode {
 	 * @param {Node} positionNode - The position node.
 	 * @param {Node} rotationNode - Represents the rotation that is applied to the position node. Depending
 	 * on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
+	 * @param {string} [order='XYZ'] - The Euler rotation order. Only used for 3D rotation.
 	 */
-	constructor( positionNode, rotationNode ) {
+	constructor( positionNode, rotationNode, order = 'XYZ' ) {
 
 		super();
 
@@ -28888,12 +29271,58 @@ class RotateNode extends TempNode {
 		this.positionNode = positionNode;
 
 		/**
-		 *  Represents the rotation that is applied to the position node.
-		 *  Depending on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
+		 * Represents the rotation that is applied to the position node.
+		 * Depending on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
 		 *
 		 * @type {Node}
 		 */
 		this.rotationNode = rotationNode;
+
+		/**
+		 * The Euler rotation order.
+		 *
+		 * @private
+		 * @type {string}
+		 * @default 'XYZ'
+		 */
+		this._order = order;
+
+	}
+
+	/**
+	 * Overwrites the default `customCacheKey()` implementation by including the
+	 * Euler order into the cache key.
+	 *
+	 * @return {number} The hash.
+	 */
+	customCacheKey() {
+
+		return hashString( this._order );
+
+	}
+
+	/**
+	 * Sets the Euler rotation order.
+	 *
+	 * @param {string} value - The Euler rotation order.
+	 * @return {RotateNode} A reference to this node.
+	 */
+	setOrder( value ) {
+
+		this._order = value;
+
+		return this;
+
+	}
+
+	/**
+	 * Gets the Euler rotation order.
+	 *
+	 * @return {string} The Euler rotation order.
+	 */
+	getOrder() {
+
+		return this._order;
 
 	}
 
@@ -28930,13 +29359,41 @@ class RotateNode extends TempNode {
 		} else {
 
 			const rotation = rotationNode;
-			const rotationXMatrix = mat4( vec4( 1.0, 0.0, 0.0, 0.0 ), vec4( 0.0, cos( rotation.x ), sin( rotation.x ).negate(), 0.0 ), vec4( 0.0, sin( rotation.x ), cos( rotation.x ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
-			const rotationYMatrix = mat4( vec4( cos( rotation.y ), 0.0, sin( rotation.y ), 0.0 ), vec4( 0.0, 1.0, 0.0, 0.0 ), vec4( sin( rotation.y ).negate(), 0.0, cos( rotation.y ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
-			const rotationZMatrix = mat4( vec4( cos( rotation.z ), sin( rotation.z ).negate(), 0.0, 0.0 ), vec4( sin( rotation.z ), cos( rotation.z ), 0.0, 0.0 ), vec4( 0.0, 0.0, 1.0, 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+			const order = this._order;
 
-			return rotationXMatrix.mul( rotationYMatrix ).mul( rotationZMatrix ).mul( vec4( positionNode, 1.0 ) ).xyz;
+			const rotationXMatrix = mat4( vec4( 1.0, 0.0, 0.0, 0.0 ), vec4( 0.0, cos( rotation.x ), sin( rotation.x ), 0.0 ), vec4( 0.0, sin( rotation.x ).negate(), cos( rotation.x ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+			const rotationYMatrix = mat4( vec4( cos( rotation.y ), 0.0, sin( rotation.y ).negate(), 0.0 ), vec4( 0.0, 1.0, 0.0, 0.0 ), vec4( sin( rotation.y ), 0.0, cos( rotation.y ), 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+			const rotationZMatrix = mat4( vec4( cos( rotation.z ), sin( rotation.z ), 0.0, 0.0 ), vec4( sin( rotation.z ).negate(), cos( rotation.z ), 0.0, 0.0 ), vec4( 0.0, 0.0, 1.0, 0.0 ), vec4( 0.0, 0.0, 0.0, 1.0 ) );
+
+			const matrixMap = {
+				'X': rotationXMatrix,
+				'Y': rotationYMatrix,
+				'Z': rotationZMatrix
+			};
+
+			const matrixChain = matrixMap[ order.charAt( 0 ) ]
+				.mul( matrixMap[ order.charAt( 1 ) ] )
+				.mul( matrixMap[ order.charAt( 2 ) ] );
+
+			return matrixChain.mul( vec4( positionNode, 1.0 ) ).xyz;
 
 		}
+
+	}
+
+	serialize( data ) {
+
+		super.serialize( data );
+
+		data.order = this._order;
+
+	}
+
+	deserialize( data ) {
+
+		super.deserialize( data );
+
+		this._order = data.order;
 
 	}
 
@@ -28950,9 +29407,10 @@ class RotateNode extends TempNode {
  * @param {Node} positionNode - The position node.
  * @param {Node} rotationNode - Represents the rotation that is applied to the position node. Depending
  * on whether the position data are 2D or 3D, the rotation is expressed a single float value or an Euler value.
+ * @param {string} [order='XYZ'] - The Euler rotation order. Only used for 3D rotation.
  * @returns {RotateNode}
  */
-const rotate = /*@__PURE__*/ nodeProxy( RotateNode ).setParameterLength( 2 );
+const rotate = /*@__PURE__*/ nodeProxy( RotateNode ).setParameterLength( 2, 3 );
 
 const _defaultValues$2 = /*@__PURE__*/ new SpriteMaterial();
 
@@ -31063,9 +31521,18 @@ class RenderObjects {
 		 * A dictionary that manages render contexts in chain maps
 		 * for each pass ID.
 		 *
+		 * @private
 		 * @type {Object<string,ChainMap>}
 		 */
-		this.chainMaps = {};
+		this._chainMaps = {};
+
+		/**
+		 * Stores all render objects created by this component.
+		 *
+		 * @private
+		 * @type {Set<RenderObject>}
+		 */
+		this._renderObjects = new Set();
 
 	}
 
@@ -31158,7 +31625,7 @@ class RenderObjects {
 	 */
 	getChainMap( passId = 'default' ) {
 
-		return this.chainMaps[ passId ] || ( this.chainMaps[ passId ] = new ChainMap() );
+		return this._chainMaps[ passId ] || ( this._chainMaps[ passId ] = new ChainMap() );
 
 	}
 
@@ -31167,7 +31634,15 @@ class RenderObjects {
 	 */
 	dispose() {
 
-		this.chainMaps = {};
+		for ( const renderObject of this._renderObjects ) {
+
+			renderObject.dispose();
+
+		}
+
+		this._renderObjects.clear();
+
+		this._chainMaps = {};
 
 	}
 
@@ -31201,7 +31676,11 @@ class RenderObjects {
 
 			chainMap.delete( renderObject.getChainArray() );
 
+			this._renderObjects.delete( renderObject );
+
 		};
+
+		this._renderObjects.add( renderObject );
 
 		return renderObject;
 
@@ -33218,7 +33697,7 @@ class Bindings extends DataMap {
 
 			for ( const binding of bindGroup.bindings ) {
 
-				if ( binding.isNodeUniformsGroup === true && binding.groupNode.shared === true ) {
+				if ( ( binding.isNodeUniformsGroup === true || binding.isNodeUniformBuffer === true ) && binding.groupNode.shared === true ) {
 
 					const updatedGroup = this.nodes.updateGroup( binding );
 
@@ -33318,7 +33797,7 @@ class Bindings extends DataMap {
 
 				// each object defines an array of bindings (ubos, textures, samplers etc.)
 
-				this.backend.createBindings( bindGroup, bindings, 0 );
+				this.backend.createBindings( bindGroup, bindings, '' );
 
 				groupData.bindGroup = bindGroup;
 				groupData.usedTimes = 1;
@@ -33415,7 +33894,7 @@ class Bindings extends DataMap {
 
 		let needsBindingsUpdate = false;
 		let cacheBindings = true;
-		let cacheIndex = 0;
+		let cacheKey = '';
 		let version = 0;
 
 		// iterate over all bindings and check if buffer updates or a new binding group is required
@@ -33447,6 +33926,8 @@ class Bindings extends DataMap {
 					needsBindingsUpdate = true;
 
 				}
+
+				cacheKey += attribute.id + ',';
 
 			}
 
@@ -33499,7 +33980,7 @@ class Bindings extends DataMap {
 
 				} else {
 
-					cacheIndex = cacheIndex * 10 + texture.id;
+					cacheKey += texture.id + ',';
 					version += texture.version;
 
 				}
@@ -33552,7 +34033,7 @@ class Bindings extends DataMap {
 
 		if ( needsBindingsUpdate === true ) {
 
-			this.backend.updateBindings( bindGroup, bindings, cacheBindings ? cacheIndex : 0, version );
+			this.backend.updateBindings( bindGroup, bindings, cacheBindings ? cacheKey : '', version );
 
 		}
 
@@ -36971,6 +37452,12 @@ class BitcountNode extends MathNode {
 
 		const fnDef = Fn( ( [ value ] ) => {
 
+			If( value.equal( uint( 0 ) ), () => {
+
+				return uint( 32 );
+
+			} );
+
 			const v = uint( 0.0 );
 
 			this._resolveElementType( value, v, elementType );
@@ -37229,11 +37716,25 @@ class BitcountNode extends MathNode {
 
 	}
 
-}
+	static get COUNT_TRAILING_ZEROS() {
 
-BitcountNode.COUNT_TRAILING_ZEROS = 'countTrailingZeros';
-BitcountNode.COUNT_LEADING_ZEROS = 'countLeadingZeros';
-BitcountNode.COUNT_ONE_BITS = 'countOneBits';
+		return 'countTrailingZeros';
+
+	}
+
+	static get COUNT_LEADING_ZEROS() {
+
+		return 'countLeadingZeros';
+
+	}
+
+	static get COUNT_ONE_BITS() {
+
+		return 'countOneBits';
+
+	}
+
+}
 
 /**
  * Finds the number of consecutive 0 bits from the least significant bit of the input value,
@@ -37315,7 +37816,11 @@ const parabola = ( x, k ) => pow( mul( 4.0, x.mul( sub( 1.0, x ) ) ), k );
  * @param {Node<float>} k - `k=1` is the identity curve,`k<1` produces the classic `gain()` shape, and `k>1` produces "s" shaped curves.
  * @return {Node<float>} The remapped value.
  */
-const gain = ( x, k ) => x.lessThan( 0.5 ) ? parabola( x.mul( 2.0 ), k ).div( 2.0 ) : sub( 1.0, parabola( mul( sub( 1.0, x ), 2.0 ), k ).div( 2.0 ) );
+const gain = ( x, k ) => select(
+	x.lessThan( 0.5 ),
+	pow( mul( 2.0, x ), k ).mul( 0.5 ),
+	sub( 1.0, pow( mul( 2.0, sub( 1.0, x ) ), k ).mul( 0.5 ) )
+);
 
 /**
  * A function that remaps the `[0,1]` interval into the `[0,1]` interval.
@@ -37329,7 +37834,7 @@ const gain = ( x, k ) => x.lessThan( 0.5 ) ? parabola( x.mul( 2.0 ), k ).div( 2.
  * @param {Node<float>} b - Second control parameter.
  * @return {Node<float>} The remapped value.
  */
-const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub( 1.0, x ), b ) ) ), 1.0 / a );
+const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub( 1.0, x ), b ) ) ), div( 1.0, a ) );
 
 /**
  * A phase shifted sinus curve that starts at zero and ends at zero, with bouncing behavior.
@@ -37341,7 +37846,13 @@ const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub(
  * @param {Node<float>} k - Controls the amount of bounces.
  * @return {Node<float>} The result value.
  */
-const sinc = ( x, k ) => sin( PI.mul( k.mul( x ).sub( 1.0 ) ) ).div( PI.mul( k.mul( x ).sub( 1.0 ) ) );
+const sinc = ( x, k ) => {
+
+	const arg = abs( PI.mul( k.mul( x ).sub( 1.0 ) ) ).max( 1e-6 ).toConst();
+
+	return sin( arg ).div( arg );
+
+};
 
 /**
  * This node represents an operation that packs floating-point values of a vector into an unsigned 32-bit integer
@@ -37464,6 +37975,432 @@ const packSnorm4x8 = /*@__PURE__*/ nodeProxyIntent( PackFloatNode, 'snorm', null
  * @returns {Node}
  */
 const packUnorm4x8 = /*@__PURE__*/ nodeProxyIntent( PackFloatNode, 'unorm', null, { layout: '4x8' } ).setParameterLength( 1 );
+
+/**
+ * Represents one of the built-in functions of WGSL's `packed_4x8_integer_dot_product`
+ * language extension. If the extension is not available, the node falls back to an
+ * emulation with plain integer bit operations.
+ *
+ * @augments TempNode
+ */
+class Packed4x8IntegerNode extends TempNode {
+
+	static get type() {
+
+		return 'Packed4x8IntegerNode';
+
+	}
+
+	/**
+	 * Constructs a packed 4x8 integer function node.
+	 *
+	 * @param {string} method - The WGSL built-in function name.
+	 * @param {Node} aNode - The first argument.
+	 * @param {?Node} [bNode=null] - The optional second argument.
+	 */
+	constructor( method, aNode, bNode = null ) {
+
+		super();
+
+		/**
+		 * The WGSL built-in function name.
+		 *
+		 * @type {string}
+		 */
+		this.method = method;
+
+		/**
+		 * The first argument.
+		 *
+		 * @type {Node}
+		 */
+		this.aNode = aNode;
+
+		/**
+		 * The optional second argument.
+		 *
+		 * @type {?Node}
+		 */
+		this.bNode = bNode;
+
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
+		this.isPacked4x8IntegerNode = true;
+
+	}
+
+	getInputType() {
+
+		const method = this.method;
+
+		if ( method === Packed4x8IntegerNode.PACK4X_I8 || method === Packed4x8IntegerNode.PACK4X_I8_CLAMP ) {
+
+			return 'ivec4';
+
+		} else if ( method === Packed4x8IntegerNode.PACK4X_U8 || method === Packed4x8IntegerNode.PACK4X_U8_CLAMP ) {
+
+			return 'uvec4';
+
+		}
+
+		return 'uint';
+
+	}
+
+	generateNodeType() {
+
+		const method = this.method;
+
+		if ( method === Packed4x8IntegerNode.DOT4_I8_PACKED ) {
+
+			return 'int';
+
+		} else if ( method === Packed4x8IntegerNode.UNPACK4X_I8 ) {
+
+			return 'ivec4';
+
+		} else if ( method === Packed4x8IntegerNode.UNPACK4X_U8 ) {
+
+			return 'uvec4';
+
+		}
+
+		return 'uint';
+
+	}
+
+	/**
+	 * Returns the reusable `Fn()` definition that emulates this node's method.
+	 *
+	 * @private
+	 * @returns {Function} The emulation function.
+	 */
+	_getEmulatedFn() {
+
+		switch ( this.method ) {
+
+			case Packed4x8IntegerNode.DOT4_U8_PACKED: return emulatedDot4U8Packed;
+			case Packed4x8IntegerNode.DOT4_I8_PACKED: return emulatedDot4I8Packed;
+			case Packed4x8IntegerNode.PACK4X_I8: return emulatedPack4xI8;
+			case Packed4x8IntegerNode.PACK4X_U8: return emulatedPack4xU8;
+			case Packed4x8IntegerNode.PACK4X_I8_CLAMP: return emulatedPack4xI8Clamp;
+			case Packed4x8IntegerNode.PACK4X_U8_CLAMP: return emulatedPack4xU8Clamp;
+			case Packed4x8IntegerNode.UNPACK4X_I8: return emulatedUnpack4xI8;
+			case Packed4x8IntegerNode.UNPACK4X_U8: return emulatedUnpack4xU8;
+
+		}
+
+	}
+
+	setup( builder ) {
+
+		// check for native language support
+
+		if ( builder.renderer.backend.isWebGPUBackend === true &&
+			typeof navigator !== 'undefined' && navigator.gpu !== undefined &&
+			navigator.gpu.wgslLanguageFeatures !== undefined && navigator.gpu.wgslLanguageFeatures.has( 'packed_4x8_integer_dot_product' )
+		) {
+
+			return super.setup( builder );
+
+		}
+
+		// emulation
+
+		const { aNode, bNode } = this;
+		const fn = this._getEmulatedFn();
+
+		return bNode !== null ? fn( aNode, bNode ) : fn( aNode );
+
+	}
+
+	generate( builder, output ) {
+
+		const properties = builder.getNodeProperties( this );
+
+		if ( properties.outputNode ) {
+
+			return super.generate( builder, output );
+
+		}
+
+		// generate native WGSL call
+
+		const type = this.getNodeType( builder );
+		const inputType = this.getInputType();
+		const params = [ this.aNode.build( builder, inputType ) ];
+
+		if ( this.bNode !== null ) params.push( this.bNode.build( builder, inputType ) );
+
+		return builder.format( `${this.method}( ${params.join( ', ' )} )`, type, output );
+
+	}
+
+	serialize( data ) {
+
+		super.serialize( data );
+
+		data.method = this.method;
+
+	}
+
+	deserialize( data ) {
+
+		super.deserialize( data );
+
+		this.method = data.method;
+
+	}
+
+	static get DOT4_U8_PACKED() {
+
+		return 'dot4U8Packed';
+
+	}
+
+	static get DOT4_I8_PACKED() {
+
+		return 'dot4I8Packed';
+
+	}
+
+	static get PACK4X_I8() {
+
+		return 'pack4xI8';
+
+	}
+
+	static get PACK4X_U8() {
+
+		return 'pack4xU8';
+
+	}
+
+	static get PACK4X_I8_CLAMP() {
+
+		return 'pack4xI8Clamp';
+
+	}
+
+	static get PACK4X_U8_CLAMP() {
+
+		return 'pack4xU8Clamp';
+
+	}
+
+	static get UNPACK4X_I8() {
+
+		return 'unpack4xI8';
+
+	}
+
+	static get UNPACK4X_U8() {
+
+		return 'unpack4xU8';
+
+	}
+
+}
+
+// emulations
+
+const emulatedPack4xU8 = /*@__PURE__*/ Fn( ( [ v ] ) => {
+
+	const x = v.x.bitAnd( uint( 0xff ) );
+	const y = v.y.bitAnd( uint( 0xff ) );
+	const z = v.z.bitAnd( uint( 0xff ) );
+	const w = v.w.bitAnd( uint( 0xff ) );
+
+	return x.bitOr( y.shiftLeft( uint( 8 ) ) ).bitOr( z.shiftLeft( uint( 16 ) ) ).bitOr( w.shiftLeft( uint( 24 ) ) );
+
+} ).setLayout( {
+	name: 'tsl_packed4x8_pack4xU8',
+	type: 'uint',
+	inputs: [ { name: 'v', type: 'uvec4' } ]
+} );
+
+const emulatedPack4xI8 = /*@__PURE__*/ Fn( ( [ v ] ) => {
+
+	return emulatedPack4xU8( uvec4( v ) );
+
+} ).setLayout( {
+	name: 'tsl_packed4x8_pack4xI8',
+	type: 'uint',
+	inputs: [ { name: 'v', type: 'ivec4' } ]
+} );
+
+const emulatedPack4xU8Clamp = /*@__PURE__*/ Fn( ( [ v ] ) => {
+
+	return emulatedPack4xU8( clamp( v, uvec4( 0 ), uvec4( 255 ) ) );
+
+} ).setLayout( {
+	name: 'tsl_packed4x8_pack4xU8Clamp',
+	type: 'uint',
+	inputs: [ { name: 'v', type: 'uvec4' } ]
+} );
+
+const emulatedPack4xI8Clamp = /*@__PURE__*/ Fn( ( [ v ] ) => {
+
+	return emulatedPack4xI8( clamp( v, ivec4( -128 ), ivec4( 127 ) ) );
+
+} ).setLayout( {
+	name: 'tsl_packed4x8_pack4xI8Clamp',
+	type: 'uint',
+	inputs: [ { name: 'v', type: 'ivec4' } ]
+} );
+
+const emulatedUnpack4xU8 = /*@__PURE__*/ Fn( ( [ v ] ) => {
+
+	return uvec4(
+		v.bitAnd( uint( 0xff ) ),
+		v.shiftRight( uint( 8 ) ).bitAnd( uint( 0xff ) ),
+		v.shiftRight( uint( 16 ) ).bitAnd( uint( 0xff ) ),
+		v.shiftRight( uint( 24 ) ).bitAnd( uint( 0xff ) )
+	);
+
+} ).setLayout( {
+	name: 'tsl_packed4x8_unpack4xU8',
+	type: 'uvec4',
+	inputs: [ { name: 'v', type: 'uint' } ]
+} );
+
+function signExtendByte( v, byteShift ) {
+
+	return int( v.shiftLeft( uint( 24 - byteShift ) ) ).shiftRight( int( 24 ) );
+
+}
+
+const emulatedUnpack4xI8 = /*@__PURE__*/ Fn( ( [ v ] ) => {
+
+	return ivec4(
+		signExtendByte( v, 0 ),
+		signExtendByte( v, 8 ),
+		signExtendByte( v, 16 ),
+		signExtendByte( v, 24 )
+	);
+
+} ).setLayout( {
+	name: 'tsl_packed4x8_unpack4xI8',
+	type: 'ivec4',
+	inputs: [ { name: 'v', type: 'uint' } ]
+} );
+
+const emulatedDot4U8Packed = /*@__PURE__*/ Fn( ( [ a, b ] ) => {
+
+	const ua = emulatedUnpack4xU8( a );
+	const ub = emulatedUnpack4xU8( b );
+
+	return ua.x.mul( ub.x ).add( ua.y.mul( ub.y ) ).add( ua.z.mul( ub.z ) ).add( ua.w.mul( ub.w ) );
+
+} ).setLayout( {
+	name: 'tsl_packed4x8_dot4U8Packed',
+	type: 'uint',
+	inputs: [ { name: 'a', type: 'uint' }, { name: 'b', type: 'uint' } ]
+} );
+
+const emulatedDot4I8Packed = /*@__PURE__*/ Fn( ( [ a, b ] ) => {
+
+	const ia = emulatedUnpack4xI8( a );
+	const ib = emulatedUnpack4xI8( b );
+
+	return ia.x.mul( ib.x ).add( ia.y.mul( ib.y ) ).add( ia.z.mul( ib.z ) ).add( ia.w.mul( ib.w ) );
+
+} ).setLayout( {
+	name: 'tsl_packed4x8_dot4I8Packed',
+	type: 'int',
+	inputs: [ { name: 'a', type: 'uint' }, { name: 'b', type: 'uint' } ]
+} );
+
+/**
+ * Computes the dot product of four unsigned 8-bit integer components packed
+ * into each input.
+ *
+ * @tsl
+ * @function
+ * @param {Node<uint>} a - The first packed unsigned integer vector.
+ * @param {Node<uint>} b - The second packed unsigned integer vector.
+ * @returns {Node<uint>} The dot product.
+ */
+const dot4U8Packed = /*@__PURE__*/ nodeProxyIntent( Packed4x8IntegerNode, Packed4x8IntegerNode.DOT4_U8_PACKED ).setParameterLength( 2 );
+
+/**
+ * Computes the dot product of four signed 8-bit integer components packed
+ * into each input.
+ *
+ * @tsl
+ * @function
+ * @param {Node<uint>} a - The first packed signed integer vector.
+ * @param {Node<uint>} b - The second packed signed integer vector.
+ * @returns {Node<int>} The dot product.
+ */
+const dot4I8Packed = /*@__PURE__*/ nodeProxyIntent( Packed4x8IntegerNode, Packed4x8IntegerNode.DOT4_I8_PACKED ).setParameterLength( 2 );
+
+/**
+ * Packs the least significant 8 bits of four signed integers into a `uint`.
+ *
+ * @tsl
+ * @function
+ * @param {Node<ivec4>} value - The signed integer vector to pack.
+ * @returns {Node<uint>} The packed value.
+ */
+const pack4xI8 = /*@__PURE__*/ nodeProxyIntent( Packed4x8IntegerNode, Packed4x8IntegerNode.PACK4X_I8 ).setParameterLength( 1 );
+
+/**
+ * Packs the least significant 8 bits of four unsigned integers into a `uint`.
+ *
+ * @tsl
+ * @function
+ * @param {Node<uvec4>} value - The unsigned integer vector to pack.
+ * @returns {Node<uint>} The packed value.
+ */
+const pack4xU8 = /*@__PURE__*/ nodeProxyIntent( Packed4x8IntegerNode, Packed4x8IntegerNode.PACK4X_U8 ).setParameterLength( 1 );
+
+/**
+ * Clamps four signed integers to the signed 8-bit range and packs them into a
+ * `uint`.
+ *
+ * @tsl
+ * @function
+ * @param {Node<ivec4>} value - The signed integer vector to clamp and pack.
+ * @returns {Node<uint>} The packed value.
+ */
+const pack4xI8Clamp = /*@__PURE__*/ nodeProxyIntent( Packed4x8IntegerNode, Packed4x8IntegerNode.PACK4X_I8_CLAMP ).setParameterLength( 1 );
+
+/**
+ * Clamps four unsigned integers to the unsigned 8-bit range and packs them
+ * into a `uint`.
+ *
+ * @tsl
+ * @function
+ * @param {Node<uvec4>} value - The unsigned integer vector to clamp and pack.
+ * @returns {Node<uint>} The packed value.
+ */
+const pack4xU8Clamp = /*@__PURE__*/ nodeProxyIntent( Packed4x8IntegerNode, Packed4x8IntegerNode.PACK4X_U8_CLAMP ).setParameterLength( 1 );
+
+/**
+ * Unpacks a `uint` into four sign-extended signed 8-bit integer components.
+ *
+ * @tsl
+ * @function
+ * @param {Node<uint>} value - The packed value.
+ * @returns {Node<ivec4>} The unpacked signed integer vector.
+ */
+const unpack4xI8 = /*@__PURE__*/ nodeProxyIntent( Packed4x8IntegerNode, Packed4x8IntegerNode.UNPACK4X_I8 ).setParameterLength( 1 );
+
+/**
+ * Unpacks a `uint` into four zero-extended unsigned 8-bit integer components.
+ *
+ * @tsl
+ * @function
+ * @param {Node<uint>} value - The packed value.
+ * @returns {Node<uvec4>} The unpacked unsigned integer vector.
+ */
+const unpack4xU8 = /*@__PURE__*/ nodeProxyIntent( Packed4x8IntegerNode, Packed4x8IntegerNode.UNPACK4X_U8 ).setParameterLength( 1 );
 
 /**
  * This node represents an operation that unpacks values from a 32-bit unsigned integer, reinterpreting the results as a floating-point vector
@@ -38557,7 +39494,7 @@ class ReflectorBaseNode extends Node {
 
 		if ( renderTarget === undefined ) {
 
-			renderTarget = new RenderTarget( 0, 0, { type: HalfFloatType, samples: this.samples } );
+			renderTarget = new RenderTarget( 1, 1, { type: HalfFloatType, samples: this.samples } );
 
 			if ( this.generateMipmaps === true ) {
 
@@ -38892,6 +39829,218 @@ class QuadMesh extends Mesh {
 
 }
 
+/**
+ * Saves the state of the given renderer and stores it into the given state object.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function saveRendererState( renderer, state = {} ) {
+
+	state.toneMapping = renderer.toneMapping;
+	state.toneMappingExposure = renderer.toneMappingExposure;
+	state.outputColorSpace = renderer.outputColorSpace;
+	state.renderTarget = renderer.getRenderTarget();
+	state.activeCubeFace = renderer.getActiveCubeFace();
+	state.activeMipmapLevel = renderer.getActiveMipmapLevel();
+	state.renderObjectFunction = renderer.getRenderObjectFunction();
+	state.pixelRatio = renderer.getPixelRatio();
+	state.mrt = renderer.getMRT();
+	state.clearColor = renderer.getClearColor( state.clearColor || new Color() );
+	state.clearAlpha = renderer.getClearAlpha();
+	state.autoClear = renderer.autoClear;
+	state.scissorTest = renderer.getScissorTest();
+
+	return state;
+
+}
+
+/**
+ * Saves the state of the given renderer and stores it into the given state object.
+ * Besides, the function also resets the state of the renderer to its default values.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function resetRendererState( renderer, state ) {
+
+	state = saveRendererState( renderer, state );
+
+	renderer.setMRT( null );
+	renderer.setRenderObjectFunction( null );
+	renderer.setClearColor( 0x000000, 1 );
+	renderer.autoClear = true;
+
+	return state;
+
+}
+
+/**
+ * Restores the state of the given renderer from the given state object.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Object} state - The state to restore.
+ */
+function restoreRendererState( renderer, state ) {
+
+	renderer.toneMapping = state.toneMapping;
+	renderer.toneMappingExposure = state.toneMappingExposure;
+	renderer.outputColorSpace = state.outputColorSpace;
+	renderer.setRenderTarget( state.renderTarget, state.activeCubeFace, state.activeMipmapLevel );
+	renderer.setRenderObjectFunction( state.renderObjectFunction );
+	renderer.setPixelRatio( state.pixelRatio );
+	renderer.setMRT( state.mrt );
+	renderer.setClearColor( state.clearColor, state.clearAlpha );
+	renderer.autoClear = state.autoClear;
+	renderer.setScissorTest( state.scissorTest );
+
+}
+
+/**
+ * Saves the state of the given scene and stores it into the given state object.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Scene} scene - The scene.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function saveSceneState( scene, state = {} ) {
+
+	state.background = scene.background;
+	state.backgroundNode = scene.backgroundNode;
+	state.overrideMaterial = scene.overrideMaterial;
+
+	return state;
+
+}
+
+/**
+ * Saves the state of the given scene and stores it into the given state object.
+ * Besides, the function also resets the state of the scene to its default values.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Scene} scene - The scene.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function resetSceneState( scene, state ) {
+
+	state = saveSceneState( scene, state );
+
+	scene.background = null;
+	scene.backgroundNode = null;
+	scene.overrideMaterial = null;
+
+	return state;
+
+}
+
+/**
+ * Restores the state of the given scene from the given state object.
+ *
+ * @private
+ * @function
+ * @param {Scene} scene - The scene.
+ * @param {Object} state - The state to restore.
+ */
+function restoreSceneState( scene, state ) {
+
+	scene.background = state.background;
+	scene.backgroundNode = state.backgroundNode;
+	scene.overrideMaterial = state.overrideMaterial;
+
+}
+
+/**
+ * Saves the state of the given renderer and scene and stores it into the given state object.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Scene} scene - The scene.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function saveRendererAndSceneState( renderer, scene, state = {} ) {
+
+	state = saveRendererState( renderer, state );
+	state = saveSceneState( scene, state );
+
+	return state;
+
+}
+
+/**
+ * Saves the state of the given renderer and scene and stores it into the given state object.
+ * Besides, the function also resets the state of the renderer and scene to its default values.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Scene} scene - The scene.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function resetRendererAndSceneState( renderer, scene, state ) {
+
+	state = resetRendererState( renderer, state );
+	state = resetSceneState( scene, state );
+
+	return state;
+
+}
+
+/**
+ * Restores the state of the given renderer and scene from the given state object.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Scene} scene - The scene.
+ * @param {Object} state - The state to restore.
+ */
+function restoreRendererAndSceneState( renderer, scene, state ) {
+
+	restoreRendererState( renderer, state );
+	restoreSceneState( scene, state );
+
+}
+
+var RendererUtils = /*#__PURE__*/Object.freeze({
+	__proto__: null,
+	resetRendererAndSceneState: resetRendererAndSceneState,
+	resetRendererState: resetRendererState,
+	resetSceneState: resetSceneState,
+	restoreRendererAndSceneState: restoreRendererAndSceneState,
+	restoreRendererState: restoreRendererState,
+	restoreSceneState: restoreSceneState,
+	saveRendererAndSceneState: saveRendererAndSceneState,
+	saveRendererState: saveRendererState,
+	saveSceneState: saveSceneState
+});
+
 const _size$1 = /*@__PURE__*/ new Vector2();
 
 /**
@@ -38914,13 +40063,21 @@ class RTTNode extends TextureNode {
 	 * Constructs a new RTT node.
 	 *
 	 * @param {Node} node - The node to render a texture with.
-	 * @param {?number} [width=null] - The width of the internal render target. If not width is applied, the render target is automatically resized.
+	 * @param {?number} [width=null] - The width of the internal render target. If no width is applied, the render target is automatically resized.
 	 * @param {?number} [height=null] - The height of the internal render target.
-	 * @param {Object} [options={type:HalfFloatType}] - The options for the internal render target.
+	 * @param {Object} [options={}] - The options for the internal render target.
+	 * @param {number} [options.type=HalfFloatType] - The texture type.
+	 * @param {boolean} [options.autoUpdate=true] - Whether the texture should automatically be updated or not.
+	 * @param {number} [options.resolutionScale=1] - The resolution scale.
 	 */
-	constructor( node, width = null, height = null, options = { type: HalfFloatType } ) {
+	constructor( node, width = null, height = null, options = {} ) {
 
-		const renderTarget = new RenderTarget( width, height, options );
+		const {
+			autoUpdate = true,
+			resolutionScale = 1
+		} = options;
+
+		const renderTarget = new RenderTarget( width ?? 1, height ?? 1, { type: HalfFloatType, ...options } );
 
 		super( renderTarget.texture, uv$1() );
 
@@ -38978,7 +40135,7 @@ class RTTNode extends TextureNode {
 		 * @type {boolean}
 		 * @default true
 		 */
-		this.autoUpdate = true;
+		this.autoUpdate = autoUpdate;
 
 		/**
 		 * The resolution scale
@@ -38987,7 +40144,7 @@ class RTTNode extends TextureNode {
 		 * @type {number}
 		 * @default 1
 		 */
-		this._resolutionScale = 1;
+		this._resolutionScale = resolutionScale;
 
 		/**
 		 * The internal quad mesh for RTT.
@@ -38998,13 +40155,22 @@ class RTTNode extends TextureNode {
 		this._quadMesh = new QuadMesh( new NodeMaterial() );
 
 		/**
-		 * The `updateBeforeType` is set to `NodeUpdateType.RENDER` since the node updates
-		 * the texture once per render in its {@link RTTNode#updateBefore} method.
+		 * The renderer state saved and restored around the RTT render.
+		 * Kept per instance because nested RTT nodes must not share it.
+		 *
+		 * @private
+		 * @type {Object}
+		 */
+		this._rendererState = {};
+
+		/**
+		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node updates
+		 * the texture once per frame in its {@link RTTNode#updateBefore} method.
 		 *
 		 * @type {string}
-		 * @default 'render'
+		 * @default 'frame'
 		 */
-		this.updateBeforeType = NodeUpdateType.RENDER;
+		this.updateBeforeType = NodeUpdateType.FRAME;
 
 	}
 
@@ -39033,10 +40199,10 @@ class RTTNode extends TextureNode {
 	}
 
 	/**
-	 * Sets the size of the internal render target
+	 * Sets the size of the internal render target.
 	 *
 	 * @param {number} width - The width to set.
-	 * @param {number} height - The width to set.
+	 * @param {number} height - The height to set.
 	 */
 	setSize( width, height ) {
 
@@ -39081,15 +40247,48 @@ class RTTNode extends TextureNode {
 
 	}
 
-	updateBefore( { renderer } ) {
+	/**
+	 * Overwritten since the value is defined by the internal render target.
+	 *
+	 * @param {Texture} value - The texture value.
+	 */
+	set value( value ) {
+
+		if ( this.renderTarget && value !== this.renderTarget.texture ) {
+
+			error( 'TSL: "rtt()" does not allow overwriting the value.' );
+
+		}
+
+	}
+
+	/**
+	 * The texture of the internal render target.
+	 *
+	 * @type {Texture}
+	 */
+	get value() {
+
+		return this.renderTarget ? this.renderTarget.texture : null;
+
+	}
+
+	/**
+	 * Renders the node's output into the internal render target before the main render pass.
+	 * Handles automatic resizing of the render target when `autoResize` is enabled,
+	 * and skips rendering if neither `textureNeedsUpdate` nor `autoUpdate` is true.
+	 *
+	 * @param {NodeFrame} frame - The current node frame, providing access to the renderer and other frame data.
+	 */
+	updateBefore( frame ) {
+
+		const { renderer } = frame;
 
 		if ( this.textureNeedsUpdate === false && this.autoUpdate === false ) return;
 
 		this.textureNeedsUpdate = false;
 
 		//
-
-		const currentRenderTarget = renderer.getRenderTarget();
 
 		if ( this.autoResize === true ) {
 
@@ -39112,9 +40311,11 @@ class RTTNode extends TextureNode {
 
 		let name = 'RTT';
 
-		if ( this.node.name ) {
+		const callName = this.name || this.node.name;
 
-			name = this.node.name + ' [ ' + name + ' ]';
+		if ( callName ) {
+
+			name = callName + ' [ ' + name + ' ]';
 
 		}
 
@@ -39122,11 +40323,13 @@ class RTTNode extends TextureNode {
 
 		//
 
+		resetRendererState( renderer, this._rendererState );
+
 		renderer.setRenderTarget( this.renderTarget );
 
 		this._quadMesh.render( renderer );
 
-		renderer.setRenderTarget( currentRenderTarget );
+		restoreRendererState( renderer, this._rendererState );
 
 	}
 
@@ -39140,6 +40343,18 @@ class RTTNode extends TextureNode {
 
 	}
 
+	/**
+	 * Frees internal resources. Should be called when the node is no longer in use.
+	 */
+	dispose() {
+
+		this.renderTarget.dispose();
+		this._quadMesh.material.dispose();
+
+		super.dispose();
+
+	}
+
 }
 
 /**
@@ -39148,9 +40363,12 @@ class RTTNode extends TextureNode {
  * @tsl
  * @function
  * @param {Node} node - The node to render a texture with.
- * @param {?number} [width=null] - The width of the internal render target. If not width is applied, the render target is automatically resized.
+ * @param {?number} [width=null] - The width of the internal render target. If no width is applied, the render target is automatically resized.
  * @param {?number} [height=null] - The height of the internal render target.
- * @param {Object} [options={type:HalfFloatType}] - The options for the internal render target.
+ * @param {Object} [options={}] - The options for the internal render target.
+ * @param {number} [options.type=HalfFloatType] - The texture type.
+ * @param {boolean} [options.autoUpdate=true] - Whether the texture should automatically be updated or not.
+ * @param {number} [options.resolutionScale=1] - The resolution scale.
  * @returns {RTTNode}
  */
 const rtt = ( node, ...params ) => new RTTNode( nodeObject( node ), ...params );
@@ -39161,9 +40379,12 @@ const rtt = ( node, ...params ) => new RTTNode( nodeObject( node ), ...params );
  * @tsl
  * @function
  * @param {Node} node - The node to render a texture with.
- * @param {?number} [width=null] - The width of the internal render target. If not width is applied, the render target is automatically resized.
+ * @param {?number} [width=null] - The width of the internal render target. If no width is applied, the render target is automatically resized.
  * @param {?number} [height=null] - The height of the internal render target.
- * @param {Object} [options={type:HalfFloatType}] - The options for the internal render target.
+ * @param {Object} [options={}] - The options for the internal render target.
+ * @param {number} [options.type=HalfFloatType] - The texture type.
+ * @param {boolean} [options.autoUpdate=true] - Whether the texture should automatically be updated or not.
+ * @param {number} [options.resolutionScale=1] - The resolution scale.
  * @returns {RTTNode}
  */
 const convertToTexture = ( node, ...params ) => {
@@ -39302,7 +40523,7 @@ const getNormalFromDepth = /*@__PURE__*/ Fn( ( [ uv, depthTexture, projectionMat
  * @param {Node<vec2>} position - The input position, usually screen coordinates.
  * @return {Node<float>} The noise value.
  */
-const interleavedGradientNoise = Fn( ( [ position ] ) => {
+const interleavedGradientNoise = /*@__PURE__*/ Fn( ( [ position ] ) => {
 
 	return fract( float( 52.9829189 ).mul( fract( dot( position, vec2( 0.06711056, 0.00583715 ) ) ) ) );
 
@@ -39328,7 +40549,7 @@ const interleavedGradientNoise = Fn( ( [ position ] ) => {
  * @param {Node<float>} phi - Rotation angle in radians (typically from IGN * 2π).
  * @return {Node<vec2>} A 2D point on the unit disk.
  */
-const vogelDiskSample = Fn( ( [ sampleIndex, samplesCount, phi ] ) => {
+const vogelDiskSample = /*@__PURE__*/ Fn( ( [ sampleIndex, samplesCount, phi ] ) => {
 
 	const goldenAngle = float( 2.399963229728653 ); // 2π * (2 - φ) where φ is golden ratio
 	const r = sqrt( float( sampleIndex ).add( 0.5 ).div( float( samplesCount ) ) );
@@ -39933,7 +41154,8 @@ class StorageTextureNode extends TextureNode {
 
 		const textureProperty = super.generate( builder, 'property' );
 		const uvSnippet = uvNode.build( builder, this.value.is3DTexture === true ? 'uvec3' : 'uvec2' );
-		const storeSnippet = storeNode.build( builder, 'vec4' );
+		const storeType = builder.getTypeFromLength( 4, builder.getComponentTypeFromTexture( this.value ) );
+		const storeSnippet = storeNode.build( builder, storeType );
 		const depthSnippet = depthNode ? depthNode.build( builder, 'int' ) : null;
 
 		const snippet = builder.generateTextureStore( this.value, textureProperty, uvSnippet, depthSnippet, storeSnippet );
@@ -40096,7 +41318,7 @@ class StorageTexture3DNode extends StorageTextureNode {
  */
 const storageTexture3D = /*@__PURE__*/ nodeProxy( StorageTexture3DNode ).setParameterLength( 1, 3 );
 
-const normal = Fn( ( { texture, uv } ) => {
+const normal = /*@__PURE__*/ Fn( ( { texture, uv } ) => {
 
 	const epsilon = 0.0001;
 
@@ -40848,7 +42070,7 @@ const cdl = /*@__PURE__*/ Fn( ( [
  * @param {Node} stepsNode - Controls the intensity of the posterization effect. A lower number results in a more blocky appearance.
  * @returns {Node} The posterized color.
  */
-const posterize = Fn( ( [ source, steps ] ) => {
+const posterize = /*@__PURE__*/ Fn( ( [ source, steps ] ) => {
 
 	return source.mul( steps ).floor().div( steps );
 
@@ -41947,26 +43169,36 @@ class PassNode extends TempNode {
 	 */
 	dispose() {
 
+		super.dispose();
+
 		this.renderTarget.dispose();
 
 	}
 
 
+	/**
+	 * @static
+	 * @type {'color'}
+	 * @default 'color'
+	 */
+	static get COLOR() {
+
+		return 'color';
+
+	}
+
+	/**
+	 * @static
+	 * @type {'depth'}
+	 * @default 'depth'
+	 */
+	static get DEPTH() {
+
+		return 'depth';
+
+	}
+
 }
-
-/**
- * @static
- * @type {'color'}
- * @default 'color'
- */
-PassNode.COLOR = 'color';
-
-/**
- * @static
- * @type {'depth'}
- * @default 'depth'
- */
-PassNode.DEPTH = 'depth';
 
 /**
  * TSL function for creating a pass node.
@@ -42807,7 +44039,7 @@ function getViewZNode( builder ) {
  * @param {Node} near - Defines the near value.
  * @param {Node} far - Defines the far value.
  */
-const rangeFogFactor = Fn( ( [ near, far ], builder ) => {
+const rangeFogFactor = /*@__PURE__*/ Fn( ( [ near, far ], builder ) => {
 
 	const viewZ = getViewZNode( builder );
 
@@ -42824,7 +44056,7 @@ const rangeFogFactor = Fn( ( [ near, far ], builder ) => {
  * @function
  * @param {Node} density - Defines the fog density.
  */
-const densityFogFactor = Fn( ( [ density ], builder ) => {
+const densityFogFactor = /*@__PURE__*/ Fn( ( [ density ], builder ) => {
 
 	const viewZ = getViewZNode( builder );
 
@@ -42840,7 +44072,7 @@ const densityFogFactor = Fn( ( [ density ], builder ) => {
  * @param {Node} density - Defines the fog density.
  * @param {Node} height - The height threshold in world space. Everything below this y-coordinate is affected by fog.
  */
-const exponentialHeightFogFactor = Fn( ( [ density, height ], builder ) => {
+const exponentialHeightFogFactor = /*@__PURE__*/ Fn( ( [ density, height ], builder ) => {
 
 	const viewZ = getViewZNode( builder );
 
@@ -42860,7 +44092,7 @@ const exponentialHeightFogFactor = Fn( ( [ density, height ], builder ) => {
  * @param {Node} color - Defines the color of the fog.
  * @param {Node} factor - Defines how the fog is factored in the scene.
  */
-const fog = Fn( ( [ color, factor ] ) => {
+const fog = /*@__PURE__*/ Fn( ( [ color, factor ] ) => {
 
 	return vec4( factor.toFloat().mix( output.rgb, color.toVec3() ), output.a );
 
@@ -43172,7 +44404,7 @@ class ComputeBuiltinNode extends Node {
 
 		} else {
 
-			warn( `ComputeBuiltinNode: Compute built-in value ${builtinName} can not be accessed in the ${builder.shaderStage} stage` );
+			warn( `TSL: Compute built-in value "${builtinName}" can not be accessed in the ${builder.shaderStage} stage` );
 			return builder.generateConst( nodeType );
 
 		}
@@ -43319,15 +44551,23 @@ class BarrierNode extends Node {
 	generate( builder ) {
 
 		const { scope } = this;
-		const { renderer } = builder;
+		const { renderer, shaderStage } = builder;
+
+		const barrierMethod = `${scope}Barrier`;
+
+		if ( shaderStage !== 'compute' ) {
+
+			error( `TSL: "${barrierMethod}" is not supported in the ${shaderStage} stage and can only be executed in compute.` );
+
+		}
 
 		if ( renderer.backend.isWebGLBackend === true ) {
 
-			builder.addFlowCode( `\t// ${scope}Barrier \n` );
+			builder.addFlowCode( `\t// ${barrierMethod}() \n` );
 
 		} else {
 
-			builder.addLineFlowCode( `${scope}Barrier()`, this );
+			builder.addLineFlowCode( `${barrierMethod}()`, this );
 
 		}
 
@@ -43343,7 +44583,7 @@ class BarrierNode extends Node {
  * @param {string} scope - The scope defines the behavior of the node..
  * @returns {BarrierNode}
  */
-const barrier = nodeProxy( BarrierNode );
+const barrier = /*@__PURE__*/ nodeProxy( BarrierNode );
 
 /**
  * TSL function for creating a workgroup barrier. All compute shader
@@ -43470,6 +44710,14 @@ class WorkgroupInfoNode extends Node {
 		this.bufferCount = bufferCount;
 
 		/**
+		 * Whether the node is atomic or not.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.isAtomic = false;
+
+		/**
 		 * This flag can be used for type testing.
 		 *
 		 * @type {boolean}
@@ -43545,6 +44793,31 @@ class WorkgroupInfoNode extends Node {
 
 	}
 
+	/**
+	 * Defines whether the node is atomic or not.
+	 *
+	 * @param {boolean} value - The atomic flag.
+	 * @return {WorkgroupInfoNode} A reference to this node.
+	 */
+	setAtomic( value ) {
+
+		this.isAtomic = value;
+
+		return this;
+
+	}
+
+	/**
+	 * Convenience method for making this node atomic.
+	 *
+	 * @return {WorkgroupInfoNode} A reference to this node.
+	 */
+	toAtomic() {
+
+		return this.setAtomic( true );
+
+	}
+
 
 	/**
 	 * The data type of the array buffer.
@@ -43584,9 +44857,15 @@ class WorkgroupInfoNode extends Node {
 
 	generate( builder ) {
 
+		if ( builder.shaderStage !== 'compute' ) {
+
+			error( 'TSL: "workgroupArray()" can only be executed within the compute shader stage' );
+
+		}
+
 		const name = ( this.name !== '' ) ? this.name : `${this.scope}Array_${this.id}`;
 
-		return builder.getScopedArray( name, this.scope.toLowerCase(), this.bufferType, this.bufferCount );
+		return builder.getScopedArray( name, this.scope.toLowerCase(), this.bufferType, this.bufferCount, this.isAtomic );
 
 	}
 
@@ -43692,10 +44971,16 @@ class AtomicFunctionNode extends Node {
 
 	generate( builder ) {
 
+		const method = this.method;
+
+		if ( builder.shaderStage === 'vertex' ) {
+
+			error( `TSL: "${this.method}" is not supported in the vertex stage.` );
+
+		}
+
 		const properties = builder.getNodeProperties( this );
 		const parents = properties.parents;
-
-		const method = this.method;
 
 		const type = this.getNodeType( builder );
 		const inputType = this.getInputType( builder );
@@ -43735,17 +45020,61 @@ class AtomicFunctionNode extends Node {
 
 	}
 
-}
+	static get ATOMIC_LOAD() {
 
-AtomicFunctionNode.ATOMIC_LOAD = 'atomicLoad';
-AtomicFunctionNode.ATOMIC_STORE = 'atomicStore';
-AtomicFunctionNode.ATOMIC_ADD = 'atomicAdd';
-AtomicFunctionNode.ATOMIC_SUB = 'atomicSub';
-AtomicFunctionNode.ATOMIC_MAX = 'atomicMax';
-AtomicFunctionNode.ATOMIC_MIN = 'atomicMin';
-AtomicFunctionNode.ATOMIC_AND = 'atomicAnd';
-AtomicFunctionNode.ATOMIC_OR = 'atomicOr';
-AtomicFunctionNode.ATOMIC_XOR = 'atomicXor';
+		return 'atomicLoad';
+
+	}
+
+	static get ATOMIC_STORE() {
+
+		return 'atomicStore';
+
+	}
+
+	static get ATOMIC_ADD() {
+
+		return 'atomicAdd';
+
+	}
+
+	static get ATOMIC_SUB() {
+
+		return 'atomicSub';
+
+	}
+
+	static get ATOMIC_MAX() {
+
+		return 'atomicMax';
+
+	}
+
+	static get ATOMIC_MIN() {
+
+		return 'atomicMin';
+
+	}
+
+	static get ATOMIC_AND() {
+
+		return 'atomicAnd';
+
+	}
+
+	static get ATOMIC_OR() {
+
+		return 'atomicOr';
+
+	}
+
+	static get ATOMIC_XOR() {
+
+		return 'atomicXor';
+
+	}
+
+}
 
 /**
  * TSL function for creating an atomic function node.
@@ -43757,7 +45086,7 @@ AtomicFunctionNode.ATOMIC_XOR = 'atomicXor';
  * @param {Node} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
-const atomicNode = nodeProxy( AtomicFunctionNode );
+const atomicNode = /*@__PURE__*/ nodeProxy( AtomicFunctionNode );
 
 /**
  * TSL function for appending an atomic function call into the programmatic flow of a compute shader.
@@ -43970,6 +45299,12 @@ class SubgroupFunctionNode extends TempNode {
 
 		const method = this.method;
 
+		if ( builder.shaderStage === 'vertex' ) {
+
+			error( `TSL: "${this.method}" is not supported in the vertex shader stage.` );
+
+		}
+
 		const type = this.getNodeType( builder );
 		const inputType = this.getInputType( builder );
 
@@ -44033,40 +45368,160 @@ class SubgroupFunctionNode extends TempNode {
 
 	}
 
+	// 0 inputs
+	static get SUBGROUP_ELECT() {
+
+		return 'subgroupElect';
+
+	}
+
+	// 1 input
+	static get SUBGROUP_BALLOT() {
+
+		return 'subgroupBallot';
+
+	}
+
+	static get SUBGROUP_ADD() {
+
+		return 'subgroupAdd';
+
+	}
+
+	static get SUBGROUP_INCLUSIVE_ADD() {
+
+		return 'subgroupInclusiveAdd';
+
+	}
+
+	static get SUBGROUP_EXCLUSIVE_ADD() {
+
+		return 'subgroupExclusiveAdd';
+
+	}
+
+	static get SUBGROUP_MUL() {
+
+		return 'subgroupMul';
+
+	}
+
+	static get SUBGROUP_INCLUSIVE_MUL() {
+
+		return 'subgroupInclusiveMul';
+
+	}
+
+	static get SUBGROUP_EXCLUSIVE_MUL() {
+
+		return 'subgroupExclusiveMul';
+
+	}
+
+	static get SUBGROUP_AND() {
+
+		return 'subgroupAnd';
+
+	}
+
+	static get SUBGROUP_OR() {
+
+		return 'subgroupOr';
+
+	}
+
+	static get SUBGROUP_XOR() {
+
+		return 'subgroupXor';
+
+	}
+
+	static get SUBGROUP_MIN() {
+
+		return 'subgroupMin';
+
+	}
+
+	static get SUBGROUP_MAX() {
+
+		return 'subgroupMax';
+
+	}
+
+	static get SUBGROUP_ALL() {
+
+		return 'subgroupAll';
+
+	}
+
+	static get SUBGROUP_ANY() {
+
+		return 'subgroupAny';
+
+	}
+
+	static get SUBGROUP_BROADCAST_FIRST() {
+
+		return 'subgroupBroadcastFirst';
+
+	}
+
+	static get QUAD_SWAP_X() {
+
+		return 'quadSwapX';
+
+	}
+
+	static get QUAD_SWAP_Y() {
+
+		return 'quadSwapY';
+
+	}
+
+	static get QUAD_SWAP_DIAGONAL() {
+
+		return 'quadSwapDiagonal';
+
+	}
+
+	// 2 inputs
+	static get SUBGROUP_BROADCAST() {
+
+		return 'subgroupBroadcast';
+
+	}
+
+	static get SUBGROUP_SHUFFLE() {
+
+		return 'subgroupShuffle';
+
+	}
+
+	static get SUBGROUP_SHUFFLE_XOR() {
+
+		return 'subgroupShuffleXor';
+
+	}
+
+	static get SUBGROUP_SHUFFLE_UP() {
+
+		return 'subgroupShuffleUp';
+
+	}
+
+	static get SUBGROUP_SHUFFLE_DOWN() {
+
+		return 'subgroupShuffleDown';
+
+	}
+
+	static get QUAD_BROADCAST() {
+
+		return 'quadBroadcast';
+
+	}
+
 }
-
-// 0 inputs
-SubgroupFunctionNode.SUBGROUP_ELECT = 'subgroupElect';
-
-// 1 input
-SubgroupFunctionNode.SUBGROUP_BALLOT = 'subgroupBallot';
-SubgroupFunctionNode.SUBGROUP_ADD = 'subgroupAdd';
-SubgroupFunctionNode.SUBGROUP_INCLUSIVE_ADD = 'subgroupInclusiveAdd';
-SubgroupFunctionNode.SUBGROUP_EXCLUSIVE_AND = 'subgroupExclusiveAdd';
-SubgroupFunctionNode.SUBGROUP_MUL = 'subgroupMul';
-SubgroupFunctionNode.SUBGROUP_INCLUSIVE_MUL = 'subgroupInclusiveMul';
-SubgroupFunctionNode.SUBGROUP_EXCLUSIVE_MUL = 'subgroupExclusiveMul';
-SubgroupFunctionNode.SUBGROUP_AND = 'subgroupAnd';
-SubgroupFunctionNode.SUBGROUP_OR = 'subgroupOr';
-SubgroupFunctionNode.SUBGROUP_XOR = 'subgroupXor';
-SubgroupFunctionNode.SUBGROUP_MIN = 'subgroupMin';
-SubgroupFunctionNode.SUBGROUP_MAX = 'subgroupMax';
-SubgroupFunctionNode.SUBGROUP_ALL = 'subgroupAll';
-SubgroupFunctionNode.SUBGROUP_ANY = 'subgroupAny';
-SubgroupFunctionNode.SUBGROUP_BROADCAST_FIRST = 'subgroupBroadcastFirst';
-SubgroupFunctionNode.QUAD_SWAP_X = 'quadSwapX';
-SubgroupFunctionNode.QUAD_SWAP_Y = 'quadSwapY';
-SubgroupFunctionNode.QUAD_SWAP_DIAGONAL = 'quadSwapDiagonal';
-
-// 2 inputs
-SubgroupFunctionNode.SUBGROUP_BROADCAST = 'subgroupBroadcast';
-SubgroupFunctionNode.SUBGROUP_SHUFFLE = 'subgroupShuffle';
-SubgroupFunctionNode.SUBGROUP_SHUFFLE_XOR = 'subgroupShuffleXor';
-SubgroupFunctionNode.SUBGROUP_SHUFFLE_UP = 'subgroupShuffleUp';
-SubgroupFunctionNode.SUBGROUP_SHUFFLE_DOWN = 'subgroupShuffleDown';
-SubgroupFunctionNode.QUAD_BROADCAST = 'quadBroadcast';
-
-
 
 /**
  * Returns true if this invocation has the lowest subgroup_invocation_id
@@ -44117,7 +45572,7 @@ const subgroupInclusiveAdd = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode
  * @param {number} e - The value provided to the exclusive scan by the current invocation.
  * @return {number} The accumulated result of the exclusive scan operation.
  */
-const subgroupExclusiveAdd = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_EXCLUSIVE_AND ).setParameterLength( 1 );
+const subgroupExclusiveAdd = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_EXCLUSIVE_ADD ).setParameterLength( 1 );
 
 /**
  * A reduction that multiplies e among all active invocations and returns that result.
@@ -44204,18 +45659,20 @@ const subgroupMax = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, Subgrou
  *
  * @tsl
  * @method
+ * @param {boolean} e - The predicate provided by the current invocation.
  * @return {bool} The result of the computation.
  */
-const subgroupAll = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_ALL ).setParameterLength( 0 );
+const subgroupAll = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_ALL ).setParameterLength( 1 );
 
 /**
  * Returns true if e is true for any active invocation in the subgroup
  *
  * @tsl
  * @method
+ * @param {boolean} e - The predicate provided by the current invocation.
  * @return {bool} The result of the computation.
  */
-const subgroupAny = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_ANY ).setParameterLength( 0 );
+const subgroupAny = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_ANY ).setParameterLength( 1 );
 
 /**
  * Broadcasts e from the active invocation with the lowest subgroup_invocation_id in the subgroup to all other active invocations.
@@ -44223,10 +45680,9 @@ const subgroupAny = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, Subgrou
  * @tsl
  * @method
  * @param {number} e - The value to broadcast from the lowest subgroup invocation.
- * @param {number} id - The subgroup invocation to broadcast from.
  * @return {number} The broadcast value.
  */
-const subgroupBroadcastFirst = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_BROADCAST_FIRST ).setParameterLength( 2 );
+const subgroupBroadcastFirst = /*@__PURE__*/ nodeProxyIntent( SubgroupFunctionNode, SubgroupFunctionNode.SUBGROUP_BROADCAST_FIRST ).setParameterLength( 1 );
 
 /**
  * Swaps e between invocations in the quad in the X direction.
@@ -44952,6 +46408,118 @@ class LightsNode extends Node {
  */
 const lights = ( lights = [] ) => new LightsNode().setLights( lights );
 
+const _shadowMaterialLib = /*@__PURE__*/ new WeakMap();
+const _shadowRenderObjectLibrary = /*@__PURE__*/ new ChainMap();
+const _shadowRenderObjectKeys = [];
+
+/**
+ * Retrieves or creates a shadow material for the given light source.
+ *
+ * This function checks if a shadow material already exists for the provided light.
+ * If not, it creates a new `NodeMaterial` configured for shadow rendering and stores it
+ * in the `shadowMaterialLib` for future use.
+ *
+ * @private
+ * @function
+ * @param {Light} light - The light source for which the shadow material is needed.
+ *                         If the light is a point light, a depth node is calculated
+ *                         using the linear shadow distance.
+ * @returns {NodeMaterial} The shadow material associated with the given light.
+ */
+const _getShadowMaterial = ( light ) => {
+
+	let material = _shadowMaterialLib.get( light );
+
+	if ( material === undefined ) {
+
+		material = new NodeMaterial();
+		material.colorNode = vec4( 0, 0, 0, 1 );
+		material.isShadowPassMaterial = true; // Use to avoid other overrideMaterial override material.colorNode unintentionally when using material.shadowNode
+		material.name = 'ShadowMaterial';
+		material.blending = NoBlending;
+		material.fog = false;
+
+		_shadowMaterialLib.set( light, material );
+
+	}
+
+	return material;
+
+};
+
+/**
+ * Disposes the shadow material for the given light source.
+ *
+ * @private
+ * @param {Light} light - The light source.
+ */
+const _disposeShadowMaterial = ( light ) => {
+
+	const material = _shadowMaterialLib.get( light );
+
+	if ( material !== undefined ) {
+
+		material.dispose();
+		_shadowMaterialLib.delete( light );
+
+	}
+
+};
+
+/**
+ * Creates a function to render shadow objects in a scene.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {LightShadow} shadow - The light shadow object containing shadow properties.
+ * @param {number} shadowType - The type of shadow map (e.g., BasicShadowMap).
+ * @param {boolean} useVelocity - Whether to use velocity data for rendering.
+ * @return {shadowRenderObjectFunction} A function that renders shadow objects.
+ */
+const _getShadowRenderObjectFunction = ( renderer, shadow, shadowType, useVelocity ) => {
+
+	_shadowRenderObjectKeys[ 0 ] = renderer;
+	_shadowRenderObjectKeys[ 1 ] = shadow;
+
+	let renderObjectFunction = _shadowRenderObjectLibrary.get( _shadowRenderObjectKeys );
+
+	if ( renderObjectFunction === undefined || ( renderObjectFunction.shadowType !== shadowType || renderObjectFunction.useVelocity !== useVelocity ) ) {
+
+		renderObjectFunction = ( object, scene, _camera, geometry, material, group, lightsNode, clippingContext, passId ) => {
+
+			if ( object.castShadow === true || ( object.receiveShadow && shadowType === VSMShadowMap ) ) {
+
+				if ( useVelocity ) {
+
+					getDataFromObject( object ).useVelocity = true;
+
+				}
+
+				object.onBeforeShadow( renderer, object, _camera, shadow.camera, geometry, scene.overrideMaterial, group );
+
+				renderer.renderObject( object, scene, _camera, geometry, material, group, lightsNode, clippingContext, passId );
+
+				object.onAfterShadow( renderer, object, _camera, shadow.camera, geometry, scene.overrideMaterial, group );
+
+			}
+
+		};
+
+		renderObjectFunction.shadowType = shadowType;
+		renderObjectFunction.useVelocity = useVelocity;
+
+		_shadowRenderObjectLibrary.set( _shadowRenderObjectKeys, renderObjectFunction );
+
+	}
+
+	_shadowRenderObjectKeys[ 0 ] = null;
+	_shadowRenderObjectKeys[ 1 ] = null;
+
+	return renderObjectFunction;
+
+};
+
 /**
  * Base class for all shadow nodes.
  *
@@ -45005,6 +46573,47 @@ class ShadowBaseNode extends Node {
 	}
 
 	/**
+	 * Retrieves or creates a shadow material for the shadow casting light source.
+	 *
+	 * This method checks if a shadow material already exists for the provided light in the internal library.
+	 * If not, it creates a new `NodeMaterial` configured for shadow rendering and stores it for future use.
+	 *
+	 * @return {NodeMaterial} The shadow material associated with the given light.
+	 */
+	getShadowMaterial() {
+
+		return _getShadowMaterial( this.light );
+
+	}
+
+	/**
+	 * Disposes the shadow material for the shadow casting light source.
+	 */
+	disposeShadowMaterial() {
+
+		_disposeShadowMaterial( this.light );
+
+	}
+
+	/**
+	 * Returns a function to render shadow objects in a scene for the given light shadow and renderer.
+	 *
+	 * @param {Renderer} renderer - The renderer.
+	 * @param {LightShadow} [shadow=this.light.shadow] - The light shadow object containing shadow properties.
+	 * @return {Function} A function that renders shadow objects.
+	 */
+	getShadowRenderObjectFunction( renderer, shadow = this.light.shadow ) {
+
+		const shadowType = renderer.shadowMap.type;
+
+		const currentMRT = renderer.getMRT();
+		const useVelocity = currentMRT ? currentMRT.has( 'velocity' ) : false;
+
+		return _getShadowRenderObjectFunction( renderer, shadow, shadowType, useVelocity );
+
+	}
+
+	/**
 	 * Setups the shadow position node which is by default the predefined TSL node object `shadowPositionWorld`.
 	 *
 	 * @param {NodeBuilder} object - A configuration object that must at least hold a material reference.
@@ -45026,220 +46635,6 @@ class ShadowBaseNode extends Node {
  * @type {Node<vec3>}
  */
 const shadowPositionWorld = /*@__PURE__*/ property( 'vec3', 'shadowPositionWorld' );
-
-/**
- * Saves the state of the given renderer and stores it into the given state object.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function saveRendererState( renderer, state = {} ) {
-
-	state.toneMapping = renderer.toneMapping;
-	state.toneMappingExposure = renderer.toneMappingExposure;
-	state.outputColorSpace = renderer.outputColorSpace;
-	state.renderTarget = renderer.getRenderTarget();
-	state.activeCubeFace = renderer.getActiveCubeFace();
-	state.activeMipmapLevel = renderer.getActiveMipmapLevel();
-	state.renderObjectFunction = renderer.getRenderObjectFunction();
-	state.pixelRatio = renderer.getPixelRatio();
-	state.mrt = renderer.getMRT();
-	state.clearColor = renderer.getClearColor( state.clearColor || new Color() );
-	state.clearAlpha = renderer.getClearAlpha();
-	state.autoClear = renderer.autoClear;
-	state.scissorTest = renderer.getScissorTest();
-
-	return state;
-
-}
-
-/**
- * Saves the state of the given renderer and stores it into the given state object.
- * Besides, the function also resets the state of the renderer to its default values.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function resetRendererState( renderer, state ) {
-
-	state = saveRendererState( renderer, state );
-
-	renderer.setMRT( null );
-	renderer.setRenderObjectFunction( null );
-	renderer.setClearColor( 0x000000, 1 );
-	renderer.autoClear = true;
-
-	return state;
-
-}
-
-/**
- * Restores the state of the given renderer from the given state object.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Object} state - The state to restore.
- */
-function restoreRendererState( renderer, state ) {
-
-	renderer.toneMapping = state.toneMapping;
-	renderer.toneMappingExposure = state.toneMappingExposure;
-	renderer.outputColorSpace = state.outputColorSpace;
-	renderer.setRenderTarget( state.renderTarget, state.activeCubeFace, state.activeMipmapLevel );
-	renderer.setRenderObjectFunction( state.renderObjectFunction );
-	renderer.setPixelRatio( state.pixelRatio );
-	renderer.setMRT( state.mrt );
-	renderer.setClearColor( state.clearColor, state.clearAlpha );
-	renderer.autoClear = state.autoClear;
-	renderer.setScissorTest( state.scissorTest );
-
-}
-
-/**
- * Saves the state of the given scene and stores it into the given state object.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Scene} scene - The scene.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function saveSceneState( scene, state = {} ) {
-
-	state.background = scene.background;
-	state.backgroundNode = scene.backgroundNode;
-	state.overrideMaterial = scene.overrideMaterial;
-
-	return state;
-
-}
-
-/**
- * Saves the state of the given scene and stores it into the given state object.
- * Besides, the function also resets the state of the scene to its default values.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Scene} scene - The scene.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function resetSceneState( scene, state ) {
-
-	state = saveSceneState( scene, state );
-
-	scene.background = null;
-	scene.backgroundNode = null;
-	scene.overrideMaterial = null;
-
-	return state;
-
-}
-
-/**
- * Restores the state of the given scene from the given state object.
- *
- * @private
- * @function
- * @param {Scene} scene - The scene.
- * @param {Object} state - The state to restore.
- */
-function restoreSceneState( scene, state ) {
-
-	scene.background = state.background;
-	scene.backgroundNode = state.backgroundNode;
-	scene.overrideMaterial = state.overrideMaterial;
-
-}
-
-/**
- * Saves the state of the given renderer and scene and stores it into the given state object.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Scene} scene - The scene.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function saveRendererAndSceneState( renderer, scene, state = {} ) {
-
-	state = saveRendererState( renderer, state );
-	state = saveSceneState( scene, state );
-
-	return state;
-
-}
-
-/**
- * Saves the state of the given renderer and scene and stores it into the given state object.
- * Besides, the function also resets the state of the renderer and scene to its default values.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Scene} scene - The scene.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function resetRendererAndSceneState( renderer, scene, state ) {
-
-	state = resetRendererState( renderer, state );
-	state = resetSceneState( scene, state );
-
-	return state;
-
-}
-
-/**
- * Restores the state of the given renderer and scene from the given state object.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Scene} scene - The scene.
- * @param {Object} state - The state to restore.
- */
-function restoreRendererAndSceneState( renderer, scene, state ) {
-
-	restoreRendererState( renderer, state );
-	restoreSceneState( scene, state );
-
-}
-
-var RendererUtils = /*#__PURE__*/Object.freeze({
-	__proto__: null,
-	resetRendererAndSceneState: resetRendererAndSceneState,
-	resetRendererState: resetRendererState,
-	resetSceneState: resetSceneState,
-	restoreRendererAndSceneState: restoreRendererAndSceneState,
-	restoreRendererState: restoreRendererState,
-	restoreSceneState: restoreSceneState,
-	saveRendererAndSceneState: saveRendererAndSceneState,
-	saveRendererState: saveRendererState,
-	saveSceneState: saveSceneState
-});
-
-const shadowMaterialLib = /*@__PURE__*/ new WeakMap();
 
 /**
  * A shadow filtering function performing basic filtering. This is in fact an unfiltered version of the shadow map
@@ -45360,118 +46755,6 @@ const VSMShadowFilter = /*@__PURE__*/ Fn( ( { depthTexture, shadowCoord, depthLa
 	return output;
 
 } );
-
-/**
- * Retrieves or creates a shadow material for the given light source.
- *
- * This function checks if a shadow material already exists for the provided light.
- * If not, it creates a new `NodeMaterial` configured for shadow rendering and stores it
- * in the `shadowMaterialLib` for future use.
- *
- * @tsl
- * @function
- * @param {Light} light - The light source for which the shadow material is needed.
- *                         If the light is a point light, a depth node is calculated
- *                         using the linear shadow distance.
- * @returns {NodeMaterial} The shadow material associated with the given light.
- */
-const getShadowMaterial = ( light ) => {
-
-	let material = shadowMaterialLib.get( light );
-
-	if ( material === undefined ) {
-
-		material = new NodeMaterial();
-		material.colorNode = vec4( 0, 0, 0, 1 );
-		material.isShadowPassMaterial = true; // Use to avoid other overrideMaterial override material.colorNode unintentionally when using material.shadowNode
-		material.name = 'ShadowMaterial';
-		material.blending = NoBlending;
-		material.fog = false;
-
-		shadowMaterialLib.set( light, material );
-
-	}
-
-	return material;
-
-};
-
-/**
- * Disposes the shadow material for the given light source.
- *
- * @param {Light} light - The light source.
- */
-const disposeShadowMaterial = ( light ) => {
-
-	const material = shadowMaterialLib.get( light );
-
-	if ( material !== undefined ) {
-
-		material.dispose();
-		shadowMaterialLib.delete( light );
-
-	}
-
-};
-
-//
-
-const _shadowRenderObjectLibrary = /*@__PURE__*/ new ChainMap();
-const _shadowRenderObjectKeys = [];
-
-/**
- * Creates a function to render shadow objects in a scene.
- *
- * @tsl
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {LightShadow} shadow - The light shadow object containing shadow properties.
- * @param {number} shadowType - The type of shadow map (e.g., BasicShadowMap).
- * @param {boolean} useVelocity - Whether to use velocity data for rendering.
- * @return {shadowRenderObjectFunction} A function that renders shadow objects.
- */
-const getShadowRenderObjectFunction = ( renderer, shadow, shadowType, useVelocity ) => {
-
-	_shadowRenderObjectKeys[ 0 ] = renderer;
-	_shadowRenderObjectKeys[ 1 ] = shadow;
-
-	let renderObjectFunction = _shadowRenderObjectLibrary.get( _shadowRenderObjectKeys );
-
-	if ( renderObjectFunction === undefined || ( renderObjectFunction.shadowType !== shadowType || renderObjectFunction.useVelocity !== useVelocity ) ) {
-
-		renderObjectFunction = ( object, scene, _camera, geometry, material, group, lightsNode, clippingContext, passId ) => {
-
-			if ( object.castShadow === true || ( object.receiveShadow && shadowType === VSMShadowMap ) ) {
-
-				if ( useVelocity ) {
-
-					getDataFromObject( object ).useVelocity = true;
-
-				}
-
-				object.onBeforeShadow( renderer, object, _camera, shadow.camera, geometry, scene.overrideMaterial, group );
-
-				renderer.renderObject( object, scene, _camera, geometry, material, group, lightsNode, clippingContext, passId );
-
-				object.onAfterShadow( renderer, object, _camera, shadow.camera, geometry, scene.overrideMaterial, group );
-
-			}
-
-		};
-
-		renderObjectFunction.shadowType = shadowType;
-		renderObjectFunction.useVelocity = useVelocity;
-
-		_shadowRenderObjectLibrary.set( _shadowRenderObjectKeys, renderObjectFunction );
-
-	}
-
-	_shadowRenderObjectKeys[ 0 ] = null;
-	_shadowRenderObjectKeys[ 1 ] = null;
-
-	return renderObjectFunction;
-
-};
 
 /**
  * Represents the shader code for the first VSM render pass.
@@ -46115,7 +47398,7 @@ class ShadowNode extends ShadowBaseNode {
 	 */
 	updateShadow( frame ) {
 
-		const { shadowMap, light, shadow } = this;
+		const { shadowMap, shadow } = this;
 		const { renderer, scene, camera } = frame;
 
 		const shadowType = renderer.shadowMap.type;
@@ -46133,14 +47416,11 @@ class ShadowNode extends ShadowBaseNode {
 
 		const currentRenderObjectFunction = renderer.getRenderObjectFunction();
 
-		const currentMRT = renderer.getMRT();
-		const useVelocity = currentMRT ? currentMRT.has( 'velocity' ) : false;
-
 		_rendererState = resetRendererAndSceneState( renderer, scene, _rendererState );
 
-		scene.overrideMaterial = getShadowMaterial( light );
+		scene.overrideMaterial = this.getShadowMaterial();
 
-		renderer.setRenderObjectFunction( getShadowRenderObjectFunction( renderer, shadow, shadowType, useVelocity ) );
+		renderer.setRenderObjectFunction( this.getShadowRenderObjectFunction( renderer, this.shadow || this.light.shadow ) );
 
 		renderer.setClearColor( 0x000000, 0 );
 
@@ -46207,7 +47487,7 @@ class ShadowNode extends ShadowBaseNode {
 
 		this._currentShadowType = null;
 
-		disposeShadowMaterial( this.light );
+		this.disposeShadowMaterial();
 
 		if ( this.shadowMap ) {
 
@@ -46280,19 +47560,6 @@ class ShadowNode extends ShadowBaseNode {
 	}
 
 }
-
-/**
- * Shadow Render Object Function.
- *
- * @function shadowRenderObjectFunction
- * @param {Object3D} object - The 3D object to render.
- * @param {Scene} scene - The scene containing the object.
- * @param {Camera} _camera - The camera used for rendering.
- * @param {BufferGeometry} geometry - The geometry of the object.
- * @param {Material} material - The material of the object.
- * @param {Group} group - The group the object belongs to.
- * @param {...any} params - Additional parameters for rendering.
- */
 
 /**
  * TSL function for creating an instance of `ShadowNode`.
@@ -47063,7 +48330,7 @@ const checker = /*@__PURE__*/ Fn( ( [ coord = uv$1() ] ) => {
  * @param {Node<vec2>} coord - The uv to generate the circle.
  * @return {Node<float>} The circle shape.
  */
-const shapeCircle = Fn( ( [ coord = uv$1() ], { renderer, material } ) => {
+const shapeCircle = /*@__PURE__*/ Fn( ( [ coord = uv$1() ], { renderer, material } ) => {
 
 	const len2 = lengthSq( coord.mul( 2 ).sub( 1 ) );
 
@@ -49199,6 +50466,7 @@ var TSL = /*#__PURE__*/Object.freeze({
 	__proto__: null,
 	BRDF_GGX: BRDF_GGX,
 	BRDF_Lambert: BRDF_Lambert,
+	BRDF_Sheen: BRDF_Sheen,
 	BasicPointShadowFilter: BasicPointShadowFilter,
 	BasicShadowFilter: BasicShadowFilter,
 	Break: Break,
@@ -49206,13 +50474,18 @@ var TSL = /*#__PURE__*/Object.freeze({
 	Continue: Continue,
 	DFGLUT: DFGLUT,
 	D_GGX: D_GGX,
+	D_GGX_Anisotropic: D_GGX_Anisotropic,
 	Discard: Discard,
 	EPSILON: EPSILON,
+	EnvironmentBRDF: EnvironmentBRDF,
 	F_Schlick: F_Schlick,
 	Fn: Fn,
 	HALF_PI: HALF_PI,
 	INFINITY: INFINITY,
 	If: If,
+	LTC_Evaluate: LTC_Evaluate,
+	LTC_Evaluate_Volume: LTC_Evaluate_Volume,
+	LTC_Uv: LTC_Uv,
 	Loop: Loop,
 	NodeAccess: NodeAccess,
 	NodeShaderStage: NodeShaderStage,
@@ -49240,6 +50513,7 @@ var TSL = /*#__PURE__*/Object.freeze({
 	TWO_PI: TWO_PI,
 	VSMShadowFilter: VSMShadowFilter,
 	V_GGX_SmithCorrelated: V_GGX_SmithCorrelated,
+	V_GGX_SmithCorrelated_Anisotropic: V_GGX_SmithCorrelated_Anisotropic,
 	Var: Var,
 	VarIntent: VarIntent,
 	abs: abs,
@@ -49293,6 +50567,7 @@ var TSL = /*#__PURE__*/Object.freeze({
 	bitangentGeometry: bitangentGeometry,
 	bitangentLocal: bitangentLocal,
 	bitangentView: bitangentView,
+	bitangentViewFrame: bitangentViewFrame,
 	bitangentWorld: bitangentWorld,
 	bitcast: bitcast,
 	blendBurn: blendBurn,
@@ -49305,6 +50580,7 @@ var TSL = /*#__PURE__*/Object.freeze({
 	bufferAttribute: bufferAttribute,
 	builtin: builtin,
 	builtinAOContext: builtinAOContext,
+	builtinGIContext: builtinGIContext,
 	builtinShadowContext: builtinShadowContext,
 	bumpMap: bumpMap,
 	bvec2: bvec2,
@@ -49333,6 +50609,8 @@ var TSL = /*#__PURE__*/Object.freeze({
 	clearcoatNormalView: clearcoatNormalView,
 	clearcoatRoughness: clearcoatRoughness,
 	clipSpace: clipSpace,
+	clipping: clipping,
+	clippingAlpha: clippingAlpha,
 	code: code,
 	color: color,
 	colorSpaceToWorking: colorSpaceToWorking,
@@ -49374,10 +50652,11 @@ var TSL = /*#__PURE__*/Object.freeze({
 	directionToColor: directionToColor,
 	directionToFaceDirection: directionToFaceDirection,
 	dispersion: dispersion,
-	disposeShadowMaterial: disposeShadowMaterial,
 	distance: distance,
 	div: div,
 	dot: dot,
+	dot4I8Packed: dot4I8Packed,
+	dot4U8Packed: dot4U8Packed,
 	drawIndex: drawIndex,
 	dynamicBufferAttribute: dynamicBufferAttribute,
 	element: element,
@@ -49414,8 +50693,6 @@ var TSL = /*#__PURE__*/Object.freeze({
 	getScreenPosition: getScreenPosition,
 	getScreenPositionFromClip: getScreenPositionFromClip,
 	getShIrradianceAt: getShIrradianceAt,
-	getShadowMaterial: getShadowMaterial,
-	getShadowRenderObjectFunction: getShadowRenderObjectFunction,
 	getTextureIndex: getTextureIndex,
 	getViewPosition: getViewPosition,
 	globalId: globalId,
@@ -49424,13 +50701,14 @@ var TSL = /*#__PURE__*/Object.freeze({
 	grayscale: grayscale,
 	greaterThan: greaterThan,
 	greaterThanEqual: greaterThanEqual,
+	hardwareClipping: hardwareClipping,
 	hash: hash,
 	highpModelNormalViewMatrix: highpModelNormalViewMatrix,
 	highpModelViewMatrix: highpModelViewMatrix,
 	hue: hue,
 	increment: increment,
 	incrementBefore: incrementBefore,
-	inspector: inspector,
+	inspect: inspect,
 	instance: instance,
 	instanceColor: instanceColor,
 	instanceIndex: instanceIndex,
@@ -49634,6 +50912,10 @@ var TSL = /*#__PURE__*/Object.freeze({
 	overloadingFn: overloadingFn,
 	overrideNode: overrideNode,
 	overrideNodes: overrideNodes,
+	pack4xI8: pack4xI8,
+	pack4xI8Clamp: pack4xI8Clamp,
+	pack4xU8: pack4xU8,
+	pack4xU8Clamp: pack4xU8Clamp,
 	packHalf2x16: packHalf2x16,
 	packNormalToRGB: packNormalToRGB,
 	packSnorm2x16: packSnorm2x16,
@@ -49740,6 +51022,7 @@ var TSL = /*#__PURE__*/Object.freeze({
 	stepElement: stepElement,
 	storage: storage,
 	storageBarrier: storageBarrier,
+	storageElement: storageElement,
 	storageTexture: storageTexture,
 	storageTexture3D: storageTexture3D,
 	struct: struct,
@@ -49772,6 +51055,7 @@ var TSL = /*#__PURE__*/Object.freeze({
 	tangentGeometry: tangentGeometry,
 	tangentLocal: tangentLocal,
 	tangentView: tangentView,
+	tangentViewFrame: tangentViewFrame,
 	tangentWorld: tangentWorld,
 	tanh: tanh,
 	texture: texture,
@@ -49812,6 +51096,8 @@ var TSL = /*#__PURE__*/Object.freeze({
 	uniformFlow: uniformFlow,
 	uniformGroup: uniformGroup,
 	uniformTexture: uniformTexture,
+	unpack4xI8: unpack4xI8,
+	unpack4xU8: unpack4xU8,
 	unpackHalf2x16: unpackHalf2x16,
 	unpackNormal: unpackNormal,
 	unpackRGBToNormal: unpackRGBToNormal,
@@ -51532,6 +52818,14 @@ class NodeBuilder {
 		this.geometry = ( object && object.geometry ) || null;
 
 		/**
+		 * The compute node, if building for compute.
+		 *
+		 * @type {?ComputeNode}
+		 * @default null
+		 */
+		this.compute = null;
+
+		/**
 		 * The current renderer.
 		 *
 		 * @type {Renderer}
@@ -52238,8 +53532,8 @@ class NodeBuilder {
 	 */
 	addSequentialNode( node ) {
 
-		const updateBeforeType = node.getUpdateBeforeType();
-		const updateAfterType = node.getUpdateAfterType();
+		const updateBeforeType = node.updateBeforeType;
+		const updateAfterType = node.updateAfterType;
 
 		if ( updateBeforeType !== NodeUpdateType.NONE || updateAfterType !== NodeUpdateType.NONE ) {
 
@@ -52256,7 +53550,7 @@ class NodeBuilder {
 
 		for ( const node of this.nodes ) {
 
-			const updateType = node.getUpdateType();
+			const updateType = node.updateType;
 
 			if ( updateType !== NodeUpdateType.NONE ) {
 
@@ -52268,8 +53562,8 @@ class NodeBuilder {
 
 		for ( const node of this.sequentialNodes ) {
 
-			const updateBeforeType = node.getUpdateBeforeType();
-			const updateAfterType = node.getUpdateAfterType();
+			const updateBeforeType = node.updateBeforeType;
+			const updateAfterType = node.updateAfterType;
 
 			if ( updateBeforeType !== NodeUpdateType.NONE ) {
 
@@ -52482,6 +53776,7 @@ class NodeBuilder {
 		delete context.getOutput;
 		delete context.getTextureLevel;
 		delete context.getAO;
+		delete context.getGI;
 		delete context.getShadow;
 
 		return context;
@@ -54518,7 +55813,7 @@ class NodeBuilder {
 	 */
 	prebuild() {
 
-		const { object, renderer, material } = this;
+		const { renderer, material } = this;
 
 		// < renderer.contextNode >
 
@@ -54566,7 +55861,7 @@ class NodeBuilder {
 
 		} else {
 
-			this.addFlow( 'compute', object );
+			this.addFlow( 'compute', this.compute );
 
 		}
 
@@ -54864,7 +56159,7 @@ class NodeBuilder {
 
 		const mrt = this.renderer.getMRT();
 
-		return ( mrt && mrt.has( 'velocity' ) ) || getDataFromObject( this.object ).useVelocity === true;
+		return ( mrt && mrt.has( 'velocity' ) ) || ( this.object !== null && getDataFromObject( this.object ).useVelocity === true );
 
 	}
 
@@ -54976,6 +56271,14 @@ class NodeFrame {
 		 */
 		this.scene = null;
 
+		/**
+		 * A reference to the current compute node.
+		 *
+		 * @type {?ComputeNode}
+		 * @default null
+		 */
+		this.compute = null;
+
 	}
 
 	/**
@@ -55016,7 +56319,7 @@ class NodeFrame {
 	 */
 	updateBeforeNode( node ) {
 
-		const updateType = node.getUpdateBeforeType();
+		const updateType = node.getUpdateBeforeType( this );
 		const reference = node.updateReference( this );
 
 		if ( updateType === NodeUpdateType.FRAME ) {
@@ -55073,7 +56376,7 @@ class NodeFrame {
 	 */
 	updateAfterNode( node ) {
 
-		const updateType = node.getUpdateAfterType();
+		const updateType = node.getUpdateAfterType( this );
 		const reference = node.updateReference( this );
 
 		if ( updateType === NodeUpdateType.FRAME ) {
@@ -55122,7 +56425,7 @@ class NodeFrame {
 	 */
 	updateNode( node ) {
 
-		const updateType = node.getUpdateType();
+		const updateType = node.getUpdateType( this );
 		const reference = node.updateReference( this );
 
 		if ( updateType === NodeUpdateType.FRAME ) {
@@ -55995,7 +57298,7 @@ const parse$1 = ( source ) => {
 
 	const pragmaMainIndex = source.indexOf( pragmaMain );
 
-	const mainCode = pragmaMainIndex !== -1 ? source.slice( pragmaMainIndex + pragmaMain.length ) : source;
+	const mainCode = ( pragmaMainIndex !== -1 ? source.slice( pragmaMainIndex + pragmaMain.length ) : source ).replace( /^(?:\s*\/\/[^\r\n]*|\s*\/\*[\s\S]*?\*\/|\s*)+/, '' );
 
 	const declaration = mainCode.match( declarationRegexp$1 );
 
@@ -56619,7 +57922,9 @@ class NodeManager extends DataMap {
 
 		if ( nodeBuilderState === undefined || computeData.version !== computeNode.version ) {
 
-			const nodeBuilder = this.backend.createNodeBuilder( computeNode, this.renderer );
+			const nodeBuilder = this.backend.createNodeBuilder( null, this.renderer );
+			nodeBuilder.compute = computeNode;
+
 			const onNodeBuilderCreated = this.renderer.debug.onNodeBuilderCreated;
 
 			if ( onNodeBuilderCreated !== null ) onNodeBuilderCreated( nodeBuilder, computeNode );
@@ -57066,7 +58371,18 @@ class NodeManager extends DataMap {
 
 	}
 
-	getNodeFrame( renderer = this.renderer, scene = null, object = null, camera = null, material = null ) {
+	/**
+	 * Returns a node frame configured with the given parameters.
+	 *
+	 * @param {Renderer} [renderer=this.renderer] - The renderer.
+	 * @param {?Scene} [scene=null] - The scene.
+	 * @param {?Object3D} [object=null] - The object.
+	 * @param {?Camera} [camera=null] - The camera.
+	 * @param {?Material} [material=null] - The material.
+	 * @param {?Node} [compute=null] - The compute node.
+	 * @return {NodeFrame} The node frame.
+	 */
+	getNodeFrame( renderer = this.renderer, scene = null, object = null, camera = null, material = null, compute = null ) {
 
 		const nodeFrame = this.nodeFrame;
 		nodeFrame.renderer = renderer;
@@ -57074,14 +58390,33 @@ class NodeManager extends DataMap {
 		nodeFrame.object = object;
 		nodeFrame.camera = camera;
 		nodeFrame.material = material;
+		nodeFrame.compute = compute;
 
 		return nodeFrame;
 
 	}
 
+	/**
+	 * Returns a node frame configured for the given render object.
+	 *
+	 * @param {RenderObject} renderObject - The render object.
+	 * @return {NodeFrame} The node frame.
+	 */
 	getNodeFrameForRender( renderObject ) {
 
 		return this.getNodeFrame( renderObject.renderer, renderObject.scene, renderObject.object, renderObject.camera, renderObject.material );
+
+	}
+
+	/**
+	 * Returns a node frame configured for the given compute node.
+	 *
+	 * @param {Node} computeNode - The compute node.
+	 * @return {NodeFrame} The node frame.
+	 */
+	getNodeFrameForCompute( computeNode ) {
+
+		return this.getNodeFrame( this.renderer, null, null, null, null, computeNode );
 
 	}
 
@@ -57186,6 +58521,46 @@ class NodeManager extends DataMap {
 	}
 
 	/**
+	 * Triggers the call of `updateBefore()` methods
+	 * for all nodes of the given compute node.
+	 *
+	 * @param {Node} computeNode - The compute node.
+	 */
+	updateBeforeForCompute( computeNode ) {
+
+		const nodeBuilder = this.getForCompute( computeNode );
+
+		for ( const node of nodeBuilder.updateBeforeNodes ) {
+
+			// update frame state for each node
+
+			this.getNodeFrameForCompute( computeNode ).updateBeforeNode( node );
+
+		}
+
+	}
+
+	/**
+	 * Triggers the call of `updateAfter()` methods
+	 * for all nodes of the given compute node.
+	 *
+	 * @param {Node} computeNode - The compute node.
+	 */
+	updateAfterForCompute( computeNode ) {
+
+		const nodeBuilder = this.getForCompute( computeNode );
+
+		for ( const node of nodeBuilder.updateAfterNodes ) {
+
+			// update frame state for each node
+
+			this.getNodeFrameForCompute( computeNode ).updateAfterNode( node );
+
+		}
+
+	}
+
+	/**
 	 * Triggers the call of `update()` methods
 	 * for all nodes of the given compute node.
 	 *
@@ -57255,6 +58630,8 @@ class NodeManager extends DataMap {
 
 const _plane = /*@__PURE__*/ new Plane();
 
+let _clippingContextId = 0;
+
 /**
  * Represents the state that is used to perform clipping via clipping planes.
  * There is a default clipping context for each render context. When the
@@ -57271,6 +58648,14 @@ class ClippingContext {
 	 * @param {?ClippingContext} [parentContext=null] - A reference to the parent clipping context.
 	 */
 	constructor( parentContext = null ) {
+
+		/**
+		 * The id of the clipping context.
+		 *
+		 * @type {number}
+		 * @readonly
+		 */
+		this.id = _clippingContextId ++;
 
 		/**
 		 * The clipping context's version.
@@ -57472,7 +58857,7 @@ class ClippingContext {
 		if ( update ) {
 
 			this.version ++;
-			this.cacheKey = `${ this.intersectionPlanes.length }:${ this.unionPlanes.length }`;
+			this.cacheKey = `${ this.id }:${ this.intersectionPlanes.length }:${ this.unionPlanes.length }`;
 
 		}
 
@@ -61125,12 +62510,6 @@ class Renderer {
 			this._animation.start();
 			this._initialized = true;
 
-			//
-
-			this._inspector.init();
-
-			//
-
 			resolve( this );
 
 		} );
@@ -61452,6 +62831,7 @@ class Renderer {
 
 			await nodes.getForComputeAsync( computeNode );
 
+			nodes.updateBeforeForCompute( computeNode );
 			nodes.updateForCompute( computeNode );
 			bindings.updateForCompute( computeNode );
 
@@ -61460,6 +62840,8 @@ class Renderer {
 
 			pipelines.getForCompute( computeNode, computeBindings, compilationPromises );
 			await Promise.all( compilationPromises );
+
+			nodes.updateAfterForCompute( computeNode );
 
 			loaded ++;
 
@@ -62979,13 +64361,13 @@ class Renderer {
 	 * Frees all internal resources of the renderer. Call this method if the renderer
 	 * is no longer in use by your app.
 	 */
-	dispose() {
+	async dispose() {
 
 		if ( this._initialized === true ) {
 
 			this.info.dispose();
-			this.backend.dispose();
 
+			this._inspector.dispose();
 			this._animation.dispose();
 			this._objects.dispose();
 			this._geometries.dispose();
@@ -63002,11 +64384,7 @@ class Renderer {
 
 			}
 
-			Object.values( this.backend.timestampQueryPool ).forEach( queryPool => {
-
-				if ( queryPool !== null ) queryPool.dispose();
-
-			} );
+			await this.backend.dispose();
 
 		}
 
@@ -63170,7 +64548,7 @@ class Renderer {
 
 		if ( this._initialized === false ) {
 
-			warn( 'Renderer: .compute() called before the backend is initialized. Try using .computeAsync() instead.' );
+			warn( 'Renderer: ".compute()" called before the backend is initialized. Try using ".computeAsync()" instead.' );
 
 			return this.computeAsync( computeNodes, dispatchSize );
 
@@ -63243,6 +64621,7 @@ class Renderer {
 
 			}
 
+			nodes.updateBeforeForCompute( computeNode );
 			nodes.updateForCompute( computeNode );
 			bindings.updateForCompute( computeNode );
 
@@ -63250,6 +64629,8 @@ class Renderer {
 			const computePipeline = pipelines.getForCompute( computeNode, computeBindings );
 
 			backend.compute( computeNodes, computeNode, computeBindings, computePipeline, dispatchSize );
+
+			nodes.updateAfterForCompute( computeNode );
 
 		}
 
@@ -65576,8 +66957,6 @@ class NodeSampledTexture3D extends NodeSampledTexture {
 }
 
 const glslPolyfills = {
-	bitcast_int_uint: new CodeNode( /* glsl */'uint tsl_bitcast_int_to_uint ( int x ) { return floatBitsToUint( intBitsToFloat ( x ) ); }' ),
-	bitcast_uint_int: new CodeNode( /* glsl */'uint tsl_bitcast_uint_to_int ( uint x ) { return floatBitsToInt( uintBitsToFloat ( x ) ); }' ),
 	textureGather: new CodeNode( /* glsl */`
 vec4 tsl_textureGather( const int comp, sampler2D map, vec2 coord, ivec2 offset, bool flipY ) {
 	if ( flipY ) offset.y = - offset.y;
@@ -65650,8 +67029,6 @@ const glslMethods = {
 	bitcast_int_float: 'intBitsToFloat',
 	bitcast_uint_float: 'uintBitsToFloat',
 	bitcast_float_uint: 'floatBitsToUint',
-	bitcast_uint_int: 'tsl_bitcast_uint_to_int',
-	bitcast_int_uint: 'tsl_bitcast_int_to_uint',
 	floatpack_snorm_2x16: 'packSnorm2x16',
 	floatpack_unorm_2x16: 'packUnorm2x16',
 	floatpack_float16_2x16: 'packHalf2x16',
@@ -65843,7 +67220,19 @@ class GLSLNodeBuilder extends NodeBuilder {
 	 */
 	getBitcastMethod( type, inputType ) {
 
-		return this.getMethod( `bitcast_${ inputType }_${ type }` );
+		const inputComponentType = this.getComponentType( inputType );
+		const componentType = this.getComponentType( type );
+
+		// integer types support bitcast implicitly via the type constructor
+
+		if ( inputComponentType !== 'float' && componentType !== 'float' &&
+			this.getTypeLength( inputType ) === this.getTypeLength( type ) ) {
+
+			return this.getType( type );
+
+		}
+
+		return this.getMethod( `bitcast_${ inputComponentType }_${ componentType }` );
 
 	}
 
@@ -66439,21 +67828,8 @@ ${ flowData.code }
 				const textureNode = uniform.node;
 				const texture = textureNode.value;
 
-				let typePrefix = '';
-
-				if ( texture.isDataTexture === true || texture.isData3DTexture === true ) {
-
-					if ( texture.type === UnsignedIntType ) {
-
-						typePrefix = 'u';
-
-					} else if ( texture.type === IntType ) {
-
-						typePrefix = 'i';
-
-					}
-
-				}
+				const componentType = this.getComponentTypeFromTexture( texture );
+				const typePrefix = componentType === 'float' ? '' : componentType.charAt( 0 );
 
 				if ( uniform.type === 'texture3D' && texture.isArrayTexture === false ) {
 
@@ -66823,7 +68199,7 @@ ${ flowData.code }
 	 */
 	getInvocationLocalIndex() {
 
-		const workgroupSize = this.object.workgroupSize;
+		const workgroupSize = this.compute.workgroupSize;
 
 		const size = workgroupSize.reduce( ( acc, curr ) => acc * curr, 1 );
 
@@ -67627,10 +69003,10 @@ class Backend {
 	 * @abstract
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	createBindings( /*bindGroup, bindings, cacheIndex, version*/ ) { }
+	createBindings( /*bindGroup, bindings, cacheKey, version*/ ) { }
 
 	/**
 	 * Updates the given bind group definition.
@@ -67638,10 +69014,10 @@ class Backend {
 	 * @abstract
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	updateBindings( /*bindGroup, bindings, cacheIndex, version*/ ) { }
+	updateBindings( /*bindGroup, bindings, cacheKey, version*/ ) { }
 
 	/**
 	 * Updates a buffer binding.
@@ -67895,7 +69271,7 @@ class Backend {
 	 * Updates a unique identifier for the given render context that can be used
 	 * to allocate resources like occlusion queries or timestamp queries.
 	 *
-	 * @param {RenderContext|ComputeNode} abstractRenderContext - The render context.
+	 * @param {RenderContext|ComputeNode|Array<ComputeNode>} abstractRenderContext - The render context.
 	 */
 	updateTimeStampUID( abstractRenderContext ) {
 
@@ -67904,7 +69280,15 @@ class Backend {
 
 		let prefix;
 
-		if ( abstractRenderContext.isComputeNode === true ) {
+		let id = abstractRenderContext.id;
+
+		if ( Array.isArray( abstractRenderContext ) ) {
+
+			id = abstractRenderContext.map( c => c.id ).join( ',' );
+
+			prefix = 'c:' + this.renderer.info.compute.frameCalls;
+
+		} else if ( abstractRenderContext.isComputeNode === true ) {
 
 			prefix = 'c:' + this.renderer.info.compute.frameCalls;
 
@@ -67914,7 +69298,7 @@ class Backend {
 
 		}
 
-		contextData.timestampUID = prefix + ':' + abstractRenderContext.id + ':f' + frame;
+		contextData.timestampUID = prefix + ':' + id + ':f' + frame;
 
 	}
 
@@ -68239,7 +69623,19 @@ class Backend {
 	 *
 	 * @abstract
 	 */
-	dispose() { }
+	async dispose() {
+
+		for ( const queryPool of Object.values( this.timestampQueryPool ) ) {
+
+			if ( queryPool !== null ) {
+
+				await queryPool.dispose();
+
+			}
+
+		}
+
+	}
 
 }
 
@@ -69546,27 +70942,26 @@ class WebGLState {
 			? this.enable( gl.SAMPLE_ALPHA_TO_COVERAGE )
 			: this.disable( gl.SAMPLE_ALPHA_TO_COVERAGE );
 
-		if ( hardwareClippingPlanes > 0 ) {
 
-			if ( this.currentClippingPlanes !== hardwareClippingPlanes ) {
+		if ( this.currentClippingPlanes !== hardwareClippingPlanes ) {
 
-				const CLIP_DISTANCE0_WEBGL = 0x3000;
+			const CLIP_DISTANCE0_WEBGL = 0x3000;
 
-				for ( let i = 0; i < 8; i ++ ) {
+			for ( let i = 0; i < 8; i ++ ) {
 
-					if ( i < hardwareClippingPlanes ) {
+				if ( i < hardwareClippingPlanes ) {
 
-						this.enable( CLIP_DISTANCE0_WEBGL + i );
+					this.enable( CLIP_DISTANCE0_WEBGL + i );
 
-					} else {
+				} else {
 
-						this.disable( CLIP_DISTANCE0_WEBGL + i );
-
-					}
+					this.disable( CLIP_DISTANCE0_WEBGL + i );
 
 				}
 
 			}
+
+			this.currentClippingPlanes = hardwareClippingPlanes;
 
 		}
 
@@ -71685,6 +73080,7 @@ class WebGLTextureUtils {
 
 		backend.state.bindFramebuffer( gl.READ_FRAMEBUFFER, null );
 
+		gl.deleteBuffer( buffer );
 		gl.deleteFramebuffer( fb );
 
 		return dstBuffer;
@@ -73427,10 +74823,14 @@ class WebGLBackend extends Backend {
 			const clearStencil = renderer.getClearStencil();
 
 			if ( depth ) this.state.setDepthMask( true );
+			if ( stencil ) this.state.setStencilMask( 0xffffffff );
 
 			if ( descriptor.textures === null ) {
 
-				gl.clearColor( clearColor.r, clearColor.g, clearColor.b, clearColor.a );
+				if ( color ) gl.clearColor( clearColor.r, clearColor.g, clearColor.b, clearColor.a );
+				if ( depth ) gl.clearDepth( clearDepth );
+				if ( stencil ) gl.clearStencil( clearStencil );
+
 				gl.clear( clear );
 
 			} else {
@@ -73869,9 +75269,9 @@ class WebGLBackend extends Backend {
 
 			}
 
-			const pixelRatio = this.renderer.getPixelRatio();
-
 			const renderTarget = this._currentContext.renderTarget;
+
+			const pixelRatio = ( renderTarget === null || renderTarget.isPostProcessingRenderTarget === true ) ? this.renderer.getPixelRatio() : 1;
 			const isRenderCameraDepthArray = this._isRenderCameraDepthArray( this._currentContext );
 			const prevActiveCubeFace = this._currentContext.activeCubeFace;
 
@@ -74481,10 +75881,10 @@ class WebGLBackend extends Backend {
 	 *
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	createBindings( bindGroup, bindings /*, cacheIndex, version*/ ) {
+	createBindings( bindGroup, bindings /*, cacheKey, version*/ ) {
 
 		if ( this._knownBindings.has( bindings ) === false ) {
 
@@ -74520,10 +75920,10 @@ class WebGLBackend extends Backend {
 	 *
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	updateBindings( bindGroup /*, bindings, cacheIndex, version*/ ) {
+	updateBindings( bindGroup /*, bindings, cacheKey, version*/ ) {
 
 		const { gl } = this;
 
@@ -75534,7 +76934,9 @@ class WebGLBackend extends Backend {
 	/**
 	 * Frees internal resources.
 	 */
-	dispose() {
+	async dispose() {
+
+		await super.dispose();
 
 		if ( this.textureUtils !== null ) this.textureUtils.dispose();
 
@@ -79854,7 +81256,7 @@ const wgslTypeLib$1 = {
 
 const parse = ( source ) => {
 
-	source = source.trim();
+	source = source.replace( /^(?:\s*\/\/[^\r\n]*|\s*\/\*[\s\S]*?\*\/|\s*)+/, '' );
 
 	const declaration = source.match( declarationRegexp );
 
@@ -80192,6 +81594,7 @@ const wgslMethods = {
 	inverse_mat3: 'tsl_inverse_mat3',
 	inverse_mat4: 'tsl_inverse_mat4',
 	inversesqrt: 'inverseSqrt',
+	faceforward: 'faceForward',
 	bitcast: 'bitcast<f32>',
 	floatpack_snorm_2x16: 'pack2x16snorm',
 	floatpack_unorm_2x16: 'pack2x16unorm',
@@ -81762,9 +83165,10 @@ ${ flowData.code }
 	 * @param {string} scope - The scope.
 	 * @param {string} bufferType - The buffer type.
 	 * @param {string} bufferCount - The buffer count.
+	 * @param {boolean} isAtomic - Whether the array elements are atomic or not.
 	 * @return {string} The array name.
 	 */
-	getScopedArray( name, scope, bufferType, bufferCount ) {
+	getScopedArray( name, scope, bufferType, bufferCount, isAtomic ) {
 
 		if ( this.scopedArrays.has( name ) === false ) {
 
@@ -81772,7 +83176,8 @@ ${ flowData.code }
 				name,
 				scope,
 				bufferType,
-				bufferCount
+				bufferCount,
+				isAtomic
 			} );
 
 		}
@@ -81798,9 +83203,11 @@ ${ flowData.code }
 
 		const snippets = [];
 
-		for ( const { name, scope, bufferType, bufferCount } of this.scopedArrays.values() ) {
+		for ( const { name, scope, bufferType, bufferCount, isAtomic } of this.scopedArrays.values() ) {
 
-			const type = this.getType( bufferType );
+			let type = this.getType( bufferType );
+
+			if ( isAtomic === true ) type = `atomic<${type}>`;
 
 			snippets.push( `var<${scope}> ${name}: array< ${type}, ${bufferCount} >;` );
 
@@ -82162,11 +83569,13 @@ ${ flowData.code }
 
 				} else if ( texture.isArrayTexture === true || texture.isDataArrayTexture === true || texture.isCompressedArrayTexture === true ) {
 
-					textureType = 'texture_2d_array<f32>';
+					const componentPrefix = this.getComponentTypeFromTexture( texture ).charAt( 0 );
+					textureType = `texture_2d_array<${ componentPrefix }32>`;
 
 				} else if ( texture.is3DTexture === true || texture.isData3DTexture === true ) {
 
-					textureType = 'texture_3d<f32>';
+					const componentPrefix = this.getComponentTypeFromTexture( texture ).charAt( 0 );
+					textureType = `texture_3d<${ componentPrefix }32>`;
 
 				} else {
 
@@ -82369,8 +83778,7 @@ ${ flowData.code }
 		} else {
 
 			// Early strictly validated in computeNode
-
-			const workgroupSize = this.object.workgroupSize;
+			const workgroupSize = this.compute.workgroupSize;
 
 			this.computeShader = this._getWGSLComputeCode( shadersData.compute, workgroupSize );
 
@@ -83400,10 +84808,10 @@ class WebGPUBindingUtils {
 	 *
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	createBindings( bindGroup, bindings, cacheIndex, version = 0 ) {
+	createBindings( bindGroup, bindings, cacheKey, version = 0 ) {
 
 		const { backend } = this;
 		const bindingsData = backend.get( bindGroup );
@@ -83414,18 +84822,18 @@ class WebGPUBindingUtils {
 
 		let bindGroupGPU;
 
-		if ( cacheIndex > 0 ) {
+		if ( cacheKey !== '' ) {
 
 			if ( bindingsData.groups === undefined ) {
 
-				bindingsData.groups = [];
-				bindingsData.versions = [];
+				bindingsData.groups = {};
+				bindingsData.versions = {};
 
 			}
 
-			if ( bindingsData.versions[ cacheIndex ] === version ) {
+			if ( bindingsData.versions[ cacheKey ] === version ) {
 
-				bindGroupGPU = bindingsData.groups[ cacheIndex ];
+				bindGroupGPU = bindingsData.groups[ cacheKey ];
 
 			}
 
@@ -83435,10 +84843,10 @@ class WebGPUBindingUtils {
 
 			bindGroupGPU = this.createBindGroup( bindGroup, bindLayoutGPU );
 
-			if ( cacheIndex > 0 ) {
+			if ( cacheKey !== '' ) {
 
-				bindingsData.groups[ cacheIndex ] = bindGroupGPU;
-				bindingsData.versions[ cacheIndex ] = version;
+				bindingsData.groups[ cacheKey ] = bindGroupGPU;
+				bindingsData.versions[ cacheKey ] = version;
 
 			}
 
@@ -87569,8 +88977,9 @@ class WebGPUBackend extends Backend {
 	 * @param {{vertexCount: number, firstVertex: number, instanceCount: number, firstInstance: number}} drawParams - The draw parameters.
 	 * @param {GPURenderPassEncoder|GPURenderBundleEncoder} passEncoderGPU - The GPU pass encoder used for recording draw commands.
 	 * @param {Object} currentSets - Tracking object for currently set pipeline, attributes, bind groups, and index state.
+	 * @param {number} [cameraIndexSlot=-1] - Index of the binding slot holding the camera index bind group.
 	 */
-	_draw( renderObject, info, renderContextData, pipelineGPU, bindings, vertexBuffers, drawParams, passEncoderGPU, currentSets ) {
+	_draw( renderObject, info, renderContextData, pipelineGPU, bindings, vertexBuffers, drawParams, passEncoderGPU, currentSets, cameraIndexSlot = -1 ) {
 
 		const { object, material, context } = renderObject;
 
@@ -87592,14 +89001,19 @@ class WebGPUBackend extends Backend {
 
 		for ( let i = 0, l = bindings.length; i < l; i ++ ) {
 
+			// the camera index slot is bound per sub-camera in draw()
+
+			if ( i === cameraIndexSlot ) continue;
+
+			// compare native bind groups
+
 			const bindGroup = bindings[ i ];
+			const bindGroupGPU = this.get( bindGroup ).group;
 
-			if ( currentBindingGroups[ i ] !== bindGroup.id ) {
+			if ( currentBindingGroups[ i ] !== bindGroupGPU ) {
 
-				const bindingsData = this.get( bindGroup );
-
-				passEncoderGPU.setBindGroup( i, bindingsData.group );
-				currentBindingGroups[ i ] = bindGroup.id;
+				passEncoderGPU.setBindGroup( i, bindGroupGPU );
+				currentBindingGroups[ i ] = bindGroupGPU;
 
 			}
 
@@ -87806,7 +89220,9 @@ class WebGPUBackend extends Backend {
 
 			}
 
-			const pixelRatio = this.renderer.getPixelRatio();
+			const renderTarget = context.renderTarget;
+			const pixelRatio = ( renderTarget === null || renderTarget.isPostProcessingRenderTarget === true ) ? this.renderer.getPixelRatio() : 1;
+			const indexPos = cameraIndex ? bindings.indexOf( cameraIndex ) : -1;
 
 			for ( let i = 0, len = cameras.length; i < len; i ++ ) {
 
@@ -87844,15 +89260,20 @@ class WebGPUBackend extends Backend {
 					}
 
 					// Set camera index binding for this layer
-					if ( cameraIndex && cameraData.indexesGPU ) {
+					if ( indexPos !== -1 && cameraData.indexesGPU ) {
 
-						const indexPos = bindings.indexOf( cameraIndex );
-						pass.setBindGroup( indexPos, cameraData.indexesGPU[ i ] );
-						sets.bindingGroups[ indexPos ] = cameraIndex.id;
+						const cameraIndexGPU = cameraData.indexesGPU[ i ];
+
+						if ( sets.bindingGroups[ indexPos ] !== cameraIndexGPU ) {
+
+							pass.setBindGroup( indexPos, cameraIndexGPU );
+							sets.bindingGroups[ indexPos ] = cameraIndexGPU;
+
+						}
 
 					}
 
-					this._draw( renderObject, info, renderContextData, pipelineGPU, bindings, vertexBuffers, drawParams, pass, sets );
+					this._draw( renderObject, info, renderContextData, pipelineGPU, bindings, vertexBuffers, drawParams, pass, sets, indexPos );
 
 				}
 
@@ -87864,7 +89285,16 @@ class WebGPUBackend extends Backend {
 			if ( renderContextData.currentPass ) {
 
 				// Handle occlusion queries
-				if ( renderContextData.occlusionQuerySet !== undefined ) {
+
+				if ( renderContextData.currentPass instanceof GPURenderBundleEncoder ) {
+
+					if ( object.occlusionTest === true ) {
+
+						warnOnce( 'WebGPUBackend: Occlusion queries can not be recorded into render bundles.' );
+
+					}
+
+				} else if ( renderContextData.occlusionQuerySet !== undefined ) {
 
 					const lastObject = renderContextData.lastOcclusionObject;
 					if ( lastObject !== object ) {
@@ -87930,6 +89360,7 @@ class WebGPUBackend extends Backend {
 			data.stencilWrite !== material.stencilWrite || data.stencilFunc !== material.stencilFunc ||
 			data.stencilFail !== material.stencilFail || data.stencilZFail !== material.stencilZFail || data.stencilZPass !== material.stencilZPass ||
 			data.stencilFuncMask !== material.stencilFuncMask || data.stencilWriteMask !== material.stencilWriteMask ||
+			data.polygonOffset !== material.polygonOffset || data.polygonOffsetFactor !== material.polygonOffsetFactor || data.polygonOffsetUnits !== material.polygonOffsetUnits ||
 			data.side !== material.side || data.alphaToCoverage !== material.alphaToCoverage ||
 			data.sampleCount !== sampleCount || data.colorSpace !== colorSpace ||
 			data.colorFormat !== colorFormat || data.depthStencilFormat !== depthStencilFormat ||
@@ -87947,6 +89378,7 @@ class WebGPUBackend extends Backend {
 			data.stencilWrite = material.stencilWrite; data.stencilFunc = material.stencilFunc;
 			data.stencilFail = material.stencilFail; data.stencilZFail = material.stencilZFail; data.stencilZPass = material.stencilZPass;
 			data.stencilFuncMask = material.stencilFuncMask; data.stencilWriteMask = material.stencilWriteMask;
+			data.polygonOffset = material.polygonOffset; data.polygonOffsetFactor = material.polygonOffsetFactor; data.polygonOffsetUnits = material.polygonOffsetUnits;
 			data.side = material.side; data.alphaToCoverage = material.alphaToCoverage;
 			data.sampleCount = sampleCount;
 			data.colorSpace = colorSpace;
@@ -87991,7 +89423,8 @@ class WebGPUBackend extends Backend {
 			material.stencilWrite, material.stencilFunc,
 			material.stencilFail, material.stencilZFail, material.stencilZPass,
 			material.stencilFuncMask, material.stencilWriteMask,
-			material.side,
+			material.polygonOffset, material.polygonOffsetFactor, material.polygonOffsetUnits,
+			material.side, material.alphaToCoverage,
 			frontFaceCW,
 			utils.getSampleCountRenderContext( renderContext ),
 			utils.getCurrentColorSpace( renderContext ), utils.getCurrentColorFormat( renderContext ), utils.getCurrentDepthStencilFormat( renderContext ),
@@ -88340,12 +89773,12 @@ class WebGPUBackend extends Backend {
 	 *
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	createBindings( bindGroup, bindings, cacheIndex, version ) {
+	createBindings( bindGroup, bindings, cacheKey, version ) {
 
-		this.bindingUtils.createBindings( bindGroup, bindings, cacheIndex, version );
+		this.bindingUtils.createBindings( bindGroup, bindings, cacheKey, version );
 
 	}
 
@@ -88354,12 +89787,12 @@ class WebGPUBackend extends Backend {
 	 *
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	updateBindings( bindGroup, bindings, cacheIndex, version ) {
+	updateBindings( bindGroup, bindings, cacheKey, version ) {
 
-		this.bindingUtils.createBindings( bindGroup, bindings, cacheIndex, version );
+		this.bindingUtils.createBindings( bindGroup, bindings, cacheKey, version );
 
 	}
 
@@ -88779,7 +90212,9 @@ class WebGPUBackend extends Backend {
 
 	}
 
-	dispose() {
+	async dispose() {
+
+		await super.dispose();
 
 		this.bindingUtils.dispose();
 		this.textureUtils.dispose();
@@ -88793,16 +90228,6 @@ class WebGPUBackend extends Backend {
 			}
 
 			this.occludedResolveCache.clear();
-
-		}
-
-		if ( this.timestampQueryPool ) {
-
-			for ( const queryPool of Object.values( this.timestampQueryPool ) ) {
-
-				if ( queryPool !== null ) queryPool.dispose();
-
-			}
 
 		}
 
@@ -89007,6 +90432,10 @@ class WebGPURenderer extends Renderer {
  * Render Bundle API of WebGPU. The group with all its descendant nodes
  * are considered as one render bundle and processed as such by
  * the renderer.
+ *
+ * Only renderable 3D objects are allowed in a bundle group. Other
+ * types like lights are not supported and must be added to the scene
+ * outside of the group.
  *
  * This module is only fully supported by `WebGPURenderer` with a WebGPU backend.
  * With a WebGL backend, the group can technically be rendered but without
@@ -90300,4 +91729,4 @@ class ClippingGroup extends Group {
 
 }
 
-export { ACESFilmicToneMapping, AONode, AddEquation, AddOperation, AdditiveBlending, AgXToneMapping, AlphaFormat, AlwaysCompare, AlwaysDepth, AlwaysStencilFunc, AmbientLight, AmbientLightNode, AnalyticLightNode, ArrayCamera, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BackSide, BarrierNode, BasicEnvironmentNode, BasicLightMapNode, BasicShadowMap, BitcastNode, BitcountNode, BlendMode, BoxGeometry, BufferAttribute, BufferAttributeNode, BufferGeometry, BufferNode, BuiltinNode, BumpMapNode, BundleGroup, BypassNode, ByteType, CanvasTarget, CineonToneMapping, ClampToEdgeWrapping, ClippingGroup, ClippingNode, CodeNode, Color, ColorManagement, ColorSpaceNode, Compatibility, ComputeBuiltinNode, ComputeNode, ConditionalNode, ConstNode, ConstantAlphaFactor, ConstantColorFactor, ContextNode, ConvertNode, CubeCamera, CubeDepthTexture, CubeMapNode, CubeReflectionMapping, CubeRefractionMapping, CubeTexture, CubeTextureNode, CubeUVReflectionMapping, CullFaceBack, CullFaceFront, CullFaceNone, CustomBlending, CylinderGeometry, DataArrayTexture, DataTexture, DebugNode, DecrementStencilOp, DecrementWrapStencilOp, DepthFormat, DepthStencilFormat, DepthTexture, DirectRenderPipeline, DirectionalLight, DirectionalLightNode, DoubleSide, DstAlphaFactor, DstColorFactor, DynamicDrawUsage, EnvironmentNode, EqualCompare, EqualDepth, EqualStencilFunc, EquirectangularReflectionMapping, EquirectangularRefractionMapping, EventDispatcher, EventNode, ExpressionNode, FileLoader, FlipNode, Float16BufferAttribute, Float32BufferAttribute, FloatType, FramebufferTexture, FrontFacingNode, FrontSide, Frustum, FrustumArray, FunctionCallNode, FunctionNode, FunctionOverloadingNode, GLSLNodeParser, GreaterCompare, GreaterDepth, GreaterEqualCompare, GreaterEqualDepth, GreaterEqualStencilFunc, GreaterStencilFunc, Group, HalfFloatType, HemisphereLight, HemisphereLightNode, IESSpotLight, IESSpotLightNode, IncrementStencilOp, IncrementWrapStencilOp, IndexNode, IndirectStorageBufferAttribute, InputNode, InspectorBase, InspectorNode, InstancedBufferAttribute, InstancedInterleavedBuffer, IntType, InterleavedBuffer, InterleavedBufferAttribute, InvertStencilOp, IrradianceNode, IsolateNode, JoinNode, KeepStencilOp, LessCompare, LessDepth, LessEqualCompare, LessEqualDepth, LessEqualStencilFunc, LessStencilFunc, LightProbe, LightProbeNode, Lighting, LightingContextNode, LightingModel, LightingNode, LightsNode, Line2NodeMaterial, LineBasicMaterial, LineBasicNodeMaterial, LineDashedMaterial, LineDashedNodeMaterial, LinearFilter, LinearMipMapLinearFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearSRGBColorSpace, LinearToneMapping, LinearTransfer, Loader, LoopNode, MRTNode, Material, MaterialBlending, MaterialLoader, MaterialNode, MaterialReferenceNode, MathNode, MathUtils, Matrix2, Matrix3, Matrix4, MaxEquation, MaxMipLevelNode, MemberNode, Mesh, MeshBasicMaterial, MeshBasicNodeMaterial, MeshLambertMaterial, MeshLambertNodeMaterial, MeshMatcapMaterial, MeshMatcapNodeMaterial, MeshNormalMaterial, MeshNormalNodeMaterial, MeshPhongMaterial, MeshPhongNodeMaterial, MeshPhysicalMaterial, MeshPhysicalNodeMaterial, MeshSSSNodeMaterial, MeshStandardMaterial, MeshStandardNodeMaterial, MeshToonMaterial, MeshToonNodeMaterial, MinEquation, MirroredRepeatWrapping, MixOperation, ModelNode, MultiplyBlending, MultiplyOperation, NearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, NeutralToneMapping, NeverCompare, NeverDepth, NeverStencilFunc, NoBlending, NoColorSpace, NoNormalPacking, NoToneMapping, Node, NodeAccess, NodeAttribute, NodeBuilder, NodeCache, NodeCode, NodeError, NodeFrame, NodeFunctionInput, NodeLoader, NodeMaterial, NodeMaterialLoader, NodeMaterialObserver, NodeObjectLoader, NodeShaderStage, NodeType, NodeUniform, NodeUpdateType, NodeUtils, NodeVar, NodeVarying, NormalBlending, NormalGAPacking, NormalMapNode, NormalRGPacking, NotEqualCompare, NotEqualDepth, NotEqualStencilFunc, Object3D, Object3DNode, ObjectLoader, ObjectSpaceNormalMap, OneFactor, OneMinusConstantAlphaFactor, OneMinusConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, OperatorNode, OrthographicCamera, OutputStructNode, OverrideContextNode, PCFShadowMap, PCFSoftShadowMap, PMREMGenerator, PMREMNode, PackFloatNode, ParameterNode, PassNode, PerspectiveCamera, PhongLightingModel, PhysicalLightingModel, Plane, PlaneGeometry, PointLight, PointLightNode, PointShadowNode, PointUVNode, PointsMaterial, PointsNodeMaterial, PostProcessing, ProjectorLight, ProjectorLightNode, PropertyNode, QuadMesh, Quaternion, R11_EAC_Format, RED_GREEN_RGTC2_Format, RED_RGTC1_Format, REVISION, RG11_EAC_Format, RGBAFormat, RGBAIntegerFormat, RGBA_ASTC_10x10_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_BPTC_Format, RGBA_ETC2_EAC_Format, RGBA_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGBFormat, RGBIntegerFormat, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGB_PVRTC_2BPPV1_Format, RGB_PVRTC_4BPPV1_Format, RGB_S3TC_DXT1_Format, RGFormat, RGIntegerFormat, RTTNode, RangeNode, ReadbackBuffer, RectAreaLight, RectAreaLightNode, RedFormat, RedIntegerFormat, ReferenceBaseNode, ReferenceElementNode, ReferenceNode, ReflectorNode, ReinhardToneMapping, RenderObjectRefreshType, RenderOutputNode, RenderPipeline, RenderTarget, RendererReferenceNode, RendererUtils, RepeatWrapping, ReplaceStencilOp, ReverseSubtractEquation, RotateNode, SIGNED_R11_EAC_Format, SIGNED_RED_GREEN_RGTC2_Format, SIGNED_RED_RGTC1_Format, SIGNED_RG11_EAC_Format, SRGBColorSpace, SRGBTransfer, SampleNode, Scene, ScreenNode, SetNode, ShadowBaseNode, ShadowMaterial, ShadowNode, ShadowNodeMaterial, ShortType, Sphere, SphereGeometry, SplitNode, SpotLight, SpotLightNode, SpriteMaterial, SpriteNodeMaterial, SrcAlphaFactor, SrcAlphaSaturateFactor, SrcColorFactor, StackNode, StackTrace, StaticDrawUsage, StorageArrayElementNode, StorageBufferAttribute, StorageBufferNode, StorageInstancedBufferAttribute, StorageTexture, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, SubtractEquation, SubtractiveBlending, TSL, TangentSpaceNormalMap, TempNode, Texture, Texture3DNode, TextureNode, TextureSizeNode, TimestampQuery, ToneMappingNode, ToonOutlinePassNode, UVMapping, Uint16BufferAttribute, Uint32BufferAttribute, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UnsignedByteType, UnsignedInt101111Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedIntType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShortType, UserDataNode, VSMShadowMap, VarNode, VaryingNode, Vector2, Vector3, Vector4, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, VolumeNodeMaterial, WebGLBackend, WebGLCoordinateSystem, WebGPUBackend, WebGPUCoordinateSystem, WebGPURenderer, WebXRController, WorkgroupInfoNode, ZeroFactor, ZeroStencilOp, createCanvasElement, defaultBuildStages, defaultShaderStages, error, log$1 as log, shaderStages, vectorComponents, warn, warnOnce };
+export { ACESFilmicToneMapping, AONode, AddEquation, AddOperation, AdditiveBlending, AgXToneMapping, AlphaFormat, AlwaysCompare, AlwaysDepth, AlwaysStencilFunc, AmbientLight, AmbientLightNode, AnalyticLightNode, ArrayCamera, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BackSide, BarrierNode, BasicEnvironmentNode, BasicLightMapNode, BasicShadowMap, BitcastNode, BitcountNode, BlendMode, BoxGeometry, BufferAttribute, BufferAttributeNode, BufferGeometry, BufferNode, BuiltinNode, BumpMapNode, BundleGroup, BypassNode, ByteType, CanvasTarget, CineonToneMapping, ClampToEdgeWrapping, ClippingGroup, ClippingNode, CodeNode, Color, ColorManagement, ColorSpaceNode, Compatibility, ComputeBuiltinNode, ComputeNode, ConditionalNode, ConstNode, ConstantAlphaFactor, ConstantColorFactor, ContextNode, ConvertNode, CubeCamera, CubeDepthTexture, CubeMapNode, CubeReflectionMapping, CubeRefractionMapping, CubeTexture, CubeTextureNode, CubeUVReflectionMapping, CullFaceBack, CullFaceFront, CullFaceNone, CustomBlending, CylinderGeometry, DataArrayTexture, DataTexture, DebugNode, DecrementStencilOp, DecrementWrapStencilOp, DepthFormat, DepthStencilFormat, DepthTexture, DirectRenderPipeline, DirectionalLight, DirectionalLightNode, DoubleSide, DstAlphaFactor, DstColorFactor, DynamicDrawUsage, EnvironmentNode, EqualCompare, EqualDepth, EqualStencilFunc, EquirectangularReflectionMapping, EquirectangularRefractionMapping, EventDispatcher, EventNode, ExpressionNode, FileLoader, FlipNode, Float16BufferAttribute, Float32BufferAttribute, FloatType, FramebufferTexture, FrontFacingNode, FrontSide, Frustum, FrustumArray, FunctionCallNode, FunctionNode, FunctionOverloadingNode, GLSLNodeParser, GreaterCompare, GreaterDepth, GreaterEqualCompare, GreaterEqualDepth, GreaterEqualStencilFunc, GreaterStencilFunc, Group, HalfFloatType, HemisphereLight, HemisphereLightNode, IESSpotLight, IESSpotLightNode, IncrementStencilOp, IncrementWrapStencilOp, IndexNode, IndirectStorageBufferAttribute, InputNode, InspectorBase, InspectorNode, InstancedBufferAttribute, InstancedInterleavedBuffer, IntType, InterleavedBuffer, InterleavedBufferAttribute, InvertStencilOp, IrradianceNode, IsolateNode, JoinNode, KeepStencilOp, LessCompare, LessDepth, LessEqualCompare, LessEqualDepth, LessEqualStencilFunc, LessStencilFunc, LightProbe, LightProbeNode, Lighting, LightingContextNode, LightingModel, LightingNode, LightsNode, Line2NodeMaterial, LineBasicMaterial, LineBasicNodeMaterial, LineDashedMaterial, LineDashedNodeMaterial, LinearFilter, LinearMipMapLinearFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearSRGBColorSpace, LinearToneMapping, LinearTransfer, Loader, LoopNode, MRTNode, Material, MaterialBlending, MaterialLoader, MaterialNode, MaterialReferenceNode, MathNode, MathUtils, Matrix2, Matrix3, Matrix4, MaxEquation, MaxMipLevelNode, MemberNode, Mesh, MeshBasicMaterial, MeshBasicNodeMaterial, MeshLambertMaterial, MeshLambertNodeMaterial, MeshMatcapMaterial, MeshMatcapNodeMaterial, MeshNormalMaterial, MeshNormalNodeMaterial, MeshPhongMaterial, MeshPhongNodeMaterial, MeshPhysicalMaterial, MeshPhysicalNodeMaterial, MeshSSSNodeMaterial, MeshStandardMaterial, MeshStandardNodeMaterial, MeshToonMaterial, MeshToonNodeMaterial, MinEquation, MirroredRepeatWrapping, MixOperation, ModelNode, MultiplyBlending, MultiplyOperation, NearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, NeutralToneMapping, NeverCompare, NeverDepth, NeverStencilFunc, NoBlending, NoColorSpace, NoNormalPacking, NoToneMapping, Node, NodeAccess, NodeAttribute, NodeBuilder, NodeCache, NodeCode, NodeError, NodeFrame, NodeFunctionInput, NodeLoader, NodeMaterial, NodeMaterialLoader, NodeMaterialObserver, NodeObjectLoader, NodeShaderStage, NodeType, NodeUniform, NodeUpdateType, NodeUtils, NodeVar, NodeVarying, NormalBlending, NormalGAPacking, NormalMapNode, NormalRGPacking, NotEqualCompare, NotEqualDepth, NotEqualStencilFunc, Object3D, Object3DNode, ObjectLoader, ObjectSpaceNormalMap, OneFactor, OneMinusConstantAlphaFactor, OneMinusConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, OperatorNode, OrthographicCamera, OutputStructNode, OverrideContextNode, PCFShadowMap, PCFSoftShadowMap, PMREMGenerator, PMREMNode, PackFloatNode, Packed4x8IntegerNode, ParameterNode, PassNode, PerspectiveCamera, PhongLightingModel, PhysicalLightingModel, Plane, PlaneGeometry, PointLight, PointLightNode, PointShadowNode, PointUVNode, PointsMaterial, PointsNodeMaterial, PostProcessing, ProjectorLight, ProjectorLightNode, PropertyNode, QuadMesh, Quaternion, R11_EAC_Format, RED_GREEN_RGTC2_Format, RED_RGTC1_Format, REVISION, RG11_EAC_Format, RGBAFormat, RGBAIntegerFormat, RGBA_ASTC_10x10_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_BPTC_Format, RGBA_ETC2_EAC_Format, RGBA_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGBFormat, RGBIntegerFormat, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGB_PVRTC_2BPPV1_Format, RGB_PVRTC_4BPPV1_Format, RGB_S3TC_DXT1_Format, RGFormat, RGIntegerFormat, RTTNode, RangeNode, ReadbackBuffer, RectAreaLight, RectAreaLightNode, RedFormat, RedIntegerFormat, ReferenceBaseNode, ReferenceElementNode, ReferenceNode, ReflectorNode, ReinhardToneMapping, RenderObjectRefreshType, RenderOutputNode, RenderPipeline, RenderTarget, RendererReferenceNode, RendererUtils, RepeatWrapping, ReplaceStencilOp, ReverseSubtractEquation, RotateNode, SIGNED_R11_EAC_Format, SIGNED_RED_GREEN_RGTC2_Format, SIGNED_RED_RGTC1_Format, SIGNED_RG11_EAC_Format, SRGBColorSpace, SRGBTransfer, SampleNode, Scene, ScreenNode, SetNode, ShadowBaseNode, ShadowMaterial, ShadowNode, ShadowNodeMaterial, ShortType, Sphere, SphereGeometry, SplitNode, SpotLight, SpotLightNode, SpriteMaterial, SpriteNodeMaterial, SrcAlphaFactor, SrcAlphaSaturateFactor, SrcColorFactor, StackNode, StackTrace, StaticDrawUsage, StorageArrayElementNode, StorageBufferAttribute, StorageBufferNode, StorageInstancedBufferAttribute, StorageTexture, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, SubtractEquation, SubtractiveBlending, TSL, TangentSpaceNormalMap, TempNode, Texture, Texture3DNode, TextureNode, TextureSizeNode, TimestampQuery, ToneMappingNode, ToonOutlinePassNode, UVMapping, Uint16BufferAttribute, Uint32BufferAttribute, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UnsignedByteType, UnsignedInt101111Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedIntType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShortType, UserDataNode, VSMShadowMap, VarNode, VaryingNode, Vector2, Vector3, Vector4, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, VolumeNodeMaterial, WebGLBackend, WebGLCoordinateSystem, WebGPUBackend, WebGPUCoordinateSystem, WebGPURenderer, WebXRController, WorkgroupInfoNode, ZeroFactor, ZeroStencilOp, createCanvasElement, defaultBuildStages, defaultShaderStages, error, log$1 as log, shaderStages, vectorComponents, warn, warnOnce };

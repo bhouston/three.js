@@ -20,6 +20,7 @@ import {
 } from '../constants.js';
 import { Color } from '../math/Color.js';
 import { Frustum } from '../math/Frustum.js';
+import { FrustumArray } from '../math/FrustumArray.js';
 import { Matrix4 } from '../math/Matrix4.js';
 import { Vector3 } from '../math/Vector3.js';
 import { Vector4 } from '../math/Vector4.js';
@@ -341,6 +342,7 @@ class WebGLRenderer {
 		// frustum
 
 		const _frustum = new Frustum();
+		const _frustumArray = new FrustumArray();
 
 		// clipping
 
@@ -374,6 +376,14 @@ class WebGLRenderer {
 			return canvas.getContext( contextName, contextAttributes );
 
 		}
+
+		let extensions, capabilities, state, info;
+		let properties, textures, environments, attributes, geometries, objects;
+		let programCache, materials, renderLists, renderStates, clipping, shadowMap;
+
+		let background, morphtargets, bufferRenderer, indexedBufferRenderer;
+
+		let utils, bindingStates, uniformsGroups;
 
 		try {
 
@@ -418,20 +428,18 @@ class WebGLRenderer {
 
 			}
 
+			initGLContext();
+
 		} catch ( e ) {
+
+			canvas.removeEventListener( 'webglcontextlost', onContextLost, false );
+			canvas.removeEventListener( 'webglcontextrestored', onContextRestore, false );
+			canvas.removeEventListener( 'webglcontextcreationerror', onContextCreationError, false );
 
 			error( 'WebGLRenderer: ' + e.message );
 			throw e;
 
 		}
-
-		let extensions, capabilities, state, info;
-		let properties, textures, environments, attributes, geometries, objects;
-		let programCache, materials, renderLists, renderStates, clipping, shadowMap;
-
-		let background, morphtargets, bufferRenderer, indexedBufferRenderer;
-
-		let utils, bindingStates, uniformsGroups;
 
 		function initGLContext() {
 
@@ -553,8 +561,6 @@ class WebGLRenderer {
 			_this.info = info;
 
 		}
-
-		initGLContext();
 
 		// initialize internal render target for non-UnsignedByteType color buffer
 
@@ -813,7 +819,7 @@ class WebGLRenderer {
 
 			}
 
-			state.viewport( _currentViewport.copy( _viewport ).multiplyScalar( _pixelRatio ).round() );
+			state.viewport( _currentViewport.copy( _viewport ).multiplyScalar( getTargetPixelRatio() ).round() );
 
 		};
 
@@ -850,7 +856,7 @@ class WebGLRenderer {
 
 			}
 
-			state.scissor( _currentScissor.copy( _scissor ).multiplyScalar( _pixelRatio ).round() );
+			state.scissor( _currentScissor.copy( _scissor ).multiplyScalar( getTargetPixelRatio() ).round() );
 
 		};
 
@@ -1351,9 +1357,11 @@ class WebGLRenderer {
 
 		// Compile
 
-		function prepareMaterial( material, scene, object ) {
+		function prepareMaterial( material, scene, camera, object ) {
 
 			if ( _nodesHandler !== null && material.isNodeMaterial ) _nodesHandler.setObject( object, material );
+
+			if ( _clippingEnabled === true ) clipping.setState( material, camera, false );
 
 			if ( material.transparent === true && material.side === DoubleSide && material.forceSinglePass === false ) {
 
@@ -1438,6 +1446,11 @@ class WebGLRenderer {
 			currentRenderState.setupLights();
 			if ( _nodesHandler !== null ) _nodesHandler.updateLights( currentRenderState.state.lightsArray );
 
+			_localClippingEnabled = this.localClippingEnabled;
+			_clippingEnabled = clipping.init( this.clippingPlanes, _localClippingEnabled );
+
+			if ( _clippingEnabled === true ) clipping.setGlobalState( this.clippingPlanes, camera );
+
 			// node materials reference the shadow map when they are built, so it must exist by now
 
 			if ( _nodesHandler !== null ) shadowMap.render( currentRenderState.state.shadowsArray, targetScene, camera );
@@ -1464,14 +1477,14 @@ class WebGLRenderer {
 
 							const material2 = material[ i ];
 
-							prepareMaterial( material2, targetScene, object );
+							prepareMaterial( material2, targetScene, camera, object );
 							materials.add( material2 );
 
 						}
 
 					} else {
 
-						prepareMaterial( material, targetScene, object );
+						prepareMaterial( material, targetScene, camera, object );
 						materials.add( material );
 
 					}
@@ -1517,9 +1530,9 @@ class WebGLRenderer {
 						const materialProperties = properties.get( material );
 						const program = materialProperties.currentProgram;
 
-						if ( program.isReady() ) {
+						if ( program === undefined || program.isReady() ) {
 
-							// remove any programs that report they're ready to use from the list
+							// stop waiting for materials that are ready to use or have been disposed
 							materials.delete( material );
 
 						}
@@ -1673,7 +1686,16 @@ class WebGLRenderer {
 			renderStateStack.push( currentRenderState );
 
 			_projScreenMatrix.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );
-			_frustum.setFromProjectionMatrix( _projScreenMatrix, WebGLCoordinateSystem, camera.reversedDepth );
+
+			if ( camera.isArrayCamera ) {
+
+				_frustumArray.setFromArrayCamera( camera );
+
+			} else {
+
+				_frustum.setFromProjectionMatrix( _projScreenMatrix, WebGLCoordinateSystem, camera.reversedDepth );
+
+			}
 
 			_localClippingEnabled = this.localClippingEnabled;
 			_clippingEnabled = clipping.init( this.clippingPlanes, _localClippingEnabled );
@@ -1878,7 +1900,9 @@ class WebGLRenderer {
 
 				} else if ( object.isSprite ) {
 
-					if ( ! object.frustumCulled || object.intersectsFrustum( _frustum ) ) {
+					const frustum = camera.isArrayCamera ? _frustumArray : _frustum;
+
+					if ( ! object.frustumCulled || object.intersectsFrustum( frustum ) ) {
 
 						if ( sortObjects ) {
 
@@ -1900,7 +1924,9 @@ class WebGLRenderer {
 
 				} else if ( object.isMesh || object.isLine || object.isPoints ) {
 
-					if ( ! object.frustumCulled || object.intersectsFrustum( _frustum ) ) {
+					const frustum = camera.isArrayCamera ? _frustumArray : _frustum;
+
+					if ( ! object.frustumCulled || object.intersectsFrustum( frustum ) ) {
 
 						const geometry = objects.update( object );
 						const material = object.material;
@@ -3252,6 +3278,7 @@ class WebGLRenderer {
 					_gl.bufferData( _gl.PIXEL_PACK_BUFFER, buffer.byteLength, _gl.STREAM_READ );
 
 					_gl.readPixels( x, y, width, height, utils.convert( textureFormat ), utils.convert( textureType ), 0 );
+					_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, null );
 
 					// reset the frame buffer to the currently set buffer before waiting
 					const currFramebuffer = _currentRenderTarget !== null ? properties.get( _currentRenderTarget ).__webglFramebuffer : null;
@@ -3267,6 +3294,7 @@ class WebGLRenderer {
 					// read the data and delete the buffer
 					_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, glBuffer );
 					_gl.getBufferSubData( _gl.PIXEL_PACK_BUFFER, 0, buffer );
+					_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, null );
 					_gl.deleteBuffer( glBuffer );
 					_gl.deleteSync( sync );
 

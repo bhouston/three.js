@@ -16,7 +16,7 @@ import WebGPUTextureUtils from './utils/WebGPUTextureUtils.js';
 import { WebGPUCoordinateSystem, TimestampQuery, REVISION, HalfFloatType, Compatibility, CustomBlending } from '../../constants.js';
 import { Color } from '../../math/Color.js';
 import WebGPUTimestampQueryPool from './utils/WebGPUTimestampQueryPool.js';
-import { error } from '../../utils.js';
+import { error, warnOnce } from '../../utils.js';
 
 import GPUBufferDescriptor from './descriptors/GPUBufferDescriptor.js';
 import GPUCommandEncoderDescriptor from './descriptors/GPUCommandEncoderDescriptor.js';
@@ -2014,8 +2014,9 @@ class WebGPUBackend extends Backend {
 	 * @param {{vertexCount: number, firstVertex: number, instanceCount: number, firstInstance: number}} drawParams - The draw parameters.
 	 * @param {GPURenderPassEncoder|GPURenderBundleEncoder} passEncoderGPU - The GPU pass encoder used for recording draw commands.
 	 * @param {Object} currentSets - Tracking object for currently set pipeline, attributes, bind groups, and index state.
+	 * @param {number} [cameraIndexSlot=-1] - Index of the binding slot holding the camera index bind group.
 	 */
-	_draw( renderObject, info, renderContextData, pipelineGPU, bindings, vertexBuffers, drawParams, passEncoderGPU, currentSets ) {
+	_draw( renderObject, info, renderContextData, pipelineGPU, bindings, vertexBuffers, drawParams, passEncoderGPU, currentSets, cameraIndexSlot = - 1 ) {
 
 		const { object, material, context } = renderObject;
 
@@ -2037,14 +2038,19 @@ class WebGPUBackend extends Backend {
 
 		for ( let i = 0, l = bindings.length; i < l; i ++ ) {
 
+			// the camera index slot is bound per sub-camera in draw()
+
+			if ( i === cameraIndexSlot ) continue;
+
+			// compare native bind groups
+
 			const bindGroup = bindings[ i ];
+			const bindGroupGPU = this.get( bindGroup ).group;
 
-			if ( currentBindingGroups[ i ] !== bindGroup.id ) {
+			if ( currentBindingGroups[ i ] !== bindGroupGPU ) {
 
-				const bindingsData = this.get( bindGroup );
-
-				passEncoderGPU.setBindGroup( i, bindingsData.group );
-				currentBindingGroups[ i ] = bindGroup.id;
+				passEncoderGPU.setBindGroup( i, bindGroupGPU );
+				currentBindingGroups[ i ] = bindGroupGPU;
 
 			}
 
@@ -2251,7 +2257,9 @@ class WebGPUBackend extends Backend {
 
 			}
 
-			const pixelRatio = this.renderer.getPixelRatio();
+			const renderTarget = context.renderTarget;
+			const pixelRatio = ( renderTarget === null || renderTarget.isPostProcessingRenderTarget === true ) ? this.renderer.getPixelRatio() : 1;
+			const indexPos = cameraIndex ? bindings.indexOf( cameraIndex ) : - 1;
 
 			for ( let i = 0, len = cameras.length; i < len; i ++ ) {
 
@@ -2289,15 +2297,20 @@ class WebGPUBackend extends Backend {
 					}
 
 					// Set camera index binding for this layer
-					if ( cameraIndex && cameraData.indexesGPU ) {
+					if ( indexPos !== - 1 && cameraData.indexesGPU ) {
 
-						const indexPos = bindings.indexOf( cameraIndex );
-						pass.setBindGroup( indexPos, cameraData.indexesGPU[ i ] );
-						sets.bindingGroups[ indexPos ] = cameraIndex.id;
+						const cameraIndexGPU = cameraData.indexesGPU[ i ];
+
+						if ( sets.bindingGroups[ indexPos ] !== cameraIndexGPU ) {
+
+							pass.setBindGroup( indexPos, cameraIndexGPU );
+							sets.bindingGroups[ indexPos ] = cameraIndexGPU;
+
+						}
 
 					}
 
-					this._draw( renderObject, info, renderContextData, pipelineGPU, bindings, vertexBuffers, drawParams, pass, sets );
+					this._draw( renderObject, info, renderContextData, pipelineGPU, bindings, vertexBuffers, drawParams, pass, sets, indexPos );
 
 				}
 
@@ -2309,7 +2322,16 @@ class WebGPUBackend extends Backend {
 			if ( renderContextData.currentPass ) {
 
 				// Handle occlusion queries
-				if ( renderContextData.occlusionQuerySet !== undefined ) {
+
+				if ( renderContextData.currentPass instanceof GPURenderBundleEncoder ) {
+
+					if ( object.occlusionTest === true ) {
+
+						warnOnce( 'WebGPUBackend: Occlusion queries can not be recorded into render bundles.' );
+
+					}
+
+				} else if ( renderContextData.occlusionQuerySet !== undefined ) {
 
 					const lastObject = renderContextData.lastOcclusionObject;
 					if ( lastObject !== object ) {
@@ -2375,6 +2397,7 @@ class WebGPUBackend extends Backend {
 			data.stencilWrite !== material.stencilWrite || data.stencilFunc !== material.stencilFunc ||
 			data.stencilFail !== material.stencilFail || data.stencilZFail !== material.stencilZFail || data.stencilZPass !== material.stencilZPass ||
 			data.stencilFuncMask !== material.stencilFuncMask || data.stencilWriteMask !== material.stencilWriteMask ||
+			data.polygonOffset !== material.polygonOffset || data.polygonOffsetFactor !== material.polygonOffsetFactor || data.polygonOffsetUnits !== material.polygonOffsetUnits ||
 			data.side !== material.side || data.alphaToCoverage !== material.alphaToCoverage ||
 			data.sampleCount !== sampleCount || data.colorSpace !== colorSpace ||
 			data.colorFormat !== colorFormat || data.depthStencilFormat !== depthStencilFormat ||
@@ -2392,6 +2415,7 @@ class WebGPUBackend extends Backend {
 			data.stencilWrite = material.stencilWrite; data.stencilFunc = material.stencilFunc;
 			data.stencilFail = material.stencilFail; data.stencilZFail = material.stencilZFail; data.stencilZPass = material.stencilZPass;
 			data.stencilFuncMask = material.stencilFuncMask; data.stencilWriteMask = material.stencilWriteMask;
+			data.polygonOffset = material.polygonOffset; data.polygonOffsetFactor = material.polygonOffsetFactor; data.polygonOffsetUnits = material.polygonOffsetUnits;
 			data.side = material.side; data.alphaToCoverage = material.alphaToCoverage;
 			data.sampleCount = sampleCount;
 			data.colorSpace = colorSpace;
@@ -2436,7 +2460,8 @@ class WebGPUBackend extends Backend {
 			material.stencilWrite, material.stencilFunc,
 			material.stencilFail, material.stencilZFail, material.stencilZPass,
 			material.stencilFuncMask, material.stencilWriteMask,
-			material.side,
+			material.polygonOffset, material.polygonOffsetFactor, material.polygonOffsetUnits,
+			material.side, material.alphaToCoverage,
 			frontFaceCW,
 			utils.getSampleCountRenderContext( renderContext ),
 			utils.getCurrentColorSpace( renderContext ), utils.getCurrentColorFormat( renderContext ), utils.getCurrentDepthStencilFormat( renderContext ),
@@ -2785,12 +2810,12 @@ class WebGPUBackend extends Backend {
 	 *
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	createBindings( bindGroup, bindings, cacheIndex, version ) {
+	createBindings( bindGroup, bindings, cacheKey, version ) {
 
-		this.bindingUtils.createBindings( bindGroup, bindings, cacheIndex, version );
+		this.bindingUtils.createBindings( bindGroup, bindings, cacheKey, version );
 
 	}
 
@@ -2799,12 +2824,12 @@ class WebGPUBackend extends Backend {
 	 *
 	 * @param {BindGroup} bindGroup - The bind group.
 	 * @param {Array<BindGroup>} bindings - Array of bind groups.
-	 * @param {number} cacheIndex - The cache index.
+	 * @param {string} cacheKey - The cache key.
 	 * @param {number} version - The version.
 	 */
-	updateBindings( bindGroup, bindings, cacheIndex, version ) {
+	updateBindings( bindGroup, bindings, cacheKey, version ) {
 
-		this.bindingUtils.createBindings( bindGroup, bindings, cacheIndex, version );
+		this.bindingUtils.createBindings( bindGroup, bindings, cacheKey, version );
 
 	}
 
@@ -3224,7 +3249,9 @@ class WebGPUBackend extends Backend {
 
 	}
 
-	dispose() {
+	async dispose() {
+
+		await super.dispose();
 
 		this.bindingUtils.dispose();
 		this.textureUtils.dispose();
@@ -3238,16 +3265,6 @@ class WebGPUBackend extends Backend {
 			}
 
 			this.occludedResolveCache.clear();
-
-		}
-
-		if ( this.timestampQueryPool ) {
-
-			for ( const queryPool of Object.values( this.timestampQueryPool ) ) {
-
-				if ( queryPool !== null ) queryPool.dispose();
-
-			}
 
 		}
 

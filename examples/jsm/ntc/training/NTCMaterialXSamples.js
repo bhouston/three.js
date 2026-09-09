@@ -30,98 +30,98 @@ export const MATERIALX_SAMPLES = [
 		description: 'Rough, near-white glass with chromatic dispersion, built from the gltf_pbr shading model.'
 	},
 	{
-		key: 'neural_train_alpha_cutoff',
-		file: 'neural_train_alpha_cutoff.mtlx',
+		key: 'alpha_cutoff',
+		file: 'alpha_cutoff.mtlx',
 		label: 'Alpha cutoff waves',
 		description: 'Wavy UV-driven opacity pattern rendered with mask (alpha test) cutoff rather than blending.'
 	},
 	{
-		key: 'neural_train_brick',
-		file: 'neural_train_brick.mtlx',
+		key: 'brick',
+		file: 'brick.mtlx',
 		label: 'Brick wall',
 		description: 'Procedural brick-and-mortar tiling pattern generated from UV coordinates.'
 	},
 	{
-		key: 'neural_train_checkerboard',
-		file: 'neural_train_checkerboard.mtlx',
+		key: 'checkerboard',
+		file: 'checkerboard.mtlx',
 		label: 'Checkerboard 4x4',
 		description: 'Simple 4x4 black/white checkerboard base color, a minimal high-frequency tiling test.'
 	},
 	{
-		key: 'neural_train_checkerboard_normal',
-		file: 'neural_train_checkerboard_normal.mtlx',
+		key: 'checkerboard_normal',
+		file: 'checkerboard_normal.mtlx',
 		label: 'Checkerboard + normal map',
 		description: 'Checkerboard base color combined with a procedural bump/normal pattern.'
 	},
 	{
-		key: 'neural_train_checkerboard_transparency',
-		file: 'neural_train_checkerboard_transparency.mtlx',
+		key: 'checkerboard_transparency',
+		file: 'checkerboard_transparency.mtlx',
 		label: 'Checkerboard transparency',
 		description: 'Checkerboard pattern driving blended (non-cutoff) opacity.'
 	},
 	{
-		key: 'neural_train_emissive_grid',
-		file: 'neural_train_emissive_grid.mtlx',
+		key: 'emissive_grid',
+		file: 'emissive_grid.mtlx',
 		label: 'Emissive rainbow waves',
 		description: 'Checkerboard-driven emissive rainbow gradient over UV space.'
 	},
 	{
-		key: 'neural_train_glossy_constant',
-		file: 'neural_train_glossy_constant.mtlx',
+		key: 'glossy_constant',
+		file: 'glossy_constant.mtlx',
 		label: 'Glossy constant',
 		description: 'Flat, uniform glossy surface with no spatial variation - a minimal specular baseline.'
 	},
 	{
-		key: 'neural_train_glossy_gold',
-		file: 'neural_train_glossy_gold.mtlx',
+		key: 'glossy_gold',
+		file: 'glossy_gold.mtlx',
 		label: 'Metallic gold',
 		description: 'Polished metallic gold, a constant-color high-metalness/low-roughness surface.'
 	},
 	{
-		key: 'neural_train_glossy_red',
-		file: 'neural_train_glossy_red.mtlx',
+		key: 'glossy_red',
+		file: 'glossy_red.mtlx',
 		label: 'Glossy red',
 		description: 'Flat glossy red dielectric surface with visible specular highlight.'
 	},
 	{
-		key: 'neural_train_lambert_constant',
-		file: 'neural_train_lambert_constant.mtlx',
+		key: 'lambert_constant',
+		file: 'lambert_constant.mtlx',
 		label: 'Lambert constant',
 		description: 'Flat, uniform matte diffuse surface with no spatial variation - a minimal diffuse baseline.'
 	},
 	{
-		key: 'neural_train_lambert_red',
-		file: 'neural_train_lambert_red.mtlx',
+		key: 'lambert_red',
+		file: 'lambert_red.mtlx',
 		label: 'Lambert red',
 		description: 'Flat matte red diffuse surface with no specular response.'
 	},
 	{
-		key: 'neural_train_normal_map',
-		file: 'neural_train_normal_map.mtlx',
+		key: 'normal_map',
+		file: 'normal_map.mtlx',
 		label: 'Normal map waves',
 		description: 'Procedural wavy normal-map pattern over a flat base color.'
 	},
 	{
-		key: 'neural_train_road_aggregate',
-		file: 'neural_train_road_aggregate.mtlx',
+		key: 'road_aggregate',
+		file: 'road_aggregate.mtlx',
 		label: 'Road aggregate',
 		description: 'Procedural asphalt/aggregate tiling pattern generated from UV coordinates.'
 	},
 	{
-		key: 'neural_train_uv_grid',
-		file: 'neural_train_uv_grid.mtlx',
+		key: 'uv_grid',
+		file: 'uv_grid.mtlx',
 		label: 'UV rainbow waves',
 		description: 'Smooth rainbow gradient over UV space, a low-frequency default training target.'
 	},
 	{
-		key: 'neural_train_uv_grid_glossy',
-		file: 'neural_train_uv_grid_glossy.mtlx',
+		key: 'uv_grid_glossy',
+		file: 'uv_grid_glossy.mtlx',
 		label: 'UV rainbow glossy',
 		description: 'UV rainbow gradient combined with a glossy specular response.'
 	},
 	{
-		key: 'neural_train_velvet',
-		file: 'neural_train_velvet.mtlx',
+		key: 'velvet',
+		file: 'velvet.mtlx',
 		label: 'Velvet',
 		description: 'Blue velvet with gold crown embroidery; luminance drives roughness and bump, blueness drives sheen.'
 	},

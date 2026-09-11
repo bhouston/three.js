@@ -200,7 +200,8 @@ class MaterialXLoader extends Loader {
 	 * @param {string} [options.uvSpace='bottom-left'] - The UV space of the document's textures, `'bottom-left'` or `'top-left'`.
 	 * @param {Function} [options.interfaceValidator] - Validates node interfaces, see `createStrictInterfaceValidator()` in `MaterialXInterfaceValidation.js`.
 	 * @param {boolean} [options.throwOnErrors=true] - Whether translation errors throw or are only reported in the log.
-	 * @return {{materials: Object<string,NodeMaterial>, log: Array<Object>, errors: Array<Object>, warnings: Array<Object>}} The materials keyed by name and the translation log.
+	 * @return {{materials: Object<string,NodeMaterial>, document: MaterialXDocument, log: Array<Object>, errors: Array<Object>, warnings: Array<Object>}} The materials keyed by name, the parsed
+	 * MaterialXDocument (usable with {@link MaterialXExporter}), and the translation log.
 	 */
 	parse( text, options = {} ) {
 

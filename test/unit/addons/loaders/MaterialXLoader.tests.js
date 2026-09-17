@@ -173,6 +173,28 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'applies nodedef defaults to constant and convert nodes without inputs', ( assert ) => {
+
+				const document = `<?xml version="1.0"?>
+<materialx version="1.39">
+	<constant name="test_constant" type="color3" />
+	<convert name="test_convert" type="vector3" />
+	<standard_surface name="test_surface" type="surfaceshader">
+		<input name="base_color" type="color3" nodename="test_constant" />
+		<input name="normal" type="vector3" nodename="test_convert" />
+	</standard_surface>
+	<surfacematerial name="test_material" type="material">
+		<input name="surfaceshader" type="surfaceshader" nodename="test_surface" />
+	</surfacematerial>
+</materialx>`;
+
+				const result = new MaterialXLoader().parse( document );
+
+				assert.strictEqual( result.errors.length, 0, 'Omitted inputs on constant and convert do not produce errors.' );
+				assert.ok( result.materials.test_material, 'The material is translated.' );
+
+			} );
+
 		} );
 
 	} );

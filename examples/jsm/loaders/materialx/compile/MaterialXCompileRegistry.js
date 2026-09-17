@@ -147,7 +147,7 @@ const applyTextureColorSpace = ( node, file ) => {
 
 const compileConvertNode = ( nodeX ) => {
 
-	const input = nodeX.getNodeByName( 'in' );
+	const input = nodeX.getNodeByName( 'in' ) ?? getZeroNodeForType( nodeX.type );
 	const inputElement = nodeX.getChildByName( 'in' );
 	const inputType = inputElement ? inputElement.type : null;
 	const nodeClass = nodeX.getClassFromType( nodeX.type ) || float;
@@ -189,7 +189,7 @@ const compileConvertNode = ( nodeX ) => {
 
 };
 
-const compileConstantNode = ( nodeX ) => nodeX.getNodeByName( 'value' );
+const compileConstantNode = ( nodeX ) => nodeX.getNodeByName( 'value' ) ?? getZeroNodeForType( nodeX.type );
 
 const compileArtisticIorNode = ( nodeX, out ) => {
 

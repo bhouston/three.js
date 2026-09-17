@@ -1,5 +1,45 @@
 import registryData from './MaterialXNodeInterfaceRegistry.js';
 
+/**
+ * The zero value of each MaterialX value type. The generated registry omits a nodedef
+ * input's `value` when it equals this zero and stores `null` for inputs that have no
+ * default at all; {@link expandTypeDefaults} restores the omitted values on load.
+ *
+ * @type {Object<string,string>}
+ */
+const NODEDEF_TYPE_ZERO = {
+	boolean: 'false',
+	integer: '0',
+	float: '0',
+	vector2: '0, 0',
+	vector3: '0, 0, 0',
+	vector4: '0, 0, 0, 0',
+	color3: '0, 0, 0',
+	color4: '0, 0, 0, 0',
+	matrix33: '0, 0, 0, 0, 0, 0, 0, 0, 0',
+	matrix44: '0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0',
+	string: '',
+	filename: '',
+};
+
+// Fills in the omitted zero defaults, in place, so the rest of the loader sees every input's value.
+function expandTypeDefaults( nodedefs ) {
+
+	for ( const nodedef of Object.values( nodedefs ) ) {
+
+		for ( const input of Object.values( nodedef.inputs ) ) {
+
+			if ( input.value === null ) delete input.value;
+			else if ( input.value === undefined && input.defaultgeomprop === undefined && input.type in NODEDEF_TYPE_ZERO ) input.value = NODEDEF_TYPE_ZERO[ input.type ];
+
+		}
+
+	}
+
+}
+
+expandTypeDefaults( registryData.nodedefs );
+
 // Nodedef names grouped by node category, in registry (alphabetical) order.
 const nodedefNamesByCategory = new Map();
 
@@ -79,4 +119,4 @@ function resolveNodeDef( nodeX ) {
 
 }
 
-export { resolveNodeDef, getNodeDefNames };
+export { resolveNodeDef, getNodeDefNames, NODEDEF_TYPE_ZERO };

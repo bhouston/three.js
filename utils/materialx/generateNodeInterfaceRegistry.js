@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { NODEDEF_TYPE_ZERO } from '../../examples/jsm/loaders/materialx/MaterialXNodeDefs.js';
 
 const librariesPath = process.argv[ 2 ];
 
@@ -136,9 +137,10 @@ function resolveInheritance( nodedefs ) {
 		seen.add( name );
 
 		const base = nodedef.inherit ? resolve( nodedef.inherit, seen ) : { inputs: {}, outputs: {} };
+		const inheritedInputs = Object.fromEntries( Object.entries( base.inputs ).map( ( [ inputName, input ] ) => [ inputName, { ...input } ] ) );
 		resolved[ name ] = {
 			node: nodedef.node,
-			inputs: { ...base.inputs, ...nodedef.inputs },
+			inputs: { ...inheritedInputs, ...nodedef.inputs },
 			outputs: { ...base.outputs, ...nodedef.outputs },
 		};
 		return resolved[ name ];
@@ -159,6 +161,29 @@ for ( const file of walk( librariesPath ) ) {
 }
 
 const resolved = resolveInheritance( nodedefs );
+
+// Omit values equal to the type's zero (restored by the loader) and mark inputs without any default.
+const normalizeValue = ( value ) => value.split( ',' ).map( ( part ) => {
+
+	const trimmed = part.trim();
+	const number = Number( trimmed );
+	return trimmed !== '' && Number.isFinite( number ) ? String( number ) : trimmed;
+
+} ).join( ',' );
+
+for ( const nodedef of Object.values( resolved ) ) {
+
+	for ( const input of Object.values( nodedef.inputs ) ) {
+
+		const zero = NODEDEF_TYPE_ZERO[ input.type ];
+		if ( zero === undefined || input.defaultgeomprop !== undefined ) continue;
+
+		if ( input.value === undefined ) input.value = null;
+		else if ( normalizeValue( input.value ) === normalizeValue( zero ) ) delete input.value;
+
+	}
+
+}
 
 for ( const [ name, nodedef ] of Object.entries( resolved ) ) {
 

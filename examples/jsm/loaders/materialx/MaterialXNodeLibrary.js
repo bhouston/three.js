@@ -618,7 +618,6 @@ const MXElements = [
 	createMXElement( 'max', max ),
 	createMXElement( 'normalize', normalize ),
 	createMXElement( 'magnitude', length ),
-	createMXElement( 'length', length, [ 'in' ] ),
 	createMXElement( 'dot', mx_dot, [ 'in' ] ),
 	createMXElement( 'dotproduct', dot ),
 	createMXElement( 'viewdirection', mx_viewdirection ),

@@ -1,5 +1,5 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
-import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context } from 'three/tsl';
+import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, textureSize, floor } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -417,7 +417,12 @@ class SSGINode extends Node {
 
 		}
 
-		const uvNode = uv();
+		// when the effect runs at a lower resolution than the depth buffer, snap to a depth texel center so the
+		// view position is reconstructed from the same texel that is sampled. Otherwise the texel choice flips
+		// between rows/columns and produces screen-space banding.
+
+		const depthSize = vec2( textureSize( this.depthNode, 0 ) );
+		const uvNode = floor( uv().mul( depthSize ).sub( 0.25 ) ).add( 0.5 ).div( depthSize );
 		const MAX_RAY = uint( 32 );
 		const globalOccludedBitfield = uint( 0 );
 

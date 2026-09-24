@@ -552,14 +552,15 @@ class SSGINode extends Node {
 
 							const lightNormalVS = sampleNormal( sampleUV );
 
-							// Intensity of outgoing light in the direction of the shading point
+							// The beauty pass holds the radiance leaving the sample, which a diffuse surface emits evenly in all
+							// directions, and the occluded sectors already measure its foreshortening. So only whether its front
+							// face is visible from the shading point matters, not the cosine towards it.
 
-							let lightNormalDotLightDirection = dot( lightNormalVS, lightDirectionVS.negate() );
+							const facesShadingPoint = dot( lightNormalVS, lightDirectionVS.negate() ).greaterThan( 0 );
+							const backfaceWeight = BACKFACE_LIGHTING.greaterThan( 0 ).and( dot( lightNormalVS, viewDir ).greaterThan( 0 ) ).select( BACKFACE_LIGHTING, float( 0 ) );
+							const emission = facesShadingPoint.select( float( 1 ), backfaceWeight );
 
-							const d = sign( lightNormalDotLightDirection ).lessThan( 0 ).select( abs( lightNormalDotLightDirection ).mul( BACKFACE_LIGHTING ), abs( lightNormalDotLightDirection ) );
-							lightNormalDotLightDirection = BACKFACE_LIGHTING.greaterThan( 0 ).and( dot( lightNormalVS, viewDir ).greaterThan( 0 ) ).select( d, clamp( lightNormalDotLightDirection ) );
-
-							color.rgb.addAssign( float( numOccludedZones ).div( float( MAX_RAY ) ).mul( lightColor ).mul( normalDotLightDirection ).mul( lightNormalDotLightDirection ) );
+							color.rgb.addAssign( float( numOccludedZones ).div( float( MAX_RAY ) ).mul( lightColor ).mul( normalDotLightDirection ).mul( emission ) );
 
 						} );
 

@@ -853,15 +853,16 @@ class TemporalReprojectNode extends Node {
 		_quadMesh.render( renderer );
 		renderer.setRenderTarget( null );
 
-		if ( historySwappedForRestart === true ) {
-
-			this._syncHistoryTextureBinding();
-
-		} else if ( this.accumulate === true ) {
+		if ( historySwappedForRestart === false && this.accumulate === true ) {
 
 			renderer.copyTextureToTexture( this._resolveRenderTarget.texture, this._historyRenderTarget.texture );
 
 		}
+
+		// re-synced every frame (not just after a restart) since `_historyResolution` must track
+		// `_resolveResolution`, which can change on its own via `resolutionScale` without a canvas
+		// resize ever happening.
+		this._syncHistoryTextureBinding();
 
 		if ( this._previousFrameGeometry !== null ) {
 

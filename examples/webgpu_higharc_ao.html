@@ -56,7 +56,7 @@
 			};
 
 			const params = {
-				output: 'combined', // combined, beauty, ao, gi, reflections
+				output: 'beauty', // beauty, ao, gi, reflections
 				ssgi: true,
 				ssr: true,
 				ssgiQuality: 'medium',
@@ -264,7 +264,7 @@
 				// GUI
 
 				const gui = renderer.inspector.createParameters( 'Settings' );
-				gui.add( params, 'output', [ 'combined', 'beauty', 'ao', 'gi', 'reflections' ] ).onChange( buildPipeline );
+				gui.add( params, 'output', [ 'beauty', 'ao', 'gi', 'reflections' ] ).onChange( buildPipeline );
 				gui.add( params, 'ssgi' ).name( 'SSGI' ).onChange( buildPipeline );
 				gui.add( params, 'ssr' ).name( 'SSR' ).onChange( buildPipeline );
 				gui.add( params, 'ssgiQuality', [ 'low', 'medium', 'high' ] ).name( 'SSGI quality' ).onChange( updateParameters );
@@ -291,7 +291,7 @@
 
 				if ( params.ssr ) context = builtinRadianceContext( signals.reflections, context );
 
-				scenePass.contextNode = params.output === 'beauty' ? null : context;
+				scenePass.contextNode = context;
 				scenePass.needsUpdate = true;
 
 				// data outputs skip tone mapping and the output color transform

@@ -36,10 +36,9 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, normalView, velocity, vec2, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample, texture, screenUV, uniform, convertToTexture, builtinGIContext } from 'three/tsl';
+			import { pass, mrt, normalView, velocity, vec2, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample, texture, screenUV, uniform, builtinGIContext } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
-			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 
@@ -123,14 +122,9 @@
 
 				giPass.giIntensity.value = Math.PI * Math.PI / 2;
 
-				const giParams = { denoising: 'spatial', denoiseRadius: 4 };
+				// denoising: none or temporal (per-signal temporal accumulation and spatial filtering)
 
-				// denoising: none, spatial (denoise node, stable with a static noise pattern) or temporal
-				// (per-signal temporal accumulation and spatial filtering)
-
-				const aoDenoised = denoise( giPass.getAONode(), prePassDepth, sceneNormal, camera );
-				const giDenoised = denoise( giPass.getGINode(), prePassDepth, sceneNormal, camera );
-				aoDenoised.radius.value = giDenoised.radius.value = giParams.denoiseRadius;
+				const giParams = { denoising: 'temporal' };
 
 				// the temporal nodes only filter RGB, so AO and GI each get their own chain
 
@@ -150,10 +144,6 @@
 					none: {
 						ao: giPass.getAONode().sample( screenUV ).r.toInspector( 'SSGI.AO' ),
 						gi: giPass.getGINode().sample( screenUV ).rgb.toInspector( 'SSGI.GI' )
-					},
-					spatial: {
-						ao: convertToTexture( aoDenoised ).sample( screenUV ).r.toInspector( 'SSGI.AO (denoised)' ),
-						gi: convertToTexture( giDenoised ).sample( screenUV ).rgb.toInspector( 'SSGI.GI (denoised)' )
 					},
 					temporal: {
 						ao: temporalDenoise( giPass.getAONode() ).sample( screenUV ).r.toInspector( 'SSGI.AO (temporal)' ),
@@ -327,8 +317,7 @@
 				gui.add( params, 'output', types ).onChange( updatePostprocessing );
 
 				const denoiseFolder = gui.addFolder( 'Denoising' );
-				denoiseFolder.add( giParams, 'denoising', { 'none': 'none', 'spatial': 'spatial', 'temporal': 'temporal' } ).name( 'method' ).onChange( updatePostprocessing );
-				const denoiseRadiusControl = denoiseFolder.add( giParams, 'denoiseRadius', 0, 16 ).name( 'denoise radius' ).onChange( ( value ) => aoDenoised.radius.value = giDenoised.radius.value = value );
+				denoiseFolder.add( giParams, 'denoising', { 'none': 'none', 'temporal': 'temporal' } ).name( 'method' ).onChange( updatePostprocessing );
 
 				const aoFolder = gui.addFolder( 'AO' );
 				aoFolder.add( giPass.aoIntensity, 'value', 0, 4 ).name( 'AO intensity' );
@@ -346,10 +335,7 @@
 
 				function updatePostprocessing() {
 
-					const spatial = giParams.denoising === 'spatial';
 					giPass.useTemporalFiltering = giParams.denoising === 'temporal';
-
-					if ( spatial ) denoiseRadiusControl.show(); else denoiseRadiusControl.hide();
 
 					const { ao, gi } = signals[ giParams.denoising ];
 

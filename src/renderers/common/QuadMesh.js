@@ -2,7 +2,7 @@ import { BufferGeometry } from '../../core/BufferGeometry.js';
 import { Float32BufferAttribute } from '../../core/BufferAttribute.js';
 import { Mesh } from '../../objects/Mesh.js';
 import { OrthographicCamera } from '../../cameras/OrthographicCamera.js';
-import { vec4, array } from '../../nodes/tsl/TSLBase.js';
+import { vec4 } from '../../nodes/tsl/TSLBase.js';
 import { vertexIndex } from '../../nodes/core/IndexNode.js';
 import { warnOnce } from '../../utils.js';
 
@@ -38,9 +38,12 @@ class QuadGeometry extends BufferGeometry {
 
 const _geometry = /*@__PURE__*/ new QuadGeometry();
 
+// Selects instead of constant array lookups: Safari's WGSL compiler bounds checks array indices and, with this
+// vertex shader shared by every pass, can nest those checks until the Metal compiler rejects the shader.
+
 const _vertexNode = /*@__PURE__*/ vec4(
-	array( [ - 1.0, - 1.0, 3.0 ] ).element( vertexIndex ),
-	array( [ 3.0, - 1.0, - 1.0 ] ).element( vertexIndex ),
+	vertexIndex.equal( 2 ).select( 3.0, - 1.0 ),
+	vertexIndex.equal( 0 ).select( 3.0, - 1.0 ),
 	0.0,
 	1.0
 );

@@ -246,6 +246,16 @@ class Renderer {
 		this.contextNode = context();
 
 		/**
+		 * The renderer's default context node, used to restore {@link Renderer#contextNode}
+		 * to a stable, canonical value when nested full-screen quad passes (e.g. post-processing
+		 * effects) render outside of the current pass's own context.
+		 *
+		 * @private
+		 * @type {ContextNode}
+		 */
+		this._defaultContextNode = this.contextNode;
+
+		/**
 		 * The node library defines how certain library objects like materials, lights
 		 * or tone mapping functions are mapped to node types. This is required since
 		 * although instances of classes like `MeshBasicMaterial` or `PointLight` can

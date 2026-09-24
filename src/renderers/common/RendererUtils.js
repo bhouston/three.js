@@ -26,6 +26,7 @@ export function saveRendererState( renderer, state = {} ) {
 	state.clearAlpha = renderer.getClearAlpha();
 	state.autoClear = renderer.autoClear;
 	state.scissorTest = renderer.getScissorTest();
+	state.contextNode = renderer.contextNode;
 
 	return state;
 
@@ -51,6 +52,7 @@ export function resetRendererState( renderer, state ) {
 	renderer.setRenderObjectFunction( null );
 	renderer.setClearColor( 0x000000, 1 );
 	renderer.autoClear = true;
+	renderer.contextNode = renderer._defaultContextNode;
 
 	return state;
 
@@ -76,6 +78,7 @@ export function restoreRendererState( renderer, state ) {
 	renderer.setClearColor( state.clearColor, state.clearAlpha );
 	renderer.autoClear = state.autoClear;
 	renderer.setScissorTest( state.scissorTest );
+	renderer.contextNode = state.contextNode;
 
 }
 

@@ -61,7 +61,8 @@
 				ssr: true,
 				ssgiQuality: 'medium',
 				ssgiIntensity: 1, // relative to physically based irradiance
-				ssgiRadius: 120 * INCH
+				ssgiRadius: 120 * INCH,
+				resolutionScale: 2 // divides the SSGI/SSR working resolution: 1, 2, 3 or 4
 			};
 
 			// fade out the screen-space effects in the distance to avoid terrain and horizon halos
@@ -188,13 +189,12 @@
 				const previousFrame = texture( traaPass.getTextureNode().value );
 				const previousRadiance = sample( ( uv ) => previousFrame.sample( uv.sub( prePassVelocity.sample( uv ).xy.mul( vec2( 0.5, - 0.5 ) ) ) ) );
 
-				// ssgi with a world space radius, at half resolution
+				// ssgi with a world space radius, at a fraction of the render resolution (see params.resolutionScale)
 
 				ssgiNode = ssgi( previousRadiance, prePassDepth, sceneNormal, camera );
 				ssgiNode.useScreenSpaceSampling.value = false;
 				ssgiNode.thickness.value = 8 * INCH;
 				ssgiNode.aoIntensity.value = 1.5;
-				ssgiNode.resolutionScale = 0.5;
 
 				// ssr: the complete reflected radiance, falling back to the environment map, which replaces the
 				// environment reflections of the materials so they apply their own Fresnel, metalness and roughness
@@ -270,6 +270,7 @@
 				gui.add( params, 'ssgiQuality', [ 'low', 'medium', 'high' ] ).name( 'SSGI quality' ).onChange( updateParameters );
 				gui.add( params, 'ssgiIntensity', 0, 4 ).name( 'SSGI intensity' ).onChange( updateParameters );
 				gui.add( params, 'ssgiRadius', 0.1, 10 ).name( 'SSGI radius (m)' ).onChange( updateParameters );
+				gui.add( params, 'resolutionScale', [ 1, 2, 3, 4 ] ).name( 'SSGI/SSR resolution scale' ).onChange( updateParameters );
 
 			}
 
@@ -279,6 +280,7 @@
 
 				let occlusion = float( 1 );
 				let bounce = vec3( 0 );
+				let reflections = vec3( 0 );
 				let context = null;
 
 				if ( params.ssgi ) {
@@ -289,7 +291,12 @@
 
 				}
 
-				if ( params.ssr ) context = builtinRadianceContext( signals.reflections, context );
+				if ( params.ssr ) {
+
+					reflections = signals.reflections;
+					context = builtinRadianceContext( reflections, context );
+
+				}
 
 				scenePass.contextNode = context;
 				scenePass.needsUpdate = true;
@@ -301,7 +308,7 @@
 
 				channel.value = dataOutputs.indexOf( params.output ) + 1;
 
-				const data = channel.equal( 1 ).select( vec4( vec3( occlusion ), 1 ), channel.equal( 2 ).select( vec4( bounce, 1 ), vec4( signals.reflections, 1 ) ) );
+				const data = channel.equal( 1 ).select( vec4( vec3( occlusion ), 1 ), channel.equal( 2 ).select( vec4( bounce, 1 ), vec4( reflections, 1 ) ) );
 
 				renderPipeline.outputNode = channel.equal( 0 ).select( traaPass, data );
 				renderPipeline.outputColorTransform = ! isData;
@@ -320,6 +327,9 @@
 				// the materials expect irradiance: for uniform radiance L, SSGI integrates 2L/π while the irradiance is πL
 
 				ssgiNode.giIntensity.value = params.ssgiIntensity * Math.PI * Math.PI / 2;
+
+				ssgiNode.resolutionScale = 1 / params.resolutionScale;
+				ssrNode.resolutionScale = 1 / params.resolutionScale;
 
 			}
 

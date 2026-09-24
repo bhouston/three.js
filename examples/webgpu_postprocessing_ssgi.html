@@ -146,11 +146,14 @@
 
 				// the temporal nodes only filter RGB, so AO and GI each get their own chain
 
+				const denoiseNodes = [];
+
 				const temporalDenoise = ( signal ) => {
 
 					const reprojected = temporalReproject( signal, prePassDepth, prePassNormal, prePassVelocity, camera );
 					const denoised = recurrentDenoise( reprojected, camera, { depth: prePassDepth, normal: prePassNormal, raw: signal } );
 					denoised.alphaSource = 'none';
+					denoiseNodes.push( denoised );
 					reprojected.setHistoryTexture( denoised );
 					return denoised.getTextureNode();
 
@@ -323,7 +326,8 @@
 				const params = {
 					output: 0,
 					scene: 'basic',
-					reflections: true
+					reflections: true,
+					animatedNoise: true
 				};
 
 				updateScene();
@@ -338,6 +342,7 @@
 
 				const denoiseFolder = gui.addFolder( 'Denoising' );
 				denoiseFolder.add( giParams, 'denoising', { 'none': 'none', 'temporal': 'temporal' } ).name( 'method' ).onChange( updatePostprocessing );
+				denoiseFolder.add( params, 'animatedNoise' ).name( 'animated noise' ).onChange( updateNoise );
 
 				const aoFolder = gui.addFolder( 'AO' );
 				aoFolder.add( giPass.aoIntensity, 'value', 0, 4 ).name( 'AO intensity' );
@@ -355,7 +360,6 @@
 
 				function updatePostprocessing() {
 
-					giPass.useTemporalFiltering = giParams.denoising === 'temporal';
 
 					const { ao, gi } = signals[ giParams.denoising ];
 
@@ -371,6 +375,19 @@
 
 				}
 
+				// one switch for all temporal randomness: the effects' noise and the TRAA jitter. The effects
+				// share the frame index but use their own sequences, so their noise stays uncorrelated
+
+				function updateNoise() {
+
+					const animated = params.animatedNoise;
+
+					giPass.useTemporalFiltering = ssrPass.useTemporalFiltering = traaPass.useJitter = animated;
+					for ( const node of denoiseNodes ) node.useTemporalFiltering = animated;
+
+				}
+
+				updateNoise();
 				updatePostprocessing();
 
 			}

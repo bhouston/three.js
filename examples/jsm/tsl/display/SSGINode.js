@@ -436,7 +436,6 @@ class SSGINode extends Node {
 		const depthSize = vec2( textureSize( this.depthNode, 0 ) );
 		const uvNode = floor( uv().mul( depthSize ).sub( 0.25 ) ).add( 0.5 ).div( depthSize );
 		const MAX_RAY = uint( 32 );
-		const globalOccludedBitfield = uint( 0 );
 
 		const sampleDepth = ( uv ) => {
 
@@ -489,7 +488,7 @@ class SSGINode extends Node {
 			]
 		} );
 
-		const horizonSampling = Fn( ( [ directionIsRight, stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ] ) => {
+		const horizonSampling = Fn( ( [ directionIsRight, stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n, globalOccludedBitfield ] ) => {
 
 			const STEP_COUNT = this.stepCount.toConst();
 			const EXP_FACTOR = this.expFactor.toConst();
@@ -605,6 +604,7 @@ class SSGINode extends Node {
 			const RADIUS = this.radius.toConst();
 
 			const stepRadius = float( 0 ).toVar();
+			const globalOccludedBitfield = uint( 0 ).toVar();
 
 			If( this.useScreenSpaceSampling, () => {
 
@@ -637,8 +637,8 @@ class SSGINode extends Node {
 
 				globalOccludedBitfield.assign( 0 );
 
-				color.addAssign( horizonSampling( bool( true ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ) );
-				color.addAssign( horizonSampling( bool( false ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ) );
+				color.addAssign( horizonSampling( bool( true ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n, globalOccludedBitfield ) );
+				color.addAssign( horizonSampling( bool( false ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n, globalOccludedBitfield ) );
 
 				ao.addAssign( float( countOneBits( globalOccludedBitfield ) ).div( float( MAX_RAY ) ) );
 

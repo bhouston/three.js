@@ -121,6 +121,16 @@ class TRAANode extends Node {
 		this.useSubpixelCorrection = true;
 
 		/**
+		 * Whether the camera is jittered every frame or not. Without jitter there is no
+		 * anti-aliasing, but temporal noise of other effects is still accumulated. Disabling it
+		 * together with the effects' `useTemporalFiltering` gives a frame-to-frame stable image.
+		 *
+		 * @type {boolean}
+		 * @default true
+		 */
+		this.useJitter = true;
+
+		/**
 		 * The jitter index selects the current camera offset value.
 		 *
 		 * @private
@@ -301,7 +311,7 @@ class TRAANode extends Node {
 
 		};
 
-		const jitterOffset = _haltonOffsets[ this._jitterIndex ];
+		const jitterOffset = this.useJitter === true ? _haltonOffsets[ this._jitterIndex ] : _centerOffset;
 
 		this.camera.setViewOffset(
 
@@ -610,6 +620,7 @@ class TRAANode extends Node {
 export default TRAANode;
 
 const _haltonOffsets = /*@__PURE__*/ computeHaltonOffsets( 32 );
+const _centerOffset = [ 0.5, 0.5 ];
 
 /**
  * TSL function for creating a TRAA node for Temporal Reprojection Anti-Aliasing.

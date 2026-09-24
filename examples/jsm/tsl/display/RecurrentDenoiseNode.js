@@ -430,6 +430,18 @@ class RecurrentDenoiseNode extends Node {
 
 		this.updateBeforeType = NodeUpdateType.FRAME;
 
+		/**
+		 * Scales the denoise render target relative to the drawing buffer size. All inputs are
+		 * sampled via UV (not raw texel loads), so this node adapts to any resolution transparently
+		 * — set it to match the upstream signal's own resolution (e.g. an SSGI/SSR effect's
+		 * `resolutionScale`) to avoid denoising a signal that was upsampled first. `1` renders at
+		 * full resolution.
+		 *
+		 * @type {number}
+		 * @default 1
+		 */
+		this.resolutionScale = 1;
+
 		this._resolution = uniform( new Vector2() );
 		this._fovY = uniform( MathUtils.degToRad( camera.fov ) );
 		this._cameraProjectionMatrixInverse = uniform( new Matrix4().copy( camera.projectionMatrixInverse ) );
@@ -449,6 +461,9 @@ class RecurrentDenoiseNode extends Node {
 	setSize( width, height ) {
 
 		if ( width === null || height === null ) return;
+
+		width = Math.max( 1, Math.round( this.resolutionScale * width ) );
+		height = Math.max( 1, Math.round( this.resolutionScale * height ) );
 
 		this._renderTarget.setSize( width, height );
 		this._resolution.value.set( width, height );
@@ -480,7 +495,9 @@ class RecurrentDenoiseNode extends Node {
 		const width = drawingBufferSize.width;
 		const height = drawingBufferSize.height;
 
-		const needsRestart = this._renderTarget.width !== width || this._renderTarget.height !== height;
+		const scaledWidth = Math.max( 1, Math.round( this.resolutionScale * width ) );
+		const scaledHeight = Math.max( 1, Math.round( this.resolutionScale * height ) );
+		const needsRestart = this._renderTarget.width !== scaledWidth || this._renderTarget.height !== scaledHeight;
 		this.setSize( width, height );
 
 		this._cameraProjectionMatrix.value.copy( this.camera.projectionMatrix );

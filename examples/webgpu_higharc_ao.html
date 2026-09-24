@@ -72,6 +72,10 @@
 			let camera, scene, renderer, renderPipeline, controls;
 			let scenePass, traaPass, ssgiNode, ssrNode, signals, channel;
 
+			// TemporalReproject/RecurrentDenoise instances for the AO, GI and SSR chains, kept around
+			// so `updateParameters()` can apply `params.resolutionScale` to all of them.
+			const temporalNodes = [];
+
 			const target = new THREE.Vector3();
 			let span = 1;
 
@@ -219,6 +223,7 @@
 					const denoised = recurrentDenoise( reprojected, camera, { depth: prePassDepth, normal: prePassNormal, raw: signal } );
 					denoised.alphaSource = 'none';
 					reprojected.setHistoryTexture( denoised );
+					temporalNodes.push( reprojected, denoised );
 					return denoised.getTextureNode();
 
 				};
@@ -226,8 +231,10 @@
 				const ssrReprojected = temporalReproject( ssrNode, prePassDepth, prePassNormal, prePassVelocity, camera, { mode: 'specular' } );
 				ssrReprojected.maxFrames.value = 16;
 				ssrReprojected.clampIntensity.value = 0.25;
+				temporalNodes.push( ssrReprojected );
 
 				const ssrDenoised = recurrentDenoise( ssrReprojected, camera, { depth: prePassDepth, normal: prePassNormal, raw: ssrNode, metalRoughness: prePassMetalRoughness, mode: 'specular' } );
+				temporalNodes.push( ssrDenoised );
 				ssrDenoised.alphaSource = 'raylength'; // the SSR alpha channel holds the ray length
 				ssrDenoised.lumaPhi.value = 0.75;
 				ssrDenoised.depthPhi.value = 20;
@@ -330,6 +337,10 @@
 
 				ssgiNode.resolutionScale = 1 / params.resolutionScale;
 				ssrNode.resolutionScale = 1 / params.resolutionScale;
+
+				// the temporal reproject/denoise chains scale along with the raymarched signals they
+				// process, so the resolve/denoise cost drops with them instead of staying full-res
+				for ( const node of temporalNodes ) node.resolutionScale = 1 / params.resolutionScale;
 
 			}
 

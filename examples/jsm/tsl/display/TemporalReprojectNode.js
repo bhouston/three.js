@@ -242,21 +242,22 @@ const sampleBilinearTap = Fn( ( [
 	historyTexture,
 	previousDepthNode,
 	previousNormalNode,
-	resolution,
+	geometryResolution,
 	previousProjectionMatrixInverse,
 	previousCameraWorldMatrix,
 	previousCameraViewMatrix,
-	tapCoord,
+	historyTapCoord,
+	geomTapCoord,
 	bilinearWeight,
 	worldPosition,
 	worldNormal
 ] ) => {
 
-	const color = textureLoad( historyTexture, tapCoord ).max( 0 );
-	const reprojDepth = textureLoad( previousDepthNode, tapCoord ).r;
-	const reprojViewPos = getViewPosition( vec2( tapCoord ).add( 0.5 ).div( resolution ), reprojDepth, previousProjectionMatrixInverse );
+	const color = textureLoad( historyTexture, historyTapCoord ).max( 0 );
+	const reprojDepth = textureLoad( previousDepthNode, geomTapCoord ).r;
+	const reprojViewPos = getViewPosition( vec2( geomTapCoord ).add( 0.5 ).div( geometryResolution ), reprojDepth, previousProjectionMatrixInverse );
 	const reprojWorldPos = previousCameraWorldMatrix.mul( vec4( reprojViewPos, 1.0 ) ).xyz;
-	const reprojWorldNorm = unpackRGBToNormal( textureLoad( previousNormalNode, tapCoord ).rgb ).transformNormalByInverseViewMatrix( previousCameraViewMatrix );
+	const reprojWorldNorm = unpackRGBToNormal( textureLoad( previousNormalNode, geomTapCoord ).rgb ).transformNormalByInverseViewMatrix( previousCameraViewMatrix );
 
 	const planeDiff = abs( dot( reprojWorldPos.sub( worldPosition ), worldNormal ) ).toVar();
 	planeDiff.divAssign( abs( reprojViewPos.z ) );
@@ -269,7 +270,7 @@ const sampleBilinearTap = Fn( ( [
 } );
 
 /**
- * @param {Object} ctx - Shared {@link sampleBilinearTap} inputs plus `reprojICoord`.
+ * @param {Object} ctx - Shared {@link sampleBilinearTap} inputs plus `historyICoord`/`geomICoord`.
  * @param {Node<ivec2>} tapOffset
  * @param {Node<float>} bilinearWeight
  */
@@ -279,11 +280,12 @@ function bilinearHistoryTap( ctx, tapOffset, bilinearWeight ) {
 		ctx.historyTexture,
 		ctx.previousDepthNode,
 		ctx.previousNormalNode,
-		ctx.resolution,
+		ctx.geometryResolution,
 		ctx.previousProjectionMatrixInverse,
 		ctx.previousCameraWorldMatrix,
 		ctx.previousCameraViewMatrix,
-		ctx.reprojICoord.add( tapOffset ),
+		ctx.historyICoord.add( tapOffset ),
+		ctx.geomICoord.add( tapOffset ),
 		bilinearWeight,
 		ctx.worldPosition,
 		ctx.worldNormal
@@ -294,13 +296,21 @@ function bilinearHistoryTap( ctx, tapOffset, bilinearWeight ) {
 /**
  * Geometrically-weighted 4-tap bilinear history sample.
  *
+ * `historyTexture` (colour) and `previousDepthNode`/`previousNormalNode` (reprojection geometry)
+ * may live at different resolutions — the history colour can be scaled down (see
+ * {@link TemporalReprojectNode#resolutionScale}) while depth/normal stay at full resolution for
+ * reprojection precision. Both grids are sampled independently from the same `reprojUV`; the
+ * bilinear weights are derived once from the geometry grid and reused for the colour taps, which
+ * is an approximation but keeps the confidence weighting (computed from depth/normal) exact.
+ *
  * @tsl
  */
 const sampleHistory4Tap = Fn( ( [
 	historyTexture,
+	historyResolution,
 	previousDepthNode,
 	previousNormalNode,
-	resolution,
+	geometryResolution,
 	previousProjectionMatrixInverse,
 	previousCameraWorldMatrix,
 	previousCameraViewMatrix,
@@ -310,9 +320,11 @@ const sampleHistory4Tap = Fn( ( [
 	inputColor
 ] ) => {
 
-	const reprojPixelCoord = reprojUV.mul( resolution ).sub( 0.5 ).toVar();
-	const reprojICoord = ivec2( floor( reprojPixelCoord ) );
-	const fCoord = reprojPixelCoord.fract();
+	const geomPixelCoord = reprojUV.mul( geometryResolution ).sub( 0.5 ).toVar();
+	const geomICoord = ivec2( floor( geomPixelCoord ) );
+	const fCoord = geomPixelCoord.fract();
+
+	const historyICoord = ivec2( floor( reprojUV.mul( historyResolution ).sub( 0.5 ) ) );
 
 	const fx = fCoord.x;
 	const fy = fCoord.y;
@@ -325,11 +337,12 @@ const sampleHistory4Tap = Fn( ( [
 		historyTexture,
 		previousDepthNode,
 		previousNormalNode,
-		resolution,
+		geometryResolution,
 		previousProjectionMatrixInverse,
 		previousCameraWorldMatrix,
 		previousCameraViewMatrix,
-		reprojICoord,
+		historyICoord,
+		geomICoord,
 		worldPosition,
 		worldNormal
 	};
@@ -572,7 +585,25 @@ class TemporalReprojectNode extends Node {
 
 		this.maxVelocityLength = DEFAULT_MAX_VELOCITY_LENGTH;
 
+		/**
+		 * Scales the resolve pass (the output of this node, and the history it feeds back into
+		 * itself) relative to the drawing buffer size. Depth/normal/velocity reprojection inputs
+		 * and the internal history render target always stay at full (unscaled) resolution for
+		 * reprojection precision — only the resolve/history colour signal shrinks. `1` renders at
+		 * full resolution.
+		 *
+		 * When {@link TemporalReprojectNode#setHistoryTexture} supplies an external history source
+		 * (e.g. a {@link RecurrentDenoiseNode}), that source is expected to be sized to this same
+		 * scale for its output to line up with the resolve pass.
+		 *
+		 * @type {number}
+		 * @default 1
+		 */
+		this.resolutionScale = 1;
+
 		this._resolution = uniform( new Vector2() );
+		this._resolveResolution = uniform( new Vector2() );
+		this._historyResolution = uniform( new Vector2() );
 
 		this._cameraUniforms = bindTemporalCameraUniforms( camera );
 
@@ -621,9 +652,17 @@ class TemporalReprojectNode extends Node {
 		if ( width === null || height === null ) return;
 
 		this._historyRenderTarget.setSize( width, height );
-		this._resolveRenderTarget.setSize( width, height );
-
 		this._resolution.value.set( width, height );
+
+		// `accumulate` copies the resolve output directly into the (always full-res) history
+		// render target via a same-size GPU copy, so resolutionScale only applies when history
+		// is supplied externally (e.g. by a RecurrentDenoiseNode at the same scale).
+		const scale = this.accumulate === false ? this.resolutionScale : 1;
+		const resolveWidth = Math.max( 1, Math.round( scale * width ) );
+		const resolveHeight = Math.max( 1, Math.round( scale * height ) );
+
+		this._resolveRenderTarget.setSize( resolveWidth, resolveHeight );
+		this._resolveResolution.value.set( resolveWidth, resolveHeight );
 
 	}
 
@@ -679,6 +718,7 @@ class TemporalReprojectNode extends Node {
 			if ( this.accumulate === false && this._externalHistoryTexture !== null ) {
 
 				this._historyTextureNode.value = this._historyRenderTarget.texture;
+				this._historyResolution.value.set( this._historyRenderTarget.width, this._historyRenderTarget.height );
 				historySwappedForRestart = true;
 
 			}
@@ -786,15 +826,22 @@ class TemporalReprojectNode extends Node {
 
 			const uvNode = uv();
 
+			// `screenTexel` is in this pass's own (possibly scaled-down) resolve grid — depth,
+			// normal and velocity are always full resolution, so each is remapped independently,
+			// the same way `beautyTexel` already handles a beauty texture of differing resolution.
 			const screenTexel = ivec2( floor( screenCoordinate.xy.sub( 0.5 ) ) );
-			const depth = textureLoad( this.depthNode, screenTexel ).r.toVar();
+
+			const depthTexel = beautyTexelFromScreen( screenTexel, vec2( this.depthNode.size() ), this._resolveResolution );
+			const depth = textureLoad( this.depthNode, depthTexel ).r.toVar();
 			depth.greaterThanEqual( 1.0 ).discard();
 
 			const beautySize = this.beautyNode.size();
-			const beautyTexel = beautyTexelFromScreen( screenTexel, beautySize, this._resolution );
+			const beautyTexel = beautyTexelFromScreen( screenTexel, beautySize, this._resolveResolution );
+
+			const normalTexel = beautyTexelFromScreen( screenTexel, vec2( this.normalNode.size() ), this._resolveResolution );
 
 			const inputColor = textureLoad( this.beautyNode, beautyTexel ).max( 0 ).toVar();
-			const viewNormal = unpackRGBToNormal( textureLoad( this.normalNode, screenTexel ).rgb ).toVar();
+			const viewNormal = unpackRGBToNormal( textureLoad( this.normalNode, normalTexel ).rgb ).toVar();
 
 			// Shared 3×3 beauty fetch: feeds both the variance-clip box and the SSR ray-length stats.
 			const neighborhood = collectNeighborhood( this.beautyNode, beautyTexel, inputColor, this.flickerSuppression );
@@ -805,6 +852,7 @@ class TemporalReprojectNode extends Node {
 
 			const sampleHistory = ( reprojUV ) => sampleHistory4Tap(
 				this._historyTextureNode,
+				this._historyResolution,
 				this._previousDepthNode,
 				this._previousNormalNode,
 				this._resolution,
@@ -819,7 +867,8 @@ class TemporalReprojectNode extends Node {
 
 			// Surface-velocity reprojection — the base history for both modes. `historyUV` is
 			// reused below for the stretch guard, so it is computed once here.
-			const velocityOff = velocityToUVOffset( textureLoad( this.velocityNode, screenTexel ).xy ).toVar();
+			const velocityTexel = beautyTexelFromScreen( screenTexel, vec2( this.velocityNode.size() ), this._resolveResolution );
+			const velocityOff = velocityToUVOffset( textureLoad( this.velocityNode, velocityTexel ).xy ).toVar();
 			const motionFactor = velocityOff.mul( this._resolution ).length().div( float( this.maxVelocityLength ) ).saturate();
 
 			const historyUV = uvNode.sub( velocityOff ).toVar();
@@ -902,7 +951,8 @@ class TemporalReprojectNode extends Node {
 			const a = historyColor.a.max( EPSILON );
 
 			// Universal stretch guard: reduce confidence where a "small area" is projected over a "large area".
-			const stretchConfidence = reprojectionStretchConfidence( historyUV, this._resolution );
+			// Uses the resolve pass's own resolution since dFdx/dFdy differentiate across its actual fragment grid.
+			const stretchConfidence = reprojectionStretchConfidence( historyUV, this._resolveResolution );
 			totalConfidence.mulAssign( stretchConfidence.pow( 2 ) );
 
 			const varianceGamma = mix( float( VARIANCE_GAMMA_MIN ), float( VARIANCE_GAMMA_MAX ), motionFactor.oneMinus().pow2() );
@@ -957,10 +1007,12 @@ class TemporalReprojectNode extends Node {
 		if ( this.accumulate === true || this._externalHistoryTexture === null ) {
 
 			this._historyTextureNode.value = this._historyRenderTarget.texture;
+			this._historyResolution.value.set( this._historyRenderTarget.width, this._historyRenderTarget.height );
 
 		} else {
 
 			this._historyTextureNode.value = this._externalHistoryTexture;
+			this._historyResolution.value.set( this._resolveResolution.value.x, this._resolveResolution.value.y );
 
 		}
 

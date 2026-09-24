@@ -99,12 +99,13 @@
 				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );
 				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
-				// bandwidth optimization
+				// bandwidth optimization (the normals stay half float, 8 bits quantize the reflection directions into bands)
 
-				prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
 				prePass.getTexture( 'metalRoughness' ).type = THREE.UnsignedByteType;
 
-				const prePassMetalRoughness = prePass.getTextureNode( 'metalRoughness' );
+				// sampled in screen space since the SSR blur mip selection also runs in the materials of the scene pass
+
+				const prePassMetalRoughness = prePass.getTextureNode( 'metalRoughness' ).sample( screenUV );
 
 				const sceneNormal = sample( ( uv ) => unpackRGBToNormal( prePassNormal.sample( uv ) ) );
 
@@ -127,8 +128,9 @@
 
 				giPass.giIntensity.value = Math.PI * Math.PI / 2;
 
-				// reflections: SSR of the same previous frame, output as unweighted radiance so the materials apply
-				// their own Fresnel, metalness and roughness to it like to an environment map
+				// reflections: SSR of the same previous frame, output as the complete unweighted radiance (falling back
+				// to the environment map, none here) which replaces the environment reflections of the materials, so
+				// they apply their own Fresnel, metalness and roughness to it
 
 				const ssrPass = ssr( previousRadiance, prePassDepth, sceneNormal, {
 					metalnessNode: prePassMetalRoughness.r,
@@ -397,14 +399,14 @@
 
 				}
 
-				// one switch for all temporal randomness: the effects' noise and the TRAA jitter. The effects
-				// share the frame index but use their own sequences, so their noise stays uncorrelated
+				// one switch for the effects' temporal noise. The effects share the frame index but use their own
+				// sequences, so their noise stays uncorrelated
 
 				function updateNoise() {
 
 					const animated = params.animatedNoise;
 
-					giPass.useTemporalFiltering = ssrPass.useTemporalFiltering = traaPass.useJitter = animated;
+					giPass.useTemporalFiltering = ssrPass.useTemporalFiltering = animated;
 					for ( const node of denoiseNodes ) node.useTemporalFiltering = animated;
 
 				}

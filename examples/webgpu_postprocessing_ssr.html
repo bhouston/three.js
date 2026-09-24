@@ -44,7 +44,7 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, colorSpaceToWorking } from 'three/tsl';
+		import { pass, mrt, normalView, metalness, roughness, velocity, screenUV, color, sample, texture, packNormalToRGB, unpackRGBToNormal, vec2, colorSpaceToWorking, builtinRadianceContext } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
@@ -144,52 +144,76 @@
 
 			renderPipeline = new THREE.RenderPipeline( renderer );
 
-			const scenePass = pass( scene, camera );
-			scenePass.setMRT( mrt( {
-				output: output,
-				normal: packNormalToRGB( normalView ),
+			// pre-pass: SSR feeds the materials of the scene pass, so depth, normals and velocity have to come
+			// from a separate pass
+
+			const prePass = pass( scene, camera );
+			prePass.name = 'Pre-Pass';
+			prePass.transparent = false;
+			prePass.setMRT( mrt( {
+				output: packNormalToRGB( normalView ),
+				velocity: velocity,
 				metalrough: vec2( metalness, roughness ) // pack metalness and roughness into a single attachment
 			} ) );
 
-			const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
-			const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal', ( node ) => {
+			const prePassNormal = prePass.getTextureNode().toInspector( 'Normal', ( node ) => {
 
 				return colorSpaceToWorking( node, THREE.SRGBColorSpace );
 
 			} );
-			const scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
+			const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
 
-				return scenePass.getLinearDepthNode();
+				return prePass.getLinearDepthNode();
 
 			} );
-			const scenePassMetalRough = scenePass.getTextureNode( 'metalrough' ).toInspector( 'Metalness-Roughness' );
+			const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
-			// optional: optimize bandwidth by reducing the texture precision for normals and metal/roughness
+			// sampled in screen space since the blur mip selection also runs in the materials of the scene pass
 
-			const normalTexture = scenePass.getTexture( 'normal' );
-			normalTexture.type = THREE.UnsignedByteType;
+			const prePassMetalRough = prePass.getTextureNode( 'metalrough' ).sample( screenUV ).toInspector( 'Metalness-Roughness' );
 
-			const metalRoughTexture = scenePass.getTexture( 'metalrough' );
-			metalRoughTexture.type = THREE.UnsignedByteType;
+			// optional: optimize bandwidth by reducing the texture precision for metal/roughness
+			// (the normals stay half float, 8 bits quantize the reflection directions into bands)
+
+			prePass.getTexture( 'metalrough' ).type = THREE.UnsignedByteType;
 
 			const sceneNormal = sample( ( uv ) => {
 
-				return unpackRGBToNormal( scenePassNormal.sample( uv ) );
+				return unpackRGBToNormal( prePassNormal.sample( uv ) );
 
 			} );
 
-			//
+			// scene pass: the reflections show its previous (anti-aliased) frame, reprojected to the current one.
+			// SSR renders while the scene pass does, so it reads the SMAA output rather than the scene pass
 
-			ssrPass = ssr( scenePassColor, scenePassDepth, sceneNormal, {
-				metalnessNode: scenePassMetalRough.r,
-				roughnessNode: scenePassMetalRough.g
-			} ).toInspector( 'SSR' );
+			const scenePass = pass( scene, camera );
+			const smaaPass = smaa( scenePass );
 
-			// blend SSR over beauty (SSR outputs premultiplied color, so use additive blending)
+			const previousFrame = texture( smaaPass.getTextureNode().value );
+			const previousRadiance = sample( ( uv ) => previousFrame.sample( uv.sub( prePassVelocity.sample( uv ).xy.mul( vec2( 0.5, - 0.5 ) ) ) ) );
 
-			const outputNode = smaa( scenePassColor.add( ssrPass.rgb ) );
+			// SSR outputs the complete reflected radiance, falling back to the environment map, which replaces
+			// the environment reflections of the materials so they apply their own Fresnel, metalness and roughness
 
-			renderPipeline.outputNode = outputNode;
+			ssrPass = ssr( previousRadiance, prePassDepth, sceneNormal, {
+				metalnessNode: prePassMetalRough.r,
+				roughnessNode: prePassMetalRough.g,
+				outputRadiance: true,
+				environmentNode: scene.environment,
+				camera
+			} );
+			ssrPass.environmentIntensity.value = scene.environmentIntensity;
+
+			// there is no temporal accumulation here, so keep the march jitter fixed instead of flickering
+
+			ssrPass.useTemporalFiltering = false;
+
+			const reflections = ssrPass.getTextureNode().sample( screenUV ).rgb.toInspector( 'SSR' );
+			const radianceContext = builtinRadianceContext( reflections );
+
+			scenePass.contextNode = radianceContext;
+
+			renderPipeline.outputNode = smaaPass;
 
 			//
 
@@ -211,17 +235,8 @@
 			ssrFolder.add( params, 'binaryRefine' ).name( 'binary refine' ).onChange( updateParameters );
 			ssrFolder.add( params, 'enabled' ).onChange( () => {
 
-				if ( params.enabled === true ) {
-
-					renderPipeline.outputNode = outputNode;
-
-				} else {
-
-					renderPipeline.outputNode = scenePass;
-
-				}
-
-				renderPipeline.needsUpdate = true;
+				scenePass.contextNode = params.enabled === true ? radianceContext : null;
+				scenePass.needsUpdate = true;
 
 			} );
 			const modelFolder = gui.addFolder( 'Model' );

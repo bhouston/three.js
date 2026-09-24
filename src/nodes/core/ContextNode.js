@@ -315,13 +315,15 @@ export function builtinGIContext( aoNode, giNode, node = null ) {
 
 /**
  * TSL function for defining a built-in indirect specular context for a given node. The radiance node
- * is added to the prefiltered radiance the lighting models weight with their environment BRDF, e.g.
- * the unweighted output of screen space reflections. It adds to any environment map radiance, so
- * the radiance node should only hold what the environment map is missing.
+ * replaces the prefiltered environment map radiance the lighting models weight with their environment
+ * BRDF, e.g. with the unweighted output of screen space reflections. It must therefore hold the complete
+ * radiance, falling back to the environment map where it has no information of its own, like `SSRNode`
+ * with `outputRadiance` does. `vec3( 0 )` removes the environment map reflections. Clearcoat keeps its
+ * environment map radiance and transparent materials are left untouched.
  *
  * @tsl
  * @function
- * @param {Node<vec3>} radianceNode - The indirect specular radiance node to add.
+ * @param {Node<vec3>} radianceNode - The indirect specular radiance node that replaces the environment radiance.
  * @param {Node} [node=null] - The node whose context should be modified.
  * @returns {ContextNode}
  */

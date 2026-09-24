@@ -59,36 +59,16 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, builtinRadianceContext } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
-		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
 		import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-
-		// Disable env map specular (radiance and clearcoat radiance) for every PBR material
-		// in this scene, since SSR provides the specular reflections instead. Diffuse env
-		// (irradiance) is left untouched. Equivalent to zeroing EnvironmentNode contributions,
-		// but scoped to this example rather than modifying the core library.
-		const _indirectSpecular = THREE.PhysicalLightingModel.prototype.indirectSpecular;
-		THREE.PhysicalLightingModel.prototype.indirectSpecular = function ( builder ) {
-
-			builder.context.radiance = vec3( 0 );
-
-			if ( this.clearcoatRadiance ) {
-
-				this.clearcoatRadiance.assign( vec3( 0 ) );
-
-			}
-
-			_indirectSpecular.call( this, builder );
-
-		};
 
 		const OUTPUT_COMPARE_DENOISE = 8;
 		const OUTPUT_COMPARE_SSR = 9;
@@ -139,7 +119,7 @@
 				envImportanceSampling: false,
 				screenEdgeFade: 0.2,
 				screenEdgeFadeBlack: false, // for indoor scenes, set to true
-				environmentIntensity: 3.14, // not too sure why exactly, but multiplying by ~PI makes the env map reflections match Blender more
+				environmentIntensity: 1, // matches scene.environmentIntensity, like the env reflections of the materials
 			},
 
 			temporalReproject: {
@@ -245,6 +225,10 @@
 
 			const scenePass = pass( scene, camera );
 			scenePassNode = scenePass;
+
+			// remove the env map reflections of the opaque materials since SSR provides them instead, including
+			// the env map fallback on misses. The diffuse env lighting and transparent materials are left untouched
+			scenePass.contextNode = builtinRadianceContext( vec3( 0 ) );
 			scenePass.setMRT( mrt( {
 				output: output,
 				// Store base color (albedo) in RGB + metalness in alpha. The albedo is needed for
@@ -266,8 +250,7 @@
 			scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 			const scenePassDiffuseColor = scenePass.getTextureNode( 'diffuseColor' ).toInspector( 'Diffuse Color' );
 
-			const normalTexture = scenePass.getTexture( 'normal' );
-			normalTexture.type = THREE.UnsignedByteType;
+			// the normals stay half float, 8 bits quantize the reflection directions
 
 			const diffuseTexture = scenePass.getTexture( 'diffuseColor' );
 			diffuseTexture.type = THREE.UnsignedByteType;
@@ -310,13 +293,11 @@
 			ssrNode.setHistory( denoiseNode, scenePassVelocity );
 			temporalReprojectNode.setHistoryTexture( denoiseNode );
 
-			const denoisePassBlend = vec4( denoiseNode.rgb, ssrNode.a.greaterThan( 0 ).toVar() );
-
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );
 			saturationUniform = uniform( params.post.grading.saturation );
 
-			const litColor = scenePassColor.rgb.add( denoisePassBlend.rgb );
+			const litColor = scenePassColor.rgb.add( denoiseNode.rgb );
 
 			const outputNode = vec4( litColor, 1 );
 			outputNode.toInspector( 'Combined SSR' );
@@ -472,7 +453,7 @@
 
 		function applyPostProcessing( source ) {
 
-			return sharpen( traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera ), 0 );
+			return traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera );
 
 		}
 

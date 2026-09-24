@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, logarithmicDepthToViewZ, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, trunc, uniform, uv, vec2, vec3, vec4, viewZToPerspectiveDepth, context } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, logarithmicDepthToViewZ, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, pmremTexture, reference, reflect, sub, texture, trunc, uniform, uv, vec2, vec3, vec4, viewZToPerspectiveDepth, context } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -18,11 +18,11 @@ const MAX_STEPS = 64;
  * @property {Node<float>} [metalnessNode=null] - Per-pixel metalness. Drives GGX reflection sampling and, with `reflectNonMetals=false`, the non-metal early-out.
  * @property {Node<float>} [roughnessNode=null] - Per-pixel roughness. Drives GGX sampling and the blur mip selection.
  * @property {boolean} [reflectNonMetals=false] - Only used when `stochastic=false`. When `false`, non-metallic surfaces are discarded for a noticeable performance gain; set `true` to also reflect dielectrics (e.g. marble, polished wood, plastic).
- * @property {Texture} [environmentNode=null] - Equirectangular HDR environment map with CPU-side `image.data` (e.g. from RGBELoader). Not compatible with PMREM / `scene.environment` cubemaps.
+ * @property {Texture} [environmentNode=null] - Equirectangular HDR environment map with CPU-side `image.data` (e.g. from RGBELoader). Not compatible with PMREM / `scene.environment` cubemaps. With `outputRadiance`, any environment map instead (typically `scene.environment`), sampled prefiltered like the materials do.
  * @property {boolean} [envImportanceSampling=false] - When `true`, precomputes env-luminance CDF tables and uses MIS for environment misses. Build-time only.
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
- * @property {boolean} [outputRadiance=false] - When `true`, outputs the incoming reflected radiance without the BRDF weighting (Fresnel, metalness) or environment fallback, so it can feed the indirect specular term of the materials via `builtinRadianceContext()`. Compile-time constant.
+ * @property {boolean} [outputRadiance=false] - When `true`, outputs the complete incoming reflected radiance without the BRDF weighting (Fresnel, metalness): the screen-space hits, blended toward the prefiltered `environmentNode` on misses and fades. It replaces the environment radiance of the materials via `builtinRadianceContext()`, like FidelityFX SSSR. Compile-time constant.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
 
@@ -86,9 +86,9 @@ class SSRNode extends Node {
 		this.envImportanceSampling = envImportanceSampling;
 
 		/**
-		 * When `true`, the output is the incoming reflected radiance without the BRDF weighting
-		 * or environment fallback, for use as the indirect specular radiance of the materials.
-		 * Fixed at construction time.
+		 * When `true`, the output is the complete incoming reflected radiance without the BRDF
+		 * weighting, falling back to the prefiltered environment map, for use as the indirect
+		 * specular radiance of the materials. Fixed at construction time.
 		 *
 		 * @type {boolean}
 		 */
@@ -296,7 +296,8 @@ class SSRNode extends Node {
 		this._stepExponent = 2;
 
 		/**
-		 * HDR environment map for screen-space misses.
+		 * HDR environment map for screen-space misses. With {@link SSRNode#outputRadiance}, any
+		 * environment map (e.g. `scene.environment`); its rotation is not supported.
 		 *
 		 * @type {?Texture}
 		 */
@@ -346,6 +347,14 @@ class SSRNode extends Node {
 		 * @type {UniformNode<int>}
 		 */
 		this._blurSpread = uniform( 1 );
+
+		/**
+		 * The mip level of the SSR texture the blur reads from. Automatically set when generating mips.
+		 *
+		 * @private
+		 * @type {UniformNode<float>}
+		 */
+		this._blurSourceLevel = uniform( 0 );
 
 		/**
 		 * Represents the projection matrix of the scene's camera.
@@ -405,12 +414,13 @@ class SSRNode extends Node {
 
 		/**
 		 * Intensity multiplier applied to environment-map reflections on screen-space
-		 * misses and at screen edges. Defaults to π to match the former hardcoded multiplier.
+		 * misses and at screen edges. Set it to `scene.environmentIntensity` to match the
+		 * environment reflections of the materials.
 		 *
 		 * @type {UniformNode<float>}
-		 * @default Math.PI
+		 * @default 1
 		 */
-		this.environmentIntensity = uniform( Math.PI );
+		this.environmentIntensity = uniform( 1 );
 
 		/**
 		 * The render target the SSR is rendered into.
@@ -420,6 +430,14 @@ class SSRNode extends Node {
 		 */
 		this._ssrRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
 		this._ssrRenderTarget.texture.name = 'SSRNode.SSR';
+
+		if ( stochastic === false && roughnessNode !== null ) {
+
+			// The blur reads prefiltered mips of the SSR texture, so its taps don't skip texels.
+			this._ssrRenderTarget.texture.generateMipmaps = true;
+			this._ssrRenderTarget.texture.minFilter = LinearMipmapLinearFilter;
+
+		}
 
 		/**
 		 * The render target for the blurred SSR reflections.
@@ -496,7 +514,7 @@ class SSRNode extends Node {
 		 */
 		this._blurredTextureNode = blurredTextureNode;
 
-		if ( environmentNode !== null && environmentNode.isTexture === true ) {
+		if ( environmentNode !== null && environmentNode.isTexture === true && outputRadiance === false ) {
 
 			this.setEnvMap( environmentNode );
 
@@ -560,7 +578,7 @@ class SSRNode extends Node {
 	 */
 	_buildBlurMaterial() {
 
-		this._blurMaterial.fragmentNode = boxBlur( texture( this._ssrRenderTarget.texture ), { size: this._blurQuality, separation: this._blurSpread } );
+		this._blurMaterial.fragmentNode = boxBlur( texture( this._ssrRenderTarget.texture ).level( this._blurSourceLevel ), { size: this._blurQuality, separation: this._blurSpread } );
 		this._blurMaterial.needsUpdate = true;
 
 	}
@@ -796,13 +814,15 @@ class SSRNode extends Node {
 
 		if ( this.stochastic === false && this.roughnessNode !== null ) {
 
-			// blur mips but leave the base mip unblurred
+			// blur mips but leave the base mip unblurred. Mip i blurs mip i - 1 of the SSR texture, with
+			// taps one texel of that mip apart (the spread is in base-level texels).
 
 			for ( let i = 0; i < blurRenderTarget.texture.mipmaps.length; i ++ ) {
 
 				_quadMesh.material = ( i === 0 ) ? this._copyMaterial : this._blurMaterial;
 
-				this._blurSpread.value = i;
+				this._blurSourceLevel.value = Math.max( i - 1, 0 );
+				this._blurSpread.value = 2 ** Math.max( i - 1, 0 );
 				renderer.setRenderTarget( blurRenderTarget, 0, i );
 				_quadMesh.name = 'SSR [ Blur Level ' + i + ' ]';
 				_quadMesh.render( renderer );
@@ -882,7 +902,7 @@ class SSRNode extends Node {
 
 		};
 
-		const sampleMarchNoise = this.stochastic === true ? bindAnalyticNoise( this._resolution, 47 ) : null;
+		const sampleMarchNoise = bindAnalyticNoise( this._resolution, 47 );
 
 		const computeScreenBorderFactor = Fn( ( [ uvCoord, borderWidth ] ) => {
 
@@ -910,7 +930,7 @@ class SSRNode extends Node {
 
 		const ssr = Fn( () => {
 
-			const noise = this.stochastic === true ? sampleMarchNoise( uvNode, this._noiseIndex ) : null;
+			const noise = sampleMarchNoise( uvNode, this._noiseIndex );
 			const uvPos = uvNode.toVar();
 
 			const depth = sampleDepth( uvPos ).toVar();
@@ -928,7 +948,10 @@ class SSRNode extends Node {
 			// so no explicit sample() is needed here.
 			const metalness = float( this.metalnessNode );
 
-			if ( this.stochastic === false && this._reflectNonMetals === false ) {
+			// In radiance mode non-metals still need the environment, so they skip the trace below instead.
+			const skipTrace = this.stochastic === false && this._reflectNonMetals === false;
+
+			if ( skipTrace && this.outputRadiance === false ) {
 
 				metalness.lessThanEqual( 0.0 ).discard();
 
@@ -1012,6 +1035,22 @@ class SSRNode extends Node {
 
 			}
 
+			// Radiance mode: the prefiltered environment radiance, sampled like the materials do (EnvironmentNode).
+			// The GGX rays are already spread over the lobe, so they sample the unfiltered environment.
+			const sampleEnvRadiance = () => {
+
+				if ( this.environmentNode === null ) return vec3( 0 );
+
+				const dir = this.stochastic ? viewReflectDir : mix( viewReflectDir, viewNormal, roughness.pow( 4 ) ).normalize();
+				const worldDir = this._cameraWorldMatrix.mul( vec4( dir, 0 ) ).xyz;
+
+				return pmremTexture( this.environmentNode, worldDir, this.stochastic ? float( 0 ) : roughness ).mul( this.environmentIntensity );
+
+			};
+
+			// Radiance mode: how much the hit replaces the environment, so fades blend toward it instead of black.
+			const hitWeight = float( 0 ).toVar();
+
 			// Multi-bounce: fold in the previous frame's reflection at the hit point, reprojected by its
 			// own motion. The (1 - history.a) decay damps the feedback. No-op until both textures are set.
 			const reprojectHitPointHistory = ( uvHit, color ) => {
@@ -1051,7 +1090,8 @@ class SSRNode extends Node {
 
 			};
 
-			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ) ).toVar();
+			// Guard grazing or back-facing normals, which would make the ray infinite or reverse it.
+			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ).max( 1e-3 ) ).toVar();
 
 			const d1viewPosition = viewPosition.add( viewReflectDir.mul( maxReflectRayLen ) ).toVar();
 
@@ -1082,7 +1122,7 @@ class SSRNode extends Node {
 			// coherent stochastic sampling; each step then spans the whole ray as rayVec / totalStep.
 			const totalStep = int( this.stochastic === false
 				? trunc( max( abs( xLen ), abs( yLen ) ).mul( this.quality.clamp() ) ).max( int( 1 ) ).toConst()
-				: this.quality.clamp().mul( MAX_STEPS ).max( float( 1 ) ) ).toConst();
+				: this.quality.clamp().mul( MAX_STEPS ).max( float( 1 ) ) ).mul( skipTrace ? int( metalness.greaterThan( 0.0 ) ) : int( 1 ) ).toConst();
 
 			const xSpan = xLen.div( totalStep ).toVar();
 			const ySpan = yLen.div( totalStep ).toVar();
@@ -1107,11 +1147,11 @@ class SSRNode extends Node {
 			// Screen-space position along the ray for a given s ∈ [0,1].
 			const screenPosAt = ( sVal ) => d0.add( stepVec.mul( sVal.mul( totalStep ) ) );
 
-			// Ray parameter s ∈ [0,1] for step `idx`. Blur marches uniformly (matching the original loop:
-			// one ~texel step per iteration). Scatter uses an exponential remap `(idx/steps)^stepExponent`
+			// Ray parameter s ∈ [0,1] for step `idx`. Blur marches uniformly (one step per 1/quality texels),
+			// jittered per pixel so the hits don't snap to the steps, which showed as bands. Scatter uses an exponential remap `(idx/steps)^stepExponent`
 			// that concentrates samples near the origin, floored to ≥1 texel/step; `jitter` dissolves banding.
 			const sampleFraction = this.stochastic === false
-				? ( idx ) => idx.div( totalStep )
+				? ( idx ) => idx.add( noise.z.sub( 0.5 ) ).div( totalStep ).max( 0 )
 				: ( idx ) => max(
 					idx.add( noise.z.sub( 0.5 ) ).div( totalStep ).pow( this.stepExponent ),
 					idx.div( rayLen )
@@ -1126,11 +1166,12 @@ class SSRNode extends Node {
 			const hitUvS = vec2( 0 ).toVar();
 			const hitD = float( 0 ).toVar();
 
-			// March from d0 toward d1, looking for an intersection with the depth buffer.
-			Loop( { start: int( 1 ), end: totalStep }, ( { i } ) => {
+			// March from d0 toward d1 (inclusive), looking for an intersection with the depth buffer.
+			Loop( { start: int( 1 ), end: totalStep, condition: '<=' }, ( { i } ) => {
 
 				// Exponentially-distributed ray parameter, shared by the sample position and ray depth.
-				const s = sampleFraction( float( i ) ).toVar();
+				// The jitter can push the last step past d1, so clamp it to the ray's end.
+				const s = sampleFraction( float( i ) ).min( 1 ).toVar();
 
 				const xy = screenPosAt( s ).toVar();
 
@@ -1253,7 +1294,7 @@ class SSRNode extends Node {
 					// Multi-bounce: add the reprojected previous-frame reflection at the hit point.
 					reflectColor.rgb.assign( reprojectHitPointHistory( uvS, reflectColor.rgb ) );
 
-					if ( this.stochastic === true ) applyHitEdgeFade( reflectColor, uvS, hitBorderWidth );
+					if ( this.stochastic === true && this.outputRadiance === false ) applyHitEdgeFade( reflectColor, uvS, hitBorderWidth );
 
 					// The scatter (GGX) path bakes distance/grazing response into finalSampleWeight.
 					// The mirror/blur path is a plain reflection, so reapply upstream's squared
@@ -1264,9 +1305,14 @@ class SSRNode extends Node {
 
 						const ratio = float( 1 ).sub( distancePointPlane.div( this.maxDistance ) ).toVar();
 						const attenuation = ratio.mul( ratio ).toVar();
-						weightedColor = weightedColor.mul( attenuation );
 
-						if ( this.outputRadiance === false ) {
+						if ( this.outputRadiance ) {
+
+							hitWeight.assign( attenuation.mul( computeScreenBorderFactor( uvS, this.screenEdgeFade ) ) );
+
+						} else {
+
+							weightedColor = weightedColor.mul( attenuation );
 
 							const fresnelCoe = div( dot( viewIncidentDir, viewReflectDir ).add( 1 ), 2 ).toVar();
 							weightedColor = weightedColor.mul( fresnelCoe );
@@ -1274,6 +1320,8 @@ class SSRNode extends Node {
 						}
 
 					}
+
+					if ( this.stochastic === true && this.outputRadiance ) hitWeight.assign( computeScreenBorderFactor( uvS, hitBorderWidth ) );
 
 					hit.assign( 1 );
 					output.assign( vec4( weightedColor, worldDistance ) );
@@ -1285,7 +1333,7 @@ class SSRNode extends Node {
 			// Screen-space ray missed: environment fallback (MIS when CDF env is set up).
 			If( hit.equal( 0 ), () => {
 
-				if ( this.stochastic === true ) {
+				if ( this.stochastic === true && this.outputRadiance === false ) {
 
 					output.assign( vec4( sampleEnvReflection().mul( this.environmentIntensity ), float( ENV_RAY_LENGTH ) ) );
 
@@ -1305,6 +1353,14 @@ class SSRNode extends Node {
 
 			// scale the reflection color by the user-controlled intensity
 			output.rgb.mulAssign( this.intensity );
+
+			// Radiance mode: blend toward the environment on misses and fades, after the luminance cap so the
+			// environment matches the materials. Misses report the environment ray length to the denoisers.
+			if ( this.outputRadiance ) {
+
+				output.assign( vec4( mix( sampleEnvRadiance(), output.rgb, hitWeight ), hit.equal( 1 ).select( output.a, float( ENV_RAY_LENGTH ) ) ) );
+
+			}
 
 			return output.max( 0 );
 

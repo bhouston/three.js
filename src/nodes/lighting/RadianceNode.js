@@ -1,9 +1,13 @@
 import LightingNode from './LightingNode.js';
 
 /**
- * A generic class that can be used by nodes which contribute
- * indirect specular radiance to the scene. E.g. screen space
+ * A generic class that can be used by nodes which provide the
+ * indirect specular radiance of the scene. E.g. screen space
  * reflections can be used as input for this module. Used in {@link NodeMaterial}.
+ *
+ * The radiance replaces the environment map radiance instead of adding to it, so the
+ * node should provide the complete radiance, falling back to the environment where it
+ * has no information of its own (see FidelityFX SSSR).
  *
  * @augments LightingNode
  */
@@ -18,14 +22,14 @@ class RadianceNode extends LightingNode {
 	/**
 	 * Constructs a new radiance node.
 	 *
-	 * @param {Node<vec3>} node - A node contributing indirect specular radiance.
+	 * @param {Node<vec3>} node - A node providing the indirect specular radiance.
 	 */
 	constructor( node ) {
 
 		super();
 
 		/**
-		 * A node contributing indirect specular radiance.
+		 * A node providing the indirect specular radiance.
 		 *
 		 * @type {Node<vec3>}
 		 */
@@ -35,7 +39,10 @@ class RadianceNode extends LightingNode {
 
 	setup( builder ) {
 
-		builder.context.radiance.addAssign( this.node );
+		// NodeMaterial creates this node after the environment node and the lighting nodes are
+		// sorted by id, so this replaces the radiance the environment has already added.
+
+		builder.context.radiance.assign( this.node );
 
 	}
 

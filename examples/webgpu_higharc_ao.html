@@ -36,7 +36,7 @@
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
-			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+			import { temporalReproject, previousFrameGeometry } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -217,9 +217,13 @@
 				// Reflections are reprojected with their hit points (specular mode) since they move differently than
 				// the surfaces showing them.
 
+				// all three chains reproject from the same pre-pass depth/normal, so they share one "previous
+				// frame" copy of it instead of each keeping (and updating) a private, identical copy.
+				const sharedPreviousFrame = previousFrameGeometry( prePassDepth, prePassNormal );
+
 				const temporalDenoise = ( signal ) => {
 
-					const reprojected = temporalReproject( signal, prePassDepth, prePassNormal, prePassVelocity, camera );
+					const reprojected = temporalReproject( signal, prePassDepth, prePassNormal, prePassVelocity, camera, { previousFrameGeometry: sharedPreviousFrame } );
 					const denoised = recurrentDenoise( reprojected, camera, { depth: prePassDepth, normal: prePassNormal, raw: signal } );
 					denoised.alphaSource = 'none';
 					reprojected.setHistoryTexture( denoised );
@@ -228,7 +232,7 @@
 
 				};
 
-				const ssrReprojected = temporalReproject( ssrNode, prePassDepth, prePassNormal, prePassVelocity, camera, { mode: 'specular' } );
+				const ssrReprojected = temporalReproject( ssrNode, prePassDepth, prePassNormal, prePassVelocity, camera, { mode: 'specular', previousFrameGeometry: sharedPreviousFrame } );
 				ssrReprojected.maxFrames.value = 16;
 				ssrReprojected.clampIntensity.value = 0.25;
 				temporalNodes.push( ssrReprojected );

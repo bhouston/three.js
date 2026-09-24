@@ -500,6 +500,95 @@ const VARIANCE_GAMMA_MIN = 0.5;
 const VARIANCE_GAMMA_MAX = 1;
 
 /**
+ * Caches a single "previous frame" copy of a depth/normal buffer, shared by multiple
+ * {@link TemporalReprojectNode} instances that reproject from the same source (e.g. separate AO,
+ * GI and SSR chains all reading the same G-buffer pre-pass). Without this, each instance would
+ * independently copy the identical depth/normal texture into its own private history buffer
+ * every frame — this does the copy once and lets every consumer read it.
+ *
+ * @three_import import { previousFrameGeometry } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+ */
+class PreviousFrameGeometry {
+
+	/**
+	 * @param {TextureNode} depthNode - The current frame's depth buffer.
+	 * @param {TextureNode} normalNode - The current frame's (view-space, packed) normal buffer.
+	 */
+	constructor( depthNode, normalNode ) {
+
+		this.depthNode = depthNode;
+		this.normalNode = normalNode;
+
+		this._previousDepthTexture = new DepthTexture( 1, 1 );
+		this._previousNormalTexture = normalNode.value.clone();
+
+		/**
+		 * @type {TextureNode}
+		 */
+		this.previousDepthNode = texture( this._previousDepthTexture );
+
+		/**
+		 * @type {TextureNode}
+		 */
+		this.previousNormalNode = texture( this._previousNormalTexture );
+
+		this._frameId = -1;
+
+	}
+
+	/**
+	 * Copies the current depth/normal into the "previous frame" archive, once per frame no matter
+	 * how many {@link TemporalReprojectNode} instances call this in the same frame.
+	 *
+	 * @param {Renderer} renderer
+	 * @param {NodeFrame} frame
+	 */
+	update( renderer, frame ) {
+
+		if ( frame.frameId === this._frameId ) return;
+
+		this._frameId = frame.frameId;
+
+		const currentDepth = this.depthNode.value;
+		const srcW = currentDepth.image !== null && currentDepth.image !== undefined ? currentDepth.image.width : 0;
+		const srcH = currentDepth.image !== null && currentDepth.image !== undefined ? currentDepth.image.height : 0;
+
+		if ( srcW <= 0 || srcH <= 0 ) return;
+
+		if ( this._previousDepthTexture.image.width !== srcW || this._previousDepthTexture.image.height !== srcH ) {
+
+			this._previousDepthTexture.dispose();
+			this._previousDepthTexture = new DepthTexture( srcW, srcH );
+			this.previousDepthNode.value = this._previousDepthTexture;
+
+			this._previousNormalTexture.dispose();
+			this._previousNormalTexture = this.normalNode.value.clone();
+			this.previousNormalNode.value = this._previousNormalTexture;
+
+		}
+
+		renderer.copyTextureToTexture( currentDepth, this._previousDepthTexture );
+		renderer.copyTextureToTexture( this.normalNode.value, this._previousNormalTexture );
+
+	}
+
+	dispose() {
+
+		this._previousDepthTexture.dispose();
+		this._previousNormalTexture.dispose();
+
+	}
+
+}
+
+/**
+ * @param {TextureNode} depthNode - The current frame's depth buffer.
+ * @param {TextureNode} normalNode - The current frame's (view-space, packed) normal buffer.
+ * @returns {PreviousFrameGeometry}
+ */
+export const previousFrameGeometry = ( depthNode, normalNode ) => new PreviousFrameGeometry( nodeObject( depthNode ), nodeObject( normalNode ) );
+
+/**
  * @typedef {'diffuse' | 'specular'} TemporalReprojectMode
  */
 
@@ -509,6 +598,9 @@ const VARIANCE_GAMMA_MAX = 1;
  * @property {boolean} [hitPointReprojection] - Parallax hit-point reprojection (specular mode only). Defaults to `true` in specular mode.
  * @property {boolean} [accumulate=false] - When `true`, history is stored in this pass (classic temporal resolve). When `false`,
  * use {@link TemporalReprojectNode#setHistoryTexture} to read history from another pass (e.g. denoise output).
+ * @property {?PreviousFrameGeometry} [previousFrameGeometry=null] - Shares one "previous frame" depth/normal
+ * archive across multiple instances reprojecting from the same source (see {@link previousFrameGeometry}),
+ * instead of each instance copying the identical depth/normal texture independently.
  */
 
 /**
@@ -552,7 +644,8 @@ class TemporalReprojectNode extends Node {
 		const {
 			mode = 'diffuse',
 			hitPointReprojection = mode === 'specular',
-			accumulate = false
+			accumulate = false,
+			previousFrameGeometry = null
 		} = options;
 
 		if ( mode !== 'specular' && mode !== 'diffuse' ) {
@@ -612,7 +705,16 @@ class TemporalReprojectNode extends Node {
 		this.clampIntensity = uniform( 1 );
 		this.flickerSuppression = uniform( 1 );
 
-		this._historyRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, depthTexture: new DepthTexture() } );
+		// a shared `previousFrameGeometry` supplies its own depth/normal history — this instance
+		// then needs no depth attachment of its own on `_historyRenderTarget`, and no private
+		// previous-depth/normal texture, since it never writes or owns either.
+		this._previousFrameGeometry = previousFrameGeometry;
+
+		this._historyRenderTarget = new RenderTarget( 1, 1, {
+			depthBuffer: false,
+			type: HalfFloatType,
+			depthTexture: previousFrameGeometry === null ? new DepthTexture() : null
+		} );
 		this._historyRenderTarget.texture.name = 'TemporalReprojectNode.history';
 		this._historyTextureNode = texture( this._historyRenderTarget.texture );
 
@@ -629,10 +731,19 @@ class TemporalReprojectNode extends Node {
 
 		this._originalProjectionMatrix = new Matrix4();
 
-		this._placeholderPreviousDepthTexture = new DepthTexture( 1, 1 );
-		this._previousDepthNode = texture( this._placeholderPreviousDepthTexture );
-		this._previousNormalTexture = normalNode.value.clone();
-		this._previousNormalNode = texture( this._previousNormalTexture );
+		if ( previousFrameGeometry === null ) {
+
+			this._placeholderPreviousDepthTexture = new DepthTexture( 1, 1 );
+			this._previousDepthNode = texture( this._placeholderPreviousDepthTexture );
+			this._previousNormalTexture = normalNode.value.clone();
+			this._previousNormalNode = texture( this._previousNormalTexture );
+
+		} else {
+
+			this._previousDepthNode = previousFrameGeometry.previousDepthNode;
+			this._previousNormalNode = previousFrameGeometry.previousNormalNode;
+
+		}
 
 		this._needsPostProcessingSync = false;
 		this._externalHistoryTexture = null;
@@ -709,9 +820,13 @@ class TemporalReprojectNode extends Node {
 			renderer.initRenderTarget( this._historyRenderTarget );
 			renderer.initRenderTarget( this._resolveRenderTarget );
 
-			this._previousNormalTexture.dispose();
-			this._previousNormalTexture = this.normalNode.value.clone();
-			this._previousNormalNode.value = this._previousNormalTexture;
+			if ( this._previousFrameGeometry === null ) {
+
+				this._previousNormalTexture.dispose();
+				this._previousNormalTexture = this.normalNode.value.clone();
+				this._previousNormalNode.value = this._previousNormalTexture;
+
+			}
 
 			// External history (e.g. denoise feedback) is stale at the old resolution — use
 			// freshly seeded internal history for this frame instead.
@@ -748,16 +863,24 @@ class TemporalReprojectNode extends Node {
 
 		}
 
-		const currentDepth = this.depthNode.value;
-		const srcW = currentDepth.image !== null && currentDepth.image !== undefined ? currentDepth.image.width : 0;
-		const srcH = currentDepth.image !== null && currentDepth.image !== undefined ? currentDepth.image.height : 0;
+		if ( this._previousFrameGeometry !== null ) {
 
-		if ( srcW > 0 && srcH > 0 ) {
+			this._previousFrameGeometry.update( renderer, frame );
 
-			renderer.copyTextureToTexture( currentDepth, this._historyRenderTarget.depthTexture );
-			renderer.copyTextureToTexture( this.normalNode.value, this._previousNormalTexture );
+		} else {
 
-			this._previousDepthNode.value = this._historyRenderTarget.depthTexture;
+			const currentDepth = this.depthNode.value;
+			const srcW = currentDepth.image !== null && currentDepth.image !== undefined ? currentDepth.image.width : 0;
+			const srcH = currentDepth.image !== null && currentDepth.image !== undefined ? currentDepth.image.height : 0;
+
+			if ( srcW > 0 && srcH > 0 ) {
+
+				renderer.copyTextureToTexture( currentDepth, this._historyRenderTarget.depthTexture );
+				renderer.copyTextureToTexture( this.normalNode.value, this._previousNormalTexture );
+
+				this._previousDepthNode.value = this._historyRenderTarget.depthTexture;
+
+			}
 
 		}
 
@@ -1037,17 +1160,23 @@ class TemporalReprojectNode extends Node {
 
 		super.dispose();
 
-		this._previousNormalTexture.dispose();
+		// a shared previousFrameGeometry owns its own textures and is disposed by its creator,
+		// not by any one TemporalReprojectNode instance that reads from it.
+		if ( this._previousFrameGeometry === null ) {
 
-		if ( this._previousDepthNode.value !== this._historyRenderTarget.depthTexture ) {
+			this._previousNormalTexture.dispose();
 
-			this._previousDepthNode.value.dispose();
+			if ( this._previousDepthNode.value !== this._historyRenderTarget.depthTexture ) {
 
-		}
+				this._previousDepthNode.value.dispose();
 
-		if ( this._placeholderPreviousDepthTexture !== this._historyRenderTarget.depthTexture ) {
+			}
 
-			this._placeholderPreviousDepthTexture.dispose();
+			if ( this._placeholderPreviousDepthTexture !== this._historyRenderTarget.depthTexture ) {
+
+				this._placeholderPreviousDepthTexture.dispose();
+
+			}
 
 		}
 

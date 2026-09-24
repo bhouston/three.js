@@ -40,7 +40,7 @@
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
-			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+			import { temporalReproject, previousFrameGeometry } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -149,12 +149,21 @@
 
 				const denoiseNodes = [];
 
+				// AO, GI and SSR all reproject from the same pre-pass depth/normal, so they share one
+				// "previous frame" copy of it instead of each keeping (and updating) a private, identical copy
+				const sharedPreviousFrame = previousFrameGeometry( prePassDepth, prePassNormal );
+
+				// the AO/GI temporal chains follow giPass's own "downsampling" resolution (see the GUI below);
+				// SSR isn't downsampled here, so its chain is left at the default full resolution
+				const giTemporalNodes = [];
+
 				const temporalDenoise = ( signal ) => {
 
-					const reprojected = temporalReproject( signal, prePassDepth, prePassNormal, prePassVelocity, camera );
+					const reprojected = temporalReproject( signal, prePassDepth, prePassNormal, prePassVelocity, camera, { previousFrameGeometry: sharedPreviousFrame } );
 					const denoised = recurrentDenoise( reprojected, camera, { depth: prePassDepth, normal: prePassNormal, raw: signal } );
 					denoised.alphaSource = 'none';
 					denoiseNodes.push( denoised );
+					giTemporalNodes.push( reprojected, denoised );
 					reprojected.setHistoryTexture( denoised );
 					return denoised.getTextureNode();
 
@@ -165,7 +174,7 @@
 				// reflections are reprojected with their hit points (specular mode) since they move differently
 				// than the surfaces showing them, which is what made them shimmer under the TRAA jitter
 
-				const ssrReprojected = temporalReproject( ssrPass, prePassDepth, prePassNormal, prePassVelocity, camera, { mode: 'specular' } );
+				const ssrReprojected = temporalReproject( ssrPass, prePassDepth, prePassNormal, prePassVelocity, camera, { mode: 'specular', previousFrameGeometry: sharedPreviousFrame } );
 				ssrReprojected.maxFrames.value = 16;
 				ssrReprojected.clampIntensity.value = 0.25;
 
@@ -358,7 +367,11 @@
 
 				const gui = renderer.inspector.createParameters( 'SSGI settings' );
 				gui.add( params, 'scene', { 'Basic': 'basic', 'Rounded': 'rounded', 'Metallic': 'metallic', 'Animated': 'animated' } ).onChange( updateScene );
-				gui.add( giPass, 'resolutionScale', { 'None': 1, '2x': 1 / 2, '3x': 1 / 3, '4x': 1 / 4 } ).name( 'downsampling' );
+				gui.add( giPass, 'resolutionScale', { 'None': 1, '2x': 1 / 2, '3x': 1 / 3, '4x': 1 / 4 } ).name( 'downsampling' ).onChange( ( value ) => {
+
+					for ( const node of giTemporalNodes ) node.resolutionScale = value;
+
+				} );
 				gui.add( params, 'output', types ).onChange( updatePostprocessing );
 				gui.add( params, 'reflections' ).onChange( updatePostprocessing );
 

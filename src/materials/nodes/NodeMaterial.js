@@ -16,6 +16,7 @@ import { float, vec3, vec4, bool } from '../../nodes/tsl/TSLBase.js';
 import AONode from '../../nodes/lighting/AONode.js';
 import { lightingContext } from '../../nodes/lighting/LightingContextNode.js';
 import IrradianceNode from '../../nodes/lighting/IrradianceNode.js';
+import RadianceNode from '../../nodes/lighting/RadianceNode.js';
 import { depth, viewZToLogarithmicDepth, viewZToOrthographicDepth } from '../../nodes/display/ViewportDepthNode.js';
 import { cameraFar, cameraNear, cameraProjectionMatrix } from '../../nodes/accessors/Camera.js';
 import { clipping, clippingAlpha, hardwareClipping } from '../../nodes/accessors/ClippingNode.js';
@@ -1022,6 +1023,18 @@ class NodeMaterial extends Material {
 			if ( giNode !== null ) {
 
 				materialLightsNode.push( new IrradianceNode( giNode ) );
+
+			}
+
+		}
+
+		if ( builder.context.getRadiance ) {
+
+			const radianceNode = builder.context.getRadiance( null, builder );
+
+			if ( radianceNode !== null ) {
+
+				materialLightsNode.push( new RadianceNode( radianceNode ) );
 
 			}
 

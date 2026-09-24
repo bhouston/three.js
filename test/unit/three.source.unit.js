@@ -264,6 +264,7 @@ import './src/textures/VideoTexture.tests.js';
 
 
 //src/nodes/core
+import './src/nodes/core/ContextNode.tests.js';
 import './src/nodes/core/NodeBuilder.tests.js';
 
 //src/nodes/display

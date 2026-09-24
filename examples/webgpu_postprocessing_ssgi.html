@@ -36,7 +36,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, diffuseColor, velocity, add, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample } from 'three/tsl';
+			import { pass, mrt, normalView, velocity, vec2, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample, texture, screenUV, uniform, convertToTexture, builtinGIContext } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
@@ -83,101 +83,88 @@
 
 				renderPipeline = new THREE.RenderPipeline( renderer );
 
-				const scenePass = pass( scene, camera );
-				scenePass.setMRT( mrt( {
-					output: output,
-					diffuseColor: diffuseColor,
-					normal: packNormalToRGB( normalView ),
+				// pre-pass: SSGI runs before the scene pass so its result can light the materials, which
+				// means depth, normals and velocity have to come from a separate pass
+
+				const prePass = pass( scene, camera );
+				prePass.name = 'Pre-Pass';
+				prePass.transparent = false;
+				prePass.setMRT( mrt( {
+					output: packNormalToRGB( normalView ),
 					velocity: velocity
 				} ) );
 
-				const scenePassColor = scenePass.getTextureNode( 'output' );
-				const scenePassDiffuse = scenePass.getTextureNode( 'diffuseColor' ).toInspector( 'Diffuse Color' );
-				const scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
-
-					return scenePass.getLinearDepthNode();
-
-				} );
-
-				const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal' );
-				const scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
+				const prePassNormal = prePass.getTextureNode().toInspector( 'Normal' );
+				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );
+				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
 				// bandwidth optimization
 
-				const diffuseTexture = scenePass.getTexture( 'diffuseColor' );
-				diffuseTexture.type = THREE.UnsignedByteType;
+				prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
 
-				const normalTexture = scenePass.getTexture( 'normal' );
-				normalTexture.type = THREE.UnsignedByteType;
+				const sceneNormal = sample( ( uv ) => unpackRGBToNormal( prePassNormal.sample( uv ) ) );
 
-				const sceneNormal = sample( ( uv ) => {
+				// scene pass, anti-aliased with TRAA
 
-					return unpackRGBToNormal( scenePassNormal.sample( uv ) );
+				const scenePass = pass( scene, camera );
+				const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
 
-				} );
+				// gi: the bounced light comes from the previous frame's final image reprojected to the current frame,
+				// which also accumulates multiple bounces over successive frames
 
-				// gi
+				const previousFrame = texture( traaPass.getTextureNode().value );
+				const previousRadiance = sample( ( uv ) => previousFrame.sample( uv.sub( prePassVelocity.sample( uv ).xy.mul( vec2( 0.5, - 0.5 ) ) ) ) );
 
-				const giPass = ssgi( scenePassColor, scenePassDepth, sceneNormal, camera );
+				const giPass = ssgi( previousRadiance, prePassDepth, sceneNormal, camera );
 				giPass.sliceCount.value = 2;
 				giPass.stepCount.value = 8;
+
+				// the materials expect irradiance: for uniform radiance L, SSGI integrates 2L/π while the irradiance is πL
+
+				giPass.giIntensity.value = Math.PI * Math.PI / 2;
 
 				const giParams = { denoising: 'spatial', denoiseRadius: 4 };
 
 				// denoising: none, spatial (denoise node, stable with a static noise pattern) or temporal
-				// (per-signal temporal accumulation and spatial filtering, then TRAA for anti-aliasing)
+				// (per-signal temporal accumulation and spatial filtering)
 
-				giPass.useTemporalFiltering = giParams.denoising === 'temporal';
-
-				const aoDenoised = denoise( giPass.getAONode(), scenePassDepth, sceneNormal, camera );
-				const giDenoised = denoise( giPass.getGINode(), scenePassDepth, sceneNormal, camera );
+				const aoDenoised = denoise( giPass.getAONode(), prePassDepth, sceneNormal, camera );
+				const giDenoised = denoise( giPass.getGINode(), prePassDepth, sceneNormal, camera );
 				aoDenoised.radius.value = giDenoised.radius.value = giParams.denoiseRadius;
 
 				// the temporal nodes only filter RGB, so AO and GI each get their own chain
 
 				const temporalDenoise = ( signal ) => {
 
-					const reprojected = temporalReproject( signal, scenePassDepth, scenePassNormal, scenePassVelocity, camera );
-					const denoised = recurrentDenoise( reprojected, camera, { depth: scenePassDepth, normal: scenePassNormal, raw: signal } );
+					const reprojected = temporalReproject( signal, prePassDepth, prePassNormal, prePassVelocity, camera );
+					const denoised = recurrentDenoise( reprojected, camera, { depth: prePassDepth, normal: prePassNormal, raw: signal } );
 					denoised.alphaSource = 'none';
 					reprojected.setHistoryTexture( denoised );
-					return denoised;
+					return denoised.getTextureNode();
 
 				};
 
-				const aoTemporal = temporalDenoise( giPass.getAONode() );
-				const giTemporal = temporalDenoise( giPass.getGINode() );
+				// the signals are sampled in screen space since they are applied in the materials of the scene pass
 
-				// composite
-
-				// the denoisers leave the background undefined, so keep it untouched
-
-				const isBackground = scenePassDepth.r.greaterThanEqual( 1 );
-
-				const composite = ( ao, gi, name ) => {
-
-					const lit = add( scenePassColor.rgb.mul( ao ), ( scenePassDiffuse.rgb.mul( gi.rgb ) ) );
-					const node = vec4( isBackground.select( scenePassColor.rgb, lit ), scenePassColor.a );
-					node.name = name;
-					return node;
-
+				const signals = {
+					none: {
+						ao: giPass.getAONode().sample( screenUV ).r.toInspector( 'SSGI.AO' ),
+						gi: giPass.getGINode().sample( screenUV ).rgb.toInspector( 'SSGI.GI' )
+					},
+					spatial: {
+						ao: convertToTexture( aoDenoised ).sample( screenUV ).r.toInspector( 'SSGI.AO (denoised)' ),
+						gi: convertToTexture( giDenoised ).sample( screenUV ).rgb.toInspector( 'SSGI.GI (denoised)' )
+					},
+					temporal: {
+						ao: temporalDenoise( giPass.getAONode() ).sample( screenUV ).r.toInspector( 'SSGI.AO (temporal)' ),
+						gi: temporalDenoise( giPass.getGINode() ).sample( screenUV ).rgb.toInspector( 'SSGI.GI (temporal)' )
+					}
 				};
 
-				const aoRaw = giPass.getAONode().toInspector( 'SSGI.AO' );
-				const giRaw = giPass.getGINode().toInspector( 'SSGI.GI' );
-				const aoSmooth = aoDenoised.r.toInspector( 'SSGI.AO (denoised)' );
-				const giSmooth = giDenoised.rgb.toInspector( 'SSGI.GI (denoised)' );
-				const aoAccumulated = aoTemporal.r.toInspector( 'SSGI.AO (temporal)' );
-				const giAccumulated = giTemporal.rgb.toInspector( 'SSGI.GI (temporal)' );
+				// the debug views are selected with a uniform so the scene pass and TRAA keep running, since SSGI
+				// samples their previous frame
 
-				const compositePass = composite( aoRaw, giRaw, 'Composite' );
-				const compositeDenoisedPass = composite( aoSmooth, giSmooth, 'Composite (denoised)' );
-				const compositeTemporalPass = composite( aoAccumulated, giAccumulated, 'Composite (temporal)' );
-
-				// traa
-
-				const traaPass = traa( compositeTemporalPass, scenePassDepth, scenePassVelocity, camera );
-				renderPipeline.outputNode = compositeDenoisedPass;
+				const debugView = uniform( 0 );
 
 				// Cornell Box inspired scene
 
@@ -295,7 +282,7 @@
 
 				// Light source geometry
 				const lightSourceGeometry = new THREE.CylinderGeometry( 2.5, 2.5, 1, 64 );
-				const lightSourceMaterial = new THREE.MeshBasicMaterial();
+				const lightSourceMaterial = new THREE.MeshStandardMaterial( { color: 0x000000, emissive: 0xffffff } ); // emissive so AO doesn't darken it
 				const lightSource = new THREE.Mesh( lightSourceGeometry, lightSourceMaterial );
 				lightSource.position.y = 15;
 				scene.add( lightSource );
@@ -352,37 +339,23 @@
 				function updatePostprocessing() {
 
 					const spatial = giParams.denoising === 'spatial';
-					const temporal = giParams.denoising === 'temporal';
-					giPass.useTemporalFiltering = temporal;
+					giPass.useTemporalFiltering = giParams.denoising === 'temporal';
 
 					if ( spatial ) denoiseRadiusControl.show(); else denoiseRadiusControl.hide();
 
-					const ao = spatial ? aoSmooth : temporal ? aoAccumulated : aoRaw;
-					const gi = spatial ? giSmooth : temporal ? giAccumulated : giRaw;
+					const { ao, gi } = signals[ giParams.denoising ];
 
-					if ( params.output === 1 ) {
+					debugView.value = params.output === 3 ? 0 : params.output;
 
-						renderPipeline.outputNode = vec4( vec3( ao ), 1 );
+					scenePass.contextNode = params.output === 3 ? null : builtinGIContext( ao, gi );
+					scenePass.needsUpdate = true;
 
-					} else if ( params.output === 2 ) {
-
-						renderPipeline.outputNode = vec4( gi, 1 );
-
-					} else if ( params.output === 3 ) {
-
-						renderPipeline.outputNode = scenePassColor;
-
-					} else {
-
-						renderPipeline.outputNode = spatial ? compositeDenoisedPass : temporal ? traaPass : compositePass;
-
-					}
-
+					renderPipeline.outputNode = debugView.equal( 1 ).select( vec4( vec3( ao ), 1 ), debugView.equal( 2 ).select( vec4( gi, 1 ), traaPass ) );
 					renderPipeline.needsUpdate = true;
-
 
 				}
 
+				updatePostprocessing();
 
 			}
 

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - HighArc AO / SSGI</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>HighArc AO / SSGI</span>
+			</div>
+
+			<small>GTAO, denoised SSGI ambient occlusion and denoised SSGI bounce light on an architectural model.</small>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import { pass, mrt, output, normalView, diffuseColor, float, vec3, vec4, mix, smoothstep, reference, perspectiveDepthToViewZ } from 'three/tsl';
+			import { ao } from 'three/addons/tsl/display/GTAONode.js';
+			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
+			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
+
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+			// The model is in meters; the original viewer works in inches, so its distances are scaled by this.
+			const INCH = 0.0254;
+
+			const SSGI_SAMPLES = {
+				low: { slices: 2, steps: 6 },
+				medium: { slices: 3, steps: 8 },
+				high: { slices: 4, steps: 12 }
+			};
+
+			const params = {
+				ambientEffect: 'denoised-ao', // off, gtao, denoised-ao, ssgi
+				channel: 'combined', // combined, beauty, ao, gi
+				ssgiQuality: 'medium',
+				ssgiIntensity: 2,
+				ssgiRadius: 120 * INCH,
+				ssgiThickness: 8 * INCH,
+				ssgiAOIntensity: 1.5,
+				denoiseRadius: 4,
+				resolution: 0, // ambient effect resolution scale; 0 = auto (half resolution, long edge capped at 768 physical pixels)
+				fadeStart: 6000 * INCH,
+				fadeEnd: 14000 * INCH,
+				exposure: 1,
+				sunIntensity: 3,
+				environmentIntensity: 0.6
+			};
+
+			let camera, scene, renderer, renderPipeline, controls, sun;
+			let scenePass, gtaoNode, ssgiNode, denoiseNodes = [];
+
+			const target = new THREE.Vector3();
+			let span = 1;
+
+			init();
+
+			async function init() {
+
+				camera = new THREE.PerspectiveCamera( 35, window.innerWidth / window.innerHeight, 0.1, 1000 );
+
+				scene = new THREE.Scene();
+
+				renderer = new THREE.WebGPURenderer();
+				renderer.setPixelRatio( Math.min( window.devicePixelRatio, 2 ) );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = params.exposure;
+				renderer.shadowMap.enabled = true;
+				renderer.shadowMap.type = THREE.PCFShadowMap;
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+
+				await renderer.init();
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.enableDamping = true;
+
+				// environment
+
+				const hdr = await new HDRLoader().loadAsync( 'textures/equirectangular/blouberg_sunrise_2_1k.hdr' );
+				hdr.mapping = THREE.EquirectangularReflectionMapping;
+				scene.environment = hdr;
+				scene.background = hdr;
+				scene.environmentIntensity = params.environmentIntensity;
+				scene.backgroundIntensity = params.environmentIntensity;
+
+				// model
+
+				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/Dogwood.glb' );
+				const model = gltf.scene;
+				model.traverse( ( child ) => {
+
+					if ( child.isMesh ) {
+
+						child.castShadow = true;
+						child.receiveShadow = true;
+
+					}
+
+				} );
+				scene.add( model );
+
+				const box = new THREE.Box3().setFromObject( model );
+				const size = box.getSize( new THREE.Vector3() );
+				box.getCenter( target );
+				span = size.length();
+
+				controls.target.copy( target );
+				camera.position.copy( target ).add( new THREE.Vector3( 0.8, 0.5, 1 ).normalize().multiplyScalar( span * 1.2 ) );
+
+				// ground
+
+				const ground = new THREE.Mesh( new THREE.PlaneGeometry( span * 20, span * 20 ), new THREE.MeshStandardMaterial( { color: 0xb0b0a8, roughness: 1 } ) );
+				ground.rotation.x = - Math.PI / 2;
+				ground.position.y = box.min.y;
+				ground.receiveShadow = true;
+				scene.add( ground );
+
+				// sun, with the shadow camera fitted to the model
+
+				sun = new THREE.DirectionalLight( 0xfff4e5, params.sunIntensity );
+				sun.position.copy( target ).add( new THREE.Vector3( - 0.5, 1, 0.6 ).normalize().multiplyScalar( span ) );
+				sun.target.position.copy( target );
+				sun.castShadow = true;
+				sun.shadow.mapSize.set( 2048, 2048 );
+				sun.shadow.camera.left = sun.shadow.camera.bottom = - span * 0.6;
+				sun.shadow.camera.right = sun.shadow.camera.top = span * 0.6;
+				sun.shadow.camera.near = 0.1;
+				sun.shadow.camera.far = span * 2;
+				sun.shadow.normalBias = 0.02;
+				scene.add( sun, sun.target );
+
+				// post-processing
+
+				renderPipeline = new THREE.RenderPipeline( renderer );
+
+				scenePass = pass( scene, camera );
+				scenePass.setMRT( mrt( { output, diffuseColor, normal: normalView } ) );
+
+				buildPipeline();
+
+				window.addEventListener( 'resize', onWindowResize );
+
+				renderer.setAnimationLoop( animate );
+
+				// GUI
+
+				const gui = renderer.inspector.createParameters( 'Settings' );
+				gui.add( params, 'ambientEffect', [ 'off', 'gtao', 'denoised-ao', 'ssgi' ] ).name( 'ambient effect' ).onChange( buildPipeline );
+				gui.add( params, 'channel', [ 'combined', 'beauty', 'ao', 'gi' ] ).onChange( buildPipeline );
+				gui.add( params, 'ssgiQuality', [ 'low', 'medium', 'high' ] ).name( 'SSGI quality' ).onChange( updateParameters );
+				gui.add( params, 'ssgiIntensity', 0, 10 ).name( 'SSGI intensity' ).onChange( updateParameters );
+				gui.add( params, 'ssgiRadius', 0.1, 10 ).name( 'SSGI radius (m)' ).onChange( updateParameters );
+				gui.add( params, 'ssgiThickness', 0.01, 2 ).name( 'SSGI thickness (m)' ).onChange( updateParameters );
+				gui.add( params, 'ssgiAOIntensity', 0, 4 ).name( 'SSGI AO intensity' ).onChange( updateParameters );
+				gui.add( params, 'denoiseRadius', 0, 16 ).name( 'denoise radius' ).onChange( updateParameters );
+				gui.add( params, 'resolution', { 'auto (768 px cap)': 0, 'full': 1, '1/2': 1 / 2, '1/3': 1 / 3, '1/4': 1 / 4 } ).name( 'AO resolution' );
+				gui.add( params, 'exposure', 0, 4 ).onChange( ( v ) => renderer.toneMappingExposure = v );
+				gui.add( params, 'sunIntensity', 0, 10 ).name( 'sun intensity' ).onChange( ( v ) => sun.intensity = v );
+				gui.add( params, 'environmentIntensity', 0, 2 ).name( 'env intensity' ).onChange( ( v ) => {
+
+					scene.environmentIntensity = v;
+					scene.backgroundIntensity = v;
+
+				} );
+
+			}
+
+			// resolution scale of the ambient effect target; auto matches the original viewer
+
+			function ambientScale( width, height ) {
+
+				if ( params.resolution > 0 ) return params.resolution;
+
+				return Math.min( 0.5, 768 / Math.max( width, height, 1 ) );
+
+			}
+
+			function buildPipeline() {
+
+				if ( gtaoNode ) gtaoNode.dispose();
+				if ( ssgiNode ) ssgiNode.dispose();
+				denoiseNodes.forEach( ( node ) => node.dispose() );
+				gtaoNode = ssgiNode = null;
+				denoiseNodes = [];
+
+				const color = scenePass.getTextureNode( 'output' );
+				const depth = scenePass.getTextureNode( 'depth' );
+				const normal = scenePass.getTextureNode( 'normal' );
+
+				let occlusion = float( 1 );
+				let bounce = vec3( 0 );
+				let shaded = color.rgb;
+
+				if ( params.ambientEffect === 'gtao' ) {
+
+					gtaoNode = ao( depth, normal, camera );
+					gtaoNode.samples.value = 8;
+					gtaoNode.radius.value = 32 * INCH;
+					gtaoNode.thickness.value = 24 * INCH;
+					gtaoNode.scale.value = 0.85;
+
+					occlusion = gtaoNode.r;
+					shaded = color.rgb.mul( occlusion );
+
+				} else if ( params.ambientEffect === 'denoised-ao' || params.ambientEffect === 'ssgi' ) {
+
+					ssgiNode = ssgi( color, depth, normal, camera );
+					ssgiNode.useScreenSpaceSampling.value = false;
+					ssgiNode.useTemporalFiltering = false;
+
+					// SSGINode has no resolution scale; it sizes itself to the drawing buffer every frame, so clamp that call
+
+					const setSize = ssgiNode.setSize.bind( ssgiNode );
+					ssgiNode.setSize = ( width, height ) => {
+
+						const scale = ambientScale( width, height );
+						setSize( Math.max( 1, Math.floor( width * scale ) ), Math.max( 1, Math.floor( height * scale ) ) );
+
+					};
+
+					// fade out screen-space effects in the distance to avoid terrain and horizon halos
+
+					const viewDistance = perspectiveDepthToViewZ( depth.r, reference( 'near', 'float', camera ), reference( 'far', 'float', camera ) ).negate();
+					const fade = smoothstep( params.fadeStart, params.fadeEnd, viewDistance );
+
+					const aoDenoised = denoise( ssgiNode.getAONode(), depth, normal, camera );
+					denoiseNodes.push( aoDenoised );
+
+					occlusion = mix( aoDenoised.r, float( 1 ), fade );
+					shaded = color.rgb.mul( occlusion );
+
+					if ( params.ambientEffect === 'ssgi' ) {
+
+						const giDenoised = denoise( ssgiNode.getGINode(), depth, normal, camera );
+						denoiseNodes.push( giDenoised );
+
+						bounce = scenePass.getTextureNode( 'diffuseColor' ).rgb.mul( giDenoised.rgb ).mul( fade.oneMinus() );
+						shaded = shaded.add( bounce );
+
+					}
+
+				}
+
+				updateParameters();
+
+				// data channels skip tone mapping and the output color transform
+
+				if ( params.channel === 'beauty' ) shaded = color.rgb;
+				else if ( params.channel === 'ao' ) shaded = vec3( occlusion );
+				else if ( params.channel === 'gi' ) shaded = bounce;
+
+				const isData = params.channel === 'ao' || params.channel === 'gi';
+
+				renderPipeline.outputNode = vec4( shaded, isData ? float( 1 ) : color.a );
+				renderPipeline.outputColorTransform = ! isData;
+				renderer.toneMapping = isData ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+				renderPipeline.needsUpdate = true;
+
+			}
+
+			function updateParameters() {
+
+				if ( ssgiNode ) {
+
+					const samples = SSGI_SAMPLES[ params.ssgiQuality ];
+					ssgiNode.sliceCount.value = samples.slices;
+					ssgiNode.stepCount.value = samples.steps;
+					ssgiNode.radius.value = params.ssgiRadius;
+					ssgiNode.thickness.value = params.ssgiThickness;
+					ssgiNode.aoIntensity.value = params.ssgiAOIntensity;
+					ssgiNode.giIntensity.value = params.ambientEffect === 'ssgi' ? params.ssgiIntensity : 0;
+
+				}
+
+				for ( const node of denoiseNodes ) {
+
+					node.index.value = 0;
+					node.radius.value = params.denoiseRadius;
+
+				}
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function animate() {
+
+				controls.update();
+
+				// like the original viewer, near/far track the orbit distance
+
+				const distance = camera.position.distanceTo( controls.target );
+				camera.near = Math.max( INCH, distance * 0.01 );
+				camera.far = Math.max( span * 4, distance + span * 4 );
+				camera.updateProjectionMatrix();
+
+				if ( gtaoNode ) {
+
+					const size = renderer.getDrawingBufferSize( new THREE.Vector2() );
+					gtaoNode.resolutionScale = ambientScale( size.x, size.y );
+
+				}
+
+				renderPipeline.render();
+
+			}
+
+		</script>
+	</body>
+</html>

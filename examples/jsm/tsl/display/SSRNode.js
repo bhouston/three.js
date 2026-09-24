@@ -22,6 +22,7 @@ const MAX_STEPS = 64;
  * @property {boolean} [envImportanceSampling=false] - When `true`, precomputes env-luminance CDF tables and uses MIS for environment misses. Build-time only.
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
+ * @property {boolean} [outputRadiance=false] - When `true`, outputs the incoming reflected radiance without the BRDF weighting (Fresnel, metalness) or environment fallback, so it can feed the indirect specular term of the materials via `builtinRadianceContext()`. Compile-time constant.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
 
@@ -61,7 +62,8 @@ class SSRNode extends Node {
 			environmentNode = null,
 			envImportanceSampling = false,
 			diffuseNode = null,
-			binaryRefine = false
+			binaryRefine = false,
+			outputRadiance = false
 		} = options;
 
 		let camera = options.camera ?? null;
@@ -82,6 +84,15 @@ class SSRNode extends Node {
 		 * @type {boolean}
 		 */
 		this.envImportanceSampling = envImportanceSampling;
+
+		/**
+		 * When `true`, the output is the incoming reflected radiance without the BRDF weighting
+		 * or environment fallback, for use as the indirect specular radiance of the materials.
+		 * Fixed at construction time.
+		 *
+		 * @type {boolean}
+		 */
+		this.outputRadiance = outputRadiance;
 
 		/**
 		 * The node that represents the beauty pass.
@@ -928,7 +939,7 @@ class SSRNode extends Node {
 			if ( this.stochastic === false ) {
 
 				viewReflectDir = reflect( viewIncidentDir, viewNormal ).normalize().toVar();
-				finalSampleWeight = vec3( metalness );
+				finalSampleWeight = this.outputRadiance ? vec3( 1 ) : vec3( metalness );
 				specDominantFactor = float( 1 );
 
 			} else {
@@ -949,12 +960,12 @@ class SSRNode extends Node {
 				} );
 
 				viewReflectDir = ggxSample.get( 'reflectDir' ).toVar();
-				finalSampleWeight = ggxSample.get( 'sampleWeight' ).toVar();
+				finalSampleWeight = this.outputRadiance ? vec3( 1 ) : ggxSample.get( 'sampleWeight' ).toVar();
 				specDominantFactor = getSpecularDominantFactor( ggxSample.get( 'NdotV' ), roughness ).toVar();
 
 				sampleEnvReflection = () => {
 
-					if ( this._importanceEnvironment === null ) return vec3( 0 );
+					if ( this._importanceEnvironment === null || this.outputRadiance ) return vec3( 0 );
 
 					const envColor = vec3( 0 ).toVar();
 
@@ -1243,8 +1254,14 @@ class SSRNode extends Node {
 
 						const ratio = float( 1 ).sub( distancePointPlane.div( this.maxDistance ) ).toVar();
 						const attenuation = ratio.mul( ratio ).toVar();
-						const fresnelCoe = div( dot( viewIncidentDir, viewReflectDir ).add( 1 ), 2 ).toVar();
-						weightedColor = weightedColor.mul( attenuation.mul( fresnelCoe ) );
+						weightedColor = weightedColor.mul( attenuation );
+
+						if ( this.outputRadiance === false ) {
+
+							const fresnelCoe = div( dot( viewIncidentDir, viewReflectDir ).add( 1 ), 2 ).toVar();
+							weightedColor = weightedColor.mul( fresnelCoe );
+
+						}
 
 					}
 

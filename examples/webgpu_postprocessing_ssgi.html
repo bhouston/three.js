@@ -138,7 +138,6 @@
 				} );
 				ssrPass.maxDistance.value = 20;
 
-				const reflections = ssrPass.getTextureNode().sample( screenUV ).rgb.toInspector( 'SSR' );
 
 				// denoising: none or temporal (per-signal temporal accumulation and spatial filtering)
 
@@ -161,14 +160,35 @@
 
 				// the signals are sampled in screen space since they are applied in the materials of the scene pass
 
+				// reflections are reprojected with their hit points (specular mode) since they move differently
+				// than the surfaces showing them, which is what made them shimmer under the TRAA jitter
+
+				const ssrReprojected = temporalReproject( ssrPass, prePassDepth, prePassNormal, prePassVelocity, camera, { mode: 'specular' } );
+				ssrReprojected.maxFrames.value = 16;
+				ssrReprojected.clampIntensity.value = 0.25;
+
+				const ssrDenoised = recurrentDenoise( ssrReprojected, camera, { depth: prePassDepth, normal: prePassNormal, raw: ssrPass, metalRoughness: prePassMetalRoughness, mode: 'specular' } );
+				ssrDenoised.alphaSource = 'raylength'; // the SSR alpha channel holds the ray length
+				ssrDenoised.lumaPhi.value = 0.75;
+				ssrDenoised.depthPhi.value = 20;
+				ssrDenoised.normalPhi.value = 0.3;
+				ssrDenoised.radius.value = 1.5;
+				ssrDenoised.alphaPhi.value = 5;
+				ssrDenoised.strength.value = 0.725;
+				ssrDenoised.adaptiveTrust.value = 1;
+				ssrReprojected.setHistoryTexture( ssrDenoised );
+				denoiseNodes.push( ssrDenoised );
+
 				const signals = {
 					none: {
 						ao: giPass.getAONode().sample( screenUV ).r.toInspector( 'SSGI.AO' ),
-						gi: giPass.getGINode().sample( screenUV ).rgb.toInspector( 'SSGI.GI' )
+						gi: giPass.getGINode().sample( screenUV ).rgb.toInspector( 'SSGI.GI' ),
+						reflections: ssrPass.getTextureNode().sample( screenUV ).rgb.toInspector( 'SSR' )
 					},
 					temporal: {
 						ao: temporalDenoise( giPass.getAONode() ).sample( screenUV ).r.toInspector( 'SSGI.AO (temporal)' ),
-						gi: temporalDenoise( giPass.getGINode() ).sample( screenUV ).rgb.toInspector( 'SSGI.GI (temporal)' )
+						gi: temporalDenoise( giPass.getGINode() ).sample( screenUV ).rgb.toInspector( 'SSGI.GI (temporal)' ),
+						reflections: ssrDenoised.getTextureNode().sample( screenUV ).rgb.toInspector( 'SSR (temporal)' )
 					}
 				};
 
@@ -361,7 +381,7 @@
 				function updatePostprocessing() {
 
 
-					const { ao, gi } = signals[ giParams.denoising ];
+					const { ao, gi, reflections } = signals[ giParams.denoising ];
 
 					debugView.value = params.output === 3 ? 0 : params.output;
 

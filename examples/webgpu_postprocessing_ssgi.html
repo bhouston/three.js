@@ -352,7 +352,7 @@
 
 				updateScene();
 
-				const types = { Combined: 0, Direct: 3, AO: 1, GI: 2 };
+				const types = { Combined: 0, Direct: 3, AO: 1, GI: 2, Reflections: 4 };
 
 				const gui = renderer.inspector.createParameters( 'SSGI settings' );
 				gui.add( params, 'scene', { 'Basic': 'basic', 'Rounded': 'rounded', 'Metallic': 'metallic', 'Animated': 'animated' } ).onChange( updateScene );
@@ -390,7 +390,9 @@
 					scenePass.contextNode = params.output === 3 ? null : builtinGIContext( ao, gi, radiance );
 					scenePass.needsUpdate = true;
 
-					renderPipeline.outputNode = debugView.equal( 1 ).select( vec4( vec3( ao ), 1 ), debugView.equal( 2 ).select( vec4( gi, 1 ), traaPass ) );
+					const debugOutput = debugView.equal( 1 ).select( vec4( vec3( ao ), 1 ), debugView.equal( 2 ).select( vec4( gi, 1 ), vec4( reflections, 1 ) ) );
+
+					renderPipeline.outputNode = debugView.equal( 0 ).select( traaPass, debugOutput );
 					renderPipeline.needsUpdate = true;
 
 				}

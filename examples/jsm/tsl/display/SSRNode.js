@@ -240,6 +240,16 @@ class SSRNode extends Node {
 		this.quality = uniform( 0.5 );
 
 		/**
+		 * Whether the noise pattern changes every frame or not. Animated noise is required
+		 * for temporal accumulation (e.g. `TemporalReprojectNode` or `TRAANode`) to converge.
+		 * Set it to `false` for a stable pattern, e.g. when only spatial denoising is used.
+		 *
+		 * @type {boolean}
+		 * @default true
+		 */
+		this.useTemporalFiltering = true;
+
+		/**
 		 * Mirror bias for the stochastic GGX sampling. Concentrates the reflected rays toward
 		 * the lobe's narrow (near-mirror) core, trading a small amount of bias for less noise.
 		 * `0` samples the full VNDF lobe; values toward `1` tighten the cone. Range `[0,1]`.
@@ -768,8 +778,8 @@ class SSRNode extends Node {
 
 		this.setSize( size.width, size.height );
 
-		// Advance the noise index once per frame (matches SSGI / Denoise).
-		this._noiseIndex.value = ( this._noiseIndex.value + 1 ) % 0x7fffffff;
+		// Advance the noise with the frame so it stays in sync with the other temporal effects.
+		this._noiseIndex.value = this.useTemporalFiltering === true ? frame.frameId : 0;
 
 		// clear
 

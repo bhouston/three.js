@@ -40,6 +40,8 @@
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
+			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -122,7 +124,8 @@
 
 				const giParams = { denoising: 'spatial', denoiseRadius: 4 };
 
-				// denoising: none, spatial (denoise node, stable with a static noise pattern) or temporal (TRAA)
+				// denoising: none, spatial (denoise node, stable with a static noise pattern) or temporal
+				// (per-signal temporal accumulation and spatial filtering, then TRAA for anti-aliasing)
 
 				giPass.useTemporalFiltering = giParams.denoising === 'temporal';
 
@@ -130,11 +133,31 @@
 				const giDenoised = denoise( giPass.getGINode(), scenePassDepth, sceneNormal, camera );
 				aoDenoised.radius.value = giDenoised.radius.value = giParams.denoiseRadius;
 
+				// the temporal nodes only filter RGB, so AO and GI each get their own chain
+
+				const temporalDenoise = ( signal ) => {
+
+					const reprojected = temporalReproject( signal, scenePassDepth, scenePassNormal, scenePassVelocity, camera );
+					const denoised = recurrentDenoise( reprojected, camera, { depth: scenePassDepth, normal: scenePassNormal, raw: signal } );
+					denoised.alphaSource = 'none';
+					reprojected.setHistoryTexture( denoised );
+					return denoised;
+
+				};
+
+				const aoTemporal = temporalDenoise( giPass.getAONode() );
+				const giTemporal = temporalDenoise( giPass.getGINode() );
+
 				// composite
+
+				// the denoisers leave the background undefined, so keep it untouched
+
+				const isBackground = scenePassDepth.r.greaterThanEqual( 1 );
 
 				const composite = ( ao, gi, name ) => {
 
-					const node = vec4( add( scenePassColor.rgb.mul( ao ), ( scenePassDiffuse.rgb.mul( gi.rgb ) ) ), scenePassColor.a );
+					const lit = add( scenePassColor.rgb.mul( ao ), ( scenePassDiffuse.rgb.mul( gi.rgb ) ) );
+					const node = vec4( isBackground.select( scenePassColor.rgb, lit ), scenePassColor.a );
 					node.name = name;
 					return node;
 
@@ -144,13 +167,16 @@
 				const giRaw = giPass.getGINode().toInspector( 'SSGI.GI' );
 				const aoSmooth = aoDenoised.r.toInspector( 'SSGI.AO (denoised)' );
 				const giSmooth = giDenoised.rgb.toInspector( 'SSGI.GI (denoised)' );
+				const aoAccumulated = aoTemporal.r.toInspector( 'SSGI.AO (temporal)' );
+				const giAccumulated = giTemporal.rgb.toInspector( 'SSGI.GI (temporal)' );
 
 				const compositePass = composite( aoRaw, giRaw, 'Composite' );
 				const compositeDenoisedPass = composite( aoSmooth, giSmooth, 'Composite (denoised)' );
+				const compositeTemporalPass = composite( aoAccumulated, giAccumulated, 'Composite (temporal)' );
 
 				// traa
 
-				const traaPass = traa( compositePass, scenePassDepth, scenePassVelocity, camera );
+				const traaPass = traa( compositeTemporalPass, scenePassDepth, scenePassVelocity, camera );
 				renderPipeline.outputNode = compositeDenoisedPass;
 
 				// Cornell Box inspired scene
@@ -326,12 +352,13 @@
 				function updatePostprocessing() {
 
 					const spatial = giParams.denoising === 'spatial';
-					giPass.useTemporalFiltering = giParams.denoising === 'temporal';
+					const temporal = giParams.denoising === 'temporal';
+					giPass.useTemporalFiltering = temporal;
 
 					if ( spatial ) denoiseRadiusControl.show(); else denoiseRadiusControl.hide();
 
-					const ao = spatial ? aoSmooth : aoRaw;
-					const gi = spatial ? giSmooth : giRaw;
+					const ao = spatial ? aoSmooth : temporal ? aoAccumulated : aoRaw;
+					const gi = spatial ? giSmooth : temporal ? giAccumulated : giRaw;
 
 					if ( params.output === 1 ) {
 
@@ -345,13 +372,9 @@
 
 						renderPipeline.outputNode = scenePassColor;
 
-					} else if ( spatial ) {
-
-						renderPipeline.outputNode = compositeDenoisedPass;
-
 					} else {
 
-						renderPipeline.outputNode = giPass.useTemporalFiltering ? traaPass : compositePass;
+						renderPipeline.outputNode = spatial ? compositeDenoisedPass : temporal ? traaPass : compositePass;
 
 					}
 

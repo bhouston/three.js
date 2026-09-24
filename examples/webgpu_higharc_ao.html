@@ -15,7 +15,7 @@
 				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>HighArc AO / SSGI</span>
 			</div>
 
-			<small>GTAO, denoised SSGI ambient occlusion and denoised SSGI bounce light on an architectural model.</small>
+			<small>GTAO, SSGI and SSR applied to the indirect lighting of an architectural model, with temporal denoising and TRAA.</small>
 		</div>
 
 		<script type="importmap">
@@ -32,10 +32,13 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, diffuseColor, float, vec3, vec4, mix, smoothstep, reference, perspectiveDepthToViewZ } from 'three/tsl';
+			import { pass, mrt, normalView, velocity, float, vec2, vec3, vec4, mix, smoothstep, reference, perspectiveDepthToViewZ, packNormalToRGB, unpackRGBToNormal, sample, texture, screenUV, uniform, materialMetalness, materialRoughness, builtinAOContext, builtinGIContext, builtinRadianceContext } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
-			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
+			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -46,21 +49,23 @@
 			// The model is in meters; the original viewer works in inches, so its distances are scaled by this.
 			const INCH = 0.0254;
 
+			// SSGINode's presets for temporal filtering
 			const SSGI_SAMPLES = {
-				low: { slices: 2, steps: 6 },
-				medium: { slices: 3, steps: 8 },
-				high: { slices: 4, steps: 12 }
+				low: { slices: 1, steps: 12 },
+				medium: { slices: 2, steps: 8 },
+				high: { slices: 3, steps: 16 }
 			};
 
 			const params = {
-				ambientEffect: 'denoised-ao', // off, gtao, denoised-ao, ssgi
-				channel: 'combined', // combined, beauty, ao, gi
+				ambientEffect: 'ssgi', // off, gtao, ssgi-ao, ssgi
+				channel: 'combined', // combined, beauty, ao, gi, reflections
+				reflections: true,
+				animatedNoise: true,
 				ssgiQuality: 'medium',
-				ssgiIntensity: 2,
+				ssgiIntensity: 1, // relative to physically based irradiance
 				ssgiRadius: 120 * INCH,
 				ssgiThickness: 8 * INCH,
 				ssgiAOIntensity: 1.5,
-				denoiseRadius: 4,
 				resolution: 0, // ambient effect resolution scale; 0 = auto (half resolution, long edge capped at 768 physical pixels)
 				fadeStart: 6000 * INCH,
 				fadeEnd: 14000 * INCH,
@@ -70,7 +75,8 @@
 			};
 
 			let camera, scene, renderer, renderPipeline, controls, sun;
-			let scenePass, gtaoNode, ssgiNode, denoiseNodes = [];
+			let scenePass, traaPass, gtaoNode, ssgiNode, ssrNode, signals, channel;
+			const denoiseNodes = [];
 
 			const target = new THREE.Vector3();
 			let span = 1;
@@ -157,10 +163,117 @@
 
 				renderPipeline = new THREE.RenderPipeline( renderer );
 
+				// pre-pass: the ambient effects run before the scene pass so they can light the materials instead of
+				// being composited on top, which means depth, normals, velocity and material data come from a separate
+				// pass. The normals stay half float, 8 bits quantize the reflection directions into bands.
+
+				const prePass = pass( scene, camera );
+				prePass.name = 'Pre-Pass';
+				prePass.transparent = false;
+				prePass.setMRT( mrt( {
+					output: packNormalToRGB( normalView ),
+					velocity: velocity,
+					metalRoughness: vec2( materialMetalness, materialRoughness )
+				} ) );
+
+				prePass.getTexture( 'metalRoughness' ).type = THREE.UnsignedByteType;
+
+				const prePassNormal = prePass.getTextureNode();
+				const prePassDepth = prePass.getTextureNode( 'depth' );
+				const prePassVelocity = prePass.getTextureNode( 'velocity' );
+				const prePassMetalRoughness = prePass.getTextureNode( 'metalRoughness' ).sample( screenUV );
+
+				const sceneNormal = sample( ( uv ) => unpackRGBToNormal( prePassNormal.sample( uv ) ) );
+
+				// scene pass, anti-aliased with TRAA
+
 				scenePass = pass( scene, camera );
-				scenePass.setMRT( mrt( { output, diffuseColor, normal: normalView } ) );
+				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
+
+				// the bounced and reflected light comes from the previous frame's final image reprojected to the current
+				// frame, which also accumulates multiple bounces over successive frames
+
+				const previousFrame = texture( traaPass.getTextureNode().value );
+				const previousRadiance = sample( ( uv ) => previousFrame.sample( uv.sub( prePassVelocity.sample( uv ).xy.mul( vec2( 0.5, - 0.5 ) ) ) ) );
+
+				// gtao, resolved by TRAA
+
+				gtaoNode = ao( prePassDepth, sceneNormal, camera );
+				gtaoNode.samples.value = 8;
+				gtaoNode.radius.value = 32 * INCH;
+				gtaoNode.thickness.value = 24 * INCH;
+				gtaoNode.scale.value = 0.85;
+
+				// ssgi with a world space radius
+
+				ssgiNode = ssgi( previousRadiance, prePassDepth, sceneNormal, camera );
+				ssgiNode.useScreenSpaceSampling.value = false;
+
+				// ssr: the complete reflected radiance, falling back to the environment map, which replaces the
+				// environment reflections of the materials so they apply their own Fresnel, metalness and roughness
+
+				ssrNode = ssr( previousRadiance, prePassDepth, sceneNormal, {
+					metalnessNode: prePassMetalRoughness.r,
+					roughnessNode: prePassMetalRoughness.g,
+					environmentNode: hdr,
+					outputRadiance: true,
+					camera
+				} );
+				ssrNode.maxDistance.value = span * 0.5;
+				ssrNode.environmentIntensity.value = params.environmentIntensity;
+
+				// temporal denoising: AO and GI each get their own chain since the temporal nodes only filter RGB.
+				// Reflections are reprojected with their hit points (specular mode) since they move differently than
+				// the surfaces showing them.
+
+				const temporalDenoise = ( signal ) => {
+
+					const reprojected = temporalReproject( signal, prePassDepth, prePassNormal, prePassVelocity, camera );
+					const denoised = recurrentDenoise( reprojected, camera, { depth: prePassDepth, normal: prePassNormal, raw: signal } );
+					denoised.alphaSource = 'none';
+					reprojected.setHistoryTexture( denoised );
+					denoiseNodes.push( denoised );
+					return denoised.getTextureNode();
+
+				};
+
+				const ssrReprojected = temporalReproject( ssrNode, prePassDepth, prePassNormal, prePassVelocity, camera, { mode: 'specular' } );
+				ssrReprojected.maxFrames.value = 16;
+				ssrReprojected.clampIntensity.value = 0.25;
+
+				const ssrDenoised = recurrentDenoise( ssrReprojected, camera, { depth: prePassDepth, normal: prePassNormal, raw: ssrNode, metalRoughness: prePassMetalRoughness, mode: 'specular' } );
+				ssrDenoised.alphaSource = 'raylength'; // the SSR alpha channel holds the ray length
+				ssrDenoised.lumaPhi.value = 0.75;
+				ssrDenoised.depthPhi.value = 20;
+				ssrDenoised.normalPhi.value = 0.3;
+				ssrDenoised.radius.value = 1.5;
+				ssrDenoised.alphaPhi.value = 5;
+				ssrDenoised.strength.value = 0.725;
+				ssrDenoised.adaptiveTrust.value = 1;
+				ssrReprojected.setHistoryTexture( ssrDenoised );
+				denoiseNodes.push( ssrDenoised );
+
+				// fade out the screen-space effects in the distance to avoid terrain and horizon halos
+
+				const viewDistance = perspectiveDepthToViewZ( prePassDepth.sample( screenUV ).r, reference( 'near', 'float', camera ), reference( 'far', 'float', camera ) ).negate();
+				const fade = smoothstep( params.fadeStart, params.fadeEnd, viewDistance );
+
+				// the signals are sampled in screen space since they are applied in the materials of the scene pass
+
+				signals = {
+					gtao: mix( gtaoNode.getTextureNode().sample( screenUV ).r, float( 1 ), fade ),
+					ao: mix( temporalDenoise( ssgiNode.getAONode() ).sample( screenUV ).r, float( 1 ), fade ),
+					gi: temporalDenoise( ssgiNode.getGINode() ).sample( screenUV ).rgb.mul( fade.oneMinus() ),
+					reflections: ssrDenoised.getTextureNode().sample( screenUV ).rgb
+				};
+
+				// the data channels are selected with a uniform so the scene pass and TRAA keep running, since the
+				// effects sample their previous frame
+
+				channel = uniform( 0 );
 
 				buildPipeline();
+				updateParameters();
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -169,14 +282,15 @@
 				// GUI
 
 				const gui = renderer.inspector.createParameters( 'Settings' );
-				gui.add( params, 'ambientEffect', [ 'off', 'gtao', 'denoised-ao', 'ssgi' ] ).name( 'ambient effect' ).onChange( buildPipeline );
-				gui.add( params, 'channel', [ 'combined', 'beauty', 'ao', 'gi' ] ).onChange( buildPipeline );
+				gui.add( params, 'ambientEffect', [ 'off', 'gtao', 'ssgi-ao', 'ssgi' ] ).name( 'ambient effect' ).onChange( buildPipeline );
+				gui.add( params, 'channel', [ 'combined', 'beauty', 'ao', 'gi', 'reflections' ] ).onChange( buildPipeline );
+				gui.add( params, 'reflections' ).onChange( buildPipeline );
+				gui.add( params, 'animatedNoise' ).name( 'animated noise' ).onChange( updateParameters );
 				gui.add( params, 'ssgiQuality', [ 'low', 'medium', 'high' ] ).name( 'SSGI quality' ).onChange( updateParameters );
-				gui.add( params, 'ssgiIntensity', 0, 10 ).name( 'SSGI intensity' ).onChange( updateParameters );
+				gui.add( params, 'ssgiIntensity', 0, 4 ).name( 'SSGI intensity' ).onChange( updateParameters );
 				gui.add( params, 'ssgiRadius', 0.1, 10 ).name( 'SSGI radius (m)' ).onChange( updateParameters );
 				gui.add( params, 'ssgiThickness', 0.01, 2 ).name( 'SSGI thickness (m)' ).onChange( updateParameters );
 				gui.add( params, 'ssgiAOIntensity', 0, 4 ).name( 'SSGI AO intensity' ).onChange( updateParameters );
-				gui.add( params, 'denoiseRadius', 0, 16 ).name( 'denoise radius' ).onChange( updateParameters );
 				gui.add( params, 'resolution', { 'auto (768 px cap)': 0, 'full': 1, '1/2': 1 / 2, '1/3': 1 / 3, '1/4': 1 / 4 } ).name( 'AO resolution' );
 				gui.add( params, 'exposure', 0, 4 ).onChange( ( v ) => renderer.toneMappingExposure = v );
 				gui.add( params, 'sunIntensity', 0, 10 ).name( 'sun intensity' ).onChange( ( v ) => sun.intensity = v );
@@ -184,12 +298,13 @@
 
 					scene.environmentIntensity = v;
 					scene.backgroundIntensity = v;
+					ssrNode.environmentIntensity.value = v;
 
 				} );
 
 			}
 
-			// resolution scale of the ambient effect target; auto matches the original viewer
+			// resolution scale of the ambient effect targets; auto matches the original viewer
 
 			function ambientScale( width, height ) {
 
@@ -201,81 +316,44 @@
 
 			function buildPipeline() {
 
-				if ( gtaoNode ) gtaoNode.dispose();
-				if ( ssgiNode ) ssgiNode.dispose();
-				denoiseNodes.forEach( ( node ) => node.dispose() );
-				gtaoNode = ssgiNode = null;
-				denoiseNodes = [];
-
-				const color = scenePass.getTextureNode( 'output' );
-				const depth = scenePass.getTextureNode( 'depth' );
-				const normal = scenePass.getTextureNode( 'normal' );
+				const effect = params.ambientEffect;
 
 				let occlusion = float( 1 );
 				let bounce = vec3( 0 );
-				let shaded = color.rgb;
+				let context = null;
 
-				if ( params.ambientEffect === 'gtao' ) {
+				if ( effect === 'gtao' ) {
 
-					gtaoNode = ao( depth, normal, camera );
-					gtaoNode.samples.value = 8;
-					gtaoNode.radius.value = 32 * INCH;
-					gtaoNode.thickness.value = 24 * INCH;
-					gtaoNode.scale.value = 0.85;
+					occlusion = signals.gtao;
+					context = builtinAOContext( occlusion );
 
-					occlusion = gtaoNode.r;
-					shaded = color.rgb.mul( occlusion );
+				} else if ( effect === 'ssgi-ao' ) {
 
-				} else if ( params.ambientEffect === 'denoised-ao' || params.ambientEffect === 'ssgi' ) {
+					occlusion = signals.ao;
+					context = builtinAOContext( occlusion );
 
-					ssgiNode = ssgi( color, depth, normal, camera );
-					ssgiNode.useScreenSpaceSampling.value = false;
-					ssgiNode.useTemporalFiltering = false;
+				} else if ( effect === 'ssgi' ) {
 
-					// SSGINode has no resolution scale; it sizes itself to the drawing buffer every frame, so clamp that call
-
-					const setSize = ssgiNode.setSize.bind( ssgiNode );
-					ssgiNode.setSize = ( width, height ) => {
-
-						const scale = ambientScale( width, height );
-						setSize( Math.max( 1, Math.floor( width * scale ) ), Math.max( 1, Math.floor( height * scale ) ) );
-
-					};
-
-					// fade out screen-space effects in the distance to avoid terrain and horizon halos
-
-					const viewDistance = perspectiveDepthToViewZ( depth.r, reference( 'near', 'float', camera ), reference( 'far', 'float', camera ) ).negate();
-					const fade = smoothstep( params.fadeStart, params.fadeEnd, viewDistance );
-
-					const aoDenoised = denoise( ssgiNode.getAONode(), depth, normal, camera );
-					denoiseNodes.push( aoDenoised );
-
-					occlusion = mix( aoDenoised.r, float( 1 ), fade );
-					shaded = color.rgb.mul( occlusion );
-
-					if ( params.ambientEffect === 'ssgi' ) {
-
-						const giDenoised = denoise( ssgiNode.getGINode(), depth, normal, camera );
-						denoiseNodes.push( giDenoised );
-
-						bounce = scenePass.getTextureNode( 'diffuseColor' ).rgb.mul( giDenoised.rgb ).mul( fade.oneMinus() );
-						shaded = shaded.add( bounce );
-
-					}
+					occlusion = signals.ao;
+					bounce = signals.gi;
+					context = builtinGIContext( occlusion, bounce );
 
 				}
 
-				updateParameters();
+				if ( params.reflections ) context = builtinRadianceContext( signals.reflections, context );
+
+				scenePass.contextNode = params.channel === 'beauty' ? null : context;
+				scenePass.needsUpdate = true;
 
 				// data channels skip tone mapping and the output color transform
 
-				if ( params.channel === 'beauty' ) shaded = color.rgb;
-				else if ( params.channel === 'ao' ) shaded = vec3( occlusion );
-				else if ( params.channel === 'gi' ) shaded = bounce;
+				const isData = [ 'ao', 'gi', 'reflections' ].includes( params.channel );
 
-				const isData = params.channel === 'ao' || params.channel === 'gi';
+				channel.value = [ 'ao', 'gi', 'reflections' ].indexOf( params.channel ) + 1;
 
-				renderPipeline.outputNode = vec4( shaded, isData ? float( 1 ) : color.a );
+				const data = channel.equal( 1 ).select( vec4( vec3( occlusion ), 1 ), channel.equal( 2 ).select( vec4( bounce, 1 ), vec4( signals.reflections, 1 ) ) );
+
+				renderPipeline.outputNode = channel.equal( 0 ).select( traaPass, data );
 				renderPipeline.outputColorTransform = ! isData;
 				renderer.toneMapping = isData ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
 				renderPipeline.needsUpdate = true;
@@ -284,24 +362,23 @@
 
 			function updateParameters() {
 
-				if ( ssgiNode ) {
+				const samples = SSGI_SAMPLES[ params.ssgiQuality ];
+				ssgiNode.sliceCount.value = samples.slices;
+				ssgiNode.stepCount.value = samples.steps;
+				ssgiNode.radius.value = params.ssgiRadius;
+				ssgiNode.thickness.value = params.ssgiThickness;
+				ssgiNode.aoIntensity.value = params.ssgiAOIntensity;
 
-					const samples = SSGI_SAMPLES[ params.ssgiQuality ];
-					ssgiNode.sliceCount.value = samples.slices;
-					ssgiNode.stepCount.value = samples.steps;
-					ssgiNode.radius.value = params.ssgiRadius;
-					ssgiNode.thickness.value = params.ssgiThickness;
-					ssgiNode.aoIntensity.value = params.ssgiAOIntensity;
-					ssgiNode.giIntensity.value = params.ambientEffect === 'ssgi' ? params.ssgiIntensity : 0;
+				// the materials expect irradiance: for uniform radiance L, SSGI integrates 2L/π while the irradiance is πL
 
-				}
+				ssgiNode.giIntensity.value = params.ssgiIntensity * Math.PI * Math.PI / 2;
 
-				for ( const node of denoiseNodes ) {
+				// one switch for the effects' temporal noise; they share the frame index but keep their own sequences
 
-					node.index.value = 0;
-					node.radius.value = params.denoiseRadius;
+				const animated = params.animatedNoise;
 
-				}
+				gtaoNode.useTemporalFiltering = ssgiNode.useTemporalFiltering = ssrNode.useTemporalFiltering = animated;
+				for ( const node of denoiseNodes ) node.useTemporalFiltering = animated;
 
 			}
 
@@ -325,12 +402,8 @@
 				camera.far = Math.max( span * 4, distance + span * 4 );
 				camera.updateProjectionMatrix();
 
-				if ( gtaoNode ) {
-
-					const size = renderer.getDrawingBufferSize( new THREE.Vector2() );
-					gtaoNode.resolutionScale = ambientScale( size.x, size.y );
-
-				}
+				const size = renderer.getDrawingBufferSize( new THREE.Vector2() );
+				gtaoNode.resolutionScale = ssgiNode.resolutionScale = ambientScale( size.x, size.y );
 
 				renderPipeline.render();
 

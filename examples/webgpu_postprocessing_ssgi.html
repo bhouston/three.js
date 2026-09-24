@@ -36,8 +36,9 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, normalView, velocity, vec2, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample, texture, screenUV, uniform, builtinGIContext } from 'three/tsl';
+			import { pass, mrt, normalView, velocity, vec2, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample, texture, screenUV, uniform, builtinGIContext, builtinRadianceContext, materialMetalness, materialRoughness } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
+			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
@@ -90,7 +91,8 @@
 				prePass.transparent = false;
 				prePass.setMRT( mrt( {
 					output: packNormalToRGB( normalView ),
-					velocity: velocity
+					velocity: velocity,
+					metalRoughness: vec2( materialMetalness, materialRoughness )
 				} ) );
 
 				const prePassNormal = prePass.getTextureNode().toInspector( 'Normal' );
@@ -100,6 +102,9 @@
 				// bandwidth optimization
 
 				prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
+				prePass.getTexture( 'metalRoughness' ).type = THREE.UnsignedByteType;
+
+				const prePassMetalRoughness = prePass.getTextureNode( 'metalRoughness' );
 
 				const sceneNormal = sample( ( uv ) => unpackRGBToNormal( prePassNormal.sample( uv ) ) );
 
@@ -121,6 +126,19 @@
 				// the materials expect irradiance: for uniform radiance L, SSGI integrates 2L/π while the irradiance is πL
 
 				giPass.giIntensity.value = Math.PI * Math.PI / 2;
+
+				// reflections: SSR of the same previous frame, output as unweighted radiance so the materials apply
+				// their own Fresnel, metalness and roughness to it like to an environment map
+
+				const ssrPass = ssr( previousRadiance, prePassDepth, sceneNormal, {
+					metalnessNode: prePassMetalRoughness.r,
+					roughnessNode: prePassMetalRoughness.g,
+					outputRadiance: true,
+					camera
+				} );
+				ssrPass.maxDistance.value = 20;
+
+				const reflections = ssrPass.getTextureNode().sample( screenUV ).rgb.toInspector( 'SSR' );
 
 				// denoising: none or temporal (per-signal temporal accumulation and spatial filtering)
 
@@ -304,7 +322,8 @@
 
 				const params = {
 					output: 0,
-					scene: 'basic'
+					scene: 'basic',
+					reflections: true
 				};
 
 				updateScene();
@@ -315,6 +334,7 @@
 				gui.add( params, 'scene', { 'Basic': 'basic', 'Rounded': 'rounded', 'Metallic': 'metallic', 'Animated': 'animated' } ).onChange( updateScene );
 				gui.add( giPass, 'resolutionScale', { 'None': 1, '2x': 1 / 2, '3x': 1 / 3, '4x': 1 / 4 } ).name( 'downsampling' );
 				gui.add( params, 'output', types ).onChange( updatePostprocessing );
+				gui.add( params, 'reflections' ).onChange( updatePostprocessing );
 
 				const denoiseFolder = gui.addFolder( 'Denoising' );
 				denoiseFolder.add( giParams, 'denoising', { 'none': 'none', 'temporal': 'temporal' } ).name( 'method' ).onChange( updatePostprocessing );
@@ -341,7 +361,9 @@
 
 					debugView.value = params.output === 3 ? 0 : params.output;
 
-					scenePass.contextNode = params.output === 3 ? null : builtinGIContext( ao, gi );
+					const radiance = params.reflections ? builtinRadianceContext( reflections ) : null;
+
+					scenePass.contextNode = params.output === 3 ? null : builtinGIContext( ao, gi, radiance );
 					scenePass.needsUpdate = true;
 
 					renderPipeline.outputNode = debugView.equal( 1 ).select( vec4( vec3( ao ), 1 ), debugView.equal( 2 ).select( vec4( gi, 1 ), traaPass ) );

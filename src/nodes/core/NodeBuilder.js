@@ -1084,6 +1084,8 @@ class NodeBuilder {
 		delete context.getAO;
 		delete context.getGI;
 		delete context.getShadow;
+		delete context.nodeBlock;
+		delete context.nodeLoop;
 
 		return context;
 

@@ -417,6 +417,15 @@ class RecurrentDenoiseNode extends Node {
 		this.alphaSource = 'raylength';
 
 		this.flickerSuppression = uniform( 1 );
+
+		/**
+		 * Whether the noise pattern changes every frame or not. The kernel rotation is
+		 * animated so repeated filtering of accumulated history does not leave a fixed pattern.
+		 *
+		 * @type {boolean}
+		 * @default true
+		 */
+		this.useTemporalFiltering = true;
 		this.adaptiveTrust = uniform( 0 );
 
 		this.updateBeforeType = NodeUpdateType.FRAME;
@@ -484,7 +493,7 @@ class RecurrentDenoiseNode extends Node {
 
 		}
 
-		if ( frame.frameId !== undefined ) this._noiseIndex.value = frame.frameId;
+		if ( frame.frameId !== undefined ) this._noiseIndex.value = this.useTemporalFiltering === true ? frame.frameId : 0;
 
 		// Denoise renders via an internal _quadMesh, not through the RenderPipeline output graph.
 		// Upstream passes (e.g. TemporalReprojectNode) referenced by a PassTextureNode input are

@@ -192,6 +192,15 @@ class SSGINode extends Node {
 		 */
 		this.useTemporalFiltering = true;
 
+		/**
+		 * The resolution scale. By default the effect is rendered in full resolution
+		 * for best quality but a value of `0.5` is a good tradeoff for most scenes.
+		 *
+		 * @type {number}
+		 * @default 1
+		 */
+		this.resolutionScale = 1;
+
 		// private uniforms
 
 		/**
@@ -341,6 +350,9 @@ class SSGINode extends Node {
 	 * @param {number} height - The height of the effect.
 	 */
 	setSize( width, height ) {
+
+		width = Math.max( 1, Math.round( this.resolutionScale * width ) );
+		height = Math.max( 1, Math.round( this.resolutionScale * height ) );
 
 		this._resolution.value.set( width, height );
 		this._ssgiRenderTarget.setSize( width, height );

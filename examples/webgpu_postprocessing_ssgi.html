@@ -120,12 +120,7 @@
 				giPass.sliceCount.value = 2;
 				giPass.stepCount.value = 8;
 
-				// optionally run the effect at a reduced resolution (SSGINode sizes itself to the drawing buffer every frame)
-
-				const giParams = { resolution: 1, denoising: 'spatial', denoiseRadius: 4 };
-
-				const setSize = giPass.setSize.bind( giPass );
-				giPass.setSize = ( width, height ) => setSize( Math.max( 1, Math.floor( width * giParams.resolution ) ), Math.max( 1, Math.floor( height * giParams.resolution ) ) );
+				const giParams = { denoising: 'spatial', denoiseRadius: 4 };
 
 				// denoising: none, spatial (denoise node, stable with a static noise pattern) or temporal (TRAA)
 
@@ -307,7 +302,7 @@
 
 				const gui = renderer.inspector.createParameters( 'SSGI settings' );
 				gui.add( params, 'scene', { 'Basic': 'basic', 'Rounded': 'rounded', 'Animated': 'animated' } ).onChange( updateScene );
-				gui.add( giParams, 'resolution', { 'None': 1, '2x': 1 / 2, '3x': 1 / 3, '4x': 1 / 4 } ).name( 'downsampling' );
+				gui.add( giPass, 'resolutionScale', { 'None': 1, '2x': 1 / 2, '3x': 1 / 3, '4x': 1 / 4 } ).name( 'downsampling' );
 				gui.add( params, 'output', types ).onChange( updatePostprocessing );
 
 				const denoiseFolder = gui.addFolder( 'Denoising' );

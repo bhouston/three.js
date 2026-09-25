@@ -223,23 +223,51 @@
 
 			}
 
+			// Each prefab geometry gets a copy with MikkTSpace tangents. Both variants are kept so the
+			// GUI can switch between them and exercise the tangent-less fallbacks of the materials.
+			const geometryVariants = new Map();
+
 			function computePrefabTangents() {
 
 				prefab.traverse( function ( node ) {
 
 					if ( node.isMesh === false ) return;
 
-					const geometry = node.geometry;
+					const noTangents = node.geometry;
 
-					if ( geometry === undefined ) return;
+					if ( noTangents === undefined || noTangents.hasAttribute( 'tangent' ) ) return;
 
-					if ( geometry.hasAttribute( 'tangent' ) ) return;
+					if ( noTangents.hasAttribute( 'position' ) && noTangents.hasAttribute( 'normal' ) && noTangents.hasAttribute( 'uv' ) ) {
 
-					if ( geometry.hasAttribute( 'position' ) && geometry.hasAttribute( 'normal' ) && geometry.hasAttribute( 'uv' ) ) {
+						const tangents = noTangents.clone();
+						computeMikkTSpaceTangents( tangents, MikkTSpace );
 
-						computeMikkTSpaceTangents( geometry, MikkTSpace );
+						const variants = { tangents, noTangents };
+						geometryVariants.set( tangents, variants );
+						geometryVariants.set( noTangents, variants );
+
+						node.geometry = tangents;
 
 					}
+
+				} );
+
+			}
+
+			function setGeometryVariant( name ) {
+
+				scene.traverse( function ( node ) {
+
+					if ( node.isMesh === false ) return;
+
+					const variants = geometryVariants.get( node.geometry );
+
+					if ( variants === undefined ) return;
+
+					node.geometry = variants[ name ];
+
+					// The attribute set changed, so the material's shader has to be rebuilt.
+					node.material.needsUpdate = true;
 
 				} );
 
@@ -337,25 +365,23 @@
 				const gui = renderer.inspector.createParameters( 'MaterialX Loader' );
 
 				const API = {
+					geometry: 'Shader Ball',
 					showCalibrationMesh: true,
 					showPreviewMesh: true
 				};
 
-				gui.add( API, 'showCalibrationMesh' )
-					.name( 'Calibration Mesh' )
-					.onChange( function ( value ) {
+				function updateVisibility() {
 
-						setVisibility( 'Calibration_Mesh', value );
+					setGeometryVariant( API.geometry === 'Shader Ball (no tangents)' ? 'noTangents' : 'tangents' );
 
-					} );
+					setVisibility( 'Calibration_Mesh', API.showCalibrationMesh );
+					setVisibility( 'Preview_Mesh', API.showPreviewMesh );
 
-				gui.add( API, 'showPreviewMesh' )
-					.name( 'Preview Mesh' )
-					.onChange( function ( value ) {
+				}
 
-						setVisibility( 'Preview_Mesh', value );
-
-					} );
+				gui.add( API, 'geometry', [ 'Shader Ball', 'Shader Ball (no tangents)' ] ).name( 'Geometry' ).onChange( updateVisibility );
+				gui.add( API, 'showCalibrationMesh' ).name( 'Calibration Mesh' ).onChange( updateVisibility );
+				gui.add( API, 'showPreviewMesh' ).name( 'Preview Mesh' ).onChange( updateVisibility );
 
 			}
 

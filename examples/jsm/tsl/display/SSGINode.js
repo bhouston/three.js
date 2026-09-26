@@ -13,6 +13,9 @@ let _rendererState;
 /**
  * Post processing node for applying Screen Space Global Illumination (SSGI) to a scene.
  *
+ * Indirect diffuse samples include the spherical solid-angle weight of their slice direction.
+ * The sampling radius and depth-buffer visibility still limit the lighting that can be recovered.
+ *
  * References:
  * - {@link https://github.com/cdrinmatane/SSRT3}.
  * - {@link https://cdrinmatane.github.io/posts/ssaovb-code/}.
@@ -560,7 +563,11 @@ class SSGINode extends Node {
 							const backfaceWeight = BACKFACE_LIGHTING.greaterThan( 0 ).and( dot( lightNormalVS, viewDir ).greaterThan( 0 ) ).select( BACKFACE_LIGHTING, float( 0 ) );
 							const emission = facesShadingPoint.select( float( 1 ), backfaceWeight );
 
-							color.rgb.addAssign( float( numOccludedZones ).div( float( MAX_RAY ) ).mul( lightColor ).mul( normalDotLightDirection ).mul( emission ) );
+							// Equal slice-angle sectors do not subtend equal solid angles. Approximate the spherical
+							// Jacobian at the sample direction; the factor of two preserves the existing GI gain scale.
+							const solidAngleWeight = sqrt( max( float( 0 ), dot( pixelToSample, viewDir ).pow( 2 ).oneMinus() ) ).mul( 2 );
+
+							color.rgb.addAssign( float( numOccludedZones ).div( float( MAX_RAY ) ).mul( lightColor ).mul( normalDotLightDirection ).mul( solidAngleWeight ).mul( emission ) );
 
 						} );
 

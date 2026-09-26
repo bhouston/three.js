@@ -130,6 +130,16 @@ class SSGINode extends Node {
 		this.giIntensity = uniform( 10, 'float' );
 
 		/**
+		 * Whether to weight indirect diffuse samples by their spherical solid angle. Disable to
+		 * compare the legacy equal-angle estimator at identical sampling and reconstruction settings.
+		 * This does not change ambient occlusion.
+		 *
+		 * @type {UniformNode<bool>}
+		 * @default true
+		 */
+		this.useSolidAngleWeighting = uniform( true, 'bool' );
+
+		/**
 		 * Effective sampling radius in world space. AO and GI can only have influence within that radius.
 		 * Should be in the range `[1, 25]`.
 		 *
@@ -565,7 +575,7 @@ class SSGINode extends Node {
 
 							// Equal slice-angle sectors do not subtend equal solid angles. Approximate the spherical
 							// Jacobian at the sample direction; the factor of two preserves the existing GI gain scale.
-							const solidAngleWeight = sqrt( max( float( 0 ), dot( pixelToSample, viewDir ).pow( 2 ).oneMinus() ) ).mul( 2 );
+							const solidAngleWeight = this.useSolidAngleWeighting.select( sqrt( max( float( 0 ), dot( pixelToSample, viewDir ).pow( 2 ).oneMinus() ) ).mul( 2 ), float( 1 ) );
 
 							color.rgb.addAssign( float( numOccludedZones ).div( float( MAX_RAY ) ).mul( lightColor ).mul( normalDotLightDirection ).mul( solidAngleWeight ).mul( emission ) );
 

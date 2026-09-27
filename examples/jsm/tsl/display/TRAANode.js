@@ -121,6 +121,41 @@ class TRAANode extends Node {
 		this.useSubpixelCorrection = true;
 
 		/**
+		 * Whether to turn the history into an exact running mean while the camera is still: after 20 still frames
+		 * the current frame's weight drops from 0.05 as 1 / ( n + 1 ), and still pixels skip variance clipping and
+		 * flicker reduction, so a static view converges to the plain mean of every frame since the camera stopped.
+		 * The counter only watches the camera: call `resetAccumulation()` when anything else in the scene changes.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.progressive = false;
+
+		/**
+		 * Number of consecutive frames the camera has been still.
+		 *
+		 * @private
+		 * @type {number}
+		 */
+		this._stillFrames = 0;
+
+		/**
+		 * Minimum current-frame weight: 0.05, or 1 / ( n + 1 ) once `progressive` has accumulated 20 still frames.
+		 *
+		 * @private
+		 * @type {UniformNode<float>}
+		 */
+		this._minWeight = uniform( 0.05 );
+
+		/**
+		 * Camera world and unjittered projection matrices of the previous frame, for the still-camera test.
+		 *
+		 * @private
+		 * @type {Array<Matrix4>}
+		 */
+		this._stillMatrices = [ new Matrix4(), new Matrix4() ];
+
+		/**
 		 * The jitter index selects the current camera offset value.
 		 *
 		 * @private
@@ -332,6 +367,15 @@ class TRAANode extends Node {
 	}
 
 	/**
+	 * Restarts the `progressive` running mean, e.g. after an object moved or a material changed.
+	 */
+	resetAccumulation() {
+
+		this._stillFrames = 0;
+
+	}
+
+	/**
 	 * This method is used to render the effect once per frame.
 	 *
 	 * @param {NodeFrame} frame - The current node frame.
@@ -351,6 +395,15 @@ class TRAANode extends Node {
 		this._cameraWorldMatrix.value.copy( this.camera.matrixWorld );
 		this._cameraWorldMatrixInverse.value.copy( this.camera.matrixWorldInverse );
 		this._cameraProjectionMatrixInverse.value.copy( this.camera.projectionMatrixInverse );
+
+		// progressive: count still-camera frames (the jittered projection changes every frame, so test the original)
+
+		const [ stillWorld, stillProjection ] = this._stillMatrices;
+		const still = stillWorld.equals( this.camera.matrixWorld ) && stillProjection.equals( this._originalProjectionMatrix );
+		stillWorld.copy( this.camera.matrixWorld );
+		stillProjection.copy( this._originalProjectionMatrix );
+		this._stillFrames = still ? this._stillFrames + 1 : 0;
+		this._minWeight.value = this.progressive ? Math.min( 0.05, 1 / ( this._stillFrames + 1 ) ) : 0.05;
 
 		// keep the TRAA in sync with the dimensions of the beauty node
 
@@ -378,7 +431,10 @@ class TRAANode extends Node {
 			// make sure to reset the history with the contents of the beauty buffer otherwise subsequent frames after the
 			// resize will fade from a darker color to the correct one because the history was cleared with black.
 
-			renderer.copyTextureToTexture( beautyRenderTarget.texture, this._historyRenderTarget.texture );
+			// (progressive's float history can't be copied from a half-float beauty: take the first frame in full)
+
+			if ( this.progressive ) this._minWeight.value = 1;
+			else renderer.copyTextureToTexture( beautyRenderTarget.texture, this._historyRenderTarget.texture );
 
 		}
 
@@ -424,6 +480,10 @@ class TRAANode extends Node {
 	 * @return {PassTextureNode}
 	 */
 	setup( builder ) {
+
+		// progressive: a 1 / n weight drops below half-float precision after a few hundred frames
+
+		if ( this.progressive ) this._historyRenderTarget.texture.type = this._resolveRenderTarget.texture.type = FloatType;
 
 		this.depthNode.build( builder );
 		this.velocityNode.build( builder );
@@ -557,7 +617,7 @@ class TRAANode extends Node {
 			// increase the weight towards the current frame under motion
 
 			const motionFactor = uvNode.sub( historyUV ).mul( textureSize ).length().div( this.maxVelocityLength ).saturate();
-			const currentWeight = float( 0.05 ).toVar(); // A minimum weight
+			const currentWeight = float( this._minWeight ).toVar(); // A minimum weight
 
 			if ( this.useSubpixelCorrection ) {
 
@@ -577,7 +637,11 @@ class TRAANode extends Node {
 
 			const output = flickerReduction( currentColor, clippedHistoryColor, currentWeight );
 
-			return output;
+			// progressive: still pixels of a still camera average exactly (no clipping, no luminance weighting)
+
+			const accumulate = this._minWeight.lessThan( 0.05 ).and( hasValidHistory ).and( motionFactor.equal( 0 ) );
+
+			return accumulate.select( mix( historyColor, currentColor, currentWeight ), output );
 
 		} );
 

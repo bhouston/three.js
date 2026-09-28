@@ -5,7 +5,7 @@
  */
 import { LineBasicMaterial, LineDashedMaterial, NoBlending, warnOnce, MeshNormalMaterial, SRGBColorSpace, CubeTexture, EquirectangularReflectionMapping, EquirectangularRefractionMapping, CubeReflectionMapping, CubeRefractionMapping, warn, AddOperation, MixOperation, MultiplyOperation, MeshBasicMaterial, MeshLambertMaterial, MeshPhongMaterial, BackSide, MeshStandardMaterial, MeshPhysicalMaterial, MeshToonMaterial, MeshMatcapMaterial, SpriteMaterial, PointsMaterial, Vector2, ShadowMaterial, DynamicDrawUsage, Uint32BufferAttribute, Uint16BufferAttribute, error, ByteType, UnsignedByteType, ShortType, UnsignedShortType, HalfFloatType, IntType, UnsignedIntType, FloatType, AlphaFormat, RedFormat, RedIntegerFormat, DepthFormat, DepthStencilFormat, RGFormat, RGIntegerFormat, RGBFormat, RGBIntegerFormat, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedInt101111Type, DoubleSide, Vector4, DepthTexture, ColorManagement, SRGBTransfer, Vector3, Mesh, SphereGeometry, Color, Matrix2, Matrix3, Matrix4, NormalBlending, RenderTarget, LinearFilter, LinearMipmapNearestFilter, NearestMipmapLinearFilter, LinearMipmapLinearFilter, Float16BufferAttribute, yieldToMain, REVISION, Plane, EventDispatcher, PerspectiveCamera, ArrayCamera, PlaneGeometry, RGBAFormat, FrontSide, CustomBlending, AddEquation, ZeroFactor, CylinderGeometry, Quaternion, WebXRController, RAD2DEG, FramebufferTexture, NoToneMapping, PCFShadowMap, PCFSoftShadowMap, Scene, FrustumArray, Frustum, RenderObjectRefreshType, VSMShadowMap, NoColorSpace, DataTexture, RGBAIntegerFormat, TimestampQuery, createCanvasElement, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, OneMinusConstantAlphaFactor, ConstantAlphaFactor, OneMinusConstantColorFactor, ConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, DstAlphaFactor, DstColorFactor, SrcAlphaSaturateFactor, SrcAlphaFactor, SrcColorFactor, OneFactor, CullFaceNone, CullFaceBack, CullFaceFront, MaterialBlending, MultiplyBlending, SubtractiveBlending, AdditiveBlending, NotEqualDepth, GreaterDepth, GreaterEqualDepth, EqualDepth, LessEqualDepth, LessDepth, AlwaysDepth, NeverDepth, ReversedDepthFuncs, RGB_S3TC_DXT1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGB_PVRTC_4BPPV1_Format, RGB_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_PVRTC_2BPPV1_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGBA_ETC2_EAC_Format, R11_EAC_Format, SIGNED_R11_EAC_Format, RG11_EAC_Format, SIGNED_RG11_EAC_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_10x10_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_BPTC_Format, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RED_RGTC1_Format, SIGNED_RED_RGTC1_Format, RED_GREEN_RGTC2_Format, SIGNED_RED_GREEN_RGTC2_Format, MirroredRepeatWrapping, ClampToEdgeWrapping, RepeatWrapping, NearestMipmapNearestFilter, NearestFilter, NotEqualCompare, GreaterCompare, GreaterEqualCompare, EqualCompare, LessEqualCompare, LessCompare, AlwaysCompare, NeverCompare, LinearTransfer, getByteLength, WebGLCoordinateSystem, Compatibility, isTypedArray, Texture, NotEqualStencilFunc, GreaterStencilFunc, GreaterEqualStencilFunc, EqualStencilFunc, LessEqualStencilFunc, LessStencilFunc, AlwaysStencilFunc, NeverStencilFunc, DecrementWrapStencilOp, IncrementWrapStencilOp, DecrementStencilOp, IncrementStencilOp, InvertStencilOp, ReplaceStencilOp, ZeroStencilOp, KeepStencilOp, WebGPUCoordinateSystem, SpotLight, PointLight, DirectionalLight, RectAreaLight, AmbientLight, HemisphereLight, LightProbe, LinearToneMapping, ReinhardToneMapping, CineonToneMapping, ACESFilmicToneMapping, AgXToneMapping, NeutralToneMapping, Group, Loader, FileLoader, MaterialLoader, ObjectLoader } from './three.core.js';
 export { AdditiveAnimationBlendMode, AnimationAction, AnimationClip, AnimationLoader, AnimationMixer, AnimationObjectGroup, AnimationUtils, ArcCurve, ArrowHelper, AttachedBindMode, Audio, AudioAnalyser, AudioContext, AudioListener, AudioLoader, AxesHelper, BasicDepthPacking, BasicShadowMap, BatchedMesh, BezierInterpolant, Bone, BooleanKeyframeTrack, Box2, Box3, Box3Helper, BoxGeometry, BoxHelper, BufferAttribute, BufferGeometry, BufferGeometryLoader, Cache, Camera, CameraHelper, CanvasTexture, CapsuleGeometry, CatmullRomCurve3, CircleGeometry, Clock, ColorKeyframeTrack, CompressedArrayTexture, CompressedCubeTexture, CompressedTexture, CompressedTextureLoader, ConeGeometry, Controls, CubeCamera, CubeDepthTexture, CubeTextureLoader, CubicBezierCurve, CubicBezierCurve3, CubicInterpolant, CullFaceFrontBack, Curve, CurvePath, CustomToneMapping, Cylindrical, Data3DTexture, DataArrayTexture, DataTextureLoader, DataUtils, DefaultLoadingManager, DetachedBindMode, DirectionalLightHelper, DiscreteInterpolant, DodecahedronGeometry, DynamicCopyUsage, DynamicReadUsage, EdgesGeometry, EllipseCurve, Euler, ExternalTexture, ExtrudeGeometry, Float32BufferAttribute, Fog, FogExp2, GLBufferAttribute, GLSL1, GLSL3, GridHelper, HTMLTexture, HemisphereLightHelper, IcosahedronGeometry, ImageBitmapLoader, ImageLoader, ImageUtils, InstancedBufferAttribute, InstancedBufferGeometry, InstancedInterleavedBuffer, InstancedMesh, Int16BufferAttribute, Int32BufferAttribute, Int8BufferAttribute, InterleavedBuffer, InterleavedBufferAttribute, Interpolant, InterpolateBezier, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, InterpolationSamplingMode, InterpolationSamplingType, KeyframeTrack, LOD, LatheGeometry, Layers, Light, LightShadow, Line, Line3, LineCurve, LineCurve3, LineLoop, LineSegments, LinearInterpolant, LinearMipMapLinearFilter, LinearMipMapNearestFilter, LinearSRGBColorSpace, LoaderUtils, LoadingManager, LoopOnce, LoopPingPong, LoopRepeat, MOUSE, Material, MathUtils, MeshDepthMaterial, MeshDistanceMaterial, NearestMipMapLinearFilter, NearestMipMapNearestFilter, NoNormalPacking, NormalAnimationBlendMode, NormalGAPacking, NormalRGPacking, NumberKeyframeTrack, Object3D, ObjectSpaceNormalMap, OctahedronGeometry, OrthographicCamera, Path, PlaneHelper, PointLightHelper, Points, PolarGridHelper, PolyhedronGeometry, PositionalAudio, PropertyBinding, PropertyMixer, QuadraticBezierCurve, QuadraticBezierCurve3, QuaternionKeyframeTrack, QuaternionLinearInterpolant, RGBADepthPacking, RGBDepthPacking, RGDepthPacking, RawShaderMaterial, Ray, Raycaster, RenderTarget3D, RingGeometry, ShaderMaterial, Shape, ShapeGeometry, ShapePath, ShapeUtils, Skeleton, SkeletonHelper, SkinnedMesh, Source, Sphere, Spherical, SphericalHarmonics3, SplineCurve, SpotLightHelper, Sprite, StaticCopyUsage, StaticDrawUsage, StaticReadUsage, StereoCamera, StreamCopyUsage, StreamDrawUsage, StreamReadUsage, StringKeyframeTrack, TOUCH, TangentSpaceNormalMap, TetrahedronGeometry, TextureLoader, TextureSource, TextureUtils, Timer, TorusGeometry, TorusKnotGeometry, Triangle, TriangleFanDrawMode, TriangleStripDrawMode, TrianglesDrawMode, TubeGeometry, UVMapping, Uint8BufferAttribute, Uint8ClampedBufferAttribute, Uniform, UniformsGroup, VectorKeyframeTrack, VideoFrameTexture, VideoTexture, WebGL3DRenderTarget, WebGLArrayRenderTarget, WebGLRenderTarget, WireframeGeometry, WrapAroundEnding, ZeroCurvatureEnding, ZeroSlopeEnding, getConsoleFunction, log, setConsoleFunction } from './three.core.js';
-import { NodeMaterial, float, materialLineDashOffset, materialLineScale, materialLineDashSize, materialLineGapSize, dashSize, gapSize, varying, attribute, varyingProperty, Fn, cameraProjectionMatrix, vec2, vec4, modelViewMatrix, viewport, If, positionGeometry, mix, vec3, materialLineWidth, screenDPR, uv, smoothstep, diffuseColor, viewportOpaqueMipTexture, modelWorldMatrixInverse, cameraWorldMatrix, cameraProjectionMatrixInverse, positionLocal, positionPrevious, materialOpacity, colorSpaceToWorking, packNormalToRGB, normalView, Node, cubeTexture, NodeUpdateType, CubeRenderTarget, nodeProxy, LightingNode, materialEnvRotation, materialSpecularStrength, materialReflectivity, negateOnBackSide, normalViewGeometry, materialLightMap, BRDF_Lambert, positionViewDirection, F_Schlick, specularColor, shininess, materialShininess, materialSpecular, iridescenceThickness, iridescenceIOR, metalness, Schlick_to_F0, cameraPosition, positionWorld, normalWorld, roughness, diffuseContribution, specularColorBlended, specularF90, modelWorldMatrix, cameraViewMatrix, ior, thickness, attenuationColor, attenuationDistance, dispersion, transmission, DFGLUT, iridescence, BRDF_Sheen, sheenRoughness, sheen, clearcoatNormalView, BRDF_GGX, clearcoatRoughness, retroreflectivity, BRDF_EON, diffuseRoughness, positionView, LTC_Uv, mat3, LTC_Evaluate, EON_DirectionalAlbedo, EnvironmentBRDF, clearcoat, Loop, length, refract, normalize, div, cameraViewport, screenSize, log2, textureBicubicLevel, log, exp, viewportMipTexture, clamp, pmremTexture, isolate, materialEnvIntensity, pow4, bentNormalView, materialMetalness, materialRoughness, getRoughness, materialIOR, materialSpecularColor, materialSpecularIntensity, min, pow2, materialDiffuseRoughness, materialClearcoat, materialClearcoatRoughness, materialSheen, materialSheenRoughness, materialRetroreflectivity, materialIridescence, materialIridescenceIOR, materialIridescenceThickness, materialAnisotropy, anisotropy, alphaT, anisotropyT, TBNViewMatrix, anisotropyB, materialTransmission, materialThickness, materialAttenuationDistance, materialAttenuationColor, materialDispersion, materialClearcoatNormal, subBuild, materialReference, matcapUV, reference$1 as reference, materialRotation, rotate, materialPointSize, viewportSize, uniform, renderGroup, property, modelRadius, linearDepth, viewZToPerspectiveDepth, cameraFar, cameraNear, LTC_Evaluate_Volume, hashString, hashArray, ChainMap, Color4, backgroundIntensity, backgroundBlurriness, backgroundRotation, normalWorldGeometry, stack, getTextureType, shaderStages, getTypeFromLength, setCurrentStack, FunctionNode, ParameterNode, defaultBuildStages, getDataFromObject, getCurrentStack, AnalyticLightNode, lightTargetDirection, lightPosition, lightProjectionUV, getDistanceAttenuation, texture, textureSize, remap, atan, uniformArray, getShIrradianceAt, lightShadowMatrix, sub, acos, saturate, max, lightViewPosition, StackTrace, screenUV, reference as reference$1, fog, densityFogFactor, rangeFogFactor, builtin, LightsNode, context, renderOutput, InspectorBase, highpModelViewMatrix, highpModelNormalViewMatrix, QuadMesh, CodeNode, TextureNode, vectorComponents, NodeAccess, VarNode, ExpressionNode, PointLightNode, linearToneMapping, reinhardToneMapping, cineonToneMapping, acesFilmicToneMapping, agxToneMapping, neutralToneMapping, output, StorageBufferAttribute } from './three.tsl.js';
+import { NodeMaterial, float, materialLineDashOffset, materialLineScale, materialLineDashSize, materialLineGapSize, dashSize, gapSize, varying, attribute, varyingProperty, Fn, cameraProjectionMatrix, vec2, vec4, modelViewMatrix, viewport, If, positionGeometry, mix, vec3, materialLineWidth, screenDPR, uv, smoothstep, diffuseColor, viewportOpaqueMipTexture, modelWorldMatrixInverse, cameraWorldMatrix, cameraProjectionMatrixInverse, positionLocal, positionPrevious, materialOpacity, colorSpaceToWorking, packNormalToRGB, normalView, Node, cubeTexture, NodeUpdateType, CubeRenderTarget, nodeProxy, LightingNode, materialEnvRotation, materialSpecularStrength, materialReflectivity, negateOnBackSide, normalViewGeometry, materialLightMap, BRDF_Lambert, positionViewDirection, F_Schlick, specularColor, shininess, materialShininess, materialSpecular, iridescenceThickness, iridescenceIOR, metalness, Schlick_to_F0, cameraPosition, positionWorld, normalWorld, roughness, diffuseContribution, specularColorBlended, specularF90, modelWorldMatrix, cameraViewMatrix, ior, thickness, attenuationColor, attenuationDistance, dispersion, transmission, DFGLUT, EON_DirectionalAlbedo, diffuseRoughness, iridescence, BRDF_Sheen, sheenRoughness, sheen, clearcoatNormalView, BRDF_GGX, clearcoatRoughness, retroreflectivity, BRDF_EON, positionView, LTC_Uv, mat3, LTC_Evaluate, EnvironmentBRDF, clearcoat, Loop, length, refract, normalize, div, cameraViewport, screenSize, log2, textureBicubicLevel, log, exp, viewportMipTexture, clamp, pmremTexture, isolate, materialEnvIntensity, pow4, bentNormalView, materialMetalness, materialRoughness, getRoughness, materialIOR, materialSpecularColor, materialSpecularIntensity, min, pow2, materialDiffuseRoughness, materialClearcoat, materialClearcoatRoughness, materialSheen, materialSheenRoughness, materialRetroreflectivity, materialIridescence, materialIridescenceIOR, materialIridescenceThickness, materialAnisotropy, anisotropy, alphaT, anisotropyT, TBNViewMatrix, anisotropyB, materialTransmission, materialThickness, materialAttenuationDistance, materialAttenuationColor, materialDispersion, materialClearcoatNormal, subBuild, materialReference, matcapUV, reference$1 as reference, materialRotation, rotate, materialPointSize, viewportSize, uniform, renderGroup, property, modelRadius, linearDepth, viewZToPerspectiveDepth, cameraFar, cameraNear, LTC_Evaluate_Volume, hashString, hashArray, ChainMap, Color4, backgroundIntensity, backgroundBlurriness, backgroundRotation, normalWorldGeometry, stack, getTextureType, shaderStages, getTypeFromLength, setCurrentStack, FunctionNode, ParameterNode, defaultBuildStages, getDataFromObject, getCurrentStack, AnalyticLightNode, lightTargetDirection, lightPosition, lightProjectionUV, getDistanceAttenuation, texture, textureSize, remap, atan, uniformArray, getShIrradianceAt, lightShadowMatrix, sub, acos, saturate, max, lightViewPosition, StackTrace, screenUV, reference as reference$1, fog, densityFogFactor, rangeFogFactor, builtin, LightsNode, context, renderOutput, InspectorBase, highpModelViewMatrix, highpModelNormalViewMatrix, QuadMesh, CodeNode, TextureNode, vectorComponents, NodeAccess, VarNode, ExpressionNode, PointLightNode, linearToneMapping, reinhardToneMapping, cineonToneMapping, acesFilmicToneMapping, agxToneMapping, neutralToneMapping, output, StorageBufferAttribute } from './three.tsl.js';
 export { AONode, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BarrierNode, BitcastNode, BitcountNode, BlendMode, BufferAttributeNode, BufferNode, BuiltinNode, BumpMapNode, BypassNode, ClippingNode, ColorSpaceNode, ComputeBuiltinNode, ComputeNode, ConditionalNode, ConstNode, ContextNode, ConvertNode, CubeTextureNode, DebugNode, EventNode, FlipNode, FrontFacingNode, FunctionCallNode, FunctionOverloadingNode, IndexNode, InputNode, InspectorNode, IrradianceNode, IsolateNode, JoinNode, LightingContextNode, LoopNode, MRTNode, MaterialNode, MaterialReferenceNode, MathNode, MaxMipLevelNode, MemberNode, ModelNode, NodeError, NodeMaterialObserver, NodeShaderStage, NodeType, NodeUtils, NormalMapNode, Object3DNode, OperatorNode, OutputStructNode, OverrideContextNode, PMREMGenerator, PMREMNode, PackFloatNode, Packed4x8IntegerNode, PassNode, PointShadowNode, PointUVNode, PropertyNode, RTTNode, RangeNode, ReferenceBaseNode, ReferenceElementNode, ReferenceNode, ReflectorNode, RenderOutputNode, RendererReferenceNode, RendererUtils, RotateNode, SampleNode, ScreenNode, SetNode, ShadowBaseNode, ShadowNode, SplitNode, StackNode, StorageArrayElementNode, StorageBufferNode, StorageInstancedBufferAttribute, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, Three_TSL as TSL, Texture3DNode, TextureSizeNode, ToneMappingNode, ToonOutlinePassNode, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UserDataNode, VaryingNode, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, WorkgroupInfoNode, defaultShaderStages } from './three.tsl.js';
 
 const _defaultValues$d = /*@__PURE__*/ new LineBasicMaterial();
@@ -2225,6 +2225,14 @@ class PhysicalLightingModel extends LightingModel {
 		this.dfg = null;
 
 		/**
+		 * The EON directional albedo, shared by the indirect lighting paths.
+		 *
+		 * @type {?Node}
+		 * @default null
+		 */
+		this.eonDirectionalAlbedo = null;
+
+		/**
 		 * The multi-scattering energy compensation for direct lighting.
 		 *
 		 * @type {?Node}
@@ -2351,6 +2359,12 @@ class PhysicalLightingModel extends LightingModel {
 		this.multiScatteringDielectric = vec3().toVar( 'multiScatteringDielectric' );
 
 		this.computeMultiscattering( this.singleScatteringDielectric, this.multiScatteringDielectric, specularF90, specularColor, this.iridescenceF0Dielectric );
+
+		if ( this.diffuseRoughness === true ) {
+
+			this.eonDirectionalAlbedo = EON_DirectionalAlbedo( { diffuseColor: diffuseColor.rgb, roughness: diffuseRoughness, dotNV: dotNV } );
+
+		}
 
 		super.start( builder );
 
@@ -2532,7 +2546,7 @@ class PhysicalLightingModel extends LightingModel {
 		const multiScattering = this.multiScatteringDielectric;
 
 		const diffuseBRDF = this.diffuseRoughness
-			? EON_DirectionalAlbedo( { diffuseColor: diffuseColor.rgb, roughness: diffuseRoughness, dotNV: normalView.dot( positionViewDirection ).clamp() } ).mul( metalness.oneMinus(), 1 / Math.PI )
+			? this.eonDirectionalAlbedo.mul( metalness.oneMinus(), 1 / Math.PI )
 			: BRDF_Lambert( { diffuseColor: diffuseContribution } );
 
 		const diffuse = irradiance.mul( diffuseBRDF ).mul( singleScattering.add( multiScattering ).oneMinus() ).toVar();
@@ -2609,7 +2623,7 @@ class PhysicalLightingModel extends LightingModel {
 		const totalScatteringDielectric = singleScatteringDielectric.add( multiScatteringDielectric );
 
 		const diffuseAlbedo = this.diffuseRoughness
-			? EON_DirectionalAlbedo( { diffuseColor: diffuseColor.rgb, roughness: diffuseRoughness, dotNV: normalView.dot( positionViewDirection ).clamp() } ).mul( metalness.oneMinus() )
+			? this.eonDirectionalAlbedo.mul( metalness.oneMinus() )
 			: diffuseContribution;
 
 		const diffuse = diffuseAlbedo.mul( totalScatteringDielectric.oneMinus() );
@@ -4452,7 +4466,7 @@ class ShadowNodeMaterial extends NodeMaterial {
 }
 
 const scatteringDensity = property( 'vec3' );
-const linearDepthRay = property( 'vec3' );
+const linearDepthRay = property( 'float' ); // always assigned a scalar (see `start()`) - not a per-channel value
 const outgoingRayLight = property( 'vec3' );
 
 /**
@@ -6256,12 +6270,30 @@ class Attributes extends DataMap {
 		 */
 		this.info = info;
 
+		/**
+		 * Stores weak references to the storage attributes with attached
+		 * `dispose` event listeners.
+		 *
+		 * @private
+		 * @type {Set<WeakRef<StorageBufferAttribute|StorageInstancedBufferAttribute>>}
+		 */
+		this._tracked = new Set();
+
+		/**
+		 * Removes weak references from `_tracked` when their attribute
+		 * has been garbage collected without an explicit `dispose()`.
+		 *
+		 * @private
+		 * @type {FinalizationRegistry}
+		 */
+		this._registry = new FinalizationRegistry( ( ref ) => this._tracked.delete( ref ) );
+
 	}
 
 	/**
 	 * Deletes the data for the given attribute.
 	 *
-	 * @param {BufferAttribute} attribute - The attribute.
+	 * @param {BufferAttribute|InterleavedBuffer} attribute - The attribute.
 	 * @return {?Object} The deleted attribute data.
 	 */
 	delete( attribute ) {
@@ -6269,6 +6301,15 @@ class Attributes extends DataMap {
 		const attributeData = super.delete( attribute );
 
 		if ( attributeData !== null ) {
+
+			if ( attribute.isStorageBufferAttribute === true || attribute.isStorageInstancedBufferAttribute === true ) {
+
+				attribute.removeEventListener( 'dispose', attributeData.onDispose );
+
+				this._tracked.delete( attributeData.ref );
+				this._registry.unregister( attributeData.ref );
+
+			}
 
 			this.backend.destroyAttribute( attribute );
 
@@ -6284,7 +6325,7 @@ class Attributes extends DataMap {
 	 * Updates the given attribute. This method creates attribute buffers
 	 * for new attributes and updates data for existing ones.
 	 *
-	 * @param {BufferAttribute} attribute - The attribute to update.
+	 * @param {BufferAttribute|InterleavedBuffer} attribute - The attribute to update.
 	 * @param {number} type - The attribute type.
 	 */
 	update( attribute, type ) {
@@ -6315,17 +6356,35 @@ class Attributes extends DataMap {
 
 			}
 
-			data.version = this._getBufferAttribute( attribute ).version;
+			data.version = attribute.version;
+
+			// only storage buffer attributes support disposal
+
+			if ( attribute.isStorageBufferAttribute === true || attribute.isStorageInstancedBufferAttribute === true ) {
+
+				data.onDispose = () => {
+
+					this.delete( attribute );
+
+				};
+
+				attribute.addEventListener( 'dispose', data.onDispose );
+
+				// see #31798 why tracking separate remove listeners is required right now
+				data.ref = new WeakRef( attribute );
+
+				this._tracked.add( data.ref );
+				this._registry.register( attribute, data.ref, data.ref );
+
+			}
 
 		} else {
 
-			const bufferAttribute = this._getBufferAttribute( attribute );
-
-			if ( data.version < bufferAttribute.version || bufferAttribute.usage === DynamicDrawUsage ) {
+			if ( data.version < attribute.version || attribute.usage === DynamicDrawUsage ) {
 
 				this.backend.updateAttribute( attribute );
 
-				data.version = bufferAttribute.version;
+				data.version = attribute.version;
 
 			}
 
@@ -6333,18 +6392,21 @@ class Attributes extends DataMap {
 
 	}
 
-	/**
-	 * Utility method for handling interleaved buffer attributes correctly.
-	 * To process them, their `InterleavedBuffer` is returned.
-	 *
-	 * @param {BufferAttribute} attribute - The attribute.
-	 * @return {BufferAttribute|InterleavedBuffer}
-	 */
-	_getBufferAttribute( attribute ) {
+	dispose() {
 
-		if ( attribute.isInterleavedBufferAttribute ) attribute = attribute.data;
+		for ( const ref of this._tracked ) {
 
-		return attribute;
+			const attribute = ref.deref();
+
+			if ( attribute === undefined || this.has( attribute ) === false ) continue;
+
+			this.delete( attribute );
+
+		}
+
+		this._tracked.clear();
+
+		super.dispose();
 
 	}
 
@@ -6568,7 +6630,7 @@ class Geometries extends DataMap {
 
 			for ( const attribute of Object.values( geometry.attributes ) ) {
 
-				this.attributes.delete( attribute );
+				this.attributes.delete( this.backend.getBufferAttribute( attribute ) );
 
 			}
 
@@ -6660,33 +6722,13 @@ class Geometries extends DataMap {
 
 		const callId = this.info.render.calls;
 
-		if ( ! attribute.isInterleavedBufferAttribute ) {
+		const bufferAttribute = this.backend.getBufferAttribute( attribute );
 
-			if ( this.attributeCall.get( attribute ) !== callId ) {
+		if ( this.attributeCall.get( bufferAttribute ) !== callId ) {
 
-				this.attributes.update( attribute, type );
+			this.attributes.update( bufferAttribute, type );
 
-				this.attributeCall.set( attribute, callId );
-
-			}
-
-		} else {
-
-			if ( this.attributeCall.get( attribute ) === undefined ) {
-
-				this.attributes.update( attribute, type );
-
-				this.attributeCall.set( attribute, callId );
-
-			} else if ( this.attributeCall.get( attribute.data ) !== callId ) {
-
-				this.attributes.update( attribute, type );
-
-				this.attributeCall.set( attribute.data, callId );
-
-				this.attributeCall.set( attribute, callId );
-
-			}
+			this.attributeCall.set( bufferAttribute, callId );
 
 		}
 
@@ -6772,7 +6814,7 @@ class Geometries extends DataMap {
 
 			if ( currentAttributes.has( attribute ) === false ) {
 
-				this.attributes.delete( attribute );
+				this.attributes.delete( this.backend.getBufferAttribute( attribute ) );
 
 			}
 
@@ -11847,6 +11889,8 @@ const _toFloat = ( value ) => {
 
 };
 
+const _componentTypeRanks = { bool: 0, uint: 1, int: 2, float: 3 };
+
 const _checkWriteUsage = ( data ) => {
 
 	if ( data.writeUsageCount > 0 ) return true;
@@ -12285,6 +12329,15 @@ class NodeBuilder {
 		 * @default null
 		 */
 		this.fnCall = null;
+
+		/**
+		 * The block of generated code the builder is in, e.g. a loop body or a conditional branch.
+		 * Every generated block is a new object linked to its parent, `null` outside of any block.
+		 *
+		 * @type {?{parent: ?Object}}
+		 * @default null
+		 */
+		this.flowBlock = null;
 
 		Object.defineProperty( this, 'id', { value: _id$5 ++ } );
 
@@ -12785,6 +12838,23 @@ class NodeBuilder {
 	}
 
 	/**
+	 * Returns the native snippet for a per-component vector select. The default
+	 * implementation uses {@link NodeBuilder#getTernary}; renderers can
+	 * override this when their ternary operation does not accept vectors.
+	 *
+	 * @param {string} condSnippet - The per-component boolean (`bvecN`) condition.
+	 * @param {string} ifSnippet - The vector expression selected where `condSnippet` is `true`.
+	 * @param {string} elseSnippet - The vector expression selected where `condSnippet` is `false`.
+	 * @param {string} type - The (vector) type of `ifSnippet`/`elseSnippet`.
+	 * @return {string} The resolved method name.
+	 */
+	getVectorSelect( condSnippet, ifSnippet, elseSnippet /*, type*/ ) {
+
+		return this.getTernary( condSnippet, ifSnippet, elseSnippet );
+
+	}
+
+	/**
 	 * Returns a node for the given hash, see {@link NodeBuilder#setHashNode}.
 	 *
 	 * @param {number} hash - The hash of the node.
@@ -13276,15 +13346,15 @@ class NodeBuilder {
 			if ( type === 'float' || type === 'int' || type === 'uint' ) value = 0;
 			else if ( type === 'bool' ) value = false;
 			else if ( type === 'color' ) value = new Color();
-			else if ( type === 'vec2' || type === 'uvec2' || type === 'ivec2' ) value = new Vector2();
-			else if ( type === 'vec3' || type === 'uvec3' || type === 'ivec3' ) value = new Vector3();
-			else if ( type === 'vec4' || type === 'uvec4' || type === 'ivec4' ) value = new Vector4();
+			else if ( type === 'vec2' || type === 'uvec2' || type === 'ivec2' || type === 'bvec2' ) value = new Vector2();
+			else if ( type === 'vec3' || type === 'uvec3' || type === 'ivec3' || type === 'bvec3' ) value = new Vector3();
+			else if ( type === 'vec4' || type === 'uvec4' || type === 'ivec4' || type === 'bvec4' ) value = new Vector4();
 
 		}
 
 		if ( type === 'float' ) return _toFloat( value );
-		if ( type === 'int' ) return `${ Math.round( value ) }`;
-		if ( type === 'uint' ) return value >= 0 ? `${ Math.round( value ) }u` : '0u';
+		if ( type === 'int' ) return `${ Math.trunc( value ) }`;
+		if ( type === 'uint' ) return value >= 0 ? `${ Math.trunc( value ) }u` : '0u';
 		if ( type === 'bool' ) return value ? 'true' : 'false';
 		if ( type === 'color' ) return `${ this.getType( 'vec3' ) }( ${ _toFloat( value.r ) }, ${ _toFloat( value.g ) }, ${ _toFloat( value.b ) } )`;
 
@@ -13392,6 +13462,18 @@ class NodeBuilder {
 	getPropertyName( node/*, shaderStage*/ ) {
 
 		return node.name;
+
+	}
+
+	/**
+	 * Whether the given type is a scalar type or not.
+	 *
+	 * @param {string} type - The type to check.
+	 * @return {boolean} Whether the given type is a scalar type or not.
+	 */
+	isScalar( type ) {
+
+		return type === 'float' || type === 'bool' || type === 'int' || type === 'uint';
 
 	}
 
@@ -13654,6 +13736,52 @@ class NodeBuilder {
 	changeComponentType( type, newComponentType ) {
 
 		return this.getTypeFromLength( this.getTypeLength( type ), newComponentType );
+
+	}
+
+	/**
+	 * Returns the common component type of the input nodes. Explicit types are
+	 * promoted first, then weak constants adopt that type, being truncated like other
+	 * integer constants. Only weak constants out of the integer range promote it.
+	 * Inputs consisting only of weak constants default to float.
+	 *
+	 * @param {...?Node} nodes - The input nodes.
+	 * @return {string} The promoted component type.
+	 */
+	getPromotedComponentType( ...nodes ) {
+
+		let type = null;
+		let hasWeak = false;
+		let fitsUint = true;
+		let fitsInt = true;
+
+		for ( const node of nodes ) {
+
+			if ( node === null ) continue;
+
+			if ( node.isWeak === true ) {
+
+				const value = Math.trunc( node.value );
+
+				hasWeak = true;
+				fitsUint = fitsUint && value >= 0 && value <= 0xffffffff;
+				fitsInt = fitsInt && value >= -2147483648 && value <= 0x7fffffff;
+
+			} else {
+
+				const componentType = this.getComponentType( node.getNodeType( this ) );
+
+				if ( type === null || _componentTypeRanks[ componentType ] > _componentTypeRanks[ type ] ) type = componentType;
+
+			}
+
+		}
+
+		if ( type === null || ( type === 'bool' && hasWeak ) ) return 'float';
+		if ( type === 'uint' && fitsUint === false ) return fitsInt ? 'int' : 'float';
+		if ( type === 'int' && fitsInt === false ) return 'float';
+
+		return type;
 
 	}
 
@@ -13976,13 +14104,14 @@ class NodeBuilder {
 	 * @param {('vertex'|'fragment'|'compute'|'any')} [shaderStage=this.shaderStage] - The shader stage.
 	 * @param {boolean} [readOnly=false] - Whether the variable is read-only or not.
 	 * @param {boolean} [local=false] - Whether the variable is declared locally in the flow instead of the variable section.
+	 * @param {string} [property='variable'] - The node data property that holds the variable. Allows a node to own more than one variable.
 	 *
 	 * @return {NodeVar} The node variable.
 	 */
-	getVarFromNode( node, name = null, type = node.getNodeType( this ), shaderStage = this.shaderStage, readOnly = false, local = false ) {
+	getVarFromNode( node, name = null, type = node.getNodeType( this ), shaderStage = this.shaderStage, readOnly = false, local = false, property = 'variable' ) {
 
 		const nodeData = this.getDataFromNode( node, shaderStage );
-		const subBuildVariable = this.getSubBuildProperty( 'variable', nodeData.subBuilds );
+		const subBuildVariable = this.getSubBuildProperty( property, nodeData.subBuilds );
 
 		let nodeVar = nodeData[ subBuildVariable ];
 
@@ -14003,7 +14132,7 @@ class NodeBuilder {
 
 			//
 
-			if ( subBuildVariable !== 'variable' ) {
+			if ( subBuildVariable !== property ) {
 
 				name = this.getSubBuildProperty( name, nodeData.subBuilds );
 
@@ -14201,82 +14330,15 @@ class NodeBuilder {
 	}
 
 	/**
-	 * Adds a code flow based on the code-block hierarchy.
-
-	 * This is used so that code-blocks like If,Else create their variables locally if the Node
-	 * is only used inside one of these conditionals in the current shader stage.
-	 *
-	 * @param {Node} node - The node to add.
-	 * @param {Node} nodeBlock - Node-based code-block. Usually 'ConditionalNode'.
-	 */
-	addFlowCodeHierarchy( node, nodeBlock ) {
-
-		const { flowCodes, flowCodeBlock } = this.getDataFromNode( node );
-
-		let needsFlowCode = true;
-		let nodeBlockHierarchy = nodeBlock;
-
-		while ( nodeBlockHierarchy ) {
-
-			if ( flowCodeBlock.get( nodeBlockHierarchy ) === true ) {
-
-				needsFlowCode = false;
-				break;
-
-			}
-
-			nodeBlockHierarchy = this.getDataFromNode( nodeBlockHierarchy ).parentNodeBlock;
-
-		}
-
-		if ( needsFlowCode ) {
-
-			for ( const flowCode of flowCodes ) {
-
-				this.addLineFlowCode( flowCode );
-
-			}
-
-			flowCodeBlock.set( nodeBlock, true );
-
-		}
-
-	}
-
-	/**
-	 * Add a inline-code to the current flow code-block.
-	 *
-	 * @param {Node} node - The node to add.
-	 * @param {string} code - The code to add.
-	 * @param {Node} nodeBlock - Current ConditionalNode
-	 */
-	addLineFlowCodeBlock( node, code, nodeBlock ) {
-
-		const nodeData = this.getDataFromNode( node );
-		const flowCodes = nodeData.flowCodes || ( nodeData.flowCodes = [] );
-		const codeBlock = nodeData.flowCodeBlock || ( nodeData.flowCodeBlock = new WeakMap() );
-
-		flowCodes.push( code );
-		codeBlock.set( nodeBlock, true );
-
-	}
-
-	/**
 	 * Add a inline-code to the current flow.
 	 *
 	 * @param {string} code - The code to add.
-	 * @param {?Node} [node= null] - Optional Node, can help the system understand if the Node is part of a code-block.
+	 * @param {?Node} [node= null] - The node that generated the code.
 	 * @return {NodeBuilder} A reference to this node builder.
 	 */
-	addLineFlowCode( code, node = null ) {
+	addLineFlowCode( code /*, node = null */ ) {
 
 		if ( code === '' ) return this;
-
-		if ( node !== null && this.context.nodeBlock ) {
-
-			this.addLineFlowCodeBlock( node, code, this.context.nodeBlock );
-
-		}
 
 		code = this.tab + code;
 
@@ -14509,6 +14571,7 @@ class NodeBuilder {
 		const previousCache = this.cache;
 		const previousBuildStage = this.buildStage;
 		const previousStack = this.stack;
+		const previousFlowBlock = this.flowBlock;
 
 		const flow = {
 			code: ''
@@ -14519,6 +14582,7 @@ class NodeBuilder {
 		this.declarations = {};
 		this.cache = new NodeCache();
 		this.stack = stack();
+		this.flowBlock = null;
 
 		for ( const buildStage of defaultBuildStages ) {
 
@@ -14535,6 +14599,7 @@ class NodeBuilder {
 		this.declarations = previousDeclarations;
 		this.cache = previousCache;
 		this.stack = previousStack;
+		this.flowBlock = previousFlowBlock;
 
 		this.setBuildStage( previousBuildStage );
 
@@ -14612,12 +14677,14 @@ class NodeBuilder {
 		const previousCache = this.cache;
 		const previousShaderStage = this.shaderStage;
 		const previousContext = this.context;
+		const previousFlowBlock = this.flowBlock;
 
 		this.setShaderStage( shaderStage );
 
 		const context = { ...this.context };
 		delete context.nodeBlock;
 
+		this.flowBlock = null;
 		this.cache = this.globalCache;
 		this.tab = '\t';
 		this.context = context;
@@ -14649,6 +14716,7 @@ class NodeBuilder {
 		this.cache = previousCache;
 		this.tab = previousTab;
 		this.context = previousContext;
+		this.flowBlock = previousFlowBlock;
 
 		return result;
 
@@ -15327,13 +15395,19 @@ class NodeBuilder {
 
 		if ( toTypeLength === 4 && fromTypeLength > 1 ) { // toType is vec4-like
 
-			return `${ this.getType( toType ) }( ${ this.format( snippet, fromType, 'vec3' ) }, 1.0 )`;
+			const componentType = this.getComponentType( toType );
+			const vectorType = this.getTypeFromLength( 3, componentType );
+
+			return `${ this.getType( toType ) }( ${ this.format( snippet, fromType, vectorType ) }, ${ this.generateConst( componentType, componentType === 'bool' ? true : 1 ) } )`;
 
 		}
 
 		if ( fromTypeLength === 2 ) { // fromType is vec2-like and toType is vec3-like
 
-			return `${ this.getType( toType ) }( ${ this.format( snippet, fromType, 'vec2' ) }, 0.0 )`;
+			const componentType = this.getComponentType( toType );
+			const vectorType = this.getTypeFromLength( 2, componentType );
+
+			return `${ this.getType( toType ) }( ${ this.format( snippet, fromType, vectorType ) }, ${ this.generateConst( componentType, componentType === 'bool' ? false : 0 ) } )`;
 
 		}
 
@@ -22717,10 +22791,6 @@ class Renderer {
 
 		}
 
-		this.getDrawingBufferSize( _drawingBufferSize );
-
-		_screen.set( 0, 0, _drawingBufferSize.width, _drawingBufferSize.height );
-
 		const minDepth = ( viewport.minDepth === undefined ) ? 0 : viewport.minDepth;
 		const maxDepth = ( viewport.maxDepth === undefined ) ? 1 : viewport.maxDepth;
 
@@ -22729,10 +22799,8 @@ class Renderer {
 		renderContext.viewportValue.height >>= activeMipmapLevel;
 		renderContext.viewportValue.minDepth = minDepth;
 		renderContext.viewportValue.maxDepth = maxDepth;
-		renderContext.viewport = renderContext.viewportValue.equals( _screen ) === false;
 
 		renderContext.scissorValue.copy( scissor ).multiplyScalar( pixelRatio ).floor();
-		renderContext.scissor = canvasTarget._scissorTest && renderContext.scissorValue.equals( _screen ) === false;
 		renderContext.scissorValue.width >>= activeMipmapLevel;
 		renderContext.scissorValue.height >>= activeMipmapLevel;
 
@@ -22790,6 +22858,8 @@ class Renderer {
 
 		} else {
 
+			this.getDrawingBufferSize( _drawingBufferSize );
+
 			renderContext.textures = null;
 			renderContext.depthTexture = null;
 			renderContext.width = _drawingBufferSize.width;
@@ -22821,6 +22891,11 @@ class Renderer {
 			renderContext.scissorValue.height = Math.max( renderContext.height - renderContext.scissorValue.y, 0 );
 
 		}
+
+		_screen.set( 0, 0, renderContext.width, renderContext.height );
+
+		renderContext.viewport = renderContext.viewportValue.equals( _screen ) === false;
+		renderContext.scissor = canvasTarget._scissorTest && renderContext.scissorValue.equals( _screen ) === false;
 
 		//
 
@@ -23632,6 +23707,7 @@ class Renderer {
 			this._animation.dispose();
 			this._objects.dispose();
 			this._geometries.dispose();
+			this._attributes.dispose();
 			this._pipelines.dispose();
 			this._nodes.dispose();
 			this._bindings.dispose();
@@ -26540,6 +26616,47 @@ class GLSLNodeBuilder extends NodeBuilder {
 	}
 
 	/**
+	 * Returns the native snippet for a genuinely per-component vector select.
+	 * GLSL has no vector ternary, so `float` types use `mix()`'s `bvecN`-selector
+	 * overload; `int`/`uint`/`bool` types use an arithmetic select instead, since
+	 * that overload doesn't exist for them.
+	 *
+	 * @param {string} condSnippet - The per-component boolean (`bvecN`) condition.
+	 * @param {string} ifSnippet - The vector expression selected where `condSnippet` is `true`.
+	 * @param {string} elseSnippet - The vector expression selected where `condSnippet` is `false`.
+	 * @param {string} type - The (vector) type of `ifSnippet`/`elseSnippet`.
+	 * @return {string} The resolved method name.
+	 */
+	getVectorSelect( condSnippet, ifSnippet, elseSnippet, type ) {
+
+		const componentType = this.getComponentType( type );
+
+		if ( componentType === 'float' ) {
+
+			return `mix( ${elseSnippet}, ${ifSnippet}, ${condSnippet} )`;
+
+		}
+
+		const glslType = this.getType( type );
+
+		if ( componentType === 'bool' ) {
+
+			const intType = this.getType( this.getTypeFromLength( this.getTypeLength( type ), 'int' ) );
+			const maskSnippet = `${intType}( ${condSnippet} )`;
+			const ifIntSnippet = `${intType}( ${ifSnippet} )`;
+			const elseIntSnippet = `${intType}( ${elseSnippet} )`;
+
+			return `${glslType}( ${elseIntSnippet} + ${maskSnippet} * ( ${ifIntSnippet} - ${elseIntSnippet} ) )`;
+
+		}
+
+		const maskSnippet = `${glslType}( ${condSnippet} )`;
+
+		return `${elseSnippet} + ${maskSnippet} * ( ${ifSnippet} - ${elseSnippet} )`;
+
+	}
+
+	/**
 	 * Returns the output struct name. Not relevant for GLSL.
 	 *
 	 * @return {string}
@@ -28579,6 +28696,21 @@ class Backend {
 	 */
 	destroyAttribute( /*attribute*/ ) { }
 
+	/**
+	 * Utility method for handling interleaved buffer attributes correctly.
+	 * To process them, their `InterleavedBuffer` is returned.
+	 *
+	 * @param {BufferAttribute|InterleavedBufferAttribute} attribute - The attribute.
+	 * @return {BufferAttribute|InterleavedBuffer}
+	 */
+	getBufferAttribute( attribute ) {
+
+		if ( attribute.isInterleavedBufferAttribute ) attribute = attribute.data;
+
+		return attribute;
+
+	}
+
 	// canvas
 
 	/**
@@ -29060,23 +29192,14 @@ class WebGLAttributeUtils {
 		const backend = this.backend;
 		const { gl } = backend;
 
+		const bufferAttribute = backend.getBufferAttribute( attribute );
+
+		if ( backend.get( bufferAttribute ).bufferGPU !== undefined ) return;
+
 		const array = attribute.array;
 		const usage = attribute.usage || gl.STATIC_DRAW;
 
-		const bufferAttribute = attribute.isInterleavedBufferAttribute ? attribute.data : attribute;
-		const bufferData = backend.get( bufferAttribute );
-
-		let bufferGPU = bufferData.bufferGPU;
-
-		if ( bufferGPU === undefined ) {
-
-			bufferGPU = this._createBuffer( gl, bufferType, array, usage );
-
-			bufferData.bufferGPU = bufferGPU;
-			bufferData.bufferType = bufferType;
-			bufferData.version = bufferAttribute.version;
-
-		}
+		const bufferGPU = this._createBuffer( gl, bufferType, array, usage );
 
 		//attribute.onUploadCallback();
 
@@ -29138,7 +29261,7 @@ class WebGLAttributeUtils {
 			type,
 			byteLength: array.byteLength,
 			bytesPerElement: array.BYTES_PER_ELEMENT,
-			version: attribute.version,
+			version: bufferAttribute.version,
 			pbo: attribute.pbo,
 			isInteger: type === gl.INT || type === gl.UNSIGNED_INT || attribute.gpuType === IntType,
 			id: _id$1 ++
@@ -29152,7 +29275,7 @@ class WebGLAttributeUtils {
 
 		}
 
-		backend.set( attribute, attributeData );
+		backend.set( bufferAttribute, attributeData );
 
 	}
 
@@ -29167,10 +29290,10 @@ class WebGLAttributeUtils {
 		const { gl } = backend;
 
 		const array = attribute.array;
-		const bufferAttribute = attribute.isInterleavedBufferAttribute ? attribute.data : attribute;
+		const bufferAttribute = backend.getBufferAttribute( attribute );
 		const bufferData = backend.get( bufferAttribute );
 		const bufferType = bufferData.bufferType;
-		const updateRanges = attribute.isInterleavedBufferAttribute ? attribute.data.updateRanges : attribute.updateRanges;
+		const updateRanges = bufferAttribute.updateRanges;
 
 		gl.bindBuffer( bufferType, bufferData.bufferGPU );
 
@@ -29210,17 +29333,25 @@ class WebGLAttributeUtils {
 		const backend = this.backend;
 		const { gl } = backend;
 
-		if ( attribute.isInterleavedBufferAttribute ) {
+		const bufferAttribute = backend.getBufferAttribute( attribute );
+		const attributeData = backend.get( bufferAttribute );
 
-			backend.delete( attribute.data );
+		if ( attributeData.buffers !== undefined ) {
+
+			// storage attributes hold a second buffer for transform feedback
+			for ( const buffer of attributeData.buffers ) {
+
+				gl.deleteBuffer( buffer );
+
+			}
+
+		} else {
+
+			gl.deleteBuffer( attributeData.bufferGPU );
 
 		}
 
-		const attributeData = backend.get( attribute );
-
-		gl.deleteBuffer( attributeData.bufferGPU );
-
-		backend.delete( attribute );
+		backend.delete( bufferAttribute );
 
 	}
 
@@ -29242,7 +29373,7 @@ class WebGLAttributeUtils {
 		const backend = this.backend;
 		const { gl } = backend;
 
-		const bufferAttribute = attribute.isInterleavedBufferAttribute ? attribute.data : attribute;
+		const bufferAttribute = backend.getBufferAttribute( attribute );
 		const attributeInfo = backend.get( bufferAttribute );
 		const { bufferGPU } = attributeInfo;
 
@@ -29386,9 +29517,13 @@ class WebGLVertexArrayUtils {
 
 		for ( let i = 0; i < attributes.length; i ++ ) {
 
-			const attributeData = backend.get( attributes[ i ] );
+			const attribute = attributes[ i ];
+			const attributeData = backend.get( backend.getBufferAttribute( attribute ) );
 
 			key += ':' + attributeData.id;
+
+			if ( attribute.isInterleavedBufferAttribute ) key += '.' + attribute.offset;
+
 			variant += ':' + ( attributeData.activeBufferIndex || 0 );
 
 			buffers.push( attributeData.bufferGPU );
@@ -29493,7 +29628,9 @@ class WebGLVertexArrayUtils {
 
 		for ( let i = 0; i < attributes.length; i ++ ) {
 
-			if ( this.backend.get( attributes[ i ] ).bufferGPU !== buffers[ i ] ) return true;
+			const bufferAttribute = this.backend.getBufferAttribute( attributes[ i ] );
+
+			if ( this.backend.get( bufferAttribute ).bufferGPU !== buffers[ i ] ) return true;
 
 		}
 
@@ -29547,7 +29684,7 @@ class WebGLVertexArrayUtils {
 		for ( let i = 0; i < attributes.length; i ++ ) {
 
 			const attribute = attributes[ i ];
-			const attributeData = this.backend.get( attribute );
+			const attributeData = this.backend.get( this.backend.getBufferAttribute( attribute ) );
 
 			gl.bindBuffer( gl.ARRAY_BUFFER, attributeData.bufferGPU );
 			gl.enableVertexAttribArray( i );
@@ -34100,7 +34237,7 @@ class WebGLBackend extends Backend {
 
 		} else {
 
-			const { width, height } = this.getDrawingBufferSize();
+			const { width, height } = renderContext;
 			state.viewport( 0, 0, width, height );
 
 		}
@@ -34111,7 +34248,7 @@ class WebGLBackend extends Backend {
 
 		} else {
 
-			const { width, height } = this.getDrawingBufferSize();
+			const { width, height } = renderContext;
 			state.scissor( 0, 0, width, height );
 
 		}
@@ -34212,7 +34349,7 @@ class WebGLBackend extends Backend {
 
 			} else {
 
-				const { width, height } = this.getDrawingBufferSize();
+				const { width, height } = previousContext;
 				state.viewport( 0, 0, width, height );
 
 			}
@@ -34223,7 +34360,7 @@ class WebGLBackend extends Backend {
 
 			} else {
 
-				const { width, height } = this.getDrawingBufferSize();
+				const { width, height } = previousContext;
 				state.scissor( 0, 0, width, height );
 
 			}
@@ -36482,8 +36619,12 @@ class WebGLBackend extends Backend {
 		if ( this.vertexArrayUtils !== null ) this.vertexArrayUtils.dispose();
 		if ( this.textureUtils !== null ) this.textureUtils.dispose();
 
-		const extension = this.extensions.get( 'WEBGL_lose_context' );
-		if ( extension ) extension.loseContext();
+		if ( this.parameters.canvas === undefined ) {
+
+			const extension = this.extensions.get( 'WEBGL_lose_context' );
+			if ( extension ) extension.loseContext();
+
+		}
 
 		this.renderer.domElement.removeEventListener( 'webglcontextlost', this._onContextLost );
 
@@ -43801,9 +43942,9 @@ class WebGPUAttributeUtils {
 	 */
 	createAttribute( attribute, usage ) {
 
-		const bufferAttribute = this._getBufferAttribute( attribute );
-
 		const backend = this.backend;
+
+		const bufferAttribute = backend.getBufferAttribute( attribute );
 		const bufferData = backend.get( bufferAttribute );
 
 		let buffer = bufferData.buffer;
@@ -43919,11 +44060,10 @@ class WebGPUAttributeUtils {
 	 */
 	updateAttribute( attribute ) {
 
-		const bufferAttribute = this._getBufferAttribute( attribute );
-
 		const backend = this.backend;
 		const device = backend.device;
 
+		const bufferAttribute = backend.getBufferAttribute( attribute );
 		const bufferData = backend.get( bufferAttribute );
 		const buffer = backend.get( bufferAttribute ).buffer;
 
@@ -44026,7 +44166,7 @@ class WebGPUAttributeUtils {
 
 			const geometryAttribute = attributes[ slot ];
 			const bytesPerElement = geometryAttribute.array.BYTES_PER_ELEMENT;
-			const bufferAttribute = this._getBufferAttribute( geometryAttribute );
+			const bufferAttribute = this.backend.getBufferAttribute( geometryAttribute );
 
 			let vertexBufferLayout = vertexBuffers.get( bufferAttribute );
 
@@ -44087,11 +44227,13 @@ class WebGPUAttributeUtils {
 	destroyAttribute( attribute ) {
 
 		const backend = this.backend;
-		const data = backend.get( this._getBufferAttribute( attribute ) );
+
+		const bufferAttribute = backend.getBufferAttribute( attribute );
+		const data = backend.get( bufferAttribute );
 
 		data.buffer.destroy();
 
-		backend.delete( attribute );
+		backend.delete( bufferAttribute );
 
 	}
 
@@ -44113,7 +44255,7 @@ class WebGPUAttributeUtils {
 		const backend = this.backend;
 		const device = backend.device;
 
-		const data = backend.get( this._getBufferAttribute( attribute ) );
+		const data = backend.get( backend.getBufferAttribute( attribute ) );
 		const bufferGPU = data.buffer;
 		const byteLength = count === -1 ? bufferGPU.size - offset : count;
 
@@ -44284,22 +44426,6 @@ class WebGPUAttributeUtils {
 		}
 
 		return format;
-
-	}
-
-	/**
-	 * Utility method for handling interleaved buffer attributes correctly.
-	 * To process them, their `InterleavedBuffer` is returned.
-	 *
-	 * @private
-	 * @param {BufferAttribute} attribute - The attribute.
-	 * @return {BufferAttribute|InterleavedBuffer}
-	 */
-	_getBufferAttribute( attribute ) {
-
-		if ( attribute.isInterleavedBufferAttribute ) attribute = attribute.data;
-
-		return attribute;
 
 	}
 

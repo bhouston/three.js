@@ -518,7 +518,9 @@ class SSGINode extends Node {
 
 				const offset = pow( abs( mul( stepRadius, float( i ).add( initialRayStep ) ).div( radiusVS ) ), EXP_FACTOR ).mul( radiusVS ).toConst();
 				const uvOffset = slideDirTexelSize.mul( max( offset, float( i ).add( 1 ) ) ).toConst();
-				const sampleUV = uvNode.add( uvOffset.mul( uvDirection ) ).toConst();
+				// snapped to a depth texel center: the depth is read from a single texel, so rebuilding the position at a
+				// fractional UV puts the sample off the surface (by up to half a texel's depth slope on oblique surfaces)
+				const sampleUV = floor( uvNode.add( uvOffset.mul( uvDirection ) ).mul( depthSize ) ).add( 0.5 ).div( depthSize ).toConst();
 
 				If( sampleUV.x.lessThanEqual( 0 ).or( sampleUV.y.lessThanEqual( 0 ) ).or( sampleUV.x.greaterThanEqual( 1 ) ).or( sampleUV.y.greaterThanEqual( 1 ) ), () => {
 

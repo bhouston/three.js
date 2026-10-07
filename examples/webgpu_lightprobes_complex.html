@@ -285,6 +285,7 @@
 
 				const params = {
 					enabled: true,
+					visibility: true,
 					showProbes: false,
 					resolution: 6
 				};
@@ -314,12 +315,14 @@
 					probesLeft = new LightProbeGrid( 7.8, 4.7, 7.6, resolution, resolution, resolution );
 					probesLeft.position.set( - 3.9, 2.45, 0 );
 					probesLeft.falloff = 1.0;
+					probesLeft.visibility = params.visibility;
 					await probesLeft.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20 } );
 					probesLeft.visible = params.enabled;
 
 					probesRight = new LightProbeGrid( 7.8, 4.7, 7.6, resolution, resolution, resolution );
 					probesRight.position.set( 3.9, 2.45, 0 );
 					probesRight.falloff = 1.0;
+					probesRight.visibility = params.visibility;
 					await probesRight.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20 } );
 					probesRight.visible = params.enabled;
 
@@ -364,6 +367,12 @@
 
 				} );
 
+				gui.add( params, 'visibility' ).name( 'Visibility' ).onChange( ( value ) => {
+
+					probesLeft.visibility = value;
+					probesRight.visibility = value;
+
+				} );
 				gui.add( params, 'resolution', 2, 12, 1 ).name( 'Resolution' ).onChange( ( value ) => {
 
 					bake( value );

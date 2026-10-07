@@ -1,5 +1,5 @@
 import { AnalyticLightNode, Vector3 } from 'three/webgpu';
-import { array, getShIrradianceAt, normalWorld, positionWorld, texture3D, uniform, vec3 } from 'three/tsl';
+import { array, getShIrradianceAt, If, normalWorld, NodeUpdateType, positionWorld, renderGroup, texture3D, uniform, vec3 } from 'three/tsl';
 
 // Padding texels at each boundary of every atlas sub-volume.
 export const ATLAS_PADDING = 1;
@@ -71,11 +71,18 @@ class LightProbeGridNode extends AnalyticLightNode {
 
 		super( light );
 
-		this._min = uniform( new Vector3() );
-		this._max = uniform( new Vector3() );
-		this._resolution = uniform( new Vector3() );
-		this._intensity = uniform( 1 );
-		this._falloff = uniform( 0 );
+		// Render-group uniforms are refreshed for every render, including for
+		// objects whose materials are unchanged, so grid changes always apply.
+
+		this._min = uniform( new Vector3() ).setGroup( renderGroup );
+		this._max = uniform( new Vector3() ).setGroup( renderGroup );
+		this._resolution = uniform( new Vector3() ).setGroup( renderGroup );
+		this._intensity = uniform( 1 ).setGroup( renderGroup );
+		this._falloff = uniform( 0 ).setGroup( renderGroup );
+		this._useSnapshot = uniform( 0, 'int' ).setGroup( renderGroup );
+
+		// A bake renders the grid's captures in the same frame as the main view.
+		this.updateType = NodeUpdateType.RENDER;
 
 	}
 
@@ -86,8 +93,9 @@ class LightProbeGridNode extends AnalyticLightNode {
 		this._min.value.copy( light.boundingBox.min );
 		this._max.value.copy( light.boundingBox.max );
 		this._resolution.value.copy( light.resolution );
-		this._intensity.value = light.intensity;
+		this._intensity.value = light._captureIntensity !== null ? light._captureIntensity : light.intensity;
 		this._falloff.value = light.falloff;
+		this._useSnapshot.value = light._captureSnapshot ? 1 : 0;
 
 	}
 
@@ -112,7 +120,24 @@ class LightProbeGridNode extends AnalyticLightNode {
 		const samplePos = positionWorld.add( normalWorld.mul( spacing ).mul( 0.5 ) );
 		const uvw = samplePos.sub( min ).div( range ).clamp( 0.0, 1.0 ).mul( resMinusOne ).div( res ).add( vec3( 0.5 ).div( res ) );
 
-		const result = evaluateGridIrradiance( texture3D( light.texture ), uvw, res, normalWorld );
+		// Indirect bake passes sample the snapshot of the previous pass. Both atlases
+		// stay bound so switching between them never rebuilds the materials. The
+		// atlases must exist as render targets before they are bound.
+
+		builder.renderer.initRenderTarget( light._renderTarget );
+		builder.renderer.initRenderTarget( light._snapshotTarget );
+
+		const result = vec3().toVar();
+
+		If( this._useSnapshot.equal( 1 ), () => {
+
+			result.assign( evaluateGridIrradiance( texture3D( light._snapshotTarget.texture ), uvw, res, normalWorld ) );
+
+		} ).Else( () => {
+
+			result.assign( evaluateGridIrradiance( texture3D( light.texture ), uvw, res, normalWorld ) );
+
+		} );
 
 		let irradiance = result.mul( this._intensity );
 

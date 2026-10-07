@@ -522,10 +522,9 @@ class LightProbeGrid extends Light {
 
 		/**
 		 * The single RGBA atlas 3D texture storing all seven packed SH
-		 * sub-volumes stacked along Z.
+		 * sub-volumes stacked along Z. It is all zeros until baked.
 		 *
-		 * @type {?Data3DTexture}
-		 * @default null
+		 * @type {Data3DTexture}
 		 */
 		this.texture = null;
 
@@ -539,10 +538,21 @@ class LightProbeGrid extends Light {
 		this._renderTarget = null;
 
 		// Indirect captures read a snapshot while the live atlas is updated in place.
-		this._bounceGrid = null;
+		this._snapshotTarget = null;
 		this._bouncePass = - 1;
 
+		// While baking, the grid lights its own captures: with zero intensity in the
+		// direct pass and from the snapshot in indirect passes. Keeping the grid
+		// itself in the scene, rather than swapping in a separate light, leaves the
+		// scene's lights unchanged, so materials are not rebuilt between bake passes
+		// and the main view.
+		this._captureIntensity = null;
+		this._captureSnapshot = false;
+
 		this.updateBoundingBox();
+
+		// The atlases exist from the start so the light's bindings never change.
+		this._ensureTextures();
 
 	}
 
@@ -666,6 +676,12 @@ class LightProbeGrid extends Light {
 		this._ensureTextures();
 		this.updateBoundingBox();
 
+		// The grid samples its atlases during the capture, so they must exist as
+		// render targets before they are bound. Otherwise they are created as plain
+		// textures and replaced when first written, leaving the bindings stale.
+		renderer.initRenderTarget( this._renderTarget );
+		renderer.initRenderTarget( this._snapshotTarget );
+
 		// Bind the pooled bake resources to the current textures.
 
 		ensureCaptureCamera( cubemapSize, near, far );
@@ -683,6 +699,7 @@ class LightProbeGrid extends Light {
 		const currentInspectorEnabled = renderer.inspector.enabled;
 		const currentMatrixWorldAutoUpdate = scene.matrixWorldAutoUpdate;
 		const currentVisible = this.visible;
+		const currentParent = this.parent;
 		const renderTarget = this._renderTarget;
 		const currentViewport = renderTarget.viewport.clone();
 		const shadowStates = [];
@@ -692,7 +709,15 @@ class LightProbeGrid extends Light {
 
 			renderer.inspector.enabled = false;
 			renderer.xr.enabled = false;
-			this.visible = false;
+
+			// The grid lights the indirect passes, so it must be a visible part of
+			// the scene. A grid outside the scene is added for the bake.
+
+			let root = this;
+			while ( root.parent !== null ) root = root.parent;
+			if ( root !== scene ) scene.add( this );
+
+			this.visible = true;
 
 			// Scene is static during the bake: update once, disable auto-update.
 
@@ -722,7 +747,7 @@ class LightProbeGrid extends Light {
 
 			for ( let pass = firstPass; pass <= firstPass + bounces; pass ++ ) {
 
-				this._updateBounceGrid( renderer, scene, pass, start );
+				this._updateSnapshot( renderer, pass, start );
 				this._captureProbes( renderer, scene, start, end );
 				this._repackProbes( renderer, start, end );
 
@@ -743,7 +768,15 @@ class LightProbeGrid extends Light {
 			if ( replacedSunLights !== null ) restoreSunLights( scene, replacedSunLights );
 
 			this.visible = currentVisible;
-			if ( this._bounceGrid !== null ) this._bounceGrid.removeFromParent();
+			this._captureIntensity = null;
+			this._captureSnapshot = false;
+
+			if ( this.parent !== currentParent ) {
+
+				if ( currentParent !== null ) currentParent.add( this );
+				else this.removeFromParent();
+
+			}
 
 			renderer.inspector.enabled = currentInspectorEnabled;
 
@@ -752,50 +785,40 @@ class LightProbeGrid extends Light {
 	}
 
 	/**
-	 * Snapshots each indirect pass before its first range overwrites the live atlas.
-	 * A separate light keeps the capture and main-view texture bindings stable.
+	 * Selects what the grid contributes to its own captures. The direct pass
+	 * contributes nothing. Each indirect pass snapshots the previous pass before
+	 * its first range overwrites the live atlas, then samples the snapshot.
 	 *
 	 * @private
 	 * @param {WebGPURenderer} renderer - The renderer.
-	 * @param {Scene} scene - The scene to capture.
 	 * @param {number} pass - The bounce pass.
 	 * @param {number} start - The first probe index.
 	 */
-	_updateBounceGrid( renderer, scene, pass, start ) {
+	_updateSnapshot( renderer, pass, start ) {
+
+		const renderTarget = this._renderTarget;
 
 		if ( pass === 0 ) {
 
 			if ( start === 0 ) this._bouncePass = - 1;
+
+			this._captureIntensity = 0;
+			this._captureSnapshot = false;
 			return;
 
 		}
 
 		if ( start === 0 ) {
 
-			const renderTarget = this._renderTarget;
-
-			if ( this._bounceGrid === null ) {
-
-				const res = this.resolution;
-				this._bounceGrid = new LightProbeGrid( this.width, this.height, this.depth, res.x, res.y, res.z );
-				this._bounceGrid._ensureTextures();
-
-			}
-
-			renderer.initRenderTarget( renderTarget );
-			renderer.initRenderTarget( this._bounceGrid._renderTarget );
 			_copyRegion.min.set( 0, 0, 0 );
 			_copyRegion.max.set( renderTarget.width, renderTarget.height, renderTarget.depth );
-			renderer.copyTextureToTexture( renderTarget.texture, this._bounceGrid.texture, _copyRegion );
+			renderer.copyTextureToTexture( renderTarget.texture, this._snapshotTarget.texture, _copyRegion );
 			this._bouncePass = pass;
 
 		}
 
-		const bounceGrid = this._bounceGrid;
-		bounceGrid.boundingBox.copy( this.boundingBox );
-		bounceGrid.intensity = this.intensity;
-		bounceGrid.falloff = this.falloff;
-		scene.add( bounceGrid );
+		this._captureIntensity = this.intensity;
+		this._captureSnapshot = true;
 
 	}
 
@@ -945,7 +968,7 @@ class LightProbeGrid extends Light {
 	}
 
 	/**
-	 * Ensures the atlas 3D texture exists with the correct dimensions.
+	 * Ensures the atlas and snapshot 3D textures exist with the correct dimensions.
 	 *
 	 * @private
 	 */
@@ -959,39 +982,32 @@ class LightProbeGrid extends Light {
 		// Atlas depth: 7 sub-volumes, each with ATLAS_PADDING slices at both ends.
 		const atlasDepth = 7 * ( nz + 2 * ATLAS_PADDING );
 
-		this._renderTarget = new RenderTarget3D( nx, ny, atlasDepth, {
+		const options = {
 			type: HalfFloatType,
 			format: RGBAFormat,
 			minFilter: LinearFilter,
 			magFilter: LinearFilter,
 			generateMipmaps: false,
 			depthBuffer: false
-		} );
+		};
+
+		this._renderTarget = new RenderTarget3D( nx, ny, atlasDepth, options );
+		this._snapshotTarget = new RenderTarget3D( nx, ny, atlasDepth, options );
 
 		this.texture = this._renderTarget.texture;
 
 	}
 
 	/**
-	 * Frees GPU resources.
+	 * Frees GPU resources. The grid can be baked again afterwards.
 	 */
 	dispose() {
 
-		if ( this._bounceGrid !== null ) {
+		// The targets are kept so the light's bindings stay valid.
 
-			this._bounceGrid.dispose();
-			this._bounceGrid = null;
-			this._bouncePass = - 1;
-
-		}
-
-		if ( this._renderTarget !== null ) {
-
-			this._renderTarget.dispose();
-			this._renderTarget = null;
-			this.texture = null;
-
-		}
+		this._renderTarget.dispose();
+		this._snapshotTarget.dispose();
+		this._bouncePass = - 1;
 
 		super.dispose();
 

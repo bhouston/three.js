@@ -38,6 +38,12 @@ const PROBES_PER_BATCH = 8;
 const CLASSIFY_SAMPLES = 64;
 const INSIDE_FRACTION = 0.25;
 
+// A probe closer to a surface than this many capture near planes saw through it
+// in its radiance capture, so it is hidden like a probe inside geometry. The
+// classification capture uses a much closer near plane to measure this.
+const CLEARANCE_NEAR_PLANES = 1.5;
+const CLASSIFY_NEAR_SCALE = 0.01;
+
 // Golden-angle increment for the equal-area Fibonacci sphere.
 const GOLDEN_ANGLE = Math.PI * ( 3.0 - Math.sqrt( 5.0 ) );
 
@@ -69,6 +75,7 @@ let _classifyTarget = null;
 let _classifyMaterials = null;
 let _nearUniform = null;
 let _farUniform = null;
+let _clearanceUniform = null;
 let _distanceScaleUniform = null;
 let _distanceMaterial = null;
 let _fractionMaterial = null;
@@ -323,14 +330,14 @@ function captureDistance( depth, dir, size, slot, near, far ) {
 /**
  * Returns the output node for the back-face pass: one fragment per probe that
  * counts how many of 64 directions over an equal-area Fibonacci sphere hit a
- * back face in the classification capture.
+ * back face in the classification capture, and finds the nearest hit.
  *
  * @private
  * @param {Node} flags - The classification capture's back-face flags.
  * @param {Node} depth - The classification capture's depth.
  * @param {number} size - The face resolution.
  * @param {Object} uniforms - The batch and camera uniforms.
- * @return {Node<vec4>} The back-face fraction in x.
+ * @return {Node<vec4>} The back-face fraction in x and the nearest hit distance in y.
  */
 function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
 
@@ -338,6 +345,7 @@ function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
 
 		const slot = int( screenCoordinate.y ).sub( batchStart ).toVar();
 		const backFaces = float( 0.0 ).toVar();
+		const nearest = far.toVar();
 
 		Loop( CLASSIFY_SAMPLES, ( { i } ) => {
 
@@ -350,10 +358,11 @@ function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
 			// Background texels hold the clear color, so only count geometry hits.
 			const hit = distance.lessThan( far.mul( 0.99 ) );
 			backFaces.addAssign( select( hit, flags.load( coord ).r, float( 0.0 ) ) );
+			nearest.assign( nearest.min( distance ) );
 
 		} );
 
-		return vec4( backFaces.div( CLASSIFY_SAMPLES ), 0.0, 0.0, 1.0 );
+		return vec4( backFaces.div( CLASSIFY_SAMPLES ), nearest, 0.0, 1.0 );
 
 	} )();
 
@@ -367,9 +376,10 @@ function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
  * the texel.
  *
  * A probe that sees back faces in more than a quarter of the directions is
- * inside geometry. Its moments are written as zero distance, so it is hidden from
- * every receiver instead of blending light from both sides of the surface it is
- * in.
+ * inside geometry, and one closer to a surface than the clearance saw through it
+ * in its radiance capture. Their moments are written as zero distance, so they
+ * are hidden from every receiver instead of blending in light from both sides of
+ * a surface.
  *
  * @private
  * @param {Node} depth - The classification capture's depth.
@@ -379,7 +389,7 @@ function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
  * @param {Object} uniforms - The batch, camera and distance scale uniforms.
  * @return {Node<vec4>} The mean and mean squared normalized distance.
  */
-function distanceMomentsNode( depth, batch, fractionColumn, size, { batchStart, batchCount, near, far, distanceScale } ) {
+function distanceMomentsNode( depth, batch, fractionColumn, size, { batchStart, batchCount, near, far, distanceScale, clearance } ) {
 
 	const R = DISTANCE_RESOLUTION;
 
@@ -393,7 +403,8 @@ function distanceMomentsNode( depth, batch, fractionColumn, size, { batchStart, 
 
 		Discard( slot.lessThan( 0 ).or( slot.greaterThanEqual( batchCount ) ) );
 
-		const inside = batch.load( ivec2( fractionColumn, probeIndex ) ).r.greaterThan( INSIDE_FRACTION );
+		const classification = batch.load( ivec2( fractionColumn, probeIndex ) );
+		const inside = classification.x.greaterThan( INSIDE_FRACTION ).or( classification.y.lessThan( clearance ) );
 
 		const x = tile.x.toVar();
 		const y = tile.y.toVar();
@@ -546,6 +557,23 @@ function ensureCaptureCamera( near, far ) {
 }
 
 /**
+ * Sets the near plane of every capture sub-camera.
+ *
+ * @private
+ * @param {number} near - The near plane.
+ */
+function setCaptureNear( near ) {
+
+	for ( const camera of _captureCamera.cameras ) {
+
+		camera.near = near;
+		camera.updateProjectionMatrix();
+
+	}
+
+}
+
+/**
  * Lazily pools the shared face atlas and batch render targets, recreating them
  * only when their dimensions change. Each capture sub-camera renders into its
  * own tile of the face atlas.
@@ -632,6 +660,7 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 		_batchCountUniform = uniform( 0, 'int' );
 		_nearUniform = uniform( 0.1 );
 		_farUniform = uniform( 100 );
+		_clearanceUniform = uniform( 0 );
 		_distanceScaleUniform = uniform( 1 );
 		_resolutionUniform = uniform( new Vector3() );
 		_sliceZUniform = uniform( 0, 'int' );
@@ -694,7 +723,8 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 			batchCount: _batchCountUniform,
 			near: _nearUniform,
 			far: _farUniform,
-			distanceScale: _distanceScaleUniform
+			distanceScale: _distanceScaleUniform,
+			clearance: _clearanceUniform
 		} );
 		_distanceMaterial.depthTest = false;
 		_distanceMaterial.depthWrite = false;
@@ -1014,7 +1044,8 @@ class LightProbeGrid extends Light {
 		ensureBakeTargets( cubemapSize, totalProbes );
 		ensureBakeMaterials( cubemapSize, _faceTarget.texture, _batchTarget.texture, _classifyTarget.texture, _classifyTarget.depthTexture );
 
-		_nearUniform.value = near;
+		_nearUniform.value = near * CLASSIFY_NEAR_SCALE;
+		_clearanceUniform.value = near * CLEARANCE_NEAR_PLANES;
 		_farUniform.value = far;
 		_distanceScaleUniform.value = this._distanceScale;
 		_resolutionUniform.value.copy( res );
@@ -1164,6 +1195,9 @@ class LightProbeGrid extends Light {
 	 */
 	_captureProbes( renderer, scene, start, end, recordDistances ) {
 
+		// The radiance capture near plane, restored after each classification capture.
+		const near = _captureCamera.cameras[ 0 ].near;
+
 		const { x: nx, z: nz } = this.resolution;
 		const probesPerLayer = nx * nz;
 		const cameras = _captureCamera.cameras;
@@ -1231,12 +1265,19 @@ class LightProbeGrid extends Light {
 				// Classification capture: every mesh drawn double sided with back-face
 				// flags. Its depth sees through nothing, like a double-sided ray cast.
 
+				// A much closer near plane, so surfaces the radiance capture clipped
+				// away are seen.
+
+				setCaptureNear( _nearUniform.value );
+
 				renderer.setRenderObjectFunction( classifyRenderObject );
 				renderer.autoClear = true;
 				renderer.setRenderTarget( _classifyTarget );
 				renderer.render( scene, _captureCamera );
 				renderer.autoClear = false;
 				renderer.setRenderObjectFunction( currentRenderObjectFunction );
+
+				setCaptureNear( near );
 
 				_batchTarget.viewport.set( _batchColumns, batchStart, 1, batchCount );
 				renderer.setRenderTarget( _batchTarget );

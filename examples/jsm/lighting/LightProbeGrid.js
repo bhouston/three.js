@@ -1,6 +1,7 @@
 import {
 	ArrayCamera,
 	Box3,
+	DataTexture,
 	FloatType,
 	HalfFloatType,
 	Light,
@@ -12,15 +13,13 @@ import {
 	QuadMesh,
 	RenderTarget,
 	RenderTarget3D,
+	RedFormat,
 	RGBAFormat,
 	Vector3,
 	Vector4
 } from 'three/webgpu';
 
 import {
-	array,
-	atan,
-	float,
 	Fn,
 	int,
 	ivec2,
@@ -58,6 +57,7 @@ const _copyRegion = /*@__PURE__*/ new Box3();
 let _shMaterial = null;
 let _shFaceSize = - 1;
 let _faceNode = null;
+let _weightsNode = null;
 let _batchNode = null;
 let _batchStartUniform = null;
 let _resolutionUniform = null;
@@ -69,76 +69,129 @@ let _faceTarget = null;
 let _faceSize = - 1;
 let _batchTarget = null;
 let _batchProbes = - 1;
+let _batchColumns = - 1;
 
 // The capture camera renders every face of a probe batch in one pass. It is
 // never recreated: the camera uniform arrays reference its sub-camera matrices.
 let _captureCamera = null;
 
 /**
+ * Returns the face block count for a face size: faces are projected in blocks
+ * of 8 rows so each probe spreads over many fragments.
+ *
+ * @private
+ * @param {number} size - The face resolution.
+ * @return {number} The number of row blocks per face.
+ */
+function getFaceBlocks( size ) {
+
+	return size % 8 === 0 ? size / 8 : 1;
+
+}
+
+/**
+ * Builds the SH projection weights for a face size: for every face texel and
+ * coefficient, the L2 SH basis in the texel's direction times the texel's exact
+ * solid angle. Texel ( i, j ) of face f and coefficient c is stored at
+ * ( f * size + i, c * size + j ).
+ *
+ * @private
+ * @param {number} size - The face resolution.
+ * @return {DataTexture} The weight texture.
+ */
+function createProjectionWeights( size ) {
+
+	const width = 6 * size;
+	const data = new Float32Array( width * 9 * size );
+	const texelSize = 2 / size;
+	const dir = new Vector3();
+
+	// Signed area of the projected face region from its center to ( x, y ).
+	const area = ( x, y ) => Math.atan2( x * y, Math.sqrt( x * x + y * y + 1 ) );
+
+	for ( let f = 0; f < 6; f ++ ) {
+
+		for ( let j = 0; j < size; j ++ ) {
+
+			for ( let i = 0; i < size; i ++ ) {
+
+				// Rows run top to bottom, so NDC y decreases with j.
+				const x0 = i * texelSize - 1, x1 = x0 + texelSize;
+				const y0 = 1 - j * texelSize, y1 = y0 - texelSize;
+				const solidAngle = Math.abs( area( x0, y0 ) - area( x0, y1 ) - area( x1, y0 ) + area( x1, y1 ) );
+
+				const x = x0 + texelSize * 0.5, y = y0 - texelSize * 0.5;
+				dir.fromArray( FACE_FORWARD[ f ] );
+				dir.x += x * FACE_RIGHT[ f ][ 0 ] + y * FACE_UP[ f ][ 0 ];
+				dir.y += x * FACE_RIGHT[ f ][ 1 ] + y * FACE_UP[ f ][ 1 ];
+				dir.z += x * FACE_RIGHT[ f ][ 2 ] + y * FACE_UP[ f ][ 2 ];
+				dir.normalize();
+
+				const { x: dx, y: dy, z: dz } = dir;
+				const basis = [
+					0.282095,
+					0.488603 * dy,
+					0.488603 * dz,
+					0.488603 * dx,
+					1.092548 * dx * dy,
+					1.092548 * dy * dz,
+					0.315392 * ( 3 * dz * dz - 1 ),
+					1.092548 * dx * dz,
+					0.546274 * ( dx * dx - dy * dy )
+				];
+
+				for ( let c = 0; c < 9; c ++ ) data[ ( c * size + j ) * width + f * size + i ] = basis[ c ] * solidAngle;
+
+			}
+
+		}
+
+	}
+
+	const weights = new DataTexture( data, width, 9 * size, RedFormat, FloatType );
+	weights.needsUpdate = true;
+
+	return weights;
+
+}
+
+/**
  * Returns the output node for the spherical-harmonic projection pass. Each
- * fragment of a batch row integrates one SH coefficient over one captured cube
- * face, weighting every texel by its exact solid angle. Columns are ordered
- * `coefficient * 6 + face`; the repack pass sums the six faces.
+ * fragment of a batch row integrates one SH coefficient over one row block of a
+ * captured cube face, using the precomputed projection weights. Columns are
+ * ordered `( coefficient * 6 + face ) * blocks + block`; the repack pass sums the
+ * faces and blocks.
  *
  * @private
  * @param {Node} faces - The face atlas texture node.
+ * @param {Node} weights - The projection weight texture node.
  * @param {number} size - The face resolution.
  * @param {Node<int>} batchStart - The probe index of the first batch row.
- * @return {Node<vec4>} The projected coefficient for one face.
+ * @return {Node<vec4>} The projected coefficient for one face block.
  */
-function projectSHNode( faces, size, batchStart ) {
+function projectSHNode( faces, weights, size, batchStart ) {
 
-	const toVec3 = ( v ) => vec3( ...v );
+	const blocks = getFaceBlocks( size );
+	const rows = size / blocks;
 
 	return Fn( () => {
 
 		const column = int( screenCoordinate.x );
-		const coefIndex = column.div( 6 ).toVar();
-		const face = column.mod( 6 ).toVar();
+		const block = column.mod( blocks );
+		const coefFace = column.div( blocks );
+		const coefIndex = coefFace.div( 6 );
+		const face = coefFace.mod( 6 );
 		const slot = int( screenCoordinate.y ).sub( batchStart );
+		const rowStart = block.mul( rows );
 
-		const forward = array( FACE_FORWARD.map( toVec3 ) ).element( face ).toVar();
-		const right = array( FACE_RIGHT.map( toVec3 ) ).element( face ).toVar();
-		const up = array( FACE_UP.map( toVec3 ) ).element( face ).toVar();
-
-		const origin = ivec2( face.mul( size ), slot.mul( size ) ).toVar();
-		const texelSize = 2.0 / size;
+		const faceOrigin = ivec2( face.mul( size ), slot.mul( size ).add( rowStart ) ).toVar();
+		const weightOrigin = ivec2( face.mul( size ), coefIndex.mul( size ).add( rowStart ) ).toVar();
 		const accum = vec3( 0.0 ).toVar();
 
-		// Signed area of the projected face region from its center to ( x, y ).
-		const area = ( x, y ) => atan( x.mul( y ), x.mul( x ).add( y.mul( y ) ).add( 1.0 ).sqrt() );
+		Loop( rows, size, ( { i, j } ) => {
 
-		Loop( size, size, ( { i, j } ) => {
-
-			// Rows run top to bottom, so NDC y decreases with j.
-			const x0 = float( i ).mul( texelSize ).sub( 1.0 );
-			const x1 = x0.add( texelSize );
-			const y0 = float( 1.0 ).sub( float( j ).mul( texelSize ) );
-			const y1 = y0.sub( texelSize );
-
-			const solidAngle = area( x0, y0 ).sub( area( x0, y1 ) ).sub( area( x1, y0 ) ).add( area( x1, y1 ) ).abs();
-
-			const x = x0.add( texelSize * 0.5 );
-			const y = y0.sub( texelSize * 0.5 );
-			const dir = forward.add( right.mul( x ) ).add( up.mul( y ) ).normalize().toVar();
-
-			const radiance = faces.load( origin.add( ivec2( i, j ) ) ).rgb;
-
-			// The L2 SH basis function for this fragment's coefficient.
-			const dx = dir.x, dy = dir.y, dz = dir.z;
-			const basis = array( [
-				float( 0.282095 ),
-				dy.mul( 0.488603 ),
-				dz.mul( 0.488603 ),
-				dx.mul( 0.488603 ),
-				dx.mul( dy ).mul( 1.092548 ),
-				dy.mul( dz ).mul( 1.092548 ),
-				dz.mul( dz ).mul( 3.0 ).sub( 1.0 ).mul( 0.315392 ),
-				dx.mul( dz ).mul( 1.092548 ),
-				dx.mul( dx ).sub( dy.mul( dy ) ).mul( 0.546274 )
-			] ).element( coefIndex );
-
-			accum.addAssign( radiance.mul( basis.mul( solidAngle ) ) );
+			const texel = ivec2( j, i );
+			accum.addAssign( faces.load( faceOrigin.add( texel ) ).rgb.mul( weights.load( weightOrigin.add( texel ) ).r ) );
 
 		} );
 
@@ -150,18 +203,19 @@ function projectSHNode( faces, size, batchStart ) {
 
 /**
  * Returns the repack output node for one of the seven SH textures. It sums the
- * per-face projections of the 9 coefficients from the batch texture for the
- * probe at the current texel and packs the four floats stored by this texture
- * index.
+ * per-face-block projections of the 9 coefficients from the batch texture for
+ * the probe at the current texel and packs the four floats stored by this
+ * texture index.
  *
  * @private
  * @param {Node} batch - The batch texture node holding projected coefficients.
  * @param {number} textureIndex - The output texture index (0–6).
+ * @param {number} blocks - The number of row blocks per face.
  * @param {Node<vec3>} resolution - The probe grid resolution uniform.
  * @param {Node<int>} sliceZ - The current Z slice being written.
  * @return {Node<vec4>} The packed texel.
  */
-function repackNode( batch, textureIndex, resolution, sliceZ ) {
+function repackNode( batch, textureIndex, blocks, resolution, sliceZ ) {
 
 	return Fn( () => {
 
@@ -175,8 +229,8 @@ function repackNode( batch, textureIndex, resolution, sliceZ ) {
 
 		const coefficient = ( c ) => {
 
-			let sum = batch.load( ivec2( c * 6, probeIndex ) );
-			for ( let f = 1; f < 6; f ++ ) sum = sum.add( batch.load( ivec2( c * 6 + f, probeIndex ) ) );
+			let sum = batch.load( ivec2( c * 6 * blocks, probeIndex ) );
+			for ( let k = 1; k < 6 * blocks; k ++ ) sum = sum.add( batch.load( ivec2( c * 6 * blocks + k, probeIndex ) ) );
 			return sum;
 
 		};
@@ -283,12 +337,14 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
 
 	}
 
-	if ( _batchTarget === null || _batchProbes !== totalProbes ) {
+	// One row per probe: 9 coefficients x 6 faces x face blocks.
+	const columns = 9 * 6 * getFaceBlocks( cubemapSize );
+
+	if ( _batchTarget === null || _batchProbes !== totalProbes || _batchColumns !== columns ) {
 
 		if ( _batchTarget !== null ) _batchTarget.dispose();
 
-		// One row per probe: 9 coefficients x 6 faces.
-		_batchTarget = new RenderTarget( 9 * 6, totalProbes, {
+		_batchTarget = new RenderTarget( columns, totalProbes, {
 			type: FloatType,
 			format: RGBAFormat,
 			minFilter: NearestFilter,
@@ -297,6 +353,7 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
 		} );
 
 		_batchProbes = totalProbes;
+		_batchColumns = columns;
 
 	}
 
@@ -304,8 +361,8 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
 
 /**
  * Lazily builds the shared bake materials and rebinds them to the current
- * face/batch textures. The SH projection material is rebuilt only when the
- * face size changes; the repack materials are static.
+ * face/batch textures. The projection weights and the SH projection and
+ * repack materials are rebuilt only when the face size changes.
  *
  * @private
  * @param {number} cubemapSize - Resolution of each cubemap face.
@@ -314,24 +371,13 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
  */
 function ensureBakeMaterials( cubemapSize, faceMap, batchMap ) {
 
-	if ( _repackMaterials === null ) {
+	if ( _faceNode === null ) {
 
 		_faceNode = texture( faceMap );
 		_batchNode = texture( batchMap );
 		_batchStartUniform = uniform( 0, 'int' );
 		_resolutionUniform = uniform( new Vector3() );
 		_sliceZUniform = uniform( 0, 'int' );
-		_repackMaterials = [];
-
-		for ( let t = 0; t < 7; t ++ ) {
-
-			const material = new NodeMaterial();
-			material.outputNode = repackNode( _batchNode, t, _resolutionUniform, _sliceZUniform );
-			material.depthTest = false;
-			material.depthWrite = false;
-			_repackMaterials.push( material );
-
-		}
 
 	} else {
 
@@ -342,13 +388,36 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap ) {
 
 	if ( _shMaterial === null || _shFaceSize !== cubemapSize ) {
 
-		if ( _shMaterial !== null ) _shMaterial.dispose();
+		if ( _shMaterial !== null ) {
+
+			_shMaterial.dispose();
+			_weightsNode.value.dispose();
+			for ( const material of _repackMaterials ) material.dispose();
+
+		}
+
+		const weights = createProjectionWeights( cubemapSize );
+
+		if ( _weightsNode === null ) _weightsNode = texture( weights );
+		else _weightsNode.value = weights;
 
 		_shMaterial = new NodeMaterial();
-		_shMaterial.outputNode = projectSHNode( _faceNode, cubemapSize, _batchStartUniform );
+		_shMaterial.outputNode = projectSHNode( _faceNode, _weightsNode, cubemapSize, _batchStartUniform );
 		_shMaterial.depthTest = false;
 		_shMaterial.depthWrite = false;
 		_shFaceSize = cubemapSize;
+
+		_repackMaterials = [];
+
+		for ( let t = 0; t < 7; t ++ ) {
+
+			const material = new NodeMaterial();
+			material.outputNode = repackNode( _batchNode, t, getFaceBlocks( cubemapSize ), _resolutionUniform, _sliceZUniform );
+			material.depthTest = false;
+			material.depthWrite = false;
+			_repackMaterials.push( material );
+
+		}
 
 	}
 
@@ -793,7 +862,7 @@ class LightProbeGrid extends Light {
 
 			renderer.autoClear = false;
 			_batchStartUniform.value = batchStart;
-			_batchTarget.viewport.set( 0, batchStart, 9 * 6, batchCount );
+			_batchTarget.viewport.set( 0, batchStart, _batchColumns, batchCount );
 			renderer.setRenderTarget( _batchTarget );
 			_quad.material = _shMaterial;
 			_quad.render( renderer );

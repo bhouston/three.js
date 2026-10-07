@@ -11,6 +11,10 @@ export const DISTANCE_RESOLUTION = 16;
 export const DISTANCE_TILE = DISTANCE_RESOLUTION + 2;
 export const DISTANCE_COLUMNS = 32;
 
+// Mean distance written for hidden probes: below any receiver distance, even
+// with the visibility slack, so they never contribute.
+export const HIDDEN_DISTANCE = - 1;
+
 // Per-probe irradiance, evaluated from the SH for every normal direction, in the
 // same tile layout with a smaller octahedral resolution. With visibility, shading
 // takes one bilinear sample per probe instead of seven SH texels.

@@ -27,7 +27,7 @@ import {
 
 import { array, Discard, float, Fn, frontFacing, getShIrradianceAt, int, ivec2, ivec3, Loop, perspectiveDepthToViewZ, screenCoordinate, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
-import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, DISTANCE_TILE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, packGridSH, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
+import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, DISTANCE_TILE, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, packGridSH, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
 import { replaceSunLights, restoreSunLights } from './LightProbeGridUtils.js';
 
 // Probes captured per render, six sub-cameras each.
@@ -377,9 +377,10 @@ function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
  *
  * A probe that sees back faces in more than a quarter of the directions is
  * inside geometry, and one closer to a surface than the clearance saw through it
- * in its radiance capture. Their moments are written as zero distance, so they
- * are hidden from every receiver instead of blending in light from both sides of
- * a surface.
+ * in its radiance capture. Their moments are written as a negative distance, so
+ * they are hidden from every receiver instead of blending in light from both
+ * sides of a surface. Zero would not do: the visibility test's slack would still
+ * show them to receivers right next to them.
  *
  * @private
  * @param {Node} depth - The classification capture's depth.
@@ -425,7 +426,7 @@ function distanceMomentsNode( depth, batch, fractionColumn, size, { batchStart, 
 
 		}
 
-		return vec4( select( inside, vec2( 0.0 ), sum.mul( 0.25 ) ), 0.0, 1.0 );
+		return vec4( select( inside, vec2( HIDDEN_DISTANCE, 0.0 ), sum.mul( 0.25 ) ), 0.0, 1.0 );
 
 	} )();
 

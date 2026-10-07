@@ -1,12 +1,17 @@
 import {
 	ArrayCamera,
+	BackSide,
 	Box3,
 	DataTexture,
+	DepthTexture,
+	DoubleSide,
 	FloatType,
+	FrontSide,
 	HalfFloatType,
 	Light,
 	LinearFilter,
 	MathUtils,
+	MeshBasicNodeMaterial,
 	NearestFilter,
 	NodeMaterial,
 	PerspectiveCamera,
@@ -15,28 +20,48 @@ import {
 	RenderTarget3D,
 	RedFormat,
 	RGBAFormat,
+	RGFormat,
+	SphericalHarmonics3,
 	Vector3,
 	Vector4
 } from 'three/webgpu';
 
 import {
+	array,
+	Discard,
+	float,
 	Fn,
+	frontFacing,
+	getShIrradianceAt,
 	int,
 	ivec2,
+	ivec3,
 	Loop,
+	perspectiveDepthToViewZ,
 	screenCoordinate,
+	select,
 	texture,
+	texture3D,
 	uniform,
+	vec2,
 	vec3,
 	vec4
 } from 'three/tsl';
 
-import { LightProbeGridNode, ATLAS_PADDING } from '../tsl/lighting/LightProbeGridNode.js';
+import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, DISTANCE_TILE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, packGridSH, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
 import { replaceSunLights, restoreSunLights } from './LightProbeGridUtils.js';
 
 // Probes captured per render. Each probe adds six sub-cameras to the capture
 // camera, so this trades per-render overhead against uniform buffer size.
 const PROBES_PER_BATCH = 8;
+
+// Probe classification: directions tested, and the fraction of back faces seen
+// above which a probe counts as inside geometry.
+const CLASSIFY_SAMPLES = 64;
+const INSIDE_FRACTION = 0.25;
+
+// Golden-angle increment for the equal-area Fibonacci sphere.
+const GOLDEN_ANGLE = Math.PI * ( 3.0 - Math.sqrt( 5.0 ) );
 
 // Per-face basis of the capture cameras: forward, right and up. A texel at
 // NDC ( x, y ) of face f looks along forward + x * right + y * up.
@@ -60,6 +85,16 @@ let _faceNode = null;
 let _weightsNode = null;
 let _batchNode = null;
 let _batchStartUniform = null;
+let _batchCountUniform = null;
+let _depthNode = null;
+let _classifyNode = null;
+let _classifyTarget = null;
+let _classifyMaterials = null;
+let _nearUniform = null;
+let _farUniform = null;
+let _distanceScaleUniform = null;
+let _distanceMaterial = null;
+let _fractionMaterial = null;
 let _resolutionUniform = null;
 let _sliceZUniform = null;
 let _repackMaterials = null;
@@ -105,6 +140,7 @@ function createProjectionWeights( size ) {
 	const data = new Float32Array( width * 9 * size );
 	const texelSize = 2 / size;
 	const dir = new Vector3();
+	const basis = new Array( 9 );
 
 	// Signed area of the projected face region from its center to ( x, y ).
 	const area = ( x, y ) => Math.atan2( x * y, Math.sqrt( x * x + y * y + 1 ) );
@@ -127,18 +163,7 @@ function createProjectionWeights( size ) {
 				dir.z += x * FACE_RIGHT[ f ][ 2 ] + y * FACE_UP[ f ][ 2 ];
 				dir.normalize();
 
-				const { x: dx, y: dy, z: dz } = dir;
-				const basis = [
-					0.282095,
-					0.488603 * dy,
-					0.488603 * dz,
-					0.488603 * dx,
-					1.092548 * dx * dy,
-					1.092548 * dy * dz,
-					0.315392 * ( 3 * dz * dz - 1 ),
-					1.092548 * dx * dz,
-					0.546274 * ( dx * dx - dy * dy )
-				];
+				SphericalHarmonics3.getBasisAt( dir, basis );
 
 				for ( let c = 0; c < 9; c ++ ) data[ ( c * size + j ) * width + f * size + i ] = basis[ c ] * solidAngle;
 
@@ -235,33 +260,252 @@ function repackNode( batch, textureIndex, blocks, resolution, sliceZ ) {
 
 		};
 
-		const c0 = coefficient( 0 );
-		const c1 = coefficient( 1 );
-		const c2 = coefficient( 2 );
-		const c3 = coefficient( 3 );
-		const c4 = coefficient( 4 );
-		const c5 = coefficient( 5 );
-		const c6 = coefficient( 6 );
-		const c7 = coefficient( 7 );
-		const c8 = coefficient( 8 );
+		return packGridSH( coefficient, textureIndex );
 
-		let packed;
+	} )();
 
-		switch ( textureIndex ) {
+}
 
-			case 0: packed = vec4( c0.xyz, c1.x ); break;
-			case 1: packed = vec4( c1.yz, c2.xy ); break;
-			case 2: packed = vec4( c2.z, c3.xyz ); break;
-			case 3: packed = vec4( c4.xyz, c5.x ); break;
-			case 4: packed = vec4( c5.yz, c6.xy ); break;
-			case 5: packed = vec4( c6.z, c7.xyz ); break;
-			default: packed = vec4( c8.xyz, 0.0 ); break;
+/**
+ * Returns the capture texel and face coordinates a direction falls on.
+ *
+ * @private
+ * @param {Node<vec3>} dir - The unit direction.
+ * @param {number} size - The face resolution.
+ * @param {Node<int>} slot - The probe's batch slot.
+ * @return {Object} The texel `coord` and the face coordinates `fx`, `fy`.
+ */
+function captureTexel( dir, size, slot ) {
+
+	const toVec3 = ( v ) => vec3( ...v );
+
+	const a = dir.abs();
+	const face = select( a.x.greaterThanEqual( a.y ).and( a.x.greaterThanEqual( a.z ) ),
+		select( dir.x.greaterThanEqual( 0.0 ), int( 0 ), int( 1 ) ),
+		select( a.y.greaterThanEqual( a.z ),
+			select( dir.y.greaterThanEqual( 0.0 ), int( 2 ), int( 3 ) ),
+			select( dir.z.greaterThanEqual( 0.0 ), int( 4 ), int( 5 ) ) ) ).toVar();
+
+	const forward = array( FACE_FORWARD.map( toVec3 ) ).element( face );
+	const right = array( FACE_RIGHT.map( toVec3 ) ).element( face );
+	const up = array( FACE_UP.map( toVec3 ) ).element( face );
+
+	const invForward = dir.dot( forward ).reciprocal();
+	const fx = dir.dot( right ).mul( invForward ).toVar();
+	const fy = dir.dot( up ).mul( invForward ).toVar();
+
+	// Rows run top to bottom, so NDC y decreases with the row.
+	const i = int( fx.add( 1.0 ).mul( 0.5 * size ).floor() ).clamp( 0, size - 1 );
+	const j = int( float( 1.0 ).sub( fy ).mul( 0.5 * size ).floor() ).clamp( 0, size - 1 );
+
+	return { coord: ivec2( face.mul( size ).add( i ), slot.mul( size ).add( j ) ), fx, fy };
+
+}
+
+/**
+ * Returns the distance from a probe to the nearest surface in the classification
+ * capture along a direction, and the capture texel it was read from.
+ *
+ * @private
+ * @param {Node} depth - The classification capture's depth.
+ * @param {Node<vec3>} dir - The unit direction.
+ * @param {number} size - The face resolution.
+ * @param {Node<int>} slot - The probe's batch slot.
+ * @param {Node<float>} near - The capture near plane.
+ * @param {Node<float>} far - The capture far plane.
+ * @return {Object} The texel `coord` and the `distance`.
+ */
+function captureDistance( depth, dir, size, slot, near, far ) {
+
+	const { coord, fx, fy } = captureTexel( dir, size, slot );
+	const viewZ = perspectiveDepthToViewZ( depth.load( coord ).r, near, far );
+
+	// Depth along the face axis to distance along the direction.
+	return { coord, distance: viewZ.negate().mul( fx.mul( fx ).add( fy.mul( fy ) ).add( 1.0 ).sqrt() ) };
+
+}
+
+/**
+ * Returns the output node for the back-face pass: one fragment per probe that
+ * counts how many of 64 directions over an equal-area Fibonacci sphere hit a
+ * back face in the classification capture.
+ *
+ * @private
+ * @param {Node} flags - The classification capture's back-face flags.
+ * @param {Node} depth - The classification capture's depth.
+ * @param {number} size - The face resolution.
+ * @param {Object} uniforms - The batch and camera uniforms.
+ * @return {Node<vec4>} The back-face fraction in x.
+ */
+function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
+
+	return Fn( () => {
+
+		const slot = int( screenCoordinate.y ).sub( batchStart ).toVar();
+		const backFaces = float( 0.0 ).toVar();
+
+		Loop( CLASSIFY_SAMPLES, ( { i } ) => {
+
+			const fi = float( i );
+			const z = float( 1.0 ).sub( fi.mul( 2.0 ).add( 1.0 ).div( CLASSIFY_SAMPLES ) );
+			const r = z.mul( z ).oneMinus().max( 0.0 ).sqrt();
+			const phi = fi.mul( GOLDEN_ANGLE );
+			const { coord, distance } = captureDistance( depth, vec3( r.mul( phi.cos() ), z, r.mul( phi.sin() ) ).toVar(), size, slot, near, far );
+
+			// Background texels hold the clear color, so only count geometry hits.
+			const hit = distance.lessThan( far.mul( 0.99 ) );
+			backFaces.addAssign( select( hit, flags.load( coord ).r, float( 0.0 ) ) );
+
+		} );
+
+		return vec4( backFaces.div( CLASSIFY_SAMPLES ), 0.0, 0.0, 1.0 );
+
+	} )();
+
+}
+
+/**
+ * Returns the output node for the distance moments pass, which reads the
+ * classification capture. Each fragment is one texel of a probe's octahedral
+ * distance tile, including its mirrored border. It averages the normalized
+ * distance and squared distance to the nearest surface over 4 directions inside
+ * the texel.
+ *
+ * A probe that sees back faces in more than a quarter of the directions is
+ * inside geometry. Its moments are written as zero distance, so it is hidden from
+ * every receiver instead of blending light from both sides of the surface it is
+ * in.
+ *
+ * @private
+ * @param {Node} depth - The classification capture's depth.
+ * @param {Node} batch - The batch texture holding each probe's back-face fraction.
+ * @param {number} fractionColumn - The batch column of the back-face fraction.
+ * @param {number} size - The face resolution.
+ * @param {Object} uniforms - The batch, camera and distance scale uniforms.
+ * @return {Node<vec4>} The mean and mean squared normalized distance.
+ */
+function distanceMomentsNode( depth, batch, fractionColumn, size, { batchStart, batchCount, near, far, distanceScale } ) {
+
+	const R = DISTANCE_RESOLUTION;
+
+	return Fn( () => {
+
+		// Tiles are in bake order. Texels of probes outside the batch keep their data.
+
+		const tile = octTileTexel( ivec2( screenCoordinate.xy ), R );
+		const probeIndex = tile.probeIndex.toVar();
+		const slot = probeIndex.sub( batchStart ).toVar();
+
+		Discard( slot.lessThan( 0 ).or( slot.greaterThanEqual( batchCount ) ) );
+
+		const inside = batch.load( ivec2( fractionColumn, probeIndex ) ).r.greaterThan( INSIDE_FRACTION );
+
+		const x = tile.x.toVar();
+		const y = tile.y.toVar();
+
+		const sum = vec2( 0.0 ).toVar();
+
+		for ( const dy of [ 0.25, 0.75 ] ) {
+
+			for ( const dx of [ 0.25, 0.75 ] ) {
+
+				const e = vec2( float( x ).add( dx ), float( y ).add( dy ) ).div( R ).mul( 2.0 ).sub( 1.0 );
+				const { distance } = captureDistance( depth, octDecode( e ).toVar(), size, slot, near, far );
+				const normalized = distance.div( distanceScale ).min( 1.0 );
+
+				sum.addAssign( vec2( normalized, normalized.mul( normalized ) ) );
+
+			}
 
 		}
 
-		return packed;
+		return vec4( select( inside, vec2( 0.0 ), sum.mul( 0.25 ) ), 0.0, 1.0 );
 
 	} )();
+
+}
+
+/**
+ * Returns the output node for the irradiance pass. Each fragment is one texel of
+ * a probe's octahedral irradiance tile, including its mirrored border: the
+ * probe's SH irradiance for the normal direction of that texel.
+ *
+ * @private
+ * @param {Node} atlas - The SH atlas texture node.
+ * @param {Vector3} resolution - The probe grid resolution.
+ * @param {Node<int>} start - The first probe index to write.
+ * @param {Node<int>} end - The exclusive end probe index to write.
+ * @return {Node<vec4>} The irradiance.
+ */
+function irradianceNode( atlas, resolution, start, end ) {
+
+	const { x: nx, z: nz } = resolution;
+	const R = IRRADIANCE_RESOLUTION;
+
+	return Fn( () => {
+
+		const tile = octTileTexel( ivec2( screenCoordinate.xy ), R );
+		const probeIndex = tile.probeIndex.toVar();
+
+		Discard( probeIndex.lessThan( start ).or( probeIndex.greaterThanEqual( end ) ) );
+
+		// Bake order is X, then Z, then Y.
+		const ix = probeIndex.mod( nx );
+		const iz = probeIndex.div( nx ).mod( nz );
+		const iy = probeIndex.div( nx * nz );
+
+		const texels = [];
+
+		for ( let t = 0; t < 7; t ++ ) {
+
+			texels.push( atlas.load( ivec3( ix, iy, iz.add( t * ( nz + 2 * ATLAS_PADDING ) + ATLAS_PADDING ) ) ) );
+
+		}
+
+		const e = vec2( float( tile.x ).add( 0.5 ), float( tile.y ).add( 0.5 ) ).div( R ).mul( 2.0 ).sub( 1.0 );
+		const irradiance = getShIrradianceAt( octDecode( e ), unpackGridSH( texels ) ).max( vec3( 0.0 ) );
+
+		return vec4( irradiance, 1.0 );
+
+	} )();
+
+}
+
+/**
+ * Render object function of the classification capture: opaque meshes are drawn
+ * with the classification material for their side, everything else is skipped.
+ *
+ * @private
+ */
+function classifyRenderObject( object, scene, camera, geometry, material, group, lightsNode, clippingContext ) {
+
+	if ( object.isMesh !== true || material.transparent === true ) return;
+
+	this.renderObject( object, scene, camera, geometry, _classifyMaterials[ material.side ], group, lightsNode, clippingContext, 'lightProbeClassify' );
+
+}
+
+/**
+ * Creates the material that replaces meshes of the given side in the
+ * classification capture. It draws both sides and flags the side the original
+ * material does not show, which is what a probe inside a closed mesh sees.
+ *
+ * @private
+ * @param {number} side - The side of the replaced material.
+ * @return {NodeMaterial} The classification material.
+ */
+function createClassifyMaterial( side ) {
+
+	let backFace = float( 0.0 );
+
+	if ( side === FrontSide ) backFace = select( frontFacing, float( 0.0 ), float( 1.0 ) );
+	else if ( side === BackSide ) backFace = select( frontFacing, float( 1.0 ), float( 0.0 ) );
+
+	const material = new MeshBasicNodeMaterial();
+	material.side = DoubleSide;
+	material.outputNode = vec4( backFace, 0.0, 0.0, 1.0 );
+
+	return material;
 
 }
 
@@ -333,6 +577,16 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
 			generateMipmaps: false
 		} );
 
+		// The classification capture: back-face flags and depth for visibility.
+		if ( _classifyTarget !== null ) _classifyTarget.dispose();
+
+		_classifyTarget = new RenderTarget( 6 * cubemapSize, PROBES_PER_BATCH * cubemapSize, {
+			minFilter: NearestFilter,
+			magFilter: NearestFilter,
+			generateMipmaps: false,
+			depthTexture: new DepthTexture( 6 * cubemapSize, PROBES_PER_BATCH * cubemapSize )
+		} );
+
 		_faceSize = cubemapSize;
 
 	}
@@ -344,7 +598,8 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
 
 		if ( _batchTarget !== null ) _batchTarget.dispose();
 
-		_batchTarget = new RenderTarget( columns, totalProbes, {
+		// One more column holds each probe's back-face fraction.
+		_batchTarget = new RenderTarget( columns + 1, totalProbes, {
 			type: FloatType,
 			format: RGBAFormat,
 			minFilter: NearestFilter,
@@ -368,14 +623,23 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
  * @param {number} cubemapSize - Resolution of each cubemap face.
  * @param {Texture} faceMap - The current face atlas texture.
  * @param {Texture} batchMap - The current batch render target texture.
+ * @param {Texture} classifyMap - The current classification capture texture.
+ * @param {DepthTexture} depthMap - The current classification capture depth texture.
  */
-function ensureBakeMaterials( cubemapSize, faceMap, batchMap ) {
+function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depthMap ) {
 
 	if ( _faceNode === null ) {
 
 		_faceNode = texture( faceMap );
 		_batchNode = texture( batchMap );
+		_classifyNode = texture( classifyMap );
+		_depthNode = texture( depthMap );
+		_classifyMaterials = [ FrontSide, BackSide, DoubleSide ].map( createClassifyMaterial );
 		_batchStartUniform = uniform( 0, 'int' );
+		_batchCountUniform = uniform( 0, 'int' );
+		_nearUniform = uniform( 0.1 );
+		_farUniform = uniform( 100 );
+		_distanceScaleUniform = uniform( 1 );
 		_resolutionUniform = uniform( new Vector3() );
 		_sliceZUniform = uniform( 0, 'int' );
 
@@ -383,6 +647,8 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap ) {
 
 		_faceNode.value = faceMap;
 		_batchNode.value = batchMap;
+		_classifyNode.value = classifyMap;
+		_depthNode.value = depthMap;
 
 	}
 
@@ -391,6 +657,8 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap ) {
 		if ( _shMaterial !== null ) {
 
 			_shMaterial.dispose();
+			_distanceMaterial.dispose();
+			_fractionMaterial.dispose();
 			_weightsNode.value.dispose();
 			for ( const material of _repackMaterials ) material.dispose();
 
@@ -406,6 +674,26 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap ) {
 		_shMaterial.depthTest = false;
 		_shMaterial.depthWrite = false;
 		_shFaceSize = cubemapSize;
+
+		_fractionMaterial = new NodeMaterial();
+		_fractionMaterial.outputNode = backFaceFractionNode( _classifyNode, _depthNode, cubemapSize, {
+			batchStart: _batchStartUniform,
+			near: _nearUniform,
+			far: _farUniform
+		} );
+		_fractionMaterial.depthTest = false;
+		_fractionMaterial.depthWrite = false;
+
+		_distanceMaterial = new NodeMaterial();
+		_distanceMaterial.outputNode = distanceMomentsNode( _depthNode, _batchNode, 9 * 6 * getFaceBlocks( cubemapSize ), cubemapSize, {
+			batchStart: _batchStartUniform,
+			batchCount: _batchCountUniform,
+			near: _nearUniform,
+			far: _farUniform,
+			distanceScale: _distanceScaleUniform
+		} );
+		_distanceMaterial.depthTest = false;
+		_distanceMaterial.depthWrite = false;
 
 		_repackMaterials = [];
 
@@ -521,6 +809,37 @@ class LightProbeGrid extends Light {
 		this.falloff = 0;
 
 		/**
+		 * Whether shading weighs each probe by whether it can see the surface, using
+		 * distance moments recorded during the bake. This keeps light from leaking
+		 * through walls between probes, at the cost of more texture reads per
+		 * fragment. It can be changed at any time.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.visibility = false;
+
+		/**
+		 * With {@link LightProbeGrid#visibility}, how far the shaded point is moved
+		 * along its normal before the probe lookup, as a fraction of the smallest
+		 * probe spacing.
+		 *
+		 * @type {number}
+		 * @default 0.08
+		 */
+		this.normalBias = 0.08;
+
+		/**
+		 * With {@link LightProbeGrid#visibility}, how far the shaded point is moved
+		 * toward the camera before the probe lookup, as a fraction of the smallest
+		 * probe spacing.
+		 *
+		 * @type {number}
+		 * @default 0.02
+		 */
+		this.viewBias = 0.02;
+
+		/**
 		 * The single RGBA atlas 3D texture storing all seven packed SH
 		 * sub-volumes stacked along Z. It is all zeros until baked.
 		 *
@@ -539,6 +858,15 @@ class LightProbeGrid extends Light {
 
 		// Indirect captures read a snapshot while the live atlas is updated in place.
 		this._snapshotTarget = null;
+
+		// Per-probe distance moments for visibility, and their normalization scale.
+		this._distanceTarget = null;
+		this._distanceScale = 1;
+
+		// Per-probe irradiance for visibility shading, evaluated from the SH.
+		this._irradianceTarget = null;
+		this._irradianceSnapshotTarget = null;
+		this._irradianceMaterial = null;
 		this._bouncePass = - 1;
 
 		// While baking, the grid lights its own captures: with zero intensity in the
@@ -588,6 +916,13 @@ class LightProbeGrid extends Light {
 
 		_size.set( this.width, this.height, this.depth );
 		this.boundingBox.setFromCenterAndSize( this.position, _size );
+
+		// Distance moments are normalized by twice the cell diagonal, which covers
+		// every receiver a probe is blended into.
+
+		const res = this.resolution;
+		_size.divide( _position.set( Math.max( 1, res.x - 1 ), Math.max( 1, res.y - 1 ), Math.max( 1, res.z - 1 ) ) );
+		this._distanceScale = 2 * _size.length();
 
 	}
 
@@ -686,7 +1021,11 @@ class LightProbeGrid extends Light {
 
 		ensureCaptureCamera( cubemapSize, near, far );
 		ensureBakeTargets( cubemapSize, totalProbes );
-		ensureBakeMaterials( cubemapSize, _faceTarget.texture, _batchTarget.texture );
+		ensureBakeMaterials( cubemapSize, _faceTarget.texture, _batchTarget.texture, _classifyTarget.texture, _classifyTarget.depthTexture );
+
+		_nearUniform.value = near;
+		_farUniform.value = far;
+		_distanceScaleUniform.value = this._distanceScale;
 		_resolutionUniform.value.copy( res );
 
 		// Save renderer / scene state to restore after the bake.
@@ -748,8 +1087,10 @@ class LightProbeGrid extends Light {
 			for ( let pass = firstPass; pass <= firstPass + bounces; pass ++ ) {
 
 				this._updateSnapshot( renderer, pass, start );
-				this._captureProbes( renderer, scene, start, end );
+				// Geometry is static during the bake, so distances are recorded once.
+				this._captureProbes( renderer, scene, start, end, pass === 0 );
 				this._repackProbes( renderer, start, end );
+				this._updateIrradiance( renderer, start, end );
 
 			}
 
@@ -813,6 +1154,10 @@ class LightProbeGrid extends Light {
 			_copyRegion.min.set( 0, 0, 0 );
 			_copyRegion.max.set( renderTarget.width, renderTarget.height, renderTarget.depth );
 			renderer.copyTextureToTexture( renderTarget.texture, this._snapshotTarget.texture, _copyRegion );
+
+			const irradianceTarget = this._irradianceTarget;
+			_copyRegion.max.set( irradianceTarget.width, irradianceTarget.height, 1 );
+			renderer.copyTextureToTexture( irradianceTarget.texture, this._irradianceSnapshotTarget.texture, _copyRegion );
 			this._bouncePass = pass;
 
 		}
@@ -831,12 +1176,14 @@ class LightProbeGrid extends Light {
 	 * @param {Scene} scene - The scene to capture.
 	 * @param {number} start - The first probe index.
 	 * @param {number} end - The exclusive end probe index.
+	 * @param {boolean} recordDistances - Whether to record the probes' distance moments.
 	 */
-	_captureProbes( renderer, scene, start, end ) {
+	_captureProbes( renderer, scene, start, end, recordDistances ) {
 
 		const { x: nx, z: nz } = this.resolution;
 		const probesPerLayer = nx * nz;
 		const cameras = _captureCamera.cameras;
+		const currentRenderObjectFunction = renderer.getRenderObjectFunction();
 
 		for ( let batchStart = start; batchStart < end; batchStart += PROBES_PER_BATCH ) {
 
@@ -889,6 +1236,37 @@ class LightProbeGrid extends Light {
 			renderer.setRenderTarget( _batchTarget );
 			_quad.material = _shMaterial;
 			_quad.render( renderer );
+
+			if ( recordDistances === true ) {
+
+				// The tile rows covering this batch; the shader skips other probes.
+
+				const distanceTarget = this._distanceTarget;
+				const firstRow = Math.floor( batchStart / DISTANCE_COLUMNS );
+				const lastRow = Math.floor( ( batchStart + batchCount - 1 ) / DISTANCE_COLUMNS );
+
+				// Classification capture: every mesh drawn double sided with back-face
+				// flags. Its depth sees through nothing, like a double-sided ray cast.
+
+				renderer.setRenderObjectFunction( classifyRenderObject );
+				renderer.autoClear = true;
+				renderer.setRenderTarget( _classifyTarget );
+				renderer.render( scene, _captureCamera );
+				renderer.autoClear = false;
+				renderer.setRenderObjectFunction( currentRenderObjectFunction );
+
+				_batchTarget.viewport.set( _batchColumns, batchStart, 1, batchCount );
+				renderer.setRenderTarget( _batchTarget );
+				_quad.material = _fractionMaterial;
+				_quad.render( renderer );
+
+				_batchCountUniform.value = batchCount;
+				distanceTarget.viewport.set( 0, firstRow * DISTANCE_TILE, distanceTarget.width, ( lastRow - firstRow + 1 ) * DISTANCE_TILE );
+				renderer.setRenderTarget( distanceTarget );
+				_quad.material = _distanceMaterial;
+				_quad.render( renderer );
+
+			}
 
 		}
 
@@ -968,6 +1346,44 @@ class LightProbeGrid extends Light {
 	}
 
 	/**
+	 * Evaluates the irradiance tiles of a probe range from the live SH atlas.
+	 *
+	 * @private
+	 * @param {WebGPURenderer} renderer - The renderer.
+	 * @param {number} start - The first probe index.
+	 * @param {number} end - The exclusive end probe index.
+	 */
+	_updateIrradiance( renderer, start, end ) {
+
+		if ( this._irradianceMaterial === null ) {
+
+			this._irradianceStart = uniform( 0, 'int' );
+			this._irradianceEnd = uniform( 0, 'int' );
+
+			this._irradianceMaterial = new NodeMaterial();
+			this._irradianceMaterial.outputNode = irradianceNode( texture3D( this.texture ), this.resolution.clone(), this._irradianceStart, this._irradianceEnd );
+			this._irradianceMaterial.depthTest = false;
+			this._irradianceMaterial.depthWrite = false;
+
+		}
+
+		// The tile rows covering the range; the shader skips other probes.
+
+		const target = this._irradianceTarget;
+		const firstRow = Math.floor( start / DISTANCE_COLUMNS );
+		const lastRow = Math.floor( ( end - 1 ) / DISTANCE_COLUMNS );
+
+		this._irradianceStart.value = start;
+		this._irradianceEnd.value = end;
+
+		target.viewport.set( 0, firstRow * IRRADIANCE_TILE, target.width, ( lastRow - firstRow + 1 ) * IRRADIANCE_TILE );
+		renderer.setRenderTarget( target );
+		_quad.material = this._irradianceMaterial;
+		_quad.render( renderer );
+
+	}
+
+	/**
 	 * Ensures the atlas and snapshot 3D textures exist with the correct dimensions.
 	 *
 	 * @private
@@ -994,6 +1410,33 @@ class LightProbeGrid extends Light {
 		this._renderTarget = new RenderTarget3D( nx, ny, atlasDepth, options );
 		this._snapshotTarget = new RenderTarget3D( nx, ny, atlasDepth, options );
 
+		// Irradiance per probe for visibility shading, as octahedral tiles in bake order.
+
+		const irradianceRows = Math.ceil( nx * ny * nz / DISTANCE_COLUMNS );
+		const irradianceOptions = {
+			type: HalfFloatType,
+			minFilter: LinearFilter,
+			magFilter: LinearFilter,
+			generateMipmaps: false,
+			depthBuffer: false
+		};
+
+		this._irradianceTarget = new RenderTarget( DISTANCE_COLUMNS * IRRADIANCE_TILE, irradianceRows * IRRADIANCE_TILE, irradianceOptions );
+		this._irradianceSnapshotTarget = new RenderTarget( DISTANCE_COLUMNS * IRRADIANCE_TILE, irradianceRows * IRRADIANCE_TILE, irradianceOptions );
+
+		// Distance moments per probe, as octahedral tiles in bake order.
+
+		const rows = Math.ceil( nx * ny * nz / DISTANCE_COLUMNS );
+
+		this._distanceTarget = new RenderTarget( DISTANCE_COLUMNS * DISTANCE_TILE, rows * DISTANCE_TILE, {
+			type: HalfFloatType,
+			format: RGFormat,
+			minFilter: LinearFilter,
+			magFilter: LinearFilter,
+			generateMipmaps: false,
+			depthBuffer: false
+		} );
+
 		this.texture = this._renderTarget.texture;
 
 	}
@@ -1007,6 +1450,17 @@ class LightProbeGrid extends Light {
 
 		this._renderTarget.dispose();
 		this._snapshotTarget.dispose();
+		this._distanceTarget.dispose();
+		this._irradianceTarget.dispose();
+		this._irradianceSnapshotTarget.dispose();
+
+		if ( this._irradianceMaterial !== null ) {
+
+			this._irradianceMaterial.dispose();
+			this._irradianceMaterial = null;
+
+		}
+
 		this._bouncePass = - 1;
 
 		super.dispose();

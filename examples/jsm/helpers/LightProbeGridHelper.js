@@ -6,7 +6,9 @@ import {
 	SphereGeometry,
 	Vector3
 } from 'three/webgpu';
-import { array, attribute, Fn, getShIrradianceAt, normalWorld, texture3D, uniform, vec3, vec4 } from 'three/tsl';
+import { attribute, Fn, getShIrradianceAt, normalWorld, texture3D, uniform, vec3, vec4 } from 'three/tsl';
+
+import { sampleGridSH } from '../tsl/lighting/LightProbeGridNode.js';
 
 /**
  * Visualizes a {@link LightProbeGrid} by rendering a sphere at each probe
@@ -57,31 +59,9 @@ class LightProbeGridHelper extends InstancedMesh {
 		this._atlas = texture3D( probes.texture );
 		this._resolution = uniform( new Vector3() );
 
-		const nz = this._resolution.z;
-		const paddedSlices = nz.add( 2.0 );
-		const atlasDepth = paddedSlices.mul( 7.0 );
-
 		material.fragmentNode = Fn( () => {
 
-			const uvw = attribute( 'instanceUVW', 'vec3' );
-			const uvZBase = uvw.z.mul( nz ).add( 1.0 );
-
-			const slice = ( t ) => this._atlas.sample( vec3( uvw.xy, uvZBase.add( paddedSlices.mul( t ) ).div( atlasDepth ) ) );
-
-			const s0 = slice( 0 ), s1 = slice( 1 ), s2 = slice( 2 ), s3 = slice( 3 );
-			const s4 = slice( 4 ), s5 = slice( 5 ), s6 = slice( 6 );
-
-			const sh = array( [
-				s0.xyz,
-				vec3( s0.w, s1.xy ),
-				vec3( s1.zw, s2.x ),
-				s2.yzw,
-				s3.xyz,
-				vec3( s3.w, s4.xy ),
-				vec3( s4.zw, s5.x ),
-				s5.yzw,
-				s6.xyz
-			] );
+			const sh = sampleGridSH( this._atlas, attribute( 'instanceUVW', 'vec3' ), this._resolution.z );
 
 			return vec4( getShIrradianceAt( normalWorld, sh ).max( vec3( 0.0 ) ), 1.0 );
 

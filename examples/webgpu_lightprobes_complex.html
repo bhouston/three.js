@@ -61,7 +61,7 @@
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0x111111 );
 
-				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/lightprobes_rooms.glb' );
+				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/gi_rooms.glb' );
 
 				gltf.scene.traverse( ( object ) => {
 

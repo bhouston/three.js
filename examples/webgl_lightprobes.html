@@ -53,7 +53,7 @@
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0x111111 );
 
-				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/lightprobes_cornell_box.glb' );
+				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/gi_cornell_box.glb' );
 
 				gltf.scene.traverse( ( object ) => {
 

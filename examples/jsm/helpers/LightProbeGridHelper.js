@@ -67,9 +67,7 @@ class LightProbeGridHelper extends InstancedMesh {
 			const sh = sampleGridSH( this._atlas, attribute( 'instanceUVW', 'vec3' ), this._resolution.z );
 			const irradiance = getShIrradianceAt( normalWorld, sh ).max( vec3( 0.0 ) );
 
-			// Hidden probes have a negative mean distance; read the center of the tile.
-
-			// Rounded, as the interpolated index can land just below the integer.
+			// Round the interpolated probe index before reading its distance tile.
 			const probeIndex = int( attribute( 'instanceProbeIndex', 'float' ).add( 0.5 ) );
 			const tile = ivec2( probeIndex.mod( DISTANCE_COLUMNS ), probeIndex.div( DISTANCE_COLUMNS ) );
 			const meanDistance = this._distance.load( tile.mul( DISTANCE_TILE ).add( 1 + DISTANCE_RESOLUTION / 2 ) ).x;

@@ -4,25 +4,19 @@ import { array, cameraPosition, float, getShIrradianceAt, If, int, Loop, normalW
 // Padding texels at each boundary of every atlas sub-volume.
 export const ATLAS_PADDING = 1;
 
-// Per-probe distance moments are stored as octahedral tiles in a 2D atlas: a
-// DISTANCE_RESOLUTION² interior plus a 1-texel mirrored border for filtering,
-// DISTANCE_COLUMNS tiles per row, in bake order.
+// Distance tiles have a one-texel mirrored border and follow bake order.
 export const DISTANCE_RESOLUTION = 16;
 export const DISTANCE_TILE = DISTANCE_RESOLUTION + 2;
 export const DISTANCE_COLUMNS = 32;
 
-// Mean distance written for hidden probes: below any receiver distance, even
-// with the visibility slack, so they never contribute.
+// Negative mean distance excludes hidden probes from lighting.
 export const HIDDEN_DISTANCE = - 1;
 
-// Per-probe irradiance, evaluated from the SH for every normal direction, in the
-// same tile layout with a smaller octahedral resolution. With visibility, shading
-// takes one bilinear sample per probe instead of seven SH texels.
+// Irradiance tiles use the same layout, with one bilinear sample per probe.
 export const IRRADIANCE_RESOLUTION = 8;
 export const IRRADIANCE_TILE = IRRADIANCE_RESOLUTION + 2;
 
-// Slack in normalized distance before a receiver counts as occluded. Without it,
-// low-variance moments flip the weights between probes on slanted surfaces.
+// Normalized distance slack reduces flickering on slanted surfaces.
 const VISIBILITY_SLACK = 0.03;
 
 const signNotZero = ( value ) => select( value.greaterThanEqual( 0.0 ), float( 1.0 ), float( - 1.0 ) );
@@ -44,12 +38,9 @@ export function octEncode( direction ) {
 }
 
 /**
- * Returns the probe index and the octahedral texel of an atlas texel, for atlases
- * of square octahedral tiles with a 1-texel border, `DISTANCE_COLUMNS` tiles per
- * row in bake order. Border texels mirror the opposite side of their tile edge
- * (corners take the diagonal corner), so bilinear filtering is continuous across
- * the octahedral seams.
+ * Returns the probe index and tile texel, mirroring borders across octahedral seams.
  *
+ * @private
  * @param {Node<ivec2>} texel - The atlas texel.
  * @param {number} resolution - The octahedral resolution of a tile.
  * @return {Object} The `probeIndex` and the octahedral texel `x`, `y`.
@@ -73,13 +64,14 @@ export function octTileTexel( texel, resolution ) {
 /**
  * Returns the UV of a direction in a probe's tile of an octahedral atlas.
  *
+ * @private
  * @param {Node<int>} probeIndex - The probe index in bake order.
  * @param {Node<vec3>} direction - The unit direction.
  * @param {number} resolution - The octahedral resolution of a tile.
  * @param {Node<vec2>} atlasSize - The atlas size in texels.
  * @return {Node<vec2>} The atlas UV.
  */
-export function octTileUV( probeIndex, direction, resolution, atlasSize ) {
+function octTileUV( probeIndex, direction, resolution, atlasSize ) {
 
 	const tile = vec2( float( probeIndex.mod( DISTANCE_COLUMNS ) ), float( probeIndex.div( DISTANCE_COLUMNS ) ) );
 
@@ -104,10 +96,9 @@ export function octDecode( e ) {
 }
 
 /**
- * Returns texel `textureIndex` (0–6) of a probe's packed SH atlas data. The
- * atlas packs the 27 floats of the nine RGB L2 coefficients into seven RGBA
- * texels; {@link unpackGridSH} reverses it.
+ * Packs nine RGB SH coefficients into seven RGBA texels.
  *
+ * @private
  * @param {function(number): Node<vec3>} c - Returns coefficient i. Only the coefficients this texel stores are requested.
  * @param {number} textureIndex - The atlas texel (0–6).
  * @return {Node<vec4>} The packed texel.
@@ -132,6 +123,7 @@ export function packGridSH( c, textureIndex ) {
  * Unpacks the nine L2 SH coefficients from the seven atlas texels of a probe,
  * as packed by {@link packGridSH}.
  *
+ * @private
  * @param {Array<Node<vec4>>} s - The seven packed texels.
  * @return {Node} The coefficient array, as expected by `getShIrradianceAt()`.
  */
@@ -152,14 +144,10 @@ export function unpackGridSH( s ) {
 }
 
 /**
- * Samples the packed SH atlas with hardware trilinear filtering and returns the
- * interpolated SH coefficients.
+ * Samples SH coefficients with trilinear filtering. Each of the seven
+ * sub-volumes has one padding slice at each end to prevent color bleeding.
  *
- * The atlas stores the seven RGBA sub-volumes stacked along Z, each occupying
- * `( nz + 2 )` slices: one padding slice (a copy of the nearest edge slice) at
- * each end to prevent color bleeding when the hardware trilinear filter reads
- * across a sub-volume boundary.
- *
+ * @private
  * @param {Texture3DNode} atlas - The atlas texture node.
  * @param {Node<vec3>} uvw - The probe-grid sample coordinate (texel centers).
  * @param {Node<float>} nz - The number of probes along Z.
@@ -179,18 +167,16 @@ export function sampleGridSH( atlas, uvw, nz ) {
 }
 
 /**
- * One-sided Chebyshev upper bound on the probability that a point at the given
- * distance is visible from a probe, given the mean and mean squared distance to
- * the surfaces the probe sees in that direction. Cubed to sharpen the falloff,
- * as in "Dynamic Diffuse Global Illumination with Ray-Traced Irradiance Fields"
- * (Majercik et al. 2019). Points nearer than the mean are fully visible.
+ * Returns the cubed Chebyshev visibility bound from distance moments
+ * (Majercik et al., 2019). Points nearer than the mean are fully visible.
  *
+ * @private
  * @param {Node<vec2>} moments - The mean and mean squared distance.
  * @param {Node<float>} distance - The distance to test, in the same units.
  * @param {number} [slack=VISIBILITY_SLACK] - Distance past the mean that still counts as visible.
  * @return {Node<float>} The visibility in [0, 1].
  */
-export function chebyshevVisibility( moments, distance, slack = VISIBILITY_SLACK ) {
+function chebyshevVisibility( moments, distance, slack = VISIBILITY_SLACK ) {
 
 	const variance = moments.y.sub( moments.x.mul( moments.x ) ).max( 1e-6 );
 	const delta = distance.sub( moments.x ).sub( slack ).max( 0.0 );
@@ -200,12 +186,7 @@ export function chebyshevVisibility( moments, distance, slack = VISIBILITY_SLACK
 }
 
 /**
- * Blends the 8 probes around a surface point with visibility weights, following
- * "Dynamic Diffuse Global Illumination with Ray-Traced Irradiance Fields"
- * (Majercik et al. 2019): trilinear weight, a soft backface weight, and a
- * Chebyshev test of the receiver distance against each probe's distance moments.
- * Probes that cannot see the receiver contribute nothing, so light does not leak
- * through walls between probes. If no probe sees the receiver, it fades to black.
+ * Blends eight probes using trilinear, back-face and Chebyshev visibility weights.
  *
  * @private
  * @param {Object} grid - The grid parameters.
@@ -232,8 +213,7 @@ function evaluateGridIrradianceVisibility( grid, sampleIrradiance ) {
 	// Every probe is sampled in the direction of the normal.
 	const normalOct = octEncode( normalWorld ).mul( IRRADIANCE_RESOLUTION ).add( 1.0 ).toVar();
 
-	// A shader loop over the corners keeps the node graph, and so the material
-	// build time, small.
+	// Keep the node graph small with a shader loop over the corners.
 
 	Loop( 8, ( { i: corner } ) => {
 
@@ -268,7 +248,7 @@ function evaluateGridIrradianceVisibility( grid, sampleIrradiance ) {
 
 	} );
 
-	// No unoccluded fallback: tiny total weights fade to black instead of leaking.
+	// Fade to black when no probe sees the receiver.
 
 	return total.div( weights.max( 1e-6 ) );
 
@@ -352,8 +332,7 @@ class LightProbeGridNode extends AnalyticLightNode {
 		builder.renderer.initRenderTarget( light._renderTarget );
 		builder.renderer.initRenderTarget( light._snapshotTarget );
 
-		// Both sampling modes are built and a uniform selects one, so toggling
-		// visibility never rebuilds the materials.
+		// Select visibility with a uniform to reuse the material.
 
 		builder.renderer.initRenderTarget( light._distanceTarget );
 
@@ -376,8 +355,7 @@ class LightProbeGridNode extends AnalyticLightNode {
 		const samplePos = positionWorld.add( normalWorld.mul( spacing ).mul( 0.5 ) );
 		const uvw = samplePos.sub( min ).div( range ).clamp( 0.0, 1.0 ).mul( resMinusOne ).div( res ).add( vec3( 0.5 ).div( res ) );
 
-		// Indirect bake passes read the snapshot of the previous pass. Only the atlas
-		// reads branch on it, which keeps the shaders small.
+		// Select snapshot reads for indirect captures.
 
 		const atlas = texture3D( light.texture );
 		const snapshot = texture3D( light._snapshotTarget.texture );
@@ -419,8 +397,7 @@ class LightProbeGridNode extends AnalyticLightNode {
 
 		weight = weight.toVar();
 
-		// Skip the lookup where the grid contributes nothing: past its falloff, or
-		// during the direct bake pass.
+		// Skip lookups when the grid contributes nothing.
 
 		const result = vec3( 0.0 ).toVar();
 

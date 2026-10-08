@@ -33,22 +33,18 @@ import { replaceSunLights, restoreSunLights } from './LightProbeGridUtils.js';
 // Probes captured per render, six sub-cameras each.
 const PROBES_PER_BATCH = 8;
 
-// Probe classification: directions tested, and the fraction of back faces seen
-// above which a probe counts as inside geometry.
+// Classification sample count and threshold for probes inside geometry.
 const CLASSIFY_SAMPLES = 64;
 const INSIDE_FRACTION = 0.25;
 
-// A probe closer to a surface than this many capture near planes saw through it
-// in its radiance capture, so it is hidden like a probe inside geometry. The
-// classification capture uses a much closer near plane to measure this.
+// Hide probes within this many radiance near planes of a surface.
 const CLEARANCE_NEAR_PLANES = 1.5;
 const CLASSIFY_NEAR_SCALE = 0.01;
 
 // Golden-angle increment for the equal-area Fibonacci sphere.
 const GOLDEN_ANGLE = Math.PI * ( 3.0 - Math.sqrt( 5.0 ) );
 
-// Per-face basis of the capture cameras: forward, right and up. A texel at
-// NDC ( x, y ) of face f looks along forward + x * right + y * up.
+// Per-face forward, right and up vectors of the capture cameras.
 const FACE_FORWARD = [[ 1, 0, 0 ], [ - 1, 0, 0 ], [ 0, 1, 0 ], [ 0, - 1, 0 ], [ 0, 0, 1 ], [ 0, 0, - 1 ]];
 const FACE_RIGHT = [[ 0, 0, 1 ], [ 0, 0, - 1 ], [ - 1, 0, 0 ], [ - 1, 0, 0 ], [ - 1, 0, 0 ], [ 1, 0, 0 ]];
 const FACE_UP = [[ 0, 1, 0 ], [ 0, 1, 0 ], [ 0, 0, - 1 ], [ 0, 0, 1 ], [ 0, 1, 0 ], [ 0, 1, 0 ]];
@@ -328,9 +324,7 @@ function captureDistance( depth, dir, size, slot, near, far ) {
 }
 
 /**
- * Returns the output node for the back-face pass: one fragment per probe that
- * counts how many of 64 directions over an equal-area Fibonacci sphere hit a
- * back face in the classification capture, and finds the nearest hit.
+ * Samples Fibonacci directions for each probe's back-face fraction and nearest hit.
  *
  * @private
  * @param {Node} flags - The classification capture's back-face flags.
@@ -369,18 +363,8 @@ function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
 }
 
 /**
- * Returns the output node for the distance moments pass, which reads the
- * classification capture. Each fragment is one texel of a probe's octahedral
- * distance tile, including its mirrored border. It averages the normalized
- * distance and squared distance to the nearest surface over 4 directions inside
- * the texel.
- *
- * A probe that sees back faces in more than a quarter of the directions is
- * inside geometry, and one closer to a surface than the clearance saw through it
- * in its radiance capture. Their moments are written as a negative distance, so
- * they are hidden from every receiver instead of blending in light from both
- * sides of a surface. Zero would not do: the visibility test's slack would still
- * show them to receivers right next to them.
+ * Averages four distance samples per octahedral texel. Probes inside or too
+ * close to geometry receive a negative mean distance to exclude them from lighting.
  *
  * @private
  * @param {Node} depth - The classification capture's depth.
@@ -433,9 +417,7 @@ function distanceMomentsNode( depth, batch, fractionColumn, size, { batchStart, 
 }
 
 /**
- * Returns the output node for the irradiance pass. Each fragment is one texel of
- * a probe's octahedral irradiance tile, including its mirrored border: the
- * probe's SH irradiance for the normal direction of that texel.
+ * Evaluates SH irradiance for each octahedral texel, including its border.
  *
  * @private
  * @param {Node} atlas - The SH atlas texture node.
@@ -1263,11 +1245,7 @@ class LightProbeGrid extends Light {
 				const firstRow = Math.floor( batchStart / DISTANCE_COLUMNS );
 				const lastRow = Math.floor( ( batchStart + batchCount - 1 ) / DISTANCE_COLUMNS );
 
-				// Classification capture: every mesh drawn double sided with back-face
-				// flags. Its depth sees through nothing, like a double-sided ray cast.
-
-				// A much closer near plane, so surfaces the radiance capture clipped
-				// away are seen.
+				// Capture double-sided depth and back-face flags with a smaller near plane.
 
 				setCaptureNear( _nearUniform.value );
 
@@ -1434,7 +1412,7 @@ class LightProbeGrid extends Light {
 
 		// Irradiance per probe for visibility shading, as octahedral tiles in bake order.
 
-		const irradianceRows = Math.ceil( nx * ny * nz / DISTANCE_COLUMNS );
+		const rows = Math.ceil( nx * ny * nz / DISTANCE_COLUMNS );
 		const irradianceOptions = {
 			type: HalfFloatType,
 			minFilter: LinearFilter,
@@ -1443,12 +1421,10 @@ class LightProbeGrid extends Light {
 			depthBuffer: false
 		};
 
-		this._irradianceTarget = new RenderTarget( DISTANCE_COLUMNS * IRRADIANCE_TILE, irradianceRows * IRRADIANCE_TILE, irradianceOptions );
-		this._irradianceSnapshotTarget = new RenderTarget( DISTANCE_COLUMNS * IRRADIANCE_TILE, irradianceRows * IRRADIANCE_TILE, irradianceOptions );
+		this._irradianceTarget = new RenderTarget( DISTANCE_COLUMNS * IRRADIANCE_TILE, rows * IRRADIANCE_TILE, irradianceOptions );
+		this._irradianceSnapshotTarget = new RenderTarget( DISTANCE_COLUMNS * IRRADIANCE_TILE, rows * IRRADIANCE_TILE, irradianceOptions );
 
 		// Distance moments per probe, as octahedral tiles in bake order.
-
-		const rows = Math.ceil( nx * ny * nz / DISTANCE_COLUMNS );
 
 		this._distanceTarget = new RenderTarget( DISTANCE_COLUMNS * DISTANCE_TILE, rows * DISTANCE_TILE, {
 			type: HalfFloatType,

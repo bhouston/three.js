@@ -19,7 +19,7 @@
 				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>VXGI (Sponza)</span>
 			</div>
 
-			<small>Diffuse global illumination using Voxel Cone Tracing. WASD to move, mouse to look.</small>
+			<small>Voxel Cone Tracing with the <a href="webgpu_lightprobes_sponza.html">light probe scene's</a> camera, sun and sky settings. WASD to move, mouse to look.</small>
 		</div>
 
 		<progress id="progressBar" value="0" max="100" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)"></progress>
@@ -42,6 +42,8 @@
 			import { vxgi } from 'three/addons/lighting/vxgi/VXGINode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
+			import { SunLight } from 'three/addons/lights/SunLight.js';
+			import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
 			import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -52,13 +54,9 @@
 			const SAMPLE_ASSETS_BASE_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/';
 
 			let camera, scene, renderer, renderPipeline, controls, timer;
-			let dirLight = null, sky = null;
+			let sunLight = null, sky = null;
 
 			const sun = new THREE.Vector3();
-
-			const _box = new THREE.Box3();
-			const _size = new THREE.Vector3();
-			const _center = new THREE.Vector3();
 
 			if ( WebGPU.isAvailable() === false ) {
 
@@ -86,12 +84,14 @@
 				sky.rayleigh.value = 2;
 				sky.mieCoefficient.value = 0.005;
 				sky.mieDirectionalG.value = 0.8;
+				sky.cloudSpeed.value = 0;
+				sky.showSunDisc.value = false;
 				scene.add( sky );
 
-				renderer = new THREE.WebGPURenderer();
-				// renderer.setPixelRatio( window.devicePixelRatio );
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				SunLight.registerNode( SunLightNode );
+				renderer.setPixelRatio( Math.min( window.devicePixelRatio, 1.5 ) );
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.setAnimationLoop( animate );
 				renderer.shadowMap.enabled = true;
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
 				renderer.toneMappingExposure = 1.0;
@@ -148,32 +148,11 @@
 
 				scene.add( model );
 
-				_box.setFromObject( model );
-				const modelSize = _box.getSize( _size ).clone();
-				const modelCenter = _box.getCenter( _center ).clone();
-				const targetY = modelCenter.y + modelSize.y * 0.2;
-				const lightBaseDistance = Math.max( modelSize.x, modelSize.z );
-
-				dirLight = new THREE.DirectionalLight( 0xfff2dc, 100.0 );
-				dirLight.target.position.set( modelCenter.x, targetY, modelCenter.z );
-				scene.add( dirLight.target );
-				dirLight.castShadow = true;
-				dirLight.shadow.mapSize.setScalar( 2048 );
-				const shadowExtent = Math.max( modelSize.x, modelSize.z ) * 0.7;
-				dirLight.shadow.camera.left = - shadowExtent;
-				dirLight.shadow.camera.right = shadowExtent;
-				dirLight.shadow.camera.top = shadowExtent;
-				dirLight.shadow.camera.bottom = - shadowExtent;
-				dirLight.shadow.camera.near = 0.1;
-				dirLight.shadow.camera.far = modelSize.y * 4.0;
-				scene.add( dirLight );
-
-				// A subtle ambient light fills areas that end up too dark.
-				// The respective irradiance is modulated by the AO of the GI pass.
-
-				const ambientLight = new THREE.AmbientLight( 0xffffff, 0.5 );
-				scene.add( ambientLight );
-
+				sunLight = new SunLight( 0xfff2dc, 100.0 );
+				sunLight.castShadow = true;
+				sunLight.shadow.camera.far = 50;
+				sunLight.shadow.mapSize.setScalar( 2048 );
+				scene.add( sunLight );
 
 				// post processing
 
@@ -181,7 +160,8 @@
 
 				// pre-pass
 
-				const prePass = pass( scene, camera );
+				// Depth sampled by VXGI and TRAA must be single-sampled.
+				const prePass = pass( scene, camera, { samples: 0 } );
 				prePass.name = 'Pre-Pass';
 				prePass.transparent = false;
 
@@ -207,14 +187,17 @@
 				// gi
 
 				const giPass = vxgi( prePassDepth, prePassNormal, scene, camera );
-				giPass.giIntensity.value = 1.5;
+				// Match the probe example: one cached bounce, unit GI, no extra AO.
+				giPass.bounces = 1;
+				giPass.aoIntensity.value = 0;
 
 				const ao = giPass.getAONode().toInspector( 'VXGI.AO' );
 				const gi = giPass.getGINode().toInspector( 'VXGI.GI' );
 
 				// scene pass: AO and indirect irradiance are injected into the materials' lighting
 
-				const scenePass = pass( scene, camera ).toInspector( 'Color' );
+				// TRAA requires single-sampled scene passes.
+				const scenePass = pass( scene, camera, { samples: 0 } ).toInspector( 'Color' );
 				const giContext = builtinGIContext( ao.sample( screenUV ).r, gi.sample( screenUV ).rgb );
 				scenePass.contextNode = giContext;
 
@@ -228,9 +211,11 @@
 				const params = {
 					output: 0,
 					debug: 0,
-					lightAzimuth: 135,
-					lightElevation: 55,
-					lightIntensity: 100.0
+					lightAzimuth: - 75,
+					lightElevation: 60,
+					lightIntensity: 100.0,
+					shadows: true,
+					resolution: 128
 				};
 
 				function updateLightPosition() {
@@ -241,9 +226,7 @@
 					sun.setFromSphericalCoords( 1, Math.PI / 2 - elevation, azimuth );
 					sky.sunPosition.value.copy( sun );
 
-					dirLight.target.position.set( modelCenter.x, targetY, modelCenter.z );
-					dirLight.position.copy( dirLight.target.position ).addScaledVector( sun, lightBaseDistance );
-					dirLight.target.updateMatrixWorld();
+					sunLight.position.copy( sun );
 
 				}
 
@@ -255,6 +238,12 @@
 				const gui = renderer.inspector.createParameters( 'VXGI Settings' );
 
 				const effectFolder = gui.addFolder( 'Effect Settings' );
+				effectFolder.add( params, 'resolution', [ 64, 128, 256 ] ).name( 'voxel resolution' ).onChange( ( value ) => {
+
+					giPass.volume.resolution = Number( value );
+					giPass.volume.needsUpdate = true;
+
+				} );
 				effectFolder.add( params, 'output', types ).onChange( updatePostprocessing );
 				effectFolder.add( params, 'debug', debugTypes ).name( 'voxel view' ).onChange( updatePostprocessing );
 				effectFolder.add( giPass.debugLevel, 'value', 0, 4, 1 ).name( 'voxel view level' );
@@ -276,10 +265,15 @@
 				lightingFolder.add( params, 'lightElevation', 5, 85, 1 ).name( 'Light Elevation' ).onChange( updateLightPosition );
 				lightingFolder.add( params, 'lightIntensity', 0, 100, 0.1 ).name( 'Light Intensity' ).onChange( ( value ) => {
 
-					dirLight.intensity = value;
+					sunLight.intensity = value;
 
 				} );
-				lightingFolder.add( ambientLight, 'intensity', 0, 1, 0.01 ).name( 'Ambient Intensity' );
+				lightingFolder.add( params, 'shadows' ).name( 'Shadows' ).onChange( ( value ) => {
+
+					renderer.shadowMap.enabled = value;
+					sunLight.castShadow = value;
+
+				} );
 
 				function updatePostprocessing() {
 
@@ -315,6 +309,8 @@
 					renderPipeline.needsUpdate = true;
 
 				}
+
+				renderer.setAnimationLoop( animate );
 
 				window.addEventListener( 'resize', onWindowResize );
 

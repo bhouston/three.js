@@ -81,7 +81,7 @@ class PlainCubeTextureNode extends CubeTextureNode {
  * paper: the shadow maps rendered by the renderer are the light-view maps, and every occupied voxel
  * pulls its visibility from them (2D maps for directional and spot lights, cube maps for point
  * lights) and evaluates its irradiance analytically. This reuses the existing shadow passes, makes
- * the injected shadows match the direct lighting exactly and needs neither atomics nor a
+ * the injected visibility follow the direct shadow maps (with a single depth comparison) and needs neither atomics nor a
  * normalization by photon density. Lights without a shadow map fall back to a visibility cone
  * traced through the volume. The trade-off is a cost proportional to the number of occupied voxels
  * times lights rather than to the light-view resolution, and that only outgoing diffuse radiance
@@ -609,7 +609,7 @@ class VXGIVolume {
 
 			let type;
 
-			if ( object.isDirectionalLight === true ) type = 0;
+			if ( object.isDirectionalLight === true || object.isSunLight === true ) type = 0;
 			else if ( object.isSpotLight === true ) type = 2;
 			else if ( object.isPointLight === true ) type = 1;
 			else return;
@@ -621,7 +621,16 @@ class VXGIVolume {
 
 			if ( type === 0 || type === 2 ) {
 
-				_target.setFromMatrixPosition( object.target.matrixWorld );
+				if ( object.isSunLight === true ) {
+
+					// SunLight has no target; its position defines its direction.
+					_target.set( 0, 0, 0 );
+
+				} else {
+
+					_target.setFromMatrixPosition( object.target.matrixWorld );
+
+				}
 
 				if ( type === 0 ) {
 
@@ -648,7 +657,8 @@ class VXGIVolume {
 
 			let shadowTexture = null;
 
-			if ( object.castShadow === true && renderer.shadowMap.enabled === true && object.shadow.map !== null && object.shadow.map.depthTexture !== undefined ) {
+			// SunLight cascades are fitted to the view, so use voxel visibility for injection.
+			if ( object.isSunLight !== true && object.castShadow === true && renderer.shadowMap.enabled === true && object.shadow.map !== null && object.shadow.map.depthTexture !== undefined ) {
 
 				const shadow = object.shadow;
 
@@ -670,6 +680,9 @@ class VXGIVolume {
 				l3.set( 0, 0, 0, 0 );
 
 			}
+
+			// Match the renderer shadow toggle when falling back to voxel visibility.
+			l3.z = renderer.shadowMap.enabled ? 1 : 0;
 
 			key += `|${ type },${ l0.x.toFixed( 3 ) },${ l0.y.toFixed( 3 ) },${ l0.z.toFixed( 3 ) },${ l1.x.toFixed( 4 ) },${ l1.y.toFixed( 4 ) },${ l1.z.toFixed( 4 ) },${ l1.w },${ l2.x.toFixed( 3 ) },${ l2.y.toFixed( 3 ) },${ l2.z.toFixed( 3 ) },${ l2.w },${ l3.x.toFixed( 4 ) },${ l3.y.toFixed( 4 ) },${ shadowTexture !== null ? shadowTexture.uuid : '-' }`;
 
@@ -1264,8 +1277,12 @@ class VXGIVolume {
 								// no shadow map: trace a visibility cone through the volume
 
 								const origin = position.add( normal.mul( voxelSize.mul( 1.5 ) ) );
-								const occlusion = trace( origin, lightDirection, shadowTanHalfAngle, lightDistance.sub( voxelSize ) );
-								visibility.assign( occlusion.alpha.oneMinus() );
+								If( l3.z.greaterThan( 0 ), () => {
+
+									const occlusion = trace( origin, lightDirection, shadowTanHalfAngle, lightDistance.sub( voxelSize ) );
+									visibility.assign( occlusion.alpha.oneMinus() );
+
+								} );
 
 							} else if ( type === 1 ) {
 

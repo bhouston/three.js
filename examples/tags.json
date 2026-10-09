@@ -125,6 +125,8 @@
 	"webgpu_depth_texture": [ "renderTarget" ],
 	"webgpu_gaussian_splat": [ "splatting", "point cloud" ],
 	"webgpu_geometry_loft": [ "sweep", "skin", "sections", "procedural" ],
+	"webgpu_lightbaking_complex": [ "global illumination", "indirect diffuse", "lightmap", "unwrap" ],
+	"webgpu_lightbaking_cornell": [ "global illumination", "indirect diffuse", "lightmap", "unwrap", "gltf", "export" ],
 	"webgpu_lightprobes": [ "global illumination", "indirect diffuse" ],
 	"webgpu_lightprobes_complex": [ "global illumination", "indirect diffuse" ],
 	"webgpu_lightprobes_sponza": [ "global illumination", "indirect diffuse" ],

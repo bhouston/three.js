@@ -363,6 +363,8 @@
 		"webgpu_lensflares",
 		"webgpu_lightprobe",
 		"webgpu_lightprobe_cubecamera",
+		"webgpu_lightbaking_complex",
+		"webgpu_lightbaking_cornell",
 		"webgpu_lightprobes",
 		"webgpu_lightprobes_complex",
 		"webgpu_lightprobes_sponza",

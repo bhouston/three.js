@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - light baking</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - light baking">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_lightbaking_cornell.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_lightbaking_cornell.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Light Baking</span>
+			</div>
+
+			<small>Indirect diffuse light from a light probe grid baked into a light map.</small>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
+			import { lightProbeGridIrradiance } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
+			import { UVUnwrapper } from 'three/addons/utils/UVUnwrapper.js';
+			import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+			let camera, scene, renderer, controls;
+			let lightMapper;
+
+			const params = {
+				mode: 'Light Map',
+				samples: 64
+			};
+
+			init();
+
+			async function init() {
+
+				// Camera
+
+				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 2.5, 8 );
+
+				// Scene
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x111111 );
+
+				// Cornell box
+
+				const wallMaterial = new THREE.MeshStandardMaterial( { color: 0xcccccc } );
+				const redMaterial = new THREE.MeshStandardMaterial( { color: 0xff0000 } );
+				const greenMaterial = new THREE.MeshStandardMaterial( { color: 0x00ff00 } );
+
+				// Floor
+				const floor = new THREE.Mesh( new THREE.PlaneGeometry( 6, 6 ), wallMaterial );
+				floor.rotation.x = - Math.PI / 2;
+				floor.receiveShadow = true;
+				scene.add( floor );
+
+				// Ceiling
+				const ceiling = new THREE.Mesh( new THREE.PlaneGeometry( 6, 6 ), wallMaterial );
+				ceiling.rotation.x = Math.PI / 2;
+				ceiling.position.y = 5;
+				ceiling.receiveShadow = true;
+				scene.add( ceiling );
+
+				// Back wall
+				const backWall = new THREE.Mesh( new THREE.PlaneGeometry( 6, 5 ), wallMaterial );
+				backWall.position.set( 0, 2.5, - 3 );
+				backWall.receiveShadow = true;
+				scene.add( backWall );
+
+				// Front wall
+				const frontWall = new THREE.Mesh( new THREE.PlaneGeometry( 6, 5 ), wallMaterial );
+				frontWall.rotation.y = Math.PI;
+				frontWall.position.set( 0, 2.5, 3 );
+				frontWall.receiveShadow = true;
+				scene.add( frontWall );
+
+				// Left wall (red)
+				const leftWall = new THREE.Mesh( new THREE.PlaneGeometry( 6, 5 ), redMaterial );
+				leftWall.rotation.y = Math.PI / 2;
+				leftWall.position.set( - 3, 2.5, 0 );
+				leftWall.receiveShadow = true;
+				scene.add( leftWall );
+
+				// Right wall (green)
+				const rightWall = new THREE.Mesh( new THREE.PlaneGeometry( 6, 5 ), greenMaterial );
+				rightWall.rotation.y = - Math.PI / 2;
+				rightWall.position.set( 3, 2.5, 0 );
+				rightWall.receiveShadow = true;
+				scene.add( rightWall );
+
+				// Objects inside the box
+
+				const objectMaterial = new THREE.MeshStandardMaterial( { color: 0xeeeeee } );
+
+				// Tall box
+				const tallBox = new THREE.Mesh( new THREE.BoxGeometry( 1.2, 2.5, 1.2 ), objectMaterial );
+				tallBox.position.set( - 0.8, 1.25, - 0.8 );
+				tallBox.rotation.y = Math.PI / 8;
+				tallBox.castShadow = true;
+				tallBox.receiveShadow = true;
+				scene.add( tallBox );
+
+				// Short box
+				const shortBox = new THREE.Mesh( new THREE.BoxGeometry( 1.2, 1.2, 1.2 ), objectMaterial );
+				shortBox.position.set( 1, 0.6, 0.5 );
+				shortBox.rotation.y = - Math.PI / 6;
+				shortBox.castShadow = true;
+				shortBox.receiveShadow = true;
+				scene.add( shortBox );
+
+				// Sphere (to show smooth GI variation)
+				const sphere = new THREE.Mesh( new THREE.SphereGeometry( 0.5, 32, 32 ), objectMaterial.clone() );
+				sphere.position.set( 1, 1.9, 0.5 );
+				sphere.castShadow = true;
+				sphere.receiveShadow = true;
+				scene.add( sphere );
+
+				// Light
+				const light = new THREE.PointLight( 0xffffff, 40 );
+				light.position.set( 0, 4.5, 0 );
+				light.castShadow = true;
+				light.shadow.mapSize.setScalar( 256 );
+				light.shadow.radius = 10;
+				light.shadow.normalBias = - 0.02;
+				scene.add( light );
+
+				// Renderer
+
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
+				renderer.shadowMap.enabled = true;
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 1.0;
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+
+				await renderer.init();
+
+				// Controls
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 2.5, 0 );
+				controls.update();
+
+				// Light map UVs
+
+				const meshes = scene.children.filter( ( object ) => object.isMesh );
+				const materials = new Set( meshes.map( ( mesh ) => mesh.material ) );
+
+				const unwrapper = new UVUnwrapper();
+				const size = unwrapper.unwrap( meshes );
+
+				// Light probe volume as the source of indirect light
+
+				const probes = new LightProbeGrid( 5.6, 4.7, 5.6, 6, 6, 6 );
+				probes.position.set( 0, 2.45, 0 );
+				await probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20 } );
+				scene.add( probes );
+
+				// Light map, accumulated progressively in animate()
+
+				lightMapper = new LightMapper( renderer, size, ( position, normal ) => lightProbeGridIrradiance( probes, position, normal ) );
+				lightMapper.addObjects( meshes );
+
+				for ( const material of materials ) material.lightMap = lightMapper.texture;
+
+				function setMode( mode ) {
+
+					probes.visible = mode === 'Light Probes';
+
+					for ( const material of materials ) material.lightMapIntensity = mode === 'Light Map' ? 1 : 0;
+
+				}
+
+				setMode( params.mode );
+
+				// GUI
+
+				const gui = renderer.inspector.createParameters( 'Light Baking' );
+				gui.add( params, 'mode', [ 'Light Map', 'Light Probes', 'None' ] ).name( 'Indirect Light' ).onChange( setMode );
+				gui.add( { exportGLTF }, 'exportGLTF' ).name( 'Export glTF' );
+
+				async function exportGLTF() {
+
+					const exporter = new GLTFExporter();
+					const result = await exporter.parseAsync( meshes, { binary: true } );
+
+					const link = document.createElement( 'a' );
+					link.href = URL.createObjectURL( new Blob( [ result ], { type: 'application/octet-stream' } ) );
+					link.download = 'lightbaking_cornell.glb';
+					link.click();
+
+				}
+
+				//
+
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function animate() {
+
+				if ( lightMapper && lightMapper.samples < params.samples ) lightMapper.update();
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>

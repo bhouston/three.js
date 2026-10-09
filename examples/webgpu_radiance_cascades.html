@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - radiance cascades</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - light probe volume">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_radiance_cascades.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_radiance_cascades.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+		<div id="comparison" style="position:absolute;right:16px;bottom:16px;padding:12px;background:#222d;color:white;font:13px sans-serif;z-index:10;max-width:300px">
+			<label>Lighting <select id="method"><option value="rc">Radiance cascades</option><option value="probes">Baked light probes</option><option value="vxgi">VXGI</option><option value="direct">Direct only</option><option value="indirect">RC irradiance</option></select></label><br><br>
+			<label><input id="movingLight" type="checkbox"> Move light (probes stay baked)</label><br>
+			<label><input id="movingObject" type="checkbox"> Move short box (revoxelizes)</label><br>
+			<label><input id="divider" type="checkbox"> Thin divider</label><br>
+			<label><input id="emitter" type="checkbox"> Off-screen emitter</label><br><br>
+			<label>Probe spacing <select id="spacing"><option>8</option><option selected>16</option><option>32</option></select> px</label><br>
+			<label>First interval <input id="interval" type="range" min="0.1" max="1" step="0.05" value="0.3"></label><br>
+			<button id="rebake">Rebake probes</button><button id="reset">Reset scene</button>
+			<p id="metrics">Initializing WebGPU…</p>
+			<small>Single indirect bounce. RC uses no temporal history.<br>Probe/depth interpolation and voxel resolution limit quality.</small>
+		</div>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Radiance Cascades</span>
+			</div>
+
+			<small>Runtime voxel-traced radiance cascades. Compare with baked probes and VXGI in the same scene.</small>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import { pass, mrt, normalView, packNormalToRGB, unpackRGBToNormal, sample, screenUV, builtinGIContext, float, vec4 } from 'three/tsl';
+			import { vxgi } from 'three/addons/lighting/vxgi/VXGINode.js';
+			import { radianceCascades } from 'three/addons/lighting/RadianceCascadesNode.js';
+
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+
+
+			let camera, scene, renderer, controls;
+			let probes, renderPipeline, rc, vxgiPass, light, shortBox;
+			let method = 'rc', frame = 0, bakePending = false;
+
+			init();
+
+			async function init() {
+
+				// Camera
+
+				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 2.5, 8 );
+
+				// Scene
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x111111 );
+
+				// Cornell box
+
+				const wallMaterial = new THREE.MeshStandardMaterial( { color: 0xcccccc } );
+				const redMaterial = new THREE.MeshStandardMaterial( { color: 0xff0000 } );
+				const greenMaterial = new THREE.MeshStandardMaterial( { color: 0x00ff00 } );
+
+				// Floor
+				const floor = new THREE.Mesh( new THREE.PlaneGeometry( 6, 6 ), wallMaterial );
+				floor.rotation.x = - Math.PI / 2;
+				floor.receiveShadow = true;
+				scene.add( floor );
+
+				// Ceiling
+				const ceiling = new THREE.Mesh( new THREE.PlaneGeometry( 6, 6 ), wallMaterial );
+				ceiling.rotation.x = Math.PI / 2;
+				ceiling.position.y = 5;
+				ceiling.receiveShadow = true;
+				scene.add( ceiling );
+
+				// Back wall
+				const backWall = new THREE.Mesh( new THREE.PlaneGeometry( 6, 5 ), wallMaterial );
+				backWall.position.set( 0, 2.5, - 3 );
+				backWall.receiveShadow = true;
+				scene.add( backWall );
+
+				// Front wall
+				const frontWall = new THREE.Mesh( new THREE.PlaneGeometry( 6, 5 ), wallMaterial );
+				frontWall.rotation.y = Math.PI;
+				frontWall.position.set( 0, 2.5, 3 );
+				frontWall.receiveShadow = true;
+				scene.add( frontWall );
+
+				// Left wall (red)
+				const leftWall = new THREE.Mesh( new THREE.PlaneGeometry( 6, 5 ), redMaterial );
+				leftWall.rotation.y = Math.PI / 2;
+				leftWall.position.set( - 3, 2.5, 0 );
+				leftWall.receiveShadow = true;
+				scene.add( leftWall );
+
+				// Right wall (green)
+				const rightWall = new THREE.Mesh( new THREE.PlaneGeometry( 6, 5 ), greenMaterial );
+				rightWall.rotation.y = - Math.PI / 2;
+				rightWall.position.set( 3, 2.5, 0 );
+				rightWall.receiveShadow = true;
+				scene.add( rightWall );
+
+				// Objects inside the box
+
+				const objectMaterial = new THREE.MeshStandardMaterial( { color: 0xeeeeee } );
+
+				// Tall box
+				const tallBox = new THREE.Mesh( new THREE.BoxGeometry( 1.2, 2.5, 1.2 ), objectMaterial );
+				tallBox.position.set( - 0.8, 1.25, - 0.8 );
+				tallBox.rotation.y = Math.PI / 8;
+				tallBox.castShadow = true;
+				tallBox.receiveShadow = true;
+				scene.add( tallBox );
+
+				// Short box
+				shortBox = new THREE.Mesh( new THREE.BoxGeometry( 1.2, 1.2, 1.2 ), objectMaterial );
+				shortBox.position.set( 1, 0.6, 0.5 );
+				shortBox.rotation.y = - Math.PI / 6;
+				shortBox.castShadow = true;
+				shortBox.receiveShadow = true;
+				scene.add( shortBox );
+
+				// Sphere (to show smooth GI variation)
+				const sphere = new THREE.Mesh( new THREE.SphereGeometry( 0.5, 32, 32 ), objectMaterial.clone() );
+				sphere.position.set( 1, 1.9, 0.5 );
+				sphere.castShadow = true;
+				sphere.receiveShadow = true;
+				scene.add( sphere );
+
+				// Light
+				light = new THREE.PointLight( 0xffffff, 40 );
+				light.position.set( 0, 4.5, 0 );
+				light.castShadow = true;
+				light.shadow.mapSize.setScalar( 256 );
+				light.shadow.radius = 10;
+				light.shadow.normalBias = - 0.02;
+				scene.add( light );
+
+				// Renderer
+
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer.setPixelRatio( 1 );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				renderer.shadowMap.enabled = true;
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 1.0;
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+
+				await renderer.init();
+
+				// Controls
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 2.5, 0 );
+				controls.update();
+
+				// Same static Cornell box as webgpu_lightprobes.html. One indirect bounce.
+				probes = new LightProbeGrid( 5.6, 4.7, 5.6, 6, 6, 6 );
+				probes.position.set( 0, 2.45, 0 );
+				await probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20, bounces: 0 } );
+				probes.visible = false;
+				scene.add( probes );
+
+				const depthPass = pass( scene, camera, { samples: 0 } );
+				depthPass.name = 'RC.Prepass';
+				depthPass.transparent = false;
+				depthPass.setMRT( mrt( { output: packNormalToRGB( normalView ) } ) );
+				const depth = depthPass.getTextureNode( 'depth' );
+				const normals = sample( ( uv ) => unpackRGBToNormal( depthPass.getTextureNode().sample( uv ) ) );
+				vxgiPass = vxgi( depth, normals, scene, camera, 64 );
+				vxgiPass.bounces = 0;
+				vxgiPass.useTemporalFiltering = false;
+				vxgiPass.aoIntensity.value = 0;
+				rc = radianceCascades( depth, normals, scene, camera, { volume: vxgiPass.volume } );
+				const scenePass = pass( scene, camera );
+				renderPipeline = new THREE.RenderPipeline( renderer );
+				const rcContext = builtinGIContext( float( 1 ), rc.getGINode().sample( screenUV ).rgb );
+				const vxgiContext = builtinGIContext( float( 1 ), vxgiPass.getGINode().sample( screenUV ).rgb );
+
+				const divider = new THREE.Mesh( new THREE.BoxGeometry( 0.06, 2.4, 2.3 ), wallMaterial );
+				divider.position.set( 0.1, 1.2, - 1.4 );
+				divider.castShadow = divider.receiveShadow = true;
+				divider.visible = false;
+				scene.add( divider );
+				const emitterMaterial = new THREE.MeshStandardMaterial( { color: 0xffffff, emissive: 0xff6633, emissiveIntensity: 30 } );
+				const emitter = new THREE.Mesh( new THREE.BoxGeometry( 0.9, 0.9, 0.15 ), emitterMaterial );
+				emitter.position.set( - 1.8, 2, 2.8 );
+				emitter.visible = false;
+				scene.add( emitter );
+
+				function selectMethod( value ) {
+
+					method = value;
+					probes.visible = method === 'probes';
+					scenePass.contextNode = method === 'rc' ? rcContext : method === 'vxgi' ? vxgiContext : null;
+					scenePass.needsUpdate = true;
+					renderPipeline.outputNode = method === 'indirect' ? vec4( rc.getGINode().rgb, 1 ) : scenePass;
+					renderPipeline.needsUpdate = true;
+
+				}
+
+				selectMethod( new URLSearchParams( location.search ).get( 'method' ) || 'rc' );
+				document.getElementById( 'method' ).value = method;
+				document.getElementById( 'method' ).onchange = ( event ) => selectMethod( event.target.value );
+				document.getElementById( 'spacing' ).onchange = ( event ) => {
+
+		rc.probeSpacing = Number( event.target.value );
+
+	};
+
+				document.getElementById( 'interval' ).oninput = ( event ) => {
+
+		rc.intervalLength.value = Number( event.target.value );
+
+	};
+
+				for ( const [ id, mesh ] of [[ 'divider', divider ], [ 'emitter', emitter ]] ) {
+
+					document.getElementById( id ).onchange = ( event ) => {
+
+						mesh.visible = event.target.checked;
+						if ( id === 'emitter' && mesh.visible ) {
+
+							// Enter the room: the emitter is now behind the camera.
+							camera.position.set( 0, 2.5, 2.3 );
+							controls.target.set( 0, 2.5, - 1 );
+							controls.update();
+
+						}
+						rc.volume.needsUpdate = true;
+
+					};
+
+				}
+
+				document.getElementById( 'reset' ).onclick = () => {
+
+					for ( const id of [ 'movingLight', 'movingObject', 'divider', 'emitter' ] ) document.getElementById( id ).checked = false;
+					divider.visible = emitter.visible = false;
+					light.position.set( 0, 4.5, 0 );
+					light.intensity = 40;
+					shortBox.position.set( 1, 0.6, 0.5 );
+					camera.position.set( 0, 2.5, 8 );
+					controls.target.set( 0, 2.5, 0 );
+					controls.update();
+					rc.volume.needsUpdate = true;
+
+				};
+
+				document.getElementById( 'rebake' ).onclick = async () => {
+
+					if ( bakePending ) return;
+					bakePending = true;
+					renderer.setAnimationLoop( null );
+					const enabled = probes.visible;
+					probes.visible = false;
+					try {
+
+						await probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20, bounces: 0 } );
+
+					} finally {
+
+						probes.visible = enabled;
+						bakePending = false;
+						renderer.setAnimationLoop( animate );
+
+					}
+
+				};
+
+				window.addEventListener( 'resize', onWindowResize );
+				window.addEventListener( 'pagehide', () => {
+
+					renderer.setAnimationLoop( null );
+					rc.dispose();
+					vxgiPass.dispose();
+					probes.dispose();
+
+				} );
+				// Expose the experiment only when the hardware validation harness requests it.
+				if ( new URLSearchParams( location.search ).has( 'test' ) ) {
+
+					window.rcDemo = { renderer, scene, camera, controls, rc, vxgiPass, probes, renderPipeline, selectMethod, get frame() {
+
+						return frame;
+
+					} };
+
+				}
+
+				renderer.setAnimationLoop( animate );
+				document.documentElement.dataset.ready = 'true';
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function animate( time ) {
+
+				if ( document.getElementById( 'movingLight' ).checked ) light.position.x = Math.sin( time * 0.001 ) * 1.8;
+				if ( document.getElementById( 'movingObject' ).checked ) {
+
+					shortBox.position.z = 0.5 + Math.sin( time * 0.001 ) * 0.8;
+					rc.volume.needsUpdate = true;
+
+				}
+
+				controls.update();
+				renderPipeline.render();
+				frame ++;
+				if ( frame % 30 === 0 ) {
+
+					const rays = rc.cascades.reduce( ( sum, c ) => sum + c.width * c.height * c.azimuths * c.elevations, 0 );
+					document.getElementById( 'metrics' ).textContent = method + ' · ' + Math.round( rays / 1000 ) + 'k interval rays · ' + ( rc.memoryBytes / 1048576 ).toFixed( 1 ) + ' MiB RC textures';
+
+				}
+
+			}
+
+		</script>
+	</body>
+</html>

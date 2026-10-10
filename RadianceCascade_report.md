@@ -2,6 +2,54 @@
 
 Research and experimental implementation, 9 October 2026. Branch: [`bhouston/three.js: radiance_cascades`](https://github.com/bhouston/three.js/tree/radiance_cascades). Based on repository revision `8d486d4cc1`.
 
+## Smoothing experiments — 10 October 2026
+
+Worktree: `~/Coding/.worktrees/three.js-radiance-cascades-smooth`, branch `radiance-cascades-smooth`, based on `c0b581e1021` from `radiance_cascades`. The original preset is retained. The sections below this update describe the previous implementation and its historical results.
+
+### Why the voxel grid becomes visible
+
+Sharing a voxel grid with VXGI does not mean sharing its reconstruction. The original RC implementation uses nearest-cell `load()` calls at mip zero, an occupancy cutoff, and a single opaque first hit. Moving a ray across a cell boundary can abruptly change both visibility and outgoing radiance. VXGI instead uses interpolated volume samples, distance-dependent mip footprints, and front-to-back fractional opacity. It smooths the same scene representation before gathering it.
+
+Two more sources of patchwork are independent of voxel resolution: only 32 base directions represent incident radiance, and each visible pixel originally gathers from four screen-space probes with a hard normal cutoff. A small surface can have no compatible probe at all. The distant cascades also begin at different world-space origins, so simply interpolating their intervals can create gaps and overlap.
+
+The requested [GigiRadianceCascades](https://github.com/Kosmokleaner/GigiRadianceCascades/tree/c3db945bc6796c5116bdec37713c958588a75676) reference was cloned to the sibling directory `~/Coding/OpenSource/GigiRadianceCascades`. It is a **2D** implementation, not a 3D voxel renderer. Its `PropagateCommon.hlsl` uses bilinear scene samples and fractional transmittance; its merge traces each near segment to an upper probe's interval start before composing. Those ideas informed independent TSL experiments; no shader files were copied.
+
+### Controls in both examples
+
+Expand **RC experiments** in either example. The existing lighting selector still compares RC, VXGI, baked probes, direct lighting, and raw RC irradiance.
+
+| Option | Experiment and tradeoff |
+| --- | --- |
+| Original | Binary DDA and the original four-probe gather, retained for comparison. |
+| Filtered voxels | Trilinear mip-zero volume samples, directional opacity, and front-to-back integration. Half-voxel steps sample their midpoint and clip to interval ends; opacity is corrected for actual step length. Changes energy and softens voxel boundaries. |
+| Filtered + smooth gather | Adds a positive cubic B-spline over 4×4 probes, continuous normal weighting, and receiver-plane weighting/rejection. Smooths probe-grid derivatives and improves support near edges, but can blur lighting and still miss small surfaces. |
+| Angular footprint + smooth | Chooses mip levels from each angular cell's equal-area footprint at its trace distance. The footprint-scale slider trades detail for filtering; larger footprints may leak through thin geometry. This is a cone-like approximation within RC intervals. |
+| Connect cascade intervals | Retraces each near segment to each compatible upper probe's interval start before composing radiance/transmittance. Avoids reusing a segment from an unrelated origin, at substantial extra work. Upper angular bins are still averaged, so this is approximate 3D transport. |
+| Repair unsupported pixels | Only receivers with effectively zero compatible probe weight trace their own 32-direction hemisphere through the whole cascade range. Diagnoses missing screen-probe support, with extra cost and possible seams where it switches to reconstructed lighting. |
+| Base directions: 32 / 128 | Doubles both angular axes while preserving four-child nesting. Uses four times the interval rays and atlas storage; helps separate angular undersampling from voxel artifacts. |
+| Volume resolution: 64 / 128 | Revoxelizes the shared RC/VXGI volume. Resolves finer geometry at greater memory and update cost; does not fix probe interpolation by itself. |
+| Probe spacing: 4 / 8 / 16 / 32 | Denser screen probes capture more small surfaces; doubling density in both axes uses approximately four times the rays and atlas storage. |
+| Normal offset | Moves trace origins in voxel units; too little risks self-intersection, too much loses local occlusion. |
+
+Start with **Filtered + smooth gather**, then try 8-pixel spacing. Compare 32/128 directions independently before raising voxel resolution. Leave interval connection and unsupported-pixel repair off until isolating those specific problems. Presets reset the tracing/reconstruction options while preserving the chosen spatial, angular, and voxel resolutions.
+
+### Validation and practical limits
+
+Both examples were rendered and visually inspected in Chrome on a physical Apple Metal WebGPU adapter (`vendor: apple`, `architecture: metal-3`, fallback false). The smoothing harness rejects software adapters, verifies finite nonnegative HDR irradiance, repeats unchanged frames without temporal history, switches all presets and comparison methods, changes angular and voxel resolutions, exercises interval connection and receiver repair, resizes to 807×613, changes probe spacing, and checks zero irradiance after disabling the sources. The Cornell scene also checks off-screen emissive contribution in every tracing mode. Captured page and WebGPU errors were empty. The legacy Cornell scenario harness also ran, but its 0.1% energy tolerance after revoxelization failed on this adapter. Serving the unmodified `radiance_cascades` node and example reproduced a failure in the same family of restored-scene checks. The tolerance was not relaxed; deterministic voxel representative selection remains a separate issue. The legacy harness now waits for actual example readiness rather than network idleness and reports the measured energy difference on those assertions.
+
+Filtered tracing and wider reconstruction visibly reduce discontinuities around object bases and across the multi-room lighting field. They do **not** remove every artifact. In particular, sparse probe support, coarse voxel geometry, angular quadrature, and approximate displaced-probe transport remain. Filtering changes brightness; a brighter or smoother screenshot is not evidence of improved physical accuracy. No path-traced reference was generated, and no speed advantage over VXGI is claimed. The historical per-frame timings later in this document are not sustained-throughput benchmarks.
+
+The new harness writes unobstructed rendered comparisons, raw irradiance views, and HDR summary data to the ignored `test/e2e/output-screenshots/radiance-smoothing/` directory:
+
+```sh
+node utils/build/dev.js
+node utils/server.js -p 8088
+# In another terminal, from this worktree:
+RC_BASE_URL=http://localhost:8088 node test/e2e/radiance-cascades-smoothing.js
+```
+
+`CHROME_EXECUTABLE` overrides the default macOS Chrome executable. Generated `build/` files must stay uncommitted and be restored before switching branches. During this session, the source preview at port 8089 supplies development entry points without changing tracked build outputs.
+
 ## Recommendation and current result
 
 Radiance cascades are worth evaluating as a **runtime diffuse GI gather**, initially reusing three.js's voxel scene representation. The branch implements that experiment in TSL/WebGPU. It uses **mip-zero voxel traversal, without a software BVH**, and compares radiance cascades, existing VXGI, baked light probes, and direct lighting in two identical scenes:

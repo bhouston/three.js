@@ -25,8 +25,8 @@ try {
 		if ( message.type() === 'error' && ! message.text().includes( '404' ) ) errors.push( message.text() );
 
 	} );
-	await page.goto( url, { waitUntil: 'networkidle2', timeout: 60000 } );
-	await page.waitForFunction( () => window.rcDemo?.frame > 5, { timeout: 60000 } );
+	await page.goto( url, { waitUntil: 'domcontentloaded', timeout: 120000 } );
+	await page.waitForFunction( () => window.rcDemo?.frame > 5, { timeout: 120000 } );
 
 	const hardware = await page.evaluate( async () => {
 
@@ -146,7 +146,7 @@ try {
 	await page.click( '#reset' );
 	const reset = await capture( 'reset' );
 	const resetRelativeDifference = Math.abs( reset.sum - baseline.sum ) / baseline.sum;
-	assert.ok( resetRelativeDifference < 0.001, 'Revoxelization may choose a different representative triangle in shared cells.' );
+	assert.ok( resetRelativeDifference < 0.001, `Revoxelization energy difference: ${ ( resetRelativeDifference * 100 ).toFixed( 3 ) }%.` );
 
 	await page.click( '#divider' );
 	const divider = await capture( 'divider' );
@@ -182,7 +182,7 @@ try {
 	await page.click( '#reset' );
 	const restored = await capture( 'restored' );
 	const restoredRelativeDifference = Math.abs( restored.sum - baseline.sum ) / baseline.sum;
-	assert.ok( restoredRelativeDifference < 0.001, 'Returning to the same scene reproduces energy within the voxelization tolerance.' );
+	assert.ok( restoredRelativeDifference < 0.001, `Restored-scene energy difference: ${ ( restoredRelativeDifference * 100 ).toFixed( 3 ) }%.` );
 
 	await page.evaluate( () => {
 

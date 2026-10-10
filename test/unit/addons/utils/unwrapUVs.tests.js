@@ -327,6 +327,19 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'dense lightmap planes retain packing efficiency with bounded chart work', assert => {
+
+				const result = unwrap( new Mesh( new PlaneGeometry( 1, 1, 64, 64 ) ), { mode: 'lightmap' } );
+				assert.strictEqual( result.charts.length, 1, 'An 8192-face plane stays in one chart' );
+				assert.ok( verify( assert, result ).utilization > 0.98, 'Dense plane fills the atlas' );
+				const larger = unwrap( new Mesh( new PlaneGeometry( 1, 1, 66, 66 ) ), { mode: 'lightmap' } );
+				const sizes = new Map();
+				for ( const chart of larger.meshes[ 0 ].faceCharts ) sizes.set( chart, ( sizes.get( chart ) || 0 ) + 1 );
+				assert.false( sizes.has( - 1 ), 'All plane faces receive UVs' );
+				assert.ok( Array.from( sizes.values() ).every( count => count <= 8192 ), 'Lightmap chart work remains bounded' );
+
+			} );
+
 			QUnit.test( 'authored cylinder seams remain distinct and valid islands retain their shape', assert => {
 
 				const mesh = new Mesh( new CylinderGeometry( 1, 1, 6.4, 32, 1, true ) );

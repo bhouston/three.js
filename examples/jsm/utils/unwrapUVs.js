@@ -170,6 +170,8 @@ function equalUV( uv, a, b ) {
 function growCharts( record, settings ) {
 
 	const assigned = new Uint8Array( record.faces.length ), charts = [];
+	// Lightmap charts use planar projection; keep the costlier LSCM charts smaller.
+	const limit = settings.mode === 'lightmap' ? 8192 : 2048;
 	// Wider normal cones in normal mode give LSCM useful curved patches to solve.
 	const cosine = settings.useInputUVs && record.original.attributes.uv ? - 1 : settings.mode === 'normal' ? 0.35 : 1 / settings.maxStretch;
 	for ( let seed = 0; seed < assigned.length; seed ++ ) {
@@ -177,14 +179,14 @@ function growCharts( record, settings ) {
 		if ( assigned[ seed ] || record.faces[ seed ].ignored ) continue;
 		const faces = [ seed ], normal = record.faces[ seed ].normal;
 		assigned[ seed ] = 1;
-		for ( let i = 0; i < faces.length && faces.length < 2048; i ++ ) {
+		for ( let i = 0; i < faces.length && faces.length < limit; i ++ ) {
 
 			for ( const neighbor of record.faces[ faces[ i ] ].neighbors ) {
 
 				if ( assigned[ neighbor ] || record.faces[ neighbor ].normal.dot( normal ) < cosine ) continue;
 				assigned[ neighbor ] = 1;
 				faces.push( neighbor );
-				if ( faces.length === 2048 ) break;
+				if ( faces.length === limit ) break;
 
 			}
 

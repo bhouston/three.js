@@ -1,5 +1,5 @@
-import { BackSide, Color, CustomBlending, DoubleSide, HalfFloatType, Mesh, NodeMaterial, OneFactor, OrthographicCamera, QuadMesh, RenderTarget, Scene, Vector2 } from 'three/webgpu';
-import { Fn, If, Loop, ivec2, normalWorldGeometry, positionWorld, screenCoordinate, textureLoad, uniform, uv, vec4 } from 'three/tsl';
+import { BackSide, Color, CustomBlending, DoubleSide, HalfFloatType, Mesh, MeshLambertNodeMaterial, NodeMaterial, OneFactor, OrthographicCamera, QuadMesh, RenderTarget, Scene, Vector2 } from 'three/webgpu';
+import { Fn, If, Loop, ivec2, lights, normalViewGeometry, normalWorldGeometry, output, positionWorld, screenCoordinate, textureLoad, uniform, uv, vec4 } from 'three/tsl';
 
 const _clearColor = /*@__PURE__*/ new Color();
 
@@ -34,8 +34,10 @@ class LightMapper {
 	 * @param {WebGPURenderer} renderer - The renderer.
 	 * @param {number} size - The light map size in texels.
 	 * @param {function(Node<vec3>, Node<vec3>): Node<vec3>} irradianceNode - Returns the irradiance for a world-space position and normal.
+	 * @param {Object} [options] - Bake options.
+	 * @param {Array<Light>} [options.lights=[]] - Direct lights to include in the diffuse bake. Render their shadows in the source scene first and disable shadow updates during the UV bake.
 	 */
-	constructor( renderer, size, irradianceNode ) {
+	constructor( renderer, size, irradianceNode, { lights = [] } = {} ) {
 
 		/**
 		 * The renderer.
@@ -43,6 +45,13 @@ class LightMapper {
 		 * @type {WebGPURenderer}
 		 */
 		this.renderer = renderer;
+
+		/**
+		 * The source of indirect irradiance.
+		 *
+		 * @type {function(Node<vec3>, Node<vec3>): Node<vec3>}
+		 */
+		this.irradianceNode = irradianceNode;
 
 		/**
 		 * The light map size in texels.
@@ -76,8 +85,8 @@ class LightMapper {
 		this._objects = [];
 		this._jitter = uniform( new Vector2() );
 
-		this._frontMaterial = this._createBakeMaterial( irradianceNode, false );
-		this._backMaterial = this._createBakeMaterial( irradianceNode, true );
+		this._frontMaterial = this._createBakeMaterial( irradianceNode, false, lights );
+		this._backMaterial = this._createBakeMaterial( irradianceNode, true, lights );
 
 		// normalize the accumulated samples and fill the chart padding
 
@@ -133,6 +142,7 @@ class LightMapper {
 			const proxy = new Mesh( object.geometry, material.side === BackSide ? this._backMaterial : this._frontMaterial );
 			proxy.matrixAutoUpdate = false;
 			proxy.frustumCulled = false;
+			proxy.receiveShadow = object.receiveShadow;
 
 			this._scene.add( proxy );
 			this._objects.push( object );
@@ -214,11 +224,12 @@ class LightMapper {
 	 * @private
 	 * @param {function(Node<vec3>, Node<vec3>): Node<vec3>} irradianceNode - The irradiance function.
 	 * @param {boolean} flipNormal - Whether to flip the normal, for back-sided meshes.
+	 * @param {Array<Light>} directLights - Direct lights to include.
 	 * @return {NodeMaterial} The material.
 	 */
-	_createBakeMaterial( irradianceNode, flipNormal ) {
+	_createBakeMaterial( irradianceNode, flipNormal, directLights ) {
 
-		const material = new NodeMaterial();
+		const material = directLights.length > 0 ? new MeshLambertNodeMaterial() : new NodeMaterial();
 		material.side = DoubleSide;
 		material.depthTest = false;
 		material.depthWrite = false;
@@ -233,7 +244,19 @@ class LightMapper {
 
 		const normal = flipNormal ? normalWorldGeometry.negate() : normalWorldGeometry;
 
-		material.fragmentNode = vec4( irradianceNode( positionWorld, normal ), 1 );
+		if ( directLights.length > 0 ) {
+
+			// Bake diffuse irradiance with white albedo, leaving specular lighting out.
+			material.lightsNode = lights( directLights );
+			material.normalNode = flipNormal ? normalViewGeometry.negate() : normalViewGeometry;
+			material.emissiveNode = irradianceNode( positionWorld, normal ).div( Math.PI );
+			material.outputNode = vec4( output.rgb.mul( Math.PI ), 1 );
+
+		} else {
+
+			material.fragmentNode = vec4( irradianceNode( positionWorld, normal ), 1 );
+
+		}
 
 		return material;
 

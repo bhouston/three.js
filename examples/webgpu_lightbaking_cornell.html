@@ -44,12 +44,14 @@
 			import { lightProbeGridIrradiance } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 			import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+			import { GLTFLightMapExporterExtension } from 'three/addons/exporters/GLTFLightMapExporterExtension.js';
 
 			let camera, scene, renderer, controls;
 			let lightMapper;
 
 			const params = {
 				mode: 'Light Map',
+				exportLighting: 'Indirect Diffuse',
 				samples: 64
 			};
 
@@ -125,13 +127,14 @@
 				tallBox.receiveShadow = true;
 				scene.add( tallBox );
 
-				// Short box
-				const shortBox = new THREE.Mesh( new THREE.BoxGeometry( 1.2, 1.2, 1.2 ), objectMaterial );
-				shortBox.position.set( 1, 0.6, 0.5 );
-				shortBox.rotation.y = - Math.PI / 6;
-				shortBox.castShadow = true;
-				shortBox.receiveShadow = true;
-				scene.add( shortBox );
+				// Glossy sphere, to show direct specular lighting
+				const glossyMaterial = objectMaterial.clone();
+				glossyMaterial.roughness = 0.15;
+				const glossySphere = new THREE.Mesh( new THREE.SphereGeometry( 0.65, 32, 32 ), glossyMaterial );
+				glossySphere.position.set( 1, 0.65, 0.5 );
+				glossySphere.castShadow = true;
+				glossySphere.receiveShadow = true;
+				scene.add( glossySphere );
 
 				// Sphere (to show smooth GI variation)
 				const sphere = new THREE.Mesh( new THREE.SphereGeometry( 0.5, 32, 32 ), objectMaterial.clone() );
@@ -206,17 +209,90 @@
 
 				const gui = renderer.inspector.createParameters( 'Light Baking' );
 				gui.add( params, 'mode', [ 'Light Map', 'Light Probes', 'None' ] ).name( 'Indirect Light' ).onChange( setMode );
+				gui.add( params, 'exportLighting', [ 'Indirect Diffuse', 'All Diffuse' ] ).name( 'Export Lighting' );
 				gui.add( { exportGLTF }, 'exportGLTF' ).name( 'Export glTF' );
+
+				let exporting = false;
 
 				async function exportGLTF() {
 
-					const exporter = new GLTFExporter();
-					const result = await exporter.parseAsync( meshes, { binary: true } );
+					if ( exporting ) return;
+					exporting = true;
+					renderer.setAnimationLoop( null );
 
-					const link = document.createElement( 'a' );
-					link.href = URL.createObjectURL( new Blob( [ result ], { type: 'application/octet-stream' } ) );
-					link.download = 'lightbaking_cornell.glb';
-					link.click();
+					const lights = scene.children.filter( object => object.isLight );
+					const shadows = lights.filter( light => light.shadow ).map( light => ( { shadow: light.shadow, autoUpdate: light.shadow.autoUpdate, needsUpdate: light.shadow.needsUpdate } ) );
+					let diffuseMapper;
+
+					try {
+
+						if ( lightMapper.samples < params.samples ) lightMapper.update( params.samples - lightMapper.samples );
+
+						let lightMap = lightMapper.texture;
+						const indirectOnly = params.exportLighting === 'Indirect Diffuse';
+
+						if ( ! indirectOnly ) {
+
+							// Refresh shadows in world space, then reuse them during the UV bake.
+							renderer.render( scene, camera );
+							for ( const { shadow } of shadows ) {
+
+								shadow.autoUpdate = false;
+								shadow.needsUpdate = false;
+
+							}
+
+							diffuseMapper = new LightMapper( renderer, lightMapper.size, lightMapper.irradianceNode, { lights } );
+							diffuseMapper.addObjects( meshes );
+							diffuseMapper.update( params.samples );
+							lightMap = diffuseMapper.texture;
+
+						}
+
+						// Clone materials so the export ignores the preview's indirect-light toggle.
+						const objects = meshes.map( mesh => {
+
+							const copy = mesh.clone();
+							const cloneMaterial = material => {
+
+								const copy = material.clone();
+								copy.lightMap = lightMap;
+								copy.lightMapIntensity = 1;
+								return copy;
+
+							};
+
+							copy.material = Array.isArray( mesh.material ) ? mesh.material.map( cloneMaterial ) : cloneMaterial( mesh.material );
+							return copy;
+
+						} );
+
+						if ( indirectOnly ) objects.push( ...lights );
+
+						const exporter = new GLTFExporter();
+						exporter.register( writer => new GLTFLightMapExporterExtension( writer, { renderer } ) );
+						const result = await exporter.parseAsync( objects, { binary: true } );
+
+						const link = document.createElement( 'a' );
+						link.href = URL.createObjectURL( new Blob( [ result ], { type: 'application/octet-stream' } ) );
+						link.download = 'lightbaking_cornell.glb';
+						link.click();
+						URL.revokeObjectURL( link.href );
+
+					} finally {
+
+						for ( const { shadow, autoUpdate, needsUpdate } of shadows ) {
+
+							shadow.autoUpdate = autoUpdate;
+							shadow.needsUpdate = needsUpdate;
+
+						}
+
+						diffuseMapper?.dispose();
+						exporting = false;
+						renderer.setAnimationLoop( animate );
+
+					}
 
 				}
 

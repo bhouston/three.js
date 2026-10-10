@@ -9,7 +9,7 @@ const _clearColor = /*@__PURE__*/ new Color();
  * global illumination technique can be baked, e.g. a {@link LightProbeGrid} via
  * `lightProbeGridIrradiance()`.
  *
- * Meshes need light map UVs in the `uv1` attribute, e.g. generated with {@link UVUnwrapper}.
+ * Meshes need light map UVs in the `uv1` attribute, e.g. generated with {@link unwrapUVs}.
  * Each sample rasterizes the meshes in UV space with a sub-texel jitter and accumulates
  * the result. Call `update()` once per frame to bake progressively, or pass a sample
  * count to bake at once.

@@ -42,7 +42,7 @@
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
 			import { lightProbeGridIrradiance } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
-			import { UVUnwrapper } from 'three/addons/utils/UVUnwrapper.js';
+			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 			import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 
 			let camera, scene, renderer, controls;
@@ -174,8 +174,9 @@
 				const meshes = scene.children.filter( ( object ) => object.isMesh );
 				const materials = new Set( meshes.map( ( mesh ) => mesh.material ) );
 
-				const unwrapper = new UVUnwrapper();
-				const size = unwrapper.unwrap( meshes );
+				const atlas = unwrapUVs( scene, { resolution: 1024, padding: 3, texelsPerUnit: 16 } );
+
+				if ( atlas === null ) throw new Error( 'Unable to pack the light map UV atlas.' );
 
 				// Light probe volume as the source of indirect light
 
@@ -186,7 +187,7 @@
 
 				// Light map, accumulated progressively in animate()
 
-				lightMapper = new LightMapper( renderer, size, ( position, normal ) => lightProbeGridIrradiance( probes, position, normal ) );
+				lightMapper = new LightMapper( renderer, atlas.resolution, ( position, normal ) => lightProbeGridIrradiance( probes, position, normal ) );
 				lightMapper.addObjects( meshes );
 
 				for ( const material of materials ) material.lightMap = lightMapper.texture;

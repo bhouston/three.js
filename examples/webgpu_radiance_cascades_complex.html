@@ -11,14 +11,25 @@
 		<link type="text/css" rel="stylesheet" href="example.css">
 	</head>
 	<body>
-		<div style="position:absolute;right:16px;bottom:16px;padding:12px;background:#222d;color:white;font:13px sans-serif;z-index:10;max-width:310px">
+		<div style="position:absolute;right:16px;bottom:16px;padding:12px;background:#222d;color:white;font:13px sans-serif;z-index:10;max-width:310px;max-height:85vh;overflow:auto">
 			<label>Lighting <select id="method"><option value="rc">Radiance cascades</option><option value="probes">Baked light probes</option><option value="vxgi">VXGI</option><option value="direct">Direct only</option><option value="indirect">RC irradiance</option></select></label><br><br>
 			<label><input id="warm" type="checkbox" checked> Left light</label>
 			<label><input id="cool" type="checkbox" checked> Right light</label><br>
-			<label>Probe spacing <select id="spacing"><option>8</option><option selected>16</option><option>32</option></select> px</label><br>
+			<label>Probe spacing <select id="spacing"><option>4</option><option>8</option><option selected>16</option><option>32</option></select> px</label><br>
+			<details open><summary>RC experiments</summary>
+			<label>RC preset <select id="preset"><option value="original">Original</option><option value="filtered">Filtered voxels</option><option value="smooth">Filtered + smooth gather</option><option value="footprint">Angular footprint + smooth</option><option value="custom" disabled>Custom</option></select></label><br>
+			<label>Ray sampling <select id="trace"><option value="0">Binary voxel hits</option><option value="1">Trilinear mip zero</option><option value="2">Angular footprint mips</option></select></label><br>
+			<label>Footprint scale <input id="footprint" type="range" min="0.25" max="2" step="0.25" value="1"></label><br>
+			<label><input id="smooth" type="checkbox"> Smooth surface-aware gather</label><br>
+			<label><input id="connect" type="checkbox"> Connect cascade intervals (expensive)</label><br>
+			<label><input id="fill" type="checkbox"> Repair unsupported pixels (expensive)</label><br>
+			<label>Normal offset <input id="offset" type="range" min="0.5" max="3" step="0.25" value="1.5"> voxels</label><br>
+			<label>Base directions <select id="directions"><option value="1">32</option><option value="2">128 (4× rays)</option></select></label><br>
+			<label>Volume resolution <select id="resolution"><option>64</option><option>128</option></select> voxels</label><br>
+			</details>
 			<button id="rebake">Rebake probes</button><button id="reset">Reset camera/lights</button>
 			<p id="metrics">Initializing WebGPU...</p>
-			<small>Single indirect bounce; no temporal history.<br>64-voxel volume: thin table legs and walls lose detail.</small>
+			<small>Single indirect bounce; no temporal history.<br>Coarse voxels lose thin geometry; filtering can leak light.</small>
 		</div>
 
 		<div id="info">
@@ -354,6 +365,58 @@
 
 				};
 
+				// Uniform changes let the experiments switch without rebuilding pipelines.
+				function updateExperiments() {
+
+					rc.traceMode.value = Number( document.getElementById( 'trace' ).value );
+					rc.filterScale.value = Number( document.getElementById( 'footprint' ).value );
+					rc.smoothReconstruction.value = document.getElementById( 'smooth' ).checked;
+					rc.connectIntervals.value = document.getElementById( 'connect' ).checked;
+					rc.fillMissingProbes.value = document.getElementById( 'fill' ).checked;
+					rc.normalOffset.value = Number( document.getElementById( 'offset' ).value );
+
+				}
+
+				function applyPreset( preset ) {
+
+					document.getElementById( 'preset' ).value = preset;
+					document.getElementById( 'trace' ).value = preset === 'original' ? '0' : preset === 'footprint' ? '2' : '1';
+					document.getElementById( 'smooth' ).checked = preset === 'smooth' || preset === 'footprint';
+					document.getElementById( 'connect' ).checked = false;
+					document.getElementById( 'fill' ).checked = false;
+					document.getElementById( 'footprint' ).value = '1';
+					document.getElementById( 'offset' ).value = '1.5';
+					updateExperiments();
+
+				}
+
+				document.getElementById( 'directions' ).onchange = ( event ) => {
+
+					rc.directionResolution = Number( event.target.value );
+
+				};
+
+				document.getElementById( 'resolution' ).onchange = ( event ) => {
+
+					rc.volume.resolution = Number( event.target.value );
+					rc.volume.needsUpdate = true;
+
+				};
+
+				const preset = new URLSearchParams( location.search ).get( 'preset' );
+				applyPreset( [ 'original', 'filtered', 'smooth', 'footprint' ].includes( preset ) ? preset : 'original' );
+				document.getElementById( 'preset' ).onchange = ( event ) => applyPreset( event.target.value );
+				for ( const id of [ 'trace', 'footprint', 'smooth', 'connect', 'fill', 'offset' ] ) {
+
+					document.getElementById( id ).oninput = () => {
+
+						document.getElementById( 'preset' ).value = 'custom';
+						updateExperiments();
+
+					};
+
+				}
+
 				for ( const [ id, light ] of [[ 'warm', warmLight ], [ 'cool', coolLight ]] ) {
 
 					document.getElementById( id ).onchange = ( event ) => {
@@ -433,7 +496,7 @@
 				if ( frame === 1 || frame % 30 === 0 ) {
 
 					const rays = rc.cascades.reduce( ( sum, c ) => sum + c.width * c.height * c.azimuths * c.elevations, 0 );
-					document.getElementById( 'metrics' ).textContent = method + ' / ' + Math.round( rays / 1000 ) + 'k interval rays ? ' + ( rc.memoryBytes / 1048576 ).toFixed( 1 ) + ' MiB RC textures';
+					document.getElementById( 'metrics' ).textContent = method + ' / ' + Math.round( rays / 1000 ) + 'k interval rays · ' + ( rc.memoryBytes / 1048576 ).toFixed( 1 ) + ' MiB RC textures';
 
 				}
 

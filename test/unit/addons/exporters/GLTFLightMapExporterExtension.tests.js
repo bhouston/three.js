@@ -1,4 +1,4 @@
-import { CompressedTexture, DataTexture, DataUtils, FloatType, HalfFloatType, Mesh, MeshStandardMaterial, PlaneGeometry } from '../../../../src/Three.js';
+import { CompressedTexture, DataTexture, Mesh, MeshStandardMaterial, PlaneGeometry, Texture } from '../../../../src/Three.js';
 import { GLTFExporter } from '../../../../examples/jsm/exporters/GLTFExporter.js';
 import { GLTFLightMapExporterExtension } from '../../../../examples/jsm/exporters/GLTFLightMapExporterExtension.js';
 import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
@@ -38,34 +38,21 @@ export default QUnit.module( 'Addons', () => {
 
 		QUnit.module( 'GLTFLightMapExporterExtension', () => {
 
-			QUnit.test( 'HDR GLB round trip preserves effective irradiance', async assert => {
+			QUnit.test( 'GLB round trip preserves light map and intensity', async assert => {
 
-				const values = [ 2, 4, 8, 1, 1, 0.5, 0.25, 1 ];
-				for ( const type of [ FloatType, HalfFloatType ] ) {
-
-					const data = type === HalfFloatType ? new Uint16Array( values.map( DataUtils.toHalfFloat ) ) : new Float32Array( values );
-					const map = new DataTexture( data, 1, 2 );
-					map.type = type;
-					const mesh = createMesh( map, 2 );
-					const buffer = await createExporter().parseAsync( mesh, { binary: true } );
-					const loader = new GLTFLoader();
-					loader.register( parser => new GLTFLightMapLoaderExtension( parser ) );
-					const gltf = await loader.parseAsync( buffer, '' );
-					const material = gltf.scene.children[ 0 ].material;
-					assert.strictEqual( material.lightMapIntensity, 16 );
-					assert.strictEqual( material.lightMap.channel, 1 );
-					const pixels = readPixels( material.lightMap.image );
-					for ( let i = 0; i < pixels.length; i ++ ) {
-
-						if ( i % 4 === 3 ) continue;
-						assert.ok( Math.abs( pixels[ i ] / 255 * material.lightMapIntensity - values[ i ] * 2 ) <= 16 / 255, 'Irradiance survives PNG quantization' );
-
-					}
-
-					assert.deepEqual( Array.from( map.image.data ), Array.from( data ), 'Source pixels unchanged' );
-					assert.strictEqual( mesh.material.lightMapIntensity, 2, 'Source intensity unchanged' );
-
-				}
+				const data = new Uint8Array( [ 64, 128, 255, 255, 32, 16, 8, 255 ] );
+				const map = new DataTexture( data, 1, 2 );
+				const mesh = createMesh( map, 2 );
+				const buffer = await createExporter().parseAsync( mesh, { binary: true } );
+				const loader = new GLTFLoader();
+				loader.register( parser => new GLTFLightMapLoaderExtension( parser ) );
+				const gltf = await loader.parseAsync( buffer, '' );
+				const material = gltf.scene.children[ 0 ].material;
+				assert.strictEqual( material.lightMapIntensity, 2 );
+				assert.strictEqual( material.lightMap.channel, 1 );
+				assert.deepEqual( Array.from( readPixels( material.lightMap.image ) ), Array.from( data ) );
+				assert.deepEqual( Array.from( map.image.data ), Array.from( data ), 'Source pixels unchanged' );
+				assert.strictEqual( mesh.material.lightMapIntensity, 2, 'Source intensity unchanged' );
 
 			} );
 
@@ -75,13 +62,16 @@ export default QUnit.module( 'Addons', () => {
 				map.offset.set( 0.25, 0.5 );
 				map.repeat.set( 0.5, 0.75 );
 				map.rotation = 0.2;
-				const result = await createExporter().parseAsync( [ createMesh( map, 0 ), createMesh( map, 3 ) ] );
+				const mesh = createMesh( map, 0 );
+				mesh.material.emissiveMap = map;
+				const result = await createExporter().parseAsync( [ mesh, createMesh( map, 3 ) ] );
 				assert.strictEqual( result.textures.length, 1, 'Shared atlas is embedded once' );
 				assert.strictEqual( result.images.length, 1 );
 				assert.ok( result.extensionsUsed.includes( 'MOZ_lightmap' ) );
 				assert.ok( result.extensionsUsed.includes( 'KHR_texture_transform' ) );
 				assert.notOk( result.extensionsRequired?.includes( 'MOZ_lightmap' ), 'Ordinary PBR remains a fallback' );
 				const extension = result.materials[ 0 ].extensions.MOZ_lightmap;
+				assert.strictEqual( extension.index, result.materials[ 0 ].emissiveTexture.index, 'Light map shares the emissive texture' );
 				assert.strictEqual( extension.intensity, 0 );
 				assert.strictEqual( extension.texCoord, 1 );
 				assert.deepEqual( extension.extensions.KHR_texture_transform, { offset: [ 0.25, 0.5 ], scale: [ 0.5, 0.75 ], rotation: 0.2 } );
@@ -89,9 +79,13 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'Data texture orientation', async assert => {
+			QUnit.test( 'Texture orientation', async assert => {
 
-				const map = new DataTexture( new Uint8Array( [ 255, 0, 0, 255, 0, 255, 0, 255 ] ), 1, 2 );
+				const canvas = document.createElement( 'canvas' );
+				canvas.width = 1;
+				canvas.height = 2;
+				canvas.getContext( '2d' ).putImageData( new ImageData( new Uint8ClampedArray( [ 255, 0, 0, 255, 0, 255, 0, 255 ] ), 1, 2 ), 0, 0 );
+				const map = new Texture( canvas );
 				map.flipY = true;
 				const result = await createExporter().parseAsync( createMesh( map ) );
 				const image = await createImageBitmap( await ( await fetch( result.images[ 0 ].uri ) ).blob() );

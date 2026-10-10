@@ -128,20 +128,12 @@
 				scene.add( tallBox );
 
 				// Glossy sphere, to show direct specular lighting
-				const glossyMaterial = objectMaterial.clone();
-				glossyMaterial.roughness = 0.15;
+				const glossyMaterial = new THREE.MeshStandardMaterial( { color: 0x0044ff, roughness: 0.15 } );
 				const glossySphere = new THREE.Mesh( new THREE.SphereGeometry( 0.65, 32, 32 ), glossyMaterial );
 				glossySphere.position.set( 1, 0.65, 0.5 );
 				glossySphere.castShadow = true;
 				glossySphere.receiveShadow = true;
 				scene.add( glossySphere );
-
-				// Sphere (to show smooth GI variation)
-				const sphere = new THREE.Mesh( new THREE.SphereGeometry( 0.5, 32, 32 ), objectMaterial.clone() );
-				sphere.position.set( 1, 1.9, 0.5 );
-				sphere.castShadow = true;
-				sphere.receiveShadow = true;
-				scene.add( sphere );
 
 				// Light
 				const light = new THREE.PointLight( 0xffffff, 40 );

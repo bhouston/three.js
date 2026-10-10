@@ -39,7 +39,8 @@ class GLTFLightMapExporterExtension {
 		const extension = {
 			index: await this.writer.processTextureAsync( map ),
 			texCoord: map.channel,
-			intensity: material.lightMapIntensity
+			// Inverse of the PI scale applied to unlit materials by the loader plugin.
+			intensity: material.isMeshBasicMaterial ? material.lightMapIntensity / Math.PI : material.lightMapIntensity
 		};
 
 		this.writer.applyTextureTransform( extension, map );

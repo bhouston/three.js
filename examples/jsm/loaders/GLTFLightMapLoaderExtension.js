@@ -53,6 +53,10 @@ class GLTFLightMapLoaderExtension {
 
 			material.lightMapIntensity = extension.intensity ?? 1;
 
+			// MOZ_lightmap unlit materials use baseColor * irradiance, but
+			// MeshBasicMaterial divides light maps by PI.
+			if ( material.isMeshBasicMaterial ) material.lightMapIntensity *= Math.PI;
+
 			return material;
 
 		} );

@@ -12,7 +12,7 @@ import { screenSize } from '../display/ScreenNode.js';
 
 const _cameraArrays = /*@__PURE__*/ new WeakMap();
 
-function getCameraArray( renderer, count, name, create ) {
+function getCameraArray( renderer, camera, name, create ) {
 
 	let arrays = _cameraArrays.get( renderer );
 
@@ -23,13 +23,13 @@ function getCameraArray( renderer, count, name, create ) {
 
 	}
 
-	const key = name + ':' + count;
+	const key = name + ':' + camera.cameras.length;
 
 	let array = arrays.get( key );
 
 	if ( array === undefined ) {
 
-		array = create();
+		array = create( camera );
 		arrays.set( key, array );
 
 	}
@@ -88,7 +88,7 @@ export const cameraProjectionMatrix = /*@__PURE__*/ ( Fn( ( { camera, renderer }
 
 	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
 
-		const cameraArray = getCameraArray( renderer, camera.cameras.length, 'cameraProjectionMatrices', () => {
+		const cameraArray = getCameraArray( renderer, camera, 'cameraProjectionMatrices', ( camera ) => {
 
 			const values = camera.cameras.map( ( subCamera ) => subCamera.projectionMatrix );
 
@@ -134,7 +134,7 @@ export const cameraProjectionMatrixInverse = /*@__PURE__*/ ( Fn( ( { camera, ren
 
 	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
 
-		const cameraArray = getCameraArray( renderer, camera.cameras.length, 'cameraProjectionMatricesInverse', () => {
+		const cameraArray = getCameraArray( renderer, camera, 'cameraProjectionMatricesInverse', ( camera ) => {
 
 			const values = camera.cameras.map( ( subCamera ) => subCamera.projectionMatrixInverse );
 
@@ -180,7 +180,7 @@ export const cameraViewMatrix = /*@__PURE__*/ ( Fn( ( { camera, renderer } ) => 
 
 	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
 
-		const cameraArray = getCameraArray( renderer, camera.cameras.length, 'cameraViewMatrices', () => {
+		const cameraArray = getCameraArray( renderer, camera, 'cameraViewMatrices', ( camera ) => {
 
 			const values = camera.cameras.map( ( subCamera ) => subCamera.matrixWorldInverse );
 
@@ -226,7 +226,7 @@ export const cameraWorldMatrix = /*@__PURE__*/ ( Fn( ( { camera, renderer } ) =>
 
 	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
 
-		const cameraArray = getCameraArray( renderer, camera.cameras.length, 'cameraWorldMatrices', () => {
+		const cameraArray = getCameraArray( renderer, camera, 'cameraWorldMatrices', ( camera ) => {
 
 			const values = camera.cameras.map( ( subCamera ) => subCamera.matrixWorld );
 
@@ -272,7 +272,7 @@ export const cameraNormalMatrix = /*@__PURE__*/ ( Fn( ( { camera, renderer } ) =
 
 	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
 
-		const cameraArray = getCameraArray( renderer, camera.cameras.length, 'cameraNormalMatrices', () => {
+		const cameraArray = getCameraArray( renderer, camera, 'cameraNormalMatrices', ( camera ) => {
 
 			const values = camera.cameras.map( ( subCamera ) => subCamera.normalMatrix );
 
@@ -318,7 +318,7 @@ export const cameraPosition = /*@__PURE__*/ ( Fn( ( { camera, renderer } ) => {
 
 	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
 
-		const cameraArray = getCameraArray( renderer, camera.cameras.length, 'cameraPositions', () => {
+		const cameraArray = getCameraArray( renderer, camera, 'cameraPositions', ( camera ) => {
 
 			const positions = [];
 
@@ -374,7 +374,7 @@ export const cameraViewport = /*@__PURE__*/ ( Fn( ( { camera, renderer } ) => {
 
 	if ( camera.isArrayCamera && camera.cameras.length > 0 ) {
 
-		const cameraArray = getCameraArray( renderer, camera.cameras.length, 'cameraViewports', () => {
+		const cameraArray = getCameraArray( renderer, camera, 'cameraViewports', ( camera ) => {
 
 			const values = camera.cameras.map( ( subCamera ) => subCamera.viewport );
 

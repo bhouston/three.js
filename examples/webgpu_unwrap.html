@@ -10,7 +10,7 @@
 		<link type="text/css" rel="stylesheet" href="example.css">
 		<style>
 			#atlas-preview { position: absolute; bottom: 20px; left: 20px; pointer-events: none; }
-			#status { color: #e0e0e0; text-shadow: 1px 1px 5px rgba(0, 0, 0, .7); font: 400 12px/20px 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; white-space: pre-wrap; margin: 0 0 12px; }
+			#status { position: absolute; bottom: 272px; left: 20px; pointer-events: none; color: #e0e0e0; text-shadow: 1px 1px 5px rgba(0, 0, 0, .7); font: 400 12px/20px 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; white-space: pre-wrap; }
 			#atlas { display: block; width: 240px; height: 240px; background: #080c12; }
 		</style>
 	</head>
@@ -28,8 +28,8 @@
 			</small>
 		</div>
 
+		<div id="status" class="lbl">Loading renderer...</div>
 		<div id="atlas-preview">
-			<p id="status">Loading renderer...</p>
 			<canvas id="atlas" width="512" height="512"></canvas>
 		</div>
 		<script type="importmap">

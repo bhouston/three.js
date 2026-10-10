@@ -9,7 +9,8 @@ const TILE_SIZE = 6;
 
 /**
  * Experimental diffuse radiance cascades. Screen-space probes trace finite
- * world-space intervals through a VXGI voxel volume with optional filtered tracing.
+ * world-space intervals through a VXGI voxel volume. Optional filtered tracing
+ * and surface-aware reconstruction reduce grid artifacts.
  * Directions use nested equal-area azimuth/height bins, not Fibonacci indices.
  * No temporal accumulation, software BVH, or additional bounce feedback is used.
  *
@@ -67,6 +68,10 @@ class RadianceCascadesNode extends Node {
 		this.traceMode = uniform( 0, 'int' );
 		/** Diameter multiplier for angular-footprint filtering. */
 		this.filterScale = uniform( 1 );
+		/** Boolean uniform: use a positive cubic B-spline over 4×4 surface-aware probes. */
+		this.smoothReconstruction = uniform( false );
+		/** Boolean uniform: trace a receiver hemisphere when no compatible probe exists. */
+		this.fillMissingProbes = uniform( false );
 		this.updateBeforeType = NodeUpdateType.FRAME;
 
 		this._projectionInverse = uniform( camera.projectionMatrixInverse );
@@ -439,20 +444,41 @@ class RadianceCascadesNode extends Node {
 			const color = vec3( 0 ).toVar();
 			const weights = float( 0 ).toVar();
 
-			for ( let y = 0; y < 2; y ++ ) {
+			const spline = ( distance ) => {
 
-				for ( let x = 0; x < 2; x ++ ) {
+				const d = abs( distance );
+				return select( d.lessThan( 1 ), float( 2 / 3 ).sub( d.mul( d ) ).add( d.pow( 3 ).mul( 0.5 ) ), float( 2 ).sub( d ).max( 0 ).pow( 3 ).div( 6 ) );
 
-					const probe = floor( coord ).add( vec2( x, y ) ).clamp( vec2( 0 ), this._grid.sub( 1 ) ).toConst();
-					const surface = this._surface( probe, this._grid.x, this._grid.y );
-					const compatible = surface.valid.and( dot( normal, surface.normal ).greaterThan( 0.8 ) );
-					const weight = ( x ? blend.x : blend.x.oneMinus() ).mul( y ? blend.y : blend.y.oneMinus() ).div( float( 1 ).add( surface.position.sub( p ).length().div( this.intervalLength.max( 1e-4 ) ).pow( 2 ) ) ).toConst();
+			};
 
-					If( compatible, () => {
+			for ( let y = - 1; y <= 2; y ++ ) {
 
-						const atlasUV = probe.mul( TILE_SIZE ).add( 0.5 ).add( octUV.mul( TILE_SIZE - 1 ) ).div( this._grid.mul( TILE_SIZE ) );
-						color.addAssign( texture( this._irradiance ).sample( atlasUV ).rgb.mul( weight ) );
-						weights.addAssign( weight );
+				for ( let x = - 1; x <= 2; x ++ ) {
+
+					const bilinear = ( x === 0 ? blend.x.oneMinus() : x === 1 ? blend.x : float( 0 ) ).mul( y === 0 ? blend.y.oneMinus() : y === 1 ? blend.y : float( 0 ) );
+					const spatialWeight = select( this.smoothReconstruction, spline( blend.x.sub( x ) ).mul( spline( blend.y.sub( y ) ) ), bilinear ).toConst();
+					If( spatialWeight.greaterThan( 0 ), () => {
+
+						const probe = floor( coord ).add( vec2( x, y ) ).clamp( vec2( 0 ), this._grid.sub( 1 ) ).toConst();
+						const surface = this._surface( probe, this._grid.x, this._grid.y );
+						const delta = surface.position.sub( p ).toConst();
+						// Plane distance accepts distant samples on the same wall, but rejects
+						// parallel surfaces at another depth. Smooth normal weights avoid a cutoff.
+						const normalWeight = dot( normal, surface.normal ).sub( 0.5 ).max( 0 ).mul( 2 ).pow( 2 );
+						const planeWeight = float( 1 ).div( float( 1 ).add( dot( delta, normal ).div( this.volume.voxelSizeNode.max( 1e-4 ) ).pow( 2 ).mul( 16 ) ) );
+						const originalWeight = select( dot( normal, surface.normal ).greaterThan( 0.8 ), float( 1 ).div( float( 1 ).add( delta.length().div( this.intervalLength.max( 1e-4 ) ).pow( 2 ) ) ), float( 0 ) );
+						const weight = spatialWeight.mul( select( this.smoothReconstruction, normalWeight.mul( planeWeight ), originalWeight ) ).toConst();
+
+						// Reject a different parallel surface before normalizing weights;
+						// tiny plane weights alone would still borrow its full irradiance.
+						const samePlane = abs( dot( delta, normal ) ).lessThan( this.volume.voxelSizeNode.mul( 0.75 ) );
+						If( surface.valid.and( this.smoothReconstruction.not().or( samePlane ) ), () => {
+
+							const atlasUV = probe.mul( TILE_SIZE ).add( 0.5 ).add( octUV.mul( TILE_SIZE - 1 ) ).div( this._grid.mul( TILE_SIZE ) );
+							color.addAssign( texture( this._irradiance ).sample( atlasUV ).rgb.mul( weight ) );
+							weights.addAssign( weight );
+
+						} );
 
 					} );
 
@@ -460,7 +486,29 @@ class RadianceCascadesNode extends Node {
 
 			}
 
-			return vec4( color.div( weights.max( 1e-5 ) ).mul( this.giIntensity ), 1 );
+			const irradiance = color.div( weights.max( 1e-5 ) ).toVar();
+			// Sparse screen probes can completely miss narrow upward-facing surfaces.
+			// Only unsupported receivers pay for this full-range reference gather.
+			If( this.fillMissingProbes.and( weights.lessThan( 1e-5 ) ), () => {
+
+				const origin = p.add( normal.mul( this.volume.voxelSizeNode.mul( this.normalOffset ) ) ).toConst();
+				const end = this.intervalLength.mul( ( 4 ** this.cascadeCount - 1 ) / 3 ).toConst();
+				const count = 32;
+				Loop( count, ( { i } ) => {
+
+					const direction = this._direction( ivec2( i.mod( 8 ), i.div( 8 ) ), 8, 4 ).toConst();
+					const cosine = dot( normal, direction ).max( 0 ).toConst();
+					If( cosine.greaterThan( 0 ), () => {
+
+						const radiance = this._trace( origin, direction, float( 0 ), end, count );
+						irradiance.addAssign( radiance.rgb.mul( cosine.mul( PI.mul( 4 / count ) ) ) );
+
+					} );
+
+				} );
+
+			} );
+			return vec4( irradiance.mul( this.giIntensity ), 1 );
 
 		} )();
 		this._material.needsUpdate = true;

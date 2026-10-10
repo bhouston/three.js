@@ -1,4 +1,4 @@
-import { DataTexture, DataUtils, FloatType, HalfFloatType, Mesh, MeshStandardMaterial, PlaneGeometry, RenderTarget, SRGBColorSpace } from '../../../../src/Three.js';
+import { CompressedTexture, DataTexture, DataUtils, FloatType, HalfFloatType, Mesh, MeshStandardMaterial, PlaneGeometry } from '../../../../src/Three.js';
 import { GLTFExporter } from '../../../../examples/jsm/exporters/GLTFExporter.js';
 import { GLTFLightMapExporterExtension } from '../../../../examples/jsm/exporters/GLTFLightMapExporterExtension.js';
 import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
@@ -100,14 +100,25 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'Unsupported input fails explicitly', async assert => {
+			QUnit.test( 'Compressed light maps use exporter texture utils', async assert => {
 
-				const map = new DataTexture( new Uint8Array( [ 255, 255, 255, 255 ] ), 1, 1 );
-				map.colorSpace = SRGBColorSpace;
-				await assert.rejects( createExporter().parseAsync( createMesh( map ) ), /linear color space/ );
-				const target = new RenderTarget( 2, 2 );
-				await assert.rejects( createExporter().parseAsync( createMesh( target.texture ) ), /WebGPURenderer/ );
-				target.dispose();
+				const map = new CompressedTexture( [ { data: new Uint8Array( [ 0 ] ), width: 1, height: 1 } ], 1, 1 );
+				const readable = new DataTexture( new Uint8Array( [ 64, 128, 255, 255 ] ), 1, 1 );
+				const exporter = createExporter();
+				exporter.setTextureUtils( {
+					async decompress( texture, maxTextureSize ) {
+
+						assert.strictEqual( texture, map );
+						assert.strictEqual( maxTextureSize, 16 );
+						return readable;
+
+					}
+				} );
+				const result = await exporter.parseAsync( createMesh( map, 2 ), { maxTextureSize: 16 } );
+				assert.strictEqual( result.materials[ 0 ].extensions.MOZ_lightmap.intensity, 2 );
+				const image = await createImageBitmap( await ( await fetch( result.images[ 0 ].uri ) ).blob() );
+				assert.deepEqual( Array.from( readPixels( image ) ), [ 64, 128, 255, 255 ] );
+				image.close();
 
 			} );
 

@@ -1,14 +1,17 @@
-import { DataUtils, FloatType, HalfFloatType, LinearSRGBColorSpace, NoColorSpace, RenderTarget, RGBAFormat, Texture, UnsignedByteType } from 'three';
+import { DataUtils, FloatType, HalfFloatType, Texture } from 'three';
 
 /**
  * A glTF exporter plugin for the vendor extension `MOZ_lightmap`.
- * Light maps must contain linear irradiance. Float and half-float RGBA textures
- * are scaled into an 8-bit linear PNG, with the scale stored in the intensity.
- * This preserves HDR range with 8-bit precision. GPU render target textures
- * require an initialized WebGPURenderer for readback.
+ * Light maps must contain finite, nonnegative linear irradiance. Data textures
+ * must use RGBAFormat with unsigned byte, float or half-float pixels.
+ * Float and half-float textures are scaled into an 8-bit linear PNG,
+ * with the scale stored in the intensity.
+ * This preserves HDR range with 8-bit precision. Render target textures must
+ * be read back into data textures before export. Compressed textures use
+ * GLTFExporter.setTextureUtils().
  *
  * ```js
- * exporter.register( writer => new GLTFLightMapExporterExtension( writer, { renderer } ) );
+ * exporter.register( writer => new GLTFLightMapExporterExtension( writer ) );
  * ```
  *
  * @three_import import { GLTFLightMapExporterExtension } from 'three/addons/exporters/GLTFLightMapExporterExtension.js';
@@ -19,13 +22,10 @@ class GLTFLightMapExporterExtension {
 	 * Constructs a light map exporter plugin.
 	 *
 	 * @param {GLTFWriter} writer - The glTF writer.
-	 * @param {Object} [options] - Export options.
-	 * @param {?WebGPURenderer} [options.renderer=null] - Renderer owning GPU light maps.
 	 */
-	constructor( writer, { renderer = null } = {} ) {
+	constructor( writer ) {
 
 		this.writer = writer;
-		this.renderer = renderer;
 		this.name = 'MOZ_lightmap';
 		this._textures = new Map();
 
@@ -61,42 +61,14 @@ class GLTFLightMapExporterExtension {
 
 	async _writeTexture( map ) {
 
-		if ( map.colorSpace !== NoColorSpace && map.colorSpace !== LinearSRGBColorSpace ) {
-
-			throw new Error( 'GLTFLightMapExporterExtension: Light maps must use linear color space.' );
-
-		}
+		if ( map.isCompressedTexture ) return { index: await this.writer.processTextureAsync( map ), scale: 1 };
 
 		let image = map.image;
-
-		if ( map.isRenderTargetTexture ) {
-
-			const renderer = this.renderer;
-			if ( ! renderer?.isWebGPURenderer ) throw new Error( 'GLTFLightMapExporterExtension: GPU light maps require a WebGPURenderer.' );
-
-			const target = new RenderTarget( image.width, image.height, { type: map.type, format: map.format, depthBuffer: false } );
-
-			try {
-
-				renderer.initRenderTarget( target );
-				renderer.copyTextureToTexture( map, target.texture );
-				const data = await renderer.readRenderTargetPixelsAsync( target, 0, 0, image.width, image.height );
-				image = { data, width: image.width, height: image.height };
-
-			} finally {
-
-				target.dispose();
-
-			}
-
-		}
 
 		let scale = 1;
 		let texture = map;
 
 		if ( image.data !== undefined && ( map.type === FloatType || map.type === HalfFloatType ) ) {
-
-			if ( map.format !== RGBAFormat ) throw new Error( 'GLTFLightMapExporterExtension: Float light maps must use RGBAFormat.' );
 
 			const decode = map.type === HalfFloatType ? DataUtils.fromHalfFloat : value => value;
 			const data = image.data;
@@ -105,7 +77,6 @@ class GLTFLightMapExporterExtension {
 
 				if ( i % 4 === 3 ) continue;
 				const value = decode( data[ i ] );
-				if ( ! Number.isFinite( value ) || value < 0 ) throw new Error( 'GLTFLightMapExporterExtension: Irradiance must be finite and nonnegative.' );
 				scale = Math.max( scale, value );
 
 			}
@@ -114,15 +85,9 @@ class GLTFLightMapExporterExtension {
 			for ( let i = 0; i < bytes.length; i ++ ) bytes[ i ] = i % 4 === 3 ? 255 : Math.round( decode( data[ i ] ) / scale * 255 );
 			image = { data: bytes, width: image.width, height: image.height };
 
-		} else if ( map.type !== UnsignedByteType ) {
-
-			throw new Error( 'GLTFLightMapExporterExtension: Unsupported light map type.' );
-
 		}
 
 		if ( image.data !== undefined ) {
-
-			if ( map.format !== RGBAFormat ) throw new Error( 'GLTFLightMapExporterExtension: Data light maps must use RGBAFormat.' );
 
 			// Export through a canvas so flipY also applies to data textures.
 			const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas( image.width, image.height ) : document.createElement( 'canvas' );

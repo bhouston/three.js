@@ -60,6 +60,9 @@ class RadianceCascadesNode extends Node {
 		if ( this._ownsVolume ) this.volume.bounces = 0;
 
 		this.probeSpacing = probeSpacing;
+		/** Angular resolution multiplier: 1 = 32 base directions, 2 = 128. */
+		this.directionResolution = 1;
+		this._directionResolution = null;
 		this.cascadeCount = cascadeCount;
 		this.intervalLength = uniform( 0.3 );
 		this.normalOffset = uniform( 1.5 );
@@ -70,6 +73,8 @@ class RadianceCascadesNode extends Node {
 		this.filterScale = uniform( 1 );
 		/** Boolean uniform: use a positive cubic B-spline over 4×4 surface-aware probes. */
 		this.smoothReconstruction = uniform( false );
+		/** Boolean uniform: retrace to displaced upper interval starts before composition. */
+		this.connectIntervals = uniform( false );
 		/** Boolean uniform: trace a receiver hemisphere when no compatible probe exists. */
 		this.fillMissingProbes = uniform( false );
 		this.updateBeforeType = NodeUpdateType.FRAME;
@@ -123,18 +128,27 @@ class RadianceCascadesNode extends Node {
 
 	setSize( width, height ) {
 
+		if ( this.directionResolution !== 1 && this.directionResolution !== 2 ) {
+
+			throw new RangeError( 'RadianceCascadesNode: Direction resolution must be 1 or 2.' );
+
+		}
+
 		const gridWidth = Math.max( 1, Math.ceil( width / this.probeSpacing ) );
 		const gridHeight = Math.max( 1, Math.ceil( height / this.probeSpacing ) );
 		this._target.setSize( width, height );
 
-		if ( this._grid.value.x === gridWidth && this._grid.value.y === gridHeight && this._kernels !== null ) return;
+		if ( this._grid.value.x === gridWidth && this._grid.value.y === gridHeight && this._kernels !== null && this._directionResolution === this.directionResolution ) return;
 
 		this._disposeKernels();
+		this._directionResolution = this.directionResolution;
 		this._grid.value.set( gridWidth, gridHeight );
 		this._irradiance.setSize( gridWidth * TILE_SIZE, gridHeight * TILE_SIZE );
 
 		for ( const c of this.cascades ) {
 
+			c.azimuths = 8 * this.directionResolution * 2 ** c.level;
+			c.elevations = 4 * this.directionResolution * 2 ** c.level;
 			c.width = Math.max( 1, Math.ceil( gridWidth / 2 ** c.level ) );
 			c.height = Math.max( 1, Math.ceil( gridHeight / 2 ** c.level ) );
 			c.intervals.setSize( c.width * c.azimuths, c.height * c.elevations );
@@ -325,9 +339,10 @@ class RadianceCascadesNode extends Node {
 					const coord = vec2( probe ).add( 0.5 ).div( vec2( c.width, c.height ) ).mul( vec2( parent.width, parent.height ) ).sub( 0.5 ).toConst();
 					const blend = fract( coord ).toConst();
 					const far = vec4( 0 ).toVar();
+					const connected = vec4( 0 ).toVar();
 					const weights = float( 0 ).toVar();
 
-					If( local.a.greaterThan( 0 ).and( surface.valid ), () => {
+					If( local.a.greaterThan( 0 ).or( this.connectIntervals ).and( surface.valid ), () => {
 
 						for ( let y = 0; y < 2; y ++ ) {
 
@@ -354,7 +369,19 @@ class RadianceCascadesNode extends Node {
 
 									}
 
-									far.addAssign( angularSum.mul( weight.mul( 0.25 ) ) );
+									const upper = angularSum.mul( 0.25 ).toConst();
+									If( this.connectIntervals, () => {
+
+										const direction = this._direction( angular, c.azimuths, c.elevations ).toConst();
+										const start = this.intervalLength.mul( ( 4 ** level - 1 ) / 3 );
+										const a = surface.origin.add( direction.mul( start ) ).toConst();
+										const b = nextSurface.origin.add( direction.mul( this.intervalLength.mul( ( 4 ** ( level + 1 ) - 1 ) / 3 ) ) ).toConst();
+										const segment = b.sub( a ).toConst();
+										const near = this._trace( a, segment.div( segment.length().max( 1e-5 ) ), float( 0 ), segment.length(), c.azimuths * c.elevations );
+										connected.addAssign( vec4( near.rgb.add( upper.rgb.mul( near.a ) ), near.a.mul( upper.a ) ).mul( weight ) );
+
+									} );
+									far.addAssign( upper.mul( weight ) );
 									weights.addAssign( weight );
 
 								} );
@@ -366,7 +393,7 @@ class RadianceCascadesNode extends Node {
 						If( weights.greaterThan( 1e-5 ), () => {
 
 							far.divAssign( weights );
-							result.assign( vec4( local.rgb.add( far.rgb.mul( local.a ) ), local.a.mul( far.a ) ) );
+							result.assign( select( this.connectIntervals, connected.div( weights ), vec4( local.rgb.add( far.rgb.mul( local.a ) ), local.a.mul( far.a ) ) ) );
 
 						} );
 
@@ -399,14 +426,14 @@ class RadianceCascadesNode extends Node {
 			normal.assign( normalize( normal ) );
 			const irradiance = vec3( 0 ).toVar();
 
-			Loop( 32, ( { i } ) => {
+			Loop( c0.azimuths * c0.elevations, ( { i } ) => {
 
-				const angular = ivec2( i.mod( 8 ), i.div( 8 ) );
-				const radiance = texture( c0.merged ).load( probe.mul( ivec2( 8, 4 ) ).add( angular ) ).rgb;
-				irradiance.addAssign( radiance.mul( dot( normal, this._direction( angular, 8, 4 ) ).max( 0 ) ) );
+				const angular = ivec2( i.mod( c0.azimuths ), i.div( c0.azimuths ) );
+				const radiance = texture( c0.merged ).load( probe.mul( ivec2( c0.azimuths, c0.elevations ) ).add( angular ) ).rgb;
+				irradiance.addAssign( radiance.mul( dot( normal, this._direction( angular, c0.azimuths, c0.elevations ) ).max( 0 ) ) );
 
 			} );
-			textureStore( this._irradiance, pixel, vec4( irradiance.mul( PI.mul( 4 / 32 ) ), 1 ) ).toWriteOnly();
+			textureStore( this._irradiance, pixel, vec4( irradiance.mul( PI.mul( 4 / ( c0.azimuths * c0.elevations ) ) ), 1 ) ).toWriteOnly();
 
 		} )().compute( width * c0.height * TILE_SIZE );
 		prefilter.setName( 'RadianceCascades.Prefilter' );

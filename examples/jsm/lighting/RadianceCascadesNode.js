@@ -1,15 +1,15 @@
 import { Node, NodeUpdateType, NodeMaterial, QuadMesh, RenderTarget, StorageTexture, HalfFloatType, Vector2, RendererUtils } from 'three/webgpu';
-import { Fn, If, Loop, Break, Return, uniform, texture, textureStore, instanceIndex, float, ivec2, ivec3, vec2, vec3, vec4, uv, floor, fract, min, max, abs, dot, normalize, select, PI, getViewPosition, isBackgroundDepth, passTexture, context } from 'three/tsl';
+import { Fn, If, Loop, Break, Return, uniform, texture, textureStore, instanceIndex, float, ivec2, ivec3, vec2, vec3, vec4, uv, floor, fract, min, max, abs, dot, normalize, select, PI, getViewPosition, isBackgroundDepth, passTexture, context, log2, exp2 } from 'three/tsl';
 
 import { VXGIVolume } from './vxgi/VXGIVolume.js';
-import { intersectVolume } from './vxgi/VXGIConeTracer.js';
+import { intersectVolume, sampleDirectional } from './vxgi/VXGIConeTracer.js';
 
 const _size = new Vector2();
 const TILE_SIZE = 6;
 
 /**
  * Experimental diffuse radiance cascades. Screen-space probes trace finite
- * world-space intervals through the finest level of a VXGI voxel volume.
+ * world-space intervals through a VXGI voxel volume with optional filtered tracing.
  * Directions use nested equal-area azimuth/height bins, not Fibonacci indices.
  * No temporal accumulation, software BVH, or additional bounce feedback is used.
  *
@@ -63,6 +63,10 @@ class RadianceCascadesNode extends Node {
 		this.intervalLength = uniform( 0.3 );
 		this.normalOffset = uniform( 1.5 );
 		this.giIntensity = uniform( 1 );
+		/** Integer uniform: 0 = binary DDA, 1 = trilinear mip zero, 2 = angular-footprint mips. */
+		this.traceMode = uniform( 0, 'int' );
+		/** Diameter multiplier for angular-footprint filtering. */
+		this.filterScale = uniform( 1 );
 		this.updateBeforeType = NodeUpdateType.FRAME;
 
 		this._projectionInverse = uniform( camera.projectionMatrixInverse );
@@ -157,6 +161,65 @@ class RadianceCascadesNode extends Node {
 
 	}
 
+	// Filter the scene representation, not the final shaded image. Integrate fractional
+	// directional opacity front-to-back, correcting it for the actual step length.
+	_traceFiltered( origin, direction, start, end, rayCount ) {
+
+		const volume = this.volume;
+		const { tEnter, tExit } = intersectVolume( volume, origin, direction );
+		const t = max( start, tEnter ).toVar();
+		const limit = min( end, tExit ).toConst();
+		const result = vec4( 0, 0, 0, 1 ).toVar();
+		const directionWeights = direction.mul( direction ).toConst();
+
+		Loop( { start: 0, end: 768, type: 'int', name: 'filteredStep' }, () => {
+
+			If( t.greaterThanEqual( limit ).or( result.a.lessThan( 0.01 ) ), () => Break() );
+			// Equal-area angular cell represented as a disk at distance t.
+			const diameter = max( volume.voxelSizeNode, t.mul( 2 * Math.sqrt( Math.PI / rayCount ) ).mul( this.filterScale ) ).toConst();
+			const lod = select( this.traceMode.equal( 2 ), log2( diameter.div( volume.voxelSizeNode ) ).clamp( 0, volume.maxLevelNode ), float( 0 ) ).toConst();
+			const texelSize = volume.voxelSizeNode.mul( exp2( lod ) ).toConst();
+			const step = min( texelSize.mul( 0.5 ), limit.sub( t ) ).toConst();
+			const uvw = origin.add( direction.mul( t.add( step.mul( 0.5 ) ) ) ).sub( volume.boundsMinNode ).div( volume.volumeSizeNode ).toConst();
+			const opacity = dot( volume.opacityNode.sample( uvw ).level( lod ).xyz, directionWeights ).clamp( 0, 1 ).toConst();
+			const alpha = opacity.oneMinus().pow( step.div( texelSize ) ).oneMinus().toConst();
+			const radiance = volume.radianceNode.sample( uvw ).level( lod ).toVar();
+
+			if ( volume.directionalRadiance ) {
+
+				If( lod.greaterThanEqual( 1 ), () => {
+
+					radiance.assign( sampleDirectional( volume, volume.directionalNode, uvw, lod.sub( 1 ), direction ) );
+
+				} );
+
+			}
+
+			result.rgb.addAssign( radiance.rgb.div( radiance.a.max( 1e-4 ) ).mul( alpha.mul( result.a ) ) );
+			result.a.mulAssign( alpha.oneMinus() );
+			t.addAssign( step );
+
+		} );
+		return result;
+
+	}
+
+	_trace( origin, direction, start, end, rayCount ) {
+
+		const result = vec4( 0, 0, 0, 1 ).toVar();
+		If( this.traceMode.equal( 0 ), () => {
+
+			result.assign( this._traceInterval( origin, direction, start, end ) );
+
+		} ).Else( () => {
+
+			result.assign( this._traceFiltered( origin, direction, start, end, rayCount ) );
+
+		} );
+		return result;
+
+	}
+
 	// Exact cell stepping at mip zero. Traversal never substitutes cone mip samples.
 	_traceInterval( origin, direction, start, end ) {
 
@@ -224,7 +287,7 @@ class RadianceCascadesNode extends Node {
 
 				If( surface.valid, () => {
 
-					result.assign( this._traceInterval( surface.origin, this._direction( angular, c.azimuths, c.elevations ), start, end ) );
+					result.assign( this._trace( surface.origin, this._direction( angular, c.azimuths, c.elevations ), start, end, c.azimuths * c.elevations ) );
 
 				} );
 

@@ -3,8 +3,8 @@ import { SRGBColorSpace } from 'three';
 /**
  * A glTF loader plugin for the vendor extension `MOZ_lightmap`.
  * Light map RGB is sRGB-encoded and decoded to linear values for shading.
- * The UV set defaults to the second UV set
- * for compatibility with Hubs assets. Texture transforms are supported.
+ * texCoord defaults to 1 (TEXCOORD_1), as specified by MOZ_lightmap.
+ * Texture transforms are supported.
  *
  * ```js
  * loader.register( parser => new GLTFLightMapLoaderExtension( parser ) );
@@ -54,8 +54,8 @@ class GLTFLightMapLoaderExtension {
 
 			material.lightMapIntensity = extension.intensity ?? 1;
 
-			// MOZ_lightmap unlit materials use baseColor * decoded light map, but
-			// MeshBasicMaterial divides light maps by PI.
+			// Compensate for MeshBasicMaterial's PI division to implement the
+			// MOZ_lightmap unlit equation: baseColor * decoded light map * intensity.
 			if ( material.isMeshBasicMaterial ) material.lightMapIntensity *= Math.PI;
 
 			return material;

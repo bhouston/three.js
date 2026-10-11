@@ -5,8 +5,7 @@ import { Color, LinearSRGBColorSpace, NoColorSpace, RGBAFormat, Source, SRGBColo
  * Light maps are exported as sRGB-encoded RGB. Linear images are converted
  * without modifying the source texture. Linear data textures must use
  * unsigned byte RGBA data, with HDR scale stored in lightMapIntensity.
- * Compressed textures require
- * GLTFExporter.setTextureUtils().
+ * Compressed textures require GLTFExporter.setTextureUtils().
  *
  * ```js
  * exporter.register( writer => new GLTFLightMapExporterExtension( writer ) );
@@ -44,7 +43,7 @@ class GLTFLightMapExporterExtension {
 		const extension = {
 			index: await this.writer.processTextureAsync( await this.getSRGBTextureAsync( map ) ),
 			texCoord: map.channel,
-			// Inverse of the PI scale applied to unlit materials by the loader plugin.
+			// Convert MeshBasicMaterial's light map intensity to MOZ_lightmap's unlit normalization.
 			intensity: material.isMeshBasicMaterial ? material.lightMapIntensity / Math.PI : material.lightMapIntensity
 		};
 

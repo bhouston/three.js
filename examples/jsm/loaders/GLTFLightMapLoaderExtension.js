@@ -1,8 +1,9 @@
-import { LinearSRGBColorSpace } from 'three';
+import { SRGBColorSpace } from 'three';
 
 /**
  * A glTF loader plugin for the vendor extension `MOZ_lightmap`.
- * Light maps contain linear irradiance. The UV set defaults to the second UV set
+ * Light map RGB is sRGB-encoded and decoded to linear values for shading.
+ * The UV set defaults to the second UV set
  * for compatibility with Hubs assets. Texture transforms are supported.
  *
  * ```js
@@ -45,15 +46,15 @@ class GLTFLightMapLoaderExtension {
 
 			if ( material.lightMap ) {
 
-				// A texture may also be used by an sRGB material slot.
+				// Keep the light map's color space independent of other texture slots.
 				material.lightMap = material.lightMap.clone();
-				material.lightMap.colorSpace = LinearSRGBColorSpace;
+				material.lightMap.colorSpace = SRGBColorSpace;
 
 			}
 
 			material.lightMapIntensity = extension.intensity ?? 1;
 
-			// MOZ_lightmap unlit materials use baseColor * irradiance, but
+			// MOZ_lightmap unlit materials use baseColor * decoded light map, but
 			// MeshBasicMaterial divides light maps by PI.
 			if ( material.isMeshBasicMaterial ) material.lightMapIntensity *= Math.PI;
 

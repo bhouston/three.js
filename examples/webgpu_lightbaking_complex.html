@@ -43,6 +43,7 @@
 			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
 			import { lightProbeGridIrradiance } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
+			import { readLightMap } from 'three/addons/utils/readLightMap.js';
 			import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 			import { GLTFLightMapExporterExtension } from 'three/addons/exporters/GLTFLightMapExporterExtension.js';
 
@@ -354,6 +355,7 @@
 					const lights = scene.children.filter( object => object.isLight );
 					const shadows = lights.filter( light => light.shadow ).map( light => ( { shadow: light.shadow, autoUpdate: light.shadow.autoUpdate, needsUpdate: light.shadow.needsUpdate } ) );
 					let diffuseMapper;
+					let exportLightMap;
 
 					try {
 
@@ -380,6 +382,8 @@
 
 						}
 
+						exportLightMap = await readLightMap( renderer, lightMap );
+
 						// Clone materials so the export ignores the preview's indirect-light toggle.
 						const objects = meshes.map( mesh => {
 
@@ -387,8 +391,8 @@
 							const cloneMaterial = material => {
 
 								const copy = material.clone();
-								copy.lightMap = lightMap;
-								copy.lightMapIntensity = 1;
+								copy.lightMap = exportLightMap.texture;
+								copy.lightMapIntensity = exportLightMap.intensity;
 								return copy;
 
 							};
@@ -401,7 +405,7 @@
 						if ( indirectOnly ) objects.push( ...lights );
 
 						const exporter = new GLTFExporter();
-						exporter.register( writer => new GLTFLightMapExporterExtension( writer, { renderer } ) );
+						exporter.register( writer => new GLTFLightMapExporterExtension( writer ) );
 						const result = await exporter.parseAsync( objects, { binary: true } );
 
 						const link = document.createElement( 'a' );
@@ -419,6 +423,7 @@
 
 						}
 
+						exportLightMap?.texture.dispose();
 						diffuseMapper?.dispose();
 						exporting = false;
 						renderer.setAnimationLoop( animate );

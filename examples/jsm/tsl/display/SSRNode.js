@@ -17,6 +17,7 @@ const MAX_STEPS = 64;
  * @property {boolean} [stochastic=false] - When `false`, traces a single mirror reflection and softens roughness with a blur pass (first-generation SSR). When `true`, varies the reflection direction per pixel with stochastic GGX rays (second-generation SSR); higher quality on rough/glossy surfaces but noisier, so it expects a temporal/spatial denoiser downstream.
  * @property {Node<float>} [metalnessNode=null] - Per-pixel metalness. Drives GGX reflection sampling and, with `reflectNonMetals=false`, the non-metal early-out.
  * @property {Node<float>} [roughnessNode=null] - Per-pixel roughness. Drives GGX sampling and the blur mip selection.
+ * @property {TextureNode} [backDepthNode=null] - Optional nearest back-face depth, using the same camera and depth convention. Extends hit validation through closed solids; needs an extra back-face depth pass.
  * @property {boolean} [reflectNonMetals=false] - Only used when `stochastic=false`. When `false`, non-metallic surfaces are discarded for a noticeable performance gain; set `true` to also reflect dielectrics (e.g. marble, polished wood, plastic).
  * @property {Texture} [environmentNode=null] - Equirectangular HDR environment map with CPU-side `image.data` (e.g. from RGBELoader). Not compatible with PMREM / `scene.environment` cubemaps.
  * @property {boolean} [envImportanceSampling=false] - When `true`, precomputes env-luminance CDF tables and uses MIS for environment misses. Build-time only.
@@ -57,6 +58,7 @@ class SSRNode extends Node {
 			stochastic = false,
 			metalnessNode = null,
 			roughnessNode = null,
+			backDepthNode = null,
 			reflectNonMetals = false,
 			environmentNode = null,
 			envImportanceSampling = false,
@@ -127,6 +129,17 @@ class SSRNode extends Node {
 		 * @type {?Node<float>}
 		 */
 		this.roughnessNode = roughnessNode;
+
+		/**
+		 * Optional back-face depth. A crossing between the front and back depths is
+		 * accepted inside the solid even when it is farther from the sampled front
+		 * surface than the constant thickness allows. Overlapping or open geometry
+		 * can have unmatched front/back layers, so this remains an approximation.
+		 *
+		 * @type {?TextureNode}
+		 * @default null
+		 */
+		this.backDepthNode = backDepthNode;
 
 		/**
 		 * Only used when {@link SSRNode#stochastic} is `false`. When `false`, non-metallic
@@ -845,9 +858,9 @@ class SSRNode extends Node {
 
 		} );
 
-		const sampleDepth = ( uv ) => {
+		const sampleDepth = ( uv, depthNode = this.depthNode ) => {
 
-			const depth = this.depthNode.sample( uv ).r;
+			const depth = depthNode.sample( uv ).r;
 
 			if ( builder.renderer.logarithmicDepthBuffer === true ) {
 
@@ -1129,8 +1142,19 @@ class SSRNode extends Node {
 					const vPNeighbor = getViewPosition( uvNeighbor, d, this._cameraProjectionMatrixInverse ).toVar();
 					const minThickness = vPNeighbor.x.sub( vP.x ).mul( 3 ).toVar();
 					const tk = max( minThickness, this.thickness ).toVar();
+					let insideSolid = bool( false );
 
-					If( away.lessThanEqual( tk ), () => {
+					if ( this.backDepthNode !== null ) {
+
+						const backDepth = sampleDepth( uvS, this.backDepthNode ).toVar();
+						const backZ = getViewZ( backDepth ).toVar();
+						insideSolid = isBackgroundDepth( d ).not().and( isBackgroundDepth( backDepth ).not() )
+							.and( backZ.lessThanEqual( vZ ) )
+							.and( viewReflectRayZ.greaterThanEqual( backZ.sub( tk ) ) ).toVar();
+
+					}
+
+					If( away.lessThanEqual( tk ).or( insideSolid ), () => {
 
 						const vN = this.normalNode.sample( uvS ).rgb.normalize().toVar();
 
@@ -1138,7 +1162,8 @@ class SSRNode extends Node {
 						// which means it wouldn't reflect off the surface. The loop continues to the next step for the next ray sample.
 						if ( this.stochastic === false ) {
 
-							If( dot( viewReflectDir, vN ).greaterThanEqual( 0 ), () => {
+							const backFacing = dot( viewReflectDir, vN ).greaterThanEqual( 0 );
+							If( this.backDepthNode !== null ? backFacing.and( insideSolid.not() ) : backFacing, () => {
 
 								Continue();
 

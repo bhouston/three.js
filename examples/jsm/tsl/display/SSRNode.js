@@ -1023,7 +1023,8 @@ class SSRNode extends Node {
 
 			};
 
-			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ) ).toVar();
+			// A grazing or back-facing shading normal must not produce an infinite or negative ray length.
+			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ).max( 1e-3 ) ).toVar();
 
 			const d1viewPosition = viewPosition.add( viewReflectDir.mul( maxReflectRayLen ) ).toVar();
 

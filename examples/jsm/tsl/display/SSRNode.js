@@ -938,7 +938,7 @@ class SSRNode extends Node {
 
 				const Xi = noise.toVar();
 				// Mirror-bias: pull `Xi.y` toward the cap top to tighten the GGX lobe and cut mid-roughness
-				// noise. This deliberately biases the distribution; set mirrorBias to 0 for the full lobe.
+				// noise. Unbiased — bounded VNDF keeps brdf·cos/pdf ~constant (EA, "Stochastic SSR").
 				Xi.y.assign( mix( Xi.y, 0.0, this.mirrorBias.mul( Xi.w.sqrt() ) ) );
 
 				albedo.assign( ( this.diffuseNode !== null ? this.diffuseNode.sample( uvPos ).rgb : vec3( 1 ) ) );
@@ -1033,7 +1033,7 @@ class SSRNode extends Node {
 
 			};
 
-			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ).max( 1e-3 ) ).toVar();
+			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ) ).toVar();
 
 			// Depth-scaled normal offset, adapted from three-fidelity's NewSSRNode. Keep all
 			// projection, depth interpolation and hit tests on the same displaced ray.

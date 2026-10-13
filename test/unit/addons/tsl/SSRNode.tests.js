@@ -1,5 +1,5 @@
 import { Mesh, MeshBasicNodeMaterial, OrthographicCamera, PerspectiveCamera, RenderPipeline, Scene, SphereGeometry, WebGPURenderer } from 'three/webgpu';
-import { float, mrt, normalView, output, pass, vec4 } from 'three/tsl';
+import { float, mrt, output, pass, vec3, vec4 } from 'three/tsl';
 import { ssr } from '../../../../examples/jsm/tsl/display/SSRNode.js';
 
 export default QUnit.module( 'Addons', () => {
@@ -40,7 +40,7 @@ export default QUnit.module( 'Addons', () => {
 						for ( const binaryRefine of [ false, true ] ) {
 
 							const scenePass = pass( scene, camera );
-							scenePass.setMRT( mrt( { output, normal: normalView.negate() } ) );
+							scenePass.setMRT( mrt( { output, normal: vec3( 0, 0, - 1 ) } ) );
 							const reflections = ssr( scenePass.getTextureNode( 'output' ), scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'normal' ), {
 								camera, stochastic: true, metalnessNode: float( 1 ), roughnessNode: float( 0.3 ), binaryRefine
 							} );

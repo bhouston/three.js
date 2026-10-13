@@ -478,7 +478,7 @@ class GTAONode extends Node {
 
 			// Per-step phase jitter for spatio-temporal decorrelation.
 			const noiseJitterIdx = this._temporalDirection.mul( 0.02 );
-			const stepJitter = interleavedGradientNoise( screenCoordinate.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ).mul( 2 ).sub( 1 ) ) );
+			const stepJitter = interleavedGradientNoise( screenCoordinate.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ).mul( 2 ).sub( 1 ) ) ).fract();
 
 			Loop( { start: int( 0 ), end: int( DIRECTIONS ), type: 'int', condition: '<' }, ( { i } ) => {
 
@@ -512,7 +512,7 @@ class GTAONode extends Node {
 
 					// Quadratic step distribution ( sampleDist = t² ) concentrates samples in the
 					// near-field. (Blender's Eevee adaptation)
-					const t = float( j ).add( 1.0 ).add( stepJitter ).mul( invSteps ).toConst();
+					const t = float( j ).add( 1.0 ).sub( stepJitter ).mul( invSteps ).toConst();
 					const sampleDist = t.mul( t );
 					const clipOffset = clipDirRadius.mul( sampleDist ).toConst();
 

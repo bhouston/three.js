@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - postprocessing traa metrics</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#labels { position: absolute; inset: 0; pointer-events: none; }
+			#labels span { position: absolute; transform: translate( -50%, 0 ); color: white; font: 11px sans-serif; text-shadow: 0 1px 3px black; white-space: nowrap; }
+			#status { position: absolute; bottom: 8px; left: 8px; color: white; background: #000a; padding: 6px; font: 12px monospace; white-space: pre; max-width: calc( 100% - 30px ); overflow: auto; max-height: 60%; }
+		</style>
+	</head>
+	<body>
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>TRAA Metrics</span>
+			</div>
+			<small>Compares anti-aliasing methods against a 64-sample supersampled reference on a deterministic challenge sequence.</small>
+		</div>
+		<div id="labels"></div>
+		<div id="status">Starting…</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			// Analysis harness for temporal anti-aliasing.
+			//
+			// Every method renders the same deterministic sequence (fixed 60 Hz time step). For each frame a
+			// reference is produced by averaging an N×N grid of sub-pixel jittered renders in linear HDR (box
+			// filter, no temporal reuse). Method output and reference are both tone mapped and converted to
+			// sRGB, then compared per challenge panel:
+			//
+			// - PSNR: per-frame error against the reference (blur, aliasing, ghosting all lower it).
+			// - Temporal PSNR: error of the frame-to-frame change, ( O[t] - O[t-1] ) - ( R[t] - R[t-1] ).
+			//   It isolates flicker / shimmering and lag, independent of a constant spatial error.
+			// - Sharpness: gradient energy of the output divided by the reference. 1 is ideal, below 1 is
+			//   blurrier than the reference, above 1 is aliased or noisy.
+			//
+			// URL parameters: width, height, frames, warmup, ref (grid size), camera (Still|Pan|Orbit|Zoom),
+			// methods (comma separated keys of METHODS), auto (run the analysis on load).
+			//
+			// The same API is exposed as `window.traaMetrics` for automation.
+
+			import * as THREE from 'three/webgpu';
+			import { mrt, output, pass, velocity, texture, uniform, vec4, renderOutput } from 'three/tsl';
+			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
+			import { smaa } from 'three/addons/tsl/display/SMAANode.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { createTRAATestScene } from './traa/scene.js';
+
+			const query = new URLSearchParams( location.search );
+
+			const params = {
+				width: Number( query.get( 'width' ) || 960 ),
+				height: Number( query.get( 'height' ) || 540 ),
+				frames: Number( query.get( 'frames' ) || 180 ),
+				warmup: Number( query.get( 'warmup' ) || 30 ),
+				referenceGrid: Number( query.get( 'ref' ) || 8 ),
+				cameraMotion: query.get( 'camera' ) || 'Pan',
+				method: 'TRAA'
+			};
+
+			// Each method builds a render pipeline. `traa` options are copied onto the TRAANode so variants
+			// can be compared without code changes.
+
+			const METHODS = {
+				'No AA': { type: 'none' },
+				'No AA + velocity': { type: 'velocity' }, // cost of the velocity MRT alone
+				'FXAA': { type: 'fxaa' },
+				'SMAA': { type: 'smaa' },
+				'TRAA': { type: 'traa', options: {} },
+				'TRAA linear history': { type: 'traa', options: { historySampling: 'linear' } },
+				'TRAA YCoCg': { type: 'traa', options: { useYCoCgClipping: true } },
+				'TRAA tonemap': { type: 'traa', options: { useReversibleToneMapping: true } },
+				'TRAA 8 jitter': { type: 'traa', options: { jitterSampleCount: 8 } },
+				'TRAA 16 jitter': { type: 'traa', options: { jitterSampleCount: 16 } },
+				'TRAA gamma 1.25': { type: 'traa', options: { varianceGamma: 1.25 } },
+				'TRAA weight 0.075': { type: 'traa', options: { minCurrentWeight: 0.075 } },
+				'TRAA weight 0.1': { type: 'traa', options: { minCurrentWeight: 0.1 } },
+				'TRAA no subpixel': { type: 'traa', options: { useSubpixelCorrection: false } }
+			};
+
+			// additional variants can be passed as JSON, e.g. ?variants={"name":{"historySampling":"catmull-rom"}}
+
+			if ( query.get( 'variants' ) ) {
+
+				for ( const [ name, options ] of Object.entries( JSON.parse( query.get( 'variants' ) ) ) ) METHODS[ name ] = { type: 'traa', options };
+
+			}
+
+			const status = document.getElementById( 'status' );
+
+			const renderer = new THREE.WebGPURenderer( { antialias: false, trackTimestamp: true } );
+			renderer.setPixelRatio( 1 );
+			renderer.setSize( params.width, params.height );
+			renderer.toneMapping = THREE.NeutralToneMapping;
+			document.body.appendChild( renderer.domElement );
+			await renderer.init();
+
+			const { scene, camera, labels, update } = await createTRAATestScene();
+			camera.aspect = params.width / params.height;
+			camera.updateProjectionMatrix();
+
+			const groups = scene.children.filter( child => child.isGroup );
+			const labelElements = labels.map( text => {
+
+				const span = document.createElement( 'span' );
+				span.textContent = text;
+				document.getElementById( 'labels' ).appendChild( span );
+				return span;
+
+			} );
+
+			// pipelines
+
+			function createPipeline( method ) {
+
+				const renderPipeline = new THREE.RenderPipeline( renderer );
+				const scenePass = pass( scene, camera );
+				let node = null;
+
+				if ( method.type === 'traa' ) {
+
+					scenePass.setMRT( mrt( { output, velocity } ) );
+					node = traa( scenePass.getTextureNode( 'output' ), scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'velocity' ), camera );
+					Object.assign( node, method.options );
+					renderPipeline.outputNode = node;
+
+				} else if ( method.type === 'fxaa' ) {
+
+					renderPipeline.outputColorTransform = false;
+					renderPipeline.outputNode = fxaa( renderOutput( scenePass ) );
+
+				} else if ( method.type === 'smaa' ) {
+
+					renderPipeline.outputColorTransform = false;
+					renderPipeline.outputNode = smaa( renderOutput( scenePass ) );
+
+				} else if ( method.type === 'velocity' ) {
+
+					scenePass.setMRT( mrt( { output, velocity } ) );
+					renderPipeline.outputNode = scenePass.getTextureNode( 'output' );
+
+				} else {
+
+					renderPipeline.outputNode = scenePass;
+
+				}
+
+				return { renderPipeline, node };
+
+			}
+
+			// reference: N×N stratified sub-pixel samples averaged in linear HDR
+
+			const sampleTarget = new THREE.RenderTarget( params.width, params.height, { type: THREE.HalfFloatType } );
+			const accumTarget = new THREE.RenderTarget( params.width, params.height, { type: THREE.FloatType, depthBuffer: false } );
+			const referenceTarget = new THREE.RenderTarget( params.width, params.height, { depthBuffer: false } );
+			const methodTarget = new THREE.RenderTarget( params.width, params.height, { depthBuffer: false } );
+
+			const sampleWeight = uniform( 1 );
+			const accumMaterial = new THREE.NodeMaterial();
+			accumMaterial.fragmentNode = vec4( texture( sampleTarget.texture ).rgb.mul( sampleWeight ), sampleWeight );
+			accumMaterial.blending = THREE.CustomBlending;
+			accumMaterial.blendSrc = THREE.OneFactor;
+			accumMaterial.blendDst = THREE.OneFactor;
+			accumMaterial.blendSrcAlpha = THREE.OneFactor;
+			accumMaterial.blendDstAlpha = THREE.OneFactor;
+			accumMaterial.depthTest = false;
+			accumMaterial.depthWrite = false;
+			const accumQuad = new THREE.QuadMesh( accumMaterial );
+
+			const referencePipeline = new THREE.RenderPipeline( renderer );
+			referencePipeline.outputNode = texture( accumTarget.texture );
+
+			const referenceCamera = camera.clone();
+
+			function renderReference() {
+
+				const n = params.referenceGrid;
+				sampleWeight.value = 1 / ( n * n );
+
+				renderer.setRenderTarget( accumTarget );
+				renderer.setClearColor( 0x000000, 0 );
+				renderer.clear();
+
+				referenceCamera.copy( camera );
+
+				const autoClear = renderer.autoClear;
+
+				for ( let y = 0; y < n; y ++ ) {
+
+					for ( let x = 0; x < n; x ++ ) {
+
+						const jx = ( x + 0.5 ) / n - 0.5;
+						const jy = ( y + 0.5 ) / n - 0.5;
+						referenceCamera.setViewOffset( params.width, params.height, jx, jy, params.width, params.height );
+
+						renderer.setRenderTarget( sampleTarget );
+						renderer.render( scene, referenceCamera );
+
+						renderer.setRenderTarget( accumTarget );
+						renderer.autoClear = false;
+						accumQuad.render( renderer );
+						renderer.autoClear = autoClear;
+
+					}
+
+				}
+
+				renderer.setRenderTarget( referenceTarget );
+				referencePipeline.render();
+				renderer.setRenderTarget( null );
+
+			}
+
+			// screen-space rectangles of the challenge panels (top-left origin, like the read back pixels)
+
+			const _box = new THREE.Box3();
+			const _corner = new THREE.Vector3();
+
+			function getPanelRects() {
+
+				return groups.map( group => {
+
+					_box.setFromObject( group );
+					let x0 = Infinity, y0 = Infinity, x1 = - Infinity, y1 = - Infinity;
+
+					for ( let i = 0; i < 8; i ++ ) {
+
+						_corner.set( i & 1 ? _box.max.x : _box.min.x, i & 2 ? _box.max.y : _box.min.y, i & 4 ? _box.max.z : _box.min.z ).project( camera );
+						const px = ( _corner.x * 0.5 + 0.5 ) * params.width;
+						const py = ( 0.5 - _corner.y * 0.5 ) * params.height;
+						x0 = Math.min( x0, px ); y0 = Math.min( y0, py );
+						x1 = Math.max( x1, px ); y1 = Math.max( y1, py );
+
+					}
+
+					return [
+						Math.max( 1, Math.floor( x0 ) ), Math.max( 1, Math.floor( y0 ) ),
+						Math.min( params.width - 1, Math.ceil( x1 ) ), Math.min( params.height - 1, Math.ceil( y1 ) )
+					];
+
+				} );
+
+			}
+
+			// metrics
+
+			function createAccumulator() {
+
+				return { se: 0, tse: 0, n: 0, tn: 0, gradOut: 0, gradRef: 0 };
+
+			}
+
+			function accumulate( acc, rect, out, ref, prevOut, prevRef ) {
+
+				const w = params.width;
+				const [ x0, y0, x1, y1 ] = rect;
+
+				for ( let y = y0; y < y1; y ++ ) {
+
+					for ( let x = x0; x < x1; x ++ ) {
+
+						const i = ( y * w + x ) * 4;
+
+						for ( let c = 0; c < 3; c ++ ) {
+
+							const o = out[ i + c ], r = ref[ i + c ];
+							const d = ( o - r ) / 255;
+							acc.se += d * d;
+
+							if ( prevOut !== null ) {
+
+								const td = ( ( o - prevOut[ i + c ] ) - ( r - prevRef[ i + c ] ) ) / 255;
+								acc.tse += td * td;
+
+							}
+
+							acc.gradOut += Math.abs( o - out[ i - 4 + c ] ) + Math.abs( o - out[ i - w * 4 + c ] );
+							acc.gradRef += Math.abs( r - ref[ i - 4 + c ] ) + Math.abs( r - ref[ i - w * 4 + c ] );
+
+						}
+
+						acc.n += 3;
+						if ( prevOut !== null ) acc.tn += 3;
+
+					}
+
+				}
+
+			}
+
+			function summarize( acc ) {
+
+				const psnr = 10 * Math.log10( 1 / Math.max( acc.se / acc.n, 1e-10 ) );
+				const tpsnr = 10 * Math.log10( 1 / Math.max( acc.tse / Math.max( acc.tn, 1 ), 1e-10 ) );
+				const sharpness = acc.gradOut / Math.max( acc.gradRef, 1e-6 );
+				return { psnr: + psnr.toFixed( 2 ), tpsnr: + tpsnr.toFixed( 2 ), sharpness: + sharpness.toFixed( 3 ) };
+
+			}
+
+			function toImageURL( pixels ) {
+
+				const canvas = document.createElement( 'canvas' );
+				canvas.width = params.width;
+				canvas.height = params.height;
+				const context = canvas.getContext( '2d' );
+				const data = new ImageData( new Uint8ClampedArray( pixels ), params.width, params.height );
+				for ( let i = 3; i < data.data.length; i += 4 ) data.data[ i ] = 255;
+				context.putImageData( data, 0, 0 );
+				return canvas.toDataURL( 'image/png' );
+
+			}
+
+			// frames are driven by the animation loop so that per-frame node updates (history, velocity) run once per frame
+
+			const referenceCache = new Map();
+			let tickResolve = null;
+			let busy = 0; // the live view is paused while measuring, it would change the scene and the velocity history
+			let liveTime = 0;
+			let liveMethod = null;
+
+			function nextFrame() {
+
+				return new Promise( resolve => tickResolve = resolve );
+
+			}
+
+			renderer.setAnimationLoop( () => {
+
+				if ( tickResolve !== null ) {
+
+					const resolve = tickResolve;
+					tickResolve = null;
+					resolve();
+
+				} else if ( busy === 0 ) {
+
+					if ( liveMethod === null || liveMethod.key !== params.method ) {
+
+						liveMethod?.pipeline.renderPipeline.dispose();
+						liveMethod = { key: params.method, pipeline: createPipeline( METHODS[ params.method ] ) };
+
+					}
+
+					liveTime += 1 / 60;
+					update( liveTime, { cameraMotion: params.cameraMotion } );
+					liveMethod.pipeline.renderPipeline.render();
+					updateLabels();
+
+				}
+
+			} );
+
+			function updateLabels() {
+
+				const rects = getPanelRects();
+				const canvasRect = renderer.domElement.getBoundingClientRect();
+				const scale = canvasRect.width / params.width;
+
+				rects.forEach( ( [ x0, , x1, y1 ], i ) => {
+
+					labelElements[ i ].style.left = ( canvasRect.left + ( x0 + x1 ) * 0.5 * scale ) + 'px';
+					labelElements[ i ].style.top = ( canvasRect.top + y1 * scale + 2 ) + 'px';
+
+				} );
+
+			}
+
+			/**
+			 * Renders the deterministic sequence with the given method and returns per-panel metrics.
+			 */
+			async function analyze( key, options = {} ) {
+
+				const method = METHODS[ key ];
+				const frames = options.frames ?? params.frames;
+				const warmup = options.warmup ?? params.warmup;
+				const cameraMotion = options.cameraMotion ?? params.cameraMotion;
+				const snapshotFrame = options.snapshotFrame ?? frames - 1;
+
+				const { renderPipeline } = createPipeline( method );
+				busy ++;
+
+				const panelAccumulators = groups.map( createAccumulator );
+				const totalAccumulator = createAccumulator();
+				const fullRect = [ 1, 1, params.width - 1, params.height - 1 ];
+
+				let prevOut = null, prevRef = null;
+				let snapshot = null;
+
+				for ( let frame = 0; frame < frames; frame ++ ) {
+
+					await nextFrame();
+
+					update( frame / 60, { cameraMotion } );
+					camera.updateMatrixWorld();
+
+					// the sequence is deterministic so reference frames are shared between methods
+
+					const referenceKey = `${ cameraMotion }/${ params.referenceGrid }/${ frame }`;
+					let ref = referenceCache.get( referenceKey );
+
+					if ( ref === undefined && frame >= warmup - 1 ) {
+
+						renderReference();
+						ref = await renderer.readRenderTargetPixelsAsync( referenceTarget, 0, 0, params.width, params.height );
+						referenceCache.set( referenceKey, ref );
+
+					}
+
+					renderer.setRenderTarget( methodTarget );
+					renderPipeline.render();
+					renderer.setRenderTarget( null );
+
+					const out = await renderer.readRenderTargetPixelsAsync( methodTarget, 0, 0, params.width, params.height );
+
+					if ( frame >= warmup ) {
+
+						const rects = getPanelRects();
+						rects.forEach( ( rect, i ) => accumulate( panelAccumulators[ i ], rect, out, ref, prevOut, prevRef ) );
+						accumulate( totalAccumulator, fullRect, out, ref, prevOut, prevRef );
+
+					}
+
+					if ( frame === snapshotFrame && options.snapshot ) {
+
+						snapshot = { output: toImageURL( out ), reference: toImageURL( ref ), rects: getPanelRects() };
+
+					}
+
+					prevOut = ref !== undefined ? out : null;
+					prevRef = ref ?? null;
+
+					status.textContent = `${ key } | ${ cameraMotion } | frame ${ frame + 1 }/${ frames }`;
+
+				}
+
+				renderPipeline.dispose();
+				busy --;
+
+				const panels = {};
+				labels.forEach( ( label, i ) => panels[ label ] = summarize( panelAccumulators[ i ] ) );
+
+				return { method: key, cameraMotion, frames, warmup, referenceSamples: params.referenceGrid ** 2, total: summarize( totalAccumulator ), panels, snapshot };
+
+			}
+
+			/**
+			 * Measures the GPU time (timestamp queries, render passes only) of the given methods. All methods
+			 * are rendered in every frame so that they are measured under the same GPU clock state. The
+			 * images are not valid in this mode (the methods share the velocity history), only the cost is.
+			 */
+			async function benchmark( keys, options = {} ) {
+
+				const frames = options.frames ?? 240;
+				const warmup = options.warmup ?? 60;
+				const pipelines = keys.map( key => createPipeline( METHODS[ key ] ).renderPipeline );
+				const times = keys.map( () => [] );
+				busy ++;
+
+				await renderer.resolveTimestampsAsync( THREE.TimestampQuery.RENDER );
+
+				for ( let frame = 0; frame < frames + warmup; frame ++ ) {
+
+					await nextFrame();
+					update( frame / 60, { cameraMotion: options.cameraMotion ?? params.cameraMotion } );
+
+					for ( let i = 0; i < pipelines.length; i ++ ) {
+
+						pipelines[ i ].render();
+						const ms = await renderer.resolveTimestampsAsync( THREE.TimestampQuery.RENDER );
+						if ( frame >= warmup && ms !== undefined ) times[ i ].push( ms );
+
+					}
+
+				}
+
+				pipelines.forEach( pipeline => pipeline.dispose() );
+				busy --;
+
+				return keys.map( ( key, i ) => {
+
+					const sorted = times[ i ].sort( ( a, b ) => a - b );
+					return { method: key, width: params.width, height: params.height, medianMs: + sorted[ sorted.length >> 1 ].toFixed( 3 ), p10Ms: + sorted[ Math.floor( sorted.length * 0.1 ) ].toFixed( 3 ) };
+
+				} );
+
+			}
+
+			async function run( keys = Object.keys( METHODS ), options = {} ) {
+
+				const results = [];
+
+				for ( const key of keys ) {
+
+					results.push( await analyze( key, options ) );
+
+				}
+
+				status.textContent = formatResults( results );
+				return results;
+
+			}
+
+			function formatResults( results ) {
+
+				const pad = ( s, n ) => String( s ).padEnd( n );
+				let text = pad( 'panel', 36 ) + results.map( r => pad( r.method, 24 ) ).join( '' ) + '\n';
+				text += pad( '', 36 ) + results.map( () => pad( 'PSNR / tPSNR / sharp', 24 ) ).join( '' ) + '\n';
+
+				const rows = [[ 'All', r => r.total ], ...labels.map( label => [ label, r => r.panels[ label ] ] ) ];
+
+				for ( const [ name, get ] of rows ) {
+
+					text += pad( name, 36 ) + results.map( r => {
+
+						const m = get( r );
+						return pad( `${ m.psnr.toFixed( 1 ) } / ${ m.tpsnr.toFixed( 1 ) } / ${ m.sharpness.toFixed( 2 ) }`, 24 );
+
+					} ).join( '' ) + '\n';
+
+				}
+
+				return text;
+
+			}
+
+			window.traaMetrics = { METHODS, params, analyze, benchmark, run, formatResults, createPipeline, update, renderer, scene, camera, pause: () => busy ++, resume: () => busy -- };
+
+			// GUI
+
+			const gui = new GUI();
+			gui.add( params, 'method', Object.keys( METHODS ) );
+			gui.add( params, 'cameraMotion', [ 'Still', 'Pan', 'Orbit', 'Zoom' ] );
+			gui.add( { run: () => run() }, 'run' ).name( 'run analysis' );
+
+			status.textContent = 'Live view. Press "run analysis" to compute metrics.';
+
+			if ( query.get( 'auto' ) !== null ) run( query.get( 'methods' )?.split( ',' ) );
+
+		</script>
+	</body>
+</html>

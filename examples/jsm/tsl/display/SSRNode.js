@@ -1,7 +1,7 @@
 import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, logarithmicDepthToViewZ, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, trunc, uniform, uv, vec2, vec3, vec4, viewZToPerspectiveDepth, context, isBackgroundDepth } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
-import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
+import { ENV_RAY_LENGTH, F_Schlick, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
 
@@ -922,6 +922,8 @@ class SSRNode extends Node {
 
 				viewReflectDir = reflect( viewIncidentDir, viewNormal ).normalize().toVar();
 				finalSampleWeight = vec3( metalness );
+
+
 				specDominantFactor = float( 1 );
 
 			} else {
@@ -1238,6 +1240,15 @@ class SSRNode extends Node {
 						const attenuation = ratio.mul( ratio ).toVar();
 						const fresnelCoe = div( dot( viewIncidentDir, viewReflectDir ).add( 1 ), 2 ).toVar();
 						weightedColor = weightedColor.mul( attenuation.mul( fresnelCoe ) );
+
+						if ( this._reflectNonMetals ) {
+
+							// Preserve the legacy metal contribution. The dielectric part uses the
+							// same standard F0=0.04 as GGX instead of being multiplied by metalness.
+							const dielectricFresnel = F_Schlick( vec3( 0.04 ), dot( V, viewNormal ).clamp() );
+							weightedColor = weightedColor.add( reflectColor.rgb.mul( attenuation ).mul( dielectricFresnel ).mul( metalness.oneMinus() ) );
+
+						}
 
 					}
 

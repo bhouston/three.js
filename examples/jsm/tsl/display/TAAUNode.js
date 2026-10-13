@@ -169,8 +169,9 @@ class TAAUNode extends Node {
 		 * @private
 		 * @type {?RenderTarget}
 		 */
-		this._resolveRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
+		this._resolveRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 2 } );
 		this._resolveRenderTarget.texture.name = 'TAAUNode.resolve';
+		this._resolveRenderTarget.textures[ 1 ].name = 'TAAUNode.resolve.lock';
 
 		/**
 		 * Render target whose depth attachment holds the previous frame's
@@ -437,6 +438,7 @@ class TAAUNode extends Node {
 		// update history
 
 		renderer.copyTextureToTexture( this._resolveRenderTarget.texture, this._historyRenderTarget.texture );
+		renderer.copyTextureToTexture( this._resolveRenderTarget.textures[ 1 ], this._historyRenderTarget.textures[ 1 ] );
 
 		// Copy the current scene depth into the previous-depth texture. We
 		// keep the destination size locked to the source's actual dimensions

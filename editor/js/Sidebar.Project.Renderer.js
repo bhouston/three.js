@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WebGPURenderer } from 'three/webgpu';
 
 import { UINumber, UIPanel, UIRow, UISelect, UIText } from './libs/ui.js';
 import { UIBoolean } from './libs/ui.three.js';
@@ -12,42 +13,62 @@ function SidebarProjectRenderer( editor ) {
 	let currentRenderer = null;
 
 	const container = new UIPanel();
+	container.setBorderTop( '0px' );
 
-	const headerRow = new UIRow();
-	headerRow.add( new UIText( strings.getKey( 'sidebar/project/renderer' ).toUpperCase() ) );
-	container.add( headerRow );
+	// Camera
+
+	const cameraRow = new UIRow();
+	container.add( cameraRow );
+
+	cameraRow.add( new UIText( strings.getKey( 'sidebar/project/camera' ) ).setClass( 'Label' ) );
+
+	const cameraTypeSelect = new UISelect().setOptions( {
+		'perspective': 'Perspective',
+		'orthographic': 'Orthographic'
+	} ).setWidth( '150px' ).onChange( function () {
+
+		editor.setCameraType( this.getValue() );
+
+	} );
+	cameraTypeSelect.setValue( config.getKey( 'project/camera' ) );
+	cameraRow.add( cameraTypeSelect );
+
+	if ( config.getKey( 'project/camera' ) === 'orthographic' ) {
+
+		editor.setCameraType( 'orthographic' );
+
+	}
+
+	// Renderer
+
+	const rendererRow = new UIRow();
+	container.add( rendererRow );
+
+	rendererRow.add( new UIText( strings.getKey( 'sidebar/project/renderer' ) ).setClass( 'Label' ) );
+
+	const rendererTypeSelect = new UISelect().setOptions( {
+		'WebGLRenderer': 'WebGL',
+		'WebGPURenderer': 'WebGPU'
+	} ).setWidth( '150px' ).onChange( createRenderer );
+	rendererTypeSelect.setValue( config.getKey( 'project/renderer/type' ) );
+	rendererRow.add( rendererTypeSelect );
 
 	// Antialias
 
 	const antialiasRow = new UIRow();
 	container.add( antialiasRow );
 
-	antialiasRow.add( new UIText( strings.getKey( 'sidebar/project/antialias' ) ).setWidth( '90px' ) );
+	antialiasRow.add( new UIText( strings.getKey( 'sidebar/project/antialias' ) ).setClass( 'Label' ) );
 
 	const antialiasBoolean = new UIBoolean( config.getKey( 'project/renderer/antialias' ) ).onChange( createRenderer );
 	antialiasRow.add( antialiasBoolean );
-
-	// Physically Correct lights
-
-	const physicallyCorrectLightsRow = new UIRow();
-	container.add( physicallyCorrectLightsRow );
-
-	physicallyCorrectLightsRow.add( new UIText( strings.getKey( 'sidebar/project/physicallyCorrectLights' ) ).setWidth( '90px' ) );
-
-	const physicallyCorrectLightsBoolean = new UIBoolean( config.getKey( 'project/renderer/physicallyCorrectLights' ) ).onChange( function () {
-
-		currentRenderer.physicallyCorrectLights = this.getValue();
-		signals.rendererUpdated.dispatch();
-
-	} );
-	physicallyCorrectLightsRow.add( physicallyCorrectLightsBoolean );
 
 	// Shadows
 
 	const shadowsRow = new UIRow();
 	container.add( shadowsRow );
 
-	shadowsRow.add( new UIText( strings.getKey( 'sidebar/project/shadows' ) ).setWidth( '90px' ) );
+	shadowsRow.add( new UIText( strings.getKey( 'sidebar/project/shadows' ) ).setClass( 'Label' ) );
 
 	const shadowsBoolean = new UIBoolean( config.getKey( 'project/renderer/shadows' ) ).onChange( updateShadows );
 	shadowsRow.add( shadowsBoolean );
@@ -55,8 +76,7 @@ function SidebarProjectRenderer( editor ) {
 	const shadowTypeSelect = new UISelect().setOptions( {
 		0: 'Basic',
 		1: 'PCF',
-		2: 'PCF Soft',
-		//	3: 'VSM'
+		3: 'VSM'
 	} ).setWidth( '125px' ).onChange( updateShadows );
 	shadowTypeSelect.setValue( config.getKey( 'project/renderer/shadowType' ) );
 	shadowsRow.add( shadowTypeSelect );
@@ -75,14 +95,16 @@ function SidebarProjectRenderer( editor ) {
 	const toneMappingRow = new UIRow();
 	container.add( toneMappingRow );
 
-	toneMappingRow.add( new UIText( strings.getKey( 'sidebar/project/toneMapping' ) ).setWidth( '90px' ) );
+	toneMappingRow.add( new UIText( strings.getKey( 'sidebar/project/toneMapping' ) ).setClass( 'Label' ) );
 
 	const toneMappingSelect = new UISelect().setOptions( {
 		0: 'No',
 		1: 'Linear',
 		2: 'Reinhard',
 		3: 'Cineon',
-		4: 'ACESFilmic'
+		4: 'ACESFilmic',
+		6: 'AgX',
+		7: 'Neutral'
 	} ).setWidth( '120px' ).onChange( updateToneMapping );
 	toneMappingSelect.setValue( config.getKey( 'project/renderer/toneMapping' ) );
 	toneMappingRow.add( toneMappingSelect );
@@ -106,11 +128,22 @@ function SidebarProjectRenderer( editor ) {
 
 	//
 
-	function createRenderer() {
+	async function createRenderer() {
 
-		currentRenderer = new THREE.WebGLRenderer( { antialias: antialiasBoolean.getValue() } );
-		currentRenderer.outputEncoding = THREE.sRGBEncoding;
-		currentRenderer.physicallyCorrectLights = physicallyCorrectLightsBoolean.getValue();
+		const rendererType = rendererTypeSelect.getValue();
+		const antialias = antialiasBoolean.getValue();
+
+		if ( rendererType === 'WebGPURenderer' ) {
+
+			currentRenderer = new WebGPURenderer( { antialias: antialias, reversedDepthBuffer: true } );
+			await currentRenderer.init();
+
+		} else {
+
+			currentRenderer = new THREE.WebGLRenderer( { antialias: antialias, reversedDepthBuffer: true } );
+
+		}
+
 		currentRenderer.shadowMap.enabled = shadowsBoolean.getValue();
 		currentRenderer.shadowMap.type = parseFloat( shadowTypeSelect.getValue() );
 		currentRenderer.toneMapping = parseFloat( toneMappingSelect.getValue() );
@@ -126,15 +159,22 @@ function SidebarProjectRenderer( editor ) {
 
 	// Signals
 
+	signals.cameraResetted.add( function () {
+
+		const type = editor.camera.isOrthographicCamera ? 'orthographic' : 'perspective';
+
+		cameraTypeSelect.setValue( type );
+		config.setKey( 'project/camera', type );
+
+	} );
+
 	signals.editorCleared.add( function () {
 
-		currentRenderer.physicallyCorrectLights = false;
 		currentRenderer.shadowMap.enabled = true;
 		currentRenderer.shadowMap.type = THREE.PCFShadowMap;
-		currentRenderer.toneMapping = THREE.NoToneMapping;
+		currentRenderer.toneMapping = THREE.NeutralToneMapping;
 		currentRenderer.toneMappingExposure = 1;
 
-		physicallyCorrectLightsBoolean.setValue( currentRenderer.physicallyCorrectLights );
 		shadowsBoolean.setValue( currentRenderer.shadowMap.enabled );
 		shadowTypeSelect.setValue( currentRenderer.shadowMap.type );
 		toneMappingSelect.setValue( currentRenderer.toneMapping );
@@ -148,8 +188,8 @@ function SidebarProjectRenderer( editor ) {
 	signals.rendererUpdated.add( function () {
 
 		config.setKey(
+			'project/renderer/type', rendererTypeSelect.getValue(),
 			'project/renderer/antialias', antialiasBoolean.getValue(),
-			'project/renderer/physicallyCorrectLights', physicallyCorrectLightsBoolean.getValue(),
 			'project/renderer/shadows', shadowsBoolean.getValue(),
 			'project/renderer/shadowType', parseFloat( shadowTypeSelect.getValue() ),
 			'project/renderer/toneMapping', parseFloat( toneMappingSelect.getValue() ),

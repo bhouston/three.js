@@ -1,71 +1,71 @@
 <html lang="en">
 	<head>
-		<title>three.js - WebGPU - RTT</title>
+		<title>three.js webgpu - rtt</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link type="text/css" rel="stylesheet" href="main.css">
+		<meta property="og:title" content="three.js webgpu - rtt">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_rtt.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_rtt.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
 	</head>
 	<body>
 
-		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> WebGPU - RTT
-		</div>
+	<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>WebGPU RTT</span>
+			</div>
+
+			<small>Basic Render-to-Texture demo.</small>
+		</div>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js",
-					"three-nodes/": "./jsm/nodes/"
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
 
 		<script type="module">
 
-			import * as THREE from 'three';
-			import * as Nodes from 'three-nodes/Nodes.js';
+			import * as THREE from 'three/webgpu';
+			import { texture, uniform, saturation, hue } from 'three/tsl';
 
-			import WebGPU from './jsm/capabilities/WebGPU.js';
-			import WebGPURenderer from './jsm/renderers/webgpu/WebGPURenderer.js';
-			import WebGPUTextureRenderer from './jsm/renderers/webgpu/WebGPUTextureRenderer.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			let camera, scene, renderer;
 			const mouse = new THREE.Vector2();
 
-			let cameraFX, sceneFX, textureRenderer;
+			let quadMesh, renderTarget;
 
 			let box;
 
 			const dpr = window.devicePixelRatio;
 
-			init().then( animate ).catch( error );
+			init();
 
-			async function init() {
-
-				if ( WebGPU.isAvailable() === false ) {
-
-					document.body.appendChild( WebGPU.getErrorMessage() );
-
-					throw new Error( 'No WebGPU support' );
-
-				}
+			function init() {
 
 				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 10 );
-				camera.position.z = 4;
+				camera.position.z = 3;
 
 				scene = new THREE.Scene();
-				scene.background = new THREE.Color( 0x222222 );
+				scene.background = new THREE.Color( 0x0066FF );
 
 				// textured mesh
 
 				const loader = new THREE.TextureLoader();
-				const texture = loader.load( './textures/uv_grid_opengl.jpg' );
+				const uvTexture = loader.load( './textures/uv_grid_opengl.jpg' );
 
 				const geometryBox = new THREE.BoxGeometry();
-				const materialBox = new Nodes.MeshBasicNodeMaterial();
-				materialBox.colorNode = new Nodes.TextureNode( texture );
+				const materialBox = new THREE.MeshBasicNodeMaterial();
+				materialBox.colorNode = texture( uvTexture );
 
 				//
 
@@ -74,44 +74,39 @@
 
 				//
 
-				renderer = new WebGPURenderer();
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
 				renderer.setPixelRatio( dpr );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				document.body.appendChild( renderer.domElement );
 
-				textureRenderer = new WebGPUTextureRenderer( renderer );
-				textureRenderer.setSize( window.innerWidth * dpr, window.innerHeight * dpr );
+				renderer.inspector = new Inspector();
+
+				renderTarget = new THREE.RenderTarget( window.innerWidth * dpr, window.innerHeight * dpr );
 
 				window.addEventListener( 'mousemove', onWindowMouseMove );
 				window.addEventListener( 'resize', onWindowResize );
 
 				// FX
 
-				cameraFX = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
-				sceneFX = new THREE.Scene();
-
-				const geometryFX = new THREE.PlaneGeometry( 2, 2 );
-
 				// modulate the final color based on the mouse position
 
-				const screenFXNode = new Nodes.OperatorNode( '+', new Nodes.UniformNode( mouse ), new Nodes.ConstNode( new THREE.Vector2( 0.5, 0.5 ) ) );
+				const screenFXNode = uniform( mouse );
 
-				const materialFX = new Nodes.MeshBasicNodeMaterial();
-				materialFX.colorNode = new Nodes.OperatorNode( '*', new Nodes.TextureNode( textureRenderer.getTexture() ), screenFXNode );
+				const materialFX = new THREE.MeshBasicNodeMaterial();
 
-				const quad = new THREE.Mesh( geometryFX, materialFX );
-				sceneFX.add( quad );
+				const scenePassTexture = texture( renderTarget.texture ).toInspector( 'Scene Pass' );
+				materialFX.colorNode = hue( saturation( scenePassTexture.rgb, screenFXNode.x.oneMinus() ), screenFXNode.y );
 
-				//
-
-				return renderer.init();
+				quadMesh = new THREE.QuadMesh( materialFX );
+				quadMesh.name = 'Post-Processing';
 
 			}
 
 			function onWindowMouseMove( e ) {
 
-				mouse.x = e.offsetX / screen.width;
-				mouse.y = e.offsetY / screen.height;
+				mouse.x = e.offsetX / window.innerWidth;
+				mouse.y = e.offsetY / window.innerHeight;
 
 			}
 
@@ -121,25 +116,20 @@
 				camera.updateProjectionMatrix();
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				textureRenderer.setSize( window.innerWidth * dpr, window.innerHeight * dpr );
+				renderTarget.setSize( window.innerWidth * dpr, window.innerHeight * dpr );
 
 			}
 
 			function animate() {
 
-				requestAnimationFrame( animate );
-
 				box.rotation.x += 0.01;
 				box.rotation.y += 0.02;
 
-				textureRenderer.render( scene, camera );
-				renderer.render( sceneFX, cameraFX );
+				renderer.setRenderTarget( renderTarget );
+				renderer.render( scene, camera );
 
-			}
-
-			function error( error ) {
-
-				console.error( error );
+				renderer.setRenderTarget( null );
+				quadMesh.render( renderer );
 
 			}
 

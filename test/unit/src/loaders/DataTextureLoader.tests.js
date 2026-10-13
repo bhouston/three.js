@@ -1,22 +1,27 @@
-/* global QUnit */
+import { DataTextureLoader } from '../../../../src/loaders/DataTextureLoader.js';
 
-// import { DataTextureLoader } from '../../../../src/loaders/DataTextureLoader.js';
+import { Loader } from '../../../../src/loaders/Loader.js';
 
 export default QUnit.module( 'Loaders', () => {
 
 	QUnit.module( 'DataTextureLoader', () => {
 
-		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		// INHERITANCE
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new DataTextureLoader();
+			assert.strictEqual(
+				object instanceof Loader, true,
+				'DataTextureLoader extends from Loader'
+			);
 
 		} );
 
-		// PUBLIC STUFF
-		QUnit.todo( 'load', ( assert ) => {
+		// INSTANCING
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new DataTextureLoader();
+			assert.ok( object, 'Can instantiate a DataTextureLoader.' );
 
 		} );
 

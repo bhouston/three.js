@@ -1,57 +1,59 @@
-/* global QUnit */
-
 import { OrthographicCamera } from '../../../../src/cameras/OrthographicCamera.js';
+
+import { Camera } from '../../../../src/cameras/Camera.js';
 
 export default QUnit.module( 'Cameras', () => {
 
 	QUnit.module( 'OrthographicCamera', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new OrthographicCamera();
+			assert.strictEqual(
+				object instanceof Camera, true,
+				'OrthographicCamera extends from Camera'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'isOrthographicCamera', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new OrthographicCamera();
+			assert.ok( object, 'Can instantiate an OrthographicCamera.' );
 
 		} );
 
-		QUnit.todo( 'copy', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new OrthographicCamera();
+			assert.ok(
+				object.type === 'OrthographicCamera',
+				'OrthographicCamera.type should be OrthographicCamera'
+			);
 
 		} );
 
-		QUnit.todo( 'setViewOffset', ( assert ) => {
+		// PUBLIC
+		QUnit.test( 'isOrthographicCamera', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'clearViewOffset', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new OrthographicCamera();
+			assert.ok(
+				object.isOrthographicCamera,
+				'OrthographicCamera.isOrthographicCamera should be true'
+			);
 
 		} );
 
 		QUnit.test( 'updateProjectionMatrix', ( assert ) => {
 
-			var left = - 1, right = 1, top = 1, bottom = - 1, near = 1, far = 3;
-			var cam = new OrthographicCamera( left, right, top, bottom, near, far );
+			const left = - 1, right = 1, top = 1, bottom = - 1, near = 1, far = 3;
+			const cam = new OrthographicCamera( left, right, top, bottom, near, far );
 
 			// updateProjectionMatrix is called in constructor
-			var pMatrix = cam.projectionMatrix.elements;
+			const pMatrix = cam.projectionMatrix.elements;
 
 			// orthographic projection is given my the 4x4 Matrix
 			// 2/r-l		0			 0		-(l+r/r-l)
@@ -68,20 +70,14 @@ export default QUnit.module( 'Cameras', () => {
 
 		} );
 
-		QUnit.todo( 'toJSON', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
 		// OTHERS
-		// TODO: no no no clone is a camera methods that relied to copy method
+		// TODO: clone is a camera methods that relied to copy method
 		QUnit.test( 'clone', ( assert ) => {
 
-			var left = - 1.5, right = 1.5, top = 1, bottom = - 1, near = 0.1, far = 42;
-			var cam = new OrthographicCamera( left, right, top, bottom, near, far );
+			const left = - 1.5, right = 1.5, top = 1, bottom = - 1, near = 0.1, far = 42;
+			const cam = new OrthographicCamera( left, right, top, bottom, near, far );
 
-			var clonedCam = cam.clone();
+			const clonedCam = cam.clone();
 
 			assert.ok( cam.left === clonedCam.left, 'left is equal' );
 			assert.ok( cam.right === clonedCam.right, 'right is equal' );

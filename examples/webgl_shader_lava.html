@@ -4,12 +4,16 @@
 		<title>three.js webgl - materials - shaders [lava]</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - materials - shaders [lava]">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_shader_lava.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_shader_lava.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
 
 		<div id="container"></div>
-		<div id="info"><a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - shader material demo. featuring lava shader by <a href="http://irrlicht.sourceforge.net/phpBB2/viewtopic.php?t=21057" target="_blank" rel="noopener">TheGameMaker</a></div>
+		<div id="info"><a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - shader material demo. featuring lava shader by <a href="https://irrlicht.sourceforge.net/phpBB2/viewtopic.php?t=21057" target="_blank" rel="noopener">TheGameMaker</a></div>
 
 		<script id="fragmentShader" type="x-shader/x-fragment">
 
@@ -74,14 +78,11 @@
 
 		</script>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -90,17 +91,16 @@
 
 			import * as THREE from 'three';
 
-			import { EffectComposer } from './jsm/postprocessing/EffectComposer.js';
-			import { RenderPass } from './jsm/postprocessing/RenderPass.js';
-			import { FilmPass } from './jsm/postprocessing/FilmPass.js';
-			import { BloomPass } from './jsm/postprocessing/BloomPass.js';
+			import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+			import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+			import { BloomPass } from 'three/addons/postprocessing/BloomPass.js';
+			import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-			let camera, renderer, composer, clock;
+			let camera, renderer, composer, timer;
 
 			let uniforms, mesh;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -111,9 +111,18 @@
 
 				const scene = new THREE.Scene();
 
-				clock = new THREE.Clock();
+				timer = new THREE.Timer();
+				timer.connect( document );
 
 				const textureLoader = new THREE.TextureLoader();
+
+				const cloudTexture = textureLoader.load( 'textures/lava/cloud.png' );
+				const lavaTexture = textureLoader.load( 'textures/lava/lavatile.jpg' );
+
+				lavaTexture.colorSpace = THREE.SRGBColorSpace;
+
+				cloudTexture.wrapS = cloudTexture.wrapT = THREE.RepeatWrapping;
+				lavaTexture.wrapS = lavaTexture.wrapT = THREE.RepeatWrapping;
 
 				uniforms = {
 
@@ -121,13 +130,10 @@
 					'fogColor': { value: new THREE.Vector3( 0, 0, 0 ) },
 					'time': { value: 1.0 },
 					'uvScale': { value: new THREE.Vector2( 3.0, 1.0 ) },
-					'texture1': { value: textureLoader.load( 'textures/lava/cloud.png' ) },
-					'texture2': { value: textureLoader.load( 'textures/lava/lavatile.jpg' ) }
+					'texture1': { value: cloudTexture },
+					'texture2': { value: lavaTexture }
 
 				};
-
-				uniforms[ 'texture1' ].value.wrapS = uniforms[ 'texture1' ].value.wrapT = THREE.RepeatWrapping;
-				uniforms[ 'texture2' ].value.wrapS = uniforms[ 'texture2' ].value.wrapT = THREE.RepeatWrapping;
 
 				const size = 0.65;
 
@@ -145,27 +151,26 @@
 
 				//
 
-				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
-				container.appendChild( renderer.domElement );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				renderer.autoClear = false;
-
+				container.appendChild( renderer.domElement );
 
 				//
 
 				const renderModel = new RenderPass( scene, camera );
 				const effectBloom = new BloomPass( 1.25 );
-				const effectFilm = new FilmPass( 0.35, 0.95, 2048, false );
+				const outputPass = new OutputPass();
 
 				composer = new EffectComposer( renderer );
 
 				composer.addPass( renderModel );
 				composer.addPass( effectBloom );
-				composer.addPass( effectFilm );
+				composer.addPass( outputPass );
 
 				//
-
-				onWindowResize();
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -185,15 +190,9 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
+				timer.update();
 
-				render();
-
-			}
-
-			function render() {
-
-				const delta = 5 * clock.getDelta();
+				const delta = 5 * timer.getDelta();
 
 				uniforms[ 'time' ].value += 0.2 * delta;
 

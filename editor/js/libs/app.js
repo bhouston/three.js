@@ -1,36 +1,59 @@
-var APP = {
+/* global THREE */ /* assigned at ./app/index.html */
+
+const APP = {
 
 	Player: function () {
 
-		var renderer = new THREE.WebGLRenderer( { antialias: true } );
-		renderer.setPixelRatio( window.devicePixelRatio ); // TODO: Use player.setPixelRatio()
-		renderer.outputEncoding = THREE.sRGBEncoding;
+		let renderer;
 
-		var loader = new THREE.ObjectLoader();
-		var camera, scene;
+		const loader = new THREE.ObjectLoader();
+		let camera, scene;
 
-		var vrButton = VRButton.createButton( renderer ); // eslint-disable-line no-undef
+		let events = {};
 
-		var events = {};
-
-		var dom = document.createElement( 'div' );
-		dom.appendChild( renderer.domElement );
+		const dom = document.createElement( 'div' );
 
 		this.dom = dom;
+		this.canvas = null;
 
 		this.width = 500;
 		this.height = 500;
 
-		this.load = function ( json ) {
+		this.load = async function ( json ) {
 
-			var project = json.project;
+			const project = json.project;
 
-			if ( project.vr !== undefined ) renderer.xr.enabled = project.vr;
+			// Create renderer based on project settings
+
+			if ( renderer !== undefined ) {
+
+				renderer.dispose();
+				dom.removeChild( renderer.domElement );
+				this.canvas = null;
+
+			}
+
+			if ( project.renderer === 'WebGPURenderer' ) {
+
+				const { WebGPURenderer } = await import( 'three/webgpu' );
+				renderer = new WebGPURenderer( { antialias: true, reversedDepthBuffer: true } );
+				await renderer.init();
+
+			} else {
+
+				renderer = new THREE.WebGLRenderer( { antialias: true, reversedDepthBuffer: true } );
+
+			}
+
+			renderer.setPixelRatio( window.devicePixelRatio );
+
 			if ( project.shadows !== undefined ) renderer.shadowMap.enabled = project.shadows;
 			if ( project.shadowType !== undefined ) renderer.shadowMap.type = project.shadowType;
 			if ( project.toneMapping !== undefined ) renderer.toneMapping = project.toneMapping;
 			if ( project.toneMappingExposure !== undefined ) renderer.toneMappingExposure = project.toneMappingExposure;
-			if ( project.physicallyCorrectLights !== undefined ) renderer.physicallyCorrectLights = project.physicallyCorrectLights;
+
+			dom.appendChild( renderer.domElement );
+			this.canvas = renderer.domElement;
 
 			this.setScene( loader.parse( json.scene ) );
 			this.setCamera( loader.parse( json.camera ) );
@@ -47,8 +70,8 @@ var APP = {
 				update: []
 			};
 
-			var scriptWrapParams = 'player,renderer,scene,camera';
-			var scriptWrapResultObj = {};
+			let scriptWrapParams = 'player,renderer,scene,camera';
+			const scriptWrapResultObj = {};
 
 			for ( var eventKey in events ) {
 
@@ -57,11 +80,11 @@ var APP = {
 
 			}
 
-			var scriptWrapResult = JSON.stringify( scriptWrapResultObj ).replace( /\"/g, '' );
+			const scriptWrapResult = JSON.stringify( scriptWrapResultObj ).replace( /\"/g, '' );
 
-			for ( var uuid in json.scripts ) {
+			for ( const uuid in json.scripts ) {
 
-				var object = scene.getObjectByProperty( 'uuid', uuid, true );
+				const object = scene.getObjectByProperty( 'uuid', uuid, true );
 
 				if ( object === undefined ) {
 
@@ -70,15 +93,15 @@ var APP = {
 
 				}
 
-				var scripts = json.scripts[ uuid ];
+				const scripts = json.scripts[ uuid ];
 
-				for ( var i = 0; i < scripts.length; i ++ ) {
+				for ( let i = 0; i < scripts.length; i ++ ) {
 
-					var script = scripts[ i ];
+					const script = scripts[ i ];
 
-					var functions = ( new Function( scriptWrapParams, script.source + '\nreturn ' + scriptWrapResult + ';' ).bind( object ) )( this, renderer, scene, camera );
+					const functions = ( new Function( scriptWrapParams, script.source + '\nreturn ' + scriptWrapResult + ';' ).bind( object ) )( this, renderer, scene, camera );
 
-					for ( var name in functions ) {
+					for ( const name in functions ) {
 
 						if ( functions[ name ] === undefined ) continue;
 
@@ -104,8 +127,7 @@ var APP = {
 		this.setCamera = function ( value ) {
 
 			camera = value;
-			camera.aspect = this.width / this.height;
-			camera.updateProjectionMatrix();
+			setCameraAspect( camera, this.width / this.height );
 
 		};
 
@@ -121,6 +143,12 @@ var APP = {
 
 		};
 
+		this.setClearColor = function ( color ) {
+
+			renderer.setClearColor( color );
+
+		};
+
 		this.setSize = function ( width, height ) {
 
 			this.width = width;
@@ -128,18 +156,40 @@ var APP = {
 
 			if ( camera ) {
 
-				camera.aspect = this.width / this.height;
-				camera.updateProjectionMatrix();
+				setCameraAspect( camera, this.width / this.height );
 
 			}
 
-			renderer.setSize( width, height );
+			if ( renderer ) {
+
+				renderer.setSize( width, height );
+
+			}
 
 		};
 
+		function setCameraAspect( camera, aspect ) {
+
+			if ( camera.isPerspectiveCamera ) {
+
+				camera.aspect = aspect;
+
+			} else {
+
+				const frustumHeight = camera.top - camera.bottom;
+
+				camera.left = - frustumHeight * aspect / 2;
+				camera.right = frustumHeight * aspect / 2;
+
+			}
+
+			camera.updateProjectionMatrix();
+
+		}
+
 		function dispatch( array, event ) {
 
-			for ( var i = 0, l = array.length; i < l; i ++ ) {
+			for ( let i = 0, l = array.length; i < l; i ++ ) {
 
 				array[ i ]( event );
 
@@ -147,7 +197,7 @@ var APP = {
 
 		}
 
-		var time, startTime, prevTime;
+		let time, startTime, prevTime;
 
 		function animate() {
 
@@ -171,8 +221,6 @@ var APP = {
 
 		this.play = function () {
 
-			if ( renderer.xr.enabled ) dom.append( vrButton );
-
 			startTime = prevTime = performance.now();
 
 			document.addEventListener( 'keydown', onKeyDown );
@@ -188,8 +236,6 @@ var APP = {
 		};
 
 		this.stop = function () {
-
-			if ( renderer.xr.enabled ) vrButton.remove();
 
 			document.removeEventListener( 'keydown', onKeyDown );
 			document.removeEventListener( 'keyup', onKeyUp );
@@ -213,7 +259,11 @@ var APP = {
 
 		this.dispose = function () {
 
-			renderer.dispose();
+			if ( renderer ) {
+
+				renderer.dispose();
+
+			}
 
 			camera = undefined;
 			scene = undefined;

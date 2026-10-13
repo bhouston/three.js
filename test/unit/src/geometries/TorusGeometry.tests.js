@@ -1,13 +1,13 @@
-/* global QUnit */
+import { TorusGeometry } from '../../../../src/geometries/TorusGeometry.js';
 
+import { BufferGeometry } from '../../../../src/core/BufferGeometry.js';
 import { runStdGeometryTests } from '../../utils/qunit-utils.js';
-import { TorusGeometry, TorusBufferGeometry } from '../../../../src/geometries/TorusGeometry.js';
 
 export default QUnit.module( 'Geometries', () => {
 
-	QUnit.module( 'TorusBufferGeometry', ( hooks ) => {
+	QUnit.module( 'TorusGeometry', ( hooks ) => {
 
-		var geometries = undefined;
+		let geometries = undefined;
 		hooks.beforeEach( function () {
 
 			const parameters = {
@@ -16,6 +16,8 @@ export default QUnit.module( 'Geometries', () => {
 				radialSegments: 30,
 				tubularSegments: 10,
 				arc: 2.0,
+				thetaStart: Math.PI * 0.5,
+				thetaLength: Math.PI
 			};
 
 			geometries = [
@@ -25,22 +27,39 @@ export default QUnit.module( 'Geometries', () => {
 				new TorusGeometry( parameters.radius, parameters.tube, parameters.radialSegments ),
 				new TorusGeometry( parameters.radius, parameters.tube, parameters.radialSegments, parameters.tubularSegments ),
 				new TorusGeometry( parameters.radius, parameters.tube, parameters.radialSegments, parameters.tubularSegments, parameters.arc ),
-				new TorusBufferGeometry()
+				new TorusGeometry( parameters.radius, parameters.tube, parameters.radialSegments, parameters.tubularSegments, parameters.arc, parameters.thetaStart ),
+				new TorusGeometry( parameters.radius, parameters.tube, parameters.radialSegments, parameters.tubularSegments, parameters.arc, parameters.thetaStart, parameters.thetaLength ),
 			];
 
 		} );
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new TorusGeometry();
+			assert.strictEqual(
+				object instanceof BufferGeometry, true,
+				'TorusGeometry extends from BufferGeometry'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new TorusGeometry();
+			assert.ok( object, 'Can instantiate a TorusGeometry.' );
+
+		} );
+
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
+
+			const object = new TorusGeometry();
+			assert.ok(
+				object.type === 'TorusGeometry',
+				'TorusGeometry.type should be TorusGeometry'
+			);
 
 		} );
 

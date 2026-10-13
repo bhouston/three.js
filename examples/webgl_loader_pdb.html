@@ -4,6 +4,10 @@
 		<title>three.js webgl - molecules</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - molecules">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_loader_pdb.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_loader_pdb.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<style>
 			.label {
@@ -17,14 +21,11 @@
 		<div id="container"></div>
 		<div id="info"><a href="https://threejs.org" target="_blank" rel="noopener">three.js webgl</a> - molecules</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -33,10 +34,10 @@
 
 			import * as THREE from 'three';
 
-			import { TrackballControls } from './jsm/controls/TrackballControls.js';
-			import { PDBLoader } from './jsm/loaders/PDBLoader.js';
-			import { CSS2DRenderer, CSS2DObject } from './jsm/renderers/CSS2DRenderer.js';
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+			import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
+			import { PDBLoader } from 'three/addons/loaders/PDBLoader.js';
+			import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 			let camera, scene, renderer, labelRenderer;
 			let controls;
@@ -71,7 +72,6 @@
 			const offset = new THREE.Vector3();
 
 			init();
-			animate();
 
 			function init() {
 
@@ -82,11 +82,11 @@
 				camera.position.z = 1000;
 				scene.add( camera );
 
-				const light1 = new THREE.DirectionalLight( 0xffffff, 0.8 );
+				const light1 = new THREE.DirectionalLight( 0xffffff, 2.5 );
 				light1.position.set( 1, 1, 1 );
 				scene.add( light1 );
 
-				const light2 = new THREE.DirectionalLight( 0xffffff, 0.5 );
+				const light2 = new THREE.DirectionalLight( 0xffffff, 1.5 );
 				light2.position.set( - 1, - 1, 1 );
 				scene.add( light2 );
 
@@ -98,6 +98,7 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				document.getElementById( 'container' ).appendChild( renderer.domElement );
 
 				labelRenderer = new CSS2DRenderer();
@@ -213,7 +214,7 @@
 						start.multiplyScalar( 75 );
 						end.multiplyScalar( 75 );
 
-						const object = new THREE.Mesh( boxGeometry, new THREE.MeshPhongMaterial( 0xffffff ) );
+						const object = new THREE.Mesh( boxGeometry, new THREE.MeshPhongMaterial( { color: 0xffffff } ) );
 						object.position.copy( start );
 						object.position.lerp( end, 0.5 );
 						object.scale.set( 5, 5, start.distanceTo( end ) );
@@ -221,8 +222,6 @@
 						root.add( object );
 
 					}
-
-					render();
 
 				} );
 
@@ -238,13 +237,10 @@
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				labelRenderer.setSize( window.innerWidth, window.innerHeight );
 
-				render();
-
 			}
 
 			function animate() {
 
-				requestAnimationFrame( animate );
 				controls.update();
 
 				const time = Date.now() * 0.0004;

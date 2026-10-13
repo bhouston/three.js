@@ -4,6 +4,10 @@
 	<title>three.js webgl - instancing - performance</title>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - instancing - performance">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_instancing_performance.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_instancing_performance.jpg">
 	<link type="text/css" rel="stylesheet" href="main.css">
 	<style>
 		#info {
@@ -26,14 +30,11 @@
 
 	<div id="container"></div>
 
-	<!-- Import maps polyfill -->
-	<!-- Remove this when import maps will be widely supported -->
-	<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 	<script type="importmap">
 		{
 			"imports": {
-				"three": "../build/three.module.js"
+				"three": "../build/three.module.js",
+				"three/addons/": "./jsm/"
 			}
 		}
 	</script>
@@ -41,11 +42,11 @@
 	<script type="module">
 		import * as THREE from 'three';
 
-		import Stats from './jsm/libs/stats.module.js';
-		import { GUI } from './jsm/libs/lil-gui.module.min.js';
+		import Stats from 'three/addons/libs/stats.module.js';
+		import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-		import { OrbitControls } from './jsm/controls/OrbitControls.js';
-		import * as BufferGeometryUtils from './jsm/utils/BufferGeometryUtils.js';
+		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+		import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 		let container, stats, gui, guiStatsEl;
 		let camera, controls, scene, renderer, material;
@@ -67,7 +68,6 @@
 
 		init();
 		initMesh();
-		animate();
 
 		//
 
@@ -96,7 +96,6 @@
 		const randomizeMatrix = function () {
 
 			const position = new THREE.Vector3();
-			const rotation = new THREE.Euler();
 			const quaternion = new THREE.Quaternion();
 			const scale = new THREE.Vector3();
 
@@ -106,11 +105,7 @@
 				position.y = Math.random() * 40 - 20;
 				position.z = Math.random() * 40 - 20;
 
-				rotation.x = Math.random() * 2 * Math.PI;
-				rotation.y = Math.random() * 2 * Math.PI;
-				rotation.z = Math.random() * 2 * Math.PI;
-
-				quaternion.setFromEuler( rotation );
+				quaternion.random();
 
 				scale.x = scale.y = scale.z = Math.random() * 1;
 
@@ -200,7 +195,7 @@
 
 			}
 
-			const mergedGeometry = BufferGeometryUtils.mergeBufferGeometries( geometries );
+			const mergedGeometry = BufferGeometryUtils.mergeGeometries( geometries );
 
 			scene.add( new THREE.Mesh( mergedGeometry, material ) );
 
@@ -258,8 +253,7 @@
 			renderer = new THREE.WebGLRenderer( { antialias: true } );
 			renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( width, height );
-			renderer.outputEncoding = THREE.sRGBEncoding;
-
+			renderer.setAnimationLoop( animate );
 			container = document.getElementById( 'container' );
 			container.appendChild( renderer.domElement );
 
@@ -316,18 +310,11 @@
 
 		function animate() {
 
-			requestAnimationFrame( animate );
-
 			controls.update();
-			stats.update();
-
-			render();
-
-		}
-
-		function render() {
 
 			renderer.render( scene, camera );
+
+			stats.update();
 
 		}
 

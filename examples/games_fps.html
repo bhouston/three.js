@@ -4,6 +4,10 @@
 		<title>three.js - misc - octree collisions</title>
 		<meta charset=utf-8 />
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js - misc - octree collisions">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/games_fps.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/games_fps.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -14,14 +18,11 @@
 		</div>
 		<div id="container"></div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -30,18 +31,19 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
-			import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-			import { Octree } from './jsm/math/Octree.js';
-			import { OctreeHelper } from './jsm/helpers/OctreeHelper.js';
+			import { Octree } from 'three/addons/math/Octree.js';
+			import { OctreeHelper } from 'three/addons/helpers/OctreeHelper.js';
 
-			import { Capsule } from './jsm/math/Capsule.js';
+			import { Capsule } from 'three/addons/math/Capsule.js';
 
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			const clock = new THREE.Clock();
+			const timer = new THREE.Timer();
+			timer.connect( document );
 
 			const scene = new THREE.Scene();
 			scene.background = new THREE.Color( 0x88ccee );
@@ -50,11 +52,11 @@
 			const camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 1000 );
 			camera.rotation.order = 'YXZ';
 
-			const fillLight1 = new THREE.HemisphereLight( 0x4488bb, 0x002244, 0.5 );
+			const fillLight1 = new THREE.HemisphereLight( 0x8dc1de, 0x00668d, 1.5 );
 			fillLight1.position.set( 2, 1, 1 );
 			scene.add( fillLight1 );
 
-			const directionalLight = new THREE.DirectionalLight( 0xffffff, 0.8 );
+			const directionalLight = new THREE.DirectionalLight( 0xffffff, 2.5 );
 			directionalLight.position.set( - 5, 25, - 1 );
 			directionalLight.castShadow = true;
 			directionalLight.shadow.camera.near = 0.01;
@@ -74,9 +76,9 @@
 			const renderer = new THREE.WebGLRenderer( { antialias: true } );
 			renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.setAnimationLoop( animate );
 			renderer.shadowMap.enabled = true;
 			renderer.shadowMap.type = THREE.VSMShadowMap;
-			renderer.outputEncoding = THREE.sRGBEncoding;
 			renderer.toneMapping = THREE.ACESFilmicToneMapping;
 			container.appendChild( renderer.domElement );
 
@@ -93,7 +95,7 @@
 			const STEPS_PER_FRAME = 5;
 
 			const sphereGeometry = new THREE.IcosahedronGeometry( SPHERE_RADIUS, 5 );
-			const sphereMaterial = new THREE.MeshLambertMaterial( { color: 0xbbbb44 } );
+			const sphereMaterial = new THREE.MeshLambertMaterial( { color: 0xdede8d } );
 
 			const spheres = [];
 			let sphereIdx = 0;
@@ -205,7 +207,9 @@
 
 				if ( result ) {
 
-					playerOnFloor = result.normal.y > 0;
+					// determine if the surface we bumped into is something we can stand on
+
+					playerOnFloor = result.normal.y >= 0.15; // allow slopes up to ~81° but ignore sheer vertical walls
 
 					if ( ! playerOnFloor ) {
 
@@ -213,7 +217,11 @@
 
 					}
 
-					playerCollider.translate( result.normal.multiplyScalar( result.depth ) );
+					if ( result.depth >= 1e-10 ) {
+
+						playerCollider.translate( result.normal.multiplyScalar( result.depth ) );
+
+					}
 
 				}
 
@@ -446,9 +454,7 @@
 						helper.visible = value;
 
 					} );
-
-				animate();
-
+			
 			} );
 
 			function teleportPlayerIfOob() {
@@ -468,7 +474,9 @@
 
 			function animate() {
 
-				const deltaTime = Math.min( 0.05, clock.getDelta() ) / STEPS_PER_FRAME;
+				timer.update();
+
+				const deltaTime = Math.min( 0.05, timer.getDelta() ) / STEPS_PER_FRAME;
 
 				// we look for collisions in substeps to mitigate the risk of
 				// an object traversing another too quickly for detection.
@@ -488,8 +496,6 @@
 				renderer.render( scene, camera );
 
 				stats.update();
-
-				requestAnimationFrame( animate );
 
 			}
 

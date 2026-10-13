@@ -4,22 +4,23 @@
 		<title>three.js webgl - simple global illumination</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - simple global illumination">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_simple_gi.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_simple_gi.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
 
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - simple global illumination (<a href="http://www.iquilezles.org/www/articles/simplegi/simplegi.htm">article</a>)
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - simple global illumination (<a href="https://iquilezles.org/articles/simplegi/">article</a>)
 		</div>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -28,7 +29,7 @@
 
 			import * as THREE from 'three';
 
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 			class GIMesh extends THREE.Mesh {
 
@@ -55,7 +56,7 @@
 				scene.updateMatrixWorld( true );
 
 				let clone = scene.clone();
-				clone.autoUpdate = false;
+				clone.matrixWorldAutoUpdate = false;
 
 				const rt = new THREE.WebGLRenderTarget( SIZE, SIZE );
 
@@ -131,14 +132,13 @@
 
 					}
 
-					attributes.color.updateRange.offset = startVertex * 3;
-					attributes.color.updateRange.count = ( currentVertex - startVertex ) * 3;
+					attributes.color.addUpdateRange( startVertex * 3, ( currentVertex - startVertex ) * 3 );
 					attributes.color.needsUpdate = true;
 
 					if ( currentVertex >= totalVertex ) {
 
 						clone = scene.clone();
-						clone.autoUpdate = false;
+						clone.matrixWorldAutoUpdate = false;
 
 						bounces ++;
 						currentVertex = 0;
@@ -158,7 +158,6 @@
 			let camera, scene, renderer;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -195,6 +194,7 @@
 				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				document.body.appendChild( renderer.domElement );
 
 				new SimpleGI( renderer, scene );
@@ -217,8 +217,6 @@
 			}
 
 			function animate() {
-
-				requestAnimationFrame( animate );
 
 				renderer.setRenderTarget( null );
 				renderer.render( scene, camera );

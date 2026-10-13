@@ -11,12 +11,46 @@ import {
 const _matrix = new Matrix4();
 const _vector = new Vector3();
 
+/**
+ * Represents one of the hand model types {@link XRHandModelFactory} might produce
+ * depending on the selected profile. `XRHandPrimitiveModel` represents a hand
+ * with sphere or box primitives according to the selected `primitive` option.
+ *
+ * @three_import import { XRHandPrimitiveModel } from 'three/addons/webxr/XRHandPrimitiveModel.js';
+ */
 class XRHandPrimitiveModel {
 
+	/**
+	 * Constructs a new XR hand primitive model.
+	 *
+	 * @param {XRHandModel} handModel - The hand model.
+	 * @param {Group} controller - The WebXR controller.
+	 * @param {string} path - The model path.
+	 * @param {XRHandedness} handedness - The handedness of the XR input source.
+	 * @param {XRHandPrimitiveModel~Options} options - The model options.
+	 */
 	constructor( handModel, controller, path, handedness, options ) {
 
+		/**
+		 * The WebXR controller.
+		 *
+		 * @type {Group}
+		 */
 		this.controller = controller;
+
+		/**
+		 * The hand model.
+		 *
+		 * @type {XRHandModel}
+		 */
 		this.handModel = handModel;
+
+		/**
+		 * The model's environment map.
+		 *
+		 * @type {?Texture}
+		 * @default null
+		 */
 		this.envMap = null;
 
 		let geometry;
@@ -34,6 +68,7 @@ class XRHandPrimitiveModel {
 		const material = new MeshStandardMaterial();
 
 		this.handMesh = new InstancedMesh( geometry, material, 30 );
+		this.handMesh.frustumCulled = false;
 		this.handMesh.instanceMatrix.setUsage( DynamicDrawUsage ); // will be updated every frame
 		this.handMesh.castShadow = true;
 		this.handMesh.receiveShadow = true;
@@ -69,6 +104,9 @@ class XRHandPrimitiveModel {
 
 	}
 
+	/**
+	 * Updates the mesh based on the tracked XR joints data.
+	 */
 	updateMesh() {
 
 		const defaultRadius = 0.008;
@@ -98,5 +136,12 @@ class XRHandPrimitiveModel {
 	}
 
 }
+
+/**
+ * Constructor options of `XRHandPrimitiveModel`.
+ *
+ * @typedef {Object} XRHandPrimitiveModel~Options
+ * @property {('box'|'sphere')} [primitive] - The primitive type.
+ **/
 
 export { XRHandPrimitiveModel };

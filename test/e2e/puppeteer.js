@@ -1,372 +1,631 @@
 import puppeteer from 'puppeteer';
-import handler from 'serve-handler';
-import http from 'http';
-import pixelmatch from 'pixelmatch';
-import jimp from 'jimp';
-import fs from 'fs';
+import { Image } from './image.js';
+import * as fs from 'fs/promises';
+import { createServer } from '../../utils/server.js';
+
+const server = createServer();
+
+const exceptionList = [
+
+	// Take too long
+	'webgpu_cubemap_mix', 				// 2 min
+	'webgl_loader_texture_ultrahdr', 	// 1 min
+	'webgl_marchingcubes', 				// 1 min
+ 	'webgl_materials_cubemap_dynamic', 	// 1 min
+	'webgl_materials_displacementmap', 	// 1 min
+	'webgl_materials_envmaps_hdr', 		// 1 min
+	'webgpu_water', 					// 1 min
+
+	// Requires HTML-in-Canvas API
+	'webgl_materials_texture_html',
+	'webgpu_materials_texture_html',
+
+	// Black screen
+	'webgpu_postprocessing_ao',
+	'webgpu_postprocessing_dof',
+	'webgpu_postprocessing_ssgi',
+	'webgpu_postprocessing_ssgi_ballpool',
+	'webgpu_postprocessing_sss',
+	'webgpu_postprocessing_traa',
+	'webgpu_tsl_vfx_linkedparticles',
+	'webgpu_volume_lighting_traa',
+
+	// Timming issues?
+	'physics_rapier_instancing',
+	'webgl_shadowmap',
+	'webaudio_visualizer',
+	'webgpu_compute_audio',
+	'webgpu_compute_cloth',
+	'webgpu_compute_particles_fluid',
+	'webgpu_compute_rasterizer_ibl', // Rasterizer discrepancies
+	'webgpu_compute_sort_bitonic',
+	'webgpu_storage_buffer',
+	'webgpu_tsl_editor',
+	'webgpu_tsl_graph',
+	'webxr_vr_video',
+	'webgpu_tsl_transpiler',
+	'webgpu_rendertarget_2d-array_3d',
+	'webgpu_volume_fire',
+
+	// Need more time to render
+	'css3d_mixed',
+	'webgl_loader_3dtiles',
+	'webgl_loader_texture_lottie',
+	'webgl_morphtargets_face',
+	'webgl_shadowmap_progressive',
+	'webgpu_materials_matcap',
+	'webgpu_morphtargets_face',
+	'webgpu_shadowmap_progressive',
+	'webgpu_postprocessing_ssr_denoise',
+	'webgpu_renderer_pathtracer',
+	'webgpu_vxgi',
+	'webgpu_vxgi_sponza',
+
+	// Incremental light probe baking
+	'webgl_lightprobes_sponza',
+	'webgpu_generator_city', // Sub-pixel coverage of thin high-contrast geometry edges differs across rasterizers #33817
+	'webgpu_lightprobes_sponza',
+
+	// Video hangs the CI?
+	'css3d_youtube',
+	'webgpu_materials_video',
+	'webgl_video_kinect',
+	'webgl_video_panorama_equirectangular',
+
+	// Timeout
+	'webgl_test_memory2',
+
+	// Webcam
+	'webgl_materials_video_webcam',
+	'webgl_morphtargets_webcam'
+
+];
+
+/* Configuration */
 
 const port = 1234;
 const pixelThreshold = 0.1; // threshold error in one pixel
-const maxFailedPixels = 0.05; // total failed pixels
+const maxDifferentPixels = 0.1; // at most 0.1% different pixels
 
-const networkTimeout = 600;
-const networkTax = 2000; // additional timeout for resources size
-const pageSizeMinTax = 1.0; // in mb, when networkTax = 0
-const pageSizeMaxTax = 5.0; // in mb, when networkTax = networkTax
-const renderTimeout = 1200;
-const maxAttemptId = 3; // progresseve attempts
-const progressFunc = n => 1 + n;
+const idleTime = 2; // 2 seconds - for how long there should be no network requests
+const parseTime = 1; // 1 second per megabyte
+
+const networkTimeout = 5; // 5 minutes, set to 0 to disable
+const renderTimeout = 5; // 5 seconds, set to 0 to disable
+const numCIJobs = 5; // GitHub Actions run the script in 5 threads
 
 const width = 400;
 const height = 250;
 const viewScale = 2;
 const jpgQuality = 95;
 
-const exceptionList = [
+console.red = msg => console.log( `\x1b[31m${msg}\x1b[39m` );
+console.green = msg => console.log( `\x1b[32m${msg}\x1b[39m` );
+console.yellow = msg => console.log( `\x1b[33m${msg}\x1b[39m` );
 
-	'index',
-	'css3d_youtube', // video tag not deterministic enough
-	'webaudio_visualizer', // audio can't be analyzed without proper audio hook
-	'webgl_effects_ascii', // blink renders text differently in every platform
-	'webgl_loader_imagebitmap', // takes too long to load?
-	'webgl_loader_texture_lottie', // not sure why this fails
-	'webgl_loader_texture_pvrtc', // not supported in CI, useless
-	'webgl_materials_standard_nodes', // puppeteer does not support import maps yet
-	'webgl_morphtargets_face', // To investigate...
-	'webgl_postprocessing_crossfade', // fails for some misterious reason
-	'webgl_raymarching_reflect', // exception for Github Actions
-	'webgl_test_memory2', // gives fatal error in puppeteer
-	'webgl_tiled_forward', // exception for Github Actions
-	'webgl_video_kinect', // video tag not deterministic enough
-	'webgl_video_panorama_equirectangular', // video tag not deterministic enough?
-	'webgl_worker_offscreencanvas', // in a worker, not robust
-	// webxr
-	'webxr_ar_lighting',
-	// webgpu
-	'webgpu_compute',
-	'webgpu_cubemap_adjustments',
-	'webgpu_cubemap_mix',
-	'webgpu_depth_texture',
-	'webgpu_instance_mesh',
-	'webgpu_instance_uniform',
-	'webgpu_lights_custom',
-	'webgpu_lights_selective',
-	'webgpu_loader_gltf',
-	'webgpu_materials',
-	'webgpu_nodes_playground',
-	'webgpu_rtt',
-	'webgpu_sandbox',
-	'webgpu_skinning_instancing',
-	'webgpu_skinning_points',
-	'webgpu_skinning',
-	'webgpu_sprites'
-].concat( ( process.platform === 'win32' ) ? [
-
-	'webgl_effects_ascii' // windows fonts not supported
-
-] : [] );
-
-console.green = ( msg ) => console.log( `\x1b[32m${ msg }\x1b[37m` );
-console.red = ( msg ) => console.log( `\x1b[31m${ msg }\x1b[37m` );
-console.null = () => {};
-
+let browser;
 
 /* Launch server */
 
-const server = http.createServer( ( req, resp ) => handler( req, resp ) );
-server.listen( port, async () => await pup );
-server.on( 'SIGINT', () => process.exit( 1 ) );
+server.listen( port, main );
 
+process.on( 'SIGINT', async () => {
 
-/* Launch browser */
+	console.log( '\nInterrupted, cleaning up...' );
 
-const pup = puppeteer.launch( {
-	headless: ! process.env.VISIBLE,
-	args: [
-		'--use-gl=swiftshader',
-		'--no-sandbox',
-		'--enable-surface-synchronization'
-	]
-} ).then( async browser => {
+	if ( browser ) {
 
+		try {
+
+			await browser.close();
+
+		} catch ( e ) {}
+
+	}
+
+	server.close();
+	process.exit( 1 );
+
+} );
+
+async function main() {
+
+	/* Create output directory */
+
+	try {
+
+		await fs.rm( 'test/e2e/output-screenshots', { recursive: true, force: true } );
+
+	} catch ( e ) {}
+
+	try {
+
+		await fs.mkdir( 'test/e2e/output-screenshots' );
+
+	} catch ( e ) {}
+
+	/* Find files */
+
+	let isMakeScreenshot = false;
+	let isWebGPU = false;
+
+	let argvIndex = 2;
+
+	if ( process.argv[ argvIndex ] === '--webgpu' ) {
+
+		isWebGPU = true;
+		argvIndex ++;
+
+	}
+
+	if ( process.argv[ argvIndex ] === '--make' ) {
+
+		isMakeScreenshot = true;
+		argvIndex ++;
+
+	}
+
+	const exactList = process.argv.slice( argvIndex )
+		.map( f => f.replace( '.html', '' ) );
+
+	const isExactList = exactList.length !== 0;
+
+	let files = ( await fs.readdir( 'examples' ) )
+		.filter( s => s.slice( - 5 ) === '.html' && s !== 'index.html' )
+		.map( s => s.slice( 0, s.length - 5 ) )
+		.filter( f => isExactList ? exactList.includes( f ) : ! exceptionList.includes( f ) );
+
+	if ( isExactList ) {
+
+		for ( const file of exactList ) {
+
+			if ( ! files.includes( file ) ) {
+
+				console.log( `Warning! Unrecognised example name: ${ file }` );
+
+			}
+
+		}
+
+	}
+
+	if ( isWebGPU ) files = files.filter( f => f.includes( 'webgpu_' ) );
+
+	/* CI parallelism */
+
+	if ( 'CI' in process.env ) {
+
+		const CI = parseInt( process.env.CI );
+
+		files = files.slice(
+			Math.floor( CI * files.length / numCIJobs ),
+			Math.floor( ( CI + 1 ) * files.length / numCIJobs )
+		);
+
+	}
+
+	/* Launch browser */
+
+	const flags = [
+		'--hide-scrollbars',
+		'--enable-unsafe-webgpu',
+		'--enable-features=Vulkan',
+		'--disable-vulkan-surface',
+		'--ignore-gpu-blocklist',
+		'--disable-gpu-driver-bug-workarounds',
+		'--disable-gpu-watchdog',
+		'--no-sandbox'
+	];
+
+	const viewport = { width: width * viewScale, height: height * viewScale };
+
+	const launchOptions = {
+		headless: ( 'CI' in process.env || process.env.VISIBLE ) ? false : 'new',
+		env: { ...process.env, VK_DRIVER_FILES: '/usr/share/vulkan/icd.d/lvp_icd.x86_64.json' },
+		args: flags,
+		defaultViewport: viewport,
+		handleSIGINT: false,
+		protocolTimeout: 0,
+		userDataDir: './.puppeteer_profile'
+	};
+
+	/* Prepare injections */
+
+	const cleanPage = await fs.readFile( 'test/e2e/clean-page.js', 'utf8' );
+	const injection = await fs.readFile( 'test/e2e/deterministic-injection.js', 'utf8' );
+
+	// Workers do not receive evaluateOnNewDocument scripts.
+	const buildInjection = ( code ) => injection + '\n' + code
+		.replace( /Math\.random\(\) \* 0xffffffff/g, 'Math._random() * 0xffffffff' )
+		// Disables WebGPU timestamp queries to prevent Inspector/Profiler from crashing in E2E software mode
+		.replace( /this\.trackTimestamp\s*=\s*\(\s*parameters\.trackTimestamp\s*===\s*true\s*\);/g, 'Object.defineProperty(this, \'trackTimestamp\', { get: () => false, set: () => {} });' );
+
+	const builds = {
+		'three.core.js': buildInjection( await fs.readFile( 'build/three.core.js', 'utf8' ) ),
+		'three.module.js': buildInjection( await fs.readFile( 'build/three.module.js', 'utf8' ) ),
+		'three.webgpu.js': buildInjection( await fs.readFile( 'build/three.webgpu.js', 'utf8' ) )
+	};
 
 	/* Prepare page */
 
-	const page = ( await browser.pages() )[ 0 ];
-	await page.setViewport( { width: width * viewScale, height: height * viewScale } );
+	const errorMessagesCache = [];
 
-	const cleanPage = fs.readFileSync( 'test/e2e/clean-page.js', 'utf8' );
-	const injection = fs.readFileSync( 'test/e2e/deterministic-injection.js', 'utf8' );
+	const launchPage = async () => {
+
+		browser = await puppeteer.launch( launchOptions );
+		const page = await browser.newPage();
+		await preparePage( page, injection, builds, errorMessagesCache );
+		return page;
+
+	};
+
+	const ctx = {
+		page: await launchPage(),
+		async restart() {
+
+			// SIGKILL the whole Chrome process tree; browser.close() can hang after a wedged GPU process
+			const proc = browser.process();
+			if ( proc ) {
+
+				proc.kill( 'SIGKILL' );
+				await new Promise( resolve => proc.once( 'exit', resolve ) );
+
+			}
+
+			errorMessagesCache.length = 0;
+			ctx.page = await launchPage();
+
+		}
+	};
+
+	/* Loop for each file */
+
+	const failedScreenshots = [];
+
+	for ( const file of files ) {
+
+		await checkFile( ctx, failedScreenshots, cleanPage, isMakeScreenshot, file );
+
+	}
+
+	/* Finish */
+
+	failedScreenshots.sort();
+	const list = failedScreenshots.join( ' ' );
+
+	if ( isMakeScreenshot && failedScreenshots.length ) {
+
+		console.red( 'List of failed screenshots: ' + list );
+		console.red( `If you are sure that everything is correct, try to run "npm run make-screenshot ${ list }". If this does not help, add remaining screenshots to the exception list.` );
+		console.red( `${ failedScreenshots.length } from ${ files.length } screenshots have not generated successfully.` );
+
+	} else if ( isMakeScreenshot && ! failedScreenshots.length ) {
+
+		console.green( `${ files.length } screenshots successfully generated.` );
+
+	} else if ( failedScreenshots.length ) {
+
+		console.red( 'List of failed screenshots: ' + list );
+		console.red( `If you are sure that everything is correct, try to run "npm run make-screenshot ${ list }". If this does not help, add remaining screenshots to the exception list.` );
+		console.red( `TEST FAILED! ${ failedScreenshots.length } from ${ files.length } screenshots have not rendered correctly.` );
+
+	} else {
+
+		console.green( `TEST PASSED! ${ files.length } screenshots rendered correctly.` );
+
+	}
+
+	setTimeout( close, 300, failedScreenshots.length );
+
+}
+
+async function preparePage( page, injection, builds, errorMessages ) {
+
+	// Ignore ambient input from the browser window; scripted DOM clicks still work.
+	const client = await page.createCDPSession();
+	await client.send( 'Input.setIgnoreInputEvents', { ignore: true } );
+
 	await page.evaluateOnNewDocument( injection );
-
-	const threeJsBuild = fs.readFileSync( 'build/three.module.js', 'utf8' )
-		.replace( /Math\.random\(\) \* 0xffffffff/g, 'Math._random() * 0xffffffff' );
 	await page.setRequestInterception( true );
 
-	page.on( 'console', msg => ( msg.text().slice( 0, 8 ) === 'Warning.' ) ? console.null( msg.text() ) : {} );
-	page.on( 'request', async ( request ) => {
+	page.on( 'pageerror', error => {
 
-		if ( request.url() === 'http://localhost:1234/build/three.module.js' ) {
+		if ( page.file !== undefined ) page.error = `${ page.file }: ${ error.message }`;
 
-			await request.respond( {
-				status: 200,
-				contentType: 'application/javascript; charset=utf-8',
-				body: threeJsBuild
-			} );
+	} );
+
+	page.on( 'console', async msg => {
+
+		const type = msg.type();
+
+		const file = page.file;
+
+		if ( file === undefined ) {
+
+			return;
+
+		}
+
+		const args = await Promise.all( msg.args().map( async arg => {
+
+			try {
+
+				return await arg.executionContext().evaluate( arg => arg instanceof Error ? arg.message : arg, arg );
+
+			} catch ( e ) {
+
+				// Execution context might have been already destroyed
+
+				return arg;
+
+			}
+
+		} ) );
+
+		let text = args.join( ' ' ); // https://github.com/puppeteer/puppeteer/issues/3397#issuecomment-434970058
+
+		text = text.trim();
+		if ( text === '' ) return;
+		if ( text.includes( 'Timestamp tracking is disabled' ) ) return;
+
+		text = file + ': ' + text.replace( /\[\.WebGL-(.+?)\] /g, '' );
+
+		if ( text === `${ file }: JSHandle@error` ) {
+
+			text = `${ file }: Unknown error`;
+
+		}
+
+		if ( errorMessages.includes( text ) ) {
+
+			return;
+
+		}
+
+		errorMessages.push( text );
+
+		if ( type === 'warning' ) {
+
+			console.yellow( text );
+
+		} else if ( type === 'error' ) {
+
+			page.error = text;
 
 		} else {
 
-			await request.continue();
+			console.log( `[Browser] ${text}` );
 
 		}
 
 	} );
+
 	page.on( 'response', async ( response ) => {
 
 		try {
 
-			await response.buffer().then( buffer => pageSize += buffer.length );
+			if ( response.status === 200 ) {
 
-		} catch ( e ) {
+				await response.buffer().then( buffer => page.pageSize += buffer.length );
 
-			console.null( `Warning. Wrong request. \n${ e }` );
+			}
 
-		}
+		} catch ( e ) {}
 
 	} );
 
+	page.on( 'request', async ( request ) => {
 
-	/* Find files */
+		const url = request.url();
 
-	const isMakeScreenshot = process.argv[ 2 ] == '--make';
-	const isExactList = process.argv.length > ( 2 + isMakeScreenshot );
+		for ( const build in builds ) {
 
-	const exactList = process.argv.slice( isMakeScreenshot ? 3 : 2 )
-		.map( f => f.replace( '.html', '' ) );
+			if ( url === `http://localhost:${ port }/build/${ build }` ) {
 
-	const files = fs.readdirSync( './examples' )
-		.filter( s => s.slice( - 5 ) === '.html' )
-		.map( s => s.slice( 0, s.length - 5 ) )
-		.filter( f => isExactList ? exactList.includes( f ) : ! exceptionList.includes( f ) );
-
-
-	/* Loop for each file, with CI parallelism */
-
-	let pageSize, file, attemptProgress;
-	const failedScreenshots = [];
-
-	let beginId = 0;
-	let endId = files.length;
-
-	if ( 'CI' in process.env ) {
-
-		const jobs = 8;
-
-		beginId = Math.floor( parseInt( process.env.CI.slice( 0, 1 ) ) * files.length / jobs );
-		endId = Math.floor( ( parseInt( process.env.CI.slice( - 1 ) ) + 1 ) * files.length / jobs );
-
-	}
-
-	for ( let id = beginId; id < endId; ++ id ) {
-
-		/* At least 3 attempts before fail */
-
-		let attemptId = isMakeScreenshot ? 1.5 : 0;
-
-		while ( attemptId < maxAttemptId ) {
-
-			/* Load target page */
-
-			file = files[ id ];
-			attemptProgress = progressFunc( attemptId );
-			pageSize = 0;
-
-			try {
-
-				await page.goto( `http://localhost:${ port }/examples/${ file }.html`, {
-					waitUntil: 'networkidle2',
-					timeout: networkTimeout * attemptProgress
+				await request.respond( {
+					status: 200,
+					contentType: 'application/javascript; charset=utf-8',
+					body: builds[ build ]
 				} );
 
-			} catch {
-
-				console.null( 'Warning. Network timeout exceeded...' );
-
-			}
-
-			try {
-
-				/* Render page */
-
-				await page.evaluate( cleanPage );
-
-				await page.evaluate( async ( pageSize, pageSizeMinTax, pageSizeMaxTax, networkTax, renderTimeout, attemptProgress ) => {
-
-
-					/* Resource timeout */
-
-					const resourcesSize = Math.min( 1, ( pageSize / 1024 / 1024 - pageSizeMinTax ) / pageSizeMaxTax );
-					await new Promise( resolve => setTimeout( resolve, networkTax * resourcesSize * attemptProgress ) );
-
-
-					/* Resolve render promise */
-
-					window._renderStarted = true;
-
-					await new Promise( function ( resolve ) {
-
-						performance._now = performance._now || performance.now;
-
-						const renderStart = performance._now();
-
-						const waitingLoop = setInterval( function () {
-
-							const renderEcceded = ( performance._now() - renderStart > renderTimeout * attemptProgress );
-							if ( window._renderFinished || renderEcceded ) {
-
-								if ( renderEcceded ) {
-
-									console.log( 'Warning. Render timeout exceeded...' );
-
-								}
-
-								clearInterval( waitingLoop );
-								resolve();
-
-							}
-
-						}, 0 );
-
-					} );
-
-				}, pageSize, pageSizeMinTax, pageSizeMaxTax, networkTax, renderTimeout, attemptProgress );
-
-			} catch ( e ) {
-
-				if ( ++ attemptId === maxAttemptId ) {
-
-					console.red( `Something completely wrong. 'Network timeout' is small for your machine. file: ${ file } \n${ e }` );
-					failedScreenshots.push( file );
-					continue;
-
-				} else {
-
-					console.log( 'Another attempt..' );
-					await new Promise( resolve => setTimeout( resolve, networkTimeout * attemptProgress ) );
-
-				}
-
-			}
-
-
-			if ( isMakeScreenshot ) {
-
-
-				/* Make screenshots */
-
-				attemptId = maxAttemptId;
-				( await jimp.read( await page.screenshot() ) )
-					.scale( 1 / viewScale ).quality( jpgQuality )
-					.write( `./examples/screenshots/${ file }.jpg` );
-
-				console.green( `file: ${ file } generated` );
-
-
-			} else if ( fs.existsSync( `./examples/screenshots/${ file }.jpg` ) ) {
-
-
-				/* Diff screenshots */
-
-				const actual = ( await jimp.read( await page.screenshot() ) ).scale( 1 / viewScale ).quality( jpgQuality ).bitmap;
-				const expected = ( await jimp.read( fs.readFileSync( `./examples/screenshots/${ file }.jpg` ) ) ).bitmap;
-				const diff = actual;
-
-				let numFailedPixels;
-
-				try {
-
-					numFailedPixels = pixelmatch( expected.data, actual.data, diff.data, actual.width, actual.height, {
-						threshold: pixelThreshold,
-						alpha: 0.2,
-						diffMask: process.env.FORCE_COLOR === '0',
-						diffColor: process.env.FORCE_COLOR === '0' ? [ 255, 255, 255 ] : [ 255, 0, 0 ]
-					} );
-
-				} catch {
-
-					attemptId = maxAttemptId;
-					console.red( `Something completely wrong. Image sizes does not match in file: ${ file }` );
-					failedScreenshots.push( file );
-					continue;
-
-				}
-
-				numFailedPixels /= actual.width * actual.height;
-
-				/* Print results */
-
-				if ( numFailedPixels < maxFailedPixels ) {
-
-					attemptId = maxAttemptId;
-					console.green( `diff: ${ numFailedPixels.toFixed( 3 ) }, file: ${ file }` );
-
-				} else {
-
-					if ( ++ attemptId === maxAttemptId ) {
-
-						console.red( `ERROR! Diff wrong in ${ numFailedPixels.toFixed( 3 ) } of pixels in file: ${ file }` );
-						failedScreenshots.push( file );
-						continue;
-
-					} else {
-
-						console.log( 'Another attempt...' );
-
-					}
-
-				}
-
-			} else {
-
-				attemptId = maxAttemptId;
-				console.log( `Warning! Screenshot not exists: ${ file }` );
-				continue;
+				return;
 
 			}
 
 		}
 
-	}
+		await request.continue();
 
+	} );
 
-	/* Finish */
+}
 
-	if ( failedScreenshots.length ) {
+async function checkFile( ctx, failedScreenshots, cleanPage, isMakeScreenshot, file ) {
 
-		if ( failedScreenshots.length > 1 ) {
+	const page = ctx.page;
+	const pageStart = performance.now();
 
-			console.red( 'List of failed screenshots: ' + failedScreenshots.join( ' ' ) );
+	try {
+
+		page.file = file;
+		page.pageSize = 0;
+		page.error = undefined;
+
+		/* Load target page */
+
+		try {
+
+			await page.goto( `http://localhost:${ port }/examples/${ file }.html`, {
+				waitUntil: 'networkidle0',
+				timeout: networkTimeout * 60000
+			} );
+
+		} catch ( e ) {
+
+			throw new Error( `Error happened while loading file ${ file }: ${ e }` );
+
+		}
+
+		try {
+
+			/* Render page */
+
+			await page.evaluate( cleanPage );
+
+			await page.waitForNetworkIdle( {
+				timeout: networkTimeout * 60000,
+				idleTime: idleTime * 1000
+			} );
+
+			await page.waitForFunction( () => window._videosReady(), {
+				polling: 100,
+				timeout: renderTimeout * 1000
+			} );
+
+			await page.evaluate( async ( renderTimeout, parseTime ) => {
+
+				await new Promise( resolve => setTimeout( resolve, parseTime ) );
+
+				/* Resolve render promise */
+
+				window._renderStarted = true;
+
+				await new Promise( function ( resolve, reject ) {
+
+					const renderStart = performance._now();
+
+					const waitingLoop = setInterval( function () {
+
+						const renderTimeoutExceeded = ( renderTimeout > 0 ) && ( performance._now() - renderStart > 1000 * renderTimeout );
+
+						if ( renderTimeoutExceeded ) {
+
+							clearInterval( waitingLoop );
+							reject( 'Render timeout exceeded' );
+
+						} else if ( window._renderFinished ) {
+
+							clearInterval( waitingLoop );
+							resolve();
+
+						}
+
+					}, 100 );
+
+				} );
+
+			}, renderTimeout, page.pageSize / 1024 / 1024 * parseTime * 1000 );
+
+		} catch ( e ) {
+
+			if ( e !== 'Render timeout exceeded' ) {
+
+				throw new Error( `Error happened while rendering file ${ file }: ${ e }` );
+
+			} /* else { // This can mean that the example doesn't use requestAnimationFrame loop
+
+				console.yellow( `Render timeout exceeded in file ${ file }` );
+
+			} */ // TODO: fix this
+
+		}
+
+		const pageElapsed = ( performance.now() - pageStart ) / 1000;
+
+		const screenshot = ( await Image.read( await page.screenshot() ) ).scale( 1 / viewScale );
+
+		if ( page.error !== undefined ) throw new Error( page.error );
+
+		if ( isMakeScreenshot ) {
+
+			/* Make screenshots */
+
+			await screenshot.write( `examples/screenshots/${ file }.jpg`, jpgQuality );
+
+			console.green( `Screenshot generated for file ${ file }` );
 
 		} else {
 
-			console.red( `If you sure that all is right, try to run \`npm run make-screenshot ${ failedScreenshots[ 0 ] }\`` );
+			/* Diff screenshots */
+
+			let expected;
+
+			try {
+
+				expected = await Image.read( `examples/screenshots/${ file }.jpg` );
+
+			} catch ( e ) {
+
+				await screenshot.write( `test/e2e/output-screenshots/${ file }-actual.jpg`, jpgQuality );
+				throw new Error( `Screenshot does not exist: ${ file }` );
+
+			}
+
+			const actual = screenshot.bitmap;
+			const diff = screenshot.clone();
+
+			let numDifferentPixels;
+
+			try {
+
+				numDifferentPixels = expected.compare( screenshot, diff, pixelThreshold );
+
+			} catch ( e ) {
+
+				await screenshot.write( `test/e2e/output-screenshots/${ file }-actual.jpg`, jpgQuality );
+				await expected.write( `test/e2e/output-screenshots/${ file }-expected.jpg`, jpgQuality );
+				throw new Error( `Image sizes do not match in file: ${ file }` );
+
+			}
+
+			/* Print results */
+
+			const differentPixels = numDifferentPixels / ( actual.width * actual.height ) * 100;
+
+			if ( differentPixels < maxDifferentPixels ) {
+
+				console.green( `Diff ${ differentPixels.toFixed( 1 ) }% in file: ${ file } (${ pageElapsed.toFixed( 1 ) }s)` );
+
+			} else {
+
+				await screenshot.write( `test/e2e/output-screenshots/${ file }-actual.jpg`, jpgQuality );
+				await expected.write( `test/e2e/output-screenshots/${ file }-expected.jpg`, jpgQuality );
+				await diff.write( `test/e2e/output-screenshots/${ file }-diff.jpg`, jpgQuality );
+				throw new Error( `Diff wrong in ${ differentPixels.toFixed( 1 ) }% of pixels in file: ${ file } (${ pageElapsed.toFixed( 1 ) }s)` );
+
+			}
 
 		}
 
-		console.red( `TEST FAILED! ${ failedScreenshots.length } from ${ endId - beginId } screenshots not pass.` );
+	} catch ( e ) {
 
-	} else if ( ! isMakeScreenshot ) {
+		if ( String( e ).includes( 'WebGPU Device Lost' ) ) {
 
-		console.green( `TEST PASSED! ${ endId - beginId } screenshots correctly rendered.` );
+			console.yellow( `${ e }` );
+			console.yellow( 'Restarting browser...' );
+			await ctx.restart();
+
+		} else {
+
+			console.red( e );
+			failedScreenshots.push( file );
+
+		}
+
+	} finally {
+
+		page.file = undefined; // release lock
 
 	}
 
-	setTimeout( () => {
+}
 
-		server.close();
-		browser.close();
-		process.exit( failedScreenshots.length );
+function close( exitCode = 1 ) {
 
-	}, 300 );
+	console.log( 'Closing...' );
 
-} );
+	browser.close();
+	server.close();
+	process.exit( exitCode );
+
+}

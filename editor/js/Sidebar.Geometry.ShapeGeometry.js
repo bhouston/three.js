@@ -7,6 +7,7 @@ import { SetGeometryCommand } from './commands/SetGeometryCommand.js';
 function GeometryParametersPanel( editor, object ) {
 
 	const strings = editor.strings;
+	const signals = editor.signals;
 
 	const container = new UIDiv();
 
@@ -18,14 +19,34 @@ function GeometryParametersPanel( editor, object ) {
 	const curveSegmentsRow = new UIRow();
 	const curveSegments = new UIInteger( parameters.curveSegments || 12 ).onChange( changeShape ).setRange( 1, Infinity );
 
-	curveSegmentsRow.add( new UIText( strings.getKey( 'sidebar/geometry/shape_geometry/curveSegments' ) ).setWidth( '90px' ) );
+	curveSegmentsRow.add( new UIText( strings.getKey( 'sidebar/geometry/shape_geometry/curveSegments' ) ).setClass( 'Label' ) );
 	curveSegmentsRow.add( curveSegments );
 
 	container.add( curveSegmentsRow );
 
 	// to extrude
-	const button = new UIButton( strings.getKey( 'sidebar/geometry/shape_geometry/extrude' ) ).onClick( toExtrude ).setWidth( '90px' ).setMarginLeft( '90px' );
+	const button = new UIButton( strings.getKey( 'sidebar/geometry/shape_geometry/extrude' ) ).onClick( toExtrude ).setClass( 'Label' ).setMarginLeft( '120px' );
 	container.add( button );
+
+	//
+
+	function refreshUI() {
+
+		const parameters = object.geometry.parameters;
+
+		curveSegments.setValue( parameters.curveSegments );
+
+	}
+
+	signals.geometryChanged.add( function ( mesh ) {
+
+		if ( mesh === object ) {
+
+			refreshUI();
+
+		}
+
+	} );
 
 	//
 

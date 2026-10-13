@@ -1,26 +1,29 @@
 import { Command } from '../Command.js';
 import { ObjectLoader } from 'three';
 
-/**
- * @param editor Editor
- * @param object THREE.Object3D
- * @param mapName string
- * @param newMap THREE.Texture
- * @constructor
- */
 class SetMaterialMapCommand extends Command {
 
-	constructor( editor, object, mapName, newMap, materialSlot ) {
+	/**
+	 * @param {Editor} editor
+	 * @param {THREE.Object3D|null} [object=null]
+	 * @param {string} [mapName='']
+	 * @param {THREE.Texture|null} [newMap=null]
+	 * @param {number} [materialSlot=-1]
+	 * @constructor
+	 */
+	constructor( editor, object = null, mapName = '', newMap = null, materialSlot = - 1 ) {
 
 		super( editor );
 
 		this.type = 'SetMaterialMapCommand';
-		this.name = `Set Material.${mapName}`;
+		this.name = editor.strings.getKey( 'command/SetMaterialMap' ) + ': ' + mapName;
 
 		this.object = object;
-		this.material = this.editor.getObjectMaterial( object, materialSlot );
+		this.materialSlot = materialSlot;
 
-		this.oldMap = ( object !== undefined ) ? this.material[ mapName ] : undefined;
+		const material = ( object !== null ) ? editor.getObjectMaterial( object, materialSlot ) : null;
+
+		this.oldMap = ( object !== null ) ? material[ mapName ] : undefined;
 		this.newMap = newMap;
 
 		this.mapName = mapName;
@@ -31,19 +34,23 @@ class SetMaterialMapCommand extends Command {
 
 		if ( this.oldMap !== null && this.oldMap !== undefined ) this.oldMap.dispose();
 
-		this.material[ this.mapName ] = this.newMap;
-		this.material.needsUpdate = true;
+		const material = this.editor.getObjectMaterial( this.object, this.materialSlot );
 
-		this.editor.signals.materialChanged.dispatch( this.material );
+		material[ this.mapName ] = this.newMap;
+		material.needsUpdate = true;
+
+		this.editor.signals.materialChanged.dispatch( this.object, this.materialSlot );
 
 	}
 
 	undo() {
 
-		this.material[ this.mapName ] = this.oldMap;
-		this.material.needsUpdate = true;
+		const material = this.editor.getObjectMaterial( this.object, this.materialSlot );
 
-		this.editor.signals.materialChanged.dispatch( this.material );
+		material[ this.mapName ] = this.oldMap;
+		material.needsUpdate = true;
+
+		this.editor.signals.materialChanged.dispatch( this.object, this.materialSlot );
 
 	}
 
@@ -55,6 +62,7 @@ class SetMaterialMapCommand extends Command {
 		output.mapName = this.mapName;
 		output.newMap = serializeMap( this.newMap );
 		output.oldMap = serializeMap( this.oldMap );
+		output.materialSlot = this.materialSlot;
 
 		return output;
 
@@ -110,6 +118,7 @@ class SetMaterialMapCommand extends Command {
 		this.mapName = json.mapName;
 		this.oldMap = parseTexture( json.oldMap );
 		this.newMap = parseTexture( json.newMap );
+		this.materialSlot = json.materialSlot;
 
 		function parseTexture( json ) {
 

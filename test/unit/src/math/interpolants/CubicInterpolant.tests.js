@@ -1,6 +1,6 @@
-/* global QUnit */
+import { CubicInterpolant } from '../../../../../src/math/interpolants/CubicInterpolant.js';
 
-// import { CubicInterpolant } from '../../../../../src/math/interpolants/CubicInterpolant.js';
+import { Interpolant } from '../../../../../src/math/Interpolant.js';
 
 export default QUnit.module( 'Maths', () => {
 
@@ -9,18 +9,26 @@ export default QUnit.module( 'Maths', () => {
 		QUnit.module( 'CubicInterpolant', () => {
 
 			// INHERITANCE
-			QUnit.todo( 'Extending', ( assert ) => {
+			QUnit.test( 'Extending', ( assert ) => {
 
-				assert.ok( false, 'everything\'s gonna be alright' );
+				const object = new CubicInterpolant( null, [ 1, 11, 2, 22, 3, 33 ], 2, [] );
+				assert.strictEqual(
+					object instanceof Interpolant, true,
+					'CubicInterpolant extends from Interpolant'
+				);
 
 			} );
 
 			// INSTANCING
-			QUnit.todo( 'Instancing', ( assert ) => {
+			QUnit.test( 'Instancing', ( assert ) => {
 
-				assert.ok( false, 'everything\'s gonna be alright' );
+				// parameterPositions, sampleValues, sampleSize, resultBuffer
+				const object = new CubicInterpolant( null, [ 1, 11, 2, 22, 3, 33 ], 2, [] );
+				assert.ok( object, 'Can instantiate a CubicInterpolant.' );
 
 			} );
+
+			// PRIVATE - TEMPLATE METHODS
 
 		} );
 

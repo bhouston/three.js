@@ -1,10 +1,10 @@
-/* global QUnit */
-
 import { AnimationMixer } from '../../../../src/animation/AnimationMixer.js';
+
+import { EventDispatcher } from '../../../../src/core/EventDispatcher.js';
 import { AnimationClip } from '../../../../src/animation/AnimationClip.js';
 import { VectorKeyframeTrack } from '../../../../src/animation/tracks/VectorKeyframeTrack.js';
 import { Object3D } from '../../../../src/core/Object3D.js';
-import { zero3, one3, two3 } from '../math/Constants.tests.js';
+import { zero3, one3, two3 } from '../../utils/math-constants.js';
 
 function getClips( pos1, pos2, scale1, scale2, dur ) {
 
@@ -25,31 +25,25 @@ export default QUnit.module( 'Animation', () => {
 	QUnit.module( 'AnimationMixer', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new AnimationMixer();
+			assert.strictEqual(
+				object instanceof EventDispatcher, true,
+				'AnimationMixer extends from EventDispatcher'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'clipAction', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new AnimationMixer();
+			assert.ok( object, 'Can instantiate a AnimationMixer.' );
 
 		} );
 
-		QUnit.todo( 'existingAction', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
+		// PUBLIC
 
 		QUnit.test( 'stopAllAction', ( assert ) => {
 
@@ -83,35 +77,11 @@ export default QUnit.module( 'Animation', () => {
 
 		} );
 
-		QUnit.todo( 'update', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
 		QUnit.test( 'getRoot', ( assert ) => {
 
 			const obj = new Object3D();
 			const animMixer = new AnimationMixer( obj );
 			assert.strictEqual( obj, animMixer.getRoot(), 'Get original root object' );
-
-		} );
-
-		QUnit.todo( 'uncacheClip', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'uncacheRoot', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'uncacheAction', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
 
 		} );
 

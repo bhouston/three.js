@@ -8,36 +8,64 @@ import {
 } from 'three';
 
 /**
- * Based on "A Practical Analytic Model for Daylight"
- * aka The Preetham Model, the de facto standard analytic skydome model
- * https://www.researchgate.net/publication/220720443_A_Practical_Analytic_Model_for_Daylight
+ * Represents a skydome for scene backgrounds. Based on [A Practical Analytic Model for Daylight](https://www.researchgate.net/publication/220720443_A_Practical_Analytic_Model_for_Daylight)
+ * aka The Preetham Model, the de facto standard for analytical skydomes.
  *
- * First implemented by Simon Wallner
- * http://simonwallner.at/project/atmospheric-scattering/
+ * Note that this class can only be used with {@link WebGLRenderer}.
+ * When using {@link WebGPURenderer}, use {@link SkyMesh}.
  *
- * Improved by Martin Upitis
- * http://blenderartists.org/forum/showthread.php?245954-preethams-sky-impementation-HDR
+ * More references:
  *
- * Three.js integration by zz85 http://twitter.com/blurspline
-*/
-
+ * - {@link http://simonwallner.at/project/atmospheric-scattering/}
+ * - {@link http://blenderartists.org/forum/showthread.php?245954-preethams-sky-impementation-HDR}
+ *
+ *
+ * ```js
+ * const sky = new Sky();
+ * sky.scale.setScalar( 10000 );
+ * scene.add( sky );
+ * ```
+ *
+ * It can be useful to hide the sun disc when generating an environment map to avoid artifacts
+ *
+ * ```js
+ * // disable before rendering environment map
+ * sky.material.uniforms.showSunDisc.value = false;
+ * // ...
+ * // re-enable before scene sky box rendering
+ * sky.material.uniforms.showSunDisc.value = true;
+ * ```
+ *
+ * @augments Mesh
+ * @three_import import { Sky } from 'three/addons/objects/Sky.js';
+ */
 class Sky extends Mesh {
 
+	/**
+	 * Constructs a new skydome.
+	 */
 	constructor() {
 
 		const shader = Sky.SkyShader;
 
 		const material = new ShaderMaterial( {
-			name: 'SkyShader',
-			fragmentShader: shader.fragmentShader,
-			vertexShader: shader.vertexShader,
+			name: shader.name,
 			uniforms: UniformsUtils.clone( shader.uniforms ),
+			vertexShader: shader.vertexShader,
+			fragmentShader: shader.fragmentShader,
 			side: BackSide,
 			depthWrite: false
 		} );
 
 		super( new BoxGeometry( 1, 1, 1 ), material );
 
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
 		this.isSky = true;
 
 	}
@@ -46,13 +74,21 @@ class Sky extends Mesh {
 
 Sky.SkyShader = {
 
+	name: 'SkyShader',
+
 	uniforms: {
 		'turbidity': { value: 2 },
 		'rayleigh': { value: 1 },
 		'mieCoefficient': { value: 0.005 },
 		'mieDirectionalG': { value: 0.8 },
 		'sunPosition': { value: new Vector3() },
-		'up': { value: new Vector3( 0, 1, 0 ) }
+		'cloudScale': { value: 0.0002 },
+		'cloudSpeed': { value: 0.00002 },
+		'cloudCoverage': { value: 0.4 },
+		'cloudDensity': { value: 0.4 },
+		'cloudElevation': { value: 0.5 },
+		'showSunDisc': { value: 1 },
+		'time': { value: 0.0 }
 	},
 
 	vertexShader: /* glsl */`
@@ -60,7 +96,6 @@ Sky.SkyShader = {
 		uniform float rayleigh;
 		uniform float turbidity;
 		uniform float mieCoefficient;
-		uniform vec3 up;
 
 		varying vec3 vWorldPosition;
 		varying vec3 vSunDirection;
@@ -75,7 +110,7 @@ Sky.SkyShader = {
 
 		// wavelength of used primaries, according to preetham
 		const vec3 lambda = vec3( 680E-9, 550E-9, 450E-9 );
-		// this pre-calcuation replaces older TotalRayleigh(vec3 lambda) function:
+		// this pre-calculation replaces older TotalRayleigh(vec3 lambda) function:
 		// (8.0 * pow(pi, 3.0) * pow(pow(n, 2.0) - 1.0, 2.0) * (6.0 + 3.0 * pn)) / (3.0 * N * pow(lambda, vec3(4.0)) * (6.0 - 7.0 * pn))
 		const vec3 totalRayleigh = vec3( 5.804542996261093E-6, 1.3562911419845635E-5, 3.0265902468824876E-5 );
 
@@ -112,13 +147,13 @@ Sky.SkyShader = {
 
 			vSunDirection = normalize( sunPosition );
 
-			vSunE = sunIntensity( dot( vSunDirection, up ) );
+			vSunE = sunIntensity( vSunDirection.y );
 
 			vSunfade = 1.0 - clamp( 1.0 - exp( ( sunPosition.y / 450000.0 ) ), 0.0, 1.0 );
 
 			float rayleighCoefficient = rayleigh - ( 1.0 * ( 1.0 - vSunfade ) );
 
-			// extinction (absorbtion + out scattering)
+			// extinction (absorption + out scattering)
 			// rayleigh coefficients
 			vBetaR = totalRayleigh * rayleighCoefficient;
 
@@ -130,15 +165,49 @@ Sky.SkyShader = {
 	fragmentShader: /* glsl */`
 		varying vec3 vWorldPosition;
 		varying vec3 vSunDirection;
-		varying float vSunfade;
 		varying vec3 vBetaR;
 		varying vec3 vBetaM;
 		varying float vSunE;
 
 		uniform float mieDirectionalG;
-		uniform vec3 up;
+		uniform float cloudScale;
+		uniform float cloudSpeed;
+		uniform float cloudCoverage;
+		uniform float cloudDensity;
+		uniform float cloudElevation;
+		uniform float showSunDisc;
+		uniform float time;
 
-		const vec3 cameraPos = vec3( 0.0, 0.0, 0.0 );
+		// gradient at a lattice corner; sinless hash so every GPU produces the same clouds
+		vec2 gradient( vec2 i ) {
+			vec3 p = fract( i.xyx * vec3( 0.1031, 0.1030, 0.0973 ) );
+			p += dot( p, p.yzx + 33.33 );
+			return fract( ( p.xx + p.yz ) * p.zy ) * 2.0 - 1.0;
+		}
+
+		// 2D gradient noise: isotropic lobes like Perlin at value-noise cost
+		float noise( vec2 p ) {
+			vec2 i = floor( p );
+			vec2 f = fract( p );
+			vec2 u = f * f * f * ( f * ( f * 6.0 - 15.0 ) + 10.0 ); // quintic fade
+			float a = dot( gradient( i ), f );
+			float b = dot( gradient( i + vec2( 1.0, 0.0 ) ), f - vec2( 1.0, 0.0 ) );
+			float c = dot( gradient( i + vec2( 0.0, 1.0 ) ), f - vec2( 0.0, 1.0 ) );
+			float d = dot( gradient( i + vec2( 1.0, 1.0 ) ), f - vec2( 1.0, 1.0 ) );
+			return mix( mix( a, b, u.x ), mix( c, d, u.x ), u.y ) * 1.6; // ~[-1,1]
+		}
+
+		// fbm; per-octave drift makes clouds billow instead of scrolling as a rigid stamp
+		float fbm( vec2 p, float drift ) {
+			float result = 0.0;
+			float amplitude = 1.0;
+			for ( int i = 0; i < 4; i ++ ) {
+				result += amplitude * noise( p );
+				amplitude *= 0.5;
+				p = p * 2.0 + drift;
+			}
+			return result;
+		}
 
 		// constants for atmospheric scattering
 		const float pi = 3.141592653589793238462643383279502884197169;
@@ -169,11 +238,11 @@ Sky.SkyShader = {
 
 		void main() {
 
-			vec3 direction = normalize( vWorldPosition - cameraPos );
+			vec3 direction = normalize( vWorldPosition - cameraPosition );
 
 			// optical length
 			// cutoff angle at 90 to avoid singularity in next formula.
-			float zenithAngle = acos( max( 0.0, dot( up, direction ) ) );
+			float zenithAngle = acos( max( 0.0, direction.y ) );
 			float inverse = 1.0 / ( cos( zenithAngle ) + 0.15 * pow( 93.885 - ( ( zenithAngle * 180.0 ) / pi ), -1.253 ) );
 			float sR = rayleighZenithLength * inverse;
 			float sM = mieZenithLength * inverse;
@@ -191,7 +260,7 @@ Sky.SkyShader = {
 			vec3 betaMTheta = vBetaM * mPhase;
 
 			vec3 Lin = pow( vSunE * ( ( betaRTheta + betaMTheta ) / ( vBetaR + vBetaM ) ) * ( 1.0 - Fex ), vec3( 1.5 ) );
-			Lin *= mix( vec3( 1.0 ), pow( vSunE * ( ( betaRTheta + betaMTheta ) / ( vBetaR + vBetaM ) ) * Fex, vec3( 1.0 / 2.0 ) ), clamp( pow( 1.0 - dot( up, vSunDirection ), 5.0 ), 0.0, 1.0 ) );
+			Lin *= mix( vec3( 1.0 ), pow( vSunE * ( ( betaRTheta + betaMTheta ) / ( vBetaR + vBetaM ) ) * Fex, vec3( 1.0 / 2.0 ) ), clamp( pow( 1.0 - vSunDirection.y, 5.0 ), 0.0, 1.0 ) );
 
 			// nightsky
 			float theta = acos( direction.y ); // elevation --> y-axis, [-pi/2, pi/2]
@@ -200,17 +269,71 @@ Sky.SkyShader = {
 			vec3 L0 = vec3( 0.1 ) * Fex;
 
 			// composition + solar disc
-			float sundisk = smoothstep( sunAngularDiameterCos, sunAngularDiameterCos + 0.00002, cosTheta );
-			L0 += ( vSunE * 19000.0 * Fex ) * sundisk;
+			float sundisc = clamp( ( cosTheta - sunAngularDiameterCos ) * 50000.0, 0.0, 1.0 ) * showSunDisc;
+			vec3 sundiscColor = ( 760.0 * sundisc ) * min( vSunE * Fex, 80.0 );
 
-			vec3 texColor = ( Lin + L0 ) * 0.04 + vec3( 0.0, 0.0003, 0.00075 );
+			vec3 texColor = ( Lin + L0 ) * 0.04 + sundiscColor + vec3( 0.0, 0.0003, 0.00075 );
 
-			vec3 retColor = pow( texColor, vec3( 1.0 / ( 1.2 + ( 1.2 * vSunfade ) ) ) );
+			// Clouds
+			if ( direction.y > 0.0 && cloudCoverage > 0.0 ) {
 
-			gl_FragColor = vec4( retColor, 1.0 );
+				// Project to cloud plane (higher elevation = clouds appear lower/closer)
+				float elevation = mix( 1.0, 0.1, cloudElevation );
+				vec2 cloudUV = direction.xz / ( direction.y * elevation );
+				cloudUV *= cloudScale;
+				cloudUV += time * cloudSpeed;
+
+				// Cloud density field
+				float evolve = time * cloudSpeed * 300.0;
+				float cloudNoise = clamp( fbm( cloudUV * 1000.0, evolve ) * 0.7 + 0.5, 0.0, 1.0 );
+
+				// Large-scale coverage variation: clear gaps next to dense banks
+				float region = noise( cloudUV * 300.0 ) * 0.37 + 0.5;
+				float cov = clamp( cloudCoverage + ( region - 0.5 ) * 0.6, 0.0, 1.0 );
+
+				// Carve clouds where noise rises above the coverage level
+				float threshold = 1.0 - cov;
+				float cloudMask = smoothstep( threshold, threshold + 0.3, cloudNoise );
+
+				// Fade clouds near horizon (adjusted by elevation)
+				float horizonFade = smoothstep( 0.0, 0.03 + 0.06 * cloudElevation, direction.y );
+				cloudMask *= horizonFade;
+
+				// Cloud lighting from the sky's own radiance
+				float dayFactor = smoothstep( -0.08, 0.3, vSunDirection.y );
+				vec3 sunColor = vSunE * Fex * 0.22 * 0.04; // 0.22 ~ albedo/pi, 0.04 = exposure; the aerial composite adds the eye-leg extinction
+				vec3 skyAmbient = Lin * 0.04 + vec3( 0.0, 0.0003, 0.00075 );
+
+				// Beer-powder self-shadow from the sampled density
+				float depth = max( 0.0, cloudNoise - threshold );
+				float beer = exp( depth * -4.0 );
+				float powder = 1.0 - beer * beer; // beer*beer == exp(-8*depth)
+				float shade = mix( 0.45, 1.0, clamp( beer * powder * 2.6, 0.0, 1.0 ) ); // 2.6 = 1/0.385, normalizes beer*powder peak to 1
+
+				// Henyey-Greenstein forward lobe ( g = 0.7 ): silver lining on rims toward the sun
+				float silver = clamp( 0.51 / pow( 1.49 - cosTheta * 1.4, 1.5 ), 0.0, 3.0 ); // 0.51=1-g^2, 1.49=1+g^2, 1.4=2g
+				float edge = cloudMask * ( 1.0 - cloudMask ) * 4.0;
+
+				vec3 cloudColor = skyAmbient + sunColor * shade;
+				cloudColor += sunColor * silver * edge * 0.6;
+				cloudColor *= max( dayFactor, 0.03 );
+
+				// Cloud opacity via Beer's law: density sets how solid the clouds get
+				float alpha = ( 1.0 - exp( depth * cloudDensity * -12.0 ) ) * horizonFade;
+
+				// Occlude the sun disc/glow behind opaque cloud
+				texColor -= L0 * 0.04 * alpha;
+
+				// Composite through the atmosphere so distant clouds dissolve into haze
+				vec3 cloudAerial = mix( texColor, cloudColor, Fex );
+				texColor = mix( texColor, cloudAerial, alpha );
+
+			}
+
+			gl_FragColor = vec4( texColor, 1.0 );
 
 			#include <tonemapping_fragment>
-			#include <encodings_fragment>
+			#include <colorspace_fragment>
 
 		}`
 

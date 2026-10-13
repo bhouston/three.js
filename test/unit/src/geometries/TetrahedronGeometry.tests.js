@@ -1,13 +1,13 @@
-/* global QUnit */
+import { TetrahedronGeometry } from '../../../../src/geometries/TetrahedronGeometry.js';
 
+import { PolyhedronGeometry } from '../../../../src/geometries/PolyhedronGeometry.js';
 import { runStdGeometryTests } from '../../utils/qunit-utils.js';
-import { TetrahedronGeometry, TetrahedronBufferGeometry } from '../../../../src/geometries/TetrahedronGeometry.js';
 
 export default QUnit.module( 'Geometries', () => {
 
 	QUnit.module( 'TetrahedronGeometry', ( hooks ) => {
 
-		var geometries = undefined;
+		let geometries = undefined;
 		hooks.beforeEach( function () {
 
 			const parameters = {
@@ -19,22 +19,37 @@ export default QUnit.module( 'Geometries', () => {
 				new TetrahedronGeometry(),
 				new TetrahedronGeometry( parameters.radius ),
 				new TetrahedronGeometry( parameters.radius, parameters.detail ),
-				new TetrahedronBufferGeometry()
 			];
 
 		} );
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new TetrahedronGeometry();
+			assert.strictEqual(
+				object instanceof PolyhedronGeometry, true,
+				'TetrahedronGeometry extends from PolyhedronGeometry'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new TetrahedronGeometry();
+			assert.ok( object, 'Can instantiate a TetrahedronGeometry.' );
+
+		} );
+
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
+
+			const object = new TetrahedronGeometry();
+			assert.ok(
+				object.type === 'TetrahedronGeometry',
+				'TetrahedronGeometry.type should be TetrahedronGeometry'
+			);
 
 		} );
 

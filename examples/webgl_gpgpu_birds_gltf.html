@@ -4,6 +4,10 @@
 		<title>three.js webgl - gpgpu - flocking</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - gpgpu - flocking">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_gpgpu_birds_gltf.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_gpgpu_birds_gltf.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<style>
 			body {
@@ -19,7 +23,7 @@
 
 		<div id="info">
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - webgl gpgpu birds + GLTF mesh<br/>
-			Flamingo by <a href="https://mirada.com/" target="_blank" rel="noopener">mirada</a> from <a href="http://www.ro.me/" target="_blank" rel="noopener">rome</a><br/>
+			Flamingo by <a href="https://mirada.com/" target="_blank" rel="noopener">mirada</a> from <a href="https://rome.mrdoob.com/" target="_blank" rel="noopener">rome</a><br/>
 			Move mouse to disturb birds.
 		</div>
 
@@ -207,14 +211,11 @@
 
 		</script>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -222,10 +223,10 @@
 		<script type="module">
 
 			import * as THREE from 'three';
-			import Stats from './jsm/libs/stats.module.js';
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
-			import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
-			import { GPUComputationRenderer } from './jsm/misc/GPUComputationRenderer.js';
+			import Stats from 'three/addons/libs/stats.module.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js';
 
 			/* TEXTURE WIDTH FOR SIMULATION */
 			const WIDTH = 64;
@@ -240,13 +241,6 @@
 				return Math.pow( 2, Math.ceil( Math.log( n ) / Math.log( 2 ) ) );
 
 			}
-
-			Math.lerp = function ( value1, value2, amount ) {
-
-				amount = Math.max( Math.min( amount, 1 ), 0 );
-				return value1 + ( value2 - value1 ) * amount;
-
-			};
 
 			const gltfs = [ 'models/gltf/Parrot.glb', 'models/gltf/Flamingo.glb' ];
 			const colors = [ 0xccFFFF, 0xffdeff ];
@@ -280,17 +274,17 @@
 							d0 = morphAttributes[ curMorph ].array[ i * 3 ];
 							d1 = morphAttributes[ nextMorph ].array[ i * 3 ];
 
-							if ( d0 !== undefined && d1 !== undefined ) tData[ offset + i * 4 ] = Math.lerp( d0, d1, lerpAmount );
+							if ( d0 !== undefined && d1 !== undefined ) tData[ offset + i * 4 ] = THREE.MathUtils.lerp( d0, d1, lerpAmount );
 
 							d0 = morphAttributes[ curMorph ].array[ i * 3 + 1 ];
 							d1 = morphAttributes[ nextMorph ].array[ i * 3 + 1 ];
 
-							if ( d0 !== undefined && d1 !== undefined ) tData[ offset + i * 4 + 1 ] = Math.lerp( d0, d1, lerpAmount );
+							if ( d0 !== undefined && d1 !== undefined ) tData[ offset + i * 4 + 1 ] = THREE.MathUtils.lerp( d0, d1, lerpAmount );
 
 							d0 = morphAttributes[ curMorph ].array[ i * 3 + 2 ];
 							d1 = morphAttributes[ nextMorph ].array[ i * 3 + 2 ];
 
-							if ( d0 !== undefined && d1 !== undefined ) tData[ offset + i * 4 + 2 ] = Math.lerp( d0, d1, lerpAmount );
+							if ( d0 !== undefined && d1 !== undefined ) tData[ offset + i * 4 + 2 ] = THREE.MathUtils.lerp( d0, d1, lerpAmount );
 
 							tData[ offset + i * 4 + 3 ] = 1;
 
@@ -343,7 +337,6 @@
 				BirdGeometry.setIndex( indices );
 
 				init();
-				animate();
 
 			} );
 
@@ -378,14 +371,14 @@
 
 				// LIGHTS
 
-				const hemiLight = new THREE.HemisphereLight( colors[ selectModel ], 0xffffff, 1.6 );
-				hemiLight.color.setHSL( 0.6, 1, 0.6 );
-				hemiLight.groundColor.setHSL( 0.095, 1, 0.75 );
+				const hemiLight = new THREE.HemisphereLight( colors[ selectModel ], 0xffffff, 4.5 );
+				hemiLight.color.setHSL( 0.6, 1, 0.6, THREE.SRGBColorSpace );
+				hemiLight.groundColor.setHSL( 0.095, 1, 0.75, THREE.SRGBColorSpace );
 				hemiLight.position.set( 0, 50, 0 );
 				scene.add( hemiLight );
 
-				const dirLight = new THREE.DirectionalLight( 0x00CED1, 0.6 );
-				dirLight.color.setHSL( 0.1, 1, 0.95 );
+				const dirLight = new THREE.DirectionalLight( 0x00CED1, 2.0 );
+				dirLight.color.setHSL( 0.1, 1, 0.95, THREE.SRGBColorSpace );
 				dirLight.position.set( - 1, 1.75, 1 );
 				dirLight.position.multiplyScalar( 30 );
 				scene.add( dirLight );
@@ -393,6 +386,7 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				container.appendChild( renderer.domElement );
 
 				initComputeRenderer();
@@ -420,22 +414,22 @@
 
 				const valuesChanger = function () {
 
-					velocityUniforms[ "separationDistance" ].value = effectController.separation;
-					velocityUniforms[ "alignmentDistance" ].value = effectController.alignment;
-					velocityUniforms[ "cohesionDistance" ].value = effectController.cohesion;
-					velocityUniforms[ "freedomFactor" ].value = effectController.freedom;
-					if ( materialShader ) materialShader.uniforms[ "size" ].value = effectController.size;
+					velocityUniforms[ 'separationDistance' ].value = effectController.separation;
+					velocityUniforms[ 'alignmentDistance' ].value = effectController.alignment;
+					velocityUniforms[ 'cohesionDistance' ].value = effectController.cohesion;
+					velocityUniforms[ 'freedomFactor' ].value = effectController.freedom;
+					if ( materialShader ) materialShader.uniforms[ 'size' ].value = effectController.size;
 					BirdGeometry.setDrawRange( 0, indicesPerBird * effectController.count );
 
 				};
 
 				valuesChanger();
 
-				gui.add( effectController, "separation", 0.0, 100.0, 1.0 ).onChange( valuesChanger );
-				gui.add( effectController, "alignment", 0.0, 100, 0.001 ).onChange( valuesChanger );
-				gui.add( effectController, "cohesion", 0.0, 100, 0.025 ).onChange( valuesChanger );
-				gui.add( effectController, "size", 0, 1, 0.01 ).onChange( valuesChanger );
-				gui.add( effectController, "count", 0, BIRDS, 1 ).onChange( valuesChanger );
+				gui.add( effectController, 'separation', 0.0, 100.0, 1.0 ).onChange( valuesChanger );
+				gui.add( effectController, 'alignment', 0.0, 100, 0.001 ).onChange( valuesChanger );
+				gui.add( effectController, 'cohesion', 0.0, 100, 0.025 ).onChange( valuesChanger );
+				gui.add( effectController, 'size', 0, 1, 0.01 ).onChange( valuesChanger );
+				gui.add( effectController, 'count', 0, BIRDS, 1 ).onChange( valuesChanger );
 				gui.close();
 
 				initBirds( effectController );
@@ -446,19 +440,13 @@
 
 				gpuCompute = new GPUComputationRenderer( WIDTH, WIDTH, renderer );
 
-				if ( renderer.capabilities.isWebGL2 === false ) {
-
-					gpuCompute.setDataType( THREE.HalfFloatType );
-
-				}
-
 				const dtPosition = gpuCompute.createTexture();
 				const dtVelocity = gpuCompute.createTexture();
 				fillPositionTexture( dtPosition );
 				fillVelocityTexture( dtVelocity );
 
-				velocityVariable = gpuCompute.addVariable( "textureVelocity", document.getElementById( 'fragmentShaderVelocity' ).textContent, dtVelocity );
-				positionVariable = gpuCompute.addVariable( "texturePosition", document.getElementById( 'fragmentShaderPosition' ).textContent, dtPosition );
+				velocityVariable = gpuCompute.addVariable( 'textureVelocity', document.getElementById( 'fragmentShaderVelocity' ).textContent, dtVelocity );
+				positionVariable = gpuCompute.addVariable( 'texturePosition', document.getElementById( 'fragmentShaderPosition' ).textContent, dtPosition );
 
 				gpuCompute.setVariableDependencies( velocityVariable, [ positionVariable, velocityVariable ] );
 				gpuCompute.setVariableDependencies( positionVariable, [ positionVariable, velocityVariable ] );
@@ -466,16 +454,16 @@
 				positionUniforms = positionVariable.material.uniforms;
 				velocityUniforms = velocityVariable.material.uniforms;
 
-				positionUniforms[ "time" ] = { value: 0.0 };
-				positionUniforms[ "delta" ] = { value: 0.0 };
-				velocityUniforms[ "time" ] = { value: 1.0 };
-				velocityUniforms[ "delta" ] = { value: 0.0 };
-				velocityUniforms[ "testing" ] = { value: 1.0 };
-				velocityUniforms[ "separationDistance" ] = { value: 1.0 };
-				velocityUniforms[ "alignmentDistance" ] = { value: 1.0 };
-				velocityUniforms[ "cohesionDistance" ] = { value: 1.0 };
-				velocityUniforms[ "freedomFactor" ] = { value: 1.0 };
-				velocityUniforms[ "predator" ] = { value: new THREE.Vector3() };
+				positionUniforms[ 'time' ] = { value: 0.0 };
+				positionUniforms[ 'delta' ] = { value: 0.0 };
+				velocityUniforms[ 'time' ] = { value: 1.0 };
+				velocityUniforms[ 'delta' ] = { value: 0.0 };
+				velocityUniforms[ 'testing' ] = { value: 1.0 };
+				velocityUniforms[ 'separationDistance' ] = { value: 1.0 };
+				velocityUniforms[ 'alignmentDistance' ] = { value: 1.0 };
+				velocityUniforms[ 'cohesionDistance' ] = { value: 1.0 };
+				velocityUniforms[ 'freedomFactor' ] = { value: 1.0 };
+				velocityUniforms[ 'predator' ] = { value: new THREE.Vector3() };
 				velocityVariable.material.defines.BOUNDS = BOUNDS.toFixed( 2 );
 
 				velocityVariable.wrapS = THREE.RepeatWrapping;
@@ -640,8 +628,6 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
-
 				render();
 				stats.update();
 
@@ -655,22 +641,22 @@
 				if ( delta > 1 ) delta = 1; // safety cap on large deltas
 				last = now;
 
-				positionUniforms[ "time" ].value = now;
-				positionUniforms[ "delta" ].value = delta;
-				velocityUniforms[ "time" ].value = now;
-				velocityUniforms[ "delta" ].value = delta;
-				if ( materialShader ) materialShader.uniforms[ "time" ].value = now / 1000;
-				if ( materialShader ) materialShader.uniforms[ "delta" ].value = delta;
+				positionUniforms[ 'time' ].value = now;
+				positionUniforms[ 'delta' ].value = delta;
+				velocityUniforms[ 'time' ].value = now;
+				velocityUniforms[ 'delta' ].value = delta;
+				if ( materialShader ) materialShader.uniforms[ 'time' ].value = now / 1000;
+				if ( materialShader ) materialShader.uniforms[ 'delta' ].value = delta;
 
-				velocityUniforms[ "predator" ].value.set( 0.5 * mouseX / windowHalfX, - 0.5 * mouseY / windowHalfY, 0 );
+				velocityUniforms[ 'predator' ].value.set( 0.5 * mouseX / windowHalfX, - 0.5 * mouseY / windowHalfY, 0 );
 
 				mouseX = 10000;
 				mouseY = 10000;
 
 				gpuCompute.compute();
 
-				if ( materialShader ) materialShader.uniforms[ "texturePosition" ].value = gpuCompute.getCurrentRenderTarget( positionVariable ).texture;
-				if ( materialShader ) materialShader.uniforms[ "textureVelocity" ].value = gpuCompute.getCurrentRenderTarget( velocityVariable ).texture;
+				if ( materialShader ) materialShader.uniforms[ 'texturePosition' ].value = gpuCompute.getCurrentRenderTarget( positionVariable ).texture;
+				if ( materialShader ) materialShader.uniforms[ 'textureVelocity' ].value = gpuCompute.getCurrentRenderTarget( velocityVariable ).texture;
 
 				renderer.render( scene, camera );
 

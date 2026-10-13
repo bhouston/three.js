@@ -1,41 +1,49 @@
-/* global QUnit */
+import { ShaderMaterial } from '../../../../src/materials/ShaderMaterial.js';
 
-// import { ShaderMaterial } from '../../../../src/materials/ShaderMaterial.js';
+import { Material } from '../../../../src/materials/Material.js';
 
 export default QUnit.module( 'Materials', () => {
 
 	QUnit.module( 'ShaderMaterial', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new ShaderMaterial();
+			assert.strictEqual(
+				object instanceof Material, true,
+				'ShaderMaterial extends from Material'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'isShaderwMaterial', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new ShaderMaterial();
+			assert.ok( object, 'Can instantiate a ShaderMaterial.' );
 
 		} );
 
-		QUnit.todo( 'copy', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new ShaderMaterial();
+			assert.ok(
+				object.type === 'ShaderMaterial',
+				'ShaderMaterial.type should be ShaderMaterial'
+			);
 
 		} );
 
-		QUnit.todo( 'toJSON', ( assert ) => {
+		// PUBLIC
+		QUnit.test( 'isShaderMaterial', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new ShaderMaterial();
+			assert.ok(
+				object.isShaderMaterial,
+				'ShaderMaterial.isShaderMaterial should be true'
+			);
 
 		} );
 

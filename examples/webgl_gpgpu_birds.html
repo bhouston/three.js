@@ -4,6 +4,10 @@
 		<title>three.js webgl - gpgpu - flocking</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - gpgpu - flocking">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_gpgpu_birds.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_gpgpu_birds.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<style>
 			body {
@@ -297,14 +301,11 @@
 
 		</script>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -313,10 +314,10 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+			import Stats from 'three/addons/libs/stats.module.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			import { GPUComputationRenderer } from './jsm/misc/GPUComputationRenderer.js';
+			import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js';
 
 			/* TEXTURE WIDTH FOR SIMULATION */
 			const WIDTH = 32;
@@ -395,7 +396,7 @@
 						const y = ~ ~ ( birdIndex / WIDTH ) / WIDTH;
 
 						const c = new THREE.Color(
-							0x444444 +
+							0x666666 +
 							~ ~ ( v / 9 ) / BIRDS * 0x666666
 						);
 
@@ -437,7 +438,6 @@
 			let birdUniforms;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -454,6 +454,7 @@
 				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				container.appendChild( renderer.domElement );
 
 				initComputeRenderer();
@@ -501,12 +502,6 @@
 			function initComputeRenderer() {
 
 				gpuCompute = new GPUComputationRenderer( WIDTH, WIDTH, renderer );
-
-				if ( renderer.capabilities.isWebGL2 === false ) {
-
-					gpuCompute.setDataType( THREE.HalfFloatType );
-
-				}
 
 				const dtPosition = gpuCompute.createTexture();
 				const dtVelocity = gpuCompute.createTexture();
@@ -642,8 +637,6 @@
 			//
 
 			function animate() {
-
-				requestAnimationFrame( animate );
 
 				render();
 				stats.update();

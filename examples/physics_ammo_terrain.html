@@ -4,6 +4,10 @@
 		<title>Ammo.js terrain heightfield demo</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="Ammo.js terrain heightfield demo">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/physics_ammo_terrain.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/physics_ammo_terrain.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<style>
 			body {
@@ -15,16 +19,13 @@
 		<div id="container"></div>
 		<div id="info">Ammo.js physics terrain heightfield demo</div>
 
-		<script src="js/libs/ammo.wasm.js"></script>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+		<script src="https://cdn.jsdelivr.net/gh/kripken/ammo.js@79190a1f03845794b1bba1777f30037349967658/builds/ammo.wasm.js"></script>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -33,9 +34,9 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 			// Heightfield parameters
 			const terrainWidthExtents = 100;
@@ -51,7 +52,8 @@
 			let container, stats;
 			let camera, scene, renderer;
 			let terrainMesh;
-			const clock = new THREE.Clock();
+			const timer = new THREE.Timer();
+			timer.connect( document );
 
 			// Physics variables
 			let collisionConfiguration;
@@ -75,7 +77,6 @@
 				Ammo = AmmoLib;
 
 				init();
-				animate();
 
 			} );
 
@@ -93,9 +94,10 @@
 
 				container = document.getElementById( 'container' );
 
-				renderer = new THREE.WebGLRenderer();
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				renderer.shadowMap.enabled = true;
 				container.appendChild( renderer.domElement );
 
@@ -149,7 +151,10 @@
 
 				} );
 
-				const light = new THREE.DirectionalLight( 0xffffff, 1 );
+				const ambientLight = new THREE.AmbientLight( 0xbbbbbb );
+				scene.add( ambientLight );
+
+				const light = new THREE.DirectionalLight( 0xffffff, 3 );
 				light.position.set( 100, 100, 50 );
 				light.castShadow = true;
 				const dLight = 200;
@@ -391,7 +396,7 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
+				timer.update();
 
 				render();
 				stats.update();
@@ -400,7 +405,7 @@
 
 			function render() {
 
-				const deltaTime = clock.getDelta();
+				const deltaTime = timer.getDelta();
 
 				if ( dynamicObjects.length < maxNumObjects && time > timeNextSpawn ) {
 

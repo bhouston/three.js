@@ -1,59 +1,48 @@
-/* global QUnit */
+import { Texture } from '../../../../src/textures/Texture.js';
 
-// import { Texture } from '../../../../src/textures/Texture.js';
+import { EventDispatcher } from '../../../../src/core/EventDispatcher.js';
 
 export default QUnit.module( 'Textures', () => {
 
 	QUnit.module( 'Texture', () => {
 
+		// INHERITANCE
+		QUnit.test( 'Extending', ( assert ) => {
+
+			const object = new Texture();
+			assert.strictEqual(
+				object instanceof EventDispatcher, true,
+				'Texture extends from EventDispatcher'
+			);
+
+		} );
+
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PROPERTIES
-		QUnit.todo( 'needsUpdate', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			// no params
+			const object = new Texture();
+			assert.ok( object, 'Can instantiate a Texture.' );
 
 		} );
 
-		// PUBLIC STUFF
-		QUnit.todo( 'isTexture', ( assert ) => {
+		// PUBLIC
+		QUnit.test( 'isTexture', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'clone', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Texture();
+			assert.ok(
+				object.isTexture,
+				'Texture.isTexture should be true'
+			);
 
 		} );
 
-		QUnit.todo( 'copy', ( assert ) => {
+		QUnit.test( 'dispose', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			assert.expect( 0 );
 
-		} );
-
-		QUnit.todo( 'toJSON', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'dispose', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'transformUv', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Texture();
+			object.dispose();
 
 		} );
 

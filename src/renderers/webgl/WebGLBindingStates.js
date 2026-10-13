@@ -1,9 +1,8 @@
-﻿function WebGLBindingStates( gl, extensions, attributes, capabilities ) {
+﻿import { IntType } from '../../constants.js';
+
+function WebGLBindingStates( gl, attributes ) {
 
 	const maxVertexAttributes = gl.getParameter( gl.MAX_VERTEX_ATTRIBS );
-
-	const extension = capabilities.isWebGL2 ? null : extensions.get( 'OES_vertex_array_object' );
-	const vaoAvailable = capabilities.isWebGL2 || extension !== null;
 
 	const bindingStates = {};
 
@@ -15,38 +14,18 @@
 
 		let updateBuffers = false;
 
-		if ( vaoAvailable ) {
+		const state = getBindingState( object, geometry, program, material );
 
-			const state = getBindingState( geometry, program, material );
+		if ( currentState !== state ) {
 
-			if ( currentState !== state ) {
-
-				currentState = state;
-				bindVertexArrayObject( currentState.object );
-
-			}
-
-			updateBuffers = needsUpdate( object, geometry, program, index );
-
-			if ( updateBuffers ) saveCache( object, geometry, program, index );
-
-		} else {
-
-			const wireframe = ( material.wireframe === true );
-
-			if ( currentState.geometry !== geometry.id ||
-				currentState.program !== program.id ||
-				currentState.wireframe !== wireframe ) {
-
-				currentState.geometry = geometry.id;
-				currentState.program = program.id;
-				currentState.wireframe = wireframe;
-
-				updateBuffers = true;
-
-			}
+			currentState = state;
+			bindVertexArrayObject( currentState.object );
 
 		}
+
+		updateBuffers = needsUpdate( object, geometry, program, index );
+
+		if ( updateBuffers ) saveCache( object, geometry, program, index );
 
 		if ( index !== null ) {
 
@@ -72,38 +51,44 @@
 
 	function createVertexArrayObject() {
 
-		if ( capabilities.isWebGL2 ) return gl.createVertexArray();
-
-		return extension.createVertexArrayOES();
+		return gl.createVertexArray();
 
 	}
 
 	function bindVertexArrayObject( vao ) {
 
-		if ( capabilities.isWebGL2 ) return gl.bindVertexArray( vao );
-
-		return extension.bindVertexArrayOES( vao );
+		return gl.bindVertexArray( vao );
 
 	}
 
 	function deleteVertexArrayObject( vao ) {
 
-		if ( capabilities.isWebGL2 ) return gl.deleteVertexArray( vao );
-
-		return extension.deleteVertexArrayOES( vao );
+		return gl.deleteVertexArray( vao );
 
 	}
 
-	function getBindingState( geometry, program, material ) {
+	function getBindingState( object, geometry, program, material ) {
 
 		const wireframe = ( material.wireframe === true );
 
-		let programMap = bindingStates[ geometry.id ];
+		let objectMap = bindingStates[ geometry.id ];
+
+		if ( objectMap === undefined ) {
+
+			objectMap = {};
+			bindingStates[ geometry.id ] = objectMap;
+
+		}
+
+		// Each InstancedMesh requires unique binding states because it contains instanced attributes.
+		const objectId = ( object.isInstancedMesh === true ) ? object.id : 0;
+
+		let programMap = objectMap[ objectId ];
 
 		if ( programMap === undefined ) {
 
 			programMap = {};
-			bindingStates[ geometry.id ] = programMap;
+			objectMap[ objectId ] = programMap;
 
 		}
 
@@ -288,9 +273,7 @@
 
 		if ( attributeDivisors[ attribute ] !== meshPerAttribute ) {
 
-			const extension = capabilities.isWebGL2 ? gl : extensions.get( 'ANGLE_instanced_arrays' );
-
-			extension[ capabilities.isWebGL2 ? 'vertexAttribDivisor' : 'vertexAttribDivisorANGLE' ]( attribute, meshPerAttribute );
+			gl.vertexAttribDivisor( attribute, meshPerAttribute );
 			attributeDivisors[ attribute ] = meshPerAttribute;
 
 		}
@@ -315,9 +298,9 @@
 
 	}
 
-	function vertexAttribPointer( index, size, type, normalized, stride, offset ) {
+	function vertexAttribPointer( index, size, type, normalized, stride, offset, integer ) {
 
-		if ( capabilities.isWebGL2 === true && ( type === gl.INT || type === gl.UNSIGNED_INT ) ) {
+		if ( integer === true ) {
 
 			gl.vertexAttribIPointer( index, size, type, stride, offset );
 
@@ -330,12 +313,6 @@
 	}
 
 	function setupVertexAttributes( object, material, program, geometry ) {
-
-		if ( capabilities.isWebGL2 === false && ( object.isInstancedMesh || geometry.isInstancedBufferGeometry ) ) {
-
-			if ( extensions.get( 'ANGLE_instanced_arrays' ) === null ) return;
-
-		}
 
 		initAttributes();
 
@@ -374,6 +351,10 @@
 					const buffer = attribute.buffer;
 					const type = attribute.type;
 					const bytesPerElement = attribute.bytesPerElement;
+
+					// check for integer attributes
+
+					const integer = ( type === gl.INT || type === gl.UNSIGNED_INT || geometryAttribute.gpuType === IntType );
 
 					if ( geometryAttribute.isInterleavedBufferAttribute ) {
 
@@ -415,7 +396,8 @@
 								type,
 								normalized,
 								stride * bytesPerElement,
-								( offset + ( size / programAttribute.locationSize ) * i ) * bytesPerElement
+								( offset + ( size / programAttribute.locationSize ) * i ) * bytesPerElement,
+								integer
 							);
 
 						}
@@ -456,7 +438,8 @@
 								type,
 								normalized,
 								size * bytesPerElement,
-								( size / programAttribute.locationSize ) * i * bytesPerElement
+								( size / programAttribute.locationSize ) * i * bytesPerElement,
+								integer
 							);
 
 						}
@@ -506,7 +489,45 @@
 
 		for ( const geometryId in bindingStates ) {
 
-			const programMap = bindingStates[ geometryId ];
+			const objectMap = bindingStates[ geometryId ];
+
+			for ( const objectId in objectMap ) {
+
+				const programMap = objectMap[ objectId ];
+
+				for ( const programId in programMap ) {
+
+					const stateMap = programMap[ programId ];
+
+					for ( const wireframe in stateMap ) {
+
+						deleteVertexArrayObject( stateMap[ wireframe ].object );
+
+						delete stateMap[ wireframe ];
+
+					}
+
+					delete programMap[ programId ];
+
+				}
+
+			}
+
+			delete bindingStates[ geometryId ];
+
+		}
+
+	}
+
+	function releaseStatesOfGeometry( geometry ) {
+
+		if ( bindingStates[ geometry.id ] === undefined ) return;
+
+		const objectMap = bindingStates[ geometry.id ];
+
+		for ( const objectId in objectMap ) {
+
+			const programMap = objectMap[ objectId ];
 
 			for ( const programId in programMap ) {
 
@@ -524,32 +545,6 @@
 
 			}
 
-			delete bindingStates[ geometryId ];
-
-		}
-
-	}
-
-	function releaseStatesOfGeometry( geometry ) {
-
-		if ( bindingStates[ geometry.id ] === undefined ) return;
-
-		const programMap = bindingStates[ geometry.id ];
-
-		for ( const programId in programMap ) {
-
-			const stateMap = programMap[ programId ];
-
-			for ( const wireframe in stateMap ) {
-
-				deleteVertexArrayObject( stateMap[ wireframe ].object );
-
-				delete stateMap[ wireframe ];
-
-			}
-
-			delete programMap[ programId ];
-
 		}
 
 		delete bindingStates[ geometry.id ];
@@ -560,25 +555,72 @@
 
 		for ( const geometryId in bindingStates ) {
 
-			const programMap = bindingStates[ geometryId ];
+			const objectMap = bindingStates[ geometryId ];
 
-			if ( programMap[ program.id ] === undefined ) continue;
+			for ( const objectId in objectMap ) {
 
-			const stateMap = programMap[ program.id ];
+				const programMap = objectMap[ objectId ];
 
-			for ( const wireframe in stateMap ) {
+				if ( programMap[ program.id ] === undefined ) continue;
 
-				deleteVertexArrayObject( stateMap[ wireframe ].object );
+				const stateMap = programMap[ program.id ];
 
-				delete stateMap[ wireframe ];
+				for ( const wireframe in stateMap ) {
+
+					deleteVertexArrayObject( stateMap[ wireframe ].object );
+
+					delete stateMap[ wireframe ];
+
+				}
+
+				delete programMap[ program.id ];
 
 			}
-
-			delete programMap[ program.id ];
 
 		}
 
 	}
+
+	function releaseStatesOfObject( object ) {
+
+		for ( const geometryId in bindingStates ) {
+
+			const objectMap = bindingStates[ geometryId ];
+
+			const objectId = ( object.isInstancedMesh === true ) ? object.id : 0;
+
+			const programMap = objectMap[ objectId ];
+
+			if ( programMap === undefined ) continue;
+
+			for ( const programId in programMap ) {
+
+				const stateMap = programMap[ programId ];
+
+				for ( const wireframe in stateMap ) {
+
+					deleteVertexArrayObject( stateMap[ wireframe ].object );
+
+					delete stateMap[ wireframe ];
+
+				}
+
+				delete programMap[ programId ];
+
+			}
+
+			delete objectMap[ objectId ];
+
+			if ( Object.keys( objectMap ).length === 0 ) {
+
+				delete bindingStates[ geometryId ];
+
+			}
+
+		}
+
+	}
+
 
 	function reset() {
 
@@ -609,6 +651,7 @@
 		resetDefaultState: resetDefaultState,
 		dispose: dispose,
 		releaseStatesOfGeometry: releaseStatesOfGeometry,
+		releaseStatesOfObject: releaseStatesOfObject,
 		releaseStatesOfProgram: releaseStatesOfProgram,
 
 		initAttributes: initAttributes,

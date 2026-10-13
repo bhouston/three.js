@@ -4,6 +4,10 @@
 		<title>three.js webgl - skinning and morphing</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - skinning and morphing">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_animation_skinning_morph.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_animation_skinning_morph.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<style>
 			body {
@@ -34,14 +38,11 @@
 			modifications by <a href="https://donmccurdy.com/" target="_blank" rel="noopener">Don McCurdy</a>. CC0.<br />
 		</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -50,18 +51,17 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+			import Stats from 'three/addons/libs/stats.module.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-			let container, stats, clock, gui, mixer, actions, activeAction, previousAction;
+			let container, stats, timer, gui, mixer, actions, activeAction, previousAction;
 			let camera, scene, renderer, model, face;
 
 			const api = { state: 'Walking' };
 
 			init();
-			animate();
 
 			function init() {
 
@@ -70,27 +70,28 @@
 
 				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.25, 100 );
 				camera.position.set( - 5, 3, 10 );
-				camera.lookAt( new THREE.Vector3( 0, 2, 0 ) );
+				camera.lookAt( 0, 2, 0 );
 
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0xe0e0e0 );
 				scene.fog = new THREE.Fog( 0xe0e0e0, 20, 100 );
 
-				clock = new THREE.Clock();
+				timer = new THREE.Timer();
+				timer.connect( document );
 
 				// lights
 
-				const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x444444 );
+				const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x8d8d8d, 3 );
 				hemiLight.position.set( 0, 20, 0 );
 				scene.add( hemiLight );
 
-				const dirLight = new THREE.DirectionalLight( 0xffffff );
+				const dirLight = new THREE.DirectionalLight( 0xffffff, 3 );
 				dirLight.position.set( 0, 20, 10 );
 				scene.add( dirLight );
 
 				// ground
 
-				const mesh = new THREE.Mesh( new THREE.PlaneGeometry( 2000, 2000 ), new THREE.MeshPhongMaterial( { color: 0x999999, depthWrite: false } ) );
+				const mesh = new THREE.Mesh( new THREE.PlaneGeometry( 2000, 2000 ), new THREE.MeshPhongMaterial( { color: 0xcbcbcb, depthWrite: false } ) );
 				mesh.rotation.x = - Math.PI / 2;
 				scene.add( mesh );
 
@@ -118,7 +119,7 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.outputEncoding = THREE.sRGBEncoding;
+				renderer.setAnimationLoop( animate );
 				container.appendChild( renderer.domElement );
 
 				window.addEventListener( 'resize', onWindowResize );
@@ -256,11 +257,11 @@
 
 			function animate() {
 
-				const dt = clock.getDelta();
+				timer.update();
+
+				const dt = timer.getDelta();
 
 				if ( mixer ) mixer.update( dt );
-
-				requestAnimationFrame( animate );
 
 				renderer.render( scene, camera );
 

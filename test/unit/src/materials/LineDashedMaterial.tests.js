@@ -1,35 +1,49 @@
-/* global QUnit */
+import { LineDashedMaterial } from '../../../../src/materials/LineDashedMaterial.js';
 
-// import { LineDashedMaterial } from '../../../../src/materials/LineDashedMaterial.js';
+import { Material } from '../../../../src/materials/Material.js';
 
 export default QUnit.module( 'Materials', () => {
 
 	QUnit.module( 'LineDashedMaterial', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new LineDashedMaterial();
+			assert.strictEqual(
+				object instanceof Material, true,
+				'LineDashedMaterial extends from Material'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'isLineDashedMaterial', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new LineDashedMaterial();
+			assert.ok( object, 'Can instantiate a LineDashedMaterial.' );
 
 		} );
 
-		QUnit.todo( 'copy', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new LineDashedMaterial();
+			assert.ok(
+				object.type === 'LineDashedMaterial',
+				'LineDashedMaterial.type should be LineDashedMaterial'
+			);
+
+		} );
+
+		// PUBLIC
+		QUnit.test( 'isLineDashedMaterial', ( assert ) => {
+
+			const object = new LineDashedMaterial();
+			assert.ok(
+				object.isLineDashedMaterial,
+				'LineDashedMaterial.isLineDashedMaterial should be true'
+			);
 
 		} );
 

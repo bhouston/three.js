@@ -1,13 +1,13 @@
-/* global QUnit */
+import { CircleGeometry } from '../../../../src/geometries/CircleGeometry.js';
 
+import { BufferGeometry } from '../../../../src/core/BufferGeometry.js';
 import { runStdGeometryTests } from '../../utils/qunit-utils.js';
-import { CircleGeometry, CircleBufferGeometry } from '../../../../src/geometries/CircleGeometry.js';
 
 export default QUnit.module( 'Geometries', () => {
 
 	QUnit.module( 'CircleGeometry', ( hooks ) => {
 
-		var geometries = undefined;
+		let geometries = undefined;
 		hooks.beforeEach( function () {
 
 			const parameters = {
@@ -23,22 +23,37 @@ export default QUnit.module( 'Geometries', () => {
 				new CircleGeometry( parameters.radius, parameters.segments ),
 				new CircleGeometry( parameters.radius, parameters.segments, parameters.thetaStart ),
 				new CircleGeometry( parameters.radius, parameters.segments, parameters.thetaStart, parameters.thetaLength ),
-				new CircleBufferGeometry(),
 			];
 
 		} );
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new CircleGeometry();
+			assert.strictEqual(
+				object instanceof BufferGeometry, true,
+				'CircleGeometry extends from BufferGeometry'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new CircleGeometry();
+			assert.ok( object, 'Can instantiate a CircleGeometry.' );
+
+		} );
+
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
+
+			const object = new CircleGeometry();
+			assert.ok(
+				object.type === 'CircleGeometry',
+				'CircleGeometry.type should be CircleGeometry'
+			);
 
 		} );
 

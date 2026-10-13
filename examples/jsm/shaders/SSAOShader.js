@@ -4,13 +4,24 @@ import {
 } from 'three';
 
 /**
- * References:
- * http://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html
- * https://learnopengl.com/Advanced-Lighting/SSAO
- * https://github.com/McNopper/OpenGL/blob/master/Example28/shader/ssao.frag.glsl
+ * @module SSAOShader
+ * @three_import import { SSAOShader } from 'three/addons/shaders/SSAOShader.js';
  */
 
+/**
+ * SSAO shader.
+ *
+ * References:
+ * - {@link http://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html}
+ * - {@link https://learnopengl.com/Advanced-Lighting/SSAO}
+ * - {@link https://github.com/McNopper/OpenGL/blob/master/Example28/shader/ssao.frag.glsl}
+ *
+ * @constant
+ * @type {ShaderMaterial~Shader}
+ */
 const SSAOShader = {
+
+	name: 'SSAOShader',
 
 	defines: {
 		'PERSPECTIVE_CAMERA': 1,
@@ -19,7 +30,6 @@ const SSAOShader = {
 
 	uniforms: {
 
-		'tDiffuse': { value: null },
 		'tNormal': { value: null },
 		'tDepth': { value: null },
 		'tNoise': { value: null },
@@ -48,10 +58,8 @@ const SSAOShader = {
 		}`,
 
 	fragmentShader: /* glsl */`
-
-		uniform sampler2D tDiffuse;
-		uniform sampler2D tNormal;
-		uniform sampler2D tDepth;
+		uniform highp sampler2D tNormal;
+		uniform highp sampler2D tDepth;
 		uniform sampler2D tNoise;
 
 		uniform vec3 kernel[ KERNEL_SIZE ];
@@ -70,6 +78,16 @@ const SSAOShader = {
 		varying vec2 vUv;
 
 		#include <packing>
+
+		#ifdef USE_REVERSED_DEPTH_BUFFER
+
+			const float depthThreshold = 0.0;
+
+		#else
+
+			const float depthThreshold = 1.0;
+
+		#endif
 
 		float getDepth( const in vec2 screenPosition ) {
 
@@ -128,53 +146,70 @@ const SSAOShader = {
 		void main() {
 
 			float depth = getDepth( vUv );
-			float viewZ = getViewZ( depth );
 
-			vec3 viewPosition = getViewPosition( vUv, depth, viewZ );
-			vec3 viewNormal = getViewNormal( vUv );
+			if ( depth == depthThreshold ) {
 
-			vec2 noiseScale = vec2( resolution.x / 4.0, resolution.y / 4.0 );
-			vec3 random = vec3( texture2D( tNoise, vUv * noiseScale ).r );
+				gl_FragColor = vec4( 1.0 ); // don't influence background
 
-			// compute matrix used to reorient a kernel vector
+			} else {
 
-			vec3 tangent = normalize( random - viewNormal * dot( random, viewNormal ) );
-			vec3 bitangent = cross( viewNormal, tangent );
-			mat3 kernelMatrix = mat3( tangent, bitangent, viewNormal );
+				float viewZ = getViewZ( depth );
 
-		 float occlusion = 0.0;
+				vec3 viewPosition = getViewPosition( vUv, depth, viewZ );
+				vec3 viewNormal = getViewNormal( vUv );
 
-		 for ( int i = 0; i < KERNEL_SIZE; i ++ ) {
+				vec2 noiseScale = vec2( resolution.x / 4.0, resolution.y / 4.0 );
+				vec3 random = vec3( texture2D( tNoise, vUv * noiseScale ).r );
 
-				vec3 sampleVector = kernelMatrix * kernel[ i ]; // reorient sample vector in view space
-				vec3 samplePoint = viewPosition + ( sampleVector * kernelRadius ); // calculate sample point
+				// compute matrix used to reorient a kernel vector
 
-				vec4 samplePointNDC = cameraProjectionMatrix * vec4( samplePoint, 1.0 ); // project point and calculate NDC
-				samplePointNDC /= samplePointNDC.w;
+				vec3 tangent = normalize( random - viewNormal * dot( random, viewNormal ) );
+				vec3 bitangent = cross( viewNormal, tangent );
+				mat3 kernelMatrix = mat3( tangent, bitangent, viewNormal );
 
-				vec2 samplePointUv = samplePointNDC.xy * 0.5 + 0.5; // compute uv coordinates
+				float occlusion = 0.0;
 
-				float realDepth = getLinearDepth( samplePointUv ); // get linear depth from depth texture
-				float sampleDepth = viewZToOrthographicDepth( samplePoint.z, cameraNear, cameraFar ); // compute linear depth of the sample view Z value
-				float delta = sampleDepth - realDepth;
+				for ( int i = 0; i < KERNEL_SIZE; i ++ ) {
 
-				if ( delta > minDistance && delta < maxDistance ) { // if fragment is before sample point, increase occlusion
+					vec3 sampleVector = kernelMatrix * kernel[ i ]; // reorient sample vector in view space
+					vec3 samplePoint = viewPosition + ( sampleVector * kernelRadius ); // calculate sample point
 
-					occlusion += 1.0;
+					vec4 samplePointNDC = cameraProjectionMatrix * vec4( samplePoint, 1.0 ); // project point and calculate NDC
+					samplePointNDC /= samplePointNDC.w;
+
+					vec2 samplePointUv = samplePointNDC.xy * 0.5 + 0.5; // compute uv coordinates
+
+					float realDepth = getLinearDepth( samplePointUv ); // get linear depth from depth texture
+					float sampleDepth = viewZToOrthographicDepth( samplePoint.z, cameraNear, cameraFar ); // compute linear depth of the sample view Z value
+					float delta = sampleDepth - realDepth;
+
+					if ( delta > minDistance && delta < maxDistance ) { // if fragment is before sample point, increase occlusion
+
+						occlusion += 1.0;
+
+					}
 
 				}
 
+				occlusion = clamp( occlusion / float( KERNEL_SIZE ), 0.0, 1.0 );
+
+				gl_FragColor = vec4( vec3( 1.0 - occlusion ), 1.0 );
+
 			}
-
-			occlusion = clamp( occlusion / float( KERNEL_SIZE ), 0.0, 1.0 );
-
-			gl_FragColor = vec4( vec3( 1.0 - occlusion ), 1.0 );
 
 		}`
 
 };
 
+/**
+ * SSAO depth shader.
+ *
+ * @constant
+ * @type {ShaderMaterial~Shader}
+ */
 const SSAODepthShader = {
+
+	name: 'SSAODepthShader',
 
 	defines: {
 		'PERSPECTIVE_CAMERA': 1
@@ -235,7 +270,15 @@ const SSAODepthShader = {
 
 };
 
+/**
+ * SSAO blur shader.
+ *
+ * @constant
+ * @type {Object}
+ */
 const SSAOBlurShader = {
+
+	name: 'SSAOBlurShader',
 
 	uniforms: {
 

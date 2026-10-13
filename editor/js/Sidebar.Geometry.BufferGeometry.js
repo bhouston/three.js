@@ -15,7 +15,7 @@ function SidebarGeometryBufferGeometry( editor ) {
 
 		const geometry = object.geometry;
 
-		if ( geometry && geometry.isBufferGeometry ) {
+		if ( geometry ) {
 
 			container.clear();
 			container.setDisplay( 'block' );
@@ -24,7 +24,7 @@ function SidebarGeometryBufferGeometry( editor ) {
 
 			const attributesRow = new UIRow();
 
-			const textAttributes = new UIText( strings.getKey( 'sidebar/geometry/buffer_geometry/attributes' ) ).setWidth( '90px' );
+			const textAttributes = new UIText( strings.getKey( 'sidebar/geometry/buffer_geometry/attributes' ) ).setClass( 'Label' );
 			attributesRow.add( textAttributes );
 
 			const containerAttributes = new UISpan().setDisplay( 'inline-block' ).setVerticalAlign( 'middle' ).setWidth( '160px' );
@@ -34,8 +34,8 @@ function SidebarGeometryBufferGeometry( editor ) {
 
 			if ( index !== null ) {
 
-				containerAttributes.add( new UIText( strings.getKey( 'sidebar/geometry/buffer_geometry/index' ) ).setWidth( '80px' ) );
-				containerAttributes.add( new UIText( ( index.count ).format() ).setFontSize( '12px' ) );
+				containerAttributes.add( new UIText( strings.getKey( 'sidebar/geometry/buffer_geometry/index' ) ).setWidth( '70px' ) );
+				containerAttributes.add( new UIText( editor.utils.formatNumber( index.count ) ).setFontSize( '12px' ) );
 				containerAttributes.add( new UIBreak() );
 
 			}
@@ -46,8 +46,17 @@ function SidebarGeometryBufferGeometry( editor ) {
 
 				const attribute = attributes[ name ];
 
-				containerAttributes.add( new UIText( name ).setWidth( '80px' ) );
-				containerAttributes.add( new UIText( ( attribute.count ).format() + ' (' + attribute.itemSize + ')' ).setFontSize( '12px' ) );
+				containerAttributes.add( new UIText( name ).setWidth( '70px' ) );
+
+				let info = editor.utils.formatNumber( attribute.count ) + ' (' + attribute.itemSize + ')';
+
+				if ( attribute.isInterleavedBufferAttribute ) {
+
+					info += ' (' + attribute.data.stride + ')';
+
+				}
+
+				containerAttributes.add( new UIText( info ).setFontSize( '12px' ) );
 				containerAttributes.add( new UIBreak() );
 
 			}
@@ -65,7 +74,7 @@ function SidebarGeometryBufferGeometry( editor ) {
 
 				const rowMorphAttributes = new UIRow();
 
-				const textMorphAttributes = new UIText( strings.getKey( 'sidebar/geometry/buffer_geometry/morphAttributes' ) ).setWidth( '90px' );
+				const textMorphAttributes = new UIText( strings.getKey( 'sidebar/geometry/buffer_geometry/morphAttributes' ) ).setClass( 'Label' );
 				rowMorphAttributes.add( textMorphAttributes );
 
 				const containerMorphAttributes = new UISpan().setDisplay( 'inline-block' ).setVerticalAlign( 'middle' ).setWidth( '160px' );
@@ -75,8 +84,8 @@ function SidebarGeometryBufferGeometry( editor ) {
 
 					const morphTargets = morphAttributes[ name ];
 
-					containerMorphAttributes.add( new UIText( name ).setWidth( '80px' ) );
-					containerMorphAttributes.add( new UIText( ( morphTargets.length ).format() ).setFontSize( '12px' ) );
+					containerMorphAttributes.add( new UIText( name ).setWidth( '70px' ) );
+					containerMorphAttributes.add( new UIText( editor.utils.formatNumber( morphTargets.length ) ).setFontSize( '12px' ) );
 					containerMorphAttributes.add( new UIBreak() );
 
 				}
@@ -87,7 +96,7 @@ function SidebarGeometryBufferGeometry( editor ) {
 
 				const rowMorphRelative = new UIRow();
 
-				const textMorphRelative = new UIText( strings.getKey( 'sidebar/geometry/buffer_geometry/morphRelative' ) ).setWidth( '90px' );
+				const textMorphRelative = new UIText( strings.getKey( 'sidebar/geometry/buffer_geometry/morphRelative' ) ).setClass( 'Label' );
 				rowMorphRelative.add( textMorphRelative );
 
 				const checkboxMorphRelative = new UICheckbox().setValue( geometry.morphTargetsRelative ).setDisabled( true );

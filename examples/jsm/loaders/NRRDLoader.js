@@ -4,17 +4,42 @@ import {
 	Matrix4,
 	Vector3
 } from 'three';
-import * as fflate from '../libs/fflate.module.js';
+import { gunzipSync } from '../libs/fflate.module.js';
 import { Volume } from '../misc/Volume.js';
 
+/**
+ * A loader for the NRRD format.
+ *
+ * ```js
+ * const loader = new NRRDLoader();
+ * const volume = await loader.loadAsync( 'models/nrrd/I.nrrd' );
+ * ```
+ *
+ * @augments Loader
+ * @three_import import { NRRDLoader } from 'three/addons/loaders/NRRDLoader.js';
+ */
 class NRRDLoader extends Loader {
 
+	/**
+	 * Constructs a new NRRD loader.
+	 *
+	 * @param {LoadingManager} [manager] - The loading manager.
+	 */
 	constructor( manager ) {
 
 		super( manager );
 
 	}
 
+	/**
+	 * Starts loading from the given URL and passes the loaded NRRD asset
+	 * to the `onLoad()` callback.
+	 *
+	 * @param {string} url - The path/URL of the file to be loaded. This can also be a data URI.
+	 * @param {function(Volume)} onLoad - Executed when the loading process has been finished.
+	 * @param {onProgressCallback} onProgress - Executed while the loading is in progress.
+	 * @param {onErrorCallback} onError - Executed when errors occur.
+	 */
 	load( url, onLoad, onProgress, onError ) {
 
 		const scope = this;
@@ -50,6 +75,23 @@ class NRRDLoader extends Loader {
 
 	}
 
+	/**
+	 * Toggles the segmentation mode.
+	 *
+	 * @param {boolean} segmentation - Whether to use segmentation mode or not.
+	 */
+	setSegmentation( segmentation ) {
+
+		this.segmentation = segmentation;
+
+	}
+
+	/**
+	 * Parses the given NRRD data and returns the resulting volume data.
+	 *
+	 * @param {ArrayBuffer} data - The raw NRRD data as an array buffer.
+	 * @return {Volume} The parsed volume.
+	 */
 	parse( data ) {
 
 		// this parser is largely inspired from the XTK NRRD parser : https://github.com/xtk/X
@@ -65,12 +107,6 @@ class NRRDLoader extends Loader {
 		const headerObject = {};
 
 		function scan( type, chunks ) {
-
-			if ( chunks === undefined || chunks === null ) {
-
-				chunks = 1;
-
-			}
 
 			let _chunkSize = 1;
 			let _array_type = Uint8Array;
@@ -125,13 +161,6 @@ class NRRDLoader extends Loader {
 
 				// we need to flip here since the format doesn't match the native endianness
 				_bytes = flipEndianness( _bytes, _chunkSize );
-
-			}
-
-			if ( chunks == 1 ) {
-
-				// if only one chunk was requested, just return one value
-				return _bytes[ 0 ];
 
 			}
 
@@ -194,13 +223,13 @@ class NRRDLoader extends Loader {
 
 			if ( ! headerObject.isNrrd ) {
 
-				throw new Error( 'Not an NRRD file' );
+				throw new Error( 'THREE.NRRDLoader: Not an NRRD file' );
 
 			}
 
 			if ( headerObject.encoding === 'bz2' || headerObject.encoding === 'bzip2' ) {
 
-				throw new Error( 'Bzip is not supported' );
+				throw new Error( 'THREE.NRRDLoader: Bzip is not supported' );
 
 			}
 
@@ -235,7 +264,7 @@ class NRRDLoader extends Loader {
 
 		}
 
-		//parse the data when registred as one of this type : 'text', 'ascii', 'txt'
+		//parse the data when registered as one of this type : 'text', 'ascii', 'txt'
 		function parseDataAsText( data, start, end ) {
 
 			let number = '';
@@ -310,7 +339,7 @@ class NRRDLoader extends Loader {
 
 				// we found two line breaks in a row
 				// now we know what the header is
-				_header = this.parseChars( _bytes, 0, i - 2 );
+				_header = this._parseChars( _bytes, 0, i - 2 );
 				// this is were the data starts
 				_data_start = i + 1;
 				break;
@@ -327,7 +356,7 @@ class NRRDLoader extends Loader {
 
 			// we need to decompress the datastream
 			// here we start the unzipping and get a typed Uint8Array back
-			_data = fflate.gunzipSync( new Uint8Array( _data ) );// eslint-disable-line no-undef
+			_data = gunzipSync( new Uint8Array( _data ) );
 
 		} else if ( headerObject.encoding === 'ascii' || headerObject.encoding === 'text' || headerObject.encoding === 'txt' || headerObject.encoding === 'hex' ) {
 
@@ -353,6 +382,7 @@ class NRRDLoader extends Loader {
 
 		const volume = new Volume();
 		volume.header = headerObject;
+		volume.segmentation = this.segmentation;
 		//
 		// parse the (unzipped) data to a datastream of the correct type
 		//
@@ -379,9 +409,21 @@ class NRRDLoader extends Loader {
 			const zIndex = headerObject.vectors.findIndex( vector => vector[ 2 ] !== 0 );
 
 			const axisOrder = [];
-			axisOrder[ xIndex ] = 'x';
-			axisOrder[ yIndex ] = 'y';
-			axisOrder[ zIndex ] = 'z';
+
+			if ( xIndex !== yIndex && xIndex !== zIndex && yIndex !== zIndex ) {
+
+				axisOrder[ xIndex ] = 'x';
+				axisOrder[ yIndex ] = 'y';
+				axisOrder[ zIndex ] = 'z';
+
+			} else {
+
+				axisOrder[ 0 ] = 'x';
+				axisOrder[ 1 ] = 'y';
+				axisOrder[ 2 ] = 'z';
+
+			}
+
 			volume.axisOrder = axisOrder;
 
 		} else {
@@ -450,7 +492,12 @@ class NRRDLoader extends Loader {
 
 		volume.inverseMatrix = new Matrix4();
 		volume.inverseMatrix.copy( volume.matrix ).invert();
-		volume.RASDimensions = new Vector3( volume.xLength, volume.yLength, volume.zLength ).applyMatrix4( volume.matrix ).round().toArray().map( Math.abs );
+
+		volume.RASDimensions = [
+			Math.floor( volume.xLength * spacingX ),
+			Math.floor( volume.yLength * spacingY ),
+			Math.floor( volume.zLength * spacingZ )
+		];
 
 		// .. and set the default threshold
 		// only if the threshold was not already set
@@ -470,7 +517,7 @@ class NRRDLoader extends Loader {
 
 	}
 
-	parseChars( array, start, end ) {
+	_parseChars( array, start, end ) {
 
 		// without borders, use the whole array
 		if ( start === undefined ) {
@@ -551,7 +598,7 @@ const _fieldFunctions = {
 				this.__array = Float64Array;
 				break;
 			default:
-				throw new Error( 'Unsupported NRRD data type: ' + data );
+				throw new Error( 'THREE.NRRDLoader: Unsupported NRRD data type: ' + data );
 
 		}
 

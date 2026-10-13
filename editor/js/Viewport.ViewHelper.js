@@ -1,6 +1,6 @@
 import { UIPanel } from './libs/ui.js';
 
-import { ViewHelper as ViewHelperBase } from '../../examples/jsm/helpers/ViewHelper.js';
+import { ViewHelper as ViewHelperBase } from 'three/addons/helpers/ViewHelper.js';
 
 class ViewHelper extends ViewHelperBase {
 
@@ -8,11 +8,13 @@ class ViewHelper extends ViewHelperBase {
 
 		super( editorCamera, container.dom );
 
+		this.location.top = 30;
+
 		const panel = new UIPanel();
 		panel.setId( 'viewHelper' );
 		panel.setPosition( 'absolute' );
 		panel.setRight( '0px' );
-		panel.setBottom( '0px' );
+		panel.setTop( '30px' );
 		panel.setHeight( '128px' );
 		panel.setWidth( '128px' );
 

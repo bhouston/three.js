@@ -11,11 +11,24 @@ import {
 	DepthTexture,
 	UnsignedShortType,
 	NearestFilter,
-	Plane
+	Plane,
+	HalfFloatType
 } from 'three';
 
+/**
+ * A special version of {@link Reflector} for usage with {@link SSRPass}.
+ *
+ * @augments Mesh
+ * @three_import import { ReflectorForSSRPass } from 'three/addons/objects/ReflectorForSSRPass.js';
+ */
 class ReflectorForSSRPass extends Mesh {
 
+	/**
+	 * Constructs a new reflector.
+	 *
+	 * @param {BufferGeometry} geometry - The reflector's geometry.
+	 * @param {ReflectorForSSRPass~Options} [options] - The configuration options.
+	 */
 	constructor( geometry, options = {} ) {
 
 		super( geometry );
@@ -104,11 +117,13 @@ class ReflectorForSSRPass extends Mesh {
 
 		const parameters = {
 			depthTexture: useDepthTexture ? depthTexture : null,
+			type: HalfFloatType
 		};
 
 		const renderTarget = new WebGLRenderTarget( textureWidth, textureHeight, parameters );
 
 		const material = new ShaderMaterial( {
+			name: ( shader.name !== undefined ) ? shader.name : 'unspecified',
 			transparent: useDepthTexture,
 			defines: Object.assign( {}, ReflectorForSSRPass.ReflectorShader.defines, {
 				useDepthTexture
@@ -198,10 +213,6 @@ class ReflectorForSSRPass extends Mesh {
 			textureMatrix.multiply( virtualCamera.matrixWorldInverse );
 			textureMatrix.multiply( scope.matrixWorld );
 
-			// Render
-
-			renderTarget.texture.encoding = renderer.outputEncoding;
-
 			// scope.visible = false;
 
 			const currentRenderTarget = renderer.getRenderTarget();
@@ -241,9 +252,25 @@ class ReflectorForSSRPass extends Mesh {
 
 		};
 
+		/**
+		 * Returns the reflector's internal render target.
+		 *
+		 * @return {WebGLRenderTarget} The internal render target
+		 */
 		this.getRenderTarget = function () {
 
 			return renderTarget;
+
+		};
+
+		/**
+		 * Frees the GPU-related resources allocated by this instance. Call this
+		 * method whenever this instance is no longer used in your app.
+		 */
+		this.dispose = function () {
+
+			renderTarget.dispose();
+			scope.material.dispose();
 
 		};
 
@@ -252,6 +279,8 @@ class ReflectorForSSRPass extends Mesh {
 }
 
 ReflectorForSSRPass.ReflectorShader = {
+
+	name: 'ReflectorShader',
 
 	defines: {
 		DISTANCE_ATTENUATION: true,
@@ -347,5 +376,18 @@ ReflectorForSSRPass.ReflectorShader = {
 		}
 	`,
 };
+
+/**
+ * Constructor options of `ReflectorForSSRPass`.
+ *
+ * @typedef {Object} ReflectorForSSRPass~Options
+ * @property {number|Color|string} [color=0x7F7F7F] - The reflector's color.
+ * @property {number} [textureWidth=512] - The texture width. A higher value results in more clear reflections but is also more expensive.
+ * @property {number} [textureHeight=512] - The texture height. A higher value results in more clear reflections but is also more expensive.
+ * @property {number} [clipBias=0] - The clip bias.
+ * @property {Object} [shader] - Can be used to pass in a custom shader that defines how the reflective view is projected onto the reflector's geometry.
+ * @property {boolean} [useDepthTexture=true] - Whether to store depth values in a texture or not.
+ * @property {Vector2} [resolution] - Resolution for the Reflector Pass.
+ **/
 
 export { ReflectorForSSRPass };

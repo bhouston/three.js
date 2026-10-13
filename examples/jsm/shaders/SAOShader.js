@@ -4,18 +4,29 @@ import {
 } from 'three';
 
 /**
- * TODO
+ * @module SAOShader
+ * @three_import import { SAOShader } from 'three/addons/shaders/SAOShader.js';
  */
 
+/**
+ * SAO shader.
+ *
+ * Used by {@link SAOPass}.
+ *
+ * @constant
+ * @type {ShaderMaterial~Shader}
+ */
 const SAOShader = {
+
+	name: 'SAOShader',
+
 	defines: {
 		'NUM_SAMPLES': 7,
 		'NUM_RINGS': 4,
-		'NORMAL_TEXTURE': 0,
 		'DIFFUSE_TEXTURE': 0,
-		'DEPTH_PACKING': 1,
 		'PERSPECTIVE_CAMERA': 1
 	},
+
 	uniforms: {
 
 		'tDepth': { value: null },
@@ -36,6 +47,7 @@ const SAOShader = {
 		'kernelRadius': { value: 100.0 },
 		'randomSeed': { value: 0.0 }
 	},
+
 	vertexShader: /* glsl */`
 
 		varying vec2 vUv;
@@ -46,7 +58,6 @@ const SAOShader = {
 		}`,
 
 	fragmentShader: /* glsl */`
-
 		#include <common>
 
 		varying vec2 vUv;
@@ -55,11 +66,8 @@ const SAOShader = {
 		uniform sampler2D tDiffuse;
 		#endif
 
-		uniform sampler2D tDepth;
-
-		#if NORMAL_TEXTURE == 1
-		uniform sampler2D tNormal;
-		#endif
+		uniform highp sampler2D tDepth;
+		uniform highp sampler2D tNormal;
 
 		uniform float cameraNear;
 		uniform float cameraFar;
@@ -87,11 +95,7 @@ const SAOShader = {
 		}
 
 		float getDepth( const in vec2 screenPosition ) {
-			#if DEPTH_PACKING == 1
-			return unpackRGBAToDepth( texture2D( tDepth, screenPosition ) );
-			#else
 			return texture2D( tDepth, screenPosition ).x;
-			#endif
 		}
 
 		float getViewZ( const in float depth ) {
@@ -111,11 +115,7 @@ const SAOShader = {
 		}
 
 		vec3 getViewNormal( const in vec3 viewPosition, const in vec2 screenPosition ) {
-			#if NORMAL_TEXTURE == 1
 			return unpackRGBToNormal( texture2D( tNormal, screenPosition ).xyz );
-			#else
-			return normalize( cross( dFdx( viewPosition ), dFdy( viewPosition ) ) );
-			#endif
 		}
 
 		float scaleDividedByCameraFar;
@@ -153,9 +153,15 @@ const SAOShader = {
 				angle += ANGLE_STEP;
 
 				float sampleDepth = getDepth( sampleUv );
-				if( sampleDepth >= ( 1.0 - EPSILON ) ) {
+				#ifdef USE_REVERSED_DEPTH_BUFFER
+				if( sampleDepth <= 0.0 + EPSILON ) {
 					continue;
 				}
+				#else
+					if( sampleDepth >= 1.0 - EPSILON ) {
+						continue;
+					}
+				#endif
 
 				float sampleViewZ = getViewZ( sampleDepth );
 				vec3 sampleViewPosition = getViewPosition( sampleUv, sampleDepth, sampleViewZ );
@@ -170,9 +176,16 @@ const SAOShader = {
 
 		void main() {
 			float centerDepth = getDepth( vUv );
-			if( centerDepth >= ( 1.0 - EPSILON ) ) {
-				discard;
-			}
+			
+			#ifdef USE_REVERSED_DEPTH_BUFFER
+				if( centerDepth <= 0.0 + EPSILON ) {
+					discard;
+				}
+			#else
+				if( centerDepth >= 1.0 - EPSILON ) {
+					discard;
+				}
+			#endif
 
 			float centerViewZ = getViewZ( centerDepth );
 			vec3 viewPosition = getViewPosition( vUv, centerDepth, centerViewZ );

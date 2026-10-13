@@ -4,6 +4,10 @@
 		<title>three.js vr - panorama with depth</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+		<meta property="og:title" content="three.js vr - panorama with depth">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webxr_vr_panorama_depth.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webxr_vr_panorama_depth.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -14,14 +18,11 @@
 			Created by <a href="https://orfleisher.com" target="_blank" rel="noopener">@juniorxsound</a>. Panorama from <a href="https://krpano.com/examples/?depthmap" target="_blank" rel="noopener">krpano</a>.
 		</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -29,29 +30,29 @@
 		<script type="module">
 
 			import * as THREE from 'three';
-			import { VRButton } from './jsm/webxr/VRButton.js';
+			import { VRButton } from 'three/addons/webxr/VRButton.js';
 
-			let camera, scene, renderer, sphere, clock;
+			let camera, scene, renderer, sphere, timer;
 
 			init();
-			animate();
 
 			function init() {
 
 				const container = document.getElementById( 'container' );
 
-				clock = new THREE.Clock();
+				timer = new THREE.Timer();
+				timer.connect( document );
 
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0x101010 );
 
-				const light = new THREE.AmbientLight( 0xffffff, 1 );
+				const light = new THREE.AmbientLight( 0xffffff, 3 );
 				scene.add( light );
 
 				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 1, 2000 );
 				scene.add( camera );
 
-				// Create the panoramic sphere geometery
+				// Create the panoramic sphere geometry
 				const panoSphereGeo = new THREE.SphereGeometry( 6, 256, 256 );
 
 				// Create the panoramic sphere material
@@ -69,6 +70,7 @@
 
 				loader.load( './textures/kandao3.jpg', function ( texture ) {
 
+					texture.colorSpace = THREE.SRGBColorSpace;
 					texture.minFilter = THREE.NearestFilter;
 					texture.generateMipmaps = false;
 					sphere.material.map = texture;
@@ -93,6 +95,7 @@
 				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				renderer.xr.enabled = true;
 				renderer.xr.setReferenceSpaceType( 'local' );
 				container.appendChild( renderer.domElement );
@@ -116,17 +119,13 @@
 
 			function animate() {
 
-				renderer.setAnimationLoop( render );
-
-			}
-
-			function render() {
+				timer.update();
 
 				// If we are not presenting move the camera a little so the effect is visible
 
 				if ( renderer.xr.isPresenting === false ) {
 
-					const time = clock.getElapsedTime();
+					const time = timer.getElapsed();
 
 					sphere.rotation.y += 0.001;
 					sphere.position.x = Math.sin( time ) * 0.2;

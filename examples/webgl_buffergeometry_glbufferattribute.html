@@ -4,6 +4,10 @@
 		<title>three.js webgl - buffergeometry - custom VBOs</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - buffergeometry - custom VBOs">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_buffergeometry_glbufferattribute.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_buffergeometry_glbufferattribute.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -11,14 +15,11 @@
 		<div id="container"></div>
 		<div id="info"><a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgl - buffergeometry - custom VBOs</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -27,7 +28,7 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
 			let container, stats;
 
@@ -47,9 +48,10 @@
 
 				//
 
-				renderer = new THREE.WebGLRenderer( { antialias: false } );
+				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 
 				container.appendChild( renderer.domElement );
 
@@ -91,9 +93,10 @@
 					const vy = ( y / n ) + 0.5;
 					const vz = ( z / n ) + 0.5;
 
-					color.setRGB( vx, vy, vz );
+					color.setRGB( vx, vy, vz, THREE.SRGBColorSpace );
 
-					colors.push( color.r, color.g, color.b );
+					const hex = color.getHex( THREE.LinearSRGBColorSpace );
+					colors.push( hex >> 16 & 255, hex >> 8 & 255, hex & 255 );
 
 				}
 
@@ -109,7 +112,7 @@
 
 				const rgb = gl.createBuffer();
 				gl.bindBuffer( gl.ARRAY_BUFFER, rgb );
-				gl.bufferData( gl.ARRAY_BUFFER, new Float32Array( colors ), gl.STATIC_DRAW );
+				gl.bufferData( gl.ARRAY_BUFFER, new Uint8Array( colors ), gl.STATIC_DRAW );
 
 				const posAttr1 = new THREE.GLBufferAttribute( pos, gl.FLOAT, 3, 4, particles );
 				const posAttr2 = new THREE.GLBufferAttribute( pos2, gl.FLOAT, 3, 4, particles );
@@ -123,7 +126,7 @@
 
 				}, 2000 );
 
-				geometry.setAttribute( 'color', new THREE.GLBufferAttribute( rgb, gl.FLOAT, 3, 4, particles ) );
+				geometry.setAttribute( 'color', new THREE.GLBufferAttribute( rgb, gl.UNSIGNED_BYTE, 3, 1, particles, true ) );
 
 				//
 
@@ -131,9 +134,7 @@
 
 				points = new THREE.Points( geometry, material );
 
-				// Choose one:
-				// geometry.boundingSphere = ( new THREE.Sphere() ).set( new THREE.Vector3(), Infinity );
-				points.frustumCulled = false;
+				geometry.boundingSphere = new THREE.Sphere().set( new THREE.Vector3(), 500 );
 
 				scene.add( points );
 
@@ -161,15 +162,6 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
-
-				render();
-				stats.update();
-
-			}
-
-			function render() {
-
 				drawCount = ( Math.max( 5000, drawCount ) + Math.floor( 500 * Math.random() ) ) % particles;
 				points.geometry.setDrawRange( 0, drawCount );
 
@@ -179,6 +171,8 @@
 				points.rotation.y = time * 0.2;
 
 				renderer.render( scene, camera );
+
+				stats.update();
 
 			}
 

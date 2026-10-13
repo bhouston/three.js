@@ -1,13 +1,13 @@
-/* global QUnit */
+import { IcosahedronGeometry } from '../../../../src/geometries/IcosahedronGeometry.js';
 
+import { PolyhedronGeometry } from '../../../../src/geometries/PolyhedronGeometry.js';
 import { runStdGeometryTests } from '../../utils/qunit-utils.js';
-import { IcosahedronGeometry, IcosahedronBufferGeometry } from '../../../../src/geometries/IcosahedronGeometry.js';
 
 export default QUnit.module( 'Geometries', () => {
 
 	QUnit.module( 'IcosahedronGeometry', ( hooks ) => {
 
-		var geometries = undefined;
+		let geometries = undefined;
 		hooks.beforeEach( function () {
 
 			const parameters = {
@@ -19,22 +19,37 @@ export default QUnit.module( 'Geometries', () => {
 				new IcosahedronGeometry(),
 				new IcosahedronGeometry( parameters.radius ),
 				new IcosahedronGeometry( parameters.radius, parameters.detail ),
-				new IcosahedronBufferGeometry()
 			];
 
 		} );
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new IcosahedronGeometry();
+			assert.strictEqual(
+				object instanceof PolyhedronGeometry, true,
+				'IcosahedronGeometry extends from PolyhedronGeometry'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new IcosahedronGeometry();
+			assert.ok( object, 'Can instantiate an IcosahedronGeometry.' );
+
+		} );
+
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
+
+			const object = new IcosahedronGeometry();
+			assert.ok(
+				object.type === 'IcosahedronGeometry',
+				'IcosahedronGeometry.type should be IcosahedronGeometry'
+			);
 
 		} );
 

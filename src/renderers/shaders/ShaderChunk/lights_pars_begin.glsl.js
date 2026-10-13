@@ -1,7 +1,12 @@
 export default /* glsl */`
 uniform bool receiveShadow;
 uniform vec3 ambientLightColor;
-uniform vec3 lightProbe[ 9 ];
+
+#if defined( USE_LIGHT_PROBES )
+
+	uniform vec3 lightProbe[ 9 ];
+
+#endif
 
 // get the irradiance (radiance convolved with cosine lobe) at the point 'normal' on the unit sphere
 // source: https://graphics.stanford.edu/papers/envmap/envmap.pdf
@@ -32,7 +37,7 @@ vec3 shGetIrradianceAt( in vec3 normal, in vec3 shCoefficients[ 9 ] ) {
 
 vec3 getLightProbeIrradiance( const in vec3 lightProbe[ 9 ], const in vec3 normal ) {
 
-	vec3 worldNormal = inverseTransformDirection( normal, viewMatrix );
+	vec3 worldNormal = transformNormalByInverseViewMatrix( normal, viewMatrix );
 
 	vec3 irradiance = shGetIrradianceAt( worldNormal, lightProbe );
 
@@ -50,32 +55,18 @@ vec3 getAmbientLightIrradiance( const in vec3 ambientLightColor ) {
 
 float getDistanceAttenuation( const in float lightDistance, const in float cutoffDistance, const in float decayExponent ) {
 
-	#if defined ( PHYSICALLY_CORRECT_LIGHTS )
+	// based upon Frostbite 3 Moving to Physically-based Rendering
+	// page 32, equation 26: E[window1]
+	// https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf
+	float distanceFalloff = 1.0 / max( pow( lightDistance, decayExponent ), 0.01 );
 
-		// based upon Frostbite 3 Moving to Physically-based Rendering
-		// page 32, equation 26: E[window1]
-		// https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf
-		float distanceFalloff = 1.0 / max( pow( lightDistance, decayExponent ), 0.01 );
+	if ( cutoffDistance > 0.0 ) {
 
-		if ( cutoffDistance > 0.0 ) {
+		distanceFalloff *= pow2( saturate( 1.0 - pow4( lightDistance / cutoffDistance ) ) );
 
-			distanceFalloff *= pow2( saturate( 1.0 - pow4( lightDistance / cutoffDistance ) ) );
+	}
 
-		}
-
-		return distanceFalloff;
-
-	#else
-
-		if ( cutoffDistance > 0.0 && decayExponent > 0.0 ) {
-
-			return pow( saturate( - lightDistance / cutoffDistance + 1.0 ), decayExponent );
-
-		}
-
-		return 1.0;
-
-	#endif
+	return distanceFalloff;
 
 }
 
@@ -84,6 +75,26 @@ float getSpotAttenuation( const in float coneCosine, const in float penumbraCosi
 	return smoothstep( coneCosine, penumbraCosine, angleCosine );
 
 }
+
+#if NUM_SUN_LIGHTS > 0
+
+	struct SunLight {
+		vec3 direction;
+		vec3 color;
+	};
+
+	uniform SunLight sunLights[ NUM_SUN_LIGHTS ];
+
+	void getSunLightInfo( const in SunLight sunLight, out IncidentLight light ) {
+
+		light.color = sunLight.color;
+		light.direction = sunLight.direction;
+		light.visible = true;
+
+	}
+
+#endif
+
 
 #if NUM_DIR_LIGHTS > 0
 
@@ -94,7 +105,7 @@ float getSpotAttenuation( const in float coneCosine, const in float penumbraCosi
 
 	uniform DirectionalLight directionalLights[ NUM_DIR_LIGHTS ];
 
-	void getDirectionalLightInfo( const in DirectionalLight directionalLight, const in GeometricContext geometry, out IncidentLight light ) {
+	void getDirectionalLightInfo( const in DirectionalLight directionalLight, out IncidentLight light ) {
 
 		light.color = directionalLight.color;
 		light.direction = directionalLight.direction;
@@ -117,9 +128,9 @@ float getSpotAttenuation( const in float coneCosine, const in float penumbraCosi
 	uniform PointLight pointLights[ NUM_POINT_LIGHTS ];
 
 	// light is an out parameter as having it as a return value caused compiler errors on some devices
-	void getPointLightInfo( const in PointLight pointLight, const in GeometricContext geometry, out IncidentLight light ) {
+	void getPointLightInfo( const in PointLight pointLight, const in vec3 geometryPosition, out IncidentLight light ) {
 
-		vec3 lVector = pointLight.position - geometry.position;
+		vec3 lVector = pointLight.position - geometryPosition;
 
 		light.direction = normalize( lVector );
 
@@ -149,9 +160,9 @@ float getSpotAttenuation( const in float coneCosine, const in float penumbraCosi
 	uniform SpotLight spotLights[ NUM_SPOT_LIGHTS ];
 
 	// light is an out parameter as having it as a return value caused compiler errors on some devices
-	void getSpotLightInfo( const in SpotLight spotLight, const in GeometricContext geometry, out IncidentLight light ) {
+	void getSpotLightInfo( const in SpotLight spotLight, const in vec3 geometryPosition, out IncidentLight light ) {
 
-		vec3 lVector = spotLight.position - geometry.position;
+		vec3 lVector = spotLight.position - geometryPosition;
 
 		light.direction = normalize( lVector );
 
@@ -220,4 +231,6 @@ float getSpotAttenuation( const in float coneCosine, const in float penumbraCosi
 	}
 
 #endif
+
+#include <lightprobes_pars_fragment>
 `;

@@ -3,28 +3,36 @@ import {
 	BufferGeometry,
 	ClampToEdgeWrapping,
 	Color,
+	CylinderGeometry,
 	FileLoader,
 	Float32BufferAttribute,
 	Group,
 	LinearFilter,
 	LinearMipmapLinearFilter,
 	Loader,
-	LoaderUtils,
 	Matrix4,
 	Mesh,
 	MeshPhongMaterial,
 	MeshStandardMaterial,
 	MirroredRepeatWrapping,
 	NearestFilter,
+	Quaternion,
 	RepeatWrapping,
+	SphereGeometry,
 	TextureLoader,
-	sRGBEncoding
+	SRGBColorSpace,
+	Vector3
 } from 'three';
-import * as fflate from '../libs/fflate.module.js';
+import { unzipSync } from '../libs/fflate.module.js';
+import { mergeGeometries } from '../utils/BufferGeometryUtils.js';
+
+const COLOR_SPACE_3MF = SRGBColorSpace;
+
+const NS_BEAM_LATTICE = 'http://schemas.microsoft.com/3dmanufacturing/beamlattice/2017/02';
+const NS_BEAM_LATTICE_BALLS = 'http://schemas.microsoft.com/3dmanufacturing/beamlattice/balls/2020/07';
 
 /**
- *
- * 3D Manufacturing Format (3MF) specification: https://3mf.io/specification/
+ * A loader for the [3D Manufacturing Format (3MF)](https://3mf.io/specification/) format.
  *
  * The following features from the core specification are supported:
  *
@@ -38,18 +46,48 @@ import * as fflate from '../libs/fflate.module.js';
  * - Texture 2D Groups
  * - Color Groups (Vertex Colors)
  * - Metallic Display Properties (PBR)
+ * - Beam Lattice
+ *
+ * ```js
+ * const loader = new ThreeMFLoader();
+ *
+ * const object = await loader.loadAsync( './models/3mf/truck.3mf' );
+ * object.rotation.set( - Math.PI / 2, 0, 0 ); // z-up conversion
+ * scene.add( object );
+ * ```
+ *
+ * @augments Loader
+ * @three_import import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
  */
-
 class ThreeMFLoader extends Loader {
 
+	/**
+	 * Constructs a new 3MF loader.
+	 *
+	 * @param {LoadingManager} [manager] - The loading manager.
+	 */
 	constructor( manager ) {
 
 		super( manager );
 
+		/**
+		 * An array of available extensions.
+		 *
+		 * @type {Array<Object>}
+		 */
 		this.availableExtensions = [];
 
 	}
 
+	/**
+	 * Starts loading from the given URL and passes the loaded 3MF asset
+	 * to the `onLoad()` callback.
+	 *
+	 * @param {string} url - The path/URL of the file to be loaded. This can also be a data URI.
+	 * @param {function(Group)} onLoad - Executed when the loading process has been finished.
+	 * @param {onProgressCallback} onProgress - Executed while the loading is in progress.
+	 * @param {onErrorCallback} onError - Executed when errors occur.
+	 */
 	load( url, onLoad, onProgress, onError ) {
 
 		const scope = this;
@@ -84,6 +122,12 @@ class ThreeMFLoader extends Loader {
 
 	}
 
+	/**
+	 * Parses the given 3MF data and returns the resulting group.
+	 *
+	 * @param {ArrayBuffer} data - The raw 3MF asset data as an array buffer.
+	 * @return {Group} A group representing the parsed asset.
+	 */
 	parse( data ) {
 
 		const scope = this;
@@ -104,9 +148,11 @@ class ThreeMFLoader extends Loader {
 			const printTicketParts = {};
 			const texturesParts = {};
 
+			const textDecoder = new TextDecoder();
+
 			try {
 
-				zip = fflate.unzipSync( new Uint8Array( data ) ); // eslint-disable-line no-undef
+				zip = unzipSync( new Uint8Array( data ) );
 
 			} catch ( e ) {
 
@@ -119,6 +165,8 @@ class ThreeMFLoader extends Loader {
 
 			}
 
+			let rootModelFile = null;
+
 			for ( file in zip ) {
 
 				if ( file.match( /\_rels\/.rels$/ ) ) {
@@ -129,9 +177,13 @@ class ThreeMFLoader extends Loader {
 
 					modelRelsName = file;
 
-				} else if ( file.match( /^3D\/.*\.model$/ ) ) {
+				} else if ( file.match( /^3D\/[^\/]*\.model$/ ) ) {
 
-					modelPartNames.push( file );
+					rootModelFile = file;
+
+				} else if ( file.match( /^3D\/.*\/.*\.model$/ ) ) {
+
+					modelPartNames.push( file ); // sub models
 
 				} else if ( file.match( /^3D\/Textures?\/.*/ ) ) {
 
@@ -141,10 +193,14 @@ class ThreeMFLoader extends Loader {
 
 			}
 
+			modelPartNames.push( rootModelFile ); // push root model at the end so it is processed after the sub models
+
+			if ( relsName === undefined ) throw new Error( 'THREE.ThreeMFLoader: Cannot find relationship file `rels` in 3MF archive.' );
+
 			//
 
 			const relsView = zip[ relsName ];
-			const relsFileText = LoaderUtils.decodeText( relsView );
+			const relsFileText = textDecoder.decode( relsView );
 			const rels = parseRelsXml( relsFileText );
 
 			//
@@ -152,7 +208,7 @@ class ThreeMFLoader extends Loader {
 			if ( modelRelsName ) {
 
 				const relsView = zip[ modelRelsName ];
-				const relsFileText = LoaderUtils.decodeText( relsView );
+				const relsFileText = textDecoder.decode( relsView );
 				modelRels = parseRelsXml( relsFileText );
 
 			}
@@ -164,7 +220,7 @@ class ThreeMFLoader extends Loader {
 				const modelPart = modelPartNames[ i ];
 				const view = zip[ modelPart ];
 
-				const fileText = LoaderUtils.decodeText( view );
+				const fileText = textDecoder.decode( view );
 				const xmlData = new DOMParser().parseFromString( fileText, 'application/xml' );
 
 				if ( xmlData.documentElement.nodeName.toLowerCase() !== 'model' ) {
@@ -358,8 +414,7 @@ class ThreeMFLoader extends Loader {
 				const colorNode = colorNodes[ i ];
 				const color = colorNode.getAttribute( 'color' );
 
-				colorObject.setStyle( color.substring( 0, 7 ) );
-				colorObject.convertSRGBToLinear(); // color is in sRGB
+				colorObject.setStyle( color.substring( 0, 7 ), COLOR_SPACE_3MF );
 
 				colors.push( colorObject.r, colorObject.g, colorObject.b );
 
@@ -368,6 +423,73 @@ class ThreeMFLoader extends Loader {
 			colorGroupData[ 'colors' ] = new Float32Array( colors );
 
 			return colorGroupData;
+
+		}
+
+		function parseImplicitIONode( implicitIONode ) {
+
+			const portNodes = implicitIONode.children;
+			const portArguments = {};
+			for ( let i = 0; i < portNodes.length; i ++ ) {
+
+				const args = { type: portNodes[ i ].nodeName.substring( 2 ) };
+				for ( let j = 0; j < portNodes[ i ].attributes.length; j ++ ) {
+
+					const attrib = portNodes[ i ].attributes[ j ];
+					if ( attrib.specified ) {
+
+		 				args[ attrib.name ] = attrib.value;
+
+					}
+
+				}
+
+				portArguments[ portNodes[ i ].getAttribute( 'identifier' ) ] = args;
+
+			}
+
+			return portArguments;
+
+		}
+
+		function parseImplicitFunctionNode( implicitFunctionNode ) {
+
+			const implicitFunctionData = {
+				id: implicitFunctionNode.getAttribute( 'id' ),
+				displayname: implicitFunctionNode.getAttribute( 'displayname' )
+			};
+
+			const functionNodes = implicitFunctionNode.children;
+
+			const operations = {};
+
+			for ( let i = 0; i < functionNodes.length; i ++ ) {
+
+				const operatorNode = functionNodes[ i ];
+
+				if ( operatorNode.nodeName === 'i:in' || operatorNode.nodeName === 'i:out' ) {
+
+					operations[ operatorNode.nodeName === 'i:in' ? 'inputs' : 'outputs' ] = parseImplicitIONode( operatorNode );
+
+				} else {
+
+					const inputNodes = operatorNode.children;
+					const portArguments = { 'op': operatorNode.nodeName.substring( 2 ), 'identifier': operatorNode.getAttribute( 'identifier' ) };
+					for ( let i = 0; i < inputNodes.length; i ++ ) {
+
+						portArguments[ inputNodes[ i ].nodeName.substring( 2 ) ] = parseImplicitIONode( inputNodes[ i ] );
+
+					}
+
+					operations[ portArguments[ 'identifier' ] ] = portArguments;
+
+				}
+
+			}
+
+			implicitFunctionData[ 'operations' ] = operations;
+
+			return implicitFunctionData;
 
 		}
 
@@ -491,7 +613,84 @@ class ThreeMFLoader extends Loader {
 			meshData[ 'triangleProperties' ] = triangleProperties;
 			meshData[ 'triangles' ] = new Uint32Array( triangles );
 
+			const beamLatticeNode = meshNode.getElementsByTagNameNS( NS_BEAM_LATTICE, 'beamlattice' )[ 0 ];
+
+			if ( beamLatticeNode !== undefined ) {
+
+				meshData[ 'beamlattice' ] = parseBeamLatticeNode( beamLatticeNode );
+
+			}
+
 			return meshData;
+
+		}
+
+		function parseBeamLatticeNode( beamLatticeNode ) {
+
+			const beamLatticeData = {
+				radius: parseFloat( beamLatticeNode.getAttribute( 'radius' ) ), // required
+				minLength: parseFloat( beamLatticeNode.getAttribute( 'minlength' ) ),
+				cap: beamLatticeNode.getAttribute( 'cap' ) || 'sphere',
+				ballMode: beamLatticeNode.getAttributeNS( NS_BEAM_LATTICE_BALLS, 'ballmode' ) || 'none',
+				ballRadius: parseFloat( beamLatticeNode.getAttributeNS( NS_BEAM_LATTICE_BALLS, 'ballradius' ) ),
+				beams: [],
+				balls: []
+			};
+
+			// clipping requires boolean operations which are not supported ('clipping' is a legacy name of 'clippingmode')
+
+			const clippingMode = beamLatticeNode.getAttribute( 'clippingmode' ) || beamLatticeNode.getAttribute( 'clipping' );
+
+			if ( clippingMode !== null && clippingMode !== 'none' ) {
+
+				console.warn( 'THREE.3MFLoader: Beam lattice clipping is not supported. The lattice is rendered unclipped.' );
+
+			}
+
+			const beamNodes = beamLatticeNode.getElementsByTagNameNS( NS_BEAM_LATTICE, 'beam' );
+
+			for ( let i = 0; i < beamNodes.length; i ++ ) {
+
+				const beamNode = beamNodes[ i ];
+
+				const beamData = {
+					v1: parseInt( beamNode.getAttribute( 'v1' ), 10 ), // required
+					v2: parseInt( beamNode.getAttribute( 'v2' ), 10 ) // required
+				};
+
+				// optional
+
+				const r1 = beamNode.getAttribute( 'r1' );
+				const r2 = beamNode.getAttribute( 'r2' );
+
+				if ( r1 !== null ) beamData[ 'r1' ] = parseFloat( r1 );
+				if ( r2 !== null ) beamData[ 'r2' ] = parseFloat( r2 );
+
+				beamLatticeData.beams.push( beamData );
+
+			}
+
+			const ballNodes = beamLatticeNode.getElementsByTagNameNS( NS_BEAM_LATTICE_BALLS, 'ball' );
+
+			for ( let i = 0; i < ballNodes.length; i ++ ) {
+
+				const ballNode = ballNodes[ i ];
+
+				const ballData = {
+					vindex: parseInt( ballNode.getAttribute( 'vindex' ), 10 ) // required
+				};
+
+				// optional
+
+				const r = ballNode.getAttribute( 'r' );
+
+				if ( r !== null ) ballData[ 'r' ] = parseFloat( r );
+
+				beamLatticeData.balls.push( ballData );
+
+			}
+
+			return beamLatticeData;
 
 		}
 
@@ -669,6 +868,25 @@ class ThreeMFLoader extends Loader {
 
 			//
 
+			const implicitFunctionNodes = resourcesNode.querySelectorAll( 'implicitfunction' );
+
+			if ( implicitFunctionNodes.length > 0 ) {
+
+				resourcesData[ 'implicitfunction' ] = {};
+
+			}
+
+
+			for ( let i = 0; i < implicitFunctionNodes.length; i ++ ) {
+
+				const implicitFunctionNode = implicitFunctionNodes[ i ];
+				const implicitFunctionData = parseImplicitFunctionNode( implicitFunctionNode );
+				resourcesData[ 'implicitfunction' ][ implicitFunctionData[ 'id' ] ] = implicitFunctionData;
+
+			}
+
+			//
+
 			resourcesData[ 'pbmetallicdisplayproperties' ] = {};
 			const pbmetallicdisplaypropertiesNodes = resourcesNode.querySelectorAll( 'pbmetallicdisplayproperties' );
 
@@ -788,7 +1006,7 @@ class ThreeMFLoader extends Loader {
 
 				} );
 
-				texture.encoding = sRGBEncoding;
+				texture.colorSpace = COLOR_SPACE_3MF;
 
 				// texture parameters
 
@@ -842,11 +1060,13 @@ class ThreeMFLoader extends Loader {
 					case 'linear':
 						texture.magFilter = LinearFilter;
 						texture.minFilter = LinearFilter;
+						texture.generateMipmaps = false;
 						break;
 
 					case 'nearest':
 						texture.magFilter = NearestFilter;
 						texture.minFilter = NearestFilter;
+						texture.generateMipmaps = false;
 						break;
 
 					default:
@@ -1065,7 +1285,116 @@ class ThreeMFLoader extends Loader {
 			geometry.setIndex( new BufferAttribute( meshData[ 'triangles' ], 1 ) );
 			geometry.setAttribute( 'position', new BufferAttribute( meshData[ 'vertices' ], 3 ) );
 
-			const material = new MeshPhongMaterial( { color: 0xffffff, flatShading: true } );
+			const material = new MeshPhongMaterial( {
+				name: Loader.DEFAULT_MATERIAL_NAME,
+				color: 0xffffff,
+				flatShading: true
+			} );
+
+			const mesh = new Mesh( geometry, material );
+
+			return mesh;
+
+		}
+
+		function buildLatticeMesh( meshData ) {
+
+			const beamLatticeData = meshData[ 'beamlattice' ];
+			const vertices = meshData[ 'vertices' ];
+
+			const geometries = [];
+
+			const p1 = new Vector3();
+			const p2 = new Vector3();
+			const direction = new Vector3();
+			const up = new Vector3( 0, 1, 0 );
+			const quaternion = new Quaternion();
+			const matrix = new Matrix4();
+
+			// beams
+
+			const beams = beamLatticeData.beams;
+			const openEnded = beamLatticeData.cap !== 'butt';
+
+			// spheres for caps and balls are collected per vertex so joints are only built once
+
+			const sphereRadii = new Map();
+
+			for ( let i = 0; i < beams.length; i ++ ) {
+
+				const beam = beams[ i ];
+
+				p1.fromArray( vertices, beam.v1 * 3 );
+				p2.fromArray( vertices, beam.v2 * 3 );
+
+				const length = p1.distanceTo( p2 );
+
+				if ( length < beamLatticeData.minLength ) continue; // consumers must ignore beams shorter than "minlength"
+
+				const r1 = ( beam.r1 !== undefined ) ? beam.r1 : beamLatticeData.radius;
+				const r2 = ( beam.r2 !== undefined ) ? beam.r2 : r1;
+
+				const geometry = new CylinderGeometry( r2, r1, length, 8, 1, openEnded );
+
+				direction.subVectors( p2, p1 ).divideScalar( length );
+				quaternion.setFromUnitVectors( up, direction );
+
+				matrix.makeRotationFromQuaternion( quaternion );
+				matrix.setPosition( p1.add( p2 ).multiplyScalar( 0.5 ) );
+
+				geometry.applyMatrix4( matrix );
+				geometries.push( geometry );
+
+				if ( openEnded ) {
+
+					// approximate "sphere" and "hemisphere" caps with a sphere per beam end
+
+					sphereRadii.set( beam.v1, Math.max( r1, sphereRadii.get( beam.v1 ) || 0 ) );
+					sphereRadii.set( beam.v2, Math.max( r2, sphereRadii.get( beam.v2 ) || 0 ) );
+
+				}
+
+				if ( beamLatticeData.ballMode === 'all' ) {
+
+					sphereRadii.set( beam.v1, Math.max( beamLatticeData.ballRadius, sphereRadii.get( beam.v1 ) || 0 ) );
+					sphereRadii.set( beam.v2, Math.max( beamLatticeData.ballRadius, sphereRadii.get( beam.v2 ) || 0 ) );
+
+				}
+
+			}
+
+			// balls
+
+			const balls = beamLatticeData.balls;
+
+			for ( let i = 0; i < balls.length; i ++ ) {
+
+				const ball = balls[ i ];
+				const r = ( ball.r !== undefined ) ? ball.r : beamLatticeData.ballRadius;
+
+				sphereRadii.set( ball.vindex, Math.max( r, sphereRadii.get( ball.vindex ) || 0 ) );
+
+			}
+
+			for ( const [ vindex, radius ] of sphereRadii ) {
+
+				const geometry = new SphereGeometry( radius, 8, 6 );
+
+				p1.fromArray( vertices, vindex * 3 );
+				geometry.translate( p1.x, p1.y, p1.z );
+
+				geometries.push( geometry );
+
+			}
+
+			//
+
+			const geometry = mergeGeometries( geometries );
+
+			const material = new MeshPhongMaterial( {
+				name: Loader.DEFAULT_MATERIAL_NAME,
+				color: 0xffffff
+			} );
 
 			const mesh = new Mesh( geometry, material );
 
@@ -1191,6 +1520,16 @@ class ThreeMFLoader extends Loader {
 			const resourceMap = analyzeObject( meshData, objectData );
 			const meshes = buildMeshes( resourceMap, meshData, objects, modelData, textureData, objectData );
 
+			if ( meshData[ 'beamlattice' ] !== undefined ) {
+
+				const latticeMesh = buildLatticeMesh( meshData );
+
+				if ( objectData.name ) latticeMesh.name = objectData.name;
+
+				meshes.push( latticeMesh );
+
+			}
+
 			for ( let i = 0, l = meshes.length; i < l; i ++ ) {
 
 				group.add( meshes[ i ] );
@@ -1280,8 +1619,7 @@ class ThreeMFLoader extends Loader {
 			const displaycolor = materialData.displaycolor;
 
 			const color = displaycolor.substring( 0, 7 );
-			material.color.setStyle( color );
-			material.color.convertSRGBToLinear(); // displaycolor is in sRGB
+			material.color.setStyle( color, COLOR_SPACE_3MF );
 
 			// process alpha if set
 
@@ -1357,6 +1695,12 @@ class ThreeMFLoader extends Loader {
 			if ( objectData.name ) {
 
 				objects[ objectData.id ].name = objectData.name;
+
+			}
+
+			if ( modelData.resources.implicitfunction ) {
+
+				console.warn( 'THREE.ThreeMFLoader: Implicit Functions are implemented in data-only.', modelData.resources.implicitfunction );
 
 			}
 
@@ -1462,6 +1806,11 @@ class ThreeMFLoader extends Loader {
 
 	}
 
+	/**
+	 * Adds a 3MF extension.
+	 *
+	 * @param {Object} extension - The extension to add.
+	 */
 	addExtension( extension ) {
 
 		this.availableExtensions.push( extension );

@@ -4,6 +4,10 @@
 		<title>threejs webgl - materials - hdr environment mapping</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="threejs webgl - materials - hdr environment mapping">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_materials_envmaps_hdr.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_materials_envmaps_hdr.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -11,17 +15,14 @@
 		<div id="container"></div>
 		<div id="info">
 			<a href="https://threejs.org" target="_blank" rel="noopener">threejs</a> - High dynamic range (RGBE) Image-based Lighting (IBL)<br />using run-time generated pre-filtered roughness mipmaps (PMREM)<br/>
-			Created by Prashant Sharma and <a href="http://clara.io/" target="_blank" rel="noopener">Ben Houston</a>.
+			Created by Prashant Sharma and <a href="https://ben3d.ca/" target="_blank" rel="noopener">Ben Houston</a>.
 		</div>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -30,13 +31,12 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
-			import { HDRCubeTextureLoader } from './jsm/loaders/HDRCubeTextureLoader.js';
-			import { RGBMLoader } from './jsm/loaders/RGBMLoader.js';
-			import { DebugEnvironment } from './jsm/environments/DebugEnvironment.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { HDRCubeTextureLoader } from 'three/addons/loaders/HDRCubeTextureLoader.js';
+			import { DebugEnvironment } from 'three/addons/environments/DebugEnvironment.js';
 
 			const params = {
 				envMap: 'HDR',
@@ -49,11 +49,10 @@
 			let container, stats;
 			let camera, scene, renderer, controls;
 			let torusMesh, planeMesh;
-			let generatedCubeRenderTarget, ldrCubeRenderTarget, hdrCubeRenderTarget, rgbmCubeRenderTarget;
-			let ldrCubeMap, hdrCubeMap, rgbmCubeMap;
+			let generatedCubeRenderTarget, ldrCubeRenderTarget, hdrCubeRenderTarget;
+			let ldrCubeMap, hdrCubeMap;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -67,7 +66,6 @@
 				scene.background = new THREE.Color( 0x000000 );
 
 				renderer = new THREE.WebGLRenderer();
-				renderer.physicallyCorrectLights = true;
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 				//
@@ -115,19 +113,7 @@
 					.setPath( './textures/cube/pisa/' )
 					.load( ldrUrls, function () {
 
-						ldrCubeMap.encoding = THREE.sRGBEncoding;
-
 						ldrCubeRenderTarget = pmremGenerator.fromCubemap( ldrCubeMap );
-
-					} );
-
-
-				const rgbmUrls = [ 'px.png', 'nx.png', 'py.png', 'ny.png', 'pz.png', 'nz.png' ];
-				rgbmCubeMap = new RGBMLoader().setMaxRange( 16 )
-					.setPath( './textures/cube/pisaRGBM16/' )
-					.loadCubemap( rgbmUrls, function () {
-
-						rgbmCubeRenderTarget = pmremGenerator.fromCubemap( rgbmCubeMap );
 
 					} );
 
@@ -139,10 +125,10 @@
 
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				container.appendChild( renderer.domElement );
 
 				//renderer.toneMapping = ReinhardToneMapping;
-				renderer.outputEncoding = THREE.sRGBEncoding;
 
 				stats = new Stats();
 				container.appendChild( stats.dom );
@@ -155,11 +141,11 @@
 
 				const gui = new GUI();
 
-				gui.add( params, 'envMap', [ 'Generated', 'LDR', 'HDR', 'RGBM16' ] );
+				gui.add( params, 'envMap', [ 'Generated', 'LDR', 'HDR' ] );
 				gui.add( params, 'roughness', 0, 1, 0.01 );
 				gui.add( params, 'metalness', 0, 1, 0.01 );
 				gui.add( params, 'exposure', 0, 2, 0.01 );
-				gui.add( params, 'debug', false );
+				gui.add( params, 'debug' );
 				gui.open();
 
 			}
@@ -177,8 +163,6 @@
 			}
 
 			function animate() {
-
-				requestAnimationFrame( animate );
 
 				stats.begin();
 				render();
@@ -206,10 +190,6 @@
 					case 'HDR':
 						renderTarget = hdrCubeRenderTarget;
 						cubeMap = hdrCubeMap;
-						break;
-					case 'RGBM16':
-						renderTarget = rgbmCubeRenderTarget;
-						cubeMap = rgbmCubeMap;
 						break;
 
 				}

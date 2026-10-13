@@ -5,30 +5,107 @@ import {
 import { Bone } from './Bone.js';
 import { Matrix4 } from '../math/Matrix4.js';
 import { DataTexture } from '../textures/DataTexture.js';
-import * as MathUtils from '../math/MathUtils.js';
+import { generateUUID } from '../math/MathUtils.js';
+import { warn } from '../utils.js';
 
 const _offsetMatrix = /*@__PURE__*/ new Matrix4();
 const _identityMatrix = /*@__PURE__*/ new Matrix4();
 
+/**
+ * Class for representing the armatures in `three.js`. The skeleton
+ * is defined by a hierarchy of bones.
+ *
+ * ```js
+ * const bones = [];
+ *
+ * const shoulder = new THREE.Bone();
+ * const elbow = new THREE.Bone();
+ * const hand = new THREE.Bone();
+ *
+ * shoulder.add( elbow );
+ * elbow.add( hand );
+ *
+ * bones.push( shoulder , elbow, hand);
+ *
+ * shoulder.position.y = -5;
+ * elbow.position.y = 0;
+ * hand.position.y = 5;
+ *
+ * const armSkeleton = new THREE.Skeleton( bones );
+ * ```
+ */
 class Skeleton {
 
+	/**
+	 * Constructs a new skeleton.
+	 *
+	 * @param {Array<Bone>} [bones] - An array of bones.
+	 * @param {Array<Matrix4>} [boneInverses] - An array of bone inverse matrices.
+	 * If not provided, these matrices will be computed automatically via {@link Skeleton#calculateInverses}.
+	 */
 	constructor( bones = [], boneInverses = [] ) {
 
-		this.uuid = MathUtils.generateUUID();
+		this.uuid = generateUUID();
 
+		/**
+		 * An array of bones defining the skeleton.
+		 *
+		 * @type {Array<Bone>}
+		 */
 		this.bones = bones.slice( 0 );
+
+		/**
+		 * An array of bone inverse matrices.
+		 *
+		 * @type {Array<Matrix4>}
+		 */
 		this.boneInverses = boneInverses;
+
+		/**
+		 * An array buffer holding the bone data.
+		 * Input data for {@link Skeleton#boneTexture}.
+		 *
+		 * @type {?Float32Array}
+		 * @default null
+		 */
 		this.boneMatrices = null;
 
-		this.boneTexture = null;
-		this.boneTextureSize = 0;
+		/**
+		 * An array buffer holding the bone data of the previous frame.
+		 * Required for computing velocity.
+		 *
+		 * @type {?Float32Array}
+		 * @default null
+		 */
+		this.previousBoneMatrices = null;
 
-		this.frame = - 1;
+		/**
+		 * A texture holding the bone data for use
+		 * in the vertex shader.
+		 *
+		 * @type {?DataTexture}
+		 * @default null
+		 */
+		this.boneTexture = null;
+
+		/**
+		 * A texture holding the bone data of the previous frame.
+		 * Required for computing velocity.
+		 *
+		 * @type {?DataTexture}
+		 * @default null
+		 */
+		this.previousBoneTexture = null;
 
 		this.init();
 
 	}
 
+	/**
+	 * Initializes the skeleton. This method gets automatically called by the constructor
+	 * but depending on how the skeleton is created it might be necessary to call this method
+	 * manually.
+	 */
 	init() {
 
 		const bones = this.bones;
@@ -48,7 +125,7 @@ class Skeleton {
 
 			if ( bones.length !== boneInverses.length ) {
 
-				console.warn( 'THREE.Skeleton: Number of inverse bone matrices does not match amount of bones.' );
+				warn( 'Skeleton: Number of inverse bone matrices does not match amount of bones.' );
 
 				this.boneInverses = [];
 
@@ -64,6 +141,10 @@ class Skeleton {
 
 	}
 
+	/**
+	 * Computes the bone inverse matrices. This method resets {@link Skeleton#boneInverses}
+	 * and fills it with new matrices.
+	 */
 	calculateInverses() {
 
 		this.boneInverses.length = 0;
@@ -84,6 +165,9 @@ class Skeleton {
 
 	}
 
+	/**
+	 * Resets the skeleton to the base pose.
+	 */
 	pose() {
 
 		// recover the bind-time world matrices
@@ -127,6 +211,9 @@ class Skeleton {
 
 	}
 
+	/**
+	 * Resets the skeleton to the base pose.
+	 */
 	update() {
 
 		const bones = this.bones;
@@ -155,12 +242,22 @@ class Skeleton {
 
 	}
 
+	/**
+	 * Returns a new skeleton with copied values from this instance.
+	 *
+	 * @return {Skeleton} A clone of this instance.
+	 */
 	clone() {
 
 		return new Skeleton( this.bones, this.boneInverses );
 
 	}
 
+	/**
+	 * Computes a data texture for passing bone data to the vertex shader.
+	 *
+	 * @return {Skeleton} A reference of this instance.
+	 */
 	computeBoneTexture() {
 
 		// layout (1 matrix = 4 pixels)
@@ -171,7 +268,7 @@ class Skeleton {
 		//       64x64 pixel texture max 1024 bones * 4 pixels = (64 * 64)
 
 		let size = Math.sqrt( this.bones.length * 4 ); // 4 pixels needed for 1 matrix
-		size = MathUtils.ceilPowerOfTwo( size );
+		size = Math.ceil( size / 4 ) * 4;
 		size = Math.max( size, 4 );
 
 		const boneMatrices = new Float32Array( size * size * 4 ); // 4 floats per RGBA pixel
@@ -182,12 +279,18 @@ class Skeleton {
 
 		this.boneMatrices = boneMatrices;
 		this.boneTexture = boneTexture;
-		this.boneTextureSize = size;
 
 		return this;
 
 	}
 
+	/**
+	 * Searches through the skeleton's bone array and returns the first with a
+	 * matching name.
+	 *
+	 * @param {string} name - The name of the bone.
+	 * @return {Bone|undefined} The found bone. `undefined` if no bone has been found.
+	 */
 	getBoneByName( name ) {
 
 		for ( let i = 0, il = this.bones.length; i < il; i ++ ) {
@@ -206,6 +309,10 @@ class Skeleton {
 
 	}
 
+	/**
+	 * Frees the GPU-related resources allocated by this instance. Call this
+	 * method whenever this instance is no longer used in your app.
+	 */
 	dispose( ) {
 
 		if ( this.boneTexture !== null ) {
@@ -216,8 +323,23 @@ class Skeleton {
 
 		}
 
+		if ( this.previousBoneTexture !== null ) {
+
+			this.previousBoneTexture.dispose();
+
+			this.previousBoneTexture = null;
+
+		}
+
 	}
 
+	/**
+	 * Setups the skeleton by the given JSON and bones.
+	 *
+	 * @param {Object} json - The skeleton as serialized JSON.
+	 * @param {Object<string, Bone>} bones - An array of bones.
+	 * @return {Skeleton} A reference of this instance.
+	 */
 	fromJSON( json, bones ) {
 
 		this.uuid = json.uuid;
@@ -229,7 +351,7 @@ class Skeleton {
 
 			if ( bone === undefined ) {
 
-				console.warn( 'THREE.Skeleton: No bone found with UUID:', uuid );
+				warn( 'Skeleton: No bone found with UUID:', uuid );
 				bone = new Bone();
 
 			}
@@ -245,11 +367,17 @@ class Skeleton {
 
 	}
 
+	/**
+	 * Serializes the skeleton into JSON.
+	 *
+	 * @return {Object} A JSON object representing the serialized skeleton.
+	 * @see {@link ObjectLoader#parse}
+	 */
 	toJSON() {
 
 		const data = {
 			metadata: {
-				version: 4.5,
+				version: 4.7,
 				type: 'Skeleton',
 				generator: 'Skeleton.toJSON'
 			},

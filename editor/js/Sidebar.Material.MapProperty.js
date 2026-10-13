@@ -1,32 +1,40 @@
 import * as THREE from 'three';
 
-import { UICheckbox, UIDiv, UINumber, UIRow, UIText } from './libs/ui.js';
+import { UIButton, UICheckbox, UIDiv, UINumber, UIRow, UIText } from './libs/ui.js';
 import { UITexture } from './libs/ui.three.js';
 import { SetMaterialMapCommand } from './commands/SetMaterialMapCommand.js';
 import { SetMaterialValueCommand } from './commands/SetMaterialValueCommand.js';
 import { SetMaterialRangeCommand } from './commands/SetMaterialRangeCommand.js';
 import { SetMaterialVectorCommand } from './commands/SetMaterialVectorCommand.js';
+import { SetTextureParametersCommand } from './commands/SetTextureParametersCommand.js';
+import { TextureParametersDialog } from './TextureParametersDialog.js';
 
 function SidebarMaterialMapProperty( editor, property, name ) {
 
 	const signals = editor.signals;
 
 	const container = new UIRow();
-	container.add( new UIText( name ).setWidth( '90px' ) );
+	container.add( new UIText( name ).setClass( 'Label' ) );
 
 	const enabled = new UICheckbox( false ).setMarginRight( '8px' ).onChange( onChange );
 	container.add( enabled );
 
-	const map = new UITexture().onChange( onMapChange );
+	const map = new UITexture( editor ).onChange( onMapChange );
 	container.add( map );
 
+	const settings = new UIButton( '⚙' ).setClass( 'TextureSettingsButton' ).setMarginRight( '4px' ).onClick( onSettingsClick );
+	settings.setDisabled( true );
+	container.add( settings );
+
 	const mapType = property.replace( 'Map', '' );
+
+	const colorMaps = [ 'map', 'emissiveMap', 'sheenColorMap', 'specularColorMap', 'envMap' ];
 
 	let intensity;
 
 	if ( property === 'aoMap' ) {
 
-		intensity = new UINumber().setWidth( '30px' ).onChange( onIntensityChange );
+		intensity = new UINumber( 1 ).setWidth( '30px' ).setRange( 0, 1 ).onChange( onIntensityChange );
 		container.add( intensity );
 
 	}
@@ -55,7 +63,7 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 	let rangeMin, rangeMax;
 
 	if ( property === 'iridescenceThicknessMap' ) {
-		
+
 		const range = new UIDiv().setMarginLeft( '3px' );
 		container.add( range );
 
@@ -83,6 +91,7 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 	}
 
 	let object = null;
+	let materialSlot = null;
 	let material = null;
 
 	function onChange() {
@@ -101,7 +110,27 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 
 			}
 
-			editor.execute( new SetMaterialMapCommand( editor, object, property, newMap, 0 /* TODO: currentMaterialSlot */ ) );
+			editor.execute( new SetMaterialMapCommand( editor, object, property, newMap, materialSlot ) );
+
+		}
+
+	}
+
+	async function onSettingsClick() {
+
+		const texture = map.getValue();
+		if ( texture === null ) return;
+
+		const dialog = new TextureParametersDialog( editor, texture );
+
+		try {
+
+			const parameters = await dialog.show();
+			editor.execute( new SetTextureParametersCommand( editor, texture, parameters ) );
+
+		} catch ( e ) {
+
+			// Edit cancelled
 
 		}
 
@@ -111,9 +140,9 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 
 		if ( texture !== null ) {
 
-			if ( texture.isDataTexture !== true && texture.encoding !== THREE.sRGBEncoding ) {
+			if ( colorMaps.includes( property ) && texture.isDataTexture !== true && texture.colorSpace !== THREE.SRGBColorSpace ) {
 
-				texture.encoding = THREE.sRGBEncoding;
+				texture.colorSpace = THREE.SRGBColorSpace;
 				material.needsUpdate = true;
 
 			}
@@ -121,6 +150,7 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 		}
 
 		enabled.setDisabled( false );
+		settings.setDisabled( texture === null );
 
 		onChange();
 
@@ -130,7 +160,7 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 
 		if ( material[ `${ property }Intensity` ] !== intensity.getValue() ) {
 
-			editor.execute( new SetMaterialValueCommand( editor, object, `${ property }Intensity`, intensity.getValue(), 0 /* TODO: currentMaterialSlot */ ) );
+			editor.execute( new SetMaterialValueCommand( editor, object, `${ property }Intensity`, intensity.getValue(), materialSlot ) );
 
 		}
 
@@ -140,7 +170,7 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 
 		if ( material[ `${ mapType }Scale` ] !== scale.getValue() ) {
 
-			editor.execute( new SetMaterialValueCommand( editor, object, `${ mapType }Scale`, scale.getValue(), 0 /* TODO: currentMaterialSlot */ ) );
+			editor.execute( new SetMaterialValueCommand( editor, object, `${ mapType }Scale`, scale.getValue(), materialSlot ) );
 
 		}
 
@@ -152,7 +182,7 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 
 		if ( material[ `${ mapType }Scale` ].x !== value[ 0 ] || material[ `${ mapType }Scale` ].y !== value[ 1 ] ) {
 
-			editor.execute( new SetMaterialVectorCommand( editor, object, `${ mapType }Scale`, value, 0 /* TODOL currentMaterialSlot */ ) );
+			editor.execute( new SetMaterialVectorCommand( editor, object, `${ mapType }Scale`, value, materialSlot ) );
 
 		}
 
@@ -164,18 +194,21 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 
 		if ( material[ `${ mapType }Range` ][ 0 ] !== value[ 0 ] || material[ `${ mapType }Range` ][ 1 ] !== value[ 1 ] ) {
 
-			editor.execute( new SetMaterialRangeCommand( editor, object, `${ mapType }Range`, value[ 0 ], value[ 1 ], 0 /* TODOL currentMaterialSlot */ ) );
+			editor.execute( new SetMaterialRangeCommand( editor, object, `${ mapType }Range`, value[ 0 ], value[ 1 ], materialSlot ) );
 
 		}
 
 	}
 
-	function update() {
+	function update( currentObject, currentMaterialSlot = 0 ) {
+
+		object = currentObject;
+		materialSlot = currentMaterialSlot;
 
 		if ( object === null ) return;
 		if ( object.material === undefined ) return;
 
-		material = object.material;
+		material = editor.getObjectMaterial( object, materialSlot );
 
 		if ( property in material ) {
 
@@ -187,6 +220,7 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 
 			enabled.setValue( material[ property ] !== null );
 			enabled.setDisabled( map.getValue() === null );
+			settings.setDisabled( map.getValue() === null );
 
 			if ( intensity !== undefined ) {
 
@@ -228,11 +262,9 @@ function SidebarMaterialMapProperty( editor, property, name ) {
 
 	signals.objectSelected.add( function ( selected ) {
 
-		object = selected;
-
 		map.setValue( null );
 
-		update();
+		update( selected );
 
 	} );
 

@@ -1,36 +1,43 @@
 <html lang="en">
 	<head>
-		<title>three.js - WebGPU - Sprites</title>
+		<title>three.js webgpu - sprites</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link type="text/css" rel="stylesheet" href="main.css">
+		<meta property="og:title" content="three.js webgpu - sprites">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_sprites.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_sprites.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
 	</head>
 	<body>
 
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> WebGPU - Sprites
-		</div>
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Sprites</span>
+			</div>
+
+			<small>
+				Example of using a custom SpriteMaterial with nodes.
+			</small>
+		</div>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js",
-					"three-nodes/": "./jsm/nodes/"
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
 
 		<script type="module">
 
-			import * as THREE from 'three';
-			import * as Nodes from 'three-nodes/Nodes.js';
-
-			import { texture, uv, mul, float, color, userData } from 'three-nodes/Nodes.js';
-
-			import WebGPU from './jsm/capabilities/WebGPU.js';
-			import WebGPURenderer from './jsm/renderers/webgpu/WebGPURenderer.js';
+			import * as THREE from 'three/webgpu';
+			import { texture, uv, userData, fog, rangeFogFactor, color } from 'three/tsl';
 
 			let camera, scene, renderer;
 
@@ -40,17 +47,9 @@
 
 			let imageWidth = 1, imageHeight = 1;
 
-			init().then( animate ).catch( error );
+			init();
 
-			async function init() {
-
-				if ( WebGPU.isAvailable() === false ) {
-
-					document.body.appendChild( WebGPU.getErrorMessage() );
-
-					throw new Error( 'No WebGPU support' );
-
-				}
+			function init() {
 
 				const width = window.innerWidth;
 				const height = window.innerHeight;
@@ -59,7 +58,8 @@
 				camera.position.z = 1500;
 
 				scene = new THREE.Scene();
-				scene.fogNode = new Nodes.FogRangeNode( color( 0x0000ff ), float( 1500 ), float( 2100 )  );
+				scene.background = new THREE.Color( 0x000000 );
+				scene.fogNode = fog( color( 0x0000ff ), rangeFogFactor( 1500, 2100 ) );
 
 				// create sprites
 
@@ -79,11 +79,10 @@
 
 				const textureNode = texture( map );
 
-				const material = new Nodes.SpriteNodeMaterial();
-				material.colorNode = mul( textureNode, mul( uv(), 2 ) );
+				const material = new THREE.SpriteNodeMaterial();
+				material.colorNode = textureNode.mul( uv() ).mul( 2 ).saturate();
 				material.opacityNode = textureNode.a;
 				material.rotationNode = userData( 'rotation', 'float' ); // get value of: sprite.userData.rotation
-				material.transparent = true;
 
 				for ( let a = 0; a < amount; a ++ ) {
 
@@ -108,14 +107,13 @@
 
 				//
 
-				renderer = new WebGPURenderer( { requiredFeatures: [ 'texture-compression-bc' ] } );
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( render );
 				document.body.appendChild( renderer.domElement );
 
 				window.addEventListener( 'resize', onWindowResize );
-
-				return renderer.init();
 
 			}
 
@@ -128,13 +126,6 @@
 				camera.updateProjectionMatrix();
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
-
-			}
-
-			function animate() {
-
-				requestAnimationFrame( animate );
-				render();
 
 			}
 
@@ -157,12 +148,6 @@
 				group.rotation.z = time * 1.0;
 
 				renderer.render( scene, camera );
-
-			}
-
-			function error( error ) {
-
-				console.error( error );
 
 			}
 

@@ -11,17 +11,12 @@ uniform sampler2D shadow_pass;
 uniform vec2 resolution;
 uniform float radius;
 
-#include <packing>
-
 void main() {
 
 	const float samples = float( VSM_SAMPLES );
 
 	float mean = 0.0;
 	float squared_mean = 0.0;
-
-	// This seems totally useless but it's a crazy work around for a Adreno compiler bug
-	// float depth = unpackRGBAToDepth( texture2D( shadow_pass, ( gl_FragCoord.xy ) / resolution ) );
 
 	float uvStride = samples <= 1.0 ? 0.0 : 2.0 / ( samples - 1.0 );
 	float uvStart = samples <= 1.0 ? 0.0 : - 1.0;
@@ -31,13 +26,13 @@ void main() {
 
 		#ifdef HORIZONTAL_PASS
 
-			vec2 distribution = unpackRGBATo2Half( texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( uvOffset, 0.0 ) * radius ) / resolution ) );
+			vec2 distribution = texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( uvOffset, 0.0 ) * radius ) / resolution ).rg;
 			mean += distribution.x;
 			squared_mean += distribution.y * distribution.y + distribution.x * distribution.x;
 
 		#else
 
-			float depth = unpackRGBAToDepth( texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( 0.0, uvOffset ) * radius ) / resolution ) );
+			float depth = texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( 0.0, uvOffset ) * radius ) / resolution ).r;
 			mean += depth;
 			squared_mean += depth * depth;
 
@@ -48,9 +43,9 @@ void main() {
 	mean = mean / samples;
 	squared_mean = squared_mean / samples;
 
-	float std_dev = sqrt( squared_mean - mean * mean );
+	float std_dev = sqrt( max( 0.0, squared_mean - mean * mean ) );
 
-	gl_FragColor = pack2HalfToRGBA( vec2( mean, std_dev ) );
+	gl_FragColor = vec4( mean, std_dev, 0.0, 1.0 );
 
 }
 `;

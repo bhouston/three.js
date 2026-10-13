@@ -1,53 +1,42 @@
-/* global QUnit */
+import { WebGLRenderTarget } from '../../../../src/renderers/WebGLRenderTarget.js';
 
-// import { WebGLRenderTarget } from '../../../../src/renderers/WebGLRenderTarget.js';
+import { EventDispatcher } from '../../../../src/core/EventDispatcher.js';
+import { NearestFilter } from '../../../../src/constants.js';
 
 export default QUnit.module( 'Renderers', () => {
 
 	QUnit.module( 'WebGLRenderTarget', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new WebGLRenderTarget();
+			assert.strictEqual(
+				object instanceof EventDispatcher, true,
+				'WebGLRenderTarget extends from EventDispatcher'
+			);
+
+			const options = new WebGLRenderTarget( 1, 1, { magFilter: NearestFilter } );
+			assert.ok( options.width === 1 && options.height === 1 && options.texture.magFilter === NearestFilter, 'Can instantiate a WebGLRenderTarget with texture options.' );
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'isWebGLRenderTarget', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new WebGLRenderTarget();
+			assert.ok( object, 'Can instantiate a WebGLRenderTarget.' );
 
 		} );
 
-		QUnit.todo( 'setSize', ( assert ) => {
+		// PUBLIC
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+		QUnit.test( 'dispose', ( assert ) => {
 
-		} );
+			assert.expect( 0 );
 
-		QUnit.todo( 'clone', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'copy', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'dispose', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new WebGLRenderTarget();
+			object.dispose();
 
 		} );
 

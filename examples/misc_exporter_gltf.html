@@ -4,6 +4,10 @@
 		<title>three.js webgl - exporter - gltf</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - exporter - gltf">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/misc_exporter_gltf.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/misc_exporter_gltf.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -11,14 +15,11 @@
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgl - exporter - gltf
 		</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -27,18 +28,20 @@
 
 			import * as THREE from 'three';
 
-			import { OBJLoader } from './jsm/loaders/OBJLoader.js';
-			import { GLTFExporter } from './jsm/exporters/GLTFExporter.js';
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+			import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+			import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import * as TextureUtils from 'three/addons/utils/WebGLTextureUtils.js';
 
 			function exportGLTF( input ) {
 
-				const gltfExporter = new GLTFExporter();
+				const gltfExporter = new GLTFExporter().setTextureUtils( TextureUtils );
 
 				const options = {
 					trs: params.trs,
 					onlyVisible: params.onlyVisible,
-					truncateDrawRange: params.truncateDrawRange,
 					binary: params.binary,
 					maxTextureSize: params.maxTextureSize
 				};
@@ -99,24 +102,24 @@
 			let container;
 
 			let camera, object, object2, material, geometry, scene1, scene2, renderer;
-			let gridHelper, sphere, waltHead;
+			let gridHelper, sphere, model, coffeemat, webpBox;
 
 			const params = {
 				trs: false,
 				onlyVisible: true,
-				truncateDrawRange: true,
 				binary: false,
 				maxTextureSize: 4096,
 				exportScene1: exportScene1,
 				exportScenes: exportScenes,
 				exportSphere: exportSphere,
-				exportHead: exportHead,
+				exportModel: exportModel,
 				exportObjects: exportObjects,
-				exportSceneObject: exportSceneObject
+				exportSceneObject: exportSceneObject,
+				exportCompressedObject: exportCompressedObject,
+				exportWebPModel: exportWebPModel,
 			};
 
 			init();
-			animate();
 
 			function init() {
 
@@ -162,14 +165,14 @@
 				// ---------------------------------------------------------------------
 				// Ambient light
 				// ---------------------------------------------------------------------
-				const ambientLight = new THREE.AmbientLight( 0xffffff, 0.2 );
+				const ambientLight = new THREE.AmbientLight( 0xcccccc );
 				ambientLight.name = 'AmbientLight';
 				scene1.add( ambientLight );
 
 				// ---------------------------------------------------------------------
 				// DirectLight
 				// ---------------------------------------------------------------------
-				const dirLight = new THREE.DirectionalLight( 0xffffff, 1 );
+				const dirLight = new THREE.DirectionalLight( 0xffffff, 3 );
 				dirLight.target.position.set( 0, 0, - 1 );
 				dirLight.add( dirLight.target );
 				dirLight.lookAt( - 1, - 1, 0 );
@@ -179,7 +182,7 @@
 				// ---------------------------------------------------------------------
 				// Grid
 				// ---------------------------------------------------------------------
-				gridHelper = new THREE.GridHelper( 2000, 20, 0x888888, 0x444444 );
+				gridHelper = new THREE.GridHelper( 2000, 20, 0xc1c1c1, 0x8d8d8d );
 				gridHelper.position.y = - 50;
 				gridHelper.name = 'Grid';
 				scene1.add( gridHelper );
@@ -197,6 +200,7 @@
 				// Icosahedron
 				const mapGrid = new THREE.TextureLoader().load( 'textures/uv_grid_opengl.jpg' );
 				mapGrid.wrapS = mapGrid.wrapT = THREE.RepeatWrapping;
+				mapGrid.colorSpace = THREE.SRGBColorSpace;
 				material = new THREE.MeshBasicMaterial( {
 					color: 0xffffff,
 					map: mapGrid
@@ -237,9 +241,10 @@
 					color: 0xffff00,
 					metalness: 0.5,
 					roughness: 1.0,
-					flatShading: true
+					flatShading: true,
 				} );
 				material.map = gradientTexture;
+				material.bumpMap = mapGrid;
 				sphere = new THREE.Mesh( new THREE.SphereGeometry( 70, 10, 10 ), material );
 				sphere.position.set( 0, 0, 0 );
 				sphere.name = 'Sphere';
@@ -345,44 +350,6 @@
 				scene1.add( object );
 
 				// ---------------------------------------------------------------------
-				// Buffer geometry truncated (DrawRange)
-				// ---------------------------------------------------------------------
-				geometry = new THREE.BufferGeometry();
-				const numElements = 6;
-				const outOfRange = 3;
-
-				positions = new Float32Array( ( numElements + outOfRange ) * 3 );
-				const colors = new Float32Array( ( numElements + outOfRange ) * 3 );
-
-				positions.set( [
-					0, 0, 0,
-					0, 80, 0,
-					80, 0, 0,
-					80, 0, 0,
-					0, 80, 0,
-					80, 80, 0
-				] );
-
-				colors.set( [
-					1, 0, 0,
-					1, 0, 0,
-					1, 1, 0,
-					1, 1, 0,
-					0, 0, 1,
-					0, 0, 1,
-				] );
-
-				geometry.setAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
-				geometry.setAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
-				geometry.setDrawRange( 0, numElements );
-
-				object = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( { side: THREE.DoubleSide, vertexColors: true } ) );
-				object.name = 'Custom buffered truncated';
-				object.position.set( 140, - 40, - 200 );
-
-				scene1.add( object );
-
-				// ---------------------------------------------------------------------
 				// THREE.Points
 				// ---------------------------------------------------------------------
 				numPoints = 100;
@@ -407,7 +374,13 @@
 				// ---------------------------------------------------------------------
 				// Ortho camera
 				// ---------------------------------------------------------------------
-				const cameraOrtho = new THREE.OrthographicCamera( window.innerWidth / - 2, window.innerWidth / 2, window.innerHeight / 2, window.innerHeight / - 2, 0.1, 10 );
+
+				const height = 1000; // frustum height
+				const aspect = window.innerWidth / window.innerHeight;
+
+				const cameraOrtho = new THREE.OrthographicCamera( - height * aspect, height * aspect, height, - height, 0, 2000 );
+				cameraOrtho.position.set( 600, 400, 0 );
+				cameraOrtho.lookAt( 0, 0, 0 );
 				scene1.add( cameraOrtho );
 				cameraOrtho.name = 'OrthographicCamera';
 
@@ -454,18 +427,38 @@
 				scene1.add( object );
 
 				// ---------------------------------------------------------------------
-				//
-				//
-				const loader = new OBJLoader();
-				loader.load( 'models/obj/walt/WaltHead.obj', function ( obj ) {
+				// Model requiring KHR_mesh_quantization
+				// ---------------------------------------------------------------------
+				const loader = new GLTFLoader();
+				loader.load( 'models/gltf/ShaderBall.glb', function ( gltf ) {
 
-					waltHead = obj;
-					waltHead.scale.multiplyScalar( 1.5 );
-					waltHead.position.set( 400, 0, 0 );
-					scene1.add( waltHead );
+					model = gltf.scene;
+					model.scale.setScalar( 50 );
+					model.position.set( 200, - 40, - 200 );
+					scene1.add( model );
 
 				} );
 
+				// ---------------------------------------------------------------------
+				// Model requiring KHR_mesh_quantization
+				// ---------------------------------------------------------------------
+
+				material = new THREE.MeshBasicMaterial( {
+					color: 0xffffff,
+				} );
+				object = new THREE.InstancedMesh( new THREE.BoxGeometry( 10, 10, 10, 2, 2, 2 ), material, 50 );
+				const matrix = new THREE.Matrix4();
+				const color = new THREE.Color();
+				for ( let i = 0; i < 50; i ++ ) {
+
+					matrix.setPosition( Math.random() * 100 - 50, Math.random() * 100 - 50, Math.random() * 100 - 50 );
+					object.setMatrixAt( i, matrix );
+					object.setColorAt( i, color.setHSL( i / 50, 1, 0.5 ) );
+
+				}
+
+				object.position.set( 400, 0, 200 );
+				scene1.add( object );
 
 				// ---------------------------------------------------------------------
 				// 2nd THREE.Scene
@@ -482,6 +475,9 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 1;
 
 				container.appendChild( renderer.domElement );
 
@@ -489,12 +485,57 @@
 
 				window.addEventListener( 'resize', onWindowResize );
 
+				// ---------------------------------------------------------------------
+				// Exporting compressed textures and meshes (KTX2 / Draco / Meshopt)
+				// ---------------------------------------------------------------------
+				const ktx2Loader = new KTX2Loader()
+					.detectSupport( renderer );
+
+				const gltfLoader = new GLTFLoader().setPath( 'models/gltf/' );
+				gltfLoader.setKTX2Loader( ktx2Loader );
+				gltfLoader.setMeshoptDecoder( MeshoptDecoder );
+				gltfLoader.load( 'coffeemat.glb', function ( gltf ) {
+
+					gltf.scene.position.x = 400;
+					gltf.scene.position.z = - 200;
+
+					scene1.add( gltf.scene );
+
+					coffeemat = gltf.scene;
+
+				} );
+
+				// ---------------------------------------------------------------------
+				// Box with WebP texture (EXT_texture_webp)
+				// ---------------------------------------------------------------------
+				const canvas = document.createElement( 'canvas' );
+				canvas.width = 64;
+				canvas.height = 64;
+				const ctx = canvas.getContext( '2d' );
+				ctx.fillStyle = '#005BBB';
+				ctx.fillRect( 0, 0, 64, 64 );
+				ctx.fillStyle = '#FFD500';
+				ctx.fillRect( 16, 16, 32, 32 );
+
+				const webpTexture = new THREE.CanvasTexture( canvas );
+				webpTexture.userData.mimeType = 'image/webp';
+				webpTexture.colorSpace = THREE.SRGBColorSpace;
+
+				webpBox = new THREE.Mesh(
+					new THREE.BoxGeometry( 100, 100, 100 ),
+					new THREE.MeshBasicMaterial( { map: webpTexture } )
+				);
+				webpBox.position.set( 400, 0, 0 );
+				webpBox.name = 'WebPBox';
+				scene1.add( webpBox );
+
+				//
+
 				const gui = new GUI();
 
 				let h = gui.addFolder( 'Settings' );
 				h.add( params, 'trs' ).name( 'Use TRS' );
 				h.add( params, 'onlyVisible' ).name( 'Only Visible Objects' );
-				h.add( params, 'truncateDrawRange' ).name( 'Truncate Draw Range' );
 				h.add( params, 'binary' ).name( 'Binary (GLB)' );
 				h.add( params, 'maxTextureSize', 2, 8192 ).name( 'Max Texture Size' ).step( 1 );
 
@@ -502,9 +543,11 @@
 				h.add( params, 'exportScene1' ).name( 'Export Scene 1' );
 				h.add( params, 'exportScenes' ).name( 'Export Scene 1 and 2' );
 				h.add( params, 'exportSphere' ).name( 'Export Sphere' );
-				h.add( params, 'exportHead' ).name( 'Export Head' );
+				h.add( params, 'exportModel' ).name( 'Export Model' );
 				h.add( params, 'exportObjects' ).name( 'Export Sphere With Grid' );
 				h.add( params, 'exportSceneObject' ).name( 'Export Scene 1 and Object' );
+				h.add( params, 'exportCompressedObject' ).name( 'Export Coffeemat (from compressed data)' );
+				h.add( params, 'exportWebPModel' ).name( 'Export WebP Model (EXT_texture_webp)' );
 
 				gui.open();
 
@@ -528,9 +571,9 @@
 
 			}
 
-			function exportHead() {
+			function exportModel() {
 
-				exportGLTF( waltHead );
+				exportGLTF( model );
 
 			}
 
@@ -543,6 +586,18 @@
 			function exportSceneObject() {
 
 				exportGLTF( [ scene1, gridHelper ] );
+
+			}
+
+			function exportCompressedObject() {
+
+				exportGLTF( [ coffeemat ] );
+
+			}
+
+			function exportWebPModel() {
+
+				exportGLTF( webpBox );
 
 			}
 
@@ -559,14 +614,6 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
-
-				render();
-
-			}
-
-			function render() {
-
 				const timer = Date.now() * 0.0001;
 
 				camera.position.x = Math.cos( timer ) * 800;
@@ -576,6 +623,8 @@
 				renderer.render( scene1, camera );
 
 			}
+
+
 
 		</script>
 

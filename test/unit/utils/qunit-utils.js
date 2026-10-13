@@ -1,7 +1,5 @@
 //
 // Custom QUnit assertions.
-///* global QUnit */
-
 import { SmartComparer } from './SmartComparer.js';
 import { ObjectLoader } from '../../../src/loaders/ObjectLoader.js';
 
@@ -121,7 +119,7 @@ function getDifferingProp( geometryA, geometryB ) {
 // Compare json file with its source geometry.
 function checkGeometryJsonWriting( geom, json ) {
 
-	QUnit.assert.equal( json.metadata.version, '4.5', 'check metadata version' );
+	QUnit.assert.equal( json.metadata.version, '4.7', 'check metadata version' );
 	QUnit.assert.equalKey( geom, json, 'type' );
 	QUnit.assert.equalKey( geom, json, 'uuid' );
 	QUnit.assert.equal( json.id, undefined, 'should not persist id' );
@@ -141,9 +139,9 @@ function checkGeometryJsonWriting( geom, json ) {
 
 	}
 
-	// All parameters from json should be transfered to the geometry.
+	// All parameters from json should be transferred to the geometry.
 	// json is flat. Ignore first level json properties that are not parameters.
-	const notParameters = [ 'metadata', 'uuid', 'type' ];
+	const notParameters = [ 'metadata', 'uuid', 'type', 'name' ];
 	keys = Object.keys( json );
 	for ( let i = 0, l = keys.length; i < l; i ++ ) {
 
@@ -247,7 +245,7 @@ function checkLightCopyClone( assert, light ) {
 	);
 
 	// Clone
-	const clone = light.clone(); // better get a new var
+	const clone = light.clone(); // better get a new clone
 	QUnit.assert.notEqual( clone.uuid, light.uuid, 'Cloned light\'s UUID differs from original' );
 	QUnit.assert.notEqual( clone.id, light.id, 'Clone light\'s id differs from original' );
 	QUnit.assert.smartEqual( clone, light, 'Clone light is equal to original' );
@@ -270,7 +268,7 @@ function checkLightCopyClone( assert, light ) {
 // Compare json file with its source Light.
 function checkLightJsonWriting( assert, light, json ) {
 
-	assert.equal( json.metadata.version, '4.5', 'check metadata version' );
+	assert.equal( json.metadata.version, '4.7', 'check metadata version' );
 
 	const object = json.object;
 	assert.equalKey( light, object, 'type' );

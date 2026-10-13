@@ -1,68 +1,60 @@
 <html lang="en">
 	<head>
-		<title>three.js - WebGPU - Depth Texture</title>
+		<title>three.js webgpu - depth texture</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link type="text/css" rel="stylesheet" href="main.css">
+		<meta property="og:title" content="three.js webgpu - depth texture">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_depth_texture.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_depth_texture.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
 	</head>
 	<body>
 
-		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> WebGPU - Depth Texture
-		</div>
+		<div id="info" class="invert">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Depth Texture</span>
+			</div>
+
+			<small>Rendering the scene's depth into a texture for later use</small>
+		</div>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js",
-					"three-nodes/": "./jsm/nodes/"
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
 
 		<script type="module">
 
-			import * as THREE from 'three';
-			import * as Nodes from 'three-nodes/Nodes.js';
+			import * as THREE from 'three/webgpu';
+			import { texture } from 'three/tsl';
 
-			import WebGPU from './jsm/capabilities/WebGPU.js';
-			import WebGPURenderer from './jsm/renderers/webgpu/WebGPURenderer.js';
-			import WebGPUTextureRenderer from './jsm/renderers/webgpu/WebGPUTextureRenderer.js';
-
-			import { smoothstep, negate, positionView, invert } from 'three-nodes/Nodes.js';
-
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 			let camera, scene, controls, renderer;
 
-			let cameraFX, sceneFX, textureRenderer;
+			let quad, renderTarget;
 
 			const dpr = window.devicePixelRatio;
 
-			init().then( animate ).catch( error );
+			init();
 
-			async function init() {
+			function init() {
 
-				if ( WebGPU.isAvailable() === false ) {
-
-					document.body.appendChild( WebGPU.getErrorMessage() );
-
-					throw new Error( 'No WebGPU support' );
-
-				}
-
-				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 30 );
+				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 1, 20 );
 				camera.position.z = 4;
 
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0x222222 );
-
-				// depth material
-
-				const material = new Nodes.MeshBasicNodeMaterial();
-				material.colorNode = invert( smoothstep( camera.near, camera.far, negate( positionView.z ) ) );
+				scene.overrideMaterial = new THREE.MeshBasicNodeMaterial();
 
 				//
 
@@ -77,7 +69,7 @@
 					const z = ( Math.random() * 2.0 ) - 1.0;
 					const zScale = Math.sqrt( 1.0 - z * z ) * scale;
 
-					const mesh = new THREE.Mesh( geometry, material );
+					const mesh = new THREE.Mesh( geometry );
 					mesh.position.set(
 						Math.cos( r ) * zScale,
 						Math.sin( r ) * zScale,
@@ -90,39 +82,31 @@
 
 				//
 
-				renderer = new WebGPURenderer();
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
 				renderer.setPixelRatio( dpr );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				document.body.appendChild( renderer.domElement );
 
-				textureRenderer = new WebGPUTextureRenderer( renderer );
-				textureRenderer.setSize( window.innerWidth * dpr, window.innerHeight * dpr );
+				const depthTexture = new THREE.DepthTexture();
+				depthTexture.type = THREE.FloatType;
+
+				renderTarget = new THREE.RenderTarget( window.innerWidth * dpr, window.innerHeight * dpr );
+				renderTarget.depthTexture = depthTexture;
 
 				window.addEventListener( 'resize', onWindowResize );
 
 				// FX
 
-				cameraFX = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
-				sceneFX = new THREE.Scene();
+				const materialFX = new THREE.MeshBasicNodeMaterial();
+				materialFX.colorNode = texture( depthTexture );
 
-				const geometryFX = new THREE.PlaneGeometry( 2, 2 );
-
-				//
-
-				const materialFX = new Nodes.MeshBasicNodeMaterial();
-				materialFX.colorNode = new Nodes.TextureNode( textureRenderer.getTexture() );
-
-				const quad = new THREE.Mesh( geometryFX, materialFX );
-				sceneFX.add( quad );
+				quad = new THREE.QuadMesh( materialFX );
 
 				//
 
 				controls = new OrbitControls( camera, renderer.domElement );
 				controls.enableDamping = true;
-
-				//
-
-				return renderer.init();
 
 			}
 
@@ -132,22 +116,17 @@
 				camera.updateProjectionMatrix();
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				textureRenderer.setSize( window.innerWidth * dpr, window.innerHeight * dpr );
+				renderTarget.setSize( window.innerWidth * dpr, window.innerHeight * dpr );
 
 			}
 
 			function animate() {
 
-				requestAnimationFrame( animate );
+				renderer.setRenderTarget( renderTarget );
+				renderer.render( scene, camera );
 
-				textureRenderer.render( scene, camera );
-				renderer.render( sceneFX, cameraFX );
-
-			}
-
-			function error( error ) {
-
-				console.error( error );
+				renderer.setRenderTarget( null );
+				quad.render( renderer );
 
 			}
 

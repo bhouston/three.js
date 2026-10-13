@@ -1,137 +1,58 @@
-/* global QUnit */
+import { Audio } from '../../../../src/audio/Audio.js';
 
-// import { Audio } from '../../../../src/audio/Audio.js';
+import { Object3D } from '../../../../src/core/Object3D.js';
 
 export default QUnit.module( 'Audios', () => {
 
 	QUnit.module( 'Audio', () => {
 
-		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		function mockListener() {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			return {
+				context: {
+					createGain: () => {
+
+						return {
+							connect: () => {},
+						};
+
+					}
+				},
+				getInput: () => {},
+			};
+
+		}
+
+		// INHERITANCE
+		QUnit.test( 'Extending', ( assert ) => {
+
+			const listener = mockListener();
+			const object = new Audio( listener );
+			assert.strictEqual(
+				object instanceof Object3D, true,
+				'Audio extends from Object3D'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'getOutput', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const listener = mockListener();
+			const object = new Audio( listener );
+			assert.ok( object, 'Can instantiate an Audio.' );
 
 		} );
 
-		QUnit.todo( 'setNodeSource', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'setBuffer', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'play', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'pause', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'stop', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'connect', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'disconnect', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'getFilters', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'setFilters', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'getFilter', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'setFilter', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'setPlaybackRate', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'getPlaybackRate', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'onEnded', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'getLoop', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'setLoop', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'getVolume', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'setVolume', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const listener = mockListener();
+			const object = new Audio( listener );
+			assert.ok(
+				object.type === 'Audio',
+				'Audio.type should be Audio'
+			);
 
 		} );
 

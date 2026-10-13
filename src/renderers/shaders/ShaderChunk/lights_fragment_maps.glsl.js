@@ -3,16 +3,20 @@ export default /* glsl */`
 
 	#ifdef USE_LIGHTMAP
 
-		vec4 lightMapTexel = texture2D( lightMap, vUv2 );
+		vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );
 		vec3 lightMapIrradiance = lightMapTexel.rgb * lightMapIntensity;
 
 		irradiance += lightMapIrradiance;
 
 	#endif
 
-	#if defined( USE_ENVMAP ) && defined( STANDARD ) && defined( ENVMAP_TYPE_CUBE_UV )
+	#if defined( USE_ENVMAP ) && defined( ENVMAP_TYPE_PMREM )
 
-		iblIrradiance += getIBLIrradiance( geometry.normal );
+		#if defined( STANDARD ) || defined( LAMBERT ) || defined( PHONG )
+
+			iblIrradiance += getIBLIrradiance( geometryNormal );
+
+		#endif
 
 	#endif
 
@@ -20,11 +24,37 @@ export default /* glsl */`
 
 #if defined( USE_ENVMAP ) && defined( RE_IndirectSpecular )
 
-	radiance += getIBLRadiance( geometry.viewDir, geometry.normal, material.roughness );
+	#ifdef USE_ANISOTROPY
+
+		vec3 iblRadiance = getIBLAnisotropyRadiance( geometryViewDir, geometryNormal, material.roughness, material.anisotropyB, material.anisotropy );
+
+	#else
+
+		vec3 iblRadiance = getIBLRadiance( geometryViewDir, geometryNormal, material.roughness );
+
+	#endif
+
+	#ifdef USE_RETROREFLECTION
+
+		#ifdef USE_ANISOTROPY
+
+			vec3 retroIBLRadiance = getIBLAnisotropyRetroRadiance( geometryViewDir, geometryNormal, material.roughness, material.anisotropyB, material.anisotropy );
+
+		#else
+
+			vec3 retroIBLRadiance = getIBLRetroRadiance( geometryViewDir, geometryNormal, material.roughness );
+
+		#endif
+
+		iblRadiance = mix( iblRadiance, retroIBLRadiance, saturate( material.retroreflectivity ) );
+
+	#endif
+
+	radiance += iblRadiance;
 
 	#ifdef USE_CLEARCOAT
 
-		clearcoatRadiance += getIBLRadiance( geometry.viewDir, geometry.clearcoatNormal, material.clearcoatRoughness );
+		clearcoatRadiance += getIBLRadiance( geometryViewDir, geometryClearcoatNormal, material.clearcoatRoughness );
 
 	#endif
 

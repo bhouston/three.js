@@ -1,58 +1,59 @@
-/* global QUnit */
+import { Material } from '../../../../src/materials/Material.js';
 
-// import { Material } from '../../../../src/materials/Material.js';
+import { EventDispatcher } from '../../../../src/core/EventDispatcher.js';
 
 export default QUnit.module( 'Materials', () => {
 
 	QUnit.module( 'Material', () => {
 
+		// INHERITANCE
+		QUnit.test( 'Extending', ( assert ) => {
+
+			const object = new Material();
+			assert.strictEqual(
+				object instanceof EventDispatcher, true,
+				'Material extends from EventDispatcher'
+			);
+
+		} );
+
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'isMaterial', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Material();
+			assert.ok( object, 'Can instantiate a Material.' );
 
 		} );
 
-		QUnit.todo( 'onBeforeCompile', ( assert ) => {
+		// PROPERTIES
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+		QUnit.test( 'type', ( assert ) => {
 
-		} );
-
-		QUnit.todo( 'setValues', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'toJSON', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Material();
+			assert.ok(
+				object.type === 'Material',
+				'Material.type should be Material'
+			);
 
 		} );
 
-		QUnit.todo( 'clone', ( assert ) => {
+		// PUBLIC
+		QUnit.test( 'isMaterial', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Material();
+			assert.ok(
+				object.isMaterial,
+				'Material.isMaterial should be true'
+			);
 
 		} );
 
-		QUnit.todo( 'copy', ( assert ) => {
+		QUnit.test( 'dispose', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			assert.expect( 0 );
 
-		} );
-
-		QUnit.todo( 'dispose', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Material();
+			object.dispose();
 
 		} );
 

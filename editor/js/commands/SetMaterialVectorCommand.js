@@ -2,18 +2,29 @@ import { Command } from '../Command.js';
 
 class SetMaterialVectorCommand extends Command {
 
-	constructor( editor, object, attributeName, newValue, materialSlot ) {
+	/**
+	 *
+	 * @param {Editor} editor
+	 * @param {THREE.Object3D|null} [object=null]
+	 * @param {string} [attributeName='']
+	 * @param {THREE.Vector2|THREE.Vector3|THREE.Vector4|null} [newValue=null]
+	 * @param {number} [materialSlot=-1]
+	 * @constructor
+	 */
+	constructor( editor, object = null, attributeName = '', newValue = null, materialSlot = - 1 ) {
 
 		super( editor );
 
-		this.type = 'SetMaterialColorCommand';
-		this.name = `Set Material.${attributeName}`;
+		this.type = 'SetMaterialVectorCommand';
+		this.name = editor.strings.getKey( 'command/SetMaterialVector' ) + ': ' + attributeName;
 		this.updatable = true;
 
 		this.object = object;
-		this.material = this.editor.getObjectMaterial( object, materialSlot );
+		this.materialSlot = materialSlot;
 
-		this.oldValue = ( this.material !== undefined ) ? this.material[ attributeName ].toArray() : undefined;
+		const material = ( object !== null ) ? editor.getObjectMaterial( object, materialSlot ) : null;
+
+		this.oldValue = ( material !== null ) ? material[ attributeName ].toArray() : null;
 		this.newValue = newValue;
 
 		this.attributeName = attributeName;
@@ -22,17 +33,21 @@ class SetMaterialVectorCommand extends Command {
 
 	execute() {
 
-		this.material[ this.attributeName ].fromArray( this.newValue );
+		const material = this.editor.getObjectMaterial( this.object, this.materialSlot );
 
-		this.editor.signals.materialChanged.dispatch( this.material );
+		material[ this.attributeName ].fromArray( this.newValue );
+
+		this.editor.signals.materialChanged.dispatch( this.object, this.materialSlot );
 
 	}
 
 	undo() {
 
-		this.material[ this.attributeName ].fromArray( this.oldValue );
+		const material = this.editor.getObjectMaterial( this.object, this.materialSlot );
 
-		this.editor.signals.materialChanged.dispatch( this.material );
+		material[ this.attributeName ].fromArray( this.oldValue );
+
+		this.editor.signals.materialChanged.dispatch( this.object, this.materialSlot );
 
 	}
 
@@ -50,6 +65,7 @@ class SetMaterialVectorCommand extends Command {
 		output.attributeName = this.attributeName;
 		output.oldValue = this.oldValue;
 		output.newValue = this.newValue;
+		output.materialSlot = this.materialSlot;
 
 		return output;
 
@@ -63,6 +79,7 @@ class SetMaterialVectorCommand extends Command {
 		this.attributeName = json.attributeName;
 		this.oldValue = json.oldValue;
 		this.newValue = json.newValue;
+		this.materialSlot = json.materialSlot;
 
 	}
 

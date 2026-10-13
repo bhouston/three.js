@@ -1,24 +1,61 @@
 import { Object3D } from '../core/Object3D.js';
 import { Color } from '../math/Color.js';
 
+/**
+ * Abstract base class for lights - all other light types inherit the
+ * properties and methods described here.
+ *
+ * @abstract
+ * @augments Object3D
+ */
 class Light extends Object3D {
 
+	/**
+	 * Registers the node class that `WebGPURenderer` uses to shade lights of this type.
+	 *
+	 * @param {AnalyticLightNode.constructor} lightNodeClass - The light node class.
+	 */
+	static registerNode( lightNodeClass ) {
+
+		this.prototype._lightNode = lightNodeClass;
+
+	}
+
+	/**
+	 * Constructs a new light.
+	 *
+	 * @param {(number|Color|string)} [color=0xffffff] - The light's color.
+	 * @param {number} [intensity=1] - The light's strength/intensity.
+	 */
 	constructor( color, intensity = 1 ) {
 
 		super();
 
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
 		this.isLight = true;
 
 		this.type = 'Light';
 
+		/**
+		 * The light's color.
+		 *
+		 * @type {Color}
+		 */
 		this.color = new Color( color );
+
+		/**
+		 * The light's intensity.
+		 *
+		 * @type {number}
+		 * @default 1
+		 */
 		this.intensity = intensity;
-
-	}
-
-	dispose() {
-
-		// Empty here in base class; some subclasses override.
 
 	}
 
@@ -39,15 +76,6 @@ class Light extends Object3D {
 
 		data.object.color = this.color.getHex();
 		data.object.intensity = this.intensity;
-
-		if ( this.groundColor !== undefined ) data.object.groundColor = this.groundColor.getHex();
-
-		if ( this.distance !== undefined ) data.object.distance = this.distance;
-		if ( this.angle !== undefined ) data.object.angle = this.angle;
-		if ( this.decay !== undefined ) data.object.decay = this.decay;
-		if ( this.penumbra !== undefined ) data.object.penumbra = this.penumbra;
-
-		if ( this.shadow !== undefined ) data.object.shadow = this.shadow.toJSON();
 
 		return data;
 

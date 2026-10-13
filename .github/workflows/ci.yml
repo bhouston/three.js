@@ -6,93 +6,75 @@ on:
       - 'build/**'
       - 'docs/**'
       - 'files/**'
-  push:
-    paths-ignore:
-      - 'build/**'
-      - 'docs/**'
-      - 'files/**'
+
+permissions:
+  contents: read
 
 jobs:
-
-  lint:
-    name: "Linting"
+  test:
+    name: Lint, Unit, Unit addons, Circular dependencies & Examples testing
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Git checkout
-        uses: actions/checkout@v2
-      - name: Install node
-        uses: actions/setup-node@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 16
+          node-version: 24
           cache: 'npm'
-      - name: Install packages
+      - name: Install dependencies
         run: npm ci
 
-      - name: === Linting ===
+      - name: === Lint testing ===
         run: npm run lint
-
-  unit:
-    name: "Unit testing"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Git checkout
-        uses: actions/checkout@v2
-      - name: Install node
-        uses: actions/setup-node@v2
-        with:
-          node-version: 16
-          cache: 'npm'
-      - name: Install packages
-        run: |
-          npm ci
-          npm ci --prefix test
-      - name: Build
-        run: npm run build
 
       - name: === Unit testing ===
         run: npm run test-unit
 
+      - name: === Unit addons testing ===
+        run: npm run test-unit-addons
+
+      - name: === Examples ready for release ===
+        run: npm run test-e2e-cov
+
   e2e:
-    name: "E2E testing"
-    runs-on: ubuntu-latest
+    name: E2E testing
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
     strategy:
+      fail-fast: false
       matrix:
-        CI: [ 0, 1, 2, 3, 4, 5, 6, 7 ]
+        os: [ ubuntu-latest ]
+        CI: [ 0, 1, 2, 3, 4 ]
     env:
       CI: ${{ matrix.CI }}
-      FORCE_COLOR: 1
     steps:
       - name: Git checkout
-        uses: actions/checkout@v2
-      - name: Install node
-        uses: actions/setup-node@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 16
+          node-version: 24
           cache: 'npm'
-      - name: Install packages
+      - name: Install Vulkan drivers and xvfb
         run: |
-          npm ci
-          npm ci --prefix test
-          sudo apt-get install xvfb
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers xvfb
+      - name: Install dependencies
+        run: npm ci
       - name: Build
         run: npm run build
 
       - name: === E2E testing ===
-        run: xvfb-run --auto-servernum npm run test-e2e
-
-  e2e-cov:
-    name: "Ready for release"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Git checkout
-        uses: actions/checkout@v2
-      - name: Install node
-        uses: actions/setup-node@v2
+        run: xvfb-run -a npm run test-e2e
+      - name: Upload output screenshots
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
         with:
-          node-version: 16
-          cache: 'npm'
-      - name: Install packages
-        run: npm ci
-
-      - name: === Ready for release ===
-        run: npm run test-e2e-cov
+          name: Output screenshots-${{ matrix.os }}-${{ matrix.CI }}
+          path: test/e2e/output-screenshots
+          if-no-files-found: ignore

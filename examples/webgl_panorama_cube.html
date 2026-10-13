@@ -4,6 +4,10 @@
 		<title>three.js webgl - panorama</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+		<meta property="og:title" content="three.js webgl - panorama">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_panorama_cube.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_panorama_cube.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -12,14 +16,11 @@
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgl - cube panorama demo
 		</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -28,14 +29,13 @@
 
 			import * as THREE from 'three';
 
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 			let camera, controls;
 			let renderer;
 			let scene;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -44,6 +44,7 @@
 				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				container.appendChild( renderer.domElement );
 
 				scene = new THREE.Scene();
@@ -98,6 +99,7 @@
 							canvas.height = tileWidth;
 							canvas.width = tileWidth;
 							context.drawImage( image, tileWidth * i, 0, tileWidth, tileWidth, 0, 0, tileWidth, tileWidth );
+							textures[ i ].colorSpace = THREE.SRGBColorSpace;
 							textures[ i ].image = canvas;
 							textures[ i ].needsUpdate = true;
 
@@ -119,8 +121,6 @@
 			}
 
 			function animate() {
-
-				requestAnimationFrame( animate );
 
 				controls.update(); // required when damping is enabled
 

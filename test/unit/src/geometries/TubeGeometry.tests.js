@@ -1,44 +1,53 @@
-/* global QUnit */
-
-import { TubeGeometry, TubeBufferGeometry } from '../../../../src/geometries/TubeGeometry.js';
+import { TubeGeometry } from '../../../../src/geometries/TubeGeometry.js';
 
 import { LineCurve3 } from '../../../../src/extras/curves/LineCurve3.js';
 import { Vector3 } from '../../../../src/math/Vector3.js';
+
+import { BufferGeometry } from '../../../../src/core/BufferGeometry.js';
+// import { runStdGeometryTests } from '../../utils/qunit-utils.js';
 
 export default QUnit.module( 'Geometries', () => {
 
 	QUnit.module( 'TubeGeometry', ( hooks ) => {
 
-		var geometries = undefined;
+		let geometries = undefined; // eslint-disable-line no-unused-vars
 		hooks.beforeEach( function () {
 
-			var path = new LineCurve3( new Vector3( 0, 0, 0 ), new Vector3( 0, 1, 0 ) );
+			const path = new LineCurve3( new Vector3( 0, 0, 0 ), new Vector3( 0, 1, 0 ) );
 
 			geometries = [
 				new TubeGeometry( path ),
-				new TubeBufferGeometry( path )
 			];
 
 		} );
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new TubeGeometry();
+			assert.strictEqual(
+				object instanceof BufferGeometry, true,
+				'TubeGeometry extends from BufferGeometry'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new TubeGeometry();
+			assert.ok( object, 'Can instantiate a TubeGeometry.' );
 
 		} );
 
-		// OTHERS
-		QUnit.todo( 'Standard geometry tests', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new TubeGeometry();
+			assert.ok(
+				object.type === 'TubeGeometry',
+				'TubeGeometry.type should be TubeGeometry'
+			);
 
 		} );
 

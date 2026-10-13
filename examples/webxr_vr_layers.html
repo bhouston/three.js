@@ -4,13 +4,16 @@
 		<title>three.js vr - layers</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+		<meta property="og:title" content="three.js vr - layers">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webxr_vr_layers.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webxr_vr_layers.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
 
 		<div id="info">
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> media and projection layers<br/>
-			(Oculus Browser 16.1+)
 
 			<p> This example demonstrates the use of <a href="https://www.w3.org/TR/webxrlayers-1/">WebXR Layers</a> to render high quality text and video.
 				  For static content such as text, using layers increases the usable resolution of the content by avoiding the extra resampling pass that occurs during normal VR rendering.
@@ -20,14 +23,11 @@
 
 		</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -35,12 +35,12 @@
 		<script type="module">
 
 			import * as THREE from 'three';
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
-			import { HTMLMesh } from './jsm/interactive/HTMLMesh.js';
-			import { InteractiveGroup } from './jsm/interactive/InteractiveGroup.js';
-			import { VRButton } from './jsm/webxr/VRButton.js';
-			import { XRControllerModelFactory } from './jsm/webxr/XRControllerModelFactory.js';
-			import { XRHandModelFactory } from './jsm/webxr/XRHandModelFactory.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { HTMLMesh } from 'three/addons/interactive/HTMLMesh.js';
+			import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
+			import { VRButton } from 'three/addons/webxr/VRButton.js';
+			import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+			import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 
 			let camera, scene, renderer;
 			let video;
@@ -109,7 +109,6 @@
 			snellenConfig.quadHeight = .5 * snellenConfig.heightMeters / snellenConfig.cropY;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -118,18 +117,18 @@
 				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
 				camera.position.set( 0, 1.6, 3 );
 
-				const hemLight = new THREE.HemisphereLight( 0x808080, 0x606060 );
-				const light = new THREE.DirectionalLight( 0xffffff );
+				const hemLight = new THREE.HemisphereLight( 0x808080, 0x606060, 3 );
+				const light = new THREE.DirectionalLight( 0xffffff, 3 );
 				scene.add( hemLight, light );
 
 				//
 
 				renderer = new THREE.WebGLRenderer( { antialias: false } );
 				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				renderer.setClearAlpha( 1 );
 				renderer.setClearColor( new THREE.Color( 0 ), 0 );
-				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.outputEncoding = THREE.sRGBEncoding;
 				renderer.xr.enabled = true;
 
 				document.body.appendChild( renderer.domElement );
@@ -143,8 +142,12 @@
 				] );
 				const line = new THREE.Line( lineGeometry, new THREE.LineBasicMaterial( { color: 0x5555ff } ) );
 
+				// The invisible dummyMesh quads and the guiMesh need to be rendered before the controller lines so that they
+				// leave a hole in the depth buffer that the lines can intersect.
+				line.renderOrder = 1;
+
 				const controllerModelFactory = new XRControllerModelFactory();
-				const handModelFactory = new XRHandModelFactory().setPath( "./models/fbx/" );
+				const handModelFactory = new XRHandModelFactory().setPath( './models/fbx/' );
 
 				//
 
@@ -173,7 +176,7 @@
 				eyeCharts.position.z = snellenConfig.z;
 				scene.add( eyeCharts );
 
-				snellenTexture = new THREE.TextureLoader().load( "textures/snellen.png" );
+				snellenTexture = new THREE.TextureLoader().load( 'textures/snellen.png' );
 				snellenTexture.repeat.x = snellenConfig.cropX;
 				snellenTexture.repeat.y = snellenConfig.cropY;
 				snellenTexture.generateMipmaps = false;
@@ -185,7 +188,7 @@
 				snellenMeshPlain.position.y = snellenConfig.y - snellenConfig.heightMeters;
 				eyeCharts.add( snellenMeshPlain );
 
-				snellenTexture = new THREE.TextureLoader().load( "textures/snellen.png" );
+				snellenTexture = new THREE.TextureLoader().load( 'textures/snellen.png' );
 				snellenTexture.repeat.x = snellenConfig.cropX;
 				snellenTexture.repeat.y = snellenConfig.cropY;
 				const snellenMeshMipMap = new THREE.Mesh(
@@ -196,12 +199,12 @@
 				eyeCharts.add( snellenMeshMipMap );
 
 				// The layers don't participate depth testing between each other. Since the projection
-				// layer is rendered last, any 3D object will incorrecly overlap layers. To avoid this,
+				// layer is rendered last, any 3D object will incorrectly overlap layers. To avoid this,
 				// invisible quads can be placed into the scene to participate in depth testing when the
 				// projection layer is rendered.
 				const dummyMeshLeft = new THREE.Mesh(
 					new THREE.PlaneGeometry( snellenConfig.widthMeters, snellenConfig.heightMeters ),
-					new THREE.MeshBasicMaterial( { opacity: 0 } ) );
+					new THREE.MeshBasicMaterial( { colorWrite: false } ) );
 				dummyMeshLeft.position.x = snellenConfig.x - snellenConfig.widthMeters;
 				dummyMeshLeft.position.y = snellenConfig.y + snellenConfig.heightMeters;
 				eyeCharts.add( dummyMeshLeft );
@@ -247,14 +250,17 @@
 
 				}
 
-				const group = new InteractiveGroup( renderer, camera );
+				const group = new InteractiveGroup();
+				group.listenToXRControllerEvents( controllers[ 0 ] );
+				group.listenToXRControllerEvents( controllers[ 1 ] );
 				scene.add( group );
 
 				guiMesh = new HTMLMesh( gui.domElement );
 				guiMesh.position.set( 1.0, 1.5, - 1.0 );
 				guiMesh.rotation.y = - Math.PI / 4;
 				guiMesh.scale.setScalar( 2 );
-				guiMesh.material.opacity = 0;
+				guiMesh.material.colorWrite = false;
+				guiMesh.material.transparent = false;
 				group.add( guiMesh );
 
 				// Error message if layer initialization fails.
@@ -295,20 +301,19 @@
 			}
 			//
 
-			function animate() {
-
-				renderer.setAnimationLoop( render );
-
-			}
-
-			function render( t, frame ) {
+			function animate( t, frame ) {
 
 				const xr = renderer.xr;
 				const session = xr.getSession();
 				const gl = renderer.getContext();
 
 				// Init layers once in immersive mode and video is ready.
-				if ( session && session.renderState.layers === undefined ) {
+				const useLayers = session &&
+					session.enabledFeatures !== undefined &&
+					session.enabledFeatures.includes( 'layers' ) &&
+					XRMediaBinding !== undefined;
+
+				if ( ! useLayers ) {
 
 					errorMesh.visible = true;
 
@@ -316,7 +321,7 @@
 
 				if (
 					session &&
-					session.renderState.layers !== undefined &&
+					useLayers &&
 					session.hasMediaLayer === undefined &&
 					video.readyState >= 2
 				) {
@@ -333,7 +338,7 @@
 							viewPixelHeight: snellenConfig.textureSizePx,
 							isStatic: true,
 							space: refSpace,
-							layout: "mono",
+							layout: 'mono',
 							transform: new XRRigidTransform( {
 								x: snellenConfig.x - snellenConfig.widthMeters,
 								y: snellenConfig.y + snellenConfig.heightMeters,
@@ -367,7 +372,7 @@
 							video,
 							{
 								space: refSpace,
-								layout: "stereo-left-right",
+								layout: 'stereo-left-right',
 								// Rotate by 45 deg to avoid stereo conflict with the 3D geometry.
 								transform: new XRRigidTransform(
 									{},
@@ -400,12 +405,12 @@
 
 					const glayer = xr.getBinding().getSubImage( quadLayerPlain, frame );
 					renderer.state.bindTexture( gl.TEXTURE_2D, glayer.colorTexture );
-					gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, true );
+					renderer.state.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, true );
 					gl.texSubImage2D( gl.TEXTURE_2D, 0,
-									( snellenConfig.textureSizePx - snellenConfig.widthPx ) / 2,
-									( snellenConfig.textureSizePx - snellenConfig.heightPx ) / 2,
-									snellenConfig.widthPx, snellenConfig.heightPx,
-									gl.RGBA, gl.UNSIGNED_BYTE, snellenTexture.image );
+						( snellenConfig.textureSizePx - snellenConfig.widthPx ) / 2,
+						( snellenConfig.textureSizePx - snellenConfig.heightPx ) / 2,
+						snellenConfig.widthPx, snellenConfig.heightPx,
+						gl.RGBA, gl.UNSIGNED_BYTE, snellenTexture.image );
 
 				}
 
@@ -414,12 +419,12 @@
 
 					const glayer = xr.getBinding().getSubImage( quadLayerMips, frame );
 					renderer.state.bindTexture( gl.TEXTURE_2D, glayer.colorTexture );
-					gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, true );
+					renderer.state.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, true );
 					gl.texSubImage2D( gl.TEXTURE_2D, 0,
-									( snellenConfig.textureSizePx - snellenConfig.widthPx ) / 2,
-									( snellenConfig.textureSizePx - snellenConfig.heightPx ) / 2,
-									snellenConfig.widthPx, snellenConfig.heightPx,
-									gl.RGBA, gl.UNSIGNED_BYTE, snellenTexture.image );
+						( snellenConfig.textureSizePx - snellenConfig.widthPx ) / 2,
+						( snellenConfig.textureSizePx - snellenConfig.heightPx ) / 2,
+						snellenConfig.widthPx, snellenConfig.heightPx,
+						gl.RGBA, gl.UNSIGNED_BYTE, snellenTexture.image );
 					gl.generateMipmap( gl.TEXTURE_2D );
 
 				}
@@ -429,7 +434,7 @@
 
 					const glayer = xr.getBinding().getSubImage( guiLayer, frame );
 					renderer.state.bindTexture( gl.TEXTURE_2D, glayer.colorTexture );
-					gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, true );
+					renderer.state.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, true );
 					const canvas = guiMesh.material.map.image;
 					gl.texSubImage2D( gl.TEXTURE_2D, 0, 0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, canvas );
 					guiLayer.needsUpdate = false;

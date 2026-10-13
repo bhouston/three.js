@@ -1,22 +1,34 @@
 import { WebGLLights } from './WebGLLights.js';
 
-function WebGLRenderState( extensions, capabilities ) {
+function WebGLRenderState( extensions ) {
 
-	const lights = new WebGLLights( extensions, capabilities );
+	const lights = new WebGLLights( extensions );
 
 	const lightsArray = [];
 	const shadowsArray = [];
+	const lightProbeGridArray = [];
 
-	function init() {
+	function init( camera ) {
+
+		state.camera = camera;
 
 		lightsArray.length = 0;
 		shadowsArray.length = 0;
+		lightProbeGridArray.length = 0;
 
 	}
 
 	function pushLight( light ) {
 
-		lightsArray.push( light );
+		if ( light.isLightProbeGrid ) {
+
+			lightProbeGridArray.push( light );
+
+		} else {
+
+			lightsArray.push( light );
+
+		}
 
 	}
 
@@ -26,9 +38,9 @@ function WebGLRenderState( extensions, capabilities ) {
 
 	}
 
-	function setupLights( physicallyCorrectLights ) {
+	function setupLights() {
 
-		lights.setup( lightsArray, physicallyCorrectLights );
+		lights.setup( lightsArray );
 
 	}
 
@@ -41,8 +53,14 @@ function WebGLRenderState( extensions, capabilities ) {
 	const state = {
 		lightsArray: lightsArray,
 		shadowsArray: shadowsArray,
+		lightProbeGridArray: lightProbeGridArray,
 
-		lights: lights
+		camera: null,
+
+		lights: lights,
+
+		transmissionRenderTarget: {},
+		textureUnits: 0
 	};
 
 	return {
@@ -57,29 +75,30 @@ function WebGLRenderState( extensions, capabilities ) {
 
 }
 
-function WebGLRenderStates( extensions, capabilities ) {
+function WebGLRenderStates( extensions ) {
 
 	let renderStates = new WeakMap();
 
 	function get( scene, renderCallDepth = 0 ) {
 
+		const renderStateArray = renderStates.get( scene );
 		let renderState;
 
-		if ( renderStates.has( scene ) === false ) {
+		if ( renderStateArray === undefined ) {
 
-			renderState = new WebGLRenderState( extensions, capabilities );
+			renderState = new WebGLRenderState( extensions );
 			renderStates.set( scene, [ renderState ] );
 
 		} else {
 
-			if ( renderCallDepth >= renderStates.get( scene ).length ) {
+			if ( renderCallDepth >= renderStateArray.length ) {
 
-				renderState = new WebGLRenderState( extensions, capabilities );
-				renderStates.get( scene ).push( renderState );
+				renderState = new WebGLRenderState( extensions );
+				renderStateArray.push( renderState );
 
 			} else {
 
-				renderState = renderStates.get( scene )[ renderCallDepth ];
+				renderState = renderStateArray[ renderCallDepth ];
 
 			}
 

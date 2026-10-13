@@ -1,9 +1,20 @@
 /**
- * Gamma Correction Shader
- * http://en.wikipedia.org/wiki/gamma_correction
+ * @module GammaCorrectionShader
+ * @three_import import { GammaCorrectionShader } from 'three/addons/shaders/GammaCorrectionShader.js';
  */
 
+/**
+ * Gamma Correction Shader
+ *
+ * References:
+ * - {@link http://en.wikipedia.org/wiki/gamma_correction}.
+ *
+ * @constant
+ * @type {ShaderMaterial~Shader}
+ */
 const GammaCorrectionShader = {
+
+	name: 'GammaCorrectionShader',
 
 	uniforms: {
 
@@ -32,7 +43,7 @@ const GammaCorrectionShader = {
 
 			vec4 tex = texture2D( tDiffuse, vUv );
 
-			gl_FragColor = LinearTosRGB( tex );
+			gl_FragColor = sRGBTransferOETF( tex );
 
 		}`
 

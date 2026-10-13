@@ -4,34 +4,35 @@
 		<title>three.js webgl - progressive lightmap accumulation</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - progressive lightmap accumulation">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_shadowmap_progressive.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_shadowmap_progressive.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
 		<div id="container"></div>
 		<div id="info">
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Progressive Lightmaps by <a href="https://github.com/zalo" target="_blank" rel="noopener">zalo</a><br/>
-			[Inspired by <a href="http://madebyevan.com/shaders/lightmap/" target="_blank" rel="noopener">evanw's Lightmap Generation</a>]
+			[Inspired by <a href="https://madebyevan.com/shaders/lightmap/" target="_blank" rel="noopener">evanw's Lightmap Generation</a>]
 		</div>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
 
 		<script type="module">
 			import * as THREE from 'three';
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
-			import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
-			import { TransformControls } from './jsm/controls/TransformControls.js';
-			import { ProgressiveLightMap } from './jsm/misc/ProgressiveLightMap.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { TransformControls } from 'three/addons/controls/TransformControls.js';
+			import { ProgressiveLightMap } from 'three/addons/misc/ProgressiveLightMap.js';
 
 			// ShadowMap + LightMap Res and Number of Directional Lights
 			const shadowMapRes = 512, lightMapRes = 1024, lightCount = 8;
@@ -42,7 +43,6 @@
 							 'Light Radius': 50, 'Ambient Weight': 0.5, 'Debug Lightmap': false };
 			init();
 			createGUI();
-			animate();
 
 			function init() {
 
@@ -50,6 +50,7 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				renderer.shadowMap.enabled = true;
 				document.body.appendChild( renderer.domElement );
 
@@ -79,12 +80,12 @@
 
 				} );
 				control.attach( lightOrigin );
-				scene.add( control );
+				scene.add( control.getHelper() );
 
 				// create 8 directional lights to speed up the convergence
 				for ( let l = 0; l < lightCount; l ++ ) {
 
-					const dirLight = new THREE.DirectionalLight( 0xffffff, 1.0 / lightCount );
+					const dirLight = new THREE.DirectionalLight( 0xffffff, Math.PI / lightCount );
 					dirLight.name = 'Dir. Light ' + l;
 					dirLight.position.set( 200, 200, 200 );
 					dirLight.castShadow = true;
@@ -145,7 +146,7 @@
 
 					} );
 					control2.attach( object );
-					scene.add( control2 );
+					scene.add( control2.getHelper() );
 					const lightTarget = new THREE.Group();
 					lightTarget.position.set( 0, 20, 0 );
 					for ( let l = 0; l < dirLights.length; l ++ ) {
@@ -155,16 +156,6 @@
 					}
 
 					object.add( lightTarget );
-
-					if ( typeof TESTING !== 'undefined' ) {
-
-						for ( let i = 0; i < 300; i ++ ) {
-
-							render();
-
-						}
-
-					}
 
 				}
 
@@ -185,13 +176,14 @@
 				controls.maxDistance = 500;
 				controls.maxPolarAngle = Math.PI / 1.5;
 				controls.target.set( 0, 100, 0 );
+			
 				window.addEventListener( 'resize', onWindowResize );
 
 			}
 
 			function createGUI() {
 
-				const gui = new GUI( { name: 'Accumulation Settings' } );
+				const gui = new GUI( { title: 'Accumulation Settings' } );
 				gui.add( params, 'Enable' );
 				gui.add( params, 'Blur Edges' );
 				gui.add( params, 'Blend Window', 1, 500 ).step( 1 );
@@ -209,7 +201,7 @@
 
 			}
 
-			function render() {
+			function animate() {
 
 				// Update the inertia on the orbit controls
 				controls.update();
@@ -259,12 +251,6 @@
 
 			}
 
-			function animate() {
-
-				requestAnimationFrame( animate );
-				render();
-
-			}
 		</script>
 	</body>
 </html>

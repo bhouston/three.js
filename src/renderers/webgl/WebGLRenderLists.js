@@ -12,6 +12,10 @@ function painterSortStable( a, b ) {
 
 		return a.material.id - b.material.id;
 
+	} else if ( a.materialVariant !== b.materialVariant ) {
+
+		return a.materialVariant - b.materialVariant;
+
 	} else if ( a.z !== b.z ) {
 
 		return a.z - b.z;
@@ -66,6 +70,15 @@ function WebGLRenderList() {
 
 	}
 
+	function materialVariant( object ) {
+
+		let variant = 0;
+		if ( object.isInstancedMesh ) variant += 2;
+		if ( object.isSkinnedMesh ) variant += 1;
+		return variant;
+
+	}
+
 	function getNextRenderItem( object, geometry, material, groupOrder, z, group ) {
 
 		let renderItem = renderItems[ renderItemsIndex ];
@@ -77,6 +90,7 @@ function WebGLRenderList() {
 				object: object,
 				geometry: geometry,
 				material: material,
+				materialVariant: materialVariant( object ),
 				groupOrder: groupOrder,
 				renderOrder: object.renderOrder,
 				z: z,
@@ -91,6 +105,7 @@ function WebGLRenderList() {
 			renderItem.object = object;
 			renderItem.geometry = geometry;
 			renderItem.material = material;
+			renderItem.materialVariant = materialVariant( object );
 			renderItem.groupOrder = groupOrder;
 			renderItem.renderOrder = object.renderOrder;
 			renderItem.z = z;
@@ -104,7 +119,11 @@ function WebGLRenderList() {
 
 	}
 
-	function push( object, geometry, material, groupOrder, z, group ) {
+	function push( object, geometry, material, groupOrder, z, group, camera ) {
+
+		// with a reversed depth buffer the projected z is inverted
+
+		if ( camera.reversedDepth === true ) z = - z;
 
 		const renderItem = getNextRenderItem( object, geometry, material, groupOrder, z, group );
 
@@ -194,23 +213,24 @@ function WebGLRenderLists() {
 
 	function get( scene, renderCallDepth ) {
 
+		const listArray = lists.get( scene );
 		let list;
 
-		if ( lists.has( scene ) === false ) {
+		if ( listArray === undefined ) {
 
 			list = new WebGLRenderList();
 			lists.set( scene, [ list ] );
 
 		} else {
 
-			if ( renderCallDepth >= lists.get( scene ).length ) {
+			if ( renderCallDepth >= listArray.length ) {
 
 				list = new WebGLRenderList();
-				lists.get( scene ).push( list );
+				listArray.push( list );
 
 			} else {
 
-				list = lists.get( scene )[ renderCallDepth ];
+				list = listArray[ renderCallDepth ];
 
 			}
 

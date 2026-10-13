@@ -1,35 +1,50 @@
-/* global QUnit */
+import { MeshStandardMaterial } from '../../../../src/materials/MeshStandardMaterial.js';
 
-// import { MeshStandardMaterial } from '../../../../src/materials/MeshStandardMaterial.js';
+import { Material } from '../../../../src/materials/Material.js';
 
 export default QUnit.module( 'Materials', () => {
 
 	QUnit.module( 'MeshStandardMaterial', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new MeshStandardMaterial();
+			assert.strictEqual(
+				object instanceof Material, true,
+				'MeshStandardMaterial extends from Material'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'isMeshStandardMaterial', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new MeshStandardMaterial();
+			assert.ok( object, 'Can instantiate a MeshStandardMaterial.' );
 
 		} );
 
-		QUnit.todo( 'copy', ( assert ) => {
+		// PROPERTIES
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+		QUnit.test( 'type', ( assert ) => {
+
+			const object = new MeshStandardMaterial();
+			assert.ok(
+				object.type === 'MeshStandardMaterial',
+				'MeshStandardMaterial.type should be MeshStandardMaterial'
+			);
+
+		} );
+
+		// PUBLIC
+		QUnit.test( 'isMeshStandardMaterial', ( assert ) => {
+
+			const object = new MeshStandardMaterial();
+			assert.ok(
+				object.isMeshStandardMaterial,
+				'MeshStandardMaterial.isMeshStandardMaterial should be true'
+			);
 
 		} );
 

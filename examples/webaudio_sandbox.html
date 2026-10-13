@@ -4,6 +4,10 @@
 		<title>three.js webaudio - sandbox</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webaudio - sandbox">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webaudio_sandbox.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webaudio_sandbox.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -24,20 +28,17 @@
 		</div>
 		<div id="info">
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webaudio - sandbox<br/>
-			music by <a href="http://www.newgrounds.com/audio/listen/358232" target="_blank" rel="noopener">larrylarrybb</a>,
-			<a href="http://www.newgrounds.com/audio/listen/376737" target="_blank" rel="noopener">skullbeatz</a> and
-			<a href="http://opengameart.org/content/project-utopia-seamless-loop" target="_blank" rel="noopener">congusbongus</a><br/><br/>
+			music by <a href="https://www.newgrounds.com/audio/listen/358232" target="_blank" rel="noopener">larrylarrybb</a>,
+			<a href="https://www.newgrounds.com/audio/listen/376737" target="_blank" rel="noopener">skullbeatz</a> and
+			<a href="https://opengameart.org/content/project-utopia-seamless-loop" target="_blank" rel="noopener">congusbongus</a><br/><br/>
 			navigate with WASD / arrows / mouse
 		</div>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -46,9 +47,9 @@
 
 			import * as THREE from 'three';
 
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			import { FirstPersonControls } from './jsm/controls/FirstPersonControls.js';
+			import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
 
 			let camera, controls, scene, renderer, light;
 
@@ -56,7 +57,8 @@
 
 			let analyser1, analyser2, analyser3;
 
-			const clock = new THREE.Clock();
+			const timer = new THREE.Timer();
+			timer.connect( document );
 
 			const startButton = document.getElementById( 'startButton' );
 			startButton.addEventListener( 'click', init );
@@ -75,7 +77,7 @@
 				scene = new THREE.Scene();
 				scene.fog = new THREE.FogExp2( 0x000000, 0.0025 );
 
-				light = new THREE.DirectionalLight( 0xffffff );
+				light = new THREE.DirectionalLight( 0xffffff, 3 );
 				light.position.set( 0, 0.5, 1 ).normalize();
 				scene.add( light );
 
@@ -217,6 +219,7 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				document.body.appendChild( renderer.domElement );
 
 				//
@@ -224,15 +227,12 @@
 				controls = new FirstPersonControls( camera, renderer.domElement );
 
 				controls.movementSpeed = 70;
-				controls.lookSpeed = 0.05;
-				controls.noFly = true;
+				controls.lookSpeed = 0.2;
 				controls.lookVertical = false;
 
 				//
 
 				window.addEventListener( 'resize', onWindowResize );
-
-				animate();
 
 			}
 
@@ -243,21 +243,13 @@
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
 
-				controls.handleResize();
-
 			}
 
 			function animate() {
 
-				requestAnimationFrame( animate );
-				render();
+				timer.update();
 
-			}
-
-
-			function render() {
-
-				const delta = clock.getDelta();
+				const delta = timer.getDelta();
 
 				controls.update( delta );
 

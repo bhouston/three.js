@@ -1,5 +1,3 @@
-/* global QUnit */
-
 import { Interpolant } from '../../../../src/math/Interpolant.js';
 
 export default QUnit.module( 'Maths', () => {
@@ -54,23 +52,20 @@ export default QUnit.module( 'Maths', () => {
 		// Tests
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'evaluate', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const interpolant = new Mock( null, [ 1, 11, 2, 22, 3, 33 ], 2, [] );
+			assert.strictEqual(
+				interpolant instanceof Interpolant, true,
+				'Mock extends from Interpolant'
+			);
 
 		} );
 
-		// PRIVATE STUFF
+		// PRIVATE
 		QUnit.test( 'copySampleValue_', ( assert ) => {
 
-			var interpolant = new Mock( null, [ 1, 11, 2, 22, 3, 33 ], 2, [] );
+			const interpolant = new Mock( null, [ 1, 11, 2, 22, 3, 33 ], 2, [] );
 
 			assert.deepEqual( interpolant.copySampleValue_( 0 ), [ 1, 11 ], 'sample fetch (0)' );
 			assert.deepEqual( interpolant.copySampleValue_( 1 ), [ 2, 22 ], 'sample fetch (1)' );
@@ -80,9 +75,9 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'evaluate -> intervalChanged_ / interpolate_', ( assert ) => {
 
-			var actual, expect;
+			let actual, expect;
 
-			var interpolant = new Mock( [ 11, 22, 33, 44, 55, 66, 77, 88, 99 ], null, 0, null );
+			const interpolant = new Mock( [ 11, 22, 33, 44, 55, 66, 77, 88, 99 ], null, 0, null );
 
 			Mock.calls = [];
 			interpolant.evaluate( 11 );

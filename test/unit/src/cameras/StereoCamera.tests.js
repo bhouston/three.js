@@ -1,22 +1,25 @@
-/* global QUnit */
-
-// import { StereoCamera } from '../../../../src/cameras/StereoCamera.js';
+import { StereoCamera } from '../../../../src/cameras/StereoCamera.js';
 
 export default QUnit.module( 'Cameras', () => {
 
 	QUnit.module( 'StereoCamera', () => {
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new StereoCamera();
+			assert.ok( object, 'Can instantiate a StereoCamera.' );
 
 		} );
 
-		// PUBLIC STUFF
-		QUnit.todo( 'update', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new StereoCamera();
+			assert.ok(
+				object.type === 'StereoCamera',
+				'StereoCamera.type should be StereoCamera'
+			);
 
 		} );
 

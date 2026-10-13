@@ -1,20 +1,16 @@
+/**
+ * A utility module with basic WebGL 2 capability testing.
+ *
+ * @hideconstructor
+ * @three_import import WebGL from 'three/addons/capabilities/WebGL.js';
+ */
 class WebGL {
 
-	static isWebGLAvailable() {
-
-		try {
-
-			const canvas = document.createElement( 'canvas' );
-			return !! ( window.WebGLRenderingContext && ( canvas.getContext( 'webgl' ) || canvas.getContext( 'experimental-webgl' ) ) );
-
-		} catch ( e ) {
-
-			return false;
-
-		}
-
-	}
-
+	/**
+	 * Returns `true` if WebGL 2 is available.
+	 *
+	 * @return {boolean} Whether WebGL 2 is available or not.
+	 */
 	static isWebGL2Available() {
 
 		try {
@@ -30,19 +26,45 @@ class WebGL {
 
 	}
 
-	static getWebGLErrorMessage() {
+	/**
+	 * Returns `true` if the given color space is available. This method can only be used
+	 * if WebGL 2 is supported.
+	 *
+	 * @param {string} colorSpace - The color space to test.
+	 * @return {boolean} Whether the given color space is available or not.
+	 */
+	static isColorSpaceAvailable( colorSpace ) {
 
-		return this.getErrorMessage( 1 );
+		try {
+
+			const canvas = document.createElement( 'canvas' );
+			const ctx = window.WebGL2RenderingContext && canvas.getContext( 'webgl2' );
+			ctx.drawingBufferColorSpace = colorSpace;
+			return ctx.drawingBufferColorSpace === colorSpace; // deepscan-disable-line SAME_OPERAND_VALUE
+
+		} catch ( e ) {
+
+			return false;
+
+		}
 
 	}
 
+	/**
+	 * Returns a `div` element representing a formatted error message that can be appended in
+	 * web sites if WebGL 2 isn't supported.
+	 *
+	 * @return {HTMLDivElement} A `div` element representing a formatted error message that WebGL 2 isn't supported.
+	 */
 	static getWebGL2ErrorMessage() {
 
-		return this.getErrorMessage( 2 );
+		return this._getErrorMessage( 2 );
 
 	}
 
-	static getErrorMessage( version ) {
+	// private
+
+	static _getErrorMessage( version ) {
 
 		const names = {
 			1: 'WebGL',

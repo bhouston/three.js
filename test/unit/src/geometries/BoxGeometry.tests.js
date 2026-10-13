@@ -1,13 +1,13 @@
-/* global QUnit */
+import { BoxGeometry } from '../../../../src/geometries/BoxGeometry.js';
 
+import { BufferGeometry } from '../../../../src/core/BufferGeometry.js';
 import { runStdGeometryTests } from '../../utils/qunit-utils.js';
-import { BoxGeometry, BoxBufferGeometry } from '../../../../src/geometries/BoxGeometry.js';
 
 export default QUnit.module( 'Geometries', () => {
 
 	QUnit.module( 'BoxGeometry', ( hooks ) => {
 
-		var geometries = undefined;
+		let geometries = undefined;
 		hooks.beforeEach( function () {
 
 			const parameters = {
@@ -23,22 +23,37 @@ export default QUnit.module( 'Geometries', () => {
 				new BoxGeometry(),
 				new BoxGeometry( parameters.width, parameters.height, parameters.depth ),
 				new BoxGeometry( parameters.width, parameters.height, parameters.depth, parameters.widthSegments, parameters.heightSegments, parameters.depthSegments ),
-				new BoxBufferGeometry()
 			];
 
 		} );
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new BoxGeometry();
+			assert.strictEqual(
+				object instanceof BufferGeometry, true,
+				'BoxGeometry extends from BufferGeometry'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new BoxGeometry();
+			assert.ok( object, 'Can instantiate a BoxGeometry.' );
+
+		} );
+
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
+
+			const object = new BoxGeometry();
+			assert.ok(
+				object.type === 'BoxGeometry',
+				'BoxGeometry.type should be BoxGeometry'
+			);
 
 		} );
 
@@ -46,6 +61,46 @@ export default QUnit.module( 'Geometries', () => {
 		QUnit.test( 'Standard geometry tests', ( assert ) => {
 
 			runStdGeometryTests( assert, geometries );
+
+		} );
+
+		QUnit.test( 'toJSON: parametric serialization for untransformed geometry', ( assert ) => {
+
+			const geometry = new BoxGeometry( 10, 20, 30 );
+			const json = geometry.toJSON();
+
+			assert.strictEqual( geometry._transformed, false, '_transformed defaults to false' );
+			assert.strictEqual( json.type, 'BoxGeometry', 'type is preserved' );
+			assert.strictEqual( json.width, 10, 'width is serialized' );
+			assert.strictEqual( json.height, 20, 'height is serialized' );
+			assert.strictEqual( json.depth, 30, 'depth is serialized' );
+			assert.strictEqual( json.data, undefined, 'attribute data is not serialized' );
+
+		} );
+
+		QUnit.test( 'toJSON: attribute serialization after translate()', ( assert ) => {
+
+			const geometry = new BoxGeometry( 10, 20, 30 );
+			geometry.translate( 1, 2, 3 );
+			const json = geometry.toJSON();
+
+			assert.strictEqual( geometry._transformed, true, '_transformed is true after translate()' );
+			assert.strictEqual( json.type, 'BufferGeometry', 'type is downgraded to BufferGeometry' );
+			assert.strictEqual( json.width, undefined, 'parameters are not serialized' );
+			assert.ok( json.data && json.data.attributes && json.data.attributes.position, 'attribute data is serialized' );
+
+		} );
+
+		QUnit.test( 'toJSON: clone of a transformed geometry preserves _transformed', ( assert ) => {
+
+			const source = new BoxGeometry( 10, 20, 30 );
+			source.translate( 1, 2, 3 );
+			const clone = source.clone();
+			const json = clone.toJSON();
+
+			assert.strictEqual( clone._transformed, true, '_transformed propagates through copy()' );
+			assert.strictEqual( json.type, 'BufferGeometry', 'cloned type is downgraded to BufferGeometry' );
+			assert.ok( json.data && json.data.attributes && json.data.attributes.position, 'cloned attribute data is serialized' );
 
 		} );
 

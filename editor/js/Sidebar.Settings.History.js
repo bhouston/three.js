@@ -1,15 +1,12 @@
 
-import { UIPanel, UIBreak, UIText } from './libs/ui.js';
+import { UIButton, UIPanel, UIBreak, UIText } from './libs/ui.js';
 import { UIBoolean, UIOutliner } from './libs/ui.three.js';
 
 function SidebarSettingsHistory( editor ) {
 
 	const strings = editor.strings;
-
 	const signals = editor.signals;
-
 	const config = editor.config;
-
 	const history = editor.history;
 
 	const container = new UIPanel();
@@ -28,7 +25,7 @@ function SidebarSettingsHistory( editor ) {
 
 		if ( value ) {
 
-			alert( 'The history will be preserved across sessions.\nThis can have an impact on performance when working with textures.' );
+			alert( strings.getKey( 'prompt/history/preserve' ) );
 
 			const lastUndoCmd = history.undos[ history.undos.length - 1 ];
 			const lastUndoId = ( lastUndoCmd !== undefined ) ? lastUndoCmd.id : 0;
@@ -58,6 +55,22 @@ function SidebarSettingsHistory( editor ) {
 
 	} );
 	container.add( outliner );
+
+	container.add( new UIBreak() );
+
+	// Clear History
+
+	const option = new UIButton( strings.getKey( 'sidebar/history/clear' ) );
+	option.onClick( function () {
+
+		if ( confirm( strings.getKey( 'prompt/history/clear' ) ) ) {
+
+			editor.history.clear();
+
+		}
+
+	} );
+	container.add( option );
 
 	//
 

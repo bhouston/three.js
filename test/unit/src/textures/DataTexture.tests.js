@@ -1,29 +1,38 @@
-/* global QUnit */
+import { DataTexture } from '../../../../src/textures/DataTexture.js';
 
-// import { DataTexture } from '../../../../src/textures/DataTexture.js';
+import { Texture } from '../../../../src/textures/Texture.js';
 
 export default QUnit.module( 'Textures', () => {
 
 	QUnit.module( 'DataTexture', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new DataTexture();
+			assert.strictEqual(
+				object instanceof Texture, true,
+				'DataTexture extends from Texture'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new DataTexture();
+			assert.ok( object, 'Can instantiate a DataTexture.' );
 
 		} );
 
-		// PUBLIC STUFF
-		QUnit.todo( 'isDataTexture', ( assert ) => {
+		// PUBLIC
+		QUnit.test( 'isDataTexture', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new DataTexture();
+			assert.ok(
+				object.isDataTexture,
+				'DataTexture.isDataTexture should be true'
+			);
 
 		} );
 

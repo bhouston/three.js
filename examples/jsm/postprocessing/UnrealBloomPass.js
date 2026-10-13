@@ -1,6 +1,7 @@
 import {
 	AdditiveBlending,
 	Color,
+	HalfFloatType,
 	MeshBasicMaterial,
 	ShaderMaterial,
 	UniformsUtils,
@@ -13,27 +14,86 @@ import { CopyShader } from '../shaders/CopyShader.js';
 import { LuminosityHighPassShader } from '../shaders/LuminosityHighPassShader.js';
 
 /**
- * UnrealBloomPass is inspired by the bloom pass of Unreal Engine. It creates a
+ * This pass is inspired by the bloom pass of Unreal Engine. It creates a
  * mip map chain of bloom textures and blurs them with different radii. Because
  * of the weighted combination of mips, and because larger blurs are done on
  * higher mips, this effect provides good quality and performance.
  *
+ * When using this pass, tone mapping must be enabled in the renderer settings.
+ *
  * Reference:
- * - https://docs.unrealengine.com/latest/INT/Engine/Rendering/PostProcessEffects/Bloom/
+ * - [Bloom in Unreal Engine](https://docs.unrealengine.com/latest/INT/Engine/Rendering/PostProcessEffects/Bloom/)
+ *
+ * ```js
+ * const resolution = new THREE.Vector2( window.innerWidth, window.innerHeight );
+ * const bloomPass = new UnrealBloomPass( resolution, 1.5, 0.4, 0.85 );
+ * composer.addPass( bloomPass );
+ * ```
+ *
+ * @augments Pass
+ * @three_import import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
  */
 class UnrealBloomPass extends Pass {
 
-	constructor( resolution, strength, radius, threshold ) {
+	/**
+	 * Constructs a new Unreal Bloom pass.
+	 *
+	 * @param {Vector2} [resolution] - The effect's resolution.
+	 * @param {number} [strength=1] - The Bloom strength.
+	 * @param {number} radius - The Bloom radius.
+	 * @param {number} threshold - The luminance threshold limits which bright areas contribute to the Bloom effect.
+	 */
+	constructor( resolution, strength = 1, radius, threshold ) {
 
 		super();
 
-		this.strength = ( strength !== undefined ) ? strength : 1;
+		/**
+		 * The Bloom strength.
+		 *
+		 * @type {number}
+		 * @default 1
+		 */
+		this.strength = strength;
+
+		/**
+		 * The Bloom radius. Must be in the range `[0,1]`.
+		 *
+		 * @type {number}
+		 */
 		this.radius = radius;
+
+		/**
+		 * The luminance threshold limits which bright areas contribute to the Bloom effect.
+		 *
+		 * @type {number}
+		 */
 		this.threshold = threshold;
+
+		/**
+		 * The effect's resolution.
+		 *
+		 * @type {Vector2}
+		 * @default (256,256)
+		 */
 		this.resolution = ( resolution !== undefined ) ? new Vector2( resolution.x, resolution.y ) : new Vector2( 256, 256 );
 
-		// create color only once here, reuse it later inside the render function
+		/**
+		 * The effect's clear color
+		 *
+		 * @type {Color}
+		 * @default (0,0,0)
+		 */
 		this.clearColor = new Color( 0, 0, 0 );
+
+		/**
+		 * Overwritten to disable the swap.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.needsSwap = false;
+
+		// internals
 
 		// render targets
 		this.renderTargetsHorizontal = [];
@@ -42,20 +102,20 @@ class UnrealBloomPass extends Pass {
 		let resx = Math.round( this.resolution.x / 2 );
 		let resy = Math.round( this.resolution.y / 2 );
 
-		this.renderTargetBright = new WebGLRenderTarget( resx, resy );
+		this.renderTargetBright = new WebGLRenderTarget( resx, resy, { type: HalfFloatType, depthBuffer: false } );
 		this.renderTargetBright.texture.name = 'UnrealBloomPass.bright';
 		this.renderTargetBright.texture.generateMipmaps = false;
 
 		for ( let i = 0; i < this.nMips; i ++ ) {
 
-			const renderTargetHorizonal = new WebGLRenderTarget( resx, resy );
+			const renderTargetHorizontal = new WebGLRenderTarget( resx, resy, { type: HalfFloatType, depthBuffer: false } );
 
-			renderTargetHorizonal.texture.name = 'UnrealBloomPass.h' + i;
-			renderTargetHorizonal.texture.generateMipmaps = false;
+			renderTargetHorizontal.texture.name = 'UnrealBloomPass.h' + i;
+			renderTargetHorizontal.texture.generateMipmaps = false;
 
-			this.renderTargetsHorizontal.push( renderTargetHorizonal );
+			this.renderTargetsHorizontal.push( renderTargetHorizontal );
 
-			const renderTargetVertical = new WebGLRenderTarget( resx, resy );
+			const renderTargetVertical = new WebGLRenderTarget( resx, resy, { type: HalfFloatType, depthBuffer: false } );
 
 			renderTargetVertical.texture.name = 'UnrealBloomPass.v' + i;
 			renderTargetVertical.texture.generateMipmaps = false;
@@ -70,9 +130,6 @@ class UnrealBloomPass extends Pass {
 
 		// luminosity high pass material
 
-		if ( LuminosityHighPassShader === undefined )
-			console.error( 'THREE.UnrealBloomPass relies on LuminosityHighPassShader' );
-
 		const highPassShader = LuminosityHighPassShader;
 		this.highPassUniforms = UniformsUtils.clone( highPassShader.uniforms );
 
@@ -82,21 +139,23 @@ class UnrealBloomPass extends Pass {
 		this.materialHighPassFilter = new ShaderMaterial( {
 			uniforms: this.highPassUniforms,
 			vertexShader: highPassShader.vertexShader,
-			fragmentShader: highPassShader.fragmentShader,
-			defines: {}
+			fragmentShader: highPassShader.fragmentShader
 		} );
 
-		// Gaussian Blur Materials
+		// gaussian blur materials
+
 		this.separableBlurMaterials = [];
-		const kernelSizeArray = [ 3, 5, 7, 9, 11 ];
+		// These sizes have been changed to account for the altered coefficients-calculation to avoid blockiness,
+		// while retaining the same blur-strength. For details see https://github.com/mrdoob/three.js/pull/31528
+		const kernelSizeArray = [ 6, 10, 14, 18, 22 ];
 		resx = Math.round( this.resolution.x / 2 );
 		resy = Math.round( this.resolution.y / 2 );
 
 		for ( let i = 0; i < this.nMips; i ++ ) {
 
-			this.separableBlurMaterials.push( this.getSeperableBlurMaterial( kernelSizeArray[ i ] ) );
+			this.separableBlurMaterials.push( this._getSeparableBlurMaterial( kernelSizeArray[ i ] ) );
 
-			this.separableBlurMaterials[ i ].uniforms[ 'texSize' ].value = new Vector2( resx, resy );
+			this.separableBlurMaterials[ i ].uniforms[ 'invSize' ].value = new Vector2( 1 / resx, 1 / resy );
 
 			resx = Math.round( resx / 2 );
 
@@ -104,8 +163,9 @@ class UnrealBloomPass extends Pass {
 
 		}
 
-		// Composite material
-		this.compositeMaterial = this.getCompositeMaterial( this.nMips );
+		// composite material
+
+		this.compositeMaterial = this._getCompositeMaterial( this.nMips );
 		this.compositeMaterial.uniforms[ 'blurTexture1' ].value = this.renderTargetsVertical[ 0 ].texture;
 		this.compositeMaterial.uniforms[ 'blurTexture2' ].value = this.renderTargetsVertical[ 1 ].texture;
 		this.compositeMaterial.uniforms[ 'blurTexture3' ].value = this.renderTargetsVertical[ 2 ].texture;
@@ -113,47 +173,40 @@ class UnrealBloomPass extends Pass {
 		this.compositeMaterial.uniforms[ 'blurTexture5' ].value = this.renderTargetsVertical[ 4 ].texture;
 		this.compositeMaterial.uniforms[ 'bloomStrength' ].value = strength;
 		this.compositeMaterial.uniforms[ 'bloomRadius' ].value = 0.1;
-		this.compositeMaterial.needsUpdate = true;
 
 		const bloomFactors = [ 1.0, 0.8, 0.6, 0.4, 0.2 ];
 		this.compositeMaterial.uniforms[ 'bloomFactors' ].value = bloomFactors;
 		this.bloomTintColors = [ new Vector3( 1, 1, 1 ), new Vector3( 1, 1, 1 ), new Vector3( 1, 1, 1 ), new Vector3( 1, 1, 1 ), new Vector3( 1, 1, 1 ) ];
 		this.compositeMaterial.uniforms[ 'bloomTintColors' ].value = this.bloomTintColors;
 
-		// copy material
-		if ( CopyShader === undefined ) {
+		// blend material
 
-			console.error( 'THREE.UnrealBloomPass relies on CopyShader' );
+		this.copyUniforms = UniformsUtils.clone( CopyShader.uniforms );
 
-		}
-
-		const copyShader = CopyShader;
-
-		this.copyUniforms = UniformsUtils.clone( copyShader.uniforms );
-		this.copyUniforms[ 'opacity' ].value = 1.0;
-
-		this.materialCopy = new ShaderMaterial( {
+		this.blendMaterial = new ShaderMaterial( {
 			uniforms: this.copyUniforms,
-			vertexShader: copyShader.vertexShader,
-			fragmentShader: copyShader.fragmentShader,
+			vertexShader: CopyShader.vertexShader,
+			fragmentShader: CopyShader.fragmentShader,
+			premultipliedAlpha: true,
 			blending: AdditiveBlending,
 			depthTest: false,
 			depthWrite: false,
 			transparent: true
 		} );
 
-		this.enabled = true;
-		this.needsSwap = false;
-
 		this._oldClearColor = new Color();
-		this.oldClearAlpha = 1;
+		this._oldClearAlpha = 1;
 
-		this.basic = new MeshBasicMaterial();
+		this._basic = new MeshBasicMaterial();
 
-		this.fsQuad = new FullScreenQuad( null );
+		this._fsQuad = new FullScreenQuad( null );
 
 	}
 
+	/**
+	 * Frees the GPU-related resources allocated by this instance. Call this
+	 * method whenever the pass is no longer used in your app.
+	 */
 	dispose() {
 
 		for ( let i = 0; i < this.renderTargetsHorizontal.length; i ++ ) {
@@ -170,8 +223,30 @@ class UnrealBloomPass extends Pass {
 
 		this.renderTargetBright.dispose();
 
+		//
+
+		for ( let i = 0; i < this.separableBlurMaterials.length; i ++ ) {
+
+			this.separableBlurMaterials[ i ].dispose();
+
+		}
+
+		this.compositeMaterial.dispose();
+		this.blendMaterial.dispose();
+		this._basic.dispose();
+
+		//
+
+		this._fsQuad.dispose();
+
 	}
 
+	/**
+	 * Sets the size of the pass.
+	 *
+	 * @param {number} width - The width to set.
+	 * @param {number} height - The height to set.
+	 */
 	setSize( width, height ) {
 
 		let resx = Math.round( width / 2 );
@@ -184,7 +259,7 @@ class UnrealBloomPass extends Pass {
 			this.renderTargetsHorizontal[ i ].setSize( resx, resy );
 			this.renderTargetsVertical[ i ].setSize( resx, resy );
 
-			this.separableBlurMaterials[ i ].uniforms[ 'texSize' ].value = new Vector2( resx, resy );
+			this.separableBlurMaterials[ i ].uniforms[ 'invSize' ].value = new Vector2( 1 / resx, 1 / resy );
 
 			resx = Math.round( resx / 2 );
 			resy = Math.round( resy / 2 );
@@ -193,10 +268,21 @@ class UnrealBloomPass extends Pass {
 
 	}
 
+	/**
+	 * Performs the Bloom pass.
+	 *
+	 * @param {WebGLRenderer} renderer - The renderer.
+	 * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
+	 * destination for the pass.
+	 * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
+	 * previous pass from this buffer.
+	 * @param {number} deltaTime - The delta time in seconds.
+	 * @param {boolean} maskActive - Whether masking is active or not.
+	 */
 	render( renderer, writeBuffer, readBuffer, deltaTime, maskActive ) {
 
 		renderer.getClearColor( this._oldClearColor );
-		this.oldClearAlpha = renderer.getClearAlpha();
+		this._oldClearAlpha = renderer.getClearAlpha();
 		const oldAutoClear = renderer.autoClear;
 		renderer.autoClear = false;
 
@@ -208,12 +294,12 @@ class UnrealBloomPass extends Pass {
 
 		if ( this.renderToScreen ) {
 
-			this.fsQuad.material = this.basic;
-			this.basic.map = readBuffer.texture;
+			this._fsQuad.material = this._basic;
+			this._basic.map = readBuffer.texture;
 
 			renderer.setRenderTarget( null );
 			renderer.clear();
-			this.fsQuad.render( renderer );
+			this._fsQuad.render( renderer );
 
 		}
 
@@ -221,11 +307,11 @@ class UnrealBloomPass extends Pass {
 
 		this.highPassUniforms[ 'tDiffuse' ].value = readBuffer.texture;
 		this.highPassUniforms[ 'luminosityThreshold' ].value = this.threshold;
-		this.fsQuad.material = this.materialHighPassFilter;
+		this._fsQuad.material = this.materialHighPassFilter;
 
 		renderer.setRenderTarget( this.renderTargetBright );
 		renderer.clear();
-		this.fsQuad.render( renderer );
+		this._fsQuad.render( renderer );
 
 		// 2. Blur All the mips progressively
 
@@ -233,19 +319,19 @@ class UnrealBloomPass extends Pass {
 
 		for ( let i = 0; i < this.nMips; i ++ ) {
 
-			this.fsQuad.material = this.separableBlurMaterials[ i ];
+			this._fsQuad.material = this.separableBlurMaterials[ i ];
 
 			this.separableBlurMaterials[ i ].uniforms[ 'colorTexture' ].value = inputRenderTarget.texture;
 			this.separableBlurMaterials[ i ].uniforms[ 'direction' ].value = UnrealBloomPass.BlurDirectionX;
 			renderer.setRenderTarget( this.renderTargetsHorizontal[ i ] );
 			renderer.clear();
-			this.fsQuad.render( renderer );
+			this._fsQuad.render( renderer );
 
 			this.separableBlurMaterials[ i ].uniforms[ 'colorTexture' ].value = this.renderTargetsHorizontal[ i ].texture;
 			this.separableBlurMaterials[ i ].uniforms[ 'direction' ].value = UnrealBloomPass.BlurDirectionY;
 			renderer.setRenderTarget( this.renderTargetsVertical[ i ] );
 			renderer.clear();
-			this.fsQuad.render( renderer );
+			this._fsQuad.render( renderer );
 
 			inputRenderTarget = this.renderTargetsVertical[ i ];
 
@@ -253,18 +339,18 @@ class UnrealBloomPass extends Pass {
 
 		// Composite All the mips
 
-		this.fsQuad.material = this.compositeMaterial;
+		this._fsQuad.material = this.compositeMaterial;
 		this.compositeMaterial.uniforms[ 'bloomStrength' ].value = this.strength;
 		this.compositeMaterial.uniforms[ 'bloomRadius' ].value = this.radius;
 		this.compositeMaterial.uniforms[ 'bloomTintColors' ].value = this.bloomTintColors;
 
 		renderer.setRenderTarget( this.renderTargetsHorizontal[ 0 ] );
 		renderer.clear();
-		this.fsQuad.render( renderer );
+		this._fsQuad.render( renderer );
 
 		// Blend it additively over the input texture
 
-		this.fsQuad.material = this.materialCopy;
+		this._fsQuad.material = this.blendMaterial;
 		this.copyUniforms[ 'tDiffuse' ].value = this.renderTargetsHorizontal[ 0 ].texture;
 
 		if ( maskActive ) renderer.state.buffers.stencil.setTest( true );
@@ -272,75 +358,111 @@ class UnrealBloomPass extends Pass {
 		if ( this.renderToScreen ) {
 
 			renderer.setRenderTarget( null );
-			this.fsQuad.render( renderer );
+			this._fsQuad.render( renderer );
 
 		} else {
 
 			renderer.setRenderTarget( readBuffer );
-			this.fsQuad.render( renderer );
+			this._fsQuad.render( renderer );
 
 		}
 
 		// Restore renderer settings
 
-		renderer.setClearColor( this._oldClearColor, this.oldClearAlpha );
+		renderer.setClearColor( this._oldClearColor, this._oldClearAlpha );
 		renderer.autoClear = oldAutoClear;
 
 	}
 
-	getSeperableBlurMaterial( kernelRadius ) {
+	// internals
+
+	_getSeparableBlurMaterial( kernelRadius ) {
+
+		const coefficients = [];
+		const sigma = kernelRadius / 3;
+
+		for ( let i = 0; i < kernelRadius; i ++ ) {
+
+			coefficients.push( 0.39894 * Math.exp( - 0.5 * i * i / ( sigma * sigma ) ) / sigma );
+
+		}
+
+		// merge adjacent taps into single bilinear fetches (linear sampling)
+
+		const offsets = [];
+		const weights = [];
+
+		for ( let i = 1; i < kernelRadius; i += 2 ) {
+
+			const wa = coefficients[ i ];
+			const wb = ( i + 1 < kernelRadius ) ? coefficients[ i + 1 ] : 0;
+			const w = wa + wb;
+
+			offsets.push( ( i * wa + ( i + 1 ) * wb ) / w );
+			weights.push( w );
+
+		}
 
 		return new ShaderMaterial( {
 
 			defines: {
-				'KERNEL_RADIUS': kernelRadius,
-				'SIGMA': kernelRadius
+				'KERNEL_PAIRS': offsets.length
 			},
 
 			uniforms: {
 				'colorTexture': { value: null },
-				'texSize': { value: new Vector2( 0.5, 0.5 ) },
-				'direction': { value: new Vector2( 0.5, 0.5 ) }
+				'invSize': { value: new Vector2( 0.5, 0.5 ) }, // inverse texture size
+				'direction': { value: new Vector2( 0.5, 0.5 ) },
+				'centerWeight': { value: coefficients[ 0 ] },
+				'gaussianOffsets': { value: offsets },
+				'gaussianWeights': { value: weights }
 			},
 
-			vertexShader:
-				`varying vec2 vUv;
+			vertexShader: /* glsl */`
+
+				varying vec2 vUv;
+
 				void main() {
+
 					vUv = uv;
 					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
 				}`,
 
-			fragmentShader:
-				`#include <common>
-				varying vec2 vUv;
-				uniform sampler2D colorTexture;
-				uniform vec2 texSize;
-				uniform vec2 direction;
+			fragmentShader: /* glsl */`
 
-				float gaussianPdf(in float x, in float sigma) {
-					return 0.39894 * exp( -0.5 * x * x/( sigma * sigma))/sigma;
-				}
+				#include <common>
+
+				varying vec2 vUv;
+
+				uniform sampler2D colorTexture;
+				uniform vec2 invSize;
+				uniform vec2 direction;
+				uniform float centerWeight;
+				uniform float gaussianOffsets[KERNEL_PAIRS];
+				uniform float gaussianWeights[KERNEL_PAIRS];
+
 				void main() {
-					vec2 invSize = 1.0 / texSize;
-					float fSigma = float(SIGMA);
-					float weightSum = gaussianPdf(0.0, fSigma);
-					vec3 diffuseSum = texture2D( colorTexture, vUv).rgb * weightSum;
-					for( int i = 1; i < KERNEL_RADIUS; i ++ ) {
-						float x = float(i);
-						float w = gaussianPdf(x, fSigma);
-						vec2 uvOffset = direction * invSize * x;
-						vec3 sample1 = texture2D( colorTexture, vUv + uvOffset).rgb;
-						vec3 sample2 = texture2D( colorTexture, vUv - uvOffset).rgb;
-						diffuseSum += (sample1 + sample2) * w;
-						weightSum += 2.0 * w;
+
+					vec3 diffuseSum = texture2D( colorTexture, vUv ).rgb * centerWeight;
+
+					for ( int i = 0; i < KERNEL_PAIRS; i ++ ) {
+
+						vec2 uvOffset = direction * invSize * gaussianOffsets[ i ];
+						vec3 sample1 = texture2D( colorTexture, vUv + uvOffset ).rgb;
+						vec3 sample2 = texture2D( colorTexture, vUv - uvOffset ).rgb;
+						diffuseSum += ( sample1 + sample2 ) * gaussianWeights[ i ];
+
 					}
-					gl_FragColor = vec4(diffuseSum/weightSum, 1.0);
+
+					gl_FragColor = vec4( diffuseSum, 1.0 );
+
 				}`
 		} );
 
 	}
 
-	getCompositeMaterial( nMips ) {
+	_getCompositeMaterial( nMips ) {
 
 		return new ShaderMaterial( {
 
@@ -360,15 +482,21 @@ class UnrealBloomPass extends Pass {
 				'bloomRadius': { value: 0.0 }
 			},
 
-			vertexShader:
-				`varying vec2 vUv;
+			vertexShader: /* glsl */`
+
+				varying vec2 vUv;
+
 				void main() {
+
 					vUv = uv;
 					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
 				}`,
 
-			fragmentShader:
-				`varying vec2 vUv;
+			fragmentShader: /* glsl */`
+
+				varying vec2 vUv;
+
 				uniform sampler2D blurTexture1;
 				uniform sampler2D blurTexture2;
 				uniform sampler2D blurTexture3;
@@ -379,17 +507,27 @@ class UnrealBloomPass extends Pass {
 				uniform float bloomFactors[NUM_MIPS];
 				uniform vec3 bloomTintColors[NUM_MIPS];
 
-				float lerpBloomFactor(const in float factor) {
+				float lerpBloomFactor( const in float factor ) {
+
 					float mirrorFactor = 1.2 - factor;
-					return mix(factor, mirrorFactor, bloomRadius);
+					return mix( factor, mirrorFactor, bloomRadius );
+
 				}
 
 				void main() {
-					gl_FragColor = bloomStrength * ( lerpBloomFactor(bloomFactors[0]) * vec4(bloomTintColors[0], 1.0) * texture2D(blurTexture1, vUv) +
-						lerpBloomFactor(bloomFactors[1]) * vec4(bloomTintColors[1], 1.0) * texture2D(blurTexture2, vUv) +
-						lerpBloomFactor(bloomFactors[2]) * vec4(bloomTintColors[2], 1.0) * texture2D(blurTexture3, vUv) +
-						lerpBloomFactor(bloomFactors[3]) * vec4(bloomTintColors[3], 1.0) * texture2D(blurTexture4, vUv) +
-						lerpBloomFactor(bloomFactors[4]) * vec4(bloomTintColors[4], 1.0) * texture2D(blurTexture5, vUv) );
+
+					// 3.0 for backwards compatibility with previous alpha-based intensity
+					vec3 bloom = 3.0 * bloomStrength * (
+						lerpBloomFactor( bloomFactors[ 0 ] ) * bloomTintColors[ 0 ] * texture2D( blurTexture1, vUv ).rgb +
+						lerpBloomFactor( bloomFactors[ 1 ] ) * bloomTintColors[ 1 ] * texture2D( blurTexture2, vUv ).rgb +
+						lerpBloomFactor( bloomFactors[ 2 ] ) * bloomTintColors[ 2 ] * texture2D( blurTexture3, vUv ).rgb +
+						lerpBloomFactor( bloomFactors[ 3 ] ) * bloomTintColors[ 3 ] * texture2D( blurTexture4, vUv ).rgb +
+						lerpBloomFactor( bloomFactors[ 4 ] ) * bloomTintColors[ 4 ] * texture2D( blurTexture5, vUv ).rgb
+					);
+
+					float bloomAlpha = max( bloom.r, max( bloom.g, bloom.b ) );
+					gl_FragColor = vec4( bloom, bloomAlpha );
+
 				}`
 		} );
 

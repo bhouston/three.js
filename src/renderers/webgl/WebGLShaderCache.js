@@ -9,13 +9,7 @@ class WebGLShaderCache {
 
 	}
 
-	update( material ) {
-
-		const vertexShader = material.vertexShader;
-		const fragmentShader = material.fragmentShader;
-
-		const vertexShaderStage = this._getShaderStage( vertexShader );
-		const fragmentShaderStage = this._getShaderStage( fragmentShader );
+	update( material, vertexShaderStage, fragmentShaderStage ) {
 
 		const materialShaders = this._getShaderCacheForMaterial( material );
 
@@ -55,15 +49,15 @@ class WebGLShaderCache {
 
 	}
 
-	getVertexShaderID( material ) {
+	getVertexShaderStage( material ) {
 
-		return this._getShaderStage( material.vertexShader ).id;
+		return this._getShaderStage( material.vertexShader );
 
 	}
 
-	getFragmentShaderID( material ) {
+	getFragmentShaderStage( material ) {
 
-		return this._getShaderStage( material.fragmentShader ).id;
+		return this._getShaderStage( material.fragmentShader );
 
 	}
 
@@ -77,29 +71,32 @@ class WebGLShaderCache {
 	_getShaderCacheForMaterial( material ) {
 
 		const cache = this.materialCache;
+		let set = cache.get( material );
 
-		if ( cache.has( material ) === false ) {
+		if ( set === undefined ) {
 
-			cache.set( material, new Set() );
+			set = new Set();
+			cache.set( material, set );
 
 		}
 
-		return cache.get( material );
+		return set;
 
 	}
 
 	_getShaderStage( code ) {
 
 		const cache = this.shaderCache;
+		let stage = cache.get( code );
 
-		if ( cache.has( code ) === false ) {
+		if ( stage === undefined ) {
 
-			const stage = new WebGLShaderStage( code );
+			stage = new WebGLShaderStage( code );
 			cache.set( code, stage );
 
 		}
 
-		return cache.get( code );
+		return stage;
 
 	}
 

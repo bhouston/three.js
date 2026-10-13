@@ -1,33 +1,23 @@
-/* global QUnit */
-
-// import { Cache } from '../../../../src/loaders/Cache.js';
+import { Cache } from '../../../../src/loaders/Cache.js';
 
 export default QUnit.module( 'Loaders', () => {
 
 	QUnit.module( 'Cache', () => {
 
-		// PUBLIC STUFF
-		QUnit.todo( 'add', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'enabled', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'get', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const actual = Cache.enabled;
+			const expected = false;
+			assert.strictEqual( actual, expected, 'Cache defines enabled.' );
 
 		} );
 
-		QUnit.todo( 'remove', ( assert ) => {
+		QUnit.test( 'files', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'clear', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const actual = Cache.files;
+			const expected = {};
+			assert.deepEqual( actual, expected, 'Cache defines files.' );
 
 		} );
 

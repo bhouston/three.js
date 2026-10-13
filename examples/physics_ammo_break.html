@@ -3,6 +3,10 @@
 		<title>Convex object breaking example</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="Convex object breaking example">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/physics_ammo_break.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/physics_ammo_break.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<style>
 			body {
@@ -15,16 +19,13 @@
 	<div id="info">Physics threejs demo with convex objects breaking in real time<br />Press mouse to throw balls and move the camera.</div>
 	<div id="container"></div>
 
-	<script src="js/libs/ammo.wasm.js"></script>
-
-	<!-- Import maps polyfill -->
-	<!-- Remove this when import maps will be widely supported -->
-	<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+	<script src="https://cdn.jsdelivr.net/gh/kripken/ammo.js@79190a1f03845794b1bba1777f30037349967658/builds/ammo.wasm.js"></script>
 
 	<script type="importmap">
 		{
 			"imports": {
-				"three": "../build/three.module.js"
+				"three": "../build/three.module.js",
+				"three/addons/": "./jsm/"
 			}
 		}
 	</script>
@@ -32,11 +33,11 @@
 	<script type="module">
 		import * as THREE from 'three';
 
-		import Stats from './jsm/libs/stats.module.js';
+		import Stats from 'three/addons/libs/stats.module.js';
 
-		import { OrbitControls } from './jsm/controls/OrbitControls.js';
-		import { ConvexObjectBreaker } from './jsm/misc/ConvexObjectBreaker.js';
-		import { ConvexGeometry } from './jsm/geometries/ConvexGeometry.js';
+		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+		import { ConvexObjectBreaker } from 'three/addons/misc/ConvexObjectBreaker.js';
+		import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 
 		// - Global variables -
 
@@ -44,7 +45,8 @@
 		let container, stats;
 		let camera, controls, scene, renderer;
 		let textureLoader;
-		const clock = new THREE.Clock();
+		const timer = new THREE.Timer();
+		timer.connect( document );
 
 		const mouseCoords = new THREE.Vector2();
 		const raycaster = new THREE.Raycaster();
@@ -89,7 +91,6 @@
 			Ammo = AmmoLib;
 
 			init();
-			animate();
 
 		} );
 
@@ -119,9 +120,10 @@
 
 			camera.position.set( - 14, 8, 16 );
 
-			renderer = new THREE.WebGLRenderer();
+			renderer = new THREE.WebGLRenderer( { antialias: true } );
 			renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.setAnimationLoop( animate );
 			renderer.shadowMap.enabled = true;
 			container.appendChild( renderer.domElement );
 
@@ -131,10 +133,10 @@
 
 			textureLoader = new THREE.TextureLoader();
 
-			const ambientLight = new THREE.AmbientLight( 0x707070 );
+			const ambientLight = new THREE.AmbientLight( 0xbbbbbb );
 			scene.add( ambientLight );
 
-			const light = new THREE.DirectionalLight( 0xffffff, 1 );
+			const light = new THREE.DirectionalLight( 0xffffff, 3 );
 			light.position.set( - 10, 18, 5 );
 			light.castShadow = true;
 			const d = 14;
@@ -341,9 +343,10 @@
 			physicsShape.calculateLocalInertia( mass, localInertia );
 
 			const rbInfo = new Ammo.btRigidBodyConstructionInfo( mass, motionState, physicsShape, localInertia );
-			const body = new Ammo.btRigidBody( rbInfo );
+			rbInfo.set_m_restitution( 0.5 );
+			rbInfo.set_m_friction( 0.5 );
 
-			body.setFriction( 0.5 );
+			const body = new Ammo.btRigidBody( rbInfo );
 
 			if ( vel ) {
 
@@ -434,7 +437,7 @@
 
 		function animate() {
 
-			requestAnimationFrame( animate );
+			timer.update();
 
 			render();
 			stats.update();
@@ -443,7 +446,7 @@
 
 		function render() {
 
-			const deltaTime = clock.getDelta();
+			const deltaTime = timer.getDelta();
 
 			updatePhysics( deltaTime );
 
@@ -543,7 +546,7 @@
 
 				if ( breakable0 && ! collided0 && maxImpulse > fractureImpulse ) {
 
-					const debris = convexBreaker.subdivideByImpact( threeObject0, impactPoint, impactNormal, 1, 2, 1.5 );
+					const debris = convexBreaker.subdivideByImpact( threeObject0, impactPoint, impactNormal, 1, 2 );
 
 					const numObjects = debris.length;
 					for ( let j = 0; j < numObjects; j ++ ) {
@@ -565,7 +568,7 @@
 
 				if ( breakable1 && ! collided1 && maxImpulse > fractureImpulse ) {
 
-					const debris = convexBreaker.subdivideByImpact( threeObject1, impactPoint, impactNormal, 1, 2, 1.5 );
+					const debris = convexBreaker.subdivideByImpact( threeObject1, impactPoint, impactNormal, 1, 2 );
 
 					const numObjects = debris.length;
 					for ( let j = 0; j < numObjects; j ++ ) {

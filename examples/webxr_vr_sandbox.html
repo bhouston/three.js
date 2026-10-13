@@ -4,17 +4,18 @@
 		<title>three.js vr - sandbox</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+		<meta property="og:title" content="three.js vr - sandbox">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webxr_vr_sandbox.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webxr_vr_sandbox.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -23,17 +24,16 @@
 
 			import * as THREE from 'three';
 
-			import { RGBELoader } from './jsm/loaders/RGBELoader.js';
-			import { Lensflare, LensflareElement } from './jsm/objects/Lensflare.js';
-			import { Reflector } from './jsm/objects/Reflector.js';
-			import { VRButton } from './jsm/webxr/VRButton.js';
+			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+			import { Reflector } from 'three/addons/objects/Reflector.js';
+			import { VRButton } from 'three/addons/webxr/VRButton.js';
 
-			import { HTMLMesh } from './jsm/interactive/HTMLMesh.js';
-			import { InteractiveGroup } from './jsm/interactive/InteractiveGroup.js';
-			import { XRControllerModelFactory } from './jsm/webxr/XRControllerModelFactory.js';
+			import { HTMLMesh } from 'three/addons/interactive/HTMLMesh.js';
+			import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
+			import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
-			import Stats from './jsm/libs/stats.module.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
 			let camera, scene, renderer;
 			let reflector;
@@ -50,13 +50,12 @@
 			};
 
 			init();
-			animate();
 
 			function init() {
 
 				scene = new THREE.Scene();
 
-				new RGBELoader()
+				new HDRLoader()
 					.setPath( 'textures/equirectangular/' )
 					.load( 'moonless_golf_1k.hdr', function ( texture ) {
 
@@ -74,7 +73,7 @@
 
 				const torusGeometry = new THREE.TorusKnotGeometry( ...Object.values( parameters ) );
 				const torusMaterial = new THREE.MeshPhysicalMaterial( {
-					transmission: 1.0, roughness: 0, metalness: 0.25, thickness: 0.5
+					transmission: 1.0, roughness: 0, metalness: 0.25, thickness: 0.5, side: THREE.DoubleSide
 				} );
 				const torus = new THREE.Mesh( torusGeometry, torusMaterial );
 				torus.name = 'torus';
@@ -83,40 +82,25 @@
 				scene.add( torus );
 
 				const cylinderGeometry = new THREE.CylinderGeometry( 1, 1, 0.1, 50 );
-				const cylinderMaterial = new THREE.MeshStandardMaterial();
+				const cylinderMaterial = new THREE.MeshLambertMaterial();
 				const cylinder = new THREE.Mesh( cylinderGeometry, cylinderMaterial );
 				cylinder.position.z = - 2;
 				scene.add( cylinder );
 
-				// lensflare
-				const loader = new THREE.TextureLoader();
-				const texture0 = loader.load( 'textures/lensflare/lensflare0.png' );
-				const texture3 = loader.load( 'textures/lensflare/lensflare3.png' );
-
-				const lensflare = new Lensflare();
-				lensflare.position.set( 0, 5, - 5 );
-				lensflare.addElement( new LensflareElement( texture0, 700, 0 ) );
-				lensflare.addElement( new LensflareElement( texture3, 60, 0.6 ) );
-				lensflare.addElement( new LensflareElement( texture3, 70, 0.7 ) );
-				lensflare.addElement( new LensflareElement( texture3, 120, 0.9 ) );
-				lensflare.addElement( new LensflareElement( texture3, 70, 1 ) );
-				scene.add( lensflare );
-
 				//
 
 				reflector = new Reflector( new THREE.PlaneGeometry( 2, 2 ), {
-					textureWidth: window.innerWidth * window.devicePixelRatio,
-					textureHeight: window.innerHeight * window.devicePixelRatio
+					textureWidth: window.innerWidth,
+					textureHeight: window.innerHeight
 				} );
 				reflector.position.x = 1;
 				reflector.position.y = 1.5;
 				reflector.position.z = - 3;
 				reflector.rotation.y = - Math.PI / 4;
-				// TOFIX: Reflector breaks transmission
-				// scene.add( reflector );
+				scene.add( reflector );
 
 				const frameGeometry = new THREE.BoxGeometry( 2.1, 2.1, 0.1 );
-				const frameMaterial = new THREE.MeshPhongMaterial();
+				const frameMaterial = new THREE.MeshLambertMaterial( { color: 0x888888 } );
 				const frame = new THREE.Mesh( frameGeometry, frameMaterial );
 				frame.position.z = - 0.07;
 				reflector.add( frame );
@@ -127,7 +111,10 @@
 				renderer.autoClear = false;
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				renderer.xr.enabled = true;
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 1;
 				document.body.appendChild( renderer.domElement );
 
 				document.body.appendChild( VRButton.createButton( renderer ) );
@@ -184,7 +171,10 @@
 				gui.add( parameters, 'thickness', 0, 1 ).onChange( onThicknessChange );
 				gui.domElement.style.visibility = 'hidden';
 
-				const group = new InteractiveGroup( renderer, camera );
+				const group = new InteractiveGroup();
+				group.listenToPointerEvents( renderer, camera );
+				group.listenToXRControllerEvents( controller1 );
+				group.listenToXRControllerEvents( controller2 );
 				scene.add( group );
 
 				const mesh = new HTMLMesh( gui.domElement );
@@ -223,16 +213,10 @@
 
 			function animate() {
 
-				renderer.setAnimationLoop( render );
-
-			}
-
-			function render() {
-
 				const time = performance.now() * 0.0002;
 				const torus = scene.getObjectByName( 'torus' );
-				torus.rotation.x = time * 2;
-				torus.rotation.y = time * 5;
+				torus.rotation.x = time * 0.4;
+				torus.rotation.y = time;
 
 				renderer.render( scene, camera );
 				stats.update();

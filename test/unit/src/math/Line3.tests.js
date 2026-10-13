@@ -1,5 +1,3 @@
-/* global QUnit */
-
 import { Line3 } from '../../../../src/math/Line3.js';
 import { Vector3 } from '../../../../src/math/Vector3.js';
 import { Vector4 } from '../../../../src/math/Vector4.js';
@@ -11,7 +9,7 @@ import {
 	zero3,
 	one3,
 	two3
-} from './Constants.tests.js';
+} from '../../utils/math-constants.js';
 
 export default QUnit.module( 'Maths', () => {
 
@@ -20,11 +18,11 @@ export default QUnit.module( 'Maths', () => {
 		// INSTANCING
 		QUnit.test( 'Instancing', ( assert ) => {
 
-			var a = new Line3();
+			let a = new Line3();
 			assert.ok( a.start.equals( zero3 ), 'Passed!' );
 			assert.ok( a.end.equals( zero3 ), 'Passed!' );
 
-			var a = new Line3( two3.clone(), one3.clone() );
+			a = new Line3( two3.clone(), one3.clone() );
 			assert.ok( a.start.equals( two3 ), 'Passed!' );
 			assert.ok( a.end.equals( one3 ), 'Passed!' );
 
@@ -33,7 +31,7 @@ export default QUnit.module( 'Maths', () => {
 		// PUBLIC STUFF
 		QUnit.test( 'set', ( assert ) => {
 
-			var a = new Line3();
+			const a = new Line3();
 
 			a.set( one3, one3 );
 			assert.ok( a.start.equals( one3 ), 'Passed!' );
@@ -43,8 +41,8 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'copy/equals', ( assert ) => {
 
-			var a = new Line3( zero3.clone(), one3.clone() );
-			var b = new Line3().copy( a );
+			const a = new Line3( zero3.clone(), one3.clone() );
+			const b = new Line3().copy( a );
 			assert.ok( b.start.equals( zero3 ), 'Passed!' );
 			assert.ok( b.end.equals( one3 ), 'Passed!' );
 
@@ -58,15 +56,15 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'clone/equal', ( assert ) => {
 
-			var a = new Line3();
-			var b = new Line3( zero3, new Vector3( 1, 1, 1 ) );
-			var c = new Line3( zero3, new Vector3( 1, 1, 0 ) );
+			let a = new Line3();
+			const b = new Line3( zero3, new Vector3( 1, 1, 1 ) );
+			const c = new Line3( zero3, new Vector3( 1, 1, 0 ) );
 
 			assert.notOk( a.equals( b ), 'Check a and b aren\'t equal' );
 			assert.notOk( a.equals( c ), 'Check a and c aren\'t equal' );
 			assert.notOk( b.equals( c ), 'Check b and c aren\'t equal' );
 
-			var a = b.clone();
+			a = b.clone();
 			assert.ok( a.equals( b ), 'Check a and b are equal after clone()' );
 			assert.notOk( a.equals( c ), 'Check a and c aren\'t equal after clone()' );
 
@@ -77,28 +75,28 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'getCenter', ( assert ) => {
 
-			var center = new Vector3();
+			const center = new Vector3();
 
-			var a = new Line3( zero3.clone(), two3.clone() );
+			const a = new Line3( zero3.clone(), two3.clone() );
 			assert.ok( a.getCenter( center ).equals( one3.clone() ), 'Passed' );
 
 		} );
 
 		QUnit.test( 'delta', ( assert ) => {
 
-			var delta = new Vector3();
+			const delta = new Vector3();
 
-			var a = new Line3( zero3.clone(), two3.clone() );
+			const a = new Line3( zero3.clone(), two3.clone() );
 			assert.ok( a.delta( delta ).equals( two3.clone() ), 'Passed' );
 
 		} );
 
 		QUnit.test( 'distanceSq', ( assert ) => {
 
-			var a = new Line3( zero3, zero3 );
-			var b = new Line3( zero3, one3 );
-			var c = new Line3( one3.clone().negate(), one3 );
-			var d = new Line3( two3.clone().multiplyScalar( - 2 ), two3.clone().negate() );
+			const a = new Line3( zero3, zero3 );
+			const b = new Line3( zero3, one3 );
+			const c = new Line3( one3.clone().negate(), one3 );
+			const d = new Line3( two3.clone().multiplyScalar( - 2 ), two3.clone().negate() );
 
 			assert.numEqual( a.distanceSq(), 0, 'Check squared distance for zero-length line' );
 			assert.numEqual( b.distanceSq(), 3, 'Check squared distance for simple line' );
@@ -110,10 +108,10 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'distance', ( assert ) => {
 
-			var a = new Line3( zero3, zero3 );
-			var b = new Line3( zero3, one3 );
-			var c = new Line3( one3.clone().negate(), one3 );
-			var d = new Line3( two3.clone().multiplyScalar( - 2 ), two3.clone().negate() );
+			const a = new Line3( zero3, zero3 );
+			const b = new Line3( zero3, one3 );
+			const c = new Line3( one3.clone().negate(), one3 );
+			const d = new Line3( two3.clone().multiplyScalar( - 2 ), two3.clone().negate() );
 
 			assert.numEqual( a.distance(), 0, 'Check distance for zero-length line' );
 			assert.numEqual( b.distance(), Math.sqrt( 3 ), 'Check distance for simple line' );
@@ -124,8 +122,8 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'at', ( assert ) => {
 
-			var a = new Line3( one3.clone(), new Vector3( 1, 1, 2 ) );
-			var point = new Vector3();
+			const a = new Line3( one3.clone(), new Vector3( 1, 1, 2 ) );
+			const point = new Vector3();
 
 			a.at( - 1, point );
 			assert.ok( point.distanceTo( new Vector3( 1, 1, 0 ) ) < 0.0001, 'Passed!' );
@@ -140,8 +138,8 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'closestPointToPoint/closestPointToPointParameter', ( assert ) => {
 
-			var a = new Line3( one3.clone(), new Vector3( 1, 1, 2 ) );
-			var point = new Vector3();
+			const a = new Line3( one3.clone(), new Vector3( 1, 1, 2 ) );
+			const point = new Vector3();
 
 			// nearby the ray
 			assert.ok( a.closestPointToPointParameter( zero3.clone(), true ) == 0, 'Passed!' );
@@ -150,7 +148,7 @@ export default QUnit.module( 'Maths', () => {
 
 			// nearby the ray
 			assert.ok( a.closestPointToPointParameter( zero3.clone(), false ) == - 1, 'Passed!' );
-			 a.closestPointToPoint( zero3.clone(), false, point );
+			a.closestPointToPoint( zero3.clone(), false, point );
 			assert.ok( point.distanceTo( new Vector3( 1, 1, 0 ) ) < 0.0001, 'Passed!' );
 
 			// nearby the ray
@@ -163,14 +161,20 @@ export default QUnit.module( 'Maths', () => {
 			a.closestPointToPoint( one3.clone(), true, point );
 			assert.ok( point.distanceTo( one3.clone() ) < 0.0001, 'Passed!' );
 
+			// degenerate line (zero-length)
+			const b = new Line3( one3.clone(), one3.clone() );
+			assert.ok( b.closestPointToPointParameter( zero3.clone(), true ) == 0, 'Passed!' );
+			b.closestPointToPoint( zero3.clone(), true, point );
+			assert.ok( point.distanceTo( one3.clone() ) < 0.0001, 'Passed!' );
+
 		} );
 
 		QUnit.test( 'applyMatrix4', ( assert ) => {
 
-			var a = new Line3( zero3.clone(), two3.clone() );
-			var b = new Vector4( two3.x, two3.y, two3.z, 1 );
-			var m = new Matrix4().makeTranslation( x, y, z );
-			var v = new Vector3( x, y, z );
+			const a = new Line3( zero3.clone(), two3.clone() );
+			const b = new Vector4( two3.x, two3.y, two3.z, 1 );
+			const m = new Matrix4().makeTranslation( x, y, z );
+			const v = new Vector3( x, y, z );
 
 			a.applyMatrix4( m );
 			assert.ok( a.start.equals( v ), 'Translation: check start' );
@@ -205,9 +209,76 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'equals', ( assert ) => {
 
-			var a = new Line3( zero3.clone(), zero3.clone() );
-			var b = new Line3();
+			const a = new Line3( zero3.clone(), zero3.clone() );
+			const b = new Line3();
 			assert.ok( a.equals( b ), 'Passed' );
+
+		} );
+
+		QUnit.test( 'distanceSqToLine3', ( assert ) => {
+
+			const line1 = new Line3();
+			line1.start.set( 0, 0, 0 );
+			line1.end.set( 2, 0, 0 );
+
+			const line2 = new Line3();
+			line2.start.set( 1, 10, 0 );
+			line2.end.set( 1, - 2, 0 );
+
+			assert.numEqual( line1.distanceSqToLine3( line2 ), 0 );
+
+			// Parallel lines case
+			line2.start.set( - 2, 0, 2 );
+			line2.end.set( 20, 0, 2 );
+
+			assert.numEqual( line1.distanceSqToLine3( line2 ), 4 );
+
+			// Closest point on lines from one side is out of segment
+			line1.start.set( 0, 4, 0 );
+			line1.end.set( 2, 2, 0 );
+
+			line2.start.set( 0, 0, 0 );
+			line2.end.set( 4, 0, 0 );
+
+			assert.numEqual( line1.distanceSqToLine3( line2 ), 4 );
+
+			// Closest point on lines from another side is out of segment
+			line1.start.set( 0, 4, 0 );
+			line1.end.set( 3, 1, 0 );
+
+			line2.start.set( 0, 0, 0 );
+			line2.end.set( 1, 0, 0 );
+
+			assert.numEqual( line1.distanceSqToLine3( line2 ), 4.5 );
+
+			// Closest point on lines from both sides is out of the segment
+			line1.start.set( 0, 4, 0 );
+			line1.end.set( 2, 2, 0 );
+
+			line2.start.set( 0, 0, 0 );
+			line2.end.set( 1, 0, 0 );
+
+			assert.numEqual( line1.distanceSqToLine3( line2 ), 5 );
+
+			// General case with skew lines
+			line1.start.set( 4, 0, 0 );
+			line1.end.set( - 4, 0, 0 );
+
+			line2.start.set( 0, 4, 0 );
+			line2.end.set( 0, 0, 4 );
+
+			assert.numEqual( line1.distanceSqToLine3( line2 ), 8 );
+
+			// Both segments degenerate into points
+			line1.set( one3, one3 );
+			line2.set( two3, two3 );
+
+			const c1 = new Vector3();
+			const c2 = new Vector3();
+
+			assert.numEqual( line1.distanceSqToLine3( line2, c1, c2 ), 3 );
+			assert.ok( c1.equals( one3 ), 'Passed!' );
+			assert.ok( c2.equals( two3 ), 'Passed!' );
 
 		} );
 

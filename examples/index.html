@@ -4,6 +4,10 @@
 		<meta charset="utf-8">
 		<title>three.js examples</title>
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js examples">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/index.html">
+		<meta property="og:image" content="https://threejs.org/files/og_image.jpg">
 		<link rel="shortcut icon" href="../files/favicon_white.ico" media="(prefers-color-scheme: dark)"/>
 		<link rel="shortcut icon" href="../files/favicon.ico" media="(prefers-color-scheme: light)" />
 		<link rel="stylesheet" type="text/css" href="../files/main.css">
@@ -12,11 +16,10 @@
 
 		<div id="panel">
 
-			<div id="header">
+			<div id="header" translate="no">
 				<h1><a href="https://threejs.org">three.js</a></h1>
 
 				<div id="sections">
-					<a href="../docs/index.html#manual/introduction/Creating-a-scene">docs</a>
 					<span class="selected">examples</span>
 				</div>
 
@@ -29,7 +32,7 @@
 
 				<div id="inputWrapper">
 					<input placeholder="" type="text" id="filterInput" autocorrect="off" autocapitalize="off" spellcheck="false" />
-					<div id="exitSearchButton"></div>
+					<div id="clearSearchButton"></div>
 				</div>
 
 				<div id="content">
@@ -49,26 +52,21 @@
 		const content = document.getElementById( 'content' );
 		const viewer = document.getElementById( 'viewer' );
 		const filterInput = document.getElementById( 'filterInput' );
-		const exitSearchButton = document.getElementById( 'exitSearchButton' );
+		const clearSearchButton = document.getElementById( 'clearSearchButton' );
 		const expandButton = document.getElementById( 'expandButton' );
 		const viewSrcButton = document.getElementById( 'button' );
 		const panelScrim = document.getElementById( 'panelScrim' );
 		const previewsToggler = document.getElementById( 'previewsToggler' );
 
-		const sectionLink = document.querySelector( '#sections > a' );
-		const sectionDefaultHref = sectionLink.href;
-
 		const links = {};
 		const validRedirects = new Map();
-		const container = document.createElement( 'div' );
+		const fragment = document.createDocumentFragment();
 
 		let selected = null;
 
 		init();
 
 		async function init() {
-
-			content.appendChild( container );
 
 			viewSrcButton.style.display = 'none';
 
@@ -77,19 +75,19 @@
 
 			for ( const key in files ) {
 
-				const section = files[ key ];
+				const category = files[ key ];
 
 				const header = document.createElement( 'h2' );
 				header.textContent = key;
 				header.setAttribute( 'data-category', key );
-				container.appendChild( header );
+				fragment.appendChild( header );
 
-				for ( let i = 0; i < section.length; i ++ ) {
+				for ( let i = 0; i < category.length; i ++ ) {
 
-					const file = section[ i ];
+					const file = category[ i ];
 
-					const link = createLink( file );
-					container.appendChild( link );
+					const link = createLink( file, tags[ file ] );
+					fragment.appendChild( link );
 
 					links[ file ] = link;
 					validRedirects.set( file, file + '.html' );
@@ -97,6 +95,8 @@
 				}
 
 			}
+
+			content.appendChild( fragment );
 
 			if ( window.location.hash !== '' ) {
 
@@ -107,10 +107,17 @@
 				if ( validRedirects.has( file ) === true ) {
 
 					selectFile( file );
+					updateLinkScroll();
 					viewer.src = validRedirects.get( file );
 					viewer.style.display = 'unset';
 
 				}
+
+			}
+
+			if ( selected === null ) {
+
+				panel.classList.add( 'open' );
 
 			}
 
@@ -128,10 +135,6 @@
 				panel.classList.add( 'searchFocused' );
 
 				updateFilter( files, tags );
-
-			} else {
-
-				updateLink( '' );
 
 			}
 
@@ -153,11 +156,11 @@
 
 			};
 
-			exitSearchButton.onclick = function ( ) {
+			clearSearchButton.onclick = function ( ) {
 
 				filterInput.value = '';
 				updateFilter( files, tags );
-				panel.classList.remove( 'searchFocused' );
+				filterInput.focus();
 
 			};
 
@@ -172,6 +175,7 @@
 
 				event.preventDefault();
 				panel.classList.toggle( 'open' );
+				updateLinkScroll();
 
 			} );
 
@@ -189,27 +193,28 @@
 
 			};
 
-			// iOS iframe auto-resize workaround
+		}
 
-			if ( /(iPad|iPhone|iPod)/g.test( navigator.userAgent ) ) {
+		function createLink( file, tags ) {
 
-				viewer.style.width = getComputedStyle( viewer ).width;
-				viewer.style.height = getComputedStyle( viewer ).height;
-				viewer.setAttribute( 'scrolling', 'no' );
+			const community = Array.isArray( tags ) && tags.includes( 'community' ) ? '<span class="tag">community</span>' : '';
+
+			let href = file + '.html';
+
+			if ( file === 'css3d_mixed' ) {
+
+				href += `?${ new Date().getTime() }`;
 
 			}
 
-		}
-
-		function createLink( file ) {
-
 			const template = `
 				<div class="card">
-					<a href="${file}.html" target="viewer">
+					<a href="${ href }" target="viewer">
 						<div class="cover">
 							<img src="screenshots/${ file }.jpg" loading="lazy" width="400" />
+							${ community }
 						</div>
-						<div class="title">${getName( file )}</div>
+						<div class="title">${ getName( file ) }</div>
 					</a>
 				</div>
 			`;
@@ -251,14 +256,16 @@
 
 		function escapeRegExp( string ) {
 
-			return string.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ); // https://stackoverflow.com/a/6969486/5250847
+			string = string.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ); // https://stackoverflow.com/a/6969486/5250847
+
+			return '(?=.*' + string.split( ' ' ).join( ')(?=.*' ) + ')'; // match all words, in any order
 
 		}
 
 		function updateFilter( files, tags ) {
 
 			let v = filterInput.value.trim();
-			v = v.replace( /\s+/gi, ' ' ); // replace multiple whitespaces with a single one
+			v = v.replace( /[\s_]+/gi, ' ' ); // replace multiple whitespaces or underscores with a single one
 
 			if ( v !== '' ) {
 
@@ -286,51 +293,21 @@
 
 			layoutList( files );
 
-			updateLink( v );
-
-		}
-
-		function updateLink( search ) {
-
-			// update docs link
-
-			if ( search ) {
-
-				const link = sectionLink.href.split( /[?#]/ )[ 0 ];
-				sectionLink.href = `${link}?q=${search}`;
-
-			} else {
-
-				sectionLink.href = sectionDefaultHref;
-
-			}
-
 		}
 
 		function filterExample( file, exp, tags ) {
 
 			const link = links[ file ];
-			const name = getName( file );
 			if ( file in tags ) file += ' ' + tags[ file ].join( ' ' );
-			const res = file.match( exp );
-			let text;
+			const res = file.replace( /_+/g, ' ' ).match( exp );
 
 			if ( res && res.length > 0 ) {
 
 				link.classList.remove( 'hidden' );
 
-				for ( let i = 0; i < res.length; i ++ ) {
-
-					text = name.replace( res[ i ], '<b>' + res[ i ] + '</b>' );
-
-				}
-
-				link.querySelector( '.title' ).innerHTML = text;
-
 			} else {
 
 				link.classList.add( 'hidden' );
-				link.querySelector( '.title' ).innerHTML = name;
 
 			}
 
@@ -400,6 +377,17 @@
 			const div = document.createElement( 'div' );
 			div.innerHTML = htmlString.trim();
 			return div.firstChild;
+
+		}
+
+		function updateLinkScroll() {
+
+			if ( selected !== null ) {
+
+				const link = links[ selected ];
+				content.scrollTop = link.offsetTop - content.offsetTop - ( content.clientHeight - link.offsetHeight ) / 2;
+
+			}
 
 		}
 

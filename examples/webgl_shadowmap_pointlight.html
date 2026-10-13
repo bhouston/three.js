@@ -1,24 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgl - THREE.PointLight ShadowMap</title>
+		<title>three.js webgl - PointLight ShadowMap</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - PointLight ShadowMap">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_shadowmap_pointlight.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_shadowmap_pointlight.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - THREE.PointLight ShadowMap by <a href="https://github.com/mkkellogg">mkkellogg</a>
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - PointLight ShadowMap
 		</div>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -27,15 +28,14 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 			let camera, scene, renderer, stats;
 			let pointLight, pointLight2;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -43,17 +43,19 @@
 				camera.position.set( 0, 10, 40 );
 
 				scene = new THREE.Scene();
-				scene.add( new THREE.AmbientLight( 0x111122 ) );
+				scene.add( new THREE.AmbientLight( 0x111122, 3 ) );
 
 				// lights
 
 				function createLight( color ) {
 
-					const intensity = 1.5;
+					const intensity = 200;
 
 					const light = new THREE.PointLight( color, intensity, 20 );
 					light.castShadow = true;
 					light.shadow.bias = - 0.005; // reduces self-shadowing on double-sided objects
+					light.shadow.mapSize.setScalar( 128 );
+					light.shadow.radius = 10;
 
 					let geometry = new THREE.SphereGeometry( 0.3, 12, 6 );
 					let material = new THREE.MeshBasicMaterial( { color: color } );
@@ -78,13 +80,6 @@
 					sphere.castShadow = true;
 					sphere.receiveShadow = true;
 					light.add( sphere );
-
-					// custom distance material
-					const distanceMaterial = new THREE.MeshDistanceMaterial( {
-						alphaMap: material.alphaMap,
-						alphaTest: material.alphaTest
-					} );
-					sphere.customDistanceMaterial = distanceMaterial;
 
 					return light;
 
@@ -116,8 +111,9 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				renderer.shadowMap.enabled = true;
-				renderer.shadowMap.type = THREE.BasicShadowMap;
+				// renderer.shadowMap.type = THREE.BasicShadowMap;
 				document.body.appendChild( renderer.domElement );
 
 				const controls = new OrbitControls( camera, renderer.domElement );
@@ -157,13 +153,6 @@
 			}
 
 			function animate() {
-
-				requestAnimationFrame( animate );
-				render();
-
-			}
-
-			function render() {
 
 				let time = performance.now() * 0.001;
 

@@ -4,6 +4,10 @@
 		<title>three.js webgl - light probe from cubeCamera</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - light probe from cubeCamera">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_lightprobe_cubecamera.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_lightprobe_cubecamera.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 
@@ -12,14 +16,11 @@
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgl - light probe from cubeCamera
 		</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -28,9 +29,9 @@
 
 			import * as THREE from 'three';
 
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
-			import { LightProbeHelper } from './jsm/helpers/LightProbeHelper.js';
-			import { LightProbeGenerator } from './jsm/lights/LightProbeGenerator.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { LightProbeHelper } from 'three/addons/helpers/LightProbeHelper.js';
+			import { LightProbeGenerator } from 'three/addons/lights/LightProbeGenerator.js';
 
 			let renderer, scene, camera, cubeCamera;
 
@@ -45,7 +46,6 @@
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				document.body.appendChild( renderer.domElement );
-				renderer.outputEncoding = THREE.sRGBEncoding;
 
 				// scene
 				scene = new THREE.Scene();
@@ -82,15 +82,15 @@
 
 				const urls = genCubeUrls( 'textures/cube/pisa/', '.png' );
 
-				new THREE.CubeTextureLoader().load( urls, function ( cubeTexture ) {
-
-					cubeTexture.encoding = THREE.sRGBEncoding;
+				new THREE.CubeTextureLoader().load( urls, async function ( cubeTexture ) {
 
 					scene.background = cubeTexture;
 
 					cubeCamera.update( renderer, scene );
 
-					lightProbe.copy( LightProbeGenerator.fromCubeRenderTarget( renderer, cubeRenderTarget ) );
+					const probe = await LightProbeGenerator.fromCubeRenderTarget( renderer, cubeRenderTarget );
+
+					lightProbe.copy( probe );
 
 					scene.add( new LightProbeHelper( lightProbe, 5 ) );
 

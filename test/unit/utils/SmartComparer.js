@@ -8,7 +8,7 @@ function SmartComparer() {
 	'use strict';
 
 	// Diagnostic message, when comparison fails.
-	var message;
+	let message;
 
 	return {
 
@@ -22,7 +22,6 @@ function SmartComparer() {
 
 	};
 
-
 	// val1 - first value to compare (typically the actual value)
 	// val2 - other value to compare (typically the expected value)
 	function areEqual( val1, val2 ) {
@@ -31,7 +30,6 @@ function SmartComparer() {
 		if ( val1 === val2 ) return true;
 
 		// Null or undefined values.
-		/* jshint eqnull:true */
 		if ( val1 == null || val2 == null ) {
 
 			if ( val1 != val2 ) {
@@ -49,7 +47,7 @@ function SmartComparer() {
 		if ( isFunction( val1 ) && isFunction( val2 ) ) return true;
 
 		// Array comparison.
-		var arrCmp = compareArrays( val1, val2 );
+		const arrCmp = compareArrays( val1, val2 );
 		if ( arrCmp !== undefined ) return arrCmp;
 
 		// Has custom equality comparer.
@@ -62,7 +60,7 @@ function SmartComparer() {
 		}
 
 		// Object comparison.
-		var objCmp = compareObjects( val1, val2 );
+		const objCmp = compareObjects( val1, val2 );
 		if ( objCmp !== undefined ) return objCmp;
 
 		// if (JSON.stringify( val1 ) == JSON.stringify( val2 ) ) return true;
@@ -77,7 +75,7 @@ function SmartComparer() {
 		// The use of `Object#toString` avoids issues with the `typeof` operator
 		// in Safari 8 which returns 'object' for typed array constructors, and
 		// PhantomJS 1.9 which returns 'function' for `NodeList` instances.
-		var tag = isObject( value ) ? Object.prototype.toString.call( value ) : '';
+		const tag = isObject( value ) ? Object.prototype.toString.call( value ) : '';
 
 		return tag == '[object Function]' || tag == '[object GeneratorFunction]';
 
@@ -87,7 +85,7 @@ function SmartComparer() {
 
 		// Avoid a V8 JIT bug in Chrome 19-20.
 		// See https://code.google.com/p/v8/issues/detail?id=2291 for more details.
-		var type = typeof value;
+		const type = typeof value;
 
 		return !! value && ( type == 'object' || type == 'function' );
 
@@ -95,8 +93,8 @@ function SmartComparer() {
 
 	function compareArrays( val1, val2 ) {
 
-		var isArr1 = Array.isArray( val1 );
-		var isArr2 = Array.isArray( val2 );
+		const isArr1 = Array.isArray( val1 );
+		const isArr2 = Array.isArray( val2 );
 
 		// Compare type.
 		if ( isArr1 !== isArr2 ) return makeFail( 'Values are not both arrays' );
@@ -105,14 +103,14 @@ function SmartComparer() {
 		if ( ! isArr1 ) return undefined;
 
 		// Compare length.
-		var N1 = val1.length;
-		var N2 = val2.length;
+		const N1 = val1.length;
+		const N2 = val2.length;
 		if ( N1 !== val2.length ) return makeFail( 'Array length differs', N1, N2 );
 
 		// Compare content at each index.
-		for ( var i = 0; i < N1; i ++ ) {
+		for ( let i = 0; i < N1; i ++ ) {
 
-			var cmp = areEqual( val1[ i ], val2[ i ] );
+			const cmp = areEqual( val1[ i ], val2[ i ] );
 			if ( ! cmp )	return addContext( 'array index "' + i + '"' );
 
 		}
@@ -122,11 +120,10 @@ function SmartComparer() {
 
 	}
 
-
 	function compareObjects( val1, val2 ) {
 
-		var isObj1 = isObject( val1 );
-		var isObj2 = isObject( val2 );
+		const isObj1 = isObject( val1 );
+		const isObj2 = isObject( val2 );
 
 		// Compare type.
 		if ( isObj1 !== isObj2 ) return makeFail( 'Values are not both objects' );
@@ -135,10 +132,10 @@ function SmartComparer() {
 		if ( ! isObj1 ) return undefined;
 
 		// Compare keys.
-		var keys1 = Object.keys( val1 );
-		var keys2 = Object.keys( val2 );
+		const keys1 = Object.keys( val1 );
+		const keys2 = Object.keys( val2 );
 
-		for ( var i = 0, l = keys1.length; i < l; i ++ ) {
+		for ( let i = 0, l = keys1.length; i < l; i ++ ) {
 
 			if ( keys2.indexOf( keys1[ i ] ) < 0 ) {
 
@@ -148,7 +145,7 @@ function SmartComparer() {
 
 		}
 
-		for ( var i = 0, l = keys2.length; i < l; i ++ ) {
+		for ( let i = 0, l = keys2.length; i < l; i ++ ) {
 
 			if ( keys1.indexOf( keys2[ i ] ) < 0 ) {
 
@@ -159,11 +156,11 @@ function SmartComparer() {
 		}
 
 		// Keys are the same. For each key, compare content until a difference is found.
-		var hadDifference = false;
+		let hadDifference = false;
 
-		for ( var i = 0, l = keys1.length; i < l; i ++ ) {
+		for ( let i = 0, l = keys1.length; i < l; i ++ ) {
 
-			var key = keys1[ i ];
+			const key = keys1[ i ];
 
 			if ( key === 'uuid' || key === 'id' ) {
 
@@ -171,11 +168,11 @@ function SmartComparer() {
 
 			}
 
-			var prop1 = val1[ key ];
-			var prop2 = val2[ key ];
+			const prop1 = val1[ key ];
+			const prop2 = val2[ key ];
 
 			// Compare property content.
-			var eq = areEqual( prop1, prop2 );
+			const eq = areEqual( prop1, prop2 );
 
 			// In case of failure, an message should already be set.
 			// Add context to low level message.
@@ -191,7 +188,6 @@ function SmartComparer() {
 		return ! hadDifference;
 
 	}
-
 
 	function makeFail( msg, val1, val2 ) {
 

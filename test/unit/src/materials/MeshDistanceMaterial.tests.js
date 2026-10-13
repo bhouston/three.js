@@ -1,35 +1,49 @@
-/* global QUnit */
+import { MeshDistanceMaterial } from '../../../../src/materials/MeshDistanceMaterial.js';
 
-// import { MeshDistanceMaterial } from '../../../../src/materials/MeshDistanceMaterial.js';
+import { Material } from '../../../../src/materials/Material.js';
 
 export default QUnit.module( 'Materials', () => {
 
 	QUnit.module( 'MeshDistanceMaterial', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new MeshDistanceMaterial();
+			assert.strictEqual(
+				object instanceof Material, true,
+				'MeshDistanceMaterial extends from Material'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'isMeshDistanceMaterial', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new MeshDistanceMaterial();
+			assert.ok( object, 'Can instantiate a MeshDistanceMaterial.' );
 
 		} );
 
-		QUnit.todo( 'copy', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new MeshDistanceMaterial();
+			assert.ok(
+				object.type === 'MeshDistanceMaterial',
+				'MeshDistanceMaterial.type should be MeshDistanceMaterial'
+			);
+
+		} );
+
+		// PUBLIC
+		QUnit.test( 'isMeshDistanceMaterial', ( assert ) => {
+
+			const object = new MeshDistanceMaterial();
+			assert.ok(
+				object.isMeshDistanceMaterial,
+				'MeshDistanceMaterial.isMeshDistanceMaterial should be true'
+			);
 
 		} );
 

@@ -1,23 +1,29 @@
 import {
 	LinearFilter,
-	Mesh,
 	NearestFilter,
-	OrthographicCamera,
-	PlaneGeometry,
 	RGBAFormat,
-	Scene,
 	ShaderMaterial,
 	StereoCamera,
 	WebGLRenderTarget
 } from 'three';
+import { FullScreenQuad } from '../postprocessing/Pass.js';
 
+/**
+ * A class that creates an parallax barrier effect.
+ *
+ * Note that this class can only be used with {@link WebGLRenderer}.
+ * When using {@link WebGPURenderer}, use {@link ParallaxBarrierPassNode}.
+ *
+ * @three_import import { ParallaxBarrierEffect } from 'three/addons/effects/ParallaxBarrierEffect.js';
+ */
 class ParallaxBarrierEffect {
 
+	/**
+	 * Constructs a new parallax barrier effect.
+	 *
+	 * @param {WebGLRenderer} renderer - The renderer.
+	 */
 	constructor( renderer ) {
-
-		const _camera = new OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
-
-		const _scene = new Scene();
 
 		const _stereo = new StereoCamera();
 
@@ -68,15 +74,23 @@ class ParallaxBarrierEffect {
 
 				'	}',
 
+				'	#include <tonemapping_fragment>',
+				'	#include <colorspace_fragment>',
+
 				'}'
 
 			].join( '\n' )
 
 		} );
 
-		const mesh = new Mesh( new PlaneGeometry( 2, 2 ), _material );
-		_scene.add( mesh );
+		const _quad = new FullScreenQuad( _material );
 
+		/**
+		 * Resizes the effect.
+		 *
+		 * @param {number} width - The width of the effect in logical pixels.
+		 * @param {number} height - The height of the effect in logical pixels.
+		 */
 		this.setSize = function ( width, height ) {
 
 			renderer.setSize( width, height );
@@ -88,11 +102,20 @@ class ParallaxBarrierEffect {
 
 		};
 
+		/**
+		 * When using this effect, this method should be called instead of the
+		 * default {@link WebGLRenderer#render}.
+		 *
+		 * @param {Object3D} scene - The scene to render.
+		 * @param {Camera} camera - The camera.
+		 */
 		this.render = function ( scene, camera ) {
 
-			scene.updateMatrixWorld();
+			const currentRenderTarget = renderer.getRenderTarget();
 
-			if ( camera.parent === null ) camera.updateMatrixWorld();
+			if ( scene.matrixWorldAutoUpdate === true ) scene.updateMatrixWorld();
+
+			if ( camera.parent === null && camera.matrixWorldAutoUpdate === true ) camera.updateMatrixWorld();
 
 			_stereo.update( camera );
 
@@ -105,7 +128,23 @@ class ParallaxBarrierEffect {
 			renderer.render( scene, _stereo.cameraR );
 
 			renderer.setRenderTarget( null );
-			renderer.render( _scene, _camera );
+			_quad.render( renderer );
+
+			renderer.setRenderTarget( currentRenderTarget );
+
+		};
+
+		/**
+		 * Frees internal resources. This method should be called
+		 * when the effect is no longer required.
+		 */
+		this.dispose = function () {
+
+			_renderTargetL.dispose();
+			_renderTargetR.dispose();
+
+			_material.dispose();
+			_quad.dispose();
 
 		};
 

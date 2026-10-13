@@ -4,6 +4,10 @@
 		<title>three.js webgl - geometry - vertex colors</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - geometry - vertex colors">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_geometry_colors.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_geometry_colors.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<style>
 			body {
@@ -20,14 +24,11 @@
 		<div id="container"></div>
 		<div id="info"><a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgl - vertex colors</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -36,7 +37,7 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
 			let container, stats;
 
@@ -48,7 +49,6 @@
 			let windowHalfY = window.innerHeight / 2;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -60,7 +60,7 @@
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0xffffff );
 
-				const light = new THREE.DirectionalLight( 0xffffff );
+				const light = new THREE.DirectionalLight( 0xffffff, 3 );
 				light.position.set( 0, 0, 1 );
 				scene.add( light );
 
@@ -107,7 +107,8 @@
 				const geometry1 = new THREE.IcosahedronGeometry( radius, 1 );
 
 				const count = geometry1.attributes.position.count;
-				geometry1.setAttribute( 'color', new THREE.BufferAttribute( new Float32Array( count * 3 ), 3 ) );
+				const arrayType = ( typeof Float16Array !== 'undefined' ) ? Float16Array : Float32Array;
+				geometry1.setAttribute( 'color', new THREE.BufferAttribute( new arrayType( count * 3 ), 3 ) );
 
 				const geometry2 = geometry1.clone();
 				const geometry3 = geometry1.clone();
@@ -122,13 +123,13 @@
 
 				for ( let i = 0; i < count; i ++ ) {
 
-					color.setHSL( ( positions1.getY( i ) / radius + 1 ) / 2, 1.0, 0.5 );
+					color.setHSL( ( positions1.getY( i ) / radius + 1 ) / 2, 1.0, 0.5, THREE.SRGBColorSpace );
 					colors1.setXYZ( i, color.r, color.g, color.b );
 
-					color.setHSL( 0, ( positions2.getY( i ) / radius + 1 ) / 2, 0.5 );
+					color.setHSL( 0, ( positions2.getY( i ) / radius + 1 ) / 2, 0.5, THREE.SRGBColorSpace );
 					colors2.setXYZ( i, color.r, color.g, color.b );
 
-					color.setRGB( 1, 0.8 - ( positions3.getY( i ) / radius + 1 ) / 2, 0 );
+					color.setRGB( 1, 0.8 - ( positions3.getY( i ) / radius + 1 ) / 2, 0, THREE.SRGBColorSpace );
 					colors3.setXYZ( i, color.r, color.g, color.b );
 
 				}
@@ -163,6 +164,7 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				container.appendChild( renderer.domElement );
 
 				stats = new Stats();
@@ -198,8 +200,6 @@
 			//
 
 			function animate() {
-
-				requestAnimationFrame( animate );
 
 				render();
 				stats.update();

@@ -1,5 +1,3 @@
-/* global QUnit */
-
 import * as MathUtils from '../../../../src/math/MathUtils.js';
 
 export default QUnit.module( 'Maths', () => {
@@ -9,8 +7,8 @@ export default QUnit.module( 'Maths', () => {
 		// PUBLIC STUFF
 		QUnit.test( 'generateUUID', ( assert ) => {
 
-			var a = MathUtils.generateUUID();
-			var regex = /[A-Z0-9]{8}-[A-Z0-9]{4}-4[A-Z0-9]{3}-[A-Z0-9]{4}-[A-Z0-9]{12}/i;
+			const a = MathUtils.generateUUID();
+			const regex = /[A-Z0-9]{8}-[A-Z0-9]{4}-4[A-Z0-9]{3}-[A-Z0-9]{4}-[A-Z0-9]{12}/i;
 			// note the fixed '4' here ----------^
 
 			assert.ok( regex.test( a ), 'Generated UUID matches the expected pattern' );
@@ -29,11 +27,11 @@ export default QUnit.module( 'Maths', () => {
 		QUnit.test( 'euclideanModulo', ( assert ) => {
 
 			assert.ok( isNaN( MathUtils.euclideanModulo( 6, 0 ) ), 'Division by zero returns NaN' );
-			assert.strictEqual( MathUtils.euclideanModulo( 6, 1 ), 0, 'Divison by trivial divisor' );
-			assert.strictEqual( MathUtils.euclideanModulo( 6, 2 ), 0, 'Divison by non-trivial divisor' );
-			assert.strictEqual( MathUtils.euclideanModulo( 6, 5 ), 1, 'Divison by itself - 1' );
-			assert.strictEqual( MathUtils.euclideanModulo( 6, 6 ), 0, 'Divison by itself' );
-			assert.strictEqual( MathUtils.euclideanModulo( 6, 7 ), 6, 'Divison by itself + 1' );
+			assert.strictEqual( MathUtils.euclideanModulo( 6, 1 ), 0, 'Division by trivial divisor' );
+			assert.strictEqual( MathUtils.euclideanModulo( 6, 2 ), 0, 'Division by non-trivial divisor' );
+			assert.strictEqual( MathUtils.euclideanModulo( 6, 5 ), 1, 'Division by itself - 1' );
+			assert.strictEqual( MathUtils.euclideanModulo( 6, 6 ), 0, 'Division by itself' );
+			assert.strictEqual( MathUtils.euclideanModulo( 6, 7 ), 6, 'Division by itself + 1' );
 
 		} );
 
@@ -69,6 +67,14 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
+		QUnit.test( 'pingpong', ( assert ) => {
+
+			assert.strictEqual( MathUtils.pingpong( 2.5 ), 0.5, 'Value at 2.5 is 0.5' );
+			assert.strictEqual( MathUtils.pingpong( 2.5, 2 ), 1.5, 'Value at 2.5 with length of 2 is 1.5' );
+			assert.strictEqual( MathUtils.pingpong( - 1.5 ), 0.5, 'Value at -1.5 is 0.5' );
+
+		} );
+
 		QUnit.test( 'smoothstep', ( assert ) => {
 
 			assert.strictEqual( MathUtils.smoothstep( - 1, 0, 2 ), 0, 'Value lower than minimum' );
@@ -77,7 +83,7 @@ export default QUnit.module( 'Maths', () => {
 			assert.strictEqual( MathUtils.smoothstep( 1, 0, 2 ), 0.5, 'Value within limits' );
 			assert.strictEqual( MathUtils.smoothstep( 1.5, 0, 2 ), 0.84375, 'Value within limits' );
 			assert.strictEqual( MathUtils.smoothstep( 2, 0, 2 ), 1, 'Value equal to maximum' );
-			assert.strictEqual( MathUtils.smoothstep( 3, 0, 2 ), 1, 'Value highter than maximum' );
+			assert.strictEqual( MathUtils.smoothstep( 3, 0, 2 ), 1, 'Value higher than maximum' );
 
 		} );
 
@@ -89,14 +95,14 @@ export default QUnit.module( 'Maths', () => {
 			assert.strictEqual( MathUtils.smootherstep( 1, 0, 2 ), 0.5, 'Value within limits' );
 			assert.strictEqual( MathUtils.smootherstep( 1.5, 0, 2 ), 0.896484375, 'Value within limits' );
 			assert.strictEqual( MathUtils.smootherstep( 2, 0, 2 ), 1, 'Value equal to maximum' );
-			assert.strictEqual( MathUtils.smootherstep( 3, 0, 2 ), 1, 'Value highter than maximum' );
+			assert.strictEqual( MathUtils.smootherstep( 3, 0, 2 ), 1, 'Value higher than maximum' );
 
 		} );
 
 		QUnit.test( 'randInt', ( assert ) => {
 
-			var low = 1, high = 3;
-			var a = MathUtils.randInt( low, high );
+			const low = 1, high = 3;
+			const a = MathUtils.randInt( low, high );
 
 			assert.ok( a >= low, 'Value equal to or higher than lower limit' );
 			assert.ok( a <= high, 'Value equal to or lower than upper limit' );
@@ -105,8 +111,8 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'randFloat', ( assert ) => {
 
-			var low = 1, high = 3;
-			var a = MathUtils.randFloat( low, high );
+			const low = 1, high = 3;
+			const a = MathUtils.randFloat( low, high );
 
 			assert.ok( a >= low, 'Value equal to or higher than lower limit' );
 			assert.ok( a <= high, 'Value equal to or lower than upper limit' );
@@ -115,7 +121,7 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'randFloatSpread', ( assert ) => {
 
-			var a = MathUtils.randFloatSpread( 3 );
+			const a = MathUtils.randFloatSpread( 3 );
 
 			assert.ok( a > - 3 / 2, 'Value higher than lower limit' );
 			assert.ok( a < 3 / 2, 'Value lower than upper limit' );
@@ -147,6 +153,8 @@ export default QUnit.module( 'Maths', () => {
 			assert.strictEqual( MathUtils.isPowerOfTwo( 2 ), true, '2 is a PoT' );
 			assert.strictEqual( MathUtils.isPowerOfTwo( 3 ), false, '3 is not a PoT' );
 			assert.strictEqual( MathUtils.isPowerOfTwo( 4 ), true, '4 is a PoT' );
+			assert.strictEqual( MathUtils.isPowerOfTwo( 2 ** 40 ), true, 'Large PoT' );
+			assert.strictEqual( MathUtils.isPowerOfTwo( 3 * 2 ** 32 ), false, 'Large non-PoT' );
 
 		} );
 
@@ -163,15 +171,6 @@ export default QUnit.module( 'Maths', () => {
 			assert.strictEqual( MathUtils.floorPowerOfTwo( 1 ), 1, 'Closest lower PoT to 1 is 1' );
 			assert.strictEqual( MathUtils.floorPowerOfTwo( 3 ), 2, 'Closest lower PoT to 3 is 2' );
 			assert.strictEqual( MathUtils.floorPowerOfTwo( 4 ), 4, 'Closest lower PoT to 4 is 4' );
-
-		} );
-
-
-		QUnit.test( 'pingpong', ( assert ) => {
-
-			assert.strictEqual( MathUtils.pingpong( 2.5 ), 0.5, 'Value at 2.5 is 0.5' );
-			assert.strictEqual( MathUtils.pingpong( 2.5, 2 ), 1.5, 'Value at 2.5 with length of 2 is 1.5' );
-			assert.strictEqual( MathUtils.pingpong( - 1.5 ), 0.5, 'Value at -1.5 is 0.5' );
 
 		} );
 

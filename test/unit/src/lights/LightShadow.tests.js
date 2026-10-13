@@ -1,6 +1,5 @@
-/* global QUnit */
-
 import { LightShadow } from '../../../../src/lights/LightShadow.js';
+
 import { OrthographicCamera } from '../../../../src/cameras/OrthographicCamera.js';
 
 export default QUnit.module( 'Lights', () => {
@@ -8,22 +7,34 @@ export default QUnit.module( 'Lights', () => {
 	QUnit.module( 'LightShadow', () => {
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const camera = new OrthographicCamera( - 5, 5, 5, - 5, 0.5, 500 );
+			const object = new LightShadow( camera );
+			assert.ok( object, 'Can instantiate a LightShadow.' );
 
 		} );
 
-		// PUBLIC STUFF
+		// PUBLIC
+
+		QUnit.test( 'dispose', ( assert ) => {
+
+			assert.expect( 0 );
+
+			const object = new LightShadow();
+			object.dispose();
+
+		} );
+
+		// OTHERS
 		QUnit.test( 'clone/copy', ( assert ) => {
 
-			var a = new LightShadow( new OrthographicCamera( - 5, 5, 5, - 5, 0.5, 500 ) );
-			var b = new LightShadow( new OrthographicCamera( - 3, 3, 3, - 3, 0.3, 300 ) );
-			var c;
+			const a = new LightShadow( new OrthographicCamera( - 5, 5, 5, - 5, 0.5, 500 ) );
+			const b = new LightShadow( new OrthographicCamera( - 3, 3, 3, - 3, 0.3, 300 ) );
 
 			assert.notDeepEqual( a, b, 'Newly instanced shadows are not equal' );
 
-			c = a.clone();
+			const c = a.clone();
 			assert.smartEqual( a, c, 'Shadows are identical after clone()' );
 
 			c.mapSize.set( 256, 256 );
@@ -34,12 +45,6 @@ export default QUnit.module( 'Lights', () => {
 
 			b.mapSize.set( 512, 512 );
 			assert.notDeepEqual( a, b, 'Shadows are different again after change' );
-
-		} );
-
-		QUnit.todo( 'toJSON', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
 
 		} );
 

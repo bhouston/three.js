@@ -1,41 +1,38 @@
-/* global QUnit */
+import { Scene } from '../../../../src/scenes/Scene.js';
 
-// import { Scene } from '../../../../src/scenes/Scene.js';
+import { Object3D } from '../../../../src/core/Object3D.js';
 
 export default QUnit.module( 'Scenes', () => {
 
 	QUnit.module( 'Scene', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Scene();
+			assert.strictEqual(
+				object instanceof Object3D, true,
+				'Scene extends from Object3D'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'isScene', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Scene();
+			assert.ok( object, 'Can instantiate a Scene.' );
 
 		} );
 
-		QUnit.todo( 'copy', ( assert ) => {
+		// PUBLIC
+		QUnit.test( 'isScene', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'toJSON', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Scene();
+			assert.ok(
+				object.isScene,
+				'Scene.isScene should be true'
+			);
 
 		} );
 

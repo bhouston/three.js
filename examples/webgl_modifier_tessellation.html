@@ -4,6 +4,10 @@
 		<title>three.js webgl - modifier - tessellation</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - modifier - tessellation">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_modifier_tessellation.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_modifier_tessellation.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 
@@ -53,14 +57,11 @@
 
 		</script>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -69,12 +70,12 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
-			import { TrackballControls } from './jsm/controls/TrackballControls.js';
-			import { TessellateModifier } from './jsm/modifiers/TessellateModifier.js';
-			import { FontLoader } from './jsm/loaders/FontLoader.js';
-			import { TextGeometry } from './jsm/geometries/TextGeometry.js';
+			import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
+			import { TessellateModifier } from 'three/addons/modifiers/TessellateModifier.js';
+			import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+			import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 
 			let renderer, scene, camera, stats;
 
@@ -89,7 +90,6 @@
 			loader.load( 'fonts/helvetiker_bold.typeface.json', function ( font ) {
 
 				init( font );
-				animate();
 
 			} );
 
@@ -108,7 +108,7 @@
 					font: font,
 
 					size: 40,
-					height: 5,
+					depth: 5,
 					curveSegments: 3,
 
 					bevelThickness: 2,
@@ -186,6 +186,7 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( WIDTH, HEIGHT );
+				renderer.setAnimationLoop( animate );
 
 				const container = document.getElementById( 'container' );
 				container.appendChild( renderer.domElement );
@@ -211,8 +212,6 @@
 			}
 
 			function animate() {
-
-				requestAnimationFrame( animate );
 
 				render();
 

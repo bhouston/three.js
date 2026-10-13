@@ -1,77 +1,25 @@
-/* global QUnit */
-
-// import { AnimationClip } from '../../../../src/animation/AnimationClip.js';
+import { AnimationClip } from '../../../../src/animation/AnimationClip.js';
 
 export default QUnit.module( 'Animation', () => {
 
 	QUnit.module( 'AnimationClip', () => {
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// STATIC STUFF
-		QUnit.todo( 'parse', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const clip = new AnimationClip( 'clip1', 1000, [ {} ] );
+			assert.ok( clip, 'AnimationClip can be instantiated' );
 
 		} );
 
-		QUnit.todo( 'toJSON', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'name', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'CreateFromMorphTargetSequence', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'findByName', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'CreateClipsFromMorphTargetSequences', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'parseAnimation', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'resetDuration', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'trim', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'optimize', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'validate', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const clip = new AnimationClip( 'clip1', 1000, [ {} ] );
+			assert.strictEqual(
+				clip.name === 'clip1', true,
+				'AnimationClip can be named'
+			);
 
 		} );
 

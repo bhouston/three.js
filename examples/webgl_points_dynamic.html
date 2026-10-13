@@ -4,6 +4,10 @@
 		<title>three.js webgl - particles - dynamic - postprocessing</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - particles - dynamic - postprocessing">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_points_dynamic.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_points_dynamic.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -11,18 +15,15 @@
 		<div id="container"></div>
 		<div id="info">
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - webgl dynamic particles + postprocessing<br/>
-			models by <a href="http://sketchup.google.com/3dwarehouse/details?mid=2c6fd128fca34052adc5f5b98d513da1" target="_blank" rel="noopener">Reallusion</a>
-			<a href="http://sketchup.google.com/3dwarehouse/details?mid=f526cc4abf7cb68d76cab47c765b7255" target="_blank" rel="noopener">iClone</a>
+			models by <a href="https://3dwarehouse.sketchup.com/model/2c6fd128fca34052adc5f5b98d513da1" target="_blank" rel="noopener">Reallusion</a>
+			<a href="https://3dwarehouse.sketchup.com/model/f526cc4abf7cb68d76cab47c765b7255" target="_blank" rel="noopener">iClone</a>
 		</div>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -31,15 +32,16 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
-			import { EffectComposer } from './jsm/postprocessing/EffectComposer.js';
-			import { RenderPass } from './jsm/postprocessing/RenderPass.js';
-			import { ShaderPass } from './jsm/postprocessing/ShaderPass.js';
-			import { BloomPass } from './jsm/postprocessing/BloomPass.js';
-			import { FilmPass } from './jsm/postprocessing/FilmPass.js';
-			import { FocusShader } from './jsm/shaders/FocusShader.js';
-			import { OBJLoader } from './jsm/loaders/OBJLoader.js';
+			import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+			import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+			import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+			import { BloomPass } from 'three/addons/postprocessing/BloomPass.js';
+			import { FilmPass } from 'three/addons/postprocessing/FilmPass.js';
+			import { FocusShader } from 'three/addons/shaders/FocusShader.js';
+			import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+			import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 			let camera, scene, renderer, mesh;
 
@@ -49,12 +51,12 @@
 
 			let composer, effectFocus;
 
-			const clock = new THREE.Clock();
+			const timer = new THREE.Timer();
+			timer.connect( document );
 
 			let stats;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -98,6 +100,7 @@
 				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				renderer.autoClear = false;
 				container.appendChild( renderer.domElement );
 
@@ -113,12 +116,14 @@
 
 				const renderModel = new RenderPass( scene, camera );
 				const effectBloom = new BloomPass( 0.75 );
-				const effectFilm = new FilmPass( 0.5, 0.5, 1448, false );
+				const effectFilm = new FilmPass();
 
 				effectFocus = new ShaderPass( FocusShader );
 
-				effectFocus.uniforms[ "screenWidth" ].value = window.innerWidth * window.devicePixelRatio;
-				effectFocus.uniforms[ "screenHeight" ].value = window.innerHeight * window.devicePixelRatio;
+				effectFocus.uniforms[ 'screenWidth' ].value = window.innerWidth * window.devicePixelRatio;
+				effectFocus.uniforms[ 'screenHeight' ].value = window.innerHeight * window.devicePixelRatio;
+
+				const outputPass = new OutputPass();
 
 				composer = new EffectComposer( renderer );
 
@@ -126,6 +131,7 @@
 				composer.addPass( effectBloom );
 				composer.addPass( effectFilm );
 				composer.addPass( effectFocus );
+				composer.addPass( outputPass );
 
 				//stats
 				stats = new Stats();
@@ -146,8 +152,8 @@
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				composer.setSize( window.innerWidth, window.innerHeight );
 
-				effectFocus.uniforms[ "screenWidth" ].value = window.innerWidth * window.devicePixelRatio;
-				effectFocus.uniforms[ "screenHeight" ].value = window.innerHeight * window.devicePixelRatio;
+				effectFocus.uniforms[ 'screenWidth' ].value = window.innerWidth * window.devicePixelRatio;
+				effectFocus.uniforms[ 'screenHeight' ].value = window.innerHeight * window.devicePixelRatio;
 
 			}
 
@@ -236,7 +242,8 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
+				timer.update();
+
 				render();
 				stats.update();
 
@@ -244,7 +251,7 @@
 
 			function render() {
 
-				let delta = 10 * clock.getDelta();
+				let delta = 10 * timer.getDelta();
 
 				delta = delta < 2 ? delta : 2;
 

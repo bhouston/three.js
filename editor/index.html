@@ -12,9 +12,21 @@
 	<body>
 		<link rel="stylesheet" href="css/main.css">
 
-		<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.9.6/dist/ffmpeg.min.js" defer></script>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/addons/": "../examples/jsm/",
 
-		<script src="../examples/js/libs/draco/draco_encoder.js"></script>
+					"three/examples/": "../examples/",
+					"three-gpu-pathtracer": "https://cdn.jsdelivr.net/npm/three-gpu-pathtracer@0.0.23/build/index.module.js",
+					"three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.4/build/index.module.js"
+				}
+			}
+		</script>
+
+		<script src="https://cdn.jsdelivr.net/gh/google/draco@1.5.7/javascript/draco_encoder.js"></script>
 
 		<link rel="stylesheet" href="js/libs/codemirror/codemirror.css">
 		<link rel="stylesheet" href="js/libs/codemirror/theme/monokai.css">
@@ -42,20 +54,7 @@
 		<script src="js/libs/ternjs/comment.js"></script>
 		<script src="js/libs/ternjs/infer.js"></script>
 		<script src="js/libs/ternjs/doc_comment.js"></script>
-		<script src="js/libs/tern-threejs/threejs.js"></script>
 		<script src="js/libs/signals.min.js"></script>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
-		<script type="importmap">
-			{
-				"imports": {
-					"three": "../build/three.module.js"
-				}
-			}
-		</script>
 
 		<script type="module">
 
@@ -69,16 +68,13 @@
 			import { Sidebar } from './js/Sidebar.js';
 			import { Menubar } from './js/Menubar.js';
 			import { Resizer } from './js/Resizer.js';
-			import { VRButton } from '../examples/jsm/webxr/VRButton.js';
+			import { AnimationResizer } from './js/AnimationResizer.js';
+			import { Animation } from './js/Animation.js';
+
+			import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 
 			window.URL = window.URL || window.webkitURL;
 			window.BlobBuilder = window.BlobBuilder || window.WebKitBlobBuilder || window.MozBlobBuilder;
-
-			Number.prototype.format = function () {
-
-				return this.toString().replace( /(\d)(?=(\d{3})+(?!\d))/g, '$1,' );
-
-			};
 
 			//
 
@@ -86,7 +82,8 @@
 
 			window.editor = editor; // Expose editor to Console
 			window.THREE = THREE; // Expose THREE to APP Scripts and Console
-			window.VRButton = VRButton; // Expose VRButton to APP Scripts
+
+			THREE.ObjectLoader.registerGeometry( 'TextGeometry', TextGeometry );
 
 			const viewport = new Viewport( editor );
 			document.body.appendChild( viewport.dom );
@@ -109,17 +106,50 @@
 			const resizer = new Resizer( editor );
 			document.body.appendChild( resizer.dom );
 
+			const animation = new Animation( editor );
+			document.body.appendChild( animation.dom );
+
+			const animationResizer = new AnimationResizer( editor );
+			document.body.appendChild( animationResizer.dom );
+
+			editor.signals.animationPanelChanged.add( function ( height ) {
+
+				const visible = height !== false;
+
+				viewport.dom.classList.toggle( 'with-animation', visible );
+				toolbar.dom.classList.toggle( 'with-animation', visible );
+
+				if ( visible ) {
+
+					viewport.dom.style.bottom = height + 'px';
+					toolbar.dom.style.bottom = ( height + 20 ) + 'px';
+
+				} else {
+
+					viewport.dom.style.bottom = '';
+					toolbar.dom.style.bottom = '';
+
+				}
+
+				editor.signals.windowResize.dispatch();
+
+			} );
+
 			//
 
 			editor.storage.init( function () {
 
-				editor.storage.get( function ( state ) {
+				editor.storage.get( async function ( state ) {
 
 					if ( isLoadingFromHash ) return;
 
 					if ( state !== undefined ) {
 
-						editor.fromJSON( state );
+						await editor.fromJSON( state );
+
+					} else {
+
+						editor.signals.sceneEnvironmentChanged.dispatch( 'Default' );
 
 					}
 
@@ -165,6 +195,7 @@
 
 				const signals = editor.signals;
 
+				signals.cameraResetted.add( saveState );
 				signals.geometryChanged.add( saveState );
 				signals.objectAdded.add( saveState );
 				signals.objectChanged.add( saveState );
@@ -227,7 +258,7 @@
 
 				const file = hash.slice( 6 );
 
-				if ( confirm( 'Any unsaved data will be lost. Are you sure?' ) ) {
+				if ( confirm( editor.strings.getKey( 'prompt/file/open' ) ) ) {
 
 					const loader = new THREE.FileLoader();
 					loader.crossOrigin = '';
@@ -244,7 +275,7 @@
 
 			}
 
-			// ServiceWorker
+			// @deprecated, r183
 
 			if ( 'serviceWorker' in navigator ) {
 

@@ -9,22 +9,66 @@ import {
 	Mesh,
 	MeshBasicMaterial,
 	RawShaderMaterial,
+	UnsignedByteType,
 	Vector2,
 	Vector3,
-	Vector4,
-	RGBAFormat
+	Vector4
 } from 'three';
 
+/**
+ * Creates a simulated lens flare that tracks a light.
+ *
+ * Note that this class can only be used with {@link WebGLRenderer}.
+ * When using {@link WebGPURenderer}, use {@link LensflareMesh}.
+ *
+ * ```js
+ * const light = new THREE.PointLight( 0xffffff, 1.5, 2000 );
+ *
+ * const lensflare = new Lensflare();
+ * lensflare.addElement( new LensflareElement( textureFlare0, 512, 0 ) );
+ * lensflare.addElement( new LensflareElement( textureFlare1, 512, 0 ) );
+ * lensflare.addElement( new LensflareElement( textureFlare2, 60, 0.6 ) );
+ *
+ * light.add( lensflare );
+ * ```
+ *
+ * @augments Mesh
+ * @three_import import { Lensflare } from 'three/addons/objects/Lensflare.js';
+ */
 class Lensflare extends Mesh {
 
+	/**
+	 * Constructs a new lensflare.
+	 */
 	constructor() {
 
 		super( Lensflare.Geometry, new MeshBasicMaterial( { opacity: 0, transparent: true } ) );
 
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
 		this.isLensflare = true;
 
 		this.type = 'Lensflare';
+
+		/**
+		 * Overwritten to disable view-frustum culling by default.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
 		this.frustumCulled = false;
+
+		/**
+		 * Overwritten to make sure lensflares a rendered last.
+		 *
+		 * @type {number}
+		 * @default Infinity
+		 */
 		this.renderOrder = Infinity;
 
 		//
@@ -34,8 +78,10 @@ class Lensflare extends Mesh {
 
 		// textures
 
-		const tempMap = new FramebufferTexture( 16, 16, RGBAFormat );
-		const occlusionMap = new FramebufferTexture( 16, 16, RGBAFormat );
+		const tempMap = new FramebufferTexture( 16, 16 );
+		const occlusionMap = new FramebufferTexture( 16, 16 );
+
+		let currentType = UnsignedByteType;
 
 		// material
 
@@ -130,6 +176,7 @@ class Lensflare extends Mesh {
 		const shader = LensflareElement.Shader;
 
 		const material2 = new RawShaderMaterial( {
+			name: shader.name,
 			uniforms: {
 				'map': { value: null },
 				'occlusionMap': { value: occlusionMap },
@@ -146,6 +193,11 @@ class Lensflare extends Mesh {
 
 		const mesh2 = new Mesh( geometry, material2 );
 
+		/**
+		 * Adds the given lensflare element to this instance.
+		 *
+		 * @param {LensflareElement} element - The element to add.
+		 */
 		this.addElement = function ( element ) {
 
 			elements.push( element );
@@ -162,6 +214,20 @@ class Lensflare extends Mesh {
 		this.onBeforeRender = function ( renderer, scene, camera ) {
 
 			renderer.getCurrentViewport( viewport );
+
+			const renderTarget = renderer.getRenderTarget();
+			const type = ( renderTarget !== null ) ? renderTarget.texture.type : UnsignedByteType;
+
+			if ( currentType !== type ) {
+
+				tempMap.dispose();
+				occlusionMap.dispose();
+
+				tempMap.type = occlusionMap.type = type;
+
+				currentType = type;
+
+			}
 
 			const invAspect = viewport.w / viewport.z;
 			const halfViewportWidth = viewport.z / 2.0;
@@ -193,7 +259,7 @@ class Lensflare extends Mesh {
 
 				// save current RGB to temp texture
 
-				renderer.copyFramebufferToTexture( screenPositionPixels, tempMap );
+				renderer.copyFramebufferToTexture( tempMap, screenPositionPixels );
 
 				// render pink quad
 
@@ -205,7 +271,7 @@ class Lensflare extends Mesh {
 
 				// copy result to occlusionMap
 
-				renderer.copyFramebufferToTexture( screenPositionPixels, occlusionMap );
+				renderer.copyFramebufferToTexture( occlusionMap, screenPositionPixels );
 
 				// restore graphics
 
@@ -246,6 +312,10 @@ class Lensflare extends Mesh {
 
 		};
 
+		/**
+		 * Frees the GPU-related resources allocated by this instance. Call this
+		 * method whenever this instance is no longer used in your app.
+		 */
 		this.dispose = function () {
 
 			material1a.dispose();
@@ -267,15 +337,54 @@ class Lensflare extends Mesh {
 
 }
 
-//
-
+/**
+ * Represents a single flare that can be added to a {@link Lensflare} container.
+ *
+ * @three_import import { LensflareElement } from 'three/addons/objects/Lensflare.js';
+ */
 class LensflareElement {
 
+	/**
+	 * Constructs a new lensflare element.
+	 *
+	 * @param {Texture} texture - The flare's texture.
+	 * @param {number} [size=1] - The size in pixels.
+	 * @param {number} [distance=0] - The normalized distance (`[0,1]`) from the light source.
+	 * A value of `0` means the flare is located at light source.
+	 * @param {Color} [color] - The flare's color
+	 */
 	constructor( texture, size = 1, distance = 0, color = new Color( 0xffffff ) ) {
 
+		/**
+		 * The flare's texture.
+		 *
+		 * @type {Texture}
+		 */
 		this.texture = texture;
+
+		/**
+		 * The size in pixels.
+		 *
+		 * @type {number}
+		 * @default 1
+		 */
 		this.size = size;
+
+		/**
+		 * The normalized distance (`[0,1]`) from the light source.
+		 * A value of `0` means the flare is located at light source.
+		 *
+		 * @type {number}
+		 * @default 0
+		 */
 		this.distance = distance;
+
+		/**
+		 * The flare's color
+		 *
+		 * @type {Color}
+		 * @default (1,1,1)
+		 */
 		this.color = color;
 
 	}
@@ -283,6 +392,8 @@ class LensflareElement {
 }
 
 LensflareElement.Shader = {
+
+	name: 'LensflareElementShader',
 
 	uniforms: {
 

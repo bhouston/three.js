@@ -4,6 +4,10 @@
 		<title>three.js webgl - light probe</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - light probe">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_lightprobe.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_lightprobe.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 
@@ -12,14 +16,11 @@
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgl - light probe
 		</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -28,10 +29,13 @@
 
 			import * as THREE from 'three';
 
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
-			import { LightProbeGenerator } from './jsm/lights/LightProbeGenerator.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+			import { LightProbeGenerator } from 'three/addons/lights/LightProbeGenerator.js';
+
+			import { LightProbeHelper } from 'three/addons/helpers/LightProbeHelper.js';
 
 			let mesh, renderer, scene, camera;
 
@@ -43,7 +47,7 @@
 			// linear color space
 			const API = {
 				lightProbeIntensity: 1.0,
-				directionalLightIntensity: 0.2,
+				directionalLightIntensity: 0.6,
 				envMapIntensity: 1
 			};
 
@@ -60,7 +64,6 @@
 				// tone mapping
 				renderer.toneMapping = THREE.NoToneMapping;
 
-				renderer.outputEncoding = THREE.sRGBEncoding;
 
 				// scene
 				scene = new THREE.Scene();
@@ -100,11 +103,11 @@
 
 				new THREE.CubeTextureLoader().load( urls, function ( cubeTexture ) {
 
-					cubeTexture.encoding = THREE.sRGBEncoding;
-
 					scene.background = cubeTexture;
 
 					lightProbe.copy( LightProbeGenerator.fromCubeTexture( cubeTexture ) );
+					lightProbe.intensity = API.lightProbeIntensity;
+					lightProbe.position.set( - 10, 0, 0 ); // position not used in scene lighting calculations (helper honors the position, however)
 
 					const geometry = new THREE.SphereGeometry( 5, 64, 32 );
 					//const geometry = new THREE.TorusKnotGeometry( 4, 1.5, 256, 32, 2, 3 );
@@ -120,6 +123,10 @@
 					// mesh
 					mesh = new THREE.Mesh( geometry, material );
 					scene.add( mesh );
+
+					// helper
+					const helper = new LightProbeHelper( lightProbe, 1 );
+					scene.add( helper );
 
 					render();
 

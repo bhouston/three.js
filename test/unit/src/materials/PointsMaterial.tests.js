@@ -1,35 +1,49 @@
-/* global QUnit */
+import { PointsMaterial } from '../../../../src/materials/PointsMaterial.js';
 
-// import { PointsMaterial } from '../../../../src/materials/PointsMaterial.js';
+import { Material } from '../../../../src/materials/Material.js';
 
 export default QUnit.module( 'Materials', () => {
 
 	QUnit.module( 'PointsMaterial', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new PointsMaterial();
+			assert.strictEqual(
+				object instanceof Material, true,
+				'PointsMaterial extends from Material'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'isPointsMaterial', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new PointsMaterial();
+			assert.ok( object, 'Can instantiate a PointsMaterial.' );
 
 		} );
 
-		QUnit.todo( 'copy', ( assert ) => {
+		// PROPERTIES
+		QUnit.test( 'type', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new PointsMaterial();
+			assert.ok(
+				object.type === 'PointsMaterial',
+				'PointsMaterial.type should be PointsMaterial'
+			);
+
+		} );
+
+		// PUBLIC
+		QUnit.test( 'isPointsMaterial', ( assert ) => {
+
+			const object = new PointsMaterial();
+			assert.ok(
+				object.isPointsMaterial,
+				'PointsMaterial.isPointsMaterial should be true'
+			);
 
 		} );
 

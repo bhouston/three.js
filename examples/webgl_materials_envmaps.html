@@ -4,23 +4,24 @@
 		<title>three.js webgl - materials - environment maps</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - materials - environment maps">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_materials_envmaps.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_materials_envmaps.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
 
 		<div id="info">
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - webgl environment mapping example<br/>
-			Equirectangular Map by <a href="http://www.flickr.com/photos/jonragnarsson/2294472375/" target="_blank" rel="noopener">J&oacute;n Ragnarsson</a>.
+			Equirectangular Map by <a href="https://www.flickr.com/photos/jonragnarsson/2294472375/" target="_blank" rel="noopener">J&oacute;n Ragnarsson</a>.
 		</div>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -29,31 +30,25 @@
 
 			import * as THREE from 'three';
 
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 			let controls, camera, scene, renderer;
 			let textureEquirec, textureCube;
-			let sphereMesh, sphereMaterial;
+			let sphereMesh, sphereMaterial, params;
 
 			init();
-			animate();
 
 			function init() {
 
 				// CAMERAS
 
-				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 1, 100000 );
-				camera.position.set( 0, 0, 1000 );
+				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 0, 2.5 );
 
 				// SCENE
 
 				scene = new THREE.Scene();
-
-				// Lights
-
-				const ambient = new THREE.AmbientLight( 0xffffff );
-				scene.add( ambient );
 
 				// Textures
 
@@ -61,20 +56,19 @@
 				loader.setPath( 'textures/cube/Bridge2/' );
 
 				textureCube = loader.load( [ 'posx.jpg', 'negx.jpg', 'posy.jpg', 'negy.jpg', 'posz.jpg', 'negz.jpg' ] );
-				textureCube.encoding = THREE.sRGBEncoding;
 
 				const textureLoader = new THREE.TextureLoader();
 
 				textureEquirec = textureLoader.load( 'textures/2294472375_24a3b8ef46_o.jpg' );
 				textureEquirec.mapping = THREE.EquirectangularReflectionMapping;
-				textureEquirec.encoding = THREE.sRGBEncoding;
+				textureEquirec.colorSpace = THREE.SRGBColorSpace;
 
 				scene.background = textureCube;
 
 				//
 
-				const geometry = new THREE.IcosahedronGeometry( 400, 15 );
-				sphereMaterial = new THREE.MeshLambertMaterial( { envMap: textureCube } );
+				const geometry = new THREE.IcosahedronGeometry( 1, 15 );
+				sphereMaterial = new THREE.MeshBasicMaterial( { envMap: textureCube } );
 				sphereMesh = new THREE.Mesh( geometry, sphereMaterial );
 				scene.add( sphereMesh );
 
@@ -83,18 +77,18 @@
 				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.outputEncoding = THREE.sRGBEncoding;
+				renderer.setAnimationLoop( animate );
 				document.body.appendChild( renderer.domElement );
 
 				//
 
 				controls = new OrbitControls( camera, renderer.domElement );
-				controls.minDistance = 500;
-				controls.maxDistance = 2500;
+				controls.minDistance = 1.5;
+				controls.maxDistance = 6;
 
 				//
 
-				const params = {
+				params = {
 					Cube: function () {
 
 						scene.background = textureCube;
@@ -111,10 +105,14 @@
 						sphereMaterial.needsUpdate = true;
 
 					},
-					Refraction: false
+					Refraction: false,
+					backgroundRotationX: false,
+					backgroundRotationY: false,
+					backgroundRotationZ: false,
+					syncMaterial: false
 				};
 
-				const gui = new GUI();
+				const gui = new GUI( { width: 300 } );
 				gui.add( params, 'Cube' );
 				gui.add( params, 'Equirectangular' );
 				gui.add( params, 'Refraction' ).onChange( function ( value ) {
@@ -134,6 +132,10 @@
 					sphereMaterial.needsUpdate = true;
 
 				} );
+				gui.add( params, 'backgroundRotationX' );
+				gui.add( params, 'backgroundRotationY' );
+				gui.add( params, 'backgroundRotationZ' );
+				gui.add( params, 'syncMaterial' );
 				gui.open();
 
 				window.addEventListener( 'resize', onWindowResize );
@@ -153,13 +155,29 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
+				if ( params.backgroundRotationX ) {
 
-				render();
+					scene.backgroundRotation.x += 0.001;
 
-			}
+				}
 
-			function render() {
+				if ( params.backgroundRotationY ) {
+
+					scene.backgroundRotation.y += 0.001;
+
+				}
+
+				if ( params.backgroundRotationZ ) {
+
+					scene.backgroundRotation.z += 0.001;
+
+				}
+
+				if ( params.syncMaterial ) {
+
+					sphereMesh.material.envMapRotation.copy( scene.backgroundRotation );
+
+				}
 
 				camera.lookAt( scene.position );
 				renderer.render( scene, camera );

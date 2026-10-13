@@ -1,6 +1,4 @@
-function WebGLIndexedBufferRenderer( gl, extensions, info, capabilities ) {
-
-	const isWebGL2 = capabilities.isWebGL2;
+function WebGLIndexedBufferRenderer( gl, extensions, info ) {
 
 	let mode;
 
@@ -31,30 +29,28 @@ function WebGLIndexedBufferRenderer( gl, extensions, info, capabilities ) {
 
 		if ( primcount === 0 ) return;
 
-		let extension, methodName;
+		gl.drawElementsInstanced( mode, count, type, start * bytesPerElement, primcount );
 
-		if ( isWebGL2 ) {
+		info.update( count, mode, primcount );
 
-			extension = gl;
-			methodName = 'drawElementsInstanced';
+	}
 
-		} else {
+	function renderMultiDraw( starts, counts, drawCount ) {
 
-			extension = extensions.get( 'ANGLE_instanced_arrays' );
-			methodName = 'drawElementsInstancedANGLE';
+		if ( drawCount === 0 ) return;
 
-			if ( extension === null ) {
+		const extension = extensions.get( 'WEBGL_multi_draw' );
+		extension.multiDrawElementsWEBGL( mode, counts, 0, type, starts, 0, drawCount );
 
-				console.error( 'THREE.WebGLIndexedBufferRenderer: using THREE.InstancedBufferGeometry but hardware does not support extension ANGLE_instanced_arrays.' );
-				return;
+		let elementCount = 0;
+		for ( let i = 0; i < drawCount; i ++ ) {
 
-			}
+			elementCount += counts[ i ];
 
 		}
 
-		extension[ methodName ]( mode, count, type, start * bytesPerElement, primcount );
+		info.update( elementCount, mode, 1 );
 
-		info.update( count, mode, primcount );
 
 	}
 
@@ -64,6 +60,7 @@ function WebGLIndexedBufferRenderer( gl, extensions, info, capabilities ) {
 	this.setIndex = setIndex;
 	this.render = render;
 	this.renderInstances = renderInstances;
+	this.renderMultiDraw = renderMultiDraw;
 
 }
 

@@ -17,7 +17,7 @@ vec3 pow2( const in vec3 x ) { return x*x; }
 float pow3( const in float x ) { return x*x*x; }
 float pow4( const in float x ) { float x2 = x*x; return x2*x2; }
 float max3( const in vec3 v ) { return max( max( v.x, v.y ), v.z ); }
-float average( const in vec3 color ) { return dot( color, vec3( 0.3333 ) ); }
+float average( const in vec3 v ) { return dot( v, vec3( 0.3333333 ) ); }
 
 // expects values in the range of [0,1]x[0,1], returns values in the [0,1] range.
 // do not collapse into a single function per: http://byteblacksmith.com/improvements-to-the-canonical-one-liner-glsl-rand-for-opengl-es-2-0/
@@ -52,14 +52,11 @@ struct ReflectedLight {
 	vec3 indirectSpecular;
 };
 
-struct GeometricContext {
-	vec3 position;
-	vec3 normal;
-	vec3 viewDir;
-#ifdef USE_CLEARCOAT
-	vec3 clearcoatNormal;
+#ifdef USE_ALPHAHASH
+
+	varying vec3 vPosition;
+
 #endif
-};
 
 vec3 transformDirection( in vec3 dir, in mat4 matrix ) {
 
@@ -67,33 +64,21 @@ vec3 transformDirection( in vec3 dir, in mat4 matrix ) {
 
 }
 
-vec3 inverseTransformDirection( in vec3 dir, in mat4 matrix ) {
+#define inverseTransformDirection transformDirectionByInverseViewMatrix // @deprecated r185
 
-	// dir can be either a direction vector or a normal vector
-	// upper-left 3x3 of matrix is assumed to be orthogonal
+vec3 transformNormalByInverseViewMatrix( in vec3 normal, in mat4 viewMatrix ) {
 
-	return normalize( ( vec4( dir, 0.0 ) * matrix ).xyz );
+	// upper-left 3x3 of view matrix is assumed to be orthogonal
 
-}
-
-mat3 transposeMat3( const in mat3 m ) {
-
-	mat3 tmp;
-
-	tmp[ 0 ] = vec3( m[ 0 ].x, m[ 1 ].x, m[ 2 ].x );
-	tmp[ 1 ] = vec3( m[ 0 ].y, m[ 1 ].y, m[ 2 ].y );
-	tmp[ 2 ] = vec3( m[ 0 ].z, m[ 1 ].z, m[ 2 ].z );
-
-	return tmp;
+	return normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );
 
 }
 
-// https://en.wikipedia.org/wiki/Relative_luminance
-float linearToRelativeLuminance( const in vec3 color ) {
+vec3 transformDirectionByInverseViewMatrix( in vec3 dir, in mat4 viewMatrix ) {
 
-	vec3 weights = vec3( 0.2126, 0.7152, 0.0722 );
+	// upper-left 3x3 of view matrix is assumed to be orthogonal
 
-	return dot( weights, color.rgb );
+	return normalize( ( vec4( dir, 0.0 ) * viewMatrix ).xyz );
 
 }
 
@@ -114,4 +99,36 @@ vec2 equirectUv( in vec3 dir ) {
 	return vec2( u, v );
 
 }
+
+vec3 BRDF_Lambert( const in vec3 diffuseColor ) {
+
+	return RECIPROCAL_PI * diffuseColor;
+
+} // validated
+
+vec3 F_Schlick( const in vec3 f0, const in float f90, const in float dotVH ) {
+
+	// Original approximation by Christophe Schlick '94
+	// float fresnel = pow( 1.0 - dotVH, 5.0 );
+
+	// Optimized variant (presented by Epic at SIGGRAPH '13)
+	// https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
+	float fresnel = exp2( ( - 5.55473 * dotVH - 6.98316 ) * dotVH );
+
+	return f0 * ( 1.0 - fresnel ) + ( f90 * fresnel );
+
+} // validated
+
+float F_Schlick( const in float f0, const in float f90, const in float dotVH ) {
+
+	// Original approximation by Christophe Schlick '94
+	// float fresnel = pow( 1.0 - dotVH, 5.0 );
+
+	// Optimized variant (presented by Epic at SIGGRAPH '13)
+	// https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
+	float fresnel = exp2( ( - 5.55473 * dotVH - 6.98316 ) * dotVH );
+
+	return f0 * ( 1.0 - fresnel ) + ( f90 * fresnel );
+
+} // validated
 `;

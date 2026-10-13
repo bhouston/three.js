@@ -1,29 +1,38 @@
-/* global QUnit */
+import { CompressedTexture } from '../../../../src/textures/CompressedTexture.js';
 
-// import { CompressedTexture } from '../../../../src/textures/CompressedTexture.js';
+import { Texture } from '../../../../src/textures/Texture.js';
 
 export default QUnit.module( 'Textures', () => {
 
 	QUnit.module( 'CompressedTexture', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new CompressedTexture();
+			assert.strictEqual(
+				object instanceof Texture, true,
+				'CompressedTexture extends from Texture'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new CompressedTexture();
+			assert.ok( object, 'Can instantiate a CompressedTexture.' );
 
 		} );
 
-		// PUBLIC STUFF
-		QUnit.todo( 'isCompressedTexture', ( assert ) => {
+		// PUBLIC
+		QUnit.test( 'isCompressedTexture', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new CompressedTexture();
+			assert.ok(
+				object.isCompressedTexture,
+				'CompressedTexture.isCompressedTexture should be true'
+			);
 
 		} );
 

@@ -1,86 +1,83 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js - WebGPU - Skinning</title>
+		<title>three.js webgpu - skinning</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link type="text/css" rel="stylesheet" href="main.css">
+		<meta property="og:title" content="three.js webgpu - skinning">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_skinning.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_skinning.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
 	</head>
 	<body>
 
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> WebGPU - Skinning
-		</div>
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Skinning</span>
+			</div>
+
+			<small>
+				Basic skinning example using a model from Mixamo.
+			</small>
+		</div>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js",
-					"three-nodes/": "./jsm/nodes/"
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
 
 		<script type="module">
 
-			import * as THREE from 'three';
-			import * as Nodes from 'three-nodes/Nodes.js';
+			import * as THREE from 'three/webgpu';
+			import { color, screenUV } from 'three/tsl';
 
-			import { FBXLoader } from './jsm/loaders/FBXLoader.js';
-
-			import WebGPU from './jsm/capabilities/WebGPU.js';
-			import WebGPURenderer from './jsm/renderers/webgpu/WebGPURenderer.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 			let camera, scene, renderer;
 
-			let mixer, clock;
+			let mixer, timer;
 
-			init().then( animate ).catch( error );
+			init();
 
-			async function init() {
+			function init() {
 
-				if ( WebGPU.isAvailable() === false ) {
-
-					document.body.appendChild( WebGPU.getErrorMessage() );
-
-					throw new Error( 'No WebGPU support' );
-
-				}
-
-				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 1, 1000 );
-				camera.position.set( 100, 200, 300 );
+				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.01, 100 );
+				camera.position.set( 1, 2, 3 );
 
 				scene = new THREE.Scene();
-				camera.lookAt( 0, 100, 0 );
+				scene.backgroundNode = screenUV.y.mix( color( 0x66bbff ), color( 0x4466ff ) );
+				camera.lookAt( 0, 1, 0 );
 
-				clock = new THREE.Clock();
+				timer = new THREE.Timer();
+				timer.connect( document );
 
 				//lights
 
-				const light = new THREE.PointLight( 0xffffff );
+				const light = new THREE.PointLight( 0xffffff, 1, 100 );
+				light.power = 2500;
 				camera.add( light );
 				scene.add( camera );
 
-				const loader = new FBXLoader();
-				loader.load( 'models/fbx/Samba Dancing.fbx', function ( object ) {
+				const ambient = new THREE.AmbientLight( 0x4466ff, 1 );
+				scene.add( ambient );
 
+				const loader = new GLTFLoader();
+				loader.load( 'models/gltf/Michelle.glb', function ( gltf ) {
+
+					const object = gltf.scene;
 					mixer = new THREE.AnimationMixer( object );
 
-					const action = mixer.clipAction( object.animations[ 0 ] );
+					const action = mixer.clipAction( gltf.animations[ 0 ] );
 					action.play();
-
-					object.traverse( function ( child ) {
-
-						if ( child.isMesh ) {
-
-							child.material = new Nodes.MeshStandardNodeMaterial();
-							child.material.roughness = .1;
-
-						}
-
-					} );
 
 					scene.add( object );
 
@@ -88,16 +85,15 @@
 
 				//renderer
 
-				renderer = new WebGPURenderer();
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.outputEncoding = THREE.sRGBEncoding;
-				renderer.toneMappingNode = new Nodes.ToneMappingNode( THREE.LinearToneMapping, 800 );
+				renderer.setAnimationLoop( animate );
+				renderer.toneMapping = THREE.LinearToneMapping;
+				renderer.toneMappingExposure = 0.4;
 				document.body.appendChild( renderer.domElement );
 
 				window.addEventListener( 'resize', onWindowResize );
-
-				return renderer.init();
 
 			}
 
@@ -112,19 +108,13 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
+				timer.update();
 
-				const delta = clock.getDelta();
+				const delta = timer.getDelta();
 
 				if ( mixer ) mixer.update( delta );
 
 				renderer.render( scene, camera );
-
-			}
-
-			function error( error ) {
-
-				console.error( error );
 
 			}
 

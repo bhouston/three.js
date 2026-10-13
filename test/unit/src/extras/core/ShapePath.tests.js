@@ -1,6 +1,4 @@
-/* global QUnit */
-
-// import { ShapePath } from '../../../../../src/extras/core/ShapePath.js';
+import { ShapePath } from '../../../../../src/extras/core/ShapePath.js';
 
 export default QUnit.module( 'Extras', () => {
 
@@ -9,46 +7,21 @@ export default QUnit.module( 'Extras', () => {
 		QUnit.module( 'ShapePath', () => {
 
 			// INSTANCING
-			QUnit.todo( 'Instancing', ( assert ) => {
+			QUnit.test( 'Instancing', ( assert ) => {
 
-				assert.ok( false, 'everything\'s gonna be alright' );
-
-			} );
-
-			// PUBLIC STUFF
-			QUnit.todo( 'moveTo', ( assert ) => {
-
-				assert.ok( false, 'everything\'s gonna be alright' );
+				const object = new ShapePath();
+				assert.ok( object, 'Can instantiate a ShapePath.' );
 
 			} );
 
-			QUnit.todo( 'lineTo', ( assert ) => {
+			// PROPERTIES
+			QUnit.test( 'type', ( assert ) => {
 
-				assert.ok( false, 'everything\'s gonna be alright' );
-
-			} );
-
-			QUnit.todo( 'quadraticCurveTo', ( assert ) => {
-
-				assert.ok( false, 'everything\'s gonna be alright' );
-
-			} );
-
-			QUnit.todo( 'bezierCurveTo', ( assert ) => {
-
-				assert.ok( false, 'everything\'s gonna be alright' );
-
-			} );
-
-			QUnit.todo( 'splineThru', ( assert ) => {
-
-				assert.ok( false, 'everything\'s gonna be alright' );
-
-			} );
-
-			QUnit.todo( 'toShapes', ( assert ) => {
-
-				assert.ok( false, 'everything\'s gonna be alright' );
+				const object = new ShapePath();
+				assert.ok(
+					object.type === 'ShapePath',
+					'ShapePath.type should be ShapePath'
+				);
 
 			} );
 

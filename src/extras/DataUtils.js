@@ -1,16 +1,9 @@
 import { clamp } from '../math/MathUtils.js';
+import { warn } from '../utils.js';
 
 // Fast Half Float Conversions, http://www.fox-toolkit.org/ftp/fasthalffloatconversion.pdf
 
-const {
-	floatView: _floatView,
-	uint32View: _uint32View,
-	baseTable: _baseTable,
-	shiftTable: _shiftTable,
-	mantissaTable: _mantissaTable,
-	exponentTable: _exponentTable,
-	offsetTable: _offsetTable
-} = /*@__PURE__*/ _generateTables();
+const _tables = /*@__PURE__*/ _generateTables();
 
 function _generateTables() {
 
@@ -142,37 +135,83 @@ function _generateTables() {
 		shiftTable: shiftTable,
 		mantissaTable: mantissaTable,
 		exponentTable: exponentTable,
-		offsetTable: offsetTable,
+		offsetTable: offsetTable
 	};
 
 }
 
-// float32 to float16
-
+/**
+ * Returns a half precision floating point value (FP16) from the given single
+ * precision floating point value (FP32).
+ *
+ * @param {number} val - A single precision floating point value.
+ * @return {number} The FP16 value.
+ */
 function toHalfFloat( val ) {
 
-	if ( Math.abs( val ) > 65504 ) console.warn( 'THREE.DataUtils.toHalfFloat(): Value out of range.' );
+	if ( Math.abs( val ) > 65504 ) warn( 'DataUtils.toHalfFloat(): Value out of range.' );
 
 	val = clamp( val, - 65504, 65504 );
 
-	_floatView[ 0 ] = val;
-	const f = _uint32View[ 0 ];
+	_tables.floatView[ 0 ] = val;
+	const f = _tables.uint32View[ 0 ];
 	const e = ( f >> 23 ) & 0x1ff;
-	return _baseTable[ e ] + ( ( f & 0x007fffff ) >> _shiftTable[ e ] );
+	return _tables.baseTable[ e ] + ( ( f & 0x007fffff ) >> _tables.shiftTable[ e ] );
 
 }
 
-// float16 to float32
-
+/**
+ * Returns a single precision floating point value (FP32) from the given half
+ * precision floating point value (FP16).
+ *
+ * @param {number} val - A half precision floating point value.
+ * @return {number} The FP32 value.
+ */
 function fromHalfFloat( val ) {
 
 	const m = val >> 10;
-	_uint32View[ 0 ] = _mantissaTable[ _offsetTable[ m ] + ( val & 0x3ff ) ] + _exponentTable[ m ];
-	return _floatView[ 0 ];
+	_tables.uint32View[ 0 ] = _tables.mantissaTable[ _tables.offsetTable[ m ] + ( val & 0x3ff ) ] + _tables.exponentTable[ m ];
+	return _tables.floatView[ 0 ];
+
+}
+
+/**
+ * A class containing utility functions for data.
+ *
+ * @hideconstructor
+ */
+class DataUtils {
+
+	/**
+	 * Returns a half precision floating point value (FP16) from the given single
+	 * precision floating point value (FP32).
+	 *
+	 * @param {number} val - A single precision floating point value.
+	 * @return {number} The FP16 value.
+	 */
+	static toHalfFloat( val ) {
+
+		return toHalfFloat( val );
+
+	}
+
+	/**
+	 * Returns a single precision floating point value (FP32) from the given half
+	 * precision floating point value (FP16).
+	 *
+	 * @param {number} val - A half precision floating point value.
+	 * @return {number} The FP32 value.
+	 */
+	static fromHalfFloat( val ) {
+
+		return fromHalfFloat( val );
+
+	}
 
 }
 
 export {
 	toHalfFloat,
 	fromHalfFloat,
+	DataUtils
 };

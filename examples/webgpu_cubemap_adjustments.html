@@ -1,62 +1,59 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgpu - cubemap adjustments</title>
+		<title>three.js webgpu - envmap adjustments</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link type="text/css" rel="stylesheet" href="main.css">
+		<meta property="og:title" content="three.js webgpu - envmap adjustments">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_cubemap_adjustments.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_cubemap_adjustments.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
 	</head>
 	<body>
 
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Env. Adjustments<br />
-			Battle Damaged Sci-fi Helmet by
-			<a href="https://sketchfab.com/theblueturtle_" target="_blank" rel="noopener">theblueturtle_</a><br />
-		</div>
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>EnvMap Adjustments</span>
+			</div>
+
+			<small>
+				Adjust/modify the scene's background and environment.<br/>
+				Battle Damaged Sci-fi Helmet by theblueturtle_.<br/>
+				HDR by <a href="https://polyhaven.com/" target="_blank" rel="noopener">Poly Haven</a> and <a href="https://hdri-skies.com/free-hdris/" target="_blank" rel="noopener">HDRI Skies</a>.
+			</small>
+		</div>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js",
-					"three-nodes/": "./jsm/nodes/"
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
 
 		<script type="module">
 
-			import * as THREE from 'three';
-			import * as Nodes from 'three-nodes/Nodes.js';
+			import * as THREE from 'three/webgpu';
+			import { uniform, mix, pmremTexture, reference, positionLocal, hue, saturation, positionWorld, normalWorld, positionWorldDirection, reflectVector } from 'three/tsl';
 
-			import { uniform, mix, cubeTexture, mul, reference, add, positionWorld, normalWorld, modelWorldMatrix, transformDirection, saturate, saturation, hue, reflectCube, context } from 'three-nodes/Nodes.js';
+			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
-			import WebGPU from './jsm/capabilities/WebGPU.js';
-			import WebGPURenderer from './jsm/renderers/webgpu/WebGPURenderer.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-			import { RGBMLoader } from './jsm/loaders/RGBMLoader.js';
-
-			import { OrbitControls } from './jsm/controls/OrbitControls.js';
-			import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
-
-			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			let camera, scene, renderer;
 
-			init().then( render ).catch( error );
+			init();
 
 			async function init() {
-
-				if ( WebGPU.isAvailable() === false ) {
-
-					document.body.appendChild( WebGPU.getErrorMessage() );
-
-					throw new Error( 'No WebGPU support' );
-
-				}
 
 				const container = document.createElement( 'div' );
 				document.body.appendChild( container );
@@ -68,24 +65,21 @@
 
 				scene = new THREE.Scene();
 
-				// cube textures
+				// HDR textures
 
-				const rgbmUrls = [ 'px.png', 'nx.png', 'py.png', 'ny.png', 'pz.png', 'nz.png' ];
-				const cube1Texture = new RGBMLoader()
-					.setMaxRange( 16 )
-					.setPath( './textures/cube/pisaRGBM16/' )
-					.loadCubemap( rgbmUrls );
+				const hdr1Texture = await new HDRLoader()
+					.loadAsync( './textures/equirectangular/pedestrian_overpass_1k.hdr' );
 
-				cube1Texture.generateMipmaps = true;
-				cube1Texture.minFilter = THREE.LinearMipmapLinearFilter;
+				hdr1Texture.mapping = THREE.EquirectangularReflectionMapping;
+				hdr1Texture.generateMipmaps = true;
+				hdr1Texture.minFilter = THREE.LinearMipmapLinearFilter;
 
-				const cube2Urls = [ 'posx.jpg', 'negx.jpg', 'posy.jpg', 'negy.jpg', 'posz.jpg', 'negz.jpg' ];
-				const cube2Texture = new THREE.CubeTextureLoader()
-					.setPath( './textures/cube/Park2/' )
-					.load( cube2Urls );
+				const hdr2Texture = await new HDRLoader()
+					.loadAsync( './textures/equirectangular/752-hdri-skies-com_1k.hdr' );
 
-				cube2Texture.generateMipmaps = true;
-				cube2Texture.minFilter = THREE.LinearMipmapLinearFilter;
+				hdr2Texture.mapping = THREE.EquirectangularReflectionMapping;
+				hdr2Texture.generateMipmaps = true;
+				hdr2Texture.minFilter = THREE.LinearMipmapLinearFilter;
 
 				// nodes and environment
 
@@ -106,38 +100,34 @@
 				const rotateY1Matrix = new THREE.Matrix4();
 				const rotateY2Matrix = new THREE.Matrix4();
 
-				const getEnvironmentNode = ( reflectNode ) => {
+				const getEnvironmentNode = ( reflectNode, positionNode ) => {
 
-					const custom1UV = mul( reflectNode.xyz, uniform( rotateY1Matrix ) );
-					const custom2UV = mul( reflectNode.xyz, uniform( rotateY2Matrix ) );
+					const custom1UV = reflectNode.xyz.mul( uniform( rotateY1Matrix ) );
+					const custom2UV = reflectNode.xyz.mul( uniform( rotateY2Matrix ) );
+					const mixCubeMaps = mix( pmremTexture( hdr1Texture, custom1UV ), pmremTexture( hdr2Texture, custom2UV ), positionNode.y.add( mixNode ).clamp() );
 
-					const mixCubeMaps = mix( cubeTexture( cube1Texture, custom1UV ), cubeTexture( cube2Texture, custom2UV ), saturate( add( positionWorld.y, mixNode ) ) );
 					const proceduralEnv = mix( mixCubeMaps, normalWorld, proceduralNode );
-					const intensityFilter = mul( proceduralEnv, intensityNode );
-					const hueFilter = hue( intensityFilter, hueNode );
 
+					const intensityFilter = proceduralEnv.mul( intensityNode );
+					const hueFilter = hue( intensityFilter, hueNode );
 					return saturation( hueFilter, saturationNode );
 
-				}
+				};
 
 				const blurNode = uniform( 0 );
 
-				scene.environmentNode = getEnvironmentNode( reflectCube );
+				scene.environmentNode = getEnvironmentNode( reflectVector, positionWorld );
 
-				scene.backgroundNode = context( getEnvironmentNode( transformDirection( positionWorld, modelWorldMatrix ) ), {
-					levelNode : blurNode // @TODO: currently it uses mipmaps value, I think it should be replaced for [0,1]
+				scene.backgroundNode = getEnvironmentNode( positionWorldDirection, positionLocal ).context( {
+					getTextureLevel: () => blurNode
 				} );
 
 				// scene objects
 
 				const loader = new GLTFLoader().setPath( 'models/gltf/DamagedHelmet/glTF/' );
-				loader.load( 'DamagedHelmet.gltf', function ( gltf ) {
+				const gltf = await loader.loadAsync( 'DamagedHelmet.gltf' );
 
-					scene.add( gltf.scene );
-
-					render();
-
-				} );
+				scene.add( gltf.scene );
 
 				const sphereGeometry = new THREE.SphereGeometry( .5, 64, 32 );
 
@@ -152,11 +142,12 @@
 
 				// renderer and controls
 
-				renderer = new WebGPURenderer();
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.toneMappingNode = new Nodes.ToneMappingNode( THREE.LinearToneMapping, 1 );
-				renderer.outputEncoding = THREE.sRGBEncoding;
+				renderer.toneMapping = THREE.LinearToneMapping;
+				renderer.inspector = new Inspector();
+				renderer.setAnimationLoop( render );
 				container.appendChild( renderer.domElement );
 
 				const controls = new OrbitControls( camera, renderer.domElement );
@@ -167,30 +158,27 @@
 
 				// gui
 
-				const gui = new GUI();
-
-				gui.add( { blurBackground: blurNode.value }, 'blurBackground', 0, 10, 0.01 ).onChange( value => {
+				const gui = renderer.inspector.createParameters( 'Settings' );
+				gui.add( adjustments, 'mix', - 1, 2, 0.01 );
+				gui.add( { blurBackground: blurNode.value }, 'blurBackground', 0, 1, 0.01 ).onChange( value => {
 
 					blurNode.value = value;
 
 				} );
-				gui.add( { offsetCube1: 0 }, 'offsetCube1', 0, Math.PI * 2, 0.01 ).onChange( value => {
+				gui.add( { offsetHDR1: 0 }, 'offsetHDR1', 0, Math.PI * 2, 0.01 ).onChange( value => {
 
 					rotateY1Matrix.makeRotationY( value );
 
 				} );
-				gui.add( { offsetCube2: 0 }, 'offsetCube2', 0, Math.PI * 2, 0.01 ).onChange( value => {
+				gui.add( { offsetHDR2: 0 }, 'offsetHDR2', 0, Math.PI * 2, 0.01 ).onChange( value => {
 
 					rotateY2Matrix.makeRotationY( value );
 
 				} );
-				gui.add( adjustments, 'mix', - 1, 2, 0.01 );
 				gui.add( adjustments, 'procedural', 0, 1, 0.01 );
 				gui.add( adjustments, 'intensity', 0, 5, 0.01 );
 				gui.add( adjustments, 'hue', 0, Math.PI * 2, 0.01 );
 				gui.add( adjustments, 'saturation', 0, 2, 0.01 );
-
-				return renderer.init();
 
 			}
 
@@ -207,15 +195,7 @@
 
 			function render() {
 
-				requestAnimationFrame( render );
-
 				renderer.render( scene, camera );
-
-			}
-
-			function error( error ) {
-
-				console.error( error );
 
 			}
 

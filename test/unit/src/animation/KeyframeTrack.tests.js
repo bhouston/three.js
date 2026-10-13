@@ -1,103 +1,70 @@
-/* global QUnit */
-
 import { NumberKeyframeTrack } from '../../../../src/animation/tracks/NumberKeyframeTrack.js';
+
+import { KeyframeTrack } from '../../../../src/animation/KeyframeTrack.js';
+import { InterpolateBezier } from '../../../../src/constants.js';
 import { CONSOLE_LEVEL } from '../../utils/console-wrapper.js';
 
 export default QUnit.module( 'Animation', () => {
 
 	QUnit.module( 'KeyframeTrack', () => {
 
+		const parameters = {
+			name: '.material.opacity',
+			times: [ 0, 1 ],
+			values: [ 0, 0.5 ],
+			interpolation: NumberKeyframeTrack.DefaultInterpolation
+		};
+
+		// INHERITANCE
+		QUnit.test( 'Extending', ( assert ) => {
+
+			const object = new NumberKeyframeTrack( parameters.name, parameters.times, parameters.values );
+			assert.strictEqual(
+				object instanceof KeyframeTrack, true,
+				'NumberKeyframeTrack extends from KeyframeTrack'
+			);
+
+		} );
+
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			// name, times, values
+			const object = new NumberKeyframeTrack( parameters.name, parameters.times, parameters.values );
+			assert.ok( object, 'Can instantiate a NumberKeyframeTrack.' );
 
-		} );
-
-		// STATIC STUFF
-		QUnit.todo( 'toJSON', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'TimeBufferType', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			// name, times, values, interpolation
+			const object_all = new NumberKeyframeTrack( parameters.name, parameters.times, parameters.values, parameters.interpolation );
+			assert.ok( object_all, 'Can instantiate a NumberKeyframeTrack with name, times, values, interpolation.' );
 
 		} );
 
-		QUnit.todo( 'ValueBufferType', ( assert ) => {
+		// PROPERTIES
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+		// PROPERTIES - PROTOTYPE
 
-		} );
+		// PUBLIC
 
-		QUnit.todo( 'DefaultInterpolation', ( assert ) => {
+		QUnit.test( 'shift', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const track = new NumberKeyframeTrack( '.material.opacity', [ 0, 1 ], [ 0, 1 ], InterpolateBezier );
+			track.settings = {
+				inTangents: new Float32Array( [ - 0.5, 0, 0.5, 1 ] ),
+				outTangents: new Float32Array( [ 0.5, 0, 1.5, 1 ] )
+			};
 
-		} );
+			track.shift( 2 );
 
-		QUnit.todo( 'InterpolantFactoryMethodDiscrete', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'InterpolantFactoryMethodLinear', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'InterpolantFactoryMethodSmooth', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'setInterpolation', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'getInterpolation', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'getValueSize', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'shift', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'scale', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'trim', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			assert.smartEqual( Array.from( track.settings.inTangents ), [ 1.5, 0, 2.5, 1 ] );
+			assert.smartEqual( Array.from( track.settings.outTangents ), [ 2.5, 0, 3.5, 1 ] );
+			assert.strictEqual( track.createInterpolant().evaluate( 2.5 )[ 0 ], 0.5, 'Shifted curve keeps its shape.' );
 
 		} );
 
 		QUnit.test( 'validate', ( assert ) => {
 
-			var validTrack = new NumberKeyframeTrack( '.material.opacity', [ 0, 1 ], [ 0, 0.5 ] );
-			var invalidTrack = new NumberKeyframeTrack( '.material.opacity', [ 0, 1 ], [ 0, NaN ] );
+			const validTrack = new NumberKeyframeTrack( '.material.opacity', [ 0, 1 ], [ 0, 0.5 ] );
+			const invalidTrack = new NumberKeyframeTrack( '.material.opacity', [ 0, 1 ], [ 0, NaN ] );
 
 			assert.ok( validTrack.validate() );
 
@@ -109,7 +76,7 @@ export default QUnit.module( 'Animation', () => {
 
 		QUnit.test( 'optimize', ( assert ) => {
 
-			var track = new NumberKeyframeTrack( '.material.opacity', [ 0, 1, 2, 3, 4 ], [ 0, 0, 0, 0, 1 ] );
+			const track = new NumberKeyframeTrack( '.material.opacity', [ 0, 1, 2, 3, 4 ], [ 0, 0, 0, 0, 1 ] );
 
 			assert.equal( track.values.length, 5 );
 

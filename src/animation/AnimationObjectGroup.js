@@ -1,42 +1,52 @@
 import { PropertyBinding } from './PropertyBinding.js';
-import * as MathUtils from '../math/MathUtils.js';
+import { generateUUID } from '../math/MathUtils.js';
+import { error } from '../utils.js';
 
 /**
- *
  * A group of objects that receives a shared animation state.
  *
  * Usage:
  *
- *  - Add objects you would otherwise pass as 'root' to the
- *    constructor or the .clipAction method of AnimationMixer.
- *
- *  - Instead pass this object as 'root'.
- *
- *  - You can also add and remove objects later when the mixer
- *    is running.
+ * - Add objects you would otherwise pass as 'root' to the
+ * constructor or the .clipAction method of AnimationMixer.
+ * - Instead pass this object as 'root'.
+ * - You can also add and remove objects later when the mixer is running.
  *
  * Note:
  *
- *    Objects of this class appear as one object to the mixer,
- *    so cache control of the individual objects must be done
- *    on the group.
+ * - Objects of this class appear as one object to the mixer,
+ * so cache control of the individual objects must be done on the group.
  *
  * Limitation:
  *
- *  - The animated properties must be compatible among the
- *    all objects in the group.
- *
- *  - A single property can either be controlled through a
- *    target group or directly, but not both.
+ * - The animated properties must be compatible among the all objects in the group.
+ * - A single property can either be controlled through a target group or directly, but not both.
  */
-
 class AnimationObjectGroup {
 
+	/**
+	 * Constructs a new animation group.
+	 *
+	 * @param {...Object3D} arguments - An arbitrary number of 3D objects that share the same animation state.
+	 */
 	constructor() {
 
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
 		this.isAnimationObjectGroup = true;
 
-		this.uuid = MathUtils.generateUUID();
+		/**
+		 * The UUID of the 3D object.
+		 *
+		 * @type {string}
+		 * @readonly
+		 */
+		this.uuid = generateUUID();
 
 		// cached objects followed by the active ones
 		this._objects = Array.prototype.slice.call( arguments );
@@ -84,6 +94,11 @@ class AnimationObjectGroup {
 
 	}
 
+	/**
+	 * Adds an arbitrary number of objects to this animation group.
+	 *
+	 * @param {...Object3D} arguments - The 3D objects to add.
+	 */
 	add() {
 
 		const objects = this._objects,
@@ -161,7 +176,7 @@ class AnimationObjectGroup {
 
 			} else if ( objects[ index ] !== knownObject ) {
 
-				console.error( 'THREE.AnimationObjectGroup: Different objects with the same UUID ' +
+				error( 'AnimationObjectGroup: Different objects with the same UUID ' +
 					'detected. Clean the caches or recreate your infrastructure when reloading scenes.' );
 
 			} // else the object is already where we want it to be
@@ -172,6 +187,11 @@ class AnimationObjectGroup {
 
 	}
 
+	/**
+	 * Removes an arbitrary number of objects to this animation group
+	 *
+	 * @param {...Object3D} arguments - The 3D objects to remove.
+	 */
 	remove() {
 
 		const objects = this._objects,
@@ -221,7 +241,11 @@ class AnimationObjectGroup {
 
 	}
 
-	// remove & forget
+	/**
+	 * Deallocates all memory resources for the passed 3D objects of this animation group.
+	 *
+	 * @param {...Object3D} arguments - The 3D objects to uncache.
+	 */
 	uncache() {
 
 		const objects = this._objects,
@@ -251,12 +275,24 @@ class AnimationObjectGroup {
 						lastIndex = -- nObjects,
 						lastObject = objects[ lastIndex ];
 
-					// last cached object takes this object's place
-					indicesByUUID[ lastCachedObject.uuid ] = index;
+					if ( index !== firstActiveIndex ) {
+
+						// last cached object takes this object's place
+
+						indicesByUUID[ lastCachedObject.uuid ] = index;
+
+					}
+
 					objects[ index ] = lastCachedObject;
 
-					// last object goes to the activated slot and pop
-					indicesByUUID[ lastObject.uuid ] = firstActiveIndex;
+					if ( firstActiveIndex !== lastIndex ) {
+
+						// last object goes to the activated slot and pop
+
+						indicesByUUID[ lastObject.uuid ] = firstActiveIndex;
+
+					}
+
 					objects[ firstActiveIndex ] = lastObject;
 					objects.pop();
 
@@ -281,7 +317,7 @@ class AnimationObjectGroup {
 					const lastIndex = -- nObjects,
 						lastObject = objects[ lastIndex ];
 
-					if ( lastIndex > 0 ) {
+					if ( index !== lastIndex ) {
 
 						indicesByUUID[ lastObject.uuid ] = index;
 
@@ -365,7 +401,7 @@ class AnimationObjectGroup {
 				bindings = this._bindings,
 				lastBindingsIndex = bindings.length - 1,
 				lastBindings = bindings[ lastBindingsIndex ],
-				lastBindingsPath = path[ lastBindingsIndex ];
+				lastBindingsPath = paths[ lastBindingsIndex ];
 
 			indicesByPath[ lastBindingsPath ] = index;
 

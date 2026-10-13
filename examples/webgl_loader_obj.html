@@ -1,25 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgl - loaders - OBJ loader</title>
+		<title>three.js webgl - loaders - OBJ/MTL loader</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - loaders - OBJ/MTL loader">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_loader_obj.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_loader_obj.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 
 	<body>
 		<div id="info">
-		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - OBJLoader test
+		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - OBJ/MTL loader
 		</div>
-
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -28,94 +29,59 @@
 
 			import * as THREE from 'three';
 
-			import { OBJLoader } from './jsm/loaders/OBJLoader.js';
+			import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+			import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-			let container;
-
-			let camera, scene, renderer;
-
-			let mouseX = 0, mouseY = 0;
-
-			let windowHalfX = window.innerWidth / 2;
-			let windowHalfY = window.innerHeight / 2;
-
-			let object;
+			let camera, scene, renderer, controls;
 
 			init();
-			animate();
 
+			async function init() {
 
-			function init() {
-
-				container = document.createElement( 'div' );
-				document.body.appendChild( container );
-
-				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
-				camera.position.z = 250;
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 20 );
+				camera.position.z = 2.5;
 
 				// scene
 
 				scene = new THREE.Scene();
 
-				const ambientLight = new THREE.AmbientLight( 0xcccccc, 0.4 );
+				const ambientLight = new THREE.AmbientLight( 0xffffff );
 				scene.add( ambientLight );
 
-				const pointLight = new THREE.PointLight( 0xffffff, 0.8 );
+				const pointLight = new THREE.PointLight( 0xffffff, 15 );
 				camera.add( pointLight );
 				scene.add( camera );
 
-				// manager
-
-				function loadModel() {
-
-					object.traverse( function ( child ) {
-
-						if ( child.isMesh ) child.material.map = texture;
-
-					} );
-
-					object.position.y = - 95;
-					scene.add( object );
-
-				}
-
-				const manager = new THREE.LoadingManager( loadModel );
-
-				// texture
-
-				const textureLoader = new THREE.TextureLoader( manager );
-				const texture = textureLoader.load( 'textures/uv_grid_opengl.jpg' );
-
 				// model
 
-				function onProgress( xhr ) {
+				const mtlLoader = new MTLLoader().setPath( 'models/obj/male02/' );
+				const materials = await mtlLoader.loadAsync( 'male02.mtl' );
+				materials.preload();
 
-					if ( xhr.lengthComputable ) {
+				const objLoader = new OBJLoader().setPath( 'models/obj/male02/' );
+				objLoader.setMaterials( materials ); // optional since OBJ assets can be loaded without an accompanying MTL file
 
-						const percentComplete = xhr.loaded / xhr.total * 100;
-						console.log( 'model ' + Math.round( percentComplete, 2 ) + '% downloaded' );
+				const object = await objLoader.loadAsync( 'male02.obj' );
 
-					}
-
-				}
-
-				function onError() {}
-
-				const loader = new OBJLoader( manager );
-				loader.load( 'models/obj/male02/male02.obj', function ( obj ) {
-
-					object = obj;
-
-				}, onProgress, onError );
+				object.position.y = - 0.95;
+				object.scale.setScalar( 0.01 );
+				scene.add( object );
 
 				//
 
-				renderer = new THREE.WebGLRenderer();
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				container.appendChild( renderer.domElement );
+				renderer.setAnimationLoop( animate );
+				document.body.appendChild( renderer.domElement );
 
-				document.addEventListener( 'mousemove', onDocumentMouseMove );
+				//
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.enableDamping = true;
+				controls.minDistance = 2;
+				controls.maxDistance = 5;
 
 				//
 
@@ -125,9 +91,6 @@
 
 			function onWindowResize() {
 
-				windowHalfX = window.innerWidth / 2;
-				windowHalfY = window.innerHeight / 2;
-
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
 
@@ -135,28 +98,9 @@
 
 			}
 
-			function onDocumentMouseMove( event ) {
-
-				mouseX = ( event.clientX - windowHalfX ) / 2;
-				mouseY = ( event.clientY - windowHalfY ) / 2;
-
-			}
-
-			//
-
 			function animate() {
 
-				requestAnimationFrame( animate );
-				render();
-
-			}
-
-			function render() {
-
-				camera.position.x += ( mouseX - camera.position.x ) * .05;
-				camera.position.y += ( - mouseY - camera.position.y ) * .05;
-
-				camera.lookAt( scene.position );
+				controls.update();
 
 				renderer.render( scene, camera );
 

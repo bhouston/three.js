@@ -1,5 +1,3 @@
-/* global QUnit */
-
 import { Clock } from '../../../../src/core/Clock.js';
 
 export default QUnit.module( 'Core', () => {
@@ -30,34 +28,15 @@ export default QUnit.module( 'Core', () => {
 		}
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			// no params
+			const object = new Clock();
+			assert.ok( object, 'Can instantiate a Clock.' );
 
-		} );
-
-		// PUBLIC STUFF
-		QUnit.todo( 'start', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'stop', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'getElapsedTime', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'getDelta', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			// autostart
+			const object_all = new Clock( false );
+			assert.ok( object_all, 'Can instantiate a Clock with autostart.' );
 
 		} );
 
@@ -73,7 +52,7 @@ export default QUnit.module( 'Core', () => {
 
 			mockPerformance();
 
-			var clock = new Clock( false );
+			const clock = new Clock( false );
 
 			clock.start();
 

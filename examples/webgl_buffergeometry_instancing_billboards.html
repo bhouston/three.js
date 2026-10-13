@@ -4,6 +4,10 @@
 	<title>three.js webgl - instanced particles - billboards - colors</title>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - instanced particles - billboards - colors">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_buffergeometry_instancing_billboards.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_buffergeometry_instancing_billboards.jpg">
 	<link type="text/css" rel="stylesheet" href="main.css">
 </head>
 <body>
@@ -47,7 +51,7 @@
 		varying vec2 vUv;
 		varying float vScale;
 
-		// HSL to RGB Convertion helpers
+		// HSL to RGB Conversion helpers
 		vec3 HUEtoRGB(float H){
 			H = mod(H,1.0);
 			float R = abs(H * 6.0 - 3.0) - 1.0;
@@ -70,14 +74,11 @@
 		}
 	</script>
 
-	<!-- Import maps polyfill -->
-	<!-- Remove this when import maps will be widely supported -->
-	<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 	<script type="importmap">
 		{
 			"imports": {
-				"three": "../build/three.module.js"
+				"three": "../build/three.module.js",
+				"three/addons/": "./jsm/"
 			}
 		}
 	</script>
@@ -85,23 +86,16 @@
 	<script type="module">
 		import * as THREE from 'three';
 
-		import Stats from './jsm/libs/stats.module.js';
+		import Stats from 'three/addons/libs/stats.module.js';
 
 		let container, stats;
 
 		let camera, scene, renderer;
 		let geometry, material, mesh;
 
+		init();
+
 		function init() {
-
-			renderer = new THREE.WebGLRenderer();
-
-			if ( renderer.capabilities.isWebGL2 === false && renderer.extensions.has( 'ANGLE_instanced_arrays' ) === false ) {
-
-				document.getElementById( 'notSupported' ).style.display = '';
-				return false;
-
-			}
 
 			container = document.createElement( 'div' );
 			document.body.appendChild( container );
@@ -146,8 +140,10 @@
 			mesh.scale.set( 500, 500, 500 );
 			scene.add( mesh );
 
+			renderer = new THREE.WebGLRenderer();
 			renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.setAnimationLoop( animate );
 			container.appendChild( renderer.domElement );
 
 			stats = new Stats();
@@ -170,15 +166,6 @@
 
 		function animate() {
 
-			requestAnimationFrame( animate );
-
-			render();
-			stats.update();
-
-		}
-
-		function render() {
-
 			const time = performance.now() * 0.0005;
 
 			material.uniforms[ 'time' ].value = time;
@@ -188,13 +175,10 @@
 
 			renderer.render( scene, camera );
 
-		}
-
-		if ( init() ) {
-
-			animate();
+			stats.update();
 
 		}
+
 	</script>
 
 </body>

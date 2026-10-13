@@ -4,15 +4,21 @@ import {
 } from 'three';
 
 /**
- * Currently contains:
+ * Collection of toon shaders.
  *
- *	toon1
- *	toon2
- *	hatching
- *	dotted
+ * @module TriangleBlurShader
+ * @three_import import * as ToonShader from 'three/addons/shaders/ToonShader.js';
  */
 
+/**
+ * Toon1 shader.
+ *
+ * @constant
+ * @type {ShaderMaterial~Shader}
+ */
 const ToonShader1 = {
+
+	name: 'ToonShader1',
 
 	uniforms: {
 
@@ -78,12 +84,19 @@ const ToonShader1 = {
 
 				gl_FragColor = vec4( 1.0 - 2.0 * ( 1.0 - intensity ) * ( 1.0 - uBaseColor ), 1.0 );
 
-		}
+			}
+
+			#include <colorspace_fragment>
 
 		}`
 
 };
-
+/**
+ * Toon2 shader.
+ *
+ * @constant
+ * @type {Object}
+ */
 const ToonShader2 = {
 
 	uniforms: {
@@ -146,10 +159,18 @@ const ToonShader2 = {
 
 			}
 
+			#include <colorspace_fragment>
+
 		}`
 
 };
 
+/**
+ * Toon Hatching shader.
+ *
+ * @constant
+ * @type {Object}
+ */
 const ToonShaderHatching = {
 
 	uniforms: {
@@ -240,10 +261,18 @@ const ToonShaderHatching = {
 
 			}
 
+			#include <colorspace_fragment>
+
 		}`
 
 };
 
+/**
+ * Toon Dotted shader.
+ *
+ * @constant
+ * @type {Object}
+ */
 const ToonShaderDotted = {
 
 	uniforms: {
@@ -286,12 +315,12 @@ const ToonShaderDotted = {
 
 		void main() {
 
-		float directionalLightWeighting = max( dot( normalize(vNormal), uDirLightPos ), 0.0);
-		vec3 lightWeighting = uAmbientLightColor + uDirLightColor * directionalLightWeighting;
+			float directionalLightWeighting = max( dot( normalize(vNormal), uDirLightPos ), 0.0);
+			vec3 lightWeighting = uAmbientLightColor + uDirLightColor * directionalLightWeighting;
 
-		gl_FragColor = vec4( uBaseColor, 1.0 );
+			gl_FragColor = vec4( uBaseColor, 1.0 );
 
-		if ( length(lightWeighting) < 1.00 ) {
+			if ( length(lightWeighting) < 1.00 ) {
 
 				if ( ( mod(gl_FragCoord.x, 4.001) + mod(gl_FragCoord.y, 4.0) ) > 6.00 ) {
 
@@ -310,6 +339,8 @@ const ToonShaderDotted = {
 				}
 
 			}
+
+			#include <colorspace_fragment>
 
 		}`
 

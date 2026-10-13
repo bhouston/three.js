@@ -1,29 +1,41 @@
-/* global QUnit */
+import { VideoTexture } from '../../../../src/textures/VideoTexture.js';
 
-// import { VideoTexture } from '../../../../src/textures/VideoTexture.js';
+import { Texture } from '../../../../src/textures/Texture.js';
 
 export default QUnit.module( 'Textures', () => {
 
 	QUnit.module( 'VideoTexture', () => {
 
 		// INHERITANCE
-		QUnit.todo( 'Extending', ( assert ) => {
+		QUnit.test( 'Extending', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const videoDocumentElement = {};
+			const object = new VideoTexture( videoDocumentElement );
+			assert.strictEqual(
+				object instanceof Texture, true,
+				'VideoTexture extends from Texture'
+			);
 
 		} );
 
 		// INSTANCING
-		QUnit.todo( 'Instancing', ( assert ) => {
+		QUnit.test( 'Instancing', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const videoDocumentElement = {};
+			const object = new VideoTexture( videoDocumentElement );
+			assert.ok( object, 'Can instantiate a VideoTexture.' );
 
 		} );
 
 		// PUBLIC STUFF
-		QUnit.todo( 'isVideoTexture', ( assert ) => {
+		QUnit.test( 'isVideoTexture', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const videoDocumentElement = {};
+			const object = new VideoTexture( videoDocumentElement );
+			assert.ok(
+				object.isVideoTexture,
+				'VideoTexture.isVideoTexture should be true'
+			);
 
 		} );
 

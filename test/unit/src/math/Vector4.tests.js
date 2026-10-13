@@ -1,5 +1,3 @@
-/* global QUnit */
-
 import { Vector4 } from '../../../../src/math/Vector4.js';
 import { Matrix4 } from '../../../../src/math/Matrix4.js';
 import { BufferAttribute } from '../../../../src/core/BufferAttribute.js';
@@ -9,7 +7,7 @@ import {
 	z,
 	w,
 	eps
-} from './Constants.tests.js';
+} from '../../utils/math-constants.js';
 
 export default QUnit.module( 'Maths', () => {
 
@@ -18,13 +16,13 @@ export default QUnit.module( 'Maths', () => {
 		// INSTANCING
 		QUnit.test( 'Instancing', ( assert ) => {
 
-			var a = new Vector4();
+			let a = new Vector4();
 			assert.ok( a.x == 0, 'Passed!' );
 			assert.ok( a.y == 0, 'Passed!' );
 			assert.ok( a.z == 0, 'Passed!' );
 			assert.ok( a.w == 1, 'Passed!' );
 
-			var a = new Vector4( x, y, z, w );
+			a = new Vector4( x, y, z, w );
 			assert.ok( a.x === x, 'Passed!' );
 			assert.ok( a.y === y, 'Passed!' );
 			assert.ok( a.z === z, 'Passed!' );
@@ -33,15 +31,16 @@ export default QUnit.module( 'Maths', () => {
 		} );
 
 		// PUBLIC STUFF
-		QUnit.todo( 'isVector4', ( assert ) => {
+		QUnit.test( 'isVector4', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const object = new Vector4();
+			assert.ok( object.isVector4, 'Vector4.isVector4 should be true' );
 
 		} );
 
 		QUnit.test( 'set', ( assert ) => {
 
-			var a = new Vector4();
+			const a = new Vector4();
 			assert.ok( a.x == 0, 'Passed!' );
 			assert.ok( a.y == 0, 'Passed!' );
 			assert.ok( a.z == 0, 'Passed!' );
@@ -55,58 +54,50 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.todo( 'setScalar', ( assert ) => {
+		QUnit.test( 'setX', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const a = new Vector4();
+			assert.ok( a.x == 0, 'Passed!' );
 
-		} );
-
-		QUnit.todo( 'setX', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			a.setX( x );
+			assert.ok( a.x == x, 'Passed!' );
 
 		} );
 
-		QUnit.todo( 'setY', ( assert ) => {
+		QUnit.test( 'setY', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const a = new Vector4();
+			assert.ok( a.y == 0, 'Passed!' );
 
-		} );
-
-		QUnit.todo( 'setZ', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			a.setY( y );
+			assert.ok( a.y == y, 'Passed!' );
 
 		} );
 
-		QUnit.todo( 'setW', ( assert ) => {
+		QUnit.test( 'setZ', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const a = new Vector4();
+			assert.ok( a.z == 0, 'Passed!' );
 
-		} );
-
-		QUnit.todo( 'setComponent', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			a.setZ( z );
+			assert.ok( a.z == z, 'Passed!' );
 
 		} );
 
-		QUnit.todo( 'getComponent', ( assert ) => {
+		QUnit.test( 'setW', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const a = new Vector4();
+			assert.ok( a.w == 1, 'Passed!' );
 
-		} );
-
-		QUnit.todo( 'clone', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			a.setW( w );
+			assert.ok( a.w == w, 'Passed!' );
 
 		} );
 
 		QUnit.test( 'copy', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
-			var b = new Vector4().copy( a );
+			const a = new Vector4( x, y, z, w );
+			const b = new Vector4().copy( a );
 			assert.ok( b.x == x, 'Passed!' );
 			assert.ok( b.y == y, 'Passed!' );
 			assert.ok( b.z == z, 'Passed!' );
@@ -126,8 +117,8 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'add', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
-			var b = new Vector4( - x, - y, - z, - w );
+			const a = new Vector4( x, y, z, w );
+			const b = new Vector4( - x, - y, - z, - w );
 
 			a.add( b );
 			assert.ok( a.x == 0, 'Passed!' );
@@ -135,7 +126,13 @@ export default QUnit.module( 'Maths', () => {
 			assert.ok( a.z == 0, 'Passed!' );
 			assert.ok( a.w == 0, 'Passed!' );
 
-			var c = new Vector4().addVectors( b, b );
+		} );
+
+		QUnit.test( 'addVectors', ( assert ) => {
+
+			const b = new Vector4( - x, - y, - z, - w );
+			const c = new Vector4().addVectors( b, b );
+
 			assert.ok( c.x == - 2 * x, 'Passed!' );
 			assert.ok( c.y == - 2 * y, 'Passed!' );
 			assert.ok( c.z == - 2 * z, 'Passed!' );
@@ -143,23 +140,11 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.todo( 'addScalar', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'addVectors', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
 		QUnit.test( 'addScaledVector', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
-			var b = new Vector4( 6, 7, 8, 9 );
-			var s = 3;
+			const a = new Vector4( x, y, z, w );
+			const b = new Vector4( 6, 7, 8, 9 );
+			const s = 3;
 
 			a.addScaledVector( b, s );
 			assert.strictEqual( a.x, x + b.x * s, 'Check x' );
@@ -171,8 +156,8 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'sub', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
-			var b = new Vector4( - x, - y, - z, - w );
+			const a = new Vector4( x, y, z, w );
+			const b = new Vector4( - x, - y, - z, - w );
 
 			a.sub( b );
 			assert.ok( a.x == 2 * x, 'Passed!' );
@@ -180,7 +165,12 @@ export default QUnit.module( 'Maths', () => {
 			assert.ok( a.z == 2 * z, 'Passed!' );
 			assert.ok( a.w == 2 * w, 'Passed!' );
 
-			var c = new Vector4().subVectors( a, a );
+		} );
+
+		QUnit.test( 'subVectors', ( assert ) => {
+
+			const a = new Vector4( x, y, z, w );
+			const c = new Vector4().subVectors( a, a );
 			assert.ok( c.x == 0, 'Passed!' );
 			assert.ok( c.y == 0, 'Passed!' );
 			assert.ok( c.z == 0, 'Passed!' );
@@ -188,29 +178,11 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.todo( 'subScalar', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'subVectors', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'multiplyScalar', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
 		QUnit.test( 'applyMatrix4', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
-			var m = new Matrix4().makeRotationX( Math.PI );
-			var expected = new Vector4( 2, - 3, - 4, 5 );
+			const a = new Vector4( x, y, z, w );
+			const m = new Matrix4().makeRotationX( Math.PI );
+			const expected = new Vector4( 2, - 3, - 4, 5 );
 
 			a.applyMatrix4( m );
 			assert.ok( Math.abs( a.x - expected.x ) <= eps, 'Rotation matrix: check x' );
@@ -250,46 +222,36 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.todo( 'divideScalar', ( assert ) => {
+		QUnit.test( 'divide', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const a = new Vector4( 7, 8, 9, 0 );
+			const b = new Vector4( 2, 2, 3, 4 );
 
-		} );
-
-		QUnit.todo( 'setAxisAngleFromQuaternion', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'setAxisAngleFromRotationMatrix', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			a.divide( b );
+			assert.equal( a.x, 3.5, 'Check divide x' );
+			assert.equal( a.y, 4.0, 'Check divide y' );
+			assert.equal( a.z, 3.0, 'Check divide z' );
+			assert.equal( a.w, 0.0, 'Check divide w' );
 
 		} );
 
-		QUnit.todo( 'min', ( assert ) => {
+		QUnit.test( 'setFromMatrixPosition', ( assert ) => {
 
-			assert.ok( false, 'everything\'s gonna be alright' );
+			const a = new Vector4();
+			const m = new Matrix4().set( 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53 );
 
-		} );
-
-		QUnit.todo( 'max', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'clamp', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
+			a.setFromMatrixPosition( m );
+			assert.strictEqual( a.x, 7, 'Check x' );
+			assert.strictEqual( a.y, 19, 'Check y' );
+			assert.strictEqual( a.z, 37, 'Check z' );
+			assert.strictEqual( a.w, 53, 'Check w' );
 
 		} );
 
 		QUnit.test( 'clampScalar', ( assert ) => {
 
-			var a = new Vector4( - 0.1, 0.01, 0.5, 1.5 );
-			var clamped = new Vector4( 0.1, 0.1, 0.5, 1.0 );
+			const a = new Vector4( - 0.1, 0.01, 0.5, 1.5 );
+			const clamped = new Vector4( 0.1, 0.1, 0.5, 1.0 );
 
 			a.clampScalar( 0.1, 1.0 );
 			assert.ok( Math.abs( a.x - clamped.x ) <= eps, 'Check x' );
@@ -299,39 +261,9 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.todo( 'clampLength', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'floor', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'ceil', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'round', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'roundToZero', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
 		QUnit.test( 'negate', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
+			const a = new Vector4( x, y, z, w );
 
 			a.negate();
 			assert.ok( a.x == - x, 'Passed!' );
@@ -343,37 +275,25 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'dot', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
-			var b = new Vector4( - x, - y, - z, - w );
-			var c = new Vector4( 0, 0, 0, 0 );
+			const a = new Vector4( x, y, z, w );
+			const b = new Vector4( - x, - y, - z, - w );
+			const c = new Vector4( 0, 0, 0, 0 );
 
-			var result = a.dot( b );
+			let result = a.dot( b );
 			assert.ok( result == ( - x * x - y * y - z * z - w * w ), 'Passed!' );
 
-			var result = a.dot( c );
+			result = a.dot( c );
 			assert.ok( result == 0, 'Passed!' );
-
-		} );
-
-		QUnit.todo( 'lengthSq', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'length', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
 
 		} );
 
 		QUnit.test( 'manhattanLength', ( assert ) => {
 
-			var a = new Vector4( x, 0, 0, 0 );
-			var b = new Vector4( 0, - y, 0, 0 );
-			var c = new Vector4( 0, 0, z, 0 );
-			var d = new Vector4( 0, 0, 0, w );
-			var e = new Vector4( 0, 0, 0, 0 );
+			const a = new Vector4( x, 0, 0, 0 );
+			const b = new Vector4( 0, - y, 0, 0 );
+			const c = new Vector4( 0, 0, z, 0 );
+			const d = new Vector4( 0, 0, 0, w );
+			const e = new Vector4( 0, 0, 0, 0 );
 
 			assert.ok( a.manhattanLength() == x, 'Positive x' );
 			assert.ok( b.manhattanLength() == y, 'Negative y' );
@@ -391,10 +311,10 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'normalize', ( assert ) => {
 
-			var a = new Vector4( x, 0, 0, 0 );
-			var b = new Vector4( 0, - y, 0, 0 );
-			var c = new Vector4( 0, 0, z, 0 );
-			var d = new Vector4( 0, 0, 0, - w );
+			const a = new Vector4( x, 0, 0, 0 );
+			const b = new Vector4( 0, - y, 0, 0 );
+			const c = new Vector4( 0, 0, z, 0 );
+			const d = new Vector4( 0, 0, 0, - w );
 
 			a.normalize();
 			assert.ok( a.length() == 1, 'Passed!' );
@@ -416,13 +336,13 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'setLength', ( assert ) => {
 
-			var a = new Vector4( x, 0, 0, 0 );
+			let a = new Vector4( x, 0, 0, 0 );
 
 			assert.ok( a.length() == x, 'Passed!' );
 			a.setLength( y );
 			assert.ok( a.length() == y, 'Passed!' );
 
-			var a = new Vector4( 0, 0, 0, 0 );
+			a = new Vector4( 0, 0, 0, 0 );
 			assert.ok( a.length() == 0, 'Passed!' );
 			a.setLength( y );
 			assert.ok( a.length() == 0, 'Passed!' );
@@ -431,22 +351,10 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.todo( 'lerp', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
-		QUnit.todo( 'lerpVectors', ( assert ) => {
-
-			assert.ok( false, 'everything\'s gonna be alright' );
-
-		} );
-
 		QUnit.test( 'equals', ( assert ) => {
 
-			var a = new Vector4( x, 0, z, 0 );
-			var b = new Vector4( 0, - y, 0, - w );
+			const a = new Vector4( x, 0, z, 0 );
+			const b = new Vector4( 0, - y, 0, - w );
 
 			assert.ok( a.x != b.x, 'Passed!' );
 			assert.ok( a.y != b.y, 'Passed!' );
@@ -469,8 +377,8 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'fromArray', ( assert ) => {
 
-			var a = new Vector4();
-			var array = [ 1, 2, 3, 4, 5, 6, 7, 8 ];
+			const a = new Vector4();
+			const array = [ 1, 2, 3, 4, 5, 6, 7, 8 ];
 
 			a.fromArray( array );
 			assert.strictEqual( a.x, 1, 'No offset: check x' );
@@ -488,22 +396,22 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'toArray', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
+			const a = new Vector4( x, y, z, w );
 
-			var array = a.toArray();
+			let array = a.toArray();
 			assert.strictEqual( array[ 0 ], x, 'No array, no offset: check x' );
 			assert.strictEqual( array[ 1 ], y, 'No array, no offset: check y' );
 			assert.strictEqual( array[ 2 ], z, 'No array, no offset: check z' );
 			assert.strictEqual( array[ 3 ], w, 'No array, no offset: check w' );
 
-			var array = [];
+			array = [];
 			a.toArray( array );
 			assert.strictEqual( array[ 0 ], x, 'With array, no offset: check x' );
 			assert.strictEqual( array[ 1 ], y, 'With array, no offset: check y' );
 			assert.strictEqual( array[ 2 ], z, 'With array, no offset: check z' );
 			assert.strictEqual( array[ 3 ], w, 'With array, no offset: check w' );
 
-			var array = [];
+			array = [];
 			a.toArray( array, 1 );
 			assert.strictEqual( array[ 0 ], undefined, 'With array and offset: check [0]' );
 			assert.strictEqual( array[ 1 ], x, 'With array and offset: check x' );
@@ -515,8 +423,8 @@ export default QUnit.module( 'Maths', () => {
 
 		QUnit.test( 'fromBufferAttribute', ( assert ) => {
 
-			var a = new Vector4();
-			var attr = new BufferAttribute( new Float32Array( [ 1, 2, 3, 4, 5, 6, 7, 8 ] ), 4 );
+			const a = new Vector4();
+			const attr = new BufferAttribute( new Float32Array( [ 1, 2, 3, 4, 5, 6, 7, 8 ] ), 4 );
 
 			a.fromBufferAttribute( attr, 0 );
 			assert.strictEqual( a.x, 1, 'Offset 0: check x' );
@@ -535,7 +443,7 @@ export default QUnit.module( 'Maths', () => {
 		// TODO (Itee) refactor/split
 		QUnit.test( 'setX,setY,setZ,setW', ( assert ) => {
 
-			var a = new Vector4();
+			const a = new Vector4();
 			assert.ok( a.x == 0, 'Passed!' );
 			assert.ok( a.y == 0, 'Passed!' );
 			assert.ok( a.z == 0, 'Passed!' );
@@ -552,9 +460,10 @@ export default QUnit.module( 'Maths', () => {
 			assert.ok( a.w == w, 'Passed!' );
 
 		} );
+
 		QUnit.test( 'setComponent,getComponent', ( assert ) => {
 
-			var a = new Vector4();
+			const a = new Vector4();
 			assert.ok( a.x == 0, 'Passed!' );
 			assert.ok( a.y == 0, 'Passed!' );
 			assert.ok( a.z == 0, 'Passed!' );
@@ -570,9 +479,10 @@ export default QUnit.module( 'Maths', () => {
 			assert.ok( a.getComponent( 3 ) == 4, 'Passed!' );
 
 		} );
+
 		QUnit.test( 'setComponent/getComponent exceptions', ( assert ) => {
 
-			var a = new Vector4();
+			const a = new Vector4();
 
 			assert.throws(
 				function () {
@@ -594,10 +504,11 @@ export default QUnit.module( 'Maths', () => {
 			);
 
 		} );
+
 		QUnit.test( 'setScalar/addScalar/subScalar', ( assert ) => {
 
-			var a = new Vector4();
-			var s = 3;
+			const a = new Vector4();
+			const s = 3;
 
 			a.setScalar( s );
 			assert.strictEqual( a.x, s, 'setScalar: check x' );
@@ -618,10 +529,11 @@ export default QUnit.module( 'Maths', () => {
 			assert.strictEqual( a.w, 0, 'subScalar: check w' );
 
 		} );
-		QUnit.test( 'multiply/divide', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
-			var b = new Vector4( - x, - y, - z, - w );
+		QUnit.test( 'multiplyScalar/divideScalar', ( assert ) => {
+
+			const a = new Vector4( x, y, z, w );
+			const b = new Vector4( - x, - y, - z, - w );
 
 			a.multiplyScalar( - 2 );
 			assert.ok( a.x == x * - 2, 'Passed!' );
@@ -648,11 +560,12 @@ export default QUnit.module( 'Maths', () => {
 			assert.ok( b.w == - w, 'Passed!' );
 
 		} );
+
 		QUnit.test( 'min/max/clamp', ( assert ) => {
 
-			var a = new Vector4( x, y, z, w );
-			var b = new Vector4( - x, - y, - z, - w );
-			var c = new Vector4();
+			const a = new Vector4( x, y, z, w );
+			const b = new Vector4( - x, - y, - z, - w );
+			const c = new Vector4();
 
 			c.copy( a ).min( b );
 			assert.ok( c.x == - x, 'Passed!' );
@@ -674,13 +587,14 @@ export default QUnit.module( 'Maths', () => {
 			assert.ok( c.w == w, 'Passed!' );
 
 		} );
+
 		QUnit.test( 'length/lengthSq', ( assert ) => {
 
-			var a = new Vector4( x, 0, 0, 0 );
-			var b = new Vector4( 0, - y, 0, 0 );
-			var c = new Vector4( 0, 0, z, 0 );
-			var d = new Vector4( 0, 0, 0, w );
-			var e = new Vector4( 0, 0, 0, 0 );
+			const a = new Vector4( x, 0, 0, 0 );
+			const b = new Vector4( 0, - y, 0, 0 );
+			const c = new Vector4( 0, 0, z, 0 );
+			const d = new Vector4( 0, 0, 0, w );
+			const e = new Vector4( 0, 0, 0, 0 );
 
 			assert.ok( a.length() == x, 'Passed!' );
 			assert.ok( a.lengthSq() == x * x, 'Passed!' );
@@ -698,10 +612,11 @@ export default QUnit.module( 'Maths', () => {
 			assert.ok( a.lengthSq() == ( x * x + y * y + z * z + w * w ), 'Passed!' );
 
 		} );
+
 		QUnit.test( 'lerp/clone', ( assert ) => {
 
-			var a = new Vector4( x, 0, z, 0 );
-			var b = new Vector4( 0, - y, 0, - w );
+			const a = new Vector4( x, 0, z, 0 );
+			const b = new Vector4( 0, - y, 0, - w );
 
 			assert.ok( a.lerp( a, 0 ).equals( a.lerp( a, 0.5 ) ), 'Passed!' );
 			assert.ok( a.lerp( a, 0 ).equals( a.lerp( a, 1 ) ), 'Passed!' );
@@ -717,10 +632,11 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
+		// OTHERS
 		QUnit.test( 'iterable', ( assert ) => {
 
-			var v = new Vector4( 0, 0.3, 0.7, 1 );
-			var array = [ ...v ];
+			const v = new Vector4( 0, 0.3, 0.7, 1 );
+			const array = [ ...v ];
 			assert.strictEqual( array[ 0 ], 0, 'Vector4 is iterable.' );
 			assert.strictEqual( array[ 1 ], 0.3, 'Vector4 is iterable.' );
 			assert.strictEqual( array[ 2 ], 0.7, 'Vector4 is iterable.' );

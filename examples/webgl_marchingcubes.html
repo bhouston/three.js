@@ -4,6 +4,10 @@
 	<title>three.js webgl - marching cubes</title>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - marching cubes">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_marchingcubes.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_marchingcubes.jpg">
 	<link type="text/css" rel="stylesheet" href="main.css">
 </head>
 
@@ -16,14 +20,11 @@
 		based on greggman's <a href="https://webglsamples.org/blob/blob.html">blob</a>, original code by Henrik Rydgård
 	</div>
 
-	<!-- Import maps polyfill -->
-	<!-- Remove this when import maps will be widely supported -->
-	<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 	<script type="importmap">
 		{
 			"imports": {
-				"three": "../build/three.module.js"
+				"three": "../build/three.module.js",
+				"three/addons/": "./jsm/"
 			}
 		}
 	</script>
@@ -31,12 +32,12 @@
 	<script type="module">
 		import * as THREE from 'three';
 
-		import Stats from './jsm/libs/stats.module.js';
+		import Stats from 'three/addons/libs/stats.module.js';
 
-		import { GUI } from './jsm/libs/lil-gui.module.min.js';
-		import { OrbitControls } from './jsm/controls/OrbitControls.js';
-		import { MarchingCubes } from './jsm/objects/MarchingCubes.js';
-		import { ToonShader1, ToonShader2, ToonShaderHatching, ToonShaderDotted } from './jsm/shaders/ToonShader.js';
+		import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+		import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
+		import { ToonShader1, ToonShader2, ToonShaderHatching, ToonShaderDotted } from 'three/addons/shaders/ToonShader.js';
 
 		let container, stats;
 
@@ -52,10 +53,10 @@
 
 		let time = 0;
 
-		const clock = new THREE.Clock();
+		const timer = new THREE.Timer();
+		timer.connect( document );
 
 		init();
-		animate();
 
 		function init() {
 
@@ -73,15 +74,15 @@
 
 			// LIGHTS
 
-			light = new THREE.DirectionalLight( 0xffffff );
+			light = new THREE.DirectionalLight( 0xffffff, 3 );
 			light.position.set( 0.5, 0.5, 1 );
 			scene.add( light );
 
-			pointLight = new THREE.PointLight( 0xff3300 );
+			pointLight = new THREE.PointLight( 0xff7c00, 3, 0, 0 );
 			pointLight.position.set( 0, 0, 100 );
 			scene.add( pointLight );
 
-			ambientLight = new THREE.AmbientLight( 0x080808 );
+			ambientLight = new THREE.AmbientLight( 0x323232, 3 );
 			scene.add( ambientLight );
 
 			// MATERIALS
@@ -105,9 +106,9 @@
 			// RENDERER
 
 			renderer = new THREE.WebGLRenderer();
-			renderer.outputEncoding = THREE.sRGBEncoding;
 			renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.setAnimationLoop( animate );
 			container.appendChild( renderer.domElement );
 
 			// CONTROLS
@@ -170,17 +171,18 @@
 			const texture = new THREE.TextureLoader().load( 'textures/uv_grid_opengl.jpg' );
 			texture.wrapS = THREE.RepeatWrapping;
 			texture.wrapT = THREE.RepeatWrapping;
+			texture.colorSpace = THREE.SRGBColorSpace;
 
 			const materials = {
-				'shiny': new THREE.MeshStandardMaterial( { color: 0x550000, envMap: reflectionCube, roughness: 0.1, metalness: 1.0 } ),
+				'shiny': new THREE.MeshStandardMaterial( { color: 0x9c0000, envMap: reflectionCube, roughness: 0.1, metalness: 1.0 } ),
 				'chrome': new THREE.MeshLambertMaterial( { color: 0xffffff, envMap: reflectionCube } ),
 				'liquid': new THREE.MeshLambertMaterial( { color: 0xffffff, envMap: refractionCube, refractionRatio: 0.85 } ),
-				'matte': new THREE.MeshPhongMaterial( { specular: 0x111111, shininess: 1 } ),
+				'matte': new THREE.MeshPhongMaterial( { specular: 0x494949, shininess: 1 } ),
 				'flat': new THREE.MeshLambertMaterial( { /*TODO flatShading: true */ } ),
 				'textured': new THREE.MeshPhongMaterial( { color: 0xffffff, specular: 0x111111, shininess: 1, map: texture } ),
 				'colors': new THREE.MeshPhongMaterial( { color: 0xffffff, specular: 0xffffff, shininess: 2, vertexColors: true } ),
 				'multiColors': new THREE.MeshPhongMaterial( { shininess: 2, vertexColors: true } ),
-				'plastic': new THREE.MeshPhongMaterial( { specular: 0x888888, shininess: 250 } ),
+				'plastic': new THREE.MeshPhongMaterial( { specular: 0xc1c1c1, shininess: 250 } ),
 				'toon1': toonMaterial1,
 				'toon2': toonMaterial2,
 				'hatching': hatchingMaterial,
@@ -284,12 +286,12 @@
 
 			const rainbow = [
 				new THREE.Color( 0xff0000 ),
-				new THREE.Color( 0xff7f00 ),
+				new THREE.Color( 0xffbb00 ),
 				new THREE.Color( 0xffff00 ),
 				new THREE.Color( 0x00ff00 ),
 				new THREE.Color( 0x0000ff ),
-				new THREE.Color( 0x4b0082 ),
-				new THREE.Color( 0x9400d3 )
+				new THREE.Color( 0x9400bd ),
+				new THREE.Color( 0xc800eb )
 			];
 			const subtract = 12;
 			const strength = 1.2 / ( ( Math.sqrt( numblobs ) - 1 ) / 4 + 1 );
@@ -324,7 +326,7 @@
 
 		function animate() {
 
-			requestAnimationFrame( animate );
+			timer.update();
 
 			render();
 			stats.update();
@@ -333,7 +335,7 @@
 
 		function render() {
 
-			const delta = clock.getDelta();
+			const delta = timer.getDelta();
 
 			time += delta * effectController.speed * 0.5;
 

@@ -4,6 +4,10 @@
 		<title>three.js webgl - animation - basic</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - animation - basic">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/misc_animation_keys.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/misc_animation_keys.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -12,14 +16,11 @@
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgl - animation - basic use
 		</div>
 
-		<!-- Import maps polyfill -->
-		<!-- Remove this when import maps will be widely supported -->
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "../build/three.module.js"
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
 			}
 		</script>
@@ -28,13 +29,12 @@
 
 			import * as THREE from 'three';
 
-			import Stats from './jsm/libs/stats.module.js';
+			import Stats from 'three/addons/libs/stats.module.js';
 
-			let stats, clock;
+			let stats, timer;
 			let scene, camera, renderer, mixer;
 
 			init();
-			animate();
 
 			function init() {
 
@@ -100,6 +100,7 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
 				document.body.appendChild( renderer.domElement );
 
 				//
@@ -109,7 +110,8 @@
 
 				//
 
-				clock = new THREE.Clock();
+				timer = new THREE.Timer();
+				timer.connect( document );
 
 				//
 
@@ -128,15 +130,9 @@
 
 			function animate() {
 
-				requestAnimationFrame( animate );
+				timer.update();
 
-				render();
-
-			}
-
-			function render() {
-
-				const delta = clock.getDelta();
+				const delta = timer.getDelta();
 
 				if ( mixer ) {
 

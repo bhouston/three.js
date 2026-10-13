@@ -1,6 +1,6 @@
 import { HalfFloatType, Vector2, RenderTarget, RendererUtils, QuadMesh, NodeMaterial, Node, NodeUpdateType, Matrix4, DepthTexture } from 'three/webgpu';
-import { float, Fn, max, texture, uniform, uv, vec2, convertToTexture, passTexture, velocity, ivec2, mix, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
-import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCurrentDepth, samplePreviousDepth } from '../utils/TAAUtils.js';
+import { float, Fn, max, mix, texture, uniform, uv, vec2, vec4, convertToTexture, passTexture, velocity, ivec2, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
+import { clipAABB, computeHaltonOffsets, flickerReduction, inverseReversibleToneMap, reversibleToneMap, rgbToYCoCg, sampleCatmullRom, sampleCurrentDepth, samplePreviousDepth, yCoCgToRGB } from '../utils/TAAUtils.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -119,6 +119,79 @@ class TRAANode extends Node {
 		 * @default true
 		 */
 		this.useSubpixelCorrection = true;
+
+		/**
+		 * How the reprojected history is sampled. `'linear'` uses a single bilinear fetch which is cheap
+		 * but blurs the image under motion since the history is resampled every frame. `'catmull-rom'`
+		 * uses a 5-tap Catmull-Rom filter that keeps the history sharp.
+		 *
+		 * Must be set before the node is compiled.
+		 *
+		 * @type {('linear'|'catmull-rom')}
+		 * @default 'catmull-rom'
+		 */
+		this.historySampling = 'catmull-rom';
+
+		/**
+		 * Whether the neighborhood variance clipping is performed in YCoCg instead of RGB space.
+		 * YCoCg decorrelates luma and chroma, which results in a tighter clipping box.
+		 *
+		 * Must be set before the node is compiled.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.useYCoCgClipping = false;
+
+		/**
+		 * Whether the resolve is performed on reversibly tone mapped colors. This replaces the luminance
+		 * weighted blend and keeps bright HDR samples from inflating the clipping box and causing flicker.
+		 *
+		 * Must be set before the node is compiled.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.useReversibleToneMapping = false;
+
+		/**
+		 * The minimum weight of the current frame in the exponential moving average. Lower values
+		 * accumulate more samples (smoother, fewer aliasing artifacts) at the cost of more ghosting.
+		 *
+		 * Must be set before the node is compiled.
+		 *
+		 * @type {number}
+		 * @default 0.05
+		 */
+		this.minCurrentWeight = 0.05;
+
+		/**
+		 * The scale of the standard deviation that defines the variance clipping box for static pixels.
+		 * Larger values accept more history (less flicker), smaller values reject more (less ghosting).
+		 * The box shrinks to half of this value as the velocity approaches `maxVelocityLength`.
+		 *
+		 * Must be set before the node is compiled.
+		 *
+		 * @type {number}
+		 * @default 1
+		 */
+		this.varianceGamma = 1;
+
+		/**
+		 * The number of Halton(2, 3) sub-pixel jitter offsets cycled through.
+		 *
+		 * @type {number}
+		 * @default 32
+		 */
+		this.jitterSampleCount = 32;
+
+		/**
+		 * The jitter offsets in the range [0, 1].
+		 *
+		 * @private
+		 * @type {Array<Array<number>>}
+		 */
+		this._jitterOffsets = computeHaltonOffsets( 32 );
 
 		/**
 		 * The jitter index selects the current camera offset value.
@@ -301,7 +374,14 @@ class TRAANode extends Node {
 
 		};
 
-		const jitterOffset = _haltonOffsets[ this._jitterIndex ];
+		if ( this._jitterOffsets.length !== this.jitterSampleCount ) {
+
+			this._jitterOffsets = computeHaltonOffsets( this.jitterSampleCount );
+			this._jitterIndex = 0;
+
+		}
+
+		const jitterOffset = this._jitterOffsets[ this._jitterIndex % this._jitterOffsets.length ];
 
 		this.camera.setViewOffset(
 
@@ -327,7 +407,7 @@ class TRAANode extends Node {
 		// update jitter index
 
 		this._jitterIndex ++;
-		this._jitterIndex = this._jitterIndex % _haltonOffsets.length;
+		this._jitterIndex = this._jitterIndex % this._jitterOffsets.length;
 
 	}
 
@@ -462,6 +542,27 @@ class TRAANode extends Node {
 
 		// Performs variance clipping.
 		// See: https://developer.download.nvidia.com/gameworks/events/GDC2016/msalvi_temporal_supersampling.pdf
+		const useToneMapping = this.useReversibleToneMapping;
+		const useYCoCg = this.useYCoCgClipping;
+
+		// The color space the resolve operates in: optionally reversibly tone mapped and/or YCoCg.
+
+		const toResolveSpace = ( color ) => {
+
+			let result = useToneMapping ? reversibleToneMap( color ) : color;
+			if ( useYCoCg ) result = vec4( rgbToYCoCg( result.rgb ), result.a );
+			return result;
+
+		};
+
+		const fromResolveSpace = ( color ) => {
+
+			let result = useYCoCg ? vec4( yCoCgToRGB( color.rgb ), color.a ) : color;
+			if ( useToneMapping ) result = inverseReversibleToneMap( result );
+			return result;
+
+		};
+
 		const varianceClipping = Fn( ( [ positionTexel, currentColor, historyColor, gamma ] ) => {
 
 			const offsets = [
@@ -481,7 +582,7 @@ class TRAANode extends Node {
 			for ( const [ x, y ] of offsets ) {
 
 				// Use max() to prevent NaN values from propagating.
-				const neighbor = this.beautyNode.offset( ivec2( x, y ) ).load( positionTexel ).max( 0 );
+				const neighbor = toResolveSpace( this.beautyNode.offset( ivec2( x, y ) ).load( positionTexel ).max( 0 ) );
 				moment1.addAssign( neighbor );
 				moment2.addAssign( neighbor.pow2() );
 
@@ -541,12 +642,12 @@ class TRAANode extends Node {
 			// sample the current and previous colors
 
 			const currentColor = this.beautyNode.sample( uvNode );
-			const historyColor = historyNode.sample( historyUV );
+			const historyColor = this.historySampling === 'catmull-rom' ? sampleCatmullRom( historyNode, historyUV, vec2( textureSize ) ) : historyNode.sample( historyUV );
 
 			// increase the weight towards the current frame under motion
 
 			const motionFactor = uvNode.sub( historyUV ).mul( textureSize ).length().div( this.maxVelocityLength ).saturate();
-			const currentWeight = float( 0.05 ).toVar(); // A minimum weight
+			const currentWeight = float( this.minCurrentWeight ).toVar(); // A minimum weight
 
 			if ( this.useSubpixelCorrection ) {
 
@@ -559,14 +660,21 @@ class TRAANode extends Node {
 
 			// Perform neighborhood clipping/clamping. We use variance clipping here.
 
-			const varianceGamma = mix( 0.5, 1, motionFactor.oneMinus().pow2() ); // Reasonable gamma range is [0.75, 2]
-			const clippedHistoryColor = varianceClipping( positionTexel, currentColor, historyColor, varianceGamma );
+			const varianceGamma = mix( 0.5, 1, motionFactor.oneMinus().pow2() ).mul( this.varianceGamma );
+			const currentResolveColor = toResolveSpace( currentColor ).toConst();
+			const clippedHistoryColor = varianceClipping( positionTexel, currentResolveColor, toResolveSpace( historyColor ), varianceGamma );
+
+			if ( useToneMapping ) {
+
+				// the tone mapped space already compresses bright samples, a linear blend is sufficient
+
+				return fromResolveSpace( mix( clippedHistoryColor, currentResolveColor, currentWeight ) );
+
+			}
 
 			// flicker reduction based on luminance weighing
 
-			const output = flickerReduction( currentColor, clippedHistoryColor, currentWeight );
-
-			return output;
+			return flickerReduction( currentColor, fromResolveSpace( clippedHistoryColor ), currentWeight );
 
 		} );
 
@@ -597,8 +705,6 @@ class TRAANode extends Node {
 }
 
 export default TRAANode;
-
-const _haltonOffsets = /*@__PURE__*/ computeHaltonOffsets( 32 );
 
 /**
  * TSL function for creating a TRAA node for Temporal Reprojection Anti-Aliasing.

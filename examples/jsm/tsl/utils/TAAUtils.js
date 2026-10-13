@@ -1,4 +1,4 @@
-import { add, float, Fn, If, luminance, max, struct, vec2, vec4, getViewPosition, logarithmicDepthToViewZ, viewZToOrthographicDepth, viewZToPerspectiveDepth } from 'three/tsl';
+import { add, dot, float, Fn, If, luminance, max, struct, vec2, vec3, vec4, getViewPosition, logarithmicDepthToViewZ, viewZToOrthographicDepth, viewZToPerspectiveDepth } from 'three/tsl';
 
 /**
  * Optimized version of AABB clipping.
@@ -60,6 +60,110 @@ export const flickerReduction = Fn( ( [ currentColor, historyColor, currentWeigh
 	return add( currentColor.mul( weightCurrent ), historyColor.mul( weightHistory ) ).div( max( weightCurrent.add( weightHistory ), 0.00001 ) );
 
 } );
+
+/**
+ * Samples a texture with a 5-tap Catmull-Rom filter. Compared to bilinear filtering, this keeps the
+ * reprojected history sharp under motion since repeated resampling does not accumulate blur. The four
+ * corner taps of the 4×4 footprint are skipped since their weights are negligible. Negative lobes
+ * are clamped to avoid ringing artifacts.
+ *
+ * Reference: {@link https://gist.github.com/TheRealMJP/c83b8c0f46b63f3a88a5986f4fa982b1}
+ *
+ * @tsl
+ * @private
+ * @function
+ * @param {TextureNode} textureNode - The texture to sample. Must use linear filtering.
+ * @param {Node<vec2>} uv - The uv coordinates.
+ * @param {Node<vec2>} textureSize - The size of the texture in texels.
+ * @return {Node<vec4>} The filtered color.
+ */
+export const sampleCatmullRom = ( textureNode, uv, textureSize ) => {
+
+	const invSize = vec2( 1 ).div( textureSize ).toConst();
+	const samplePosition = uv.mul( textureSize ).toConst();
+	const texPos1 = samplePosition.sub( 0.5 ).floor().add( 0.5 ).toConst();
+	const f = samplePosition.sub( texPos1 ).toConst();
+
+	const w0 = f.mul( f.mul( f.mul( - 0.5 ).add( 1 ) ).sub( 0.5 ) );
+	const w1 = f.mul( f ).mul( f.mul( 1.5 ).sub( 2.5 ) ).add( 1 );
+	const w2 = f.mul( f.mul( f.mul( - 1.5 ).add( 2 ) ).add( 0.5 ) );
+	const w3 = f.mul( f ).mul( f.mul( 0.5 ).sub( 0.5 ) );
+
+	const w12 = w1.add( w2 ).toConst();
+	const texPos0 = texPos1.sub( 1 ).mul( invSize ).toConst();
+	const texPos3 = texPos1.add( 2 ).mul( invSize ).toConst();
+	const texPos12 = texPos1.add( w2.div( w12 ) ).mul( invSize ).toConst();
+
+	const weight0 = w12.x.mul( w0.y );
+	const weight1 = w0.x.mul( w12.y );
+	const weight2 = w12.x.mul( w12.y );
+	const weight3 = w3.x.mul( w12.y );
+	const weight4 = w12.x.mul( w3.y );
+
+	const result = textureNode.sample( vec2( texPos12.x, texPos0.y ) ).mul( weight0 )
+		.add( textureNode.sample( vec2( texPos0.x, texPos12.y ) ).mul( weight1 ) )
+		.add( textureNode.sample( texPos12 ).mul( weight2 ) )
+		.add( textureNode.sample( vec2( texPos3.x, texPos12.y ) ).mul( weight3 ) )
+		.add( textureNode.sample( vec2( texPos12.x, texPos3.y ) ).mul( weight4 ) );
+
+	return result.div( add( weight0, weight1, weight2, weight3, weight4 ) ).max( 0 );
+
+};
+
+/**
+ * Converts a RGB color to YCoCg.
+ *
+ * @tsl
+ * @private
+ * @function
+ * @param {Node<vec3>} rgb - The RGB color.
+ * @return {Node<vec3>} The YCoCg color.
+ */
+export const rgbToYCoCg = ( rgb ) => vec3(
+	dot( rgb, vec3( 0.25, 0.5, 0.25 ) ),
+	dot( rgb, vec3( 0.5, 0, - 0.5 ) ),
+	dot( rgb, vec3( - 0.25, 0.5, - 0.25 ) )
+);
+
+/**
+ * Converts a YCoCg color to RGB.
+ *
+ * @tsl
+ * @private
+ * @function
+ * @param {Node<vec3>} ycocg - The YCoCg color.
+ * @return {Node<vec3>} The RGB color.
+ */
+export const yCoCgToRGB = ( ycocg ) => vec3(
+	ycocg.x.add( ycocg.y ).sub( ycocg.z ),
+	ycocg.x.add( ycocg.z ),
+	ycocg.x.sub( ycocg.y ).sub( ycocg.z )
+);
+
+/**
+ * Reversible tone mapping operator `c / ( 1 + max( c.r, c.g, c.b ) )`. Resolving in this space keeps
+ * bright HDR samples from dominating the neighborhood statistics and the blend, which reduces flickering.
+ *
+ * Reference: {@link https://gpuopen.com/learn/optimized-reversible-tonemapper-for-resolve/}
+ *
+ * @tsl
+ * @private
+ * @function
+ * @param {Node<vec4>} color - The linear HDR color.
+ * @return {Node<vec4>} The tone mapped color.
+ */
+export const reversibleToneMap = ( color ) => vec4( color.rgb.div( max( color.r, color.g, color.b ).add( 1 ) ), color.a );
+
+/**
+ * Inverse of {@link reversibleToneMap}.
+ *
+ * @tsl
+ * @private
+ * @function
+ * @param {Node<vec4>} color - The tone mapped color.
+ * @return {Node<vec4>} The linear HDR color.
+ */
+export const inverseReversibleToneMap = ( color ) => vec4( color.rgb.div( float( 1 ).sub( max( color.r, color.g, color.b ) ).max( 1e-4 ) ), color.a );
 
 /**
  * Samples the 3×3 neighborhood of the given texel position in the depth buffer and returns

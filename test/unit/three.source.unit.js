@@ -306,3 +306,4 @@ import './src/nodes/tsl/TSLProceduralUtils.tests.js';
 import './src/nodes/tsl/TSLBSDFLightingRemainder.tests.js';
 import './src/nodes/tsl/TSL.Irradiance.tests.js';
 import './src/nodes/tsl/TSLUtilsMisc.tests.js';
+import './src/nodes/accessors/VelocityNode.tests.js';

@@ -175,6 +175,16 @@ class SSRNode extends Node {
 		this.thickness = uniform( 0.1 );
 
 		/**
+		 * Offsets the ray origin along the shading normal to reduce self-intersections.
+		 * The offset is `max( abs( viewZ ), 0.5 ) * normalBias` in view-space units.
+		 * Increase cautiously: large offsets can miss nearby geometry. Set to `0` to disable.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 0.002
+		 */
+		this.normalBias = uniform( 0.002 );
+
+		/**
 		 * A multiplier for the overall reflection intensity. `1` leaves the
 		 * reflections unchanged, lower values dim them and higher values boost them.
 		 *
@@ -928,7 +938,7 @@ class SSRNode extends Node {
 
 				const Xi = noise.toVar();
 				// Mirror-bias: pull `Xi.y` toward the cap top to tighten the GGX lobe and cut mid-roughness
-				// noise. Unbiased — bounded VNDF keeps brdf·cos/pdf ~constant (EA, "Stochastic SSR").
+				// noise. This deliberately biases the distribution; set mirrorBias to 0 for the full lobe.
 				Xi.y.assign( mix( Xi.y, 0.0, this.mirrorBias.mul( Xi.w.sqrt() ) ) );
 
 				albedo.assign( ( this.diffuseNode !== null ? this.diffuseNode.sample( uvPos ).rgb : vec3( 1 ) ) );
@@ -1023,9 +1033,13 @@ class SSRNode extends Node {
 
 			};
 
-			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ) ).toVar();
+			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ).max( 1e-3 ) ).toVar();
 
-			const d1viewPosition = viewPosition.add( viewReflectDir.mul( maxReflectRayLen ) ).toVar();
+			// Depth-scaled normal offset, adapted from three-fidelity's NewSSRNode. Keep all
+			// projection, depth interpolation and hit tests on the same displaced ray.
+			const rayOrigin = viewPosition.add( viewNormal.mul( abs( viewPosition.z ).max( 0.5 ).mul( this.normalBias.max( 0 ) ) ) ).toVar();
+
+			const d1viewPosition = rayOrigin.add( viewReflectDir.mul( maxReflectRayLen ) ).toVar();
 
 			// Camera type is fixed at build time, so guard the near-plane clamp with a JS branch
 			// rather than a runtime uniform (the orthographic case compiles it out entirely).
@@ -1033,14 +1047,14 @@ class SSRNode extends Node {
 
 				If( d1viewPosition.z.greaterThan( this._cameraNear.negate() ), () => {
 
-					const t = sub( this._cameraNear.negate(), viewPosition.z ).div( viewReflectDir.z );
-					d1viewPosition.assign( viewPosition.add( viewReflectDir.mul( t ) ) );
+					const t = sub( this._cameraNear.negate(), rayOrigin.z ).div( viewReflectDir.z );
+					d1viewPosition.assign( rayOrigin.add( viewReflectDir.mul( t ) ) );
 
 				} );
 
 			}
 
-			const d0 = uvPos.mul( this._resolution ).xy.toVar();
+			const d0 = getScreenPosition( rayOrigin, this._cameraProjectionMatrix ).mul( this._resolution ).toVar();
 			const d1 = getScreenPosition( d1viewPosition, this._cameraProjectionMatrix ).mul( this._resolution ).toVar();
 
 			const xLen = d1.x.sub( d0.x ).toVar();
@@ -1068,13 +1082,13 @@ class SSRNode extends Node {
 
 			// Reflected-ray view-space Z at ray parameter s ∈ [0,1] (linear in 1/z for perspective),
 			// hoisted so the march and refinement evaluate it identically.
-			const recipVPZ = float( 1 ).div( viewPosition.z ).toConst();
+			const recipVPZ = float( 1 ).div( rayOrigin.z ).toConst();
 			const recipD1VPZ = float( 1 ).div( d1viewPosition.z ).toConst();
 
 			// Camera type is known at build time, so branch at compile time rather than via a runtime select.
 			const reflectRayZAt = this.camera.isPerspectiveCamera
 				? ( sVal ) => float( 1 ).div( recipVPZ.add( sVal.mul( recipD1VPZ.sub( recipVPZ ) ) ) )
-				: ( sVal ) => viewPosition.z.add( sVal.mul( d1viewPosition.z.sub( viewPosition.z ) ) );
+				: ( sVal ) => rayOrigin.z.add( sVal.mul( d1viewPosition.z.sub( rayOrigin.z ) ) );
 
 			// Screen-space position along the ray for a given s ∈ [0,1].
 			const screenPosAt = ( sVal ) => d0.add( stepVec.mul( sVal.mul( totalStep ) ) );
@@ -1123,7 +1137,7 @@ class SSRNode extends Node {
 					// Depth crossing: ray went behind the depth buffer. Gate by thickness before stopping
 					// so an occluder gap doesn't end the march prematurely.
 					const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse ).toVar();
-					const away = pointToLineDistance( vP, viewPosition, d1viewPosition ).toVar();
+					const away = pointToLineDistance( vP, rayOrigin, d1viewPosition ).toVar();
 
 					const uvNeighbor = uvS.add( uvPixelStepX ).toVar();
 					const vPNeighbor = getViewPosition( uvNeighbor, d, this._cameraProjectionMatrixInverse ).toVar();

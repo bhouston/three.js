@@ -914,6 +914,10 @@ class SSRNode extends Node {
 
 			const V = viewIncidentDir.negate().normalize().toVar();
 
+			// Reject back-facing shading normals before sampling the reflection lobe.
+			const viewCosine = dot( viewIncidentDir.negate(), viewNormal ).toVar();
+			viewCosine.lessThanEqual( 0 ).discard();
+
 			let viewReflectDir, finalSampleWeight, specDominantFactor;
 			const albedo = vec3( 1 ).toVar();
 			let sampleEnvReflection = null;
@@ -1023,7 +1027,8 @@ class SSRNode extends Node {
 
 			};
 
-			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ) ).toVar();
+			// Bound the remaining positive grazing-angle denominator to keep the ray budget finite.
+			const maxReflectRayLen = this.maxDistance.div( viewCosine.max( 1e-3 ) ).toVar();
 
 			const d1viewPosition = viewPosition.add( viewReflectDir.mul( maxReflectRayLen ) ).toVar();
 

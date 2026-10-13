@@ -2,12 +2,13 @@
 import { float, Fn, ivec2, int, If, uniform } from '../tsl/TSLBase.js';
 import { Loop } from '../utils/LoopNode.js';
 import { OnObjectUpdate } from '../utils/EventNode.js';
-import { textureLoad } from './TextureNode.js';
-import { positionLocal } from './Position.js';
+import { uniformTexture, textureLoad } from './TextureNode.js';
+import { positionLocal, positionPrevious } from './Position.js';
 import { normalLocal } from './Normal.js';
 import { instanceIndex, vertexIndex } from '../core/IndexNode.js';
 
 import { DataArrayTexture } from '../../textures/DataArrayTexture.js';
+import { DataTexture } from '../../textures/DataTexture.js';
 import { Vector2 } from '../../math/Vector2.js';
 import { Vector4 } from '../../math/Vector4.js';
 import { FloatType } from '../../constants.js';
@@ -16,6 +17,60 @@ import { uniformArray } from './UniformArrayNode.js';
 const _morphTextures = /*@__PURE__*/ new WeakMap();
 const _morphVec4 = /*@__PURE__*/ new Vector4();
 const _morphInfluencesData = /*@__PURE__*/ new WeakMap();
+const _previousMorphData = /*@__PURE__*/ new WeakMap();
+
+function getPreviousMorphData( object, frameId ) {
+
+	let data = _previousMorphData.get( object );
+	const morphTexture = object.morphTexture;
+	const hasMorphTexture = morphTexture !== undefined && morphTexture !== null;
+	const influences = object.morphTargetInfluences || [];
+
+	if ( data === undefined || data.currentInfluences.length !== influences.length || data.sourceTexture !== morphTexture ) {
+
+		if ( data && data.texture ) data.texture.dispose();
+
+		data = {
+			frameId,
+			currentInfluences: influences.slice(),
+			influences: influences.slice(),
+			sourceTexture: morphTexture,
+			texture: null
+		};
+
+		if ( hasMorphTexture ) {
+
+			const { data: array, width, height } = morphTexture.image;
+			data.currentTextureData = array.slice();
+			data.texture = new DataTexture( array.slice(), width, height, morphTexture.format, morphTexture.type );
+			data.texture.needsUpdate = true;
+			const previousTexture = data.texture;
+			morphTexture.addEventListener( 'dispose', () => previousTexture.dispose() );
+
+		}
+
+		_previousMorphData.set( object, data );
+
+	} else if ( data.frameId !== frameId ) {
+
+		data.frameId = frameId;
+		data.influences = data.currentInfluences.slice();
+
+		if ( hasMorphTexture ) {
+
+			data.texture.image.data.set( data.currentTextureData );
+			data.texture.needsUpdate = true;
+
+		}
+
+	}
+
+	data.currentInfluences = influences.slice();
+	if ( hasMorphTexture ) data.currentTextureData.set( morphTexture.image.data );
+
+	return data;
+
+}
 
 /**
  * TSL function that retrieves and scales the morphed attribute (position or normal) texel value.
@@ -182,7 +237,7 @@ function getEntry( geometry ) {
  * @function
  * @param {Mesh} mesh - The mesh.
  */
-export const morphReference = /*@__PURE__*/ Fn( ( [ mesh ] ) => {
+export const morphReference = /*@__PURE__*/ Fn( ( [ mesh ], builder ) => {
 
 	const { geometry } = mesh;
 
@@ -211,13 +266,26 @@ export const morphReference = /*@__PURE__*/ Fn( ( [ mesh ] ) => {
 	}
 
 	const { base, influences } = morphInfluenceData;
+	const needsPreviousData = hasMorphPosition && builder.needsPreviousData();
+	const hasMorphTexture = mesh.morphTexture !== null && mesh.morphTexture !== undefined;
+	const previousBase = needsPreviousData && ! hasMorphTexture ? uniform( 1 ) : null;
+	const previousInfluences = needsPreviousData && ! hasMorphTexture ? uniformArray( mesh.morphTargetInfluences.slice(), 'float' ) : null;
+	const previousTexture = needsPreviousData && hasMorphTexture ? uniformTexture( mesh.morphTexture ) : null;
 
 	// Shader
 
 	const { texture: bufferMap, stride, size } = getEntry( geometry );
 
-	if ( hasMorphPosition === true ) positionLocal.mulAssign( base );
-	if ( hasMorphNormals === true ) normalLocal.mulAssign( base );
+	const baseInfluence = hasMorphTexture ? textureLoad( mesh.morphTexture, ivec2( 0, int( instanceIndex ) ) ).r : base;
+	if ( hasMorphPosition === true ) positionLocal.mulAssign( baseInfluence );
+	if ( hasMorphNormals === true ) normalLocal.mulAssign( baseInfluence );
+
+	if ( needsPreviousData ) {
+
+		const previousBaseInfluence = hasMorphTexture ? textureLoad( previousTexture, ivec2( 0, int( instanceIndex ) ) ).r : previousBase;
+		positionPrevious.mulAssign( previousBaseInfluence );
+
+	}
 
 	const width = int( size.width );
 
@@ -225,7 +293,7 @@ export const morphReference = /*@__PURE__*/ Fn( ( [ mesh ] ) => {
 
 		const influence = float( 0 ).toVar();
 
-		if ( mesh.count > 1 && ( mesh.morphTexture !== null && mesh.morphTexture !== undefined ) ) {
+		if ( hasMorphTexture ) {
 
 			influence.assign( textureLoad( mesh.morphTexture, ivec2( int( i ).add( 1 ), int( instanceIndex ) ) ).r );
 
@@ -265,15 +333,29 @@ export const morphReference = /*@__PURE__*/ Fn( ( [ mesh ] ) => {
 
 		} );
 
+		if ( needsPreviousData ) {
+
+			const previousInfluence = hasMorphTexture ? textureLoad( previousTexture, ivec2( int( i ).add( 1 ), int( instanceIndex ) ) ).r : previousInfluences.element( i );
+			positionPrevious.addAssign( getMorph( {
+				bufferMap,
+				influence: previousInfluence,
+				stride,
+				width,
+				depth: i,
+				offset: int( 0 )
+			} ) );
+
+		}
+
 	} );
 
 	// Update
 
-	OnObjectUpdate( ( { object } ) => {
+	OnObjectUpdate( ( { object, frameId } ) => {
 
 		const { base, influences } = morphInfluenceData;
 
-		if ( object.geometry.morphTargetsRelative ) {
+		if ( object.geometry.morphTargetsRelative || hasMorphTexture ) {
 
 			base.value = 1;
 
@@ -290,8 +372,24 @@ export const morphReference = /*@__PURE__*/ Fn( ( [ mesh ] ) => {
 
 		}
 
+		if ( needsPreviousData ) {
+
+			const previous = getPreviousMorphData( object, frameId );
+			if ( previousInfluences ) {
+
+				previousBase.value = object.geometry.morphTargetsRelative ? 1 : 1 - previous.influences.reduce( ( a, b ) => a + b, 0 );
+				previousInfluences.array = previous.influences;
+				previousInfluences.update();
+
+			}
+
+			if ( previousTexture ) previousTexture.value = previous.texture;
+
+		}
+
 	} );
 
 }, 'void' );
+
 
 

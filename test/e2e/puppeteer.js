@@ -25,8 +25,10 @@ const exceptionList = [
 	'webgpu_postprocessing_dof',
 	'webgpu_postprocessing_ssgi',
 	'webgpu_postprocessing_ssgi_ballpool',
+	'webgpu_postprocessing_sampling_noise',
 	'webgpu_postprocessing_sss',
 	'webgpu_postprocessing_traa',
+	'webgpu_postprocessing_traa_metrics',
 	'webgpu_tsl_vfx_linkedparticles',
 	'webgpu_volume_lighting_traa',
 

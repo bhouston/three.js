@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - sampling noise metrics</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#status { position: absolute; bottom: 8px; left: 8px; color: white; background: #000a; padding: 6px; font: 12px monospace; white-space: pre; max-width: calc( 100% - 30px ); overflow: auto; max-height: 70%; }
+			#captions { position: absolute; top: 70px; left: 0; width: 100%; display: flex; justify-content: center; pointer-events: none; }
+			#captions span { color: white; font: 12px sans-serif; text-shadow: 0 1px 3px black; text-align: center; }
+		</style>
+	</head>
+	<body>
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Sampling Noise Metrics</span>
+			</div>
+			<small>1 spp estimates of a known image with different noise sources, denoised by spatial and temporal filters.</small>
+		</div>
+		<div id="captions"></div>
+		<div id="status">Starting…</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			// A controlled test for stochastic effects (AO, shadows, SSGI, volumetrics) and their denoisers.
+			//
+			// Each pixel estimates a known ground truth value g in [0, 1] with a single binary sample
+			// ( u < g ? 1 : 0 ), like a visibility test with one ray. The random number u comes from the noise
+			// source under test. The noisy frames are then filtered like a renderer would do:
+			//
+			// - none: the raw 1 spp frame.
+			// - EMA: exponential moving average over time ( alpha = 0.1 ), like TAA accumulation of a static scene.
+			// - box 3×3 / binomial 3×3: a spatial denoiser on the current frame.
+			// - binomial 3×3 + EMA: both, like a spatial denoise followed by TAA.
+			//
+			// The error is measured against the ground truth filtered with the same spatial filter, so the
+			// numbers isolate the noise from the bias (blur) of the filter. Lower RMSE is better.
+			//
+			// The FAST and STBN noise textures are from https://github.com/electronicarts/fastnoise (BSD-3-Clause).
+
+			import * as THREE from 'three/webgpu';
+			import { Fn, float, fract, int, uint, ivec2, uniform, vec2, vec4, texture, textureLoad, screenCoordinate, uv, rand, interleavedGradientNoise, hash, smoothstep, length, step, mix, select, abs, sin } from 'three/tsl';
+			import { bindAnalyticNoise } from 'three/addons/tsl/utils/RNoise.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
+			const query = new URLSearchParams( location.search );
+
+			const params = {
+				size: Number( query.get( 'size' ) || 512 ),
+				frames: Number( query.get( 'frames' ) || 64 ),
+				alpha: Number( query.get( 'alpha' ) || 0.1 ),
+				noise: 'FAST binomial 3×3 × EMA',
+				live: true
+			};
+
+			const SIZE = params.size;
+
+			const status = document.getElementById( 'status' );
+
+			const renderer = new THREE.WebGPURenderer( { antialias: false } );
+			renderer.setPixelRatio( 1 );
+			renderer.setSize( SIZE * 3, SIZE );
+			document.body.appendChild( renderer.domElement );
+			await renderer.init();
+
+			// noise textures (32 slices of 128×128 packed in a 8×4 atlas)
+
+			const loader = new THREE.TextureLoader();
+
+			async function loadNoise( name ) {
+
+				const map = await loader.loadAsync( `textures/noises/fast/${ name }.png` );
+				map.minFilter = map.magFilter = THREE.NearestFilter;
+				map.generateMipmaps = false;
+				map.colorSpace = THREE.NoColorSpace;
+				return map;
+
+			}
+
+			const [ fastBinomial, fastBox, fastSeparate, stbn, blueNoise2D ] = await Promise.all( [
+				loadNoise( 'fast_binomial3x3_exp' ),
+				loadNoise( 'fast_box3x3_exp' ),
+				loadNoise( 'fast_gauss1_exp_separate' ),
+				loadNoise( 'stbn_scalar' ),
+				loadNoise( 'bluenoise_2d' )
+			] );
+
+			const frameIndex = uniform( 0, 'uint' );
+			const frameFloat = uniform( 0 );
+			const resolution = uniform( new THREE.Vector2( SIZE, SIZE ) );
+
+			const pixel = screenCoordinate.xy.floor();
+
+			// texel of a 128×128×32 volume packed in an 8×4 atlas
+
+			const atlasNoise = ( map ) => Fn( () => {
+
+				const slice = int( frameIndex.mod( 32 ) );
+				const p = ivec2( pixel ).mod( 128 );
+				const offset = ivec2( slice.mod( 8 ).mul( 128 ), slice.div( 8 ).mul( 128 ) );
+				return textureLoad( texture( map ), p.add( offset ) ).r.mul( 255 ).add( 0.5 ).div( 256 );
+
+			} )();
+
+			const analyticNoise = bindAnalyticNoise( resolution, 47 );
+
+			// the random number u ∈ [0, 1) per pixel and frame for each noise source
+
+			const NOISES = {
+				'white (PCG hash)': () => hash( uint( pixel.x ).add( uint( pixel.y ).mul( 4096 ) ).add( frameIndex.mul( 16777216 ) ) ),
+				'white (rand sin hash)': () => rand( uv().add( fract( frameFloat.mul( vec2( 0.7548776662, 0.5698402910 ) ) ) ) ),
+				'IGN static': () => interleavedGradientNoise( pixel ),
+				'IGN animated (5.588238)': () => interleavedGradientNoise( pixel.add( frameFloat.mod( 64 ).mul( 5.588238 ) ) ),
+				'GTAO/SSGI (IGN + rand, 4×6 tables)': () => {
+
+					// mirrors the step jitter of GTAONode / SSGINode with temporal filtering enabled
+					const offsets = [ 0, 0.5, 0.25, 0.75 ];
+					const rotations = [ 60, 300, 180, 240, 120, 0 ].map( r => r / 360 );
+					const f = int( frameIndex );
+					const temporalOffset = select( f.mod( 4 ).equal( 0 ), offsets[ 0 ], select( f.mod( 4 ).equal( 1 ), offsets[ 1 ], select( f.mod( 4 ).equal( 2 ), offsets[ 2 ], offsets[ 3 ] ) ) );
+					const r6 = f.mod( 6 );
+					const temporalDirection = select( r6.equal( 0 ), rotations[ 0 ], select( r6.equal( 1 ), rotations[ 1 ], select( r6.equal( 2 ), rotations[ 2 ], select( r6.equal( 3 ), rotations[ 3 ], select( r6.equal( 4 ), rotations[ 4 ], rotations[ 5 ] ) ) ) ) );
+					return fract( interleavedGradientNoise( pixel.add( temporalOffset ) ).add( rand( uv().add( float( temporalDirection ).mul( 0.02 ) ).mul( 2 ).sub( 1 ) ) ) );
+
+				},
+				'RNoise (SSR / RecurrentDenoise)': () => analyticNoise( uv(), frameIndex ).x,
+				'blue noise 2D + golden ratio': () => fract( textureLoad( texture( blueNoise2D ), ivec2( pixel ).mod( 128 ) ).r.mul( 255 ).add( 0.5 ).div( 256 ).add( frameFloat.mul( 0.61803398875 ) ) ),
+				'STBN (Gaussian × Gaussian)': () => atlasNoise( stbn ),
+				'FAST Gaussian × EMA separate': () => atlasNoise( fastSeparate ),
+				'FAST box 3×3 × EMA': () => atlasNoise( fastBox ),
+				'FAST binomial 3×3 × EMA': () => atlasNoise( fastBinomial )
+			};
+
+			// the ground truth: smooth gradients plus hard edges, similar to soft and hard visibility boundaries
+
+			const groundTruth = Fn( () => {
+
+				const p = uv();
+				const gradient = p.x.mul( 0.9 ).add( 0.05 );
+				const waves = sin( p.y.mul( 25 ) ).mul( 0.15 ).add( 0.5 );
+				const base = mix( gradient, waves, step( 0.5, p.y ) ).toVar();
+				const disk = step( length( p.sub( vec2( 0.3, 0.3 ) ) ), 0.15 );
+				const ring = smoothstep( 0.02, 0.0, abs( length( p.sub( vec2( 0.72, 0.72 ) ) ).sub( 0.14 ) ) );
+				const square = step( abs( p.x.sub( 0.72 ) ).max( abs( p.y.sub( 0.28 ) ) ), 0.12 );
+				base.assign( mix( base, 0.25, disk ) );
+				base.assign( mix( base, 0.85, square ) );
+				base.assign( mix( base, 0.1, ring ) );
+				return base;
+
+			} )();
+
+			// render targets: R = raw 1 spp sample, G = exponential moving average
+
+			const targetOptions = { type: THREE.FloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter };
+			let readTarget = new THREE.RenderTarget( SIZE, SIZE, targetOptions );
+			let writeTarget = new THREE.RenderTarget( SIZE, SIZE, targetOptions );
+			const truthTarget = new THREE.RenderTarget( SIZE, SIZE, targetOptions );
+
+			const historyNode = texture( readTarget.texture );
+			const alpha = uniform( params.alpha );
+			const isFirstFrame = uniform( 1 );
+
+			const materials = {};
+
+			function getMaterial( key ) {
+
+				if ( materials[ key ] === undefined ) {
+
+					const material = new THREE.NodeMaterial();
+					const u = NOISES[ key ]();
+					const sample = step( u, groundTruth ); // u <= g
+					const previous = textureLoad( historyNode, ivec2( pixel ) ).g;
+					const ema = mix( mix( previous, sample, alpha ), sample, isFirstFrame );
+					material.fragmentNode = vec4( sample, ema, groundTruth, 1 );
+					materials[ key ] = material;
+
+				}
+
+				return materials[ key ];
+
+			}
+
+			const quad = new THREE.QuadMesh();
+
+			const truthMaterial = new THREE.NodeMaterial();
+			truthMaterial.fragmentNode = vec4( groundTruth, groundTruth, groundTruth, 1 );
+
+			// display: raw | EMA | ground truth
+
+			const displayMaterial = new THREE.NodeMaterial();
+			const displayNode = texture( writeTarget.texture );
+			displayMaterial.fragmentNode = Fn( () => {
+
+				const p = uv().mul( vec2( 3, 1 ) );
+				const panel = p.x.floor();
+				const texel = textureLoad( displayNode, ivec2( p.fract().mul( SIZE ) ) );
+				const value = select( panel.equal( 0 ), texel.r, select( panel.equal( 1 ), texel.g, texel.b ) );
+				return vec4( value, value, value, 1 );
+
+			} )();
+
+			function step1( key, frame ) {
+
+				frameIndex.value = frame;
+				frameFloat.value = frame;
+				isFirstFrame.value = frame === 0 ? 1 : 0;
+				historyNode.value = readTarget.texture;
+
+				renderer.setRenderTarget( writeTarget );
+				quad.material = getMaterial( key );
+				quad.render( renderer );
+				renderer.setRenderTarget( null );
+
+				displayNode.value = writeTarget.texture;
+
+				const tmp = readTarget;
+				readTarget = writeTarget;
+				writeTarget = tmp;
+
+			}
+
+			// CPU side filters and metrics
+
+			const FILTERS = {
+				'box 3×3': [ 1, 1, 1, 1, 1, 1, 1, 1, 1 ],
+				'binomial 3×3': [ 1, 2, 1, 2, 4, 2, 1, 2, 1 ]
+			};
+
+			function filter( src, channel, kernel ) {
+
+				const out = new Float32Array( SIZE * SIZE );
+				const sum = kernel.reduce( ( a, b ) => a + b, 0 );
+
+				for ( let y = 1; y < SIZE - 1; y ++ ) {
+
+					for ( let x = 1; x < SIZE - 1; x ++ ) {
+
+						let v = 0;
+						for ( let j = - 1; j <= 1; j ++ ) for ( let i = - 1; i <= 1; i ++ ) v += kernel[ ( j + 1 ) * 3 + i + 1 ] * src[ ( ( y + j ) * SIZE + x + i ) * 4 + channel ];
+						out[ y * SIZE + x ] = v / sum;
+
+					}
+
+				}
+
+				return out;
+
+			}
+
+			function channel( src, c ) {
+
+				const out = new Float32Array( SIZE * SIZE );
+				for ( let i = 0; i < SIZE * SIZE; i ++ ) out[ i ] = src[ i * 4 + c ];
+				return out;
+
+			}
+
+			function rmse( a, b ) {
+
+				let se = 0, n = 0;
+
+				for ( let y = 2; y < SIZE - 2; y ++ ) {
+
+					for ( let x = 2; x < SIZE - 2; x ++ ) {
+
+						const d = a[ y * SIZE + x ] - b[ y * SIZE + x ];
+						se += d * d;
+						n ++;
+
+					}
+
+				}
+
+				return Math.sqrt( se / n );
+
+			}
+
+			let truth = null;
+
+			async function getTruth() {
+
+				if ( truth === null ) {
+
+					renderer.setRenderTarget( truthTarget );
+					quad.material = truthMaterial;
+					quad.render( renderer );
+					renderer.setRenderTarget( null );
+
+					const pixels = await renderer.readRenderTargetPixelsAsync( truthTarget, 0, 0, SIZE, SIZE );
+					truth = {
+						'none': channel( pixels, 0 ),
+						'box 3×3': filter( pixels, 0, FILTERS[ 'box 3×3' ] ),
+						'binomial 3×3': filter( pixels, 0, FILTERS[ 'binomial 3×3' ] )
+					};
+
+				}
+
+				return truth;
+
+			}
+
+			/**
+			 * Runs a noise source for the given number of frames. Single frame filters are averaged over all
+			 * frames, filters including the EMA over the second half (steady state). The bias is the mean
+			 * signed error of the EMA, it reveals noise with a non-uniform value distribution.
+			 */
+			async function analyze( key, frames = params.frames ) {
+
+				const reference = await getTruth();
+				const steady = Math.floor( frames / 2 );
+				const sum = { none: 0, box: 0, binomial: 0, ema: 0, boxEMA: 0, binomialEMA: 0, flicker: 0, bias: 0 };
+				const convergence = [];
+				let previous = null;
+
+				for ( let frame = 0; frame < frames; frame ++ ) {
+
+					step1( key, frame );
+
+					const pixels = await renderer.readRenderTargetPixelsAsync( readTarget, 0, 0, SIZE, SIZE );
+
+					sum.none += rmse( channel( pixels, 0 ), reference[ 'none' ] ) / frames;
+					sum.box += rmse( filter( pixels, 0, FILTERS[ 'box 3×3' ] ), reference[ 'box 3×3' ] ) / frames;
+					sum.binomial += rmse( filter( pixels, 0, FILTERS[ 'binomial 3×3' ] ), reference[ 'binomial 3×3' ] ) / frames;
+
+					const ema = channel( pixels, 1 );
+					const binomialEMA = filter( pixels, 1, FILTERS[ 'binomial 3×3' ] );
+
+					if ( frame === 3 || frame === 15 ) convergence.push( + rmse( binomialEMA, reference[ 'binomial 3×3' ] ).toFixed( 4 ) );
+
+					if ( frame >= steady ) {
+
+						const n = frames - steady;
+						sum.ema += rmse( ema, reference[ 'none' ] ) / n;
+						sum.boxEMA += rmse( filter( pixels, 1, FILTERS[ 'box 3×3' ] ), reference[ 'box 3×3' ] ) / n;
+						sum.binomialEMA += rmse( binomialEMA, reference[ 'binomial 3×3' ] ) / n;
+						sum.flicker += rmse( binomialEMA, previous ) / n;
+
+						let bias = 0;
+						for ( let i = 0; i < ema.length; i ++ ) bias += ema[ i ] - reference[ 'none' ][ i ];
+						sum.bias += bias / ema.length / n;
+
+					}
+
+					previous = binomialEMA;
+
+				}
+
+				const result = { noise: key, frames };
+				for ( const name in sum ) result[ name ] = + sum[ name ].toFixed( 4 );
+				result.binomialEMAAtFrames4and16 = convergence;
+				return result;
+
+			}
+
+			const COLUMNS = [ 'none', 'box', 'binomial', 'ema', 'boxEMA', 'binomialEMA', 'flicker', 'bias' ];
+
+			function formatResults( results ) {
+
+				const pad = ( s, n ) => String( s ).padEnd( n );
+				let text = pad( 'RMSE (lower is better)', 38 ) + [ 'none', 'box3', 'binom3', 'EMA', 'box3+EMA', 'binom3+EMA', 'flicker', 'bias' ].map( s => pad( s, 11 ) ).join( '' ) + '\n';
+
+				for ( const r of results ) {
+
+					text += pad( r.noise, 38 ) + COLUMNS.map( c => pad( r[ c ].toFixed( 4 ), 11 ) ).join( '' ) + '\n';
+
+				}
+
+				text += `\nEMA alpha ${ params.alpha }, ${ results[ 0 ]?.frames } frames, ${ SIZE }×${ SIZE }. Columns with EMA are averaged over the second half of the frames.`;
+				text += '\n"flicker" is the frame-to-frame RMS change of binomial 3×3 + EMA, "bias" the mean signed error of the EMA.';
+
+				return text;
+
+			}
+
+			let busy = false;
+
+			async function run( keys = Object.keys( NOISES ) ) {
+
+				busy = true;
+				const results = [];
+
+				for ( const key of keys ) {
+
+					status.textContent = `analyzing ${ key }…`;
+					results.push( await analyze( key ) );
+
+				}
+
+				status.textContent = formatResults( results );
+				busy = false;
+				return results;
+
+			}
+
+			window.noiseMetrics = { NOISES, params, analyze, run, formatResults };
+
+			// live view
+
+			let liveFrame = 0, liveKey = null;
+			const displayQuad = new THREE.QuadMesh( displayMaterial );
+
+			renderer.setAnimationLoop( () => {
+
+				if ( busy ) return;
+
+				if ( liveKey !== params.noise ) {
+
+					liveKey = params.noise;
+					liveFrame = 0;
+
+				}
+
+				step1( liveKey, liveFrame ++ );
+				displayQuad.render( renderer );
+
+			} );
+
+			document.getElementById( 'captions' ).innerHTML = [ 'raw 1 spp', `EMA (α = ${ params.alpha })`, 'ground truth' ].map( text => `<span style="width:${ SIZE }px">${ text }</span>` ).join( '' );
+
+			const gui = new GUI();
+			gui.add( params, 'noise', Object.keys( NOISES ) );
+			gui.add( params, 'alpha', 0.01, 1, 0.01 ).onChange( value => alpha.value = value );
+			gui.add( { run: () => run() }, 'run' ).name( 'run analysis' );
+
+			status.textContent = 'Live view. Press "run analysis" to compute metrics.';
+
+			if ( query.get( 'auto' ) !== null ) run();
+
+		</script>
+	</body>
+</html>

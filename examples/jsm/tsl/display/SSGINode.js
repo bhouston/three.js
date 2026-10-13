@@ -1,12 +1,11 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
-import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth } from 'three/tsl';
+import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, dot, vec2, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
 
 // From Activision GTAO paper: https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
 const _temporalRotations = [ 60, 300, 180, 240, 120, 0 ];
-const _spatialOffsets = [ 0, 0.5, 0.25, 0.75 ];
 
 let _rendererState;
 
@@ -219,12 +218,12 @@ class SSGINode extends Node {
 		this._temporalDirection = uniform( 0 );
 
 		/**
-		 * Temporal offset added to the initial ray step.
+		 * Frame index (modulo 64) that animates the interleaved gradient noise of the ray step jitter.
 		 *
 		 * @private
 		 * @type {UniformNode<float>}
 		 */
-		this._temporalOffset = uniform( 0 );
+		this._temporalFrame = uniform( 0 );
 
 		/**
 		 * Represents the projection matrix of the scene's camera.
@@ -372,12 +371,12 @@ class SSGINode extends Node {
 			const frameId = frame.frameId;
 
 			this._temporalDirection.value = _temporalRotations[ frameId % 6 ] / 360;
-			this._temporalOffset.value = _spatialOffsets[ frameId % 4 ];
+			this._temporalFrame.value = frameId % 64;
 
 		} else {
 
 			this._temporalDirection.value = 1;
-			this._temporalOffset.value = 1;
+			this._temporalFrame.value = 0;
 
 		}
 
@@ -439,14 +438,6 @@ class SSGINode extends Node {
 
 		const sampleNormal = ( uv ) => ( this.normalNode !== null ) ? this.normalNode.sample( uv ).rgb.normalize() : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
 		const sampleBeauty = ( uv ) => this.beautyNode.sample( uv );
-
-		// From Activision GTAO paper: https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
-
-		const spatialOffsets = Fn( ( [ position ] ) => {
-
-			return float( 0.25 ).mul( sub( position.y, position.x ).bitAnd( 3 ) );
-
-		}, { position: 'vec2', return: 'float' } );
 
 		const GTAOFastAcos = Fn( ( [ value ] ) => {
 
@@ -561,10 +552,13 @@ class SSGINode extends Node {
 
 			//
 
-			const noiseOffset = spatialOffsets( screenCoordinate );
 			const noiseDirection = interleavedGradientNoise( screenCoordinate );
-			const noiseJitterIdx = this._temporalDirection.mul( 0.02 ); // Port: Add noiseJitterIdx here for slightly better noise convergence with TRAA (see #31890 for more details)
-			const initialRayStep = fract( noiseOffset.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ).mul( 2 ).sub( 1 ) ) );
+			// Jitter the ray steps with interleaved gradient noise animated by a fixed per-frame offset. Every 3×3 neighborhood
+			// covers the [0, 1) range evenly and successive frames fill in the gaps, which suits the 3×3 neighborhood and
+			// exponential accumulation of TRAA. Adding white noise would destroy this structure.
+			// See: https://www.iryoku.com/next-generation-post-processing-in-call-of-duty-advanced-warfare
+			// The constant offset decorrelates it from the slice rotation noise above.
+			const initialRayStep = interleavedGradientNoise( screenCoordinate.add( this._temporalFrame.mul( 5.588238 ) ).add( vec2( 37, 17 ) ) );
 
 			const ao = float( 0 );
 			const color = vec3( 0 );

@@ -1,12 +1,11 @@
 import { DataTexture, RenderTarget, RepeatWrapping, Vector2, Vector3, Node, QuadMesh, NodeMaterial, RendererUtils, RedFormat } from 'three/webgpu';
-import { reference, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getNormalFromDepth, getViewPosition, getScreenPositionFromClip, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec2, vec3, vec4, int, dot, max, min, pow, abs, If, textureSize, sin, cos, PI, texture, passTexture, mat3, normalize, cross, mix, acos, clamp, interleavedGradientNoise, screenCoordinate, rand, context, isBackgroundDepth } from 'three/tsl';
+import { reference, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getNormalFromDepth, getViewPosition, getScreenPositionFromClip, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec2, vec3, vec4, int, dot, max, min, pow, abs, If, textureSize, sin, cos, PI, texture, passTexture, mat3, normalize, cross, mix, acos, clamp, interleavedGradientNoise, screenCoordinate, context, isBackgroundDepth } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
 
 // From Activision GTAO paper: https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
 const _temporalRotations = [ 60, 300, 180, 240, 120, 0 ];
-const _spatialOffsets = [ 0, 0.5, 0.25, 0.75 ];
 
 let _rendererState;
 
@@ -237,12 +236,12 @@ class GTAONode extends Node {
 		this._temporalDirection = uniform( 0 );
 
 		/**
-		 * Temporal offset added to the initial ray step.
+		 * Frame index (modulo 64) that animates the interleaved gradient noise of the ray step jitter.
 		 *
 		 * @private
 		 * @type {UniformNode<float>}
 		 */
-		this._temporalOffset = uniform( 0 );
+		this._temporalFrame = uniform( 0 );
 
 		/**
 		 * Resolution scale uniform.
@@ -343,12 +342,12 @@ class GTAONode extends Node {
 			const frameId = frame.frameId;
 
 			this._temporalDirection.value = _temporalRotations[ frameId % 6 ] / 360;
-			this._temporalOffset.value = _spatialOffsets[ frameId % 4 ];
+			this._temporalFrame.value = frameId % 64;
 
 		} else {
 
 			this._temporalDirection.value = 0;
-			this._temporalOffset.value = 1;
+			this._temporalFrame.value = 0;
 
 		}
 
@@ -476,9 +475,11 @@ class GTAONode extends Node {
 
 			// Each iteration analyzes one vertical "slice" of the 3D space around the fragment.
 
-			// Per-step phase jitter for spatio-temporal decorrelation.
-			const noiseJitterIdx = this._temporalDirection.mul( 0.02 );
-			const stepJitter = interleavedGradientNoise( screenCoordinate.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ).mul( 2 ).sub( 1 ) ) );
+			// Jitter the ray steps with interleaved gradient noise animated by a fixed per-frame offset. Every 3×3 neighborhood
+			// covers the [0, 1) range evenly and successive frames fill in the gaps, which suits the 3×3 neighborhood and
+			// exponential accumulation of TRAA. Adding white noise would destroy this structure.
+			// See: https://www.iryoku.com/next-generation-post-processing-in-call-of-duty-advanced-warfare
+			const stepJitter = interleavedGradientNoise( screenCoordinate.add( this._temporalFrame.mul( 5.588238 ) ) );
 
 			Loop( { start: int( 0 ), end: int( DIRECTIONS ), type: 'int', condition: '<' }, ( { i } ) => {
 
@@ -512,7 +513,7 @@ class GTAONode extends Node {
 
 					// Quadratic step distribution ( sampleDist = t² ) concentrates samples in the
 					// near-field. (Blender's Eevee adaptation)
-					const t = float( j ).add( 1.0 ).add( stepJitter ).mul( invSteps ).toConst();
+					const t = float( j ).add( 1.0 ).sub( stepJitter ).mul( invSteps ).toConst();
 					const sampleDist = t.mul( t );
 					const clipOffset = clipDirRadius.mul( sampleDist ).toConst();
 

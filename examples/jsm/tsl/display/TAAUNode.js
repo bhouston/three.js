@@ -619,7 +619,7 @@ class TAAUNode extends Node {
 
 			const currentLuma = luminance( currentColor.rgb );
 			const meanLuma = luminance( mean.rgb ).toConst();
-			const thinFeature = currentLuma.sub( meanLuma ).abs().div( meanLuma ).smoothstep( 0, 0.2 );
+			const thinFeature = currentLuma.sub( meanLuma ).abs().div( meanLuma.max( 1e-6 ) ).smoothstep( 0, 0.2 );
 
 			// Gate the lock by a two-sided depth change check. The
 			// existing `isDisocclusion` is one-sided (only fires when

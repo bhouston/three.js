@@ -482,7 +482,7 @@ class GTAONode extends Node {
 
 			Loop( { start: int( 0 ), end: int( DIRECTIONS ), type: 'int', condition: '<' }, ( { i } ) => {
 
-				const angle = float( i ).div( DIRECTIONS ).mul( PI ).add( this._temporalDirection ).toConst();
+				const angle = float( i ).add( this._temporalDirection ).div( DIRECTIONS ).mul( PI ).toConst();
 				const sampleDir = kernelMatrix.mul( vec3( cos( angle ), sin( angle ), 0 ) ).toConst();
 				const clipDirRadius = this._cameraProjectionMatrix.mul( vec4( sampleDir, 0.0 ) ).mul( radius ).toConst();
 

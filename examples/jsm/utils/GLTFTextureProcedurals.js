@@ -321,6 +321,7 @@ function assertTextureProceduralsSerializable( material ) {
 
 	cloneGLTFProceduralSource( state.source );
 	cloneGLTFProceduralSource( state.bindings );
+	if ( material.transparent && material.alphaTest > 0 ) throw proceduralError( 'Simultaneous alpha blending and alpha cutoff cannot be represented by one glTF alphaMode.' );
 
 	if ( state.snapshot !== JSON.stringify( { source: state.source, bindings: state.bindings } ) ) throw proceduralError( 'Graph edits must be compiled with updateTextureProceduralMaterial before export.' );
 	for ( const property of Object.keys( state.nodes ) ) {

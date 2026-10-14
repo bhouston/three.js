@@ -207,7 +207,7 @@ QUnit.module( 'Addons', () => {
 				occlusionTexture: { index: 0, output: 'orm' },
 				normalTexture: { index: 0, output: 'normal' }
 			};
-			const fallback = new MeshStandardMaterial( { color: 0x80c0ff, metalness: 0.8, roughness: 0.6, opacity: 0.7, transparent: true, alphaTest: 0.2 } );
+			const fallback = new MeshStandardMaterial( { color: 0x80c0ff, metalness: 0.8, roughness: 0.6, opacity: 0.7, transparent: true } );
 			fallback.normalScale.set( 0.4, 0.4 );
 			fallback.aoMapIntensity = 0.5;
 			const first = await createTextureProceduralMaterial( fallback, source, bindings );
@@ -216,7 +216,7 @@ QUnit.module( 'Addons', () => {
 			assert.strictEqual( first.roughness, 0.6, 'Roughness factor retained.' );
 			assert.strictEqual( first.opacity, 0.7, 'Alpha factor retained.' );
 			assert.true( first.transparent, 'Blend retained.' );
-			assert.strictEqual( first.alphaTest, 0.2, 'Alpha cutoff retained.' );
+			assert.strictEqual( first.alphaTest, 0, 'Blend mode has no additional cutoff.' );
 			assert.deepEqual( first.normalScale.toArray(), [ 0.4, 0.4 ], 'Normal scale retained.' );
 			assert.ok( first.metalnessNode && first.roughnessNode && first.aoNode && first.normalNode, 'Packed and normal channels compile.' );
 			assert.strictEqual( findNode( first.roughnessNode, node => node.isSplitNode )?.components, 'y', 'Roughness reads G.' );
@@ -377,6 +377,28 @@ QUnit.module( 'Addons', () => {
 			assert.strictEqual( optional.animations[ 0 ].tracks.length, 0, 'Metadata preservation is not claimed as animation support.' );
 			animated.extensionsRequired = [ 'KHR_animation_pointer' ];
 			await assert.rejects( parse( animated ), /animat|pointer/i, 'Required animation pointer fails even if procedural extension is optional.' );
+
+		} );
+
+		QUnit.test( 'alpha mask and blend round trips retain graph alpha and material factors', async ( assert ) => {
+
+			for ( const transparent of [ false, true ] ) {
+
+				const cutoff = transparent ? 0 : 0.35;
+				const authored = await createTextureProceduralMaterial( new MeshStandardMaterial( { opacity: 0.5, transparent, alphaTest: cutoff } ), { procedurals: [ packedGraph() ] }, { baseColorTexture: { index: 0, output: 'color' } } );
+				const mesh = new Mesh( new PlaneGeometry(), authored );
+				const json = await exporter().parseAsync( mesh );
+				assert.strictEqual( json.materials[ 0 ].alphaMode, transparent ? 'BLEND' : 'MASK', 'Mode serializes explicitly.' );
+				const reloaded = material( await parse( json ) );
+				assert.strictEqual( reloaded.transparent, transparent, 'Blend state survives.' );
+				assert.strictEqual( reloaded.alphaTest, cutoff, 'Cutoff survives.' );
+				assert.strictEqual( reloaded.opacity, 0.5, 'Alpha factor survives.' );
+				assert.ok( findNode( reloaded.colorNode, node => node.components === 'w' ), 'Graph alpha remains bound.' );
+				authored.transparent = true;
+				authored.alphaTest = 0.35;
+				await assert.rejects( exporter().parseAsync( mesh ), /alphaMode|alpha blending|cutoff/i, 'Unsupported mixed alpha edit is diagnosed.' );
+
+			}
 
 		} );
 

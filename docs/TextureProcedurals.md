@@ -109,6 +109,8 @@ Material factors, emissive intensity, alpha mode/cutoff, normal scale, occlusion
 
 Sibling factors/ranges are retained even when their material lobe has zero strength. glTF has one `sheenColorFactor`, so export combines Three.js `sheen` strength with `sheenColor`; reload preserves that product, without inventing a separate strength property in glTF.
 
+The glTF alpha modes `OPAQUE`, `MASK` and `BLEND` retain their usual behavior. A runtime edit enabling both alpha blending and an alpha cutoff is diagnosed on export because glTF cannot represent both in one `alphaMode`.
+
 For a graph with separate scalar outputs, the authoring helper creates a serializable standard `combine3` node, preserving those outputs:
 
 ```js

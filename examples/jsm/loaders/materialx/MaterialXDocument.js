@@ -931,8 +931,7 @@ class MaterialXDocument {
 		this.uvSpace = normalizeUvSpace( uvSpace );
 
 		this.nodesXLib = new Map();
-		this.imageLoader = new ImageLoader( manager );
-		this.imageLoader.setPath( path );
+		this.imageLoader = new ImageLoader( manager, { path } );
 		this.textureLoader = new ImageBitmapLoader( manager );
 		this.textureLoader.setOptions( { imageOrientation: 'none' } );
 		this.textureLoader.setPath( path );

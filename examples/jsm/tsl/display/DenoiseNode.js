@@ -212,11 +212,11 @@ class DenoiseNode extends Node {
 				noiseUv = noiseUv.mul( this._resolution.div( noiseResolution ) );
 				const noiseTexel = sampleNoise( noiseUv ).toVar();
 
-				const x = sin( noiseTexel.element( this.index.mod( 4 ).mul( 2 ).mul( PI ) ) );
-				const y = cos( noiseTexel.element( this.index.mod( 4 ).mul( 2 ).mul( PI ) ) );
+				const angle = noiseTexel.element( this.index.mod( 4 ).toInt() ).mul( 2 ).mul( PI );
+				const x = cos( angle );
+				const y = sin( angle );
 
-				const noiseVec = vec2( x, y );
-				const rotationMatrix = mat2( noiseVec.x, noiseVec.y.negate(), noiseVec.x, noiseVec.y );
+				const rotationMatrix = mat2( x, y, y.negate(), x );
 
 				const totalWeight = float( 1.0 ).toVar();
 				const denoised = vec3( texel.rgb ).toVar();

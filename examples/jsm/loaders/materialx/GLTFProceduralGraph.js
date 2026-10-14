@@ -12,6 +12,12 @@ const TYPE_MAP = { matrix3x3: 'matrix33', matrix4x4: 'matrix44' };
 const COMPILE_REGISTRY = createMaterialXCompileRegistry();
 const STD_DEFS = Object.entries( registryData.nodedefs );
 
+function texcoordAttribute( index ) {
+
+	return index <= 3 ? `uv${index || ''}` : `texcoord_${index}`;
+
+}
+
 function fail( path, message ) {
 
 	throw new Error( `KHR_texture_procedurals: ${path}: ${message}` );
@@ -388,7 +394,19 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 
 						const index = Number( port.defaultgeomprop.slice( 2 ) );
 						const semantic = `TEXCOORD_${index}`;
-						streams.set( semantic, { semantic, attribute: `uv${index || ''}`, itemSize: 2 } );
+						streams.set( semantic, { semantic, attribute: texcoordAttribute( index ), itemSize: 2 } );
+
+					}
+
+					if ( ! Object.hasOwn( nodeInputs, name ) && ( port.defaultgeomprop === 'Pobject' || port.defaultgeomprop === 'Pworld' ) ) {
+
+						streams.set( 'POSITION', { semantic: 'POSITION', attribute: 'position', itemSize: 3 } );
+
+					}
+
+					if ( ! Object.hasOwn( nodeInputs, name ) && /^[TB](object|world)$/.test( port.defaultgeomprop || '' ) ) {
+
+						streams.set( 'TANGENT', { semantic: 'TANGENT', attribute: 'tangent', itemSize: 4 } );
 
 					}
 
@@ -409,13 +427,16 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 					const stream = expressions.get( 'index' );
 					if ( stream && stream.value === undefined ) fail( nodePath, 'Geometry stream indices must be constants.' );
 					const streamIndex = stream ? Number( stream.value ) : 0;
-					if ( ! Number.isSafeInteger( streamIndex ) || streamIndex < 0 || ( node.nodetype === 'texcoord' && streamIndex > 3 ) ) fail( nodePath, 'Unsupported geometry stream index (TEXCOORD_0 through TEXCOORD_3 are supported).' );
+					if ( ! Number.isSafeInteger( streamIndex ) || streamIndex < 0 ) fail( nodePath, 'Geometry stream indices must be nonnegative safe integers.' );
 					if ( node.nodetype === 'texcoord' && node.type !== 'vector2' ) fail( nodePath, 'Three-component UVs are outside the experimental profile.' );
 					const semantic = `${node.nodetype === 'texcoord' ? 'TEXCOORD' : 'COLOR'}_${streamIndex}`;
-					const attributeName = node.nodetype === 'texcoord' ? `uv${streamIndex || ''}` : streamIndex === 0 ? 'color' : `color_${streamIndex}`;
+					const attributeName = node.nodetype === 'texcoord' ? texcoordAttribute( streamIndex ) : streamIndex === 0 ? 'color' : `color_${streamIndex}`;
 					streams.set( semantic, { semantic, attribute: attributeName, itemSize: node.nodetype === 'texcoord' ? 2 : COMPONENTS[ node.type ] } );
 
 				}
+
+				if ( node.nodetype === 'position' ) streams.set( 'POSITION', { semantic: 'POSITION', attribute: 'position', itemSize: 3 } );
+				if ( node.nodetype === 'tangent' || node.nodetype === 'bitangent' ) streams.set( 'TANGENT', { semantic: 'TANGENT', attribute: 'tangent', itemSize: 4 } );
 
 				const name = `node_${serial ++}`;
 				children.push( xmlElement( node.nodetype, { name, type: node.type === 'multioutput' ? 'multioutput' : normalizedType( node.type, nodePath ), nodedef }, inputChildren ) );
@@ -494,6 +515,15 @@ async function compileGLTFProceduralGraph( graph, options = {} ) {
 	for ( let i = 0; i < resources.length; i ++ ) textures.set( validated.textureIndices[ i ], resources[ i ] );
 	const log = new MaterialXLog();
 	const document = new MaterialXDocument( options.manager || DefaultLoadingManager, '', log, null, 'bottom-left' );
+	document.compileContext.getTexcoordNode = ( index = 0 ) => attribute( texcoordAttribute( index ), 'vec2' );
+	const getGeomPropNode = document.compileContext.getGeomPropNode;
+	document.compileContext.getGeomPropNode = ( name ) => {
+
+		const match = /^UV(\d+)$/.exec( name );
+		return match ? document.compileContext.getTexcoordNode( Number( match[ 1 ] ) ) : getGeomPropNode( name );
+
+	};
+
 	document.parseNode( validated.normalized );
 	const samples = new Map();
 	for ( const nodeX of document.nodesXLib.values() ) {
@@ -536,6 +566,7 @@ async function compileGLTFProceduralGraph( graph, options = {} ) {
 	// vertexColor accessor uses colorN. Resolve numbered glTF streams explicitly.
 	document.nodeResolver = ( nodeX ) => {
 
+		if ( nodeX.element === 'texcoord' ) return document.compileContext.getTexcoordNode( Number( nodeX.getChildByName( 'index' )?.value || 0 ) );
 		if ( nodeX.element !== 'geomcolor' ) return null;
 		const index = Number( nodeX.getChildByName( 'index' )?.value || 0 );
 		return attribute( index === 0 ? 'color' : `color_${index}`, nodeX.type === 'color4' ? 'vec4' : 'vec3' );

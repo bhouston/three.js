@@ -551,8 +551,12 @@ QUnit.module( 'Addons', () => {
 
 				const fallback = new MeshStandardMaterial();
 				fallback.normalScale.fromArray( scale );
-				const authored = await createTextureProceduralMaterial( fallback, source, bindings );
-				await assert.rejects( exporter().parseAsync( new Mesh( new PlaneGeometry(), authored ) ), /normal.*scale|scale.*normal/i, 'Nonserializable normal scale diagnosed.' );
+				await assert.rejects( ( async () => {
+
+					const authored = await createTextureProceduralMaterial( fallback, source, bindings );
+					await exporter().parseAsync( new Mesh( new PlaneGeometry(), authored ) );
+
+				} )(), /normal.*scale|scale.*normal/i, 'Nonserializable normal scale diagnosed during authoring or export.' );
 
 			}
 

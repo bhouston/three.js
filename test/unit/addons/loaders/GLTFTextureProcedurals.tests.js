@@ -1,4 +1,4 @@
-import { DataTexture, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, SRGBColorSpace } from 'three';
+import { DataTexture, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PlaneGeometry, SRGBColorSpace } from 'three';
 import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from '../../../../examples/jsm/exporters/GLTFExporter.js';
 import { GLTFTextureProceduralsLoaderExtension } from '../../../../examples/jsm/loaders/GLTFTextureProceduralsLoaderExtension.js';
@@ -74,6 +74,22 @@ function packedGraph() {
 
 }
 
+function findNode( root, predicate, seen = new WeakSet() ) {
+
+	if ( ! root || typeof root !== 'object' || seen.has( root ) ) return null;
+	seen.add( root );
+	if ( predicate( root ) ) return root;
+	for ( const value of Object.values( root ) ) {
+
+		const found = findNode( value, predicate, seen );
+		if ( found ) return found;
+
+	}
+
+	return null;
+
+}
+
 QUnit.module( 'Addons', () => {
 
 	QUnit.module( 'GLTFTextureProcedurals', () => {
@@ -99,6 +115,7 @@ QUnit.module( 'Addons', () => {
 						if ( expected[ 0 ].nodes[ i ].inputs.file ) expected[ 0 ].nodes[ i ].inputs.file.value = state.source.procedurals[ 0 ].nodes[ i ].inputs.file.value;
 
 					}
+
 					assert.deepEqual( state.source.procedurals, expected, `Graph survives ${ binary ? 'GLB' : 'JSON' }.` );
 					assert.true( material( reloaded ).isNodeMaterial, 'Reload evaluates procedural content.' );
 					if ( ! binary ) {
@@ -191,7 +208,7 @@ QUnit.module( 'Addons', () => {
 				normalTexture: { index: 0, output: 'normal' }
 			};
 			const fallback = new MeshStandardMaterial( { color: 0x80c0ff, metalness: 0.8, roughness: 0.6, opacity: 0.7, transparent: true, alphaTest: 0.2 } );
-			fallback.normalScale.set( 0.4, 0.6 );
+			fallback.normalScale.set( 0.4, 0.4 );
 			fallback.aoMapIntensity = 0.5;
 			const first = await createTextureProceduralMaterial( fallback, source, bindings );
 			const second = await createTextureProceduralMaterial( fallback, source, { baseColorTexture: bindings.baseColorTexture } );
@@ -200,8 +217,13 @@ QUnit.module( 'Addons', () => {
 			assert.strictEqual( first.opacity, 0.7, 'Alpha factor retained.' );
 			assert.true( first.transparent, 'Blend retained.' );
 			assert.strictEqual( first.alphaTest, 0.2, 'Alpha cutoff retained.' );
-			assert.deepEqual( first.normalScale.toArray(), [ 0.4, 0.6 ], 'Normal scale retained.' );
+			assert.deepEqual( first.normalScale.toArray(), [ 0.4, 0.4 ], 'Normal scale retained.' );
 			assert.ok( first.metalnessNode && first.roughnessNode && first.aoNode && first.normalNode, 'Packed and normal channels compile.' );
+			assert.strictEqual( findNode( first.roughnessNode, node => node.isSplitNode )?.components, 'g', 'Roughness reads G.' );
+			assert.strictEqual( findNode( first.metalnessNode, node => node.isSplitNode )?.components, 'b', 'Metallic reads B.' );
+			assert.strictEqual( findNode( first.aoNode, node => node.isSplitNode )?.components, 'r', 'Occlusion reads R.' );
+			assert.ok( findNode( first.colorNode, node => node.property === 'color' ), 'Base color factor is applied to graph output.' );
+			assert.ok( findNode( first.colorNode, node => node.isSplitNode && node.components === 'a' ), 'Graph alpha channel remains part of base color.' );
 			const scene = new Group();
 			scene.add( new Mesh( new PlaneGeometry(), first ), new Mesh( new PlaneGeometry(), second ) );
 			const json = await exporter().parseAsync( scene );
@@ -212,6 +234,101 @@ QUnit.module( 'Addons', () => {
 			assert.notOk( pbr.metallicTexture || pbr.roughnessTexture, 'No invented unpacked slots.' );
 			assert.strictEqual( json.materials[ 0 ].normalTexture.scale, 0.4, 'glTF normal scale exported.' );
 			assert.strictEqual( json.materials[ 0 ].occlusionTexture.strength, 0.5, 'Occlusion strength exported.' );
+
+		} );
+
+		QUnit.test( 'physical material extension channels preserve factors and packed components', async ( assert ) => {
+
+			const graph = { nodetype: 'nodegraph', type: 'color4', inputs: {}, nodes: [ constant( 'color4', [ 0.2, 0.4, 0.6, 0.8 ] ) ], outputs: { out: { nodetype: 'output', type: 'color4', node: 0, output: 'out' } } };
+			const channels = {
+				clearcoatTexture: [ 'KHR_materials_clearcoat', 'clearcoatNode', 'r' ],
+				clearcoatRoughnessTexture: [ 'KHR_materials_clearcoat', 'clearcoatRoughnessNode', 'g' ],
+				clearcoatNormalTexture: [ 'KHR_materials_clearcoat', 'clearcoatNormalNode', 'rgb' ],
+				transmissionTexture: [ 'KHR_materials_transmission', 'transmissionNode', 'r' ],
+				thicknessTexture: [ 'KHR_materials_volume', 'thicknessNode', 'g' ],
+				specularTexture: [ 'KHR_materials_specular', 'specularIntensityNode', 'a' ],
+				specularColorTexture: [ 'KHR_materials_specular', 'specularColorNode', 'rgb' ],
+				sheenColorTexture: [ 'KHR_materials_sheen', 'sheenNode', 'rgb' ],
+				sheenRoughnessTexture: [ 'KHR_materials_sheen', 'sheenRoughnessNode', 'a' ],
+				iridescenceTexture: [ 'KHR_materials_iridescence', 'iridescenceNode', 'r' ],
+				iridescenceThicknessTexture: [ 'KHR_materials_iridescence', 'iridescenceThicknessNode', 'g' ]
+			};
+			const bindings = Object.fromEntries( Object.keys( channels ).map( channel => [ channel, { index: 0, output: 'out' } ] ) );
+			const fallback = new MeshPhysicalMaterial( { clearcoat: 0.7, clearcoatRoughness: 0.3, transmission: 0.6, thickness: 0.4, sheen: 0.5, sheenRoughness: 0.8, iridescence: 0.2, specularIntensity: 0.9 } );
+			fallback.clearcoatNormalScale.setScalar( 0.6 );
+			fallback.sheenColor.setRGB( 0.2, 0.3, 0.4 );
+			const authored = await createTextureProceduralMaterial( fallback, { procedurals: [ graph ] }, bindings );
+			const json = await exporter().parseAsync( new Mesh( new PlaneGeometry(), authored ) );
+			for ( const [ channel, [ extension, property, component ]] of Object.entries( channels ) ) {
+
+				assert.ok( authored[ property ], `${ channel } compiles.` );
+				assert.ok( findNode( authored[ property ], node => node.isSplitNode && node.components === component ), `${ channel } reads ${ component }.` );
+				assert.ok( json.materials[ 0 ].extensions[ extension ][ channel ].extensions[ EXTENSION ], `${ channel } uses its standard texture-info slot.` );
+
+			}
+
+			assert.strictEqual( json.materials[ 0 ].extensions.KHR_materials_clearcoat.clearcoatNormalTexture.scale, 0.6, 'Clearcoat normal scale retained with dummy fallback.' );
+			const loaded = await parse( json );
+			assert.strictEqual( material( loaded ).clearcoat, 0.7, 'Clearcoat factor survives reload.' );
+			assert.strictEqual( material( loaded ).thickness, 0.4, 'Thickness factor survives reload.' );
+
+		} );
+
+		QUnit.test( 'required authoring policy, nested runtime edits and invalid source metadata', async ( assert ) => {
+
+			const source = ( await fixture() ).extensions[ EXTENSION ];
+			const bindings = { baseColorTexture: { index: 0, output: 'pattern' } };
+			const authored = await createTextureProceduralMaterial( new MeshBasicMaterial(), source, bindings, { required: true } );
+			const mesh = new Mesh( new PlaneGeometry(), authored );
+			const exported = await exporter().parseAsync( mesh );
+			assert.ok( exported.extensionsRequired.includes( EXTENSION ) && exported.extensionsRequired.includes( LIBRARY ), 'Required content is an explicit policy.' );
+			const nested = findNode( authored.colorNode, node => node.isConstNode && node.value?.isColor );
+			assert.ok( nested, 'Compiled graph contains a nested color constant.' );
+			if ( nested ) {
+
+				nested.value.r = 0.33;
+				await assert.rejects( exporter().parseAsync( mesh ), /runtime|edit|serializ/i, 'Nested shader mutation cannot silently export stale source.' );
+
+			}
+
+			for ( const metadata of [ { callback: () => {} }, { value: undefined }, { value: Infinity } ] ) {
+
+				await assert.rejects( createTextureProceduralMaterial( new MeshBasicMaterial(), { ...source, metadata }, bindings ), /JSON|serializ|finite/i, 'Invalid source metadata is diagnosed before copying.' );
+
+			}
+
+		} );
+
+		QUnit.test( 'missing stream fallback preserves final geometry material flags', async ( assert ) => {
+
+			const json = await fixture();
+			const graph = json.extensions[ EXTENSION ].procedurals[ 0 ];
+			graph.nodes.push( { nodetype: 'texcoord', type: 'vector2', inputs: { index: { nodetype: 'input', type: 'integer', value: [ 1 ] } }, outputs: { out: { nodetype: 'output', type: 'vector2' } } } );
+			graph.nodes[ 0 ].inputs.texcoord = { nodetype: 'input', type: 'vector2', node: 1, output: 'out' };
+			json.meshes[ 0 ].primitives[ 0 ].attributes.COLOR_0 = 1;
+			delete json.meshes[ 0 ].primitives[ 0 ].attributes.NORMAL;
+			const loaded = await parse( json );
+			const fallback = material( loaded );
+			assert.notOk( fallback.isNodeMaterial, 'Missing UV1 uses ordinary fallback.' );
+			assert.true( fallback.vertexColors, 'Geometry vertex color flag survives fallback.' );
+			assert.true( fallback.flatShading, 'Missing-normal flat shading flag survives fallback.' );
+			assert.ok( loaded.userData.textureProceduralsDiagnostics.length, 'Missing stream diagnostic returned.' );
+			json.extensionsRequired = [ EXTENSION ];
+			await assert.rejects( parse( json ), /TEXCOORD_1|stream/i, 'Required missing stream fails.' );
+
+		} );
+
+		QUnit.test( 'required missing root and unsupported graph interface animation fail', async ( assert ) => {
+
+			const json = await fixture();
+			delete json.extensions[ EXTENSION ];
+			json.extensionsRequired = [ EXTENSION ];
+			await assert.rejects( parse( json ), /root|procedural/i, 'Required declaration needs a root payload.' );
+			const animated = await fixture();
+			animated.extensionsUsed.push( 'KHR_animation_pointer' );
+			animated.extensionsRequired = [ EXTENSION ];
+			animated.animations = [ { channels: [ { sampler: 0, target: { extensions: { KHR_animation_pointer: { pointer: '/extensions/KHR_texture_procedurals/procedurals/0/inputs/color/value' } } } } ], samplers: [ { input: 0, output: 0 } ] } ];
+			await assert.rejects( parse( animated ), /animat|pointer/i, 'Required procedural animation is explicitly rejected.' );
 
 		} );
 
@@ -233,6 +350,7 @@ QUnit.module( 'Addons', () => {
 		QUnit.test( 'texture-backed authored graph remaps resource indices deterministically', async ( assert ) => {
 
 			const json = await fixture( 'texture' );
+			json.extensions[ EXTENSION ].procedurals[ 0 ].nodes[ 0 ].inputs.file.value = [ 0 ];
 			const resource = new DataTexture( new Uint8Array( [ 255, 0, 0, 255 ] ), 1, 1 );
 			resource.colorSpace = SRGBColorSpace;
 			resource.needsUpdate = true;

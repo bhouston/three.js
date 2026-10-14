@@ -25,7 +25,7 @@
 									"nodetype": "input",
 									"type": "filename",
 									"value": [
-										0
+										1
 									]
 								},
 								"uaddressmode": {
@@ -88,12 +88,18 @@
 	},
 	"images": [
 		{
+			"uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4AWP4DwQACfsD/c8LaHIAAAAASUVORK5CYII="
+		},
+		{
 			"uri": "resource.png"
 		}
 	],
 	"textures": [
 		{
 			"source": 0
+		},
+		{
+			"source": 1
 		}
 	],
 	"materials": [

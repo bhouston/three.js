@@ -78,12 +78,29 @@ The extension is optional by default: exporting registers both identifiers in `e
 - Graphs contain one flat indexed DAG. Connections may address graph interface inputs or processing-node outputs. Named graph outputs and multiple output nodes are supported. Cycles, invalid indices/ports and incompatible types are rejected.
 - Pattern-node signatures/defaults come from the fork's MaterialX 1.39 interface registry and compiler. Math, procedural noise, checkerboard, explicit geometry streams, image and placement nodes are supported where the existing compiler implements them. Shading-model, BSDF and arbitrary source-code nodes are excluded.
 - Functional `procedural_definitions` contain a `nodedef` and a graph implementing that definition. They are immutable declarations, preserved for round trips. Code-based implementations are unsupported and never executed.
-- `texcoord` and `geomcolor` select numbered `TEXCOORD_n`/`COLOR_n` streams. Three-component UVs are unsupported. The graph owns placement/sampling: texture-info `texCoord`, `KHR_texture_transform` and glTF samplers apply only to fallback texture evaluation. Use explicit MaterialX geometry/image/place2d nodes for procedural evaluation.
-- Numeric graph colors follow MaterialX's linear working interpretation; base/emissive image resources follow their graph color-space interpretation. Material factors remain outside graph evaluation. Packed metallic/roughness output uses G for roughness and B for metallic; occlusion uses R.
+- `texcoord` selects `TEXCOORD_0` through `TEXCOORD_3` (Three.js `uv` through `uv3`); `geomcolor` selects numbered `COLOR_n` (`color` or `color_n`). Referenced streams must exist on the mesh. Three-component UVs are unsupported. The graph owns placement/sampling: texture-info `texCoord`, `KHR_texture_transform` and glTF samplers apply only to fallback texture evaluation. Use explicit MaterialX geometry/image/place2d nodes for procedural evaluation. Tangent-space procedural normal and clearcoat-normal channels currently require UV0; nonuniform normal scales cannot be represented by glTF's scalar `scale` and are diagnosed on export.
+- Numeric graph colors follow MaterialX's linear working interpretation. Image nodes default to linear data; explicitly specify `colorspace: 'srgb_texture'` on the image node or its file input for sRGB color decoding. Material factors remain outside graph evaluation. Packed metallic/roughness output uses G for roughness and B for metallic; occlusion uses R.
 - Animation of graph interface values is currently unsupported. The existing glTF animation-pointer implementation is not treated as procedural animation support. Required procedural animation is rejected; optional unsupported animation is diagnosed. Custom-definition internals cannot be animated.
 
 The proposal's schemas and companion checkerboard describe an older array/scalar format; several main examples are invalid JSON. This profile follows the pinned base prose instead. Corrected fixtures use valid glTF `images[].uri` and valid resource indices. The printed animation pointer `/extensions/procedurals/...` also omits the extension identifier and value leaf and is not implemented literally.
 
+## Material channel coverage
+
+| Material | Texture-info channels | Graph components |
+| --- | --- | --- |
+| Core PBR | `baseColorTexture`, `metallicRoughnessTexture`, `normalTexture`, `occlusionTexture`, `emissiveTexture` | RGB[A], G/B, RGB, R, RGB |
+| Unlit | `baseColorTexture` | RGB[A] |
+| `KHR_materials_clearcoat` | `clearcoatTexture`, `clearcoatRoughnessTexture`, `clearcoatNormalTexture` | R, G, RGB |
+| `KHR_materials_transmission` | `transmissionTexture` | R |
+| `KHR_materials_volume` | `thicknessTexture` | G |
+| `KHR_materials_specular` | `specularTexture`, `specularColorTexture` | A, RGB |
+| `KHR_materials_sheen` | `sheenColorTexture`, `sheenRoughnessTexture` | RGB, A |
+| `KHR_materials_iridescence` | `iridescenceTexture`, `iridescenceThicknessTexture` | R, G |
+
+Material factors, emissive intensity, alpha mode/cutoff, normal scale, occlusion strength and physical material properties remain active. Iridescence thickness interpolates the material's thickness range using G. Legacy specular/glossiness `diffuseTexture`, anisotropy and extensions without a defined mapping above are outside this profile. Separate authored roughness and metallic values must be combined into the G/B channels of one graph output; the exporter never invents separate metallic or roughness glTF slots.
+
 ## Examples and validation
 
 [Demo](../examples/webgpu_loader_gltf_texture_procedurals.html) shows checkerboard, noise/math and texture/math graphs alongside ordinary fallbacks. Corrected valid fixtures are in `examples/models/gltf/TextureProcedurals/`. QUnit tests cover graph validation and loader/exporter semantics. GPU screenshots require a physical renderer; software GPU fallback results are not rendering evidence.
+
+Run `node test/unit/puppeteer.texture-procedurals.js` for the focused browser suite. Pass an artifact-directory argument to also capture the demo, test results and verified physical WebGL renderer information. The runner uses source imports and closes its browser/server on completion.

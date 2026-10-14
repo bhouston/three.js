@@ -18,7 +18,15 @@ for ( const name of [ 'checkerboard', 'noise', 'texture', 'texture-external' ] )
 		const validated = validateGLTFProceduralGraph( graph, { textureCount: json.textures.length } );
 		assert.deepEqual( validated.source, graph );
 		assert.deepEqual( validated.textureIndices, name.startsWith( 'texture' ) ? [ 1 ] : [] );
-		assert.equal( validated.streams[ 0 ].semantic, 'TEXCOORD_0' );
+		if ( name === 'noise' ) {
+
+			assert.deepEqual( validated.streams, [], 'Object-space noise needs no UV stream.' );
+
+		} else {
+
+			assert.equal( validated.streams[ 0 ].semantic, 'TEXCOORD_0' );
+
+		}
 
 	} );
 

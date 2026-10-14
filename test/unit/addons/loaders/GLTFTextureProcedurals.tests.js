@@ -1,4 +1,4 @@
-import { DataTexture, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PlaneGeometry, SRGBColorSpace } from 'three';
+import { ClampToEdgeWrapping, DataTexture, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NearestFilter, NoColorSpace, PlaneGeometry, RepeatWrapping, SRGBColorSpace } from 'three';
 import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from '../../../../examples/jsm/exporters/GLTFExporter.js';
 import { GLTFTextureProceduralsLoaderExtension } from '../../../../examples/jsm/loaders/GLTFTextureProceduralsLoaderExtension.js';
@@ -405,6 +405,78 @@ QUnit.module( 'Addons', () => {
 			assert.ok( first.textures[ index ] && first.images[ first.textures[ index ].source ], 'Filename addresses exported resource.' );
 			const loaded = await parse( first );
 			assert.ok( getTextureProcedurals( material( loaded ) ).textures[ index ].image, 'Resource ready after async load.' );
+
+		} );
+
+		QUnit.test( 'graph image color interpretation, coordinates, sampling and async readiness', async ( assert ) => {
+
+			const graph = {
+				nodetype: 'nodegraph', type: 'multioutput',
+				inputs: { resource: { nodetype: 'input', type: 'filename', value: [ 0 ] } },
+				nodes: [ {
+					nodetype: 'image', type: 'color3', colorspace: 'srgb_texture',
+					inputs: { file: { nodetype: 'input', type: 'filename', input: 'resource' }, uaddressmode: { nodetype: 'input', type: 'string', value: 'clamp' }, filtertype: { nodetype: 'input', type: 'string', value: 'closest' } },
+					outputs: { out: { nodetype: 'output', type: 'color3' } }
+				}, {
+					nodetype: 'image', type: 'color3',
+					inputs: { file: { nodetype: 'input', type: 'filename', input: 'resource' } },
+					outputs: { out: { nodetype: 'output', type: 'color3' } }
+				} ],
+				outputs: { decoded: { nodetype: 'output', type: 'color3', node: 0, output: 'out' }, raw: { nodetype: 'output', type: 'color3', node: 1, output: 'out' } }
+			};
+			const resource = new DataTexture( new Uint8Array( [ 128, 128, 128, 255 ] ), 1, 1 );
+			resource.colorSpace = SRGBColorSpace;
+			resource.offset.set( 0.3, 0.4 );
+			resource.repeat.set( 2, 3 );
+			resource.rotation = 0.7;
+			resource.channel = 3;
+			resource.wrapS = RepeatWrapping;
+			resource.updateMatrix();
+			const originalMatrix = resource.matrix.toArray();
+			let release;
+			let started;
+			const ready = new Promise( resolve => {
+
+				started = resolve;
+
+			} );
+			const pending = new Promise( resolve => {
+
+				release = resolve;
+
+			} );
+			let resolved = false;
+			const promise = compileGLTFProceduralGraph( graph, { textureCount: 1, resolveTexture: async () => {
+
+				started();
+				return pending;
+
+			} } ).then( result => {
+
+				resolved = true;
+				return result;
+
+			} );
+			await ready;
+			assert.false( resolved, 'Graph compilation waits for async resource readiness.' );
+			release( resource );
+			const result = await promise;
+			const sample = findNode( result.outputs.decoded, node => node.isTextureNode );
+			assert.notStrictEqual( sample.value, resource, 'Graph sampling uses its own texture state.' );
+			assert.strictEqual( sample.value.colorSpace, NoColorSpace, 'Color decoding belongs to the graph, rather than glTF fallback texture state.' );
+			assert.strictEqual( sample.value.wrapS, ClampToEdgeWrapping, 'Image node clamp overrides fallback wrap.' );
+			assert.strictEqual( sample.value.minFilter, NearestFilter, 'Image node closest overrides fallback filtering.' );
+			assert.deepEqual( sample.value.offset.toArray(), [ 0, 0 ], 'Fallback transform ignored.' );
+			assert.deepEqual( sample.value.repeat.toArray(), [ 1, 1 ], 'Fallback scale ignored.' );
+			assert.strictEqual( sample.value.channel, 0, 'Fallback texCoord ignored.' );
+			assert.false( sample.value.flipY, 'glTF image orientation retained.' );
+			assert.deepEqual( resource.matrix.toArray(), originalMatrix, 'Fallback texture transform remains untouched.' );
+			const files = [ ...result.document.nodesXLib.values() ].filter( node => node.type === 'filename' );
+			assert.strictEqual( files.filter( file => file.getAttribute( 'colorspace' ) === 'srgb_texture' ).length, 1, 'sRGB decoding is explicit on one image input.' );
+			assert.strictEqual( files.filter( file => ! file.getAttribute( 'colorspace' ) ).length, 1, 'Shared filename does not leak decoding to raw image input.' );
+			const colors = { nodetype: 'nodegraph', type: 'color3', inputs: {}, nodes: [ { nodetype: 'geomcolor', type: 'color3', inputs: { index: { nodetype: 'input', type: 'integer', value: [ 1 ] } }, outputs: { out: { nodetype: 'output', type: 'color3' } } } ], outputs: { out: { nodetype: 'output', type: 'color3', node: 0, output: 'out' } } };
+			const compiledColors = await compileGLTFProceduralGraph( colors );
+			assert.deepEqual( compiledColors.streams[ 0 ], { semantic: 'COLOR_1', attribute: 'color_1', itemSize: 3 }, 'Numbered COLOR_1 is explicit.' );
 
 		} );
 

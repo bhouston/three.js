@@ -33,19 +33,45 @@ function normalizedType( type, path ) {
 
 }
 
-function cloneSource( source ) {
+/**
+ * Copies plain JSON without evaluating getters or toJSON hooks. Runtime values,
+ * cyclic metadata, sparse arrays, and prototype-related keys are rejected.
+ *
+ * @param {*} source - A serializable graph or definition representation.
+ * @return {*} An independent plain JSON representation.
+ */
+function cloneGLTFProceduralSource( source ) {
 
-	return JSON.parse( JSON.stringify( source, ( key, value ) => {
+	const ancestors = new Set();
+	function copy( value, path ) {
 
-		if ( typeof value === 'function' || typeof value === 'symbol' || typeof value === 'bigint' || value === undefined || ( typeof value === 'number' && ! Number.isFinite( value ) ) ) {
+		if ( value === null || typeof value === 'string' || typeof value === 'boolean' ) return value;
+		if ( typeof value === 'number' && Number.isFinite( value ) ) return value;
+		if ( typeof value !== 'object' ) fail( path, 'Source must contain only serializable JSON values.' );
+		if ( ancestors.has( value ) ) fail( path, 'Cyclic source metadata cannot be serialized.' );
+		const isArray = Array.isArray( value );
+		if ( ! isArray && Object.getPrototypeOf( value ) !== Object.prototype && Object.getPrototypeOf( value ) !== null ) fail( path, 'Expected plain JSON objects, not runtime instances.' );
+		ancestors.add( value );
+		const result = isArray ? [] : {};
+		const descriptors = Object.getOwnPropertyDescriptors( value );
+		for ( const key of Reflect.ownKeys( descriptors ) ) {
 
-			fail( key || 'graph', 'Source must contain only serializable JSON values.' );
+			if ( isArray && key === 'length' ) continue;
+			if ( typeof key !== 'string' || key === '__proto__' || key === 'constructor' || key === 'prototype' ) fail( path, 'Prototype-related and symbol keys are unsupported.' );
+			const descriptor = descriptors[ key ];
+			if ( ! Object.hasOwn( descriptor, 'value' ) || ! descriptor.enumerable ) fail( `${path}.${key}`, 'Accessors and non-enumerable metadata are not plain JSON.' );
+			if ( isArray && ( ! /^(0|[1-9]\d*)$/.test( key ) || Number( key ) >= value.length ) ) fail( path, 'Array metadata cannot be serialized.' );
+			result[ key ] = copy( descriptor.value, `${path}.${key}` );
 
 		}
 
-		return value;
+		if ( isArray && Object.keys( descriptors ).length - 1 !== value.length ) fail( path, 'Sparse arrays cannot be serialized.' );
+		ancestors.delete( value );
+		return result;
 
-	} ) );
+	}
+
+	return copy( source, 'source' );
 
 }
 
@@ -111,6 +137,8 @@ function checkPort( port, kind, path ) {
 	objectMap( port, path );
 	if ( port.nodetype !== kind ) fail( path, `Expected nodetype "${kind}".` );
 	normalizedType( port.type, path );
+	if ( port.unit !== undefined || port.unittype !== undefined ) fail( path, 'Unit metadata and conversions are unsupported by the experimental profile.' );
+	if ( port.colorspace !== undefined && port.type !== 'filename' ) fail( path, 'Only filename image resources support explicit color-space interpretation.' );
 
 }
 
@@ -147,7 +175,8 @@ function checkGraphType( graph, outputs, path ) {
  */
 function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } = {} ) {
 
-	const source = cloneSource( graph );
+	const source = cloneGLTFProceduralSource( graph );
+	definitions = cloneGLTFProceduralSource( definitions );
 	objectMap( source, 'graph' );
 	const custom = new Map();
 	const implementations = new Map();
@@ -173,7 +202,13 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 
 				checkPort( input, 'input', `${path}.inputs.${name}` );
 				if ( input.defaultgeomprop !== undefined || input.unit !== undefined || input.colorspace !== undefined ) fail( path, 'Custom definitions cannot declare implicit geometry, unit, or color-space bindings.' );
-				validateValue( input, `${path}.inputs.${name}.value`, textureCount );
+				if ( input.node !== undefined || input.input !== undefined || input.output !== undefined ) fail( path, 'Custom definition inputs cannot have connections.' );
+				if ( input.value !== undefined ) {
+
+					validateValue( input, `${path}.inputs.${name}.value`, textureCount );
+					if ( input.type === 'filename' ) textureIndices.add( input.value[ 0 ] );
+
+				}
 
 			}
 
@@ -277,6 +312,8 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 			objectMap( node, nodePath );
 			const nodeInputs = objectMap( node.inputs, `${nodePath}.inputs` );
 			const nodeOutputs = objectMap( node.outputs, `${nodePath}.outputs` );
+			if ( node.unit !== undefined || node.unittype !== undefined ) fail( nodePath, 'Unit metadata and conversions are unsupported by the experimental profile.' );
+			if ( node.colorspace !== undefined && ! Object.values( nodeInputs ).some( ( port ) => port.type === 'filename' ) ) fail( nodePath, 'Only image nodes with filename inputs support explicit color-space interpretation.' );
 			checkOutputs( nodeOutputs, null, `${nodePath}.outputs` );
 			checkGraphType( node, nodeOutputs, nodePath );
 			for ( const [ name, port ] of Object.entries( nodeInputs ) ) checkPort( port, 'input', `${nodePath}.inputs.${name}` );
@@ -308,6 +345,7 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 
 				for ( const [ name, port ] of Object.entries( definition.inputs || {} ) ) {
 
+					if ( ! nodeInputs[ name ] && port.value === undefined ) fail( `${nodePath}.inputs.${name}`, 'Missing required custom input with no definition default.' );
 					values.set( name, nodeInputs[ name ] ? resolvePort( nodeInputs[ name ], `${nodePath}.inputs.${name}` ) : valueExpression( port, `${nodePath}.defaults.${name}` ) );
 
 				}
@@ -356,6 +394,16 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 
 				}
 
+				for ( const modeName of [ 'uaddressmode', 'vaddressmode', 'filtertype' ] ) {
+
+					const expression = expressions.get( modeName );
+					if ( ! expression ) continue;
+					if ( typeof expression.value !== 'string' ) fail( nodePath, 'Image addressing and filtering parameters must be constant strings.' );
+					const allowed = modeName === 'filtertype' ? [ 'linear', 'closest' ] : [ 'constant', 'clamp', 'periodic', 'mirror' ];
+					if ( ! allowed.includes( expression.value ) ) fail( nodePath, `Unsupported ${modeName} "${expression.value}".` );
+
+				}
+
 				if ( node.nodetype === 'texcoord' || node.nodetype === 'geomcolor' ) {
 
 					const stream = expressions.get( 'index' );
@@ -386,6 +434,27 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 
 	}
 
+	// Validate all functional implementations, including unused ones, without
+	// adding their geometry requirements or compiler symbols to the bound graph.
+	for ( const [ index, implementation ] of implementations ) {
+
+		const definition = definitions[ index ];
+		const values = new Map();
+		for ( const [ name, port ] of Object.entries( definition.inputs || {} ) ) {
+
+			values.set( name, port.value !== undefined ? valueExpression( port, `procedural_definitions[${index}].inputs.${name}` ) : { type: normalizedType( port.type, 'definition' ), value: port.type === 'string' ? '' : port.type === 'filename' ? 'gltf-texture:0' : '0' } );
+
+		}
+
+		const declared = Object.fromEntries( Object.entries( definition.outputs ).map( ( [ name, port ] ) => [ name, normalizedType( port.type, 'definition' ) ] ) );
+		checkOutputs( objectMap( implementation.outputs, 'implementation' ), declared, 'implementation.outputs' );
+		expand( implementation, values, [ index ], `procedural_definitions[${index}].implementation` );
+		children.length = 0;
+		streams.clear();
+		serial = 0;
+
+	}
+
 	const outputExpressions = expand( source, [], [], 'graph' );
 	const outputNames = Object.create( null );
 	for ( const [ name, expression ] of Object.entries( outputExpressions ) ) {
@@ -395,6 +464,7 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 		children.push( xmlElement( 'output', { name: normalizedName, ...expression } ) );
 
 	}
+
 	const normalized = xmlElement( 'materialx', { name: '', colorspace: 'lin_rec709' }, [ xmlElement( 'nodegraph', { name: 'procedural' }, children ) ] );
 	return { source, normalized, outputNames, textureIndices: Array.from( textureIndices ).sort( ( a, b ) => a - b ), streams: Array.from( streams.values() ) };
 
@@ -444,6 +514,14 @@ async function compileGLTFProceduralGraph( graph, options = {} ) {
 			resource.magFilter = filtertype === 'closest' ? NearestFilter : LinearFilter;
 			resource.minFilter = resource.magFilter;
 			resource.colorSpace = NoColorSpace;
+			resource.offset.set( 0, 0 );
+			resource.repeat.set( 1, 1 );
+			resource.center.set( 0, 0 );
+			resource.rotation = 0;
+			resource.matrix.identity();
+			resource.matrixAutoUpdate = false;
+			resource.channel = 0;
+			resource.anisotropy = 1;
 			resource.flipY = false;
 			resource.needsUpdate = true;
 			const sample = texture( resource );
@@ -484,4 +562,4 @@ function collectGLTFProceduralTextureIndices( graph, options = {} ) {
 
 }
 
-export { validateGLTFProceduralGraph, compileGLTFProceduralGraph, collectGLTFProceduralTextureIndices };
+export { validateGLTFProceduralGraph, compileGLTFProceduralGraph, collectGLTFProceduralTextureIndices, cloneGLTFProceduralSource };

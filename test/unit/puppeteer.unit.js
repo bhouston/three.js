@@ -55,11 +55,6 @@ function main() {
 
 		const flags = [
 			'--hide-scrollbars',
-			'--enable-unsafe-webgpu',
-			'--enable-features=Vulkan',
-			'--disable-vulkan-surface',
-			'--ignore-gpu-blocklist',
-			'--disable-gpu-driver-bug-workarounds',
 			'--no-sandbox'
 		];
 
@@ -85,7 +80,6 @@ function main() {
 		browser = await puppeteer.launch( {
 			headless: testMode === 'headless',
 			args: flags,
-			env: { ...process.env, VK_DRIVER_FILES: '/usr/share/vulkan/icd.d/lvp_icd.x86_64.json' },
 			defaultViewport: null,
 			handleSIGINT: false,
 			protocolTimeout: 0,
@@ -167,7 +161,7 @@ function main() {
 
 			return window._QUnitStats !== undefined;
 
-		} );
+		}, { timeout: networkTimeout * 60000 } );
 
 		// Get the test results
 		const stats = await page.evaluate( () => {

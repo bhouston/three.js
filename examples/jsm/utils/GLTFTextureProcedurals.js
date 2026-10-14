@@ -5,6 +5,8 @@ import { cloneGLTFProceduralSource, collectGLTFProceduralTextureIndices, compile
 const EXTENSION_NAME = 'KHR_texture_procedurals';
 const LIBRARY_NAME = 'EXT_texture_procedurals_mx_1_39';
 const states = new WeakMap();
+const functions = new WeakMap();
+let functionSerial = 0;
 
 // Paths are glTF texture-info paths, not additional material slots.
 const PROCEDURAL_CHANNELS = {
@@ -116,11 +118,22 @@ function nodeFingerprint( roots ) {
 
 		if ( visited.has( node ) ) return;
 		visited.add( node );
-		const children = node.getChildren();
+		// MaterialReferenceNode creates its internal uniform lazily during
+		// rendering. Its property/type define the serializable factor binding.
+		const children = node.isMaterialReferenceNode ? [] : node.getChildren();
 		const entry = { uuid: node.uuid, children: children.map( child => child.uuid ) };
-		for ( const key of [ 'nodeType', 'method', 'scope', 'property', 'components', 'op', 'convertTo' ] ) {
+		for ( const key of [ 'nodeType', 'uniformType', 'method', 'scope', 'property', 'attributeName', 'components', 'op', 'convertTo', 'sampler', 'updateMatrix' ] ) {
 
 			if ( node[ key ] !== undefined ) entry[ key ] = node[ key ];
+
+		}
+
+		if ( node.isMaterialReferenceNode ) entry.material = node.material && node.material.uuid;
+
+		if ( typeof node.jsFunc === 'function' ) {
+
+			if ( ! functions.has( node.jsFunc ) ) functions.set( node.jsFunc, functionSerial ++ );
+			entry.function = functions.get( node.jsFunc );
 
 		}
 
@@ -195,6 +208,7 @@ async function updateTextureProceduralMaterial( material ) {
 
 			const options = {
 				definitions: source.procedural_definitions || [],
+				textures: state.textures,
 				textureCount: state.textures.length,
 				resolveTexture: async index => {
 

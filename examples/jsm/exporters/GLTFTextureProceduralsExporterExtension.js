@@ -20,6 +20,52 @@ function canonicalJSON( value ) {
 
 }
 
+function preserveExtensionFactors( name, material, extension ) {
+
+	// Ordinary hooks may omit inactive lobes. Procedural bindings still need
+	// their sibling factors/ranges for faithful round trips and later edits.
+	switch ( name ) {
+
+		case 'KHR_materials_clearcoat':
+			extension.clearcoatFactor = material.clearcoat;
+			extension.clearcoatRoughnessFactor = material.clearcoatRoughness;
+			break;
+		case 'KHR_materials_transmission':
+			extension.transmissionFactor = material.transmission;
+			break;
+		case 'KHR_materials_volume':
+			extension.thicknessFactor = material.thickness;
+			extension.attenuationColor = material.attenuationColor.toArray();
+			if ( material.attenuationDistance !== Infinity ) extension.attenuationDistance = material.attenuationDistance;
+			break;
+		case 'KHR_materials_specular':
+			extension.specularFactor = material.specularIntensity;
+			extension.specularColorFactor = material.specularColor.toArray();
+			break;
+		case 'KHR_materials_sheen':
+			// glTF has a single sheen color factor. Combine Three.js's separate
+			// strength and color instead of adding an invented scalar slot.
+			extension.sheenColorFactor = material.sheenColor.toArray().map( component => component * material.sheen );
+			extension.sheenRoughnessFactor = material.sheenRoughness;
+			break;
+		case 'KHR_materials_iridescence':
+			extension.iridescenceFactor = material.iridescence;
+			extension.iridescenceIor = material.iridescenceIOR;
+			extension.iridescenceThicknessMinimum = material.iridescenceThicknessRange[ 0 ];
+			extension.iridescenceThicknessMaximum = material.iridescenceThicknessRange[ 1 ];
+			break;
+		case 'KHR_materials_anisotropy':
+			extension.anisotropyStrength = material.anisotropy;
+			extension.anisotropyRotation = material.anisotropyRotation;
+			break;
+		case 'EXT_materials_bump':
+			extension.bumpFactor = material.bumpScale;
+			break;
+
+	}
+
+}
+
 /**
  * Opt-in exporter for serializable procedural authoring state, never reverse-compiling TSL.
  * Register with GLTFExporter.register( writer => new GLTFTextureProceduralsExporterExtension( writer ) ).
@@ -67,6 +113,7 @@ class GLTFTextureProceduralsExporterExtension {
 				this.resources.set( source, resource );
 
 			}
+
 			object.value = [ await this.writer.processTextureAsync( this.resources.get( source ) ) ];
 			return;
 
@@ -164,7 +211,12 @@ class GLTFTextureProceduralsExporterExtension {
 			info.extensions = info.extensions || {};
 			info.extensions[ this.name ] = { ...binding, index: localRemap.get( binding.index ) };
 			const path = PROCEDURAL_CHANNELS[ channel ].path;
-			if ( path[ 0 ] === 'extensions' ) writer.extensionsUsed[ path[ 1 ] ] = true;
+			if ( path[ 0 ] === 'extensions' ) {
+
+				writer.extensionsUsed[ path[ 1 ] ] = true;
+				preserveExtensionFactors( path[ 1 ], material, materialDef.extensions[ path[ 1 ] ] );
+
+			}
 
 		}
 

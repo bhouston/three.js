@@ -1,4 +1,4 @@
-import { compileGLTFProceduralGraph, validateGLTFProceduralGraph } from './materialx/GLTFProceduralGraph.js';
+import { cloneGLTFProceduralSource, collectGLTFProceduralTextureIndices, compileGLTFProceduralGraph, validateGLTFProceduralGraph } from './materialx/GLTFProceduralGraph.js';
 import { EXTENSION_NAME, LIBRARY_NAME, PROCEDURAL_CHANNELS, getTextureInfo, proceduralError, attachTextureProcedurals, createTextureProceduralMaterial, getTextureProcedurals } from '../utils/GLTFTextureProcedurals.js';
 
 /**
@@ -45,8 +45,8 @@ class GLTFTextureProceduralsLoaderExtension {
 		try {
 
 			const used = json.extensionsUsed || [];
-			const libraries = used.filter( name => /^EXT_texture_procedurals_mx_/.test( name ) );
-			if ( ! used.includes( EXTENSION_NAME ) || libraries.length !== 1 || libraries[ 0 ] !== LIBRARY_NAME ) throw proceduralError( 'Declare KHR_texture_procedurals and exactly one supported library, EXT_texture_procedurals_mx_1_39, in extensionsUsed.' );
+			const libraries = [ ...new Set( [ ...used, ...( json.extensionsRequired || [] ) ].filter( name => /^EXT_texture_procedurals_mx_/.test( name ) ) ) ];
+			if ( ! used.includes( EXTENSION_NAME ) || ! used.includes( LIBRARY_NAME ) || libraries.length !== 1 || libraries[ 0 ] !== LIBRARY_NAME ) throw proceduralError( 'Declare KHR_texture_procedurals and exactly one supported library, EXT_texture_procedurals_mx_1_39, in extensionsUsed.' );
 			if ( json.extensions[ LIBRARY_NAME ] !== undefined ) throw proceduralError( 'The MaterialX library declaration has no extension payload.' );
 			if ( ! Array.isArray( this.source.procedurals ) ) throw proceduralError( 'Root procedurals must be an array.' );
 			// Register the asset-wide declaration with the parser as a known identifier.
@@ -132,20 +132,21 @@ class GLTFTextureProceduralsLoaderExtension {
 			const options = {
 				textures: this.textures,
 				required: this.required,
-				compileGraph: ( index, graph, graphOptions ) => {
+				compileGraph: async ( index, graph, graphOptions ) => {
 
-					const key = JSON.stringify( { graph, definitions: graphOptions.definitions } );
+					const indices = collectGLTFProceduralTextureIndices( graph, graphOptions );
+					const textures = graphOptions.textures;
+					await Promise.all( indices.map( async textureIndex => {
+
+						if ( ! textures[ textureIndex ] ) textures[ textureIndex ] = await parser.getDependency( 'texture', textureIndex );
+						if ( ! textures[ textureIndex ] ) throw proceduralError( `Texture ${ textureIndex } could not be loaded.` );
+
+					} ) );
+					const key = JSON.stringify( { graph, definitions: graphOptions.definitions, textures: indices.map( textureIndex => textures[ textureIndex ].uuid ) } );
 					if ( ! this.graphs.has( key ) ) this.graphs.set( key, compileGLTFProceduralGraph( graph, {
 						...graphOptions,
 						manager: parser.options.manager,
-						resolveTexture: async textureIndex => {
-
-							const texture = await parser.getDependency( 'texture', textureIndex );
-							if ( ! texture ) throw proceduralError( `Texture ${ textureIndex } could not be loaded.` );
-							this.textures[ textureIndex ] = texture;
-							return texture;
-
-						}
+						resolveTexture: async textureIndex => textures[ textureIndex ]
 					} ) );
 					return this.graphs.get( key );
 
@@ -170,10 +171,19 @@ class GLTFTextureProceduralsLoaderExtension {
 			}
 
 			if ( Object.keys( supported ).length === 0 ) return fallback;
-			const material = await createTextureProceduralMaterial( fallback, this.source, supported, options );
-			parser.associations.set( material, { materials: materialIndex } );
-			this.materials.set( materialIndex, { state: getTextureProcedurals( material ), fallback } );
-			return material;
+			try {
+
+				const material = await createTextureProceduralMaterial( fallback, this.source, supported, options );
+				parser.associations.set( material, { materials: materialIndex } );
+				this.materials.set( materialIndex, { state: getTextureProcedurals( material ), fallback } );
+				return material;
+
+			} catch ( error ) {
+
+				this.diagnose( error, { materialIndex } );
+				return fallback;
+
+			}
 
 		} )();
 
@@ -181,6 +191,7 @@ class GLTFTextureProceduralsLoaderExtension {
 
 	afterRoot( result ) {
 
+		const hydrated = new WeakSet();
 		for ( const scene of result.scenes ) {
 
 			scene.traverse( mesh => {
@@ -214,7 +225,18 @@ class GLTFTextureProceduralsLoaderExtension {
 
 						}
 
-						attachTextureProcedurals( material, entry.state );
+						// GLTFLoader creates variants for tangents, vertex colors and flat
+						// shading. Give each variant independent editable source/state.
+						const state = hydrated.has( material ) ? getTextureProcedurals( material ) : {
+							...entry.state,
+							source: cloneGLTFProceduralSource( entry.state.source ),
+							bindings: cloneGLTFProceduralSource( entry.state.bindings ),
+							textures: entry.state.textures.slice(),
+							compiled: new Map( entry.state.compiled ),
+							nodes: { ...entry.state.nodes }
+						};
+						attachTextureProcedurals( material, state );
+						hydrated.add( material );
 
 					} catch ( error ) {
 

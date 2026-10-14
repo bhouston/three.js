@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js - native AVIF and JPEG XL HDR prototype</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" href="main.css">
+		<style>
+			body { padding: 20px; overflow: auto; }
+			canvas { display: block; max-width: 100%; margin: 12px 0; }
+			pre { white-space: pre-wrap; }
+			label { margin-right: 20px; }
+		</style>
+	</head>
+	<body>
+		<h1>Native AVIF / JPEG XL HDR prototype</h1>
+		<p><a href="?">WebGL2</a> | <a href="?backend=webgpu">WebGPU</a></p>
+		<p>Eight neutral PQ patches span 0–10,000 nits. Lower exposure to reveal highlights.
+			The loader requires experimental Canvas2D HDR headroom control and fails explicitly without it.
+			The preview is tone mapped to SDR; numerical readback verifies HDR independently of the display.</p>
+		<label>Image <select id="format"><option value="avif">AVIF</option><option value="jxl">JPEG XL</option></select></label>
+		<label>Exposure <input id="exposure" type="range" min="-6" max="2" step="0.1" value="-2"></label>
+		<label>Try your image <input id="file" type="file" accept=".avif,.jxl,image/avif,image/jxl"></label>
+		<pre id="status">Running native decode and GPU checks…</pre>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module" src="./jsm/hdr-native-prototype.js"></script>
+	</body>
+</html>

@@ -20,7 +20,7 @@ for ( const name of [ 'checkerboard', 'noise', 'texture', 'texture-external' ] )
 		assert.deepEqual( validated.textureIndices, name.startsWith( 'texture' ) ? [ 1 ] : [] );
 		if ( name === 'noise' ) {
 
-			assert.deepEqual( validated.streams, [], 'Object-space noise needs no UV stream.' );
+			assert.deepEqual( validated.streams.map( stream => stream.semantic ), [ 'POSITION' ], 'Object-space noise requires position rather than UV.' );
 
 		} else {
 

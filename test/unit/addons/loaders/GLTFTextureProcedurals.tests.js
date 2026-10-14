@@ -371,6 +371,12 @@ QUnit.module( 'Addons', () => {
 			animated.extensionsRequired = [ EXTENSION ];
 			animated.animations = [ { channels: [ { sampler: 0, target: { extensions: { KHR_animation_pointer: { pointer: '/extensions/KHR_texture_procedurals/procedurals/0/inputs/color/value' } } } } ], samplers: [ { input: 0, output: 0 } ] } ];
 			await assert.rejects( parse( animated ), /animat|pointer/i, 'Required procedural animation is explicitly rejected.' );
+			delete animated.extensionsRequired;
+			const optional = await parse( animated );
+			assert.ok( optional.userData.textureProceduralsDiagnostics.some( diagnostic => /animation/i.test( diagnostic.message ) ), 'Optional graph-interface animation emits a diagnostic.' );
+			assert.strictEqual( optional.animations[ 0 ].tracks.length, 0, 'Metadata preservation is not claimed as animation support.' );
+			animated.extensionsRequired = [ 'KHR_animation_pointer' ];
+			await assert.rejects( parse( animated ), /animat|pointer/i, 'Required animation pointer fails even if procedural extension is optional.' );
 
 		} );
 
@@ -471,12 +477,88 @@ QUnit.module( 'Addons', () => {
 			assert.strictEqual( sample.value.channel, 0, 'Fallback texCoord ignored.' );
 			assert.false( sample.value.flipY, 'glTF image orientation retained.' );
 			assert.deepEqual( resource.matrix.toArray(), originalMatrix, 'Fallback texture transform remains untouched.' );
-			const files = [ ...result.document.nodesXLib.values() ].filter( node => node.type === 'filename' );
+			const files = [ ...result.document.nodesXLib.values() ].filter( node => node.type === 'filename' && node.parent.element === 'image' );
 			assert.strictEqual( files.filter( file => file.getAttribute( 'colorspace' ) === 'srgb_texture' ).length, 1, 'sRGB decoding is explicit on one image input.' );
 			assert.strictEqual( files.filter( file => ! file.getAttribute( 'colorspace' ) ).length, 1, 'Shared filename does not leak decoding to raw image input.' );
 			const colors = { nodetype: 'nodegraph', type: 'color3', inputs: {}, nodes: [ { nodetype: 'geomcolor', type: 'color3', inputs: { index: { nodetype: 'input', type: 'integer', value: [ 1 ] } }, outputs: { out: { nodetype: 'output', type: 'color3' } } } ], outputs: { out: { nodetype: 'output', type: 'color3', node: 0, output: 'out' } } };
 			const compiledColors = await compileGLTFProceduralGraph( colors );
 			assert.deepEqual( compiledColors.streams[ 0 ], { semantic: 'COLOR_1', attribute: 'color_1', itemSize: 3 }, 'Numbered COLOR_1 is explicit.' );
+
+		} );
+
+		QUnit.test( 'imported ready resource replacement invalidates compilation and exports the edit', async ( assert ) => {
+
+			const loaded = await parse( await fixture( 'texture' ) );
+			const imported = material( loaded );
+			const state = getTextureProcedurals( imported );
+			const index = state.source.procedurals[ 0 ].nodes[ 0 ].inputs.file.value[ 0 ];
+			const replacement = new DataTexture( new Uint8Array( [ 220, 80, 40, 255 ] ), 1, 1 );
+			replacement.needsUpdate = true;
+			state.textures[ index ] = replacement;
+			await assert.rejects( exporter().parseAsync( loaded.scene ), /resource|compil|changed/i, 'Resource edit needs recompilation.' );
+			await updateTextureProceduralMaterial( imported );
+			const sample = findNode( imported.colorNode, node => node.isTextureNode );
+			assert.strictEqual( sample.value.image, replacement.image, 'Loader graph cache uses edited ready image.' );
+			const json = await exporter().parseAsync( loaded.scene );
+			const reloaded = await parse( json );
+			const image = findNode( material( reloaded ).colorNode, node => node.isTextureNode ).value.image;
+			assert.strictEqual( image.width, 1, 'Edited resource survives export/reload.' );
+
+		} );
+
+		QUnit.test( 'UV4 and COLOR1 geometry streams survive loader/exporter round trips', async ( assert ) => {
+
+			const json = await fixture();
+			json.meshes[ 0 ].primitives[ 0 ].attributes.TEXCOORD_4 = 2;
+			json.meshes[ 0 ].primitives[ 0 ].attributes.COLOR_1 = 1;
+			const graph = json.extensions[ EXTENSION ].procedurals[ 0 ];
+			graph.nodes.push( {
+				nodetype: 'texcoord', type: 'vector2',
+				inputs: { index: { nodetype: 'input', type: 'integer', value: [ 4 ] } },
+				outputs: { out: { nodetype: 'output', type: 'vector2' } }
+			}, {
+				nodetype: 'geomcolor', type: 'color3',
+				inputs: { index: { nodetype: 'input', type: 'integer', value: [ 1 ] } },
+				outputs: { out: { nodetype: 'output', type: 'color3' } }
+			} );
+			graph.nodes[ 0 ].inputs.texcoord = { nodetype: 'input', type: 'vector2', node: 1, output: 'out' };
+			graph.nodes[ 0 ].inputs.color1 = { nodetype: 'input', type: 'color3', node: 2, output: 'out' };
+			json.extensionsRequired = [ EXTENSION ];
+			const loaded = await parse( json );
+			assert.true( material( loaded ).isNodeMaterial, 'Numbered geometry graph compiles.' );
+			for ( const binary of [ false, true ] ) {
+
+				const exported = await exporter().parseAsync( loaded.scene, { binary } );
+				if ( ! binary ) {
+
+					assert.ok( exported.meshes[ 0 ].primitives[ 0 ].attributes.TEXCOORD_4 !== undefined, 'UV4 exports with its glTF semantic.' );
+					assert.ok( exported.meshes[ 0 ].primitives[ 0 ].attributes.COLOR_1 !== undefined, 'COLOR1 exports with its glTF semantic.' );
+
+				}
+
+				const reloaded = await loader().parseAsync( binary ? exported : JSON.stringify( exported ), FIXTURES );
+				assert.true( material( reloaded ).isNodeMaterial, 'Numbered streams evaluate after JSON/GLB reload.' );
+
+			}
+
+		} );
+
+		QUnit.test( 'nonserializable normal scales and unsupported normal UV frame fail clearly', async ( assert ) => {
+
+			const source = { procedurals: [ packedGraph() ] };
+			const bindings = { normalTexture: { index: 0, output: 'normal' } };
+			for ( const scale of [[ - 1, 1 ], [ 0.2, 0.6 ]] ) {
+
+				const fallback = new MeshStandardMaterial();
+				fallback.normalScale.fromArray( scale );
+				const authored = await createTextureProceduralMaterial( fallback, source, bindings );
+				await assert.rejects( exporter().parseAsync( new Mesh( new PlaneGeometry(), authored ) ), /normal.*scale|scale.*normal/i, 'Nonserializable normal scale diagnosed.' );
+
+			}
+
+			const uv = structuredClone( source );
+			uv.procedurals[ 0 ].nodes.push( { nodetype: 'texcoord', type: 'vector2', inputs: { index: { nodetype: 'input', type: 'integer', value: [ 1 ] } }, outputs: { out: { nodetype: 'output', type: 'vector2' } } } );
+			await assert.rejects( createTextureProceduralMaterial( new MeshStandardMaterial(), uv, bindings ), /TEXCOORD_0|UV0/i, 'Procedural normal currently needs UV0 tangent frame.' );
 
 		} );
 
@@ -563,6 +645,32 @@ QUnit.module( 'Addons', () => {
 				mutate( json );
 				json.extensionsRequired = [ EXTENSION ];
 				await assert.rejects( parse( json ), /procedural|texture|library|MaterialX|version|index/i, 'Invalid required declaration/reference fails.' );
+
+			}
+
+		} );
+
+		QUnit.test( 'optional library conflicts and unexpected companion payload use diagnostics and fallback', async ( assert ) => {
+
+			for ( const mutate of [
+				json => {
+
+					json.extensionsUsed.push( 'EXT_texture_procedurals_mx_1_38' );
+
+				},
+				json => {
+
+					json.extensions[ LIBRARY ] = {};
+
+				}
+			] ) {
+
+				const json = await fixture();
+				mutate( json );
+				const loaded = await parse( json );
+				assert.notOk( material( loaded ).isNodeMaterial, 'Unsupported optional declaration retains fallback.' );
+				assert.ok( material( loaded ).map, 'Standard texture remains usable.' );
+				assert.ok( loaded.userData.textureProceduralsDiagnostics.length, 'Optional failure emits diagnostics.' );
 
 			}
 

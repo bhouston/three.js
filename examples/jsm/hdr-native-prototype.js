@@ -64,6 +64,7 @@ async function run() {
 		const entry = { format: extension };
 		result.images.push( entry );
 		const url = 'textures/hdr-native/neutral-pq.' + extension;
+		let target;
 		try {
 
 			// Control: float16 canvas alone does not guarantee preservation of HDR.
@@ -71,11 +72,12 @@ async function run() {
 			const texture = await loader.loadAsync( url );
 			textures[ extension ] = texture;
 			entry.cpu = samplePatches( texture.image.data, manifest );
+			entry.cpuRGBA = sampleRGBA( texture.image.data, manifest );
 			material.map = texture;
 			material.toneMapped = false;
 			material.needsUpdate = true;
 			renderer.toneMapping = THREE.NoToneMapping;
-			const target = new THREE.WebGLRenderTarget( manifest.width, manifest.height, { type: THREE.HalfFloatType, depthBuffer: false } );
+			target = new THREE.WebGLRenderTarget( manifest.width, manifest.height, { type: THREE.HalfFloatType, depthBuffer: false } );
 			renderer.setRenderTarget( target );
 			renderer.render( scene, camera );
 
@@ -92,22 +94,35 @@ async function run() {
 			}
 
 			entry.gpu = samplePatches( data, manifest );
+			entry.gpuRGBA = sampleRGBA( data, manifest );
 			entry.expected = manifest.patches.map( patch => patch.linear );
-			entry.maxRelativeError = Math.max( ...entry.gpu.slice( 1 ).map( ( value, i ) => Math.abs( value / entry.expected[ i + 1 ] - 1 ) ) );
-			entry.passed = entry.cpu.every( Number.isFinite ) && entry.gpu.every( Number.isFinite ) &&
-				Math.abs( entry.gpu[ 0 ] ) < 0.001 && entry.maxRelativeError < 0.02;
-			renderer.setRenderTarget( null );
-			target.dispose();
+			entry.maxRelativeError = Math.max( ...entry.gpuRGBA.slice( 1 ).flatMap( ( rgba, i ) => rgba.slice( 0, 3 ).map( value => Math.abs( value / entry.expected[ i + 1 ] - 1 ) ) ) );
+			entry.passed = entry.cpuRGBA.flat().every( Number.isFinite ) && entry.gpuRGBA.flat().every( Number.isFinite ) &&
+				entry.gpuRGBA.every( rgba => Math.abs( rgba[ 3 ] - 1 ) < 0.001 ) &&
+				entry.gpuRGBA[ 0 ].slice( 0, 3 ).every( value => Math.abs( value ) < 0.001 ) && entry.maxRelativeError < 0.02;
 
 		} catch ( error ) {
 
 			entry.error = error.message;
 
+		} finally {
+
+			renderer.setRenderTarget( null );
+			if ( target ) target.dispose();
+
 		}
 
 	}
 
-	format.onchange = preview;
+	format.onchange = () => {
+
+		if ( customTexture ) customTexture.dispose();
+		customTexture = null;
+		file.value = '';
+		preview();
+
+	};
+
 	exposure.oninput = preview;
 	file.onchange = async () => {
 
@@ -136,6 +151,17 @@ async function run() {
 function samplePatches( data, manifest ) {
 
 	return manifest.patches.map( ( { x, y } ) => THREE.DataUtils.fromHalfFloat( data[ ( y * manifest.width + x ) * 4 ] ) );
+
+}
+
+function sampleRGBA( data, manifest ) {
+
+	return manifest.patches.map( ( { x, y } ) => {
+
+		const offset = ( y * manifest.width + x ) * 4;
+		return Array.from( data.slice( offset, offset + 4 ), THREE.DataUtils.fromHalfFloat );
+
+	} );
 
 }
 

@@ -33,6 +33,23 @@ node utils/test-native-hdr.js --experimental --output ../hdr-results
 
 The default run expects explicit loader rejection; the experimental run requires both formats to preserve PQ reference values through WebGL2 and WebGPU within 2%. JSON and screenshots are optional outputs. Browser processes and the local server close at completion. No software renderer is selected. Hardware availability is required; this is not part of the ordinary unit-test CI suite.
 
+## Measured results — October 14, 2026
+
+Windows, Chrome 155.0.8059.79, NVIDIA GeForce RTX 3060 Ti. WebGL identified ANGLE/NVIDIA/D3D11; the explicit WebGPU adapter identified NVIDIA/Ampere and supplied the device used by Three.js. Both modes ran without software rendering flags.
+
+| Format | WebGL2 | WebGPU | Largest RGB patch error | Brightest GPU red sample |
+|---|---|---|---|---|
+| AVIF | Passed | Passed | 0.213% | 49.15625 |
+| JPEG XL | Passed | Passed | 0.317% | 49.15625 |
+
+The brightest reference patch is approximately 49.26108 at 203-nit reference white. CPU and GPU samples agree; values above 1 survive upload and actual shader sampling. All eight patches, RGB channels and opaque alpha are checked. This is numeric HDR texture validation on a physical GPU, not an HDR monitor presentation test or compression benchmark.
+
+With default browser settings, native decoding succeeds but float16 canvas drawing maps the brightest patch to approximately 1. The loader deliberately rejects this configuration because HDR headroom control is unavailable. Float16 storage by itself does not preserve source HDR.
+
+Validation on the final code: core lint, addon lint, utility lint and lint of changed test/example files pass. The core unit suite reports 1,957 passed and one existing TODO; addon suite reports 104 passed, including two new asynchronous loader lifecycle tests. Unit suites were run with the existing Chrome through a separate harness because the stock unit runner specifies Linux Vulkan/lavapipe configuration. No software renderer was used for the HDR proof. The repository has no typecheck script. The fixture generator reproduces the committed reference sample codes.
+
+**Conclusion:** a shared native AVIF/JXL loader is technically viable in the tested experimental Chrome configuration, and the same half-float texture works in both Three.js rendering backends. Native HDR extraction remains unsuitable as a universal glTF baseline until its API and color/radiance semantics are portable. A production path still needs a controlled decoder fallback and wider image/browser qualification.
+
 ## Limits
 
 - Browser-defined reference-white scaling is not a physical radiance contract. The measured Chrome PQ path uses approximately 203 cd/m² = 1; other browsers and profiles need numerical qualification.

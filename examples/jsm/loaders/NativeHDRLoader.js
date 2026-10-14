@@ -38,7 +38,7 @@ class NativeHDRLoader extends Loader {
 		loader.setResponseType( 'arraybuffer' );
 
 		// Keep LoadingManager pending during asynchronous browser decoding as well.
-		const decodeURL = this.manager.resolveURL( this.path + url ) + '#native-hdr-decode';
+		const decodeURL = this.path + url + '#native-hdr-decode';
 		this.manager.itemStart( decodeURL );
 		const fail = ( error ) => {
 
@@ -46,10 +46,10 @@ class NativeHDRLoader extends Loader {
 
 				if ( onError ) onError( error );
 				else console.error( error );
-				this.manager.itemError( decodeURL );
 
 			} finally {
 
+				this.manager.itemError( decodeURL );
 				this.manager.itemEnd( decodeURL );
 
 			}

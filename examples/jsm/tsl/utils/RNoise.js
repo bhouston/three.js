@@ -1,13 +1,12 @@
 import { float, Fn, fract, int, vec2, vec4 } from 'three/tsl';
 
 /**
- * Returns a TSL function that samples texture-free analytic R² noise.
- * Index 0 uses continuous screen pixels; other indices tile-shift with an R²
- * sequence into a 64×64 period. Values are four independent R² dimensions
- * hashed from the sample coordinates.
+ * Returns a TSL function that samples texture-free analytic R⁴ noise.
+ * The sample index tile-shifts a 32×32 pattern with an R² sequence.
+ * Each pixel contains a four-dimensional R-sequence sample.
  *
  * @param {UniformNode<Vector2>} resolution
- * @param {number} [seed=0] - Added to the coordinate hash so each pass gets an independent R² phase.
+ * @param {number} [seed=0] - Offsets the tile shift and the R⁴ sequence phase.
  */
 export function bindAnalyticNoise( resolution, seed = 0 ) {
 
@@ -15,16 +14,11 @@ export function bindAnalyticNoise( resolution, seed = 0 ) {
 
 	const r4 = ( coords ) => {
 
-		const P = 1.32471795724474602596;
+		// Generalized golden ratio for four dimensions: P^5 = P + 1.
+		const P = 1.1673039782614187;
+		const t = coords.x.add( coords.y.mul( 32 ) ).add( float( seed ) );
 
-		const t = coords.x.mul( 1 / P ).add( coords.y.mul( 1 / P ** 2 ) ).add( float( seed ) );
-
-		return vec4(
-			fract( t.mul( P ).mul( 1 / P ) ),
-			fract( t.mul( P * 2 ).mul( 1 / P ** 2 ) ),
-			fract( t.mul( P * 3 ).mul( 0.4198754210 ) ), // this is not 1 / P ** 3, however this magic constant gives better noise
-			fract( t.mul( P * 4 ).mul( 1 / P ** 3 ) )
-		);
+		return fract( vec4( 1 / P, 1 / P ** 2, 1 / P ** 3, 1 / P ** 4 ).mul( t ).add( 0.5 ) );
 
 	};
 

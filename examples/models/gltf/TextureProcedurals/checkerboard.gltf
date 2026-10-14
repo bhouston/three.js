@@ -1,0 +1,188 @@
+{
+	"asset": {
+		"version": "2.0",
+		"generator": "Three.js experimental texture-procedurals fixtures"
+	},
+	"extensionsUsed": [
+		"KHR_texture_procedurals",
+		"EXT_texture_procedurals_mx_1_39",
+		"KHR_materials_unlit"
+	],
+	"extensions": {
+		"KHR_texture_procedurals": {
+			"procedurals": [
+				{
+					"name": "Checkerboard",
+					"nodetype": "nodegraph",
+					"type": "color3",
+					"inputs": {},
+					"nodes": [
+						{
+							"nodetype": "checkerboard",
+							"type": "color3",
+							"inputs": {
+								"color1": {
+									"nodetype": "input",
+									"type": "color3",
+									"value": [
+										0.04,
+										0.35,
+										0.8
+									]
+								},
+								"color2": {
+									"nodetype": "input",
+									"type": "color3",
+									"value": [
+										0.95,
+										0.75,
+										0.1
+									]
+								},
+								"uvtiling": {
+									"nodetype": "input",
+									"type": "vector2",
+									"value": [
+										8,
+										8
+									]
+								}
+							},
+							"outputs": {
+								"out": {
+									"nodetype": "output",
+									"type": "color3"
+								}
+							}
+						}
+					],
+					"outputs": {
+						"pattern": {
+							"nodetype": "output",
+							"type": "color3",
+							"node": 0,
+							"output": "out"
+						}
+					}
+				}
+			]
+		}
+	},
+	"images": [
+		{
+			"uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+		}
+	],
+	"textures": [
+		{
+			"source": 0
+		}
+	],
+	"materials": [
+		{
+			"name": "Checkerboard",
+			"extensions": {
+				"KHR_materials_unlit": {}
+			},
+			"pbrMetallicRoughness": {
+				"baseColorFactor": [
+					1,
+					1,
+					1,
+					1
+				],
+				"metallicFactor": 0,
+				"roughnessFactor": 1,
+				"baseColorTexture": {
+					"index": 0,
+					"extensions": {
+						"KHR_texture_procedurals": {
+							"index": 0,
+							"output": "pattern"
+						}
+					}
+				}
+			}
+		}
+	],
+	"buffers": [
+		{
+			"byteLength": 192,
+			"uri": "data:application/octet-stream;base64,AACAvwAAgL8AAAAAAACAPwAAgL8AAAAAAACAPwAAgD8AAAAAAACAvwAAgL8AAAAAAACAPwAAgD8AAAAAAACAvwAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAIA/"
+		}
+	],
+	"bufferViews": [
+		{
+			"buffer": 0,
+			"byteOffset": 0,
+			"byteLength": 72
+		},
+		{
+			"buffer": 0,
+			"byteOffset": 72,
+			"byteLength": 72
+		},
+		{
+			"buffer": 0,
+			"byteOffset": 144,
+			"byteLength": 48
+		}
+	],
+	"accessors": [
+		{
+			"bufferView": 0,
+			"componentType": 5126,
+			"count": 6,
+			"type": "VEC3",
+			"min": [
+				-1,
+				-1,
+				0
+			],
+			"max": [
+				1,
+				1,
+				0
+			]
+		},
+		{
+			"bufferView": 1,
+			"componentType": 5126,
+			"count": 6,
+			"type": "VEC3"
+		},
+		{
+			"bufferView": 2,
+			"componentType": 5126,
+			"count": 6,
+			"type": "VEC2"
+		}
+	],
+	"meshes": [
+		{
+			"primitives": [
+				{
+					"attributes": {
+						"POSITION": 0,
+						"NORMAL": 1,
+						"TEXCOORD_0": 2
+					},
+					"material": 0
+				}
+			]
+		}
+	],
+	"nodes": [
+		{
+			"mesh": 0
+		}
+	],
+	"scenes": [
+		{
+			"nodes": [
+				0
+			]
+		}
+	],
+	"scene": 0
+}

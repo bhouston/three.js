@@ -4,6 +4,8 @@ These explicitly registered addons evaluate pattern graphs through this fork's M
 
 Both `KHR_texture_procedurals` and `EXT_texture_procedurals_mx_1_39` must appear in `extensionsUsed`. The latter declares the MaterialX 1.39 node library for the entire asset and has no separate payload. Graphs and functional definitions live in `extensions.KHR_texture_procedurals`.
 
+The glTF adapter translates validated draft graphs into the [shared MaterialX XML/JSON document representation](MaterialXJSON.md) and evaluates them through `MaterialXLoader.parseDocument()`. It reuses the existing MaterialX parser/compiler, defaults, node definitions and image pipeline. The JSON document representation is an internal addon format, distinct from the draft graph wire format. Node category policies restrict this integration to pattern graphs; ordinary XML MaterialX loading retains surface material support.
+
 ## Registration and round trips
 
 ```js
@@ -23,6 +25,8 @@ const glb = await exporter.parseAsync( gltf.scene, { binary: true } );
 ```
 
 Procedural materials are node materials. Use `WebGPURenderer`; its WebGL backend also supports these materials. Ordinary `GLTFLoader` without registration uses the standard fallback texture. No MaterialX dependency is added to ordinary glTF loading.
+
+Loader and exporter registration are independent. A loader-only application can omit the exporter imports and registration entirely. Export remains an experimental opt-in addon operating on preserved source graphs, rather than a requirement of MaterialX JSON loading or an attempt to reverse compiled shaders.
 
 ## Authoring and edits
 

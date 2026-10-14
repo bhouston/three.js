@@ -163,7 +163,7 @@ class DRACOLoader extends Loader {
 	 */
 	load( url, onLoad, onProgress, onError ) {
 
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'arraybuffer' );
 
 		loader.load( url, ( buffer ) => {
 
@@ -356,12 +356,7 @@ class DRACOLoader extends Loader {
 		// Decoder libraries use their own URLs and exclude asset request headers.
 		// Priority and cache are inherited; credentials follow the existing library policy.
 
-		const loader = new FileLoader( this.manager, {
-			...this,
-			path: '',
-			requestHeader: {},
-			responseType: responseType
-		} );
+		const loader = new FileLoader( this.manager, this ).setPath( '' ).setRequestHeader( {} ).setResponseType( responseType );
 
 		return new Promise( ( resolve, reject ) => {
 

@@ -99,7 +99,7 @@ class KSPLATLoader extends Loader {
 
 		const scope = this;
 
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'arraybuffer' );
 
 		loader.load( url, function ( buffer ) {
 

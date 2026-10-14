@@ -504,7 +504,7 @@ class ObjectLoader extends Loader {
 			const manager = new LoadingManager( onLoad );
 
 			// Image URLs already include resourcePath and have passed through the parent manager.
-			loader = new ImageLoader( manager, { ...this, path: '' } );
+			loader = new ImageLoader( manager, this ).setPath( '' );
 
 			for ( let i = 0, il = json.length; i < il; i ++ ) {
 
@@ -601,7 +601,7 @@ class ObjectLoader extends Loader {
 		if ( json !== undefined && json.length > 0 ) {
 
 			// Image URLs already include resourcePath; do not prepend the model request path.
-			loader = new ImageLoader( this.manager, { ...this, path: '' } );
+			loader = new ImageLoader( this.manager, this ).setPath( '' );
 
 			for ( let i = 0, il = json.length; i < il; i ++ ) {
 

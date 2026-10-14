@@ -105,6 +105,69 @@ export default QUnit.module( 'Loaders', () => {
 
 		} );
 
+
+		QUnit.test( 'nested file requests preserve accessor and nonenumerable settings', ( assert ) => {
+
+			const originalLoad = FileLoader.prototype.load;
+			const settings = { path: 'assets/', resourcePath: 'textures/', requestHeader: { Authorization: 'test' }, withCredentials: true, crossOrigin: undefined, priority: 'high', cache: 'no-store' };
+			let requests = 0;
+			FileLoader.prototype.load = function () {
+
+				requests ++;
+				for ( const property of Object.keys( settings ) ) {
+
+					assert.strictEqual( this[ property ], settings[ property ], property );
+
+				}
+
+				assert.strictEqual( this.responseType, 'arraybuffer', 'The format response type overrides the inherited setting.' );
+
+			};
+
+			try {
+
+				for ( const LoaderClass of [ AudioLoader, CompressedTextureLoader, DataTextureLoader ] ) {
+
+					class CustomLoader extends LoaderClass {}
+					for ( const property of Object.keys( settings ) ) {
+
+						Object.defineProperty( CustomLoader.prototype, property, {
+							get() {
+
+								return this[ '_' + property ];
+
+							},
+							set( value ) {
+
+								this[ '_' + property ] = value;
+
+							}
+						} );
+
+					}
+
+					new CustomLoader( undefined, settings ).load( 'accessors' );
+					const loader = new LoaderClass( undefined, settings );
+					for ( const property of Object.keys( settings ) ) {
+
+						Object.defineProperty( loader, property, { enumerable: false } );
+
+					}
+
+					loader.load( 'nonenumerable' );
+
+				}
+
+				assert.strictEqual( requests, 6 );
+
+			} finally {
+
+				FileLoader.prototype.load = originalLoad;
+
+			}
+
+		} );
+
 		// PROPERTIES
 		QUnit.test( 'manager', ( assert ) => {
 

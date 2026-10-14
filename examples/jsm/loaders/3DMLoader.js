@@ -147,7 +147,7 @@ class Rhino3dmLoader extends Loader {
 	 */
 	load( url, onLoad, onProgress, onError ) {
 
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'arraybuffer' );
 
 		this.url = url;
 
@@ -375,7 +375,7 @@ class Rhino3dmLoader extends Loader {
 		}
 
 		// Embedded images have complete blob/data URLs; do not prepend the model path.
-		const textureLoader = new TextureLoader( this.manager, { ...this, path: '' } );
+		const textureLoader = new TextureLoader( this.manager, this ).setPath( '' );
 
 		for ( let i = 0; i < material.textures.length; i ++ ) {
 
@@ -531,7 +531,7 @@ class Rhino3dmLoader extends Loader {
 		if ( renderEnvironment ) {
 
 			// The embedded environment is a data URL, independent of the model path.
-			const environmentLoader = new EXRLoader( this.manager, { ...this, path: '' } );
+			const environmentLoader = new EXRLoader( this.manager, this ).setPath( '' );
 			environmentLoader.load( renderEnvironment.image, function ( texture ) {
 
 				texture.mapping = EquirectangularReflectionMapping;
@@ -969,12 +969,7 @@ class Rhino3dmLoader extends Loader {
 		if ( ! this.libraryPending ) {
 
 			// Load rhino3dm wrapper.
-			const jsLoader = new FileLoader( this.manager, {
-				...this,
-				path: this.libraryPath,
-				requestHeader: {},
-				withCredentials: false
-			} );
+			const jsLoader = new FileLoader( this.manager, this ).setPath( this.libraryPath ).setRequestHeader( {} ).setWithCredentials( false );
 			const jsContent = new Promise( ( resolve, reject ) => {
 
 				jsLoader.load( 'rhino3dm.js', resolve, undefined, reject );
@@ -982,13 +977,7 @@ class Rhino3dmLoader extends Loader {
 			} );
 
 			// Load rhino3dm WASM binary.
-			const binaryLoader = new FileLoader( this.manager, {
-				...this,
-				path: this.libraryPath,
-				requestHeader: {},
-				withCredentials: false,
-				responseType: 'arraybuffer'
-			} );
+			const binaryLoader = new FileLoader( this.manager, this ).setPath( this.libraryPath ).setRequestHeader( {} ).setWithCredentials( false ).setResponseType( 'arraybuffer' );
 			const binaryContent = new Promise( ( resolve, reject ) => {
 
 				binaryLoader.load( 'rhino3dm.wasm', resolve, undefined, reject );

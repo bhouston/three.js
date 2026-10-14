@@ -134,7 +134,7 @@ class MD2Loader extends Loader {
 
 		const scope = this;
 
-		const loader = new FileLoader( scope.manager, { ...scope, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( scope.manager, scope ).setResponseType( 'arraybuffer' );
 
 		loader.load( url, function ( buffer ) {
 

@@ -69,7 +69,7 @@ export class LUTCubeLoader extends Loader {
 	 */
 	load( url, onLoad, onProgress, onError ) {
 
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'text' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'text' );
 		loader.load( url, text => {
 
 			try {

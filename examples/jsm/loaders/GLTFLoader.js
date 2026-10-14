@@ -318,7 +318,7 @@ class GLTFLoader extends Loader {
 
 		};
 
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'arraybuffer' );
 
 		loader.load( url, function ( data ) {
 
@@ -2707,23 +2707,19 @@ class GLTFParser {
 		if ( typeof createImageBitmap === 'undefined' || ( isSafari && safariVersion < 17 ) || ( isFirefox && firefoxVersion < 98 ) ) {
 
 			// Texture URLs are resolved against options.path before loading.
-			this.textureLoader = new TextureLoader( this.options.manager, { ...this.options, path: '' } );
+			this.textureLoader = new TextureLoader( this.options.manager, this.options ).setPath( '' );
 
 		} else {
 
 			// Texture URLs are resolved against options.path before loading.
-			this.textureLoader = new ImageBitmapLoader( this.options.manager, { ...this.options, path: '' } );
+			this.textureLoader = new ImageBitmapLoader( this.options.manager, this.options ).setPath( '' );
 
 		}
 
 		// Buffer URLs already include the resource path, so do not inherit options.path.
-		this.fileLoader = new FileLoader( this.options.manager, {
-			...this.options,
-			path: '',
-			responseType: 'arraybuffer',
-			// Retain the crossOrigin credential behavior and honor explicit fetch credentials.
-			withCredentials: this.options.withCredentials || this.options.crossOrigin === 'use-credentials'
-		} );
+		this.fileLoader = new FileLoader( this.options.manager, this.options ).setPath( '' ).setResponseType( 'arraybuffer' );
+		// Retain the crossOrigin credential behavior and honor explicit fetch credentials.
+		this.fileLoader.setWithCredentials( this.options.withCredentials || this.options.crossOrigin === 'use-credentials' );
 
 	}
 

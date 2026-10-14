@@ -88,7 +88,7 @@ class LWOLoader extends Loader {
 		const modelName = url.split( path ).pop().split( '.' )[ 0 ];
 
 		// The LWO payload is binary; inherit the parent request settings.
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'arraybuffer' );
 
 		loader.load( url, function ( buffer ) {
 
@@ -134,7 +134,7 @@ class LWOLoader extends Loader {
 
 		// console.log( 'lwoTree', lwoTree );
 
-		const textureLoader = new TextureLoader( this.manager, { ...this, path: this.resourcePath || path } );
+		const textureLoader = new TextureLoader( this.manager, this ).setPath( this.resourcePath || path );
 
 		return new LWOTreeParser( textureLoader ).parse( modelName );
 

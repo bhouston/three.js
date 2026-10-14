@@ -497,7 +497,7 @@ class UltraHDRLoader extends Loader {
 		texture.generateMipmaps = true;
 		texture.flipY = true;
 
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'arraybuffer' );
 
 		loader.load( url, ( buffer ) => {
 

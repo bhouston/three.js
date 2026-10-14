@@ -72,7 +72,7 @@ class TDSLoader extends Loader {
 
 		const path = ( this.path === '' ) ? LoaderUtils.extractUrlBase( url ) : this.path;
 
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'arraybuffer' );
 
 		loader.load( url, function ( data ) {
 
@@ -552,7 +552,7 @@ class TDSLoader extends Loader {
 		let next = chunk.readChunk( );
 		let texture = {};
 
-		const loader = new TextureLoader( this.manager, { ...this, path: this.resourcePath || path } );
+		const loader = new TextureLoader( this.manager, this ).setPath( this.resourcePath || path );
 
 		while ( next ) {
 

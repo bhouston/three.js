@@ -47,7 +47,7 @@ class KMZLoader extends Loader {
 
 		const scope = this;
 
-		const loader = new FileLoader( scope.manager, { ...scope, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( scope.manager, scope ).setResponseType( 'arraybuffer' );
 
 		loader.load( url, function ( text ) {
 
@@ -128,7 +128,7 @@ class KMZLoader extends Loader {
 			if ( model ) {
 
 				// The archive manager resolves internal image paths; exclude the outer archive paths.
-				const loader = new ColladaLoader( manager, { ...this, path: '', resourcePath: '' } );
+				const loader = new ColladaLoader( manager, this ).setPath( '' ).setResourcePath( '' );
 				return loader.parse( new TextDecoder().decode( zip[ model.textContent ] ) );
 
 			}
@@ -144,7 +144,7 @@ class KMZLoader extends Loader {
 				if ( extension === 'dae' ) {
 
 					// The archive manager resolves internal image paths; exclude the outer archive paths.
-					const loader = new ColladaLoader( manager, { ...this, path: '', resourcePath: '' } );
+					const loader = new ColladaLoader( manager, this ).setPath( '' ).setResourcePath( '' );
 					return loader.parse( new TextDecoder().decode( zip[ path ] ) );
 
 				}

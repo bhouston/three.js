@@ -92,7 +92,7 @@ class ThreeMFLoader extends Loader {
 	load( url, onLoad, onProgress, onError ) {
 
 		const scope = this;
-		const loader = new FileLoader( scope.manager, { ...scope, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( scope.manager, scope ).setResponseType( 'arraybuffer' );
 
 		loader.load( url, function ( buffer ) {
 
@@ -130,7 +130,7 @@ class ThreeMFLoader extends Loader {
 
 		const scope = this;
 		// Embedded images have complete blob/data URLs; do not prepend the model path.
-		const textureLoader = new TextureLoader( this.manager, { ...this, path: '' } );
+		const textureLoader = new TextureLoader( this.manager, this ).setPath( '' );
 
 		function loadDocument( data ) {
 

@@ -104,7 +104,7 @@ class MaterialXLoader extends Loader {
 		// have finished, matching the lifecycle used by GLTFLoader.
 		this.manager.itemStart( url );
 
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'arraybuffer' );
 		loader.load( url, ( data ) => {
 
 			try {

@@ -102,13 +102,13 @@ class ColladaLoader extends Loader {
 		const { library, asset, collada } = parseResult;
 
 		// Setup texture loaders
-		const textureLoader = new TextureLoader( this.manager, { ...this, path: this.resourcePath || path } );
+		const textureLoader = new TextureLoader( this.manager, this ).setPath( this.resourcePath || path );
 
 		let tgaLoader;
 
 		if ( TGALoader ) {
 
-			tgaLoader = new TGALoader( this.manager, { ...this, path: this.resourcePath || path } );
+			tgaLoader = new TGALoader( this.manager, this ).setPath( this.resourcePath || path );
 
 		}
 

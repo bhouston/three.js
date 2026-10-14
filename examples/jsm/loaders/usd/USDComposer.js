@@ -86,7 +86,7 @@ class USDComposer {
 		this.textureCache = {};
 		this.skinnedMeshes = [];
 		this.manager = manager;
-		this.imageLoader = new ImageLoader( manager, { ...parameters, path: '' } );
+		this.imageLoader = new ImageLoader( manager, parameters ).setPath( '' );
 		this.texturePromises = [];
 
 	}

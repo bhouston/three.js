@@ -966,8 +966,8 @@ class MaterialXDocument {
 
 		this.nodesXLib = new Map();
 		// The document resource root overrides the path of the MaterialX file request.
-		this.imageLoader = new ImageLoader( manager, { ...parameters, path } );
-		this.textureLoader = new ImageBitmapLoader( manager, { ...parameters, path } );
+		this.imageLoader = new ImageLoader( manager, parameters ).setPath( path );
+		this.textureLoader = new ImageBitmapLoader( manager, parameters ).setPath( path );
 		this.textureLoader.setOptions( { imageOrientation: 'none' } );
 		this.textureCache = new Map();
 		this.pendingResources = [];

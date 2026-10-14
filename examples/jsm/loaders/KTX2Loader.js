@@ -288,18 +288,9 @@ class KTX2Loader extends Loader {
 
 		if ( ! this.transcoderPending ) {
 
-			const jsLoader = new FileLoader( this.manager, {
-				...this,
-				path: this.transcoderPath,
-				requestHeader: {}
-			} );
+			const jsLoader = new FileLoader( this.manager, this ).setPath( this.transcoderPath ).setRequestHeader( {} );
 
-			const binaryLoader = new FileLoader( this.manager, {
-				...this,
-				path: this.transcoderPath,
-				requestHeader: {},
-				responseType: 'arraybuffer'
-			} );
+			const binaryLoader = new FileLoader( this.manager, this ).setPath( this.transcoderPath ).setRequestHeader( {} ).setResponseType( 'arraybuffer' );
 
 			let jsContent, binaryContent;
 			if ( this.transcoderPath === '' ) {
@@ -388,7 +379,7 @@ class KTX2Loader extends Loader {
 
 		}
 
-		const loader = new FileLoader( this.manager, { ...this, responseType: 'arraybuffer' } );
+		const loader = new FileLoader( this.manager, this ).setResponseType( 'arraybuffer' );
 
 
 		loader.load( url, ( buffer ) => {

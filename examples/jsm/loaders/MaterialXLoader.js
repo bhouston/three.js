@@ -218,34 +218,52 @@ class MaterialXLoader extends Loader {
 	 * Parses the given MaterialX document and returns the resulting materials
 	 * together with the translation log.
 	 *
-	 * @param {string} text - The raw MaterialX data as a string.
+	 * @param {string|Object} data - XML text, JSON text, or a neutral JSON element tree (see `docs/MaterialXJSON.md`).
 	 * @param {Object} [options] - Parse options.
 	 * @param {string} [options.path] - The base path for resolving resources like textures. Defaults to the loader's path.
 	 * @param {string} [options.materialName] - Only translate the material with this name. Defaults to all materials.
 	 * @param {string} [options.uvSpace='bottom-left'] - The UV space of the document's textures, `'bottom-left'` or `'top-left'`.
 	 * @param {Function} [options.interfaceValidator] - Validates node interfaces, see `createStrictInterfaceValidator()` in `MaterialXInterfaceValidation.js`.
 	 * @param {function(Object, ?string): ?Node} [options.nodeResolver] - Builds the TSL node of a MaterialX node before the built-in node library. Called with the node and the requested output (`null` for the default output); returns the node, or `null` to leave it to the loader. For channel outputs such as `outx`, the loader takes the channel of the returned node.
+	 * @param {Array<string>|Set<string>} [options.allowedNodes] - Processing categories permitted by an opt-in allowlist. Structural elements remain permitted.
+	 * @param {Array<string>|Set<string>} [options.blockedNodes] - Processing categories rejected before compilation, including unused nodes.
+	 * @param {function(Object): ?TextureNode} [options.textureResolver] - Resolves a filename input to a ready TSL texture node, or returns null for ordinary MaterialX resource loading.
+	 * @param {function(number): Node} [options.texcoordResolver] - Resolves numbered texture coordinates. Defaults to MaterialX UV-space handling.
 	 * @param {boolean} [options.throwOnErrors=true] - Whether translation errors throw or are only reported in the log.
 	 * @return {{materials: Object<string,NodeMaterial>, log: Array<Object>, errors: Array<Object>, warnings: Array<Object>}} The materials keyed by name and the translation log.
 	 */
-	parse( text, options = {} ) {
+	parse( data, options = {} ) {
 
-		const parsed = this._parse( text, options );
+		const parsed = this._parse( data, options );
 		this._throwOnErrors( parsed.log, options );
 		return parsed.result;
 
 	}
 
-	_parse( text, options = {} ) {
+	/**
+	 * Reads XML or JSON through the shared parser without constructing surface materials.
+	 * Pattern adapters can resolve outputs with `document.getMaterialXNode( graph, output ).getNode()`.
+	 * Await `document.waitForResources()` before using asynchronously loaded textures.
+	 *
+	 * @param {string|Object} data - XML text, JSON text, or a neutral JSON element tree.
+	 * @param {Object} [options] - The same parser, node policy and resource options as {@link MaterialXLoader#parse}.
+	 * @return {MaterialXDocument} The configured document with its parsed root and translation log.
+	 */
+	parseDocument( data, options = {} ) {
 
 		const log = new MaterialXLog();
-
 		const document = new MaterialXDocument( this.manager, options.path || this.path, log, options.archiveResolver || null, options.uvSpace );
-		const result = document.parse( text, options.materialName || null, {
-			interfaceValidator: options.interfaceValidator,
-			nodeResolver: options.nodeResolver,
-		} );
+		document.read( data, options );
+		this._throwOnErrors( log, options );
+		return document;
 
+	}
+
+	_parse( data, options = {} ) {
+
+		const document = this.parseDocument( data, { ...options, throwOnErrors: false } );
+		const log = document.log;
+		const result = document.compileMaterials( options.materialName || null );
 		return { document, log, result };
 
 	}

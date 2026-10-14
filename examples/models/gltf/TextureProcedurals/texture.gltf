@@ -1,0 +1,215 @@
+{
+	"asset": {
+		"version": "2.0",
+		"generator": "Three.js experimental texture-procedurals fixtures"
+	},
+	"extensionsUsed": [
+		"KHR_texture_procedurals",
+		"EXT_texture_procedurals_mx_1_39",
+		"KHR_materials_unlit"
+	],
+	"extensions": {
+		"KHR_texture_procedurals": {
+			"procedurals": [
+				{
+					"name": "Texture and math",
+					"nodetype": "nodegraph",
+					"type": "color3",
+					"inputs": {},
+					"nodes": [
+						{
+							"nodetype": "image",
+							"type": "color3",
+							"inputs": {
+								"file": {
+									"nodetype": "input",
+									"type": "filename",
+									"value": [
+										1
+									]
+								},
+								"uaddressmode": {
+									"nodetype": "input",
+									"type": "string",
+									"value": "clamp"
+								},
+								"vaddressmode": {
+									"nodetype": "input",
+									"type": "string",
+									"value": "clamp"
+								}
+							},
+							"outputs": {
+								"out": {
+									"nodetype": "output",
+									"type": "color3"
+								}
+							}
+						},
+						{
+							"nodetype": "multiply",
+							"type": "color3",
+							"inputs": {
+								"in1": {
+									"nodetype": "input",
+									"type": "color3",
+									"node": 0,
+									"output": "out"
+								},
+								"in2": {
+									"nodetype": "input",
+									"type": "color3",
+									"value": [
+										0.2,
+										0.6,
+										1
+									]
+								}
+							},
+							"outputs": {
+								"out": {
+									"nodetype": "output",
+									"type": "color3"
+								}
+							}
+						}
+					],
+					"outputs": {
+						"pattern": {
+							"nodetype": "output",
+							"type": "color3",
+							"node": 1,
+							"output": "out"
+						}
+					}
+				}
+			]
+		}
+	},
+	"images": [
+		{
+			"uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4AWP4DwQACfsD/c8LaHIAAAAASUVORK5CYII="
+		},
+		{
+			"uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGklEQVR4AWP876DwX3G/AgOTIsN9hvsfGRgAPYkGMgVx5sMAAAAASUVORK5CYII="
+		}
+	],
+	"textures": [
+		{
+			"source": 0
+		},
+		{
+			"source": 1
+		}
+	],
+	"materials": [
+		{
+			"name": "Texture and math",
+			"extensions": {
+				"KHR_materials_unlit": {}
+			},
+			"pbrMetallicRoughness": {
+				"baseColorFactor": [
+					1,
+					1,
+					1,
+					1
+				],
+				"metallicFactor": 0,
+				"roughnessFactor": 1,
+				"baseColorTexture": {
+					"index": 0,
+					"extensions": {
+						"KHR_texture_procedurals": {
+							"index": 0,
+							"output": "pattern"
+						}
+					}
+				}
+			}
+		}
+	],
+	"buffers": [
+		{
+			"byteLength": 192,
+			"uri": "data:application/octet-stream;base64,AACAvwAAgL8AAAAAAACAPwAAgL8AAAAAAACAPwAAgD8AAAAAAACAvwAAgL8AAAAAAACAPwAAgD8AAAAAAACAvwAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAIA/"
+		}
+	],
+	"bufferViews": [
+		{
+			"buffer": 0,
+			"byteOffset": 0,
+			"byteLength": 72,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteOffset": 72,
+			"byteLength": 72,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteOffset": 144,
+			"byteLength": 48,
+			"target": 34962
+		}
+	],
+	"accessors": [
+		{
+			"bufferView": 0,
+			"componentType": 5126,
+			"count": 6,
+			"type": "VEC3",
+			"min": [
+				-1,
+				-1,
+				0
+			],
+			"max": [
+				1,
+				1,
+				0
+			]
+		},
+		{
+			"bufferView": 1,
+			"componentType": 5126,
+			"count": 6,
+			"type": "VEC3"
+		},
+		{
+			"bufferView": 2,
+			"componentType": 5126,
+			"count": 6,
+			"type": "VEC2"
+		}
+	],
+	"meshes": [
+		{
+			"primitives": [
+				{
+					"attributes": {
+						"POSITION": 0,
+						"NORMAL": 1,
+						"TEXCOORD_0": 2
+					},
+					"material": 0
+				}
+			]
+		}
+	],
+	"nodes": [
+		{
+			"mesh": 0
+		}
+	],
+	"scenes": [
+		{
+			"nodes": [
+				0
+			]
+		}
+	],
+	"scene": 0
+}

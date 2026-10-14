@@ -37,7 +37,7 @@ import {
 
 import { MaterialXLogCodes } from './MaterialXLog.js';
 import { createMaterialXCompileRegistry, compileNodeFromRegistry } from './compile/MaterialXCompileRegistry.js';
-import { parseMaterialXNodeTree, parseMaterialXText } from './parse/MaterialXParser.js';
+import { parseMaterialXNodeTree, parseMaterialXData } from './parse/MaterialXParser.js';
 import { getSurfaceMapper } from './MaterialXSurfaceMappings.js';
 import { MtlXLibrary } from './MaterialXNodeLibrary.js';
 import { resolveNodeDef } from './MaterialXNodeDefs.js';
@@ -53,6 +53,17 @@ const IDENTITY_MAT3_VALUES = [ 1, 0, 0, 0, 1, 0, 0, 0, 1 ];
 const IDENTITY_MAT4_VALUES = [ 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 ];
 const MATRIX_INVERSE_EPSILON = 1e-8;
 const COMPILE_REGISTRY = createMaterialXCompileRegistry();
+const STRUCTURAL_ELEMENTS = new Set( [ 'materialx', 'nodegraph', 'input', 'output', 'nodedef', 'implementation' ] );
+
+function nodePolicySet( categories, name ) {
+
+	if ( ! Array.isArray( categories ) && ! ( categories instanceof Set ) ) throw new Error( `THREE.MaterialXDocument: ${ name } must be an array or Set of category strings.` );
+	const set = new Set( categories );
+	if ( [ ...set ].some( category => typeof category !== 'string' || category === '' ) ) throw new Error( `THREE.MaterialXDocument: ${ name } must contain category strings.` );
+	return set;
+
+}
+
 const NODE_CLASS_BY_TYPE = {
 	integer: int,
 	float,
@@ -233,10 +244,10 @@ function isChannelOutput( outputName ) {
 
 class MaterialXNode {
 
-	constructor( materialX, nodeXML, nodePath = '' ) {
+	constructor( materialX, elementData, nodePath = '' ) {
 
 		this.materialX = materialX;
-		this.nodeXML = nodeXML;
+		this.elementData = elementData;
 		this.nodePath = nodePath ? nodePath + '/' + this.name : this.name;
 		this.parent = null;
 		this.node = null;
@@ -247,7 +258,7 @@ class MaterialXNode {
 
 	get element() {
 
-		return this.nodeXML.nodeName;
+		return this.elementData.element;
 
 	}
 	get nodeGraph() {
@@ -456,6 +467,18 @@ class MaterialXNode {
 	}
 
 	getTexture() {
+
+		if ( this.materialX.textureResolver ) {
+
+			const resolved = this.materialX.textureResolver( this );
+			if ( resolved !== null && resolved !== undefined ) {
+
+				if ( resolved.isTextureNode !== true ) throw new Error( 'THREE.MaterialXDocument: textureResolver must return a TSL texture node or null.' );
+				return resolved;
+
+			}
+
+		}
 
 		const filePrefix = this.getRecursiveAttribute( 'fileprefix' ) || '';
 		const sourceURI = filePrefix + this.value;
@@ -760,7 +783,7 @@ class MaterialXNode {
 
 	getAttribute( name ) {
 
-		const value = this.nodeXML.getAttribute( name );
+		const value = Object.hasOwn( this.elementData.attributes, name ) ? this.elementData.attributes[ name ] : null;
 		if ( value === null && this.element === 'materialx' && name === 'colorspace' ) {
 
 			return DEFAULT_DOCUMENT_COLOR_SPACE;
@@ -773,7 +796,7 @@ class MaterialXNode {
 
 	getRecursiveAttribute( name ) {
 
-		let attribute = this.nodeXML.getAttribute( name );
+		let attribute = Object.hasOwn( this.elementData.attributes, name ) ? this.elementData.attributes[ name ] : null;
 		if ( attribute === null && this.parent !== null ) {
 
 			attribute = this.parent.getRecursiveAttribute( name );
@@ -940,6 +963,8 @@ class MaterialXDocument {
 		this.textureCache = new Map();
 		this.pendingResources = [];
 		this.nodeResolver = null;
+		this.textureResolver = null;
+		this.rootNode = null;
 		this.documentNodeDefs = null;
 		const bottomLeftUvSpaceHelpers = getBottomLeftUvSpaceHelpers( this.uvSpace );
 
@@ -951,7 +976,7 @@ class MaterialXDocument {
 			getGeomPropNode: ( name ) => {
 
 				const uvMatch = /^UV(\d+)$/.exec( name );
-				if ( uvMatch ) return bottomLeftUvSpaceHelpers.mxToBottomLeftUvSpace( uv( parseInt( uvMatch[ 1 ], 10 ) ) );
+				if ( uvMatch ) return this.compileContext.getTexcoordNode( parseInt( uvMatch[ 1 ], 10 ) );
 				return GEOMPROP_NODES[ name ];
 
 			},
@@ -962,6 +987,7 @@ class MaterialXDocument {
 			IDENTITY_MAT3_VALUES,
 			IDENTITY_MAT4_VALUES,
 		};
+		this.defaultTexcoordResolver = this.compileContext.getTexcoordNode;
 
 	}
 
@@ -1039,27 +1065,37 @@ class MaterialXDocument {
 
 	}
 
-	parseNode( nodeXML, nodePath = '' ) {
+	parseNode( elementData, nodePath = '' ) {
 
 		return parseMaterialXNodeTree(
-			nodeXML,
-			( childNodeXML, childNodePath ) => new MaterialXNode( this, childNodeXML, childNodePath ),
+			elementData,
+			( childElement, childNodePath ) => new MaterialXNode( this, childElement, childNodePath ),
 			( materialXNode ) => this.addMaterialXNode( materialXNode ),
 			nodePath,
 		);
 
 	}
 
-	parse( text, materialName = null, options = {} ) {
+	read( data, options = {} ) {
 
 		this.nodeResolver = options.nodeResolver || null;
+		this.textureResolver = options.textureResolver || null;
 		this.documentNodeDefs = null;
+		this.nodesXLib.clear();
+		this.compileContext.getTexcoordNode = options.texcoordResolver || this.defaultTexcoordResolver;
 
-		const rootNode = parseMaterialXText(
-			text,
-			( childNodeXML, childNodePath ) => new MaterialXNode( this, childNodeXML, childNodePath ),
-			( materialXNode ) => this.addMaterialXNode( materialXNode ),
-		);
+		const normalized = parseMaterialXData( data );
+		const allowed = options.allowedNodes === undefined ? null : nodePolicySet( options.allowedNodes, 'allowedNodes' );
+		const blocked = nodePolicySet( options.blockedNodes === undefined ? [] : options.blockedNodes, 'blockedNodes' );
+		function validatePolicy( element, path ) {
+
+			if ( ! STRUCTURAL_ELEMENTS.has( element.element ) && ( blocked.has( element.element ) || ( allowed && ! allowed.has( element.element ) ) ) ) throw new Error( `THREE.MaterialXDocument: Node category "${ element.element }" at "${ path }" is blocked by the node policy.` );
+			for ( let i = 0; i < element.children.length; i ++ ) validatePolicy( element.children[ i ], `${ path }/${ element.children[ i ].attributes.name || i }` );
+
+		}
+
+		validatePolicy( normalized, 'materialx' );
+		const rootNode = this.rootNode = this.parseNode( normalized );
 
 		if ( options.interfaceValidator ) {
 
@@ -1067,7 +1103,20 @@ class MaterialXDocument {
 
 		}
 
-		const materials = rootNode.toMaterials( materialName );
+		return rootNode;
+
+	}
+
+	parse( data, materialName = null, options = {} ) {
+
+		this.read( data, options );
+		return this.compileMaterials( materialName );
+
+	}
+
+	compileMaterials( materialName = null ) {
+
+		const materials = this.rootNode.toMaterials( materialName );
 		return {
 			materials,
 			log: this.log.entries,

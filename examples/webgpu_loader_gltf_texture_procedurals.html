@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js - experimental glTF texture procedurals</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" href="example.css">
+		<style>
+			#info { pointer-events: auto; display: block; width: 100%; left: 0; text-align: center; line-height: 1.7; }
+			#labels { position: absolute; bottom: 2em; width: 100%; display: flex; justify-content: space-evenly; color: white; font: 14px sans-serif; }
+		</style>
+	</head>
+	<body>
+		<div id="info">
+			Experimental KHR_texture_procedurals · MaterialX 1.39<br>
+			Top: explicitly registered procedural loader. Bottom: ordinary fallback loader.<br>
+			<a href="../docs/TextureProcedurals.md">Draft profile and authoring API</a>
+		</div>
+		<div id="labels"><span>Checkerboard</span><span>Noise / math</span><span>Texture / math</span></div>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { GLTFTextureProceduralsLoaderExtension } from 'three/addons/loaders/GLTFTextureProceduralsLoaderExtension.js';
+
+			const scene = new THREE.Scene();
+			scene.background = new THREE.Color( 0x202832 );
+			const camera = new THREE.PerspectiveCamera( 40, innerWidth / innerHeight, 0.1, 100 );
+			camera.position.set( 0, 0, 11 );
+
+			// The WebGL backend also supports node materials. Default GPU selection is used.
+			const renderer = new THREE.WebGPURenderer( { antialias: true, forceWebGL: true } );
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( innerWidth, innerHeight );
+			document.body.appendChild( renderer.domElement );
+			await renderer.init();
+
+			const loader = new GLTFLoader();
+			loader.register( parser => new GLTFTextureProceduralsLoaderExtension( parser ) );
+			const fallbackLoader = new GLTFLoader();
+			const names = [ 'checkerboard', 'noise', 'texture' ];
+
+			for ( let i = 0; i < names.length; i ++ ) {
+
+				const url = `models/gltf/TextureProcedurals/${ names[ i ] }.gltf`;
+				const procedural = await loader.loadAsync( url );
+				const fallback = await fallbackLoader.loadAsync( url );
+				procedural.scene.position.set( ( i - 1 ) * 2.4, 1.15, 0 );
+				fallback.scene.position.set( ( i - 1 ) * 2.4, - 1.15, 0 );
+				scene.add( procedural.scene, fallback.scene );
+
+			}
+
+			await renderer.renderAsync( scene, camera );
+			window.textureProceduralsDemo = { renderer, scene, camera, ready: true };
+
+			window.addEventListener( 'resize', () => {
+
+				camera.aspect = innerWidth / innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( innerWidth, innerHeight );
+				renderer.renderAsync( scene, camera );
+
+			} );
+
+		</script>
+	</body>
+</html>

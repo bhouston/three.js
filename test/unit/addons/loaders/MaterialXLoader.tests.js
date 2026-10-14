@@ -6,6 +6,7 @@ import { createMaterialXCompileRegistry } from '../../../../examples/jsm/loaders
 import registryData from '../../../../examples/jsm/loaders/materialx/MaterialXNodeInterfaceRegistry.js';
 import { getNodeDefNames } from '../../../../examples/jsm/loaders/materialx/MaterialXNodeDefs.js';
 import { createStrictInterfaceValidator } from '../../../../examples/jsm/loaders/materialx/MaterialXInterfaceValidation.js';
+import { xml as MATERIAL_X_XML_GRAPH, json as MATERIAL_X_JSON_GRAPH } from './fixtures/MaterialXJSON.js';
 
 const MATERIAL_X = `<?xml version="1.0"?>
 <materialx version="1.39">
@@ -164,6 +165,119 @@ export default QUnit.module( 'Addons', () => {
 	QUnit.module( 'Loaders', () => {
 
 		QUnit.module( 'MaterialXLoader', () => {
+
+			QUnit.test( 'XML and addon JSON compile through the same document and node pipeline', ( assert ) => {
+
+				const loader = new MaterialXLoader();
+				const xmlResult = loader.parse( MATERIAL_X_XML_GRAPH );
+				const jsonResult = loader.parse( MATERIAL_X_JSON_GRAPH );
+				assert.deepEqual( Object.keys( jsonResult.materials ), Object.keys( xmlResult.materials ), 'Both formats produce the same named materials.' );
+				assert.strictEqual( jsonResult.materials.test_graph.type, xmlResult.materials.test_graph.type, 'The material class is unchanged.' );
+				assert.deepEqual( collectConstValues( jsonResult.materials.test_graph.colorNode ), collectConstValues( xmlResult.materials.test_graph.colorNode ), 'Both formats retain color and scalar inputs.' );
+				assert.deepEqual( jsonResult.errors, xmlResult.errors, 'Both formats compile without errors.' );
+
+				const summarize = node => ( {
+					element: node.element, name: node.name, type: node.type, value: node.value,
+					children: node.children.map( summarize )
+				} );
+				assert.deepEqual( summarize( loader.parseDocument( MATERIAL_X_JSON_GRAPH ).rootNode ), summarize( loader.parseDocument( MATERIAL_X_XML_GRAPH ).rootNode ), 'The parsers normalize to the same node tree.' );
+
+			} );
+
+			QUnit.test( 'JSON surface documents preserve XML surface and displacement mappings', ( assert ) => {
+
+				const json = {
+					element: 'materialx', attributes: { version: '1.39' }, children: [ {
+						element: 'surfacematerial', attributes: { name: 'test_material', type: 'material' }, children: [ {
+							element: 'input', attributes: { name: 'surfaceshader', type: 'surfaceshader', nodename: 'test_surface' }
+						}, {
+							element: 'input', attributes: { name: 'displacementshader', type: 'displacementshader', nodename: 'test_displacement' }
+						} ]
+					}, {
+						element: 'standard_surface', attributes: { name: 'test_surface', type: 'surfaceshader' }, children: [ {
+							element: 'input', attributes: { name: 'base_color', type: 'color3', value: '0.5, 0.5, 0.5' }
+						} ]
+					}, {
+						element: 'displacement', attributes: { name: 'test_displacement', type: 'displacementshader' }, children: [ {
+							element: 'input', attributes: { name: 'displacement', type: 'float', value: '0.25' }
+						}, {
+							element: 'input', attributes: { name: 'scale', type: 'float', value: '2.0' }
+						} ]
+					} ]
+				};
+				const loader = new MaterialXLoader();
+				const xmlMaterial = loader.parse( MATERIAL_X_DISPLACEMENT ).materials.test_material;
+				const jsonMaterial = loader.parse( json ).materials.test_material;
+				assert.strictEqual( jsonMaterial.type, xmlMaterial.type, 'Both formats create the same surface material.' );
+				assert.deepEqual( collectConstValues( jsonMaterial.colorNode ), collectConstValues( xmlMaterial.colorNode ), 'Surface colors are unchanged.' );
+				assert.deepEqual( collectConstValues( jsonMaterial.positionNode ), collectConstValues( xmlMaterial.positionNode ), 'Displacement and its scale are unchanged.' );
+				assert.throws( () => loader.parse( json, { blockedNodes: [ 'standard_surface' ] } ), /standard_surface.*blocked/i, 'A host can exclude surface categories without changing ordinary surface support.' );
+
+			} );
+
+			QUnit.test( 'detects addon JSON text, buffers and URLs while preserving XML loading', async ( assert ) => {
+
+				const loader = new MaterialXLoader();
+				const jsonText = ' \n' + JSON.stringify( MATERIAL_X_JSON_GRAPH );
+				const bytes = new TextEncoder().encode( jsonText );
+				for ( const result of [ loader.parse( jsonText ), loader.parseBuffer( bytes ), loader.parseBuffer( bytes.buffer ), loader.parseBuffer( MATERIAL_X_XML_GRAPH ) ] ) {
+
+					assert.ok( result.materials.test_graph.isNodeMaterial, 'The detected document produces a node material.' );
+					assert.strictEqual( result.errors.length, 0, 'Parsing succeeds.' );
+
+				}
+
+				for ( const text of [ jsonText, MATERIAL_X_XML_GRAPH ] ) {
+
+					const url = createDocumentURL( text );
+					try {
+
+						const result = await loader.loadAsync( url );
+						assert.ok( result.materials.test_graph.isNodeMaterial, 'Loading detects the format from data, including extensionless URLs.' );
+
+					} finally {
+
+						URL.revokeObjectURL( url );
+
+					}
+
+				}
+
+			} );
+
+			QUnit.test( 'node policies apply consistently to XML and JSON before custom resolution', ( assert ) => {
+
+				const loader = new MaterialXLoader();
+				for ( const source of [ MATERIAL_X_XML_GRAPH, MATERIAL_X_JSON_GRAPH ] ) {
+
+					assert.strictEqual( loader.parse( source, { allowedNodes: [ 'multiply' ] } ).errors.length, 0, 'Structural elements do not need to appear in the allowlist.' );
+					assert.strictEqual( loader.parse( source, { allowedNodes: new Set( [ 'multiply' ] ) } ).errors.length, 0, 'Sets are accepted as policies.' );
+					let resolved = false;
+					const options = { blockedNodes: [ 'multiply' ], nodeResolver: () => {
+
+						resolved = true;
+						return vec3( 1 );
+
+					} };
+					assert.throws( () => loader.parse( source, options ), /not allowed|blocked|policy|disallowed/i, 'A prohibited category has a useful diagnostic.' );
+					assert.false( resolved, 'A host resolver cannot bypass the node policy.' );
+					assert.throws( () => loader.parse( source, { allowedNodes: [] } ), /not allowed|blocked|policy|disallowed/i, 'An empty allowlist excludes processing categories.' );
+					assert.throws( () => loader.parse( source, { allowedNodes: [ 'multiply' ], blockedNodes: new Set( [ 'multiply' ] ) } ), /not allowed|blocked|policy|disallowed/i, 'The blocklist takes precedence.' );
+
+				}
+
+			} );
+
+			QUnit.test( 'rejects malformed addon JSON with document diagnostics', ( assert ) => {
+
+				const loader = new MaterialXLoader();
+				for ( const source of [ '{"element":', {}, [], { element: 'materialx', children: {} }, { element: 'materialx', attributes: { version: {} } } ] ) {
+
+					assert.throws( () => loader.parse( source ), /MaterialX|JSON|document|attribute|children/i, 'Invalid addon JSON fails clearly.' );
+
+				}
+
+			} );
 
 			QUnit.test( 'builds nodes of a host node library through the node resolver', ( assert ) => {
 

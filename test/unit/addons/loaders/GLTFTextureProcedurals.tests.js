@@ -566,6 +566,92 @@ QUnit.module( 'Addons', () => {
 
 		} );
 
+		QUnit.test( 'imported mixed normal/bump bindings use optional fallback and required failure', async ( assert ) => {
+
+			const json = await fixture();
+			json.extensions[ EXTENSION ].procedurals = [ packedGraph() ];
+			delete json.materials[ 0 ].extensions.KHR_materials_unlit;
+			delete json.materials[ 0 ].pbrMetallicRoughness.baseColorTexture.extensions;
+			json.extensionsUsed = json.extensionsUsed.filter( extension => extension !== 'KHR_materials_unlit' );
+			json.extensionsUsed.push( 'EXT_materials_bump' );
+			json.materials[ 0 ].normalTexture = { index: 0, extensions: { [ EXTENSION ]: { index: 0, output: 'normal' } } };
+			json.materials[ 0 ].extensions.EXT_materials_bump = { bumpTexture: { index: 0, extensions: { [ EXTENSION ]: { index: 0, output: 'orm' } } } };
+			const optional = await parse( json );
+			assert.notOk( material( optional ).isNodeMaterial, 'Incompatible optional channel combination uses fallback.' );
+			assert.ok( material( optional ).map, 'Ordinary fallback texture remains valid.' );
+			assert.ok( optional.userData.textureProceduralsDiagnostics.some( diagnostic => /normal.*bump|bump.*normal/i.test( diagnostic.message ) ), 'Combined-channel failure is diagnosed.' );
+			json.extensionsRequired = [ EXTENSION ];
+			await assert.rejects( parse( json ), /normal.*bump|bump.*normal/i, 'Required combined-channel failure is explicit.' );
+
+		} );
+
+		QUnit.test( 'zero material lobes preserve sibling factors and sheen strength/color product', async ( assert ) => {
+
+			const fallback = new MeshPhysicalMaterial( { clearcoat: 0, clearcoatRoughness: 0.3, transmission: 0, thickness: 0.4, iridescence: 0, sheen: 0.4 } );
+			fallback.iridescenceThicknessRange = [ 50, 300 ];
+			fallback.sheenColor.setRGB( 0.2, 0.3, 0.4 );
+			const graph = packedGraph();
+			const bindings = Object.fromEntries( [ 'clearcoatRoughnessTexture', 'transmissionTexture', 'thicknessTexture', 'iridescenceThicknessTexture', 'sheenColorTexture' ].map( channel => [ channel, { index: 0, output: 'orm' } ] ) );
+			const authored = await createTextureProceduralMaterial( fallback, { procedurals: [ graph ] }, bindings );
+			const json = await exporter().parseAsync( new Mesh( new PlaneGeometry(), authored ) );
+			const extensions = json.materials[ 0 ].extensions;
+			assert.strictEqual( extensions.KHR_materials_clearcoat.clearcoatFactor, 0, 'Zero clearcoat factor preserved.' );
+			assert.strictEqual( extensions.KHR_materials_clearcoat.clearcoatRoughnessFactor, 0.3, 'Inactive clearcoat roughness preserved.' );
+			assert.strictEqual( extensions.KHR_materials_transmission.transmissionFactor, 0, 'Zero transmission preserved.' );
+			assert.strictEqual( extensions.KHR_materials_volume.thicknessFactor, 0.4, 'Inactive volume thickness preserved.' );
+			assert.strictEqual( extensions.KHR_materials_iridescence.iridescenceFactor, 0, 'Zero iridescence preserved.' );
+			assert.deepEqual( [ extensions.KHR_materials_iridescence.iridescenceThicknessMinimum, extensions.KHR_materials_iridescence.iridescenceThicknessMaximum ], [ 50, 300 ], 'Inactive thickness range preserved.' );
+			const expected = fallback.sheenColor.toArray().map( value => value * fallback.sheen );
+			assert.deepEqual( extensions.KHR_materials_sheen.sheenColorFactor, expected, 'Sheen strength and color recombine into the standard factor.' );
+			const reloaded = material( await parse( json ) );
+			assert.strictEqual( reloaded.clearcoatRoughness, 0.3, 'Sibling roughness survives reload.' );
+			assert.strictEqual( reloaded.thickness, 0.4, 'Sibling thickness survives reload.' );
+			assert.deepEqual( reloaded.iridescenceThicknessRange, [ 50, 300 ], 'Sibling range survives reload.' );
+			const actual = reloaded.sheenColor.toArray().map( value => value * reloaded.sheen );
+			assert.ok( actual.every( ( value, index ) => Math.abs( value - expected[ index ] ) < 1e-10 ), 'Reload preserves the sheen product.' );
+
+		} );
+
+		QUnit.test( 'imported geometry material variants retain independently editable procedural state', async ( assert ) => {
+
+			const json = await fixture();
+			const firstPrimitive = json.meshes[ 0 ].primitives[ 0 ];
+			json.meshes[ 0 ].primitives.push( { ...firstPrimitive, attributes: { ...firstPrimitive.attributes, COLOR_0: 1 } } );
+			const loaded = await parse( json );
+			const materials = [];
+			loaded.scene.traverse( object => {
+
+				if ( object.isMesh ) materials.push( object.material );
+
+			} );
+			const first = getTextureProcedurals( materials[ 0 ] );
+			const second = getTextureProcedurals( materials[ 1 ] );
+			assert.notStrictEqual( first.source, second.source, 'Geometry variants own independent source.' );
+			assert.notStrictEqual( first.bindings, second.bindings, 'Bindings are independent.' );
+			assert.notStrictEqual( first.textures, second.textures, 'Resource arrays are independent.' );
+			first.source.procedurals[ 0 ].nodes[ 0 ].inputs.color1.value = [ 0.1, 0.2, 0.3 ];
+			await updateTextureProceduralMaterial( materials[ 0 ] );
+			assert.deepEqual( second.source.procedurals[ 0 ].nodes[ 0 ].inputs.color1.value, [ 0.04, 0.35, 0.8 ], 'Editing one variant leaves the other source intact.' );
+			second.source.procedurals[ 0 ].nodes[ 0 ].inputs.color1.value = [ 0.7, 0.6, 0.5 ];
+			await updateTextureProceduralMaterial( materials[ 1 ] );
+			const exported = await exporter().parseAsync( loaded.scene );
+			assert.strictEqual( exported.extensions[ EXTENSION ].procedurals.length, 2, 'Distinct edited graphs exported independently.' );
+			const reloaded = await parse( exported );
+			const colors = [];
+			reloaded.scene.traverse( object => {
+
+				if ( object.isMesh ) {
+
+					const state = getTextureProcedurals( object.material );
+					colors.push( state.source.procedurals[ state.bindings.baseColorTexture.index ].nodes[ 0 ].inputs.color1.value );
+
+				}
+
+			} );
+			assert.deepEqual( colors, [[ 0.1, 0.2, 0.3 ], [ 0.7, 0.6, 0.5 ]], 'Both variant edits survive reload without stale state.' );
+
+		} );
+
 		const invalidGraphs = {
 			'unknown node': graph => {
 

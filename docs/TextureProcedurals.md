@@ -66,6 +66,8 @@ Resource indices in filename ports address the authoring `options.textures` arra
 
 Supported source edits must be followed by `updateTextureProceduralMaterial()`. The exporter checks graph state and runtime nodes to diagnose uncompiled edits or unsupported node replacement, instead of silently saving a stale graph. Retain shared source representations to reuse graphs across materials. Do not serialize arbitrary shader code or a complete MaterialX surface material through this API.
 
+Imported geometry material variants receive independent editable source, binding and resource arrays. Arbitrary authoring `Material.clone()` does not retain the external procedural state and is diagnosed during export. Recreate authored copies with `createTextureProceduralMaterial()` using an ordinary fallback material, the original state source/bindings and its ready texture array.
+
 ## Fallback and required content
 
 Every procedural texture-info retains a valid ordinary texture `index`. Provide a real baked fallback as the material's corresponding map when its appearance matters. When no map is provided, export uses a valid embedded one-pixel dummy. **A dummy does not preserve the procedural appearance.** The demo deliberately contrasts visible procedural patterns with a plain dummy fallback.
@@ -100,6 +102,8 @@ The proposal's schemas and companion checkerboard describe an older array/scalar
 | `EXT_materials_bump` | `bumpTexture` | R |
 
 Material factors, emissive intensity, alpha mode/cutoff, normal scale, occlusion strength and physical material properties remain active. Iridescence thickness interpolates the material's thickness range using G. Anisotropy uses normalized RG direction with the material rotation and B strength. Bump uses R with the material bump scale; simultaneous procedural bump and normal bindings are diagnosed as unsupported. Legacy specular/glossiness `diffuseTexture` and extensions without a defined mapping above are outside this profile. Separate authored roughness and metallic values must be combined into the G/B channels of one graph output; the exporter never invents separate metallic or roughness glTF slots.
+
+Sibling factors/ranges are retained even when their material lobe has zero strength. glTF has one `sheenColorFactor`, so export combines Three.js `sheen` strength with `sheenColor`; reload preserves that product, without inventing a separate strength property in glTF.
 
 For a graph with separate scalar outputs, the authoring helper creates a serializable standard `combine3` node, preserving those outputs:
 

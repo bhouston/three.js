@@ -3,7 +3,7 @@ import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from '../../../../examples/jsm/exporters/GLTFExporter.js';
 import { GLTFTextureProceduralsLoaderExtension } from '../../../../examples/jsm/loaders/GLTFTextureProceduralsLoaderExtension.js';
 import { GLTFTextureProceduralsExporterExtension } from '../../../../examples/jsm/exporters/GLTFTextureProceduralsExporterExtension.js';
-import { createTextureProceduralMaterial, getTextureProcedurals, updateTextureProceduralMaterial } from '../../../../examples/jsm/utils/GLTFTextureProcedurals.js';
+import { createTextureProceduralMaterial, getTextureProcedurals, packTextureProceduralChannels, updateTextureProceduralMaterial } from '../../../../examples/jsm/utils/GLTFTextureProcedurals.js';
 import { compileGLTFProceduralGraph, validateGLTFProceduralGraph } from '../../../../examples/jsm/loaders/materialx/GLTFProceduralGraph.js';
 
 const EXTENSION = 'KHR_texture_procedurals';
@@ -219,11 +219,11 @@ QUnit.module( 'Addons', () => {
 			assert.strictEqual( first.alphaTest, 0.2, 'Alpha cutoff retained.' );
 			assert.deepEqual( first.normalScale.toArray(), [ 0.4, 0.4 ], 'Normal scale retained.' );
 			assert.ok( first.metalnessNode && first.roughnessNode && first.aoNode && first.normalNode, 'Packed and normal channels compile.' );
-			assert.strictEqual( findNode( first.roughnessNode, node => node.isSplitNode )?.components, 'g', 'Roughness reads G.' );
-			assert.strictEqual( findNode( first.metalnessNode, node => node.isSplitNode )?.components, 'b', 'Metallic reads B.' );
-			assert.strictEqual( findNode( first.aoNode, node => node.isSplitNode )?.components, 'r', 'Occlusion reads R.' );
+			assert.strictEqual( findNode( first.roughnessNode, node => node.isSplitNode )?.components, 'y', 'Roughness reads G.' );
+			assert.strictEqual( findNode( first.metalnessNode, node => node.isSplitNode )?.components, 'z', 'Metallic reads B.' );
+			assert.strictEqual( findNode( first.aoNode, node => node.isSplitNode )?.components, 'x', 'Occlusion reads R.' );
 			assert.ok( findNode( first.colorNode, node => node.property === 'color' ), 'Base color factor is applied to graph output.' );
-			assert.ok( findNode( first.colorNode, node => node.isSplitNode && node.components === 'a' ), 'Graph alpha channel remains part of base color.' );
+			assert.ok( findNode( first.colorNode, node => node.isSplitNode && node.components === 'w' ), 'Graph alpha channel remains part of base color.' );
 			const scene = new Group();
 			scene.add( new Mesh( new PlaneGeometry(), first ), new Mesh( new PlaneGeometry(), second ) );
 			const json = await exporter().parseAsync( scene );
@@ -262,7 +262,8 @@ QUnit.module( 'Addons', () => {
 			for ( const [ channel, [ extension, property, component ]] of Object.entries( channels ) ) {
 
 				assert.ok( authored[ property ], `${ channel } compiles.` );
-				assert.ok( findNode( authored[ property ], node => node.isSplitNode && node.components === component ), `${ channel } reads ${ component }.` );
+				const canonical = { r: 'x', g: 'y', b: 'z', a: 'w', rgb: 'xyz' }[ component ];
+				assert.ok( findNode( authored[ property ], node => node.isSplitNode && node.components === canonical ), `${ channel } reads ${ component }.` );
 				assert.ok( json.materials[ 0 ].extensions[ extension ][ channel ].extensions[ EXTENSION ], `${ channel } uses its standard texture-info slot.` );
 
 			}
@@ -281,7 +282,7 @@ QUnit.module( 'Addons', () => {
 			const authored = await createTextureProceduralMaterial( new MeshBasicMaterial(), source, bindings, { required: true } );
 			const mesh = new Mesh( new PlaneGeometry(), authored );
 			const exported = await exporter().parseAsync( mesh );
-			assert.ok( exported.extensionsRequired.includes( EXTENSION ) && exported.extensionsRequired.includes( LIBRARY ), 'Required content is an explicit policy.' );
+			assert.ok( exported.extensionsRequired.includes( EXTENSION ) && exported.extensionsUsed.includes( LIBRARY ), 'Required content is an explicit policy; library declaration is asset-wide.' );
 			const nested = findNode( authored.colorNode, node => node.isConstNode && node.value?.isColor );
 			assert.ok( nested, 'Compiled graph contains a nested color constant.' );
 			if ( nested ) {
@@ -296,6 +297,47 @@ QUnit.module( 'Addons', () => {
 				await assert.rejects( createTextureProceduralMaterial( new MeshBasicMaterial(), { ...source, metadata }, bindings ), /JSON|serializ|finite/i, 'Invalid source metadata is diagnosed before copying.' );
 
 			}
+
+		} );
+
+		QUnit.test( 'packing separate authored channels and anisotropy/bump mappings', async ( assert ) => {
+
+			const graph = {
+				nodetype: 'nodegraph', type: 'multioutput', inputs: {},
+				nodes: [ constant( 'float', [ 0.3 ] ), constant( 'float', [ 0.7 ] ), constant( 'float', [ 0.4 ] ) ],
+				outputs: {
+					rough: { nodetype: 'output', type: 'float', node: 0, output: 'out' },
+					metal: { nodetype: 'output', type: 'float', node: 1, output: 'out' },
+					ao: { nodetype: 'output', type: 'float', node: 2, output: 'out' }
+				}
+			};
+			const packed = packTextureProceduralChannels( graph, { roughness: 'rough', metallic: 'metal', occlusion: 'ao' } );
+			assert.strictEqual( packed.nodes.at( - 1 ).nodetype, 'combine3', 'Standard combine3 packs channels.' );
+			assert.strictEqual( packed.nodes.at( - 1 ).inputs.in1.node, 2, 'AO packed in R.' );
+			assert.strictEqual( packed.nodes.at( - 1 ).inputs.in2.node, 0, 'Roughness packed in G.' );
+			assert.strictEqual( packed.nodes.at( - 1 ).inputs.in3.node, 1, 'Metallic packed in B.' );
+			const bindings = { metallicRoughnessTexture: { index: 0, output: 'orm' }, occlusionTexture: { index: 0, output: 'orm' } };
+			const authored = await createTextureProceduralMaterial( new MeshStandardMaterial(), { procedurals: [ packed ] }, bindings );
+			const scene = new Group();
+			scene.add( new Mesh( new PlaneGeometry(), authored ), new Mesh( new PlaneGeometry(), await createTextureProceduralMaterial( new MeshStandardMaterial(), { procedurals: [ packed ] }, bindings ) ) );
+			for ( const binary of [ false, true ] ) {
+
+				const exported = await exporter().parseAsync( scene, { binary } );
+				const loaded = await loader().parseAsync( binary ? exported : JSON.stringify( exported ), FIXTURES );
+				assert.deepEqual( getTextureProcedurals( material( loaded ) ).source.procedurals, [ packed ], 'Packed authored shared graph survives JSON/GLB.' );
+
+			}
+
+			const fallback = new MeshPhysicalMaterial( { anisotropy: 0.6, anisotropyRotation: 0.3, bumpScale: 0.2 } );
+			const direction = packedGraph();
+			const physical = await createTextureProceduralMaterial( fallback, { procedurals: [ direction ] }, { anisotropyTexture: { index: 0, output: 'orm' }, bumpTexture: { index: 0, output: 'orm' } } );
+			assert.ok( findNode( physical.anisotropyNode, node => node.property === 'anisotropyRotation' ), 'Anisotropy rotation remains active.' );
+			assert.ok( findNode( physical.anisotropyNode, node => node.isSplitNode && node.components === 'z' ), 'Anisotropy strength reads B.' );
+			assert.ok( findNode( physical.normalNode, node => node.property === 'bumpScale' ), 'Bump scale remains active.' );
+			const json = await exporter().parseAsync( new Mesh( new PlaneGeometry(), physical ) );
+			assert.ok( json.materials[ 0 ].extensions.KHR_materials_anisotropy.anisotropyTexture, 'Anisotropy standard texture-info exported.' );
+			assert.ok( json.materials[ 0 ].extensions.EXT_materials_bump.bumpTexture, 'Bump standard texture-info exported.' );
+			await assert.rejects( createTextureProceduralMaterial( fallback, { procedurals: [ direction ] }, { normalTexture: { index: 0, output: 'normal' }, bumpTexture: { index: 0, output: 'orm' } } ), /normal.*bump|bump.*normal/i, 'Simultaneous procedural bump/normal diagnosed.' );
 
 		} );
 

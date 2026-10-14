@@ -70,7 +70,7 @@ Supported source edits must be followed by `updateTextureProceduralMaterial()`. 
 
 Every procedural texture-info retains a valid ordinary texture `index`. Provide a real baked fallback as the material's corresponding map when its appearance matters. When no map is provided, export uses a valid embedded one-pixel dummy. **A dummy does not preserve the procedural appearance.** The demo deliberately contrasts visible procedural patterns with a plain dummy fallback.
 
-The extension is optional by default: exporting registers both identifiers in `extensionsUsed`, without automatically requiring them. Authoring `{ required: true }` deliberately marks procedural content required. Unsupported optional graphs emit diagnostics and retain fallback materials; unsupported required content fails loading. Missing/conflicting MaterialX library declarations, malformed graphs, missing resources and unsupported nodes are diagnosed under that policy.
+The extension is optional by default: exporting registers both identifiers in `extensionsUsed`, without automatically requiring them. Authoring `{ required: true }` deliberately adds `KHR_texture_procedurals` to `extensionsRequired`; the MaterialX library identifier remains the asset-wide declaration in `extensionsUsed`. Unsupported optional graphs emit diagnostics and retain fallback materials; unsupported required content fails loading. Missing/conflicting MaterialX library declarations, malformed graphs, missing resources and unsupported nodes are diagnosed under that policy.
 
 ## Experimental graph profile
 
@@ -96,11 +96,27 @@ The proposal's schemas and companion checkerboard describe an older array/scalar
 | `KHR_materials_specular` | `specularTexture`, `specularColorTexture` | A, RGB |
 | `KHR_materials_sheen` | `sheenColorTexture`, `sheenRoughnessTexture` | RGB, A |
 | `KHR_materials_iridescence` | `iridescenceTexture`, `iridescenceThicknessTexture` | R, G |
+| `KHR_materials_anisotropy` | `anisotropyTexture` | RG direction, B strength |
+| `EXT_materials_bump` | `bumpTexture` | R |
 
-Material factors, emissive intensity, alpha mode/cutoff, normal scale, occlusion strength and physical material properties remain active. Iridescence thickness interpolates the material's thickness range using G. Legacy specular/glossiness `diffuseTexture`, anisotropy and extensions without a defined mapping above are outside this profile. Separate authored roughness and metallic values must be combined into the G/B channels of one graph output; the exporter never invents separate metallic or roughness glTF slots.
+Material factors, emissive intensity, alpha mode/cutoff, normal scale, occlusion strength and physical material properties remain active. Iridescence thickness interpolates the material's thickness range using G. Anisotropy uses normalized RG direction with the material rotation and B strength. Bump uses R with the material bump scale; simultaneous procedural bump and normal bindings are diagnosed as unsupported. Legacy specular/glossiness `diffuseTexture` and extensions without a defined mapping above are outside this profile. Separate authored roughness and metallic values must be combined into the G/B channels of one graph output; the exporter never invents separate metallic or roughness glTF slots.
+
+For a graph with separate scalar outputs, the authoring helper creates a serializable standard `combine3` node, preserving those outputs:
+
+```js
+import { packTextureProceduralChannels } from 'three/addons/utils/GLTFTextureProcedurals.js';
+
+const packedGraph = packTextureProceduralChannels( graph, {
+ roughness: 'roughnessOutput', metallic: 'metallicOutput', occlusion: 'occlusionOutput'
+}, 'orm' );
+// Bind the new 'orm' output to metallicRoughnessTexture and occlusionTexture.
+// Without occlusionOutput, R defaults to 1.
+```
 
 ## Examples and validation
 
 [Demo](../examples/webgpu_loader_gltf_texture_procedurals.html) shows checkerboard, noise/math and texture/math graphs alongside ordinary fallbacks. Corrected valid fixtures are in `examples/models/gltf/TextureProcedurals/`. QUnit tests cover graph validation and loader/exporter semantics. GPU screenshots require a physical renderer; software GPU fallback results are not rendering evidence.
 
 Run `node test/unit/puppeteer.texture-procedurals.js` for the focused browser suite. Pass an artifact-directory argument to also capture the demo, test results and verified physical WebGL renderer information. The runner uses source imports and closes its browser/server on completion.
+
+Run `node --test test/unit/addons/loaders/GLTFTextureProcedurals.node.tests.js` for pure graph validation checks without a browser or GPU.

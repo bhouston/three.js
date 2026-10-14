@@ -74,6 +74,19 @@ try {
 		console.log( `Physical GPU renderer: ${ renderer }` );
 		await writeFile( path.join( directory, 'texture-procedurals-renderer.json' ), JSON.stringify( { renderer, backend: 'WebGL2', softwareFallback: false }, null, 2 ) + '\n' );
 		await page.screenshot( { path: path.join( directory, 'texture-procedurals.png' ) } );
+		const exported = await page.evaluate( async () => {
+
+			const { GLTFExporter } = await import( '/examples/jsm/exporters/GLTFExporter.js' );
+			const { GLTFTextureProceduralsExporterExtension } = await import( '/examples/jsm/exporters/GLTFTextureProceduralsExporterExtension.js' );
+			const exporter = new GLTFExporter();
+			exporter.register( writer => new GLTFTextureProceduralsExporterExtension( writer ) );
+			const json = await exporter.parseAsync( window.textureProceduralsDemo.scene );
+			const glb = await exporter.parseAsync( window.textureProceduralsDemo.scene, { binary: true } );
+			return { json, glb: Array.from( new Uint8Array( glb ) ) };
+
+		} );
+		await writeFile( path.join( directory, 'texture-procedurals-export.gltf' ), JSON.stringify( exported.json, null, 2 ) + '\n' );
+		await writeFile( path.join( directory, 'texture-procedurals-export.glb' ), Buffer.from( exported.glb ) );
 
 	}
 

@@ -387,9 +387,16 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 	}
 
 	const outputExpressions = expand( source, [], [], 'graph' );
-	for ( const [ name, expression ] of Object.entries( outputExpressions ) ) children.push( xmlElement( 'output', { name, ...expression } ) );
+	const outputNames = Object.create( null );
+	for ( const [ name, expression ] of Object.entries( outputExpressions ) ) {
+
+		const normalizedName = `output_${serial ++}`;
+		outputNames[ name ] = normalizedName;
+		children.push( xmlElement( 'output', { name: normalizedName, ...expression } ) );
+
+	}
 	const normalized = xmlElement( 'materialx', { name: '', colorspace: 'lin_rec709' }, [ xmlElement( 'nodegraph', { name: 'procedural' }, children ) ] );
-	return { source, normalized, textureIndices: Array.from( textureIndices ).sort( ( a, b ) => a - b ), streams: Array.from( streams.values() ) };
+	return { source, normalized, outputNames, textureIndices: Array.from( textureIndices ).sort( ( a, b ) => a - b ), streams: Array.from( streams.values() ) };
 
 }
 
@@ -458,7 +465,7 @@ async function compileGLTFProceduralGraph( graph, options = {} ) {
 	};
 
 	const outputs = Object.create( null );
-	for ( const name of Object.keys( validated.source.outputs ) ) outputs[ name ] = document.getMaterialXNode( 'procedural', name ).getNode();
+	for ( const [ name, normalizedName ] of Object.entries( validated.outputNames ) ) outputs[ name ] = document.getMaterialXNode( 'procedural', normalizedName ).getNode();
 	if ( log.errors.length ) fail( 'compile', log.errors.map( ( entry ) => entry.message ).join( ' ' ) );
 	return { ...validated, outputs, textures, document, diagnostics: log.entries };
 

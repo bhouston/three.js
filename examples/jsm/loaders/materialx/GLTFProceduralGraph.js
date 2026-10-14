@@ -1,7 +1,6 @@
 import { DefaultLoadingManager, LinearFilter, NearestFilter, NoColorSpace } from 'three/webgpu';
 import { attribute, texture } from 'three/tsl';
-import { MaterialXDocument } from './MaterialXDocument.js';
-import { MaterialXLog } from './MaterialXLog.js';
+import { MaterialXLoader } from '../MaterialXLoader.js';
 import { MtlXLibrary } from './MaterialXNodeLibrary.js';
 import registryData from './MaterialXNodeInterfaceRegistry.js';
 import { createMaterialXCompileRegistry } from './compile/MaterialXCompileRegistry.js';
@@ -11,6 +10,7 @@ const COMPONENTS = { boolean: 1, float: 1, integer: 1, vector2: 2, vector3: 3, v
 const TYPE_MAP = { matrix3x3: 'matrix33', matrix4x4: 'matrix44' };
 const COMPILE_REGISTRY = createMaterialXCompileRegistry();
 const STD_DEFS = Object.entries( registryData.nodedefs );
+const PATTERN_NODES = new Set( STD_DEFS.filter( ( [ , definition ] ) => Object.values( definition.outputs ).every( type => Object.hasOwn( COMPONENTS, type ) || [ 'string', 'filename', 'matrix33', 'matrix44' ].includes( type ) ) ).map( ( [ , definition ] ) => definition.node ) );
 
 function texcoordAttribute( index ) {
 
@@ -132,9 +132,9 @@ function validateValue( port, path, textureCount ) {
 
 }
 
-function xmlElement( nodeName, attributes, children = [] ) {
+function jsonElement( nodeName, attributes, children = [] ) {
 
-	return { nodeName, children, getAttribute: ( name ) => Object.hasOwn( attributes, name ) ? String( attributes[ name ] ) : null };
+	return { element: nodeName, attributes, children };
 
 }
 
@@ -268,7 +268,7 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 			if ( input.node !== undefined || input.input !== undefined || input.output !== undefined ) fail( `${path}.inputs.${name}`, 'Graph interface inputs must provide constant values.' );
 			const expression = valueExpression( input, `${path}.inputs.${name}.value` );
 			const inputName = `interface_${serial ++}`;
-			children.push( xmlElement( 'input', { name: inputName, ...expression } ) );
+			children.push( jsonElement( 'input', { name: inputName, ...expression } ) );
 			interfaces.set( name, expression );
 
 		}
@@ -383,7 +383,7 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 					}
 
 					expressions.set( name, expression );
-					inputChildren.push( xmlElement( 'input', { name, ...expression } ) );
+					inputChildren.push( jsonElement( 'input', { name, ...expression } ) );
 
 				}
 
@@ -439,7 +439,7 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 				if ( node.nodetype === 'tangent' || node.nodetype === 'bitangent' ) streams.set( 'TANGENT', { semantic: 'TANGENT', attribute: 'tangent', itemSize: 4 } );
 
 				const name = `node_${serial ++}`;
-				children.push( xmlElement( node.nodetype, { name, type: node.type === 'multioutput' ? 'multioutput' : normalizedType( node.type, nodePath ), nodedef }, inputChildren ) );
+				children.push( jsonElement( node.nodetype, { name, type: node.type === 'multioutput' ? 'multioutput' : normalizedType( node.type, nodePath ), nodedef }, inputChildren ) );
 				result = Object.fromEntries( Object.entries( nodeOutputs ).map( ( [ outputName, port ] ) => [ outputName, { type: normalizedType( port.type, nodePath ), nodename: name, output: outputName } ] ) );
 
 			}
@@ -482,11 +482,11 @@ function validateGLTFProceduralGraph( graph, { definitions = [], textureCount } 
 
 		const normalizedName = `output_${serial ++}`;
 		outputNames[ name ] = normalizedName;
-		children.push( xmlElement( 'output', { name: normalizedName, ...expression } ) );
+		children.push( jsonElement( 'output', { name: normalizedName, ...expression } ) );
 
 	}
 
-	const normalized = xmlElement( 'materialx', { name: '', colorspace: 'lin_rec709' }, [ xmlElement( 'nodegraph', { name: 'procedural' }, children ) ] );
+	const normalized = jsonElement( 'materialx', { name: '', colorspace: 'lin_rec709' }, [ jsonElement( 'nodegraph', { name: 'procedural' }, children ) ] );
 	return { source, normalized, outputNames, textureIndices: Array.from( textureIndices ).sort( ( a, b ) => a - b ), streams: Array.from( streams.values() ) };
 
 }
@@ -513,65 +513,55 @@ async function compileGLTFProceduralGraph( graph, options = {} ) {
 
 	} ) );
 	for ( let i = 0; i < resources.length; i ++ ) textures.set( validated.textureIndices[ i ], resources[ i ] );
-	const log = new MaterialXLog();
-	const document = new MaterialXDocument( options.manager || DefaultLoadingManager, '', log, null, 'bottom-left' );
-	document.compileContext.getTexcoordNode = ( index = 0 ) => attribute( texcoordAttribute( index ), 'vec2' );
-	const getGeomPropNode = document.compileContext.getGeomPropNode;
-	document.compileContext.getGeomPropNode = ( name ) => {
+	const samples = new Map();
+	const textureResolver = ( nodeX ) => {
 
-		const match = /^UV(\d+)$/.exec( name );
-		return match ? document.compileContext.getTexcoordNode( Number( match[ 1 ] ) ) : getGeomPropNode( name );
+		if ( ! nodeX.value?.startsWith( 'gltf-texture:' ) ) return null;
+		const index = Number( nodeX.value.slice( 'gltf-texture:'.length ) );
+
+		const modes = nodeX.parent.getTextureAddressModes();
+		const filter = nodeX.parent.getChildByName( 'filtertype' );
+		const filtertype = filter ? filter.getNode() : 'linear';
+		const key = `${index}|${modes.u}|${modes.v}|${filtertype}`;
+		if ( samples.has( key ) ) return samples.get( key );
+		const resource = textures.get( index ).clone();
+		resource.wrapS = TEXTURE_ADDRESS_MODE_WRAPPING[ modes.u ];
+		resource.wrapT = TEXTURE_ADDRESS_MODE_WRAPPING[ modes.v ];
+		if ( filtertype !== 'linear' && filtertype !== 'closest' ) fail( 'sampling', `Unsupported MaterialX image filter "${filtertype}"; only linear and closest are supported.` );
+		resource.magFilter = filtertype === 'closest' ? NearestFilter : LinearFilter;
+		resource.minFilter = resource.magFilter;
+		resource.colorSpace = NoColorSpace;
+		resource.offset.set( 0, 0 );
+		resource.repeat.set( 1, 1 );
+		resource.center.set( 0, 0 );
+		resource.rotation = 0;
+		resource.matrix.identity();
+		resource.matrixAutoUpdate = false;
+		resource.channel = 0;
+		resource.anisotropy = 1;
+		resource.flipY = false;
+		resource.needsUpdate = true;
+		const sample = texture( resource );
+		samples.set( key, sample );
+		return sample;
 
 	};
-
-	document.parseNode( validated.normalized );
-	const samples = new Map();
-	for ( const nodeX of document.nodesXLib.values() ) {
-
-		if ( nodeX.type !== 'filename' || ! nodeX.value?.startsWith( 'gltf-texture:' ) ) continue;
-		const index = Number( nodeX.value.slice( 'gltf-texture:'.length ) );
-		nodeX.getTexture = () => {
-
-			const modes = nodeX.parent.getTextureAddressModes();
-			const filter = nodeX.parent.getChildByName( 'filtertype' );
-			const filtertype = filter ? filter.getNode() : 'linear';
-			const key = `${index}|${modes.u}|${modes.v}|${filtertype}`;
-			if ( samples.has( key ) ) return samples.get( key );
-			const resource = textures.get( index ).clone();
-			resource.wrapS = TEXTURE_ADDRESS_MODE_WRAPPING[ modes.u ];
-			resource.wrapT = TEXTURE_ADDRESS_MODE_WRAPPING[ modes.v ];
-			if ( filtertype !== 'linear' && filtertype !== 'closest' ) fail( 'sampling', `Unsupported MaterialX image filter "${filtertype}"; only linear and closest are supported.` );
-			resource.magFilter = filtertype === 'closest' ? NearestFilter : LinearFilter;
-			resource.minFilter = resource.magFilter;
-			resource.colorSpace = NoColorSpace;
-			resource.offset.set( 0, 0 );
-			resource.repeat.set( 1, 1 );
-			resource.center.set( 0, 0 );
-			resource.rotation = 0;
-			resource.matrix.identity();
-			resource.matrixAutoUpdate = false;
-			resource.channel = 0;
-			resource.anisotropy = 1;
-			resource.flipY = false;
-			resource.needsUpdate = true;
-			const sample = texture( resource );
-			samples.set( key, sample );
-			return sample;
-
-		};
-
-	}
 
 	// GLTFLoader keeps COLOR_n as color_n for n > 0, whereas MaterialX's
 	// vertexColor accessor uses colorN. Resolve numbered glTF streams explicitly.
-	document.nodeResolver = ( nodeX ) => {
+	const document = new MaterialXLoader( options.manager || DefaultLoadingManager ).parseDocument( validated.normalized, {
+		allowedNodes: PATTERN_NODES,
+		texcoordResolver: ( index = 0 ) => attribute( texcoordAttribute( index ), 'vec2' ),
+		textureResolver,
+		nodeResolver: ( nodeX ) => {
 
-		if ( nodeX.element === 'texcoord' ) return document.compileContext.getTexcoordNode( Number( nodeX.getChildByName( 'index' )?.value || 0 ) );
-		if ( nodeX.element !== 'geomcolor' ) return null;
-		const index = Number( nodeX.getChildByName( 'index' )?.value || 0 );
-		return attribute( index === 0 ? 'color' : `color_${index}`, nodeX.type === 'color4' ? 'vec4' : 'vec3' );
+			if ( nodeX.element !== 'geomcolor' ) return null;
+			const index = Number( nodeX.getChildByName( 'index' )?.value || 0 );
+			return attribute( index === 0 ? 'color' : `color_${index}`, nodeX.type === 'color4' ? 'vec4' : 'vec3' );
 
-	};
+		}
+	} );
+	const log = document.log;
 
 	const outputs = Object.create( null );
 	for ( const [ name, normalizedName ] of Object.entries( validated.outputNames ) ) outputs[ name ] = document.getMaterialXNode( 'procedural', normalizedName ).getNode();

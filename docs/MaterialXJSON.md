@@ -47,6 +47,8 @@ These policies restrict compiler categories. A glTF adapter must additionally va
 
 `nodeResolver( materialXNode, outputName )` can provide a host TSL node before built-in compilation. Return `null` to let the existing node library handle it. `textureResolver( filenameNode )` can return a ready TSL `TextureNode` before ordinary filename loading, or `null` to use normal resource loading. This lets container formats resolve textures through their own loader and reuse MaterialX image evaluation without duplicating it. These callbacks are application code; assets cannot supply executable callbacks.
 
+`texcoordResolver( index )` replaces numbered coordinate lookup, including `UVn` geometric defaults, when a host format uses different attribute names. Without it, XML and JSON retain the usual MaterialX `uvSpace` behavior.
+
 ## Reading a document without creating surface materials
 
 Adapters that bind pattern outputs to a host material can call `parseDocument()` instead of `parse()`. It accepts the same XML/JSON input and options and returns a configured `MaterialXDocument` with its `rootNode`. Reading creates the normalized tree and applies document configuration without evaluating materials. Output nodes are evaluated on demand through the shared compiler:
@@ -59,6 +61,8 @@ const graph = normalized.rootNode.getChildByName( 'pattern' );
 const colorNode = graph.getChildByName( 'out' ).getNode();
 await normalized.waitForResources();
 ```
+
+Call `normalized.compileMaterials()` when surface materials are wanted after reading the document. This is also the shared material-construction path used by `MaterialXLoader.parse()`.
 
 The glTF texture procedural addon uses this document entry point. Its remaining format-specific work is draft graph validation and normalization, glTF resource/geometry bindings, material channel bindings and fallback policy. It shares MaterialX compilation and image evaluation with ordinary XML loading.
 

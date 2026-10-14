@@ -12,7 +12,7 @@ test( 'addon JSON objects, text and buffers compile without browser globals', ()
 	const loader = new MaterialXLoader();
 	const text = '\n\t' + JSON.stringify( json );
 	const bytes = new TextEncoder().encode( text );
-	for ( const result of [ loader.parse( json ), loader.parse( text ), loader.parseBuffer( bytes ), loader.parseBuffer( bytes.buffer ) ] ) {
+	for ( const result of [ loader.parse( json ), loader.parse( text ), loader.parse( '\uFEFF' + text ), loader.parseBuffer( bytes ), loader.parseBuffer( bytes.buffer ) ] ) {
 
 		assert.ok( result.materials.test_graph.isNodeMaterial );
 		assert.deepEqual( result.errors, [] );
@@ -38,6 +38,7 @@ test( 'parseDocument exposes reusable normalized nodes without compiling materia
 	assert.equal( graph.getChildByName( 'scaled' ).getChildByName( 'in1' ).value, '0.25, 0.5, 0.75' );
 	assert.equal( resolverCalls, 0, 'Reading a document does not evaluate processing nodes.' );
 	assert.ok( graph.getChildByName( 'out' ).getNode().isNode );
+	assert.ok( document.compileMaterials().materials.test_graph.isNodeMaterial );
 	assert.ok( resolverCalls > 0, 'An addon evaluates outputs with the existing MaterialX compiler.' );
 	assert.deepEqual( source, json, 'Parsing does not mutate the source.' );
 

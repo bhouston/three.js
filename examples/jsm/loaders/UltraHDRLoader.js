@@ -635,6 +635,7 @@ class UltraHDRLoader extends Loader {
 			return elements.length ? elements[ 0 ].textContent.trim() : null;
 
 		};
+
 		metadata.version = getAttribute( 'Version' );
 		metadata.baseRenditionIsHDR = getAttribute( 'BaseRenditionIsHDR' ) === 'True';
 		const defaults = { GainMapMin: 0, GainMapMax: 1, Gamma: 1, OffsetSDR: 1 / 64, OffsetHDR: 1 / 64 };

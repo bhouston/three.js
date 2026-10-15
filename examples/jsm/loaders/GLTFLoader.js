@@ -67,6 +67,7 @@ import {
 } from 'three';
 import { toTrianglesDrawMode } from '../utils/BufferGeometryUtils.js';
 import { clone } from '../utils/SkeletonUtils.js';
+import { JXLLoader } from './JXLLoader.js';
 
 /**
  * A loader for the glTF 2.0 format.
@@ -99,11 +100,21 @@ import { clone } from '../utils/SkeletonUtils.js';
  * - KHR_meshopt_compression
  * - KHR_texture_basisu
  * - KHR_texture_transform
+ * - KHR_jpegxl_linear (draft)
  * - EXT_materials_bump
  * - EXT_meshopt_compression
  * - EXT_mesh_gpu_instancing
  * - EXT_texture_avif
  * - EXT_texture_webp
+ *
+ * The draft `KHR_jpegxl_linear` extension uses {@link JXLLoader} automatically.
+ * It requires native JPEG XL decoding, float16 Canvas2D readback, the `srgb-linear`
+ * canvas color space, and `globalHDRHeadroom`. Decoded textures use linear sRGB,
+ * including in color material slots. The current decoder produces half-float
+ * textures; 32-bit source precision and values outside the half-float range are
+ * not preserved. An optional extension falls back to `texture.source` when
+ * decoding fails. A required extension rejects loading when decoding fails.
+ * No additional glTF extension or loader configuration is required.
  *
  * The following glTF 2.0 extensions are supported by separately registered plugins:
  * - KHR_gaussian_splatting
@@ -177,6 +188,12 @@ class GLTFLoader extends Loader {
 		this.register( function ( parser ) {
 
 			return new GLTFTextureAVIFExtension( parser );
+
+		} );
+
+		this.register( function ( parser ) {
+
+			return new GLTFJpegXLLinearExtension( parser );
 
 		} );
 
@@ -1548,7 +1565,72 @@ class GLTFTextureBasisUExtension {
 }
 
 /**
- * WebP Texture Extension
+ * Linear HDR JPEG XL Texture Extension (draft).
+ *
+ * Specification: https://github.com/bhouston/glTF/tree/jpegxl-linear/extensions/2.0/Khronos/KHR_jpegxl_linear
+ *
+ * @private
+ */
+class GLTFJpegXLLinearExtension {
+
+	constructor( parser ) {
+
+		this.parser = parser;
+		this.name = 'KHR_jpegxl_linear';
+		this.loader = new JXLLoader( parser.options.manager );
+		this.loader.setRequestHeader( parser.options.requestHeader );
+		this.loader.setWithCredentials( parser.options.crossOrigin === 'use-credentials' );
+
+	}
+
+	loadTexture( textureIndex ) {
+
+		const parser = this.parser;
+		const textureDef = parser.json.textures[ textureIndex ];
+		const extension = textureDef.extensions && textureDef.extensions[ this.name ];
+		if ( ! extension ) return null;
+
+		return parser.loadTextureImage( textureIndex, extension.source, this.loader, true ).then( texture => {
+
+			const data = texture.image.data;
+			for ( let i = 0; i < data.length; i ++ ) {
+
+				const value = data[ i ]; // IEEE 754 binary16 bits from JXLLoader.
+				const nonFinite = ( value & 0x7c00 ) === 0x7c00;
+				const negative = ( value & 0x8000 ) !== 0 && value !== 0x8000;
+				const alphaAboveOne = i % 4 === 3 && value > 0x3c00 && value !== 0x8000;
+				if ( nonFinite || negative || alphaAboveOne ) {
+
+					texture.dispose();
+					throw new Error( 'THREE.GLTFLoader: KHR_jpegxl_linear values must be finite, nonnegative, and alpha must not exceed one.' );
+
+				}
+
+			}
+
+			// userData survives texture-coordinate and KHR_texture_transform clones.
+			texture.userData.KHR_jpegxl_linear = true;
+			texture.colorSpace = LinearSRGBColorSpace;
+			return texture;
+
+		} ).catch( error => {
+
+			if ( ! ( parser.json.extensionsRequired || [] ).includes( this.name ) && textureDef.source !== undefined ) {
+
+				return parser.loadTexture( textureIndex );
+
+			}
+
+			throw new Error( 'THREE.GLTFLoader: Unable to load KHR_jpegxl_linear texture.', { cause: error } );
+
+		} );
+
+	}
+
+}
+
+/**
+ * WebP Texture Extension.
  *
  * Specification: https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Vendor/EXT_texture_webp
  *
@@ -3338,7 +3420,7 @@ class GLTFParser {
 
 	}
 
-	loadTextureImage( textureIndex, sourceIndex, loader ) {
+	loadTextureImage( textureIndex, sourceIndex, loader, rejectOnError = false ) {
 
 		const parser = this;
 		const json = this.json;
@@ -3380,7 +3462,9 @@ class GLTFParser {
 
 			return texture;
 
-		} ).catch( function () {
+		} ).catch( function ( error ) {
+
+			if ( rejectOnError ) throw error;
 
 			return null;
 
@@ -3471,6 +3555,8 @@ class GLTFParser {
 
 		} ).catch( function ( error ) {
 
+			if ( isObjectURL === true ) URL.revokeObjectURL( sourceURI );
+
 			console.error( 'THREE.GLTFLoader: Couldn\'t load texture', sourceURI );
 			throw error;
 
@@ -3520,7 +3606,7 @@ class GLTFParser {
 
 			}
 
-			if ( colorSpace !== undefined ) {
+			if ( colorSpace !== undefined && texture.userData.KHR_jpegxl_linear !== true ) {
 
 				texture.colorSpace = colorSpace;
 

@@ -1,4 +1,6 @@
 import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
+import { JXLLoader } from '../../../../examples/jsm/loaders/JXLLoader.js';
+import { DataTexture, DataUtils, HalfFloatType, LinearSRGBColorSpace, SRGBColorSpace, NearestFilter, ClampToEdgeWrapping, Texture } from 'three';
 import { GLTFGaussianSplatLoaderExtension } from '../../../../examples/jsm/loaders/GLTFGaussianSplatLoaderExtension.js';
 import { makeClipAdditive } from '../../../../src/animation/AnimationUtils.js';
 import { unpackSphericalHarmonicsBand } from '../utils/GaussianSplatTestUtils.js';
@@ -6,6 +8,176 @@ import { unpackSphericalHarmonicsBand } from '../utils/GaussianSplatTestUtils.js
 const EPS = 1e-6;
 const FLOAT = 5126;
 const UNSIGNED_BYTE = 5121;
+
+let hasNativeHDR = false;
+
+try {
+
+	const hdrContext = document.createElement( 'canvas' ).getContext( '2d', { colorSpace: 'srgb-linear', colorType: 'float16' } );
+	hasNativeHDR = hdrContext !== null && hdrContext.getContextAttributes().colorType === 'float16' && 'globalHDRHeadroom' in hdrContext;
+
+} catch {
+
+	// Browsers may reject unsupported color-space enums instead of ignoring them.
+
+}
+
+QUnit.module( 'KHR_jpegxl_linear native decoding', () => {
+
+	for ( const filename of [ 'linear-hdr.jxl', 'linear-hdr-1000.jxl' ] ) {
+
+		( hasNativeHDR ? QUnit.test : QUnit.skip )( filename, async assert => {
+
+			const json = {
+				asset: { version: '2.0' },
+				extensionsUsed: [ 'KHR_jpegxl_linear' ],
+				extensionsRequired: [ 'KHR_jpegxl_linear' ],
+				images: [ { uri: filename, mimeType: 'image/jxl' } ],
+				textures: [ { extensions: { KHR_jpegxl_linear: { source: 0 } } } ],
+				materials: [ { emissiveFactor: [ 1, 1, 1 ], emissiveTexture: { index: 0 } } ]
+			};
+			const { parser } = await new GLTFLoader().parseAsync( JSON.stringify( json ), '/test/unit/addons/loaders/fixtures/jpegxl-linear/' );
+			const material = await parser.getDependency( 'material', 0 );
+			const texture = material.emissiveMap;
+			const values = Array.from( texture.image.data, value => DataUtils.fromHalfFloat( value ) );
+			assert.deepEqual( values, [ 0, 0.5, 1, 1, 2, 4, 8, 1, 1, 1, 1, 1, 0.25, 0.5, 0.75, 1 ], 'preserves linear source samples, HDR range, alpha, orientation, and luminance scale' );
+			assert.strictEqual( texture.colorSpace, LinearSRGBColorSpace, 'material sampling stays linear' );
+			assert.strictEqual( texture.flipY, false, 'glTF texture orientation' );
+			texture.dispose();
+			material.dispose();
+
+		} );
+
+	}
+
+} );
+
+QUnit.module( 'KHR_jpegxl_linear', hooks => {
+
+	let originalLoad;
+	hooks.beforeEach( () => {
+
+		originalLoad = JXLLoader.prototype.load;
+
+	} );
+	hooks.afterEach( () => {
+
+		JXLLoader.prototype.load = originalLoad;
+
+	} );
+
+	async function makeParser( { embedded = false, required = false, fallback = false, defaultSampler = false } = {} ) {
+
+		const json = {
+			asset: { version: '2.0' },
+			extensionsUsed: [ 'KHR_jpegxl_linear', 'KHR_texture_transform' ],
+			extensionsRequired: required ? [ 'KHR_jpegxl_linear' ] : [],
+			images: [ embedded ? { bufferView: 0, mimeType: 'image/jxl' } : { uri: 'linear.jxl' }, { uri: 'fallback.png' } ],
+			textures: [ { sampler: 0, extensions: { KHR_jpegxl_linear: { source: 0 } }, ...( fallback ? { source: 1 } : {} ) } ],
+			samplers: [ defaultSampler ? {} : { magFilter: 9728, minFilter: 9728, wrapS: 33071 } ],
+			materials: [ {
+				emissiveFactor: [ 1, 1, 1 ], emissiveTexture: { index: 0 },
+				pbrMetallicRoughness: { metallicRoughnessTexture: { index: 0 } }
+			} ],
+			buffers: [ { uri: 'data:application/octet-stream;base64,AAAAAA==', byteLength: 4 } ],
+			bufferViews: [ { buffer: 0, byteLength: 4 } ]
+		};
+		return ( await new GLTFLoader().parseAsync( JSON.stringify( json ), '/assets/' ) ).parser;
+
+	}
+
+	for ( const embedded of [ false, true ] ) {
+
+		QUnit.test( embedded ? 'bufferView HDR texture' : 'external HDR texture', async assert => {
+
+			let loadedURL;
+			JXLLoader.prototype.load = function ( url, onLoad ) {
+
+				loadedURL = url;
+				const texture = new DataTexture( new Uint16Array( [ 0x4000, 0, 0, 0x3c00 ] ), 1, 1 );
+				texture.type = HalfFloatType;
+				onLoad( texture );
+
+			};
+
+			const parser = await makeParser( { embedded } );
+			const params = {};
+			const texture = await parser.assignTexture( params, 'map', {
+				index: 0, texCoord: 1, extensions: { KHR_texture_transform: { offset: [ 0.25, 0.5 ] } }
+			}, SRGBColorSpace );
+			assert.ok( embedded ? loadedURL.startsWith( 'blob:' ) : loadedURL === '/assets/linear.jxl', 'resolves image source' );
+			assert.strictEqual( texture.colorSpace, LinearSRGBColorSpace, 'color slot keeps linear encoding' );
+			assert.strictEqual( texture.image.data[ 0 ], 0x4000, 'HDR value 2 remains unchanged' );
+			assert.strictEqual( texture.flipY, false, 'glTF orientation' );
+			assert.strictEqual( texture.magFilter, NearestFilter, 'sampler filter' );
+			assert.strictEqual( texture.wrapS, ClampToEdgeWrapping, 'sampler wrapping' );
+			assert.strictEqual( texture.channel, 1, 'texture coordinates' );
+			assert.deepEqual( texture.offset.toArray(), [ 0.25, 0.5 ], 'texture transform' );
+
+		} );
+
+	}
+
+	QUnit.test( 'optional decode failure uses core fallback', async assert => {
+
+		JXLLoader.prototype.load = ( url, onLoad, onProgress, onError ) => onError( new Error( 'unsupported' ) );
+		const parser = await makeParser( { fallback: true } );
+		parser.textureLoader.load = ( url, onLoad ) => {
+
+			assert.strictEqual( url, '/assets/fallback.png', 'loads core image' );
+			onLoad( new Texture() );
+
+		};
+
+		const texture = await parser.assignTexture( {}, 'map', { index: 0 }, SRGBColorSpace );
+		assert.strictEqual( texture.colorSpace, SRGBColorSpace, 'fallback uses core color semantics' );
+
+	} );
+
+	QUnit.test( 'material shares linear HDR color and non-color texture with default mipmaps', async assert => {
+
+		JXLLoader.prototype.load = ( url, onLoad ) => onLoad( new DataTexture( new Uint16Array( [ 0x4000, 0, 0, 0x3c00 ] ), 1, 1 ) );
+		const parser = await makeParser( { defaultSampler: true } );
+		const material = await parser.getDependency( 'material', 0 );
+		assert.strictEqual( material.emissiveMap.colorSpace, LinearSRGBColorSpace, 'emissive slot stays linear' );
+		assert.strictEqual( material.roughnessMap, material.emissiveMap, 'non-color slot can share image' );
+		assert.true( material.emissiveMap.generateMipmaps, 'default sampler generates mipmaps' );
+		assert.strictEqual( material.emissiveMap.image.data[ 0 ], 0x4000, 'material retains HDR sample' );
+
+	} );
+
+	for ( const invalid of [ 0x7c00, 0x7e00, 0xbc00, 0x4000 ] ) {
+
+		QUnit.test( `invalid half-float sample ${ invalid } rejects`, async assert => {
+
+			JXLLoader.prototype.load = ( url, onLoad ) => {
+
+				const data = new Uint16Array( [ 0, 0, 0, 0x3c00 ] );
+				data[ invalid === 0x4000 ? 3 : 0 ] = invalid;
+				onLoad( new DataTexture( data, 1, 1 ) );
+
+			};
+
+			const parser = await makeParser( { required: true } );
+			await assert.rejects( parser.getDependency( 'texture', 0 ), /KHR_jpegxl_linear/, 'invalid output fails instead of clipping' );
+
+		} );
+
+	}
+
+	for ( const required of [ false, true ] ) {
+
+		QUnit.test( required ? 'required decode failure rejects despite fallback' : 'missing fallback rejects', async assert => {
+
+			JXLLoader.prototype.load = ( url, onLoad, onProgress, onError ) => onError( new Error( 'unsupported' ) );
+			const parser = await makeParser( { required, fallback: required } );
+			await assert.rejects( parser.getDependency( 'texture', 0 ), /KHR_jpegxl_linear/, 'failure is reported' );
+
+		} );
+
+	}
+
+} );
 
 function closeTo( assert, actual, expected, message ) {
 

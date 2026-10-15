@@ -1,4 +1,4 @@
-import { Fn, If, abs, clamp, context, convertToTexture, cos, dot, exp, float, floor, getViewPosition, isBackgroundDepth, luminance, max, min, mix, mrt, normalize, passTexture, sin, smoothstep, sqrt, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
+import { Fn, If, abs, clamp, context, convertToTexture, cos, dot, exp, float, floor, getViewPosition, isBackgroundDepth, luminance, max, min, mix, mrt, normalize, passTexture, property, sin, smoothstep, sqrt, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
 import { FloatType, HalfFloatType, Matrix4, NearestFilter, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
 
 const _quad = /*@__PURE__*/ new QuadMesh();
@@ -142,6 +142,8 @@ class ReflectionDenoiseNode extends Node {
 
 	_buildPrefilter() {
 
+		const output = property( 'vec4' ), distanceOutput = property( 'vec4' );
+		this._prefilterMaterial.outputNode = mrt( { output, distance: distanceOutput } );
 		return Fn( () => {
 
 			const coord = uv();
@@ -197,7 +199,9 @@ class ReflectionDenoiseNode extends Node {
 				}
 
 			} );
-			return mrt( { output: sum.div( weights ), distance: vec4( distanceSum.div( distanceWeight.max( 1e-6 ) ), 0, 0, 0 ) } );
+			output.assign( sum.div( weights ) );
+			distanceOutput.assign( vec4( distanceSum.div( distanceWeight.max( 1e-6 ) ), 0, 0, 0 ) );
+			return vec4( 0 );
 
 		} )();
 
@@ -205,6 +209,8 @@ class ReflectionDenoiseNode extends Node {
 
 	_buildTemporal() {
 
+		const output = property( 'vec4' ), momentsOutput = property( 'vec4' ), geometryOutput = property( 'vec4' );
+		this._temporalMaterial.outputNode = mrt( { output, moments: momentsOutput, geometry: geometryOutput } );
 		return Fn( () => {
 
 			const coord = uv(), g = this._geometry( coord );
@@ -304,7 +310,10 @@ class ReflectionDenoiseNode extends Node {
 				color.assign( vec4( 0 ) );
 
 			} );
-			return mrt( { output: color, moments: vec4( m, age, variance ), geometry: vec4( worldNormal, g.depth ) } );
+			output.assign( color );
+			momentsOutput.assign( vec4( m, age, variance ) );
+			geometryOutput.assign( vec4( worldNormal, g.depth ) );
+			return vec4( 0 );
 
 		} )();
 
@@ -358,8 +367,8 @@ class ReflectionDenoiseNode extends Node {
 		for ( const input of [ this.colorNode, this.depthNode, this.normalNode, this.roughnessNode, this.velocityNode, this.hitDistanceNode ] ) input.build( builder );
 		const shared = context( builder.getSharedContext() );
 		for ( const material of [ this._prefilterMaterial, this._temporalMaterial, this._spatialMaterial ] ) material.contextNode = shared;
-		this._prefilterMaterial.fragmentNode = this._buildPrefilter();
-		this._temporalMaterial.fragmentNode = this._buildTemporal();
+		this._prefilterMaterial.colorNode = this._buildPrefilter();
+		this._temporalMaterial.colorNode = this._buildTemporal();
 		this._spatialMaterial.fragmentNode = this._buildSpatial();
 		return this._textureNode;
 

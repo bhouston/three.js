@@ -452,6 +452,7 @@ class RecurrentDenoiseNode extends Node {
 			return unpackRGBToNormal( this.normalNode?.sample( uvCoord )?.rgb ?? vec3( 0, 0, 1 ) );
 
 		};
+
 		const sampleRoughnessMetalness = ( uvCoord ) => this.roughnessMetalnessNode?.sample( uvCoord )?.rg ?? vec2( 0, 1 );
 		const sampleDiffuse = ( uvCoord ) => this.diffuseNode?.sample( uvCoord )?.rgb ?? vec3( 0 );
 

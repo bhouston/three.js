@@ -67,6 +67,7 @@ import {
 } from 'three';
 import { toTrianglesDrawMode } from '../utils/BufferGeometryUtils.js';
 import { clone } from '../utils/SkeletonUtils.js';
+import { UltraHDRLoader } from './UltraHDRLoader.js';
 
 /**
  * A loader for the glTF 2.0 format.
@@ -102,8 +103,13 @@ import { clone } from '../utils/SkeletonUtils.js';
  * - EXT_materials_bump
  * - EXT_meshopt_compression
  * - EXT_mesh_gpu_instancing
+ * - EXT_ultrajpeg (draft)
  * - EXT_texture_avif
  * - EXT_texture_webp
+ *
+ * The draft `EXT_ultrajpeg` extension uses {@link UltraHDRLoader} automatically
+ * to reconstruct full linear HDR samples, independently of display headroom.
+ * No additional glTF extension or loader configuration is required.
  *
  * The following glTF 2.0 extensions are supported by separately registered plugins:
  * - KHR_gaussian_splatting
@@ -143,6 +149,12 @@ class GLTFLoader extends Loader {
 		this.meshoptDecoder = null;
 
 		this.pluginCallbacks = [];
+
+		this.register( function ( parser ) {
+
+			return new GLTFUltraJPEGExtension( parser );
+
+		} );
 
 		this.register( function ( parser ) {
 
@@ -1548,6 +1560,70 @@ class GLTFTextureBasisUExtension {
 }
 
 /**
+ * Ultra HDR JPEG Texture Extension (draft).
+ *
+ * Specification: https://github.com/bhouston/glTF/tree/ultrajpeg/extensions/2.0/Vendor/EXT_ultrajpeg
+ *
+ * @private
+ */
+class GLTFUltraJPEGExtension {
+
+	constructor( parser ) {
+
+		this.parser = parser;
+		this.name = 'EXT_ultrajpeg';
+		this.loader = new UltraHDRLoader( parser.options.manager ).setFullHDR( true );
+		this.loader.setRequestHeader( parser.options.requestHeader );
+		this.loader.setWithCredentials( parser.options.crossOrigin === 'use-credentials' );
+
+	}
+
+	loadTexture( textureIndex ) {
+
+		const parser = this.parser;
+		const textureDef = parser.json.textures[ textureIndex ];
+		const extension = textureDef.extensions && textureDef.extensions[ this.name ];
+		if ( ! extension ) return null;
+
+		return parser.loadTextureImage( textureIndex, extension.source, this.loader, true ).then( texture => {
+
+			const data = texture.image.data;
+			for ( let i = 0; i < data.length; i ++ ) {
+
+				const value = data[ i ]; // IEEE 754 binary16 bits from UltraHDRLoader.
+				const nonFinite = ( value & 0x7c00 ) === 0x7c00;
+				const negative = ( value & 0x8000 ) !== 0 && value !== 0x8000;
+				const alphaAboveOne = i % 4 === 3 && value > 0x3c00 && value !== 0x8000;
+				if ( nonFinite || negative || alphaAboveOne ) {
+
+					texture.dispose();
+					throw new Error( 'THREE.GLTFLoader: EXT_ultrajpeg values must be finite, nonnegative, and alpha must not exceed one.' );
+
+				}
+
+			}
+
+			parser.linearHDRTextures.add( texture );
+			texture.colorSpace = LinearSRGBColorSpace;
+			return texture;
+
+		} ).catch( error => {
+
+			if ( ! ( parser.json.extensionsRequired || [] ).includes( this.name ) && textureDef.source !== undefined ) {
+
+				return parser.loadTexture( textureIndex );
+
+			}
+
+			throw new Error( 'THREE.GLTFLoader: Unable to load EXT_ultrajpeg texture.', { cause: error } );
+
+		} );
+
+	}
+
+}
+
+/**
  * WebP Texture Extension
  *
  * Specification: https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Vendor/EXT_texture_webp
@@ -2679,6 +2755,7 @@ class GLTFParser {
 		this.lightCache = { refs: {}, uses: {} };
 
 		this.sourceCache = {};
+		this.linearHDRTextures = new WeakSet();
 		this.textureCache = {};
 
 		// Track node names, to ensure no duplicates
@@ -3338,7 +3415,7 @@ class GLTFParser {
 
 	}
 
-	loadTextureImage( textureIndex, sourceIndex, loader ) {
+	loadTextureImage( textureIndex, sourceIndex, loader, rejectOnError = false ) {
 
 		const parser = this;
 		const json = this.json;
@@ -3346,7 +3423,9 @@ class GLTFParser {
 		const textureDef = json.textures[ textureIndex ];
 		const sourceDef = json.images[ sourceIndex ];
 
-		const cacheKey = ( sourceDef.uri || sourceDef.bufferView ) + ':' + textureDef.sampler;
+		// The same JPEG may serve as both an HDR source and a core SDR fallback.
+		const sourceCacheKey = rejectOnError ? sourceIndex + ':' + loader.constructor.name : sourceIndex;
+		const cacheKey = ( sourceDef.uri || sourceDef.bufferView ) + ':' + textureDef.sampler + ( rejectOnError ? ':' + loader.constructor.name : '' );
 
 		if ( this.textureCache[ cacheKey ] ) {
 
@@ -3355,7 +3434,7 @@ class GLTFParser {
 
 		}
 
-		const promise = this.loadImageSource( sourceIndex, loader ).then( function ( texture ) {
+		const promise = this.loadImageSource( sourceIndex, loader, sourceCacheKey ).then( function ( texture ) {
 
 			texture.flipY = false;
 
@@ -3380,7 +3459,9 @@ class GLTFParser {
 
 			return texture;
 
-		} ).catch( function () {
+		} ).catch( function ( error ) {
+
+			if ( rejectOnError ) throw error;
 
 			return null;
 
@@ -3392,15 +3473,15 @@ class GLTFParser {
 
 	}
 
-	loadImageSource( sourceIndex, loader ) {
+	loadImageSource( sourceIndex, loader, cacheKey = sourceIndex ) {
 
 		const parser = this;
 		const json = this.json;
 		const options = this.options;
 
-		if ( this.sourceCache[ sourceIndex ] !== undefined ) {
+		if ( this.sourceCache[ cacheKey ] !== undefined ) {
 
-			return this.sourceCache[ sourceIndex ].then( ( texture ) => texture.clone() );
+			return this.sourceCache[ cacheKey ].then( ( texture ) => texture.clone() );
 
 		}
 
@@ -3471,12 +3552,14 @@ class GLTFParser {
 
 		} ).catch( function ( error ) {
 
+			if ( isObjectURL === true ) URL.revokeObjectURL( sourceURI );
+
 			console.error( 'THREE.GLTFLoader: Couldn\'t load texture', sourceURI );
 			throw error;
 
 		} );
 
-		this.sourceCache[ sourceIndex ] = promise;
+		this.sourceCache[ cacheKey ] = promise;
 		return promise;
 
 	}
@@ -3499,6 +3582,8 @@ class GLTFParser {
 
 			if ( ! texture ) return null;
 
+			const isLinearHDR = parser.linearHDRTextures.has( texture );
+
 			if ( mapDef.texCoord !== undefined && mapDef.texCoord > 0 ) {
 
 				texture = texture.clone();
@@ -3520,7 +3605,7 @@ class GLTFParser {
 
 			}
 
-			if ( colorSpace !== undefined ) {
+			if ( colorSpace !== undefined && ! isLinearHDR ) {
 
 				texture.colorSpace = colorSpace;
 

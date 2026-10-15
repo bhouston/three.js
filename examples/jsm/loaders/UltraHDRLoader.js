@@ -86,6 +86,21 @@ class UltraHDRLoader extends Loader {
 		 * @default HalfFloatType
 		 */
 		this.type = HalfFloatType;
+		this.fullHDR = false;
+
+	}
+
+	/**
+	 * Enables full, display-independent linear HDR reconstruction of Ultra HDR v1.0
+	 * XMP images. The primary image must use sRGB with identity orientation.
+	 *
+	 * @param {boolean} value - Whether to reconstruct the full HDR rendition.
+	 * @return {UltraHDRLoader} A reference to this loader.
+	 */
+	setFullHDR( value ) {
+
+		this.fullHDR = value;
+		return this;
 
 	}
 
@@ -108,8 +123,9 @@ class UltraHDRLoader extends Loader {
 	 *
 	 * @param {ArrayBuffer} buffer - The raw texture data.
 	 * @param {Function} onLoad - The `onLoad` callback.
+	 * @param {Function} [onError] - Executed when asynchronous image decoding fails.
 	 */
-	parse( buffer, onLoad ) {
+	parse( buffer, onLoad, onError ) {
 
 		const metadata = {
 			version: null,
@@ -232,7 +248,7 @@ class UltraHDRLoader extends Loader {
 
 						// Parse ISO 21496-1 metadata
 						const isoData = section.subarray( 2 + isoNameSpace.length );
-						this._parseISOMetadata( isoData, metadata );
+						if ( ! this.fullHDR ) this._parseISOMetadata( isoData, metadata );
 						continue;
 
 					}
@@ -315,6 +331,8 @@ class UltraHDRLoader extends Loader {
 
 		}
 
+		if ( this.fullHDR ) this._validateFullHDRMetadata( metadata );
+
 		if ( primaryImage && gainmapImage ) {
 
 			this._applyGainmapToSDR(
@@ -334,7 +352,8 @@ class UltraHDRLoader extends Loader {
 				},
 				( error ) => {
 
-					throw new Error( error );
+					if ( onError ) onError( error );
+					else console.error( error );
 
 				}
 			);
@@ -518,7 +537,8 @@ class UltraHDRLoader extends Loader {
 
 						if ( onLoad ) onLoad( texture, texData );
 
-					}
+					},
+					onError
 				);
 
 			} catch ( error ) {
@@ -547,6 +567,19 @@ class UltraHDRLoader extends Loader {
 			'text/xml'
 		);
 
+		if ( this.fullHDR ) {
+
+			const descriptions = xmpXml.getElementsByTagNameNS( 'http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'Description' );
+			for ( const node of descriptions ) {
+
+				if ( node.hasAttributeNS( 'http://ns.adobe.com/hdr-gain-map/1.0/', 'Version' ) || node.getElementsByTagNameNS( 'http://ns.adobe.com/hdr-gain-map/1.0/', 'Version' ).length ) this._parseFullHDRMetadata( node, metadata );
+
+			}
+
+			return;
+
+		}
+
 		/* Determine if given XMP metadata is the primary GContainer descriptor or a gainmap descriptor */
 		const [ hasHDRContainerDescriptor ] = xmpXml.getElementsByTagName(
 			'Container:Directory'
@@ -559,6 +592,8 @@ class UltraHDRLoader extends Loader {
 			/* Gainmap descriptor - defaults from https://developer.android.com/media/platform/hdr-image-format#HDR_gain_map_metadata */
 
 			const [ gainmapNode ] = xmpXml.getElementsByTagName( 'rdf:Description' );
+
+			if ( ! gainmapNode || ! gainmapNode.hasAttribute( 'hdrgm:Version' ) ) return;
 
 			metadata.version = gainmapNode.getAttribute( 'hdrgm:Version' );
 			metadata.baseRenditionIsHDR =
@@ -586,6 +621,108 @@ class UltraHDRLoader extends Loader {
 			);
 
 		}
+
+	}
+
+	_parseFullHDRMetadata( node, metadata ) {
+
+		const namespace = 'http://ns.adobe.com/hdr-gain-map/1.0/';
+		const getAttribute = ( name ) => {
+
+			if ( ! node.getAttributeNS ) return node.getAttribute( 'hdrgm:' + name );
+			if ( node.hasAttributeNS( namespace, name ) ) return node.getAttributeNS( namespace, name );
+			const elements = node.getElementsByTagNameNS( namespace, name );
+			return elements.length ? elements[ 0 ].textContent.trim() : null;
+
+		};
+
+		metadata.version = getAttribute( 'Version' );
+		metadata.baseRenditionIsHDR = getAttribute( 'BaseRenditionIsHDR' ) === 'True';
+		const defaults = { GainMapMin: 0, GainMapMax: 1, Gamma: 1, OffsetSDR: 1 / 64, OffsetHDR: 1 / 64 };
+		for ( const name in defaults ) {
+
+			const elements = node.getElementsByTagNameNS ? node.getElementsByTagNameNS( namespace, name ) : node.getElementsByTagName( 'hdrgm:' + name );
+			const items = elements.length ? ( elements[ 0 ].getElementsByTagNameNS ? elements[ 0 ].getElementsByTagNameNS( 'http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'li' ) : elements[ 0 ].getElementsByTagName( 'rdf:li' ) ) : [];
+			const values = Array.from( items, ( item ) => Number( item.textContent ) );
+			const attribute = getAttribute( name );
+			const value = attribute !== null ? Number( attribute ) : ( elements.length && ! items.length ? Number( elements[ 0 ].textContent ) : defaults[ name ] );
+			metadata[ name[ 0 ].toLowerCase() + name.slice( 1 ) ] = values.length === 1 ? [ values[ 0 ], values[ 0 ], values[ 0 ] ] : ( values.length ? values : [ value, value, value ] );
+
+		}
+
+	}
+
+	_validateFullHDRMetadata( metadata ) {
+
+		if ( metadata.version !== '1.0' || metadata.baseRenditionIsHDR !== false ) throw new Error( 'THREE.UltraHDRLoader: Full HDR requires Ultra HDR v1.0 XMP metadata and an SDR primary image.' );
+		for ( const name of [ 'gainMapMin', 'gainMapMax', 'gamma', 'offsetSDR', 'offsetHDR' ] ) {
+
+			const values = metadata[ name ];
+			if ( ! Array.isArray( values ) || values.length !== 3 || values.some( ( value ) => ! Number.isFinite( value ) || ( name === 'gamma' && value <= 0 ) || ( name.startsWith( 'offset' ) && value < 0 ) ) ) throw new Error( 'THREE.UltraHDRLoader: Invalid gain-map metadata: ' + name );
+
+		}
+
+		if ( metadata.gainMapMax.some( ( value, channel ) => value < metadata.gainMapMin[ channel ] ) ) throw new Error( 'THREE.UltraHDRLoader: Invalid gain-map range.' );
+
+	}
+
+	_applyFullHDRGainmap( metadata, sdrImage, gainmapImage, onSuccess ) {
+
+		if ( sdrImage.width * gainmapImage.height !== sdrImage.height * gainmapImage.width ) throw new Error( 'THREE.UltraHDRLoader: Aspect ratio mismatch between SDR and gain map.' );
+
+		// Read encoded samples at their native resolution. Interpolate the gain map
+		// numerically, without canvas scaling or transfer-function decoding.
+		const readImage = ( image ) => {
+
+			const canvas = document.createElement( 'canvas' );
+			canvas.width = image.width;
+			canvas.height = image.height;
+			const context = canvas.getContext( '2d', { willReadFrequently: true, colorSpace: 'srgb' } );
+			context.drawImage( image, 0, 0 );
+			return context.getImageData( 0, 0, image.width, image.height ).data;
+
+		};
+
+		const data = this._reconstructFullHDR( metadata, readImage( sdrImage ), sdrImage.width, sdrImage.height, readImage( gainmapImage ), gainmapImage.width, gainmapImage.height );
+		onSuccess( data, sdrImage.width, sdrImage.height );
+
+	}
+
+	_reconstructFullHDR( metadata, sdr, width, height, gainmap, gainWidth, gainHeight ) {
+
+		const half = this.type === HalfFloatType;
+		const result = half ? new Uint16Array( sdr.length ) : new Float32Array( sdr.length );
+		for ( let y = 0; y < height; y ++ ) {
+
+			const gy = Math.max( 0, Math.min( gainHeight - 1, ( y + 0.5 ) * gainHeight / height - 0.5 ) );
+			const y0 = Math.floor( gy ), y1 = Math.min( y0 + 1, gainHeight - 1 ), fy = gy - y0;
+			for ( let x = 0; x < width; x ++ ) {
+
+				const gx = Math.max( 0, Math.min( gainWidth - 1, ( x + 0.5 ) * gainWidth / width - 0.5 ) );
+				const x0 = Math.floor( gx ), x1 = Math.min( x0 + 1, gainWidth - 1 ), fx = gx - x0;
+				const index = ( y * width + x ) * 4;
+				for ( let c = 0; c < 3; c ++ ) {
+
+					const top = gainmap[ ( y0 * gainWidth + x0 ) * 4 + c ] * ( 1 - fx ) + gainmap[ ( y0 * gainWidth + x1 ) * 4 + c ] * fx;
+					const bottom = gainmap[ ( y1 * gainWidth + x0 ) * 4 + c ] * ( 1 - fx ) + gainmap[ ( y1 * gainWidth + x1 ) * 4 + c ] * fx;
+					const gain = ( top * ( 1 - fy ) + bottom * fy ) / 255;
+					const encoded = sdr[ index + c ] / 255;
+					const linear = encoded <= 0.04045 ? encoded / 12.92 : ( ( encoded + 0.055 ) / 1.055 ) ** 2.4;
+					const boost = metadata.gainMapMin[ c ] + ( metadata.gainMapMax[ c ] - metadata.gainMapMin[ c ] ) * gain ** ( 1 / metadata.gamma[ c ] );
+					const value = ( linear + metadata.offsetSDR[ c ] ) * 2 ** boost - metadata.offsetHDR[ c ];
+					if ( ! Number.isFinite( value ) || value < 0 || ( half && value > 65504 ) ) throw new Error( 'THREE.UltraHDRLoader: HDR sample exceeds the output representation.' );
+					result[ index + c ] = half ? DataUtils.toHalfFloat( value ) : value;
+					if ( ! Number.isFinite( result[ index + c ] ) ) throw new Error( 'THREE.UltraHDRLoader: HDR sample exceeds the output representation.' );
+
+				}
+
+				result[ index + 3 ] = half ? DataUtils.toHalfFloat( 1 ) : 1;
+
+			}
+
+		}
+
+		return result;
 
 	}
 
@@ -618,10 +755,27 @@ class UltraHDRLoader extends Loader {
 		onError
 	) {
 
-		const decodeImage = ( data ) => createImageBitmap( new Blob( [ data ], { type: 'image/jpeg' } ) );
+		const decodeImage = ( data ) => createImageBitmap( new Blob( [ data ], { type: 'image/jpeg' } ), this.fullHDR ? { colorSpaceConversion: 'none', imageOrientation: 'none' } : undefined );
 
 		Promise.all( [ decodeImage( sdrBuffer ), decodeImage( gainmapBuffer ) ] )
 			.then( ( [ sdrImage, gainmapImage ] ) => {
+
+				if ( this.fullHDR ) {
+
+					try {
+
+						this._applyFullHDRGainmap( metadata, sdrImage, gainmapImage, onSuccess );
+
+					} finally {
+
+						sdrImage.close();
+						gainmapImage.close();
+
+					}
+
+					return;
+
+				}
 
 				const sdrWidth = sdrImage.width;
 				const sdrHeight = sdrImage.height;

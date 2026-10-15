@@ -474,5 +474,3 @@ export const reflectionDenoise = ( colorNode, depthNode, normalNode, roughnessNo
 	convertToTexture( colorNode ), convertToTexture( depthNode ), convertToTexture( normalNode ), convertToTexture( roughnessNode ), convertToTexture( velocityNode ), camera,
 	{ ...options, hitDistanceNode: convertToTexture( options.hitDistanceNode || float( 0 ) ) }
 );
-
-

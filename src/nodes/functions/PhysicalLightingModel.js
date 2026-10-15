@@ -876,8 +876,14 @@ class PhysicalLightingModel extends LightingModel {
 
 		const cosineWeightedIrradiance = iblIrradiance.mul( 1 / Math.PI );
 
-		const indirectSpecular = radiance.mul( singleScattering ).add( multiScattering.mul( cosineWeightedIrradiance ) ).toVar();
+		let indirectSpecular = radiance.mul( singleScattering ).add( multiScattering.mul( cosineWeightedIrradiance ) ).toVar();
 		const indirectDiffuse = diffuse.mul( cosineWeightedIrradiance ).toVar();
+
+		if ( builder.context.getIndirectSpecular ) {
+
+			indirectSpecular = builder.context.getIndirectSpecular( indirectSpecular, builder ).toVar();
+
+		}
 
 		if ( this.sheen === true ) {
 

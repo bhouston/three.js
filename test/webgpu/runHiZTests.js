@@ -153,6 +153,7 @@ export async function runHiZTests() {
 
 				pyramid.level.value = level;
 				renderer.setRenderTarget( target );
+				renderer._nodes.nodeFrame.update();
 				quad.render( renderer );
 				const actual = await renderer.readRenderTargetPixelsAsync( target, 0, 0, width, height );
 				const clampedLevel = Math.min( level, reference.length - 1 );

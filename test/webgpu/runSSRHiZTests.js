@@ -87,7 +87,10 @@ export async function runSSRHiZTests() {
 										reflection.hiZEnabled = enabled;
 										reflection._noiseIndex.value = 0;
 										renderer.setRenderTarget( target );
+										// Standalone draws must advance FRAME nodes just as Animation does.
+										renderer._nodes.nodeFrame.update();
 										pipeline.render();
+										assert( reflection._noiseIndex.value === 1, 'SSR did not execute for this frame.' );
 										await renderer.backend.device.queue.onSubmittedWorkDone();
 										return renderer.readRenderTargetPixelsAsync( target, 0, 0, width, height );
 

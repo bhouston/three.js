@@ -59,7 +59,7 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
+		import { pass, builtinSpecularContext, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
@@ -71,41 +71,26 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
-		// Disable env map specular (radiance and clearcoat radiance) for every PBR material
-		// in this scene, since SSR provides the specular reflections instead. Diffuse env
-		// (irradiance) is left untouched. Equivalent to zeroing EnvironmentNode contributions,
-		// but scoped to this example rather than modifying the core library.
-		const _indirectSpecular = THREE.PhysicalLightingModel.prototype.indirectSpecular;
-		THREE.PhysicalLightingModel.prototype.indirectSpecular = function ( builder ) {
-
-			builder.context.radiance = vec3( 0 );
-
-			if ( this.clearcoatRadiance ) {
-
-				this.clearcoatRadiance.assign( vec3( 0 ) );
-
-			}
-
-			_indirectSpecular.call( this, builder );
-
-		};
-
 		const OUTPUT_COMPARE_DENOISE = 8;
 		const OUTPUT_COMPARE_SSR = 9;
+		const OUTPUT_COMPARE_SPECULAR = 10;
 
-		const GRADED_OUTPUTS = new Set( [ 0, 1, 3, 4, OUTPUT_COMPARE_DENOISE, OUTPUT_COMPARE_SSR ] );
+		const GRADED_OUTPUTS = new Set( [ 0, 1, 3, 4, OUTPUT_COMPARE_DENOISE, OUTPUT_COMPARE_SSR, OUTPUT_COMPARE_SPECULAR, 11 ] );
 
 		const compareHint = document.getElementById( 'compare-hint' );
 
 		function isCompareMode( output ) {
 
-			return output === OUTPUT_COMPARE_DENOISE || output === OUTPUT_COMPARE_SSR;
+			return output === OUTPUT_COMPARE_DENOISE || output === OUTPUT_COMPARE_SSR || output === OUTPUT_COMPARE_SPECULAR;
 
 		}
 
 		function updateCompareHint( output ) {
 
 			compareHint.hidden = ! isCompareMode( output );
+			compareHint.textContent = output === OUTPUT_COMPARE_SPECULAR
+				? 'Left: additive (double-counted IBL) | Right: replacement | hold Shift to scrub'
+				: 'Hold Shift and move the mouse to scrub the comparison';
 
 		}
 
@@ -123,7 +108,7 @@
 		}
 
 		const params = {
-			output: 0,
+			output: OUTPUT_COMPARE_SPECULAR,
 			roughness: 0.3,
 
 			ssr: {
@@ -172,6 +157,7 @@
 		let camera, scene, model, renderer, postProcessing, ssrNode, temporalReprojectNode, denoiseNode;
 		let controls;
 		let scenePassNode, combinedOutputNode, scenePassDepth, scenePassVelocity;
+		let additiveOutputNode;
 		let gammaUniform, contrastUniform, saturationUniform;
 
 		init();
@@ -244,7 +230,11 @@
 			postProcessing = new THREE.RenderPipeline( renderer );
 
 			const scenePass = pass( scene, camera );
-			scenePassNode = scenePass;
+			// SSR adds its previous-frame history at ray hits for multi-bounce.
+			// Keep IBL specular out of this source so it is not counted again there.
+			scenePass.contextNode = builtinSpecularContext( vec3( 0 ) );
+			const environmentPass = pass( scene, camera );
+			scenePassNode = environmentPass;
 			scenePass.setMRT( mrt( {
 				output: output,
 				// Store base color (albedo) in RGB + metalness in alpha. The albedo is needed for
@@ -310,13 +300,17 @@
 			ssrNode.setHistory( denoiseNode, scenePassVelocity );
 			temporalReprojectNode.setHistoryTexture( denoiseNode );
 
-			const denoisePassBlend = vec4( denoiseNode.rgb, ssrNode.a.greaterThan( 0 ).toVar() );
+			// A separate lighting resolve avoids a dependency cycle: SSR reads the source
+			// pass, while only this beauty pass consumes the denoised reflections.
+			const beautyPass = pass( scene, camera );
+			beautyPass.contextNode = builtinSpecularContext( denoiseNode.rgb );
 
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );
 			saturationUniform = uniform( params.post.grading.saturation );
 
-			const litColor = scenePassColor.rgb.add( denoisePassBlend.rgb );
+			const litColor = beautyPass.rgb;
+			additiveOutputNode = vec4( environmentPass.rgb.add( denoiseNode.rgb ), 1 );
 
 			const outputNode = vec4( litColor, 1 );
 			outputNode.toInspector( 'Combined SSR' );
@@ -341,7 +335,9 @@
 			applyPost();
 
 			const outputTypes = {
-				Combined: 0,
+				'Replacement SSR': 0,
+				'Additive SSR (double-counted)': 11,
+				'Compare (Additive / Replacement)': OUTPUT_COMPARE_SPECULAR,
 				'Denoised SSR': 4,
 				'Compare (Denoise)': OUTPUT_COMPARE_DENOISE,
 				'Compare (Reflections)': OUTPUT_COMPARE_SSR,
@@ -496,6 +492,8 @@
 
 			switch ( params.output ) {
 
+				case 11: node = applyPostProcessing( additiveOutputNode ); break;
+				case OUTPUT_COMPARE_SPECULAR: node = buildCompareNode( applyPostProcessing( additiveOutputNode ), applyPostProcessing( combinedOutputNode ) ); break;
 				case 0: node = applyPostProcessing( combinedOutputNode ); break; // Combined
 				case 1: node = applyPostProcessing( vec4( ssrNode.rgb, 1 ) ); break; // SSR (Raw)
 				case 4: node = applyPostProcessing( vec4( denoiseNode.rgb, 1 ) ); break; // Denoised SSR

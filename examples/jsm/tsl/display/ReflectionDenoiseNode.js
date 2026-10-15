@@ -1,5 +1,5 @@
 import { Fn, If, abs, clamp, context, convertToTexture, cos, dot, exp, float, floor, getViewPosition, isBackgroundDepth, luminance, max, min, mix, mrt, normalize, passTexture, sin, smoothstep, sqrt, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
-import { FloatType, HalfFloatType, Matrix4, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
+import { FloatType, HalfFloatType, Matrix4, NearestFilter, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
 
 const _quad = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -10,7 +10,15 @@ function target( names ) {
 	const result = new RenderTarget( 1, 1, { count: names.length, type: HalfFloatType, depthBuffer: false } );
 	for ( let i = 0; i < names.length; i ++ ) result.textures[ i ].name = names[ i ];
 	// Raw depth requires full precision for reliable distant-surface rejection.
-	if ( names.includes( 'geometry' ) ) result.textures[ names.indexOf( 'geometry' ) ].type = FloatType;
+	if ( names.includes( 'geometry' ) ) {
+
+		const geometry = result.textures[ names.indexOf( 'geometry' ) ];
+		geometry.type = FloatType;
+		geometry.minFilter = NearestFilter;
+		geometry.magFilter = NearestFilter;
+
+	}
+
 	return result;
 
 }
@@ -138,6 +146,7 @@ class ReflectionDenoiseNode extends Node {
 
 			const coord = uv();
 			const g = this._geometry( coord );
+			const still = this._still.and( this.velocityNode.sample( coord ).xy.length().lessThan( 1e-6 ) );
 			const center = this.colorNode.sample( coord ).toVar();
 			const roughness = this.roughnessNode.sample( coord ).r;
 			const distance = this.hitDistanceNode.sample( coord ).r.toVar();
@@ -161,7 +170,7 @@ class ReflectionDenoiseNode extends Node {
 			const sum = center.toVar(), weights = float( 1 ).toVar();
 			const distanceSum = this.hitDistanceNode.sample( coord ).r.toVar();
 			const distanceWeight = distanceSum.greaterThan( 0 ).select( float( 1 ), float( 0 ) ).toVar();
-			If( isBackgroundDepth( g.depth ).not().and( roughness.lessThan( 0.9 ) ).and( this.prefilterRadius.greaterThan( 0 ) ), () => {
+			If( isBackgroundDepth( g.depth ).not().and( roughness.lessThan( 0.9 ) ).and( this.prefilterRadius.greaterThan( 0 ) ).and( still.not() ), () => {
 
 				for ( let i = 0; i < 16; i ++ ) {
 
@@ -213,12 +222,14 @@ class ReflectionDenoiseNode extends Node {
 			}
 
 			const spatialVariance = lumSecond.sub( lumMean.pow2() ).max( 0 );
-			const surfaceUV = coord.sub( this.velocityNode.sample( coord ).xy.mul( vec2( 0.5, - 0.5 ) ) );
+			const motion = this.velocityNode.sample( coord ).xy;
+			const still = this._still.and( motion.length().lessThan( 1e-6 ) );
+			const surfaceUV = coord.sub( motion.mul( vec2( 0.5, - 0.5 ) ) );
 			const previousUV = surfaceUV.toVar();
-			const maxAge = this._still.select( this.maxHistoryStill.max( this.maxHistory ), this.maxHistory ).max( 1 ).toVar();
+			const maxAge = still.select( this.maxHistoryStill.max( this.maxHistory ), this.maxHistory ).max( 1 ).toVar();
 			const distance = this._distance.sample( coord ).r;
 			const roughness = this.roughnessNode.sample( coord ).r;
-			If( this._still, () => {
+			If( still, () => {
 
 				previousUV.assign( coord );
 
@@ -262,7 +273,7 @@ class ReflectionDenoiseNode extends Node {
 			If( weight.greaterThan( 1e-3 ), () => {
 
 				history.divAssign( weight ); moments.divAssign( weight );
-				If( this._still.not(), () => {
+				If( still.not(), () => {
 
 					const sigma = sqrt( second.sub( mean.mul( mean ) ).max( 0 ) );
 					const clipped = clamp( history, mean.sub( sigma.mul( this.historyClamp ) ), mean.add( sigma.mul( this.historyClamp ) ) );
@@ -277,9 +288,16 @@ class ReflectionDenoiseNode extends Node {
 
 			} );
 			const alpha = age.reciprocal();
-			const color = mix( history, raw, alpha ).toVar();
+			const color = raw.toVar();
 			const lum = signal( raw );
-			const m = mix( moments.rg, vec2( lum, lum.pow2() ), alpha.max( 0.2 ) );
+			const m = vec2( lum, lum.pow2() ).toVar();
+			// Do not read stale temporal values when seeding or rejecting history.
+			If( age.greaterThan( 1 ), () => {
+
+				color.assign( mix( history, raw, alpha ) );
+				m.assign( mix( moments.rg, m, alpha.max( 0.2 ) ) );
+
+			} );
 			const variance = m.y.sub( m.x.pow2() ).max( 0 ).max( spatialVariance.mul( float( 4 ).sub( age ).max( 0 ) ).div( 3 ) ).div( age );
 			If( isBackgroundDepth( g.depth ), () => {
 

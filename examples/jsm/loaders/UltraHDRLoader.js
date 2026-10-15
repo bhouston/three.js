@@ -567,6 +567,19 @@ class UltraHDRLoader extends Loader {
 			'text/xml'
 		);
 
+		if ( this.fullHDR ) {
+
+			const descriptions = xmpXml.getElementsByTagNameNS( 'http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'Description' );
+			for ( const node of descriptions ) {
+
+				if ( node.hasAttributeNS( 'http://ns.adobe.com/hdr-gain-map/1.0/', 'Version' ) ) this._parseFullHDRMetadata( node, metadata );
+
+			}
+
+			return;
+
+		}
+
 		/* Determine if given XMP metadata is the primary GContainer descriptor or a gainmap descriptor */
 		const [ hasHDRContainerDescriptor ] = xmpXml.getElementsByTagName(
 			'Container:Directory'
@@ -581,13 +594,6 @@ class UltraHDRLoader extends Loader {
 			const [ gainmapNode ] = xmpXml.getElementsByTagName( 'rdf:Description' );
 
 			if ( ! gainmapNode || ! gainmapNode.hasAttribute( 'hdrgm:Version' ) ) return;
-
-			if ( this.fullHDR ) {
-
-				this._parseFullHDRMetadata( gainmapNode, metadata );
-				return;
-
-			}
 
 			metadata.version = gainmapNode.getAttribute( 'hdrgm:Version' );
 			metadata.baseRenditionIsHDR =
@@ -620,14 +626,17 @@ class UltraHDRLoader extends Loader {
 
 	_parseFullHDRMetadata( node, metadata ) {
 
-		metadata.version = node.getAttribute( 'hdrgm:Version' );
-		metadata.baseRenditionIsHDR = node.getAttribute( 'hdrgm:BaseRenditionIsHDR' ) === 'True';
+		const namespace = 'http://ns.adobe.com/hdr-gain-map/1.0/';
+		const getAttribute = ( name ) => node.getAttributeNS ? ( node.hasAttributeNS( namespace, name ) ? node.getAttributeNS( namespace, name ) : null ) : node.getAttribute( 'hdrgm:' + name );
+		metadata.version = getAttribute( 'Version' );
+		metadata.baseRenditionIsHDR = getAttribute( 'BaseRenditionIsHDR' ) === 'True';
 		const defaults = { GainMapMin: 0, GainMapMax: 1, Gamma: 1, OffsetSDR: 1 / 64, OffsetHDR: 1 / 64 };
 		for ( const name in defaults ) {
 
-			const elements = node.getElementsByTagName( 'hdrgm:' + name );
-			const values = elements.length ? Array.from( elements[ 0 ].getElementsByTagName( 'rdf:li' ), ( item ) => Number( item.textContent ) ) : [];
-			const attribute = node.getAttribute( 'hdrgm:' + name );
+			const elements = node.getElementsByTagNameNS ? node.getElementsByTagNameNS( namespace, name ) : node.getElementsByTagName( 'hdrgm:' + name );
+			const items = elements.length ? ( elements[ 0 ].getElementsByTagNameNS ? elements[ 0 ].getElementsByTagNameNS( 'http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'li' ) : elements[ 0 ].getElementsByTagName( 'rdf:li' ) ) : [];
+			const values = Array.from( items, ( item ) => Number( item.textContent ) );
+			const attribute = getAttribute( name );
 			const value = attribute !== null ? Number( attribute ) : defaults[ name ];
 			metadata[ name[ 0 ].toLowerCase() + name.slice( 1 ) ] = values.length ? values : [ value, value, value ];
 

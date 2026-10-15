@@ -1,4 +1,4 @@
-import { abs, atan, bool, convertToTexture, cos, cross, Discard, dot, EPSILON, exp, float, Fn, getScreenPosition, getViewPosition, If, int, log, Loop, luminance, mat2, max, mix, nodeObject, NodeUpdateType, normalize, passTexture, PI, property, reflect, sin, smoothstep, sqrt, tan, texture, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4, context, isBackgroundDepth } from 'three/tsl';
+import { octDecode, abs, atan, bool, convertToTexture, cos, cross, Discard, dot, EPSILON, exp, float, Fn, getScreenPosition, getViewPosition, If, int, log, Loop, luminance, mat2, max, mix, nodeObject, NodeUpdateType, normalize, passTexture, PI, property, reflect, sin, smoothstep, sqrt, tan, texture, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4, context, isBackgroundDepth } from 'three/tsl';
 import { HalfFloatType, MathUtils, Matrix4, NodeMaterial, QuadMesh, RendererUtils, RenderTarget, Node, Vector2 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
@@ -225,6 +225,7 @@ const toTextureNode = ( value ) => {
 
 /**
  * @typedef {Object} RecurrentDenoiseNodeOptions
+ * @property {'rgb'|'octahedral'} [normalEncoding='rgb'] - RGB-packed or signed octahedral view-space normals.
  * @property {?Node<float>} [depth=null] - Scene depth buffer for view-space edge stopping.
  * @property {?Node<vec3>} [normal=null] - View-space normals for geometric edge stopping.
  * @property {?Node<vec4>} [metalRoughness=null] - Roughness/metalness G-buffer for specular edge stopping.
@@ -268,6 +269,7 @@ class RecurrentDenoiseNode extends Node {
 			metalRoughness = null,
 			diffuse = null,
 			raw = null,
+			normalEncoding = 'rgb',
 			mode = 'diffuse',
 			accumulate = true,
 		} = options;
@@ -293,6 +295,13 @@ class RecurrentDenoiseNode extends Node {
 		this.textureNode = inputTexture;
 		this.depthNode = depth !== null ? nodeObject( depth ) : null;
 		this.normalNode = normal !== null ? nodeObject( normal ) : null;
+
+		/**
+		 * Normal buffer encoding, selected at construction time.
+		 *
+		 * @type {'rgb'|'octahedral'}
+		 */
+		this.normalEncoding = normalEncoding;
 		this.rawNode = toTextureNode( raw );
 		this.roughnessMetalnessNode = metalRoughness !== null ? nodeObject( metalRoughness ) : null;
 		this.diffuseNode = diffuse !== null ? nodeObject( diffuse ) : null;
@@ -432,7 +441,18 @@ class RecurrentDenoiseNode extends Node {
 		const sampleTexture = ( uvCoord ) => texture( this.textureNode, uvCoord ).max( 0 );
 		const sampleRaw = ( uvCoord ) => this.rawNode?.sample( uvCoord )?.max( 0 ) ?? vec3( 0 ).max( 0 );
 		const sampleDepth = ( uvCoord ) => this.depthNode?.sample( uvCoord )?.x ?? float( 0.5 );
-		const sampleNormal = ( uvCoord ) => unpackRGBToNormal( this.normalNode?.sample( uvCoord )?.rgb ?? vec3( 0, 0, 1 ) );
+		const sampleNormal = ( uvCoord ) => {
+
+			if ( this.normalEncoding === 'octahedral' ) {
+
+				return octDecode( this.normalNode?.sample( uvCoord )?.rg ?? vec2( 0 ) );
+
+			}
+
+			return unpackRGBToNormal( this.normalNode?.sample( uvCoord )?.rgb ?? vec3( 0, 0, 1 ) );
+
+		};
+
 		const sampleRoughnessMetalness = ( uvCoord ) => this.roughnessMetalnessNode?.sample( uvCoord )?.rg ?? vec2( 0, 1 );
 		const sampleDiffuse = ( uvCoord ) => this.diffuseNode?.sample( uvCoord )?.rgb ?? vec3( 0 );
 

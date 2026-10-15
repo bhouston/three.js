@@ -122,9 +122,11 @@ export default QUnit.module( 'Addons', () => {
 
 				const loader = new UltraHDRLoader().setFullHDR( true );
 				const info = {};
-				loader._parseXMPMetadata( '<x:xmpmeta xmlns:x="adobe:ns:meta/"><r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><r:Description xmlns:g="http://ns.adobe.com/hdr-gain-map/1.0/" g:Version="1.0"><g:GainMapMax><r:Seq><r:li>1</r:li><r:li>2</r:li><r:li>3</r:li></r:Seq></g:GainMapMax></r:Description></r:RDF></x:xmpmeta>', info );
+				loader._parseXMPMetadata( '<x:xmpmeta xmlns:x="adobe:ns:meta/"><r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><r:Description xmlns:g="http://ns.adobe.com/hdr-gain-map/1.0/"><g:Version>1.0</g:Version><g:GainMapMax><r:Seq><r:li>1</r:li><r:li>2</r:li><r:li>3</r:li></r:Seq></g:GainMapMax><g:Gamma><r:Seq><r:li>2</r:li></r:Seq></g:Gamma><g:OffsetSDR>0.125</g:OffsetSDR></r:Description></r:RDF></x:xmpmeta>', info );
 				loader._validateFullHDRMetadata( info );
 				assert.deepEqual( info.gainMapMax, [ 1, 2, 3 ] );
+				assert.deepEqual( info.gamma, [ 2, 2, 2 ] );
+				assert.deepEqual( info.offsetSDR, [ 0.125, 0.125, 0.125 ] );
 
 			} );
 

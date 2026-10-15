@@ -572,7 +572,7 @@ class UltraHDRLoader extends Loader {
 			const descriptions = xmpXml.getElementsByTagNameNS( 'http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'Description' );
 			for ( const node of descriptions ) {
 
-				if ( node.hasAttributeNS( 'http://ns.adobe.com/hdr-gain-map/1.0/', 'Version' ) ) this._parseFullHDRMetadata( node, metadata );
+				if ( node.hasAttributeNS( 'http://ns.adobe.com/hdr-gain-map/1.0/', 'Version' ) || node.getElementsByTagNameNS( 'http://ns.adobe.com/hdr-gain-map/1.0/', 'Version' ).length ) this._parseFullHDRMetadata( node, metadata );
 
 			}
 
@@ -627,7 +627,14 @@ class UltraHDRLoader extends Loader {
 	_parseFullHDRMetadata( node, metadata ) {
 
 		const namespace = 'http://ns.adobe.com/hdr-gain-map/1.0/';
-		const getAttribute = ( name ) => node.getAttributeNS ? ( node.hasAttributeNS( namespace, name ) ? node.getAttributeNS( namespace, name ) : null ) : node.getAttribute( 'hdrgm:' + name );
+		const getAttribute = ( name ) => {
+
+			if ( ! node.getAttributeNS ) return node.getAttribute( 'hdrgm:' + name );
+			if ( node.hasAttributeNS( namespace, name ) ) return node.getAttributeNS( namespace, name );
+			const elements = node.getElementsByTagNameNS( namespace, name );
+			return elements.length ? elements[ 0 ].textContent.trim() : null;
+
+		};
 		metadata.version = getAttribute( 'Version' );
 		metadata.baseRenditionIsHDR = getAttribute( 'BaseRenditionIsHDR' ) === 'True';
 		const defaults = { GainMapMin: 0, GainMapMax: 1, Gamma: 1, OffsetSDR: 1 / 64, OffsetHDR: 1 / 64 };
@@ -638,7 +645,7 @@ class UltraHDRLoader extends Loader {
 			const values = Array.from( items, ( item ) => Number( item.textContent ) );
 			const attribute = getAttribute( name );
 			const value = attribute !== null ? Number( attribute ) : ( elements.length && ! items.length ? Number( elements[ 0 ].textContent ) : defaults[ name ] );
-			metadata[ name[ 0 ].toLowerCase() + name.slice( 1 ) ] = values.length ? values : [ value, value, value ];
+			metadata[ name[ 0 ].toLowerCase() + name.slice( 1 ) ] = values.length === 1 ? [ values[ 0 ], values[ 0 ], values[ 0 ] ] : ( values.length ? values : [ value, value, value ] );
 
 		}
 

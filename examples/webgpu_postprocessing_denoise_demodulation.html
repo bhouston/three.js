@@ -6,7 +6,7 @@
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<link type="text/css" rel="stylesheet" href="example.css">
 		<style>
-			#comparison { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-around; pointer-events: none; text-shadow: 0 1px 4px #000; }
+			#comparison { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-around; pointer-events: none; color: #fff; text-shadow: 0 1px 4px #000; }
 		</style>
 	</head>
 	<body>
@@ -47,7 +47,7 @@
 			const scene = new THREE.Scene();
 			scene.background = new THREE.Color( 0x20252b );
 			const frame = uniform( 0 );
-			const noiseStrength = uniform( 0.8 );
+			const noiseStrength = uniform( 0.4 );
 			const textureScale = uniform( 36 );
 
 			// A high-frequency two-color weave makes the loss of material detail easy to see.

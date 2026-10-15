@@ -59,7 +59,7 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, EnvironmentBRDF, getViewPosition, cameraProjectionMatrixInverse, convertToTexture } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, EnvironmentBRDF, getViewPosition, convertToTexture } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise, demodulate, remodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
@@ -296,7 +296,7 @@
 
 				const baseColor = scenePassDiffuseColor.sample( uv );
 				const normalRoughness = scenePassNormal.sample( uv );
-				const viewPosition = getViewPosition( uv, scenePassDepth.sample( uv ).r, cameraProjectionMatrixInverse );
+				const viewPosition = getViewPosition( uv, scenePassDepth.sample( uv ).r, uniform( camera.projectionMatrixInverse ) );
 				const dotNV = unpackRGBToNormal( normalRoughness.rgb ).dot( viewPosition.negate().normalize() ).clamp( 0, 1 );
 
 				return EnvironmentBRDF( {

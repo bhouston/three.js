@@ -1,6 +1,7 @@
 /** Independent CPU oracle. Last child owns the trailing row/column at odd sizes. */
-export function reduceDepth( source, width, height, reversedDepth ) {
+export function reduceDepth( source, width, height, reversedDepth, nearest = false ) {
 
+	reversedDepth = nearest ? ! reversedDepth : reversedDepth;
 	const levels = [ { width, height, data: source.slice() } ];
 	while ( width > 1 || height > 1 ) {
 

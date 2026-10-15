@@ -68,9 +68,10 @@ export async function runHiZTests() {
 						await pyramid.updateBefore( { renderer } );
 						await device.queue.onSubmittedWorkDone();
 						const reference = reduceDepth( data, width, height, reversedDepth );
+						const nearest = reduceDepth( data, width, height, reversedDepth, true );
 						assert( pyramid.levels.length === reference.length, 'Mip count mismatch' );
 						const atlas = pyramid.texture;
-						// Raw texture readback preserves r32float and avoids filtering/tone mapping.
+						// Raw texture readback preserves rg32float and avoids filtering/tone mapping.
 						const actual = await renderer.backend.copyTextureToBuffer( atlas, 0, 0, atlas.image.width, atlas.image.height, 0 );
 						const gpuLevels = [];
 						for ( let level = 0; level < reference.length; level ++ ) {
@@ -84,9 +85,10 @@ export async function runHiZTests() {
 								for ( let x = 0; x < expected.width; x ++ ) {
 
 									const index = y * expected.width + x;
-									values[ index ] = actual[ ( layout.offset + y ) * atlas.image.width + x ];
+									values[ index ] = actual[ ( ( layout.offset + y ) * atlas.image.width + x ) * 2 ];
 									assert( values[ index ] === expected.data[ index ], `${width}x${height} ${pattern} reverse=${reversedDepth} mip=${level} (${x},${y}): expected ${expected.data[ index ]}, got ${values[ index ]}` );
-									texels ++;
+									assert( actual[ ( ( layout.offset + y ) * atlas.image.width + x ) * 2 + 1 ] === nearest[ level ].data[ index ], `Nearest depth mismatch: ${width}x${height} ${pattern} reverse=${reversedDepth} mip=${level} (${x},${y})` );
+									texels += 2;
 
 								}
 

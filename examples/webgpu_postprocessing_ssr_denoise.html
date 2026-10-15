@@ -59,10 +59,10 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, EnvironmentBRDF, getViewPosition, convertToTexture } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
-		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
+		import { recurrentDenoise, demodulate, remodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -170,7 +170,7 @@
 		};
 
 		let camera, scene, model, renderer, postProcessing, ssrNode, temporalReprojectNode, denoiseNode;
-		let controls;
+		let controls, remodulatedSSR;
 		let scenePassNode, combinedOutputNode, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 
@@ -290,7 +290,26 @@
 				binaryRefine: params.ssr.binaryRefine
 			} ).toInspector( 'SSR' );
 
-			temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
+			// Divide out the integrated specular BRDF before filtering. Unlike diffuse
+			// albedo alone, this also accounts for dielectric Fresnel and roughness.
+			const specularModulation = sample( ( uv ) => {
+
+				const baseColor = scenePassDiffuseColor.sample( uv );
+				const normalRoughness = scenePassNormal.sample( uv );
+				const viewPosition = getViewPosition( uv, scenePassDepth.sample( uv ).r, uniform( camera.projectionMatrixInverse ) );
+				const dotNV = unpackRGBToNormal( normalRoughness.rgb ).dot( viewPosition.negate().normalize() ).clamp( 0, 1 );
+
+				return EnvironmentBRDF( {
+					dotNV,
+					specularColor: mix( vec3( 0.04 ), baseColor.rgb, baseColor.a ),
+					specularF90: float( 1 ),
+					roughness: normalRoughness.a
+				} );
+
+			} );
+			const demodulatedSSR = demodulate( ssrNode, specularModulation );
+
+			temporalReprojectNode = temporalReproject( demodulatedSSR, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 				mode: 'specular',
 				accumulate: false
 			} );
@@ -299,7 +318,7 @@
 			denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
 				depth: scenePassDepth,
 				normal: scenePassNormal,
-				raw: ssrNode,
+				raw: demodulatedSSR,
 				metalRoughness: scenePassMetalRough,
 				mode: 'specular',
 				accumulate: true,
@@ -307,10 +326,11 @@
 			denoiseNode.alphaSource = 'raylength'; // SSR alpha channel contains ray length
 			denoiseNode.toInspector( 'Denoise' );
 			// feed the denoised result + velocity back into SSR for multi-bounce reflections
-			ssrNode.setHistory( denoiseNode, scenePassVelocity );
+			remodulatedSSR = convertToTexture( remodulate( denoiseNode, specularModulation ) );
+			ssrNode.setHistory( remodulatedSSR.value, scenePassVelocity );
 			temporalReprojectNode.setHistoryTexture( denoiseNode );
 
-			const denoisePassBlend = vec4( denoiseNode.rgb, ssrNode.a.greaterThan( 0 ).toVar() );
+			const denoisePassBlend = vec4( remodulatedSSR.rgb, ssrNode.a.greaterThan( 0 ).toVar() );
 
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );
@@ -498,13 +518,13 @@
 
 				case 0: node = applyPostProcessing( combinedOutputNode ); break; // Combined
 				case 1: node = applyPostProcessing( vec4( ssrNode.rgb, 1 ) ); break; // SSR (Raw)
-				case 4: node = applyPostProcessing( vec4( denoiseNode.rgb, 1 ) ); break; // Denoised SSR
+				case 4: node = applyPostProcessing( vec4( remodulatedSSR.rgb, 1 ) ); break; // Denoised SSR
 				case 6: node = vec4( denoiseNode.aaa, 1 ); break; // Samples (Alpha)
 				case 7: node = vec4( ssrNode.aaa, 1 ); break; // Ray Length (Raw)
 				case OUTPUT_COMPARE_DENOISE: { // Compare (denoised | noisy)
 
 					const noisySSR = applyPostProcessing( vec4( ssrNode.rgb, 1 ) );
-					const denoisedSSR = applyPostProcessing( vec4( denoiseNode.rgb, 1 ) );
+					const denoisedSSR = applyPostProcessing( vec4( remodulatedSSR.rgb, 1 ) );
 					node = buildCompareNode( denoisedSSR, noisySSR );
 					break;
 

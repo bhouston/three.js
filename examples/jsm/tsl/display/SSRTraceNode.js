@@ -1,5 +1,5 @@
-import { HalfFloatType, Matrix4, NearestFilter, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
-import { Break, Continue, Fn, If, Loop, abs, bool, context, cross, dot, float, floor, fract, getScreenPosition, getViewPosition, int, interleavedGradientNoise, isBackgroundDepth, max, min, mix, mrt, nodeObject, normalize, passTexture, reflect, texture, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { DataTexture, HalfFloatType, Matrix4, NearestFilter, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
+import { Break, Continue, Fn, If, Loop, abs, bool, context, convertToTexture, cross, dot, float, floor, fract, getScreenPosition, getViewPosition, int, interleavedGradientNoise, isBackgroundDepth, max, min, mix, mrt, nodeObject, normalize, passTexture, property, reflect, texture, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 
 const _quad = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -27,7 +27,7 @@ class SSRTraceNode extends Node {
 		this.colorNode = colorNode;
 		this.depthNode = depthNode;
 		this.normalNode = normalNode;
-		this.roughnessNode = roughnessNode;
+		this.roughnessNode = convertToTexture( roughnessNode );
 		this.camera = camera;
 		this.resolutionScale = 0.5;
 		this.maxDistance = uniform( 8 );
@@ -38,6 +38,14 @@ class SSRTraceNode extends Node {
 		this.maxRoughness = uniform( 0.9 );
 		this.mirrorRoughness = uniform( 0.1 );
 		this.maxRadiance = uniform( 16 );
+		this.historyValid = uniform( false );
+		this._historyPlaceholder = new DataTexture( new Uint8Array( 4 ), 1, 1 );
+		this._historyPlaceholder.needsUpdate = true;
+		this._historyColor = texture( this._historyPlaceholder );
+		this.velocityNode = null;
+		this._lastView = new Matrix4();
+		this._lastProjection = new Matrix4();
+		this._near = uniform( camera.near );
 		this.updateBeforeType = NodeUpdateType.FRAME;
 		this._projection = uniform( new Matrix4() );
 		this._projectionInverse = uniform( new Matrix4() );
@@ -81,6 +89,14 @@ class SSRTraceNode extends Node {
 
 	}
 
+	setHistory( colorTexture, velocityNode ) {
+
+		this._historyColor.value = colorTexture || this._historyPlaceholder;
+		this.velocityNode = velocityNode ? convertToTexture( velocityNode ) : null;
+		this.historyValid.value = false;
+
+	}
+
 	getRenderTarget() {
 
 		return this._outputTarget;
@@ -102,6 +118,14 @@ class SSRTraceNode extends Node {
 			this._halfResolution.value = half;
 			this._frame.value = frameId % 4096;
 			this._phase.value.fromArray( half ? _phases[ frameId % 4 ] : _phases[ 0 ] );
+			const view = this.camera.matrixWorld;
+			const a = this._lastView.elements, b = view.elements;
+			const translation = Math.hypot( a[ 12 ] - b[ 12 ], a[ 13 ] - b[ 13 ], a[ 14 ] - b[ 14 ] );
+			const rotation = a[ 8 ] * b[ 8 ] + a[ 9 ] * b[ 9 ] + a[ 10 ] * b[ 10 ];
+			if ( translation > Math.max( 1, this.camera.far * 0.1 ) || rotation < 0.5 || ! this._lastProjection.equals( this.camera.projectionMatrix ) ) this.historyValid.value = false;
+			this._lastView.copy( view );
+			this._lastProjection.copy( this.camera.projectionMatrix );
+			this._near.value = this.camera.near;
 			this._projection.value.copy( this.camera.projectionMatrix );
 			this._projectionInverse.value.copy( this.camera.projectionMatrixInverse );
 			this._mirrorOnly.value = false;
@@ -133,6 +157,10 @@ class SSRTraceNode extends Node {
 	setup( builder ) {
 
 		const shared = context( builder.getSharedContext() );
+		const traceColor = property( 'vec4', 'traceColor' );
+		const traceDistance = property( 'vec4', 'traceDistance' );
+		const resolveColor = property( 'vec4', 'resolveColor' );
+		const resolveDistance = property( 'vec4', 'resolveDistance' );
 		const trace = Fn( () => {
 
 			const pixel = floor( uv().mul( this._traceSize ) ).toVar();
@@ -188,7 +216,7 @@ class SSRTraceNode extends Node {
 					// interpolates reciprocal view depth for perspective cameras.
 					If( direction.z.greaterThan( 0 ), () => {
 
-						rayLength.assign( min( rayLength, max( float( - this.camera.near ).sub( origin.z ).div( direction.z ), 0.001 ) ) );
+						rayLength.assign( min( rayLength, max( this._near.negate().sub( origin.z ).div( direction.z ), 0.001 ) ) );
 
 					} );
 					const end = origin.add( direction.mul( rayLength ) ).toVar();
@@ -235,7 +263,19 @@ class SSRTraceNode extends Node {
 
 						const hitDepth = this.depthNode.sample( hitUV ).r;
 						const hitPosition = getViewPosition( hitUV, hitDepth, this._projectionInverse );
-						radiance.addAssign( this.colorNode.sample( hitUV ).rgb.max( 0 ).min( this.maxRadiance ) );
+						const hitColor = this.colorNode.sample( hitUV ).rgb.toVar();
+						if ( this.velocityNode !== null ) {
+
+							const previousUV = hitUV.sub( this.velocityNode.sample( hitUV ).xy.mul( vec2( 0.5, - 0.5 ) ) );
+							If( this.historyValid.and( previousUV.greaterThanEqual( 0 ).all() ).and( previousUV.lessThanEqual( 1 ).all() ), () => {
+
+								hitColor.assign( this._historyColor.sample( previousUV ).rgb );
+
+							} );
+
+						}
+
+						radiance.addAssign( hitColor.max( 0 ).min( this.maxRadiance ) );
 						distanceSum.addAssign( hitPosition.sub( origin ).length() );
 						hits.addAssign( 1 );
 
@@ -252,11 +292,14 @@ class SSRTraceNode extends Node {
 				} );
 
 			} );
-			return mrt( { output: result, distance: vec4( distanceResult, 0, 0, 0 ) } );
+			traceColor.assign( result );
+			traceDistance.assign( vec4( distanceResult, 0, 0, 0 ) );
+			return vec4( 0 );
 
 		} );
 		this._traceMaterial.contextNode = shared;
-		this._traceMaterial.fragmentNode = trace();
+		this._traceMaterial.colorNode = trace();
+		this._traceMaterial.outputNode = mrt( { output: traceColor, distance: traceDistance } );
 		const resolve = Fn( () => {
 
 			const coord = uv();
@@ -320,11 +363,14 @@ class SSRTraceNode extends Node {
 				} );
 
 			} );
-			return mrt( { output: color, distance: vec4( hitDistance, 0, 0, 0 ) } );
+			resolveColor.assign( color );
+			resolveDistance.assign( vec4( hitDistance, 0, 0, 0 ) );
+			return vec4( 0 );
 
 		} );
 		this._resolveMaterial.contextNode = shared;
-		this._resolveMaterial.fragmentNode = resolve();
+		this._resolveMaterial.colorNode = resolve();
+		this._resolveMaterial.outputNode = mrt( { output: resolveColor, distance: resolveDistance } );
 		return this._textureNode;
 
 	}
@@ -337,6 +383,7 @@ class SSRTraceNode extends Node {
 		this._outputTarget.dispose();
 		this._traceMaterial.dispose();
 		this._resolveMaterial.dispose();
+		this._historyPlaceholder.dispose();
 
 	}
 

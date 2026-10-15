@@ -21,8 +21,10 @@
 	</script>
 	<script type="module">
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec3, vec4, velocity, property, mix, uniform, getViewPosition, EnvironmentBRDF } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec3, vec4, velocity, property, mix, uniform, getViewPosition, EnvironmentBRDF, uint, uvec4, float, rtt } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { ssrTrace } from 'three/addons/tsl/display/SSRTraceNode.js';
 		import { reflectionDenoise } from 'three/addons/tsl/display/ReflectionDenoiseNode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
@@ -38,9 +40,9 @@
 			mode: new URLSearchParams( location.search ).get( 'mode' ) || 'improved',
 			rayCount: 4, quality: 0.5, maxDistance: room ? 20 : 8,
 			thickness: room ? 0.1 : 0.03, resolutionScale: 0.5, roughnessFactor: 1,
-			spatialIterations: 4, intensity: 1
+			spatialIterations: 4, feedback: true, intensity: 1
 		};
-		const modes = [ 'improved', 'baseline', 'scene', 'raw', 'denoised', 'coverage', 'variance', 'history' ];
+		const modes = [ 'improved', 'baseline', 'scene', 'environment', 'raw', 'denoised', 'coverage', 'variance', 'history' ];
 		if ( ! modes.includes( params.mode ) ) params.mode = 'improved';
 
 		const camera = new THREE.PerspectiveCamera( 35, innerWidth / innerHeight, 0.1, room ? 8 : 50 );
@@ -74,7 +76,7 @@
 				model.finish = function ( lightingBuilder ) {
 
 					finish.call( this, lightingBuilder );
-					environmentSpecular.assign( lightingBuilder.context.reflectedLight.indirectSpecular ).append();
+					environmentSpecular.assign( lightingBuilder.context.reflectedLight.indirectSpecular );
 
 				};
 
@@ -161,18 +163,35 @@
 		controls.update();
 
 		const scenePass = pass( scene, camera );
+		// Four normalized bytes in one uint keep geometry within the default MRT budget.
+		const n8 = packNormalToRGB( normalView ).mul( 255 ).round();
+		const r8 = uint( materialRoughness.mul( 255 ).round() );
+		const packedGeometry = uint( n8.r ).bitOr( uint( n8.g ).shiftLeft( 8 ) ).bitOr( uint( n8.b ).shiftLeft( 16 ) ).bitOr( r8.shiftLeft( 24 ) );
 		scenePass.setMRT( mrt( {
-			output, normal: vec4( packNormalToRGB( normalView ), materialRoughness ),
+			output, normal: uvec4( packedGeometry, 0, 0, 0 ),
 			baseColor: vec4( diffuseColor.rgb, materialMetalness ),
 			environmentSpecular: vec4( environmentSpecular, 1 ), velocity
 		} ) );
 		// Keep the five color attachments within the default WebGPU bandwidth limit.
-		scenePass.getTexture( 'normal' ).type = THREE.UnsignedByteType;
+		scenePass.getTexture( 'normal' ).format = THREE.RedIntegerFormat;
+		scenePass.getTexture( 'normal' ).type = THREE.UnsignedIntType;
+		scenePass.getTexture( 'normal' ).minFilter = THREE.NearestFilter;
+		scenePass.getTexture( 'normal' ).magFilter = THREE.NearestFilter;
 		scenePass.getTexture( 'baseColor' ).type = THREE.UnsignedByteType;
+		scenePass.getTexture( 'environmentSpecular' ).format = THREE.RGBFormat;
+		scenePass.getTexture( 'environmentSpecular' ).type = THREE.UnsignedInt101111Type;
+		scenePass.getTexture( 'velocity' ).format = THREE.RGFormat;
+		scenePass.getTexture( 'velocity' ).type = THREE.HalfFloatType;
 
 		const beauty = scenePass.getTextureNode();
 		const depth = scenePass.getTextureNode( 'depth' );
-		const packedNormal = scenePass.getTextureNode( 'normal' );
+		const geometry = scenePass.getTextureNode( 'normal' );
+		const packedNormal = rtt( sample( uv => {
+
+			const bits = geometry.sample( uv ).r;
+			return vec4( float( bits.bitAnd( 255 ) ), float( bits.shiftRight( 8 ).bitAnd( 255 ) ), float( bits.shiftRight( 16 ).bitAnd( 255 ) ), float( bits.shiftRight( 24 ) ) ).div( 255 );
+
+		} ) );
 		const normal = sample( uv => unpackRGBToNormal( packedNormal.sample( uv ).rgb ) );
 		const roughness = packedNormal.a;
 		const baseColor = scenePass.getTextureNode( 'baseColor' );
@@ -180,9 +199,29 @@
 		const environment = scenePass.getTextureNode( 'environmentSpecular' );
 		const trace = ssrTrace( beauty, depth, normal, { roughnessNode: roughness, camera } );
 		const denoiser = reflectionDenoise( trace, depth, normal, roughness, motion, camera, { hitDistanceNode: trace.getHitDistanceNode() } );
-		const baseline = ssr( beauty, depth, normal, { metalnessNode: baseColor.a, roughnessNode: roughness } );
+		const baseline = ssr( beauty, depth, normal, { stochastic: room, diffuseNode: baseColor, metalnessNode: baseColor.a, roughnessNode: roughness, environmentNode: room ? scene.environment : null } );
 		baseline.maxDistance.value = room ? 0.4 : 1;
 		baseline.thickness.value = params.thickness;
+		let baselineOutput = baseline;
+		if ( room ) {
+
+			baseline.quality.value = 0.25;
+			baseline.maxLuminance.value = 35;
+			baseline.stepExponent = 3;
+			const reproject = temporalReproject( baseline, depth, packedNormal, motion, camera, { mode: 'specular', accumulate: false } );
+			reproject.maxFrames.value = 16;
+			baselineOutput = recurrentDenoise( reproject, camera, { depth, normal: packedNormal, raw: baseline, metalRoughness: sample( uv => vec3( baseColor.sample( uv ).a, packedNormal.sample( uv ).a, 0 ) ), mode: 'specular', accumulate: true } );
+			baselineOutput.alphaSource = 'raylength';
+			baselineOutput.lumaPhi.value = 0.75;
+			baselineOutput.depthPhi.value = 20;
+			baselineOutput.normalPhi.value = 0.3;
+			baselineOutput.radius.value = 1.5;
+			baselineOutput.strength.value = 0.725;
+			baselineOutput.adaptiveTrust.value = 1;
+			baseline.setHistory( baselineOutput, motion );
+			reproject.setHistoryTexture( baselineOutput );
+
+		}
 
 		const position = getViewPosition( screenUV, depth, uniform( camera.projectionMatrixInverse ) );
 		const dotNV = normal.dot( position.negate().normalize() ).clamp();
@@ -191,10 +230,14 @@
 		const intensity = uniform( 1 );
 		const filtered = mix( trace, denoiser, roughness.greaterThanEqual( 0.1 ) );
 		// RGB is already premultiplied by valid reflection coverage; apply the BRDF once.
-		const combined = beauty.rgb.sub( environment.rgb.mul( filtered.a ) ).add( filtered.rgb.mul( brdf ).mul( intensity ) ).max( 0 );
+		const combined = beauty.rgb.sub( environment.rgb.mul( filtered.a.mul( intensity.clamp( 0, 1 ) ) ) ).add( filtered.rgb.mul( brdf ).mul( intensity ) ).max( 0 );
+		// Store the linear composite before tone mapping. The tracer reads the
+		// previous contents before this RTT is overwritten, so no graph cycle exists.
+		const feedback = rtt( vec4( combined, 1 ) );
+		trace.setHistory( feedback.value, motion );
 		const moments = denoiser.getMomentsTextureNode();
 		const outputs = {
-			improved: vec4( combined, 1 ), baseline: beauty.add( vec4( baseline.rgb, 0 ) ), scene: beauty,
+			improved: feedback, baseline: vec4( beauty.rgb.sub( room ? environment.rgb : vec3( 0 ) ).add( baselineOutput.rgb ).max( 0 ), 1 ), scene: beauty, environment: environment,
 			raw: vec4( trace.rgb, 1 ), denoised: vec4( denoiser.rgb, 1 ),
 			coverage: vec4( filtered.aaa, 1 ), variance: vec4( moments.aaa, 1 ), history: vec4( moments.bbb.div( 32 ), 1 )
 		};
@@ -203,6 +246,7 @@
 
 			if ( ! modes.includes( mode ) ) throw new Error( 'Unknown reflection view: ' + mode );
 			params.mode = mode;
+			trace.historyValid.value = false;
 			pipeline.outputNode = smaa( outputs[ mode ] );
 			pipeline.needsUpdate = true;
 
@@ -215,6 +259,7 @@
 			denoiser.spatialIterations = params.spatialIterations;
 			intensity.value = params.intensity;
 			denoiser.reset();
+			trace.historyValid.value = false;
 
 		}
 
@@ -228,10 +273,11 @@
 		gui.add( params, 'roughnessFactor', 0, 2 ).onChange( updateParameters );
 		gui.add( params, 'spatialIterations', 0, 4, 1 ).onChange( updateParameters );
 		gui.add( params, 'intensity', 0, 2 ).onChange( updateParameters );
+		gui.add( params, 'feedback' ).onChange( updateParameters );
 		gui.add( denoiser, 'reset' ).name( 'Reset history' );
 		updateParameters();
 		setMode( params.mode );
-		window.ssrExperiment = { renderer, camera, controls, scene, model, trace, denoiser, baseline, pipeline, scenePass, params, setMode, ready: true };
+		window.ssrExperiment = { renderer, camera, controls, scene, model, trace, denoiser, baseline, pipeline, scenePass, params, setMode, outputs, ready: true };
 		window.addEventListener( 'resize', () => {
 
 			camera.aspect = innerWidth / innerHeight;
@@ -243,6 +289,7 @@
 		renderer.setAnimationLoop( () => {
 
 	controls.update(); pipeline.render();
+	trace.historyValid.value = params.feedback && params.mode === 'improved';
 
 } );
 	</script>

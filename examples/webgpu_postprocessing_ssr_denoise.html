@@ -270,6 +270,9 @@
 			const normalTexture = scenePass.getTexture( 'normal' );
 			normalTexture.type = THREE.HalfFloatType;
 			normalTexture.format = THREE.RGFormat;
+			// Decode texels before filtering; interpolation across octahedral seams is invalid.
+			normalTexture.minFilter = THREE.NearestFilter;
+			normalTexture.magFilter = THREE.NearestFilter;
 
 			const roughnessTexture = scenePass.getTexture( 'roughness' );
 			roughnessTexture.type = THREE.UnsignedByteType;

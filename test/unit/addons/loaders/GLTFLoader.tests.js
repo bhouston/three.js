@@ -9,8 +9,18 @@ const EPS = 1e-6;
 const FLOAT = 5126;
 const UNSIGNED_BYTE = 5121;
 
-const hdrContext = document.createElement( 'canvas' ).getContext( '2d', { colorSpace: 'srgb-linear', colorType: 'float16' } );
-const hasNativeHDR = hdrContext !== null && hdrContext.getContextAttributes().colorType === 'float16' && 'globalHDRHeadroom' in hdrContext;
+let hasNativeHDR = false;
+
+try {
+
+	const hdrContext = document.createElement( 'canvas' ).getContext( '2d', { colorSpace: 'srgb-linear', colorType: 'float16' } );
+	hasNativeHDR = hdrContext !== null && hdrContext.getContextAttributes().colorType === 'float16' && 'globalHDRHeadroom' in hdrContext;
+
+} catch {
+
+	// Browsers may reject unsupported color-space enums instead of ignoring them.
+
+}
 
 QUnit.module( 'KHR_jpegxl_linear native decoding', () => {
 

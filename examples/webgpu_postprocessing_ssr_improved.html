@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>three.js webgpu - experimental SSR</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="example.css">
+</head>
+<body>
+	<div id="info">
+		<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a> — Experimental SSR<br>
+		<a href="https://skfb.ly/6tqYD">Steampunk Camera</a> by dylanheyes, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.
+	</div>
+	<script type="importmap">
+		{ "imports": {
+			"three": "../build/three.webgpu.js",
+			"three/webgpu": "../build/three.webgpu.js",
+			"three/tsl": "../build/three.tsl.js",
+			"three/addons/": "./jsm/"
+		} }
+	</script>
+	<script type="module">
+		import * as THREE from 'three/webgpu';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec3, vec4, velocity, property, mix, uniform, getViewPosition, EnvironmentBRDF } from 'three/tsl';
+		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { ssrTrace } from 'three/addons/tsl/display/SSRTraceNode.js';
+		import { reflectionDenoise } from 'three/addons/tsl/display/ReflectionDenoiseNode.js';
+		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
+		import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+		import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+		import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+		const room = false;
+		const params = {
+			mode: new URLSearchParams( location.search ).get( 'mode' ) || 'improved',
+			rayCount: 4, quality: 0.5, maxDistance: room ? 20 : 8,
+			thickness: room ? 0.1 : 0.03, resolutionScale: 0.5, roughnessFactor: 1,
+			spatialIterations: 4, intensity: 1
+		};
+		const modes = [ 'improved', 'baseline', 'scene', 'raw', 'denoised', 'coverage', 'variance', 'history' ];
+		if ( ! modes.includes( params.mode ) ) params.mode = 'improved';
+
+		const camera = new THREE.PerspectiveCamera( 35, innerWidth / innerHeight, 0.1, room ? 8 : 50 );
+		camera.position.set( 3, 2, 3 );
+		const scene = new THREE.Scene();
+		const renderer = new THREE.WebGPURenderer();
+		renderer.setSize( innerWidth, innerHeight );
+		renderer.toneMapping = room ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
+		renderer.toneMappingExposure = room ? 1.57 : 1;
+		renderer.shadowMap.enabled = room;
+		renderer.inspector = new Inspector();
+		document.body.appendChild( renderer.domElement );
+		await renderer.init();
+
+		const environmentSpecular = property( 'vec3', 'reflectionEnvironmentSpecular', vec3( 0 ) );
+		const materialCache = new Map();
+
+		function prepareMaterial( material ) {
+
+			if ( materialCache.has( material ) ) return materialCache.get( material );
+			const nodeMaterial = renderer.library.fromMaterial( material );
+			if ( ! nodeMaterial ) return material;
+			const setupLightingModel = nodeMaterial.setupLightingModel;
+			// Capture this material's existing indirect specular for coverage-weighted replacement.
+			// Keep diffuse environment illumination and direct specular lighting intact.
+			nodeMaterial.setupLightingModel = function ( builder ) {
+
+				const model = setupLightingModel.call( this, builder );
+				if ( ! model ) return model;
+				const finish = model.finish;
+				model.finish = function ( lightingBuilder ) {
+
+					finish.call( this, lightingBuilder );
+					environmentSpecular.assign( lightingBuilder.context.reflectedLight.indirectSpecular ).append();
+
+				};
+
+				return model;
+
+			};
+
+			materialCache.set( material, nodeMaterial );
+			return nodeMaterial;
+
+		}
+
+		const loader = new GLTFLoader().setDRACOLoader( new DRACOLoader().setDecoderPath( 'jsm/libs/draco/gltf/' ) );
+		const model = ( await loader.loadAsync( room ? 'models/gltf/dungeon_warkarma.glb' : 'models/gltf/steampunk_camera.glb' ) ).scene;
+		if ( room ) model.scale.multiplyScalar( 0.1 );
+		else model.position.y = 0.1;
+		model.traverse( object => {
+
+			if ( ! object.material ) return;
+			const materials = Array.isArray( object.material ) ? object.material : [ object.material ];
+			object.material = materials.map( material => {
+
+				if ( room ) {
+
+					material.roughness = 0.3;
+					material.normalMap = null;
+
+				} else {
+
+					material.side = THREE.FrontSide;
+					if ( material.name === 'Lense_Casing' ) material.transparent = true;
+
+				}
+
+				return prepareMaterial( material );
+
+			} );
+			if ( ! Array.isArray( object.material ) || object.material.length === 1 ) object.material = object.material[ 0 ];
+			object.castShadow = object.receiveShadow = room;
+
+		} );
+		scene.add( model );
+
+		if ( room ) {
+
+			const hdr = await new HDRLoader().loadAsync( 'textures/equirectangular/quarry_01_1k.hdr' );
+			hdr.mapping = THREE.EquirectangularReflectionMapping;
+			scene.background = scene.environment = hdr;
+			const light = new THREE.DirectionalLight( 0xffffff, 20 );
+			light.position.set( - 10.9, 2.2, 10.75 );
+			light.castShadow = true;
+			Object.assign( light.shadow.camera, { left: - 1.75, right: 1.75, top: 1.75, bottom: - 1.75, near: 0.1, far: 50 } );
+			light.shadow.mapSize.set( 4096, 4096 );
+			light.shadow.bias = - 0.0005;
+			light.shadow.autoUpdate = false;
+			light.shadow.needsUpdate = true;
+			scene.add( light );
+
+		} else {
+
+			scene.backgroundNode = screenUV.distance( 0.5 ).remap( 0, 0.5 ).mix( color( 0x888877 ), color( 0x776666 ) );
+			const pmrem = new THREE.PMREMGenerator( renderer );
+			const environment = new RoomEnvironment();
+			scene.environment = pmrem.fromScene( environment, 0.04 ).texture;
+			scene.environmentIntensity = 1.25;
+			pmrem.dispose();
+			environment.dispose();
+			const floor = new THREE.Mesh( new THREE.CircleGeometry( 2, 64 ), prepareMaterial( new THREE.MeshStandardMaterial( { color: 0xffffff, metalness: 1, roughness: 0.5 } ) ) );
+			floor.rotation.x = - Math.PI / 2;
+			floor.position.y = - 0.8;
+			scene.add( floor );
+
+		}
+
+		const controls = new OrbitControls( camera, renderer.domElement );
+		controls.enableDamping = true;
+		if ( room ) {
+
+			camera.position.set( 1.259878548682251, 0.5391287340899181, - 0.27217301481427114 );
+			controls.target.set( 1.0258536154689288, 0.2746440590977971, - 1.0815876858987743 );
+
+		}
+
+		controls.update();
+
+		const scenePass = pass( scene, camera );
+		scenePass.setMRT( mrt( {
+			output, normal: vec4( packNormalToRGB( normalView ), materialRoughness ),
+			baseColor: vec4( diffuseColor.rgb, materialMetalness ),
+			environmentSpecular: vec4( environmentSpecular, 1 ), velocity
+		} ) );
+		const beauty = scenePass.getTextureNode();
+		const depth = scenePass.getTextureNode( 'depth' );
+		const packedNormal = scenePass.getTextureNode( 'normal' );
+		const normal = sample( uv => unpackRGBToNormal( packedNormal.sample( uv ).rgb ) );
+		const roughness = packedNormal.a;
+		const baseColor = scenePass.getTextureNode( 'baseColor' );
+		const motion = scenePass.getTextureNode( 'velocity' );
+		const environment = scenePass.getTextureNode( 'environmentSpecular' );
+		const trace = ssrTrace( beauty, depth, normal, { roughnessNode: roughness, camera } );
+		const denoiser = reflectionDenoise( trace, depth, normal, roughness, motion, camera, { hitDistanceNode: trace.getHitDistanceNode() } );
+		const baseline = ssr( beauty, depth, normal, { metalnessNode: baseColor.a, roughnessNode: roughness } );
+		baseline.maxDistance.value = room ? 0.4 : 1;
+		baseline.thickness.value = params.thickness;
+
+		const position = getViewPosition( screenUV, depth, uniform( camera.projectionMatrixInverse ) );
+		const dotNV = normal.dot( position.negate().normalize() ).clamp();
+		const f0 = mix( vec3( 0.04 ), baseColor.rgb, baseColor.a );
+		const brdf = EnvironmentBRDF( { dotNV, specularColor: f0, specularF90: 1, roughness } );
+		const intensity = uniform( 1 );
+		const filtered = mix( trace, denoiser, roughness.greaterThanEqual( 0.1 ) );
+		// RGB is already premultiplied by valid reflection coverage; apply the BRDF once.
+		const combined = beauty.rgb.sub( environment.rgb.mul( filtered.a ) ).add( filtered.rgb.mul( brdf ).mul( intensity ) ).max( 0 );
+		const moments = denoiser.getMomentsTextureNode();
+		const outputs = {
+			improved: vec4( combined, 1 ), baseline: beauty.add( vec4( baseline.rgb, 0 ) ), scene: beauty,
+			raw: vec4( trace.rgb, 1 ), denoised: vec4( denoiser.rgb, 1 ),
+			coverage: vec4( filtered.aaa, 1 ), variance: vec4( moments.aaa, 1 ), history: vec4( moments.bbb.div( 32 ), 1 )
+		};
+		const pipeline = new THREE.RenderPipeline( renderer );
+		function setMode( mode ) {
+
+			if ( ! modes.includes( mode ) ) throw new Error( 'Unknown reflection view: ' + mode );
+			params.mode = mode;
+			pipeline.outputNode = smaa( outputs[ mode ] );
+			pipeline.needsUpdate = true;
+
+		}
+
+		function updateParameters() {
+
+			for ( const key of [ 'rayCount', 'quality', 'maxDistance', 'thickness', 'roughnessFactor' ] ) trace[ key ].value = params[ key ];
+			trace.resolutionScale = params.resolutionScale;
+			denoiser.spatialIterations = params.spatialIterations;
+			intensity.value = params.intensity;
+			denoiser.reset();
+
+		}
+
+		const gui = renderer.inspector.createParameters( 'Reflections' );
+		gui.add( params, 'mode', modes ).onChange( setMode );
+		gui.add( params, 'rayCount', 1, 8, 1 ).onChange( updateParameters );
+		gui.add( params, 'quality', 0.1, 1 ).onChange( updateParameters );
+		gui.add( params, 'maxDistance', 0.1, 30 ).onChange( updateParameters );
+		gui.add( params, 'thickness', 0.001, 0.25 ).onChange( updateParameters );
+		gui.add( params, 'resolutionScale', [ 0.5, 1 ] ).onChange( updateParameters );
+		gui.add( params, 'roughnessFactor', 0, 2 ).onChange( updateParameters );
+		gui.add( params, 'spatialIterations', 0, 4, 1 ).onChange( updateParameters );
+		gui.add( params, 'intensity', 0, 2 ).onChange( updateParameters );
+		gui.add( denoiser, 'reset' ).name( 'Reset history' );
+		updateParameters();
+		setMode( params.mode );
+		window.ssrExperiment = { renderer, camera, controls, scene, model, trace, denoiser, baseline, pipeline, scenePass, params, setMode, ready: true };
+		window.addEventListener( 'resize', () => {
+
+			camera.aspect = innerWidth / innerHeight;
+			camera.updateProjectionMatrix();
+			renderer.setSize( innerWidth, innerHeight );
+			denoiser.reset();
+
+		} );
+		renderer.setAnimationLoop( () => {
+
+	controls.update(); pipeline.render();
+
+} );
+	</script>
+</body>
+</html>

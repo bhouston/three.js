@@ -14,8 +14,8 @@
 				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Octahedral Normals</span>
 			</div>
 			<small>
-				View-space geometry normals stored in a signed RG16F buffer.<br />
-				Error shows the absolute component difference, multiplied by the error scale.<br />
+				Normal-mapped view-space normals stored in a signed RG16F buffer.<br />
+				Error compares decoded normals with geometry + normal map, multiplied by the error scale.<br />
 				Ninja head from <a href="https://web.archive.org/web/2024/https://gpuopen.com/archive/gamescgi/amd-gpu-meshmapper/" target="_blank" rel="noopener">AMD GPU MeshMapper</a>.
 			</small>
 		</div>
@@ -34,8 +34,8 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { abs, mrt, normalViewGeometry, octDecode, octEncode, output, pass, uniform, vec4 } from 'three/tsl';
-			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { abs, mrt, normalView, octDecode, octEncode, output, pass, uniform, vec4 } from 'three/tsl';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -48,6 +48,7 @@
 			async function init() {
 
 				renderer = new THREE.WebGPURenderer();
+				renderer.inspector = new Inspector();
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				document.body.appendChild( renderer.domElement );
@@ -71,9 +72,9 @@
 				const scenePass = pass( scene, camera );
 				scenePass.setMRT( mrt( {
 					output,
-					normal: octEncode( normalViewGeometry ),
-					// Keep an independent, full precision reference from the forward pass.
-					reference: vec4( normalViewGeometry, 1 )
+					normal: octEncode( normalView ),
+					// Reference includes the same geometry + normal map used by forward lighting.
+					reference: vec4( normalView, 1 )
 				} ).setClearColor( 'reference', 0x000000, 0 ) );
 
 				const normalTexture = scenePass.getTexture( 'normal' );
@@ -98,7 +99,7 @@
 				renderPipeline = new THREE.RenderPipeline( renderer );
 				renderPipeline.outputNode = views.Beauty;
 
-				const gui = new GUI();
+				const gui = renderer.inspector.createParameters( 'Normals' );
 				gui.add( params, 'view', Object.keys( views ) ).onChange( ( value ) => {
 
 					renderPipeline.outputNode = views[ value ];
@@ -114,7 +115,8 @@
 				const geometry = group.children[ 0 ].geometry;
 				geometry.center();
 
-				const material = new THREE.MeshStandardMaterial( { color: 0xaaaaaa, metalness: 0.15, roughness: 0.6 } );
+				const normalMap = await new THREE.TextureLoader().loadAsync( 'models/obj/ninja/normal.png' );
+				const material = new THREE.MeshStandardMaterial( { color: 0xaaaaaa, metalness: 0.15, roughness: 0.6, normalMap } );
 				const mesh = new THREE.Mesh( geometry, material );
 				mesh.scale.setScalar( 25 );
 				scene.add( mesh );

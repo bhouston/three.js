@@ -31,9 +31,10 @@
 			import { diffuseColor, dot, float, fract, mix, mrt, normalView, normalWorld, output, packNormalToRGB, pass, screenCoordinate, screenUV, sin, step, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 			import { demodulate, recurrentDenoise, remodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const renderer = new THREE.WebGPURenderer( { antialias: true } );
+			renderer.inspector = new Inspector();
 			renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
 			document.body.appendChild( renderer.domElement );
@@ -107,7 +108,7 @@
 			const split = mix( without, withDemodulation, step( 0.5, screenUV.x ) );
 			pipeline.outputNode = split;
 			const params = { view: 'Split', radius: 1.5, animateNoise: true };
-			const gui = new GUI();
+			const gui = renderer.inspector.createParameters( 'Demodulation settings' );
 			gui.add( params, 'view', [ 'Split', 'Without demodulation', 'With demodulation', 'Noisy signal', 'Albedo', 'Filtered lighting' ] ).onChange( value => {
 
 				pipeline.outputNode = {

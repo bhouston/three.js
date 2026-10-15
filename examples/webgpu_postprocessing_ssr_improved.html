@@ -8,7 +8,9 @@
 </head>
 <body>
 	<div id="info">
-		<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a> — Experimental SSR<br>
+		<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+		<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Experimental SSR</span></div>
+		<small>
 		<a href="https://skfb.ly/6tqYD">Steampunk Camera</a> by dylanheyes, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.
 	</div>
 	<script type="importmap">
@@ -38,7 +40,7 @@
 		const room = false;
 		const params = {
 			mode: new URLSearchParams( location.search ).get( 'mode' ) || 'improved',
-			rayCount: 4, quality: 0.5, maxDistance: room ? 20 : 8,
+			rayCount: 2, quality: 1, maxDistance: room ? 20 : 8,
 			thickness: room ? 0.1 : 0.03, resolutionScale: 0.5, roughnessFactor: 1,
 			spatialIterations: 4, feedback: true, intensity: 1
 		};
@@ -264,7 +266,7 @@
 		}
 
 		const gui = renderer.inspector.createParameters( 'Reflections' );
-		gui.add( params, 'mode', modes ).onChange( setMode );
+		gui.add( params, 'mode', modes ).listen().onChange( setMode );
 		gui.add( params, 'rayCount', 1, 8, 1 ).onChange( updateParameters );
 		gui.add( params, 'quality', 0.1, 1 ).onChange( updateParameters );
 		gui.add( params, 'maxDistance', 0.1, 30 ).onChange( updateParameters );
@@ -274,7 +276,12 @@
 		gui.add( params, 'spatialIterations', 0, 4, 1 ).onChange( updateParameters );
 		gui.add( params, 'intensity', 0, 2 ).onChange( updateParameters );
 		gui.add( params, 'feedback' ).onChange( updateParameters );
-		gui.add( denoiser, 'reset' ).name( 'Reset history' );
+		gui.add( { reset: () => {
+
+			denoiser.reset();
+			trace.historyValid.value = false;
+
+		} }, 'reset' ).name( 'Reset history' );
 		updateParameters();
 		setMode( params.mode );
 		window.ssrExperiment = { renderer, camera, controls, scene, model, trace, denoiser, baseline, pipeline, scenePass, params, setMode, outputs, ready: true };

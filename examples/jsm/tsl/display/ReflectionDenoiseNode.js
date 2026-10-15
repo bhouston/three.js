@@ -94,6 +94,7 @@ class ReflectionDenoiseNode extends Node {
 		this._hasHistory = false;
 		this._wasStill = false;
 		this._cameraUUID = '';
+		this._lastFrameId = - 1;
 
 	}
 
@@ -374,9 +375,11 @@ class ReflectionDenoiseNode extends Node {
 
 	}
 
-	updateBefore( { renderer } ) {
+	updateBefore( { renderer, frameId } ) {
 
 		const camera = this.camera;
+		if ( this._lastFrameId >= 0 && frameId - this._lastFrameId > 1 ) this.reset();
+		this._lastFrameId = frameId;
 		renderer.getDrawingBufferSize( _size );
 		this.setSize( _size.x, _size.y );
 		// Ignore subpixel jitter when classifying camera movement and storing geometry.

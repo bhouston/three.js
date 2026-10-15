@@ -89,6 +89,12 @@ class SSRTraceNode extends Node {
 
 	}
 
+	/**
+	 * Bind a previous linear scene composite and NDC velocity before building the
+	 * pipeline. The owner sets historyValid only after producing a complete frame.
+	 * @param {?Texture} colorTexture - Previous composite, or null to disconnect.
+	 * @param {?Node<vec2>} velocityNode - Hit-surface motion vectors.
+	 */
 	setHistory( colorTexture, velocityNode ) {
 
 		this._historyColor.value = colorTexture || this._historyPlaceholder;

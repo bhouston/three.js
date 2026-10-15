@@ -14,7 +14,7 @@
 				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Octahedral Normals</span>
 			</div>
 			<small>
-				Normal-mapped view-space normals stored in a signed RG16F buffer.<br />
+				Octahedral RG16F (2 × 16-bit) vs traditional RGB8 (3 × 8-bit, stored in RGBA8).<br />
 				Error compares decoded normals with geometry + normal map, multiplied by the error scale.<br />
 				Ninja head from <a href="https://web.archive.org/web/2024/https://gpuopen.com/archive/gamescgi/amd-gpu-meshmapper/" target="_blank" rel="noopener">AMD GPU MeshMapper</a>.
 			</small>
@@ -34,13 +34,13 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { abs, mrt, normalView, octDecode, octEncode, output, pass, uniform, vec4 } from 'three/tsl';
+			import { abs, mrt, normalView, octDecode, octEncode, output, packNormalToRGB, pass, uniform, unpackRGBToNormal, vec4 } from 'three/tsl';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 			const params = { view: 'Beauty' };
-			const errorScale = uniform( 1000 );
+			const errorScale = uniform( 100 );
 			let camera, renderer, renderPipeline, controls;
 
 			init();
@@ -73,9 +73,14 @@
 				scenePass.setMRT( mrt( {
 					output,
 					normal: octEncode( normalView ),
-					// Reference includes the same geometry + normal map used by forward lighting.
-					reference: vec4( normalView, 1 )
-				} ).setClearColor( 'reference', 0x000000, 0 ) );
+					normalRGB: vec4( packNormalToRGB( normalView ), 1 )
+				} ) );
+
+				// Keep the full-precision reference in a separate pass so the comparison
+				// fits WebGPU's guaranteed 32 color attachment bytes per sample.
+				// It includes the same geometry + normal map used by forward lighting.
+				const referencePass = pass( scene, camera );
+				referencePass.setMRT( mrt( { output: vec4( normalView, 1 ) } ).setClearColor( 'output', 0x000000, 0 ) );
 
 				const normalTexture = scenePass.getTexture( 'normal' );
 				normalTexture.format = THREE.RGFormat;
@@ -83,17 +88,27 @@
 				normalTexture.minFilter = THREE.NearestFilter;
 				normalTexture.magFilter = THREE.NearestFilter;
 
-				const referenceTexture = scenePass.getTexture( 'reference' );
+				// WebGPU has no RGB8 render attachment; alpha is unused padding.
+				const normalRGBTexture = scenePass.getTexture( 'normalRGB' );
+				normalRGBTexture.format = THREE.RGBAFormat;
+				normalRGBTexture.type = THREE.UnsignedByteType;
+				normalRGBTexture.minFilter = THREE.NearestFilter;
+				normalRGBTexture.magFilter = THREE.NearestFilter;
+
+				const referenceTexture = referencePass.getTexture( 'output' );
 				referenceTexture.type = THREE.FloatType;
 				referenceTexture.minFilter = THREE.NearestFilter;
 				referenceTexture.magFilter = THREE.NearestFilter;
 
-				const reference = scenePass.getTextureNode( 'reference' );
+				const reference = referencePass.getTextureNode();
 				const reconstructed = octDecode( scenePass.getTextureNode( 'normal' ).rg );
+				const reconstructedRGB = unpackRGBToNormal( scenePass.getTextureNode( 'normalRGB' ).rgb );
 				const views = {
 					Beauty: scenePass.getTextureNode(),
 					Normals: vec4( reconstructed.mul( 0.5 ).add( 0.5 ).mul( reference.a ), 1 ),
-					'Error delta': vec4( abs( reconstructed.sub( reference.rgb ) ).mul( errorScale ).mul( reference.a ), 1 )
+					'Error delta': vec4( abs( reconstructed.sub( reference.rgb ) ).mul( errorScale ).mul( reference.a ), 1 ),
+					'RGB8 normals': vec4( reconstructedRGB.mul( 0.5 ).add( 0.5 ).mul( reference.a ), 1 ),
+					'RGB8 error delta': vec4( abs( reconstructedRGB.sub( reference.rgb ) ).mul( errorScale ).mul( reference.a ), 1 )
 				};
 
 				renderPipeline = new THREE.RenderPipeline( renderer );

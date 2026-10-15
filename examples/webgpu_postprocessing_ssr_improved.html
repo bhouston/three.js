@@ -166,6 +166,10 @@
 			baseColor: vec4( diffuseColor.rgb, materialMetalness ),
 			environmentSpecular: vec4( environmentSpecular, 1 ), velocity
 		} ) );
+		// Keep the five color attachments within the default WebGPU bandwidth limit.
+		scenePass.getTexture( 'normal' ).type = THREE.UnsignedByteType;
+		scenePass.getTexture( 'baseColor' ).type = THREE.UnsignedByteType;
+
 		const beauty = scenePass.getTextureNode();
 		const depth = scenePass.getTextureNode( 'depth' );
 		const packedNormal = scenePass.getTextureNode( 'normal' );

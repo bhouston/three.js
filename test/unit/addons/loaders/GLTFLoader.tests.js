@@ -1,6 +1,6 @@
 import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
 import { JXLLoader } from '../../../../examples/jsm/loaders/JXLLoader.js';
-import { DataTexture, HalfFloatType, LinearSRGBColorSpace, SRGBColorSpace, NearestFilter, ClampToEdgeWrapping, Texture } from 'three';
+import { DataTexture, DataUtils, HalfFloatType, LinearSRGBColorSpace, SRGBColorSpace, NearestFilter, ClampToEdgeWrapping, Texture } from 'three';
 import { GLTFGaussianSplatLoaderExtension } from '../../../../examples/jsm/loaders/GLTFGaussianSplatLoaderExtension.js';
 import { makeClipAdditive } from '../../../../src/animation/AnimationUtils.js';
 import { unpackSphericalHarmonicsBand } from '../utils/GaussianSplatTestUtils.js';
@@ -8,6 +8,39 @@ import { unpackSphericalHarmonicsBand } from '../utils/GaussianSplatTestUtils.js
 const EPS = 1e-6;
 const FLOAT = 5126;
 const UNSIGNED_BYTE = 5121;
+
+const hdrContext = document.createElement( 'canvas' ).getContext( '2d', { colorSpace: 'srgb-linear', colorType: 'float16' } );
+const hasNativeHDR = hdrContext !== null && hdrContext.getContextAttributes().colorType === 'float16' && 'globalHDRHeadroom' in hdrContext;
+
+QUnit.module( 'KHR_jpegxl_linear native decoding', () => {
+
+	for ( const filename of [ 'linear-hdr.jxl', 'linear-hdr-1000.jxl' ] ) {
+
+		( hasNativeHDR ? QUnit.test : QUnit.skip )( filename, async assert => {
+
+			const json = {
+				asset: { version: '2.0' },
+				extensionsUsed: [ 'KHR_jpegxl_linear' ],
+				extensionsRequired: [ 'KHR_jpegxl_linear' ],
+				images: [ { uri: filename, mimeType: 'image/jxl' } ],
+				textures: [ { extensions: { KHR_jpegxl_linear: { source: 0 } } } ],
+				materials: [ { emissiveFactor: [ 1, 1, 1 ], emissiveTexture: { index: 0 } } ]
+			};
+			const { parser } = await new GLTFLoader().parseAsync( JSON.stringify( json ), '/test/unit/addons/loaders/fixtures/jpegxl-linear/' );
+			const material = await parser.getDependency( 'material', 0 );
+			const texture = material.emissiveMap;
+			const values = Array.from( texture.image.data, value => DataUtils.fromHalfFloat( value ) );
+			assert.deepEqual( values, [ 0, 0.5, 1, 1, 2, 4, 8, 1, 1, 1, 1, 1, 0.25, 0.5, 0.75, 1 ], 'preserves linear source samples, HDR range, alpha, orientation, and luminance scale' );
+			assert.strictEqual( texture.colorSpace, LinearSRGBColorSpace, 'material sampling stays linear' );
+			assert.strictEqual( texture.flipY, false, 'glTF texture orientation' );
+			texture.dispose();
+			material.dispose();
+
+		} );
+
+	}
+
+} );
 
 QUnit.module( 'KHR_jpegxl_linear', hooks => {
 

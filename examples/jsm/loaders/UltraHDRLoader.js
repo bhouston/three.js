@@ -637,7 +637,7 @@ class UltraHDRLoader extends Loader {
 			const items = elements.length ? ( elements[ 0 ].getElementsByTagNameNS ? elements[ 0 ].getElementsByTagNameNS( 'http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'li' ) : elements[ 0 ].getElementsByTagName( 'rdf:li' ) ) : [];
 			const values = Array.from( items, ( item ) => Number( item.textContent ) );
 			const attribute = getAttribute( name );
-			const value = attribute !== null ? Number( attribute ) : defaults[ name ];
+			const value = attribute !== null ? Number( attribute ) : ( elements.length && ! items.length ? Number( elements[ 0 ].textContent ) : defaults[ name ] );
 			metadata[ name[ 0 ].toLowerCase() + name.slice( 1 ) ] = values.length ? values : [ value, value, value ];
 
 		}

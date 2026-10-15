@@ -1,5 +1,5 @@
-import { FloatType, NearestFilter, Node, NodeUpdateType, RedFormat, StorageTexture, Vector4 } from 'three/webgpu';
-import { Fn, If, Loop, float, invocationLocalIndex, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uniformArray, uv, vec4, workgroupArray, workgroupBarrier, workgroupId } from 'three/tsl';
+import { FloatType, NearestFilter, Node, NodeUpdateType, RGFormat, StorageTexture, Vector4 } from 'three/webgpu';
+import { Fn, If, Loop, invocationLocalIndex, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uniformArray, uv, vec2, vec4, workgroupArray, workgroupBarrier, workgroupId } from 'three/tsl';
 
 const WORKGROUP_SIZE = 64;
 const MAX_LEVELS = 16;
@@ -7,10 +7,12 @@ const MAX_LEVELS = 16;
 /**
  * Builds a farthest-depth hierarchy in one WebGPU compute dispatch.
  *
- * Levels are stored vertically in an R32F atlas, with floor-halved dimensions.
+ * Levels are stored vertically in an RG32F atlas, with floor-halved dimensions.
  * The last cell includes the odd trailing row/column (a 3x2, 2x3 or 3x3
  * reduction). Standard depth uses max; reversed depth uses min. Values remain
  * raw device depth, not linearized depth.
+ * The red channel stores farthest depth and green stores nearest depth, allowing
+ * consumers to conservatively reject intervals in front of every surface.
  *
  * Each level reduces the original depth independently. This avoids relying on
  * cross-workgroup publication, which WGSL does not guarantee. Coarse cells use
@@ -58,7 +60,7 @@ class HiZNode extends Node {
 		this.texture = new StorageTexture();
 		this.texture.name = 'HiZNode.Atlas';
 		this.texture.type = FloatType;
-		this.texture.format = RedFormat;
+		this.texture.format = RGFormat;
 		this.texture.minFilter = NearestFilter;
 		this.texture.magFilter = NearestFilter;
 		this.texture.generateMipmaps = false;
@@ -86,12 +88,34 @@ class HiZNode extends Node {
 	 */
 	getTextureNode( level = this.level, uvNode = uv() ) {
 
+		return this.getDepthRangeNode( level, uvNode ).r;
+
+	}
+
+	/**
+	 * @param {Node<uint>|number} level - Hierarchy level.
+	 * @param {Node<vec2>} uvNode - Original-image normalized coordinates.
+	 * @return {Node<float>} Raw nearest depth.
+	 */
+	getNearestDepthNode( level, uvNode ) {
+
+		return this.getDepthRangeNode( level, uvNode ).g;
+
+	}
+
+	/**
+	 * @param {Node<uint>|number} level - Hierarchy level.
+	 * @param {Node<vec2>} uvNode - Original-image normalized coordinates.
+	 * @return {Node<vec2>} Raw (farthest, nearest) depth.
+	 */
+	getDepthRangeNode( level, uvNode ) {
+
 		const layout = this._layout.element( uint( level ).min( this._lastLevel ) );
 		// Map original-image UVs to the exact reduction footprint. Scaling by
 		// level dimensions instead would shift cell boundaries at odd sizes.
 		const size = this._layout.element( uint( 0 ) ).xy;
 		const coord = ivec2( uvNode.mul( size ).div( layout.w ).floor().clamp( 0, layout.xy.sub( 1 ) ) );
-		return textureLoad( this._textureNode, coord.add( ivec2( 0, layout.z ) ) ).r;
+		return textureLoad( this._textureNode, coord.add( ivec2( 0, layout.z ) ) ).rg;
 
 	}
 
@@ -155,9 +179,9 @@ class HiZNode extends Node {
 		const width = this._width;
 		const height = this._height;
 		const reversed = this._reversed;
-		const reduce = reversed ? min : max;
+		const reduce = ( a, b ) => vec2( reversed ? min( a.x, b.x ) : max( a.x, b.x ), reversed ? max( a.y, b.y ) : min( a.y, b.y ) );
 		const identity = reversed ? 1 : 0;
-		const shared = workgroupArray( 'float', WORKGROUP_SIZE );
+		const shared = workgroupArray( 'vec2', WORKGROUP_SIZE );
 		let groupCount = 0;
 		const tasks = this.levels.map( ( entry, level ) => {
 
@@ -195,12 +219,13 @@ class HiZNode extends Node {
 					const endY = y.equal( task.height - 1 ).select( uint( height ), beginY.add( scale ) );
 					const spanX = endX.sub( beginX ).toVar();
 					const samples = spanX.mul( endY.sub( beginY ) ).toVar();
-					const value = float( identity ).toVar();
+					const value = vec2( identity, 1 - identity ).toVar();
 
 					const read = ( i ) => {
 
 						const coord = ivec2( beginX.add( i.mod( spanX ) ), beginY.add( i.div( spanX ) ) );
-						value.assign( reduce( value, textureLoad( this.depthNode, coord ).r ) );
+						const depth = textureLoad( this.depthNode, coord ).r.toVar();
+						value.assign( reduce( value, vec2( depth ) ) );
 
 					};
 
@@ -223,7 +248,7 @@ class HiZNode extends Node {
 
 						If( lane.equal( 0 ), () => {
 
-							textureStore( this.texture, ivec2( x, y.add( offset ) ), vec4( shared.element( uint( 0 ) ) ) ).toWriteOnly();
+							textureStore( this.texture, ivec2( x, y.add( offset ) ), vec4( shared.element( uint( 0 ) ), 0, 1 ) ).toWriteOnly();
 
 						} );
 
@@ -232,7 +257,7 @@ class HiZNode extends Node {
 						If( index.lessThan( task.width * task.height ), () => {
 
 							Loop( { start: uint( 0 ), end: samples, type: 'uint' }, ( { i } ) => read( i ) );
-							textureStore( this.texture, ivec2( x, y.add( offset ) ), vec4( value ) ).toWriteOnly();
+							textureStore( this.texture, ivec2( x, y.add( offset ) ), vec4( value, 0, 1 ) ).toWriteOnly();
 
 						} );
 

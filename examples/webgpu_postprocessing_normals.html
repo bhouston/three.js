@@ -116,7 +116,7 @@
 				geometry.center();
 
 				const normalMap = await new THREE.TextureLoader().loadAsync( 'models/obj/ninja/normal.png' );
-				const material = new THREE.MeshStandardMaterial( { color: 0xaaaaaa, metalness: 0.15, roughness: 0.6, normalMap } );
+				const material = new THREE.MeshStandardMaterial( { color: 0xaaaaaa, metalness: 0.15, roughness: 0.6, normalMap, normalScale: new THREE.Vector2( 1, - 1 ) } );
 				const mesh = new THREE.Mesh( geometry, material );
 				mesh.scale.setScalar( 25 );
 				scene.add( mesh );

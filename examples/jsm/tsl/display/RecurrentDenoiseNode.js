@@ -800,6 +800,44 @@ class RecurrentDenoiseNode extends Node {
 export default RecurrentDenoiseNode;
 
 /**
+ * Removes material modulation from a linear lighting signal before temporal and spatial
+ * denoising. Use linear diffuse albedo for diffuse lighting, or the pre-integrated
+ * specular BRDF factor for specular lighting. Do not demodulate combined beauty color.
+ *
+ * RGB modulation is floored at `1e-4` per channel to keep black materials finite.
+ * Alpha is preserved: it can contain ray length, AO or temporal history weight.
+ * Apply this to both the temporal input and `recurrentDenoise`'s `raw` input, and keep
+ * denoiser history demodulated. Remodulate only for lighting resolve (and SSR feedback).
+ *
+ * @tsl
+ * @param {Node<vec4>} signal - Modulated linear lighting and alpha metadata.
+ * @param {Node<vec3>} modulation - Linear albedo or pre-integrated specular BRDF factor.
+ * @returns {Node<vec4>} Demodulated lighting with unchanged alpha.
+ */
+export const demodulate = /*@__PURE__*/ Fn( ( [ signal, modulation ] ) => {
+
+	return vec4( signal.rgb.div( modulation.max( 1e-4 ) ), signal.a );
+
+}, { signal: 'vec4', modulation: 'vec3', return: 'vec4' } );
+
+/**
+ * Restores material modulation after denoising. Uses the same per-channel `1e-4`
+ * floor as {@link demodulate}, so their composition preserves the original signal
+ * even for zero modulation. Supply the current pixel's modulation, not filtered
+ * albedo, to retain texture detail. Alpha metadata is preserved.
+ *
+ * @tsl
+ * @param {Node<vec4>} signal - Demodulated linear lighting and alpha metadata.
+ * @param {Node<vec3>} modulation - The same modulation used by {@link demodulate}.
+ * @returns {Node<vec4>} Remodulated lighting with unchanged alpha.
+ */
+export const remodulate = /*@__PURE__*/ Fn( ( [ signal, modulation ] ) => {
+
+	return vec4( signal.rgb.mul( modulation.max( 1e-4 ) ), signal.a );
+
+}, { signal: 'vec4', modulation: 'vec3', return: 'vec4' } );
+
+/**
  * @tsl
  * @param {Node} inputTexture - Temporally filtered input to denoise (e.g. TRAA output).
  * @param {Camera} camera

@@ -95,7 +95,7 @@
 				normalRGBTexture.minFilter = THREE.NearestFilter;
 				normalRGBTexture.magFilter = THREE.NearestFilter;
 
-				const referenceTexture = referencePass.getTexture();
+				const referenceTexture = referencePass.getTexture( 'output' );
 				referenceTexture.type = THREE.FloatType;
 				referenceTexture.minFilter = THREE.NearestFilter;
 				referenceTexture.magFilter = THREE.NearestFilter;

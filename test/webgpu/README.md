@@ -14,6 +14,9 @@ it exactly against an independent recursive CPU reduction. Coverage includes bot
 depth conventions (explicit override and automatic renderer detection), 1D/2D odd sizes through 257x129, deterministic random input,
 constant input, impulses on trailing rows/columns/corners, and repeated resizing
 and source replacement on a single node. Readback waits for GPU completion.
+An additional shader test samples the public node at every original pixel
+across multiple levels of a 7x9 buffer, including a clamped out-of-range level.
+This checks UV footprint ownership and automatic render-graph dispatch.
 
 Tiny sampled screen-space rays compare linear leaf hits with hierarchical
 rejection using the GPU-produced bounds. These test conservative rejection and

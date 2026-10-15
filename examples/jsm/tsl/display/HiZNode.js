@@ -16,6 +16,8 @@ const MAX_LEVELS = 16;
  * cross-workgroup publication, which WGSL does not guarantee. Coarse cells use
  * cooperative workgroup reductions, but source reads still scale with the
  * number of levels. This is not an SPD implementation or an SSR traversal.
+ * The atlas height is less than twice the input height and must fit the
+ * device's maximum 2D texture dimension.
  *
  * ```js
  * const pyramid = hiZ( scenePass.getTextureNode( 'depth' ) );
@@ -43,9 +45,13 @@ class HiZNode extends Node {
 
 		super( 'float' );
 
+		if ( depthNode.isTextureNode !== true ) throw new Error( 'HiZNode: A raw depth TextureNode is required.' );
+
 		this.depthNode = depthNode;
 		this.reversedDepth = reversedDepth;
+		/** Whether to rebuild the atlas each frame. Disabling retains its last contents. @type {boolean} */
 		this.enabled = true;
+		/** Selected debug level. Clamped to the available hierarchy. @type {UniformNode<uint>} */
 		this.level = uniform( 0, 'uint' );
 		this.updateBeforeType = NodeUpdateType.FRAME;
 
@@ -59,7 +65,7 @@ class HiZNode extends Node {
 
 		/** @type {Array<{width:number,height:number,offset:number}>} */
 		this.levels = [];
-		this._layout = uniformArray( Array.from( { length: MAX_LEVELS }, () => new Vector4( 1, 1, 0, 0 ) ) );
+		this._layout = uniformArray( Array.from( { length: MAX_LEVELS }, () => new Vector4( 1, 1, 0, 1 ) ) );
 		this._lastLevel = uniform( 0, 'uint' );
 		this._textureNode = passTexture( this, this.texture );
 		this._computeNode = null;
@@ -81,7 +87,10 @@ class HiZNode extends Node {
 	getTextureNode( level = this.level, uvNode = uv() ) {
 
 		const layout = this._layout.element( uint( level ).min( this._lastLevel ) );
-		const coord = ivec2( uvNode.mul( layout.xy ).floor().clamp( 0, layout.xy.sub( 1 ) ) );
+		// Map original-image UVs to the exact reduction footprint. Scaling by
+		// level dimensions instead would shift cell boundaries at odd sizes.
+		const size = this._layout.element( uint( 0 ) ).xy;
+		const coord = ivec2( uvNode.mul( size ).div( layout.w ).floor().clamp( 0, layout.xy.sub( 1 ) ) );
 		return textureLoad( this._textureNode, coord.add( ivec2( 0, layout.z ) ) ).r;
 
 	}
@@ -122,7 +131,7 @@ class HiZNode extends Node {
 		for ( let i = 0; i < MAX_LEVELS; i ++ ) {
 
 			const entry = this.levels[ Math.min( i, this.levels.length - 1 ) ];
-			this._layout.array[ i ].set( entry.width, entry.height, entry.offset, 0 );
+			this._layout.array[ i ].set( entry.width, entry.height, entry.offset, 2 ** Math.min( i, this.levels.length - 1 ) );
 
 		}
 
@@ -214,7 +223,7 @@ class HiZNode extends Node {
 
 						If( lane.equal( 0 ), () => {
 
-							textureStore( this.texture, ivec2( x, y.add( offset ) ), vec4( shared.element( 0 ) ) ).toWriteOnly();
+							textureStore( this.texture, ivec2( x, y.add( offset ) ), vec4( shared.element( uint( 0 ) ) ) ).toWriteOnly();
 
 						} );
 

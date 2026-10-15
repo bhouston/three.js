@@ -1,5 +1,5 @@
-import { WebGPURenderer, DataTexture, FloatType, RedFormat } from 'three/webgpu';
-import { texture } from 'three/tsl';
+import { WebGPURenderer, DataTexture, FloatType, RedFormat, RenderTarget, NodeMaterial, QuadMesh } from 'three/webgpu';
+import { texture, vec4 } from 'three/tsl';
 import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
 import { reduceDepth, traceSamples } from './HiZReference.js';
 
@@ -25,7 +25,7 @@ export async function runHiZTests() {
 	const errors = [];
 	const onError = event => errors.push( event.error.message );
 	device.addEventListener( 'uncapturederror', onError );
-	let texels = 0, rayTests = 0, cases = 0;
+	let texels = 0, rayTests = 0, cases = 0, sampledTexels = 0;
 	const sizes = [[ 1, 1 ], [ 1, 7 ], [ 7, 1 ], [ 2, 2 ], [ 3, 5 ], [ 5, 3 ], [ 7, 9 ], [ 32, 32 ], [ 65, 33 ], [ 257, 129 ]];
 
 	try {
@@ -133,9 +133,56 @@ export async function runHiZTests() {
 
 		}
 
+		// Exercise the public shader sampler and graph scheduling, not only the
+		// atlas layout. Odd tails must retain their original-image UV footprint.
+		const width = 7, height = 9;
+		const data = Float32Array.from( { length: width * height }, ( _, i ) => i / ( width * height ) );
+		const source = new DataTexture( data, width, height, RedFormat, FloatType );
+		source.needsUpdate = true;
+		const pyramid = hiZ( texture( source ), { reversedDepth: false } );
+		const target = new RenderTarget( width, height, { type: FloatType, depthBuffer: false } );
+		const material = new NodeMaterial();
+		material.fragmentNode = vec4( pyramid, 0, 0, 1 );
+		const quad = new QuadMesh( material );
+		const reference = reduceDepth( data, width, height, false );
+		try {
+
+			for ( const level of [ 0, 1, 2, 3, 15 ] ) {
+
+				pyramid.level.value = level;
+				renderer.setRenderTarget( target );
+				quad.render( renderer );
+				const actual = await renderer.readRenderTargetPixelsAsync( target, 0, 0, width, height );
+				const clampedLevel = Math.min( level, reference.length - 1 );
+				const mip = reference[ clampedLevel ];
+				for ( let y = 0; y < height; y ++ ) {
+
+					for ( let x = 0; x < width; x ++ ) {
+
+						const sx = Math.min( Math.floor( x / 2 ** clampedLevel ), mip.width - 1 );
+						const sy = Math.min( Math.floor( y / 2 ** clampedLevel ), mip.height - 1 );
+						assert( actual[ ( y * width + x ) * 4 ] === mip.data[ sy * mip.width + sx ], `Shader sample mismatch level=${level} (${x},${y})` );
+						sampledTexels ++;
+
+					}
+
+				}
+
+			}
+
+		} finally {
+
+			renderer.setRenderTarget( null );
+			material.dispose();
+			target.dispose();
+			pyramid.dispose();
+			source.dispose();
+
+		}
+
 		await device.queue.onSubmittedWorkDone();
 		assert( errors.length === 0, errors.join( '\n' ) );
-		return { adapter: description.trim(), cases, texels, rayTests };
+		return { adapter: description.trim(), cases, texels, rayTests, sampledTexels };
 
 	} finally {
 

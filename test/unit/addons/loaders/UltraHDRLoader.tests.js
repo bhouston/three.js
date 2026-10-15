@@ -118,6 +118,23 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'XMP namespace prefixes are arbitrary', ( assert ) => {
+
+				const loader = new UltraHDRLoader().setFullHDR( true );
+				const info = {};
+				loader._parseXMPMetadata( '<x:xmpmeta xmlns:x="adobe:ns:meta/"><r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><r:Description xmlns:g="http://ns.adobe.com/hdr-gain-map/1.0/" g:Version="1.0"><g:GainMapMax><r:Seq><r:li>1</r:li><r:li>2</r:li><r:li>3</r:li></r:Seq></g:GainMapMax></r:Description></r:RDF></x:xmpmeta>', info );
+				loader._validateFullHDRMetadata( info );
+				assert.deepEqual( info.gainMapMax, [ 1, 2, 3 ] );
+
+			} );
+
+			QUnit.test( 'Ordinary JPEG without gain-map metadata is rejected', ( assert ) => {
+
+				const loader = new UltraHDRLoader().setFullHDR( true );
+				assert.throws( () => loader.parse( new Uint8Array( [ 0xff, 0xd8, 0xff, 0xd9 ] ).buffer, () => assert.true( false ) ), /Not a valid UltraHDR/ );
+
+			} );
+
 		} );
 
 	} );

@@ -42,7 +42,7 @@
 			Screen Space Reflections with Spatiotemporal Denoising by <a href="https://x.com/0beqz" target="_blank" rel="noopener">0beqz</a>.<br />
 			Dungeon - Low Poly Game Level Challenge by
 			Warkarma.<br />
-			Optional Hi-Z construction and depth-level preview; SSR still uses linear tracing.<br />
+			Optional Hi-Z tracing skips empty space conservatively; disable it to compare with linear tracing.<br />
 		</small>
 	</div>
 
@@ -126,6 +126,7 @@
 
 		const params = {
 			hiZ: true,
+			hiZTracing: true,
 			hiZDebug: false,
 			hiZLevel: 0,
 			output: 0,
@@ -287,6 +288,7 @@
 			) ).toInspector( 'Metalness/Roughness' );
 
 			ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
+				hiZ: depthPyramid,
 				stochastic: true,
 				diffuseNode: scenePassDiffuseColor,
 				metalnessNode: scenePassDiffuseColor.a,
@@ -378,6 +380,7 @@
 
 			const hiZGui = renderer.inspector.createParameters( 'Hi-Z construction' );
 			hiZGui.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
+			hiZGui.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
 			hiZGui.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
 			hiZGui.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 
@@ -535,6 +538,7 @@
 			updateCompareHint( params.output );
 
 			postProcessing.outputColorTransform = ! GRADED_OUTPUTS.has( params.output );
+			ssrNode.hiZEnabled = params.hiZ && params.hiZTracing;
 			depthPyramid.enabled = params.hiZ;
 			depthPyramid.level.value = params.hiZLevel;
 

@@ -25,7 +25,7 @@
 
 			<small>
 				Screen Space Reflections.<br />
-				Optional Hi-Z construction and depth-level preview; SSR still uses linear tracing.<br />
+				Optional Hi-Z tracing skips empty space conservatively; disable it to compare with linear tracing.<br />
 				<a href="https://skfb.ly/6tqYD" target="_blank" rel="noopener">Steampunk Camera</a> by
 				<a href="https://sketchfab.com/lumoize" target="_blank" rel="noopener">dylanheyes</a> is licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Creative Commons Attribution</a>.
 			</small>
@@ -58,6 +58,7 @@
 
 		const params = {
 			hiZ: true,
+			hiZTracing: true,
 			hiZDebug: false,
 			hiZLevel: 0,
 			quality: 0.5,
@@ -188,6 +189,7 @@
 			//
 
 			ssrPass = ssr( scenePassColor, scenePassDepth, sceneNormal, {
+				hiZ: depthPyramid,
 				metalnessNode: scenePassMetalRough.r,
 				roughnessNode: scenePassMetalRough.g
 			} ).toInspector( 'SSR' );
@@ -198,6 +200,7 @@
 
 			function updateOutputNode() {
 
+				ssrPass.hiZEnabled = params.hiZ && params.hiZTracing;
 				depthPyramid.enabled = params.hiZ;
 				depthPyramid.level.value = params.hiZLevel;
 
@@ -233,6 +236,7 @@
 			ssrFolder.add( params, 'enabled' ).onChange( updateOutputNode );
 			const hiZFolder = gui.addFolder( 'Hi-Z construction' );
 			hiZFolder.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
+			hiZFolder.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 			const modelFolder = gui.addFolder( 'Model' );

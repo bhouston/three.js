@@ -50,6 +50,26 @@ Validation on the final code: core lint, addon lint, utility lint and lint of ch
 
 **Conclusion:** a shared native AVIF/JXL loader is technically viable in the tested experimental Chrome configuration, and the same half-float texture works in both Three.js rendering backends. Native HDR extraction remains unsuitable as a universal glTF baseline until its API and color/radiance semantics are portable. A production path still needs a controlled decoder fallback and wider image/browser qualification.
 
+## Edge and Firefox follow-up — October 14, 2026
+
+Tested the installed branded browsers with **Playwright 1.64.1**, in fresh temporary profiles and headless mode. Edge used `chromium.launch({ channel: 'msedge' })`; installed Firefox used `firefox.launch({ channel: 'moz-firefox' })` through Playwright's WebDriver BiDi implementation, not Playwright's bundled Firefox. No software rendering flags were used.
+
+| Browser/configuration | Native AVIF decode | Native JXL decode | HDR loader / WebGL2 | HDR loader / WebGPU |
+|---|---|---|---|---|
+| Edge 155.0.4283.45, default | Yes | Failed | AVIF rejected: missing headroom API | Same |
+| Edge 155.0.4283.45, experimental web features | Yes | Failed | AVIF passed, 0.213% max RGB error | AVIF passed, 0.213% max RGB error |
+| Firefox 158.0, default | Yes | Yes | Both rejected: missing float16 canvas/headroom | No adapter returned in this headless session |
+
+Edge's successful AVIF path matched Chrome: brightest CPU/GPU red patch 49.15625 versus reference 49.26108, with matching CPU/GPU samples. Its WebGL identity was ANGLE/NVIDIA RTX 3060 Ti/D3D11; the explicit WebGPU device came from NVIDIA/Ampere, `isFallbackAdapter: false`.
+
+Edge JXL failed before HDR extraction with `The source image cannot be decoded`. Repeating with both `--enable-experimental-web-platform-features` and `--enable-features=JXLImageFormat` did not help. A separately encoded SDR JXL also failed, while the PNG control loaded; Chrome 155.0.8059.79 decoded both the SDR and HDR JXL controls from the same server. This is a measured limitation of the installed Edge build/configuration, not evidence that every Edge build lacks JXL. It differs from [Microsoft's Edge 155 release notes](https://learn.microsoft.com/en-us/microsoft-edge/web-platform/release-notes/155), which announce JXL decoding; the cause was not determined. Chrome codec behavior must not be inferred solely from Edge's Chromium version.
+
+Firefox accepted the image files, but a requested float16 canvas did not expose `colorType`, `globalHDRHeadroom` was absent, and requested float16 readback returned `Uint8ClampedArray`, not `Float16Array`. The standalone JavaScript `Float16Array` constructor existed; that alone does not establish HDR canvas support. AVIF and JXL default-canvas renditions also differed numerically. Neither was accepted as usable linear HDR data by the loader.
+
+Firefox normally masks its renderer as a generic GTX 980 “or similar”. A separate diagnostic run changed only `webgl.sanitize-unmasked-renderer` to `false`, revealing the physical RTX 3060 Ti with driver 32.0.16.1714. It reproduced the same loader rejection. No HDR/float16/WebGPU preference was forced on, and no Firefox HDR GPU success is claimed. `navigator.gpu.requestAdapter()` returned null here; this is a headless-session observation, not a statement that Firefox cannot support WebGPU elsewhere.
+
+For macOS comparisons, use the same example and fixtures, and retain the numerical output plus browser/OS versions. Check both default and experimental configurations where available. Missing headroom API means explicit unsupported status; a successful image display is not a passed HDR texture test. Safari hardware/OS HDR presentation remains separate from extracting HDR pixels for Three.js.
+
 ## Limits
 
 - Browser-defined reference-white scaling is not a physical radiance contract. The measured Chrome PQ path uses approximately 203 cd/m² = 1; other browsers and profiles need numerical qualification.

@@ -13,6 +13,11 @@ const atmosphere = {
 	mieExtinction: 0.004440,
 	ozone: [ 0.000650, 0.001881, 0.000085 ],
 	aerosol: 1,
+	rayleighScaleHeight: 8,
+	mieScaleHeight: 1.2,
+	mieG: 0.8,
+	ozoneCenter: 25,
+	ozoneHalfWidth: 15,
 	sunIlluminance: 128000,
 	sunRadius: 0.2666
 };
@@ -44,9 +49,9 @@ function rayLength( radius, cosine, params ) {
 
 }
 
-function density( height ) {
+function density( height, params ) {
 
-	return [ Math.exp( - height / 8 ), Math.exp( - height / 1.2 ), Math.max( 0, 1 - Math.abs( height - 25 ) / 15 ) ];
+	return [ Math.exp( - height / params.rayleighScaleHeight ), Math.exp( - height / params.mieScaleHeight ), Math.max( 0, 1 - Math.abs( height - params.ozoneCenter ) / params.ozoneHalfWidth ) ];
 
 }
 
@@ -65,7 +70,7 @@ function transmittance( radius, cosine, params = atmosphere, steps = 64 ) {
 
 		const distance = ( i + 0.5 ) * step;
 		const height = Math.sqrt( radius * radius + distance * distance + 2 * radius * cosine * distance ) - params.planetRadius;
-		const rho = density( height );
+		const rho = density( height, params );
 		for ( let c = 0; c < 3; c ++ ) opticalDepth[ c ] += rho[ c ] * step;
 
 	}
@@ -92,7 +97,7 @@ function skyRadiance( direction, sun, params = atmosphere ) {
 	if ( length < 0 ) return result;
 	const cosine = direction.reduce( ( sum, value, i ) => sum + value * sun[ i ], 0 );
 	const rayleighPhase = 3 / ( 16 * Math.PI ) * ( 1 + cosine * cosine );
-	const g = 0.8;
+	const g = params.mieG;
 	const miePhase = 3 / ( 8 * Math.PI ) * ( 1 - g * g ) * ( 1 + cosine * cosine ) / ( ( 2 + g * g ) * ( 1 + g * g - 2 * g * cosine ) ** 1.5 );
 	const step = length / 32, opticalDepth = [ 0, 0, 0 ];
 	for ( let i = 0; i < 32; i ++ ) {
@@ -100,7 +105,7 @@ function skyRadiance( direction, sun, params = atmosphere ) {
 		const distance = ( i + 0.5 ) * step;
 		const point = [ direction[ 0 ] * distance, radius + direction[ 1 ] * distance, direction[ 2 ] * distance ];
 		const pointRadius = Math.hypot( ...point );
-		const rho = density( pointRadius - params.planetRadius );
+		const rho = density( pointRadius - params.planetRadius, params );
 		const sunCosine = point.reduce( ( sum, value, c ) => sum + value * sun[ c ], 0 ) / pointRadius;
 		const sunlight = transmittance( pointRadius, sunCosine, params );
 		for ( let c = 0; c < 3; c ++ ) opticalDepth[ c ] += rho[ c ] * step * 0.5;
@@ -127,4 +132,3 @@ function exposure( horizontalIlluminance, manualEV = null ) {
 }
 
 export { atmosphere, luminance, sunDirection, discVisibility, transmittance, sunLightState, skyRadiance, exposure };
-

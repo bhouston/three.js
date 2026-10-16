@@ -1,5 +1,5 @@
 import { Node, Vector3 } from 'three/webgpu';
-import { Fn, If, Loop, float, int, vec2, vec3, uniform, texture, positionWorldDirection } from 'three/tsl';
+import { Fn, If, Loop, float, int, vec2, vec3, uniform, texture, positionWorldDirection, uv } from 'three/tsl';
 import { atmosphere } from '../../math/Atmosphere.js';
 
 const planetRadius = atmosphere.planetRadius;
@@ -9,9 +9,9 @@ const ozone = vec3( ...atmosphere.ozone );
 const nightRadiance = vec3( 0.00016, 0.00020, 0.00028 );
 
 const density = Fn( ( [ height ] ) => vec3(
-	height.div( - 8 ).exp(),
-	height.div( - 1.2 ).exp(),
-	float( 1 ).sub( height.sub( 25 ).abs().div( 15 ) ).max( 0 )
+	height.div( - atmosphere.rayleighScaleHeight ).exp(),
+	height.div( - atmosphere.mieScaleHeight ).exp(),
+	float( 1 ).sub( height.sub( atmosphere.ozoneCenter ).abs().div( atmosphere.ozoneHalfWidth ) ).max( 0 )
 ) );
 
 const extinction = Fn( ( [ opticalDepth, aerosol ] ) => rayleigh.mul( opticalDepth.x )
@@ -58,6 +58,9 @@ const atmosphereTransmittance = Fn( ( [ radius, cosine, aerosol ] ) => {
  * Single-scattering Rayleigh/Mie/ozone sky radiance, excluding the solar disc.
  * Requires a transmittance LUT whose U axis maps sign(mu) * sqrt(abs(mu)) and
  * V axis maps sqrt(height / atmosphere thickness), both to the unit interval.
+ * Bake getTransmittanceLUTNode() into a 256×128 half-float render target with
+ * linear filtering and clamp-to-edge wrapping. Rebuild it when aerosol changes.
+ * Use standard QuadMesh UVs; TextureNode handles backend texture orientation.
  * Multiple scattering and ground interreflection are not modelled.
  *
  * @augments Node
@@ -93,6 +96,25 @@ class AtmosphereNode extends Node {
 
 	}
 
+	/**
+	 * Shader used to render the transmittance LUT.
+	 *
+	 * @param {Node<vec2>} [uvNode=uv()] - Unit-square LUT coordinates.
+	 * @return {Node<vec3>} RGB transmittance.
+	 */
+	getTransmittanceLUTNode( uvNode = uv() ) {
+
+		return Fn( () => {
+
+			const u = uvNode.x.mul( 2 ).sub( 1 );
+			const cosine = u.sign().mul( u.mul( u ) );
+			const radius = uvNode.y.mul( uvNode.y ).mul( atmosphereRadius - planetRadius ).add( planetRadius );
+			return atmosphereTransmittance( radius, cosine, this.aerosol );
+
+		} )();
+
+	}
+
 	setup() {
 
 		return Fn( () => {
@@ -103,7 +125,7 @@ class AtmosphereNode extends Node {
 			const radiance = nightRadiance.toVar();
 			const cosine = direction.dot( this.sunDirection );
 			const rayleighPhase = cosine.mul( cosine ).add( 1 ).mul( 3 / ( 16 * Math.PI ) );
-			const g = 0.8;
+			const g = atmosphere.mieG;
 			const miePhase = cosine.mul( cosine ).add( 1 ).mul( 3 / ( 8 * Math.PI ) * ( 1 - g * g ) / ( 2 + g * g ) )
 				.div( float( 1 + g * g ).sub( cosine.mul( 2 * g ) ).pow( 1.5 ) );
 			const step = length.div( 32 );
@@ -136,4 +158,4 @@ class AtmosphereNode extends Node {
 
 }
 
-export { AtmosphereNode, atmosphereTransmittance };
+export { AtmosphereNode };

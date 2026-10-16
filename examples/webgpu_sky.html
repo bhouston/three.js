@@ -33,10 +33,12 @@
 		</script>
 		<script type="module">
 			import * as THREE from 'three/webgpu';
-			import { Fn, Loop, float, vec2, vec3, vec4, uv, texture, equirectUV, equirectDirection, positionWorldDirection, uniform, dot, smoothstep } from 'three/tsl';
+			import { Fn, If, Discard, Loop, float, vec2, vec3, vec4, uv, texture, equirectUV, equirectDirection, positionWorldDirection, uniform, dot, smoothstep } from 'three/tsl';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { SunLight } from 'three/addons/lights/SunLight.js';
+			import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
-			import { AtmosphereNode, atmosphereTransmittance } from 'three/addons/tsl/display/AtmosphereNode.js';
+			import { AtmosphereNode } from 'three/addons/tsl/display/AtmosphereNode.js';
 			import { atmosphere, luminance, sunDirection, sunLightState, exposure } from 'three/addons/math/Atmosphere.js';
 
 			const params = {
@@ -50,6 +52,9 @@
 				ev100: 13.6,
 				compensation: 0,
 				resolution: 512,
+				shadowMode: 'Directional',
+				shadowMapSize: 2048,
+				shadowDistance: 60,
 				showSunDisc: true,
 				autoRotate: true,
 				rebake: changed
@@ -76,9 +81,14 @@
 			const timer = new THREE.Timer();
 			let exposureCorrection = 1;
 
+			SunLight.registerNode( SunLightNode );
+			const csmSun = new SunLight();
+			csmSun.visible = false;
+			csmSun.shadow.normalBias = 0.02;
+			scene.add( csmSun );
 			const sun = new THREE.DirectionalLight();
 			sun.castShadow = true;
-			sun.shadow.mapSize.setScalar( 2048 );
+			sun.shadow.mapSize.setScalar( params.shadowMapSize );
 			scene.add( sun, sun.target );
 			const sunVector = uniform( new THREE.Vector3() );
 			const sunRadiance = uniform( new THREE.Color() );
@@ -88,22 +98,23 @@
 			skyTarget.texture.mapping = THREE.EquirectangularReflectionMapping;
 			skyTarget.texture.wrapS = THREE.RepeatWrapping;
 			const meterTarget = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
-			const atmosphereNode = new AtmosphereNode( lutTarget.texture, equirectDirection( uv().flipY() ) );
+			const atmosphereNode = new AtmosphereNode( lutTarget.texture, equirectDirection( uv() ) );
 			const lutMaterial = new THREE.NodeMaterial();
-			lutMaterial.fragmentNode = Fn( () => {
-
-				const coord = uv().flipY();
-				const u = coord.x.mul( 2 ).sub( 1 );
-				const cosine = u.sign().mul( u.mul( u ) );
-				const radius = coord.y.mul( coord.y ).mul( atmosphere.atmosphereRadius - atmosphere.planetRadius ).add( atmosphere.planetRadius );
-				return vec4( atmosphereTransmittance( radius, cosine, atmosphereNode.aerosol ), 1 );
-
-			} )();
+			lutMaterial.fragmentNode = vec4( atmosphereNode.getTransmittanceLUTNode(), 1 );
 			const skyMaterial = new THREE.NodeMaterial();
 			skyMaterial.fragmentNode = vec4( atmosphereNode, 1 );
 			const groundRadiance = uniform( new THREE.Color() );
-			const groundMaterial = new THREE.NodeMaterial( { transparent: true, depthTest: false, depthWrite: false } );
-			groundMaterial.fragmentNode = vec4( groundRadiance, float( uv().y.greaterThan( 0.5 ) ) );
+			const groundMaterial = new THREE.NodeMaterial( { depthTest: false, depthWrite: false } );
+			groundMaterial.fragmentNode = Fn( () => {
+
+				If( uv().y.greaterThan( 0.5 ), () => {
+
+		Discard();
+
+	} );
+				return vec4( groundRadiance, 1 );
+
+			} )();
 			const meterMaterial = new THREE.NodeMaterial();
 			meterMaterial.fragmentNode = Fn( () => {
 
@@ -111,7 +122,7 @@
 				Loop( 16, ( { i } ) => {
 
 					const altitude = float( i ).add( 0.5 ).mul( Math.PI / 32 );
-					Loop( 32, ( { i: j } ) => {
+					Loop( { start: 0, end: 32, name: 'j' }, ( { j } ) => {
 
 						const coord = vec2( float( j ).add( 0.5 ).div( 32 ), altitude.div( Math.PI ).add( 0.5 ) );
 						irradiance.addAssign( texture( skyTarget.texture, coord ).level( 0 ).rgb.mul( altitude.sin() ).mul( altitude.cos() ).mul( Math.PI * Math.PI / 512 ) );
@@ -176,14 +187,42 @@
 			mesh( new THREE.SphereGeometry( 0.8, 48, 24 ), 0xffffff, 4.5, 0.8, 5, 0.04, 1 );
 			mesh( new THREE.SphereGeometry( 0.8, 48, 24 ), 0xc4a078, 6.5, 0.8, 5, 0.45, 1 );
 
+			function updateShadows() {
+
+				const enabled = directNormal > 0;
+				sun.visible = sun.castShadow = enabled && params.shadowMode === 'Directional';
+				csmSun.visible = csmSun.castShadow = enabled && params.shadowMode === 'SunLight (CSM)';
+				csmSun.position.copy( sunVector.value );
+				csmSun.color.copy( sun.color );
+				csmSun.intensity = sun.intensity;
+				csmSun.shadow.camera.far = params.shadowDistance;
+				for ( const light of [ sun, csmSun ] ) light.shadow.mapSize.setScalar( params.shadowMapSize );
+				fitShadow();
+
+			}
+
 			function fitShadow() {
 
-				// Fit the bounded diorama in light space.
+				// Include casters and their projected ground shadows.
+				const worldBounds = new THREE.Box3( new THREE.Vector3( - 13, 0, - 13 ), new THREE.Vector3( 13, 10, 13 ) );
+				if ( sunVector.value.y > 0 ) {
+
+					for ( const x of [ - 13, 13 ] ) for ( const z of [ - 13, 13 ] ) {
+
+						const projection = new THREE.Vector3( x, 10, z ).addScaledVector( sunVector.value, - 10 / sunVector.value.y );
+						projection.x = THREE.MathUtils.clamp( projection.x, - params.shadowDistance, params.shadowDistance );
+						projection.z = THREE.MathUtils.clamp( projection.z, - params.shadowDistance, params.shadowDistance );
+						worldBounds.expandByPoint( projection );
+
+					}
+
+				}
+
 				sun.updateMatrixWorld();
 				sun.target.updateMatrixWorld();
 				sun.shadow.updateMatrices( sun );
 				const bounds = new THREE.Box3();
-				for ( const x of [ - 70, 70 ] ) for ( const y of [ 0, 9 ] ) for ( const z of [ - 70, 70 ] ) {
+				for ( const x of [ worldBounds.min.x, worldBounds.max.x ] ) for ( const y of [ 0, 10 ] ) for ( const z of [ worldBounds.min.z, worldBounds.max.z ] ) {
 
 					bounds.expandByPoint( new THREE.Vector3( x, y, z ).applyMatrix4( sun.shadow.camera.matrixWorldInverse ) );
 
@@ -197,7 +236,7 @@
 				camera.near = Math.max( 0.1, - bounds.max.z - 10 );
 				camera.far = - bounds.min.z + 10;
 				camera.updateProjectionMatrix();
-				sun.shadow.normalBias = 1.5 * Math.max( camera.right - camera.left, camera.top - camera.bottom ) / 2048;
+				sun.shadow.normalBias = 1.5 * Math.max( camera.right - camera.left, camera.top - camera.bottom ) / params.shadowMapSize;
 				sun.shadow.bias = - 0.00005;
 
 			}
@@ -207,6 +246,7 @@
 				const meter = exposure( directHorizontal + skyIlluminance, params.autoExposure ? null : params.ev100 );
 				exposureCorrection = meter.scale / storageScale;
 				renderer.toneMappingExposure = exposureCorrection * 2 ** params.compensation;
+				document.getElementById( 'ev100' )?.replaceChildren( meter.ev.toFixed( 2 ) );
 				return meter.ev;
 
 			}
@@ -259,8 +299,9 @@
 				directNormal = light.illuminance;
 				directHorizontal = directNormal * Math.max( direction[ 1 ], 0 );
 				const albedo = new THREE.Color( settings.groundAlbedo );
+				const albedoRGB = albedo.toArray();
 				ground.material.color.copy( albedo );
-				groundRadiance.value.setRGB( ...skyRGB.map( ( value, c ) => albedo.toArray()[ c ] * ( value + light.color[ c ] * directHorizontal ) * storageScale / Math.PI ) );
+				groundRadiance.value.setRGB( ...skyRGB.map( ( value, c ) => albedoRGB[ c ] * ( value + light.color[ c ] * directHorizontal ) * storageScale / Math.PI ) );
 				const autoClear = renderer.autoClear;
 				renderer.autoClear = false;
 				renderPass( groundMaterial, skyTarget );
@@ -271,14 +312,13 @@
 				sun.position.fromArray( direction ).multiplyScalar( 200 );
 				sun.color.setRGB( ...light.color );
 				sun.intensity = directNormal * storageScale;
-				sun.visible = sun.castShadow = light.visibility > 0;
-				fitShadow();
+				updateShadows();
 				sunRadiance.value.setRGB( ...discRadiance.map( value => value * storageScale ) );
 				sunDisc.value = params.showSunDisc ? 1 : 0;
 				const ev = updateExposure();
 				bakeCount ++;
 				const band = settings.altitude > 0 ? 'Daylight' : settings.altitude > - 6 ? 'Civil twilight' : settings.altitude > - 12 ? 'Nautical twilight' : settings.altitude > - 18 ? 'Astronomical twilight' : 'Night';
-				document.getElementById( 'readout' ).innerHTML = `${band}<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: ${ev.toFixed( 2 )}<br>Sky: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Bake wall time (includes meter readback): ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
+				document.getElementById( 'readout' ).innerHTML = `${band}<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Sky: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
 				baking = false;
 				lastBake = performance.now();
 
@@ -295,6 +335,10 @@
 			sunFolder.add( params, 'altitude', - 20, 90, 0.05 ).name( 'altitude °' ).onChange( changed );
 			sunFolder.add( params, 'azimuth', 0, 360, 0.1 ).name( 'azimuth ° (N → E)' ).onChange( changed );
 			sunFolder.add( params, 'northRotation', - 180, 180, 1 ).name( 'north rotation °' ).onChange( changed );
+			const shadowFolder = gui.addFolder( 'Shadows' );
+			shadowFolder.add( params, 'shadowMode', [ 'Directional', 'SunLight (CSM)' ] ).name( 'light / shadows' ).onChange( updateShadows );
+			shadowFolder.add( params, 'shadowMapSize', [ 1024, 2048, 4096 ] ).name( 'map size (per cascade)' ).onChange( updateShadows );
+			shadowFolder.add( params, 'shadowDistance', 20, 200, 1 ).name( 'shadow distance (m)' ).onChange( updateShadows );
 			const airFolder = gui.addFolder( 'Atmosphere' );
 			airFolder.add( params, 'aerosol', 0.5, 5, 0.1 ).onChange( changed );
 			airFolder.addColor( params, 'groundAlbedo' ).onChange( changed );

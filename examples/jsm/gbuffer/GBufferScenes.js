@@ -656,14 +656,14 @@ export async function createGBufferScene( name ) {
 
 		case 'Cornell':
 			createCornell( scene );
-			cameraPosition = new THREE.Vector3( 0, 2.4, 2.8 );
+			cameraPosition = new THREE.Vector3( 0, 2.8, 9 );
 			target = new THREE.Vector3( 0, 2, - 0.5 );
 			probeVolumes = [ volume( [ - 2.8, 0.1, - 2.8 ], [ 2.8, 4.8, 2.8 ] ) ];
 			break;
 
 		case 'Two rooms':
 			createTwoRooms( scene );
-			cameraPosition = new THREE.Vector3( - 7.5, 2.6, 3.5 );
+			cameraPosition = new THREE.Vector3( 0, 5, 16 );
 			target = new THREE.Vector3( 1, 1.8, - 0.5 );
 			probeVolumes = [ volume( [ - 7.8, 0.1, - 3.8 ], [ 0, 4.8, 3.8 ] ), volume( [ 0, 0.1, - 3.8 ], [ 7.8, 4.8, 3.8 ] ) ];
 			break;

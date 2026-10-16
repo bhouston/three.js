@@ -1,29 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgpu - sky</title>
+		<title>three.js webgpu - physical sun and sky</title>
 		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<meta property="og:title" content="three.js webgpu - sky">
-		<meta property="og:type" content="website">
-		<meta property="og:url" content="https://threejs.org/examples/webgpu_sky.html">
-		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_sky.jpg">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#readout { position: absolute; bottom: 20px; left: 20px; padding: 12px 16px; background: #14202acc; color: #fff; font: 12px/1.7 monospace; pointer-events: none; border-radius: 4px; }
+		</style>
 	</head>
 	<body>
-
 		<div id="info">
-			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
-
-			<div class="title-wrapper">
-				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Sky</span>
-			</div>
-
-			<small>
-				Procedural skydome with atmospheric scattering and clouds.
-			</small>
+			<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a> — Physical sun and sky<br>
+			Drag to orbit · right drag to pan · scroll to zoom<br>
+			Single scattering atmosphere · sun in lux · sky in cd/m²
 		</div>
-
+		<div id="readout"></div>
 		<script type="importmap">
 			{
 				"imports": {
@@ -34,148 +26,250 @@
 				}
 			}
 		</script>
-
 		<script type="module">
-
 			import * as THREE from 'three/webgpu';
-
-			import { Inspector } from 'three/addons/inspector/Inspector.js';
-
+			import { texture, equirectUV, positionWorldDirection, uniform, dot, smoothstep } from 'three/tsl';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { atmosphere, luminance, sunDirection, sunLightState, skyRadiance, exposure } from 'three/addons/math/Atmosphere.js';
 
-			let camera, scene, renderer;
+			const params = {
+				altitude: 32,
+				azimuth: 235,
+				northRotation: 0,
+				aerosol: 1,
+				groundAlbedo: 0.25,
+				observerAltitude: 0.002,
+				autoExposure: true,
+				ev100: 15,
+				compensation: 0,
+				showSunDisc: true,
+				autoRotate: true,
+				rebake: changed
+			};
+			const scene = new THREE.Scene();
+			const camera = new THREE.PerspectiveCamera( 45, innerWidth / innerHeight, 0.1, 500 );
+			camera.position.set( 18, 7, 23 );
+			const renderer = new THREE.WebGPURenderer( { antialias: true } );
+			renderer.setPixelRatio( Math.min( devicePixelRatio, 2 ) );
+			renderer.setSize( innerWidth, innerHeight );
+			renderer.shadowMap.enabled = true;
+			renderer.toneMapping = THREE.ACESFilmicToneMapping;
+			document.body.appendChild( renderer.domElement );
+			await renderer.init();
 
-			let sky, sun;
+			const controls = new OrbitControls( camera, renderer.domElement );
+			controls.target.set( 0, 2, 0 );
+			controls.enableDamping = true;
+			controls.maxPolarAngle = Math.PI * 0.49;
+			controls.minDistance = 6;
+			controls.maxDistance = 90;
+			controls.autoRotateSpeed = 0.35;
+			const timer = new THREE.Timer();
+			let exposureCorrection = 1;
 
-			let sphere, cubeCamera;
+			const sun = new THREE.DirectionalLight();
+			sun.castShadow = true;
+			sun.shadow.mapSize.setScalar( 2048 );
+			scene.add( sun, sun.target );
+			const sunVector = uniform( new THREE.Vector3() );
+			const sunRadiance = uniform( new THREE.Color() );
+			const sunDisc = uniform( 1 );
+			const width = 128, height = 64;
+			const skyData = new Float32Array( width * height * 4 );
+			const skyTexture = new THREE.DataTexture( skyData, width, height, THREE.RGBAFormat, THREE.FloatType );
+			skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+			skyTexture.colorSpace = THREE.LinearSRGBColorSpace;
+			skyTexture.minFilter = skyTexture.magFilter = THREE.LinearFilter;
+			skyTexture.wrapS = THREE.RepeatWrapping;
+			// The tiny solar disc is evaluated analytically only in the background.
+			// It never enters PMREM: the directional light supplies that energy.
+			const disc = smoothstep( Math.cos( THREE.MathUtils.degToRad( atmosphere.sunRadius + 0.02 ) ), Math.cos( THREE.MathUtils.degToRad( atmosphere.sunRadius ) ), dot( positionWorldDirection, sunVector ) );
+			scene.backgroundNode = texture( skyTexture, equirectUV() ).rgb.add( sunRadiance.mul( disc ).mul( positionWorldDirection.y.greaterThan( 0 ) ).mul( sunDisc ) );
+			const pmrem = new THREE.PMREMGenerator( renderer );
+			let environment, dirty = true, lastBake = - Infinity, bakeCount = 0;
 
-			init();
+			function mesh( geometry, color, x, y, z, roughness = 0.8, metalness = 0 ) {
 
-			function initSky() {
+				const object = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial( { color, roughness, metalness } ) );
+				object.position.set( x, y, z );
+				object.castShadow = object.receiveShadow = true;
+				scene.add( object );
+				return object;
 
-				// Add Sky
-				sky = new SkyMesh();
-				sky.scale.setScalar( 450000 );
-				scene.add( sky );
+			}
 
-				sun = new THREE.Vector3();
+			mesh( new THREE.BoxGeometry( 10000, 0.2, 10000 ), 0x738260, 0, - 0.1, 0 );
+			mesh( new THREE.BoxGeometry( 8, 0.2, 7 ), 0xb6b0a3, 0, 0.1, 0 );
+			mesh( new THREE.BoxGeometry( 6, 3.6, 4.8 ), 0xe6dcc5, 0, 2, 0 );
+			// A triangular gable roof, extruded along the house's depth.
+			const roofShape = new THREE.Shape();
+			roofShape.moveTo( - 3.5, 0 );
+			roofShape.lineTo( 0, 2.2 );
+			roofShape.lineTo( 3.5, 0 );
+			roofShape.closePath();
+			mesh( new THREE.ExtrudeGeometry( roofShape, { depth: 5.6, bevelEnabled: false } ), 0x9c4b36, 0, 3.8, - 2.8 );
+			mesh( new THREE.BoxGeometry( 0.7, 2.3, 0.7 ), 0x907460, 1.7, 5, - 1 );
+			mesh( new THREE.BoxGeometry( 1.1, 2.3, 0.15 ), 0x584434, 0, 1.35, 2.45 );
+			mesh( new THREE.SphereGeometry( 0.06 ), 0xd4af58, 0.36, 1.3, 2.56, 0.2, 0.8 );
+			for ( const x of [ - 1.9, 1.9 ] ) {
 
-				/// GUI
+				mesh( new THREE.BoxGeometry( 1.3, 1.5, 0.16 ), 0xf7efe0, x, 2.3, 2.45 );
+				mesh( new THREE.BoxGeometry( 1.05, 1.25, 0.18 ), 0x42687c, x, 2.3, 2.48, 0.15, 0.35 );
+				mesh( new THREE.BoxGeometry( 0.06, 1.3, 0.2 ), 0xf7efe0, x, 2.3, 2.5 );
+				mesh( new THREE.BoxGeometry( 1.1, 0.06, 0.2 ), 0xf7efe0, x, 2.3, 2.5 );
 
-				const effectController = {
-					turbidity: 10,
-					rayleigh: 3,
-					mieCoefficient: 0.005,
-					mieDirectionalG: 0.7,
-					elevation: 65,
-					azimuth: 0,
-					exposure: 0.05,
-					cloudCoverage: 0.4,
-					cloudDensity: 0.4,
-					cloudElevation: 0.5,
-					showSunDisc: true
-				};
+			}
 
-				function guiChanged() {
+			mesh( new THREE.BoxGeometry( 1.5, 0.08, 9 ), 0xb5aa95, 0, 0.04, 7 );
+			for ( const [ x, z, size ] of [[ - 7, - 3, 1.2 ], [ 7, - 5, 1.5 ], [ - 9, 5, 0.9 ], [ 10, 3, 1.1 ], [ 3, - 10, 1 ]] ) {
 
-					sky.turbidity.value = effectController.turbidity;
-					sky.rayleigh.value = effectController.rayleigh;
-					sky.mieCoefficient.value = effectController.mieCoefficient;
-					sky.mieDirectionalG.value = effectController.mieDirectionalG;
-					sky.cloudCoverage.value = effectController.cloudCoverage;
-					sky.cloudDensity.value = effectController.cloudDensity;
-					sky.cloudElevation.value = effectController.cloudElevation;
-					sky.showSunDisc.value = effectController.showSunDisc;
+				mesh( new THREE.CylinderGeometry( 0.23 * size, 0.3 * size, 2 * size, 8 ), 0x67503a, x, size, z );
+				mesh( new THREE.ConeGeometry( 1.6 * size, 4 * size, 12 ), 0x325c3b, x, 3.3 * size, z );
+				mesh( new THREE.ConeGeometry( 1.25 * size, 3 * size, 12 ), 0x3e7043, x, 4.6 * size, z );
 
-					const phi = THREE.MathUtils.degToRad( 90 - effectController.elevation );
-					const theta = THREE.MathUtils.degToRad( effectController.azimuth );
+			}
 
-					sun.setFromSphericalCoords( 1, phi, theta );
+			mesh( new THREE.SphereGeometry( 0.8, 48, 24 ), 0xffffff, - 4.5, 0.8, 5, 1 );
+			mesh( new THREE.SphereGeometry( 0.8, 48, 24 ), 0xffffff, 4.5, 0.8, 5, 0.04, 1 );
+			mesh( new THREE.SphereGeometry( 0.8, 48, 24 ), 0xc4a078, 6.5, 0.8, 5, 0.45, 1 );
 
-					sky.sunPosition.value.copy( sun );
+			function fitShadow() {
 
-					renderer.toneMappingExposure = effectController.exposure;
+				// Include the ground receivers as well as every caster. Fitting in light
+				// space keeps the bounded diorama covered even at grazing sun angles.
+				sun.updateMatrixWorld();
+				sun.target.updateMatrixWorld();
+				sun.shadow.updateMatrices( sun );
+				const bounds = new THREE.Box3();
+				for ( const x of [ - 70, 70 ] ) for ( const y of [ 0, 9 ] ) for ( const z of [ - 70, 70 ] ) {
+
+					bounds.expandByPoint( new THREE.Vector3( x, y, z ).applyMatrix4( sun.shadow.camera.matrixWorldInverse ) );
 
 				}
 
-				const gui = renderer.inspector.createParameters( 'Settings' );
-
-				gui.add( effectController, 'turbidity', 0.0, 20.0, 0.1 ).onChange( guiChanged );
-				gui.add( effectController, 'rayleigh', 0.0, 4, 0.001 ).onChange( guiChanged );
-				gui.add( effectController, 'mieCoefficient', 0.0, 0.1, 0.001 ).onChange( guiChanged );
-				gui.add( effectController, 'mieDirectionalG', 0.0, 1, 0.001 ).onChange( guiChanged );
-				gui.add( effectController, 'elevation', 0, 90, 0.1 ).onChange( guiChanged );
-				gui.add( effectController, 'azimuth', - 180, 180, 0.1 ).onChange( guiChanged );
-				gui.add( effectController, 'exposure', 0, 1, 0.0001 ).onChange( guiChanged );
-				gui.add( effectController, 'showSunDisc' ).onChange( guiChanged );
-
-				const folderClouds = gui.addFolder( 'Clouds' );
-				folderClouds.add( effectController, 'cloudCoverage', 0, 1, 0.01 ).name( 'coverage' ).onChange( guiChanged );
-				folderClouds.add( effectController, 'cloudDensity', 0, 1, 0.01 ).name( 'density' ).onChange( guiChanged );
-				folderClouds.add( effectController, 'cloudElevation', 0, 1, 0.01 ).name( 'elevation' ).onChange( guiChanged );
-
-				guiChanged();
-
-			}
-
-			function init() {
-
-				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 100, 2000000 );
-				camera.position.set( 0, 100, 2000 );
-
-				scene = new THREE.Scene();
-
-				const cubeRenderTarget = new THREE.CubeRenderTarget( 256, { type: THREE.HalfFloatType } );
-				cubeCamera = new THREE.CubeCamera( 1, 1000, cubeRenderTarget );
-
-				sphere = new THREE.Mesh(
-					new THREE.SphereGeometry( 400, 64, 32 ),
-					new THREE.MeshBasicNodeMaterial( { envMap: cubeRenderTarget.texture } )
-				);
-				scene.add( sphere );
-
-				renderer = new THREE.WebGPURenderer();
-				renderer.setPixelRatio( window.devicePixelRatio );
-				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.setAnimationLoop( animate );
-				renderer.toneMapping = THREE.ACESFilmicToneMapping;
-				renderer.toneMappingExposure = 0.5;
-				renderer.inspector = new Inspector();
-				document.body.appendChild( renderer.domElement );
-
-				const controls = new OrbitControls( camera, renderer.domElement );
-				//controls.maxPolarAngle = Math.PI / 2;
-				controls.enableZoom = false;
-				controls.enablePan = false;
-
-				initSky();
-
-				window.addEventListener( 'resize', onWindowResize );
-
-			}
-
-			function onWindowResize() {
-
-				camera.aspect = window.innerWidth / window.innerHeight;
+				const camera = sun.shadow.camera;
+				camera.left = bounds.min.x - 1;
+				camera.right = bounds.max.x + 1;
+				camera.bottom = bounds.min.y - 1;
+				camera.top = bounds.max.y + 1;
+				camera.near = Math.max( 0.1, - bounds.max.z - 10 );
+				camera.far = - bounds.min.z + 10;
 				camera.updateProjectionMatrix();
-
-				renderer.setSize( window.innerWidth, window.innerHeight );
+				sun.shadow.normalBias = 1.5 * Math.max( camera.right - camera.left, camera.top - camera.bottom ) / 2048;
+				sun.shadow.bias = - 0.00005;
 
 			}
 
-			function animate() {
+			function bakeSky() {
 
-				sphere.visible = false;
-				cubeCamera.update( renderer, scene );
-				sphere.visible = true;
+				const start = performance.now();
+				const model = { ...atmosphere, aerosol: params.aerosol, observerAltitude: params.observerAltitude };
+				const direction = sunDirection( params.altitude, params.azimuth, params.northRotation );
+				const light = sunLightState( params.altitude, model );
+				let skyLux = 0;
+				// Texture rows run from nadir to zenith, matching equirectUV().
+				for ( let y = height / 2; y < height; y ++ ) {
 
+					const altitude = ( ( y + 0.5 ) / height - 0.5 ) * Math.PI;
+					for ( let x = 0; x < width; x ++ ) {
+
+						const azimuth = ( ( x + 0.5 ) / width - 0.5 ) * 2 * Math.PI;
+						const view = [ Math.cos( altitude ) * Math.cos( azimuth ), Math.sin( altitude ), Math.cos( altitude ) * Math.sin( azimuth ) ];
+						const rgb = skyRadiance( view, direction, model );
+						const offset = ( y * width + x ) * 4;
+						skyData.set( [ ...rgb, 1 ], offset );
+						skyLux += luminance( rgb ) * view[ 1 ] * Math.cos( altitude ) * ( Math.PI / height ) * ( 2 * Math.PI / width );
+
+					}
+
+				}
+
+				const solidAngle = 2 * Math.PI * ( 1 - Math.cos( THREE.MathUtils.degToRad( model.sunRadius ) ) );
+				const discRadiance = light.transmission.map( value => light.visibility > 0 ? value * model.sunIlluminance / solidAngle : 0 );
+				const horizontal = light.illuminance * Math.max( direction[ 1 ], 0 );
+				const meter = exposure( horizontal + skyLux, params.autoExposure ? null : params.ev100 );
+				// A Lambertian ground closes the lower hemisphere of the environment.
+				// Keep even the background sun below fp16 overflow at sunset or at
+				// extreme manual EV. Restore the requested camera exposure during
+				// tone mapping, which evaluates the exposure in full precision.
+				let peakRadiance = Math.max( 1, ...discRadiance, light.illuminance );
+				for ( let i = width * height * 2; i < skyData.length; i += 4 ) for ( let c = 0; c < 3; c ++ ) peakRadiance = Math.max( peakRadiance, skyData[ i + c ] );
+				const storageScale = Math.min( meter.scale, 60000 / peakRadiance );
+				exposureCorrection = meter.scale / storageScale;
+				const ground = params.groundAlbedo * ( horizontal + skyLux ) / Math.PI;
+				for ( let y = 0; y < height / 2; y ++ ) for ( let x = 0; x < width; x ++ ) skyData.set( [ ground, ground, ground, 1 ], ( y * width + x ) * 4 );
+				for ( let i = 0; i < skyData.length; i += 4 ) for ( let c = 0; c < 3; c ++ ) skyData[ i + c ] *= storageScale;
+				skyTexture.needsUpdate = true;
+				const previous = environment;
+				environment = pmrem.fromEquirectangular( skyTexture );
+				scene.environment = environment.texture;
+				if ( previous ) previous.dispose();
+				sunVector.value.fromArray( direction );
+				sun.position.fromArray( direction ).multiplyScalar( 200 );
+				sun.color.setRGB( ...light.color );
+				sun.intensity = light.illuminance * storageScale;
+				sun.visible = sun.castShadow = light.visibility > 0;
+				// Keep the physical partial-disc direction, including below the horizon.
+				fitShadow();
+				sunRadiance.value.setRGB( ...discRadiance.map( value => value * storageScale ) );
+				renderer.toneMappingExposure = exposureCorrection * 2 ** params.compensation;
+				sunDisc.value = params.showSunDisc ? 1 : 0;
+				bakeCount ++;
+				const band = params.altitude > 0 ? 'Daylight' : params.altitude > - 6 ? 'Civil twilight' : params.altitude > - 12 ? 'Nautical twilight' : params.altitude > - 18 ? 'Astronomical twilight' : 'Night';
+				document.getElementById( 'readout' ).innerHTML = `${band}<br>Direct normal: ${light.illuminance.toFixed( 1 )} lux<br>Direct horizontal: ${horizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyLux.toFixed( 3 )} lux<br>EV100: ${meter.ev.toFixed( 2 )}<br>PMREM + atmosphere CPU submission: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
+				dirty = false;
+				lastBake = performance.now();
+
+			}
+
+			const gui = new GUI( { title: 'Physical sun and sky' } );
+			function changed() {
+
+				dirty = true;
+
+			}
+
+			const sunFolder = gui.addFolder( 'Sun (apparent altitude)' );
+			sunFolder.add( params, 'altitude', - 20, 90, 0.05 ).name( 'altitude °' ).onChange( changed ).onFinishChange( changed );
+			sunFolder.add( params, 'azimuth', 0, 360, 0.1 ).name( 'azimuth ° (N → E)' ).onChange( changed );
+			sunFolder.add( params, 'northRotation', - 180, 180, 1 ).name( 'north rotation °' ).onChange( changed );
+			const airFolder = gui.addFolder( 'Atmosphere' );
+			airFolder.add( params, 'aerosol', 0.5, 5, 0.1 ).onChange( changed );
+			airFolder.add( params, 'groundAlbedo', 0, 1, 0.01 ).onChange( changed );
+			airFolder.add( params, 'observerAltitude', 0.002, 2, 0.001 ).name( 'observer height km' ).onChange( changed );
+			const exposureFolder = gui.addFolder( 'Exposure' );
+			exposureFolder.add( params, 'autoExposure' ).onChange( changed );
+			exposureFolder.add( params, 'ev100', - 3, 17, 0.1 ).name( 'manual EV100' ).onChange( changed );
+			exposureFolder.add( params, 'compensation', - 3, 3, 0.1 ).name( 'compensation EV' ).onChange( value => {
+
+				renderer.toneMappingExposure = exposureCorrection * 2 ** value;
+
+			} );
+			gui.add( params, 'showSunDisc' ).onChange( value => {
+
+				sunDisc.value = value ? 1 : 0;
+
+			} );
+			gui.add( params, 'autoRotate' );
+			gui.add( params, 'rebake' );
+
+			window.addEventListener( 'resize', () => {
+
+				camera.aspect = innerWidth / innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( innerWidth, innerHeight );
+
+			} );
+			renderer.setAnimationLoop( () => {
+
+				timer.update();
+				controls.autoRotate = params.autoRotate;
+				controls.update( timer.getDelta() );
+				if ( dirty && performance.now() - lastBake > 100 ) bakeSky();
 				renderer.render( scene, camera );
 
-			}
-
+			} );
 		</script>
-
 	</body>
-
 </html>

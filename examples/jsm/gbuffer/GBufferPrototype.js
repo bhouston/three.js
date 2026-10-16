@@ -12,6 +12,7 @@ import { sunDirection, sunLightState } from '../math/Atmosphere.js';
 import { ao, specularOcclusion } from '../tsl/display/GTAONode.js';
 import { hiZ } from '../tsl/display/HiZNode.js';
 import { ssr } from '../tsl/display/SSRNode.js';
+import { ENV_RAY_LENGTH_THRESHOLD } from '../tsl/utils/SpecularHelpers.js';
 import { temporalReproject } from '../tsl/display/TemporalReprojectNode.js';
 import { recurrentDenoise } from '../tsl/display/RecurrentDenoiseNode.js';
 import { traa } from '../tsl/display/TRAANode.js';
@@ -166,10 +167,13 @@ async function loadScene() {
 	scene.add( sun );
 	grids = [];
 	status.textContent = 'Baking visibility-aware diffuse GI…';
-	for ( const volume of data.probeVolumes ) {
+	// A single visibility grid spans both rooms. Multiple grids plus shadow,
+	// SSR and AO samplers exceed WebGPU's portable 16-sampler stage limit.
+	const giBounds = data.probeVolumes.reduce( ( box, volume ) => box.union( volume.box ), new THREE.Box3() );
+	for ( const volume of [ { box: giBounds, position: giBounds.getCenter( new THREE.Vector3() ) } ] ) {
 
 		const size = volume.box.getSize( new THREE.Vector3() );
-		const grid = new LightProbeGrid( size.x, size.y, size.z, 4, 4, 4 );
+		const grid = new LightProbeGrid( size.x, size.y, size.z, data.probeVolumes.length > 1 ? 8 : 4, 4, 4 );
 		grid.position.copy( volume.position );
 		grid.visibility = true;
 		await grid.bake( renderer, scene, { cubemapSize: 16, near: 0.05, far: 40 } );
@@ -277,7 +281,7 @@ function buildPipeline() {
 		context.getIndirectSpecular = original => {
 
 			const fallback = params.probes ? probeSpecular() : original;
-			return filtered ? mix( fallback, filtered.rgb, float( reflections.a.greaterThan( 0 ) ) ) : fallback;
+			return filtered ? mix( fallback, filtered.rgb, float( reflections.a.greaterThan( 0 ).and( reflections.a.lessThan( ENV_RAY_LENGTH_THRESHOLD ) ) ) ) : fallback;
 
 		};
 
@@ -302,5 +306,7 @@ function buildPipeline() {
 	window.gbufferReady = true;
 
 }
+
+
 
 

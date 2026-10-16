@@ -609,7 +609,7 @@ async function createGallery( scene ) {
 
 
 	const dracoLoader = new DRACOLoader();
-	dracoLoader.setDecoderPath( new URL( '../../libs/draco/gltf/', import.meta.url ).href );
+	dracoLoader.setDecoderPath( new URL( '../libs/draco/gltf/', import.meta.url ).href );
 	const loader = new GLTFLoader().setDRACOLoader( dracoLoader );
 	try {
 
@@ -699,3 +699,4 @@ export async function createGBufferScene( name ) {
 	return { scene, cameraPosition, target, bounds, probeVolumes };
 
 }
+

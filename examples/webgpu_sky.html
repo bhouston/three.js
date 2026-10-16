@@ -4,6 +4,10 @@
 		<title>three.js webgpu - physical sun and sky</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - physical sun and sky">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_sky.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_sky.jpg">
 		<link type="text/css" rel="stylesheet" href="example.css">
 		<style>
 			#readout { position: absolute; bottom: 20px; left: 20px; padding: 12px 16px; background: #14202acc; color: #fff; font: 12px/1.7 monospace; pointer-events: none; border-radius: 4px; }
@@ -11,7 +15,8 @@
 	</head>
 	<body>
 		<div id="info">
-			<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a> — Physical sun and sky<br>
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Physical Sun and Sky</span></div>
 			Drag to orbit · right drag to pan · scroll to zoom<br>
 			Single scattering atmosphere · sun in lux · sky in cd/m²
 		</div>
@@ -28,21 +33,23 @@
 		</script>
 		<script type="module">
 			import * as THREE from 'three/webgpu';
-			import { texture, equirectUV, positionWorldDirection, uniform, dot, smoothstep } from 'three/tsl';
+			import { Fn, Loop, float, vec2, vec3, vec4, uv, texture, equirectUV, equirectDirection, positionWorldDirection, uniform, dot, smoothstep } from 'three/tsl';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-			import { atmosphere, luminance, sunDirection, sunLightState, skyRadiance, exposure } from 'three/addons/math/Atmosphere.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { AtmosphereNode, atmosphereTransmittance } from 'three/addons/tsl/display/AtmosphereNode.js';
+			import { atmosphere, luminance, sunDirection, sunLightState, exposure } from 'three/addons/math/Atmosphere.js';
 
 			const params = {
 				altitude: 32,
 				azimuth: 235,
 				northRotation: 0,
 				aerosol: 1,
-				groundAlbedo: 0.25,
+				groundAlbedo: '#738260',
 				observerAltitude: 0.002,
-				autoExposure: true,
-				ev100: 15,
+				autoExposure: false,
+				ev100: 13.6,
 				compensation: 0,
+				resolution: 512,
 				showSunDisc: true,
 				autoRotate: true,
 				rebake: changed
@@ -50,11 +57,12 @@
 			const scene = new THREE.Scene();
 			const camera = new THREE.PerspectiveCamera( 45, innerWidth / innerHeight, 0.1, 500 );
 			camera.position.set( 18, 7, 23 );
-			const renderer = new THREE.WebGPURenderer( { antialias: true } );
+			const renderer = new THREE.WebGPURenderer();
 			renderer.setPixelRatio( Math.min( devicePixelRatio, 2 ) );
 			renderer.setSize( innerWidth, innerHeight );
 			renderer.shadowMap.enabled = true;
 			renderer.toneMapping = THREE.ACESFilmicToneMapping;
+			renderer.inspector = new Inspector();
 			document.body.appendChild( renderer.domElement );
 			await renderer.init();
 
@@ -75,19 +83,53 @@
 			const sunVector = uniform( new THREE.Vector3() );
 			const sunRadiance = uniform( new THREE.Color() );
 			const sunDisc = uniform( 1 );
-			const width = 128, height = 64;
-			const skyData = new Float32Array( width * height * 4 );
-			const skyTexture = new THREE.DataTexture( skyData, width, height, THREE.RGBAFormat, THREE.FloatType );
-			skyTexture.mapping = THREE.EquirectangularReflectionMapping;
-			skyTexture.colorSpace = THREE.LinearSRGBColorSpace;
-			skyTexture.minFilter = skyTexture.magFilter = THREE.LinearFilter;
-			skyTexture.wrapS = THREE.RepeatWrapping;
-			// The tiny solar disc is evaluated analytically only in the background.
-			// It never enters PMREM: the directional light supplies that energy.
+			const lutTarget = new THREE.RenderTarget( 256, 128, { type: THREE.HalfFloatType, depthBuffer: false } );
+			const skyTarget = new THREE.RenderTarget( params.resolution, params.resolution / 2, { type: THREE.HalfFloatType, depthBuffer: false } );
+			skyTarget.texture.mapping = THREE.EquirectangularReflectionMapping;
+			skyTarget.texture.wrapS = THREE.RepeatWrapping;
+			const meterTarget = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
+			const atmosphereNode = new AtmosphereNode( lutTarget.texture, equirectDirection( uv().flipY() ) );
+			const lutMaterial = new THREE.NodeMaterial();
+			lutMaterial.fragmentNode = Fn( () => {
+
+				const coord = uv().flipY();
+				const u = coord.x.mul( 2 ).sub( 1 );
+				const cosine = u.sign().mul( u.mul( u ) );
+				const radius = coord.y.mul( coord.y ).mul( atmosphere.atmosphereRadius - atmosphere.planetRadius ).add( atmosphere.planetRadius );
+				return vec4( atmosphereTransmittance( radius, cosine, atmosphereNode.aerosol ), 1 );
+
+			} )();
+			const skyMaterial = new THREE.NodeMaterial();
+			skyMaterial.fragmentNode = vec4( atmosphereNode, 1 );
+			const groundRadiance = uniform( new THREE.Color() );
+			const groundMaterial = new THREE.NodeMaterial( { transparent: true, depthTest: false, depthWrite: false } );
+			groundMaterial.fragmentNode = vec4( groundRadiance, float( uv().y.greaterThan( 0.5 ) ) );
+			const meterMaterial = new THREE.NodeMaterial();
+			meterMaterial.fragmentNode = Fn( () => {
+
+				const irradiance = vec3( 0 ).toVar();
+				Loop( 16, ( { i } ) => {
+
+					const altitude = float( i ).add( 0.5 ).mul( Math.PI / 32 );
+					Loop( 32, ( { i: j } ) => {
+
+						const coord = vec2( float( j ).add( 0.5 ).div( 32 ), altitude.div( Math.PI ).add( 0.5 ) );
+						irradiance.addAssign( texture( skyTarget.texture, coord ).level( 0 ).rgb.mul( altitude.sin() ).mul( altitude.cos() ).mul( Math.PI * Math.PI / 512 ) );
+
+					} );
+
+				} );
+				return vec4( irradiance, 1 );
+
+			} )();
+			const quad = new THREE.QuadMesh();
 			const disc = smoothstep( Math.cos( THREE.MathUtils.degToRad( atmosphere.sunRadius + 0.02 ) ), Math.cos( THREE.MathUtils.degToRad( atmosphere.sunRadius ) ), dot( positionWorldDirection, sunVector ) );
-			scene.backgroundNode = texture( skyTexture, equirectUV() ).rgb.add( sunRadiance.mul( disc ).mul( positionWorldDirection.y.greaterThan( 0 ) ).mul( sunDisc ) );
+			// The solar disc is excluded from the environment bake.
+			scene.backgroundNode = texture( skyTarget.texture, equirectUV() ).rgb.add( sunRadiance.mul( disc ).mul( positionWorldDirection.y.greaterThan( 0 ) ).mul( sunDisc ) );
 			const pmrem = new THREE.PMREMGenerator( renderer );
-			let environment, dirty = true, lastBake = - Infinity, bakeCount = 0;
+			let environment, dirty = true, baking = false, lastBake = - Infinity, bakeCount = 0;
+			let lutAerosol, skyIlluminance = 0, storageScale = 1;
+			let directHorizontal = 0, directNormal = 0;
 
 			function mesh( geometry, color, x, y, z, roughness = 0.8, metalness = 0 ) {
 
@@ -99,7 +141,7 @@
 
 			}
 
-			mesh( new THREE.BoxGeometry( 10000, 0.2, 10000 ), 0x738260, 0, - 0.1, 0 );
+			const ground = mesh( new THREE.BoxGeometry( 10000, 0.2, 10000 ), params.groundAlbedo, 0, - 0.1, 0 );
 			mesh( new THREE.BoxGeometry( 8, 0.2, 7 ), 0xb6b0a3, 0, 0.1, 0 );
 			mesh( new THREE.BoxGeometry( 6, 3.6, 4.8 ), 0xe6dcc5, 0, 2, 0 );
 			// A triangular gable roof, extruded along the house's depth.
@@ -136,8 +178,7 @@
 
 			function fitShadow() {
 
-				// Include the ground receivers as well as every caster. Fitting in light
-				// space keeps the bounded diorama covered even at grazing sun angles.
+				// Fit the bounded diorama in light space.
 				sun.updateMatrixWorld();
 				sun.target.updateMatrixWorld();
 				sun.shadow.updateMatrices( sun );
@@ -161,69 +202,89 @@
 
 			}
 
-			function bakeSky() {
+			function updateExposure() {
 
+				const meter = exposure( directHorizontal + skyIlluminance, params.autoExposure ? null : params.ev100 );
+				exposureCorrection = meter.scale / storageScale;
+				renderer.toneMappingExposure = exposureCorrection * 2 ** params.compensation;
+				return meter.ev;
+
+			}
+
+			function renderPass( material, target ) {
+
+				quad.material = material;
+				renderer.setRenderTarget( target );
+				quad.render( renderer );
+				renderer.setRenderTarget( null );
+
+			}
+
+			async function bakeSky() {
+
+				baking = true;
+				dirty = false;
+				const settings = { ...params };
+				const model = { ...atmosphere, aerosol: settings.aerosol, observerAltitude: settings.observerAltitude };
+				const direction = sunDirection( settings.altitude, settings.azimuth, settings.northRotation );
+				const light = sunLightState( settings.altitude, model );
+				const solidAngle = 2 * Math.PI * ( 1 - Math.cos( THREE.MathUtils.degToRad( model.sunRadius ) ) );
+				const discRadiance = light.transmission.map( value => light.visibility > 0 ? value * model.sunIlluminance / solidAngle : 0 );
+				storageScale = Math.min( 1, 60000 / Math.max( model.sunIlluminance, ...discRadiance ) );
+				atmosphereNode.sunDirection.value.fromArray( direction );
+				atmosphereNode.aerosol.value = settings.aerosol;
+				atmosphereNode.observerAltitude.value = settings.observerAltitude;
+				atmosphereNode.preExposure.value = storageScale;
 				const start = performance.now();
-				const model = { ...atmosphere, aerosol: params.aerosol, observerAltitude: params.observerAltitude };
-				const direction = sunDirection( params.altitude, params.azimuth, params.northRotation );
-				const light = sunLightState( params.altitude, model );
-				let skyLux = 0;
-				// Texture rows run from nadir to zenith, matching equirectUV().
-				for ( let y = height / 2; y < height; y ++ ) {
+				if ( lutAerosol !== settings.aerosol ) {
 
-					const altitude = ( ( y + 0.5 ) / height - 0.5 ) * Math.PI;
-					for ( let x = 0; x < width; x ++ ) {
-
-						const azimuth = ( ( x + 0.5 ) / width - 0.5 ) * 2 * Math.PI;
-						const view = [ Math.cos( altitude ) * Math.cos( azimuth ), Math.sin( altitude ), Math.cos( altitude ) * Math.sin( azimuth ) ];
-						const rgb = skyRadiance( view, direction, model );
-						const offset = ( y * width + x ) * 4;
-						skyData.set( [ ...rgb, 1 ], offset );
-						skyLux += luminance( rgb ) * view[ 1 ] * Math.cos( altitude ) * ( Math.PI / height ) * ( 2 * Math.PI / width );
-
-					}
+					renderPass( lutMaterial, lutTarget );
+					lutAerosol = settings.aerosol;
 
 				}
 
-				const solidAngle = 2 * Math.PI * ( 1 - Math.cos( THREE.MathUtils.degToRad( model.sunRadius ) ) );
-				const discRadiance = light.transmission.map( value => light.visibility > 0 ? value * model.sunIlluminance / solidAngle : 0 );
-				const horizontal = light.illuminance * Math.max( direction[ 1 ], 0 );
-				const meter = exposure( horizontal + skyLux, params.autoExposure ? null : params.ev100 );
-				// A Lambertian ground closes the lower hemisphere of the environment.
-				// Keep even the background sun below fp16 overflow at sunset or at
-				// extreme manual EV. Restore the requested camera exposure during
-				// tone mapping, which evaluates the exposure in full precision.
-				let peakRadiance = Math.max( 1, ...discRadiance, light.illuminance );
-				for ( let i = width * height * 2; i < skyData.length; i += 4 ) for ( let c = 0; c < 3; c ++ ) peakRadiance = Math.max( peakRadiance, skyData[ i + c ] );
-				const storageScale = Math.min( meter.scale, 60000 / peakRadiance );
-				exposureCorrection = meter.scale / storageScale;
-				const ground = params.groundAlbedo * ( horizontal + skyLux ) / Math.PI;
-				for ( let y = 0; y < height / 2; y ++ ) for ( let x = 0; x < width; x ++ ) skyData.set( [ ground, ground, ground, 1 ], ( y * width + x ) * 4 );
-				for ( let i = 0; i < skyData.length; i += 4 ) for ( let c = 0; c < 3; c ++ ) skyData[ i + c ] *= storageScale;
-				skyTexture.needsUpdate = true;
-				const previous = environment;
-				environment = pmrem.fromEquirectangular( skyTexture );
+				if ( skyTarget.width !== settings.resolution ) {
+
+					skyTarget.setSize( settings.resolution, settings.resolution / 2 );
+					if ( environment ) environment.dispose();
+					environment = undefined;
+
+				}
+
+				renderPass( skyMaterial, skyTarget );
+				renderPass( meterMaterial, meterTarget );
+				const meterPixels = await renderer.readRenderTargetPixelsAsync( meterTarget, 0, 0, 1, 1 );
+				const skyRGB = Array.from( meterPixels ).slice( 0, 3 ).map( value => THREE.DataUtils.fromHalfFloat( value ) / storageScale );
+				skyIlluminance = luminance( skyRGB );
+				directNormal = light.illuminance;
+				directHorizontal = directNormal * Math.max( direction[ 1 ], 0 );
+				const albedo = new THREE.Color( settings.groundAlbedo );
+				ground.material.color.copy( albedo );
+				groundRadiance.value.setRGB( ...skyRGB.map( ( value, c ) => albedo.toArray()[ c ] * ( value + light.color[ c ] * directHorizontal ) * storageScale / Math.PI ) );
+				const autoClear = renderer.autoClear;
+				renderer.autoClear = false;
+				renderPass( groundMaterial, skyTarget );
+				renderer.autoClear = autoClear;
+				environment = pmrem.fromEquirectangular( skyTarget.texture, environment );
 				scene.environment = environment.texture;
-				if ( previous ) previous.dispose();
 				sunVector.value.fromArray( direction );
 				sun.position.fromArray( direction ).multiplyScalar( 200 );
 				sun.color.setRGB( ...light.color );
-				sun.intensity = light.illuminance * storageScale;
+				sun.intensity = directNormal * storageScale;
 				sun.visible = sun.castShadow = light.visibility > 0;
-				// Keep the physical partial-disc direction, including below the horizon.
 				fitShadow();
 				sunRadiance.value.setRGB( ...discRadiance.map( value => value * storageScale ) );
-				renderer.toneMappingExposure = exposureCorrection * 2 ** params.compensation;
 				sunDisc.value = params.showSunDisc ? 1 : 0;
+				const ev = updateExposure();
 				bakeCount ++;
-				const band = params.altitude > 0 ? 'Daylight' : params.altitude > - 6 ? 'Civil twilight' : params.altitude > - 12 ? 'Nautical twilight' : params.altitude > - 18 ? 'Astronomical twilight' : 'Night';
-				document.getElementById( 'readout' ).innerHTML = `${band}<br>Direct normal: ${light.illuminance.toFixed( 1 )} lux<br>Direct horizontal: ${horizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyLux.toFixed( 3 )} lux<br>EV100: ${meter.ev.toFixed( 2 )}<br>PMREM + atmosphere CPU submission: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
-				dirty = false;
+				const band = settings.altitude > 0 ? 'Daylight' : settings.altitude > - 6 ? 'Civil twilight' : settings.altitude > - 12 ? 'Nautical twilight' : settings.altitude > - 18 ? 'Astronomical twilight' : 'Night';
+				document.getElementById( 'readout' ).innerHTML = `${band}<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: ${ev.toFixed( 2 )}<br>Sky: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Bake wall time (includes meter readback): ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
+				baking = false;
 				lastBake = performance.now();
 
 			}
 
-			const gui = new GUI( { title: 'Physical sun and sky' } );
+			const gui = renderer.inspector.createParameters( 'Physical sun and sky' );
 			function changed() {
 
 				dirty = true;
@@ -231,16 +292,16 @@
 			}
 
 			const sunFolder = gui.addFolder( 'Sun (apparent altitude)' );
-			sunFolder.add( params, 'altitude', - 20, 90, 0.05 ).name( 'altitude °' ).onChange( changed ).onFinishChange( changed );
+			sunFolder.add( params, 'altitude', - 20, 90, 0.05 ).name( 'altitude °' ).onChange( changed );
 			sunFolder.add( params, 'azimuth', 0, 360, 0.1 ).name( 'azimuth ° (N → E)' ).onChange( changed );
 			sunFolder.add( params, 'northRotation', - 180, 180, 1 ).name( 'north rotation °' ).onChange( changed );
 			const airFolder = gui.addFolder( 'Atmosphere' );
 			airFolder.add( params, 'aerosol', 0.5, 5, 0.1 ).onChange( changed );
-			airFolder.add( params, 'groundAlbedo', 0, 1, 0.01 ).onChange( changed );
+			airFolder.addColor( params, 'groundAlbedo' ).onChange( changed );
 			airFolder.add( params, 'observerAltitude', 0.002, 2, 0.001 ).name( 'observer height km' ).onChange( changed );
 			const exposureFolder = gui.addFolder( 'Exposure' );
-			exposureFolder.add( params, 'autoExposure' ).onChange( changed );
-			exposureFolder.add( params, 'ev100', - 3, 17, 0.1 ).name( 'manual EV100' ).onChange( changed );
+			exposureFolder.add( params, 'autoExposure' ).onChange( updateExposure );
+			exposureFolder.add( params, 'ev100', - 3, 17, 0.1 ).name( 'manual EV100' ).onChange( updateExposure );
 			exposureFolder.add( params, 'compensation', - 3, 3, 0.1 ).name( 'compensation EV' ).onChange( value => {
 
 				renderer.toneMappingExposure = exposureCorrection * 2 ** value;
@@ -252,6 +313,7 @@
 
 			} );
 			gui.add( params, 'autoRotate' );
+			gui.add( params, 'resolution', [ 128, 256, 512, 1024 ] ).name( 'sky width (px)' ).onChange( changed );
 			gui.add( params, 'rebake' );
 
 			window.addEventListener( 'resize', () => {
@@ -261,15 +323,17 @@
 				renderer.setSize( innerWidth, innerHeight );
 
 			} );
-			renderer.setAnimationLoop( () => {
+			renderer.setAnimationLoop( animate );
+
+			function animate() {
 
 				timer.update();
 				controls.autoRotate = params.autoRotate;
 				controls.update( timer.getDelta() );
-				if ( dirty && performance.now() - lastBake > 100 ) bakeSky();
-				renderer.render( scene, camera );
+				if ( dirty && ! baking && performance.now() - lastBake > 100 ) bakeSky();
+				if ( ! baking ) renderer.render( scene, camera );
 
-			} );
+			}
 		</script>
 	</body>
 </html>

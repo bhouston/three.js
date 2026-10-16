@@ -4,15 +4,15 @@ import path from 'node:path';
 import fs from 'node:fs';
 // Run from the repository root. No software renderer flags are permitted.
 const cornellVariants = [
-	{ view: 'Depth' }, { view: 'Albedo' }, { view: 'Roughness' },
-	{ view: 'Velocity' }, { view: 'AO' }, { view: 'Bent normals' },
-	{ view: 'Hi-Z' }, { view: 'Normal' }, { view: 'SSR' },
-	{ view: 'Beauty', depthPrepass: false },
-	{ depthPrepass: true, hiZ: false, denoise: false },
-	{ ssr: false, gtao: false }, { probes: false }, { gi: false },
-	{ gi: true, visibility: false }, { visibility: true },
-	{ preset: 'Low' }, { traa: false },
-	{ preset: 'High', ssr: true, gtao: true, hiZ: true, denoise: true, traa: true, probes: true }
+	{ view: 'Depth' }, { view: 'Albedo' }, { view: 'Roughness' }, { view: 'Velocity' },
+	{ view: 'AO' }, { view: 'Bent normals' }, { view: 'Hi-Z' }, { view: 'Normal' }, { view: 'SSR' },
+	{ view: 'Beauty', depthMode: 'Conservative' }, { depthMode: 'Off' },
+	{ ssrTracing: 'Linear', reflectionDenoise: 'Off' },
+	{ specularMethod: 'Specular probes', aoMethod: 'Off' }, { specularMethod: 'None' },
+	{ diffuseMethod: 'None' }, { diffuseMethod: 'Sky IBL' },
+	{ diffuseMethod: 'SSGI', view: 'SSGI' }, { view: 'Beauty' },
+	{ diffuseMethod: 'Diffuse probes', visibility: false }, { visibility: true },
+	{ antialiasing: 'Off' }
 ];
 const server = createServer();
 await new Promise( resolve => server.listen( 0, '127.0.0.1', resolve ) );
@@ -50,7 +50,7 @@ try {
 			report.push( { scene, view: 'High beauty', adapter, errors: [ ...errors ] } );
 			await page.evaluate( () => window.gbufferWaitForGPU() );
 			if ( errors.length ) throw Error( errors.join( '\n' ) );
-			for ( const values of ( scene === 'Cornell' ? cornellVariants : [ { preset: 'Low' } ] ) ) {
+			for ( const values of ( scene === 'Cornell' ? cornellVariants : [ { depthMode: 'Conservative' }, { depthMode: 'Off' }, { diffuseMethod: 'SSGI' }, { diffuseMethod: 'Diffuse probes' } ] ) ) {
 
 				errors = [];
 				const before = await page.evaluate( () => window.gbufferFrames );
@@ -58,8 +58,44 @@ try {
 				await page.waitForFunction( n => window.gbufferFrames > n + 12, { timeout: 60000 }, before );
 				await page.evaluate( () => window.gbufferWaitForGPU() );
 				if ( errors.length ) throw Error( scene + ' ' + JSON.stringify( values ) + ' ' + errors.join( '\n' ) );
-				report.push( { scene, values, errors: [ ...errors ] } );
+				const lighting = await page.evaluate( () => window.gbufferGetLightingState() );
+				if ( lighting.skyDiffuse && lighting.probeGrids > 0 ) throw Error( 'Diffuse sky and probes are both active' );
+				report.push( { scene, values, lighting, errors: [ ...errors ] } );
 				if ( artifacts && values.view && values.view !== 'Beauty' ) await page.screenshot( { path: path.join( artifacts, 'buffer-' + values.view.toLowerCase().replaceAll( ' ', '-' ) + '.png' ) } );
+
+			}
+
+			await page.evaluate( () => window.gbufferSet( { view: 'Albedo', antialiasing: 'Off', depthMode: 'Off' } ) );
+			let sampleFrame = await page.evaluate( () => window.gbufferFrames );
+			await page.waitForFunction( n => window.gbufferFrames > n + 12, {}, sampleFrame );
+			await page.evaluate( async () => {
+
+				window.depthBaseline = await window.gbufferReadBuffer( 'albedo' );
+
+			} );
+			await page.evaluate( () => window.gbufferSet( { depthMode: 'Conservative' } ) );
+			sampleFrame = await page.evaluate( () => window.gbufferFrames );
+			await page.waitForFunction( n => window.gbufferFrames > n + 12, {}, sampleFrame );
+			const changedChannels = await page.evaluate( async () => {
+
+				const actual = await window.gbufferReadBuffer( 'albedo' );
+				let changed = 0;
+				for ( let i = 0; i < actual.length; i ++ ) if ( actual[ i ] !== window.depthBaseline[ i ] ) changed ++;
+				return changed;
+
+			} );
+			report.push( { scene, depthPrepassChangedAlbedoChannels: changedChannels } );
+			if ( changedChannels !== 0 ) throw Error( 'Pre-pass differs from disabled albedo: ' + changedChannels );
+			for ( const preset of [ 'Low', 'High' ] ) {
+
+				await page.evaluate( name => window.gbufferApplyPreset( name ), preset );
+				const settings = await page.evaluate( () => window.gbufferGetSettings() );
+				const visibleValues = await page.evaluate( () => window.gbufferGetControlValues() );
+				for ( const [ key, value ] of Object.entries( visibleValues ) ) if ( settings[ key ] !== value ) throw Error( 'Inspector value out of sync: ' + key );
+				if ( settings.depthMode !== 'Off' || settings.diffuseMethod !== 'Diffuse probes' || settings.specularMethod !== ( preset === 'High' ? 'SSR' : 'Specular probes' ) ) throw Error( 'Incorrect preset settings' );
+				await page.waitForFunction( () => window.gbufferFrames > 3 );
+				await page.evaluate( () => window.gbufferWaitForGPU() );
+				if ( errors.length ) throw Error( errors.join( '\n' ) );
 
 			}
 

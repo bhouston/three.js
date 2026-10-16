@@ -1,8 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { pass, mrt, output, normalView, materialRoughness, materialMetalness, diffuseColor, velocity, octEncode, octDecode, sample, vec2, vec3, vec4, float, roughness, specularColorBlended, specularF90, positionViewDirection, screenUV, reflect, mix, builtinAOContext, uv, equirectDirection, perspectiveDepthToViewZ } from 'three/tsl';
+import { pass, mrt, output, normalView, materialRoughness, materialMetalness, diffuseColor, velocity, octEncode, octDecode, sample, vec2, vec3, vec4, float, roughness, specularColorBlended, specularF90, positionViewDirection, screenUV, reflect, mix, builtinAOContext, builtinGIContext, uv, equirectDirection, perspectiveDepthToViewZ } from 'three/tsl';
 import EnvironmentBRDF from '../../../src/nodes/functions/BSDF/EnvironmentBRDF.js';
 import { OrbitControls } from '../controls/OrbitControls.js';
-import { GUI } from '../libs/lil-gui.module.min.js';
+import { Inspector } from '../inspector/Inspector.js';
+import { ssgi } from '../tsl/display/SSGINode.js';
 import { LightProbeGrid } from '../lighting/LightProbeGrid.js';
 import { SpecularProbe } from '../lighting/SpecularProbe.js';
 import { SpecularProbes } from '../lighting/SpecularProbes.js';
@@ -23,11 +24,12 @@ const status = document.getElementById( 'status' );
 const query = new URLSearchParams( location.search );
 const params = {
 	scene: query.get( 'scene' ) || 'Cornell', preset: query.get( 'preset' ) || 'High',
-	depthPrepass: true, hiZ: true, gtao: true, ssr: true, denoise: true, traa: true,
-	gi: true, visibility: true, probes: true, view: 'Beauty', hiZLevel: 3,
-	exposure: 1, quality: 0.25, aoRadius: 0.6
+	depthMode: 'Off', ssrTracing: 'Hi-Z', aoMethod: 'GTAO', specularMethod: 'SSR',
+	diffuseMethod: 'Diffuse probes', reflectionDenoise: 'Temporal + spatial', antialiasing: 'TRAA', visibility: true, view: 'Beauty', hiZLevel: 3,
+	giIntensity: 1, exposure: 1, quality: 0.25, aoRadius: 0.6
 };
 const renderer = new THREE.WebGPURenderer();
+renderer.inspector = new Inspector();
 renderer.setPixelRatio( Math.min( devicePixelRatio, 1.5 ) );
 renderer.setSize( innerWidth, innerHeight );
 renderer.shadowMap.enabled = true;
@@ -38,7 +40,8 @@ const controls = new OrbitControls( camera, renderer.domElement );
 controls.enableDamping = true;
 const owned = [];
 let scene, pipeline, gbuffer, grids, reflectionSystem, skyTarget, environment;
-let gui;
+const editors = new Map();
+let refreshQueued = false;
 let busy = false;
 let highSupported = true;
 
@@ -65,8 +68,12 @@ async function init() {
 	if ( ! adapterName.trim() ) throw new Error( 'Cannot confirm hardware GPU identity.' );
 	window.gbufferAdapter = adapterName;
 	await createSky();
+	applyPreset( params.preset, false );
 	await loadScene();
-	gui = new GUI( { title: 'G-buffer prototype' } );
+	const gui = renderer.inspector.createParameters( 'G-buffer prototype' );
+	const presets = { High: () => applyPreset( 'High' ), Low: () => applyPreset( 'Low' ) };
+	gui.add( presets, 'High' ).name( 'High preset' );
+	gui.add( presets, 'Low' ).name( 'Low preset' );
 	gui.add( params, 'scene', [ 'Cornell', 'Two rooms', 'GTAO' ] ).onChange( () => {
 
 		const url = new URL( location.href );
@@ -75,25 +82,34 @@ async function init() {
 		location.href = url.href;
 
 	} );
-	gui.add( params, 'preset', [ 'High', 'Low' ] ).onChange( buildPipeline );
-	for ( const name of [ 'depthPrepass', 'hiZ', 'gtao', 'ssr', 'denoise', 'traa', 'probes' ] ) gui.add( params, name ).onChange( buildPipeline );
-	gui.add( params, 'gi' ).onChange( value => {
+	const choices = {
+		diffuseMethod: [ 'None', 'Sky IBL', 'Diffuse probes', 'SSGI' ],
+		specularMethod: { None: 'None', 'Specular probes': 'Specular probes', 'SSR (probe fallback)': 'SSR' },
+		depthMode: [ 'Off', 'Conservative' ], aoMethod: [ 'Off', 'GTAO' ],
+		ssrTracing: [ 'Linear', 'Hi-Z' ], reflectionDenoise: [ 'Off', 'Temporal + spatial' ],
+		antialiasing: [ 'Off', 'TRAA' ]
+	};
+	const labels = { diffuseMethod: 'Diffuse GI', specularMethod: 'Specular reflections', depthMode: 'Depth pre-pass', aoMethod: 'Ambient occlusion', ssrTracing: 'SSR traversal', reflectionDenoise: 'SSR denoising', antialiasing: 'Antialiasing' };
+	for ( const [ key, values ] of Object.entries( choices ) ) {
 
-		for ( const grid of grids ) grid.visible = value;
-		buildPipeline();
+		editors.set( key, gui.add( params, key, values ).name( labels[ key ] ).onChange( changed ) );
 
-	} );
-	gui.add( params, 'visibility' ).onChange( value => {
+	}
 
-		for ( const grid of grids ) grid.visibility = value;
-		buildPipeline();
-
-	} );
-	gui.add( params, 'view', [ 'Beauty', 'Depth', 'Normal', 'Albedo', 'Roughness', 'Velocity', 'Hi-Z', 'AO', 'Bent normals', 'SSR' ] ).onChange( buildPipeline );
-	gui.add( params, 'hiZLevel', 0, 10, 1 ).onChange( buildPipeline );
-	gui.add( params, 'quality', 0.05, 1 ).onFinishChange( buildPipeline );
-	gui.add( params, 'aoRadius', 0.1, 2 ).onFinishChange( buildPipeline );
+	editors.set( 'visibility', gui.add( params, 'visibility' ).name( 'Probe visibility' ).onChange( changed ) );
+	gui.add( params, 'view', [ 'Beauty', 'Depth', 'Normal', 'Albedo', 'Roughness', 'Velocity', 'Hi-Z', 'AO', 'Bent normals', 'SSR', 'SSGI' ] ).onChange( changed );
+	gui.add( params, 'hiZLevel', 0, 10, 1 ).name( 'Hi-Z debug level' ).onChange( changed );
+	gui.add( params, 'quality', 0.05, 1 ).name( 'SSR quality' ).onChange( changed ).debounce( 200 );
+	gui.add( params, 'aoRadius', 0.1, 2 ).name( 'AO radius' ).onChange( changed ).debounce( 200 );
+	gui.add( params, 'giIntensity', 0, 3, 0.05 ).name( 'Diffuse GI strength' ).onChange( changed ).debounce( 200 );
 	gui.add( params, 'exposure', 0.1, 4 ).onChange( value => renderer.toneMappingExposure = value );
+	for ( const { key, editor, object } of gui.objects ) {
+
+		if ( object === params ) editors.set( key, editor );
+
+	}
+
+	buildPipeline();
 	window.addEventListener( 'resize', () => {
 
 		camera.aspect = innerWidth / innerHeight;
@@ -109,14 +125,81 @@ async function init() {
 		window.gbufferFrames = ( window.gbufferFrames || 0 ) + 1;
 
 	} );
+	window.gbufferApplyPreset = applyPreset;
+	window.gbufferReadBuffer = async name => {
+
+		await renderer.backend.device.queue.onSubmittedWorkDone();
+		return renderer.readRenderTargetPixelsAsync( gbuffer.renderTarget, 0, 0, gbuffer.renderTarget.width, gbuffer.renderTarget.height, gbuffer.renderTarget.textures.indexOf( gbuffer.getTexture( name ) ) );
+
+	};
+
+	window.gbufferGetLightingState = () => ( { skyDiffuse: scene.environment !== null, probeGrids: grids.filter( grid => grid.visible ).length } );
+	window.gbufferGetControlValues = () => Object.fromEntries( [ ...editors ].map( ( [ key, editor ] ) => [ key, editor.getValue() ] ) );
+	window.gbufferGetSettings = () => ( { ...params } );
 	window.gbufferWaitForGPU = () => renderer.backend.device.queue.onSubmittedWorkDone();
 	window.gbufferSet = values => {
 
 		Object.assign( params, values );
 		buildPipeline();
-		for ( const controller of gui.controllersRecursive() ) controller.updateDisplay();
+		syncEditors();
 
 	};
+
+}
+
+function syncEditors() {
+
+	for ( const [ key, editor ] of editors ) {
+
+		if ( editor.getValue() !== params[ key ] ) {
+
+			// Update Inspector values without firing each control's rebuild handler.
+			const dispatch = editor.dispatchChange;
+			editor.dispatchChange = () => {};
+
+			try {
+
+				editor.setValue( params[ key ] );
+
+			} finally {
+
+				editor.dispatchChange = dispatch;
+
+			}
+
+		}
+
+	}
+
+}
+
+function changed() {
+
+	if ( refreshQueued ) return;
+	refreshQueued = true;
+	requestAnimationFrame( () => {
+
+		refreshQueued = false;
+		params.preset = 'Custom';
+		buildPipeline();
+
+	} );
+
+}
+
+function applyPreset( name, rebuild = true ) {
+
+	const high = name !== 'Low' && highSupported;
+	Object.assign( params, {
+		preset: high ? 'High' : 'Low', depthMode: 'Off', diffuseMethod: 'Diffuse probes',
+		specularMethod: high ? 'SSR' : 'Specular probes', aoMethod: high ? 'GTAO' : 'Off',
+		ssrTracing: high ? 'Hi-Z' : 'Linear', reflectionDenoise: high ? 'Temporal + spatial' : 'Off',
+		antialiasing: high ? 'TRAA' : 'Off', visibility: true, view: 'Beauty',
+		hiZLevel: 3, quality: high ? 0.25 : 0.1, aoRadius: 0.6, giIntensity: 1, exposure: 1
+	} );
+	renderer.toneMappingExposure = params.exposure;
+	syncEditors();
+	if ( rebuild ) buildPipeline();
 
 }
 
@@ -201,11 +284,18 @@ async function loadScene() {
 function buildPipeline() {
 
 	if ( ! scene ) return;
-	if ( ! highSupported ) params.preset = 'Low';
+	if ( ! highSupported ) {
+
+		params.specularMethod = params.specularMethod === 'SSR' ? 'Specular probes' : params.specularMethod;
+		params.diffuseMethod = params.diffuseMethod === 'SSGI' ? 'Diffuse probes' : params.diffuseMethod;
+
+	}
+
 	for ( const grid of grids ) {
 
-		grid.visible = params.gi;
+		grid.visible = params.diffuseMethod === 'Diffuse probes';
 		grid.visibility = params.visibility;
+		grid.intensity = params.giIntensity;
 
 	}
 
@@ -219,13 +309,17 @@ function buildPipeline() {
 
 	};
 
-	const high = params.preset === 'High';
+	// Buffer requirements follow the visible controls, never a hidden preset flag.
+	const high = params.specularMethod === 'SSR' || params.diffuseMethod === 'SSGI' || params.aoMethod === 'GTAO' || ! [ 'Beauty', 'Depth', 'Velocity' ].includes( params.view );
+	// Probes include captured sky diffuse. Select it OR live sky diffuse, never both.
+	scene.environment = params.diffuseMethod === 'Sky IBL' ? environment.texture : null;
+	scene.environmentIntensity = params.giIntensity;
 	pipeline = new THREE.RenderPipeline( renderer );
 	gbuffer = keep( enableDepthPrepass( pass( scene, camera ) ) );
-	gbuffer.depthPrepass = params.depthPrepass;
-	gbuffer.name = 'G-buffer (depth pre-pass + equal)';
+	gbuffer.depthPrepass = params.depthMode === 'Conservative';
+	gbuffer.name = 'G-buffer (optional conservative depth pre-pass)';
 	const attachments = { output };
-	if ( high || params.traa || params.view === 'Velocity' ) attachments.velocity = velocity;
+	if ( high || ( params.antialiasing === 'TRAA' ) || params.view === 'Velocity' ) attachments.velocity = velocity;
 	if ( high ) Object.assign( attachments, {
 		normal: octEncode( normalView ), albedo: vec4( diffuseColor.rgb, materialMetalness ), roughness: materialRoughness
 	} );
@@ -239,10 +333,10 @@ function buildPipeline() {
 	const probeSpecular = () => probeRadiance.mul( EnvironmentBRDF( {
 		dotNV: normalView.dot( positionViewDirection ).clamp(), specularColor: specularColorBlended, specularF90, roughness
 	} ) );
-	if ( params.probes ) gbuffer.contextNode = builtinAOContext( float( 1 ) );
-	if ( params.probes ) gbuffer.contextNode.value.getIndirectSpecular = () => probeSpecular();
+	gbuffer.contextNode = builtinAOContext( float( 1 ) );
+	gbuffer.contextNode.value.getIndirectSpecular = () => params.specularMethod === 'None' || params.diffuseMethod === 'SSGI' ? vec3( 0 ) : probeSpecular();
 	let result = color;
-	let normal, albedo, rough, pyramid, gtao, reflections;
+	let normal, albedo, rough, pyramid, gtao, reflections, diffuseGI;
 	if ( high ) {
 
 		const packed = gbuffer.getTextureNode( 'normal' );
@@ -260,10 +354,10 @@ function buildPipeline() {
 		gtao.resolutionScale = 0.5;
 		gtao.radius.value = params.aoRadius;
 		let filtered;
-		if ( params.ssr ) {
+		if ( params.specularMethod === 'SSR' ) {
 
 			reflections = keep( ssr( color, depth, normal, {
-				stochastic: true, hiZ: params.hiZ ? pyramid : null,
+				stochastic: true, hiZ: params.ssrTracing === 'Hi-Z' ? pyramid : null,
 				diffuseNode: albedo, metalnessNode: albedo.a, roughnessNode: rough.r
 			} ) );
 			reflections.quality.value = params.quality;
@@ -272,7 +366,7 @@ function buildPipeline() {
 			reflections.maxDistance.value = 20;
 			reflections.thickness.value = 0.15;
 			filtered = reflections;
-			if ( params.denoise ) {
+			if ( params.reflectionDenoise !== 'Off' ) {
 
 				const temporal = keep( temporalReproject( reflections, depth, packed, motion, camera, { mode: 'specular', normalEncoding: 'octahedral', accumulate: false } ) );
 				filtered = keep( recurrentDenoise( temporal, camera, {
@@ -290,22 +384,36 @@ function buildPipeline() {
 		// Separate source and resolve draws avoid a dependency cycle through SSR.
 		// SSR returns weighted outgoing light; the probe fallback is weighted once here.
 		const beauty = keep( pass( scene, camera ) );
-		const visibility = params.gtao ? gtao.getTextureNode().sample( screenUV ).r : float( 1 );
-		beauty.contextNode = builtinAOContext( visibility );
-		const context = beauty.contextNode.value;
-		context.getIndirectSpecular = original => {
+		const visibility = ( params.aoMethod === 'GTAO' ) ? gtao.getTextureNode().sample( screenUV ).r : float( 1 );
+		if ( params.diffuseMethod === 'SSGI' ) {
 
-			const fallback = params.probes ? probeSpecular() : original;
+			diffuseGI = keep( ssgi( color, depth, normal, camera ) );
+			diffuseGI.sliceCount.value = 2;
+			diffuseGI.stepCount.value = 8;
+			diffuseGI.giIntensity.value = params.giIntensity;
+			// SSGI's RGB is radiance for an albedo multiply; material GI expects irradiance.
+			beauty.contextNode = builtinGIContext( visibility, diffuseGI.getGINode().rgb.mul( Math.PI ) );
+
+		} else {
+
+			beauty.contextNode = builtinAOContext( visibility );
+
+		}
+
+		const context = beauty.contextNode.value;
+		context.getIndirectSpecular = () => {
+
+			const fallback = params.specularMethod === 'None' ? vec3( 0 ) : probeSpecular();
 			return filtered ? mix( fallback, filtered.rgb, float( reflections.a.greaterThan( 0 ).and( reflections.a.lessThan( ENV_RAY_LENGTH_THRESHOLD ) ) ) ) : fallback;
 
 		};
 
-		if ( params.gtao ) context.getSpecularOcclusion = ( original, n, r, v ) => specularOcclusion( visibility, gtao.getBentNormalNode(), reflect( v.negate(), n ), r );
+		if ( params.aoMethod === 'GTAO' ) context.getSpecularOcclusion = ( original, n, r, v ) => specularOcclusion( visibility, gtao.getBentNormalNode(), reflect( v.negate(), n ), r );
 		result = beauty;
 
 	}
 
-	if ( params.traa ) result = keep( traa( result, depth, motion, camera ) );
+	if ( params.antialiasing === 'TRAA' ) result = keep( traa( result, depth, motion, camera ) );
 	const views = {
 		Depth: vec4( vec3( gbuffer.getLinearDepthNode() ), 1 ),
 		Velocity: vec4( motion.rg.mul( 10 ).add( 0.5 ), 0, 1 )
@@ -314,11 +422,23 @@ function buildPipeline() {
 		Normal: vec4( normal.mul( 0.5 ).add( 0.5 ), 1 ), Albedo: albedo, Roughness: vec4( vec3( rough.r ), 1 ),
 		'Hi-Z': vec4( vec3( perspectiveDepthToViewZ( pyramid, camera.near, camera.far ).negate().div( 20 ) ), 1 ),
 		AO: vec4( vec3( gtao.r ), 1 ), 'Bent normals': vec4( gtao.getBentNormalNode().mul( 0.5 ).add( 0.5 ), 1 ),
-		SSR: reflections ? vec4( reflections.rgb, 1 ) : color
+		SSR: reflections ? vec4( reflections.rgb, 1 ) : color,
+		SSGI: diffuseGI ? vec4( diffuseGI.getGINode().rgb, 1 ) : color
 	} );
 	pipeline.outputNode = views[ params.view ] || result;
 	pipeline.outputColorTransform = ! views[ params.view ];
-	status.textContent = `${ params.scene } · ${ params.preset } · ${ window.gbufferAdapter }\n${ high ? 'Depth → MRT → Hi-Z / GTAO / SSR → material resolve → TRAA' : 'Depth → beauty + velocity → TRAA' }\nPrototype: synchronous probe bakes; approximate probe BRDF; opaque geometry only. No SSR demodulation.`;
+	status.textContent = `${ params.scene } · ${ params.preset } · ${ window.gbufferAdapter }\n${ high ? 'MRT → selected effects → material resolve' : 'Minimal MRT → beauty' }\n${ params.diffuseMethod } · ${ params.specularMethod } · Depth: ${ params.depthMode }\nPrototype: synchronous probe bakes; approximate probe BRDF; opaque geometry only. No SSR demodulation.`;
+	syncEditors();
+	for ( const [ key, active ] of Object.entries( {
+		visibility: params.diffuseMethod === 'Diffuse probes', giIntensity: params.diffuseMethod !== 'None',
+		ssrTracing: params.specularMethod === 'SSR', reflectionDenoise: params.specularMethod === 'SSR',
+		quality: params.specularMethod === 'SSR', hiZLevel: params.view === 'Hi-Z', aoRadius: params.aoMethod === 'GTAO'
+	} ) ) {
+
+		if ( editors.has( key ) ) editors.get( key )[ active ? 'show' : 'hide' ]();
+
+	}
+
 	window.gbufferReady = true;
 
 }

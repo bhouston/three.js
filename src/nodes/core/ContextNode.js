@@ -314,6 +314,41 @@ export function builtinGIContext( aoNode, giNode, node = null ) {
 }
 
 /**
+ * Replaces a physical material's base-layer indirect specular lighting with resolved
+ * outgoing radiance, for example denoised SSR including its environment fallback.
+ * The signal must already include the specular BRDF / Fresnel weighting. It is not
+ * multiplied by the material BRDF again. Direct lighting, indirect diffuse and the
+ * separate clearcoat and sheen lobes are preserved. Material AO still applies.
+ * Transparent materials retain their built-in lighting.
+ *
+ * ```js
+ * const beautyPass = pass( scene, camera );
+ * beautyPass.contextNode = builtinSpecularContext( reflections.rgb );
+ * ```
+ *
+ * @tsl
+ * @function
+ * @param {Node<vec3>} radianceNode - Resolved base-layer indirect specular radiance.
+ * @param {Node} [node=null] - The node whose context should be modified.
+ * @returns {ContextNode}
+ */
+export function builtinSpecularContext( radianceNode, node = null ) {
+
+	return context( node, {
+
+		getIndirectSpecular: ( inputNode, { material } ) => {
+
+			if ( material.transparent === true ) return inputNode;
+
+			return radianceNode;
+
+		}
+
+	} );
+
+}
+
+/**
  * TSL function for defining a label context value for a given node.
  *
  * @tsl
@@ -338,3 +373,4 @@ addMethodChaining( 'setName', setName );
 addMethodChaining( 'builtinShadowContext', ( node, shadowNode, light ) => builtinShadowContext( shadowNode, light, node ) );
 addMethodChaining( 'builtinAOContext', ( node, aoValue ) => builtinAOContext( aoValue, node ) );
 addMethodChaining( 'builtinGIContext', ( node, aoValue, giValue ) => builtinGIContext( aoValue, giValue, node ) );
+addMethodChaining( 'builtinSpecularContext', ( node, radianceNode ) => builtinSpecularContext( radianceNode, node ) );

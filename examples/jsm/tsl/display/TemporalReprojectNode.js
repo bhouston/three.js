@@ -1,4 +1,4 @@
-import { EPSILON, Fn, If, abs, convertToTexture, dFdx, dFdy, dot, exp, float, floor, fwidth, getViewPosition, ivec2, luminance, max, min, mix, nodeObject, normalize, passTexture, screenCoordinate, select, smoothstep, sqrt, struct, texture, textureLoad, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4, velocity, context, OnBeforeRenderPipeline, OnAfterRenderPipeline, isBackgroundDepth } from 'three/tsl';
+import { octDecode, bool, EPSILON, Fn, If, abs, convertToTexture, dFdx, dFdy, dot, exp, float, floor, fwidth, getViewPosition, ivec2, luminance, max, min, mix, nodeObject, normalize, passTexture, screenCoordinate, select, smoothstep, sqrt, struct, texture, textureLoad, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4, velocity, context, OnBeforeRenderPipeline, OnAfterRenderPipeline, isBackgroundDepth } from 'three/tsl';
 import { DepthTexture, HalfFloatType, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { ENV_RAY_LENGTH, ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
 
@@ -218,6 +218,7 @@ const sampleBilinearTap = Fn( ( [
 	historyTexture,
 	previousDepthNode,
 	previousNormalNode,
+	octahedralNormals,
 	resolution,
 	previousProjectionMatrixInverse,
 	previousCameraWorldMatrix,
@@ -232,7 +233,8 @@ const sampleBilinearTap = Fn( ( [
 	const reprojDepth = textureLoad( previousDepthNode, tapCoord ).r;
 	const reprojViewPos = getViewPosition( vec2( tapCoord ).add( 0.5 ).div( resolution ), reprojDepth, previousProjectionMatrixInverse );
 	const reprojWorldPos = previousCameraWorldMatrix.mul( vec4( reprojViewPos, 1.0 ) ).xyz;
-	const reprojWorldNorm = unpackRGBToNormal( textureLoad( previousNormalNode, tapCoord ).rgb ).transformNormalByInverseViewMatrix( previousCameraViewMatrix );
+	const encodedNormal = textureLoad( previousNormalNode, tapCoord );
+	const reprojWorldNorm = select( octahedralNormals, octDecode( encodedNormal.rg ), unpackRGBToNormal( encodedNormal.rgb ) ).transformNormalByInverseViewMatrix( previousCameraViewMatrix );
 
 	const planeDiff = abs( dot( reprojWorldPos.sub( worldPosition ), worldNormal ) ).toVar();
 	planeDiff.divAssign( abs( reprojViewPos.z ) );
@@ -255,6 +257,7 @@ function bilinearHistoryTap( ctx, tapOffset, bilinearWeight ) {
 		ctx.historyTexture,
 		ctx.previousDepthNode,
 		ctx.previousNormalNode,
+		ctx.octahedralNormals,
 		ctx.resolution,
 		ctx.previousProjectionMatrixInverse,
 		ctx.previousCameraWorldMatrix,
@@ -276,6 +279,7 @@ const sampleHistory4Tap = Fn( ( [
 	historyTexture,
 	previousDepthNode,
 	previousNormalNode,
+	octahedralNormals,
 	resolution,
 	previousProjectionMatrixInverse,
 	previousCameraWorldMatrix,
@@ -301,6 +305,7 @@ const sampleHistory4Tap = Fn( ( [
 		historyTexture,
 		previousDepthNode,
 		previousNormalNode,
+		octahedralNormals,
 		resolution,
 		previousProjectionMatrixInverse,
 		previousCameraWorldMatrix,
@@ -471,6 +476,7 @@ const VARIANCE_GAMMA_MAX = 1;
 
 /**
  * @typedef {Object} TemporalReprojectNodeOptions
+ * @property {'rgb'|'octahedral'} [normalEncoding='rgb'] - RGB-packed or signed octahedral view-space normals.
  * @property {TemporalReprojectMode} [mode='diffuse'] - `diffuse` for SSGI/scene colour; `specular` for SSR reflections.
  * @property {boolean} [hitPointReprojection] - Parallax hit-point reprojection (specular mode only). Defaults to `true` in specular mode.
  * @property {boolean} [accumulate=false] - When `true`, history is stored in this pass (classic temporal resolve). When `false`,
@@ -516,6 +522,7 @@ class TemporalReprojectNode extends Node {
 		super( 'vec4' );
 
 		const {
+			normalEncoding = 'rgb',
 			mode = 'diffuse',
 			hitPointReprojection = mode === 'specular',
 			accumulate = false
@@ -533,6 +540,13 @@ class TemporalReprojectNode extends Node {
 		this.beautyNode = beautyNode;
 		this.depthNode = depthNode;
 		this.normalNode = normalNode;
+
+		/**
+		 * Normal buffer encoding, selected at construction time.
+		 *
+		 * @type {'rgb'|'octahedral'}
+		 */
+		this.normalEncoding = normalEncoding;
 		this.velocityNode = velocityNode;
 		this.camera = camera;
 
@@ -792,7 +806,8 @@ class TemporalReprojectNode extends Node {
 			const beautyTexel = beautyTexelFromScreen( screenTexel, beautySize, this._resolution );
 
 			const inputColor = textureLoad( this.beautyNode, beautyTexel ).max( 0 ).toVar();
-			const viewNormal = unpackRGBToNormal( textureLoad( this.normalNode, screenTexel ).rgb ).toVar();
+			const encodedNormal = textureLoad( this.normalNode, screenTexel );
+			const viewNormal = ( this.normalEncoding === 'octahedral' ? octDecode( encodedNormal.rg ) : unpackRGBToNormal( encodedNormal.rgb ) ).toVar();
 
 			// Shared 3×3 beauty fetch: feeds both the variance-clip box and the SSR ray-length stats.
 			const neighborhood = collectNeighborhood( this.beautyNode, beautyTexel, inputColor, this.flickerSuppression );
@@ -805,6 +820,7 @@ class TemporalReprojectNode extends Node {
 				this._historyTextureNode,
 				this._previousDepthNode,
 				this._previousNormalNode,
+				bool( this.normalEncoding === 'octahedral' ),
 				this._resolution,
 				cameraUniforms.previousProjectionMatrixInverse,
 				cameraUniforms.previousWorldMatrix,

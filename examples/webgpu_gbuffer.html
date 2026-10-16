@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - G-buffer prototype</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<link rel="stylesheet" href="example.css">
+		<style>
+			#status { position: absolute; bottom: 12px; left: 12px; padding: 10px; background: #000b; color: white; font: 12px monospace; pointer-events: none; }
+		</style>
+	</head>
+	<body>
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a> — G-buffer prototype<br>
+			<small>Shared depth / Hi-Z / bent-normal GTAO / visibility GI / probe + SSR resolve / TRAA</small>
+		</div>
+		<div id="status">Initializing hardware WebGPU…</div>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../src/Three.WebGPU.js",
+					"three/webgpu": "../src/Three.WebGPU.js",
+					"three/tsl": "../src/Three.TSL.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module" src="./jsm/gbuffer/GBufferPrototype.js"></script>
+	</body>
+</html>

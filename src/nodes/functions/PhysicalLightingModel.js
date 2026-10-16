@@ -876,8 +876,14 @@ class PhysicalLightingModel extends LightingModel {
 
 		const cosineWeightedIrradiance = iblIrradiance.mul( 1 / Math.PI );
 
-		const indirectSpecular = radiance.mul( singleScattering ).add( multiScattering.mul( cosineWeightedIrradiance ) ).toVar();
+		let indirectSpecular = radiance.mul( singleScattering ).add( multiScattering.mul( cosineWeightedIrradiance ) ).toVar();
 		const indirectDiffuse = diffuse.mul( cosineWeightedIrradiance ).toVar();
+
+		if ( builder.context.getIndirectSpecular ) {
+
+			indirectSpecular = builder.context.getIndirectSpecular( indirectSpecular, builder ).toVar();
+
+		}
 
 		if ( this.sheen === true ) {
 
@@ -910,11 +916,21 @@ class PhysicalLightingModel extends LightingModel {
 		const aoNV = dotNV.add( ambientOcclusion );
 		const aoExp = roughness.mul( - 16.0 ).oneMinus().negate().exp2();
 
-		const aoNode = ambientOcclusion.sub( aoNV.pow( aoExp ).oneMinus() ).clamp();
+		let aoNode = ambientOcclusion.sub( aoNV.pow( aoExp ).oneMinus() ).clamp();
+
+		if ( builder.context.getSpecularOcclusion ) {
+
+			aoNode = builder.context.getSpecularOcclusion( aoNode, normalView, roughness, positionViewDirection, builder, ambientOcclusion );
+
+		}
 
 		if ( this.clearcoat === true ) {
 
-			this.clearcoatSpecularIndirect.mulAssign( ambientOcclusion );
+			const clearcoatAO = builder.context.getSpecularOcclusion
+				? builder.context.getSpecularOcclusion( ambientOcclusion, clearcoatNormalView, clearcoatRoughness, positionViewDirection, builder, ambientOcclusion )
+				: ambientOcclusion;
+
+			this.clearcoatSpecularIndirect.mulAssign( clearcoatAO );
 
 		}
 

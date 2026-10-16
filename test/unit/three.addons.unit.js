@@ -1,5 +1,6 @@
 
 //addons/utils
+import './addons/lighting/SpecularProbes.tests.js';
 import './addons/utils/BufferGeometryUtils.tests.js';
 import './addons/utils/ColorUtils.tests.js';
 import './addons/utils/GaussianSplatUtils.tests.js';
@@ -20,3 +21,4 @@ import './addons/exporters/EXRExporter.tests.js';
 import './addons/exporters/USDZExporter.tests.js';
 import './addons/tsl/WebGLNodesHandler.tests.js';
 import './addons/postprocessing/GTAOPass.tests.js';
+import './addons/math/Atmosphere.tests.js';

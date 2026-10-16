@@ -25,6 +25,7 @@
 
 			<small>
 				Screen Space Reflections.<br />
+				Optional Hi-Z tracing skips empty space conservatively; disable it to compare with linear tracing.<br />
 				<a href="https://skfb.ly/6tqYD" target="_blank" rel="noopener">Steampunk Camera</a> by
 				<a href="https://sketchfab.com/lumoize" target="_blank" rel="noopener">dylanheyes</a> is licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Creative Commons Attribution</a>.
 			</small>
@@ -44,8 +45,9 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, colorSpaceToWorking } from 'three/tsl';
+		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec3, vec4, colorSpaceToWorking } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -55,6 +57,10 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
+			hiZ: false,
+			hiZTracing: true,
+			hiZDebug: false,
+			hiZLevel: 0,
 			quality: 0.5,
 			blurQuality: 1,
 			maxDistance: 1,
@@ -66,7 +72,7 @@
 		};
 
 		let camera, scene, model, renderer, renderPipeline, ssrPass;
-		let controls;
+		let controls, depthPyramid;
 
 		init();
 
@@ -162,6 +168,8 @@
 				return scenePass.getLinearDepthNode();
 
 			} );
+			depthPyramid = hiZ( scenePass.getTextureNode( 'depth' ) );
+
 			const scenePassMetalRough = scenePass.getTextureNode( 'metalrough' ).toInspector( 'Metalness-Roughness' );
 
 			// optional: optimize bandwidth by reducing the texture precision for normals and metal/roughness
@@ -181,6 +189,7 @@
 			//
 
 			ssrPass = ssr( scenePassColor, scenePassDepth, sceneNormal, {
+				hiZ: depthPyramid,
 				metalnessNode: scenePassMetalRough.r,
 				roughnessNode: scenePassMetalRough.g
 			} ).toInspector( 'SSR' );
@@ -189,7 +198,22 @@
 
 			const outputNode = smaa( scenePassColor.add( ssrPass.rgb ) );
 
-			renderPipeline.outputNode = outputNode;
+			function updateOutputNode() {
+
+				ssrPass.hiZEnabled = params.hiZ && params.hiZTracing;
+				depthPyramid.enabled = params.hiZ;
+				depthPyramid.level.value = params.hiZLevel;
+
+				const source = params.enabled ? outputNode : scenePass;
+				renderPipeline.outputNode = params.hiZ && params.hiZDebug
+					? vec4( vec3( depthPyramid ), 1 )
+					: params.hiZ ? source.add( depthPyramid.mul( 0 ) ) : source;
+				renderPipeline.outputColorTransform = ! ( params.hiZ && params.hiZDebug );
+				renderPipeline.needsUpdate = true;
+
+			}
+
+			updateOutputNode();
 
 			//
 
@@ -209,21 +233,12 @@
 			ssrFolder.add( params, 'intensity', 0, 1 ).onChange( updateParameters );
 			ssrFolder.add( params, 'thickness', 0, 0.05 ).onChange( updateParameters );
 			ssrFolder.add( params, 'binaryRefine' ).name( 'binary refine' ).onChange( updateParameters );
-			ssrFolder.add( params, 'enabled' ).onChange( () => {
-
-				if ( params.enabled === true ) {
-
-					renderPipeline.outputNode = outputNode;
-
-				} else {
-
-					renderPipeline.outputNode = scenePass;
-
-				}
-
-				renderPipeline.needsUpdate = true;
-
-			} );
+			ssrFolder.add( params, 'enabled' ).onChange( updateOutputNode );
+			const hiZFolder = gui.addFolder( 'Hi-Z construction' );
+			hiZFolder.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
+			hiZFolder.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
+			hiZFolder.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
+			hiZFolder.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 			const modelFolder = gui.addFolder( 'Model' );
 			modelFolder.add( params, 'roughness', 0, 1 ).onChange( ( value ) => {
 

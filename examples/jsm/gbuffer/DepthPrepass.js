@@ -1,6 +1,7 @@
-import { MeshBasicNodeMaterial, EqualDepth, Vector2 } from 'three/webgpu';
+import { LessEqualDepth, Vector2 } from 'three/webgpu';
 
-// Example-only opaque depth/equal pattern. Both draws use exactly the same
+// Conservative opaque pre-pass. Bias depth away to tolerate rounding between
+// separately compiled vertex programs. Both draws use the same
 // camera (including TRAA jitter) and the same depth attachment.
 export function enableDepthPrepass( pass ) {
 
@@ -17,16 +18,33 @@ export function enableDepthPrepass( pass ) {
 		const mrt = renderer.getMRT();
 		const autoClear = renderer.autoClear;
 		const background = pass.scene.background;
+		const autoClearDepth = pass.autoClearDepth;
+		const hidden = [];
 		const objects = [];
 		pass.scene.traverse( object => {
 
 			if ( ! object.isMesh ) return;
 			const original = object.material;
-			if ( Array.isArray( original ) || original.transparent ) return;
-			if ( ! materials.has( original ) ) materials.set( original, new MeshBasicNodeMaterial( {
-				side: original.side, colorWrite: false, depthWrite: true,
-				map: original.map, alphaMap: original.alphaMap, alphaTest: original.alphaTest
-			} ) );
+			if ( Array.isArray( original ) || original.transparent ) {
+
+				hidden.push( [ object, object.visible ] );
+				object.visible = false;
+				return;
+
+			}
+
+			if ( ! materials.has( original ) ) {
+
+				const depthMaterial = original.clone();
+				depthMaterial.colorWrite = false;
+				depthMaterial.depthWrite = true;
+				depthMaterial.polygonOffset = true;
+				depthMaterial.polygonOffsetFactor = 2;
+				depthMaterial.polygonOffsetUnits = 2;
+				materials.set( original, depthMaterial );
+
+			}
+
 			objects.push( [ object, original, original.depthFunc, original.depthWrite ] );
 			object.material = materials.get( original );
 
@@ -40,11 +58,12 @@ export function enableDepthPrepass( pass ) {
 			pass.scene.background = null;
 			renderer.render( pass.scene, pass.camera );
 			pass.scene.background = background;
+			for ( const [ object, visible ] of hidden ) object.visible = visible;
 			for ( const [ object, material ] of objects ) {
 
 				object.material = material;
-				material.depthFunc = EqualDepth;
-				material.depthWrite = false;
+				material.depthFunc = LessEqualDepth;
+				material.depthWrite = true;
 
 			}
 
@@ -68,7 +87,8 @@ export function enableDepthPrepass( pass ) {
 			renderer.setRenderTarget( target );
 			renderer.setMRT( mrt );
 			renderer.autoClear = autoClear;
-			pass.autoClearDepth = true;
+			for ( const [ object, visible ] of hidden ) object.visible = visible;
+			pass.autoClearDepth = autoClearDepth;
 
 		}
 
@@ -82,7 +102,7 @@ export function enableDepthPrepass( pass ) {
 
 	};
 
-	pass.depthPrepass = true;
+	pass.depthPrepass = false;
 	return pass;
 
 }

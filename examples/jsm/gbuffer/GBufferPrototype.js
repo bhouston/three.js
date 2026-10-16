@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { pass, mrt, output, normalView, materialRoughness, materialMetalness, diffuseColor, velocity, octEncode, octDecode, sample, vec2, vec3, vec4, float, roughness, specularColorBlended, specularF90, positionViewDirection, screenUV, reflect, mix, builtinAOContext, uv, equirectDirection } from 'three/tsl';
+import { pass, mrt, output, normalView, materialRoughness, materialMetalness, diffuseColor, velocity, octEncode, octDecode, sample, vec2, vec3, vec4, float, roughness, specularColorBlended, specularF90, positionViewDirection, screenUV, reflect, mix, builtinAOContext, uv, equirectDirection, perspectiveDepthToViewZ } from 'three/tsl';
 import EnvironmentBRDF from '../../../src/nodes/functions/BSDF/EnvironmentBRDF.js';
 import { OrbitControls } from '../controls/OrbitControls.js';
 import { GUI } from '../libs/lil-gui.module.min.js';
@@ -38,7 +38,9 @@ const controls = new OrbitControls( camera, renderer.domElement );
 controls.enableDamping = true;
 const owned = [];
 let scene, pipeline, gbuffer, grids, reflectionSystem, skyTarget, environment;
+let gui;
 let busy = false;
+let highSupported = true;
 
 init().catch( error => {
 
@@ -53,7 +55,8 @@ async function init() {
 	if ( ! adapter ) throw new Error( 'No hardware WebGPU adapter available.' );
 	const limit = Math.min( 32, adapter.limits.maxSampledTexturesPerShaderStage );
 	renderer.backend.parameters.requiredLimits.maxSampledTexturesPerShaderStage = limit;
-	if ( limit < 24 ) params.preset = 'Low';
+	highSupported = limit >= 24;
+	if ( ! highSupported ) params.preset = 'Low';
 	await renderer.init();
 	if ( ! renderer.backend.isWebGPUBackend ) throw new Error( 'This prototype requires hardware WebGPU.' );
 	const info = renderer.backend.device.adapterInfo;
@@ -63,7 +66,7 @@ async function init() {
 	window.gbufferAdapter = adapterName;
 	await createSky();
 	await loadScene();
-	const gui = new GUI( { title: 'G-buffer prototype' } );
+	gui = new GUI( { title: 'G-buffer prototype' } );
 	gui.add( params, 'scene', [ 'Cornell', 'Two rooms', 'GTAO' ] ).onChange( () => {
 
 		const url = new URL( location.href );
@@ -106,10 +109,12 @@ async function init() {
 		window.gbufferFrames = ( window.gbufferFrames || 0 ) + 1;
 
 	} );
+	window.gbufferWaitForGPU = () => renderer.backend.device.queue.onSubmittedWorkDone();
 	window.gbufferSet = values => {
 
 		Object.assign( params, values );
 		buildPipeline();
+		for ( const controller of gui.controllersRecursive() ) controller.updateDisplay();
 
 	};
 
@@ -196,6 +201,14 @@ async function loadScene() {
 function buildPipeline() {
 
 	if ( ! scene ) return;
+	if ( ! highSupported ) params.preset = 'Low';
+	for ( const grid of grids ) {
+
+		grid.visible = params.gi;
+		grid.visibility = params.visibility;
+
+	}
+
 	if ( pipeline ) pipeline.dispose();
 	for ( const node of owned ) node.dispose();
 	owned.length = 0;
@@ -254,6 +267,8 @@ function buildPipeline() {
 				diffuseNode: albedo, metalnessNode: albedo.a, roughnessNode: rough.r
 			} ) );
 			reflections.quality.value = params.quality;
+			// Misses are resolved against local probes below, not a black SSR environment.
+			reflections.screenEdgeFade.value = 0;
 			reflections.maxDistance.value = 20;
 			reflections.thickness.value = 0.15;
 			filtered = reflections;
@@ -297,16 +312,13 @@ function buildPipeline() {
 	};
 	if ( high ) Object.assign( views, {
 		Normal: vec4( normal.mul( 0.5 ).add( 0.5 ), 1 ), Albedo: albedo, Roughness: vec4( vec3( rough.r ), 1 ),
-		'Hi-Z': vec4( vec3( pyramid ), 1 ),
+		'Hi-Z': vec4( vec3( perspectiveDepthToViewZ( pyramid, camera.near, camera.far ).negate().div( 20 ) ), 1 ),
 		AO: vec4( vec3( gtao.r ), 1 ), 'Bent normals': vec4( gtao.getBentNormalNode().mul( 0.5 ).add( 0.5 ), 1 ),
 		SSR: reflections ? vec4( reflections.rgb, 1 ) : color
 	} );
 	pipeline.outputNode = views[ params.view ] || result;
+	pipeline.outputColorTransform = ! views[ params.view ];
 	status.textContent = `${ params.scene } · ${ params.preset } · ${ window.gbufferAdapter }\n${ high ? 'Depth → MRT → Hi-Z / GTAO / SSR → material resolve → TRAA' : 'Depth → beauty + velocity → TRAA' }\nPrototype: synchronous probe bakes; approximate probe BRDF; opaque geometry only. No SSR demodulation.`;
 	window.gbufferReady = true;
 
 }
-
-
-
-

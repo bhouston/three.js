@@ -496,6 +496,7 @@
 		"webgpu_skinning_instancing_individual",
 		"webgpu_skinning_points",
 		"webgpu_sky",
+		"webgpu_sky_clouds",
 		"webgpu_sprites",
 		"webgpu_storage_buffer",
 		"webgpu_struct_drawindirect",

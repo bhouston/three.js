@@ -224,6 +224,10 @@ try {
 		const smokeCases = [
 			...configurations.map( c => ( { name: c.name, params: { ...c.params, model: models[ 0 ] } } ) ),
 			{ name: 'substantial-compressed', params: { ...matched, model: models[ 1 ] || models[ 0 ] } },
+			{ name: 'forward-substantial-transparency', params: { ...matched, mode: 'forward', model: models[ 1 ] || models[ 0 ] } },
+			{ name: 'mobile-substantial-transparency', params: { ...matched, mobile: true, model: models[ 1 ] || models[ 0 ] } },
+			{ name: 'opaque-extension-fallback', params: { ...matched, model: 'examples/models/gltf/ClearcoatTest/ClearcoatTest.glb' } },
+			{ name: 'shadows-off-resolution-sharpen', params: { ...matched, shadows: false, resolution: 0.75, sharpen: true, model: models[ 0 ] } },
 			{ name: 'skinned', params: { ...matched, model: 'examples/models/gltf/Soldier.glb', playing: true } },
 			{ name: 'morph', params: { ...matched, model: 'examples/models/gltf/AnimatedMorphSphere/glTF/AnimatedMorphSphere.gltf', playing: true } },
 			{ name: 'instanced', params: { ...matched, model: 'examples/models/gltf/DamagedHelmet/glTF-instancing/DamagedHelmetGpuInstancing.gltf' } },

@@ -50,6 +50,16 @@ const api = { ready: null, configure, renderFrame, drain: () => renderer.backend
 		const entry = [ ...renderer.inspector.viewer.canvasNodes.values() ].find( entry => entry.name === name );
 		if ( entry ) renderer.inspector.viewer.showNodeView( entry.id );
 
+	},
+	openBuffers: () => {
+
+		const inspector = renderer.inspector;
+		inspector.viewer.show();
+		inspector.setActiveTab( inspector.viewer );
+		inspector.profiler.setPosition( 'bottom' );
+		if ( ! inspector.profiler.panel.classList.contains( 'visible' ) ) inspector.profiler.togglePanel();
+		inspector.profiler.show( inspector.parameters );
+
 	}
 };
 window.gbuffer = api;
@@ -154,7 +164,7 @@ function createControls() {
 	gui.add( params, 'passMode', [ 'bypass', 'materialized' ] ).name( 'Neutral pass behavior' ).onChange( () => rebuild().catch( showError ) );
 	for ( const name of [ 'prepass', 'shadows', 'ao', 'traa', 'sharpen', 'tonemap', 'output' ] ) gui.add( params, name ).onChange( () => rebuild().catch( showError ) );
 	gui.add( params, 'resolution', 0.25, 2, 0.05 ).name( 'Resolution scale (DPR 1)' ).onChange( () => rebuild().catch( showError ) );
-	const models = gui.addFolder( 'Repository models (all 63 tracked assets)' );
+	const models = gui.addFolder( 'Repository models (all ' + manifest.length + ' tracked assets)' );
 	modelControl = models.add( params, 'model', manifest ).name( 'Full repository path' ).onChange( value => loadModel( value ).catch( showError ) );
 	models.add( params, 'search' ).name( 'Filter model paths' ).onChange( value => {
 

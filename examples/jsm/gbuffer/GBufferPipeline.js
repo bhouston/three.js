@@ -125,6 +125,11 @@ export class GBufferPipeline extends THREE.Node {
 
 		if ( this.enabled.deferred ) this.createDeferred();
 		else this.createForward();
+		// A one-color attachment view of the SAME framebuffer lets transparent
+		// shaders preserve opaque velocity without requiring a second fragment output.
+		this.transparentTarget = new THREE.RenderTarget( 1, 1, { depthBuffer: true, depthTexture: this.depth } );
+		this.transparentTarget.textures[ 0 ] = this.renderTarget.texture;
+		this.targets.push( this.transparentTarget );
 
 		this.post = new THREE.RenderPipeline( renderer );
 		let finalNode = this.beauty;
@@ -567,7 +572,7 @@ export class GBufferPipeline extends THREE.Node {
 			}
 
 			scene.background = null; // A Color background forces a clear even with autoClear=false.
-			this.renderGeometry( this.renderTarget, lighting, 3, false, true, null, false );
+			this.renderGeometry( this.transparentTarget, lighting, 3, false, true, null, false );
 			this.executed.push( 'forward transparents / transmission' );
 			if ( this.options.traa ) this.executed.push( 'TRAA resolve + color/depth history copies' );
 			this.executed.push( ( this.options.sharpen ? 'sharpen + ' : '' ) + ( this.options.tonemap ? 'tonemap + ' : '' ) + 'output' );

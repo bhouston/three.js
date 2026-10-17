@@ -5,6 +5,7 @@
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
 		<link rel="stylesheet" href="example.css">
+		<link rel="icon" href="data:,">
 		<style>#inventory { color: white; position: absolute; left: 12px; top: 12px; max-width: 460px; background: #111d; padding: 12px; pointer-events: none; font: 12px monospace; white-space: pre-wrap; }</style>
 	</head>
 	<body>
@@ -21,7 +22,7 @@
 		</script>
 		<script type="module">
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, sample, output, normalView, diffuseColor, roughness, velocity, vec3, vec4, screenUV, packNormalToRGB, unpackRGBToNormal, builtinAOContext, Fn, abs, normalize, select } from 'three/tsl';
+			import { pass, mrt, rtt, sample, output, normalView, diffuseColor, roughness, velocity, vec3, vec4, screenUV, packNormalToRGB, unpackRGBToNormal, builtinAOContext, Fn, abs, normalize, select } from 'three/tsl';
 			import { surfaceLayout } from 'three/addons/tsl/utils/SurfaceLayout.js';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
@@ -179,6 +180,7 @@
 					visibility.resolutionScale = 0.5;
 					visibility.samples.value = 8;
 					owned.push( visibility );
+					visibility.getTextureNode().toInspector( 'AO visibility' );
 					const shaded = pass( scene, camera, { samples: 0 } );
 					shaded.name = 'Beauty with indirect AO (independent depth)';
 					shaded.contextNode = builtinAOContext( visibility.getTextureNode().sample( screenUV ).r );
@@ -194,10 +196,12 @@
 					giRaw.stepCount.value = 8;
 					giRaw.giIntensity.value = 1;
 					owned.push( giRaw );
+					giRaw.getGINode().toInspector( 'Diffuse GI' );
 					// Reuse SSGI's approximate incoming diffuse signal. Its AO output is
 					// deliberately unused: never multiply direct light or emission by AO.
 					const giDiffuse = layout.nodes.albedo.mul( giRaw.getGINode() );
-					beauty = vec4( beauty.rgb.add( visibility ? giDiffuse.mul( visibility.getTextureNode().r ) : giDiffuse ), beauty.a );
+					// SSGI's visibility is already part of its GI estimate; do not apply GTAO twice.
+					beauty = vec4( beauty.rgb.add( giDiffuse ), beauty.a );
 
 				}
 
@@ -214,19 +218,21 @@
 				let final = beauty;
 				if ( params.aa ) {
 
-					const temporal = traa( beauty, depth, layout.textures.motion, camera );
+					const input = beauty.isTextureNode ? beauty : rtt( beauty, null, null, { depthBuffer: false } );
+					if ( input !== beauty ) owned.push( input );
+					const temporal = traa( input, depth, layout.textures.motion, camera );
 					owned.push( temporal );
-					if ( temporal.beautyNode.isRTTNode ) owned.push( temporal.beautyNode );
 					final = temporal;
 
 				}
 
 				// Register only resources reachable from this configuration. Inspection
 				// cannot enable a disabled effect or allocate an unrequested attachment.
-				for ( const [ name, node ] of Object.entries( views ) ) node.toInspector( name );
+				if ( needNormal ) final.before( layout.nodes.normal ).before( layout.nodes.roughness );
+				beauty.toInspector( 'Composed beauty' );
 				pipeline.outputNode = params.view === 'beauty' ? final : vec4( vec3( views[ params.view ] || 0 ), 1 );
 				generation ++;
-				state = { source, layout, visibility, giRaw, generation };
+				state = { source, layout, visibility, giRaw, generation, owned: owned.slice() };
 				const gui = renderer.inspector.createParameters( 'Surface composition' );
 				gui.add( params, 'layout', [ 'descriptor', 'plain' ] ).onChange( rebuild );
 				gui.add( params, 'packing', [ 'rgb8', 'oct16' ] ).onChange( rebuild );

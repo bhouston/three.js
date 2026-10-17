@@ -29,6 +29,13 @@ try {
 
 	} );
 	await page.goto( url, { waitUntil: 'networkidle0' } );
+	if ( ( await page.title() ).startsWith( 'External Content Notice' ) ) {
+
+		// githack asks users to acknowledge its ordinary external-content notice.
+		await Promise.all( [ page.waitForNavigation( { waitUntil: 'networkidle0' } ), page.locator( '::-p-text(Open the page)' ).click() ] );
+
+	}
+
 	await page.waitForFunction( () => window.surfaceDemo, { timeout: 60000 } );
 	result.adapter = await page.evaluate( () => {
 
@@ -86,7 +93,7 @@ try {
 				textures: [ ...target.textures, ...( depth ? [ depth ] : [] ) ].map( texture => ( { name: texture.name, ...renderer.backend.get( texture ).textureDescriptorGPU } ) ) };
 
 		} ) );
-		return { params: { ...window.surfaceDemo.params }, generation: state.generation, attachments: state.layout.attachmentNames, textures, targets, frameDrawCalls: renderer.info.render.frameCalls, memory: { ...renderer.info.memory } };
+		return { params: { ...window.surfaceDemo.params }, generation: state.generation, attachments: state.layout.attachmentNames, textures, targets, frameRenderCalls: renderer.info.render.frameCalls, frameDrawCalls: renderer.info.render.drawCalls, memory: { ...renderer.info.memory } };
 
 	} );
 	await settle();
@@ -191,6 +198,7 @@ try {
 	await page.screenshot( { path: path.join( artifacts, 'surface-minimal.png' ) } );
 	await configure( { aa: true } );
 	await settle();
+	result.checks.push( { name: 'AA only, no normals/albedo', ...await inventory() } );
 	result.staticVelocity = await page.evaluate( async () => {
 
 		const { renderer, state } = window.surfaceDemo;
@@ -251,8 +259,18 @@ try {
 	assert.deepEqual( result.checks.at( - 1 ).textures[ 0 ].size, { width: 993, height: 677, depthOrArrayLayers: 1 } );
 	await page.evaluate( () => {
 
+		window.surfaceDemo.params.scale = 0.5;
+		window.dispatchEvent( new Event( 'resize' ) );
+
+	} );
+	await settle();
+	result.checks.push( { name: 'half resolution + history rebuild', ...await inventory() } );
+	assert.deepEqual( result.checks.at( - 1 ).textures[ 0 ].size, { width: 496, height: 338, depthOrArrayLayers: 1 } );
+	await page.evaluate( () => {
+
 		window.surfaceDemo.camera.position.x += 2;
-		window.surfaceDemo.rebuild();
+		window.surfaceDemo.params.scale = 1;
+		window.dispatchEvent( new Event( 'resize' ) );
 
 	} );
 	await settle();

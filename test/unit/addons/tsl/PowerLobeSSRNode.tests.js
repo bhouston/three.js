@@ -186,6 +186,10 @@ export default QUnit.module( 'Addons', () => {
 				assert.notOk( stock.stochastic, 'Stock factory still selects mirror/blur' );
 				assert.notOk( stock.reflectNonMetals, 'Stock metal-only default is preserved' );
 				assert.strictEqual( stock.resolutionScale, 1, 'Stock trace resolution remains full size' );
+				assert.strictEqual( stock.maxRayLength, null, 'Absolute comparison reach is opt-in' );
+				const bounded = ssr( color, depth, normal, { maxRayLength: 2 } );
+				assert.strictEqual( bounded.maxRayLength.value, 2, 'Absolute reach can be matched without changing stock defaults' );
+				bounded.dispose();
 				assert.strictEqual( node.steps.value, 16, 'Alternative starts with bounded 16-step traversal' );
 				assert.strictEqual( node.rayCount.value, 1, 'Alternative starts with one ray for comparisons' );
 				assert.strictEqual( node.maxLuminance.value, 0, 'Alternative has no implicit radiance clamp' );

@@ -81,6 +81,8 @@ import { F_Schlick, ENV_RAY_LENGTH } from '../utils/SpecularHelpers.js';
  * history; reflections are still composed after transparency, an approximation
  * that does not model glass attenuation or layered transmission. Existing mirror
  * and GGX tracers retain their own composition, reach and fallback conventions.
+ * Explicit comparison URLs opt into SSRNode.maxRayLength for a shared absolute
+ * reach cap, while retaining the stock samplers, slab test and BRDF weights.
  *
  * @augments Node
  * @three_import import { powerLobeSSR } from 'three/addons/tsl/display/PowerLobeSSRNode.js';

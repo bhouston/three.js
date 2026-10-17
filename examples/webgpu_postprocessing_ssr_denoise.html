@@ -295,6 +295,7 @@
 			ssrNode = createSSR( traceColor, scenePassDepth, sceneNormal, {
 				camera,
 				stochastic: comparison.mode !== 'mirror',
+				maxRayLength: comparison.explicit ? params.ssr.maxDistance : null,
 				diffuseNode: scenePassDiffuseColor,
 				metalnessNode: scenePassDiffuseColor.a,
 				roughnessNode: scenePassNormal.a,
@@ -482,6 +483,7 @@
 				denoiseNode.adaptiveTrust.value = params.denoise.adaptiveTrust;
 
 			}
+
 			historyReset?.reset();
 
 		}

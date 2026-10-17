@@ -220,6 +220,7 @@
 			ssrPass = createSSR( traceColor, scenePassDepth, sceneNormal, {
 				camera,
 				stochastic: comparison.mode === 'ggx',
+				maxRayLength: comparison.explicit ? params.maxDistance : null,
 				metalnessNode: scenePassMetalRough.r,
 				roughnessNode: scenePassMetalRough.g,
 				diffuseNode: tracePass.getTextureNode( 'diffuseColor' ),

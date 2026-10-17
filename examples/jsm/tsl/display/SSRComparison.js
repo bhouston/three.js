@@ -63,7 +63,7 @@ export function addSSRComparisonGUI( gui, comparison, apply ) {
 	gui.add( comparison, 'maxLuminance', 0, 1000, 1 ).name( 'radiance clamp (0=off)' ).onChange( apply );
 	const note = document.createElement( 'div' );
 	note.style.cssText = 'position:fixed;bottom:8px;left:8px;max-width:580px;padding:6px;background:#000b;color:white;font:12px sans-serif;pointer-events:none;z-index:1000';
-	note.textContent = `${ comparison.mode } · ${ comparison.denoise ? 'recurrent denoise' : 'raw' } · ${ comparison.mode === 'power' ? 'biased estimator; projected steps; previous opaque HDR' : 'stock tracer; current beauty; one ray' }. Mirror uses adaptive steps, plane reach, blur and no environment miss fallback; GGX uses grazing-scaled reach. Match trace resolution, reach, thickness and postprocessing; these traversal and estimator differences remain.`;
+	note.textContent = `${ comparison.mode } · ${ comparison.denoise ? 'recurrent denoise' : 'raw' } · ${ comparison.mode === 'power' ? 'biased estimator; projected steps; previous opaque HDR' : 'stock estimator; current beauty; one ray' }. Explicit modes share an absolute reach cap. Mirror retains adaptive steps, plane attenuation, blur and no environment miss fallback; GGX retains its step distribution and BRDF weights. Scene/filter controls reset on mode reload; shared trace controls persist.`;
 	document.body.appendChild( note );
 
 }
@@ -91,6 +91,7 @@ export function applySSRComparison( node, comparison ) {
 
 	if ( comparison.maxDistance !== null ) node.maxDistance.value = comparison.maxDistance;
 	if ( comparison.thickness !== null ) node.thickness.value = comparison.thickness;
+	if ( node.maxRayLength ) node.maxRayLength.value = node.maxDistance.value;
 
 }
 

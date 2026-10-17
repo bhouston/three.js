@@ -655,7 +655,8 @@ class TemporalReprojectNode extends Node {
 
 		}
 
-		const needsRestart = depthFormatChanged === true || this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
+		const needsRestart = this._needsRestart === true || depthFormatChanged === true || this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
+		this._needsRestart = false;
 		this.setSize( width, height );
 
 		let historySwappedForRestart = false;
@@ -961,6 +962,13 @@ class TemporalReprojectNode extends Node {
 			this._historyTextureNode.value = this._externalHistoryTexture;
 
 		}
+
+	}
+
+	/** Invalidates temporal history after a camera or scene cut. */
+	resetHistory() {
+
+		this._needsRestart = true;
 
 	}
 

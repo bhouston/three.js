@@ -1,3 +1,4 @@
+import { Matrix4 } from 'three/webgpu';
 import { vec4 } from 'three/tsl';
 import { temporalReproject } from './TemporalReprojectNode.js';
 import { recurrentDenoise } from './RecurrentDenoiseNode.js';
@@ -45,8 +46,13 @@ export function addSSRComparisonGUI( gui, comparison, apply ) {
 	gui.add( comparison, 'denoise' ).name( 'recurrent denoise' ).onChange( value => reload( 'denoise', value ? '1' : '0' ) );
 	gui.add( comparison, 'resolutionScale', 0.25, 1, 0.25 ).name( 'trace resolution' ).onChange( apply );
 	gui.add( comparison, 'steps', 1, 64, 1 ).name( comparison.mode === 'mirror' ? 'steps (mirror: adaptive)' : 'trace steps' ).onChange( apply );
-	gui.add( comparison, 'rayCount', 1, 4, 1 ).name( 'rays (power only; stock=1)' ).onChange( apply ).disable( comparison.mode !== 'power' );
-	gui.add( comparison, 'seed', 0, 65535, 1 ).name( 'seed (power only)' ).onChange( apply ).disable( comparison.mode !== 'power' );
+	if ( comparison.mode === 'power' ) {
+
+		gui.add( comparison, 'rayCount', 1, 4, 1 ).name( 'rays (stock=1)' ).onChange( apply );
+		gui.add( comparison, 'seed', 0, 65535, 1 ).name( 'seed' ).onChange( apply );
+
+	}
+
 	gui.add( comparison, 'maxLuminance', 0, 1000, 1 ).name( 'radiance clamp (0=off)' ).onChange( apply );
 	const note = document.createElement( 'div' );
 	note.style.cssText = 'position:fixed;bottom:8px;left:8px;max-width:580px;padding:6px;background:#000b;color:white;font:12px sans-serif;pointer-events:none;z-index:1000';
@@ -88,7 +94,7 @@ export function applySSRComparison( node, comparison ) {
  */
 export function createSSRComparisonDenoiser( node, depth, packedNormal, velocity, metalRoughness, camera ) {
 
-	const rawDistance = node; // Node's compatibility output, never incident RGB/coverage.
+	const rawDistance = node.getTextureNode(); // Weighted RGB/distance, with explicit pass scheduling.
 	const temporal = temporalReproject( rawDistance, depth, packedNormal, velocity, camera, { mode: 'specular', accumulate: false } );
 	const denoise = recurrentDenoise( temporal, camera, {
 		depth, normal: packedNormal, raw: rawDistance, metalRoughness, mode: 'specular', accumulate: true
@@ -96,5 +102,30 @@ export function createSSRComparisonDenoiser( node, depth, packedNormal, velocity
 	denoise.alphaSource = 'raylength';
 	temporal.setHistoryTexture( denoise );
 	return { temporal, denoise, color: vec4( denoise.rgb, 1 ) };
+
+}
+
+/** Resets all estimator/filter history together without changing their algorithms. */
+export function createSSRHistoryReset( node, camera, temporal = null, denoise = null ) {
+
+	const previousWorld = new Matrix4();
+	const reset = () => {
+
+		node.resetHistory?.();
+		temporal?.resetHistory();
+		denoise?.resetHistory();
+
+	};
+
+	const update = () => {
+
+		camera.updateMatrixWorld();
+		const delta = camera.matrixWorld.elements.reduce( ( sum, v, i ) => sum + Math.abs( v - previousWorld.elements[ i ] ), 0 );
+		if ( delta > 1 ) reset();
+		previousWorld.copy( camera.matrixWorld );
+
+	};
+
+	return { reset, update };
 
 }

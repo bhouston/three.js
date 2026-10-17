@@ -45,15 +45,18 @@
 		</small>
 	</div>
 
-	<script type="importmap">
-		{
-			"imports": {
-				"three": "../build/three.webgpu.js",
-				"three/webgpu": "../build/three.webgpu.js",
-				"three/tsl": "../build/three.tsl.js",
-				"three/addons/": "./jsm/"
-			}
-		}
+	<script>
+		// Source imports keep commit-pinned comparisons runnable without generated builds.
+		const sourceImports = new URLSearchParams( window.location.search ).get( 'source' ) === '1';
+		const importMap = document.createElement( 'script' );
+		importMap.type = 'importmap';
+		importMap.textContent = JSON.stringify( { imports: {
+			'three': sourceImports ? '../src/Three.WebGPU.js' : '../build/three.webgpu.js',
+			'three/webgpu': sourceImports ? '../src/Three.WebGPU.js' : '../build/three.webgpu.js',
+			'three/tsl': sourceImports ? '../src/Three.TSL.js' : '../build/three.tsl.js',
+			'three/addons/': './jsm/'
+		} } );
+		document.currentScript.after( importMap );
 	</script>
 
 	<script type="module">
@@ -62,7 +65,7 @@
 		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { powerLobeSSR } from 'three/addons/tsl/display/PowerLobeSSRNode.js';
-		import { readSSRComparison, addSSRComparisonGUI, applySSRComparison, createSSRComparisonDenoiser } from 'three/addons/tsl/display/SSRComparison.js';
+		import { readSSRComparison, addSSRComparisonGUI, applySSRComparison, createSSRComparisonDenoiser, createSSRHistoryReset } from 'three/addons/tsl/display/SSRComparison.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -171,8 +174,11 @@
 			},
 		};
 
+		params.ssr.maxDistance = comparison.maxDistance ?? params.ssr.maxDistance;
+		params.ssr.thickness = comparison.thickness ?? params.ssr.thickness;
+
 		let camera, scene, model, renderer, postProcessing, ssrNode, temporalReprojectNode, denoiseNode;
-		let controls;
+		let controls, historyReset;
 		let scenePassNode, combinedOutputNode, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 
@@ -359,10 +365,10 @@
 			const ssrGui = renderer.inspector.createParameters( 'SSR settings' );
 			addSSRComparisonGUI( renderer.inspector.createParameters( 'Estimator comparison' ), comparison, applyParams );
 			ssrGui.add( params, 'output', outputTypes ).onChange( updateOutputNode );
-			ssrGui.add( params.ssr, 'quality', 0, 1 ).name( 'legacy quality (stock)' ).onChange( applyParams ).disable( comparison.mode === 'power' );
-			ssrGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'mirror bias (GGX only)' ).onChange( applyParams ).disable( comparison.mode !== 'ggx' );
-			ssrGui.add( params.ssr, 'stepExponent', 1, 4, 0.5 ).name( 'step exponent (stock)' ).onChange( applyParams ).disable( comparison.mode === 'power' );
-			ssrGui.add( params.ssr, 'binaryRefine' ).name( 'binary refine (stock)' ).onChange( applyParams ).disable( comparison.mode === 'power' );
+			ssrGui.add( params.ssr, 'quality', 0, 1 ).name( 'legacy quality (stock)' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'mirror bias (GGX only)' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'stepExponent', 1, 4, 0.5 ).name( 'step exponent (stock)' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'binaryRefine' ).name( 'binary refine (stock)' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 5 ).name( 'max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'intensity', 0, 4 ).name( 'intensity' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'thickness' ).onChange( applyParams );
@@ -414,7 +420,8 @@
 			lightGui.add( directionalLight, 'intensity', 0, 50 ).name( 'Intensity' );
 
 			updateOutputNode();
-			window.ssrComparison = { renderer, camera, scene, params, comparison, node: ssrNode, controls, light: directionalLight, resetHistory: () => ssrNode.resetHistory?.() };
+			historyReset = createSSRHistoryReset( ssrNode, camera, temporalReprojectNode, comparison.denoise ? denoiseNode : null );
+			window.ssrComparison = { renderer, camera, scene, params, comparison, node: ssrNode, controls, light: directionalLight, resetHistory: historyReset.reset, renderPipeline: postProcessing, temporalReprojectNode, denoiseNode };
 			renderer.setAnimationLoop( animate );
 
 		}
@@ -440,6 +447,8 @@
 			ssrNode.maxDistance.value = params.ssr.maxDistance;
 			ssrNode.intensity.value = params.ssr.intensity;
 			ssrNode.thickness.value = params.ssr.thickness;
+			comparison.maxDistance = params.ssr.maxDistance;
+			comparison.thickness = params.ssr.thickness;
 			ssrNode.maxLuminance.value = params.ssr.maxLuminance;
 			ssrNode.environmentIntensity.value = params.ssr.environmentIntensity;
 			applySSRComparison( ssrNode, comparison );
@@ -575,6 +584,7 @@
 		function animate() {
 
 			controls.update();
+			historyReset.update();
 
 			postProcessing.render();
 

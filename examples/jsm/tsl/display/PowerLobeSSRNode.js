@@ -1,5 +1,5 @@
-import { CubeUVReflectionMapping, HalfFloatType, Matrix4, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
-import { Break, Continue, Fn, If, Loop, PI, bool, cos, cross, dot, equirectUV, float, getScreenPosition, getViewPosition, int, isBackgroundDepth, luminance, max, min, mix, nodeObject, outputStruct, passTexture, pmremTexture, sin, texture, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { HalfFloatType, Matrix4, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
+import { Break, Continue, Fn, If, Loop, PI, bool, context, cos, cross, dot, equirectUV, float, getScreenPosition, getViewPosition, int, isBackgroundDepth, luminance, max, min, mix, nodeObject, outputStruct, passTexture, pmremTexture, property, reference, sin, texture, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { F_Schlick, ENV_RAY_LENGTH } from '../utils/SpecularHelpers.js';
 
 /**
@@ -48,10 +48,13 @@ class PowerLobeSSRNode extends Node {
 		this._projection = uniform( this.camera.projectionMatrix );
 		this._inverseProjection = uniform( this.camera.projectionMatrixInverse );
 		this._world = uniform( this.camera.matrixWorld );
+		this._near = reference( 'near', 'float', this.camera );
 		this._previousView = uniform( new Matrix4() );
 		this._previousProjection = uniform( new Matrix4() );
 		this._lastWorld = new Matrix4();
 		this._lastProjection = new Matrix4();
+		this._lastJitter = new Vector2();
+		this._jitterDelta = uniform( new Vector2() );
 		this._size = new Vector2();
 		this._resolution = uniform( new Vector2() );
 		this._target = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 3 } );
@@ -121,7 +124,13 @@ class PowerLobeSSRNode extends Node {
 		this._resolution.value.set( width, height );
 		// Conservative camera-cut guard; applications should also reset on scene cuts.
 		const delta = this.camera.matrixWorld.elements.reduce( ( sum, v, i ) => sum + Math.abs( v - this._lastWorld.elements[ i ] ), 0 );
-		if ( delta > 1 || ! this.camera.projectionMatrix.equals( this._lastProjection ) ) this.resetHistory();
+		// Ignore subpixel projection shifts from TRAA. Other lens changes reset history.
+		const projectionDelta = this.camera.projectionMatrix.elements.reduce( ( sum, v, i ) => sum + Math.abs( v - this._lastProjection.elements[ i ] ), 0 );
+		if ( delta > 1 || projectionDelta > 0.02 ) this.resetHistory();
+		const view = this.camera.view;
+		const jitter = new Vector2();
+		if ( view?.enabled && view.fullWidth === view.width && view.fullHeight === view.height ) jitter.set( - view.offsetX / view.fullWidth, - view.offsetY / view.fullHeight );
+		this._jitterDelta.value.copy( this._lastJitter ).sub( jitter );
 		this._state = RendererUtils.resetRendererState( renderer, this._state );
 		renderer.setMRT( null );
 		renderer.setClearColor( 0, 0 );
@@ -146,6 +155,7 @@ class PowerLobeSSRNode extends Node {
 		this._previousProjection.value.copy( this.camera.projectionMatrix );
 		this._lastWorld.copy( this.camera.matrixWorld );
 		this._lastProjection.copy( this.camera.projectionMatrix );
+		this._lastJitter.copy( jitter );
 		this._ready.value = true;
 		this._frame.value = ( this._frame.value + 1 ) % 4096;
 
@@ -163,11 +173,16 @@ class PowerLobeSSRNode extends Node {
 
 			if ( this.environmentNode === null ) return vec3( 0 );
 			const worldL = this._world.mul( vec4( L, 0 ) ).xyz.normalize();
-			return ( this.environmentNode.mapping === CubeUVReflectionMapping ? pmremTexture( this.environmentNode, worldL, float( 0 ) ).rgb : texture( this.environmentNode, equirectUV( worldL ) ).level( 0 ).rgb ).mul( this.environmentIntensity );
+			return ( this.environmentNode.isPMREMTexture || this.environmentNode.isCubeTexture ? pmremTexture( this.environmentNode, worldL, float( 0 ) ).rgb : texture( this.environmentNode, equirectUV( worldL ) ).level( 0 ).rgb ).mul( this.environmentIntensity );
 
 		};
 
-		this._material.fragmentNode = Fn( () => {
+		const weightedOutput = property( 'vec4' );
+		const incidentOutput = property( 'vec4' );
+		const metadataOutput = property( 'vec4' );
+		this._material.contextNode = context( builder.getSharedContext() );
+		this._material.outputNode = outputStruct( weightedOutput, incidentOutput, metadataOutput );
+		this._material.colorNode = Fn( () => {
 
 			const depth = this.depthNode.sample( uvNode ).r.toVar();
 			isBackgroundDepth( depth ).discard();
@@ -186,7 +201,6 @@ class PowerLobeSSRNode extends Node {
 			const validCount = float( 0 ).toVar();
 			const hitCount = float( 0 ).toVar();
 			const distanceSum = float( 0 ).toVar();
-			const adaptedDistance = float( 0 ).toVar();
 			const f0 = mix( vec3( 0.04 ), vec3( this.diffuseNode.rgb ), float( this.metalnessNode ).clamp() ).toVar();
 			const pixel = uvNode.mul( this._resolution ).floor().toVar();
 			Loop( { start: int( 0 ), end: int( this.rayCount.clamp( 1, 4 ) ), type: 'int', condition: '<' }, ( { i } ) => {
@@ -197,16 +211,24 @@ class PowerLobeSSRNode extends Node {
 				const ey = mix( ex.mul( 38.65435 ).fract(), float( 1 ), float( 0.7 ) );
 				const cosTheta = ey.max( 1e-6 ).pow( r4.div( float( 2 ).sub( r4 ).max( 1e-6 ) ) ).toVar();
 				const sinTheta = float( 1 ).sub( cosTheta.mul( cosTheta ) ).max( 0 ).sqrt();
-				const phi = ex.mul( PI * 2 );
+				const phi = ex.mul( PI ).mul( 2 );
 				const H = T.mul( cos( phi ).mul( sinTheta ) ).add( B.mul( sin( phi ).mul( sinTheta ) ) ).add( N.mul( cosTheta ) ).normalize().toVar();
 				const L = H.mul( dot( V, H ).mul( 2 ) ).sub( V ).toVar();
-				If( dot( V, H ).lessThanEqual( 0 ).or( dot( N, L ).lessThanEqual( 1e-6 ) ), () => Continue() );
+				If( dot( V, H ).lessThanEqual( 0 ).or( dot( N, L ).lessThanEqual( 1e-6 ) ), () => {
+
+					Continue();
+
+				} );
 				validCount.addAssign( 1 );
 				const radiance = env( L ).toVar();
 				const rayDistance = float( ENV_RAY_LENGTH ).toVar();
 				const reach = this.maxDistance.max( 0 ).toVar();
 				// Clip against near plane before projection, for both camera types.
-				If( L.z.greaterThan( 1e-6 ), () => reach.assign( min( reach, float( - this.camera.near ).sub( epsilon ).sub( origin.z ).div( L.z ).max( 0 ) ) ) );
+				If( L.z.greaterThan( 1e-6 ), () => {
+
+					reach.assign( min( reach, this._near.negate().sub( epsilon ).sub( origin.z ).div( L.z ).max( 0 ) ) );
+
+				} );
 				const end = origin.add( L.mul( reach ) ).toVar();
 				const c0 = this._projection.mul( vec4( origin, 1 ) ).toVar();
 				const c1 = this._projection.mul( vec4( end, 1 ) ).toVar();
@@ -221,15 +243,23 @@ class PowerLobeSSRNode extends Node {
 				// Clip the projected segment to all four viewport boundaries.
 				for ( const axis of [ 'x', 'y' ] ) {
 
-					If( du[ axis ].greaterThan( 1e-6 ), () => limit.assign( min( limit, u0[ axis ].oneMinus().div( du[ axis ] ) ) ) );
-					If( du[ axis ].lessThan( - 1e-6 ), () => limit.assign( min( limit, u0[ axis ].negate().div( du[ axis ] ) ) ) );
+					If( du[ axis ].greaterThan( 1e-6 ), () => {
+
+						limit.assign( min( limit, u0[ axis ].oneMinus().div( du[ axis ] ) ) );
+
+					} );
+					If( du[ axis ].lessThan( - 1e-6 ), () => {
+
+						limit.assign( min( limit, u0[ axis ].negate().div( du[ axis ] ) ) );
+
+					} );
 
 				}
 
 				const rayAt = ( s ) => mix( q0, q1, s ).div( mix( k0, k1, s ) );
 				const previousS = float( 0 ).toVar();
 				// D = sceneZ - rayZ: negative in front, positive behind the surface.
-				const previousD = P.z.sub( origin.z ).toVar();
+				const previousD = positionAt( u0 ).z.sub( origin.z ).toVar();
 				const found = bool( false ).toVar();
 				const hitUV = vec2( 0 ).toVar();
 				const hitP = vec3( 0 ).toVar();
@@ -237,7 +267,11 @@ class PowerLobeSSRNode extends Node {
 
 					const s = float( j ).div( this.steps.clamp( 1, 64 ).floor() ).mul( limit.clamp() ).toVar();
 					const p = u0.add( du.mul( s ) ).toVar();
-					If( inside( p ).not(), () => Break() );
+					If( inside( p ).not(), () => {
+
+						Break();
+
+					} );
 					const d = this.depthNode.sample( p ).r.toVar();
 					If( isBackgroundDepth( d ), () => {
 
@@ -246,16 +280,20 @@ class PowerLobeSSRNode extends Node {
 					} );
 					const sceneP = getViewPosition( p, d, this._inverseProjection ).toVar();
 					const D = sceneP.z.sub( rayAt( s ).z ).toVar();
-					If( previousD.lessThan( 0 ).and( D.greaterThanEqual( 0 ) ).and( D.lessThanEqual( this.thickness.max( epsilon ) ) ), () => {
+					If( previousD.lessThan( 0 ).and( D.greaterThanEqual( 0 ) ).and( D.lessThanEqual( this.thickness.max( epsilon ) ) ).and( sceneP.sub( origin ).length().lessThanEqual( reach ) ).and( sceneP.sub( P ).length().greaterThan( epsilon.mul( 2 ) ) ), () => {
 
 						const denominator = previousD.sub( D ).toVar();
 						const t = float( 1 ).toVar();
-						If( denominator.abs().greaterThan( 1e-6 ), () => t.assign( previousD.div( denominator ).clamp() ) );
+						If( denominator.abs().greaterThan( 1e-6 ), () => {
+
+							t.assign( previousD.div( denominator ).clamp() );
+
+						} );
 						const refined = u0.add( du.mul( mix( previousS, s, t ) ) ).toVar();
 						const refinedP = positionAt( refined ).toVar();
 						const refinedD = refinedP.z.sub( rayAt( mix( previousS, s, t ) ).z );
 						// Depth discontinuities can invalidate secant refinement; keep the slab hit.
-						const useRefined = refinedD.abs().lessThanEqual( this.thickness.max( epsilon ) ).and( refinedP.sub( sceneP ).length().lessThanEqual( this.thickness.max( epsilon ) ) );
+						const useRefined = refinedD.abs().lessThanEqual( this.thickness.max( epsilon ) ).and( refinedP.sub( sceneP ).length().lessThanEqual( this.thickness.max( epsilon ) ) ).and( refinedP.sub( origin ).length().lessThanEqual( reach ) );
 						hitUV.assign( useRefined.select( refined, p ) );
 						hitP.assign( useRefined.select( refinedP, sceneP ) );
 						found.assign( true );
@@ -271,8 +309,8 @@ class PowerLobeSSRNode extends Node {
 					const worldHit = this._world.mul( vec4( hitP, 1 ) ).toVar();
 					const previousViewHit = this._previousView.mul( worldHit ).xyz.toVar();
 					const historyUV = getScreenPosition( previousViewHit, this._previousProjection ).toVar();
-					if ( this.velocityNode !== null ) historyUV.assign( hitUV.sub( this.velocityNode.sample( hitUV ).xy.mul( vec2( 0.5, - 0.5 ) ) ) );
-					If( inside( historyUV ).and( previousViewHit.z.lessThan( - this.camera.near ) ), () => {
+					if ( this.velocityNode !== null ) historyUV.assign( hitUV.sub( this.velocityNode.sample( hitUV ).xy.mul( vec2( 0.5, - 0.5 ) ) ).add( this._jitterDelta ) );
+					If( inside( historyUV ).and( previousViewHit.z.lessThan( this._near.negate() ) ), () => {
 
 						const oldGeometry = previousGeometry.sample( historyUV ).toVar();
 						// A moving surface with changed view depth conservatively falls back to env.
@@ -289,27 +327,35 @@ class PowerLobeSSRNode extends Node {
 					} );
 
 				} );
-				If( this.maxLuminance.greaterThan( 0 ), () => radiance.mulAssign( this.maxLuminance.div( luminance( radiance ).max( 1e-6 ) ).min( 1 ) ) );
+				If( this.maxLuminance.greaterThan( 0 ), () => {
+
+					radiance.mulAssign( this.maxLuminance.div( luminance( radiance ).max( 1e-6 ) ).min( 1 ) );
+
+				} );
 				incidentSum.addAssign( radiance );
 				// Deliberately approximate response: Schlick only, no BRDF/PDF correction.
 				weightedSum.addAssign( radiance.mul( F_Schlick( f0, dot( V, H ).clamp() ) ) );
-				adaptedDistance.addAssign( rayDistance );
 
 			} );
 			const divisor = validCount.max( 1 );
-			return outputStruct(
-				vec4( weightedSum.div( divisor ).mul( this.intensity ), adaptedDistance.div( divisor ) ),
-				vec4( incidentSum.div( divisor ), hitCount.div( divisor ) ),
-				vec4( hitCount.div( divisor ), distanceSum.div( hitCount.max( 1 ) ), r, validCount )
-			);
+			weightedOutput.assign( vec4( weightedSum.div( divisor ).mul( this.intensity ), hitCount.greaterThan( 0 ).select( distanceSum.div( hitCount.max( 1 ) ), float( ENV_RAY_LENGTH ) ) ) );
+			incidentOutput.assign( vec4( incidentSum.div( divisor ), hitCount.div( divisor ) ) );
+			metadataOutput.assign( vec4( hitCount.div( divisor ), distanceSum.div( hitCount.max( 1 ) ), r, validCount ) );
+			return vec4( 0 );
 
-		} )().context( builder.getSharedContext() );
-		this._copyMaterial.fragmentNode = Fn( () => {
+		} )();
+		const copyColor = property( 'vec4' );
+		const copyGeometry = property( 'vec4' );
+		this._copyMaterial.contextNode = context( builder.getSharedContext() );
+		this._copyMaterial.outputNode = outputStruct( copyColor, copyGeometry );
+		this._copyMaterial.colorNode = Fn( () => {
 
 			const d = this.depthNode.sample( uvNode ).r;
-			return outputStruct( vec4( this.colorNode.sample( uvNode ).rgb, 1 ), vec4( positionAt( uvNode ), isBackgroundDepth( d ).not() ) );
+			copyColor.assign( vec4( this.colorNode.sample( uvNode ).rgb, 1 ) );
+			copyGeometry.assign( vec4( positionAt( uvNode ), isBackgroundDepth( d ).not() ) );
+			return vec4( 0 );
 
-		} )().context( builder.getSharedContext() );
+		} )();
 		return this._textureNode;
 
 	}

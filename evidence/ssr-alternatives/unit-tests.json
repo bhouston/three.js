@@ -1,0 +1,24 @@
+[
+  {
+    "suite": "UnitTests.html",
+    "stats": {
+      "passed": 1957,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 1,
+      "total": 1958
+    },
+    "failures": []
+  },
+  {
+    "suite": "UnitTestsAddons.html",
+    "stats": {
+      "passed": 109,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "total": 109
+    },
+    "failures": []
+  }
+]

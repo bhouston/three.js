@@ -1,0 +1,376 @@
+{
+  "status": "passed",
+  "viewport": [
+    320,
+    240
+  ],
+  "hardware": {
+    "adapter": {
+      "vendor": "nvidia",
+      "architecture": "ampere",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false
+    },
+    "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+  },
+  "cases": [
+    {
+      "cameraType": "perspective",
+      "reversed": false,
+      "deviceInfo": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "hits": 4609,
+      "nonfinite": 0,
+      "badUV": 0,
+      "outOfReach": 0,
+      "normalization": [
+        {
+          "roughness": 0,
+          "rays": 1,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0,
+          "rays": 2,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0,
+          "rays": 4,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 1,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 2,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 4,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 1,
+          "valid": 31827,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 2,
+          "valid": 42549,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 4,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        }
+      ],
+      "gpuErrors": []
+    },
+    {
+      "cameraType": "perspective",
+      "reversed": true,
+      "deviceInfo": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "hits": 4610,
+      "nonfinite": 0,
+      "badUV": 0,
+      "outOfReach": 0,
+      "normalization": [
+        {
+          "roughness": 0,
+          "rays": 1,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0,
+          "rays": 2,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0,
+          "rays": 4,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 1,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 2,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 4,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 1,
+          "valid": 31827,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 2,
+          "valid": 42549,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 4,
+          "valid": 46960,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        }
+      ],
+      "gpuErrors": []
+    },
+    {
+      "cameraType": "orthographic",
+      "reversed": false,
+      "deviceInfo": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "hits": 3162,
+      "nonfinite": 0,
+      "badUV": 0,
+      "outOfReach": 0,
+      "normalization": [
+        {
+          "roughness": 0,
+          "rays": 1,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0,
+          "rays": 2,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0,
+          "rays": 4,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 1,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 2,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 4,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 1,
+          "valid": 38224,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 2,
+          "valid": 52415,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 4,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        }
+      ],
+      "gpuErrors": []
+    },
+    {
+      "cameraType": "orthographic",
+      "reversed": true,
+      "deviceInfo": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "hits": 3162,
+      "nonfinite": 0,
+      "badUV": 0,
+      "outOfReach": 0,
+      "normalization": [
+        {
+          "roughness": 0,
+          "rays": 1,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0,
+          "rays": 2,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0,
+          "rays": 4,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 1,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 2,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 0.001,
+          "rays": 4,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 1,
+          "valid": 38224,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 2,
+          "valid": 52415,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        },
+        {
+          "roughness": 1,
+          "rays": 4,
+          "valid": 59618,
+          "error": 0,
+          "badCoverage": 0,
+          "nonfinite": 0
+        }
+      ],
+      "gpuErrors": []
+    }
+  ],
+  "errors": []
+}

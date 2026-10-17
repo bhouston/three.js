@@ -1,0 +1,38 @@
+
+> three@0.186.0 lint-examples
+> eslint examples
+
+
+C:\Users\neura\Coding\.worktrees\119-ssr\examples\physics_ammo_break.html
+  91:4  error  Read-only global 'Ammo' should not be modified  no-global-assign
+
+C:\Users\neura\Coding\.worktrees\119-ssr\examples\physics_ammo_cloth.html
+  60:5  error  Read-only global 'Ammo' should not be modified  no-global-assign
+
+C:\Users\neura\Coding\.worktrees\119-ssr\examples\physics_ammo_rope.html
+  64:4  error  Read-only global 'Ammo' should not be modified  no-global-assign
+
+C:\Users\neura\Coding\.worktrees\119-ssr\examples\physics_ammo_terrain.html
+  77:5  error  Read-only global 'Ammo' should not be modified  no-global-assign
+
+C:\Users\neura\Coding\.worktrees\119-ssr\examples\physics_ammo_volume.html
+  68:5  error  Read-only global 'Ammo' should not be modified  no-global-assign
+
+C:\Users\neura\Coding\.worktrees\119-ssr\examples\webgl_materials_texture_html.html
+  84:5  warning  'info' is not defined  no-undef
+
+C:\Users\neura\Coding\.worktrees\119-ssr\examples\webgl_multiple_elements_text.html
+  364:4  error  Read-only global 'parent' should not be modified  no-global-assign
+  485:4  error  Read-only global 'parent' should not be modified  no-global-assign
+  516:4  error  Read-only global 'parent' should not be modified  no-global-assign
+  646:4  error  Read-only global 'parent' should not be modified  no-global-assign
+  678:4  error  Read-only global 'parent' should not be modified  no-global-assign
+
+C:\Users\neura\Coding\.worktrees\119-ssr\examples\webgpu_materials_texture_html.html
+  85:5  warning  'info' is not defined  no-undef
+
+C:\Users\neura\Coding\.worktrees\119-ssr\examples\webgpu_shadertoy.html
+  233:12  error  'builder' is defined but never used  no-unused-vars
+
+✖ 13 problems (11 errors, 2 warnings)
+

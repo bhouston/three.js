@@ -1,0 +1,78 @@
+[
+  {
+    "example": "webgpu_postprocessing_ssr",
+    "mode": "ggx",
+    "outputs": [
+      {
+        "name": "temporal",
+        "nonfinite": 0,
+        "alphaMin": 0.03125,
+        "alphaMax": 1
+      },
+      {
+        "name": "recurrent",
+        "nonfinite": 0,
+        "alphaMin": 0.03125,
+        "alphaMax": 1
+      }
+    ],
+    "errors": []
+  },
+  {
+    "example": "webgpu_postprocessing_ssr",
+    "mode": "power",
+    "outputs": [
+      {
+        "name": "temporal",
+        "nonfinite": 0,
+        "alphaMin": 0.03125,
+        "alphaMax": 1
+      },
+      {
+        "name": "recurrent",
+        "nonfinite": 0,
+        "alphaMin": 0.03125,
+        "alphaMax": 1
+      }
+    ],
+    "errors": []
+  },
+  {
+    "example": "webgpu_postprocessing_ssr_denoise",
+    "mode": "ggx",
+    "outputs": [
+      {
+        "name": "temporal",
+        "nonfinite": 0,
+        "alphaMin": 0.0625,
+        "alphaMax": 1
+      },
+      {
+        "name": "recurrent",
+        "nonfinite": 0,
+        "alphaMin": 0.0625,
+        "alphaMax": 1
+      }
+    ],
+    "errors": []
+  },
+  {
+    "example": "webgpu_postprocessing_ssr_denoise",
+    "mode": "power",
+    "outputs": [
+      {
+        "name": "temporal",
+        "nonfinite": 0,
+        "alphaMin": 0.0625,
+        "alphaMax": 1
+      },
+      {
+        "name": "recurrent",
+        "nonfinite": 0,
+        "alphaMin": 0.0625,
+        "alphaMax": 1
+      }
+    ],
+    "errors": []
+  }
+]

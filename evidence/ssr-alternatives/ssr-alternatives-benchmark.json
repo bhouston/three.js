@@ -1,0 +1,910 @@
+{
+  "status": "passed",
+  "measurement": "GPU-completed whole frames; sequential eight-frame batches with queue completion before counting",
+  "viewport": {
+    "width": 960,
+    "height": 640,
+    "deviceScaleFactor": 1
+  },
+  "launchFlags": [
+    "--disable-frame-rate-limit",
+    "--disable-gpu-vsync"
+  ],
+  "controls": {
+    "source": 1,
+    "resolution": 1,
+    "steps": 16,
+    "rays": 1,
+    "seed": 1,
+    "reach": 1,
+    "thickness": 0.03,
+    "clamp": 0
+  },
+  "warmupSeconds": 1,
+  "measurementSeconds": 5,
+  "runsPerCase": 3,
+  "batchSize": 8,
+  "unmatched": [
+    "Sampler and sampling/step distributions differ",
+    "Power mode uses previous opaque radiance; stock GGX uses current beauty",
+    "Seed control applies to power mode; stock GGX retains its existing noise generator",
+    "Postprocessing is matched within each example; the two examples have different postprocessing"
+  ],
+  "cases": [
+    {
+      "example": "webgpu_postprocessing_ssr",
+      "mode": "ggx",
+      "denoise": false,
+      "url": "http://127.0.0.1:59684/examples/webgpu_postprocessing_ssr.html?source=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0&mode=ggx&denoise=0",
+      "hardware": {
+        "backend": "WebGPU",
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "adapterSource": "renderer GPUDevice.adapterInfo",
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "runs": [
+        {
+          "completedFrames": 4616,
+          "elapsedSeconds": 5.000700000047684,
+          "framesPerSecond": 923.0707700833852,
+          "noiseCounter": {
+            "before": 941,
+            "afterFirstBatch": 949,
+            "after": 5557
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 4544,
+          "elapsedSeconds": 5.0065,
+          "framesPerSecond": 907.6200938779587,
+          "noiseCounter": {
+            "before": 6485,
+            "afterFirstBatch": 6493,
+            "after": 11029
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 4336,
+          "elapsedSeconds": 5.003200000047683,
+          "framesPerSecond": 866.6453469696745,
+          "noiseCounter": {
+            "before": 11869,
+            "afterFirstBatch": 11877,
+            "after": 16205
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        }
+      ],
+      "meanFramesPerSecond": 899.1120703103394,
+      "sampleStandardDeviation": 29.158994189798335
+    },
+    {
+      "example": "webgpu_postprocessing_ssr",
+      "mode": "power",
+      "denoise": false,
+      "url": "http://127.0.0.1:59684/examples/webgpu_postprocessing_ssr.html?source=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0&mode=power&denoise=0",
+      "hardware": {
+        "backend": "WebGPU",
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "adapterSource": "renderer GPUDevice.adapterInfo",
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "runs": [
+        {
+          "completedFrames": 3304,
+          "elapsedSeconds": 5.006199999988079,
+          "framesPerSecond": 659.9816227893148,
+          "noiseCounter": {
+            "before": 640,
+            "afterFirstBatch": 648,
+            "after": 3944
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 3184,
+          "elapsedSeconds": 5.012899999976158,
+          "framesPerSecond": 635.161283890591,
+          "noiseCounter": {
+            "before": 720,
+            "afterFirstBatch": 728,
+            "after": 3904
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 3208,
+          "elapsedSeconds": 5.000700000047684,
+          "framesPerSecond": 641.5101885674826,
+          "noiseCounter": {
+            "before": 664,
+            "afterFirstBatch": 672,
+            "after": 3872
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        }
+      ],
+      "meanFramesPerSecond": 645.5510317491295,
+      "sampleStandardDeviation": 12.894131067112337
+    },
+    {
+      "example": "webgpu_postprocessing_ssr",
+      "mode": "ggx",
+      "denoise": true,
+      "url": "http://127.0.0.1:59684/examples/webgpu_postprocessing_ssr.html?source=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0&mode=ggx&denoise=1",
+      "hardware": {
+        "backend": "WebGPU",
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "adapterSource": "renderer GPUDevice.adapterInfo",
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "runs": [
+        {
+          "completedFrames": 2912,
+          "elapsedSeconds": 5.010699999988079,
+          "framesPerSecond": 581.1563254648908,
+          "noiseCounter": {
+            "before": 483,
+            "afterFirstBatch": 491,
+            "after": 3395
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 2800,
+          "elapsedSeconds": 5.007800000011921,
+          "framesPerSecond": 559.1277606919874,
+          "noiseCounter": {
+            "before": 3979,
+            "afterFirstBatch": 3987,
+            "after": 6779
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 3112,
+          "elapsedSeconds": 5.0105,
+          "framesPerSecond": 621.0956990320327,
+          "noiseCounter": {
+            "before": 7323,
+            "afterFirstBatch": 7331,
+            "after": 10435
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        }
+      ],
+      "meanFramesPerSecond": 587.1265950629703,
+      "sampleStandardDeviation": 31.412408930774927
+    },
+    {
+      "example": "webgpu_postprocessing_ssr",
+      "mode": "power",
+      "denoise": true,
+      "url": "http://127.0.0.1:59684/examples/webgpu_postprocessing_ssr.html?source=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0&mode=power&denoise=1",
+      "hardware": {
+        "backend": "WebGPU",
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "adapterSource": "renderer GPUDevice.adapterInfo",
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "runs": [
+        {
+          "completedFrames": 2816,
+          "elapsedSeconds": 5.0140999999642375,
+          "framesPerSecond": 561.6162422010101,
+          "noiseCounter": {
+            "before": 568,
+            "afterFirstBatch": 576,
+            "after": 3384
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 2920,
+          "elapsedSeconds": 5.008899999976158,
+          "framesPerSecond": 582.9623270606119,
+          "noiseCounter": {
+            "before": 576,
+            "afterFirstBatch": 584,
+            "after": 3496
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 2464,
+          "elapsedSeconds": 5.006599999964237,
+          "framesPerSecond": 492.1503615263054,
+          "noiseCounter": {
+            "before": 600,
+            "afterFirstBatch": 608,
+            "after": 3064
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": "SMAA and renderer tone mapping"
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        }
+      ],
+      "meanFramesPerSecond": 545.5763102626424,
+      "sampleStandardDeviation": 47.48329004493703
+    },
+    {
+      "example": "webgpu_postprocessing_ssr_denoise",
+      "mode": "ggx",
+      "denoise": false,
+      "url": "http://127.0.0.1:59684/examples/webgpu_postprocessing_ssr_denoise.html?source=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0&mode=ggx&denoise=0",
+      "hardware": {
+        "backend": "WebGPU",
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "adapterSource": "renderer GPUDevice.adapterInfo",
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "runs": [
+        {
+          "completedFrames": 2032,
+          "elapsedSeconds": 5.010699999988079,
+          "framesPerSecond": 405.5321611760501,
+          "noiseCounter": {
+            "before": 443,
+            "afterFirstBatch": 451,
+            "after": 2475
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 2400,
+          "elapsedSeconds": 5.004899999976158,
+          "framesPerSecond": 479.5300605429545,
+          "noiseCounter": {
+            "before": 2819,
+            "afterFirstBatch": 2827,
+            "after": 5219
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 2776,
+          "elapsedSeconds": 5.004599999964237,
+          "framesPerSecond": 554.6896854933136,
+          "noiseCounter": {
+            "before": 5779,
+            "afterFirstBatch": 5787,
+            "after": 8555
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        }
+      ],
+      "meanFramesPerSecond": 479.91730240410607,
+      "sampleStandardDeviation": 74.57951617105084
+    },
+    {
+      "example": "webgpu_postprocessing_ssr_denoise",
+      "mode": "power",
+      "denoise": false,
+      "url": "http://127.0.0.1:59684/examples/webgpu_postprocessing_ssr_denoise.html?source=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0&mode=power&denoise=0",
+      "hardware": {
+        "backend": "WebGPU",
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "adapterSource": "renderer GPUDevice.adapterInfo",
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "runs": [
+        {
+          "completedFrames": 2040,
+          "elapsedSeconds": 5.013800000011921,
+          "framesPerSecond": 406.87701942541577,
+          "noiseCounter": {
+            "before": 360,
+            "afterFirstBatch": 368,
+            "after": 2400
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 1888,
+          "elapsedSeconds": 5.008300000011921,
+          "framesPerSecond": 376.974222789271,
+          "noiseCounter": {
+            "before": 424,
+            "afterFirstBatch": 432,
+            "after": 2312
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 1736,
+          "elapsedSeconds": 5.008900000035763,
+          "framesPerSecond": 346.5830821113628,
+          "noiseCounter": {
+            "before": 352,
+            "afterFirstBatch": 360,
+            "after": 2088
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        }
+      ],
+      "meanFramesPerSecond": 376.81144144201653,
+      "sampleStandardDeviation": 30.147298262580648
+    },
+    {
+      "example": "webgpu_postprocessing_ssr_denoise",
+      "mode": "ggx",
+      "denoise": true,
+      "url": "http://127.0.0.1:59684/examples/webgpu_postprocessing_ssr_denoise.html?source=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0&mode=ggx&denoise=1",
+      "hardware": {
+        "backend": "WebGPU",
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "adapterSource": "renderer GPUDevice.adapterInfo",
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "runs": [
+        {
+          "completedFrames": 2424,
+          "elapsedSeconds": 5.007200000047684,
+          "framesPerSecond": 484.1028918311464,
+          "noiseCounter": {
+            "before": 341,
+            "afterFirstBatch": 349,
+            "after": 2765
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 2600,
+          "elapsedSeconds": 5.013699999988079,
+          "framesPerSecond": 518.5790932856338,
+          "noiseCounter": {
+            "before": 3285,
+            "afterFirstBatch": 3293,
+            "after": 5885
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 2456,
+          "elapsedSeconds": 5.006699999988079,
+          "framesPerSecond": 490.5426728195913,
+          "noiseCounter": {
+            "before": 6405,
+            "afterFirstBatch": 6413,
+            "after": 8861
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 100000000000000000000,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        }
+      ],
+      "meanFramesPerSecond": 497.74155264545715,
+      "sampleStandardDeviation": 18.330848854950602
+    },
+    {
+      "example": "webgpu_postprocessing_ssr_denoise",
+      "mode": "power",
+      "denoise": true,
+      "url": "http://127.0.0.1:59684/examples/webgpu_postprocessing_ssr_denoise.html?source=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0&mode=power&denoise=1",
+      "hardware": {
+        "backend": "WebGPU",
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "adapterSource": "renderer GPUDevice.adapterInfo",
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "runs": [
+        {
+          "completedFrames": 1328,
+          "elapsedSeconds": 5.0171000000238415,
+          "framesPerSecond": 264.6947439743456,
+          "noiseCounter": {
+            "before": 328,
+            "afterFirstBatch": 336,
+            "after": 1656
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 1312,
+          "elapsedSeconds": 5.023199999988079,
+          "framesPerSecond": 261.18808727566363,
+          "noiseCounter": {
+            "before": 232,
+            "afterFirstBatch": 240,
+            "after": 1544
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        },
+        {
+          "completedFrames": 1232,
+          "elapsedSeconds": 5.024800000011921,
+          "framesPerSecond": 245.18388791535526,
+          "noiseCounter": {
+            "before": 240,
+            "afterFirstBatch": 248,
+            "after": 1472
+          },
+          "actualControls": {
+            "drawingBuffer": [
+              960,
+              640
+            ],
+            "resolutionScale": 1,
+            "steps": 16,
+            "rays": 1,
+            "reach": 1,
+            "thickness": 0.03,
+            "maxLuminance": 0,
+            "postprocessing": {
+              "grading": {
+                "toneMapping": "AgX",
+                "exposure": 1.57,
+                "gamma": 0.89,
+                "contrast": 1.31,
+                "saturation": 1
+              }
+            }
+          },
+          "gpuErrors": [],
+          "cameraJitterObserved": false
+        }
+      ],
+      "meanFramesPerSecond": 257.0222397217882,
+      "sampleStandardDeviation": 10.401158128797862
+    }
+  ],
+  "errors": [],
+  "warnings": [],
+  "browser": "Chrome/155.0.8059.39"
+}

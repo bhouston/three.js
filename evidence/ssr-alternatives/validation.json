@@ -580,7 +580,7 @@
         "index": 1,
         "nonfinite": 0,
         "min": 0,
-        "max": 277.25,
+        "max": 267.25,
         "hits": 0
       },
       {
@@ -588,7 +588,7 @@
         "nonfinite": 0,
         "min": 0,
         "max": 1,
-        "hits": 179485
+        "hits": 180605
       },
       {
         "index": 3,
@@ -696,7 +696,7 @@
         "index": 1,
         "nonfinite": 0,
         "min": 0,
-        "max": 264.5,
+        "max": 267.25,
         "hits": 0
       },
       {
@@ -704,7 +704,7 @@
         "nonfinite": 0,
         "min": 0,
         "max": 1,
-        "hits": 179710
+        "hits": 180605
       },
       {
         "index": 3,
@@ -724,39 +724,39 @@
       },
       {
         "name": "static history",
-        "total": 179375,
+        "total": 180268,
         "nonfinite": 0,
         "frame": 17
       },
       {
         "name": "camera translation",
-        "total": 169237,
+        "total": 170402,
         "nonfinite": 0,
         "frame": 25
       },
       {
         "name": "moving reflected object",
-        "total": 186704,
+        "total": 187814,
         "nonfinite": 0
       },
       {
         "name": "moving light / environment intensity",
-        "total": 186980,
+        "total": 187823,
         "nonfinite": 0
       },
       {
         "name": "roughness 0",
-        "total": 186050,
+        "total": 187650,
         "nonfinite": 0
       },
       {
         "name": "roughness 0.001",
-        "total": 186677,
+        "total": 187650,
         "nonfinite": 0
       },
       {
         "name": "roughness 1",
-        "total": 123365,
+        "total": 124781,
         "nonfinite": 0
       },
       {
@@ -858,7 +858,7 @@
         "seed": 1,
         "maxDistance": 1,
         "thickness": 0.03,
-        "maxLuminance": 0,
+        "maxLuminance": 10,
         "explicit": false
       },
       "position": [
@@ -1032,7 +1032,7 @@
         "seed": 1,
         "maxDistance": 0.4,
         "thickness": 0.1,
-        "maxLuminance": 0,
+        "maxLuminance": 35,
         "explicit": false
       },
       "position": [

@@ -4,7 +4,7 @@ import { temporalReproject } from './TemporalReprojectNode.js';
 import { recurrentDenoise } from './RecurrentDenoiseNode.js';
 
 /** Shared controls for the experimental SSR comparison examples. */
-export function readSSRComparison( defaultMode, defaultDenoise, defaultSteps = 16 ) {
+export function readSSRComparison( defaultMode, defaultDenoise, defaultSteps = 16, defaultClamp = 10 ) {
 
 	const query = new URLSearchParams( window.location.search );
 	const number = ( name, fallback, min, max ) => {
@@ -24,7 +24,7 @@ export function readSSRComparison( defaultMode, defaultDenoise, defaultSteps = 1
 		seed: Math.round( number( 'seed', 1, 0, 65535 ) ),
 		maxDistance: query.has( 'reach' ) ? number( 'reach', 1, 0.001, 20 ) : null,
 		thickness: query.has( 'thickness' ) ? number( 'thickness', 0.03, 0.0001, 1 ) : null,
-		maxLuminance: number( 'clamp', 0, 0, 10000 ),
+		maxLuminance: number( 'clamp', query.has( 'mode' ) ? 0 : defaultClamp, 0, 10000 ),
 		explicit: query.has( 'mode' ),
 		query
 	};
@@ -60,7 +60,12 @@ export function addSSRComparisonGUI( gui, comparison, apply ) {
 
 	}
 
-	gui.add( comparison, 'maxLuminance', 0, 1000, 1 ).name( 'radiance clamp (0=off)' ).onChange( apply );
+	gui.add( comparison, 'maxLuminance', 0, 1000, 1 ).name( 'radiance clamp (0=off)' ).onChange( value => {
+
+		comparison.query.set( 'clamp', value );
+		apply();
+
+	} );
 	const note = document.createElement( 'div' );
 	note.style.cssText = 'position:fixed;bottom:8px;left:8px;max-width:580px;padding:6px;background:#000b;color:white;font:12px sans-serif;pointer-events:none;z-index:1000';
 	note.textContent = `${ comparison.mode } · ${ comparison.denoise ? 'recurrent denoise' : 'raw' } · ${ comparison.mode === 'power' ? 'biased estimator; projected steps; previous opaque HDR' : 'stock estimator; current beauty; one ray' }. Explicit modes share an absolute reach cap. Mirror retains adaptive steps, plane attenuation, blur and no environment miss fallback; GGX retains its step distribution and BRDF weights. Scene/filter controls reset on mode reload; shared trace controls persist.`;

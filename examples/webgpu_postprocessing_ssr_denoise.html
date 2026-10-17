@@ -74,7 +74,7 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
-		const comparison = readSSRComparison( 'ggx', true );
+		const comparison = readSSRComparison( 'ggx', true, 16, 35 );
 
 		// Disable env map specular (radiance and clearcoat radiance) for every PBR material
 		// in this scene, since SSR provides the specular reflections instead. Diffuse env
@@ -362,6 +362,13 @@
 				'Ray Length': 7,
 				'Accumulation Speed (Alpha)': 6
 			};
+			if ( ! comparison.denoise ) {
+
+				delete outputTypes[ 'Denoised SSR' ];
+				delete outputTypes[ 'Compare (Denoise)' ];
+				delete outputTypes[ 'Accumulation Speed (Alpha)' ];
+
+			}
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR settings' );
 			addSSRComparisonGUI( renderer.inspector.createParameters( 'Estimator comparison' ), comparison, applyParams );
@@ -413,6 +420,12 @@
 			temporalReprojectGui.add( params.temporalReproject, 'flickerSuppression', 0, 1 ).name( 'flicker suppression' ).onChange( applyParams );
 			temporalReprojectGui.add( params.temporalReproject, 'hitPointReprojection' ).name( 'hit point reprojection' ).onChange( applyParams );
 			temporalReprojectGui.close();
+			if ( ! comparison.denoise ) {
+
+				denoiseGui.hide();
+				temporalReprojectGui.hide();
+
+			}
 
 			// Concise UI for Directional Light controls
 			const lightGui = renderer.inspector.createParameters( 'Light' ).close();
@@ -503,7 +516,11 @@
 
 		function applyPostProcessing( source ) {
 
-			return sharpen( traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera ), 0 );
+			const aa = traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera );
+			// TemporalReproject owns a non-jittered camera in the denoised path.
+			// Match that sampling in raw comparisons, keeping the same final AA resolve.
+			aa.jitter = ! comparison.explicit;
+			return sharpen( aa, 0 );
 
 		}
 

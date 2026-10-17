@@ -73,13 +73,13 @@ try {
 						else if ( message.type() === 'warn' ) report.warnings.push( identify( message.text() ) );
 
 					} );
-					await page.goto( url, { waitUntil: 'networkidle0', timeout: 120000 } );
+					await page.goto( url, { waitUntil: 'load', timeout: 120000 } );
 					await page.waitForFunction( () => {
 
 						const comparison = window.ssrComparison;
 						return comparison?.renderPipeline && comparison.scene.children.some( child => child.isGroup && child.children.length > 0 );
 
-					}, { timeout: 120000 } );
+					}, { timeout: 120000, polling: 100 } );
 					const hardware = await page.evaluate( async () => {
 
 						const comparison = window.ssrComparison;
@@ -175,7 +175,8 @@ try {
 						}, report );
 						result.runs.push( measurement );
 						assert.ok( measurement.completedFrames > 0 && measurement.elapsedSeconds >= report.measurementSeconds );
-						assert.ok( Number.isFinite( measurement.noiseCounter.before ) && measurement.noiseCounter.before !== measurement.noiseCounter.afterFirstBatch, 'SSR sampling must advance during measured rendering' );
+						const period = mode === 'power' ? 4096 : 0x7fffffff;
+						assert.equal( ( measurement.noiseCounter.afterFirstBatch - measurement.noiseCounter.before + period ) % period, report.batchSize, 'Every measured whole frame must execute SSR tracing' );
 						assert.deepEqual( measurement.gpuErrors, [], 'GPU validation errors invalidate the benchmark' );
 						assert.deepEqual( measurement.actualControls.drawingBuffer, [ report.viewport.width, report.viewport.height ] );
 						assert.equal( measurement.actualControls.resolutionScale, controls.resolution );

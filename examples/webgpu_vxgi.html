@@ -117,9 +117,16 @@
 
 				// scene pass: AO and indirect irradiance are injected into the materials' lighting
 
-				const scenePass = pass( scene, camera ).toInspector( 'Color' );
+				// Keep the pre-pass depth for early rejection in the lighting pass.
+				const scenePass = pass( scene, camera, {
+					depthTexture: prePass.getTexture( 'depth' ),
+					autoClearDepth: false
+				} ).before( prePass ).toInspector( 'Color' );
 				const giContext = builtinGIContext( ao.sample( screenUV ).r, gi.sample( screenUV ).rgb );
 				scenePass.contextNode = giContext;
+
+				// Direct lighting does not need the pre-pass or its attachments.
+				const directPass = pass( scene, camera ).toInspector( 'Color' );
 
 				// traa ( resolves the temporal noise of the cone tracing )
 
@@ -258,18 +265,13 @@
 
 					} else if ( params.output === 3 ) {
 
-						renderPipeline.outputNode = scenePass;
+						renderPipeline.outputNode = directPass;
 
 					} else {
 
 						renderPipeline.outputNode = giPass.useTemporalFiltering ? traaPass : scenePass;
 
 					}
-
-					// direct lighting only: render the scene without the GI context
-
-					scenePass.contextNode = ( params.output === 3 ) ? null : giContext;
-					scenePass.needsUpdate = true;
 
 					renderPipeline.needsUpdate = true;
 

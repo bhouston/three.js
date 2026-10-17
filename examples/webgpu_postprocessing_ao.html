@@ -141,12 +141,16 @@
 
 				// scene pass
 
-				const scenePass = pass( scene, camera ).toInspector( 'Color' );
+				// Keep the opaque pre-pass depth for early depth rejection in the beauty pass.
+				// Retain the materials' depth tests/writes so transparent objects still render normally.
+				const scenePass = pass( scene, camera, {
+					depthTexture: prePass.getTexture( 'depth' ),
+					autoClearDepth: false,
+					samples: 0
+				} ).before( prePass ).toInspector( 'Color' );
 
-				// traa ( resolves the temporal noise of GTAO )
-
-				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
-				traaPass.useSubpixelCorrection = false;
+				// Keep separate depth for MSAA, and for transparents that write depth (TRAA needs opaque depth).
+				const separateDepthScenePass = pass( scene, camera ).toInspector( 'Color (Separate Depth)' );
 
 				// ao: the AO node feeds the scene's ambient term via `builtinAOContext`, and
 				// can be switched between GTAO ( ground-truth, needs temporal denoise ) and the
@@ -157,10 +161,21 @@
 					// SSAO is self-denoised so it can skip TRAA and use MSAA for edge anti-aliasing instead
 
 					const useTRAA = ( params.aoType === 'GTAO' );
+					const useSharedDepth = useTRAA && ! transparentMesh?.visible;
+					separateDepthScenePass.options.samples = useTRAA ? 0 : 4;
 
-					scenePass.options.samples = useTRAA ? 0 : 4;
+					// Rebuild temporal history when changing AA mode or opaque/transparent coverage.
+					if ( traaPass ) traaPass.dispose();
+					traaPass = null;
 
-					renderPipeline.outputNode = params.aoOnly ? vec4( vec3( aoPass.getTextureNode().sample( screenUV ).r ), 1 ) : ( useTRAA ? traaPass : scenePass );
+					if ( useTRAA && ! params.aoOnly ) {
+
+						traaPass = traa( useSharedDepth ? scenePass : separateDepthScenePass, prePassDepth, prePassVelocity, camera );
+						traaPass.useSubpixelCorrection = false;
+
+					}
+
+					renderPipeline.outputNode = params.aoOnly ? vec4( vec3( aoPass.getTextureNode().sample( screenUV ).r ), 1 ) : ( useTRAA ? traaPass : separateDepthScenePass );
 					renderer.toneMapping = params.aoOnly ? THREE.NoToneMapping : THREE.NeutralToneMapping;
 					renderPipeline.needsUpdate = true;
 
@@ -178,6 +193,8 @@
 
 					scenePass.contextNode = builtinAOContext( aoPass.getTextureNode().sample( screenUV ).r );
 					scenePass.needsUpdate = true;
+					separateDepthScenePass.contextNode = scenePass.contextNode;
+					separateDepthScenePass.needsUpdate = true;
 
 					updateOutput();
 
@@ -554,7 +571,7 @@
 					gui.add( params, 'blurSharpness', 0, 8 ).name( 'blur sharpness' ).onChange( updateParameters )
 				];
 
-				gui.add( transparentMesh, 'visible' ).name( 'show transparent mesh' );
+				gui.add( transparentMesh, 'visible' ).name( 'show transparent mesh' ).onChange( updateOutput );
 				gui.add( params, 'transparentOpacity', 0, 1, 0.01 ).name( 'mesh opacity' ).onChange( ( value ) => {
 
 					transparentMesh.material.opacity = value;

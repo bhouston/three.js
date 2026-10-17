@@ -151,7 +151,14 @@
 
 				// scene pass
 
-				const scenePass = pass( scene, camera ).toInspector( 'Color' );
+				// Keep the pre-pass depth for early rejection in the lighting pass.
+				const scenePass = pass( scene, camera, {
+					depthTexture: prePass.getTexture( 'depth' ),
+					autoClearDepth: false
+				} ).before( prePass ).toInspector( 'Color' );
+
+				// Shadow maps without temporal filtering do not need the pre-pass.
+				const directPass = pass( scene, camera ).toInspector( 'Color' );
 
 				// sss
 
@@ -203,6 +210,10 @@
 					if ( params.output === 2 ) {
 
 						renderPipeline.outputNode = vec4( vec3( sssPass.r ), 1 );
+
+					} else if ( params.output === 1 && sssPass.useTemporalFiltering === false ) {
+
+						renderPipeline.outputNode = directPass;
 
 					} else {
 

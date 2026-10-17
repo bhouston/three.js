@@ -250,6 +250,11 @@
 				warmLight.shadow.mapSize.setScalar( 256 );
 				warmLight.shadow.radius = 12;
 				warmLight.shadow.bias = - 0.002;
+
+				// The lights and shadow casters are static. Rebaking the probe grids
+				// refreshes the shadow maps.
+				warmLight.shadow.autoUpdate = false;
+				warmLight.shadow.needsUpdate = true;
 				scene.add( warmLight );
 
 				// Cool point light in right room
@@ -259,6 +264,8 @@
 				coolLight.shadow.mapSize.setScalar( 256 );
 				coolLight.shadow.radius = 12;
 				coolLight.shadow.bias = - 0.002;
+				coolLight.shadow.autoUpdate = false;
+				coolLight.shadow.needsUpdate = true;
 				scene.add( coolLight );
 
 				// Renderer

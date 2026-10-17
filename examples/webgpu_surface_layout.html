@@ -157,7 +157,7 @@
 						motion: { node: velocity, texture: { type: THREE.HalfFloatType, format: THREE.RGFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter } }
 					},
 					fields: {
-						normal: { attachment: 'normalRough', channels: oct ? 'rg' : 'rgb', decode: oct ? octDecode : unpackRGBToNormal, metadata: { space: 'view', kind: 'shading', filtering: 'nearest before decode' } },
+						normal: { attachment: 'normalRough', channels: oct ? 'rg' : 'rgb', decode: oct ? octDecode : packed => unpackRGBToNormal( packed ).normalize(), metadata: { space: 'view', kind: 'shading', filtering: 'nearest before decode' } },
 						roughness: { attachment: 'normalRough', channels: oct ? 'b' : 'a', metadata: { convention: 'perceptual' } },
 						albedo: { attachment: 'albedo', channels: 'rgb', metadata: { colorSpace: 'linear working', convention: 'diffuseColor; dielectric sample scene' } },
 						motion: { attachment: 'motion', channels: 'rg', metadata: { space: 'unjittered NDC current minus previous' } }

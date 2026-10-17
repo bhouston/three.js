@@ -167,6 +167,13 @@ try {
 					}
 
 					const result = { cameraType, reversed, deviceInfo, hits, nonfinite: nonfiniteCount( outputs ), badUV, outOfReach, normalization: [], gpuErrors };
+					// Force geometry through the near clip plane, then restore the lens.
+					camera.near = 4;
+					camera.updateProjectionMatrix();
+					await render();
+					result.nearPlaneNonfinite = nonfiniteCount( await readAll() );
+					camera.near = 0.1;
+					camera.updateProjectionMatrix();
 					node.maxDistance.value = 0;
 					for ( const roughness of [ 0, 0.001, 1 ] ) {
 
@@ -224,6 +231,7 @@ try {
 			assert.equal( result.nonfinite, 0, 'Every output attachment must remain finite' );
 			assert.equal( result.badUV, 0, 'Valid hit UVs stay onscreen' );
 			assert.equal( result.outOfReach, 0, 'Hit distances respect configured reach' );
+			assert.equal( result.nearPlaneNonfinite, 0, 'Near-plane clipping remains finite for both ray endpoints' );
 			assert.deepEqual( result.gpuErrors, [], 'No WebGPU validation errors' );
 			for ( const entry of result.normalization ) {
 

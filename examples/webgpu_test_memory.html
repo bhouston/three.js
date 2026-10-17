@@ -186,6 +186,9 @@
 
 					renderPipeline = new THREE.RenderPipeline( renderer );
 
+					scenePass = pass( scene, camera );
+					let colorNode = scenePass;
+
 					if ( params.enableAO ) {
 
 						prePass = pass( scene, camera );
@@ -202,27 +205,11 @@
 
 						aoNode = ao( prePassDepth, prePassNormal, camera );
 
-					}
-
-					if ( prePass ) {
-
-						// Preserve the surface pre-pass depth, including across pipeline recreation.
-						scenePass = pass( scene, camera, {
-							depthTexture: prePass.getTexture( 'depth' ),
-							autoClearDepth: false
-						} ).before( prePass );
-
 						scenePass.contextNode = context( {
 							ao: aoNode.getTextureNode().sample( screenUV ).r
 						} );
 
-					} else {
-
-						scenePass = pass( scene, camera );
-
 					}
-
-					let colorNode = scenePass;
 
 					if ( params.enableOutline ) {
 

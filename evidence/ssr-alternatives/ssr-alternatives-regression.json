@@ -102,7 +102,8 @@
           "nonfinite": 0
         }
       ],
-      "gpuErrors": []
+      "gpuErrors": [],
+      "nearPlaneNonfinite": 0
     },
     {
       "cameraType": "perspective",
@@ -191,7 +192,8 @@
           "nonfinite": 0
         }
       ],
-      "gpuErrors": []
+      "gpuErrors": [],
+      "nearPlaneNonfinite": 0
     },
     {
       "cameraType": "orthographic",
@@ -280,7 +282,8 @@
           "nonfinite": 0
         }
       ],
-      "gpuErrors": []
+      "gpuErrors": [],
+      "nearPlaneNonfinite": 0
     },
     {
       "cameraType": "orthographic",
@@ -369,7 +372,8 @@
           "nonfinite": 0
         }
       ],
-      "gpuErrors": []
+      "gpuErrors": [],
+      "nearPlaneNonfinite": 0
     }
   ],
   "errors": []

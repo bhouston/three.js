@@ -1,6 +1,6 @@
 [
   {
-    "url": "https://raw.githack.com/bhouston/three.js/f783062948c34ea4b4032e47fe1f458f0298786d/examples/webgpu_postprocessing_ssr.html?source=1&mode=mirror&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "url": "https://raw.githack.com/bhouston/three.js/c741ae55dc30aace7fa3b7c0a4787b641e275b73/examples/webgpu_postprocessing_ssr.html?source=1&mode=mirror&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
     "status": 200,
     "ready": true,
     "hostPrompt": true,
@@ -26,7 +26,7 @@
     ]
   },
   {
-    "url": "https://raw.githack.com/bhouston/three.js/f783062948c34ea4b4032e47fe1f458f0298786d/examples/webgpu_postprocessing_ssr.html?source=1&mode=power&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "url": "https://raw.githack.com/bhouston/three.js/c741ae55dc30aace7fa3b7c0a4787b641e275b73/examples/webgpu_postprocessing_ssr.html?source=1&mode=power&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
     "status": 200,
     "ready": true,
     "hostPrompt": false,
@@ -45,7 +45,7 @@
     "responses": []
   },
   {
-    "url": "https://raw.githack.com/bhouston/three.js/f783062948c34ea4b4032e47fe1f458f0298786d/examples/webgpu_postprocessing_ssr.html?source=1&mode=power&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "url": "https://raw.githack.com/bhouston/three.js/c741ae55dc30aace7fa3b7c0a4787b641e275b73/examples/webgpu_postprocessing_ssr.html?source=1&mode=power&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
     "status": 200,
     "ready": true,
     "hostPrompt": false,
@@ -64,7 +64,7 @@
     "responses": []
   },
   {
-    "url": "https://raw.githack.com/bhouston/three.js/f783062948c34ea4b4032e47fe1f458f0298786d/examples/webgpu_postprocessing_ssr_denoise.html?source=1&mode=ggx&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "url": "https://raw.githack.com/bhouston/three.js/c741ae55dc30aace7fa3b7c0a4787b641e275b73/examples/webgpu_postprocessing_ssr_denoise.html?source=1&mode=ggx&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
     "status": 200,
     "ready": true,
     "hostPrompt": false,
@@ -83,7 +83,7 @@
     "responses": []
   },
   {
-    "url": "https://raw.githack.com/bhouston/three.js/f783062948c34ea4b4032e47fe1f458f0298786d/examples/webgpu_postprocessing_ssr_denoise.html?source=1&mode=power&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "url": "https://raw.githack.com/bhouston/three.js/c741ae55dc30aace7fa3b7c0a4787b641e275b73/examples/webgpu_postprocessing_ssr_denoise.html?source=1&mode=power&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
     "status": 200,
     "ready": true,
     "hostPrompt": false,
@@ -102,7 +102,7 @@
     "responses": []
   },
   {
-    "url": "https://raw.githack.com/bhouston/three.js/f783062948c34ea4b4032e47fe1f458f0298786d/examples/webgpu_postprocessing_ssr_denoise.html?source=1&mode=power&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "url": "https://raw.githack.com/bhouston/three.js/c741ae55dc30aace7fa3b7c0a4787b641e275b73/examples/webgpu_postprocessing_ssr_denoise.html?source=1&mode=power&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
     "status": 200,
     "ready": true,
     "hostPrompt": false,

@@ -1,0 +1,64 @@
+[
+  {
+    "example": "webgpu_postprocessing_ssr",
+    "before": {
+      "mode": "mirror",
+      "denoise": false,
+      "reach": 1,
+      "thickness": 0.03,
+      "steps": 32,
+      "clamp": 10
+    },
+    "defaultClampGUIWorks": true,
+    "power": {
+      "mode": "power",
+      "denoise": false,
+      "type": "PowerLobeSSRNode",
+      "reach": 1,
+      "thickness": 0.03,
+      "steps": 32,
+      "clamp": 0
+    },
+    "toggled": {
+      "mode": "power",
+      "denoise": true
+    },
+    "ggx": {
+      "mode": "ggx",
+      "stochastic": true,
+      "denoise": true
+    },
+    "url": "http://localhost:8127/examples/webgpu_postprocessing_ssr.html?source=1&resolution=1&steps=32&rays=1&seed=1&reach=1&thickness=0.03&clamp=0&denoise=1&mode=ggx"
+  },
+  {
+    "example": "webgpu_postprocessing_ssr_denoise",
+    "before": {
+      "mode": "ggx",
+      "denoise": true,
+      "reach": 0.4,
+      "thickness": 0.1,
+      "steps": 16,
+      "clamp": 35
+    },
+    "defaultClampGUIWorks": true,
+    "power": {
+      "mode": "power",
+      "denoise": true,
+      "type": "PowerLobeSSRNode",
+      "reach": 0.4,
+      "thickness": 0.1,
+      "steps": 16,
+      "clamp": 0
+    },
+    "toggled": {
+      "mode": "power",
+      "denoise": false
+    },
+    "ggx": {
+      "mode": "ggx",
+      "stochastic": true,
+      "denoise": false
+    },
+    "url": "http://localhost:8127/examples/webgpu_postprocessing_ssr_denoise.html?source=1&resolution=1&steps=16&rays=1&seed=1&reach=0.4&thickness=0.1&clamp=0&denoise=0&mode=ggx"
+  }
+]

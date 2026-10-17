@@ -98,6 +98,452 @@
     "screenshot": "webgpu_postprocessing_ssr-ggx-raw.png"
   },
   {
+    "example": "webgpu_postprocessing_ssr_denoise",
+    "mode": "mirror",
+    "denoise": 0,
+    "adapter": {
+      "webgpu": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    "query": "source=1&mode=mirror&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "info": {
+      "backend": "WebGPUBackend",
+      "params": {
+        "output": 0,
+        "roughness": 0.3,
+        "ssr": {
+          "resolutionScale": 1,
+          "quality": 0.25,
+          "mirrorBias": 0.5,
+          "maxDistance": 1,
+          "intensity": 1,
+          "thickness": 0.03,
+          "maxLuminance": 35,
+          "binaryRefine": false,
+          "stepExponent": 3,
+          "envImportanceSampling": false,
+          "screenEdgeFade": 0.2,
+          "screenEdgeFadeBlack": false,
+          "environmentIntensity": 3.14
+        },
+        "temporalReproject": {
+          "maxFrames": 16,
+          "clampIntensity": 0.25,
+          "flickerSuppression": 1,
+          "hitPointReprojection": true
+        },
+        "denoise": {
+          "enabled": false,
+          "lumaPhi": 0.75,
+          "depthPhi": 20,
+          "normalPhi": 0.3,
+          "roughnessPhi": 100,
+          "radius": 1.5,
+          "alphaPhi": 5,
+          "strength": 0.725,
+          "adapt": 0.5,
+          "smoothDisocclusions": true,
+          "flickerSuppression": 1,
+          "adaptiveTrust": 1
+        },
+        "post": {
+          "grading": {
+            "toneMapping": "AgX",
+            "exposure": 1.57,
+            "gamma": 0.89,
+            "contrast": 1.31,
+            "saturation": 1
+          }
+        }
+      },
+      "comparison": {
+        "mode": "mirror",
+        "denoise": false,
+        "resolutionScale": 1,
+        "steps": 16,
+        "rayCount": 1,
+        "seed": 1,
+        "maxDistance": 1,
+        "thickness": 0.03,
+        "maxLuminance": 0,
+        "explicit": true
+      },
+      "position": [
+        1.259878548682251,
+        0.5391287340899181,
+        -0.27217301481427114
+      ]
+    },
+    "errors": [],
+    "readback": null,
+    "screenshot": "webgpu_postprocessing_ssr_denoise-mirror-raw.png"
+  },
+  {
+    "example": "webgpu_postprocessing_ssr_denoise",
+    "mode": "ggx",
+    "denoise": 0,
+    "adapter": {
+      "webgpu": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    "query": "source=1&mode=ggx&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "info": {
+      "backend": "WebGPUBackend",
+      "params": {
+        "output": 0,
+        "roughness": 0.3,
+        "ssr": {
+          "resolutionScale": 1,
+          "quality": 0.25,
+          "mirrorBias": 0.5,
+          "maxDistance": 1,
+          "intensity": 1,
+          "thickness": 0.03,
+          "maxLuminance": 35,
+          "binaryRefine": false,
+          "stepExponent": 3,
+          "envImportanceSampling": false,
+          "screenEdgeFade": 0.2,
+          "screenEdgeFadeBlack": false,
+          "environmentIntensity": 3.14
+        },
+        "temporalReproject": {
+          "maxFrames": 16,
+          "clampIntensity": 0.25,
+          "flickerSuppression": 1,
+          "hitPointReprojection": true
+        },
+        "denoise": {
+          "enabled": false,
+          "lumaPhi": 0.75,
+          "depthPhi": 20,
+          "normalPhi": 0.3,
+          "roughnessPhi": 100,
+          "radius": 1.5,
+          "alphaPhi": 5,
+          "strength": 0.725,
+          "adapt": 0.5,
+          "smoothDisocclusions": true,
+          "flickerSuppression": 1,
+          "adaptiveTrust": 1
+        },
+        "post": {
+          "grading": {
+            "toneMapping": "AgX",
+            "exposure": 1.57,
+            "gamma": 0.89,
+            "contrast": 1.31,
+            "saturation": 1
+          }
+        }
+      },
+      "comparison": {
+        "mode": "ggx",
+        "denoise": false,
+        "resolutionScale": 1,
+        "steps": 16,
+        "rayCount": 1,
+        "seed": 1,
+        "maxDistance": 1,
+        "thickness": 0.03,
+        "maxLuminance": 0,
+        "explicit": true
+      },
+      "position": [
+        1.259878548682251,
+        0.5391287340899181,
+        -0.27217301481427114
+      ]
+    },
+    "errors": [],
+    "readback": null,
+    "screenshot": "webgpu_postprocessing_ssr_denoise-ggx-raw.png"
+  },
+  {
+    "example": "webgpu_postprocessing_ssr",
+    "mode": "ggx",
+    "denoise": 1,
+    "adapter": {
+      "webgpu": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    "query": "source=1&mode=ggx&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "info": {
+      "backend": "WebGPUBackend",
+      "params": {
+        "quality": 0.5,
+        "blurQuality": 1,
+        "maxDistance": 1,
+        "intensity": 1,
+        "thickness": 0.03,
+        "binaryRefine": false,
+        "roughness": 1,
+        "enabled": true
+      },
+      "comparison": {
+        "mode": "ggx",
+        "denoise": true,
+        "resolutionScale": 1,
+        "steps": 16,
+        "rayCount": 1,
+        "seed": 1,
+        "maxDistance": 1,
+        "thickness": 0.03,
+        "maxLuminance": 0,
+        "explicit": true
+      },
+      "position": [
+        3,
+        2,
+        3.0000000000000004
+      ]
+    },
+    "errors": [],
+    "readback": null,
+    "screenshot": "webgpu_postprocessing_ssr-ggx-denoised.png"
+  },
+  {
+    "example": "webgpu_postprocessing_ssr",
+    "mode": "default",
+    "denoise": 0,
+    "adapter": {
+      "webgpu": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    "query": "source=1",
+    "info": {
+      "backend": "WebGPUBackend",
+      "params": {
+        "quality": 0.5,
+        "blurQuality": 1,
+        "maxDistance": 1,
+        "intensity": 1,
+        "thickness": 0.03,
+        "binaryRefine": false,
+        "roughness": 1,
+        "enabled": true
+      },
+      "comparison": {
+        "mode": "mirror",
+        "denoise": false,
+        "resolutionScale": 1,
+        "steps": 32,
+        "rayCount": 1,
+        "seed": 1,
+        "maxDistance": 1,
+        "thickness": 0.03,
+        "maxLuminance": 10,
+        "explicit": false
+      },
+      "position": [
+        3,
+        2,
+        3.0000000000000004
+      ]
+    },
+    "errors": [],
+    "readback": null,
+    "screenshot": "webgpu_postprocessing_ssr-default-raw.png"
+  },
+  {
+    "example": "webgpu_postprocessing_ssr_denoise",
+    "mode": "ggx",
+    "denoise": 1,
+    "adapter": {
+      "webgpu": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    "query": "source=1&mode=ggx&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
+    "info": {
+      "backend": "WebGPUBackend",
+      "params": {
+        "output": 0,
+        "roughness": 0.3,
+        "ssr": {
+          "resolutionScale": 1,
+          "quality": 0.25,
+          "mirrorBias": 0.5,
+          "maxDistance": 1,
+          "intensity": 1,
+          "thickness": 0.03,
+          "maxLuminance": 35,
+          "binaryRefine": false,
+          "stepExponent": 3,
+          "envImportanceSampling": false,
+          "screenEdgeFade": 0.2,
+          "screenEdgeFadeBlack": false,
+          "environmentIntensity": 3.14
+        },
+        "temporalReproject": {
+          "maxFrames": 16,
+          "clampIntensity": 0.25,
+          "flickerSuppression": 1,
+          "hitPointReprojection": true
+        },
+        "denoise": {
+          "enabled": true,
+          "lumaPhi": 0.75,
+          "depthPhi": 20,
+          "normalPhi": 0.3,
+          "roughnessPhi": 100,
+          "radius": 1.5,
+          "alphaPhi": 5,
+          "strength": 0.725,
+          "adapt": 0.5,
+          "smoothDisocclusions": true,
+          "flickerSuppression": 1,
+          "adaptiveTrust": 1
+        },
+        "post": {
+          "grading": {
+            "toneMapping": "AgX",
+            "exposure": 1.57,
+            "gamma": 0.89,
+            "contrast": 1.31,
+            "saturation": 1
+          }
+        }
+      },
+      "comparison": {
+        "mode": "ggx",
+        "denoise": true,
+        "resolutionScale": 1,
+        "steps": 16,
+        "rayCount": 1,
+        "seed": 1,
+        "maxDistance": 1,
+        "thickness": 0.03,
+        "maxLuminance": 0,
+        "explicit": true
+      },
+      "position": [
+        1.259878548682251,
+        0.5391287340899181,
+        -0.27217301481427114
+      ]
+    },
+    "errors": [],
+    "readback": null,
+    "screenshot": "webgpu_postprocessing_ssr_denoise-ggx-denoised.png"
+  },
+  {
+    "example": "webgpu_postprocessing_ssr_denoise",
+    "mode": "default",
+    "denoise": 1,
+    "adapter": {
+      "webgpu": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    "query": "source=1",
+    "info": {
+      "backend": "WebGPUBackend",
+      "params": {
+        "output": 0,
+        "roughness": 0.3,
+        "ssr": {
+          "resolutionScale": 1,
+          "quality": 0.25,
+          "mirrorBias": 0.5,
+          "maxDistance": 0.4,
+          "intensity": 1,
+          "thickness": 0.1,
+          "maxLuminance": 35,
+          "binaryRefine": false,
+          "stepExponent": 3,
+          "envImportanceSampling": false,
+          "screenEdgeFade": 0.2,
+          "screenEdgeFadeBlack": false,
+          "environmentIntensity": 3.14
+        },
+        "temporalReproject": {
+          "maxFrames": 16,
+          "clampIntensity": 0.25,
+          "flickerSuppression": 1,
+          "hitPointReprojection": true
+        },
+        "denoise": {
+          "enabled": true,
+          "lumaPhi": 0.75,
+          "depthPhi": 20,
+          "normalPhi": 0.3,
+          "roughnessPhi": 100,
+          "radius": 1.5,
+          "alphaPhi": 5,
+          "strength": 0.725,
+          "adapt": 0.5,
+          "smoothDisocclusions": true,
+          "flickerSuppression": 1,
+          "adaptiveTrust": 1
+        },
+        "post": {
+          "grading": {
+            "toneMapping": "AgX",
+            "exposure": 1.57,
+            "gamma": 0.89,
+            "contrast": 1.31,
+            "saturation": 1
+          }
+        }
+      },
+      "comparison": {
+        "mode": "ggx",
+        "denoise": true,
+        "resolutionScale": 1,
+        "steps": 16,
+        "rayCount": 1,
+        "seed": 1,
+        "maxDistance": 0.4,
+        "thickness": 0.1,
+        "maxLuminance": 35,
+        "explicit": false
+      },
+      "position": [
+        1.259878548682251,
+        0.5391287340899181,
+        -0.27217301481427114
+      ]
+    },
+    "errors": [],
+    "readback": null,
+    "screenshot": "webgpu_postprocessing_ssr_denoise-default-denoised.png"
+  },
+  {
     "example": "webgpu_postprocessing_ssr",
     "mode": "power",
     "denoise": 0,
@@ -309,180 +755,6 @@
       }
     ],
     "motionScreenshot": "webgpu_postprocessing_ssr-power-motion.png"
-  },
-  {
-    "example": "webgpu_postprocessing_ssr_denoise",
-    "mode": "mirror",
-    "denoise": 0,
-    "adapter": {
-      "webgpu": {
-        "vendor": "nvidia",
-        "architecture": "ampere",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      },
-      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
-    },
-    "query": "source=1&mode=mirror&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
-    "info": {
-      "backend": "WebGPUBackend",
-      "params": {
-        "output": 0,
-        "roughness": 0.3,
-        "ssr": {
-          "resolutionScale": 1,
-          "quality": 0.25,
-          "mirrorBias": 0.5,
-          "maxDistance": 1,
-          "intensity": 1,
-          "thickness": 0.03,
-          "maxLuminance": 35,
-          "binaryRefine": false,
-          "stepExponent": 3,
-          "envImportanceSampling": false,
-          "screenEdgeFade": 0.2,
-          "screenEdgeFadeBlack": false,
-          "environmentIntensity": 3.14
-        },
-        "temporalReproject": {
-          "maxFrames": 16,
-          "clampIntensity": 0.25,
-          "flickerSuppression": 1,
-          "hitPointReprojection": true
-        },
-        "denoise": {
-          "enabled": false,
-          "lumaPhi": 0.75,
-          "depthPhi": 20,
-          "normalPhi": 0.3,
-          "roughnessPhi": 100,
-          "radius": 1.5,
-          "alphaPhi": 5,
-          "strength": 0.725,
-          "adapt": 0.5,
-          "smoothDisocclusions": true,
-          "flickerSuppression": 1,
-          "adaptiveTrust": 1
-        },
-        "post": {
-          "grading": {
-            "toneMapping": "AgX",
-            "exposure": 1.57,
-            "gamma": 0.89,
-            "contrast": 1.31,
-            "saturation": 1
-          }
-        }
-      },
-      "comparison": {
-        "mode": "mirror",
-        "denoise": false,
-        "resolutionScale": 1,
-        "steps": 16,
-        "rayCount": 1,
-        "seed": 1,
-        "maxDistance": 1,
-        "thickness": 0.03,
-        "maxLuminance": 0,
-        "explicit": true
-      },
-      "position": [
-        1.259878548682251,
-        0.5391287340899181,
-        -0.27217301481427114
-      ]
-    },
-    "errors": [],
-    "readback": null,
-    "screenshot": "webgpu_postprocessing_ssr_denoise-mirror-raw.png"
-  },
-  {
-    "example": "webgpu_postprocessing_ssr_denoise",
-    "mode": "ggx",
-    "denoise": 0,
-    "adapter": {
-      "webgpu": {
-        "vendor": "nvidia",
-        "architecture": "ampere",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      },
-      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
-    },
-    "query": "source=1&mode=ggx&denoise=0&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
-    "info": {
-      "backend": "WebGPUBackend",
-      "params": {
-        "output": 0,
-        "roughness": 0.3,
-        "ssr": {
-          "resolutionScale": 1,
-          "quality": 0.25,
-          "mirrorBias": 0.5,
-          "maxDistance": 1,
-          "intensity": 1,
-          "thickness": 0.03,
-          "maxLuminance": 35,
-          "binaryRefine": false,
-          "stepExponent": 3,
-          "envImportanceSampling": false,
-          "screenEdgeFade": 0.2,
-          "screenEdgeFadeBlack": false,
-          "environmentIntensity": 3.14
-        },
-        "temporalReproject": {
-          "maxFrames": 16,
-          "clampIntensity": 0.25,
-          "flickerSuppression": 1,
-          "hitPointReprojection": true
-        },
-        "denoise": {
-          "enabled": false,
-          "lumaPhi": 0.75,
-          "depthPhi": 20,
-          "normalPhi": 0.3,
-          "roughnessPhi": 100,
-          "radius": 1.5,
-          "alphaPhi": 5,
-          "strength": 0.725,
-          "adapt": 0.5,
-          "smoothDisocclusions": true,
-          "flickerSuppression": 1,
-          "adaptiveTrust": 1
-        },
-        "post": {
-          "grading": {
-            "toneMapping": "AgX",
-            "exposure": 1.57,
-            "gamma": 0.89,
-            "contrast": 1.31,
-            "saturation": 1
-          }
-        }
-      },
-      "comparison": {
-        "mode": "ggx",
-        "denoise": false,
-        "resolutionScale": 1,
-        "steps": 16,
-        "rayCount": 1,
-        "seed": 1,
-        "maxDistance": 1,
-        "thickness": 0.03,
-        "maxLuminance": 0,
-        "explicit": true
-      },
-      "position": [
-        1.259878548682251,
-        0.5391287340899181,
-        -0.27217301481427114
-      ]
-    },
-    "errors": [],
-    "readback": null,
-    "screenshot": "webgpu_postprocessing_ssr_denoise-ggx-raw.png"
   },
   {
     "example": "webgpu_postprocessing_ssr_denoise",
@@ -772,277 +1044,5 @@
       }
     ],
     "motionScreenshot": "webgpu_postprocessing_ssr_denoise-power-motion.png"
-  },
-  {
-    "example": "webgpu_postprocessing_ssr",
-    "mode": "ggx",
-    "denoise": 1,
-    "adapter": {
-      "webgpu": {
-        "vendor": "nvidia",
-        "architecture": "ampere",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      },
-      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
-    },
-    "query": "source=1&mode=ggx&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
-    "info": {
-      "backend": "WebGPUBackend",
-      "params": {
-        "quality": 0.5,
-        "blurQuality": 1,
-        "maxDistance": 1,
-        "intensity": 1,
-        "thickness": 0.03,
-        "binaryRefine": false,
-        "roughness": 1,
-        "enabled": true
-      },
-      "comparison": {
-        "mode": "ggx",
-        "denoise": true,
-        "resolutionScale": 1,
-        "steps": 16,
-        "rayCount": 1,
-        "seed": 1,
-        "maxDistance": 1,
-        "thickness": 0.03,
-        "maxLuminance": 0,
-        "explicit": true
-      },
-      "position": [
-        3,
-        2,
-        3.0000000000000004
-      ]
-    },
-    "errors": [],
-    "readback": null,
-    "screenshot": "webgpu_postprocessing_ssr-ggx-denoised.png"
-  },
-  {
-    "example": "webgpu_postprocessing_ssr",
-    "mode": "default",
-    "denoise": 0,
-    "adapter": {
-      "webgpu": {
-        "vendor": "nvidia",
-        "architecture": "ampere",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      },
-      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
-    },
-    "query": "source=1",
-    "info": {
-      "backend": "WebGPUBackend",
-      "params": {
-        "quality": 0.5,
-        "blurQuality": 1,
-        "maxDistance": 1,
-        "intensity": 1,
-        "thickness": 0.03,
-        "binaryRefine": false,
-        "roughness": 1,
-        "enabled": true
-      },
-      "comparison": {
-        "mode": "mirror",
-        "denoise": false,
-        "resolutionScale": 1,
-        "steps": 32,
-        "rayCount": 1,
-        "seed": 1,
-        "maxDistance": 1,
-        "thickness": 0.03,
-        "maxLuminance": 10,
-        "explicit": false
-      },
-      "position": [
-        3,
-        2,
-        3.0000000000000004
-      ]
-    },
-    "errors": [],
-    "readback": null,
-    "screenshot": "webgpu_postprocessing_ssr-default-raw.png"
-  },
-  {
-    "example": "webgpu_postprocessing_ssr_denoise",
-    "mode": "ggx",
-    "denoise": 1,
-    "adapter": {
-      "webgpu": {
-        "vendor": "nvidia",
-        "architecture": "ampere",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      },
-      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
-    },
-    "query": "source=1&mode=ggx&denoise=1&resolution=1&steps=16&rays=1&seed=1&reach=1&thickness=0.03&clamp=0",
-    "info": {
-      "backend": "WebGPUBackend",
-      "params": {
-        "output": 0,
-        "roughness": 0.3,
-        "ssr": {
-          "resolutionScale": 1,
-          "quality": 0.25,
-          "mirrorBias": 0.5,
-          "maxDistance": 1,
-          "intensity": 1,
-          "thickness": 0.03,
-          "maxLuminance": 35,
-          "binaryRefine": false,
-          "stepExponent": 3,
-          "envImportanceSampling": false,
-          "screenEdgeFade": 0.2,
-          "screenEdgeFadeBlack": false,
-          "environmentIntensity": 3.14
-        },
-        "temporalReproject": {
-          "maxFrames": 16,
-          "clampIntensity": 0.25,
-          "flickerSuppression": 1,
-          "hitPointReprojection": true
-        },
-        "denoise": {
-          "enabled": true,
-          "lumaPhi": 0.75,
-          "depthPhi": 20,
-          "normalPhi": 0.3,
-          "roughnessPhi": 100,
-          "radius": 1.5,
-          "alphaPhi": 5,
-          "strength": 0.725,
-          "adapt": 0.5,
-          "smoothDisocclusions": true,
-          "flickerSuppression": 1,
-          "adaptiveTrust": 1
-        },
-        "post": {
-          "grading": {
-            "toneMapping": "AgX",
-            "exposure": 1.57,
-            "gamma": 0.89,
-            "contrast": 1.31,
-            "saturation": 1
-          }
-        }
-      },
-      "comparison": {
-        "mode": "ggx",
-        "denoise": true,
-        "resolutionScale": 1,
-        "steps": 16,
-        "rayCount": 1,
-        "seed": 1,
-        "maxDistance": 1,
-        "thickness": 0.03,
-        "maxLuminance": 0,
-        "explicit": true
-      },
-      "position": [
-        1.259878548682251,
-        0.5391287340899181,
-        -0.27217301481427114
-      ]
-    },
-    "errors": [],
-    "readback": null,
-    "screenshot": "webgpu_postprocessing_ssr_denoise-ggx-denoised.png"
-  },
-  {
-    "example": "webgpu_postprocessing_ssr_denoise",
-    "mode": "default",
-    "denoise": 1,
-    "adapter": {
-      "webgpu": {
-        "vendor": "nvidia",
-        "architecture": "ampere",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      },
-      "webgl": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
-    },
-    "query": "source=1",
-    "info": {
-      "backend": "WebGPUBackend",
-      "params": {
-        "output": 0,
-        "roughness": 0.3,
-        "ssr": {
-          "resolutionScale": 1,
-          "quality": 0.25,
-          "mirrorBias": 0.5,
-          "maxDistance": 0.4,
-          "intensity": 1,
-          "thickness": 0.1,
-          "maxLuminance": 35,
-          "binaryRefine": false,
-          "stepExponent": 3,
-          "envImportanceSampling": false,
-          "screenEdgeFade": 0.2,
-          "screenEdgeFadeBlack": false,
-          "environmentIntensity": 3.14
-        },
-        "temporalReproject": {
-          "maxFrames": 16,
-          "clampIntensity": 0.25,
-          "flickerSuppression": 1,
-          "hitPointReprojection": true
-        },
-        "denoise": {
-          "enabled": true,
-          "lumaPhi": 0.75,
-          "depthPhi": 20,
-          "normalPhi": 0.3,
-          "roughnessPhi": 100,
-          "radius": 1.5,
-          "alphaPhi": 5,
-          "strength": 0.725,
-          "adapt": 0.5,
-          "smoothDisocclusions": true,
-          "flickerSuppression": 1,
-          "adaptiveTrust": 1
-        },
-        "post": {
-          "grading": {
-            "toneMapping": "AgX",
-            "exposure": 1.57,
-            "gamma": 0.89,
-            "contrast": 1.31,
-            "saturation": 1
-          }
-        }
-      },
-      "comparison": {
-        "mode": "ggx",
-        "denoise": true,
-        "resolutionScale": 1,
-        "steps": 16,
-        "rayCount": 1,
-        "seed": 1,
-        "maxDistance": 0.4,
-        "thickness": 0.1,
-        "maxLuminance": 35,
-        "explicit": false
-      },
-      "position": [
-        1.259878548682251,
-        0.5391287340899181,
-        -0.27217301481427114
-      ]
-    },
-    "errors": [],
-    "readback": null,
-    "screenshot": "webgpu_postprocessing_ssr_denoise-default-denoised.png"
   }
 ]

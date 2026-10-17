@@ -98,6 +98,15 @@ try {
 						const webglRenderer = extension ? gl.getParameter( extension.UNMASKED_RENDERER_WEBGL ) : '';
 						gl?.getExtension( 'WEBGL_lose_context' )?.loseContext();
 						window.ssrBenchmarkErrors = [];
+						window.ssrBenchmarkJitter = false;
+						const previousSceneHook = comparison.scene.onBeforeRender;
+						comparison.scene.onBeforeRender = function ( ...args ) {
+
+							window.ssrBenchmarkJitter ||= Boolean( comparison.camera.view?.enabled );
+							previousSceneHook.apply( this, args );
+
+						};
+
 						device.addEventListener( 'uncapturederror', event => window.ssrBenchmarkErrors.push( event.error.message ) );
 						await device.queue.onSubmittedWorkDone();
 						return {
@@ -169,7 +178,8 @@ try {
 									maxLuminance: comparison.node.maxLuminance.value,
 									postprocessing: comparison.params.post ?? 'SMAA and renderer tone mapping'
 								},
-								gpuErrors: [ ...window.ssrBenchmarkErrors ]
+								gpuErrors: [ ...window.ssrBenchmarkErrors ],
+								cameraJitterObserved: window.ssrBenchmarkJitter
 							};
 
 						}, report );
@@ -178,6 +188,7 @@ try {
 						const period = mode === 'power' ? 4096 : 0x7fffffff;
 						assert.equal( ( measurement.noiseCounter.afterFirstBatch - measurement.noiseCounter.before + period ) % period, report.batchSize, 'Every measured whole frame must execute SSR tracing' );
 						assert.deepEqual( measurement.gpuErrors, [], 'GPU validation errors invalidate the benchmark' );
+						assert.equal( measurement.cameraJitterObserved, false, 'Final AA camera sampling stays matched across the denoise toggle' );
 						assert.deepEqual( measurement.actualControls.drawingBuffer, [ report.viewport.width, report.viewport.height ] );
 						assert.equal( measurement.actualControls.resolutionScale, controls.resolution );
 						assert.equal( measurement.actualControls.steps, controls.steps );

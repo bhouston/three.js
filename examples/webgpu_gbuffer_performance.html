@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - G-buffer throughput</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" href="example.css">
+		<link rel="icon" href="data:,">
+		<style>
+			#status { position: absolute; left: 12px; bottom: 12px; max-width: 48vw; padding: 10px; background: #182029de; color: white; font: 12px monospace; white-space: pre-wrap; pointer-events: none; }
+		</style>
+	</head>
+	<body>
+		<div id="info"><a href="https://threejs.org/">three.js</a> — G-buffer throughput<br><small>Real deferred metallic/roughness lighting; neutral GI/SSR data movement. Open Inspector Parameters / Viewer.</small></div>
+		<pre id="status">Initializing hardware WebGPU…</pre>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../src/Three.WebGPU.js",
+					"three/webgpu": "../src/Three.WebGPU.js",
+					"three/tsl": "../src/Three.TSL.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module" src="jsm/gbuffer/main.js"></script>
+	</body>
+</html>

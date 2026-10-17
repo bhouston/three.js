@@ -59,7 +59,8 @@ import { F_Schlick, ENV_RAY_LENGTH } from '../utils/SpecularHelpers.js';
  * downstream display operation, so exposure changes do not rescale this history.
  *
  * Reach is a finite distance from a normal-offset origin, in view/world units.
- * Epsilon = max(abs(viewZ)*1e-4,1e-5). Endpoints clip to the near plane and viewport;
+ * Epsilon starts at max(abs(viewZ)*1e-4,1e-5), capped by the available near-plane
+ * gap when the normal points toward the camera. Endpoints clip to near/viewport;
  * steps interpolate Q=viewPosition/clipW and k=1/clipW, then reconstruct Q/k.
  * Signed D=sceneViewZ-rayViewZ is negative in front and nonnegative behind. The
  * first negative-to-nonnegative crossing in the slab [0,max(thickness,epsilon)]
@@ -298,7 +299,10 @@ class PowerLobeSSRNode extends Node {
 				const helper = N.z.abs().lessThan( 0.999 ).select( vec3( 0, 0, 1 ), vec3( 0, 1, 0 ) );
 				const T = cross( helper, N ).normalize().toVar();
 				const B = cross( N, T ).toVar();
-				const epsilon = max( P.z.abs().mul( 1e-4 ), float( 1e-5 ) ).toVar();
+				// Keep the normal-offset START endpoint inside the near plane too.
+				// At the clipping plane there may be no room for an outward offset.
+				const nearGap = this._near.negate().sub( P.z ).sub( 1e-6 ).max( 0 );
+				const epsilon = min( max( P.z.abs().mul( 1e-4 ), float( 1e-5 ) ), nearGap.div( N.z.max( 1e-6 ) ) ).toVar();
 				const origin = P.add( N.mul( epsilon ) ).toVar();
 				const incidentSum = vec3( 0 ).toVar();
 				const weightedSum = vec3( 0 ).toVar();

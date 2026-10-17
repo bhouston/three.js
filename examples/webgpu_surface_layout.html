@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - composable surface views</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" href="example.css">
+		<style>#inventory { color: white; position: absolute; left: 12px; top: 12px; max-width: 460px; background: #111d; padding: 12px; pointer-events: none; font: 12px monospace; white-space: pre-wrap; }</style>
+	</head>
+	<body>
+		<div id="inventory"></div>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../src/Three.WebGPU.js",
+					"three/webgpu": "../src/Three.WebGPU.js",
+					"three/tsl": "../src/Three.TSL.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+			import * as THREE from 'three/webgpu';
+			import { pass, mrt, sample, output, normalView, diffuseColor, roughness, velocity, vec3, vec4, screenUV, packNormalToRGB, unpackRGBToNormal, builtinAOContext, Fn, abs, normalize, select } from 'three/tsl';
+			import { surfaceLayout } from 'three/addons/tsl/utils/SurfaceLayout.js';
+			import { ao } from 'three/addons/tsl/display/GTAONode.js';
+			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
+			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+			const query = new URLSearchParams( location.search );
+			const params = {
+				layout: query.get( 'layout' ) || 'descriptor',
+				packing: query.get( 'packing' ) || 'rgb8',
+				ao: query.get( 'ao' ) !== '0',
+				gi: query.get( 'gi' ) !== '0',
+				aa: query.get( 'aa' ) !== '0',
+				scale: Number( query.get( 'scale' ) || 1 ),
+				view: query.get( 'view' ) || 'beauty',
+				motion: false
+			};
+			const renderer = new THREE.WebGPURenderer( { antialias: false } );
+			renderer.setSize( innerWidth, innerHeight );
+			renderer.toneMapping = THREE.ACESFilmicToneMapping;
+			renderer.inspector = new Inspector();
+			document.body.appendChild( renderer.domElement );
+			await renderer.init();
+
+			const scene = new THREE.Scene();
+			scene.background = new THREE.Color( 0x242938 );
+			const camera = new THREE.PerspectiveCamera( 45, innerWidth / innerHeight, 0.1, 40 );
+			camera.position.set( 5, 4, 7 );
+			const controls = new OrbitControls( camera, renderer.domElement );
+			controls.target.set( 0, 1, 0 );
+			controls.update();
+			scene.add( new THREE.HemisphereLight( 0xbacaff, 0x6b4631, 1.8 ) );
+			const light = new THREE.DirectionalLight( 0xffffff, 3 );
+			light.position.set( 3, 6, 2 );
+			scene.add( light );
+			const floor = new THREE.Mesh( new THREE.BoxGeometry( 10, 0.2, 10 ), new THREE.MeshStandardMaterial( { color: 0xb9b3a8, roughness: 0.8 } ) );
+			floor.position.y = - 0.1;
+			scene.add( floor );
+			const meshes = [];
+			for ( let i = 0; i < 5; i ++ ) {
+
+				const material = new THREE.MeshStandardMaterial( { color: new THREE.Color().setHSL( i / 5, 0.65, 0.45 ), roughness: 0.15 + i * 0.18 } );
+				const mesh = new THREE.Mesh( new THREE.TorusKnotGeometry( 0.5, 0.18, 96, 16 ), material );
+				mesh.position.set( ( i - 2 ) * 1.5, 1, 0 );
+				meshes.push( mesh );
+				scene.add( mesh );
+
+			}
+
+			const emitter = new THREE.Mesh( new THREE.BoxGeometry( 0.5, 1.7, 0.5 ), new THREE.MeshStandardMaterial( { color: 0x111111, emissive: 0xff8020, emissiveIntensity: 4 } ) );
+			emitter.position.set( 0, 0.85, - 2 );
+			scene.add( emitter );
+
+			// Octahedral encoding in signed RG16F; zero components choose the positive fold.
+			const octEncode = Fn( ( [ n ] ) => {
+
+				const p = n.div( abs( n ).dot( vec3( 1 ) ) );
+				const s = select( p.xy.greaterThanEqual( 0 ), 1, - 1 );
+				return select( p.z.greaterThanEqual( 0 ), p.xy, p.yx.abs().oneMinus().mul( s ) );
+
+			} );
+			const octDecode = Fn( ( [ p ] ) => {
+
+				const n = vec3( p, abs( p.x ).add( abs( p.y ) ).oneMinus() ).toVar();
+				const t = n.z.negate().clamp( 0, 1 );
+				n.xy.addAssign( select( n.xy.greaterThanEqual( 0 ), t.negate(), t ) );
+				return normalize( n );
+
+			} );
+
+			let pipeline, owned = [], generation = 0;
+			let state;
+			// A: the same ordinary TSL convention without a descriptor helper.
+			// Kept here to compare complexity and the actual pass/target inventory.
+			function plainLayout( producer, declaration, requested ) {
+
+				const names = [ ...new Set( [ 'output', ...requested.map( name => declaration.fields[ name ].attachment ) ] ) ];
+				const outputs = {}, textures = {}, nodes = {};
+				for ( const name of names ) {
+
+					const attachment = declaration.attachments[ name ];
+					outputs[ name ] = attachment.node;
+					textures[ name ] = producer.getTextureNode( name );
+					Object.assign( producer.getTexture( name ), attachment.texture );
+
+				}
+
+				producer.setMRT( mrt( outputs ) );
+				for ( const name of requested ) {
+
+					const { attachment, channels, decode = value => value } = declaration.fields[ name ];
+					const backing = textures[ attachment ];
+					nodes[ name ] = sample( uv => decode( backing.sample( uv )[ channels ] ) );
+
+				}
+
+				return { nodes, textures, attachmentNames: names };
+
+			}
+
+			function rebuild() {
+
+				// Inspector owns separate preview materials; discard them with the old graph.
+				renderer.inspector.dispose();
+				renderer.inspector = new Inspector();
+				if ( pipeline ) pipeline.dispose();
+				for ( const node of owned.reverse() ) node.dispose();
+				owned = [];
+				// Scene materials cache per-pass render objects too. Invalidate those
+				// when their old targets/context go away; the materials remain reusable.
+				scene.traverse( object => object.material?.dispose() );
+				camera.clearViewOffset();
+				velocity.setProjectionMatrix( null );
+				pipeline = new THREE.RenderPipeline( renderer );
+				const source = pass( scene, camera, { samples: 0 } );
+				source.name = 'Surface + unoccluded HDR source';
+				source.transparent = false;
+				owned.push( source );
+				const needNormal = params.ao || params.gi || [ 'normal', 'roughness' ].includes( params.view );
+				const oct = params.packing === 'oct16';
+				const requested = [ ...( needNormal ? [ 'normal', 'roughness' ] : [] ), ...( params.gi ? [ 'albedo' ] : [] ), ...( params.aa ? [ 'motion' ] : [] ) ];
+				const makeLayout = params.layout === 'plain' ? plainLayout : surfaceLayout;
+				const layout = makeLayout( source, {
+					attachments: {
+						output: { node: output },
+						normalRough: {
+							node: oct ? vec4( octEncode( normalView ), roughness, 0 ) : vec4( packNormalToRGB( normalView ), roughness ),
+							texture: { type: oct ? THREE.HalfFloatType : THREE.UnsignedByteType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter }
+						},
+						albedo: { node: diffuseColor, texture: { type: THREE.UnsignedByteType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter } },
+						motion: { node: velocity, texture: { type: THREE.HalfFloatType, format: THREE.RGFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter } }
+					},
+					fields: {
+						normal: { attachment: 'normalRough', channels: oct ? 'rg' : 'rgb', decode: oct ? octDecode : unpackRGBToNormal, metadata: { space: 'view', kind: 'shading', filtering: 'nearest before decode' } },
+						roughness: { attachment: 'normalRough', channels: oct ? 'b' : 'a', metadata: { convention: 'perceptual' } },
+						albedo: { attachment: 'albedo', channels: 'rgb', metadata: { colorSpace: 'linear working', convention: 'diffuseColor; dielectric sample scene' } },
+						motion: { attachment: 'motion', channels: 'rg', metadata: { space: 'unjittered NDC current minus previous' } }
+					}
+				}, requested );
+				const depth = source.getTextureNode( 'depth' ).toInspector( 'Depth', () => source.getLinearDepthNode() );
+				for ( const [ name, node ] of Object.entries( layout.textures ) ) node.toInspector( name );
+				if ( needNormal ) {
+
+					layout.nodes.normal.toInspector( 'Decoded normal', node => packNormalToRGB( node ) );
+					layout.nodes.roughness.toInspector( 'Perceptual roughness' );
+
+				}
+
+				let beauty = source.getTextureNode();
+				let visibility = null, giRaw = null;
+				if ( params.ao ) {
+
+					visibility = ao( depth, layout.nodes.normal, camera );
+					visibility.resolutionScale = 0.5;
+					visibility.samples.value = 8;
+					owned.push( visibility );
+					const shaded = pass( scene, camera, { samples: 0 } );
+					shaded.name = 'Beauty with indirect AO (independent depth)';
+					shaded.contextNode = builtinAOContext( visibility.getTextureNode().sample( screenUV ).r );
+					owned.push( shaded );
+					beauty = shaded.getTextureNode();
+
+				}
+
+				if ( params.gi ) {
+
+					giRaw = ssgi( source.getTextureNode(), depth, layout.nodes.normal, camera );
+					giRaw.sliceCount.value = 1;
+					giRaw.stepCount.value = 8;
+					giRaw.giIntensity.value = 1;
+					owned.push( giRaw );
+					// Reuse SSGI's approximate incoming diffuse signal. Its AO output is
+					// deliberately unused: never multiply direct light or emission by AO.
+					const giDiffuse = layout.nodes.albedo.mul( giRaw.getGINode() );
+					beauty = vec4( beauty.rgb.add( visibility ? giDiffuse.mul( visibility.getTextureNode().r ) : giDiffuse ), beauty.a );
+
+				}
+
+				const views = { beauty, depth: source.getLinearDepthNode() };
+				if ( needNormal ) {
+
+					views.normal = packNormalToRGB( layout.nodes.normal );
+					views.roughness = layout.nodes.roughness;
+
+				}
+
+				if ( visibility ) views.ao = visibility.getTextureNode().r;
+				if ( giRaw ) views.gi = giRaw.getGINode();
+				let final = beauty;
+				if ( params.aa ) {
+
+					const temporal = traa( beauty, depth, layout.textures.motion, camera );
+					owned.push( temporal );
+					if ( temporal.beautyNode.isRTTNode ) owned.push( temporal.beautyNode );
+					final = temporal;
+
+				}
+
+				// Register only resources reachable from this configuration. Inspection
+				// cannot enable a disabled effect or allocate an unrequested attachment.
+				for ( const [ name, node ] of Object.entries( views ) ) node.toInspector( name );
+				pipeline.outputNode = params.view === 'beauty' ? final : vec4( vec3( views[ params.view ] || 0 ), 1 );
+				generation ++;
+				state = { source, layout, visibility, giRaw, generation };
+				const gui = renderer.inspector.createParameters( 'Surface composition' );
+				gui.add( params, 'layout', [ 'descriptor', 'plain' ] ).onChange( rebuild );
+				gui.add( params, 'packing', [ 'rgb8', 'oct16' ] ).onChange( rebuild );
+				for ( const key of [ 'ao', 'gi', 'aa' ] ) gui.add( params, key ).onChange( rebuild );
+				gui.add( params, 'scale', [ 0.5, 1 ] ).onChange( resize );
+				gui.add( params, 'view', [ 'beauty', 'normal', 'roughness', 'depth', 'ao', 'gi' ] ).onChange( rebuild );
+				gui.add( params, 'motion' );
+				gui.add( { resetHistory: rebuild }, 'resetHistory' ).name( 'Reset / camera cut' );
+				const adapter = renderer.backend.device?.adapterInfo;
+				document.getElementById( 'inventory' ).textContent = `Surface views / generation ${ generation }\n${ renderer.backend.isWebGPUBackend ? 'WebGPU' : 'WebGL fallback' } ${ adapter?.description || '' }\n${ layout.attachmentNames.join( ', ' ) } + depth\n${ params.ao ? 2 : 1 } geometry passes; AO ${ params.ao }, SSGI ${ params.gi }, TRAA ${ params.aa }\nShared normal/roughness: ${ oct ? 'RGBA16F signed oct RG / rough B' : 'RGBA8 RGB / rough A' }\nOutput is linear HDR RGBA16F. No stored position.\nControls and buffer views: Three.js Inspector.\nChanging configuration reconstructs targets and histories.`;
+				const url = new URL( location.href );
+				for ( const [ key, value ] of Object.entries( params ) ) url.searchParams.set( key, typeof value === 'boolean' ? Number( value ) : value );
+				history.replaceState( null, '', url );
+
+			}
+
+			function resize() {
+
+				camera.aspect = innerWidth / innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( Math.max( 1, Math.floor( innerWidth * params.scale ) ), Math.max( 1, Math.floor( innerHeight * params.scale ) ) );
+				renderer.domElement.style.width = '100vw';
+				renderer.domElement.style.height = '100vh';
+				rebuild();
+
+			}
+
+			window.addEventListener( 'resize', resize );
+			resize();
+			// Explicit automation seam for inspecting graph identity, lifetime and inventory.
+			window.surfaceDemo = { renderer, camera, params, rebuild, get state() {
+
+	return state;
+
+}, get pipeline() {
+
+	return pipeline;
+
+} };
+			renderer.setAnimationLoop( time => {
+
+				if ( params.motion ) meshes[ 2 ].rotation.y = time * 0.001;
+				controls.update();
+				pipeline.render();
+
+			} );
+		</script>
+	</body>
+</html>

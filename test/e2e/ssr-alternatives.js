@@ -91,6 +91,7 @@ try {
 				const renderer = new THREE.WebGPURenderer( { reversedDepthBuffer: reversed, device } );
 				renderer.setSize( 320, 240 );
 				await renderer.init();
+				if ( renderer.backend.isWebGPUBackend !== true ) throw new Error( 'Expected hardware WebGPU backend.' );
 				const camera = cameraType === 'perspective' ? new THREE.PerspectiveCamera( 50, 4 / 3, 0.1, 30 ) : new THREE.OrthographicCamera( - 3, 3, 2.25, - 2.25, 0.1, 30 );
 				camera.position.set( 3, 2, 3 );
 				camera.lookAt( 0, - 0.25, 0 );

@@ -60,6 +60,9 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( node.colorNode, color, 'Opaque source identity is retained' );
 				assert.strictEqual( node.depthNode, depth, 'Depth source identity is retained' );
 				assert.notOk( opaque.transparent, 'Construction does not alter opaque pass configuration' );
+				opaque.transparent = true;
+				assert.throws( () => powerLobeSSR( color, depth, normal ), /opaque color pass/, 'Transparent final beauty cannot become reflection history' );
+				opaque.transparent = false;
 				const explicitCamera = new PerspectiveCamera();
 				const explicit = powerLobeSSR( color, depth, normal, { camera: explicitCamera } );
 				assert.strictEqual( explicit.camera, explicitCamera, 'Explicit camera takes precedence' );
@@ -75,9 +78,9 @@ export default QUnit.module( 'Addons', () => {
 			QUnit.test( 'weighted distance, incident coverage and metadata remain distinct scheduled HDR outputs', assert => {
 
 				const { node, opaque } = fixture();
-				const outputs = [ node.getTextureNode(), node.getIncidentNode(), node.getMetadataNode() ];
-				assert.strictEqual( new Set( outputs ).size, 3, 'Each contract has a separate texture node' );
-				assert.strictEqual( new Set( outputs.map( output => output.value ) ).size, 3, 'Outputs cannot alias one alpha channel' );
+				const outputs = [ node.getTextureNode(), node.getIncidentNode(), node.getMetadataNode(), node.getHitNode() ];
+				assert.strictEqual( new Set( outputs ).size, 4, 'Each contract has a separate texture node' );
+				assert.strictEqual( new Set( outputs.map( output => output.value ) ).size, 4, 'Outputs cannot alias one alpha channel' );
 				for ( const output of outputs ) {
 
 					assert.strictEqual( output.passNode, node, 'Sampling every output schedules the producing pass' );
@@ -100,12 +103,12 @@ export default QUnit.module( 'Addons', () => {
 				node.steps.value = 32;
 				node._frame.value = 37;
 				node._ready.value = true;
-				const outputs = [ node.getTextureNode(), node.getIncidentNode(), node.getMetadataNode() ];
+				const outputs = [ node.getTextureNode(), node.getIncidentNode(), node.getMetadataNode(), node.getHitNode() ];
 				node.resetHistory();
 				assert.notOk( node._ready.value, 'Stale history becomes invalid immediately' );
 				assert.strictEqual( node._frame.value, 0, 'Noise sequence restarts reproducibly' );
 				assert.deepEqual( [ node.seed.value, node.rayCount.value, node.steps.value ], [ 123, 4, 32 ], 'Estimator settings survive a history reset' );
-				assert.deepEqual( [ node.getTextureNode(), node.getIncidentNode(), node.getMetadataNode() ], outputs, 'Reset preserves all output bindings' );
+				assert.deepEqual( [ node.getTextureNode(), node.getIncidentNode(), node.getMetadataNode(), node.getHitNode() ], outputs, 'Reset preserves all output bindings' );
 				node.dispose();
 				opaque.dispose();
 

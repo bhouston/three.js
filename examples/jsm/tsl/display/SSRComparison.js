@@ -4,7 +4,7 @@ import { temporalReproject } from './TemporalReprojectNode.js';
 import { recurrentDenoise } from './RecurrentDenoiseNode.js';
 
 /** Shared controls for the experimental SSR comparison examples. */
-export function readSSRComparison( defaultMode, defaultDenoise ) {
+export function readSSRComparison( defaultMode, defaultDenoise, defaultSteps = 16 ) {
 
 	const query = new URLSearchParams( window.location.search );
 	const number = ( name, fallback, min, max ) => {
@@ -19,7 +19,7 @@ export function readSSRComparison( defaultMode, defaultDenoise ) {
 		mode: [ 'mirror', 'ggx', 'power' ].includes( requestedMode ) ? requestedMode : defaultMode,
 		denoise: query.has( 'denoise' ) ? query.get( 'denoise' ) !== '0' : defaultDenoise,
 		resolutionScale: number( 'resolution', 1, 0.25, 1 ),
-		steps: Math.round( number( 'steps', 16, 1, 64 ) ),
+		steps: Math.round( number( 'steps', defaultSteps, 1, 64 ) ),
 		rayCount: requestedMode === 'power' ? Math.round( number( 'rays', 1, 1, 4 ) ) : 1,
 		seed: Math.round( number( 'seed', 1, 0, 65535 ) ),
 		maxDistance: query.has( 'reach' ) ? number( 'reach', 1, 0.001, 20 ) : null,
@@ -37,6 +37,13 @@ export function addSSRComparisonGUI( gui, comparison, apply ) {
 	const reload = ( key, value ) => {
 
 		const url = new URL( window.location.href );
+		for ( const [ field, query ] of Object.entries( { resolutionScale: 'resolution', steps: 'steps', rayCount: 'rays', seed: 'seed', maxDistance: 'reach', thickness: 'thickness', maxLuminance: 'clamp' } ) ) {
+
+			if ( comparison[ field ] !== null ) url.searchParams.set( query, comparison[ field ] );
+
+		}
+
+		url.searchParams.set( 'denoise', comparison.denoise ? '1' : '0' );
 		url.searchParams.set( key, value );
 		window.location.href = url.href;
 
@@ -76,7 +83,7 @@ export function applySSRComparison( node, comparison ) {
 		node.rayCount.value = comparison.rayCount;
 		node.seed.value = comparison.seed;
 
-	} else if ( comparison.explicit || comparison.query.has( 'steps' ) ) {
+	} else {
 
 		node.quality.value = comparison.steps / 64;
 
@@ -94,6 +101,7 @@ export function applySSRComparison( node, comparison ) {
  */
 export function createSSRComparisonDenoiser( node, depth, packedNormal, velocity, metalRoughness, camera ) {
 
+	if ( ! camera.isPerspectiveCamera ) throw new Error( 'SSR comparison: recurrent specular filtering requires a perspective camera. Use denoise=0 for orthographic cameras.' );
 	const rawDistance = node.getTextureNode(); // Weighted RGB/distance, with explicit pass scheduling.
 	const temporal = temporalReproject( rawDistance, depth, packedNormal, velocity, camera, { mode: 'specular', accumulate: false } );
 	const denoise = recurrentDenoise( temporal, camera, {

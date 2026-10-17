@@ -28,6 +28,20 @@ try {
 	browser = await puppeteer.launch( { headless: true } );
 	const page = await browser.newPage();
 	await page.setViewport( { width: 320, height: 240, deviceScaleFactor: 1 } );
+	await page.setRequestInterception( true );
+	page.on( 'request', request => {
+
+		if ( new URL( request.url() ).pathname === '/favicon.ico' ) {
+
+			request.respond( { status: 204 } );
+
+		} else {
+
+			request.continue();
+
+		}
+
+	} );
 	page.on( 'pageerror', error => report.errors.push( String( error ) ) );
 	page.on( 'console', message => {
 
@@ -38,7 +52,7 @@ try {
 	await page.setContent( '<link rel="icon" href="data:,"><script type="importmap">{"imports":{"three":"/build/three.webgpu.js","three/webgpu":"/build/three.webgpu.js","three/tsl":"/build/three.tsl.js"}}</script>' );
 	report.hardware = await page.evaluate( async () => {
 
-		const adapter = await navigator.gpu?.requestAdapter( { powerPreference: 'high-performance' } );
+		const adapter = await navigator.gpu?.requestAdapter();
 		if ( ! adapter ) throw new Error( 'No hardware WebGPU adapter is available.' );
 		const info = adapter.info;
 		const adapterInfo = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description, isFallbackAdapter: info.isFallbackAdapter ?? adapter.isFallbackAdapter ?? false };
@@ -67,7 +81,7 @@ try {
 				const tsl = await import( '/build/three.tsl.js' );
 				const { powerLobeSSR } = await import( '/examples/jsm/tsl/display/PowerLobeSSRNode.js' );
 				// Supply the explicitly inspected adapter's device to the renderer.
-				const adapter = await navigator.gpu.requestAdapter( { powerPreference: 'high-performance' } );
+				const adapter = await navigator.gpu.requestAdapter();
 				if ( ! adapter || adapter.info.isFallbackAdapter === true || adapter.isFallbackAdapter === true ) throw new Error( 'Hardware WebGPU adapter unavailable.' );
 				const info = adapter.info;
 				const deviceInfo = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description };

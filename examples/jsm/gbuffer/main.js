@@ -31,6 +31,9 @@ const params = {
 };
 let renderer, scene, camera, controls, loader, pipeline, model, mixer, gltf, allocationTracker, adapterInfo, modelStats;
 let selection = 0, loading = false, rebuilding = false, lastTime = performance.now(), lastStatus = 0;
+let rebuildQueue = Promise.resolve();
+const previousCameraPosition = new THREE.Vector3();
+const previousCameraRotation = new THREE.Quaternion();
 let manifest, modelControl, sceneControl, animationControl;
 const lights = [], errors = [], warnings = [];
 const readouts = { backend: '', dimensions: '', passes: '', traversals: '', textures: '', benchmark: 'Not measured (display FPS is not throughput)' };
@@ -45,7 +48,7 @@ const api = { ready: null, configure, renderFrame, drain: () => renderer.backend
 	showBuffer: name => {
 
 		const entry = [ ...renderer.inspector.viewer.canvasNodes.values() ].find( entry => entry.name === name );
-		if ( entry ) renderer.inspector.viewer.setViewMode( entry.id );
+		if ( entry ) renderer.inspector.viewer.showNodeView( entry.id );
 
 	}
 };
@@ -328,9 +331,16 @@ function disposeGLTF( asset ) {
 
 }
 
-async function rebuild() {
+function rebuild() {
 
-	if ( rebuilding ) return;
+	const task = rebuildQueue.catch( () => {} ).then( performRebuild );
+	rebuildQueue = task;
+	return task;
+
+}
+
+async function performRebuild() {
+
 	rebuilding = true;
 	try {
 
@@ -368,6 +378,8 @@ async function rebuild() {
 
 		pipeline = new GBufferPipeline( renderer, scene, camera, { ...params }, lights );
 		await pipeline.compile();
+		previousCameraPosition.copy( camera.position );
+		previousCameraRotation.copy( camera.quaternion );
 		persist();
 		allocationTracker.resetPeak();
 		updateStatus();
@@ -412,6 +424,15 @@ function renderFrame() {
 	if ( params.playing ) mixer?.update( Math.min( ( now - lastTime ) / 1000, 0.1 ) );
 	lastTime = now;
 	controls.update();
+	if ( camera.position.distanceTo( previousCameraPosition ) > 1 || Math.abs( camera.quaternion.dot( previousCameraRotation ) ) < 0.8 ) {
+
+		pipeline.history.reset( 'camera cut' );
+		if ( pipeline.temporal ) pipeline.temporal._historyRenderTarget.setSize( 1, 1 );
+
+	}
+
+	previousCameraPosition.copy( camera.position );
+	previousCameraRotation.copy( camera.quaternion );
 	// Upstream morph velocity lacks previous weights. Avoid silently accumulating wrong history.
 	if ( params.playing && modelStats.hasMorph && pipeline.temporal ) pipeline.temporal._historyRenderTarget.setSize( 1, 1 );
 	renderer.info.reset();
@@ -441,8 +462,8 @@ function snapshot() {
 		backend: 'WebGPU', adapter: adapterInfo, width: renderer.domElement.width, height: renderer.domElement.height, dpr: 1,
 		config: { ...params }, model: modelStats, passes: pipeline?.executed || [],
 		geometryTraversals: { shadow: params.shadows ? lights.length : 0, surface: enabled.deferred ? 1 : 0, prepass: enabled.prepass ? 1 : 0, forwardOpaque: enabled.deferred ? 0 : 1, restrictedFallback: enabled.deferred && modelStats.fallbackMeshes ? 1 : 0, transparent: modelStats.transparentMeshes ? 1 : 0 },
-		resources: { ...resources, surfaceBytes: enabled.deferred ? renderer.domElement.width * renderer.domElement.height * pipeline.surfaceBytesPerPixel : 0, excludes: 'Buffer allocations (including previous bones/instances), driver alignment/heaps, presentation swap chain; see report.' },
-		history: { valid: pipeline.history.valid, previous: pipeline.previousMetadata, current: pipeline.history.metadata[ pipeline.history.read ] },
+		resources: { ...resources, surfaceBytes: enabled.deferred ? renderer.domElement.width * renderer.domElement.height * pipeline.surfaceBytesPerPixel : 0, excludes: 'Driver alignment/heaps and presentation swap chain. Buffer descriptors and immutable geometry CPU bytes reported separately.' },
+		history: { valid: pipeline.history.valid, previous: pipeline.previousMetadata, current: pipeline.history.metadata[ pipeline.history.read ], geometryCPUBytes: pipeline.geometryHistory.reduce( ( total, entries ) => total + ( entries || [] ).reduce( ( sum, entry ) => sum + entry.world.byteLength + ( entry.bones?.byteLength || 0 ) + ( entry.instances?.byteLength || 0 ) + ( entry.morph?.byteLength || 0 ), 0 ), 0 ) },
 		renderInfo: { calls: renderer.info.render.frameCalls, draws: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles }, errors: [ ...errors ], warnings: [ ...warnings ]
 	};
 
@@ -467,6 +488,9 @@ async function benchmarkHere() {
 
 	if ( loading || rebuilding ) return;
 	renderer.setAnimationLoop( null );
+	renderer._animation.stop();
+	const inspectorEnabled = renderer.inspector.enabled;
+	renderer.inspector.enabled = false;
 	const queue = renderer.backend.device.queue;
 	const run = async duration => {
 
@@ -490,11 +514,18 @@ async function benchmarkHere() {
 	await run( 2000 );
 	const result = await run( 5000 );
 	readouts.benchmark = ( result.completed / result.seconds ).toFixed( 1 ) + ' GPU-completed frames/s (' + result.completed + ' / ' + result.seconds.toFixed( 3 ) + ' s). Use uncapped launch flags; see report.';
+	renderer.inspector.enabled = inspectorEnabled;
+	api.lastBenchmark = { ...result, framesPerSecond: result.completed / result.seconds, configuration: { ...params } };
 	updateStatus();
-	if ( ! query.has( 'benchmark' ) ) renderer.setAnimationLoop( () => {
+	if ( ! query.has( 'benchmark' ) ) {
 
-		renderFrame();
+		renderer._animation.start();
+		renderer.setAnimationLoop( () => {
 
-	} );
+			if ( ! loading && ! rebuilding ) renderFrame();
+
+		} );
+
+	}
 
 }

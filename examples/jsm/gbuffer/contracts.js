@@ -71,7 +71,8 @@ export function textureBytes( descriptor ) {
 	for ( let mip = 0; mip < mipLevelCount; mip ++ ) {
 
 		const w = Math.max( 1, width >> mip ), h = Math.max( 1, height >> mip );
-		total += ( compressed ? Math.ceil( w / 4 ) * Math.ceil( h / 4 ) * block : w * h * ( bytes || 0 ) ) * depth * sampleCount;
+		const layers = descriptor.dimension === '3d' ? Math.max( 1, depth >> mip ) : depth;
+		total += ( compressed ? Math.ceil( w / 4 ) * Math.ceil( h / 4 ) * block : w * h * ( bytes || 0 ) ) * layers * sampleCount;
 
 	}
 
@@ -85,7 +86,27 @@ export function trackTextures( device ) {
 
 	const original = device.createTexture.bind( device );
 	const live = new Map();
-	let sequence = 0, peak = 0;
+	const buffers = new Map();
+	const originalBuffer = device.createBuffer.bind( device );
+	let sequence = 0, peak = 0, sessionPeak = 0, bufferPeak = 0;
+	device.createBuffer = descriptor => {
+
+		const resource = originalBuffer( descriptor );
+		const id = ++ sequence;
+		buffers.set( id, { id, ...structuredClone( descriptor ) } );
+		bufferPeak = Math.max( bufferPeak, [ ...buffers.values() ].reduce( ( sum, entry ) => sum + entry.size, 0 ) );
+		const destroy = resource.destroy.bind( resource );
+		resource.destroy = () => {
+
+			buffers.delete( id );
+			destroy();
+
+		};
+
+		return resource;
+
+	};
+
 	device.createTexture = ( descriptor ) => {
 
 		const resource = original( descriptor );
@@ -93,6 +114,7 @@ export function trackTextures( device ) {
 		const record = { id, ...structuredClone( descriptor ), ...textureBytes( descriptor ) };
 		live.set( id, record );
 		peak = Math.max( peak, [ ...live.values() ].reduce( ( sum, entry ) => sum + entry.bytes, 0 ) );
+		sessionPeak = Math.max( sessionPeak, peak );
 		const destroy = resource.destroy.bind( resource );
 		resource.destroy = () => {
 
@@ -105,7 +127,7 @@ export function trackTextures( device ) {
 
 	};
 
-	return { snapshot: () => ( { liveBytes: [ ...live.values() ].reduce( ( sum, entry ) => sum + entry.bytes, 0 ), peakBytes: peak, textures: [ ...live.values() ] } ), resetPeak: () => {
+	return { snapshot: () => ( { liveBytes: [ ...live.values() ].reduce( ( sum, entry ) => sum + entry.bytes, 0 ), peakBytes: peak, sessionPeakBytes: sessionPeak, textures: [ ...live.values() ], buffers: [ ...buffers.values() ], bufferBytes: [ ...buffers.values() ].reduce( ( sum, entry ) => sum + entry.size, 0 ), bufferPeakBytes: bufferPeak } ), resetPeak: () => {
 
 		peak = [ ...live.values() ].reduce( ( sum, entry ) => sum + entry.bytes, 0 );
 

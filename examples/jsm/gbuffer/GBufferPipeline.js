@@ -87,23 +87,39 @@ export class GBufferPipeline extends THREE.Node {
 		this.depth.name = 'surface.depth32float';
 		this.opaque = this.target( 'opaque.linearHDR', this.enabled.deferred ? {} : { depthBuffer: true, depthTexture: this.depth } );
 		this.opaque.texture.name = 'output';
-		this.historyTargets = [ this.target( 'source.history0' ), this.target( 'source.history1' ) ];
-		this.historyDepth = [ 0, 1 ].map( index => {
+		this.historyTargets = this.enabled.deferred ? [ this.target( 'source.history0' ), this.target( 'source.history1' ) ] : [];
+		this.historyDepth = this.historyTargets.map( ( target, index ) => {
 
 			const depth = new THREE.DepthTexture( 1, 1, THREE.FloatType );
 			depth.name = 'source.depthHistory' + index;
 			return depth;
 
 		} );
-		this.renderTarget = this.target( 'beauty.linearHDR', { depthBuffer: true, depthTexture: this.depth } );
+		this.renderTarget = this.enabled.deferred ? this.target( 'beauty.linearHDR', { depthBuffer: true, depthTexture: this.depth } ) : this.opaque;
+		this.renderTarget.texture.name = 'output';
+		this.geometryObjects = [];
+		this.hasFallback = false;
+		this.geometryHistory = [ null, null ];
+		scene.traverse( object => {
+
+			if ( ! object.isMesh ) return;
+			this.geometryObjects.push( object );
+			if ( object.layers.isEnabled( 1 ) && ( Array.isArray( object.material ) ? object.material : [ object.material ] ).some( material => ! material.transparent && ! ( material.transmission > 0 ) ) ) this.hasFallback = true;
+
+		} );
 		this.beauty = passTexture( this, this.renderTarget.texture );
 		this.depthNode = texture( this.depth );
 		this.velocityNode = null;
 		this.inspector( 'Opaque linear HDR', texture( this.opaque.texture ) );
-		this.previousSourceNode = texture( this.historyTargets[ 0 ].texture );
-		this.previousDepthNode = texture( this.historyDepth[ 0 ] );
-		this.inspector( 'Previous opaque source (pre-transparent, pre-AA)', this.previousSourceNode );
-		this.inspector( 'Previous source matching depth', this.previousDepthNode );
+		if ( this.enabled.deferred ) {
+
+			this.previousSourceNode = texture( this.historyTargets[ 0 ].texture );
+			this.previousDepthNode = texture( this.historyDepth[ 0 ] );
+			this.inspector( 'Previous opaque source (pre-transparent, pre-AA)', this.previousSourceNode );
+			this.inspector( 'Previous source matching depth', this.previousDepthNode );
+
+		}
+
 		this.inspector( 'Current depth', this.depthNode );
 		this.inspector( 'Beauty before AA', texture( this.renderTarget.texture ) );
 
@@ -223,6 +239,13 @@ export class GBufferPipeline extends THREE.Node {
 		} );
 		const [ albedo, normal, roughMetal, motion, emission ] = this.surface.textures.map( attachment => this.inspector( attachment.name, texture( attachment ) ) );
 		this.velocityNode = motion;
+		if ( this.hasFallback && this.options.traa ) {
+
+			this.renderTarget.textures.push( this.surface.textures[ 3 ] );
+			this.fallbackMRT = mrt( { output, velocity } );
+
+		}
+
 		const decodedNormal = octDecode( normal.rg );
 		let visibility = float( 1 );
 		if ( this.enabled.ao ) {
@@ -493,23 +516,12 @@ export class GBufferPipeline extends THREE.Node {
 				this.renderGeometry( this.opaque, lighting, 1 << this.resolvedLayer, true, false );
 				this.executed.push( 'fullscreen deferred PBR lighting resolve' );
 				// Only unsupported opaque objects, excluded from the surface traversal, use forward.
-				const hasFallback = scene.children.some( root => {
-
-					let found = false;
-					root.traverse( object => {
-
-						if ( object.isMesh && object.layers.isEnabled( 1 ) && ( Array.isArray( object.material ) ? object.material : [ object.material ] ).some( material => ! material.transparent && ! ( material.transmission > 0 ) ) ) found = true;
-
-					} );
-					return found;
-
-				} );
-				if ( hasFallback ) {
+				if ( this.hasFallback ) {
 
 					scene.background = null;
 					renderer.initRenderTarget( this.renderTarget );
 					renderer.copyTextureToTexture( this.opaque.texture, this.renderTarget.texture );
-					this.renderGeometry( this.renderTarget, lighting, 1 << 1, true, false, null, false );
+					this.renderGeometry( this.renderTarget, lighting, 1 << 1, true, false, this.fallbackMRT || null, false );
 					renderer.copyTextureToTexture( this.renderTarget.texture, this.opaque.texture );
 					this.executed.push( 'restricted forward opaque extensions + 2 HDR copies (layer 1)' );
 
@@ -524,17 +536,36 @@ export class GBufferPipeline extends THREE.Node {
 
 			// Publish BEFORE transparency / AA / output. Read is immutable until the next frame.
 			const write = this.history.write;
-			renderer.initRenderTarget( this.historyTargets[ write ] );
-			renderer.copyTextureToTexture( this.opaque.texture, this.historyTargets[ write ].texture );
-			renderer.copyTextureToTexture( this.depth, this.historyDepth[ write ] );
-			this.previousSourceNode.value = this.historyTargets[ this.history.read ].texture;
-			this.previousDepthNode.value = this.historyDepth[ this.history.read ];
 			this.previousMetadata = this.history.valid ? this.history.metadata[ this.history.read ] : null;
-			this.history.publish( { frame: this.frame, projection: camera.projectionMatrix.toArray(), view: camera.matrixWorldInverse.toArray(), modelEpoch: this.options.model, width: this.size.x, height: this.size.y, previousGeometryFrame: frame.frameId } );
-			this.executed.push( 'publish linear opaque source history (copy / ping-pong)' );
-			renderer.initRenderTarget( this.renderTarget );
-			renderer.copyTextureToTexture( this.opaque.texture, this.renderTarget.texture );
-			this.executed.push( 'seed transparent framebuffer (HDR copy)' );
+			if ( this.enabled.deferred ) {
+
+				renderer.initRenderTarget( this.historyTargets[ write ] );
+				renderer.copyTextureToTexture( this.opaque.texture, this.historyTargets[ write ].texture );
+				renderer.copyTextureToTexture( this.depth, this.historyDepth[ write ] );
+				this.previousSourceNode.value = this.historyTargets[ this.history.read ].texture;
+				this.previousDepthNode.value = this.historyDepth[ this.history.read ];
+				// Immutable CPU geometry publication accompanies the source color/depth.
+				// This deliberately measures its copy cost; fake signals never consume it.
+				this.geometryHistory[ write ] = this.geometryObjects.map( object => ( {
+					id: object.id,
+					world: new Float32Array( object.matrixWorld.elements ),
+					bones: object.skeleton ? object.skeleton.boneMatrices.slice() : null,
+					instances: object.isInstancedMesh ? object.instanceMatrix.array.slice() : null,
+					morph: object.morphTargetInfluences ? Float32Array.from( object.morphTargetInfluences ) : null
+				} ) );
+				this.executed.push( 'publish opaque HDR + depth + geometry history (ping-pong)' );
+
+			}
+
+			this.history.publish( { frame: this.frame, projection: camera.projectionMatrix.toArray(), unjitteredProjection: ( this.temporal?._originalProjectionMatrix || camera.projectionMatrix ).toArray(), view: camera.matrixWorldInverse.toArray(), modelEpoch: this.options.model, width: this.size.x, height: this.size.y, geometrySlot: write, geometryFrame: this.frame, previousGeometryFrame: frame.frameId } );
+			if ( this.enabled.deferred ) {
+
+				renderer.initRenderTarget( this.renderTarget );
+				renderer.copyTextureToTexture( this.opaque.texture, this.renderTarget.texture );
+				this.executed.push( 'seed transparent framebuffer (HDR copy)' );
+
+			}
+
 			scene.background = null; // A Color background forces a clear even with autoClear=false.
 			this.renderGeometry( this.renderTarget, lighting, 3, false, true, null, false );
 			this.executed.push( 'forward transparents / transmission' );

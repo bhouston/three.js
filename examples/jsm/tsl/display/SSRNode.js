@@ -897,25 +897,20 @@ class SSRNode extends Node {
 		// acceptance/refinement rules, so this optimization cannot add/move hits.
 		const canSkipBatch = ( uvStart, uvEnd, rayNearZ, level ) => {
 
-			const nearestViewZ = ( coord ) => {
-
-				let depth = hierarchicalDepth.getNearestDepthNode( level, coord );
-				if ( builder.renderer.logarithmicDepthBuffer === true ) {
-
-					depth = viewZToPerspectiveDepth( logarithmicDepthToViewZ( depth, this._cameraNear, this._cameraFar ), this._cameraNear, this._cameraFar );
-
-				}
-
-				return getViewZ( depth );
-
-			};
-
-			// The padded rectangle is at most one cell wide per axis at this
-			// level. Its four corners therefore cover all touched cells, even
-			// for odd trailing footprints and a linearly filtered depth input.
-			const closest = max( max( nearestViewZ( uvStart ), nearestViewZ( uvEnd ) ), max(
-				nearestViewZ( vec2( uvStart.x, uvEnd.y ) ), nearestViewZ( vec2( uvEnd.x, uvStart.y ) )
+			// Raw depth is monotonic. Reduce four bounds before linearizing so
+			// only the winning depth needs the perspective/logarithmic conversion.
+			const nearest = coord => hierarchicalDepth.getNearestDepthNode( level, coord );
+			const reduce = builder.renderer.reversedDepthBuffer === true ? max : min;
+			let depth = reduce( reduce( nearest( uvStart ), nearest( uvEnd ) ), reduce(
+				nearest( vec2( uvStart.x, uvEnd.y ) ), nearest( vec2( uvEnd.x, uvStart.y ) )
 			) );
+			if ( builder.renderer.logarithmicDepthBuffer === true ) {
+
+				depth = viewZToPerspectiveDepth( logarithmicDepthToViewZ( depth, this._cameraNear, this._cameraFar ), this._cameraNear, this._cameraFar );
+
+			}
+
+			const closest = getViewZ( depth );
 			const margin = closest.abs().max( 1 ).mul( 1e-5 );
 			return rayNearZ.greaterThan( closest.add( margin ) );
 

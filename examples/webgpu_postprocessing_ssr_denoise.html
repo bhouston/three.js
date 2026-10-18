@@ -124,8 +124,11 @@
 
 		}
 
+		const hiZOptions = new URLSearchParams( window.location.search );
 		const params = {
-			hiZ: false,
+			hiZ: [ 'conservative', 'adaptive' ].includes( hiZOptions.get( 'hiZ' ) ),
+			hiZTraversal: hiZOptions.get( 'hiZ' ) === 'adaptive' ? 'adaptive' : 'conservative',
+			hiZMinMip: Math.floor( Math.min( 4, Math.max( 0, Number( hiZOptions.get( 'hiZMinMip' ) ) || 0 ) ) ),
 			hiZTracing: true,
 			hiZDebug: false,
 			hiZLevel: 0,
@@ -381,6 +384,8 @@
 			const hiZGui = renderer.inspector.createParameters( 'Hi-Z construction' );
 			hiZGui.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
 			hiZGui.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
+			hiZGui.add( params, 'hiZTraversal', [ 'conservative', 'adaptive' ] ).name( 'traversal' ).onChange( updateOutputNode );
+			hiZGui.add( params, 'hiZMinMip', 0, 4, 1 ).name( 'adaptive minimum mip' ).onChange( updateOutputNode );
 			hiZGui.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
 			hiZGui.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 
@@ -538,6 +543,8 @@
 			updateCompareHint( params.output );
 
 			postProcessing.outputColorTransform = ! GRADED_OUTPUTS.has( params.output );
+			ssrNode.hiZTraversal = params.hiZTraversal;
+			ssrNode.hiZMinMip.value = params.hiZMinMip;
 			ssrNode.hiZEnabled = params.hiZ && params.hiZTracing;
 			depthPyramid.enabled = params.hiZ;
 			depthPyramid.level.value = params.hiZLevel;

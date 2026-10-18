@@ -56,8 +56,11 @@
 		import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
+		const hiZOptions = new URLSearchParams( window.location.search );
 		const params = {
-			hiZ: false,
+			hiZ: [ 'conservative', 'adaptive' ].includes( hiZOptions.get( 'hiZ' ) ),
+			hiZTraversal: hiZOptions.get( 'hiZ' ) === 'adaptive' ? 'adaptive' : 'conservative',
+			hiZMinMip: Math.floor( Math.min( 4, Math.max( 0, Number( hiZOptions.get( 'hiZMinMip' ) ) || 0 ) ) ),
 			hiZTracing: true,
 			hiZDebug: false,
 			hiZLevel: 0,
@@ -200,6 +203,8 @@
 
 			function updateOutputNode() {
 
+				ssrPass.hiZTraversal = params.hiZTraversal;
+				ssrPass.hiZMinMip.value = params.hiZMinMip;
 				ssrPass.hiZEnabled = params.hiZ && params.hiZTracing;
 				depthPyramid.enabled = params.hiZ;
 				depthPyramid.level.value = params.hiZLevel;
@@ -237,6 +242,8 @@
 			const hiZFolder = gui.addFolder( 'Hi-Z construction' );
 			hiZFolder.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
+			hiZFolder.add( params, 'hiZTraversal', [ 'conservative', 'adaptive' ] ).name( 'traversal' ).onChange( updateOutputNode );
+			hiZFolder.add( params, 'hiZMinMip', 0, 4, 1 ).name( 'adaptive minimum mip' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 			const modelFolder = gui.addFolder( 'Model' );

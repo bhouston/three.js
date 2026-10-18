@@ -11,7 +11,7 @@ function assert( condition, message ) {
 
 // These are actual SSR shaders over procedural geometry, not a CPU approximation
 // of ray traversal. No assets, network requests, environment maps or temporal history.
-export async function runSSRHiZTests() {
+export async function runSSRHiZTests( { traversal = 'conservative', minMip = 0 } = {} ) {
 
 	assert( navigator.gpu, 'Hardware WebGPU is required.' );
 	const adapter = await navigator.gpu.requestAdapter( { powerPreference: 'high-performance' } );
@@ -71,6 +71,8 @@ export async function runSSRHiZTests() {
 						for ( const binaryRefine of [ false, true ] ) {
 
 							const reflection = ssr( scenePass.getTextureNode( 'output' ), depth, normals, { hiZ: pyramid, stochastic, binaryRefine, camera, metalnessNode: scenePass.getTextureNode( 'metalrough' ).r, roughnessNode: scenePass.getTextureNode( 'metalrough' ).g } );
+							reflection.hiZTraversal = traversal;
+							reflection.hiZMinMip.value = minMip;
 							reflection.maxDistance.value = 20;
 							reflection.thickness.value = 0.15;
 							// Keep reflection data in float all the way through the readback.
@@ -99,14 +101,16 @@ export async function runSSRHiZTests() {
 									await read( false ); await read( false ); await read( false ); // Populate camera matrices, targets and shader resources.
 									const linear = await read( false );
 									const hierarchical = await read( true );
-									let maxError = 0, hits = 0, changedHits = 0;
+									let maxError = 0, hits = 0, changedHits = 0, adaptiveHits = 0, squaredRGBError = 0;
 									for ( let i = 0; i < linear.length; i ++ ) {
 
 										assert( Number.isFinite( linear[ i ] ) && Number.isFinite( hierarchical[ i ] ), `Nonfinite SSR output ${i}` );
 										maxError = Math.max( maxError, Math.abs( linear[ i ] - hierarchical[ i ] ) );
+										if ( i % 4 !== 3 ) squaredRGBError += ( linear[ i ] - hierarchical[ i ] ) ** 2;
 										if ( i % 4 === 3 ) {
 
 											if ( linear[ i ] > 0 ) hits ++;
+											if ( hierarchical[ i ] > 0 ) adaptiveHits ++;
 											if ( ( linear[ i ] > 0 ) !== ( hierarchical[ i ] > 0 ) ) changedHits ++;
 
 										}
@@ -115,8 +119,9 @@ export async function runSSRHiZTests() {
 
 									const label = JSON.stringify( { reversedDepth, logarithmicDepthBuffer, orthographic, stochastic, binaryRefine, quality } );
 									assert( hits > 0, `Scene produced no SSR hits: ${label}` );
-									assert( changedHits === 0 && maxError <= 0.002, `SSR mismatch ${label}: changed hits=${changedHits}, max error=${maxError}` );
-									results.push( { reversedDepth, logarithmicDepthBuffer, orthographic, stochastic, binaryRefine, quality, hits, changedHits, maxError } );
+									assert( adaptiveHits > 0, `Hierarchy produced no hits: ${label}` );
+									if ( traversal === 'conservative' ) assert( changedHits === 0 && maxError <= 0.002, `SSR mismatch ${label}: changed hits=${changedHits}, max error=${maxError}` );
+									results.push( { reversedDepth, logarithmicDepthBuffer, orthographic, stochastic, binaryRefine, quality, hits, adaptiveHits, changedHits, maxError, rgbRMSE: Math.sqrt( squaredRGBError / ( width * height * 3 ) ) } );
 
 								}
 
@@ -149,6 +154,7 @@ export async function runSSRHiZTests() {
 
 		}
 
+		if ( traversal === 'adaptive' ) assert( results.some( result => result.changedHits > 0 ), 'Adaptive shader did not change any sampling; check mode recompilation.' );
 		assert( errors.length === 0, errors.join( '\n' ) );
 		return { adapter: description, cases: results.length, results };
 

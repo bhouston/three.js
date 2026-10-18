@@ -69,7 +69,7 @@ export function addSSRComparisonGUI( gui, comparison, apply ) {
 	const note = document.createElement( 'div' );
 	note.style.cssText = 'position:fixed;bottom:8px;left:8px;max-width:580px;padding:6px;background:#000b;color:white;font:12px sans-serif;pointer-events:none;z-index:1000';
 	note.textContent = `${ comparison.mode } · ${ comparison.denoise ? 'recurrent denoise' : 'raw' } · ${ comparison.mode === 'power' ? 'biased estimator; projected steps; previous opaque HDR' : 'stock estimator; current beauty; one ray' }. Explicit modes share an absolute reach cap. Mirror retains adaptive steps, plane attenuation, blur and no environment miss fallback; GGX retains its step distribution and BRDF weights. Scene/filter controls reset on mode reload; shared trace controls persist.`;
-	document.body.appendChild( note );
+	document.getElementById( 'info' ).appendChild( note );
 
 }
 

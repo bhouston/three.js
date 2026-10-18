@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { pass, mrt, output, normalView, metalness, roughness, vec2, sample, packNormalToRGB, unpackRGBToNormal } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
+import { ENV_RAY_LENGTH_THRESHOLD } from 'three/addons/tsl/utils/SpecularHelpers.js';
 
 function assert( condition, message ) {
 
@@ -109,9 +110,9 @@ export async function runSSRHiZTests( { traversal = 'conservative', minMip = 0 }
 										if ( i % 4 !== 3 ) squaredRGBError += ( linear[ i ] - hierarchical[ i ] ) ** 2;
 										if ( i % 4 === 3 ) {
 
-											if ( linear[ i ] > 0 ) hits ++;
-											if ( hierarchical[ i ] > 0 ) adaptiveHits ++;
-											if ( ( linear[ i ] > 0 ) !== ( hierarchical[ i ] > 0 ) ) changedHits ++;
+											if ( linear[ i ] > 0 && linear[ i ] < ENV_RAY_LENGTH_THRESHOLD ) hits ++;
+											if ( hierarchical[ i ] > 0 && hierarchical[ i ] < ENV_RAY_LENGTH_THRESHOLD ) adaptiveHits ++;
+											if ( ( linear[ i ] > 0 && linear[ i ] < ENV_RAY_LENGTH_THRESHOLD ) !== ( hierarchical[ i ] > 0 && hierarchical[ i ] < ENV_RAY_LENGTH_THRESHOLD ) ) changedHits ++;
 
 										}
 

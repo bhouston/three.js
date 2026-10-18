@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, logarithmicDepthToViewZ, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, textureSize, trunc, uint, uniform, uv, vec2, vec3, vec4, viewZToPerspectiveDepth, context, isBackgroundDepth } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, logarithmicDepthToViewZ, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, textureSize, trunc, uint, uniform, uv, vec2, vec3, vec4, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, context, isBackgroundDepth } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -31,6 +31,7 @@ const MAX_STEPS = 64;
  * Post processing node for computing screen space reflections (SSR).
  *
  * Reference: {@link https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.html}
+ * Adaptive traversal reference: {@link https://github.com/GPUOpen-Effects/FidelityFX-SSSR/blob/master/ffx-sssr/ffx_sssr.h}
  *
  * @augments Node
  * @three_import import { ssr } from 'three/addons/tsl/display/SSRNode.js';
@@ -114,6 +115,8 @@ class SSRNode extends Node {
 		if ( ! [ 'conservative', 'adaptive' ].includes( this._hiZTraversal ) ) throw new Error( 'SSRNode: Invalid hiZTraversal.' );
 		/** Minimum adaptive leaf mip. Larger values trade thin-detail accuracy for speed. @type {UniformNode<int>} */
 		this.hiZMinMip = uniform( 0, 'int' );
+		/** Adaptive iteration budget at quality one, clamped to 8..512. @type {UniformNode<float>} */
+		this.hiZMaxSteps = uniform( 64 );
 
 		/**
 		 * A node that represents the beauty pass's normals.
@@ -1194,8 +1197,26 @@ class SSRNode extends Node {
 			const mip = adaptive ? this.hiZMinMip.max( 0 ).min( int( hierarchicalDepth.getLastLevelNode() ) ).toVar() : null;
 			const minMip = adaptive ? mip.toConst() : null;
 			const rayUV = adaptive ? vec2( xLen, yLen ).mul( invResolution ).toVar() : null;
+			// Standard/reversed projected depth is affine in s, so hierarchy tests
+			// need no per-cell perspective divide. Log depth keeps the general path.
+			const projectedTraversal = adaptive && builder.renderer.logarithmicDepthBuffer !== true;
+			const toProjectedDepth = this.camera.isPerspectiveCamera
+				? z => builder.renderer.reversedDepthBuffer === true
+					? viewZToReversedPerspectiveDepth( z, this._cameraNear, this._cameraFar )
+					: viewZToPerspectiveDepth( z, this._cameraNear, this._cameraFar )
+				: z => builder.renderer.reversedDepthBuffer === true
+					? z.add( this._cameraFar ).div( this._cameraFar.sub( this._cameraNear ) )
+					: z.add( this._cameraNear ).div( this._cameraNear.sub( this._cameraFar ) );
+			const rayDepthStart = projectedTraversal ? toProjectedDepth( viewPosition.z ).toConst() : null;
+			const rayDepthDelta = projectedTraversal ? toProjectedDepth( d1viewPosition.z ).sub( rayDepthStart ).toConst() : null;
+			const invDepthDelta = projectedTraversal ? rayDepthDelta.greaterThanEqual( 0 ).select( 1, - 1 ).div( rayDepthDelta.abs().max( 1e-20 ) ).toConst() : null;
+			const invRayUV = adaptive ? vec2(
+				rayUV.x.greaterThanEqual( 0 ).select( 1, - 1 ).div( rayUV.x.abs().max( 1e-20 ) ),
+				rayUV.y.greaterThanEqual( 0 ).select( 1, - 1 ).div( rayUV.y.abs().max( 1e-20 ) )
+			).toConst() : null;
+
 			const boundaryEpsilon = adaptive ? rayLen.reciprocal().mul( 0.005 ).max( 1e-7 ).toVar() : null;
-			const iterationEnd = adaptive ? int( this.quality.clamp().mul( 128 ) ).max( 32 ).add( 1 ) : totalStep;
+			const iterationEnd = adaptive ? int( this.quality.clamp().mul( this.hiZMaxSteps.clamp( 8, 512 ) ) ).max( 8 ).add( 1 ) : totalStep;
 
 			// March from d0 toward d1, looking for an intersection with the depth buffer.
 			Loop( { start: int( 1 ), end: iterationEnd }, ( { i } ) => {
@@ -1258,22 +1279,36 @@ class SSRNode extends Node {
 					const exitS = float( 1e20 ).toVar();
 					If( rayUV.x.abs().greaterThan( 1e-8 ), () => {
 
-						exitS.assign( rayUV.x.greaterThan( 0 ).select( bounds.z, bounds.x ).sub( uvPos.x ).div( rayUV.x ) );
+						exitS.assign( rayUV.x.greaterThan( 0 ).select( bounds.z, bounds.x ).sub( uvPos.x ).mul( invRayUV.x ) );
 
 					} );
 					If( rayUV.y.abs().greaterThan( 1e-8 ), () => {
 
-						exitS.assign( min( exitS, rayUV.y.greaterThan( 0 ).select( bounds.w, bounds.y ).sub( uvPos.y ).div( rayUV.y ) ) );
+						exitS.assign( min( exitS, rayUV.y.greaterThan( 0 ).select( bounds.w, bounds.y ).sub( uvPos.y ).mul( invRayUV.y ) ) );
 
 					} );
 					let nearestDepth = hierarchicalDepth.getNearestDepthNode( uint( mip ), uvS );
-					if ( builder.renderer.logarithmicDepthBuffer === true ) nearestDepth = viewZToPerspectiveDepth( logarithmicDepthToViewZ( nearestDepth, this._cameraNear, this._cameraFar ), this._cameraNear, this._cameraFar );
-					const nearestZ = getViewZ( nearestDepth ).toVar();
-					const rayZ = reflectRayZAt( s ).toVar();
-					const zMargin = nearestZ.abs().max( 1 ).mul( 1e-6 );
-					If( rayZ.greaterThan( nearestZ.add( zMargin ) ), () => {
+					const depthS = float( 1e20 ).toVar();
+					const inFront = bool( false ).toVar();
+					if ( projectedTraversal ) {
 
-						const depthS = float( 1e20 ).toVar();
+						nearestDepth = nearestDepth.toVar();
+						const rayDepth = rayDepthStart.add( s.mul( rayDepthDelta ) );
+						inFront.assign( builder.renderer.reversedDepthBuffer === true ? rayDepth.greaterThan( nearestDepth ) : rayDepth.lessThan( nearestDepth ) );
+						If( d1viewPosition.z.lessThan( viewPosition.z.sub( 1e-7 ) ), () => {
+
+							depthS.assign( nearestDepth.sub( rayDepthStart ).mul( invDepthDelta ) );
+							// Treat a solved plane as reached despite rounding in affine depth.
+							inFront.assign( inFront.and( depthS.greaterThan( s.add( 1e-7 ) ) ) );
+
+						} );
+
+					} else {
+
+						nearestDepth = viewZToPerspectiveDepth( logarithmicDepthToViewZ( nearestDepth, this._cameraNear, this._cameraFar ), this._cameraNear, this._cameraFar );
+						const nearestZ = getViewZ( nearestDepth ).toVar();
+						const zMargin = nearestZ.abs().max( 1 ).mul( 1e-6 );
+						inFront.assign( reflectRayZAt( s ).greaterThan( nearestZ.add( zMargin ) ) );
 						If( d1viewPosition.z.lessThan( viewPosition.z.sub( 1e-7 ) ), () => {
 
 							depthS.assign( this.camera.isPerspectiveCamera
@@ -1281,6 +1316,11 @@ class SSRNode extends Node {
 								: nearestZ.sub( viewPosition.z ).div( d1viewPosition.z.sub( viewPosition.z ) ) );
 
 						} );
+
+					}
+
+					If( inFront, () => {
+
 						If( depthS.greaterThan( s ).and( depthS.lessThanEqual( exitS ) ), () => {
 
 							marchS.assign( depthS );

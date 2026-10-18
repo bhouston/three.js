@@ -59,6 +59,7 @@
 		const hiZOptions = new URLSearchParams( window.location.search );
 		const params = {
 			hiZ: [ 'conservative', 'adaptive' ].includes( hiZOptions.get( 'hiZ' ) ),
+			hiZMaxSteps: Math.floor( Math.min( 512, Math.max( 8, Number( hiZOptions.get( 'hiZMaxSteps' ) ) || 64 ) ) ),
 			hiZTraversal: hiZOptions.get( 'hiZ' ) === 'adaptive' ? 'adaptive' : 'conservative',
 			hiZMinMip: Math.floor( Math.min( 4, Math.max( 0, Number( hiZOptions.get( 'hiZMinMip' ) ) || 0 ) ) ),
 			hiZTracing: true,
@@ -205,6 +206,7 @@
 
 				ssrPass.hiZTraversal = params.hiZTraversal;
 				ssrPass.hiZMinMip.value = params.hiZMinMip;
+				ssrPass.hiZMaxSteps.value = params.hiZMaxSteps;
 				ssrPass.hiZEnabled = params.hiZ && params.hiZTracing;
 				depthPyramid.enabled = params.hiZ;
 				depthPyramid.level.value = params.hiZLevel;
@@ -242,6 +244,7 @@
 			const hiZFolder = gui.addFolder( 'Hi-Z construction' );
 			hiZFolder.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
+			hiZFolder.add( params, 'hiZMaxSteps', 8, 512, 1 ).name( 'adaptive max steps' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZTraversal', [ 'conservative', 'adaptive' ] ).name( 'traversal' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZMinMip', 0, 4, 1 ).name( 'adaptive minimum mip' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );

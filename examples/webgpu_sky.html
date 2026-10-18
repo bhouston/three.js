@@ -103,7 +103,8 @@
 			lutMaterial.fragmentNode = vec4( atmosphereNode.getTransmittanceLUTNode(), 1 );
 			const skyMaterial = new THREE.NodeMaterial();
 			skyMaterial.fragmentNode = vec4( atmosphereNode, 1 );
-			const groundRadiance = uniform( new THREE.Color() );
+			const groundAlbedo = uniform( new THREE.Color() );
+			const directIrradiance = uniform( new THREE.Color() );
 			const groundMaterial = new THREE.NodeMaterial( { depthTest: false, depthWrite: false } );
 			groundMaterial.fragmentNode = Fn( () => {
 
@@ -112,7 +113,9 @@
 		Discard();
 
 	} );
-				return vec4( groundRadiance, 1 );
+				// Keep the meter-to-ground dependency on the GPU, in pre-exposed units.
+				const irradiance = texture( meterTarget.texture, vec2( 0.5 ) ).level( 0 ).rgb.add( directIrradiance );
+				return vec4( groundAlbedo.mul( irradiance ).div( Math.PI ), 1 );
 
 			} )();
 			const meterMaterial = new THREE.NodeMaterial();
@@ -138,7 +141,7 @@
 			// The solar disc is excluded from the environment bake.
 			scene.backgroundNode = texture( skyTarget.texture, equirectUV() ).rgb.add( sunRadiance.mul( disc ).mul( positionWorldDirection.y.greaterThan( 0 ) ).mul( sunDisc ) );
 			const pmrem = new THREE.PMREMGenerator( renderer );
-			let environment, dirty = true, baking = false, lastBake = - Infinity, bakeCount = 0;
+			let environment, dirty = true, baking = false, bakeCount = 0;
 			let lutAerosol, skyIlluminance = 0, storageScale = 1;
 			let directHorizontal = 0, directNormal = 0;
 
@@ -293,20 +296,21 @@
 
 				renderPass( skyMaterial, skyTarget );
 				renderPass( meterMaterial, meterTarget );
-				const meterPixels = await renderer.readRenderTargetPixelsAsync( meterTarget, 0, 0, 1, 1 );
-				const skyRGB = Array.from( meterPixels ).slice( 0, 3 ).map( value => THREE.DataUtils.fromHalfFloat( value ) / storageScale );
-				skyIlluminance = luminance( skyRGB );
 				directNormal = light.illuminance;
 				directHorizontal = directNormal * Math.max( direction[ 1 ], 0 );
 				const albedo = new THREE.Color( settings.groundAlbedo );
-				const albedoRGB = albedo.toArray();
 				ground.material.color.copy( albedo );
-				groundRadiance.value.setRGB( ...skyRGB.map( ( value, c ) => albedoRGB[ c ] * ( value + light.color[ c ] * directHorizontal ) * storageScale / Math.PI ) );
+				groundAlbedo.value.copy( albedo );
+				directIrradiance.value.setRGB( ...light.color.map( value => value * directHorizontal * storageScale ) );
 				const autoClear = renderer.autoClear;
 				renderer.autoClear = false;
 				renderPass( groundMaterial, skyTarget );
 				renderer.autoClear = autoClear;
 				environment = pmrem.fromEquirectangular( skyTarget.texture, environment );
+				// Submit every bake pass before reading back the meter for the UI/exposure.
+				const meterPixels = await renderer.readRenderTargetPixelsAsync( meterTarget, 0, 0, 1, 1 );
+				const skyRGB = Array.from( meterPixels ).slice( 0, 3 ).map( value => THREE.DataUtils.fromHalfFloat( value ) / storageScale );
+				skyIlluminance = luminance( skyRGB );
 				scene.environment = environment.texture;
 				sunVector.value.fromArray( direction );
 				sun.position.fromArray( direction ).multiplyScalar( 200 );
@@ -320,7 +324,6 @@
 				const band = settings.altitude > 0 ? 'Daylight' : settings.altitude > - 6 ? 'Civil twilight' : settings.altitude > - 12 ? 'Nautical twilight' : settings.altitude > - 18 ? 'Astronomical twilight' : 'Night';
 				document.getElementById( 'readout' ).innerHTML = `${band}<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Sky: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
 				baking = false;
-				lastBake = performance.now();
 
 			}
 
@@ -374,7 +377,7 @@
 				timer.update();
 				controls.autoRotate = params.autoRotate;
 				controls.update( timer.getDelta() );
-				if ( dirty && ! baking && performance.now() - lastBake > 100 ) bakeSky();
+				if ( dirty && ! baking ) bakeSky();
 				if ( ! baking ) renderer.render( scene, camera );
 
 			}

@@ -25,6 +25,7 @@
 
 			<small>
 				Screen Space Reflections.<br />
+				Optional Hi-Z tracing skips empty space conservatively; disable it to compare with linear tracing.<br />
 				<a href="https://skfb.ly/6tqYD" target="_blank" rel="noopener">Steampunk Camera</a> by
 				<a href="https://sketchfab.com/lumoize" target="_blank" rel="noopener">dylanheyes</a> is licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Creative Commons Attribution</a>.
 			</small>
@@ -51,6 +52,7 @@
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { powerLobeSSR } from 'three/addons/tsl/display/PowerLobeSSRNode.js';
 		import { readSSRComparison, addSSRComparisonGUI, applySSRComparison, createSSRComparisonDenoiser, createSSRHistoryReset } from 'three/addons/tsl/display/SSRComparison.js';
+		import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -77,6 +79,10 @@
 		}
 
 		const params = {
+			hiZ: false,
+			hiZTracing: true,
+			hiZDebug: false,
+			hiZLevel: 0,
 			quality: 0.5,
 			blurQuality: 1,
 			maxDistance: 1,
@@ -90,7 +96,7 @@
 		params.thickness = comparison.thickness ?? params.thickness;
 
 		let camera, scene, model, renderer, renderPipeline, ssrPass;
-		let controls, historyReset;
+		let controls, historyReset, depthPyramid;
 
 		init();
 
@@ -196,6 +202,7 @@
 				return tracePass.getLinearDepthNode();
 
 			} );
+			depthPyramid = hiZ( scenePassDepth );
 			const scenePassDiffuse = tracePass.getTextureNode( 'diffuseColor' );
 			const scenePassMetalRough = sample( ( uv ) => vec2( scenePassDiffuse.sample( uv ).a, scenePassNormal.sample( uv ).a ) );
 			const traceColor = tracePass.getTextureNode( 'output' );
@@ -221,6 +228,7 @@
 				camera,
 				stochastic: comparison.mode === 'ggx',
 				maxRayLength: comparison.explicit ? params.maxDistance : null,
+				hiZ: comparison.mode === 'power' ? null : depthPyramid,
 				metalnessNode: scenePassMetalRough.r,
 				roughnessNode: scenePassMetalRough.g,
 				diffuseNode: tracePass.getTextureNode( 'diffuseColor' ),
@@ -234,7 +242,23 @@
 
 			const outputNode = smaa( scenePassColor.add( reflection.rgb ) );
 
-			renderPipeline.outputNode = outputNode;
+			function updateOutputNode() {
+
+				if ( comparison.mode !== 'power' ) ssrPass.hiZEnabled = params.hiZ && params.hiZTracing;
+				depthPyramid.enabled = params.hiZ;
+				depthPyramid.level.value = params.hiZLevel;
+
+				const source = params.enabled ? outputNode : scenePass;
+				renderPipeline.outputNode = params.hiZ && params.hiZDebug
+					? vec4( vec3( depthPyramid ), 1 )
+					: params.hiZ ? source.add( depthPyramid.mul( 0 ) ) : source;
+				renderPipeline.outputColorTransform = ! ( params.hiZ && params.hiZDebug );
+				historyReset?.reset();
+				renderPipeline.needsUpdate = true;
+
+			}
+
+			updateOutputNode();
 
 			//
 
@@ -254,21 +278,12 @@
 			ssrFolder.add( params, 'intensity', 0, 1 ).onChange( updateParameters );
 			ssrFolder.add( params, 'thickness', 0, 0.05 ).onChange( updateParameters );
 			if ( comparison.mode !== 'power' ) ssrFolder.add( params, 'binaryRefine' ).name( 'binary refine (stock)' ).onChange( updateParameters );
-			ssrFolder.add( params, 'enabled' ).onChange( () => {
-
-				if ( params.enabled === true ) {
-
-					renderPipeline.outputNode = outputNode;
-
-				} else {
-
-					renderPipeline.outputNode = scenePass;
-
-				}
-
-				renderPipeline.needsUpdate = true;
-
-			} );
+			ssrFolder.add( params, 'enabled' ).onChange( updateOutputNode );
+			const hiZFolder = gui.addFolder( comparison.mode === 'power' ? 'Hi-Z construction (debug only)' : 'Hi-Z construction' );
+			hiZFolder.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
+			if ( comparison.mode !== 'power' ) hiZFolder.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
+			hiZFolder.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
+			hiZFolder.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 			const modelFolder = gui.addFolder( 'Model' );
 			modelFolder.add( params, 'roughness', 0, 1 ).onChange( ( value ) => {
 

@@ -42,6 +42,7 @@
 			Screen Space Reflections with Spatiotemporal Denoising by <a href="https://x.com/0beqz" target="_blank" rel="noopener">0beqz</a>.<br />
 			Dungeon - Low Poly Game Level Challenge by
 			Warkarma.<br />
+			Optional Hi-Z tracing skips empty space conservatively; disable it to compare with linear tracing.<br />
 		</small>
 	</div>
 
@@ -66,6 +67,7 @@
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { powerLobeSSR } from 'three/addons/tsl/display/PowerLobeSSRNode.js';
 		import { readSSRComparison, addSSRComparisonGUI, applySSRComparison, createSSRComparisonDenoiser, createSSRHistoryReset } from 'three/addons/tsl/display/SSRComparison.js';
+		import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -128,6 +130,10 @@
 		}
 
 		const params = {
+			hiZ: false,
+			hiZTracing: true,
+			hiZDebug: false,
+			hiZLevel: 0,
 			output: 0,
 			roughness: 0.3,
 
@@ -178,7 +184,7 @@
 		params.ssr.thickness = comparison.thickness ?? params.ssr.thickness;
 
 		let camera, scene, model, renderer, postProcessing, ssrNode, temporalReprojectNode, denoiseNode;
-		let controls, historyReset;
+		let controls, historyReset, depthPyramid;
 		let scenePassNode, combinedOutputNode, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 
@@ -274,6 +280,7 @@
 				return scenePass.getLinearDepthNode();
 
 			} );
+			depthPyramid = hiZ( scenePass.getTextureNode( 'depth' ) );
 			scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 			const scenePassDiffuseColor = scenePass.getTextureNode( 'diffuseColor' ).toInspector( 'Diffuse Color' );
 
@@ -296,6 +303,7 @@
 				camera,
 				stochastic: comparison.mode !== 'mirror',
 				maxRayLength: comparison.explicit ? params.ssr.maxDistance : null,
+				hiZ: comparison.mode === 'power' ? null : depthPyramid,
 				diffuseNode: scenePassDiffuseColor,
 				metalnessNode: scenePassDiffuseColor.a,
 				roughnessNode: scenePassNormal.a,
@@ -394,6 +402,12 @@
 				} );
 
 			} );
+
+			const hiZGui = renderer.inspector.createParameters( comparison.mode === 'power' ? 'Hi-Z construction (debug only)' : 'Hi-Z construction' );
+			hiZGui.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
+			if ( comparison.mode !== 'power' ) hiZGui.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
+			hiZGui.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
+			hiZGui.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 
 			const denoiseGui = renderer.inspector.createParameters( 'Denoise settings' );
 			// The estimator panel toggles denoising by rebuilding the graph after reload.
@@ -572,7 +586,25 @@
 			updateCompareHint( params.output );
 
 			postProcessing.outputColorTransform = ! GRADED_OUTPUTS.has( params.output );
+			if ( comparison.mode !== 'power' ) ssrNode.hiZEnabled = params.hiZ && params.hiZTracing;
+			depthPyramid.enabled = params.hiZ;
+			depthPyramid.level.value = params.hiZLevel;
+
+			if ( params.hiZ && params.hiZDebug ) {
+
+				node = vec4( vec3( depthPyramid ), 1 );
+				postProcessing.outputColorTransform = false;
+				compareHint.hidden = true;
+				controls.enabled = true;
+
+			} else if ( params.hiZ ) {
+
+				node = node.add( depthPyramid.mul( 0 ) );
+
+			}
+
 			postProcessing.outputNode = node;
+			historyReset?.reset();
 			postProcessing.needsUpdate = true;
 
 		}

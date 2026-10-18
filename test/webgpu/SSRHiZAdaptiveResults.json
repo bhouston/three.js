@@ -1,0 +1,356 @@
+{
+  "shaderCommit": "fac1b2050ae4cd5a59b890a878e69e616c2782f7",
+  "gpu": "NVIDIA GeForce RTX 3060 Ti",
+  "driver": "32.0.16.1714",
+  "chrome": "155.0.8059.79",
+  "measurements": {
+    "initial-benchmark-1080p": {
+      "viewport": [
+        1920,
+        1080
+      ],
+      "baseline": null,
+      "results": [
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "linear",
+          "frames": 896,
+          "ms": 5035.199999988079,
+          "frameMs": 5.619642857129553,
+          "fps": 177.94725135091383,
+          "noiseBefore": 170,
+          "noiseAfter": 1066,
+          "computeCalls": 0
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "hi-z",
+          "frames": 976,
+          "ms": 5021.900000035763,
+          "frameMs": 5.145389344298938,
+          "fps": 194.34875246282274,
+          "noiseBefore": 1243,
+          "noiseAfter": 2219,
+          "computeCalls": 976
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive",
+          "frames": 1824,
+          "ms": 5009.600000023842,
+          "frameMs": 2.7464912280832467,
+          "fps": 364.1009262199216,
+          "noiseBefore": 2564,
+          "noiseAfter": 4388,
+          "computeCalls": 1824
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive-coarse",
+          "frames": 1800,
+          "ms": 5014.799999952316,
+          "frameMs": 2.7859999999735092,
+          "fps": 358.9375448706061,
+          "noiseBefore": 4725,
+          "noiseAfter": 6525,
+          "computeCalls": 1800
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "linear",
+          "frames": 1000,
+          "ms": 5026.800000011921,
+          "frameMs": 5.026800000011921,
+          "fps": 198.93371528559493,
+          "noiseBefore": 98,
+          "noiseAfter": 1098,
+          "computeCalls": 0
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "hi-z",
+          "frames": 888,
+          "ms": 5004.700000047684,
+          "frameMs": 5.635923423477121,
+          "fps": 177.43321277829628,
+          "noiseBefore": 1219,
+          "noiseAfter": 2107,
+          "computeCalls": 888
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive",
+          "frames": 728,
+          "ms": 5028.600000023842,
+          "frameMs": 6.907417582450332,
+          "fps": 144.7719047044005,
+          "noiseBefore": 2212,
+          "noiseAfter": 2940,
+          "computeCalls": 728
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive-coarse",
+          "frames": 728,
+          "ms": 5051.5,
+          "frameMs": 6.938873626373627,
+          "fps": 144.11560922498268,
+          "noiseBefore": 3037,
+          "noiseAfter": 3765,
+          "computeCalls": 728
+        }
+      ]
+    },
+    "budget64-benchmark-1080p": {
+      "viewport": [
+        1920,
+        1080
+      ],
+      "baseline": null,
+      "results": [
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive",
+          "frames": 2344,
+          "ms": 5006.900000035763,
+          "frameMs": 2.136049488069865,
+          "fps": 468.15394754903383,
+          "noiseBefore": 426,
+          "noiseAfter": 2770,
+          "computeCalls": 2344
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "linear",
+          "frames": 896,
+          "ms": 5010.600000023842,
+          "frameMs": 5.5921875000266095,
+          "fps": 178.8208996918007,
+          "noiseBefore": 2947,
+          "noiseAfter": 3843,
+          "computeCalls": 0
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive-coarse",
+          "frames": 2344,
+          "ms": 5006.199999988079,
+          "frameMs": 2.135750853237235,
+          "fps": 468.2194079352766,
+          "noiseBefore": 4276,
+          "noiseAfter": 6620,
+          "computeCalls": 2344
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive",
+          "frames": 848,
+          "ms": 5025.600000023842,
+          "frameMs": 5.926415094367738,
+          "fps": 168.73607131406737,
+          "noiseBefore": 104,
+          "noiseAfter": 952,
+          "computeCalls": 848
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "linear",
+          "frames": 1000,
+          "ms": 5033.399999976158,
+          "frameMs": 5.033399999976158,
+          "fps": 198.67286526100384,
+          "noiseBefore": 1097,
+          "noiseAfter": 2097,
+          "computeCalls": 0
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive-coarse",
+          "frames": 832,
+          "ms": 5004.899999976158,
+          "frameMs": 6.0155048076636515,
+          "fps": 166.2370876548909,
+          "noiseBefore": 2218,
+          "noiseAfter": 3050,
+          "computeCalls": 832
+        }
+      ]
+    },
+    "projected64-benchmark-1080p": {
+      "viewport": [
+        1920,
+        1080
+      ],
+      "baseline": null,
+      "results": [
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "linear",
+          "frames": 896,
+          "ms": 5022.799999952316,
+          "frameMs": 5.605803571375353,
+          "fps": 178.38655730041134,
+          "noiseBefore": 170,
+          "noiseAfter": 1066,
+          "computeCalls": 0
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "hi-z",
+          "frames": 992,
+          "ms": 5035.899999976158,
+          "frameMs": 5.076512096750159,
+          "fps": 196.98564308359906,
+          "noiseBefore": 1251,
+          "noiseAfter": 2243,
+          "computeCalls": 992
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive",
+          "frames": 2456,
+          "ms": 5006.600000023842,
+          "frameMs": 2.038517915319154,
+          "fps": 490.55247073628897,
+          "noiseBefore": 2716,
+          "noiseAfter": 5172,
+          "computeCalls": 2456
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive-coarse",
+          "frames": 2432,
+          "ms": 5000,
+          "frameMs": 2.0559210526315788,
+          "fps": 486.4,
+          "noiseBefore": 5637,
+          "noiseAfter": 8069,
+          "computeCalls": 2432
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "linear",
+          "frames": 1000,
+          "ms": 5025.5,
+          "frameMs": 5.0255,
+          "fps": 198.98517560441746,
+          "noiseBefore": 98,
+          "noiseAfter": 1098,
+          "computeCalls": 0
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "hi-z",
+          "frames": 896,
+          "ms": 5025.100000023842,
+          "frameMs": 5.608370535740895,
+          "fps": 178.30490935419172,
+          "noiseBefore": 1235,
+          "noiseAfter": 2131,
+          "computeCalls": 896
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive",
+          "frames": 848,
+          "ms": 5034.5,
+          "frameMs": 5.93691037735849,
+          "fps": 168.43777932267355,
+          "noiseBefore": 2244,
+          "noiseAfter": 3092,
+          "computeCalls": 848
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 1,
+          "mode": "adaptive-coarse",
+          "frames": 848,
+          "ms": 5029.300000011921,
+          "frameMs": 5.93077830190085,
+          "fps": 168.6119340659714,
+          "noiseBefore": 3205,
+          "noiseAfter": 4053,
+          "computeCalls": 848
+        }
+      ]
+    },
+    "stock-build-smoke": {
+      "viewport": [
+        801,
+        603
+      ],
+      "baseline": null,
+      "results": [
+        {
+          "scene": "webgpu_postprocessing_ssr",
+          "adapter": "nvidia ampere  ",
+          "quality": 0.25,
+          "mode": "adaptive",
+          "frames": 3440,
+          "ms": 5001.899999976158,
+          "frameMs": 1.4540406976674878,
+          "fps": 687.7386593127405,
+          "noiseBefore": 625,
+          "noiseAfter": 4065,
+          "computeCalls": 3440
+        },
+        {
+          "scene": "webgpu_postprocessing_ssr_denoise",
+          "adapter": "nvidia ampere  ",
+          "quality": 0.25,
+          "mode": "adaptive",
+          "frames": 2688,
+          "ms": 5013.899999976158,
+          "frameMs": 1.8652901785625589,
+          "fps": 536.1096152721,
+          "noiseBefore": 408,
+          "noiseAfter": 3096,
+          "computeCalls": 2688
+        }
+      ]
+    }
+  }
+}

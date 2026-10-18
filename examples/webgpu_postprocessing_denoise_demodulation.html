@@ -13,7 +13,7 @@
 		<div id="info">
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Denoising demodulation</span></div>
-			<small>Divide out the surface color, denoise lighting, then multiply the color back.<br />Both sides use the same noisy diffuse signal and spatial filter. Drag to orbit.</small>
+			<small>Divide out the surface color, denoise lighting, then multiply the color back.<br />Split runs two full-screen spatial filters. Use a single view or lower pixel ratio for speed. Drag to orbit.</small>
 		</div>
 		<div id="comparison"><span>Without demodulation — blurred texture</span><span>With demodulation — sharp texture</span></div>
 		<script type="importmap">
@@ -28,14 +28,15 @@
 		</script>
 		<script type="module">
 			import * as THREE from 'three/webgpu';
-			import { diffuseColor, dot, float, fract, mix, mrt, normalView, normalWorld, output, packNormalToRGB, pass, screenCoordinate, screenUV, sin, step, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
+			import { convertToTexture, diffuseColor, dot, float, fract, mix, mrt, normalView, normalWorld, output, packNormalToRGB, pass, screenCoordinate, screenUV, sin, step, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 			import { demodulate, recurrentDenoise, remodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const renderer = new THREE.WebGPURenderer( { antialias: true } );
 			renderer.inspector = new Inspector();
-			renderer.setPixelRatio( window.devicePixelRatio );
+			// Full-resolution spatial filtering is expensive on high-DPI displays.
+			renderer.setPixelRatio( 1 );
 			renderer.setSize( window.innerWidth, window.innerHeight );
 			document.body.appendChild( renderer.domElement );
 
@@ -90,7 +91,8 @@
 				accumulate: false
 			};
 			const without = recurrentDenoise( noisy, camera, { ...options, raw: noisy } );
-			const demodulated = demodulate( noisy, surfaceColor.rgb );
+			// Share one materialized signal between the filtered and raw inputs.
+			const demodulated = convertToTexture( demodulate( noisy, surfaceColor.rgb ) );
 			const filteredLighting = recurrentDenoise( demodulated, camera, { ...options, raw: demodulated } );
 			const withDemodulation = remodulate( filteredLighting, surfaceColor.rgb );
 			const denoisers = [ without, filteredLighting ];
@@ -98,7 +100,7 @@
 
 				denoiser.alphaSource = 'none';
 				denoiser.radius.value = 1.5;
-				denoiser.lumaPhi.value = 0.01;
+				// Alpha is 1 here, so temporal confidence disables luminance edge stopping.
 				denoiser.normalPhi.value = 5;
 
 			}
@@ -107,7 +109,7 @@
 			const pipeline = new THREE.RenderPipeline( renderer );
 			const split = mix( without, withDemodulation, step( 0.5, screenUV.x ) );
 			pipeline.outputNode = split;
-			const params = { view: 'Split', radius: 1.5, animateNoise: true };
+			const params = { view: 'Split', radius: 1.5, pixelRatio: 1, animateNoise: true };
 			const gui = renderer.inspector.createParameters( 'Demodulation settings' );
 			gui.add( params, 'view', [ 'Split', 'Without demodulation', 'With demodulation', 'Noisy signal', 'Albedo', 'Filtered lighting' ] ).onChange( value => {
 
@@ -128,6 +130,7 @@
 				for ( const denoiser of denoisers ) denoiser.radius.value = value;
 
 			} );
+			gui.add( params, 'pixelRatio', 0.5, window.devicePixelRatio > 1 ? window.devicePixelRatio : 1, 0.5 ).name( 'pixel ratio' ).onChange( value => renderer.setPixelRatio( value ) );
 			gui.add( noiseStrength, 'value', 0, 1 ).name( 'noise strength' );
 			gui.add( textureScale, 'value', 8, 64, 1 ).name( 'texture frequency' );
 			gui.add( params, 'animateNoise' ).name( 'animate noise' );
@@ -148,3 +151,4 @@
 		</script>
 	</body>
 </html>
+

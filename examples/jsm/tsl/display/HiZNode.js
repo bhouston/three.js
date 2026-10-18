@@ -74,7 +74,6 @@ class HiZNode extends Node {
 		this._width = 0;
 		this._height = 0;
 		this._reversed = null;
-		this._dispatch = [ 1, 1, 1 ];
 
 	}
 
@@ -297,4 +296,3 @@ export default HiZNode;
  * @return {HiZNode} The depth hierarchy node.
  */
 export const hiZ = ( depthNode, options ) => new HiZNode( nodeObject( depthNode ), options );
-

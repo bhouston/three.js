@@ -899,6 +899,8 @@ class SSRNode extends Node {
 
 			// Raw depth is monotonic. Reduce four bounds before linearizing so
 			// only the winning depth needs the perspective/logarithmic conversion.
+			// The padded rectangle spans at most one cell per axis at this level;
+			// its four corners cover every touched cell, including odd footprints.
 			const nearest = coord => hierarchicalDepth.getNearestDepthNode( level, coord );
 			const reduce = builder.renderer.reversedDepthBuffer === true ? max : min;
 			let depth = reduce( reduce( nearest( uvStart ), nearest( uvEnd ) ), reduce(

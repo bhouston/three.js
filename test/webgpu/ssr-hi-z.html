@@ -20,7 +20,8 @@
 		window.hiZTestResult = { status: 'running' };
 		try {
 
-			const result = await runSSRHiZTests();
+			const options = new URLSearchParams( window.location.search );
+			const result = await runSSRHiZTests( { traversal: options.get( 'traversal' ) || 'conservative', minMip: Number( options.get( 'minMip' ) ) || 0 } );
 			window.hiZTestResult = { status: 'passed', ...result };
 			output.textContent = JSON.stringify( window.hiZTestResult, null, 2 );
 

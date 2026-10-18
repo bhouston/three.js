@@ -58,7 +58,9 @@ try {
 				const device = b.renderer.backend.device;
 				b.reflection.quality.value = quality;
 				b.params.hiZ = mode !== 'linear';
-				b.params.hiZTracing = mode === 'hi-z' || mode === 'frozen-hi-z';
+				b.params.hiZTracing = [ 'hi-z', 'frozen-hi-z', 'adaptive', 'adaptive-coarse' ].includes( mode );
+				b.params.hiZTraversal = mode.startsWith( 'adaptive' ) ? 'adaptive' : 'conservative';
+				b.params.hiZMinMip = mode === 'adaptive-coarse' ? 1 : 0;
 				b.updateOutputNode();
 				// Freeze only after rendering once with a fresh pyramid.
 				const draw = ()=>{

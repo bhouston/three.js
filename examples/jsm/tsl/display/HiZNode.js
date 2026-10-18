@@ -118,6 +118,33 @@ class HiZNode extends Node {
 
 	}
 
+	/** @return {Node<uint>} Last available hierarchy level. */
+	getLastLevelNode() {
+
+		return this._lastLevel;
+
+	}
+
+	/**
+	 * Exact normalized cell bounds (minX, minY, maxX, maxY), including odd edges.
+	 * @param {Node<uint>|number} level - Hierarchy level.
+	 * @param {Node<vec2>} uvNode - Original-image normalized coordinates.
+	 * @return {Node<vec4>} Cell rectangle.
+	 */
+	getCellBoundsNode( level, uvNode ) {
+
+		const layout = this._layout.element( uint( level ).min( this._lastLevel ) );
+		const size = this._layout.element( uint( 0 ) ).xy;
+		const cell = uvNode.mul( size ).div( layout.w ).floor().clamp( 0, layout.xy.sub( 1 ) );
+		const begin = cell.mul( layout.w );
+		const end = vec2(
+			cell.x.equal( layout.x.sub( 1 ) ).select( size.x, begin.x.add( layout.w ) ),
+			cell.y.equal( layout.y.sub( 1 ) ).select( size.y, begin.y.add( layout.w ) )
+		);
+		return vec4( begin.div( size ), end.div( size ) );
+
+	}
+
 	/**
 	 * Updates the hierarchy layout. Called automatically from the input size.
 	 *

@@ -42,6 +42,7 @@
 			Screen Space Reflections with Spatiotemporal Denoising by <a href="https://x.com/0beqz" target="_blank" rel="noopener">0beqz</a>.<br />
 			Dungeon - Low Poly Game Level Challenge by
 			Warkarma.<br />
+			Optional Hi-Z tracing skips empty space conservatively; disable it to compare with linear tracing.<br />
 		</small>
 	</div>
 
@@ -61,6 +62,7 @@
 		import * as THREE from 'three/webgpu';
 		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
@@ -123,6 +125,10 @@
 		}
 
 		const params = {
+			hiZ: false,
+			hiZTracing: true,
+			hiZDebug: false,
+			hiZLevel: 0,
 			output: 0,
 			roughness: 0.3,
 
@@ -170,7 +176,7 @@
 		};
 
 		let camera, scene, model, renderer, postProcessing, ssrNode, temporalReprojectNode, denoiseNode;
-		let controls;
+		let controls, depthPyramid;
 		let scenePassNode, combinedOutputNode, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 
@@ -263,6 +269,7 @@
 				return scenePass.getLinearDepthNode();
 
 			} );
+			depthPyramid = hiZ( scenePass.getTextureNode( 'depth' ) );
 			scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 			const scenePassDiffuseColor = scenePass.getTextureNode( 'diffuseColor' ).toInspector( 'Diffuse Color' );
 
@@ -281,6 +288,7 @@
 			) ).toInspector( 'Metalness/Roughness' );
 
 			ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
+				hiZ: depthPyramid,
 				stochastic: true,
 				diffuseNode: scenePassDiffuseColor,
 				metalnessNode: scenePassDiffuseColor.a,
@@ -369,6 +377,12 @@
 				} );
 
 			} );
+
+			const hiZGui = renderer.inspector.createParameters( 'Hi-Z construction' );
+			hiZGui.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
+			hiZGui.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
+			hiZGui.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
+			hiZGui.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 
 			const denoiseGui = renderer.inspector.createParameters( 'Denoise settings' );
 			denoiseGui.add( params.denoise, 'enabled' ).name( 'enabled' ).onChange( applyParams );
@@ -524,6 +538,23 @@
 			updateCompareHint( params.output );
 
 			postProcessing.outputColorTransform = ! GRADED_OUTPUTS.has( params.output );
+			ssrNode.hiZEnabled = params.hiZ && params.hiZTracing;
+			depthPyramid.enabled = params.hiZ;
+			depthPyramid.level.value = params.hiZLevel;
+
+			if ( params.hiZ && params.hiZDebug ) {
+
+				node = vec4( vec3( depthPyramid ), 1 );
+				postProcessing.outputColorTransform = false;
+				compareHint.hidden = true;
+				controls.enabled = true;
+
+			} else if ( params.hiZ ) {
+
+				node = node.add( depthPyramid.mul( 0 ) );
+
+			}
+
 			postProcessing.outputNode = node;
 			postProcessing.needsUpdate = true;
 

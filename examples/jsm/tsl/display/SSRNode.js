@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, logarithmicDepthToViewZ, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, trunc, uniform, uv, vec2, vec3, vec4, viewZToPerspectiveDepth, context, isBackgroundDepth } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, logarithmicDepthToViewZ, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, textureSize, trunc, uint, uniform, uv, vec2, vec3, vec4, viewZToPerspectiveDepth, context, isBackgroundDepth } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -23,6 +23,7 @@ const MAX_STEPS = 64;
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
+ * @property {?HiZNode} [hiZ=null] - A hierarchy built from the same raw depth texture. Enables conservative hierarchical skips; omit for the original linear marcher.
  */
 
 /**
@@ -104,6 +105,10 @@ class SSRNode extends Node {
 		 * @type {Node<float>}
 		 */
 		this.depthNode = depthNode;
+
+		/** @type {?HiZNode} */
+		this.hiZ = options.hiZ ?? null;
+		this._hiZEnabled = this.hiZ !== null;
 
 		/**
 		 * A node that represents the beauty pass's normals.
@@ -478,6 +483,31 @@ class SSRNode extends Node {
 		if ( environmentNode !== null && environmentNode.isTexture === true ) {
 
 			this.setEnvMap( environmentNode );
+
+		}
+
+	}
+
+	/**
+	 * Enables conservative hierarchical skips when a Hi-Z input was supplied.
+	 * Changing this property recompiles the SSR material. The linear path remains
+	 * available for quality/performance comparisons.
+	 *
+	 * @type {boolean}
+	 */
+	get hiZEnabled() {
+
+		return this._hiZEnabled;
+
+	}
+
+	set hiZEnabled( value ) {
+
+		value = value === true && this.hiZ !== null;
+		if ( value !== this._hiZEnabled ) {
+
+			this._hiZEnabled = value;
+			this._buildSSRMaterial();
 
 		}
 
@@ -861,6 +891,33 @@ class SSRNode extends Node {
 
 		};
 
+		const hierarchicalDepth = this.hiZ;
+		// A batch is skipped only if every original sample lies in front of the
+		// nearest surface bound. Keep the original sample schedule and all leaf
+		// acceptance/refinement rules, so this optimization cannot add/move hits.
+		const canSkipBatch = ( uvStart, uvEnd, rayNearZ, level ) => {
+
+			// Raw depth is monotonic. Reduce four bounds before linearizing so
+			// only the winning depth needs the perspective/logarithmic conversion.
+			// The padded rectangle spans at most one cell per axis at this level;
+			// its four corners cover every touched cell, including odd footprints.
+			const nearest = coord => hierarchicalDepth.getNearestDepthNode( level, coord );
+			const reduce = builder.renderer.reversedDepthBuffer === true ? max : min;
+			let depth = reduce( reduce( nearest( uvStart ), nearest( uvEnd ) ), reduce(
+				nearest( vec2( uvStart.x, uvEnd.y ) ), nearest( vec2( uvEnd.x, uvStart.y ) )
+			) );
+			if ( builder.renderer.logarithmicDepthBuffer === true ) {
+
+				depth = viewZToPerspectiveDepth( logarithmicDepthToViewZ( depth, this._cameraNear, this._cameraFar ), this._cameraNear, this._cameraFar );
+
+			}
+
+			const closest = getViewZ( depth );
+			const margin = closest.abs().max( 1 ).mul( 1e-5 );
+			return rayNearZ.greaterThan( closest.add( margin ) );
+
+		};
+
 		const sampleMarchNoise = this.stochastic === true ? bindAnalyticNoise( this._resolution, 47 ) : null;
 
 		const computeScreenBorderFactor = Fn( ( [ uvCoord, borderWidth ] ) => {
@@ -1113,6 +1170,41 @@ class SSRNode extends Node {
 				} );
 
 				const uvS = xy.mul( invResolution ).toVar();
+
+				if ( this.hiZEnabled && this.stepExponent > 0 ) {
+
+					// Check aligned batches, not every leaf. On a failed bound test
+					// the next samples use the unchanged linear path without further
+					// hierarchy overhead until the next batch boundary.
+					If( i.sub( 1 ).mod( 16 ).equal( 0 ).and( i.add( 3 ).lessThan( totalStep ) ), () => {
+
+						const last = min( i.add( 15 ), totalStep.sub( 1 ) ).toVar();
+						const sEnd = sampleFraction( float( last ) ).toVar();
+						const endUV = screenPosAt( sEnd ).mul( invResolution ).toVar();
+
+						If( sEnd.lessThanEqual( 1 ).and( endUV.greaterThanEqual( vec2( 0 ) ).all() ).and( endUV.lessThanEqual( vec2( 1 ) ).all() ), () => {
+
+							const size = vec2( textureSize( this.depthNode ) ).toVar();
+							const padding = size.reciprocal();
+							const uvMin = min( uvS, endUV ).sub( padding ).clamp( 0, 1 ).toVar();
+							const uvMax = max( uvS, endUV ).add( padding ).clamp( 0, 1 ).toVar();
+							const extent = uvMax.sub( uvMin ).mul( size ).toVar();
+							const level = uint( max( extent.x, extent.y ).max( 1 ).log2().ceil() ).toVar();
+							const rayFarZ = min( reflectRayZAt( s ), reflectRayZAt( sEnd ) );
+
+							If( canSkipBatch( uvMin, uvMax, rayFarZ, level ), () => {
+
+								i.assign( last );
+								Continue();
+
+							} );
+
+						} );
+
+					} );
+
+				}
+
 				const d = sampleDepth( uvS ).toVar();
 				const vZ = getViewZ( d ).toVar();
 

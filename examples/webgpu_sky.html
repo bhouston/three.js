@@ -38,10 +38,16 @@
 			import { SunLight } from 'three/addons/lights/SunLight.js';
 			import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { CloudLayerNode } from 'three/addons/tsl/display/CloudLayerNode.js';
 			import { AtmosphereNode } from 'three/addons/tsl/display/AtmosphereNode.js';
 			import { atmosphere, luminance, sunDirection, sunLightState, exposure } from 'three/addons/math/Atmosphere.js';
 
 			const params = {
+				cloudCoverage: 0.4,
+				cloudAltitude: 2000,
+				cloudDensity: 2,
+				cloudScale: 2500,
+				cloudOffset: 0,
 				altitude: 32,
 				azimuth: 235,
 				northRotation: 0,
@@ -101,8 +107,14 @@
 			const atmosphereNode = new AtmosphereNode( lutTarget.texture, equirectDirection( uv() ) );
 			const lutMaterial = new THREE.NodeMaterial();
 			lutMaterial.fragmentNode = vec4( atmosphereNode.getTransmittanceLUTNode(), 1 );
+			const cloudSun = uniform( new THREE.Color() );
+			const clouds = new CloudLayerNode( atmosphereNode, equirectDirection( uv() ), atmosphereNode.sunDirection, cloudSun );
+			const cloudTransmission = uniform( 1 );
+			const sunCloudTarget = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
+			const sunCloudMaterial = new THREE.NodeMaterial();
+			sunCloudMaterial.fragmentNode = vec4( vec3( 0 ), clouds.getTransmittanceNode( atmosphereNode.sunDirection ) );
 			const skyMaterial = new THREE.NodeMaterial();
-			skyMaterial.fragmentNode = vec4( atmosphereNode, 1 );
+			skyMaterial.fragmentNode = clouds;
 			const groundAlbedo = uniform( new THREE.Color() );
 			const directIrradiance = uniform( new THREE.Color() );
 			const groundMaterial = new THREE.NodeMaterial( { depthTest: false, depthWrite: false } );
@@ -114,7 +126,7 @@
 
 	} );
 				// Keep the meter-to-ground dependency on the GPU, in pre-exposed units.
-				const irradiance = texture( meterTarget.texture, vec2( 0.5 ) ).level( 0 ).rgb.add( directIrradiance );
+				const irradiance = texture( meterTarget.texture, vec2( 0.5 ) ).level( 0 ).rgb.add( directIrradiance.mul( texture( sunCloudTarget.texture, vec2( 0.5 ) ).level( 0 ).a ) );
 				return vec4( groundAlbedo.mul( irradiance ).div( Math.PI ), 1 );
 
 			} )();
@@ -133,13 +145,13 @@
 					} );
 
 				} );
-				return vec4( irradiance, 1 );
+				return vec4( irradiance, texture( sunCloudTarget.texture, vec2( 0.5 ) ).level( 0 ).a );
 
 			} )();
 			const quad = new THREE.QuadMesh();
 			const disc = smoothstep( Math.cos( THREE.MathUtils.degToRad( atmosphere.sunRadius + 0.02 ) ), Math.cos( THREE.MathUtils.degToRad( atmosphere.sunRadius ) ), dot( positionWorldDirection, sunVector ) );
 			// The solar disc is excluded from the environment bake.
-			scene.backgroundNode = texture( skyTarget.texture, equirectUV() ).rgb.add( sunRadiance.mul( disc ).mul( positionWorldDirection.y.greaterThan( 0 ) ).mul( sunDisc ) );
+			scene.backgroundNode = texture( skyTarget.texture, equirectUV() ).rgb.add( sunRadiance.mul( disc ).mul( positionWorldDirection.y.greaterThan( 0 ) ).mul( sunDisc ).mul( cloudTransmission ) );
 			const pmrem = new THREE.PMREMGenerator( renderer );
 			let environment, dirty = true, baking = false, bakeCount = 0;
 			let lutAerosol, skyIlluminance = 0, storageScale = 1;
@@ -278,6 +290,14 @@
 				atmosphereNode.aerosol.value = settings.aerosol;
 				atmosphereNode.observerAltitude.value = settings.observerAltitude;
 				atmosphereNode.preExposure.value = storageScale;
+				clouds.coverage.value = settings.cloudCoverage;
+				clouds.altitude.value = settings.cloudAltitude;
+				clouds.observerAltitude.value = settings.observerAltitude * 1000;
+				clouds.density.value = settings.cloudDensity;
+				clouds.noiseScale.value = settings.cloudScale;
+				clouds.noiseOffset.value.set( settings.cloudOffset, 0 );
+				const cloudLight = sunLightState( settings.altitude, { ...model, observerAltitude: Math.max( settings.cloudAltitude / 1000, settings.observerAltitude ) } );
+				cloudSun.value.setRGB( ...cloudLight.color.map( value => value * cloudLight.illuminance * storageScale ) );
 				const start = performance.now();
 				if ( lutAerosol !== settings.aerosol ) {
 
@@ -294,6 +314,7 @@
 
 				}
 
+				renderPass( sunCloudMaterial, sunCloudTarget );
 				renderPass( skyMaterial, skyTarget );
 				renderPass( meterMaterial, meterTarget );
 				directNormal = light.illuminance;
@@ -310,6 +331,9 @@
 				// Submit every bake pass before reading back the meter for the UI/exposure.
 				const meterPixels = await renderer.readRenderTargetPixelsAsync( meterTarget, 0, 0, 1, 1 );
 				const skyRGB = Array.from( meterPixels ).slice( 0, 3 ).map( value => THREE.DataUtils.fromHalfFloat( value ) / storageScale );
+				cloudTransmission.value = THREE.DataUtils.fromHalfFloat( meterPixels[ 3 ] );
+				directNormal *= cloudTransmission.value;
+				directHorizontal *= cloudTransmission.value;
 				skyIlluminance = luminance( skyRGB );
 				scene.environment = environment.texture;
 				sunVector.value.fromArray( direction );
@@ -322,7 +346,7 @@
 				const ev = updateExposure();
 				bakeCount ++;
 				const band = settings.altitude > 0 ? 'Daylight' : settings.altitude > - 6 ? 'Civil twilight' : settings.altitude > - 12 ? 'Nautical twilight' : settings.altitude > - 18 ? 'Astronomical twilight' : 'Night';
-				document.getElementById( 'readout' ).innerHTML = `${band}<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Sky: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
+				document.getElementById( 'readout' ).innerHTML = `${band}<br>Cloud sun transmission: ${( cloudTransmission.value * 100 ).toFixed( 1 )}%<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Sky: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
 				baking = false;
 
 			}
@@ -342,6 +366,12 @@
 			shadowFolder.add( params, 'shadowMode', [ 'Directional', 'SunLight (CSM)' ] ).name( 'light / shadows' ).onChange( updateShadows );
 			shadowFolder.add( params, 'shadowMapSize', [ 1024, 2048, 4096 ] ).name( 'map size (per cascade)' ).onChange( updateShadows );
 			shadowFolder.add( params, 'shadowDistance', 20, 200, 1 ).name( 'shadow distance (m)' ).onChange( updateShadows );
+			const cloudFolder = gui.addFolder( 'Static clouds' );
+			cloudFolder.add( params, 'cloudCoverage', 0, 1, 0.01 ).name( 'coverage' ).onChange( changed );
+			cloudFolder.add( params, 'cloudAltitude', 500, 6000, 100 ).name( 'altitude m' ).onChange( changed );
+			cloudFolder.add( params, 'cloudDensity', 0, 10, 0.1 ).name( 'density' ).onChange( changed );
+			cloudFolder.add( params, 'cloudScale', 500, 10000, 100 ).name( 'feature size m' ).onChange( changed );
+			cloudFolder.add( params, 'cloudOffset', - 10, 10, 0.05 ).name( 'arrangement' ).onChange( changed );
 			const airFolder = gui.addFolder( 'Atmosphere' );
 			airFolder.add( params, 'aerosol', 0.5, 5, 0.1 ).onChange( changed );
 			airFolder.addColor( params, 'groundAlbedo' ).onChange( changed );

@@ -58,6 +58,7 @@
 				ev100: 13.6,
 				compensation: 0,
 				resolution: 512,
+				backgroundResolution: 4096,
 				shadowMode: 'Directional',
 				shadowMapSize: 2048,
 				shadowDistance: 60,
@@ -103,6 +104,9 @@
 			const skyTarget = new THREE.RenderTarget( params.resolution, params.resolution / 2, { type: THREE.HalfFloatType, depthBuffer: false } );
 			skyTarget.texture.mapping = THREE.EquirectangularReflectionMapping;
 			skyTarget.texture.wrapS = THREE.RepeatWrapping;
+			// Visible detail is independent of the lower-resolution lighting/PMREM source.
+			const backgroundTarget = new THREE.RenderTarget( params.backgroundResolution, params.backgroundResolution / 2, { type: THREE.HalfFloatType, depthBuffer: false } );
+			backgroundTarget.texture.wrapS = THREE.RepeatWrapping;
 			const meterTarget = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
 			const atmosphereNode = new AtmosphereNode( lutTarget.texture, equirectDirection( uv() ) );
 			const lutMaterial = new THREE.NodeMaterial();
@@ -151,9 +155,9 @@
 			const quad = new THREE.QuadMesh();
 			const disc = smoothstep( Math.cos( THREE.MathUtils.degToRad( atmosphere.sunRadius + 0.02 ) ), Math.cos( THREE.MathUtils.degToRad( atmosphere.sunRadius ) ), dot( positionWorldDirection, sunVector ) );
 			// The solar disc is excluded from the environment bake.
-			scene.backgroundNode = texture( skyTarget.texture, equirectUV() ).rgb.add( sunRadiance.mul( disc ).mul( positionWorldDirection.y.greaterThan( 0 ) ).mul( sunDisc ).mul( cloudTransmission ) );
+			scene.backgroundNode = texture( backgroundTarget.texture, equirectUV() ).rgb.add( sunRadiance.mul( disc ).mul( positionWorldDirection.y.greaterThan( 0 ) ).mul( sunDisc ).mul( cloudTransmission ) );
 			const pmrem = new THREE.PMREMGenerator( renderer );
-			let environment, dirty = true, baking = false, bakeCount = 0;
+			let environment, dirty = true, backgroundDirty = true, baking = false, bakeCount = 0;
 			let lutAerosol, skyIlluminance = 0, storageScale = 1;
 			let directHorizontal = 0, directNormal = 0;
 
@@ -275,6 +279,28 @@
 
 			}
 
+			function bakeBackground() {
+
+				backgroundDirty = false;
+				const width = params.backgroundResolution;
+				backgroundTarget.setSize( width, width / 2 );
+				renderPass( skyMaterial, backgroundTarget );
+				const autoClear = renderer.autoClear;
+				try {
+
+					renderer.autoClear = false;
+					renderPass( groundMaterial, backgroundTarget );
+
+				} finally {
+
+					renderer.autoClear = autoClear;
+
+				}
+
+				document.getElementById( 'backgroundSize' )?.replaceChildren( width + ' × ' + width / 2 );
+
+			}
+
 			async function bakeSky() {
 
 				baking = true;
@@ -330,6 +356,7 @@
 					renderPass( groundMaterial, skyTarget );
 					renderer.autoClear = autoClear;
 					environment = pmrem.fromEquirectangular( skyTarget.texture, environment );
+					bakeBackground();
 					// Submit every bake pass before reading back the meter for the UI/exposure.
 					const meterPixels = await renderer.readRenderTargetPixelsAsync( meterTarget, 0, 0, 1, 1 );
 					const skyRGB = Array.from( meterPixels ).slice( 0, 3 ).map( value => THREE.DataUtils.fromHalfFloat( value ) / storageScale );
@@ -348,7 +375,7 @@
 					const ev = updateExposure();
 					bakeCount ++;
 					const band = settings.altitude > 0 ? 'Daylight' : settings.altitude > - 6 ? 'Civil twilight' : settings.altitude > - 12 ? 'Nautical twilight' : settings.altitude > - 18 ? 'Astronomical twilight' : 'Night';
-					document.getElementById( 'readout' ).innerHTML = `${band}<br>Cloud sun transmission: ${( cloudTransmission.value * 100 ).toFixed( 1 )}%<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Sky: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
+					document.getElementById( 'readout' ).innerHTML = `${band}<br>Cloud sun transmission: ${( cloudTransmission.value * 100 ).toFixed( 1 )}%<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Background: <span id="backgroundSize">${backgroundTarget.width} × ${backgroundTarget.height}</span><br>IBL source: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
 
 				} finally {
 
@@ -397,7 +424,13 @@
 
 			} );
 			gui.add( params, 'autoRotate' );
-			gui.add( params, 'resolution', [ 128, 256, 512, 1024 ] ).name( 'sky width (px)' ).onChange( changed );
+			const qualityFolder = gui.addFolder( 'Sky quality' );
+			qualityFolder.add( params, 'backgroundResolution', [ 512, 1024, 2048, 4096, 8192 ] ).name( 'background width px' ).onChange( () => {
+
+				backgroundDirty = true;
+
+			} );
+			qualityFolder.add( params, 'resolution', [ 512, 1024, 2048, 4096 ] ).name( 'IBL source width px' ).onChange( changed );
 			gui.add( params, 'rebake' );
 
 			window.addEventListener( 'resize', () => {
@@ -415,7 +448,12 @@
 				controls.autoRotate = params.autoRotate;
 				controls.update( timer.getDelta() );
 				if ( dirty && ! baking ) bakeSky();
-				if ( ! baking ) renderer.render( scene, camera );
+				if ( ! baking ) {
+
+					if ( backgroundDirty ) bakeBackground();
+					renderer.render( scene, camera );
+
+				}
 
 			}
 		</script>

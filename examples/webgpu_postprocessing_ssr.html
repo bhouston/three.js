@@ -31,22 +31,27 @@
 			</small>
 		</div>
 
-	<script type="importmap">
-		{
-			"imports": {
-				"three": "../build/three.webgpu.js",
-				"three/webgpu": "../build/three.webgpu.js",
-				"three/tsl": "../build/three.tsl.js",
-				"three/addons/": "./jsm/"
-			}
-		}
+	<script>
+		// Source imports keep commit-pinned comparisons runnable without generated builds.
+		const sourceImports = new URLSearchParams( window.location.search ).get( 'source' ) === '1';
+		const importMap = document.createElement( 'script' );
+		importMap.type = 'importmap';
+		importMap.textContent = JSON.stringify( { imports: {
+			'three': sourceImports ? '../src/Three.WebGPU.js' : '../build/three.webgpu.js',
+			'three/webgpu': sourceImports ? '../src/Three.WebGPU.js' : '../build/three.webgpu.js',
+			'three/tsl': sourceImports ? '../src/Three.TSL.js' : '../build/three.tsl.js',
+			'three/addons/': './jsm/'
+		} } );
+		document.currentScript.after( importMap );
 	</script>
 
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec3, vec4, colorSpaceToWorking } from 'three/tsl';
+		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec3, vec4, diffuseColor, velocity, colorSpaceToWorking } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { powerLobeSSR } from 'three/addons/tsl/display/PowerLobeSSRNode.js';
+		import { readSSRComparison, addSSRComparisonGUI, applySSRComparison, createSSRComparisonDenoiser, createSSRHistoryReset } from 'three/addons/tsl/display/SSRComparison.js';
 		import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
@@ -55,6 +60,23 @@
 		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 		import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
+		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+
+		const comparison = readSSRComparison( 'mirror', false, 32 );
+		// Explicit comparison modes replace scene environment specular with the estimator.
+		// The URL-less example retains its original mirror/blur composition and defaults.
+		if ( comparison.explicit ) {
+
+			const indirectSpecular = THREE.PhysicalLightingModel.prototype.indirectSpecular;
+			THREE.PhysicalLightingModel.prototype.indirectSpecular = function ( builder ) {
+
+				builder.context.radiance = vec3( 0 );
+				if ( this.clearcoatRadiance ) this.clearcoatRadiance.assign( vec3( 0 ) );
+				indirectSpecular.call( this, builder );
+
+			};
+
+		}
 
 		const params = {
 			hiZ: false,
@@ -70,9 +92,11 @@
 			roughness: 1,
 			enabled: true
 		};
+		params.maxDistance = comparison.maxDistance ?? params.maxDistance;
+		params.thickness = comparison.thickness ?? params.thickness;
 
 		let camera, scene, model, renderer, renderPipeline, ssrPass;
-		let controls, depthPyramid;
+		let controls, historyReset, depthPyramid;
 
 		init();
 
@@ -132,7 +156,6 @@
 			renderer = new THREE.WebGPURenderer();
 			// renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
-			renderer.setAnimationLoop( animate );
 			renderer.toneMapping = THREE.ACESFilmicToneMapping;
 			renderer.inspector = new Inspector();
 			document.body.appendChild( renderer.domElement );
@@ -145,62 +168,83 @@
 			scene.environment = pmremGenerator.fromScene( environment, 0.04 ).texture;
 			scene.environmentIntensity = 1.25;
 			pmremGenerator.dispose();
+			let comparisonEnvironment = null;
+			if ( comparison.explicit ) {
+
+				comparisonEnvironment = await new HDRLoader().loadAsync( 'textures/equirectangular/quarry_01_1k.hdr' );
+				comparisonEnvironment.mapping = THREE.EquirectangularReflectionMapping;
+				scene.environment = comparisonEnvironment;
+
+			}
 
 			//
 
 			renderPipeline = new THREE.RenderPipeline( renderer );
 
 			const scenePass = pass( scene, camera );
-			scenePass.setMRT( mrt( {
+			const tracePass = comparison.mode === 'power' ? pass( scene, camera ) : scenePass;
+			tracePass.transparent = comparison.mode !== 'power';
+			tracePass.setMRT( mrt( {
 				output: output,
-				normal: packNormalToRGB( normalView ),
-				metalrough: vec2( metalness, roughness ) // pack metalness and roughness into a single attachment
+				normal: vec4( packNormalToRGB( normalView ), roughness ),
+				diffuseColor: vec4( diffuseColor.rgb, metalness ),
+				velocity: velocity
 			} ) );
 
 			const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
-			const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal', ( node ) => {
+			const scenePassNormal = tracePass.getTextureNode( 'normal' ).toInspector( 'Normal', ( node ) => {
 
 				return colorSpaceToWorking( node, THREE.SRGBColorSpace );
 
 			} );
-			const scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
+			const scenePassDepth = tracePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
 
-				return scenePass.getLinearDepthNode();
+				return tracePass.getLinearDepthNode();
 
 			} );
-			depthPyramid = hiZ( scenePass.getTextureNode( 'depth' ) );
-
-			const scenePassMetalRough = scenePass.getTextureNode( 'metalrough' ).toInspector( 'Metalness-Roughness' );
+			depthPyramid = hiZ( scenePassDepth );
+			const scenePassDiffuse = tracePass.getTextureNode( 'diffuseColor' );
+			const scenePassMetalRough = sample( ( uv ) => vec2( scenePassDiffuse.sample( uv ).a, scenePassNormal.sample( uv ).a ) );
+			const traceColor = tracePass.getTextureNode( 'output' );
+			const traceVelocity = tracePass.getTextureNode( 'velocity' );
 
 			// optional: optimize bandwidth by reducing the texture precision for normals and metal/roughness
 
-			const normalTexture = scenePass.getTexture( 'normal' );
+			const normalTexture = tracePass.getTexture( 'normal' );
 			normalTexture.type = THREE.UnsignedByteType;
 
-			const metalRoughTexture = scenePass.getTexture( 'metalrough' );
-			metalRoughTexture.type = THREE.UnsignedByteType;
+			tracePass.getTexture( 'diffuseColor' ).type = THREE.UnsignedByteType;
 
 			const sceneNormal = sample( ( uv ) => {
 
-				return unpackRGBToNormal( scenePassNormal.sample( uv ) );
+				return unpackRGBToNormal( scenePassNormal.sample( uv ).rgb );
 
 			} );
 
 			//
 
-			ssrPass = ssr( scenePassColor, scenePassDepth, sceneNormal, {
-				hiZ: depthPyramid,
+			const createSSR = comparison.mode === 'power' ? powerLobeSSR : ssr;
+			ssrPass = createSSR( traceColor, scenePassDepth, sceneNormal, {
+				camera,
+				stochastic: comparison.mode === 'ggx',
+				maxRayLength: comparison.explicit ? params.maxDistance : null,
+				hiZ: comparison.mode === 'power' ? null : depthPyramid,
 				metalnessNode: scenePassMetalRough.r,
-				roughnessNode: scenePassMetalRough.g
+				roughnessNode: scenePassMetalRough.g,
+				diffuseNode: tracePass.getTextureNode( 'diffuseColor' ),
+				environmentNode: comparisonEnvironment,
+				velocityNode: traceVelocity
 			} ).toInspector( 'SSR' );
+			const reconstruction = comparison.denoise ? createSSRComparisonDenoiser( ssrPass, scenePassDepth, scenePassNormal, traceVelocity, scenePassMetalRough, camera ) : null;
+			const reflection = reconstruction ? reconstruction.color : ssrPass;
 
 			// blend SSR over beauty (SSR outputs premultiplied color, so use additive blending)
 
-			const outputNode = smaa( scenePassColor.add( ssrPass.rgb ) );
+			const outputNode = smaa( scenePassColor.add( reflection.rgb ) );
 
 			function updateOutputNode() {
 
-				ssrPass.hiZEnabled = params.hiZ && params.hiZTracing;
+				if ( comparison.mode !== 'power' ) ssrPass.hiZEnabled = params.hiZ && params.hiZTracing;
 				depthPyramid.enabled = params.hiZ;
 				depthPyramid.level.value = params.hiZLevel;
 
@@ -209,6 +253,7 @@
 					? vec4( vec3( depthPyramid ), 1 )
 					: params.hiZ ? source.add( depthPyramid.mul( 0 ) ) : source;
 				renderPipeline.outputColorTransform = ! ( params.hiZ && params.hiZDebug );
+				historyReset?.reset();
 				renderPipeline.needsUpdate = true;
 
 			}
@@ -227,22 +272,22 @@
 
 			const gui = renderer.inspector.createParameters( 'Settings' );
 			const ssrFolder = gui.addFolder( 'SSR' );
-			ssrFolder.add( params, 'quality', 0, 1 ).onChange( updateParameters );
-			ssrFolder.add( params, 'blurQuality', 1, 3, 1 ).onChange( updateParameters );
+			addSSRComparisonGUI( gui.addFolder( 'Estimator comparison' ), comparison, updateParameters );
+			if ( comparison.mode === 'mirror' ) ssrFolder.add( params, 'blurQuality', 1, 3, 1 ).name( 'blur quality' ).onChange( updateParameters );
 			ssrFolder.add( params, 'maxDistance', 0, 1 ).onChange( updateParameters );
 			ssrFolder.add( params, 'intensity', 0, 1 ).onChange( updateParameters );
 			ssrFolder.add( params, 'thickness', 0, 0.05 ).onChange( updateParameters );
-			ssrFolder.add( params, 'binaryRefine' ).name( 'binary refine' ).onChange( updateParameters );
+			if ( comparison.mode !== 'power' ) ssrFolder.add( params, 'binaryRefine' ).name( 'binary refine (stock)' ).onChange( updateParameters );
 			ssrFolder.add( params, 'enabled' ).onChange( updateOutputNode );
-			const hiZFolder = gui.addFolder( 'Hi-Z construction' );
+			const hiZFolder = gui.addFolder( comparison.mode === 'power' ? 'Hi-Z construction (debug only)' : 'Hi-Z construction' );
 			hiZFolder.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
-			hiZFolder.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
+			if ( comparison.mode !== 'power' ) hiZFolder.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
 			hiZFolder.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 			const modelFolder = gui.addFolder( 'Model' );
 			modelFolder.add( params, 'roughness', 0, 1 ).onChange( ( value ) => {
 
-				model.traverse( function ( object ) {
+				scene.traverse( function ( object ) {
 
 					if ( object.material ) {
 
@@ -254,21 +299,35 @@
 
 			} );
 
+			historyReset = createSSRHistoryReset( ssrPass, camera, reconstruction?.temporal, reconstruction?.denoise );
+			gui.add( { resetHistory: historyReset.reset }, 'resetHistory' ).name( 'reset history / seed' );
 			updateParameters();
+			window.ssrComparison = { renderer, camera, scene, params, comparison, node: ssrPass, controls, resetHistory: historyReset.reset, renderPipeline, reconstruction };
+			renderer.setAnimationLoop( animate );
 
 		}
 
 		function updateParameters() {
 
-			ssrPass.quality.value = params.quality;
-			// blurQuality is a build-time constant: assigning it recompiles the blur material
-			// (the setter no-ops when the value is unchanged).
-			ssrPass.blurQuality = params.blurQuality;
+			if ( comparison.mode !== 'power' ) {
+
+				ssrPass.quality.value = params.quality;
+				// blurQuality is a build-time constant: assigning it recompiles the blur material
+				// (the setter no-ops when the value is unchanged).
+				ssrPass.blurQuality = params.blurQuality;
+				ssrPass.binaryRefine = params.binaryRefine;
+
+			}
+
 			ssrPass.maxDistance.value = params.maxDistance;
 			ssrPass.intensity.value = params.intensity;
+			if ( comparison.explicit ) ssrPass.environmentIntensity.value = scene.environmentIntensity;
 			ssrPass.thickness.value = params.thickness;
+			comparison.maxDistance = params.maxDistance;
+			comparison.thickness = params.thickness;
 			// build-time constant: assigning it recompiles the SSR material (setter no-ops if unchanged)
-			ssrPass.binaryRefine = params.binaryRefine;
+			applySSRComparison( ssrPass, comparison );
+			historyReset?.reset();
 
 		}
 
@@ -278,12 +337,14 @@
 			camera.updateProjectionMatrix();
 
 			renderer.setSize( window.innerWidth, window.innerHeight );
+			historyReset?.reset();
 
 		}
 
 		function animate() {
 
 			controls.update();
+			historyReset.update();
 
 			renderPipeline.render();
 

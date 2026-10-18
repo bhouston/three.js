@@ -23,6 +23,7 @@ const MAX_STEPS = 64;
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
+ * @property {?number} [maxRayLength=null] - Optional absolute ray-length cap in view/world units, for matched comparisons. Null preserves the existing grazing-scaled reach and mirror plane-distance convention. Does not change sampling or BRDF weights.
  * @property {?HiZNode} [hiZ=null] - A hierarchy built from the same raw depth texture. Enables conservative hierarchical skips; omit for the original linear marcher.
  */
 
@@ -171,6 +172,9 @@ class SSRNode extends Node {
 		 * @type {UniformNode<float>}
 		 */
 		this.maxDistance = uniform( 1 );
+
+		/** Optional absolute reach cap; null preserves the original traversal convention. */
+		this.maxRayLength = options.maxRayLength !== undefined && options.maxRayLength !== null ? uniform( options.maxRayLength ) : null;
 
 		/**
 		 * Controls the cutoff between what counts as a possible reflection hit and what does not.
@@ -1080,7 +1084,7 @@ class SSRNode extends Node {
 
 			};
 
-			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ) ).toVar();
+			const maxReflectRayLen = ( this.maxRayLength !== null ? this.maxRayLength.max( 0 ) : this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ) ) ).toVar();
 
 			const d1viewPosition = viewPosition.add( viewReflectDir.mul( maxReflectRayLen ) ).toVar();
 
@@ -1160,6 +1164,16 @@ class SSRNode extends Node {
 
 				// Exponentially-distributed ray parameter, shared by the sample position and ray depth.
 				const s = sampleFraction( float( i ) ).toVar();
+
+				if ( this.maxRayLength !== null ) {
+
+					If( s.greaterThan( 1 ), () => {
+
+						Break();
+
+					} );
+
+				}
 
 				const xy = screenPosAt( s ).toVar();
 
@@ -1305,7 +1319,8 @@ class SSRNode extends Node {
 				// In blur mode the ratio² falloff re-grows past maxDistance, so over-range hits fall back
 				// to env. The scatter path bounds reach via ray length, so every hit shades.
 				const distancePointPlane = this.stochastic === false ? pointPlaneDistance( vP, viewPosition, viewNormal ).toVar() : float( 0 );
-				const withinRange = distancePointPlane.lessThanEqual( this.maxDistance );
+				let withinRange = distancePointPlane.lessThanEqual( this.maxDistance );
+				if ( this.maxRayLength !== null ) withinRange = withinRange.and( vP.sub( viewPosition ).length().lessThanEqual( this.maxRayLength ) );
 
 				If( withinRange, () => {
 

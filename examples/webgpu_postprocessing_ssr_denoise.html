@@ -46,15 +46,18 @@
 		</small>
 	</div>
 
-	<script type="importmap">
-		{
-			"imports": {
-				"three": "../build/three.webgpu.js",
-				"three/webgpu": "../build/three.webgpu.js",
-				"three/tsl": "../build/three.tsl.js",
-				"three/addons/": "./jsm/"
-			}
-		}
+	<script>
+		// Source imports keep commit-pinned comparisons runnable without generated builds.
+		const sourceImports = new URLSearchParams( window.location.search ).get( 'source' ) === '1';
+		const importMap = document.createElement( 'script' );
+		importMap.type = 'importmap';
+		importMap.textContent = JSON.stringify( { imports: {
+			'three': sourceImports ? '../src/Three.WebGPU.js' : '../build/three.webgpu.js',
+			'three/webgpu': sourceImports ? '../src/Three.WebGPU.js' : '../build/three.webgpu.js',
+			'three/tsl': sourceImports ? '../src/Three.TSL.js' : '../build/three.tsl.js',
+			'three/addons/': './jsm/'
+		} } );
+		document.currentScript.after( importMap );
 	</script>
 
 	<script type="module">
@@ -62,9 +65,9 @@
 		import * as THREE from 'three/webgpu';
 		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { powerLobeSSR } from 'three/addons/tsl/display/PowerLobeSSRNode.js';
+		import { readSSRComparison, addSSRComparisonGUI, applySSRComparison, createSSRComparisonDenoiser, createSSRHistoryReset } from 'three/addons/tsl/display/SSRComparison.js';
 		import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
-		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
-		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -72,6 +75,8 @@
 		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+
+		const comparison = readSSRComparison( 'ggx', true, 16, 35 );
 
 		// Disable env map specular (radiance and clearcoat radiance) for every PBR material
 		// in this scene, since SSR provides the specular reflections instead. Diffuse env
@@ -156,7 +161,7 @@
 			},
 
 			denoise: {
-				enabled: true,
+				enabled: comparison.denoise,
 				lumaPhi: 0.75,
 				depthPhi: 20,
 				normalPhi: 0.3,
@@ -175,8 +180,11 @@
 			},
 		};
 
+		params.ssr.maxDistance = comparison.maxDistance ?? params.ssr.maxDistance;
+		params.ssr.thickness = comparison.thickness ?? params.ssr.thickness;
+
 		let camera, scene, model, renderer, postProcessing, ssrNode, temporalReprojectNode, denoiseNode;
-		let controls, depthPyramid;
+		let controls, historyReset, depthPyramid;
 		let scenePassNode, combinedOutputNode, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 
@@ -249,8 +257,10 @@
 
 			postProcessing = new THREE.RenderPipeline( renderer );
 
-			const scenePass = pass( scene, camera );
-			scenePassNode = scenePass;
+			const beautyPass = pass( scene, camera );
+			const scenePass = comparison.mode === 'power' ? pass( scene, camera ) : beautyPass;
+			scenePass.transparent = comparison.mode !== 'power';
+			scenePassNode = beautyPass;
 			scenePass.setMRT( mrt( {
 				output: output,
 				// Store base color (albedo) in RGB + metalness in alpha. The albedo is needed for
@@ -262,7 +272,8 @@
 				velocity: velocity
 			} ) );
 
-			const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
+			const scenePassColor = beautyPass.getTextureNode( 'output' ).toInspector( 'Color' );
+			const traceColor = scenePass.getTextureNode( 'output' );
 			const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal' );
 			scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
 
@@ -287,38 +298,40 @@
 				scenePassNormal.sample( uv ).a
 			) ).toInspector( 'Metalness/Roughness' );
 
-			ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
-				hiZ: depthPyramid,
-				stochastic: true,
+			const createSSR = comparison.mode === 'power' ? powerLobeSSR : ssr;
+			ssrNode = createSSR( traceColor, scenePassDepth, sceneNormal, {
+				camera,
+				stochastic: comparison.mode !== 'mirror',
+				maxRayLength: comparison.explicit ? params.ssr.maxDistance : null,
+				hiZ: comparison.mode === 'power' ? null : depthPyramid,
 				diffuseNode: scenePassDiffuseColor,
 				metalnessNode: scenePassDiffuseColor.a,
 				roughnessNode: scenePassNormal.a,
 				environmentNode: hdrTexture,
+				velocityNode: scenePassVelocity,
 				envImportanceSampling: params.ssr.envImportanceSampling,
 				binaryRefine: params.ssr.binaryRefine
 			} ).toInspector( 'SSR' );
 
-			temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
-				mode: 'specular',
-				accumulate: false
-			} );
-			temporalReprojectNode.toInspector( 'Temporal Reproject' );
+			if ( comparison.denoise ) {
 
-			denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
-				depth: scenePassDepth,
-				normal: scenePassNormal,
-				raw: ssrNode,
-				metalRoughness: scenePassMetalRough,
-				mode: 'specular',
-				accumulate: true,
-			} );
-			denoiseNode.alphaSource = 'raylength'; // SSR alpha channel contains ray length
-			denoiseNode.toInspector( 'Denoise' );
-			// feed the denoised result + velocity back into SSR for multi-bounce reflections
-			ssrNode.setHistory( denoiseNode, scenePassVelocity );
-			temporalReprojectNode.setHistoryTexture( denoiseNode );
+				const reconstruction = createSSRComparisonDenoiser( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, scenePassMetalRough, camera );
+				temporalReprojectNode = reconstruction.temporal;
+				denoiseNode = reconstruction.denoise;
+				temporalReprojectNode.toInspector( 'Temporal Reproject' );
+				denoiseNode.toInspector( 'Denoise (alpha = inverse history age)' );
+				// Retain the original optional multi-bounce feedback on the stock estimator.
+				// Power-lobe radiance history is exclusively the previous opaque scene color.
+				if ( ! comparison.explicit ) ssrNode.setHistory( denoiseNode, scenePassVelocity );
 
-			const denoisePassBlend = vec4( denoiseNode.rgb, ssrNode.a.greaterThan( 0 ).toVar() );
+			} else {
+
+				// A true raw path bypasses temporal and recurrent passes entirely.
+				denoiseNode = ssrNode;
+
+			}
+
+			const denoisePassBlend = vec4( denoiseNode.rgb, 1 );
 
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );
@@ -357,13 +370,25 @@
 				'Ray Length': 7,
 				'Accumulation Speed (Alpha)': 6
 			};
+			if ( ! comparison.denoise ) {
+
+				delete outputTypes[ 'Denoised SSR' ];
+				delete outputTypes[ 'Compare (Denoise)' ];
+				delete outputTypes[ 'Accumulation Speed (Alpha)' ];
+
+			}
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR settings' );
+			addSSRComparisonGUI( renderer.inspector.createParameters( 'Estimator comparison' ), comparison, applyParams );
 			ssrGui.add( params, 'output', outputTypes ).onChange( updateOutputNode );
-			ssrGui.add( params.ssr, 'quality', 0, 1 ).name( 'quality' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'mirror bias' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'stepExponent', 1, 4, 0.5 ).name( 'step exponent' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'binaryRefine' ).name( 'binary refine' ).onChange( applyParams );
+			if ( comparison.mode === 'ggx' ) {
+
+				ssrGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'mirror bias (GGX only)' ).onChange( applyParams );
+				ssrGui.add( params.ssr, 'stepExponent', 1, 4, 0.5 ).name( 'step exponent (GGX)' ).onChange( applyParams );
+
+			}
+
+			if ( comparison.mode !== 'power' ) ssrGui.add( params.ssr, 'binaryRefine' ).name( 'binary refine (stock)' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 5 ).name( 'max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'intensity', 0, 4 ).name( 'intensity' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'thickness' ).onChange( applyParams );
@@ -378,14 +403,14 @@
 
 			} );
 
-			const hiZGui = renderer.inspector.createParameters( 'Hi-Z construction' );
+			const hiZGui = renderer.inspector.createParameters( comparison.mode === 'power' ? 'Hi-Z construction (debug only)' : 'Hi-Z construction' );
 			hiZGui.add( params, 'hiZ' ).name( 'enabled' ).onChange( updateOutputNode );
-			hiZGui.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
+			if ( comparison.mode !== 'power' ) hiZGui.add( params, 'hiZTracing' ).name( 'use for SSR' ).onChange( updateOutputNode );
 			hiZGui.add( params, 'hiZDebug' ).name( 'show depth level' ).onChange( updateOutputNode );
 			hiZGui.add( params, 'hiZLevel', 0, 12, 1 ).name( 'depth level' ).onChange( updateOutputNode );
 
 			const denoiseGui = renderer.inspector.createParameters( 'Denoise settings' );
-			denoiseGui.add( params.denoise, 'enabled' ).name( 'enabled' ).onChange( applyParams );
+			// The estimator panel toggles denoising by rebuilding the graph after reload.
 			denoiseGui.add( params.denoise, 'lumaPhi', 0, 3 ).name( 'luma phi' ).onChange( applyParams );
 			denoiseGui.add( params.denoise, 'depthPhi', 0, 50 ).name( 'depth phi' ).onChange( applyParams );
 			denoiseGui.add( params.denoise, 'normalPhi', 0.01, 1, 0.01 ).name( 'normal phi' ).onChange( applyParams );
@@ -409,6 +434,12 @@
 			temporalReprojectGui.add( params.temporalReproject, 'flickerSuppression', 0, 1 ).name( 'flicker suppression' ).onChange( applyParams );
 			temporalReprojectGui.add( params.temporalReproject, 'hitPointReprojection' ).name( 'hit point reprojection' ).onChange( applyParams );
 			temporalReprojectGui.close();
+			if ( ! comparison.denoise ) {
+
+				denoiseGui.hide();
+				temporalReprojectGui.hide();
+
+			}
 
 			// Concise UI for Directional Light controls
 			const lightGui = renderer.inspector.createParameters( 'Light' ).close();
@@ -421,6 +452,9 @@
 			lightGui.add( directionalLight, 'intensity', 0, 50 ).name( 'Intensity' );
 
 			updateOutputNode();
+			historyReset = createSSRHistoryReset( ssrNode, camera, temporalReprojectNode, comparison.denoise ? denoiseNode : null );
+			ssrGui.add( { resetHistory: historyReset.reset }, 'resetHistory' ).name( 'reset history / seed' );
+			window.ssrComparison = { renderer, camera, scene, params, comparison, node: ssrNode, controls, light: directionalLight, resetHistory: historyReset.reset, renderPipeline: postProcessing, temporalReprojectNode, denoiseNode };
 			renderer.setAnimationLoop( animate );
 
 		}
@@ -430,19 +464,27 @@
 			if ( ! ssrNode ) return;
 
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
-			ssrNode.quality.value = params.ssr.quality;
-			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
-			// stepExponent / screenEdgeFadeBlack / binaryRefine are build-time constants: assigning
-			// them recompiles the SSR material (the setters no-op when the value is unchanged).
-			ssrNode.stepExponent = params.ssr.stepExponent;
-			ssrNode.binaryRefine = params.ssr.binaryRefine;
+			if ( comparison.mode !== 'power' ) {
+
+				ssrNode.quality.value = params.ssr.quality;
+				ssrNode.mirrorBias.value = params.ssr.mirrorBias;
+				// stepExponent / screenEdgeFadeBlack / binaryRefine are build-time constants: assigning
+				// them recompiles the SSR material (the setters no-op when the value is unchanged).
+				ssrNode.stepExponent = params.ssr.stepExponent;
+				ssrNode.binaryRefine = params.ssr.binaryRefine;
+				ssrNode.screenEdgeFade.value = params.ssr.screenEdgeFade;
+				ssrNode.screenEdgeFadeBlack = params.ssr.screenEdgeFadeBlack;
+
+			}
+
 			ssrNode.maxDistance.value = params.ssr.maxDistance;
 			ssrNode.intensity.value = params.ssr.intensity;
 			ssrNode.thickness.value = params.ssr.thickness;
+			comparison.maxDistance = params.ssr.maxDistance;
+			comparison.thickness = params.ssr.thickness;
 			ssrNode.maxLuminance.value = params.ssr.maxLuminance;
-			ssrNode.screenEdgeFade.value = params.ssr.screenEdgeFade;
-			ssrNode.screenEdgeFadeBlack = params.ssr.screenEdgeFadeBlack;
 			ssrNode.environmentIntensity.value = params.ssr.environmentIntensity;
+			applySSRComparison( ssrNode, comparison );
 
 			if ( temporalReprojectNode ) {
 
@@ -453,7 +495,7 @@
 
 			}
 
-			if ( denoiseNode ) {
+			if ( denoiseNode && comparison.denoise ) {
 
 				denoiseNode.lumaPhi.value = params.denoise.lumaPhi;
 				denoiseNode.depthPhi.value = params.denoise.depthPhi;
@@ -468,6 +510,8 @@
 				denoiseNode.adaptiveTrust.value = params.denoise.adaptiveTrust;
 
 			}
+
+			historyReset?.reset();
 
 		}
 
@@ -486,7 +530,11 @@
 
 		function applyPostProcessing( source ) {
 
-			return sharpen( traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera ), 0 );
+			const aa = traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera );
+			// TemporalReproject owns a non-jittered camera in the denoised path.
+			// Match that sampling in raw comparisons, keeping the same final AA resolve.
+			aa.jitter = ! comparison.explicit;
+			return sharpen( aa, 0 );
 
 		}
 
@@ -513,7 +561,7 @@
 				case 0: node = applyPostProcessing( combinedOutputNode ); break; // Combined
 				case 1: node = applyPostProcessing( vec4( ssrNode.rgb, 1 ) ); break; // SSR (Raw)
 				case 4: node = applyPostProcessing( vec4( denoiseNode.rgb, 1 ) ); break; // Denoised SSR
-				case 6: node = vec4( denoiseNode.aaa, 1 ); break; // Samples (Alpha)
+				case 6: node = comparison.denoise ? vec4( denoiseNode.aaa, 1 ) : vec4( 1 ); break; // Inverse history age
 				case 7: node = vec4( ssrNode.aaa, 1 ); break; // Ray Length (Raw)
 				case OUTPUT_COMPARE_DENOISE: { // Compare (denoised | noisy)
 
@@ -538,7 +586,7 @@
 			updateCompareHint( params.output );
 
 			postProcessing.outputColorTransform = ! GRADED_OUTPUTS.has( params.output );
-			ssrNode.hiZEnabled = params.hiZ && params.hiZTracing;
+			if ( comparison.mode !== 'power' ) ssrNode.hiZEnabled = params.hiZ && params.hiZTracing;
 			depthPyramid.enabled = params.hiZ;
 			depthPyramid.level.value = params.hiZLevel;
 
@@ -556,6 +604,7 @@
 			}
 
 			postProcessing.outputNode = node;
+			historyReset?.reset();
 			postProcessing.needsUpdate = true;
 
 		}
@@ -567,6 +616,7 @@
 
 			renderer.setSize( window.innerWidth, window.innerHeight );
 			compareResolution.value.set( window.innerWidth, window.innerHeight );
+			historyReset?.reset();
 
 		}
 
@@ -592,6 +642,7 @@
 		function animate() {
 
 			controls.update();
+			historyReset.update();
 
 			postProcessing.render();
 

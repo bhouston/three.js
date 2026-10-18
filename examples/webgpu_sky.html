@@ -448,12 +448,8 @@
 				controls.autoRotate = params.autoRotate;
 				controls.update( timer.getDelta() );
 				if ( dirty && ! baking ) bakeSky();
-				if ( ! baking ) {
-
-					if ( backgroundDirty ) bakeBackground();
-					renderer.render( scene, camera );
-
-				}
+				if ( ! baking && backgroundDirty ) bakeBackground();
+				if ( ! baking ) renderer.render( scene, camera );
 
 			}
 		</script>

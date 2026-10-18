@@ -1,11 +1,11 @@
 import { FloatType, NearestFilter, Node, NodeUpdateType, RGFormat, StorageTexture, Vector4 } from 'three/webgpu';
-import { Fn, If, Loop, invocationLocalIndex, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uniformArray, uv, vec2, vec4, workgroupArray, workgroupBarrier, workgroupId } from 'three/tsl';
+import { Fn, Loop, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uniformArray, uv, vec2, vec4, texture, instanceIndex } from 'three/tsl';
 
 const WORKGROUP_SIZE = 64;
 const MAX_LEVELS = 16;
 
 /**
- * Builds a farthest-depth hierarchy in one WebGPU compute dispatch.
+ * Builds a farthest-depth hierarchy with successive WebGPU reductions.
  *
  * Levels are stored vertically in an RG32F atlas, with floor-halved dimensions.
  * The last cell includes the odd trailing row/column (a 3x2, 2x3 or 3x3
@@ -14,10 +14,9 @@ const MAX_LEVELS = 16;
  * The red channel stores farthest depth and green stores nearest depth, allowing
  * consumers to conservatively reject intervals in front of every surface.
  *
- * Each level reduces the original depth independently. This avoids relying on
- * cross-workgroup publication, which WGSL does not guarantee. Coarse cells use
- * cooperative workgroup reductions, but source reads still scale with the
- * number of levels. This is not an SPD implementation or an SSR traversal.
+ * Each dispatch reduces the preceding level. Dispatch boundaries provide portable
+ * synchronization; source reads scale linearly with the input pixel count.
+ * Separate intermediate textures avoid sampling the atlas while writing to it.
  * The atlas height is less than twice the input height and must fit the
  * device's maximum 2D texture dimension.
  *
@@ -71,6 +70,7 @@ class HiZNode extends Node {
 		this._lastLevel = uniform( 0, 'uint' );
 		this._textureNode = passTexture( this, this.texture );
 		this._computeNode = null;
+		this._levelTextures = [];
 		this._width = 0;
 		this._height = 0;
 		this._reversed = null;
@@ -168,106 +168,71 @@ class HiZNode extends Node {
 	/** @private */
 	_disposeCompute() {
 
-		if ( this._computeNode !== null ) this._computeNode.dispose();
+		if ( this._computeNode !== null ) for ( const node of this._computeNode ) node.dispose();
+		for ( const level of this._levelTextures ) level.dispose();
 		this._computeNode = null;
+		this._levelTextures = [];
 
 	}
 
 	/** @private */
 	_buildCompute() {
 
-		const width = this._width;
-		const height = this._height;
 		const reversed = this._reversed;
 		const reduce = ( a, b ) => vec2( reversed ? min( a.x, b.x ) : max( a.x, b.x ), reversed ? max( a.y, b.y ) : min( a.y, b.y ) );
-		const identity = reversed ? 1 : 0;
-		const shared = workgroupArray( 'vec2', WORKGROUP_SIZE );
-		let groupCount = 0;
-		const tasks = this.levels.map( ( entry, level ) => {
+		this._computeNode = [];
 
-			// Small footprints use one lane per texel; large footprints use a
-			// whole workgroup so the final 1x1 level never becomes a serial scan.
-			const cooperative = level >= 4;
-			const count = cooperative ? entry.width * entry.height : Math.ceil( entry.width * entry.height / WORKGROUP_SIZE );
-			const task = { ...entry, level, cooperative, start: groupCount, count };
-			groupCount += count;
-			return task;
+		for ( let level = 0; level < this.levels.length; level ++ ) {
 
-		} );
+			const entry = this.levels[ level ];
+			const previous = this.levels[ Math.max( 0, level - 1 ) ];
+			const source = level < 2 ? this.depthNode : texture( this._levelTextures[ level - 2 ] );
+			let target = null;
+			if ( level > 0 ) {
 
-		const dispatchX = Math.min( groupCount, 65535 );
-		this._dispatch = [ dispatchX, Math.ceil( groupCount / dispatchX ), 1 ];
-
-		this._computeNode = Fn( () => {
-
-			const group = workgroupId.x.add( workgroupId.y.mul( dispatchX ) ).toVar();
-			const lane = invocationLocalIndex;
-
-			for ( const task of tasks ) {
-
-				const { level, cooperative, start, count, offset } = task;
-				const scale = 2 ** level;
-
-				If( group.greaterThanEqual( start ).and( group.lessThan( start + count ) ), () => {
-
-					const index = cooperative ? group.sub( start ) : group.sub( start ).mul( WORKGROUP_SIZE ).add( lane );
-					const x = index.mod( task.width ).toVar();
-					const y = index.div( task.width ).toVar();
-					const beginX = x.mul( scale ).toVar();
-					const beginY = y.mul( scale ).toVar();
-					const endX = x.equal( task.width - 1 ).select( uint( width ), beginX.add( scale ) );
-					const endY = y.equal( task.height - 1 ).select( uint( height ), beginY.add( scale ) );
-					const spanX = endX.sub( beginX ).toVar();
-					const samples = spanX.mul( endY.sub( beginY ) ).toVar();
-					const value = vec2( identity, 1 - identity ).toVar();
-
-					const read = ( i ) => {
-
-						const coord = ivec2( beginX.add( i.mod( spanX ) ), beginY.add( i.div( spanX ) ) );
-						const depth = textureLoad( this.depthNode, coord ).r.toVar();
-						value.assign( reduce( value, vec2( depth ) ) );
-
-					};
-
-					if ( cooperative ) {
-
-						Loop( { start: lane, end: samples, type: 'uint', update: `+= ${ WORKGROUP_SIZE }` }, ( { i } ) => read( i ) );
-						shared.element( lane ).assign( value );
-						workgroupBarrier();
-
-						for ( let stride = WORKGROUP_SIZE / 2; stride >= 1; stride /= 2 ) {
-
-							If( lane.lessThan( stride ), () => {
-
-								shared.element( lane ).assign( reduce( shared.element( lane ), shared.element( lane.add( stride ) ) ) );
-
-							} );
-							workgroupBarrier();
-
-						}
-
-						If( lane.equal( 0 ), () => {
-
-							textureStore( this.texture, ivec2( x, y.add( offset ) ), vec4( shared.element( uint( 0 ) ), 0, 1 ) ).toWriteOnly();
-
-						} );
-
-					} else {
-
-						If( index.lessThan( task.width * task.height ), () => {
-
-							Loop( { start: uint( 0 ), end: samples, type: 'uint' }, ( { i } ) => read( i ) );
-							textureStore( this.texture, ivec2( x, y.add( offset ) ), vec4( value, 0, 1 ) ).toWriteOnly();
-
-						} );
-
-					}
-
-				} );
+				target = new StorageTexture( entry.width, entry.height );
+				target.type = FloatType;
+				target.format = RGFormat;
+				target.minFilter = target.magFilter = NearestFilter;
+				target.generateMipmaps = false;
+				this._levelTextures.push( target );
 
 			}
 
-		} )().compute( this._dispatch, [ WORKGROUP_SIZE ] ).setName( 'Hi-Z [ Pyramid ]' );
+			const compute = Fn( () => {
+
+				const x = instanceIndex.mod( entry.width ).toVar();
+				const y = instanceIndex.div( entry.width ).toVar();
+				const value = vec2( reversed ? 1 : 0, reversed ? 0 : 1 ).toVar();
+				if ( level === 0 ) {
+
+					value.assign( vec2( textureLoad( source, ivec2( x, y ) ).r ) );
+
+				} else {
+
+					const begin = ivec2( x, y ).mul( 2 ).toVar();
+					const endX = x.equal( entry.width - 1 ).select( uint( previous.width ), x.mul( 2 ).add( 2 ) );
+					const endY = y.equal( entry.height - 1 ).select( uint( previous.height ), y.mul( 2 ).add( 2 ) );
+					Loop( { start: uint( begin.y ), end: endY, type: 'uint', name: 'sy' }, ( { sy } ) => {
+
+						Loop( { start: uint( begin.x ), end: endX, type: 'uint', name: 'sx' }, ( { sx } ) => {
+
+							const sample = textureLoad( source, ivec2( sx, sy ) );
+							value.assign( reduce( value, level === 1 ? vec2( sample.r ) : sample.rg ) );
+
+						} );
+
+					} );
+					textureStore( target, ivec2( x, y ), vec4( value, 0, 1 ) ).toWriteOnly();
+
+				}
+
+				textureStore( this.texture, ivec2( x, y.add( entry.offset ) ), vec4( value, 0, 1 ) ).toWriteOnly();
+
+			} )().compute( entry.width * entry.height, [ WORKGROUP_SIZE ] ).setName( 'Hi-Z [ Level ' + level + ' ]' );
+			this._computeNode.push( compute );
+
+		}
 
 	}
 
@@ -332,3 +297,4 @@ export default HiZNode;
  * @return {HiZNode} The depth hierarchy node.
  */
 export const hiZ = ( depthNode, options ) => new HiZNode( nodeObject( depthNode ), options );
+

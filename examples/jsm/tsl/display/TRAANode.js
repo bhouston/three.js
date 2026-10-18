@@ -50,6 +50,16 @@ class TRAANode extends Node {
 		this.isTRAANode = true;
 
 		/**
+		 * Whether this node may apply camera subpixel jitter. Set before building the
+		 * render pipeline. Disable for matched raw/recurrent SSR comparisons where
+		 * an upstream temporal pass otherwise owns a non-jittered camera.
+		 *
+		 * @type {boolean}
+		 * @default true
+		 */
+		this.jitter = true;
+
+		/**
 		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node renders
 		 * its effect once per frame in `updateBefore()`.
 		 *
@@ -428,7 +438,7 @@ class TRAANode extends Node {
 		this.velocityNode.build( builder );
 		this.beautyNode.build( builder );
 
-		if ( builder.renderPipeline && ! builder.context.renderPipelineState.viewOffsetOwner ) {
+		if ( this.jitter && builder.renderPipeline && ! builder.context.renderPipelineState.viewOffsetOwner ) {
 
 			builder.context.renderPipelineState.viewOffsetOwner = this;
 

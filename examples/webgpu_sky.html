@@ -278,76 +278,83 @@
 			async function bakeSky() {
 
 				baking = true;
-				dirty = false;
-				const settings = { ...params };
-				const model = { ...atmosphere, aerosol: settings.aerosol, observerAltitude: settings.observerAltitude };
-				const direction = sunDirection( settings.altitude, settings.azimuth, settings.northRotation );
-				const light = sunLightState( settings.altitude, model );
-				const solidAngle = 2 * Math.PI * ( 1 - Math.cos( THREE.MathUtils.degToRad( model.sunRadius ) ) );
-				const discRadiance = light.transmission.map( value => light.visibility > 0 ? value * model.sunIlluminance / solidAngle : 0 );
-				storageScale = Math.min( 1, 60000 / Math.max( model.sunIlluminance, ...discRadiance ) );
-				atmosphereNode.sunDirection.value.fromArray( direction );
-				atmosphereNode.aerosol.value = settings.aerosol;
-				atmosphereNode.observerAltitude.value = settings.observerAltitude;
-				atmosphereNode.preExposure.value = storageScale;
-				clouds.coverage.value = settings.cloudCoverage;
-				clouds.altitude.value = settings.cloudAltitude;
-				clouds.observerAltitude.value = settings.observerAltitude * 1000;
-				clouds.density.value = settings.cloudDensity;
-				clouds.noiseScale.value = settings.cloudScale;
-				clouds.noiseOffset.value.set( settings.cloudOffset, 0 );
-				const cloudLight = sunLightState( settings.altitude, { ...model, observerAltitude: Math.max( settings.cloudAltitude / 1000, settings.observerAltitude ) } );
-				cloudSun.value.setRGB( ...cloudLight.color.map( value => value * cloudLight.illuminance * storageScale ) );
-				const start = performance.now();
-				if ( lutAerosol !== settings.aerosol ) {
+				try {
 
-					renderPass( lutMaterial, lutTarget );
-					lutAerosol = settings.aerosol;
+					dirty = false;
+					const settings = { ...params };
+					const model = { ...atmosphere, aerosol: settings.aerosol, observerAltitude: settings.observerAltitude };
+					const direction = sunDirection( settings.altitude, settings.azimuth, settings.northRotation );
+					const light = sunLightState( settings.altitude, model );
+					const solidAngle = 2 * Math.PI * ( 1 - Math.cos( THREE.MathUtils.degToRad( model.sunRadius ) ) );
+					const discRadiance = light.transmission.map( value => light.visibility > 0 ? value * model.sunIlluminance / solidAngle : 0 );
+					storageScale = Math.min( 1, 60000 / Math.max( model.sunIlluminance, ...discRadiance ) );
+					atmosphereNode.sunDirection.value.fromArray( direction );
+					atmosphereNode.aerosol.value = settings.aerosol;
+					atmosphereNode.observerAltitude.value = settings.observerAltitude;
+					atmosphereNode.preExposure.value = storageScale;
+					clouds.coverage.value = settings.cloudCoverage;
+					clouds.altitude.value = settings.cloudAltitude;
+					clouds.observerAltitude.value = settings.observerAltitude * 1000;
+					clouds.density.value = settings.cloudDensity;
+					clouds.noiseScale.value = settings.cloudScale;
+					clouds.noiseOffset.value.set( settings.cloudOffset, 0 );
+					const cloudLight = sunLightState( settings.altitude, { ...model, observerAltitude: Math.max( settings.cloudAltitude / 1000, settings.observerAltitude ) } );
+					cloudSun.value.setRGB( ...cloudLight.color.map( value => value * cloudLight.illuminance * storageScale ) );
+					const start = performance.now();
+					if ( lutAerosol !== settings.aerosol ) {
+
+						renderPass( lutMaterial, lutTarget );
+						lutAerosol = settings.aerosol;
+
+					}
+
+					if ( skyTarget.width !== settings.resolution ) {
+
+						skyTarget.setSize( settings.resolution, settings.resolution / 2 );
+						if ( environment ) environment.dispose();
+						environment = undefined;
+
+					}
+
+					renderPass( sunCloudMaterial, sunCloudTarget );
+					renderPass( skyMaterial, skyTarget );
+					renderPass( meterMaterial, meterTarget );
+					directNormal = light.illuminance;
+					directHorizontal = directNormal * Math.max( direction[ 1 ], 0 );
+					const albedo = new THREE.Color( settings.groundAlbedo );
+					ground.material.color.copy( albedo );
+					groundAlbedo.value.copy( albedo );
+					directIrradiance.value.setRGB( ...light.color.map( value => value * directHorizontal * storageScale ) );
+					const autoClear = renderer.autoClear;
+					renderer.autoClear = false;
+					renderPass( groundMaterial, skyTarget );
+					renderer.autoClear = autoClear;
+					environment = pmrem.fromEquirectangular( skyTarget.texture, environment );
+					// Submit every bake pass before reading back the meter for the UI/exposure.
+					const meterPixels = await renderer.readRenderTargetPixelsAsync( meterTarget, 0, 0, 1, 1 );
+					const skyRGB = Array.from( meterPixels ).slice( 0, 3 ).map( value => THREE.DataUtils.fromHalfFloat( value ) / storageScale );
+					cloudTransmission.value = THREE.DataUtils.fromHalfFloat( meterPixels[ 3 ] );
+					directNormal *= cloudTransmission.value;
+					directHorizontal *= cloudTransmission.value;
+					skyIlluminance = luminance( skyRGB );
+					scene.environment = environment.texture;
+					sunVector.value.fromArray( direction );
+					sun.position.fromArray( direction ).multiplyScalar( 200 );
+					sun.color.setRGB( ...light.color );
+					sun.intensity = directNormal * storageScale;
+					updateShadows();
+					sunRadiance.value.setRGB( ...discRadiance.map( value => value * storageScale ) );
+					sunDisc.value = params.showSunDisc ? 1 : 0;
+					const ev = updateExposure();
+					bakeCount ++;
+					const band = settings.altitude > 0 ? 'Daylight' : settings.altitude > - 6 ? 'Civil twilight' : settings.altitude > - 12 ? 'Nautical twilight' : settings.altitude > - 18 ? 'Astronomical twilight' : 'Night';
+					document.getElementById( 'readout' ).innerHTML = `${band}<br>Cloud sun transmission: ${( cloudTransmission.value * 100 ).toFixed( 1 )}%<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Sky: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
+
+				} finally {
+
+					baking = false;
 
 				}
-
-				if ( skyTarget.width !== settings.resolution ) {
-
-					skyTarget.setSize( settings.resolution, settings.resolution / 2 );
-					if ( environment ) environment.dispose();
-					environment = undefined;
-
-				}
-
-				renderPass( sunCloudMaterial, sunCloudTarget );
-				renderPass( skyMaterial, skyTarget );
-				renderPass( meterMaterial, meterTarget );
-				directNormal = light.illuminance;
-				directHorizontal = directNormal * Math.max( direction[ 1 ], 0 );
-				const albedo = new THREE.Color( settings.groundAlbedo );
-				ground.material.color.copy( albedo );
-				groundAlbedo.value.copy( albedo );
-				directIrradiance.value.setRGB( ...light.color.map( value => value * directHorizontal * storageScale ) );
-				const autoClear = renderer.autoClear;
-				renderer.autoClear = false;
-				renderPass( groundMaterial, skyTarget );
-				renderer.autoClear = autoClear;
-				environment = pmrem.fromEquirectangular( skyTarget.texture, environment );
-				// Submit every bake pass before reading back the meter for the UI/exposure.
-				const meterPixels = await renderer.readRenderTargetPixelsAsync( meterTarget, 0, 0, 1, 1 );
-				const skyRGB = Array.from( meterPixels ).slice( 0, 3 ).map( value => THREE.DataUtils.fromHalfFloat( value ) / storageScale );
-				cloudTransmission.value = THREE.DataUtils.fromHalfFloat( meterPixels[ 3 ] );
-				directNormal *= cloudTransmission.value;
-				directHorizontal *= cloudTransmission.value;
-				skyIlluminance = luminance( skyRGB );
-				scene.environment = environment.texture;
-				sunVector.value.fromArray( direction );
-				sun.position.fromArray( direction ).multiplyScalar( 200 );
-				sun.color.setRGB( ...light.color );
-				sun.intensity = directNormal * storageScale;
-				updateShadows();
-				sunRadiance.value.setRGB( ...discRadiance.map( value => value * storageScale ) );
-				sunDisc.value = params.showSunDisc ? 1 : 0;
-				const ev = updateExposure();
-				bakeCount ++;
-				const band = settings.altitude > 0 ? 'Daylight' : settings.altitude > - 6 ? 'Civil twilight' : settings.altitude > - 12 ? 'Nautical twilight' : settings.altitude > - 18 ? 'Astronomical twilight' : 'Night';
-				document.getElementById( 'readout' ).innerHTML = `${band}<br>Cloud sun transmission: ${( cloudTransmission.value * 100 ).toFixed( 1 )}%<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Sky: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
-				baking = false;
 
 			}
 

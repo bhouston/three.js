@@ -18,6 +18,12 @@ class CloudLayerNode extends Node {
 
 	}
 
+	/**
+	 * @param {Node<vec3>} skyNode - Pre-exposed atmosphere radiance without the disc.
+	 * @param {Node<vec3>} directionNode - Normalized world-space viewing ray.
+	 * @param {Node<vec3>} sunDirectionNode - Normalized direction toward the sun.
+	 * @param {Node<vec3>} sunIrradianceNode - Atmosphere-filtered solar irradiance at cloud altitude, using the same pre-exposure as skyNode.
+	 */
 	constructor( skyNode, directionNode, sunDirectionNode, sunIrradianceNode ) {
 
 		super( 'vec4' );
@@ -25,15 +31,27 @@ class CloudLayerNode extends Node {
 		this.directionNode = directionNode;
 		this.sunDirectionNode = sunDirectionNode;
 		this.sunIrradianceNode = sunIrradianceNode;
-		this.coverage = uniform( 0.5 );
+		/** @type {UniformNode<float>} Artistic coverage control, from clear (0) to full cover (1). */
+		this.coverage = uniform( 0 );
+		/** @type {UniformNode<float>} Layer altitude in metres, clamped above the observer. */
 		this.altitude = uniform( 2000 );
+		/** @type {UniformNode<float>} Observer altitude in metres. */
 		this.observerAltitude = uniform( 2 );
+		/** @type {UniformNode<float>} Vertical optical depth at full density. */
 		this.density = uniform( 2 );
+		/** @type {UniformNode<float>} Positive noise feature size in metres. */
 		this.noiseScale = uniform( 2500 );
+		/** @type {UniformNode<vec2>} Static arrangement offset in noise coordinates. */
 		this.noiseOffset = uniform( new Vector2() );
 
 	}
 
+	/**
+	 * Uses the same density field for the sky and solar attenuation passes.
+	 *
+	 * @param {Node<vec3>} direction - Normalized world-space ray.
+	 * @return {Node<float>} Unscaled Beer-Lambert transmittance.
+	 */
 	getTransmittanceNode( direction ) {
 
 		return Fn( () => {
@@ -64,15 +82,21 @@ class CloudLayerNode extends Node {
 		return Fn( () => {
 
 			const transmission = this.getTransmittanceNode( this.directionNode ).toVar();
-			const cosine = this.directionNode.dot( this.sunDirectionNode );
-			// Broad dual-lobe scattering avoids a second bright, unresolved sun in IBL.
-			const phase = float( 0.64 ).div( float( 1.36 ).sub( cosine.mul( 1.2 ) ).pow( 1.5 ) ).mul( 0.8 )
-				.add( float( 0.96 ).div( float( 1.04 ).add( cosine.mul( 0.4 ) ).pow( 1.5 ) ).mul( 0.2 ) ).div( 4 * Math.PI );
-			const baseLight = this.sunIrradianceNode.mul( transmission.sqrt().mul( 0.12 ).add( 0.035 ) ).div( Math.PI );
-			const silver = this.sunIrradianceNode.mul( phase ).mul( transmission.sqrt().mul( 0.7 ).add( 0.3 ) );
-			const ambient = this.skyNode.mul( 0.6 ).add( baseLight );
-			const cloud = ambient.add( silver );
-			return vec4( mix( cloud, this.skyNode, transmission ), transmission );
+			const radiance = this.skyNode.toVar();
+			If( transmission.lessThan( 1 ), () => {
+
+				const cosine = this.directionNode.dot( this.sunDirectionNode );
+				// Broad dual-lobe scattering avoids a second bright, unresolved sun in IBL.
+				const phase = float( 0.64 ).div( float( 1.36 ).sub( cosine.mul( 1.2 ) ).pow( 1.5 ) ).mul( 0.8 )
+					.add( float( 0.96 ).div( float( 1.04 ).add( cosine.mul( 0.4 ) ).pow( 1.5 ) ).mul( 0.2 ) ).div( 4 * Math.PI );
+				const baseLight = this.sunIrradianceNode.mul( transmission.sqrt().mul( 0.12 ).add( 0.035 ) ).div( Math.PI );
+				const silver = this.sunIrradianceNode.mul( phase ).mul( transmission.sqrt().mul( 0.7 ).add( 0.3 ) );
+				const ambient = this.skyNode.mul( 0.6 ).add( baseLight );
+				const cloud = ambient.add( silver );
+				radiance.assign( mix( cloud, radiance, transmission ) );
+
+			} );
+			return vec4( radiance, transmission );
 
 		} )();
 

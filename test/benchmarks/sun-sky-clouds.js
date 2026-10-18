@@ -22,7 +22,7 @@ try {
 
 			let html = await fs.readFile( 'examples/webgpu_sky.html', 'utf8' );
 			html = html.replace( 'autoRotate: true', 'autoRotate: false' );
-			html = html.replace( 'renderer.setAnimationLoop( animate );', 'window.cloudTest = { THREE, renderer, scene, camera, params, bakeSky, animate, get storageScale() { return storageScale; }, skyTarget, skyMaterial, atmosphereNode, renderPass, sun, csmSun, cloudTransmission, get bakeCount() { return bakeCount; }, get baking() { return baking; }, get environment() { return environment; } }; renderer.setAnimationLoop( animate );' );
+			html = html.replace( 'renderer.setAnimationLoop( animate );', 'window.cloudTest = { THREE, renderer, scene, camera, controls, params, bakeSky, animate, backgroundTarget, changeBackgroundResolution( width ) { params.backgroundResolution = width; backgroundDirty = true; }, get storageScale() { return storageScale; }, skyTarget, skyMaterial, atmosphereNode, renderPass, sun, csmSun, cloudTransmission, get bakeCount() { return bakeCount; }, get baking() { return baking; }, get environment() { return environment; } }; renderer.setAnimationLoop( animate );' );
 			await request.respond( { status: 200, contentType: 'text/html', body: html } );
 
 		} else request.continue();
@@ -37,8 +37,38 @@ try {
 		const info = b.renderer.backend.device.adapterInfo;
 		if ( info.isFallbackAdapter || /swiftshader|llvmpipe|lavapipe|software/i.test( [ info.vendor, info.description, info.architecture ].join( ' ' ) ) || ! /nvidia|amd|intel|apple|qualcomm/i.test( info.vendor ) ) throw Error( 'Hardware GPU verification blocked' );
 		b.renderer.inspector.domElement.style.display = 'none';
-		b.camera.lookAt( 0, 8, 0 );
+		b.controls.target.set( 0, 8, 0 );
+		b.controls.update();
 		return { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description };
+
+	} );
+	const resolutionChecks = [];
+	for ( const width of [ 512, 1024, 2048, 4096, 8192 ] ) {
+
+		const check = await page.evaluate( async width => {
+
+			const b = window.cloudTest;
+			const lightingBakes = b.bakeCount;
+			const environment = b.environment;
+			const lightIntensity = b.sun.intensity;
+			b.changeBackgroundResolution( width );
+			b.animate();
+			await b.renderer.backend.device.queue.onSubmittedWorkDone();
+			if ( b.bakeCount !== lightingBakes || b.environment !== environment || b.sun.intensity !== lightIntensity || b.skyTarget.width !== 512 ) throw Error( 'Background resizing changed lighting' );
+			if ( b.backgroundTarget.width !== width || b.backgroundTarget.height !== width / 2 ) throw Error( 'Background resize failed' );
+			return { width, height: b.backgroundTarget.height, lightingBakes, iblSourceWidth: b.skyTarget.width, pmremFace: b.environment.width, sunIntensity: b.sun.intensity };
+
+		}, width );
+		resolutionChecks.push( check );
+		await page.screenshot( { path: path.join( output, 'resolution-' + width + '.jpg' ), type: 'jpeg', quality: 95 } );
+
+	}
+
+	// Preserve the original low-resolution lighting regression/benchmark workload.
+	await page.evaluate( () => {
+
+		window.cloudTest.changeBackgroundResolution( 512 );
+		window.cloudTest.animate();
 
 	} );
 	const states = [];
@@ -117,8 +147,14 @@ try {
 
 		const b = window.cloudTest;
 		const results = [];
-		for ( const coverage of [ 0, 0.5 ] ) {
+		for ( const { coverage, backgroundWidth } of [
+			{ coverage: 0, backgroundWidth: 512 },
+			{ coverage: 0.5, backgroundWidth: 512 },
+			{ coverage: 0.5, backgroundWidth: 4096 },
+			{ coverage: 0.5, backgroundWidth: 8192 }
+		] ) {
 
+			b.params.backgroundResolution = backgroundWidth;
 			b.params.cloudCoverage = coverage;
 			b.params.cloudDensity = 2;
 			let frames = 0;
@@ -142,7 +178,7 @@ try {
 			} while ( performance.now() - start < 5000 );
 
 			const elapsed = performance.now() - start;
-			results.push( { coverage, frames, elapsed, completedUpdatesPerSecond: frames * 1000 / elapsed } );
+			results.push( { coverage, backgroundWidth, frames, elapsed, completedUpdatesPerSecond: frames * 1000 / elapsed } );
 
 		}
 
@@ -150,9 +186,9 @@ try {
 
 	} );
 	if ( errors.length ) throw Error( errors.join( '\n' ) );
-	const result = { adapter, states, checks, throughput, errors };
+	const result = { adapter, resolutionChecks, states, checks, throughput, errors };
 	await fs.writeFile( path.join( output, 'results.json' ), JSON.stringify( result, null, 2 ) );
-	console.log( JSON.stringify( { adapter, checks, throughput, visualStates: states.length }, null, 2 ) );
+	console.log( JSON.stringify( { adapter, resolutionChecks, checks, throughput, visualStates: states.length }, null, 2 ) );
 
 } finally {
 

@@ -11,9 +11,10 @@ import { Fn } from '../tsl/TSLCore.js';
  */
 export const sRGBTransferEOTF = /*@__PURE__*/ Fn( ( [ color ] ) => {
 
-	const a = color.mul( 0.9478672986 ).add( 0.0521327014 ).pow( 2.4 );
+	const magnitude = color.abs();
+	const a = magnitude.mul( 0.9478672986 ).add( 0.0521327014 ).pow( 2.4 ).mul( color.sign() );
 	const b = color.mul( 0.0773993808 );
-	const factor = color.lessThanEqual( 0.04045 );
+	const factor = magnitude.lessThanEqual( 0.04045 );
 
 	const rgbResult = mix( a, b, factor );
 
@@ -31,9 +32,10 @@ export const sRGBTransferEOTF = /*@__PURE__*/ Fn( ( [ color ] ) => {
  */
 export const sRGBTransferOETF = /*@__PURE__*/ Fn( ( [ color ] ) => {
 
-	const a = color.pow( 0.41666 ).mul( 1.055 ).sub( 0.055 );
+	const magnitude = color.abs();
+	const a = magnitude.pow( 0.41666 ).mul( 1.055 ).sub( 0.055 ).mul( color.sign() );
 	const b = color.mul( 12.92 );
-	const factor = color.lessThanEqual( 0.0031308 );
+	const factor = magnitude.lessThanEqual( 0.0031308 );
 
 	const rgbResult = mix( a, b, factor );
 

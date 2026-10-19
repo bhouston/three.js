@@ -3,6 +3,7 @@ import {
 	sRGBTransferEOTF, sRGBTransferOETF
 } from 'three/tsl';
 import { SRGBToLinear, LinearToSRGB } from '../../../../../src/math/ColorManagement.js';
+import { mx_srgb_texture_to_lin_rec709 } from '../../../../../src/nodes/materialx/MaterialXColorTransform.js';
 import { gpuTest } from './gpu-test-utils.js';
 
 // sRGB <-> linear-sRGB transfer function coverage. Every expected value below
@@ -53,6 +54,24 @@ export default QUnit.module( 'Nodes', () => {
 				assert.closeAbs( sRGBTransferOETF( vec3( 0.21404114 ) ), vec3( 0.5 ), 1e-3, 'OETF(0.21404114) matches the well-known sRGB mid-gray value' );
 
 				assert.closeAbs( sRGBTransferOETF( vec3( 1 ) ), vec3( 1 ), 1e-4, 'OETF(1) == 1' );
+
+			} );
+
+			gpuTest( 'extended sRGB preserves signed and out-of-range components', ( { assert } ) => {
+
+				for ( const values of [ [ - 0.02, - 0.04046, - 0.5 ], [ - 2, 0, 2 ], [ - 0.04044, 0.04045, 0.04046 ] ] ) {
+
+					const expected = vec3( ...values.map( SRGBToLinear ) );
+					assert.closeAbs( sRGBTransferEOTF( vec3( ...values ) ), expected, 1e-4, `EOTF(${ values })` );
+					assert.closeAbs( mx_srgb_texture_to_lin_rec709( vec3( ...values ) ), expected, 1e-4, `MaterialX EOTF(${ values })` );
+
+				}
+
+				for ( const values of [ [ - 0.001, - 0.0031309, - 0.21404114 ], [ - 2, 0, 2 ], [ - 0.0031307, 0.0031308, 0.0031309 ] ] ) {
+
+					assert.closeAbs( sRGBTransferOETF( vec3( ...values ) ), vec3( ...values.map( LinearToSRGB ) ), 1e-4, `OETF(${ values })` );
+
+				}
 
 			} );
 

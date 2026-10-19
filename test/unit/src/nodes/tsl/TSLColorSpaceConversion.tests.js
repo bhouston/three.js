@@ -58,7 +58,7 @@ export default QUnit.module( 'Nodes', () => {
 
 			gpuTest( 'colorSpaceToWorking() and workingToColorSpace() round-trip an sRGB color', ( { assert } ) => {
 
-				const original = vec4( 0.6, 0.3, 0.9, 1 );
+				const original = vec4( - 0.6, 0.003, 1.4, 0.37 );
 				const roundTripped = workingToColorSpace( colorSpaceToWorking( original, SRGBColorSpace ), SRGBColorSpace );
 
 				assert.closeAbs( roundTripped, original, 1e-4, 'workingToColorSpace(colorSpaceToWorking(c)) recovers the original color' );

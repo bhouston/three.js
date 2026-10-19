@@ -33,7 +33,7 @@
 		</script>
 		<script type="module">
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Discard, Loop, float, vec2, vec3, vec4, uv, texture, equirectUV, equirectDirection, positionWorldDirection, uniform, dot, smoothstep } from 'three/tsl';
+			import { Fn, If, Discard, Loop, float, vec2, vec3, vec4, uv, texture, equirectUV, equirectDirection, positionWorldDirection, positionWorld, uniform, dot, smoothstep } from 'three/tsl';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { SunLight } from 'three/addons/lights/SunLight.js';
 			import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
@@ -43,6 +43,9 @@
 			import { atmosphere, luminance, sunDirection, sunLightState, exposure } from 'three/addons/math/Atmosphere.js';
 
 			const params = {
+				cloudShadowMap: true,
+				cloudShadowSize: 400,
+				cloudShadowResolution: 256,
 				cloudCoverage: 0.4,
 				cloudAltitude: 2000,
 				cloudDensity: 2,
@@ -115,6 +118,22 @@
 			const clouds = new CloudLayerNode( atmosphereNode, equirectDirection( uv() ), atmosphereNode.sunDirection, cloudSun );
 			const cloudTransmission = uniform( 1 );
 			const sunCloudTarget = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
+			// A sun-aligned transmission cookie: parallel rays keep their direction.
+			const cloudShadowTarget = new THREE.RenderTarget( params.cloudShadowResolution, params.cloudShadowResolution, { type: THREE.HalfFloatType, depthBuffer: false } );
+			const cloudShadowSize = uniform( params.cloudShadowSize );
+			const cloudShadowEnabled = uniform( 1 );
+			const cloudShadowU = uniform( new THREE.Vector3() );
+			const cloudShadowV = uniform( new THREE.Vector3() );
+			const cloudShadowMaterial = new THREE.NodeMaterial();
+			const mapOrigin = cloudShadowU.mul( uv().x.sub( 0.5 ).mul( cloudShadowSize ) ).add( cloudShadowV.mul( uv().y.sub( 0.5 ).mul( cloudShadowSize ) ) );
+			cloudShadowMaterial.fragmentNode = vec4( clouds.getTransmittanceNode( atmosphereNode.sunDirection, mapOrigin ) );
+			const cloudShadowUV = vec2( positionWorld.dot( cloudShadowU ), positionWorld.dot( cloudShadowV ) ).div( cloudShadowSize ).add( 0.5 );
+			const edge = cloudShadowUV.sub( 0.5 ).abs().mul( 2 );
+			const weight = float( 1 ).sub( smoothstep( 0.8, 1, edge.x.max( edge.y ) ) ).mul( cloudShadowEnabled );
+			const spatialTransmission = cloudTransmission.mix( texture( cloudShadowTarget.texture, cloudShadowUV ).r, weight );
+			const directSunColor = uniform( new THREE.Color() );
+			// colorNode replaces the default light color/intensity uniform; update it below.
+			sun.colorNode = csmSun.colorNode = directSunColor.mul( spatialTransmission );
 			const sunCloudMaterial = new THREE.NodeMaterial();
 			sunCloudMaterial.fragmentNode = vec4( vec3( 0 ), clouds.getTransmittanceNode( atmosphereNode.sunDirection ) );
 			const skyMaterial = new THREE.NodeMaterial();
@@ -342,6 +361,15 @@
 
 					}
 
+					const normal = new THREE.Vector3().fromArray( direction );
+					const axis = Math.abs( normal.y ) < 0.99 ? new THREE.Vector3( 0, 1, 0 ) : new THREE.Vector3( 1, 0, 0 );
+					cloudShadowU.value.crossVectors( axis, normal ).normalize();
+					cloudShadowV.value.crossVectors( normal, cloudShadowU.value ).normalize();
+					cloudShadowSize.value = settings.cloudShadowSize;
+					cloudShadowEnabled.value = settings.cloudShadowMap ? 1 : 0;
+					cloudShadowTarget.setSize( settings.cloudShadowResolution, settings.cloudShadowResolution );
+					if ( settings.cloudShadowMap ) renderPass( cloudShadowMaterial, cloudShadowTarget );
+					directSunColor.value.setRGB( ...light.color.map( value => value * light.illuminance * storageScale ) );
 					renderPass( sunCloudMaterial, sunCloudTarget );
 					renderPass( skyMaterial, skyTarget );
 					renderPass( meterMaterial, meterTarget );
@@ -401,6 +429,9 @@
 			shadowFolder.add( params, 'shadowMapSize', [ 1024, 2048, 4096 ] ).name( 'map size (per cascade)' ).onChange( updateShadows );
 			shadowFolder.add( params, 'shadowDistance', 20, 200, 1 ).name( 'shadow distance (m)' ).onChange( updateShadows );
 			const cloudFolder = gui.addFolder( 'Static clouds' );
+			cloudFolder.add( params, 'cloudShadowMap' ).name( 'spatial cloud shadows' ).onChange( changed );
+			cloudFolder.add( params, 'cloudShadowSize', 50, 4000, 10 ).name( 'cloud map extent m' ).onChange( changed );
+			cloudFolder.add( params, 'cloudShadowResolution', [ 64, 128, 256, 512 ] ).name( 'cloud map resolution' ).onChange( changed );
 			cloudFolder.add( params, 'cloudCoverage', 0, 1, 0.01 ).name( 'coverage' ).onChange( changed );
 			cloudFolder.add( params, 'cloudAltitude', 500, 6000, 100 ).name( 'altitude m' ).onChange( changed );
 			cloudFolder.add( params, 'cloudDensity', 0, 10, 0.1 ).name( 'density' ).onChange( changed );

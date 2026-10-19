@@ -50,20 +50,21 @@ class CloudLayerNode extends Node {
 	 * Uses the same density field for the sky and solar attenuation passes.
 	 *
 	 * @param {Node<vec3>} direction - Normalized world-space ray.
+	 * @param {Node<vec3>} [origin=vec3(0)] - Local world-space ray origin in metres.
 	 * @return {Node<float>} Unscaled Beer-Lambert transmittance.
 	 */
-	getTransmittanceNode( direction ) {
+	getTransmittanceNode( direction, origin = vec3( 0 ) ) {
 
 		return Fn( () => {
 
 			const transmission = float( 1 ).toVar();
 			If( direction.y.greaterThan( 0 ).and( this.coverage.greaterThan( 0 ) ), () => {
 
-				const radius = this.observerAltitude.add( 6371000 );
+				const radius = this.observerAltitude.add( origin.y ).add( 6371000 );
 				const shell = this.altitude.max( this.observerAltitude.add( 1 ) ).add( 6371000 );
 				const b = radius.mul( direction.y );
 				const distance = b.mul( b ).add( shell.sub( radius ).mul( shell.add( radius ) ) ).sqrt().sub( b );
-				const point = direction.mul( distance );
+				const point = direction.mul( distance ).add( origin );
 				const noise = mx_fractal_noise_float( vec3( point.xz.div( this.noiseScale ).add( this.noiseOffset ), 0 ), 5 ).mul( 0.5 ).add( 0.5 );
 				const threshold = float( 1.1 ).sub( this.coverage.mul( 1.2 ) );
 				const amount = this.coverage.greaterThanEqual( 1 ).select( float( 1 ), smoothstep( threshold.sub( 0.18 ), threshold.add( 0.18 ), noise ) );

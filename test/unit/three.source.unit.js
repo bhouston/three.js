@@ -270,3 +270,4 @@ import './src/nodes/display/ViewportDepthTextureNode.tests.js';
 
 //src/nodes/tsl
 import './src/nodes/tsl/TSLCore.tests.js';
+import './src/renderers/ArrayCameraLighting.tests.js';

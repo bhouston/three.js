@@ -6,13 +6,6 @@ import { SRGBToLinear, LinearToSRGB } from '../../../../../src/math/ColorManagem
 import { mx_srgb_texture_to_lin_rec709 } from '../../../../../src/nodes/materialx/MaterialXColorTransform.js';
 import { gpuTest } from './gpu-test-utils.js';
 
-// sRGB <-> linear-sRGB transfer function coverage. Every expected value below
-// comes from SRGBToLinear()/LinearToSRGB() (src/math/ColorManagement.js) --
-// the same IEC 61966-2-1 piecewise formula that sRGBTransferEOTF()/
-// sRGBTransferOETF() implement in TSL, but an independent, pre-existing
-// implementation, not derived by re-running the TSL expressions under test
-// (see TSLMath.tests.js's file header for why that matters:
-// https://ben3d.ca/blog/the-rise-of-test-theater).
 export default QUnit.module( 'Nodes', () => {
 
 	QUnit.module( 'TSL', () => {
@@ -25,11 +18,6 @@ export default QUnit.module( 'Nodes', () => {
 				assert.closeAbs( sRGBTransferEOTF( vec3( 0, 0, 0 ) ), vec3( 0, 0, 0 ), 1e-6, 'EOTF(0) == 0' );
 				assert.closeAbs( sRGBTransferEOTF( vec3( 1, 1, 1 ) ), vec3( 1, 1, 1 ), 1e-4, 'EOTF(1) == 1' );
 
-				// Below the linear-segment threshold (0.04045): x / 12.92.
-				// sRGBTransferEOTF() is declared (via setLayout) as taking/returning
-				// vec3, so scalar inputs must be broadcast to vec3 explicitly --
-				// a bare float() input still comes back typed vec3, which a bare
-				// float() expected value can't be compared against.
 				assert.closeAbs( sRGBTransferEOTF( vec3( 0.02 ) ), vec3( SRGBToLinear( 0.02 ) ), 1e-6, 'EOTF(0.02) uses the linear low-end segment' );
 
 				// Above the threshold: ((x + 0.055) / 1.055) ^ 2.4 -- checked at a
@@ -77,12 +65,6 @@ export default QUnit.module( 'Nodes', () => {
 
 			gpuTest( 'sRGBTransferEOTF() and sRGBTransferOETF() are inverses of each other', ( { assert } ) => {
 
-				// Round-trip check using values independently known from the tests
-				// above -- not by feeding a value through both functions and
-				// comparing to itself with no other reference (that alone would be
-				// test theater), but the *shape* of a round-trip is still a useful,
-				// additional cross-check once each direction is independently
-				// verified against the closed-form formula above.
 				const linear = vec3( 0.02, 0.2140411, 0.8 );
 				const roundTrip = sRGBTransferEOTF( sRGBTransferOETF( linear ) );
 

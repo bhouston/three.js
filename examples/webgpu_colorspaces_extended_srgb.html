@@ -9,6 +9,16 @@
 		<meta property="og:url" content="https://threejs.org/examples/webgpu_colorspaces_extended_srgb.html">
 		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_colorspaces_extended_srgb.jpg">
 		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			.label {
+				position: absolute;
+				transform: translateY( -50% );
+				color: #fff;
+				font: 13px monospace;
+				text-shadow: 0 0 4px #000, 0 0 2px #000;
+				pointer-events: none;
+			}
+		</style>
 	</head>
 	<body>
 
@@ -21,8 +31,7 @@
 
 			<small>
 				<a href="https://www.w3.org/TR/css-color-4/#color-conversion-code" target="_blank" rel="noopener">Extended sRGB</a> color conversions preserve negative components during Display-P3 interpolation.<br />
-				Top: extended sRGB. Middle: former transfer curve. Bottom: linear light.<br />
-				Transfer plots: teal = extended sRGB, orange = former curve. Final colors are clipped to sRGB.
+				<span id="output">Display-P3 unavailable: final colors are clipped to sRGB.</span>
 			</small>
 		</div>
 
@@ -39,17 +48,24 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, mix, uniform, uv, vec3, min, sRGBTransferEOTF, sRGBTransferOETF } from 'three/tsl';
+			import { Fn, mix, uniform, uv, sRGBTransferEOTF, sRGBTransferOETF } from 'three/tsl';
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { DisplayP3ColorSpace, DisplayP3ColorSpaceImpl, LinearDisplayP3ColorSpace, LinearDisplayP3ColorSpaceImpl } from 'three/addons/math/ColorSpaces.js';
+
+			THREE.ColorManagement.define( {
+				[ DisplayP3ColorSpace ]: DisplayP3ColorSpaceImpl,
+				[ LinearDisplayP3ColorSpace ]: LinearDisplayP3ColorSpaceImpl
+			} );
 
 			let renderer, scene, camera;
-			const params = { view: 0, pair: 0 };
-			const start = uniform( new THREE.Color() );
-			const end = uniform( new THREE.Color() );
-			const view = uniform( 0, 'int' );
-			const lineWidth = uniform( 0.01 );
-			const pairs = [[[ 1, 0, 0 ], [ 0, 1, 0 ]], [[ 1, 0.5, 0 ], [ 0, 1, 1 ]], [[ 1, 0, 1 ], [ 0, 1, 0 ]]];
+			const stripes = [];
+
+			const pairs = [
+				{ name: 'Red → green', start: [ 1, 0, 0 ], end: [ 0, 1, 0 ] },
+				{ name: 'Orange → cyan', start: [ 1, 0.5, 0 ], end: [ 0, 1, 1 ] },
+				{ name: 'Magenta → green', start: [ 1, 0, 1 ], end: [ 0, 1, 0 ] }
+			];
 
 			// Linear Display-P3 to linear sRGB, with a D65 white point.
 			const p3ToSRGB = new THREE.Matrix3().set(
@@ -68,102 +84,96 @@
 				value.div( 12.92 ), value.lessThanEqual( 0.04045 )
 			) );
 
+			const modes = [
+				{ name: 'extended sRGB transfer', interpolate: ( a, b ) => sRGBTransferEOTF( mix( sRGBTransferOETF( a ), sRGBTransferOETF( b ), uv().x ) ) },
+				{ name: 'clamped sRGB transfer', interpolate: ( a, b ) => oldDecode( mix( oldEncode( a ), oldEncode( b ), uv().x ) ) }
+			];
+
 			init();
 
 			function init() {
 
-				camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 2 );
-				camera.position.z = 1;
+				// Pixel-space camera, y pointing down.
+				camera = new THREE.OrthographicCamera( 0, 1, 0, - 1, - 1, 1 );
 				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x000000 );
 
-				const material = new THREE.MeshBasicNodeMaterial();
-				material.colorNode = Fn( () => {
+				const geometry = new THREE.PlaneGeometry( 1, 1 );
 
-					const color = vec3( 0 ).toVar();
+				for ( const pair of pairs ) {
 
-					If( view.equal( 0 ), () => {
+					const start = uniform( new THREE.Color().fromArray( pair.start ).convertSRGBToLinear().applyMatrix3( p3ToSRGB ) );
+					const end = uniform( new THREE.Color().fromArray( pair.end ).convertSRGBToLinear().applyMatrix3( p3ToSRGB ) );
 
-						If( uv().y.greaterThan( 2 / 3 ), () => {
+					for ( const mode of modes ) {
 
-							color.assign( sRGBTransferEOTF( mix( sRGBTransferOETF( start ), sRGBTransferOETF( end ), uv().x ) ) );
+						const material = new THREE.MeshBasicNodeMaterial();
+						material.colorNode = mode.interpolate( start, end );
 
-						} ).ElseIf( uv().y.greaterThan( 1 / 3 ), () => {
+						const mesh = new THREE.Mesh( geometry, material );
+						scene.add( mesh );
 
-							color.assign( oldDecode( mix( oldEncode( start ), oldEncode( end ), uv().x ) ) );
+						const label = document.createElement( 'div' );
+						label.className = 'label';
+						label.textContent = `${ pair.name }: ${ mode.name }`;
+						document.body.appendChild( label );
 
-						} ).Else( () => {
+						stripes.push( { mesh, label } );
 
-							color.assign( mix( start, end, uv().x ) );
+					}
 
-						} );
-
-					} ).Else( () => {
-
-						const p = uv().sub( 0.5 ).mul( 3 );
-						const grid = p.mul( 2 ).add( 0.5 ).fract().sub( 0.5 ).abs();
-						const input = vec3( p.x );
-						const extended = view.equal( 1 ).select( sRGBTransferOETF( input ).r, sRGBTransferEOTF( input ).r );
-						const former = view.equal( 1 ).select( oldEncode( input ).r, oldDecode( input ).r );
-
-						color.assign( vec3( 0.012, 0.016, 0.024 ) );
-						If( min( grid.x, grid.y ).lessThan( 0.006 ), () => {
-
-							color.assign( vec3( 0.035 ) );
-
-						} );
-						If( min( p.x.abs(), p.y.abs() ).lessThan( 0.008 ), () => {
-
-							color.assign( vec3( 0.15 ) );
-
-						} );
-						If( p.y.sub( former ).abs().lessThan( lineWidth ), () => {
-
-							color.assign( vec3( 1, 0.42, 0.12 ) );
-
-						} );
-						If( p.y.sub( extended ).abs().lessThan( lineWidth ), () => {
-
-							color.assign( vec3( 0.11, 0.81, 0.72 ) );
-
-						} );
-
-					} );
-
-					return color;
-
-				} )();
-				scene.add( new THREE.Mesh( new THREE.PlaneGeometry( 2, 2 ), material ) );
+				}
 
 				renderer = new THREE.WebGPURenderer();
+
+				if ( window.matchMedia( '( color-gamut: p3 )' ).matches ) {
+
+					renderer.outputColorSpace = DisplayP3ColorSpace;
+					document.getElementById( 'output' ).remove();
+
+				}
+
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.setAnimationLoop( animate );
 				renderer.inspector = new Inspector();
 				document.body.appendChild( renderer.domElement );
 
-				const gui = renderer.inspector.createParameters( 'Settings' );
-				gui.add( params, 'view', { 'Interpolation': 0, 'Linear → sRGB': 1, 'sRGB → linear': 2 } ).name( 'View' ).onChange( update ).info( 'Interpolation compares three transfer methods. Plots show input and output from -1.5 to +1.5, with a 0.5 grid.' );
-				gui.add( params, 'pair', { 'Red → green': 0, 'Orange → cyan': 1, 'Magenta → green': 2 } ).name( 'Colors' ).onChange( update ).info( 'Display-P3 endpoints for the interpolation comparison.' );
-
 				window.addEventListener( 'resize', onWindowResize );
 				onWindowResize();
-				update();
-
-			}
-
-			function update() {
-
-				const endpoints = pairs[ params.pair ];
-				start.value.fromArray( endpoints[ 0 ] ).convertSRGBToLinear().applyMatrix3( p3ToSRGB );
-				end.value.fromArray( endpoints[ 1 ] ).convertSRGBToLinear().applyMatrix3( p3ToSRGB );
-				view.value = params.view;
 
 			}
 
 			function onWindowResize() {
 
-				renderer.setSize( window.innerWidth, window.innerHeight );
-				lineWidth.value = 5 / window.innerHeight;
+				const w = window.innerWidth;
+				const h = window.innerHeight;
+
+				renderer.setSize( w, h );
+
+				camera.right = w;
+				camera.bottom = - h;
+				camera.updateProjectionMatrix();
+
+				// Centered panel that clears the info header above and below.
+				const margin = document.getElementById( 'info' ).getBoundingClientRect().bottom + 24;
+				const width = Math.min( w - 48, 960 );
+				const height = Math.min( h - margin * 2, 480 );
+				const left = ( w - width ) / 2;
+				const top = ( h - height ) / 2;
+				const stripeHeight = height / stripes.length;
+
+				stripes.forEach( ( { mesh, label }, i ) => {
+
+					const y = top + stripeHeight * ( i + 0.5 );
+
+					mesh.scale.set( width, stripeHeight, 1 );
+					mesh.position.set( left + width / 2, - y, 0 );
+
+					label.style.left = `${ left + 16 }px`;
+					label.style.top = `${ y }px`;
+
+				} );
 
 			}
 

@@ -59,7 +59,7 @@ export default QUnit.module( 'Nodes', () => {
 
 			gpuTest( 'extended sRGB preserves signed and out-of-range components', ( { assert } ) => {
 
-				for ( const values of [ [ - 0.02, - 0.04046, - 0.5 ], [ - 2, 0, 2 ], [ - 0.04044, 0.04045, 0.04046 ] ] ) {
+				for ( const values of [[ - 0.02, - 0.04046, - 0.5 ], [ - 2, 0, 2 ], [ - 0.04044, 0.04045, 0.04046 ]] ) {
 
 					const expected = vec3( ...values.map( SRGBToLinear ) );
 					assert.closeAbs( sRGBTransferEOTF( vec3( ...values ) ), expected, 1e-4, `EOTF(${ values })` );
@@ -67,7 +67,7 @@ export default QUnit.module( 'Nodes', () => {
 
 				}
 
-				for ( const values of [ [ - 0.001, - 0.0031309, - 0.21404114 ], [ - 2, 0, 2 ], [ - 0.0031307, 0.0031308, 0.0031309 ] ] ) {
+				for ( const values of [[ - 0.001, - 0.0031309, - 0.21404114 ], [ - 2, 0, 2 ], [ - 0.0031307, 0.0031308, 0.0031309 ]] ) {
 
 					assert.closeAbs( sRGBTransferOETF( vec3( ...values ) ), vec3( ...values.map( LinearToSRGB ) ), 1e-4, `OETF(${ values })` );
 

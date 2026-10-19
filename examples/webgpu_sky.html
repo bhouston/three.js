@@ -44,6 +44,7 @@
 
 			const params = {
 				cloudCoverage: 0.4,
+				sunFilterScale: 8,
 				cloudAltitude: 2000,
 				cloudDensity: 2,
 				cloudScale: 2500,
@@ -116,7 +117,8 @@
 			const cloudTransmission = uniform( 1 );
 			const sunCloudTarget = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
 			const sunCloudMaterial = new THREE.NodeMaterial();
-			sunCloudMaterial.fragmentNode = vec4( vec3( 0 ), clouds.getTransmittanceNode( atmosphereNode.sunDirection ) );
+			const sunFilterRadius = uniform( 0 );
+			sunCloudMaterial.fragmentNode = vec4( vec3( 0 ), clouds.getFilteredTransmittanceNode( atmosphereNode.sunDirection, sunFilterRadius ) );
 			const skyMaterial = new THREE.NodeMaterial();
 			skyMaterial.fragmentNode = clouds;
 			const groundAlbedo = uniform( new THREE.Color() );
@@ -318,6 +320,7 @@
 					atmosphereNode.aerosol.value = settings.aerosol;
 					atmosphereNode.observerAltitude.value = settings.observerAltitude;
 					atmosphereNode.preExposure.value = storageScale;
+					sunFilterRadius.value = THREE.MathUtils.degToRad( model.sunRadius * settings.sunFilterScale );
 					clouds.coverage.value = settings.cloudCoverage;
 					clouds.altitude.value = settings.cloudAltitude;
 					clouds.observerAltitude.value = settings.observerAltitude * 1000;
@@ -401,6 +404,7 @@
 			shadowFolder.add( params, 'shadowMapSize', [ 1024, 2048, 4096 ] ).name( 'map size (per cascade)' ).onChange( updateShadows );
 			shadowFolder.add( params, 'shadowDistance', 20, 200, 1 ).name( 'shadow distance (m)' ).onChange( updateShadows );
 			const cloudFolder = gui.addFolder( 'Static clouds' );
+			cloudFolder.add( params, 'sunFilterScale', 0, 32, 1 ).name( 'sun filter (0 point, 1 physical)' ).onChange( changed );
 			cloudFolder.add( params, 'cloudCoverage', 0, 1, 0.01 ).name( 'coverage' ).onChange( changed );
 			cloudFolder.add( params, 'cloudAltitude', 500, 6000, 100 ).name( 'altitude m' ).onChange( changed );
 			cloudFolder.add( params, 'cloudDensity', 0, 10, 0.1 ).name( 'density' ).onChange( changed );

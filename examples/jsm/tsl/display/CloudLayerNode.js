@@ -1,5 +1,5 @@
 import { Node, Vector2 } from 'three/webgpu';
-import { Fn, If, float, vec3, vec4, uniform, mx_fractal_noise_float, smoothstep, mix } from 'three/tsl';
+import { Fn, If, Loop, float, vec3, vec4, uniform, mx_fractal_noise_float, smoothstep, mix } from 'three/tsl';
 
 /**
  * Static, thin spherical cloud layer for the physical atmosphere example.
@@ -69,6 +69,49 @@ class CloudLayerNode extends Node {
 				const amount = this.coverage.greaterThanEqual( 1 ).select( float( 1 ), smoothstep( threshold.sub( 0.18 ), threshold.add( 0.18 ), noise ) );
 				const cosine = direction.y.mul( direction.y ).add( float( 1 ).sub( radius.div( shell ).pow( 2 ) ).mul( float( 1 ).sub( direction.y.mul( direction.y ) ) ) ).sqrt().max( 0.04 );
 				transmission.assign( amount.mul( this.density ).div( cosine ).negate().exp() );
+
+			} );
+			return transmission;
+
+		} )();
+
+	}
+
+	/**
+	 * Averages cloud transmission over a finite angular source. Fixed samples avoid
+	 * introducing frame-to-frame stochastic noise. This filters spatial detail;
+	 * it does not interpolate time or smooth discontinuous cloud edits.
+	 *
+	 * @param {Node<vec3>} direction - Normalized direction toward the source.
+	 * @param {Node<float>} angularRadius - Source radius in radians; zero selects a point sample.
+	 * @return {Node<float>} Mean Beer-Lambert transmittance over the source.
+	 */
+	getFilteredTransmittanceNode( direction, angularRadius ) {
+
+		return Fn( () => {
+
+			const transmission = float( 0 ).toVar();
+			If( angularRadius.lessThanEqual( 0 ), () => {
+
+				transmission.assign( this.getTransmittanceNode( direction ) );
+
+			} ).Else( () => {
+
+				// Select a stable tangent frame, including for a sun at the zenith.
+				const helper = direction.y.abs().lessThan( 0.99 ).select( vec3( 0, 1, 0 ), vec3( 1, 0, 0 ) );
+				const tangent = helper.cross( direction ).normalize();
+				const bitangent = direction.cross( tangent );
+				const coneArea = float( 1 ).sub( angularRadius.clamp( 0, Math.PI / 2 ).cos() );
+				Loop( 16, ( { i } ) => {
+
+					// Equal solid-angle strata, with golden-angle azimuths.
+					const cosine = float( 1 ).sub( float( i ).add( 0.5 ).div( 16 ).mul( coneArea ) );
+					const sine = float( 1 ).sub( cosine.mul( cosine ) ).max( 0 ).sqrt();
+					const angle = float( i ).mul( Math.PI * ( 3 - Math.sqrt( 5 ) ) );
+					const ray = direction.mul( cosine ).add( tangent.mul( angle.cos().mul( sine ) ) ).add( bitangent.mul( angle.sin().mul( sine ) ) );
+					transmission.addAssign( this.getTransmittanceNode( ray ).div( 16 ) );
+
+				} );
 
 			} );
 			return transmission;

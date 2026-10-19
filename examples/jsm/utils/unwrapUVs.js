@@ -456,37 +456,145 @@ function getBounds( points ) {
 
 function hasOverlap( uv, triangles ) {
 
+	if ( triangles.length < 2 ) return false;
 	const bounds = getBounds( uv );
 	const extent = Math.max( bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y );
-	const cellSize = extent / Math.max( 1, Math.sqrt( triangles.length ) );
-	const epsilon = extent * 1e-10, cells = new Map();
-	for ( let i = 0; i < triangles.length; i ++ ) {
+	const epsilon = extent * 1e-10;
+	const entries = triangles.map( triangle => {
 
-		const points = triangles[ i ].map( v => uv[ v ] ), box = getBounds( points ), seen = new Set();
-		for ( let x = Math.floor( ( box.min.x - bounds.min.x ) / cellSize ); x <= Math.floor( ( box.max.x - bounds.min.x ) / cellSize ); x ++ ) {
+		const points = triangle.map( vertex => uv[ vertex ] );
+		return { points, center: [ ( points[ 0 ][ 0 ] + points[ 1 ][ 0 ] + points[ 2 ][ 0 ] ) / 3, ( points[ 0 ][ 1 ] + points[ 1 ][ 1 ] + points[ 2 ][ 1 ] ) / 3 ] };
 
-			for ( let y = Math.floor( ( box.min.y - bounds.min.y ) / cellSize ); y <= Math.floor( ( box.max.y - bounds.min.y ) / cellSize ); y ++ ) {
+	} );
+	const root = buildOverlapTree( entries );
+	const pairs = [[ root, root ]];
+	// Bound projection work, not just chart size. Exhaustion conservatively rejects
+	// the chart so parameterize() can split it, without accepting unchecked UVs.
+	let budget = Math.max( 65536, triangles.length * 1024 );
+	while ( pairs.length ) {
 
-				const key = `${ x },${ y }`;
-				if ( ! cells.has( key ) ) cells.set( key, [] );
-				const cell = cells.get( key );
-				for ( const other of cell ) {
+		const [ a, b ] = pairs.pop();
+		if ( a === b ) {
 
-					if ( seen.has( other ) ) continue;
-					seen.add( other );
-					if ( overlapSAT( points, triangles[ other ].map( v => uv[ v ] ), epsilon ) ) return true;
+			if ( a.left ) pairs.push( [ a.left, a.left ], [ a.right, a.right ], [ a.left, a.right ] );
+			continue;
+
+		}
+
+		let separated = false;
+		// Convex hulls can separate radial sectors whose AABBs all share the center.
+		// Long edges are tried first: fan hulls have long radial boundary edges.
+		for ( const node of [ a, b ] ) {
+
+			for ( const [ p, q ] of node.edges ) {
+
+				budget -= a.hull.length + b.hull.length;
+				if ( budget < 0 ) return true;
+				const nx = p[ 1 ] - q[ 1 ], ny = q[ 0 ] - p[ 0 ];
+				let minA = Infinity, maxA = - Infinity, minB = Infinity, maxB = - Infinity;
+				for ( const point of a.hull ) {
+
+					const value = point[ 0 ] * nx + point[ 1 ] * ny;
+					minA = Math.min( minA, value ); maxA = Math.max( maxA, value );
 
 				}
 
-				cell.push( i );
+				for ( const point of b.hull ) {
+
+					const value = point[ 0 ] * nx + point[ 1 ] * ny;
+					minB = Math.min( minB, value ); maxB = Math.max( maxB, value );
+
+				}
+
+				// Only reject disjoint interiors here. Keep the tolerance on triangle
+				// axes in overlapSAT(), since hull edges can introduce different axes.
+				if ( Math.min( maxA, maxB ) - Math.max( minA, minB ) <= 0 ) {
+
+					separated = true;
+					break;
+
+				}
 
 			}
+
+			if ( separated ) break;
+
+		}
+
+		if ( separated ) continue;
+		if ( ! a.left && ! b.left ) {
+
+			budget -= 36;
+			if ( budget < 0 || overlapSAT( a.points, b.points, epsilon ) ) return true;
+
+		} else if ( a.left && ( ! b.left || a.count >= b.count ) ) {
+
+			pairs.push( [ a.left, b ], [ a.right, b ] );
+
+		} else {
+
+			pairs.push( [ a, b.left ], [ a, b.right ] );
 
 		}
 
 	}
 
 	return false;
+
+}
+
+function buildOverlapTree( entries ) {
+
+	let left, right, points;
+	if ( entries.length === 1 ) {
+
+		points = entries[ 0 ].points;
+
+	} else {
+
+		const bounds = getBounds( entries.map( entry => entry.center ) );
+		const axis = bounds.max.x - bounds.min.x >= bounds.max.y - bounds.min.y ? 0 : 1;
+		entries.sort( ( a, b ) => a.center[ axis ] - b.center[ axis ] );
+		const middle = Math.floor( entries.length / 2 );
+		left = buildOverlapTree( entries.slice( 0, middle ) );
+		right = buildOverlapTree( entries.slice( middle ) );
+		points = [ ...left.hull, ...right.hull ];
+
+	}
+
+	const hull = overlapHull( points );
+	const edges = hull.map( ( point, i ) => [ point, hull[ ( i + 1 ) % hull.length ] ] );
+	const lengthSquared = ( [ a, b ] ) => ( b[ 0 ] - a[ 0 ] ) ** 2 + ( b[ 1 ] - a[ 1 ] ) ** 2;
+	edges.sort( ( a, b ) => lengthSquared( b ) - lengthSquared( a ) );
+	// A few axes suffice for a conservative broadphase. Testing every hull edge
+	// against every vertex would itself become quadratic for large convex charts.
+	edges.length = Math.min( edges.length, 4 );
+	return { hull, edges, left, right, count: entries.length, points: entries.length === 1 ? points : null };
+
+}
+
+// Monotone-chain convex hull; shared points and collinear boundary points are removed.
+function overlapHull( points ) {
+
+	const sorted = points.slice().sort( ( a, b ) => a[ 0 ] - b[ 0 ] || a[ 1 ] - b[ 1 ] );
+	const lower = [], upper = [];
+	for ( const point of sorted ) {
+
+		while ( lower.length > 1 && cross2( lower.at( - 2 ), lower.at( - 1 ), point ) <= 0 ) lower.pop();
+		lower.push( point );
+
+	}
+
+	for ( let i = sorted.length - 1; i >= 0; i -- ) {
+
+		const point = sorted[ i ];
+		while ( upper.length > 1 && cross2( upper.at( - 2 ), upper.at( - 1 ), point ) <= 0 ) upper.pop();
+		upper.push( point );
+
+	}
+
+	lower.pop(); upper.pop();
+	return lower.concat( upper );
 
 }
 

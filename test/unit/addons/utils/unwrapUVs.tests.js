@@ -511,6 +511,59 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'radial fans remain a single chart without quadratic overlap work', assert => {
+
+				for ( const count of [ 256, 8192 ] ) {
+
+					const positions = [ 0, 0, 0 ], indices = [];
+					for ( let i = 0; i < count; i ++ ) {
+
+						const angle = 2 * Math.PI * i / count;
+						positions.push( Math.cos( angle ), Math.sin( angle ), 0 );
+						indices.push( 0, i + 1, ( i + 1 ) % count + 1 );
+
+					}
+
+					const geometry = new BufferGeometry();
+					geometry.setAttribute( 'position', new Float32BufferAttribute( positions, 3 ) );
+					geometry.setIndex( indices );
+					const start = performance.now();
+					const result = unwrap( new Mesh( geometry ) );
+					const elapsed = performance.now() - start;
+					assert.strictEqual( result.charts.length, 1, 'Shared center does not force chart splitting' );
+					assert.strictEqual( result.warnings.excludedFaces, 0 );
+					assert.ok( elapsed < 5000, `Fan unwrap stays below a generous 5 s regression ceiling (${ elapsed.toFixed( 1 ) } ms)` );
+					if ( count === 256 ) verify( assert, result );
+
+				}
+
+			} );
+
+			QUnit.test( 'overlapping radial sectors are rejected even when they share a center', assert => {
+
+				const positions = [ 0, 0, 0 ], uvs = [ 0, 0 ], indices = [];
+				// More than one full turn overlaps in UV space. Small increasing Z keeps
+				// repeated ring positions distinct while preserving near-isometric UVs.
+				for ( let i = 0; i <= 12; i ++ ) {
+
+					const angle = Math.PI * i / 4, x = Math.cos( angle ), y = Math.sin( angle );
+					positions.push( x, y, i * 0.0001 );
+					uvs.push( x, y );
+					if ( i < 12 ) indices.push( 0, i + 1, i + 2 );
+
+				}
+
+				const geometry = new BufferGeometry();
+				geometry.setAttribute( 'position', new Float32BufferAttribute( positions, 3 ) );
+				geometry.setAttribute( 'uv', new Float32BufferAttribute( uvs, 2 ) );
+				geometry.setIndex( indices );
+				const result = unwrap( new Mesh( geometry ), { useInputUVs: true } );
+				assert.ok( result.charts.length > 1, 'A shared vertex does not excuse positive-area intersections' );
+				assert.strictEqual( result.warnings.excludedFaces, 0 );
+				verify( assert, result );
+
+			} );
+
 			QUnit.test( 'result retains atlas metadata and vertex and face mappings', assert => {
 
 				const result = unwrap( new Mesh( new BoxGeometry() ) );

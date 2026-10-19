@@ -33,7 +33,7 @@
 		</script>
 		<script type="module">
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Discard, Loop, float, vec2, vec3, vec4, uv, texture, equirectUV, equirectDirection, positionWorldDirection, positionWorld, uniform, dot, smoothstep } from 'three/tsl';
+			import { Fn, If, Discard, Loop, float, vec2, vec3, vec4, uv, texture, equirectUV, equirectDirection, positionWorldDirection, positionWorld, uniform, dot, smoothstep, mix } from 'three/tsl';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { SunLight } from 'three/addons/lights/SunLight.js';
 			import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
@@ -130,7 +130,7 @@
 			const cloudShadowUV = vec2( positionWorld.dot( cloudShadowU ), positionWorld.dot( cloudShadowV ) ).div( cloudShadowSize ).add( 0.5 );
 			const edge = cloudShadowUV.sub( 0.5 ).abs().mul( 2 );
 			const weight = float( 1 ).sub( smoothstep( 0.8, 1, edge.x.max( edge.y ) ) ).mul( cloudShadowEnabled );
-			const spatialTransmission = cloudTransmission.mix( texture( cloudShadowTarget.texture, cloudShadowUV ).r, weight );
+			const spatialTransmission = mix( cloudTransmission, texture( cloudShadowTarget.texture, cloudShadowUV ).r, weight );
 			const directSunColor = uniform( new THREE.Color() );
 			// colorNode replaces the default light color/intensity uniform; update it below.
 			sun.colorNode = csmSun.colorNode = directSunColor.mul( spatialTransmission );

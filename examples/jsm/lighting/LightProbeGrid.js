@@ -223,6 +223,15 @@ function ensureCaptureCamera( near, far ) {
 
 	}
 
+	// cameraNear and cameraFar uniforms read the parent ArrayCamera.
+	if ( _captureCamera.near !== near || _captureCamera.far !== far ) {
+
+		_captureCamera.near = near;
+		_captureCamera.far = far;
+		_captureCamera.updateProjectionMatrix();
+
+	}
+
 	for ( const camera of _captureCamera.cameras ) {
 
 		if ( camera.near !== near || camera.far !== far ) {

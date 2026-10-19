@@ -546,7 +546,7 @@ export default QUnit.module( 'Addons', () => {
 				// repeated ring positions distinct while preserving near-isometric UVs.
 				for ( let i = 0; i <= 12; i ++ ) {
 
-					const angle = Math.PI * i / 4, x = Math.cos( angle ), y = Math.sin( angle );
+					const angle = Math.PI * i * 0.3, x = Math.cos( angle ), y = Math.sin( angle );
 					positions.push( x, y, i * 0.0001 );
 					uvs.push( x, y );
 					if ( i < 12 ) indices.push( 0, i + 1, i + 2 );

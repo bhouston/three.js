@@ -40,6 +40,7 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { CloudLayerNode } from 'three/addons/tsl/display/CloudLayerNode.js';
 			import { AtmosphereNode } from 'three/addons/tsl/display/AtmosphereNode.js';
+			import { moveSunTransmission } from 'three/addons/math/SunSmoothing.js';
 			import { atmosphere, luminance, sunDirection, sunLightState, exposure } from 'three/addons/math/Atmosphere.js';
 
 			const params = {
@@ -48,6 +49,8 @@
 				cloudDensity: 2,
 				cloudScale: 2500,
 				cloudOffset: 0,
+				smoothSun: true,
+				sunChangeRate: 0.25,
 				altitude: 32,
 				azimuth: 235,
 				northRotation: 0,
@@ -160,6 +163,7 @@
 			let environment, dirty = true, backgroundDirty = true, baking = false, bakeCount = 0;
 			let lutAerosol, skyIlluminance = 0, storageScale = 1;
 			let directHorizontal = 0, directNormal = 0;
+			let clearDirectNormal = 0, clearDirectHorizontal = 0, targetTransmission = 1, sunInitialized = false;
 
 			function mesh( geometry, color, x, y, z, roughness = 0.8, metalness = 0 ) {
 
@@ -208,7 +212,7 @@
 
 			function updateShadows() {
 
-				const enabled = directNormal > 0;
+				const enabled = sun.intensity > 0;
 				sun.visible = sun.castShadow = enabled && params.shadowMode === 'Directional';
 				csmSun.visible = csmSun.castShadow = enabled && params.shadowMode === 'SunLight (CSM)';
 				csmSun.position.copy( sunVector.value );
@@ -217,6 +221,25 @@
 				csmSun.shadow.camera.far = params.shadowDistance;
 				for ( const light of [ sun, csmSun ] ) light.shadow.mapSize.setScalar( params.shadowMapSize );
 				fitShadow();
+
+			}
+
+			function updateSun( delta, force = false ) {
+
+				if ( ! sunInitialized ) return;
+				const transmission = params.smoothSun ? moveSunTransmission( cloudTransmission.value, targetTransmission, params.sunChangeRate, delta ) : targetTransmission;
+				if ( ! force && transmission === cloudTransmission.value ) return;
+				cloudTransmission.value = transmission;
+				directNormal = clearDirectNormal * cloudTransmission.value;
+				directHorizontal = clearDirectHorizontal * cloudTransmission.value;
+				sun.intensity = csmSun.intensity = directNormal * storageScale;
+				const enabled = sun.intensity > 0;
+				sun.visible = sun.castShadow = enabled && params.shadowMode === 'Directional';
+				csmSun.visible = csmSun.castShadow = enabled && params.shadowMode === 'SunLight (CSM)';
+				updateExposure();
+				document.getElementById( 'sunTransmission' )?.replaceChildren( ( cloudTransmission.value * 100 ).toFixed( 1 ) );
+				document.getElementById( 'directNormal' )?.replaceChildren( directNormal.toFixed( 1 ) );
+				document.getElementById( 'directHorizontal' )?.replaceChildren( directHorizontal.toFixed( 1 ) );
 
 			}
 
@@ -345,12 +368,12 @@
 					renderPass( sunCloudMaterial, sunCloudTarget );
 					renderPass( skyMaterial, skyTarget );
 					renderPass( meterMaterial, meterTarget );
-					directNormal = light.illuminance;
-					directHorizontal = directNormal * Math.max( direction[ 1 ], 0 );
+					const bakeDirectNormal = light.illuminance;
+					const bakeDirectHorizontal = bakeDirectNormal * Math.max( direction[ 1 ], 0 );
 					const albedo = new THREE.Color( settings.groundAlbedo );
 					ground.material.color.copy( albedo );
 					groundAlbedo.value.copy( albedo );
-					directIrradiance.value.setRGB( ...light.color.map( value => value * directHorizontal * storageScale ) );
+					directIrradiance.value.setRGB( ...light.color.map( value => value * bakeDirectHorizontal * storageScale ) );
 					const autoClear = renderer.autoClear;
 					renderer.autoClear = false;
 					renderPass( groundMaterial, skyTarget );
@@ -360,22 +383,25 @@
 					// Submit every bake pass before reading back the meter for the UI/exposure.
 					const meterPixels = await renderer.readRenderTargetPixelsAsync( meterTarget, 0, 0, 1, 1 );
 					const skyRGB = Array.from( meterPixels ).slice( 0, 3 ).map( value => THREE.DataUtils.fromHalfFloat( value ) / storageScale );
-					cloudTransmission.value = THREE.DataUtils.fromHalfFloat( meterPixels[ 3 ] );
-					directNormal *= cloudTransmission.value;
-					directHorizontal *= cloudTransmission.value;
+					targetTransmission = THREE.MathUtils.clamp( THREE.DataUtils.fromHalfFloat( meterPixels[ 3 ] ), 0, 1 );
+					clearDirectNormal = bakeDirectNormal;
+					clearDirectHorizontal = bakeDirectHorizontal;
+					// Initialize the first bake immediately; later bakes only retarget the fade.
+					if ( ! sunInitialized ) cloudTransmission.value = targetTransmission;
+					sunInitialized = true;
 					skyIlluminance = luminance( skyRGB );
 					scene.environment = environment.texture;
 					sunVector.value.fromArray( direction );
 					sun.position.fromArray( direction ).multiplyScalar( 200 );
 					sun.color.setRGB( ...light.color );
-					sun.intensity = directNormal * storageScale;
+					updateSun( 0, true );
 					updateShadows();
 					sunRadiance.value.setRGB( ...discRadiance.map( value => value * storageScale ) );
 					sunDisc.value = params.showSunDisc ? 1 : 0;
 					const ev = updateExposure();
 					bakeCount ++;
 					const band = settings.altitude > 0 ? 'Daylight' : settings.altitude > - 6 ? 'Civil twilight' : settings.altitude > - 12 ? 'Nautical twilight' : settings.altitude > - 18 ? 'Astronomical twilight' : 'Night';
-					document.getElementById( 'readout' ).innerHTML = `${band}<br>Cloud sun transmission: ${( cloudTransmission.value * 100 ).toFixed( 1 )}%<br>Direct normal: ${directNormal.toFixed( 1 )} lux<br>Direct horizontal: ${directHorizontal.toFixed( 1 )} lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Background: <span id="backgroundSize">${backgroundTarget.width} × ${backgroundTarget.height}</span><br>IBL source: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
+					document.getElementById( 'readout' ).innerHTML = `${band}<br>Cloud sun transmission: <span id="sunTransmission">${( cloudTransmission.value * 100 ).toFixed( 1 )}</span>% (target ${( targetTransmission * 100 ).toFixed( 1 )}%)<br>Direct normal: <span id="directNormal">${directNormal.toFixed( 1 )}</span> lux<br>Direct horizontal: <span id="directHorizontal">${directHorizontal.toFixed( 1 )}</span> lux<br>Sky horizontal: ${skyIlluminance.toFixed( 3 )} lux<br>EV100: <span id="ev100">${ev.toFixed( 2 )}</span><br>Background: <span id="backgroundSize">${backgroundTarget.width} × ${backgroundTarget.height}</span><br>IBL source: ${skyTarget.width} × ${skyTarget.height} · PMREM face: ${environment.width}<br>Update CPU time + meter wait: ${( performance.now() - start ).toFixed( 0 )} ms<br>Bakes: ${bakeCount}`;
 
 				} finally {
 
@@ -401,6 +427,8 @@
 			shadowFolder.add( params, 'shadowMapSize', [ 1024, 2048, 4096 ] ).name( 'map size (per cascade)' ).onChange( updateShadows );
 			shadowFolder.add( params, 'shadowDistance', 20, 200, 1 ).name( 'shadow distance (m)' ).onChange( updateShadows );
 			const cloudFolder = gui.addFolder( 'Static clouds' );
+			cloudFolder.add( params, 'smoothSun' ).name( 'smooth sunlight' );
+			cloudFolder.add( params, 'sunChangeRate', 0.01, 2, 0.01 ).name( 'max transmission / s' );
 			cloudFolder.add( params, 'cloudCoverage', 0, 1, 0.01 ).name( 'coverage' ).onChange( changed );
 			cloudFolder.add( params, 'cloudAltitude', 500, 6000, 100 ).name( 'altitude m' ).onChange( changed );
 			cloudFolder.add( params, 'cloudDensity', 0, 10, 0.1 ).name( 'density' ).onChange( changed );
@@ -445,6 +473,7 @@
 			function animate() {
 
 				timer.update();
+				updateSun( timer.getDelta() );
 				controls.autoRotate = params.autoRotate;
 				controls.update( timer.getDelta() );
 				if ( dirty && ! baking ) bakeSky();

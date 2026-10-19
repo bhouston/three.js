@@ -9,21 +9,23 @@
 		<meta property="og:url" content="https://threejs.org/examples/webgpu_colorspace.html">
 		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_colorspace.jpg">
 		<link type="text/css" rel="stylesheet" href="example.css">
-		<style>
-			#labels { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-around; pointer-events: none; }
-			#labels span { align-self: flex-start; margin-left: 20px; padding: 4px 8px; background: #0009; color: #fff; font: 12px sans-serif; }
-			#labels[hidden] { display: none; }
-		</style>
 	</head>
 	<body>
+
 		<div id="info">
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
 			<div class="title-wrapper">
-				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Color Space</span>
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Color Spaces</span>
 			</div>
-			<small id="description">Display-P3 interpolation with signed sRGB components. Final colors are clipped to the sRGB display gamut.</small>
+
+			<small>
+				<a href="https://www.w3.org/TR/css-color-4/#color-conversion-code" target="_blank" rel="noopener">Extended sRGB</a> preserves negative components during Display-P3 color interpolation.<br />
+				Top: extended sRGB. Middle: former transfer curve. Bottom: linear light.<br />
+				Transfer plots: teal = extended sRGB, orange = former curve. Final colors are clipped to sRGB.
+			</small>
 		</div>
-		<div id="labels"><span>Extended sRGB</span><span>Former linear tail</span><span>Linear light</span></div>
+
 		<script type="importmap">
 			{
 				"imports": {
@@ -38,6 +40,7 @@
 
 			import * as THREE from 'three/webgpu';
 			import { Fn, If, mix, uniform, uv, vec3, min, sRGBTransferEOTF, sRGBTransferOETF } from 'three/tsl';
+
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			let renderer, scene, camera;
@@ -138,9 +141,9 @@
 				renderer.inspector = new Inspector();
 				document.body.appendChild( renderer.domElement );
 
-				const gui = renderer.inspector.createParameters( 'Parameters' );
-				gui.add( params, 'view', { 'Interpolation': 0, 'Linear → sRGB': 1, 'sRGB → linear': 2 } ).name( 'View' ).onChange( update );
-				gui.add( params, 'pair', { 'Red → green': 0, 'Orange → cyan': 1, 'Magenta → green': 2 } ).name( 'Display-P3 endpoints' ).onChange( update );
+				const gui = renderer.inspector.createParameters( 'Settings' );
+				gui.add( params, 'view', { 'Interpolation': 0, 'Linear → sRGB': 1, 'sRGB → linear': 2 } ).name( 'View' ).onChange( update ).info( 'Interpolation compares three transfer methods. Plots show input and output from -1.5 to +1.5, with a 0.5 grid.' );
+				gui.add( params, 'pair', { 'Red → green': 0, 'Orange → cyan': 1, 'Magenta → green': 2 } ).name( 'Colors' ).onChange( update ).info( 'Display-P3 endpoints for the interpolation comparison.' );
 
 				window.addEventListener( 'resize', onWindowResize );
 				onWindowResize();
@@ -154,10 +157,6 @@
 				start.value.fromArray( endpoints[ 0 ] ).convertSRGBToLinear().applyMatrix3( p3ToSRGB );
 				end.value.fromArray( endpoints[ 1 ] ).convertSRGBToLinear().applyMatrix3( p3ToSRGB );
 				view.value = params.view;
-				document.getElementById( 'labels' ).hidden = params.view !== 0;
-				document.getElementById( 'description' ).textContent = params.view === 0
-					? 'Display-P3 interpolation with signed sRGB components. Final colors are clipped to the sRGB display gamut.'
-					: 'Input (horizontal) and output (vertical): −1.5 to +1.5. Grid: 0.5. Extended sRGB: teal. Former linear tail: orange.';
 
 			}
 

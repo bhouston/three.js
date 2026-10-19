@@ -62,3 +62,31 @@ accuracy for stronger filtering.
 
 Hardware validation and performance results are recorded in the PR description
 and the issue's downloadable artifacts.
+
+## Validation on MediaPC
+
+Physical AMD Radeon WebGPU (gcn-5, fallback=false), 1280x900, 2048 directional
+shadows, 4096 background and 512 IBL. Three sequential warmed runs of at least
+five seconds; vsync/frame limits disabled; GPU completion counted and queues
+drained between stages. Parent/map median frame throughput: 765.10/751.70 fps
+with source modules and 741.54/719.44 fps with the bundled demo renderer. That is
+about 2-3% extra time per frame. Runs were noisy: one source-map run reached only
+512 fps; bundled runs ranged 697-756 fps versus parent 712-765. These are observed
+medians, not worst-case guarantees.
+
+Complete sky rebuilds: parent 26.759/s, map 26.507/s, about 0.36 ms / 1% extra per
+rebuild. Ordinary frames do not rebake. Changing map size/resolution changes cost.
+
+Hardware output through the shipped renderer matches the parent exactly under
+clear sky across 4,608,000 RGBA image components. Coverage zero and density zero
+produce transmission one; all sampled map states remain bounded in [0,1]. Checked
+zenith, low sun, twilight, and both light modes. Screenshots use GPU output-target
+readback with normal ACES/SRGB output because Chrome compositor captures were
+black on the unchanged parent as well. Captures, raw timing runs and replay scripts
+are attached to swarm issue 134's artifacts.
+
+Core lint and changed-file lint pass. Core unit tests: 1956 passed, one todo, one
+pre-existing subgroupBallot failure (test assumes <=32 lanes, AMD reports 64).
+Addon units: 107 passed. The temporary unit runner omitted the stock Linux
+software-driver override and verified the physical adapter; no runner changes
+are committed. No TypeScript typecheck is configured.

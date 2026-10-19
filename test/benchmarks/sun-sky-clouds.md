@@ -91,3 +91,10 @@ Primary-source rationale:
 - [Unreal Engine directional lights](https://dev.epicgames.com/documentation/en-us/unreal-engine/directional-lights-in-unreal-engine) expose a Source Angle, default 0.5357° (solar **diameter**). This supports treating solar visibility as finite-source integration; it does not establish this particular 16-tap implementation as an industry standard.
 - [PBRT spherical emitter sampling](https://pbr-book.org/4ed/Shapes/Spheres) derives uniform sampling over a cone of directions subtended by an emitter. The implementation uses equal-solid-angle deterministic quadrature of this domain.
 - [Unreal Engine volumetric clouds](https://dev.epicgames.com/documentation/en-us/unreal-engine/volumetric-cloud-component-in-unreal-engine) describe cloud shadow maps with configurable extent and resolution. [Unity HDRP volumetric clouds](https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.high-definition/Documentation~/volumetric-clouds-volume-override-reference.md) similarly expose shadow distance and resolution. These are stronger precedents for the separate spatial shadow-map alternative.
+
+
+### Unit-suite portability limitation on MediaPC
+
+The unchanged core unit suite has a pre-existing `subgroupBallot` assertion that assumes subgroups have at most 32 lanes (`test/unit/src/nodes/tsl/GPUSubgroup.tests.js`, lines 326–334). MediaPC reports 64 lanes. With a 64-thread workgroup and all predicates true, both `.x` and `.y` ballot words should be all ones; the test incorrectly requires `.y` to be zero. Its comment claiming `.z/.w` are needed for more than 32 lanes also miscounts the 32-bit words. [WGSL subgroupBallot](https://www.w3.org/TR/WGSL/#subgroupballot-builtin) defines the result bits by subgroup invocation index. This test file is identical to `add-sky-clouds` and was last changed in upstream commit `8d486d4cc1a2b420b2585ea52a3e0f783c919282`; this PR does not change subgroup implementation or tests.
+
+[Immutable finite-source demo](https://raw.githack.com/bhouston/three.js/a460306ebf/examples/webgpu_sky.html) contains the implementation and initial rationale described here.

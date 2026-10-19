@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js - color space</title>
+		<title>three.js webgpu - color space</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - color space">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_colorspace.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_colorspace.jpg">
 		<link type="text/css" rel="stylesheet" href="example.css">
 		<style>
 			#labels { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-around; pointer-events: none; }
-			#labels span { align-self: flex-start; margin-left: 20px; padding: 4px 8px; background: #0009; color: #fff; }
+			#labels span { align-self: flex-start; margin-left: 20px; padding: 4px 8px; background: #0009; color: #fff; font: 12px sans-serif; }
 			#labels[hidden] { display: none; }
 		</style>
 	</head>
@@ -65,7 +69,8 @@
 
 			function init() {
 
-				camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
+				camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 2 );
+				camera.position.z = 1;
 				scene = new THREE.Scene();
 
 				const material = new THREE.MeshBasicNodeMaterial();

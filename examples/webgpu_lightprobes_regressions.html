@@ -32,12 +32,14 @@
 				<option>Baseline</option>
 				<option>RectAreaLight</option>
 				<option>Clipping union</option>
+				<option>Clipping fragment union</option>
 				<option>Clipping intersection</option>
 				<option>Clipping alphaToCoverage</option>
 			</select></label>
 			<button id="bake">Rebake</button>
 			<p>Two real 2 × 2 × 2 probe bakes, at a translated position. Direct lights are removed for these views: all illumination comes from the baked probes.</p>
 			<p>The reference uses the same capture cameras, atlas and SH projection, rendering one face at a time as CubeCamera does. The two images should match.</p>
+			<p>Union uses hardware clipping when supported; fragment union uses nine planes to exercise its shader fallback. Alpha-to-coverage applies to the multisampled final views; probe captures use the production single-sample atlas.</p>
 			<div id="status">Initializing WebGPU…</div>
 		</header>
 		<div id="views">
@@ -101,6 +103,12 @@
 						new THREE.Plane( new THREE.Vector3( 0, 1, 0 ), - origin.y - 0.2 )
 					];
 					group.clipIntersection = select.value === 'Clipping intersection';
+					if ( select.value === 'Clipping fragment union' ) {
+
+						// More than eight planes exceeds the hardware clip-distance limit.
+						while ( group.clippingPlanes.length < 9 ) group.clippingPlanes.push( group.clippingPlanes[ 0 ].clone() );
+
+					}
 
 				}
 

@@ -6,7 +6,7 @@ Cloud radiance uses the same atmosphere model's solar irradiance at cloud altitu
 
 The solar disc stays outside the sky/IBL input. A 1Ã—1 GPU pass evaluates the same cloud density field in the sun direction. The meter carries its unscaled transmittance in alpha; the ground shader samples the same GPU result. The existing asynchronous meter readback then updates the directional light, CSM light, disc transmittance, exposure and readout together. There is no extra CPU readback barrier. Bake failure releases the baking flag in `finally`.
 
-Clouds, ground and PMREM rebuild only when sun, atmosphere or cloud settings change. Orbiting and static frames reuse the textures. The scalar sunlight attenuation applies uniformly to this small scene; it is not a spatial cloud shadow map. Solar attenuation samples the central ray rather than averaging the finite disc. Static clouds have no animation, binary assets or new dependencies.
+Clouds, ground and PMREM rebuild only when sun, atmosphere or cloud settings change. Orbiting and static frames reuse the textures. The scalar sunlight attenuation applies uniformly to this small scene; it is not a spatial cloud shadow map. Solar attenuation averages the finite source with 16 fixed samples; the filter scale can select a central-ray comparison. Static clouds have no animation, binary assets or new dependencies.
 
 ## Independent background and IBL resolution
 
@@ -74,3 +74,20 @@ Views toward the sun, clear / covered:
 
 ![Clear sun](screenshots/sky-clouds-sun-clear.jpg)
 ![Covered sun](screenshots/sky-clouds-sun-covered.jpg)
+
+
+## Finite-source attenuation alternative
+
+`CloudLayerNode.getFilteredTransmittanceNode( direction, angularRadius )` averages Beer-Lambert **transmittance**, rather than averaging density and exponentiating it. Sixteen fixed golden-angle samples use equal-solid-angle strata over a cone. A robust tangent frame supports a sun at the zenith. A radius of zero evaluates exactly the original central ray. A fixed pattern avoids introducing temporal sampling noise. The existing 1×1 target, meter readback, CSM light, ground and exposure all consume the same mean transmission.
+
+In **Static clouds**, **sun filter (0 point, 1 physical)** controls the angular radius multiplier. One uses `atmosphere.sunRadius` (about 0.27°). The default eight deliberately widens the filter for this artistic cloud layer. Larger values suppress small cloud features but are less physically accurate and can differ from the visibly small sun disc. They do not change the sun disc geometry, object shadow softness, BRDF, or light class.
+
+This is a third independent option: angular/spatial low-pass filtering before deriving a single scene-wide light intensity, with no temporal lag and no spatial shadow texture. It can reduce high-frequency fluctuations when cloud patterns move continuously across the source. It cannot prevent jumps caused by arbitrary changes of arrangement, density or coverage, and still illuminates the entire yard with one value. The physical solar radius may have only a subtle effect for kilometre-scale cloud features. For broad local cloud shadows, a world-space transmittance map remains the more complete solution.
+
+The added cost is fifteen extra five-octave cloud density evaluations in the **one-pixel solar bake pass**, only when settings change. There is no added full-screen or per-material sampling, readback, render target or steady-state frame work. Actual GPU-completed bake cost must be measured rather than inferred from the tap count; this pass may be a very small part of the sky and PMREM workload.
+
+Primary-source rationale:
+
+- [Unreal Engine directional lights](https://dev.epicgames.com/documentation/en-us/unreal-engine/directional-lights-in-unreal-engine) expose a Source Angle, default 0.5357° (solar **diameter**). This supports treating solar visibility as finite-source integration; it does not establish this particular 16-tap implementation as an industry standard.
+- [PBRT spherical emitter sampling](https://pbr-book.org/4ed/Shapes/Spheres) derives uniform sampling over a cone of directions subtended by an emitter. The implementation uses equal-solid-angle deterministic quadrature of this domain.
+- [Unreal Engine volumetric clouds](https://dev.epicgames.com/documentation/en-us/unreal-engine/volumetric-cloud-component-in-unreal-engine) describe cloud shadow maps with configurable extent and resolution. [Unity HDRP volumetric clouds](https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.high-definition/Documentation~/volumetric-clouds-volume-override-reference.md) similarly expose shadow distance and resolution. These are stronger precedents for the separate spatial shadow-map alternative.

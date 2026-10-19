@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js - color space</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#labels { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-around; pointer-events: none; }
+			#labels span { align-self: flex-start; margin-left: 20px; padding: 4px 8px; background: #0009; color: #fff; }
+			#labels[hidden] { display: none; }
+		</style>
+	</head>
+	<body>
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Color Space</span>
+			</div>
+			<small id="description">Display-P3 interpolation with signed sRGB components. Final colors are clipped to the sRGB display gamut.</small>
+		</div>
+		<div id="labels"><span>Extended sRGB</span><span>Former linear tail</span><span>Linear light</span></div>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../src/Three.WebGPU.js",
+					"three/webgpu": "../src/Three.WebGPU.js",
+					"three/tsl": "../src/Three.TSL.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import { Fn, If, mix, uniform, uv, vec3, min, sRGBTransferEOTF, sRGBTransferOETF } from 'three/tsl';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+			let renderer, scene, camera;
+			const params = { view: 0, pair: 0 };
+			const start = uniform( new THREE.Color() );
+			const end = uniform( new THREE.Color() );
+			const view = uniform( 0, 'int' );
+			const lineWidth = uniform( 0.01 );
+			const pairs = [[[ 1, 0, 0 ], [ 0, 1, 0 ]], [[ 1, 0.5, 0 ], [ 0, 1, 1 ]], [[ 1, 0, 1 ], [ 0, 1, 0 ]]];
+
+			// Linear Display-P3 to linear sRGB, with a D65 white point.
+			const p3ToSRGB = new THREE.Matrix3().set(
+				1.2249401763, - 0.2249401763, 0,
+				- 0.0420569547, 1.0420569547, 0,
+				- 0.0196375546, - 0.0786360456, 1.0982736001
+			);
+
+			// Former transfer functions, retained for comparison.
+			const oldEncode = Fn( ( [ value ] ) => mix(
+				value.max( 0 ).pow( 1 / 2.4 ).mul( 1.055 ).sub( 0.055 ),
+				value.mul( 12.92 ), value.lessThanEqual( 0.0031308 )
+			) );
+			const oldDecode = Fn( ( [ value ] ) => mix(
+				value.add( 0.055 ).div( 1.055 ).max( 0 ).pow( 2.4 ),
+				value.div( 12.92 ), value.lessThanEqual( 0.04045 )
+			) );
+
+			init();
+
+			function init() {
+
+				camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
+				scene = new THREE.Scene();
+
+				const material = new THREE.MeshBasicNodeMaterial();
+				material.colorNode = Fn( () => {
+
+					const color = vec3( 0 ).toVar();
+
+					If( view.equal( 0 ), () => {
+
+						If( uv().y.greaterThan( 2 / 3 ), () => {
+
+							color.assign( sRGBTransferEOTF( mix( sRGBTransferOETF( start ), sRGBTransferOETF( end ), uv().x ) ) );
+
+						} ).ElseIf( uv().y.greaterThan( 1 / 3 ), () => {
+
+							color.assign( oldDecode( mix( oldEncode( start ), oldEncode( end ), uv().x ) ) );
+
+						} ).Else( () => {
+
+							color.assign( mix( start, end, uv().x ) );
+
+						} );
+
+					} ).Else( () => {
+
+						const p = uv().sub( 0.5 ).mul( 3 );
+						const grid = p.mul( 2 ).add( 0.5 ).fract().sub( 0.5 ).abs();
+						const input = vec3( p.x );
+						const extended = view.equal( 1 ).select( sRGBTransferOETF( input ).r, sRGBTransferEOTF( input ).r );
+						const former = view.equal( 1 ).select( oldEncode( input ).r, oldDecode( input ).r );
+
+						color.assign( vec3( 0.012, 0.016, 0.024 ) );
+						If( min( grid.x, grid.y ).lessThan( 0.006 ), () => {
+
+							color.assign( vec3( 0.035 ) );
+
+						} );
+						If( min( p.x.abs(), p.y.abs() ).lessThan( 0.008 ), () => {
+
+							color.assign( vec3( 0.15 ) );
+
+						} );
+						If( p.y.sub( former ).abs().lessThan( lineWidth ), () => {
+
+							color.assign( vec3( 1, 0.42, 0.12 ) );
+
+						} );
+						If( p.y.sub( extended ).abs().lessThan( lineWidth ), () => {
+
+							color.assign( vec3( 0.11, 0.81, 0.72 ) );
+
+						} );
+
+					} );
+
+					return color;
+
+				} )();
+				scene.add( new THREE.Mesh( new THREE.PlaneGeometry( 2, 2 ), material ) );
+
+				renderer = new THREE.WebGPURenderer();
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+
+				const gui = renderer.inspector.createParameters( 'Parameters' );
+				gui.add( params, 'view', { 'Interpolation': 0, 'Linear → sRGB': 1, 'sRGB → linear': 2 } ).name( 'View' ).onChange( update );
+				gui.add( params, 'pair', { 'Red → green': 0, 'Orange → cyan': 1, 'Magenta → green': 2 } ).name( 'Display-P3 endpoints' ).onChange( update );
+
+				window.addEventListener( 'resize', onWindowResize );
+				onWindowResize();
+				update();
+
+			}
+
+			function update() {
+
+				const endpoints = pairs[ params.pair ];
+				start.value.fromArray( endpoints[ 0 ] ).convertSRGBToLinear().applyMatrix3( p3ToSRGB );
+				end.value.fromArray( endpoints[ 1 ] ).convertSRGBToLinear().applyMatrix3( p3ToSRGB );
+				view.value = params.view;
+				document.getElementById( 'labels' ).hidden = params.view !== 0;
+				document.getElementById( 'description' ).textContent = params.view === 0
+					? 'Display-P3 interpolation with signed sRGB components. Final colors are clipped to the sRGB display gamut.'
+					: 'Input (horizontal) and output (vertical): −1.5 to +1.5. Grid: 0.5. Extended sRGB: teal. Former linear tail: orange.';
+
+			}
+
+			function onWindowResize() {
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				lineWidth.value = 5 / window.innerHeight;
+
+			}
+
+			function animate() {
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>

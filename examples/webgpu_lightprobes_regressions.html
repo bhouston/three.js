@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - light probe capture regressions</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<style>
+			body { margin: 0; background: #181818; color: #eee; font: 15px sans-serif; }
+			header { padding: 18px; }
+			label, button { margin-right: 16px; }
+			#views { display: flex; }
+			figure { margin: 0; width: 50%; text-align: center; }
+			canvas { width: 100%; display: block; }
+			figcaption { padding: 12px; }
+			#status { white-space: pre-wrap; }
+		</style>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../src/Three.WebGPU.js",
+					"three/webgpu": "../src/Three.WebGPU.js",
+					"three/tsl": "../src/Three.TSL.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+	</head>
+	<body>
+		<header>
+			<h1>Light probe capture regressions</h1>
+			<label>Scene <select id="scene">
+				<option>Baseline</option>
+				<option>RectAreaLight</option>
+				<option>Clipping union</option>
+				<option>Clipping intersection</option>
+				<option>Clipping alphaToCoverage</option>
+			</select></label>
+			<button id="bake">Rebake</button>
+			<p>Two real 2 × 2 × 2 probe bakes, at a translated position. Direct lights are removed for these views: all illumination comes from the baked probes.</p>
+			<p>The reference uses the same capture cameras, atlas and SH projection, rendering one face at a time as CubeCamera does. The two images should match.</p>
+			<div id="status">Initializing WebGPU…</div>
+		</header>
+		<div id="views">
+			<figure><canvas id="batched"></canvas><figcaption>ArrayCamera capture</figcaption></figure>
+			<figure><canvas id="reference"></canvas><figcaption>Single-face capture reference</figcaption></figure>
+		</div>
+		<script type="module">
+			import * as THREE from 'three/webgpu';
+			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+			import { RectAreaLightTexturesLib } from 'three/addons/lights/RectAreaLightTexturesLib.js';
+
+			const select = document.querySelector( '#scene' );
+			const button = document.querySelector( '#bake' );
+			const status = document.querySelector( '#status' );
+			const renderer = new THREE.WebGPURenderer( { antialias: true } );
+			renderer.setSize( 640, 480 );
+			renderer.toneMapping = THREE.ACESFilmicToneMapping;
+			const target = new THREE.RenderTarget( 640, 480, { samples: 4 } );
+			const origin = new THREE.Vector3( 3, 2, - 4 );
+			const camera = new THREE.PerspectiveCamera( 50, 640 / 480, 0.1, 100 );
+			camera.position.copy( origin ).add( new THREE.Vector3( 5, 3.8, 7 ) );
+			camera.lookAt( origin );
+			let resources = [];
+
+			window.probeRegression = { ready: false, results: {} };
+			const requestedScene = new URLSearchParams( location.search ).get( 'scene' );
+			if ( [ ...select.options ].some( option => option.value === requestedScene ) ) select.value = requestedScene;
+
+			function createScene() {
+
+				const scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x080808 );
+				const room = new THREE.Group();
+				room.position.copy( origin );
+				scene.add( room );
+				const addMesh = ( geometry, color, parent = room ) => {
+
+					const material = new THREE.MeshStandardMaterial( { color, roughness: 0.8, side: THREE.DoubleSide } );
+					resources.push( geometry, material );
+					const mesh = new THREE.Mesh( geometry, material );
+					parent.add( mesh );
+					return mesh;
+
+				};
+
+				const floor = addMesh( new THREE.PlaneGeometry( 8, 8 ), 0xcccccc );
+				floor.rotation.x = - Math.PI / 2;
+				floor.position.y = - 1.5;
+				const back = addMesh( new THREE.PlaneGeometry( 8, 5 ), 0xdddddd );
+				back.position.set( 0, 1, - 3 );
+				const wall = addMesh( new THREE.PlaneGeometry( 6, 5 ), 0xff6633 );
+				wall.rotation.y = Math.PI / 2;
+				wall.position.set( - 3, 1, 0 );
+
+				const group = new THREE.ClippingGroup();
+				room.add( group );
+				if ( select.value.startsWith( 'Clipping' ) ) {
+
+					group.clippingPlanes = [
+						new THREE.Plane( new THREE.Vector3( 1, 0, 0 ), - origin.x ),
+						new THREE.Plane( new THREE.Vector3( 0, 1, 0 ), - origin.y - 0.2 )
+					];
+					group.clipIntersection = select.value === 'Clipping intersection';
+
+				}
+
+				const sphere = addMesh( new THREE.SphereGeometry( 1.3, 48, 32 ), 0x33bbff, group );
+				sphere.material.alphaToCoverage = select.value === 'Clipping alphaToCoverage';
+				sphere.position.set( 0, 0, - 0.5 );
+				const box = addMesh( new THREE.BoxGeometry( 1.1, 1.6, 1.1 ), 0xffdd55 );
+				box.position.set( 1.8, - 0.7, 0.6 );
+
+				let light;
+				if ( select.value === 'RectAreaLight' ) {
+
+					light = new THREE.RectAreaLight( 0xffffff, 12, 3, 2 );
+					light.position.copy( origin ).add( new THREE.Vector3( 1, 3, 2 ) );
+					light.lookAt( origin );
+
+				} else {
+
+					light = new THREE.PointLight( 0xffffff, 60 );
+					light.position.copy( origin ).add( new THREE.Vector3( 1, 2.5, 1.5 ) );
+
+				}
+
+				scene.add( light );
+				return { scene, light };
+
+			}
+
+			async function bakeReference( grid, scene ) {
+
+				// Keep the production SH projection/repack path. Only replace the
+				// ArrayCamera capture dispatch with CubeCamera-style face renders.
+				const render = renderer.render;
+				renderer.render = function ( captureScene, captureCamera ) {
+
+					if ( ! captureCamera.isArrayCamera ) return render.call( this, captureScene, captureCamera );
+					const captureTarget = this.getRenderTarget();
+					const viewport = captureTarget.viewport.clone();
+					const autoClear = this.autoClear;
+					try {
+
+						this.clear();
+						this.autoClear = false;
+						for ( const face of captureCamera.cameras ) {
+
+							if ( face.layers.mask === 0 ) continue;
+							captureTarget.viewport.copy( face.viewport );
+							this.setRenderTarget( captureTarget );
+							render.call( this, captureScene, face );
+
+						}
+
+					} finally {
+
+						captureTarget.viewport.copy( viewport );
+						this.autoClear = autoClear;
+
+					}
+
+				};
+
+				try {
+
+					await grid.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 30 } );
+
+				} finally {
+
+					renderer.render = render;
+
+				}
+
+			}
+
+			async function draw( scene, grid, id ) {
+
+				scene.add( grid );
+				renderer.setRenderTarget( target );
+				renderer.render( scene, camera );
+				const pixels = await renderer.readRenderTargetPixelsAsync( target, 0, 0, 640, 480 );
+				const canvas = document.getElementById( id );
+				canvas.width = 640;
+				canvas.height = 480;
+				canvas.getContext( '2d' ).putImageData( new ImageData( new Uint8ClampedArray( pixels ), 640, 480 ), 0, 0 );
+				scene.remove( grid );
+				return pixels;
+
+			}
+
+			async function run() {
+
+				select.disabled = button.disabled = true;
+				window.probeRegression.ready = false;
+				status.textContent = 'Baking ' + select.value + '…';
+				try {
+
+					for ( const resource of resources ) resource.dispose();
+					resources = [];
+					const { scene, light } = createScene();
+					const grids = [ 0, 1 ].map( () => {
+
+						const grid = new LightProbeGrid( 3.5, 2, 3.5, 2, 2, 2 );
+						grid.position.copy( origin );
+						resources.push( grid );
+						return grid;
+
+					} );
+					await grids[ 0 ].bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 30 } );
+					await renderer.backend.device.queue.onSubmittedWorkDone();
+					await bakeReference( grids[ 1 ], scene );
+					await renderer.backend.device.queue.onSubmittedWorkDone();
+					scene.remove( light );
+					const a = await draw( scene, grids[ 0 ], 'batched' );
+					const b = await draw( scene, grids[ 1 ], 'reference' );
+					let difference = 0, maximum = 0;
+					for ( let i = 0; i < a.length; i ++ ) {
+
+						if ( i % 4 === 3 ) continue;
+						const delta = Math.abs( a[ i ] - b[ i ] );
+						difference += delta;
+						maximum = Math.max( maximum, delta );
+
+					}
+
+					const result = { meanDifference: difference / ( 640 * 480 * 3 ), maximumDifference: maximum };
+					window.probeRegression.results[ select.value ] = result;
+					status.textContent = `${select.value}: mean RGB difference ${result.meanDifference.toFixed( 4 )} / 255; maximum ${maximum} / 255. Both bakes and GPU readbacks completed.`;
+					window.probeRegression.ready = true;
+
+				} catch ( error ) {
+
+					status.textContent = error.stack;
+					window.probeRegression.error = error.message;
+					console.error( error );
+
+				} finally {
+
+					select.disabled = button.disabled = false;
+
+				}
+
+			}
+
+			try {
+
+				await renderer.init();
+				if ( ! renderer.backend.isWebGPUBackend ) throw new Error( 'This regression demo requires WebGPU.' );
+				THREE.RectAreaLightNode.setLTC( RectAreaLightTexturesLib.init() );
+				select.addEventListener( 'change', run );
+				button.addEventListener( 'click', run );
+				await run();
+
+			} catch ( error ) {
+
+				status.textContent = error.stack;
+				window.probeRegression.error = error.message;
+
+			}
+		</script>
+	</body>
+</html>

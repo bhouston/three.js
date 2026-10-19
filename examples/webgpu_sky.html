@@ -224,10 +224,12 @@
 
 			}
 
-			function updateSun( delta ) {
+			function updateSun( delta, force = false ) {
 
 				if ( ! sunInitialized ) return;
-				cloudTransmission.value = params.smoothSun ? moveSunTransmission( cloudTransmission.value, targetTransmission, params.sunChangeRate, delta ) : targetTransmission;
+				const transmission = params.smoothSun ? moveSunTransmission( cloudTransmission.value, targetTransmission, params.sunChangeRate, delta ) : targetTransmission;
+				if ( ! force && transmission === cloudTransmission.value ) return;
+				cloudTransmission.value = transmission;
 				directNormal = clearDirectNormal * cloudTransmission.value;
 				directHorizontal = clearDirectHorizontal * cloudTransmission.value;
 				sun.intensity = csmSun.intensity = directNormal * storageScale;
@@ -392,7 +394,7 @@
 					sunVector.value.fromArray( direction );
 					sun.position.fromArray( direction ).multiplyScalar( 200 );
 					sun.color.setRGB( ...light.color );
-					updateSun( 0 );
+					updateSun( 0, true );
 					updateShadows();
 					sunRadiance.value.setRGB( ...discRadiance.map( value => value * storageScale ) );
 					sunDisc.value = params.showSunDisc ? 1 : 0;

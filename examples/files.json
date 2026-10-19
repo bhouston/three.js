@@ -365,7 +365,6 @@
 		"webgpu_lightprobe_cubecamera",
 		"webgpu_lightprobes",
 		"webgpu_lightprobes_complex",
-		"webgpu_lightprobes_regressions",
 		"webgpu_lightprobes_sponza",
 		"webgpu_lights_clustered",
 		"webgpu_lights_custom",

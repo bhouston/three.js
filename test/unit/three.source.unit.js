@@ -232,6 +232,12 @@ import './src/renderers/WebGLArrayRenderTarget.tests.js';
 import './src/renderers/WebGLCubeRenderTarget.tests.js';
 import './src/renderers/WebGLRenderTarget.tests.js';
 
+//src/renderers/common
+import './src/renderers/common/Textures.tests.js';
+
+//src/renderers/webgpu
+import './src/renderers/webgpu/WebGPUTextureUtils.tests.js';
+
 //src/renderers/shaders
 import './src/renderers/shaders/ShaderChunk.tests.js';
 import './src/renderers/shaders/ShaderLib.tests.js';

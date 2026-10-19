@@ -368,6 +368,13 @@ class RecurrentDenoiseNode extends Node {
 
 	}
 
+	/** Invalidates recurrent history after a camera or scene cut. */
+	resetHistory() {
+
+		this._needsRestart = true;
+
+	}
+
 	updateBefore( frame ) {
 
 		const { renderer } = frame;
@@ -376,7 +383,8 @@ class RecurrentDenoiseNode extends Node {
 		const width = drawingBufferSize.width;
 		const height = drawingBufferSize.height;
 
-		const needsRestart = this._renderTarget.width !== width || this._renderTarget.height !== height;
+		const needsRestart = this._needsRestart === true || this._renderTarget.width !== width || this._renderTarget.height !== height;
+		this._needsRestart = false;
 		this.setSize( width, height );
 
 		this._cameraProjectionMatrix.value.copy( this.camera.projectionMatrix );

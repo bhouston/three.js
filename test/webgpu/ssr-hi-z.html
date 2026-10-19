@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>SSR Hi-Z GPU validation</title>
+	<script type="importmap">
+		{ "imports": {
+			"three": "../../src/Three.WebGPU.js",
+			"three/webgpu": "../../src/Three.WebGPU.js",
+			"three/tsl": "../../src/Three.TSL.js",
+			"three/addons/": "../../examples/jsm/"
+		} }
+	</script>
+</head>
+<body>
+	<pre id="results">Running Hi-Z validation…</pre>
+	<script type="module">
+		import { runSSRHiZTests } from './runSSRHiZTests.js';
+		const output = document.getElementById( 'results' );
+		window.hiZTestResult = { status: 'running' };
+		try {
+
+			const options = new URLSearchParams( window.location.search );
+			const result = await runSSRHiZTests( { traversal: options.get( 'traversal' ) || 'conservative', minMip: Number( options.get( 'minMip' ) ) || 0 } );
+			window.hiZTestResult = { status: 'passed', ...result };
+			output.textContent = JSON.stringify( window.hiZTestResult, null, 2 );
+
+		} catch ( error ) {
+
+			window.hiZTestResult = { status: 'failed', message: error.message, stack: error.stack };
+			output.textContent = JSON.stringify( window.hiZTestResult, null, 2 );
+			console.error( error );
+
+		}
+	</script>
+</body>
+</html>
+

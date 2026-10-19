@@ -58,6 +58,7 @@
 			renderer.setSize( 640, 480 );
 			renderer.toneMapping = THREE.ACESFilmicToneMapping;
 			const target = new THREE.RenderTarget( 640, 480, { samples: 4 } );
+			target.texture.colorSpace = THREE.SRGBColorSpace;
 			const origin = new THREE.Vector3( 3, 2, - 4 );
 			const camera = new THREE.PerspectiveCamera( 50, 640 / 480, 0.1, 100 );
 			camera.position.copy( origin ).add( new THREE.Vector3( 5, 3.8, 7 ) );
@@ -148,8 +149,15 @@
 					const captureTarget = this.getRenderTarget();
 					const viewport = captureTarget.viewport.clone();
 					const autoClear = this.autoClear;
+					const background = captureScene.background;
+					const clearColor = this.getClearColor( new THREE.Color() ).clone();
+					const clearAlpha = this.getClearAlpha();
 					try {
 
+						// A Color background forces a full attachment clear on every
+						// render, even with autoClear disabled. Clear it once here.
+						this.setClearColor( background, 1 );
+						captureScene.background = null;
 						this.clear();
 						this.autoClear = false;
 						for ( const face of captureCamera.cameras ) {
@@ -165,6 +173,8 @@
 
 						captureTarget.viewport.copy( viewport );
 						this.autoClear = autoClear;
+						captureScene.background = background;
+						this.setClearColor( clearColor, clearAlpha );
 
 					}
 

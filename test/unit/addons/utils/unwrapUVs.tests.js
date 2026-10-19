@@ -542,14 +542,15 @@ export default QUnit.module( 'Addons', () => {
 			QUnit.test( 'overlapping radial sectors are rejected even when they share a center', assert => {
 
 				const positions = [ 0, 0, 0 ], uvs = [ 0, 0 ], indices = [];
+				const count = 512; // Crowded cells exercise the tree fallback too.
 				// More than one full turn overlaps in UV space. Small increasing Z keeps
 				// repeated ring positions distinct while preserving near-isometric UVs.
-				for ( let i = 0; i <= 12; i ++ ) {
+				for ( let i = 0; i <= count; i ++ ) {
 
-					const angle = Math.PI * i * 0.3, x = Math.cos( angle ), y = Math.sin( angle );
-					positions.push( x, y, i * 0.0001 );
+					const angle = Math.PI * i * 3.6 / count, x = Math.cos( angle ), y = Math.sin( angle );
+					positions.push( x, y, i * 0.001 / count );
 					uvs.push( x, y );
-					if ( i < 12 ) indices.push( 0, i + 1, i + 2 );
+					if ( i < count ) indices.push( 0, i + 1, i + 2 );
 
 				}
 

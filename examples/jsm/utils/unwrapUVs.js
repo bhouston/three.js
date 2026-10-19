@@ -460,6 +460,45 @@ function hasOverlap( uv, triangles ) {
 	const bounds = getBounds( uv );
 	const extent = Math.max( bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y );
 	const epsilon = extent * 1e-10;
+	const cellSize = extent / Math.max( 1, Math.sqrt( triangles.length ) );
+	const cells = new Map();
+	// The grid is cheap for ordinary charts. Count every cell/candidate visit,
+	// including duplicates, before falling back on charts with crowded cells.
+	let budget = Math.max( 4096, triangles.length * 64 );
+	for ( let i = 0; i < triangles.length; i ++ ) {
+
+		const points = triangles[ i ].map( vertex => uv[ vertex ] ), box = getBounds( points ), seen = new Set();
+		for ( let x = Math.floor( ( box.min.x - bounds.min.x ) / cellSize ); x <= Math.floor( ( box.max.x - bounds.min.x ) / cellSize ); x ++ ) {
+
+			for ( let y = Math.floor( ( box.min.y - bounds.min.y ) / cellSize ); y <= Math.floor( ( box.max.y - bounds.min.y ) / cellSize ); y ++ ) {
+
+				if ( -- budget < 0 ) return hasOverlapTree( uv, triangles, epsilon );
+				const key = `${ x },${ y }`;
+				if ( ! cells.has( key ) ) cells.set( key, [] );
+				const cell = cells.get( key );
+				for ( const other of cell ) {
+
+					if ( -- budget < 0 ) return hasOverlapTree( uv, triangles, epsilon );
+					if ( seen.has( other ) ) continue;
+					seen.add( other );
+					if ( overlapSAT( points, triangles[ other ].map( vertex => uv[ vertex ] ), epsilon ) ) return true;
+
+				}
+
+				cell.push( i );
+
+			}
+
+		}
+
+	}
+
+	return false;
+
+}
+
+function hasOverlapTree( uv, triangles, epsilon ) {
+
 	const entries = triangles.map( triangle => {
 
 		const points = triangle.map( vertex => uv[ vertex ] );

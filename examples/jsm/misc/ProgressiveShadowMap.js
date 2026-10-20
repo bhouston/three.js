@@ -7,7 +7,8 @@ import { Fn, If, Discard, mix, normalViewGeometry, screenCoordinate, shadow, tex
  * atlas half; the other meshes occupy the right half. Call reset() after
  * geometry, transforms or light
  * settings change. Camera movement does not invalidate texture-space history.
- * The light must be a separate sampling light, not the scene's shading light.
+ * The light must be a separate sampling light with its target at the origin,
+ * not the scene's shading light. This helper owns its shadow update schedule.
  *
  * @three_import import { ProgressiveShadowMap } from 'three/addons/misc/ProgressiveShadowMap.js';
  */
@@ -23,6 +24,7 @@ class ProgressiveShadowMap {
 
 		this.renderer = renderer;
 		this.light = light;
+		this.light.shadow.autoUpdate = false;
 		this.samples = 0;
 		this._scene = new Scene();
 		this._scene.add( light, light.target );

@@ -33,10 +33,11 @@
 		</script>
 		<script type="module">
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Discard, Loop, float, vec2, vec3, vec4, uv, texture, equirectUV, equirectDirection, positionWorldDirection, positionWorld, uniform, dot, smoothstep, mix } from 'three/tsl';
+			import { Fn, If, Discard, Loop, float, vec2, vec3, vec4, uv, texture, equirectUV, equirectDirection, positionWorldDirection, positionWorld, uniform, dot, smoothstep, mix, shadow } from 'three/tsl';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { SunLight } from 'three/addons/lights/SunLight.js';
 			import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
+			import { sunShadow } from 'three/addons/lights/SunShadowNode.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { CloudLayerNode } from 'three/addons/tsl/display/CloudLayerNode.js';
 			import { AtmosphereNode } from 'three/addons/tsl/display/AtmosphereNode.js';
@@ -69,6 +70,8 @@
 				sunRadius: atmosphere.sunRadius,
 				shadowMapSize: 2048,
 				shadowDistance: 60,
+				shadowBias: - 0.00005,
+				shadowNormalBias: 0.02,
 				showSunDisc: true,
 				autoRotate: true,
 				rebake: changed
@@ -103,16 +106,12 @@
 			SunLight.registerNode( SunLightNode );
 			const csmSun = new SunLight();
 			csmSun.visible = false;
-			csmSun.shadow.normalBias = 0.02;
+			csmSun.castShadow = true;
 			scene.add( csmSun );
 			const sun = new THREE.DirectionalLight();
 			sun.castShadow = true;
 			sun.shadow.mapSize.setScalar( params.shadowMapSize );
 			scene.add( sun, sun.target );
-			const accumulatedSun = new THREE.DirectionalLight();
-			accumulatedSun.castShadow = true;
-			accumulatedSun.visible = false;
-			scene.add( accumulatedSun, accumulatedSun.target );
 			const sampleSun = new THREE.DirectionalLight();
 			sampleSun.castShadow = true;
 			sampleSun.shadow.autoUpdate = false;
@@ -149,7 +148,7 @@
 			const spatialTransmission = mix( cloudTransmission, texture( cloudShadowTarget.texture, cloudShadowUV ).r, weight );
 			const directSunColor = uniform( new THREE.Color() );
 			// colorNode replaces the default light color/intensity uniform; update it below.
-			sun.colorNode = csmSun.colorNode = accumulatedSun.colorNode = directSunColor.mul( spatialTransmission );
+			sun.colorNode = csmSun.colorNode = directSunColor.mul( spatialTransmission );
 			const sunCloudMaterial = new THREE.NodeMaterial();
 			sunCloudMaterial.fragmentNode = vec4( vec3( 0 ), clouds.getTransmittanceNode( atmosphereNode.sunDirection ) );
 			const skyMaterial = new THREE.NodeMaterial();
@@ -271,7 +270,12 @@
 			const visibility = texture( shadowAccumulator.texture, uv( 1 ) ).r;
 			const groundEdge = positionWorld.xz.abs().div( 40 );
 			const groundWeight = float( 1 ).sub( smoothstep( 0.9, 1, groundEdge.x.max( groundEdge.y ) ) );
-			accumulatedSun.shadow.shadowNode = Fn( builder => builder.object === ground ? mix( 1, visibility, groundWeight ) : visibility )();
+			// Keep one shading sun, its radiometry and direction identical in both
+			// modes. Only switch the visibility term, never the light's intensity.
+			const accumulatedVisibility = Fn( builder => builder.object === ground ? mix( 1, visibility, groundWeight ) : visibility )();
+			const shadowSelection = uniform( 2 );
+			const liveVisibility = shadowSelection.equal( 1 ).select( sunShadow( csmSun ), shadow( sun ) );
+			sun.shadow.shadowNode = shadowSelection.equal( 2 ).select( accumulatedVisibility, liveVisibility );
 			const unwrapTime = performance.now() - unwrapStart;
 			const shadowStatus = document.createElement( 'div' );
 			shadowStatus.style.cssText = 'position:absolute;top:100px;left:20px;color:white;font:12px monospace;pointer-events:none';
@@ -280,15 +284,25 @@
 			function updateShadows() {
 
 				const enabled = directNormal > 0;
-				sun.visible = sun.castShadow = enabled && params.shadowMode === 'Directional';
-				csmSun.visible = csmSun.castShadow = enabled && params.shadowMode === 'SunLight (CSM)';
-				accumulatedSun.visible = enabled && params.shadowMode === 'Accumulated sun';
-				accumulatedSun.position.copy( sun.position );
+				const accumulated = params.shadowMode === 'Accumulated sun';
+				const cascaded = params.shadowMode === 'SunLight (CSM)';
+				shadowSelection.value = accumulated ? 2 : cascaded ? 1 : 0;
+				// All modes shade with the same sun. The hidden CSM light supplies
+				// only visibility, and only the selected live shadow map updates.
+				sun.shadow.autoUpdate = sun.shadow.needsUpdate = enabled && ! accumulated && ! cascaded;
+				csmSun.shadow.autoUpdate = csmSun.shadow.needsUpdate = enabled && cascaded;
 				csmSun.position.copy( sunVector.value );
 				csmSun.color.copy( sun.color );
 				csmSun.intensity = sun.intensity;
 				csmSun.shadow.camera.far = params.shadowDistance;
-				for ( const light of [ sun, csmSun ] ) light.shadow.mapSize.setScalar( params.shadowMapSize );
+				for ( const light of [ sun, csmSun ] ) {
+
+					light.shadow.mapSize.setScalar( params.shadowMapSize );
+					light.shadow.bias = params.shadowBias;
+					light.shadow.normalBias = params.shadowNormalBias;
+
+				}
+
 				fitShadow();
 				sampleSun.shadow.camera.copy( sun.shadow.camera );
 				sampleSun.shadow.mapSize.setScalar( params.shadowMapSize );
@@ -334,8 +348,6 @@
 				camera.near = Math.max( 0.1, - bounds.max.z - 10 );
 				camera.far = - bounds.min.z + 10;
 				camera.updateProjectionMatrix();
-				sun.shadow.normalBias = 1.5 * Math.max( camera.right - camera.left, camera.top - camera.bottom ) / params.shadowMapSize;
-				sun.shadow.bias = - 0.00005;
 
 			}
 
@@ -491,6 +503,8 @@
 			shadowFolder.add( { reset: () => shadowAccumulator.reset() }, 'reset' ).name( 'reset shadow history' );
 			shadowFolder.add( params, 'shadowMapSize', [ 1024, 2048, 4096 ] ).name( 'map size (per cascade)' ).onChange( updateShadows );
 			shadowFolder.add( params, 'shadowDistance', 20, 200, 1 ).name( 'shadow distance (m)' ).onChange( updateShadows );
+			shadowFolder.add( params, 'shadowBias', - 0.005, 0.005, 0.00001 ).name( 'shadow bias' ).onChange( updateShadows );
+			shadowFolder.add( params, 'shadowNormalBias', 0, 0.2, 0.001 ).name( 'normal bias (m)' ).onChange( updateShadows );
 			const cloudFolder = gui.addFolder( 'Static clouds' );
 			cloudFolder.add( params, 'cloudShadowMap' ).name( 'spatial cloud shadows' ).onChange( changed );
 			cloudFolder.add( params, 'cloudShadowSize', 50, 4000, 10 ).name( 'cloud map extent m' ).onChange( changed );
@@ -545,7 +559,7 @@
 				if ( ! baking && backgroundDirty ) bakeBackground();
 				if ( ! baking ) {
 
-					if ( accumulatedSun.visible ) shadowAccumulator.update( camera, sunVector.value, params.sunRadius, params.shadowSamples );
+					if ( directNormal > 0 && params.shadowMode === 'Accumulated sun' ) shadowAccumulator.update( camera, sunVector.value, params.sunRadius, params.shadowSamples );
 					shadowStatus.textContent = params.shadowMode === 'Accumulated sun' ? `Sun visibility: ${shadowAccumulator.samples}/${params.shadowSamples} samples · UV unwrap ${unwrapTime.toFixed( 0 )} ms · 80 m ground patch` : params.shadowMode;
 					renderer.render( scene, camera );
 

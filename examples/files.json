@@ -486,7 +486,6 @@
 		"webgpu_shadertoy",
 		"webgpu_shadow_contact",
 		"webgpu_shadowmap",
-		"webgpu_shadowmap_pcss",
 		"webgpu_shadowmap_array",
 		"webgpu_shadowmap_csm",
 		"webgpu_shadowmap_opacity",

@@ -4,6 +4,7 @@ import { Fn, If, Loop, float, vec2, ivec2, uniform, reference, renderGroup, text
 /**
  * Example-only PCSS filter for a spot light with conventional perspective depth.
  * lightRadius is the emitter radius in world units; maxRadius is in shadow texels.
+ * Sample counts are adjustable integer uniforms (blockers: 1–64, filter: 1–128).
  * Blocker depths are linearized before averaging. Multiple blocker layers are
  * approximated by one plane, so overlapping penumbrae can leak light.
  *
@@ -15,6 +16,8 @@ export function spotLightPCSS( light ) {
 	const lightRadius = uniform( 0.35 );
 	const maxRadius = uniform( 64 );
 	const frame = uniform( 0 );
+	const blockerSamples = uniform( 16, 'int' );
+	const filterSamples = uniform( 32, 'int' );
 	const shadow = light.shadow;
 	const near = reference( 'near', 'float', shadow.camera ).setGroup( renderGroup );
 	const far = reference( 'far', 'float', shadow.camera ).setGroup( renderGroup );
@@ -47,12 +50,14 @@ export function spotLightPCSS( light ) {
 
 		// Project the emitter through the near plane onto the receiver plane.
 		const searchRadius = emitterUV.mul( receiver.sub( near ) ).div( receiver.mul( near ) ).min( maxRadius.mul( texel ) );
+		const blockerSampleCount = blockerSamples.clamp( 1, 64 ).toVar();
+		const filterSampleCount = filterSamples.clamp( 1, 128 ).toVar();
 		const blockerSum = float( 0 ).toVar();
 		const blockerCount = float( 0 ).toVar();
 
-		Loop( 16, ( { i } ) => {
+		Loop( { start: 0, end: blockerSampleCount, type: 'int', condition: '<' }, ( { i } ) => {
 
-			const uv = shadowCoord.xy.add( vogelDiskSample( i, 16, phi ).mul( searchRadius ) ).clamp( lower, upper );
+			const uv = shadowCoord.xy.add( vogelDiskSample( i, blockerSampleCount, phi ).mul( searchRadius ) ).clamp( lower, upper );
 			const offset = uv.sub( shadowCoord.xy );
 			const depth = textureLoad( depthTexture, ivec2( uv.mul( mapSize ) ) ).r;
 			const isBlocker = builder.renderer.reversedDepthBuffer ? depth.greaterThan( compareDepth( offset ) ) : depth.lessThan( compareDepth( offset ) );
@@ -73,20 +78,20 @@ export function spotLightPCSS( light ) {
 			// Project onto shadow UV at the receiver, not at the near plane.
 			const radius = emitterUV.mul( max( receiver.sub( blocker ), 0 ) ).div( blocker.mul( receiver ) ).clamp( texel, maxRadius.mul( texel ) );
 			visibility.assign( 0 );
-			Loop( 32, ( { i } ) => {
+			Loop( { start: 0, end: filterSampleCount, type: 'int', condition: '<' }, ( { i } ) => {
 
-				const uv = shadowCoord.xy.add( vogelDiskSample( i, 32, phi ).mul( radius ) ).clamp( lower, upper );
+				const uv = shadowCoord.xy.add( vogelDiskSample( i, filterSampleCount, phi ).mul( radius ) ).clamp( lower, upper );
 				visibility.addAssign( texture( depthTexture, uv ).compare( compareDepth( uv.sub( shadowCoord.xy ) ) ) );
 
 			} );
-			visibility.divAssign( 32 );
+			visibility.divAssign( float( filterSampleCount ) );
 
 		} );
 		return visibility;
 
 	} );
 
-	return { filterNode, lightRadius, maxRadius, frame };
+	return { filterNode, lightRadius, maxRadius, frame, blockerSamples, filterSamples };
 
 }
 

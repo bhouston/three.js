@@ -111,11 +111,20 @@
 			const temporal = traa( color, scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'velocity' ), camera );
 			pipeline.outputNode = temporal;
 
-			const params = { animate: true, temporal: true };
+			const params = { animate: true, temporal: true, resolution: 2048 };
 			const gui = renderer.inspector.createParameters( 'PCSS settings' );
 			gui.add( pcss.lightRadius, 'value', 0, 1, 0.01 ).name( 'Emitter radius (world)' );
 			gui.add( pcss.maxRadius, 'value', 1, 96, 1 ).name( 'Maximum radius (texels)' );
-			gui.add( light.shadow, 'normalBias', 0, 0.1, 0.001 );
+			gui.add( pcss.blockerSamples, 'value', 1, 64, 1 ).name( 'Blocker samples' ).info( 'More samples reduce missed blockers and stabilize the penumbra estimate.' );
+			gui.add( pcss.filterSamples, 'value', 1, 128, 1 ).name( 'Filter samples' ).info( 'Each tap uses hardware PCF. More taps reduce grain at greater GPU cost.' );
+			gui.add( light.shadow, 'bias', - 0.005, 0.005, 0.00001 ).name( 'Shadow bias' ).info( 'Negative bias reduces acne; too much detaches shadows from their casters.' );
+			gui.add( light.shadow, 'normalBias', 0, 0.1, 0.001 ).name( 'Normal bias' );
+			gui.add( ground.position, 'y', - 2, 3, 0.01 ).name( 'Floor height' ).info( 'Move only the receiver plane to vary blocker-to-receiver distance.' );
+			gui.add( params, 'resolution', [ 512, 1024, 2048, 4096 ] ).name( 'Shadow map size' ).onChange( value => {
+
+				light.shadow.mapSize.set( Number( value ), Number( value ) );
+
+			} );
 			gui.add( params, 'animate' ).name( 'Moving spheres' );
 			gui.add( params, 'temporal' ).name( 'TRAA' ).onChange( () => {
 

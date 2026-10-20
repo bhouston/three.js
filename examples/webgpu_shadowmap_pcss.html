@@ -53,8 +53,8 @@
 			light.shadow.mapSize.set( 2048, 2048 );
 			light.shadow.camera.near = 2;
 			light.shadow.camera.far = 30;
-			light.shadow.bias = - 0.0001;
-			light.shadow.normalBias = 0.015;
+			light.shadow.bias = - 0.00002;
+			light.shadow.normalBias = 0.003;
 			scene.add( light, light.target );
 			const pcss = spotLightPCSS( light );
 			light.shadow.filterNode = pcss.filterNode;

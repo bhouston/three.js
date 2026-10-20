@@ -55,12 +55,15 @@ export function spotLightPCSS( light ) {
 		const blockerSum = float( 0 ).toVar();
 		const blockerCount = float( 0 ).toVar();
 
-		Loop( { start: 0, end: blockerSampleCount, type: 'int', condition: '<' }, ( { i } ) => {
+		// Include the central texel: sparse disk taps can miss thin contact blockers.
+		const centerUV = shadowCoord.xy.clamp( lower, upper );
+		const addBlocker = ( uv ) => {
 
-			const uv = shadowCoord.xy.add( vogelDiskSample( i, blockerSampleCount, phi ).mul( searchRadius ) ).clamp( lower, upper );
-			const offset = uv.sub( shadowCoord.xy );
-			const depth = textureLoad( depthTexture, ivec2( uv.mul( mapSize ) ) ).r;
-			const isBlocker = builder.renderer.reversedDepthBuffer ? depth.greaterThan( compareDepth( offset ) ) : depth.lessThan( compareDepth( offset ) );
+			const pixel = ivec2( uv.mul( mapSize ) );
+			// textureLoad reads a texel center, not the continuous disk-sample UV.
+			const sampleUV = vec2( pixel ).add( 0.5 ).mul( texel );
+			const depth = textureLoad( depthTexture, pixel ).r;
+			const isBlocker = builder.renderer.reversedDepthBuffer ? depth.greaterThan( compareDepth( sampleUV.sub( shadowCoord.xy ) ) ) : depth.lessThan( compareDepth( sampleUV.sub( shadowCoord.xy ) ) );
 			If( isBlocker, () => {
 
 				blockerSum.addAssign( perspectiveDepthToViewZ( depth, near, far ).negate() );
@@ -68,9 +71,21 @@ export function spotLightPCSS( light ) {
 
 			} );
 
+		};
+
+		addBlocker( centerUV );
+
+		// The center is included in the requested blocker-sample budget.
+		Loop( { start: 1, end: blockerSampleCount, type: 'int', condition: '<' }, ( { i } ) => {
+
+			const uv = shadowCoord.xy.add( vogelDiskSample( i.sub( 1 ), blockerSampleCount.sub( 1 ), phi ).mul( searchRadius ) ).clamp( lower, upper );
+			addBlocker( uv );
+
 		} );
 
-		const visibility = float( 1 ).toVar();
+		// If the wide search misses blockers, retain the local shadow instead of
+		// declaring the receiver fully lit. This also preserves hardware PCF edges.
+		const visibility = texture( depthTexture, centerUV ).compare( shadowCoord.z ).toVar();
 		If( blockerCount.greaterThan( 0 ), () => {
 
 			const blocker = blockerSum.div( blockerCount );

@@ -21,3 +21,5 @@ import './addons/exporters/USDZExporter.tests.js';
 import './addons/tsl/WebGLNodesHandler.tests.js';
 import './addons/postprocessing/GTAOPass.tests.js';
 import './addons/math/Atmosphere.tests.js';
+
+import './addons/utils/unwrapUVs.tests.js';

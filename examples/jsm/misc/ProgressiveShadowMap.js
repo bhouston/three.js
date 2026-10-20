@@ -1,5 +1,5 @@
-import { Color, DoubleSide, HalfFloatType, Mesh, NodeMaterial, QuadMesh, RenderTarget, Scene, Vector2, Vector3 } from 'three/webgpu';
-import { Fn, If, Discard, mix, shadow, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
+import { BackSide, Color, DoubleSide, HalfFloatType, Mesh, NodeMaterial, QuadMesh, RenderTarget, Scene, Vector2, Vector3 } from 'three/webgpu';
+import { Fn, If, Discard, mix, normalViewGeometry, screenCoordinate, shadow, textureLoad, uniform, uv, vec2, vec4 } from 'three/tsl';
 
 /**
  * Accumulates directional shadow visibility in a pre-unwrapped uv1 atlas.
@@ -41,12 +41,18 @@ class ProgressiveShadowMap {
 		this._history = new RenderTarget( resolution * 2, resolution, options );
 		this.texture = this._history.texture;
 		this._weight = uniform( 1 );
-		this._previous = texture( this.texture, uv( 1 ) );
+		// Read the exact history texel. Interpolated planar UVs on the 10 km
+		// ground lose enough precision to blur an edge over repeated averages.
+		this._previous = textureLoad( this.texture, screenCoordinate.xy );
 		this._shadow = shadow( light );
 		this._material = new NodeMaterial();
 		this._material.side = DoubleSide;
+		this._material.shadowSide = BackSide;
 		this._material.depthTest = false;
 		this._material.depthWrite = false;
+		// UV winding is unrelated to surface orientation. Do not flip the
+		// receiver's geometric normal when rasterizing the back of a UV chart.
+		this._material.normalNode = normalViewGeometry;
 		this._material.vertexNode = vec4( uv( 1 ).flipY().sub( 0.5 ).mul( 2 ), 0, 1 );
 		this._material.fragmentNode = vec4( mix( this._previous.r, this._shadow, this._weight ), 0, 0, 1 );
 		// The ground occupies the left half. Its world-planar UVs extend outside
@@ -62,8 +68,7 @@ class ProgressiveShadowMap {
 
 		// A one-texel gutter makes bilinear sampling safe at chart edges. Only
 		// empty texels are filled: valid visibility is never spatially blurred.
-		const source = texture( this._sample.texture, uv() );
-		const texel = vec2( 1 / ( resolution * 2 ), 1 / resolution );
+		const source = textureLoad( this._sample.texture, screenCoordinate.xy );
 		const dilation = new NodeMaterial();
 		dilation.fragmentNode = Fn( () => {
 
@@ -71,7 +76,8 @@ class ProgressiveShadowMap {
 			const sum = vec2( 0 ).toVar();
 			for ( let y = - 1; y <= 1; y ++ ) for ( let x = - 1; x <= 1; x ++ ) {
 
-				const neighbor = source.sample( uv().add( texel.mul( vec2( x, y ) ) ) );
+				const coord = screenCoordinate.xy.add( vec2( x, y ) ).clamp( vec2( 0 ), vec2( resolution * 2 - 1, resolution - 1 ) );
+				const neighbor = textureLoad( this._sample.texture, coord );
 				sum.addAssign( vec2( neighbor.r.mul( neighbor.a ), neighbor.a ) );
 
 			}
@@ -132,6 +138,7 @@ class ProgressiveShadowMap {
 		this.light.position.copy( this._direction ).addScaledVector( this._u, this._disk.x ).addScaledVector( this._v, this._disk.y ).normalize().multiplyScalar( 200 );
 		this.light.updateMatrixWorld();
 		this.light.target.updateMatrixWorld();
+		this.light.shadow.updateMatrices( this.light );
 		this.light.shadow.needsUpdate = true;
 		this._weight.value = 1 / ( this.samples + 1 );
 		for ( const { object, proxy } of this._objects ) {
@@ -149,6 +156,17 @@ class ProgressiveShadowMap {
 
 			renderer.autoClear = true;
 			renderer.setClearColor( 0, 0 );
+			// ShadowNode normally updates once per animation frame/camera. Explicit
+			// updates also permit multiple samples between animation frames (bakes,
+			// resets and offline references) without reusing stale depth maps.
+			if ( this._shadow.shadowMap !== null ) {
+
+				this._scene.updateMatrixWorld( true );
+				this._shadow.updateShadow( { renderer, scene: this._scene, camera } );
+				this.light.shadow.needsUpdate = false;
+
+			}
+
 			if ( this.samples === 0 ) {
 
 				renderer.setRenderTarget( this._history );

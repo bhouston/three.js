@@ -806,6 +806,12 @@ class LightBaker {
 
 			}
 
+			// Let the visible scene show the final pass before switching to light maps.
+
+			await nextFrame();
+
+			if ( this.source !== probes ) throw new DOMException( 'The preparation was superseded by another one.', 'AbortError' );
+
 		}
 
 		this._lightCopies = this.bakedLights.map( copyLight );

@@ -148,6 +148,8 @@
 
 				lightBaker = new LightBaker( renderer );
 
+				renderer.setAnimationLoop( animate );
+
 				await setScene();
 
 				// GUI
@@ -173,8 +175,6 @@
 					if ( event.dataTransfer.files.length > 0 ) loadGLTFFiles( event.dataTransfer.files );
 
 				} );
-
-				renderer.setAnimationLoop( animate );
 
 			}
 
@@ -874,6 +874,8 @@
 
 				try {
 
+					status.textContent = `Preparing ${ params.algorithm }…`;
+
 					await lightBaker.prepare( scene, world.root );
 
 				} catch ( error ) {
@@ -979,7 +981,23 @@
 
 				if ( busy || lightBaker.lightMapper === null ) {
 
-					renderer.render( scene, camera );
+					// Show each completed probe pass while prepare() yields between bounces. The grid is
+					// only in the visible render, so it cannot add a second source of feedback to captures.
+
+					const probes = busy && lightBaker.source?.isLightProbeGrid ? lightBaker.source : null;
+
+					if ( probes !== null ) scene.add( probes );
+
+					try {
+
+						renderer.render( scene, camera );
+
+					} finally {
+
+						if ( probes !== null ) probes.removeFromParent();
+
+					}
+
 					return;
 
 				}

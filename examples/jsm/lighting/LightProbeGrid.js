@@ -363,6 +363,17 @@ class LightProbeGrid extends Light {
 		this.falloff = 0;
 
 		/**
+		 * Whether bakes capture indirect bounces in later passes, e.g. ranged passes over several frames
+		 * or continuous re-baking. The captures of every pass, the direct light pass too, then include
+		 * a snapshot of the previous pass, so that they share their shaders. Otherwise, only bounce
+		 * passes add the snapshot, and the first one compiles new shaders.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.multiBounce = false;
+
+		/**
 		 * The single RGBA atlas 3D texture storing all seven packed SH
 		 * sub-volumes stacked along Z.
 		 *
@@ -433,7 +444,8 @@ class LightProbeGrid extends Light {
 	 * Indices advance along X, then Z, then Y, filling horizontal layers from bottom
 	 * to top. For incremental indirect bounces, finish the whole grid for `pass: 0`,
 	 * then repeat with `pass: 1`, etc. Start each pass at index 0 to snapshot the
-	 * previous pass before updating its cells.
+	 * previous pass before updating its cells. Set {@link LightProbeGrid#multiBounce}
+	 * so that the passes share their shaders.
 	 *
 	 * Shadow-casting instances of `SunLight` are temporarily replaced with
 	 * equivalent directional lights, since their view-fitted shadow cascades
@@ -604,6 +616,13 @@ class LightProbeGrid extends Light {
 	 * @param {number} start - The first probe index.
 	 */
 	_updateBounceGrid( renderer, scene, pass, start ) {
+
+		if ( pass === 0 && this.multiBounce === false ) {
+
+			if ( start === 0 ) this._bouncePass = - 1;
+			return;
+
+		}
 
 		if ( this._bounceGrid === null ) {
 

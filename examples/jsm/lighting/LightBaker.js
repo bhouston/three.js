@@ -1321,6 +1321,7 @@ class LightBaker {
 			const probes = new LightProbeGrid( size.x, size.y, size.z, ...counts );
 			probes.position.copy( position );
 			probes.updateBoundingBox();
+			probes.multiBounce = this.multiBounce;
 
 			// the direct light pass, prepare() captures the bounce passes in later frames
 

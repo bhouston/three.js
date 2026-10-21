@@ -35,6 +35,10 @@ const FRAMES_IN_FLIGHT = 3;
 
 const FIRST_NOISE_CHECK = 8;
 
+// the bounce passes of the light probes with multi-bounce
+
+const PROBE_BOUNCES = 3;
+
 const OPTIONS = [ 'algorithm', 'resolution', 'pageSize', 'padding', 'unwrap', 'ignoreOutlines', 'directional', 'specularIntensity', 'denoise', 'stitchSeams', 'noiseTolerance', 'maxSamples', 'samplesPerFrame', 'directLight', 'multiBounce', 'directions', 'cacheSize', 'probes', 'vxgiResolution' ];
 
 // the ray traced source needs three-mesh-bvh, so it is loaded on demand
@@ -786,6 +790,24 @@ class LightBaker {
 
 		} );
 
+		// a bounce pass of the light probes per frame, so that the page keeps rendering
+
+		if ( algorithm === 'probes' && this.multiBounce ) {
+
+			const probes = this.source;
+
+			for ( let pass = 1; pass <= PROBE_BOUNCES; pass ++ ) {
+
+				await nextFrame();
+
+				if ( this.source !== probes ) throw new DOMException( 'The preparation was superseded by another one.', 'AbortError' );
+
+				this._withPreparedScene( () => this._bakeProbePass( probes, pass ) );
+
+			}
+
+		}
+
 		this._lightCopies = this.bakedLights.map( copyLight );
 
 		// the light map accumulates the samples. A directional light map also bakes the dominant
@@ -1295,26 +1317,14 @@ class LightBaker {
 
 		} else if ( this.algorithm === 'probes' ) {
 
-			const { size, position, counts, near, far, cubemapSize } = this._getProbeGrid();
+			const { size, position, counts } = this._getProbeGrid();
 			const probes = new LightProbeGrid( size.x, size.y, size.z, ...counts );
 			probes.position.copy( position );
 			probes.updateBoundingBox();
 
-			// background colors are not part of the bake
+			// the direct light pass, prepare() captures the bounce passes in later frames
 
-			const background = scene.background;
-			if ( background !== null && background.isColor ) scene.background = null;
-
-			try {
-
-				// Each pass captures the previous pass, keeping feedback independent of probe order.
-				probes.bake( renderer, scene, { cubemapSize, near, far, bounces: this.multiBounce ? 3 : 0 } );
-
-			} finally {
-
-				scene.background = background;
-
-			}
+			this._bakeProbePass( probes, 0 );
 
 			this.irradianceNode = ( position, normal, sample, direction ) => {
 
@@ -1338,6 +1348,36 @@ class LightBaker {
 
 			this.irradianceNode = vxgiIrradiance( volume, { coneCount: 3 } );
 			this.source = volume;
+
+		}
+
+	}
+
+	/**
+	 * Captures one pass of the light probes. Each pass captures the previous one, keeping the feedback
+	 * independent of the probe order.
+	 *
+	 * @private
+	 * @param {LightProbeGrid} probes - The light probes.
+	 * @param {number} pass - The pass, 0 for direct light and one more for each bounce.
+	 */
+	_bakeProbePass( probes, pass ) {
+
+		const { near, far, cubemapSize } = this._getProbeGrid();
+		const scene = this.scene;
+
+		// background colors are not part of the bake
+
+		const background = scene.background;
+		if ( background !== null && background.isColor ) scene.background = null;
+
+		try {
+
+			probes.bake( this.renderer, scene, { cubemapSize, near, far, pass } );
+
+		} finally {
+
+			scene.background = background;
 
 		}
 

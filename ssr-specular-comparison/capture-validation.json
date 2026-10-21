@@ -1,0 +1,44 @@
+{
+  "captures": [
+    {
+      "variant": "before",
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "fallback": false
+      },
+      "errors": [],
+      "revision": true,
+      "frames": 128,
+      "gpuErrors": [],
+      "materials": [
+        {
+          "type": "MeshStandardMaterial",
+          "metalness": 0
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "fallback": false
+      },
+      "errors": [],
+      "revision": true,
+      "frames": 128,
+      "gpuErrors": [],
+      "materials": [
+        {
+          "type": "MeshStandardNodeMaterial",
+          "metalness": 0
+        }
+      ]
+    }
+  ]
+}

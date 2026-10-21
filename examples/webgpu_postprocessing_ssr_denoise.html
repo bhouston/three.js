@@ -59,7 +59,7 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
@@ -71,24 +71,28 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
-		// Disable env map specular (radiance and clearcoat radiance) for every PBR material
-		// in this scene, since SSR provides the specular reflections instead. Diffuse env
-		// (irradiance) is left untouched. Equivalent to zeroing EnvironmentNode contributions,
-		// but scoped to this example rather than modifying the core library.
-		const _indirectSpecular = THREE.PhysicalLightingModel.prototype.indirectSpecular;
-		THREE.PhysicalLightingModel.prototype.indirectSpecular = function ( builder ) {
+		class SSRLightingModel extends THREE.PhysicalLightingModel {
 
-			builder.context.radiance = vec3( 0 );
+			indirectSpecular( builder ) {
 
-			if ( this.clearcoatRadiance ) {
-
-				this.clearcoatRadiance.assign( vec3( 0 ) );
+				// Keep diffuse IBL and its energy compensation, but replace all indirect
+				// specular (including multiscattering) with the SSR result.
+				super.indirectSpecular( builder );
+				builder.context.reflectedLight.indirectSpecular.assign( 0 );
 
 			}
 
-			_indirectSpecular.call( this, builder );
+		}
 
-		};
+		class SSRNodeMaterial extends THREE.MeshStandardNodeMaterial {
+
+			setupLightingModel() {
+
+				return new SSRLightingModel();
+
+			}
+
+		}
 
 		const OUTPUT_COMPARE_DENOISE = 8;
 		const OUTPUT_COMPARE_SSR = 9;
@@ -189,9 +193,21 @@
 
 				gltf.scene.scale.multiplyScalar( 0.1 );
 
+				const materials = new Map();
+
 				gltf.scene.traverse( function ( object ) {
 
 					if ( ! object.material ) return;
+
+					const material = object.material;
+
+					if ( ! materials.has( material ) ) {
+
+						materials.set( material, new SSRNodeMaterial().copy( material ) );
+
+					}
+
+					object.material = materials.get( material );
 
 					object.castShadow = true;
 					object.receiveShadow = true;
@@ -316,6 +332,8 @@
 			contrastUniform = uniform( params.post.grading.contrast );
 			saturationUniform = uniform( params.post.grading.saturation );
 
+			// Scene color contains diffuse lighting, direct specular and emission.
+			// SSR supplies indirect specular, including the environment fallback, once.
 			const litColor = scenePassColor.rgb.add( denoisePassBlend.rgb );
 
 			const outputNode = vec4( litColor, 1 );

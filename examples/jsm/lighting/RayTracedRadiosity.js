@@ -86,11 +86,12 @@ class RayTracedRadiosity {
 	 * @param {number} [options.lightCandidates=4] - The number of candidate points on emissive surfaces per shadow ray.
 	 * The shadow ray goes to one of them, picked by its unshadowed contribution.
 	 * @param {number} [options.bounces=16] - The number of iterations used to solve the cached bounces. Each iteration adds one bounce, `0` disables the cache.
+	 * @param {boolean} [options.multiBounce=true] - Whether the cache includes recursive interreflection. False keeps a directly lit cache for one indirect reflection.
 	 * @param {number} [options.cacheSamples=32] - The number of samples accumulated into the bounce cache after the iterations.
 	 * @param {number} [options.cacheSize=256] - The size of the bounce cache light map in texels, per page of the atlas.
 	 * @param {number} [options.textureSize=512] - The size in texels of the texture array layers that hold the material maps.
 	 */
-	constructor( { rays = 8, lightCandidates = 4, bounces = 16, cacheSamples = 32, cacheSize = 256, textureSize = 512 } = {} ) {
+	constructor( { rays = 8, lightCandidates = 4, bounces = 16, multiBounce = true, cacheSamples = 32, cacheSize = 256, textureSize = 512 } = {} ) {
 
 		/**
 		 * The number of rays cast per point and sample.
@@ -115,6 +116,16 @@ class RayTracedRadiosity {
 		 * @default 16
 		 */
 		this.bounces = bounces;
+
+		/**
+		 * Whether the cache includes recursive interreflection. When false, cache refinement only
+		 * samples direct illumination; the final gather still reflects it once off the surfaces.
+		 * Call update() after changing this property. Keep bounces above zero to retain that cache.
+		 *
+		 * @type {boolean}
+		 * @default true
+		 */
+		this.multiBounce = multiBounce;
 
 		/**
 		 * The number of samples accumulated into the bounce cache after the iterations.
@@ -1154,7 +1165,10 @@ class RayTracedRadiosity {
 		const materials = this._materials;
 		const triangles = this._triangles;
 		const emitters = this._emitters;
-		const cache = this._cache !== null ? texture( this._cache.texture ) : null;
+		// The cache sampler includes analytic lights. In single-bounce mode it must not read
+		// its own previous result, even while accumulating refinement samples. The final
+		// sampler excludes analytic lights and reads the directly lit cache for one reflection.
+		const cache = this._cache !== null && ( this.multiBounce || analyticLights === false ) ? texture( this._cache.texture ) : null;
 		const environment = this._environment;
 		const sky = environment !== null ? this._sky : null;
 

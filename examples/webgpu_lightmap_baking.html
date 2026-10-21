@@ -74,7 +74,8 @@
 				scene: 'Cornell Box',
 				algorithm: 'Ray Radiosity',
 				resolution: 1024,
-				denoise: true
+				denoise: true,
+				multiBounce: true
 			};
 
 			// the algorithms of LightBaker. It stops the bake once the estimated noise of the light map drops
@@ -156,6 +157,7 @@
 				sceneControl = gui.add( params, 'scene', Object.keys( scenes ) ).name( 'Scene' ).onChange( setScene );
 				gui.add( params, 'algorithm', Object.keys( algorithms ) ).name( 'GI Algorithm' ).onChange( bake );
 				gui.add( params, 'resolution', [ 256, 1024, 2048, 4096 ] ).name( 'Resolution' ).listen().onChange( bake );
+				gui.add( params, 'multiBounce' ).name( 'Multi-bounce' ).info( 'Include further cached indirect reflections. Off gives one indirect reflection of point lights; transport depth varies by method and light source.' ).onChange( bake );
 				gui.add( params, 'denoise' ).name( 'Denoise' ).onChange( setDenoise );
 				gui.add( { bake }, 'bake' ).name( 'Re-Bake GI' );
 
@@ -846,6 +848,7 @@
 				lightBaker.setOptions( {
 					algorithm: algorithms[ params.algorithm ],
 					directLight: 'live',
+					multiBounce: params.multiBounce,
 					resolution: params.resolution,
 					pageSize: world.pageSize ?? 2048,
 					unwrap: world.unwrap ?? true,

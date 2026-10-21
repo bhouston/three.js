@@ -39,6 +39,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( baker.resolution, 1024 );
 				assert.strictEqual( baker.pageSize, 2048 );
 				assert.strictEqual( baker.directLight, 'live' );
+				assert.true( baker.multiBounce, 'Further indirect reflections are enabled by default' );
 				assert.true( baker.unwrap && baker.directional && baker.denoise && baker.stitchSeams );
 				assert.strictEqual( baker.samples, 0 );
 				assert.false( baker.converged, 'A bake that has not started has not converged' );
@@ -70,6 +71,7 @@ export default QUnit.module( 'Addons', () => {
 
 				assert.throws( () => new LightBaker( renderer, { algorithm: 'path tracing' } ), /Unknown algorithm/ );
 				assert.throws( () => new LightBaker( renderer, { directLight: 'Baked' } ), /directLight/ );
+				assert.throws( () => new LightBaker( renderer, { multiBounce: 1 } ), /multiBounce/ );
 				assert.throws( () => new LightBaker( renderer, { unwrap: 'keep' } ), /unwrap/ );
 				assert.throws( () => new LightBaker( renderer, { resolution: 1000.5 } ), /resolution/ );
 				assert.throws( () => new LightBaker( renderer, { padding: 2 } ), /padding/ );
@@ -82,6 +84,19 @@ export default QUnit.module( 'Addons', () => {
 				assert.true( warnings[ 0 ].includes( 'tolerance' ), 'Typos are reported' );
 				assert.strictEqual( baker.resolution, 512, 'The known options still apply' );
 				assert.strictEqual( baker.setOptions( { resolution: undefined } ).resolution, 512, 'undefined keeps an option' );
+
+			} );
+
+			QUnit.test( 'Changing bounce mode invalidates the prepared source', assert => {
+
+				const baker = new LightBaker( renderer );
+				const scene = new Scene();
+				const key = baker._getPrepareKey( scene, scene );
+				baker.setOptions( { multiBounce: false } );
+				assert.false( baker.multiBounce );
+				assert.notStrictEqual( baker._getPrepareKey( scene, scene ), key, 'The source must be rebuilt after toggling feedback' );
+				baker.setOptions( { multiBounce: true } );
+				assert.strictEqual( baker._getPrepareKey( scene, scene ), key );
 
 			} );
 

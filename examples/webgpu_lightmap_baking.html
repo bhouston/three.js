@@ -74,7 +74,7 @@
 				scene: 'Cornell Box',
 				algorithm: 'Ray Radiosity',
 				resolution: 1024,
-				denoise: true,
+				denoise: false,
 				multiBounce: true
 			};
 
@@ -849,6 +849,7 @@
 					algorithm: algorithms[ params.algorithm ],
 					directLight: 'live',
 					multiBounce: params.multiBounce,
+					denoise: params.denoise,
 					resolution: params.resolution,
 					pageSize: world.pageSize ?? 2048,
 					unwrap: world.unwrap ?? true,

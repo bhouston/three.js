@@ -63,7 +63,7 @@
 			const params = {
 				enabled: true,
 				visibility: true,
-				visibilityResolution: 16,
+				visbilityGridSize: 16,
 				showProbes: false,
 				probeSize: 0.2,
 				boundsX: - 0.5,
@@ -194,7 +194,7 @@
 
 				} );
 
-				gui.add( params, 'visibilityResolution', { '4 × 4': 4, '8 × 8': 8, '16 × 16': 16, '32 × 32': 32 } ).name( 'Octahedral Size' ).onChange( createProbes );
+				gui.add( params, 'visbilityGridSize', [ 4, 8, 16, 32 ] ).name( 'Visibility Grid Size' ).onChange( createProbes );
 
 				gui.add( params, 'visibility' ).name( 'Visibility' ).onChange( ( value ) => {
 
@@ -289,7 +289,7 @@
 				probes.position.set( params.boundsX, params.boundsY, params.boundsZ );
 				probes.visible = params.enabled;
 				probes.visibility = params.visibility;
-				probes.visibilityResolution = params.visibilityResolution;
+				probes.visbilityGridSize = params.visbilityGridSize;
 				scene.add( probes );
 
 				resetProbeBake();

@@ -569,9 +569,9 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
  * @param {Texture} batchMap - The current batch render target texture.
  * @param {Texture} classifyMap - The current classification capture texture.
  * @param {DepthTexture} depthMap - The current classification capture depth texture.
- * @param {number} visibilityResolution - The octahedral distance resolution.
+ * @param {number} visbilityGridSize - The octahedral distance resolution.
  */
-function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depthMap, visibilityResolution ) {
+function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depthMap, visbilityGridSize ) {
 
 	if ( _repackMaterials === null ) {
 
@@ -609,7 +609,7 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 
 	}
 
-	if ( _shMaterial === null || _shFaceSize !== cubemapSize || _distanceResolution !== visibilityResolution ) {
+	if ( _shMaterial === null || _shFaceSize !== cubemapSize || _distanceResolution !== visbilityGridSize ) {
 
 		if ( _shMaterial !== null ) {
 
@@ -624,7 +624,7 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 		_shMaterial.depthTest = false;
 		_shMaterial.depthWrite = false;
 		_shFaceSize = cubemapSize;
-		_distanceResolution = visibilityResolution;
+		_distanceResolution = visbilityGridSize;
 
 		_fractionMaterial = new NodeMaterial();
 		_fractionMaterial.outputNode = backFaceFractionNode( _classifyNode, _depthNode, cubemapSize, {
@@ -636,15 +636,14 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 		_fractionMaterial.depthWrite = false;
 
 		_distanceMaterial = new NodeMaterial();
-		const uniforms = {
+		_distanceMaterial.outputNode = distanceMomentsNode( _depthNode, _batchNode, 9 * 6 * FACE_BLOCKS, cubemapSize, visbilityGridSize, {
 			batchStart: _batchStartUniform,
 			batchCount: _batchCountUniform,
 			near: _nearUniform,
 			far: _farUniform,
 			distanceScale: _distanceScaleUniform,
 			clearance: _clearanceUniform
-		};
-		_distanceMaterial.outputNode = distanceMomentsNode( _depthNode, _batchNode, 9 * 6 * FACE_BLOCKS, cubemapSize, visibilityResolution, uniforms );
+		} );
 		_distanceMaterial.depthTest = false;
 		_distanceMaterial.depthWrite = false;
 
@@ -767,7 +766,7 @@ class LightProbeGrid extends Light {
 		 * @type {number}
 		 * @default 16
 		 */
-		this.visibilityResolution = DISTANCE_RESOLUTION;
+		this.visbilityGridSize = DISTANCE_RESOLUTION;
 
 		/**
 		 * With {@link LightProbeGrid#visibility}, how far the shaded point is moved
@@ -954,7 +953,7 @@ class LightProbeGrid extends Light {
 
 		ensureCaptureCamera( near, far );
 		ensureBakeTargets( cubemapSize, totalProbes );
-		ensureBakeMaterials( cubemapSize, _faceTarget.texture, _batchTarget.texture, _classifyTarget.texture, _classifyTarget.depthTexture, this.visibilityResolution );
+		ensureBakeMaterials( cubemapSize, _faceTarget.texture, _batchTarget.texture, _classifyTarget.texture, _classifyTarget.depthTexture, this.visbilityGridSize );
 
 		_nearUniform.value = near * CLASSIFY_NEAR_SCALE;
 		_clearanceUniform.value = near * CLEARANCE_NEAR_PLANES;
@@ -1058,7 +1057,7 @@ class LightProbeGrid extends Light {
 
 			const res = this.resolution;
 			this._bounceGrid = new LightProbeGrid( this.width, this.height, this.depth, res.x, res.y, res.z );
-			this._bounceGrid.visibilityResolution = this.visibilityResolution;
+			this._bounceGrid.visbilityGridSize = this.visbilityGridSize;
 			this._bounceGrid._ensureTextures();
 			renderer.initRenderTarget( this._bounceGrid._renderTarget );
 
@@ -1208,7 +1207,7 @@ class LightProbeGrid extends Light {
 				_quad.render( renderer );
 
 				_batchCountUniform.value = batchCount;
-				const tileHeight = this.visibilityResolution + 2;
+				const tileHeight = this.visbilityGridSize + 2;
 				distanceTarget.viewport.set( 0, firstRow * tileHeight, distanceTarget.width, ( lastRow - firstRow + 1 ) * tileHeight );
 				renderer.setRenderTarget( distanceTarget );
 				_quad.material = _distanceMaterial;
@@ -1370,7 +1369,7 @@ class LightProbeGrid extends Light {
 
 		// Distance moments per probe, as octahedral tiles in bake order.
 
-		const distanceTile = this.visibilityResolution + 2;
+		const distanceTile = this.visbilityGridSize + 2;
 
 		this._distanceTarget = new RenderTarget( DISTANCE_COLUMNS * distanceTile, rows * distanceTile, {
 			type: HalfFloatType,

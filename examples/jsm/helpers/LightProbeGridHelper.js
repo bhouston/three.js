@@ -144,7 +144,7 @@ class LightProbeGridHelper extends InstancedMesh {
 
 		this._atlas.value = probes.texture;
 		this._distance.value = probes._distanceTarget.texture;
-		this._distanceResolution.value = probes.visibilityResolution;
+		this._distanceResolution.value = probes.visbilityGridSize;
 		this._resolution.value.copy( res );
 
 	}

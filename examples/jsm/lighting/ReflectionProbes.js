@@ -247,6 +247,7 @@ class ReflectionProbes extends Object3D {
 		let pmrem = null;
 		let spareTarget = null;
 		let baked = false;
+		const shadowStates = [];
 
 		const capture = ( source, position, index ) => {
 
@@ -269,6 +270,26 @@ class ReflectionProbes extends Object3D {
 		this.capturing = true;
 
 		try {
+
+			// Reuse camera-independent shadow maps throughout the capture.
+
+			scene.traverse( ( object ) => {
+
+				if ( object.castShadow === true && ( object.isPointLight === true || object.isSpotLight === true || object.isDirectionalLight === true ) ) {
+
+					const shadow = object.shadow;
+
+					if ( shadow.autoUpdate === true ) {
+
+						shadowStates.push( shadow );
+						shadow.autoUpdate = false;
+						shadow.needsUpdate = true;
+
+					}
+
+				}
+
+			} );
 
 			this.texture = renderTarget.texture;
 			this.bakedProbes = probes;
@@ -309,6 +330,8 @@ class ReflectionProbes extends Object3D {
 			baked = true;
 
 		} finally {
+
+			for ( const shadow of shadowStates ) shadow.autoUpdate = true;
 
 			this.capturing = false;
 			this._captureBounce = 0;

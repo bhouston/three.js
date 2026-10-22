@@ -25,7 +25,7 @@ import {
 
 import { array, atan, Discard, float, Fn, frontFacing, getShIrradianceAt, int, ivec2, ivec3, Loop, perspectiveDepthToViewZ, screenCoordinate, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
-import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, DISTANCE_TILE, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, packGridSH, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
+import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, DISTANCE_TILE, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, distanceSHBasis, octDecode, octTileTexel, packGridSH, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
 import { replaceSunLights, restoreSunLights } from './LightProbeGridUtils.js';
 
 // Probes captured per render, six sub-cameras each.
@@ -61,6 +61,7 @@ const _copyRegion = /*@__PURE__*/ new Box3();
 // Bake materials, shared across grids so the shaders compile once, not per bake.
 let _shMaterial = null;
 let _shFaceSize = - 1;
+let _distanceSHOrder = - 1;
 let _faceNode = null;
 let _batchNode = null;
 let _batchStartUniform = null;
@@ -355,6 +356,58 @@ function distanceMomentsNode( depth, batch, fractionColumn, size, { batchStart, 
 }
 
 /**
+ * Projects normalized distance and squared distance to SH with equal-area samples.
+ *
+ * @private
+ * @param {Node} depth - The classification depth.
+ * @param {Node} batch - Probe classification results.
+ * @param {number} size - Cubemap face resolution.
+ * @param {number} order - Maximum SH degree.
+ * @param {Object} uniforms - Capture and probe-range uniforms.
+ * @return {Node<vec4>} Two packed pairs of moment coefficients.
+ */
+function distanceMomentsSHNode( depth, batch, size, order, { batchStart, batchCount, near, far, distanceScale, clearance } ) {
+
+	const count = ( order + 1 ) ** 2;
+	const stride = Math.ceil( count / 2 );
+	const samples = 512;
+
+	return Fn( () => {
+
+		const coord = ivec2( screenCoordinate.xy );
+		const probeIndex = coord.y.mul( DISTANCE_COLUMNS ).add( coord.x.div( stride ) ).toVar();
+		const coefficient = coord.x.mod( stride ).mul( 2 ).toVar();
+		const slot = probeIndex.sub( batchStart ).toVar();
+		Discard( slot.lessThan( 0 ).or( slot.greaterThanEqual( batchCount ) ) );
+
+		const classification = batch.load( ivec2( 9 * 6 * FACE_BLOCKS, probeIndex ) );
+		const hidden = classification.x.greaterThan( INSIDE_FRACTION ).or( classification.y.lessThan( clearance ) );
+		const sum = vec4( 0 ).toVar();
+
+		Loop( samples, ( { i } ) => {
+
+			const fi = float( i );
+			const z = float( 1 ).sub( fi.mul( 2 ).add( 1 ).div( samples ) );
+			const radius = z.mul( z ).oneMinus().max( 0 ).sqrt();
+			const phi = fi.mul( GOLDEN_ANGLE );
+			const direction = vec3( radius.mul( phi.cos() ), z, radius.mul( phi.sin() ) ).toVar();
+			const { distance } = captureDistance( depth, direction, size, slot, near, far );
+			const d = distance.div( distanceScale ).min( 1 ).toVar();
+			const moments = vec2( d, d.mul( d ) );
+			const basis = distanceSHBasis( direction );
+			const next = coefficient.add( 1 ).min( count - 1 );
+
+			sum.addAssign( vec4( moments.mul( basis.element( coefficient ) ), moments.mul( select( coefficient.add( 1 ).lessThan( count ), basis.element( next ), float( 0 ) ) ) ) );
+
+		} );
+
+		return select( hidden, vec4( HIDDEN_DISTANCE, 0, 0, 0 ), sum.mul( 4 * Math.PI / samples ) );
+
+	} )();
+
+}
+
+/**
  * Evaluates SH irradiance for each octahedral texel, including its border.
  *
  * @private
@@ -567,8 +620,9 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
  * @param {Texture} batchMap - The current batch render target texture.
  * @param {Texture} classifyMap - The current classification capture texture.
  * @param {DepthTexture} depthMap - The current classification capture depth texture.
+ * @param {number} visibilitySHOrder - The maximum SH degree, or zero for octahedral.
  */
-function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depthMap ) {
+function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depthMap, visibilitySHOrder ) {
 
 	if ( _repackMaterials === null ) {
 
@@ -606,7 +660,7 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 
 	}
 
-	if ( _shMaterial === null || _shFaceSize !== cubemapSize ) {
+	if ( _shMaterial === null || _shFaceSize !== cubemapSize || _distanceSHOrder !== visibilitySHOrder ) {
 
 		if ( _shMaterial !== null ) {
 
@@ -621,6 +675,7 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 		_shMaterial.depthTest = false;
 		_shMaterial.depthWrite = false;
 		_shFaceSize = cubemapSize;
+		_distanceSHOrder = visibilitySHOrder;
 
 		_fractionMaterial = new NodeMaterial();
 		_fractionMaterial.outputNode = backFaceFractionNode( _classifyNode, _depthNode, cubemapSize, {
@@ -632,14 +687,17 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 		_fractionMaterial.depthWrite = false;
 
 		_distanceMaterial = new NodeMaterial();
-		_distanceMaterial.outputNode = distanceMomentsNode( _depthNode, _batchNode, 9 * 6 * FACE_BLOCKS, cubemapSize, {
+		const uniforms = {
 			batchStart: _batchStartUniform,
 			batchCount: _batchCountUniform,
 			near: _nearUniform,
 			far: _farUniform,
 			distanceScale: _distanceScaleUniform,
 			clearance: _clearanceUniform
-		} );
+		};
+		_distanceMaterial.outputNode = visibilitySHOrder > 0
+			? distanceMomentsSHNode( _depthNode, _batchNode, cubemapSize, visibilitySHOrder, uniforms )
+			: distanceMomentsNode( _depthNode, _batchNode, 9 * 6 * FACE_BLOCKS, cubemapSize, uniforms );
 		_distanceMaterial.depthTest = false;
 		_distanceMaterial.depthWrite = false;
 
@@ -754,6 +812,15 @@ class LightProbeGrid extends Light {
 		 * @default false
 		 */
 		this.visibility = false;
+
+		/**
+		 * Experimental distance encoding: 0 for octahedral, or maximum SH degree 1–3.
+		 * Set before the first bake. Recreate the grid to change the encoding.
+		 *
+		 * @type {number}
+		 * @default 0
+		 */
+		this.visibilitySHOrder = 0;
 
 		/**
 		 * With {@link LightProbeGrid#visibility}, how far the shaded point is moved
@@ -940,7 +1007,7 @@ class LightProbeGrid extends Light {
 
 		ensureCaptureCamera( near, far );
 		ensureBakeTargets( cubemapSize, totalProbes );
-		ensureBakeMaterials( cubemapSize, _faceTarget.texture, _batchTarget.texture, _classifyTarget.texture, _classifyTarget.depthTexture );
+		ensureBakeMaterials( cubemapSize, _faceTarget.texture, _batchTarget.texture, _classifyTarget.texture, _classifyTarget.depthTexture, this.visibilitySHOrder );
 
 		_nearUniform.value = near * CLASSIFY_NEAR_SCALE;
 		_clearanceUniform.value = near * CLEARANCE_NEAR_PLANES;
@@ -1044,6 +1111,7 @@ class LightProbeGrid extends Light {
 
 			const res = this.resolution;
 			this._bounceGrid = new LightProbeGrid( this.width, this.height, this.depth, res.x, res.y, res.z );
+			this._bounceGrid.visibilitySHOrder = this.visibilitySHOrder;
 			this._bounceGrid._ensureTextures();
 			renderer.initRenderTarget( this._bounceGrid._renderTarget );
 
@@ -1193,7 +1261,8 @@ class LightProbeGrid extends Light {
 				_quad.render( renderer );
 
 				_batchCountUniform.value = batchCount;
-				distanceTarget.viewport.set( 0, firstRow * DISTANCE_TILE, distanceTarget.width, ( lastRow - firstRow + 1 ) * DISTANCE_TILE );
+				const tileHeight = this.visibilitySHOrder > 0 ? 1 : DISTANCE_TILE;
+				distanceTarget.viewport.set( 0, firstRow * tileHeight, distanceTarget.width, ( lastRow - firstRow + 1 ) * tileHeight );
 				renderer.setRenderTarget( distanceTarget );
 				_quad.material = _distanceMaterial;
 				_quad.render( renderer );
@@ -1352,11 +1421,15 @@ class LightProbeGrid extends Light {
 
 		this._irradianceTarget = new RenderTarget( DISTANCE_COLUMNS * IRRADIANCE_TILE, rows * IRRADIANCE_TILE, irradianceOptions );
 
-		// Distance moments per probe, as octahedral tiles in bake order.
+		// Distance moments per probe, as SH coefficients or octahedral tiles.
 
-		this._distanceTarget = new RenderTarget( DISTANCE_COLUMNS * DISTANCE_TILE, rows * DISTANCE_TILE, {
+		const shOrder = this.visibilitySHOrder;
+		const distanceWidth = shOrder > 0 ? Math.ceil( ( shOrder + 1 ) ** 2 / 2 ) : DISTANCE_TILE;
+		const distanceHeight = shOrder > 0 ? 1 : DISTANCE_TILE;
+
+		this._distanceTarget = new RenderTarget( DISTANCE_COLUMNS * distanceWidth, rows * distanceHeight, {
 			type: HalfFloatType,
-			format: RGFormat,
+			format: shOrder > 0 ? RGBAFormat : RGFormat,
 			minFilter: LinearFilter,
 			magFilter: LinearFilter,
 			generateMipmaps: false,

@@ -1,5 +1,5 @@
 import { AnalyticLightNode, NodeUpdateType, Vector3 } from 'three/webgpu';
-import { array, cameraPosition, float, getShIrradianceAt, If, int, Loop, normalWorld, positionWorld, renderGroup, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { array, cameraPosition, float, getShIrradianceAt, If, int, ivec2, Loop, normalWorld, positionWorld, renderGroup, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
 // Padding texels at each boundary of every atlas sub-volume.
 export const ATLAS_PADDING = 1;
@@ -167,6 +167,70 @@ export function sampleGridSH( atlas, uvw, nz ) {
 }
 
 /**
+ * Returns the real SH basis through degree 3, matching the existing L2 ordering.
+ *
+ * @private
+ * @param {Node<vec3>} direction - The unit direction.
+ * @return {Node} The sixteen basis functions.
+ */
+export function distanceSHBasis( direction ) {
+
+	const { x, y, z } = direction;
+	const xx = x.mul( x ), yy = y.mul( y ), zz = z.mul( z );
+
+	return array( [
+		float( 0.2820947918 ),
+		y.mul( 0.4886025119 ), z.mul( 0.4886025119 ), x.mul( 0.4886025119 ),
+		x.mul( y ).mul( 1.0925484306 ), y.mul( z ).mul( 1.0925484306 ),
+		zz.mul( 3 ).sub( 1 ).mul( 0.3153915653 ), x.mul( z ).mul( 1.0925484306 ), xx.sub( yy ).mul( 0.5462742153 ),
+		y.mul( xx.mul( 3 ).sub( yy ) ).mul( 0.5900435899 ),
+		x.mul( y ).mul( z ).mul( 2.8906114426 ),
+		y.mul( zz.mul( 5 ).sub( 1 ) ).mul( 0.4570457995 ),
+		z.mul( zz.mul( 5 ).sub( 3 ) ).mul( 0.3731763326 ),
+		x.mul( zz.mul( 5 ).sub( 1 ) ).mul( 0.4570457995 ),
+		z.mul( xx.sub( yy ) ).mul( 1.4453057213 ),
+		x.mul( xx.sub( yy.mul( 3 ) ) ).mul( 0.5900435899 )
+	] );
+
+}
+
+/**
+ * Reconstructs distance moments from packed pairs of SH coefficients.
+ *
+ * @private
+ * @param {TextureNode} atlas - The coefficient atlas.
+ * @param {Node<int>} probeIndex - The probe index.
+ * @param {Node<vec3>} direction - The unit direction from probe to receiver.
+ * @param {number} order - Maximum SH degree, from 1 to 3.
+ * @return {Node<vec2>} The normalized distance moments.
+ */
+function sampleDistanceSH( atlas, probeIndex, direction, order ) {
+
+	const count = ( order + 1 ) ** 2;
+	const stride = Math.ceil( count / 2 );
+	const origin = ivec2( probeIndex.mod( DISTANCE_COLUMNS ).mul( stride ), probeIndex.div( DISTANCE_COLUMNS ) );
+	const basis = distanceSHBasis( direction );
+	const sum = vec2( 0 ).toVar();
+	const first = atlas.load( origin ).toVar();
+
+	for ( let i = 0; i < stride; i ++ ) {
+
+		const packed = i === 0 ? first : atlas.load( origin.add( ivec2( i, 0 ) ) ).toVar();
+		sum.addAssign( packed.xy.mul( basis.element( i * 2 ) ) );
+		if ( i * 2 + 1 < count ) sum.addAssign( packed.zw.mul( basis.element( i * 2 + 1 ) ) );
+
+	}
+
+	// Truncation can produce negative distances and invalid variances.
+
+	const mean = sum.x.clamp( 0, 1 ).toVar();
+	const second = sum.y.clamp( mean.mul( mean ), mean );
+
+	return select( first.x.lessThan( 0 ), vec2( HIDDEN_DISTANCE, 0 ), vec2( mean, second ) );
+
+}
+
+/**
  * Returns the cubed Chebyshev visibility bound from distance moments
  * (Majercik et al., 2019). Points nearer than the mean are fully visible.
  *
@@ -195,7 +259,7 @@ function chebyshevVisibility( moments, distance, slack = VISIBILITY_SLACK ) {
  */
 function evaluateGridIrradianceVisibility( grid, sampleIrradiance ) {
 
-	const { min, res, spacing, moments, distanceScale, normalBias, viewBias, momentsSize, irradianceSize } = grid;
+	const { min, res, spacing, moments, distanceScale, normalBias, viewBias, momentsSize, irradianceSize, visibilitySHOrder } = grid;
 
 	const nx = int( res.x ), nz = int( res.z );
 
@@ -230,7 +294,10 @@ function evaluateGridIrradianceVisibility( grid, sampleIrradiance ) {
 		const ix = int( cell.x ).toVar(), iy = int( cell.y ).toVar(), iz = int( cell.z ).toVar();
 		const probeIndex = ix.add( iz.mul( nx ) ).add( iy.mul( nx ).mul( nz ) ).toVar();
 		const momentsUV = octTileUV( probeIndex, direction, DISTANCE_RESOLUTION, momentsSize );
-		const visibility = chebyshevVisibility( moments.sample( momentsUV ).xy, distance.div( distanceScale ) );
+		const distanceMoments = visibilitySHOrder > 0
+			? sampleDistanceSH( moments, probeIndex, direction, visibilitySHOrder )
+			: moments.sample( momentsUV ).xy;
+		const visibility = select( distanceMoments.x.lessThan( 0 ), float( 0 ), chebyshevVisibility( distanceMoments, distance.div( distanceScale ) ) );
 
 		// Soft backface weight: probes behind the surface count less.
 
@@ -338,6 +405,7 @@ class LightProbeGridNode extends AnalyticLightNode {
 			res,
 			spacing,
 			moments: texture( distanceTarget.texture ),
+			visibilitySHOrder: light.visibilitySHOrder,
 			distanceScale: this._distanceScale,
 			normalBias: this._normalBias,
 			viewBias: this._viewBias,

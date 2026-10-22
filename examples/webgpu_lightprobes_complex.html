@@ -109,8 +109,9 @@
 
 				const params = {
 					enabled: true,
+					visibility: true,
 					showProbes: false,
-					resolution: 6,
+					resolution: 7,
 					bounces: 3,
 					lightIntensity: 30
 				};
@@ -132,11 +133,12 @@
 
 					}
 
-					// One volume covers both rooms. X gets twice the probes since the
-					// building is twice as wide as it is deep.
+					// One volume covers both rooms. Double the X resolution to keep
+					// probes clear of the divider at x=0.
 
-					probes = new LightProbeGrid( 15.6, 4.7, 7.6, resolution * 2 - 1, resolution, resolution );
+					probes = new LightProbeGrid( 15.6, 4.7, 7.6, resolution * 2, resolution, resolution );
 					probes.position.set( 0, 2.45, 0 );
+					probes.visibility = params.visibility;
 					probes.multiBounce = params.bounces > 0;
 
 					// Keep the helper spheres out of the cubemap captures.
@@ -153,6 +155,7 @@
 					if ( ! probesHelper ) {
 
 						probesHelper = new LightProbeGridHelper( probes );
+						probesHelper.visible = params.showProbes;
 						scene.add( probesHelper );
 
 					} else {
@@ -181,6 +184,12 @@
 				gui.add( params, 'enabled' ).name( 'GI' ).onChange( ( value ) => {
 
 					probes.visible = value;
+
+				} );
+
+				gui.add( params, 'visibility' ).name( 'Visibility' ).onChange( ( value ) => {
+
+					probes.visibility = value;
 
 				} );
 

@@ -114,6 +114,7 @@
 					probes = new LightProbeGrid( size.x, size.y, size.z, resolution, resolution, resolution );
 					probes.position.copy( bounds.getCenter( new THREE.Vector3() ) );
 					if ( probesHelper ) probesHelper.visible = false;
+					probes.visibility = params.visibility;
 					probes.multiBounce = params.bounces > 0;
 					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: size.length() * 2, bounces: params.bounces } );
 					probes.visible = params.enabled;
@@ -140,6 +141,7 @@
 				const params = {
 					model: 'Cornell Box',
 					enabled: true,
+					visibility: true,
 					showProbes: false,
 					resolution: 6,
 					bounces: 3,
@@ -225,6 +227,12 @@
 				gui.add( params, 'enabled' ).name( 'GI' ).onChange( ( value ) => {
 
 					probes.visible = value;
+
+				} );
+
+				gui.add( params, 'visibility' ).name( 'Visibility' ).onChange( ( value ) => {
+
+					probes.visibility = value;
 
 				} );
 

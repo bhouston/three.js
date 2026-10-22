@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Light probe visibility test scenes</title>
+<script type="importmap">{"imports":{"three":"/build/three.module.js","three/webgpu":"/build/three.webgpu.js","three/tsl":"/build/three.tsl.js","three/addons/":"/examples/jsm/"}}</script>
+<style>
+body{background:#16191f;color:#e8edf5;font:16px system-ui;max-width:1000px;margin:32px auto;padding:0 24px}p{line-height:1.6;color:#b9c6d8}label{display:inline-block;margin:0 20px 16px 0}select,button{font:inherit;padding:6px;background:#293243;color:white;border:1px solid #52627b;border-radius:4px}canvas{max-width:100%;image-rendering:pixelated}#status{white-space:pre-wrap}small{color:#b9c6d8}
+</style>
+</head>
+<body>
+<h1>Light probe visibility test scenes</h1>
+<p>A white radiance source lights the right chamber. The partitions and shell absorb all light. The dark-facing wall patch should be completely black; the opening control should receive light. No direct lights or multibounce illumination are used.</p>
+<label>Scene <select id="scene"></select></label>
+<label>Surface <select id="surface"><option value="leak">Dark-facing wall</option><option value="interior">Dark-room surface facing the source</option><option value="lit">Lit reference</option></select></label>
+<label>Setting <select id="setting"><option>baseline</option><option>visibility-off</option><option>normal-0</option><option>normal-0.16</option><option>view-0</option><option>view-0.16</option></select></label>
+<div id="preview"></div><p id="status">Choose a scene to inspect it.</p>
+<small>This workbench uses the production shader. The runner tests slack, weight suppression, resolution, exact visibility, region masks and direct convolution through isolated module overrides. Its report contains all measurements and comparison images.</small>
+<script type="module">
+import * as THREE from '/build/three.webgpu.js';
+import { cases, runCase } from './scenes.js';
+if ( ! new URLSearchParams( location.search ).has( 'automated' ) ) {
+
+	const sceneSelect = document.querySelector( '#scene' );
+	for ( const c of cases ) sceneSelect.add( new Option( c.name, c.name ) );
+	const renderer = new THREE.WebGPURenderer();
+	await renderer.init();
+	renderer.setSize( 512, 512 );
+	renderer.toneMapping = THREE.NoToneMapping;
+	document.querySelector( '#preview' ).appendChild( renderer.domElement );
+	let current;
+	async function refresh() {
+
+		document.querySelector( '#status' ).textContent = 'Baking…';
+		if ( current ) current.dispose();
+		current = await runCase( renderer, cases.find( c => c.name === sceneSelect.value ), document.querySelector( '#setting' ).value );
+		current.showView( document.querySelector( '#surface' ).value );
+		document.querySelector( '#status' ).textContent = `Mean dark-wall luminance: ${current.leak.mean.toExponential( 5 )}\nLit reference: ${current.lit.mean.toFixed( 5 )}\nInterior/opening: ${current.interior.mean.toExponential( 5 )}`;
+
+	}
+
+	sceneSelect.onchange = refresh;
+	document.querySelector( '#setting' ).onchange = refresh;
+	document.querySelector( '#surface' ).onchange = () => current?.showView( document.querySelector( '#surface' ).value );
+	await refresh();
+
+}
+</script>
+</body>
+</html>

@@ -1,275 +1,539 @@
-[
-  {
-    "name": "webgpu_lightprobes",
-    "variant": "before",
-    "adapters": [
-      {
-        "vendor": "apple",
-        "architecture": "metal-3",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      }
-    ],
-    "state": {
-      "status": {},
-      "grids": [
+{
+  "notes": [
+    "Captures compare upstream 2bd920c3a604 with PR e62a25f1e2a8 at 1280x800. GPU work completed before screenshots.",
+    "The initial before capture logged a local favicon 404; the subsequent smoke harness served that request and all PR scenes then completed with zero errors.",
+    "Smoke runs exercise visibility off/on and show/hide probe helpers.",
+    "Inspector FPS displays include startup and baking; these runs are not performance benchmarks."
+  ],
+  "captures": [
+    {
+      "name": "webgpu_lightprobes",
+      "variant": "before",
+      "adapters": [
         {
-          "resolution": [
-            6,
-            6,
-            6
-          ],
-          "bounds": {
-            "isBox3": true,
-            "min": {
-              "x": -2.8,
-              "y": 0.10000000000000009,
-              "z": -2.8
-            },
-            "max": {
-              "x": 2.8,
-              "y": 4.800000000000001,
-              "z": 2.8
-            }
-          }
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
         }
-      ]
-    },
-    "errors": [
-      "Failed to load resource: the server responded with a status of 404 (Not Found)"
-    ],
-    "warnings": []
-  },
-  {
-    "name": "webgpu_lightprobes",
-    "variant": "after",
-    "adapters": [
-      {
-        "vendor": "apple",
-        "architecture": "metal-3",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      }
-    ],
-    "state": {
-      "status": {},
-      "grids": [
-        {
-          "resolution": [
-            6,
-            6,
-            6
-          ],
-          "visibility": true,
-          "bounds": {
-            "isBox3": true,
-            "min": {
-              "x": -2.8,
-              "y": 0.10000000000000009,
-              "z": -2.8
-            },
-            "max": {
-              "x": 2.8,
-              "y": 4.800000000000001,
-              "z": 2.8
+      ],
+      "state": {
+        "status": {},
+        "grids": [
+          {
+            "resolution": [
+              6,
+              6,
+              6
+            ],
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -2.8,
+                "y": 0.10000000000000009,
+                "z": -2.8
+              },
+              "max": {
+                "x": 2.8,
+                "y": 4.800000000000001,
+                "z": 2.8
+              }
             }
           }
+        ]
+      },
+      "errors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "warnings": []
+    },
+    {
+      "name": "webgpu_lightprobes",
+      "variant": "after",
+      "adapters": [
+        {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
         }
-      ]
-    },
-    "errors": [],
-    "warnings": []
-  },
-  {
-    "name": "webgpu_lightprobes_complex",
-    "variant": "before",
-    "adapters": [
-      {
-        "vendor": "apple",
-        "architecture": "metal-3",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      }
-    ],
-    "state": {
-      "status": {},
-      "grids": [
-        {
-          "resolution": [
-            6,
-            6,
-            6
-          ],
-          "bounds": {
-            "isBox3": true,
-            "min": {
-              "x": -7.8,
-              "y": 0.10000000000000009,
-              "z": -3.8
-            },
-            "max": {
-              "x": 0,
-              "y": 4.800000000000001,
-              "z": 3.8
+      ],
+      "state": {
+        "status": {},
+        "grids": [
+          {
+            "resolution": [
+              6,
+              6,
+              6
+            ],
+            "visibility": true,
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -2.8,
+                "y": 0.10000000000000009,
+                "z": -2.8
+              },
+              "max": {
+                "x": 2.8,
+                "y": 4.800000000000001,
+                "z": 2.8
+              }
             }
           }
+        ]
+      },
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "webgpu_lightprobes_complex",
+      "variant": "before",
+      "adapters": [
+        {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        }
+      ],
+      "state": {
+        "status": {},
+        "grids": [
+          {
+            "resolution": [
+              6,
+              6,
+              6
+            ],
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -7.8,
+                "y": 0.10000000000000009,
+                "z": -3.8
+              },
+              "max": {
+                "x": 0,
+                "y": 4.800000000000001,
+                "z": 3.8
+              }
+            }
+          },
+          {
+            "resolution": [
+              6,
+              6,
+              6
+            ],
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": 0,
+                "y": 0.10000000000000009,
+                "z": -3.8
+              },
+              "max": {
+                "x": 7.8,
+                "y": 4.800000000000001,
+                "z": 3.8
+              }
+            }
+          }
+        ]
+      },
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "webgpu_lightprobes_complex",
+      "variant": "after",
+      "adapters": [
+        {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        }
+      ],
+      "state": {
+        "status": {},
+        "grids": [
+          {
+            "resolution": [
+              14,
+              7,
+              7
+            ],
+            "visibility": true,
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -7.8,
+                "y": 0.10000000000000009,
+                "z": -3.8
+              },
+              "max": {
+                "x": 7.8,
+                "y": 4.800000000000001,
+                "z": 3.8
+              }
+            }
+          }
+        ]
+      },
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "webgpu_lightprobes_sponza",
+      "variant": "before",
+      "adapters": [
+        {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        }
+      ],
+      "state": {
+        "status": {
+          "bakePass": 2,
+          "bakeIndex": 0,
+          "bounces": 1
         },
-        {
-          "resolution": [
-            6,
-            6,
-            6
-          ],
-          "bounds": {
-            "isBox3": true,
-            "min": {
-              "x": 0,
-              "y": 0.10000000000000009,
-              "z": -3.8
-            },
-            "max": {
-              "x": 7.8,
-              "y": 4.800000000000001,
-              "z": 3.8
+        "grids": [
+          {
+            "resolution": [
+              10,
+              7,
+              7
+            ],
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -11,
+                "y": 0.5,
+                "z": -4.8
+              },
+              "max": {
+                "x": 10,
+                "y": 11.5,
+                "z": 4.2
+              }
             }
           }
-        }
-      ]
-    },
-    "errors": [],
-    "warnings": []
-  },
-  {
-    "name": "webgpu_lightprobes_complex",
-    "variant": "after",
-    "adapters": [
-      {
-        "vendor": "apple",
-        "architecture": "metal-3",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      }
-    ],
-    "state": {
-      "status": {},
-      "grids": [
-        {
-          "resolution": [
-            14,
-            7,
-            7
-          ],
-          "visibility": true,
-          "bounds": {
-            "isBox3": true,
-            "min": {
-              "x": -7.8,
-              "y": 0.10000000000000009,
-              "z": -3.8
-            },
-            "max": {
-              "x": 7.8,
-              "y": 4.800000000000001,
-              "z": 3.8
-            }
-          }
-        }
-      ]
-    },
-    "errors": [],
-    "warnings": []
-  },
-  {
-    "name": "webgpu_lightprobes_sponza",
-    "variant": "before",
-    "adapters": [
-      {
-        "vendor": "apple",
-        "architecture": "metal-3",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      }
-    ],
-    "state": {
-      "status": {
-        "bakePass": 2,
-        "bakeIndex": 0,
-        "bounces": 1
+        ]
       },
-      "grids": [
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "webgpu_lightprobes_sponza",
+      "variant": "after",
+      "adapters": [
         {
-          "resolution": [
-            10,
-            7,
-            7
-          ],
-          "bounds": {
-            "isBox3": true,
-            "min": {
-              "x": -11,
-              "y": 0.5,
-              "z": -4.8
-            },
-            "max": {
-              "x": 10,
-              "y": 11.5,
-              "z": 4.2
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        }
+      ],
+      "state": {
+        "status": {
+          "bakePass": 2,
+          "bakeIndex": 0,
+          "bounces": 1
+        },
+        "grids": [
+          {
+            "resolution": [
+              10,
+              7,
+              7
+            ],
+            "visibility": true,
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -11,
+                "y": 0.5,
+                "z": -4.8
+              },
+              "max": {
+                "x": 10,
+                "y": 11.5,
+                "z": 4.2
+              }
             }
           }
-        }
-      ]
-    },
-    "errors": [],
-    "warnings": []
-  },
-  {
-    "name": "webgpu_lightprobes_sponza",
-    "variant": "after",
-    "adapters": [
-      {
-        "vendor": "apple",
-        "architecture": "metal-3",
-        "device": "",
-        "description": "",
-        "isFallbackAdapter": false
-      }
-    ],
-    "state": {
-      "status": {
-        "bakePass": 2,
-        "bakeIndex": 0,
-        "bounces": 1
+        ]
       },
-      "grids": [
+      "errors": [],
+      "warnings": []
+    }
+  ],
+  "webgpuSmoke": [
+    {
+      "name": "webgpu_lightprobes",
+      "variant": "after",
+      "adapters": [
         {
-          "resolution": [
-            10,
-            7,
-            7
-          ],
-          "visibility": true,
-          "bounds": {
-            "isBox3": true,
-            "min": {
-              "x": -11,
-              "y": 0.5,
-              "z": -4.8
-            },
-            "max": {
-              "x": 10,
-              "y": 11.5,
-              "z": 4.2
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        }
+      ],
+      "state": {
+        "status": {},
+        "grids": [
+          {
+            "resolution": [
+              6,
+              6,
+              6
+            ],
+            "visibility": true,
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -2.8,
+                "y": 0.10000000000000009,
+                "z": -2.8
+              },
+              "max": {
+                "x": 2.8,
+                "y": 4.800000000000001,
+                "z": 2.8
+              }
             }
           }
+        ]
+      },
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "webgpu_lightprobes_complex",
+      "variant": "after",
+      "adapters": [
+        {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
         }
+      ],
+      "state": {
+        "status": {},
+        "grids": [
+          {
+            "resolution": [
+              14,
+              7,
+              7
+            ],
+            "visibility": true,
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -7.8,
+                "y": 0.10000000000000009,
+                "z": -3.8
+              },
+              "max": {
+                "x": 7.8,
+                "y": 4.800000000000001,
+                "z": 3.8
+              }
+            }
+          }
+        ]
+      },
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "webgpu_lightprobes_sponza",
+      "variant": "after",
+      "adapters": [
+        {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        }
+      ],
+      "state": {
+        "status": {
+          "bakePass": 2,
+          "bakeIndex": 0,
+          "bounces": 1
+        },
+        "grids": [
+          {
+            "resolution": [
+              10,
+              7,
+              7
+            ],
+            "visibility": true,
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -11,
+                "y": 0.5,
+                "z": -4.8
+              },
+              "max": {
+                "x": 10,
+                "y": 11.5,
+                "z": 4.2
+              }
+            }
+          }
+        ]
+      },
+      "errors": [],
+      "warnings": []
+    }
+  ],
+  "webglSmoke": [
+    {
+      "name": "webgpu_lightprobes",
+      "variant": "after",
+      "adapters": [
+        {
+          "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)",
+          "vendor": "Google Inc. (Apple)"
+        }
+      ],
+      "state": {
+        "status": {},
+        "grids": [
+          {
+            "resolution": [
+              6,
+              6,
+              6
+            ],
+            "visibility": true,
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -2.8,
+                "y": 0.10000000000000009,
+                "z": -2.8
+              },
+              "max": {
+                "x": 2.8,
+                "y": 4.800000000000001,
+                "z": 2.8
+              }
+            }
+          }
+        ]
+      },
+      "errors": [],
+      "warnings": [
+        "THREE.TSL: \".toInspector()\" is only available with WebGPU."
       ]
     },
-    "errors": [],
-    "warnings": []
-  }
-]
+    {
+      "name": "webgpu_lightprobes_complex",
+      "variant": "after",
+      "adapters": [
+        {
+          "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)",
+          "vendor": "Google Inc. (Apple)"
+        }
+      ],
+      "state": {
+        "status": {},
+        "grids": [
+          {
+            "resolution": [
+              14,
+              7,
+              7
+            ],
+            "visibility": true,
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -7.8,
+                "y": 0.10000000000000009,
+                "z": -3.8
+              },
+              "max": {
+                "x": 7.8,
+                "y": 4.800000000000001,
+                "z": 3.8
+              }
+            }
+          }
+        ]
+      },
+      "errors": [],
+      "warnings": [
+        "THREE.TSL: \".toInspector()\" is only available with WebGPU."
+      ]
+    },
+    {
+      "name": "webgpu_lightprobes_sponza",
+      "variant": "after",
+      "adapters": [
+        {
+          "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)",
+          "vendor": "Google Inc. (Apple)"
+        }
+      ],
+      "state": {
+        "status": {
+          "bakePass": 2,
+          "bakeIndex": 0,
+          "bounces": 1
+        },
+        "grids": [
+          {
+            "resolution": [
+              10,
+              7,
+              7
+            ],
+            "visibility": true,
+            "bounds": {
+              "isBox3": true,
+              "min": {
+                "x": -11,
+                "y": 0.5,
+                "z": -4.8
+              },
+              "max": {
+                "x": 10,
+                "y": 11.5,
+                "z": 4.2
+              }
+            }
+          }
+        ]
+      },
+      "errors": [],
+      "warnings": [
+        "THREE.TSL: \".toInspector()\" is only available with WebGPU.",
+        "[.WebGL-0x13408ad4a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit."
+      ]
+    }
+  ]
+}

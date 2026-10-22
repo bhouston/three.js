@@ -1,5 +1,5 @@
-import { BackSide, CustomBlending, DoubleSide, HalfFloatType, Mesh, MeshLambertNodeMaterial, NodeMaterial, OneFactor, OrthographicCamera, QuadMesh, RendererUtils, RenderTarget, Scene, Vector2 } from 'three/webgpu';
-import { Fn, If, Loop, ivec2, lights, normalViewGeometry, normalWorldGeometry, output, positionWorld, screenCoordinate, textureLoad, uniform, uv, vec4 } from 'three/tsl';
+import { BackSide, CustomBlending, DoubleSide, HalfFloatType, Mesh, MeshLambertNodeMaterial, NearestFilter, NodeMaterial, OneFactor, OrthographicCamera, QuadMesh, RendererUtils, RenderTarget, Scene, Vector2 } from 'three/webgpu';
+import { Fn, If, Loop, ivec2, lights, modelViewMatrix, normalViewGeometry, normalWorldGeometry, output, positionLocal, positionWorld, screenCoordinate, textureLoad, uniform, uv, vec4 } from 'three/tsl';
 
 let _rendererState;
 
@@ -77,7 +77,7 @@ class LightMapper {
 		 */
 		this.samples = 0;
 
-		this._accumulation = new RenderTarget( size, size, { type: HalfFloatType, depthBuffer: false } );
+		this._accumulation = new RenderTarget( size, size, { type: HalfFloatType, minFilter: NearestFilter, magFilter: NearestFilter, depthBuffer: false } );
 		this._renderTarget = new RenderTarget( size, size, { type: HalfFloatType, depthBuffer: false } );
 		this._renderTarget.texture.channel = 1;
 
@@ -257,7 +257,7 @@ class LightMapper {
 
 			// bake diffuse irradiance with white albedo, leaving specular lighting out
 
-			material.lightsNode = lights( directLights );
+			material.lightsNode = lights( directLights ).context( { positionView: modelViewMatrix.mul( positionLocal ).xyz.toVarying() } );
 			material.normalNode = flipNormal ? normalViewGeometry.negate() : normalViewGeometry;
 			material.emissiveNode = irradianceNode( positionWorld, normal, this._sample ).div( Math.PI );
 			material.outputNode = vec4( output.rgb.mul( Math.PI ), 1 );

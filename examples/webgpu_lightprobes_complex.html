@@ -312,15 +312,22 @@
 					// boundary so the two rooms blend smoothly without bleeding into
 					// each other.
 
-					probesLeft = new LightProbeGrid( 7.8, 4.7, 7.6, resolution, resolution, resolution );
-					probesLeft.position.set( - 3.9, 2.45, 0 );
+					// Keep the innermost probes 0.1 units from the divider's faces
+					// at x = +/-0.15, beyond the capture clearance of 1.5 * near.
+					const roomOuterExtent = 7.8;
+					const roomInnerExtent = 0.15 + 0.1;
+					const volumeWidth = roomOuterExtent - roomInnerExtent;
+					const volumeCenter = ( roomOuterExtent + roomInnerExtent ) / 2;
+
+					probesLeft = new LightProbeGrid( volumeWidth, 4.7, 7.6, resolution, resolution, resolution );
+					probesLeft.position.set( - volumeCenter, 2.45, 0 );
 					probesLeft.falloff = 1.0;
 					probesLeft.visibility = params.visibility;
 					await probesLeft.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20 } );
 					probesLeft.visible = params.enabled;
 
-					probesRight = new LightProbeGrid( 7.8, 4.7, 7.6, resolution, resolution, resolution );
-					probesRight.position.set( 3.9, 2.45, 0 );
+					probesRight = new LightProbeGrid( volumeWidth, 4.7, 7.6, resolution, resolution, resolution );
+					probesRight.position.set( volumeCenter, 2.45, 0 );
 					probesRight.falloff = 1.0;
 					probesRight.visibility = params.visibility;
 					await probesRight.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20 } );

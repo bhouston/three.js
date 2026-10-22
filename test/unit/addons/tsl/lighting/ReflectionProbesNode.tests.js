@@ -1,4 +1,4 @@
-import { BoxGeometry, CubeArrayTexture, Mesh, MeshStandardNodeMaterial, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
+import { BoxGeometry, CubeArrayTexture, Mesh, MeshStandardNodeMaterial, PMREMGenerator, Scene, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
 import { vec3 } from 'three/tsl';
 import { ReflectionProbe, ReflectionProbes } from '../../../../../examples/jsm/lighting/ReflectionProbes.js';
 import { ReflectionProbesNode } from '../../../../../examples/jsm/tsl/lighting/ReflectionProbesNode.js';
@@ -9,6 +9,78 @@ export default QUnit.module( 'Addons', () => {
 	QUnit.module( 'TSL', () => {
 
 		QUnit.module( 'ReflectionProbesNode', () => {
+
+			QUnit.test( 'bounces sample complete previous passes and restore state on failure', ( assert ) => {
+
+				const probes = new ReflectionProbes();
+				probes.add( new ReflectionProbe(), new ReflectionProbe() );
+				const scene = new Scene();
+				const environmentNode = vec3( 0 );
+				scene.environmentNode = environmentNode;
+				const fromScene = PMREMGenerator.prototype.fromScene;
+				let captures = [];
+				let targets = [];
+				let disposed = [];
+				let fail = false;
+				const renderer = {
+					backend: { isWebGPUBackend: true },
+					initRenderTarget: target => {
+
+						targets.push( target );
+						target.addEventListener( 'dispose', () => disposed.push( target ) );
+
+					},
+					copyTextureToTexture: ( source, destination ) => {
+
+						if ( probes._captureBounce > 0 ) assert.notStrictEqual( destination, probes.texture, 'never writes to the sampled texture' );
+
+					}
+				};
+
+				PMREMGenerator.prototype.fromScene = function () {
+
+					if ( fail && probes._captureBounce === 1 ) throw new Error( 'capture failed' );
+					captures.push( { bounce: probes._captureBounce, texture: probes.texture } );
+					return { texture: {}, dispose() {} };
+
+				};
+
+				try {
+
+					probes.bake( renderer, scene, { bounces: 3 } );
+					assert.deepEqual( captures.map( capture => capture.bounce ), [ 0, 0, 1, 1, 2, 2, 3, 3 ], 'captures all probes in each pass' );
+					assert.strictEqual( captures[ 2 ].texture, targets[ 0 ].texture, 'first bounce reads the base pass' );
+					assert.strictEqual( captures[ 4 ].texture, targets[ 1 ].texture, 'second bounce reads the first bounce' );
+					assert.strictEqual( probes.texture, targets[ 1 ].texture, 'publishes the last completed pass' );
+					assert.deepEqual( disposed, [ targets[ 0 ] ], 'disposes the spare target' );
+					assert.strictEqual( scene.environmentNode, environmentNode, 'restores the scene environment node' );
+
+					const previousTexture = probes.texture;
+					const previousProbes = probes.bakedProbes;
+					captures = [];
+					targets = [];
+					disposed = [];
+					fail = true;
+					assert.throws( () => probes.bake( renderer, scene, { bounces: 3 } ), /capture failed/ );
+					assert.strictEqual( probes.texture, previousTexture, 'retains the old bake after failure' );
+					assert.strictEqual( probes.bakedProbes, previousProbes, 'retains the old probe order after failure' );
+					assert.strictEqual( disposed.length, 2, 'disposes both failed bake targets' );
+					assert.strictEqual( scene.environmentNode, environmentNode, 'restores the scene after failure' );
+					assert.false( probes.capturing, 'clears the capture flag after failure' );
+
+					fail = false;
+					captures = [];
+					probes.bake( renderer, scene );
+					assert.deepEqual( captures.map( capture => capture.bounce ), [ 0, 0 ], 'default bake uses only one pass' );
+
+				} finally {
+
+					PMREMGenerator.prototype.fromScene = fromScene;
+					probes.dispose();
+
+				}
+
+			} );
 
 			QUnit.test( 'clone copies the probe settings', ( assert ) => {
 
@@ -93,6 +165,13 @@ export default QUnit.module( 'Addons', () => {
 				probes.boxProjection = true;
 				node.updateBefore();
 				assert.strictEqual( node._boxProjection.value, 1, 're-enables projection' );
+
+				probes.capturing = true;
+				node.updateBefore();
+				assert.strictEqual( node._local.value, 0, 'base pass excludes local reflections' );
+				probes._captureBounce = 1;
+				node.updateBefore();
+				assert.strictEqual( node._local.value, 1, 'later passes include previous reflections' );
 
 				geometry.dispose();
 				material.dispose();

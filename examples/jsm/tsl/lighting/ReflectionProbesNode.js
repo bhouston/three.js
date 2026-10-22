@@ -70,8 +70,8 @@ class ReflectionProbesNode extends Node {
 
 		}
 
-		// captures see only the environment, so baking doesn't feed back into itself
-		this._local.value = probes.capturing ? 0 : 1;
+		// The first pass sees only the environment; later passes sample the previous pass.
+		this._local.value = probes.capturing && probes._captureBounce === 0 ? 0 : 1;
 		this._boxProjection.value = probes.boxProjection ? 1 : 0;
 
 		for ( let i = 0; i < this._slots.length; i ++ ) {

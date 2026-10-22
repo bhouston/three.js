@@ -286,7 +286,7 @@
 					enabled: true,
 					showProbes: false,
 					resolution: 6,
-					multiBounce: true
+					bounces: 3
 				};
 
 				async function bake( resolution ) {
@@ -305,13 +305,13 @@
 
 					probes = new LightProbeGrid( 15.6, 4.7, 7.6, resolution * 2 - 1, resolution, resolution );
 					probes.position.set( 0, 2.45, 0 );
-					probes.multiBounce = params.multiBounce;
+					probes.multiBounce = params.bounces > 0;
 
 					// Keep the helper spheres out of the cubemap captures.
 
 					if ( probesHelper ) probesHelper.visible = false;
 
-					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20, bounces: params.multiBounce ? 3 : 0 } );
+					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20, bounces: params.bounces } );
 
 					scene.add( probes );
 					probes.visible = params.enabled;
@@ -350,7 +350,7 @@
 					bake( value );
 
 				} ).debounce( 250 );
-				gui.add( params, 'multiBounce' ).name( 'Multi-bounce' ).onChange( () => bake( params.resolution ) );
+				gui.add( params, 'bounces', 0, 10, 1 ).name( 'Additional Bounces' ).onChange( () => bake( params.resolution ) ).debounce( 250 );
 				gui.add( params, 'showProbes' ).name( 'Show Probes' ).onChange( ( value ) => {
 
 					probesHelper.visible = value;

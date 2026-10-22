@@ -32,7 +32,7 @@
 			import { reflectionProbes } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
 			import { ReflectionProbesHelper } from 'three/addons/helpers/ReflectionProbesHelper.js';
 
-			const params = { showProbes: false, dynamicObject: 'Bunny', pause: false, showGrid: false, gridResolution: 6, gridSize: 0.12, resolution: 256, boxProjection: true, capture: capture };
+			const params = { showProbes: false, dynamicObject: 'Bunny', pause: false, showGrid: false, gridResolution: 6, gridSize: 0.12, resolution: 256, boxProjection: true, bounces: 3, capture: capture };
 			const grid = new THREE.Group();
 			const timer = new THREE.Timer();
 			let camera, scene, renderer, controls, probes, probesHelper, gridMaterial, dynamicObject;
@@ -331,6 +331,7 @@
 				const gui = renderer.inspector.createParameters( 'Reflection Probes' );
 				gui.add( params, 'resolution', [ 256, 512, 1024 ] ).name( 'Capture Resolution' );
 				gui.add( params, 'capture' ).name( 'Capture' );
+				gui.add( params, 'bounces', 0, 10, 1 ).name( 'Additional Bounces' ).onChange( capture ).debounce( 250 );
 				gui.add( params, 'boxProjection' ).name( 'Box Projection' ).onChange( ( value ) => probes.boxProjection = value );
 
 				const dynamicTest = gui.addFolder( 'Dynamic Test' );
@@ -433,7 +434,7 @@
 				// Keep helpers and test objects out of the reflections.
 
 				probesHelper.visible = grid.visible = dynamicObject.visible = false;
-				probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: 30 } );
+				probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: 30, bounces: params.bounces } );
 				probesHelper.visible = params.showProbes;
 				grid.visible = params.showGrid;
 				dynamicObject.visible = params.dynamicObject !== 'None';

@@ -179,8 +179,8 @@
 					if ( probesHelper ) probesHelper.visible = false;
 
 					// Each bounce pass captures the light of the previous pass.
-					probes.multiBounce = params.multiBounce;
-					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20, bounces: params.multiBounce ? 3 : 0 } );
+					probes.multiBounce = params.bounces > 0;
+					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20, bounces: params.bounces } );
 					probes.visible = params.enabled;
 					scene.add( probes );
 
@@ -206,7 +206,7 @@
 					enabled: true,
 					showProbes: false,
 					resolution: 6,
-					multiBounce: true
+					bounces: 3
 				};
 
 				await bake( params.resolution );
@@ -225,7 +225,7 @@
 					bake( value );
 
 				} ).debounce( 250 );
-				gui.add( params, 'multiBounce' ).name( 'Multi-bounce' ).onChange( () => bake( params.resolution ) );
+				gui.add( params, 'bounces', 0, 10, 1 ).name( 'Additional Bounces' ).onChange( () => bake( params.resolution ) ).debounce( 250 );
 				gui.add( params, 'showProbes' ).name( 'Show Probes' ).onChange( ( value ) => {
 
 					probesHelper.visible = value;

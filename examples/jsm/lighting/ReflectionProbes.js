@@ -11,6 +11,7 @@ import {
 	Scene,
 	Vector3
 } from 'three/webgpu';
+import { reflectionProbes } from '../tsl/lighting/ReflectionProbesNode.js';
 
 const _position = /*@__PURE__*/ new Vector3();
 const _size = /*@__PURE__*/ new Vector3();
@@ -164,7 +165,7 @@ class ReflectionProbes extends Object3D {
 		this.bakedProbes = [];
 
 		/**
-		 * Whether a bake is in progress. Probes then contribute only the environment.
+		 * Whether a bake is in progress.
 		 *
 		 * @type {boolean}
 		 * @readonly
@@ -173,6 +174,7 @@ class ReflectionProbes extends Object3D {
 		this.capturing = false;
 
 		this._renderTarget = null;
+		this._captureBounce = 0;
 
 	}
 
@@ -197,13 +199,14 @@ class ReflectionProbes extends Object3D {
 	 * @param {number} [options.resolution=256] - Cube face size, rounded down to a power of two and at least 256.
 	 * @param {number} [options.near=0.1] - Near plane of the capture camera.
 	 * @param {number} [options.far=100] - Far plane of the capture camera.
+	 * @param {number} [options.bounces=0] - Additional passes sampling the previous pass's reflections.
 	 */
 	bake( renderer, scene, options = {} ) {
 
 		// cube arrays can't be emulated on WebGL 2
 		if ( renderer.backend.isWebGPUBackend !== true ) throw new Error( 'ReflectionProbes: .bake() requires the WebGPU backend.' );
 
-		const { near = 0.1, far = 100 } = options;
+		const { near = 0.1, far = 100, bounces = 0 } = options;
 
 		// match the size PMREMGenerator renders at
 		const resolution = Math.max( 256, MathUtils.floorPowerOfTwo( options.resolution ?? 256 ) );
@@ -213,7 +216,7 @@ class ReflectionProbes extends Object3D {
 		const probes = this.children.filter( ( child ) => child.isReflectionProbe ).sort( ( a, b ) => volume( a ) - volume( b ) );
 		const maxLod = Math.log2( resolution ) - 3;
 
-		const renderTarget = new RenderTarget( resolution, resolution, {
+		let renderTarget = new RenderTarget( resolution, resolution, {
 			depth: ( probes.length + 1 ) * 6,
 			type: HalfFloatType,
 			depthBuffer: false,
@@ -238,8 +241,11 @@ class ReflectionProbes extends Object3D {
 		environment.background = scene.environment;
 
 		const previousTexture = this.texture;
+		const previousProbes = this.bakedProbes;
+		const previousEnvironmentNode = scene.environmentNode;
 
 		let pmrem = null;
+		let spareTarget = null;
 		let baked = false;
 
 		const capture = ( source, position, index ) => {
@@ -264,32 +270,59 @@ class ReflectionProbes extends Object3D {
 
 		try {
 
-			// Unfilled cubes stay black, so an empty environment needs no capture.
-
-			if ( scene.environment !== null ) capture( environment, _position.set( 0, 0, 0 ), 0 );
-
-			// captures sample only the environment, so let them see the new one
 			this.texture = renderTarget.texture;
+			this.bakedProbes = probes;
+			scene.environmentNode = reflectionProbes( this );
 
-			for ( let i = 0; i < probes.length; i ++ ) {
+			for ( let bounce = 0; bounce <= bounces; bounce ++ ) {
 
-				capture( scene, probes[ i ].getWorldPosition( _position ), i + 1 );
+				this._captureBounce = bounce;
+
+				if ( bounce > 0 ) {
+
+					// Read a complete pass while writing the next into a separate texture.
+					this.texture = renderTarget.texture;
+					if ( spareTarget === null ) {
+
+						spareTarget = renderTarget.clone();
+						renderer.initRenderTarget( spareTarget );
+
+					}
+
+					[ renderTarget, spareTarget ] = [ spareTarget, renderTarget ];
+
+				}
+
+				// Unfilled cubes stay black, so an empty environment needs no capture.
+
+				if ( scene.environment !== null ) capture( environment, _position.set( 0, 0, 0 ), 0 );
+
+				for ( let i = 0; i < probes.length; i ++ ) {
+
+					capture( scene, probes[ i ].getWorldPosition( _position ), i + 1 );
+
+				}
 
 			}
 
+			this.texture = renderTarget.texture;
 			baked = true;
 
 		} finally {
 
 			this.capturing = false;
+			this._captureBounce = 0;
+			scene.environmentNode = previousEnvironmentNode;
 
 			if ( pmrem !== null ) pmrem.dispose();
 			generator.dispose();
+			if ( spareTarget !== null ) spareTarget.dispose();
 
 			if ( baked === false ) {
 
 				renderTarget.dispose();
 				this.texture = previousTexture;
+				this.bakedProbes = previousProbes;
 
 			}
 

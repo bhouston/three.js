@@ -6,7 +6,7 @@ import {
 	SphereGeometry,
 	Vector3
 } from 'three/webgpu';
-import { attribute, Discard, Fn, getShIrradianceAt, int, ivec2, normalWorld, renderGroup, select, texture, texture3D, uniform, vec3, vec4 } from 'three/tsl';
+import { attribute, Discard, Fn, getShIrradianceAt, int, ivec2, normalWorld, renderGroup, texture, texture3D, uniform, vec3, vec4 } from 'three/tsl';
 
 import { DISTANCE_COLUMNS, sampleGridSH } from '../tsl/lighting/LightProbeGridNode.js';
 
@@ -60,7 +60,6 @@ class LightProbeGridHelper extends InstancedMesh {
 		this._atlas = texture3D( probes.texture );
 		this._distance = texture( probes._distanceTarget.texture );
 		this._resolution = uniform( new Vector3() );
-		this._distanceSHStride = uniform( 0, 'int' );
 		this._distanceResolution = uniform( 16, 'int' );
 		this._visibility = uniform( 0, 'int' ).setGroup( renderGroup ).onRenderUpdate( () => this.probes.visibility ? 1 : 0 );
 
@@ -72,7 +71,7 @@ class LightProbeGridHelper extends InstancedMesh {
 			// Round the interpolated probe index before reading its distance tile.
 			const probeIndex = int( attribute( 'instanceProbeIndex', 'float' ).add( 0.5 ) );
 			const tile = ivec2( probeIndex.mod( DISTANCE_COLUMNS ), probeIndex.div( DISTANCE_COLUMNS ) );
-			const distanceCoord = select( this._distanceSHStride.greaterThan( 0 ), tile.mul( ivec2( this._distanceSHStride, 1 ) ), tile.mul( this._distanceResolution.add( 2 ) ).add( this._distanceResolution.div( 2 ).add( 1 ) ) );
+			const distanceCoord = tile.mul( this._distanceResolution.add( 2 ) ).add( this._distanceResolution.div( 2 ).add( 1 ) );
 			const meanDistance = this._distance.load( distanceCoord ).x;
 			Discard( this._visibility.equal( 1 ).and( meanDistance.lessThan( 0.0 ) ) );
 
@@ -146,7 +145,6 @@ class LightProbeGridHelper extends InstancedMesh {
 		this._atlas.value = probes.texture;
 		this._distance.value = probes._distanceTarget.texture;
 		this._distanceResolution.value = probes.visibilityResolution;
-		this._distanceSHStride.value = probes.visibilitySHOrder > 0 ? Math.ceil( ( probes.visibilitySHOrder + 1 ) ** 2 / 2 ) : 0;
 		this._resolution.value.copy( res );
 
 	}

@@ -63,7 +63,6 @@
 			const params = {
 				enabled: true,
 				visibility: true,
-				visibilitySHOrder: 0,
 				visibilityResolution: 16,
 				showProbes: false,
 				probeSize: 0.2,
@@ -195,7 +194,6 @@
 
 				} );
 
-				gui.add( params, 'visibilitySHOrder', { Octahedral: 0, SH1: 1, SH2: 2, SH3: 3 } ).name( 'Distance Moments' ).onChange( createProbes );
 				gui.add( params, 'visibilityResolution', { '4 × 4': 4, '8 × 8': 8, '16 × 16': 16, '32 × 32': 32 } ).name( 'Octahedral Size' ).onChange( createProbes );
 
 				gui.add( params, 'visibility' ).name( 'Visibility' ).onChange( ( value ) => {
@@ -291,7 +289,6 @@
 				probes.position.set( params.boundsX, params.boundsY, params.boundsZ );
 				probes.visible = params.enabled;
 				probes.visibility = params.visibility;
-				probes.visibilitySHOrder = params.visibilitySHOrder;
 				probes.visibilityResolution = params.visibilityResolution;
 				scene.add( probes );
 

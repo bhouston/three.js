@@ -179,6 +179,7 @@
 					probes.position.set( 0, 2.45, 0 );
 					probes.visibility = params.visibility;
 					probes.visibilitySHOrder = params.visibilitySHOrder;
+					probes.visibilityResolution = params.visibilityResolution;
 
 					// Keep the helper spheres out of the cubemap captures.
 					if ( probesHelper ) probesHelper.visible = false;
@@ -210,6 +211,7 @@
 					enabled: true,
 					visibility: true,
 					visibilitySHOrder: 0,
+					visibilityResolution: 16,
 					showProbes: false,
 					resolution: 6,
 					bounces: 3,
@@ -238,6 +240,7 @@
 				gui.add( params, 'bounces', 0, 10, 1 ).name( 'Bounces' ).onChange( requestBake ).debounce( 250 );
 				gui.add( params, 'lightIntensity', 1, 100, 1 ).name( 'Light Intensity' ).onChange( requestBake ).debounce( 250 );
 				gui.add( params, 'visibilitySHOrder', { Octahedral: 0, SH1: 1, SH2: 2, SH3: 3 } ).name( 'Distance Moments' ).onChange( requestBake );
+				gui.add( params, 'visibilityResolution', { '4 × 4': 4, '8 × 8': 8, '16 × 16': 16, '32 × 32': 32 } ).name( 'Octahedral Size' ).onChange( requestBake );
 
 				gui.add( params, 'visibility' ).name( 'Visibility' ).onChange( ( value ) => {
 

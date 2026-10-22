@@ -2,7 +2,6 @@ import {
 	ArrayCamera,
 	BackSide,
 	Box3,
-	DataTexture,
 	DepthTexture,
 	DoubleSide,
 	FloatType,
@@ -20,12 +19,11 @@ import {
 	RenderTarget3D,
 	RGBAFormat,
 	RGFormat,
-	SphericalHarmonics3,
 	Vector3,
 	Vector4
 } from 'three/webgpu';
 
-import { array, Discard, float, Fn, frontFacing, getShIrradianceAt, int, ivec2, ivec3, Loop, perspectiveDepthToViewZ, screenCoordinate, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { array, atan, Discard, float, Fn, frontFacing, getShIrradianceAt, int, ivec2, ivec3, Loop, perspectiveDepthToViewZ, screenCoordinate, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
 import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, DISTANCE_TILE, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, packGridSH, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
 import { replaceSunLights, restoreSunLights } from './LightProbeGridUtils.js';
@@ -89,75 +87,10 @@ let _batchProbes = - 1;
 let _captureCamera = null;
 
 /**
- * Returns the number of eight-row blocks per cube face.
- *
- * @private
- * @param {number} size - The face resolution.
- * @return {number} The number of row blocks per face.
- */
-function getFaceBlocks( size ) {
-
-	return size % 8 === 0 ? size / 8 : 1;
-
-}
-
-/**
- * Stores SH basis times solid angle at ( f * size + i, c * size + j ).
- *
- * @private
- * @param {number} size - The face resolution.
- * @return {DataTexture} The weight texture.
- */
-function createProjectionWeights( size ) {
-
-	const width = 6 * size;
-	const data = new Float32Array( width * 9 * size );
-	const texelSize = 2 / size;
-	const dir = new Vector3();
-	const right = new Vector3();
-	const up = new Vector3();
-	const basis = new Array( 9 );
-
-	// Signed area of the projected face region from its center to ( x, y ).
-	const area = ( x, y ) => Math.atan2( x * y, Math.sqrt( x * x + y * y + 1 ) );
-
-	for ( let f = 0; f < 6; f ++ ) {
-
-		right.fromArray( FACE_RIGHT[ f ] );
-		up.fromArray( FACE_UP[ f ] );
-
-		for ( let j = 0; j < size; j ++ ) {
-
-			for ( let i = 0; i < size; i ++ ) {
-
-				// Rows run top to bottom, so NDC y decreases with j.
-				const x0 = i * texelSize - 1, x1 = x0 + texelSize;
-				const y0 = 1 - j * texelSize, y1 = y0 - texelSize;
-				const solidAngle = Math.abs( area( x0, y0 ) - area( x0, y1 ) - area( x1, y0 ) + area( x1, y1 ) );
-
-				const x = x0 + texelSize * 0.5, y = y0 - texelSize * 0.5;
-				dir.fromArray( FACE_FORWARD[ f ] ).addScaledVector( right, x ).addScaledVector( up, y ).normalize();
-
-				SphericalHarmonics3.getBasisAt( dir, basis );
-
-				for ( let c = 0; c < 9; c ++ ) data[ ( c * size + j ) * width + f * size + i ] = basis[ c ] * solidAngle;
-
-			}
-
-		}
-
-	}
-
-	const weights = new DataTexture( data, width, 9 * size, RedFormat, FloatType );
-	weights.needsUpdate = true;
-
-	return weights;
-
-}
-
-/**
- * Projects each face block to SH, with columns ordered as
- * `( coefficient * 6 + face ) * blocks + block`.
+ * Returns the output node for the spherical-harmonic projection pass. Each
+ * fragment of a batch row integrates one SH coefficient over one captured cube
+ * face, weighting every texel by its exact solid angle. Columns are ordered
+ * `coefficient * 6 + face`; the repack pass sums the six faces.
  *
  * @private
  * @param {Node} faces - The face atlas texture node.
@@ -604,7 +537,7 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
 		if ( _batchTarget !== null ) _batchTarget.dispose();
 
 		// One more column holds each probe's back-face fraction.
-		_batchTarget = new RenderTarget( columns + 1, totalProbes, {
+		_batchTarget = new RenderTarget( 9 * 6 + 1, totalProbes, {
 			type: FloatType,
 			format: RGBAFormat,
 			minFilter: NearestFilter,
@@ -675,15 +608,8 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 			_shMaterial.dispose();
 			_distanceMaterial.dispose();
 			_fractionMaterial.dispose();
-			_weightsNode.value.dispose();
-			for ( const material of _repackMaterials ) material.dispose();
 
 		}
-
-		const weights = createProjectionWeights( cubemapSize );
-
-		if ( _weightsNode === null ) _weightsNode = texture( weights );
-		else _weightsNode.value = weights;
 
 		_shMaterial = new NodeMaterial();
 		_shMaterial.outputNode = projectSHNode( _faceNode, cubemapSize, _batchStartUniform );
@@ -701,7 +627,7 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 		_fractionMaterial.depthWrite = false;
 
 		_distanceMaterial = new NodeMaterial();
-		_distanceMaterial.outputNode = distanceMomentsNode( _depthNode, _batchNode, 9 * 6 * getFaceBlocks( cubemapSize ), cubemapSize, {
+		_distanceMaterial.outputNode = distanceMomentsNode( _depthNode, _batchNode, 9 * 6, cubemapSize, {
 			batchStart: _batchStartUniform,
 			batchCount: _batchCountUniform,
 			near: _nearUniform,
@@ -711,18 +637,6 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 		} );
 		_distanceMaterial.depthTest = false;
 		_distanceMaterial.depthWrite = false;
-
-		_repackMaterials = [];
-
-		for ( let t = 0; t < 7; t ++ ) {
-
-			const material = new NodeMaterial();
-			material.outputNode = repackNode( _batchNode, t, getFaceBlocks( cubemapSize ), _resolutionUniform, _sliceZUniform );
-			material.depthTest = false;
-			material.depthWrite = false;
-			_repackMaterials.push( material );
-
-		}
 
 	}
 
@@ -875,7 +789,8 @@ class LightProbeGrid extends Light {
 		this._renderTarget = null;
 
 		// Indirect captures read a snapshot while the live atlas is updated in place.
-		this._snapshotTarget = null;
+		this._bounceGrid = null;
+		this._bouncePass = - 1;
 
 		// Per-probe distance moments for visibility, and their normalization scale.
 		this._distanceTarget = null;
@@ -883,12 +798,7 @@ class LightProbeGrid extends Light {
 
 		// Per-probe irradiance for visibility shading, evaluated from the SH.
 		this._irradianceTarget = null;
-		this._irradianceSnapshotTarget = null;
 		this._irradianceMaterial = null;
-
-		// Keep the grid in the scene and select the capture lighting with uniforms.
-		this._captureIntensity = null;
-		this._captureSnapshot = false;
 
 		this.updateBoundingBox();
 
@@ -1082,7 +992,7 @@ class LightProbeGrid extends Light {
 
 			for ( let pass = firstPass; pass <= firstPass + bounces; pass ++ ) {
 
-				this._updateSnapshot( renderer, pass, start );
+				this._updateBounceGrid( renderer, scene, pass, start );
 				// Geometry is static during the bake, so distances are recorded once.
 				this._captureProbes( renderer, scene, start, end, pass === 0 );
 				this._repackProbes( renderer, start, end );
@@ -1153,7 +1063,13 @@ class LightProbeGrid extends Light {
 
 			const irradianceTarget = this._irradianceTarget;
 			_copyRegion.max.set( irradianceTarget.width, irradianceTarget.height, 1 );
-			renderer.copyTextureToTexture( irradianceTarget.texture, this._irradianceSnapshotTarget.texture, _copyRegion );
+			renderer.initRenderTarget( this._bounceGrid._irradianceTarget );
+			renderer.copyTextureToTexture( irradianceTarget.texture, this._bounceGrid._irradianceTarget.texture, _copyRegion );
+
+			const distanceTarget = this._distanceTarget;
+			renderer.initRenderTarget( this._bounceGrid._distanceTarget );
+			_copyRegion.max.set( distanceTarget.width, distanceTarget.height, 1 );
+			renderer.copyTextureToTexture( distanceTarget.texture, this._bounceGrid._distanceTarget.texture, _copyRegion );
 
 		}
 
@@ -1161,6 +1077,10 @@ class LightProbeGrid extends Light {
 		bounceGrid.boundingBox.copy( this.boundingBox );
 		bounceGrid.intensity = this.intensity;
 		bounceGrid.falloff = this.falloff;
+		bounceGrid.visibility = this.visibility;
+		bounceGrid.normalBias = this.normalBias;
+		bounceGrid.viewBias = this.viewBias;
+		bounceGrid._distanceScale = this._distanceScale;
 		scene.add( bounceGrid );
 
 	}
@@ -1258,7 +1178,7 @@ class LightProbeGrid extends Light {
 
 				setCaptureNear( near );
 
-				_batchTarget.viewport.set( _batchColumns, batchStart, 1, batchCount );
+				_batchTarget.viewport.set( 9 * 6, batchStart, 1, batchCount );
 				renderer.setRenderTarget( _batchTarget );
 				_quad.material = _fractionMaterial;
 				_quad.render( renderer );
@@ -1387,7 +1307,7 @@ class LightProbeGrid extends Light {
 	}
 
 	/**
-	 * Ensures the atlas and snapshot 3D textures exist with the correct dimensions.
+	 * Ensures the SH, irradiance and visibility atlases exist.
 	 *
 	 * @private
 	 */
@@ -1422,7 +1342,6 @@ class LightProbeGrid extends Light {
 		};
 
 		this._irradianceTarget = new RenderTarget( DISTANCE_COLUMNS * IRRADIANCE_TILE, rows * IRRADIANCE_TILE, irradianceOptions );
-		this._irradianceSnapshotTarget = new RenderTarget( DISTANCE_COLUMNS * IRRADIANCE_TILE, rows * IRRADIANCE_TILE, irradianceOptions );
 
 		// Distance moments per probe, as octahedral tiles in bake order.
 
@@ -1446,11 +1365,23 @@ class LightProbeGrid extends Light {
 
 		if ( this._bounceGrid !== null ) {
 
-		this._renderTarget.dispose();
-		this._snapshotTarget.dispose();
-		this._distanceTarget.dispose();
-		this._irradianceTarget.dispose();
-		this._irradianceSnapshotTarget.dispose();
+			this._bounceGrid.dispose();
+			this._bounceGrid = null;
+			this._bouncePass = - 1;
+
+		}
+
+		if ( this._renderTarget !== null ) {
+
+			this._distanceTarget.dispose();
+			this._irradianceTarget.dispose();
+			this._distanceTarget = null;
+			this._irradianceTarget = null;
+			this._renderTarget.dispose();
+			this._renderTarget = null;
+			this.texture = null;
+
+		}
 
 		if ( this._irradianceMaterial !== null ) {
 

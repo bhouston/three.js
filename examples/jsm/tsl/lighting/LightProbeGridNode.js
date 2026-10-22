@@ -283,7 +283,6 @@ class LightProbeGridNode extends AnalyticLightNode {
 		this._resolution = uniform( new Vector3() ).setGroup( renderGroup );
 		this._intensity = uniform( 1 ).setGroup( renderGroup );
 		this._falloff = uniform( 0 ).setGroup( renderGroup );
-		this._useSnapshot = uniform( 0, 'int' ).setGroup( renderGroup );
 		this._distanceScale = uniform( 1 ).setGroup( renderGroup );
 		this._normalBias = uniform( 0 ).setGroup( renderGroup );
 		this._viewBias = uniform( 0 ).setGroup( renderGroup );
@@ -303,7 +302,6 @@ class LightProbeGridNode extends AnalyticLightNode {
 		this._resolution.value.copy( light.resolution );
 		this._intensity.value = light.intensity;
 		this._falloff.value = light.falloff;
-		this._useSnapshot.value = light._captureSnapshot ? 1 : 0;
 		this._distanceScale.value = light._distanceScale;
 		this._normalBias.value = light.normalBias;
 		this._viewBias.value = light.viewBias;
@@ -327,10 +325,9 @@ class LightProbeGridNode extends AnalyticLightNode {
 		const resMinusOne = res.sub( 1.0 );
 		const spacing = range.div( resMinusOne );
 
-		// Keep both atlases bound when switching between capture and main-view lighting.
+		// Initialize atlases before creating texture bindings.
 
 		builder.renderer.initRenderTarget( light._renderTarget );
-		builder.renderer.initRenderTarget( light._snapshotTarget );
 
 		// Select visibility with a uniform to reuse the material.
 
@@ -355,34 +352,10 @@ class LightProbeGridNode extends AnalyticLightNode {
 		const samplePos = positionWorld.add( normalWorld.mul( spacing ).mul( 0.5 ) );
 		const uvw = samplePos.sub( min ).div( range ).clamp( 0.0, 1.0 ).mul( resMinusOne ).div( res ).add( vec3( 0.5 ).div( res ) );
 
-		// Select snapshot reads for indirect captures.
-
 		const atlas = texture3D( light.texture );
-		const snapshot = texture3D( light._snapshotTarget.texture );
-
 		builder.renderer.initRenderTarget( light._irradianceTarget );
-		builder.renderer.initRenderTarget( light._irradianceSnapshotTarget );
-
 		const irradianceAtlas = texture( light._irradianceTarget.texture );
-		const irradianceSnapshot = texture( light._irradianceSnapshotTarget.texture );
-
-		const sampleIrradiance = ( uv ) => {
-
-			const texel = vec4().toVar();
-
-			If( this._useSnapshot.equal( 1 ), () => {
-
-				texel.assign( irradianceSnapshot.sample( uv ) );
-
-			} ).Else( () => {
-
-				texel.assign( irradianceAtlas.sample( uv ) );
-
-			} );
-
-			return texel;
-
-		};
+		const sampleIrradiance = ( uv ) => irradianceAtlas.sample( uv );
 
 		// Optional smooth boundary for blending grids; falloff 0 applies everywhere.
 
@@ -406,10 +379,6 @@ class LightProbeGridNode extends AnalyticLightNode {
 			If( this._visibility.equal( 1 ), () => {
 
 				result.assign( evaluateGridIrradianceVisibility( grid, sampleIrradiance ) );
-
-			} ).ElseIf( this._useSnapshot.equal( 1 ), () => {
-
-				result.assign( getShIrradianceAt( normalWorld, sampleGridSH( snapshot, uvw, res.z ) ).max( vec3( 0.0 ) ) );
 
 			} ).Else( () => {
 

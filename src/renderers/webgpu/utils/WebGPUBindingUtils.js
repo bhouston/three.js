@@ -359,7 +359,7 @@ class WebGPUBindingUtils {
 
 						if ( binding.isSampledCubeTexture ) {
 
-							dimensionViewGPU = GPUTextureViewDimension.Cube;
+							dimensionViewGPU = binding.texture.isCubeArrayTexture ? GPUTextureViewDimension.CubeArray : GPUTextureViewDimension.Cube;
 
 						} else if ( binding.texture.isArrayTexture || binding.texture.isDataArrayTexture || binding.texture.isCompressedArrayTexture || ( binding.store && binding.texture.isCubeTexture ) ) {
 
@@ -567,7 +567,7 @@ class WebGPUBindingUtils {
 
 				if ( binding.isSampledCubeTexture ) {
 
-					texture.viewDimension = GPUTextureViewDimension.Cube;
+					texture.viewDimension = binding.texture.isCubeArrayTexture ? GPUTextureViewDimension.CubeArray : GPUTextureViewDimension.Cube;
 
 				} else if ( binding.texture.isArrayTexture || binding.texture.isDataArrayTexture || binding.texture.isCompressedArrayTexture ) {
 

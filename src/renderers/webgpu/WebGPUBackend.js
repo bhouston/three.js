@@ -2284,11 +2284,17 @@ class WebGPUBackend extends Backend {
 			const pixelRatio = ( renderTarget === null || renderTarget.isPostProcessingRenderTarget === true ) ? this.renderer.getPixelRatio() : 1;
 			const indexPos = cameraIndex ? bindings.indexOf( cameraIndex ) : - 1;
 
+			// Reuse the renderer's per-sub-camera frustums. Persistent render bundles
+			// can be replayed with other cameras, so do not cull while recording them.
+
+			const frustums = context.frustumArray;
+			const cull = frustums !== null && object.frustumCulled === true && ( object.isMesh === true || object.isLine === true || object.isPoints === true ) && ( renderContextData.currentPass instanceof GPURenderBundleEncoder ) === false;
+
 			for ( let i = 0, len = cameras.length; i < len; i ++ ) {
 
 				const subCamera = cameras[ i ];
 
-				if ( object.layers.test( subCamera.layers ) ) {
+				if ( object.layers.test( subCamera.layers ) && ( cull === false || object.intersectsFrustum( frustums.getFrustum( i ) ) ) ) {
 
 					const vp = subCamera.viewport;
 

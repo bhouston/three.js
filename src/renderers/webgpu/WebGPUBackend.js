@@ -1583,6 +1583,10 @@ class WebGPUBackend extends Backend {
 
 		submit( this.device, renderContextData.encoder.finish() );
 
+		// pass and encoder are only valid between beginRender() and finishRender()
+
+		renderContextData.currentPass = null;
+		renderContextData.encoder = null;
 
 		//
 
@@ -2280,11 +2284,17 @@ class WebGPUBackend extends Backend {
 			const pixelRatio = ( renderTarget === null || renderTarget.isPostProcessingRenderTarget === true ) ? this.renderer.getPixelRatio() : 1;
 			const indexPos = cameraIndex ? bindings.indexOf( cameraIndex ) : - 1;
 
+			// Reuse the renderer's per-sub-camera frustums. Persistent render bundles
+			// can be replayed with other cameras, so do not cull while recording them.
+
+			const frustums = context.frustumArray;
+			const cull = frustums !== null && object.frustumCulled === true && ( object.isMesh === true || object.isLine === true || object.isPoints === true ) && ( renderContextData.currentPass instanceof GPURenderBundleEncoder ) === false;
+
 			for ( let i = 0, len = cameras.length; i < len; i ++ ) {
 
 				const subCamera = cameras[ i ];
 
-				if ( object.layers.test( subCamera.layers ) ) {
+				if ( object.layers.test( subCamera.layers ) && ( cull === false || object.intersectsFrustum( frustums.getFrustum( i ) ) ) ) {
 
 					const vp = subCamera.viewport;
 
@@ -3154,7 +3164,7 @@ class WebGPUBackend extends Backend {
 
 		const generateMipmaps = texture.generateMipmaps === true && texture.mipmapsAutoUpdate === true && destinationGPU.mipLevelCount > 1;
 
-		if ( this._isRenderCameraDepthArray( renderContext ) === true ) {
+		if ( renderContextData.encoder && this._isRenderCameraDepthArray( renderContext ) === true ) {
 
 			// Layered draws are only executed in finishRender(), so preserve this copy as a render-stage boundary.
 			const bundles = this._finishArrayCameraBundleEncoders( renderContextData );

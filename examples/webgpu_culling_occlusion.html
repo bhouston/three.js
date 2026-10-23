@@ -1,24 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgpu - culling and occlusion</title>
+		<title>three.js webgpu - city occlusion culling</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<link rel="icon" href="../files/favicon.ico">
 		<link type="text/css" rel="stylesheet" href="example.css">
 		<style>
-			#stats { position: absolute; bottom: 24px; left: 24px; padding: 16px; background: #101822e8; color: #fff; font: 14px/1.6 monospace; pointer-events: none; }
-			#map { position: absolute; bottom: 24px; right: 24px; width: 240px; height: 300px; }
+			#readout { position: absolute; bottom: 24px; left: 24px; padding: 16px; background: #10202ee8; color: #fff; font: 13px/1.7 monospace; pointer-events: none; }
+			#map { position: absolute; bottom: 24px; right: 24px; width: 300px; height: 300px; }
+			@media (max-width: 700px) { #readout { left: 8px; bottom: 8px; font-size: 10px; padding: 8px; } #map { width: 180px; height: 180px; } }
 		</style>
 	</head>
 	<body>
 		<div id="info">
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
-			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Culling and occlusion</span></div>
-			<small>Drag to explore. Stop moving to reuse occlusion queries.<br>Map: green drawn · orange occluded · gray outside frustum.</small>
+			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>City occlusion culling</span></div>
+			<small>16,384 skyscrapers. Drag to look; enable walking in Settings.<br>Current-view CPU occlusion for opaque boxes, including while walking.</small>
 		</div>
-		<div id="stats"></div>
-		<canvas id="map" width="240" height="300"></canvas>
+		<div id="readout"></div>
+		<canvas id="map" width="300" height="300"></canvas>
 		<script type="importmap">
 			{
 				"imports": {
@@ -34,177 +35,337 @@
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
+			const settings = { mode: 'hierarchical + occlusion', walk: false, overview: true };
+			const chunks = [], selected = [], candidates = [], volumes = [];
+			const frustum = new THREE.Frustum();
+			const projection = new THREE.Matrix4();
+			const point = new THREE.Vector3();
+			const stats = { nodes: 0, planes: 0, occlusion: 0, candidates: 0, buildings: 0, chunks: 0 };
+			const readout = document.getElementById( 'readout' );
+			const map = document.getElementById( 'map' ).getContext( '2d' );
+			const scene = new THREE.Scene();
+			scene.background = new THREE.Color( 0x9ebccc );
+			const camera = new THREE.PerspectiveCamera( 65, window.innerWidth / window.innerHeight, 0.1, 700 );
+			camera.position.set( 0, 1.7, 80 );
 			const renderer = new THREE.WebGPURenderer();
 			renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
-			renderer.setClearColor( 0x172534 );
-			renderer.inspector = new Inspector();
 			renderer.info.autoReset = false;
+			renderer.inspector = new Inspector();
 			document.body.appendChild( renderer.domElement );
-
-			const camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 0.1, 160 );
-			camera.position.set( 14, 8, 32 );
 			const controls = new OrbitControls( camera, renderer.domElement );
-			controls.target.set( 0, 3, - 30 );
-			controls.maxDistance = 120;
+			controls.target.set( 0, 1.7, 0 );
+			controls.maxPolarAngle = Math.PI * 0.5;
+			controls.minDistance = 0.5;
 			controls.update();
 
-			const queryScene = new THREE.Scene();
-			const detailScene = new THREE.Scene();
-			detailScene.add( new THREE.HemisphereLight( 0xc7e8ff, 0x40502b, 3 ) );
-			const light = new THREE.DirectionalLight( 0xffffff, 3 );
-			light.position.set( 10, 30, 20 );
-			detailScene.add( light );
+			scene.add( new THREE.HemisphereLight( 0xc5e8ff, 0x625641, 3 ) );
+			const sunlight = new THREE.DirectionalLight( 0xffe1b0, 3 );
+			sunlight.position.set( 100, 200, 80 );
+			scene.add( sunlight );
+			const ground = new THREE.Mesh( new THREE.PlaneGeometry( 1400, 1400 ), new THREE.MeshStandardNodeMaterial( { color: 0x384449, roughness: 1 } ) );
+			ground.rotation.x = Math.PI * - 0.5;
+			scene.add( ground );
+			const grid = new THREE.GridHelper( 1280, 32, 0xc4b991, 0x89938c );
+			grid.position.y = 0.015;
+			scene.add( grid );
 
-			const wallMaterial = new THREE.MeshBasicNodeMaterial( { color: 0x41647b } );
-			const wallGeometry = new THREE.BoxGeometry( 10, 12, 1 );
-			for ( const x of [ - 24, - 12, 0, 12, 24 ] ) {
+			const facade = document.createElement( 'canvas' );
+			facade.width = 128;
+			facade.height = 512;
+			const context = facade.getContext( '2d' );
+			context.fillStyle = '#687e8b';
+			context.fillRect( 0, 0, 128, 512 );
+			for ( let y = 4; y < 512; y += 16 ) {
 
-				const wall = new THREE.Mesh( wallGeometry, wallMaterial );
-				wall.position.set( x, 6, 0 );
-				queryScene.add( wall );
+				for ( let x = 4; x < 128; x += 16 ) {
 
-			}
-
-			const floor = new THREE.Mesh( new THREE.BoxGeometry( 70, 0.2, 120 ), new THREE.MeshBasicNodeMaterial( { color: 0x263d43 } ) );
-			floor.position.set( 0, - 0.2, - 25 );
-			queryScene.add( floor );
-
-			const clusters = [];
-			const geometry = new THREE.TorusKnotGeometry( 0.55, 0.18, 48, 8 );
-			const proxyGeometry = new THREE.BoxGeometry( 1, 1, 1 );
-			const proxyMaterial = new THREE.MeshBasicNodeMaterial( { colorWrite: false, depthWrite: false, side: THREE.DoubleSide } );
-			for ( let row = 0; row < 6; row ++ ) {
-
-				for ( let column = 0; column < 5; column ++ ) {
-
-					const center = new THREE.Vector3( ( column - 2 ) * 12, 3, - 12 - row * 12 );
-					const group = new THREE.Group();
-					const material = new THREE.MeshStandardNodeMaterial( { color: new THREE.Color().setHSL( row / 9 + column / 30, 0.7, 0.6 ), roughness: 0.4 } );
-					for ( let i = 0; i < 25; i ++ ) {
-
-						const mesh = new THREE.Mesh( geometry, material );
-						mesh.position.set( center.x + ( i % 5 - 2 ) * 1.05, 1 + Math.floor( i / 5 ) * 0.9, center.z );
-						group.add( mesh );
-
-					}
-
-					detailScene.add( group );
-					const bounds = new THREE.Box3().setFromObject( group );
-					clusters.push( { center: bounds.getCenter( new THREE.Vector3() ), size: bounds.getSize( new THREE.Vector3() ), sphere: bounds.getBoundingSphere( new THREE.Sphere() ), group, bounds, proxy: null, state: 'drawn' } );
+					context.fillStyle = ( x + y ) % 48 === 0 ? '#c4d9dc' : '#263d51';
+					context.fillRect( x, y, 10, 11 );
 
 				}
 
 			}
 
-			const settings = { mode: 'Frustum + occlusion' };
-			const gui = renderer.inspector.createParameters( 'Culling' );
-			gui.add( settings, 'mode', [ 'Baseline', 'Frustum', 'Frustum + occlusion' ] );
-			const frustum = new THREE.Frustum();
-			const matrix = new THREE.Matrix4();
-			const previousView = new THREE.Matrix4().makeScale( 0, 0, 0 );
-			const stats = document.getElementById( 'stats' );
-			const map = document.getElementById( 'map' ).getContext( '2d' );
-			let invalidate = true;
+			const texture = new THREE.CanvasTexture( facade );
+			texture.colorSpace = THREE.SRGBColorSpace;
+			const material = new THREE.MeshStandardNodeMaterial( { map: texture, roughness: 0.8 } );
+			const geometry = new THREE.BoxGeometry();
+			geometry.computeBoundingBox();
+			const transform = new THREE.Object3D();
+			THREE.MathUtils.seededRandom( 150 );
+			for ( let z = 0; z < 32; z ++ ) {
 
+				for ( let x = 0; x < 32; x ++ ) {
+
+					const mesh = new THREE.InstancedMesh( geometry, material, 16 );
+					mesh.instanceMatrix.setUsage( THREE.DynamicDrawUsage );
+					mesh.frustumCulled = false;
+					mesh.matrixAutoUpdate = false;
+					const chunk = { mesh, box: new THREE.Box3(), buildings: [], drawn: 0, candidate: false, compacted: false };
+					for ( let i = 0; i < 16; i ++ ) {
+
+						const height = 40 + THREE.MathUtils.seededRandom() * 120;
+						transform.position.set( ( x - 16 ) * 40 + ( i % 4 ) * 9 + 5, height / 2, ( z - 16 ) * 40 + Math.floor( i / 4 ) * 9 + 5 );
+						transform.scale.set( 4 + THREE.MathUtils.seededRandom() * 3, height, 4 + THREE.MathUtils.seededRandom() * 3 );
+						transform.updateMatrix();
+						const box = geometry.boundingBox.clone().applyMatrix4( transform.matrix );
+						const building = { box, matrix: transform.matrix.clone(), distance: 0 };
+						chunk.buildings.push( building );
+						chunk.box.union( box );
+						mesh.setMatrixAt( i, building.matrix );
+
+					}
+
+					chunks.push( chunk );
+					scene.add( mesh );
+
+				}
+
+			}
+
+			const root = build( chunks.slice(), 0 );
+			scene.updateMatrixWorld( true );
+			scene.matrixWorldAutoUpdate = false;
+			const gui = renderer.inspector.createParameters( 'Settings' );
+			gui.add( settings, 'mode', [ 'none', 'flat', 'hierarchical', 'hierarchical + occlusion' ] );
+			gui.add( settings, 'walk' ).name( 'walk at street level' );
+			gui.add( settings, 'overview' ).name( 'visibility map' );
 			window.addEventListener( 'resize', () => {
 
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				invalidate = true;
 
 			} );
-
 			await renderer.init();
 			camera.coordinateSystem = renderer.coordinateSystem;
 			camera.updateProjectionMatrix();
 			renderer.setAnimationLoop( animate );
 
-			function animate() {
+			function build( items, depth ) {
 
-				controls.update();
-				camera.updateMatrixWorld();
-				matrix.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );
-				frustum.setFromProjectionMatrix( matrix, renderer.coordinateSystem );
-				const changed = invalidate || ! matrix.equals( previousView );
-				invalidate = false;
-				previousView.copy( matrix );
-				const occlusion = settings.mode === 'Frustum + occlusion';
-				let candidates = 0, hidden = 0;
+				const box = new THREE.Box3();
+				for ( const item of items ) box.union( item.box );
+				if ( items.length === 1 ) return { box, chunk: items[ 0 ] };
+				const axis = depth % 2 === 0 ? 'x' : 'z';
+				items.sort( ( a, b ) => a.box.min[ axis ] - b.box.min[ axis ] );
+				const middle = items.length / 2;
+				return { box, children: [ build( items.slice( 0, middle ), depth + 1 ), build( items.slice( middle ), depth + 1 ) ] };
 
-				// New proxy identities discard query evidence from a different view.
-				for ( const cluster of clusters ) {
+			}
 
-					if ( changed || cluster.proxy === null ) {
+			function classify( box, mask ) {
 
-						if ( cluster.proxy ) queryScene.remove( cluster.proxy );
-						cluster.proxy = new THREE.Mesh( proxyGeometry, proxyMaterial );
-						cluster.proxy.position.copy( cluster.center );
-						cluster.proxy.scale.copy( cluster.size );
-						cluster.proxy.occlusionTest = true;
-						cluster.proxy.renderOrder = 1;
-						cluster.proxy.onBeforeRender = () => {
+				stats.nodes ++;
+				for ( let i = 0; i < 6; i ++ ) {
 
-							cluster.occluded = renderer.isOccluded( cluster.proxy ) === true;
+					if ( ( mask & ( 1 << i ) ) === 0 ) continue;
+					stats.planes ++;
+					const plane = frustum.planes[ i ], n = plane.normal;
+					point.set( n.x >= 0 ? box.max.x : box.min.x, n.y >= 0 ? box.max.y : box.min.y, n.z >= 0 ? box.max.z : box.min.z );
+					if ( plane.distanceToPoint( point ) < 0 ) return - 1;
+					point.set( n.x >= 0 ? box.min.x : box.max.x, n.y >= 0 ? box.min.y : box.max.y, n.z >= 0 ? box.min.z : box.max.z );
+					if ( plane.distanceToPoint( point ) >= 0 ) mask &= ~ ( 1 << i );
 
-						};
+				}
 
-						queryScene.add( cluster.proxy );
+				return mask;
+
+			}
+
+			function query( node, mask ) {
+
+				mask = classify( node.box, mask );
+				if ( mask === - 1 ) return;
+				if ( node.chunk ) selected.push( node.chunk );
+				else for ( const child of node.children ) query( child, mask );
+
+			}
+
+			function addFace( building, axis, coordinate ) {
+
+				const box = building.box;
+				const axes = [ 'x', 'y', 'z' ].filter( value => value !== axis );
+				const corners = [];
+				for ( const pair of [[ 0, 0 ], [ 1, 0 ], [ 1, 1 ], [ 0, 1 ]] ) {
+
+					const corner = new THREE.Vector3();
+					corner[ axis ] = coordinate;
+					corner[ axes[ 0 ] ] = pair[ 0 ] ? box.max[ axes[ 0 ] ] : box.min[ axes[ 0 ] ];
+					corner[ axes[ 1 ] ] = pair[ 1 ] ? box.max[ axes[ 1 ] ] : box.min[ axes[ 1 ] ];
+					if ( frustum.planes[ 5 ].distanceToPoint( corner ) <= 0.02 ) return;
+					corners.push( corner );
+
+				}
+
+				const center = box.getCenter( new THREE.Vector3() );
+				center[ axis ] = coordinate;
+				const planes = [];
+				for ( let i = 0; i < 4; i ++ ) {
+
+					const plane = new THREE.Plane().setFromCoplanarPoints( camera.position, corners[ i ], corners[ ( i + 1 ) % 4 ] );
+					if ( plane.distanceToPoint( center ) < 0 ) plane.negate();
+					planes.push( plane );
+
+				}
+
+				const normal = new THREE.Vector3();
+				normal[ axis ] = camera.position[ axis ] < coordinate ? 1 : - 1;
+				planes.push( new THREE.Plane().setFromNormalAndCoplanarPoint( normal, center ) );
+				volumes.push( { planes, building } );
+
+			}
+
+			function occluded( box, building = null ) {
+
+				for ( const volume of volumes ) {
+
+					if ( volume.building === building ) continue;
+					stats.occlusion ++;
+					let inside = true;
+					for ( const plane of volume.planes ) {
+
+						const n = plane.normal;
+						point.set( n.x >= 0 ? box.min.x : box.max.x, n.y >= 0 ? box.min.y : box.max.y, n.z >= 0 ? box.min.z : box.max.z );
+						if ( plane.distanceToPoint( point ) <= 0.02 ) {
+
+							inside = false;
+							break;
+
+						}
 
 					}
 
-					cluster.group.visible = settings.mode === 'Baseline' || frustum.intersectsBox( cluster.bounds );
-					cluster.proxy.visible = occlusion && cluster.group.visible;
-					cluster.state = cluster.group.visible ? 'drawn' : 'outside';
-					if ( cluster.group.visible ) candidates ++;
+					if ( inside ) return true;
+
+				}
+
+				return false;
+
+			}
+
+			function animate( time = 0 ) {
+
+				if ( settings.walk ) {
+
+					const distance = time * 0.008 % 800;
+					const segment = Math.floor( distance / 200 ), t = distance % 200;
+					const positions = [[ 0, 80 - t, 0, - 1 ], [ t, - 120, 1, 0 ], [ 200, - 120 + t, 0, 1 ], [ 200 - t, 80, - 1, 0 ]][ segment ];
+					camera.position.set( positions[ 0 ], 1.7, positions[ 1 ] );
+					controls.target.set( positions[ 0 ] + positions[ 2 ] * 80, 1.7, positions[ 1 ] + positions[ 3 ] * 80 );
+
+				}
+
+				controls.update();
+				camera.updateMatrixWorld();
+				projection.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );
+				frustum.setFromProjectionMatrix( projection, renderer.coordinateSystem );
+				for ( const chunk of chunks ) {
+
+					chunk.mesh.visible = false;
+					chunk.drawn = 0;
+					chunk.candidate = false;
+
+				}
+
+				selected.length = candidates.length = volumes.length = 0;
+				stats.nodes = stats.planes = stats.occlusion = stats.buildings = stats.chunks = 0;
+				if ( settings.mode === 'none' ) selected.push( ...chunks );
+				else if ( settings.mode === 'flat' ) {
+
+					for ( const chunk of chunks ) if ( classify( chunk.box, 63 ) !== - 1 ) selected.push( chunk );
+
+				} else query( root, 63 );
+				stats.candidates = selected.length * 16;
+				const useOcclusion = settings.mode === 'hierarchical + occlusion';
+				if ( useOcclusion ) {
+
+					for ( const chunk of selected ) {
+
+						for ( const building of chunk.buildings ) {
+
+							building.distance = building.box.distanceToPoint( camera.position );
+							candidates.push( building );
+
+						}
+
+					}
+
+					candidates.sort( ( a, b ) => a.distance - b.distance );
+					// Exact opaque box faces are occluders; enclosing boxes of arbitrary meshes are not.
+					for ( const building of candidates.slice( 0, 48 ) ) {
+
+						for ( const axis of [ 'x', 'y', 'z' ] ) {
+
+							if ( camera.position[ axis ] < building.box.min[ axis ] - 0.02 ) addFace( building, axis, building.box.min[ axis ] );
+							else if ( camera.position[ axis ] > building.box.max[ axis ] + 0.02 ) addFace( building, axis, building.box.max[ axis ] );
+
+						}
+
+					}
+
+				}
+
+				for ( const chunk of selected ) {
+
+					chunk.candidate = true;
+					if ( useOcclusion && occluded( chunk.box ) ) continue;
+					if ( useOcclusion || chunk.compacted ) {
+
+						for ( const building of chunk.buildings ) {
+
+							if ( useOcclusion && occluded( building.box, building ) ) continue;
+							chunk.mesh.setMatrixAt( chunk.drawn ++, building.matrix );
+
+						}
+
+						chunk.mesh.instanceMatrix.needsUpdate = true;
+
+					} else {
+
+						chunk.drawn = 16;
+
+					}
+
+					chunk.compacted = useOcclusion;
+					chunk.mesh.count = chunk.drawn;
+					chunk.mesh.visible = chunk.drawn > 0;
+					stats.buildings += chunk.drawn;
+					if ( chunk.drawn > 0 ) stats.chunks ++;
 
 				}
 
 				renderer.info.reset();
-				renderer.autoClear = true;
-				renderer.render( queryScene, camera );
-				const queryCalls = renderer.info.render.drawCalls;
-				for ( const cluster of clusters ) {
-
-					// Keep near-camera bounds and unknown query results visible.
-					if ( occlusion && cluster.group.visible && frustum.planes[ 5 ].distanceToPoint( cluster.center ) > cluster.sphere.radius && cluster.occluded === true ) {
-
-						cluster.group.visible = false;
-						cluster.state = 'occluded';
-						hidden ++;
-
-					}
-
-				}
-
-				renderer.autoClear = false;
-				renderer.render( detailScene, camera );
-				stats.innerHTML = `${ settings.mode }<br>Clusters: ${ candidates - hidden } drawn / ${ hidden } occluded / ${ clusters.length - candidates } outside<br>Draw calls: ${ renderer.info.render.drawCalls } (occluders + queries: ${ queryCalls })<br>Triangles: ${ renderer.info.render.triangles.toLocaleString() }<br>Query bounds stay active while details are hidden.<br>Static world; camera motion invalidates query history.`;
-				drawMap();
+				renderer.render( scene, camera );
+				readout.innerHTML = `${ settings.mode.toUpperCase() }<br>16,384 skyscrapers / 1,024 chunks<br>Street-level camera: ${ camera.position.y.toFixed( 1 ) } m<br>Buildings submitted: ${ stats.buildings } / ${ stats.candidates } candidates<br>Chunks submitted: ${ stats.chunks } / ${ selected.length } candidates<br>Draw calls: ${ renderer.info.render.drawCalls } · triangles: ${ renderer.info.render.triangles.toLocaleString() }<br>Frustum: ${ stats.nodes } bounds / ${ stats.planes } planes<br>Occlusion: ${ volumes.length } face volumes / ${ stats.occlusion } tests<br>Fresh current-view volumes; no delayed GPU queries.`;
+				document.getElementById( 'map' ).hidden = ! settings.overview;
+				if ( settings.overview ) drawMap();
 
 			}
 
 			function drawMap() {
 
-				map.fillStyle = '#101822ee';
-				map.fillRect( 0, 0, 240, 300 );
-				map.fillStyle = '#fff';
-				map.font = '12px monospace';
-				map.fillText( 'World / visibility', 14, 22 );
-				for ( const cluster of clusters ) {
+				map.fillStyle = '#10202eee';
+				map.fillRect( 0, 0, 300, 300 );
+				for ( const chunk of chunks ) {
 
-					map.fillStyle = { drawn: '#65efa1', occluded: '#ffaa55', outside: '#53616f' }[ cluster.state ];
-					map.fillRect( 120 + cluster.center.x * 3 - 7, 104 - cluster.center.z * 2, 14, 10 );
+					map.fillStyle = chunk.drawn > 0 ? '#65efa1' : chunk.candidate ? '#ffaa55' : '#405360';
+					map.fillRect( 150 + chunk.box.min.x * 0.21, 150 + chunk.box.min.z * 0.21, 6, 6 );
 
 				}
 
-				map.fillStyle = '#78b5dd';
-				for ( const x of [ - 24, - 12, 0, 12, 24 ] ) map.fillRect( 120 + x * 3 - 15, 98, 30, 4 );
 				map.fillStyle = '#fff';
+				map.font = '11px monospace';
+				map.fillText( 'WORLD · green: drawn · orange: hidden', 10, 18 );
 				map.beginPath();
-				map.arc( 120 + camera.position.x * 3, 104 - camera.position.z * 2, 4, 0, Math.PI * 2 );
+				map.arc( 150 + camera.position.x * 0.21, 150 + camera.position.z * 0.21, 4, 0, Math.PI * 2 );
 				map.fill();
+				map.strokeStyle = '#fff';
+				map.beginPath();
+				map.moveTo( 150 + camera.position.x * 0.21, 150 + camera.position.z * 0.21 );
+				map.lineTo( 150 + controls.target.x * 0.21, 150 + controls.target.z * 0.21 );
+				map.stroke();
 
 			}
 		</script>

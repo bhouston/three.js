@@ -342,6 +342,7 @@
 		"webgpu_cubemap_dynamic",
 		"webgpu_cubemap_mix",
 		"webgpu_culling_hierarchical",
+		"webgpu_culling_spatial",
 		"webgpu_custom_fog",
 		"webgpu_custom_fog_background",
 		"webgpu_custom_fog_scattering",

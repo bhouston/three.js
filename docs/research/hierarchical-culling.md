@@ -24,6 +24,48 @@ The example owns chunk visibility independently for its main and overview passes
 
 Hardware verification used a non-fallback NVIDIA Pascal WebGPU adapter. External checks compared actual main-pass candidates with `Frustum.intersectsBox` after camera and projection changes in both modes, and found identical primary-view pixels for the initial flat and hierarchical views. Screenshots illustrate the controls and counts; Inspector FPS is incidental, not a benchmark result.
 
+## Independent spatial index for large scenes
+
+The first example already builds a spatial tree independently of Object3D parentage. Its small throughput gain has two main causes: batching reduces the selection problem to only 1,024 chunks, and toggling chunk visibility still leaves the renderer visiting every scene child. Both selection techniques also submit the same draws. Fewer plane tests alone therefore save little total frame time.
+
+[webgpu_culling_spatial.html](../../examples/webgpu_culling_spatial.html) instead creates 100,000 independent Mesh spheres randomly distributed on a plane. Its uniform scene has 100,000 direct children. Its clustered scene distributes the spheres among 100 deliberately non-spatial groups: every group contains objects from distant clusters. No instancing or authored spatial grouping reduces the node count. A 10,000-object all-visible view is a control where traversal cannot reject anything.
+
+[SceneSpatialIndex](../../examples/jsm/utils/SceneSpatialIndex.js) extracts world-space bounding spheres, then builds a balanced binary BVH over AABBs enclosing those spheres. Splits follow the longest spatial axis and median center, with up to eight entries per leaf. This is a practical balanced tree, not a claim of globally optimal visibility partitioning. It does not follow the authored parent/child structure.
+
+The experimental common-renderer hook `getRenderChildren( camera, frustum )` lets the helper return only a subset of each node's existing direct children. The helper reconstructs the ancestor paths of spatially selected objects and restores original sibling order in those candidate lists. The renderer continues ordinary traversal of those paths, preserving parent ownership, inherited visibility, layers and group state. It does not flatten, clone, reparent, swap children arrays or mutate object visibility. The index query and candidate-path construction occur for each render view. Fully contained root bounds take an ordinary-traversal fast path.
+
+The new example compares stock rendering, a flat scan of cached world-space spheres using the same child-selection hook, and BVH selection. This separates the gain from skipping renderer traversal from the additional gain of accelerating the visibility query. Every mode uses the renderer's sphere test at leaves; node AABBs enclose those spheres. Unlike the earlier chunk experiment, tighter leaf bounds do not explain differences in draw counts.
+
+The prototype indexes plain static meshes. Lights, uncullable/custom renderables and unsupported dynamic or bundled branches retain ordinary traversal. Unsupported roots retain their existing traversal too. Rebuild after changing indexed world transforms, geometry bounds, frustumCulled or child membership; visibility and layer changes still follow ordinary rendering rules. Bounds must conservatively include shader displacement. Rebuild cost and retained index memory are additional costs, and the prototype does not provide incremental refitting or automatic change tracking.
+
+The hook currently applies to the common renderer used by WebGPURenderer; WebGLRenderer continues ordinary traversal. It is an experimental core boundary for review, not a finalized cross-renderer API. The example imports source modules so its raw GitHub demo exercises the hook without committing generated build files. FrustumArray and transformed/non-spatial hierarchies have unit coverage; production shadow, probe, bundle and custom-renderer integration needs further review and rendering coverage.
+
+## Large node count measurements
+
+Hardware: NVIDIA GTX 1050, driver 32.0.15.6094, Chrome 155.0.8059.86, non-fallback WebGPU, 1600 by 1000 pixels, DPR 1. All three modes produced identical draw-object IDs in the same order and identical image pixels in each case. Draws include the ground and background. The flat world-space index and BVH both use the new child-selection hook; stock mode traverses the original graph and performs ordinary renderer sphere tests.
+
+| Scene | Draws per frame, all modes | Stock ms/frame | Flat index ms/frame | BVH index ms/frame | Stock / BVH |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 100,000 uniform spheres, flat graph | 662 | 13.135 | 3.961 | 2.066 | 6.36x |
+| 100,000 clustered spheres, 100 non-spatial groups | 1,655 | 14.124 | 5.606 | 3.650 | 3.87x |
+| 10,000 uniform spheres, flat graph | 56 | 1.561 | 1.373 | 1.081 | 1.44x |
+| 10,000 spheres, all visible | 10,002 | 26.036 | 29.252 | 24.841 | Inconclusive |
+
+These are medians of three sustained-throughput averages, each computed as elapsed wall time divided by GPU-completed frames over a five-second trial. Implementations run sequentially, with rotated trial order, a one-second warmup before each trial, no vsync/frame cap, and GPU queue completion after each four-frame batch. Queues are drained before switching modes. No individual frames are timed. Camera updates, selection, ancestor-path construction, renderer traversal, sorting, draws and GPU completion are included. Inspector and HUD are excluded for every mode. Static scene matrix updates are disabled equally after initial setup; a dynamic application needs a separate update strategy.
+
+| Scene | Stock trial range, ms | Flat trial range, ms | BVH trial range, ms |
+| --- | ---: | ---: | ---: |
+| Uniform 100,000 | 12.979–13.158 | 3.923–3.971 | 2.003–2.080 |
+| Clustered 100,000 | 13.570–14.198 | 5.475–5.627 | 3.551–3.904 |
+| Uniform 10,000 | 1.536–1.570 | 1.358–1.378 | 1.066–1.081 |
+| All-visible 10,000 | 24.682–26.465 | 27.134–30.596 | 24.753–28.995 |
+
+In the uniform 100,000 case, renderer projection visits fall from 100,004 to 664; flat selection tests 100,000 cached spheres, while the BVH visits 430 tree nodes and tests 334 spheres. In the clustered case, visits fall from 100,104 to 1,757 despite every authored group spanning distant clusters. Draw submission is unchanged. The roughly 1.9x uniform-case gain from flat index to BVH isolates the additional benefit of hierarchical selection after avoiding the renderer's full scan.
+
+The all-visible case cannot reject renderables. BVH root containment falls back to ordinary traversal, and its timing range overlaps stock rendering. Flat indexing adds enumeration, candidate-path construction and sorting without saving visits. This control does not establish a BVH speedup. Large improvements require many offscreen nodes and a meaningful CPU visibility/traversal cost; GPU-bound or all-visible scenes need batching, LOD or other techniques.
+
+Index construction is excluded from steady-state timings. Single observed builds took approximately 575 ms for uniform 100,000, 560 ms for clustered 100,000 and 40–44 ms for the 10,000 cases, including world-bound extraction. Source Mesh allocation is separate setup work. Extra index memory and rebuild/refit costs must be budgeted; these measurements cover static scenes, not moving-object maintenance. Raw trials and the external runner are task artifacts rather than a repository benchmark suite.
+
 ## Practical hierarchy choices
 
 | Structure | Appropriate use | Main cost |
@@ -68,9 +110,9 @@ Unity offers both [baked occlusion data](https://docs.unity.com/en-us/engine/600
 
 An initial addon can query chunks and set group visibility before each render invocation, provided it owns those flags and restores them afterward. Player-camera visibility must not leak into reflection or shadow passes. Updating all flags or attaching all objects can reintroduce linear work; chunk-level selection is more useful. This approach does not automatically handle renderer-internal shadow views.
 
-A core candidate-enumeration hook is a question for a separate design discussion after profiling demonstrates a traversal bottleneck. It would need to preserve inherited visibility, layers, group renderOrder, LOD, clipping groups, lights, material groups, callbacks, bundles and ArrayCamera behavior. Shadows need their own candidates, including offscreen casters. Filtering after full traversal would not solve the CPU cost. CPU enumeration and GPU-driven submission may need different designs; this note does not propose a shared provider API.
+A production candidate-enumeration hook remains a design discussion. The large-node prototype demonstrates the traversal bottleneck and preserves ordinary ancestor paths, but it does not settle a public API. Integration must preserve inherited visibility, layers, group renderOrder, LOD, clipping groups, lights, material groups, callbacks, bundles and ArrayCamera behavior. Shadows need their own candidates, including offscreen casters. Filtering after full traversal would not solve the CPU cost. CPU enumeration and GPU-driven submission may need different designs; this note does not propose a shared CPU/GPU provider API.
 
-Keep the first implementation local to one example, using existing Box3, Frustum and rendering APIs. Avoid a public spatial-index abstraction, new Object3D fields, shared helper modules or dependencies on TSL/WebGPU from general addons. Document supported bounds and update ownership rather than adding defensive runtime throws. Keep correctness assertions in the external experiment; they verify candidate results, not input-validation behavior.
+The original chunk selection stays local to its example. The requested large-node follow-up adds a separately tested helper and the small experimental traversal hook, using existing bounds classes. The helper has no TSL/WebGPU dependency; acceleration depends on the common renderer consuming its hook. Supported bounds and update ownership are documented rather than enforced with defensive runtime throws. Tests check rendering candidates and source-graph semantics rather than validation failures.
 
 For an eventual Three.js example, use small procedural assets, a default WebGPURenderer, Inspector controls and an `animate()` loop. Keep comments short and avoid test-only globals or backend-selection toggles. Treat WebGL2 occlusion queries as research context, not a proposal for a new EffectComposer pass family. A later node-based occlusion feature should be reviewed independently from the CPU hierarchy foundation.
 

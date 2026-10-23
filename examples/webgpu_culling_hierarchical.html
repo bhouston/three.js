@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - hierarchical culling</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#readout { position: absolute; bottom: 24px; left: 24px; padding: 16px; background: #10202ee8; color: #fff; font: 13px/1.7 monospace; pointer-events: none; }
+			#readout strong { color: #78f0bb; }
+			#map-label { position: absolute; bottom: 12px; right: 12px; width: 32%; text-align: center; color: #fff; font: 12px monospace; pointer-events: none; }
+			@media (max-width: 600px) { #readout { left: 8px; bottom: 8px; padding: 8px; font-size: 10px; } #map-label { font-size: 9px; } }
+		</style>
+	</head>
+	<body>
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Hierarchical culling</span>
+			</div>
+			<small>Drag to look around. Compare flat and hierarchical chunk selection in Settings.</small>
+		</div>
+		<div id="readout" class="lbl"></div>
+		<div id="map-label" class="lbl">OVERVIEW · green: selected · gray: rejected</div>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+			import * as THREE from 'three/webgpu';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+			const search = new URLSearchParams( window.location.search );
+			const settings = { mode: search.get( 'mode' ) === 'flat' ? 'flat' : 'hierarchical', walk: false, bounds: true };
+			const chunks = [];
+			const selected = [];
+			const frustum = new THREE.Frustum();
+			const projection = new THREE.Matrix4();
+			const point = new THREE.Vector3();
+			const stats = { nodes: 0, planes: 0 };
+			const readout = document.getElementById( 'readout' );
+			const scene = new THREE.Scene();
+			scene.background = new THREE.Color( 0x9ebccc );
+			const camera = new THREE.PerspectiveCamera( 65, window.innerWidth / window.innerHeight, 1, 320 );
+			camera.position.set( 0, 28, 80 );
+			const overhead = new THREE.OrthographicCamera( - 690, 690, 690, - 690, 1, 2500 );
+			overhead.position.set( 0, 1500, 0 );
+			overhead.up.set( 0, 0, - 1 );
+			overhead.lookAt( 0, 0, 0 );
+			overhead.layers.enable( 1 );
+
+			const renderer = new THREE.WebGPURenderer();
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.inspector = new Inspector();
+			document.body.appendChild( renderer.domElement );
+
+			const controls = new OrbitControls( camera, renderer.domElement );
+			controls.target.set( 0, 6, - 100 );
+			controls.maxPolarAngle = Math.PI * 0.49;
+			controls.update();
+
+			scene.add( new THREE.HemisphereLight( 0xc5e8ff, 0x625641, 3 ) );
+			const sunlight = new THREE.DirectionalLight( 0xffe1b0, 3 );
+			sunlight.position.set( 100, 200, 80 );
+			scene.add( sunlight );
+			const ground = new THREE.Mesh( new THREE.PlaneGeometry( 1400, 1400 ), new THREE.MeshStandardMaterial( { color: 0x293b39, roughness: 1 } ) );
+			ground.rotation.x = Math.PI * - 0.5;
+			scene.add( ground );
+			const grid = new THREE.GridHelper( 1280, 32, 0x78918d, 0x4c6661 );
+			grid.position.y = 0.1;
+			scene.add( grid );
+
+			const geometry = new THREE.BoxGeometry();
+			const visibleMaterial = new THREE.MeshStandardMaterial( { color: 0x66c997, roughness: 0.85 } );
+			const hiddenMaterial = new THREE.MeshStandardMaterial( { color: 0x627985, roughness: 0.85 } );
+			const transform = new THREE.Object3D();
+			const box = new THREE.Box3();
+			geometry.computeBoundingBox();
+			THREE.MathUtils.seededRandom( 150 );
+
+			for ( let z = 0; z < 32; z ++ ) {
+
+				for ( let x = 0; x < 32; x ++ ) {
+
+					const mesh = new THREE.InstancedMesh( geometry, visibleMaterial, 16 );
+					const bounds = new THREE.Box3();
+
+					for ( let i = 0; i < 16; i ++ ) {
+
+						const height = 3 + THREE.MathUtils.seededRandom() * 18;
+						transform.position.set( ( x - 16 ) * 40 + ( i % 4 ) * 9 + 5, height / 2, ( z - 16 ) * 40 + Math.floor( i / 4 ) * 9 + 5 );
+						transform.scale.set( 4 + THREE.MathUtils.seededRandom() * 3, height, 4 + THREE.MathUtils.seededRandom() * 3 );
+						transform.updateMatrix();
+						mesh.setMatrixAt( i, transform.matrix );
+						bounds.union( box.copy( geometry.boundingBox ).applyMatrix4( transform.matrix ) );
+
+					}
+
+					// Selection owns these static chunk bounds and visibility.
+
+					mesh.frustumCulled = false;
+					mesh.matrixAutoUpdate = false;
+					mesh.visible = false;
+					chunks.push( { mesh, box: bounds } );
+					scene.add( mesh );
+
+				}
+
+			}
+
+			const boundsGroup = new THREE.Group();
+			const root = build( chunks.slice(), 0 );
+			scene.add( boundsGroup );
+			const cameraHelper = new THREE.CameraHelper( camera );
+			cameraHelper.layers.set( 1 );
+			scene.add( cameraHelper );
+			scene.updateMatrixWorld( true );
+			scene.matrixWorldAutoUpdate = false;
+
+			const gui = renderer.inspector.createParameters( 'Settings' );
+			gui.add( settings, 'mode', [ 'hierarchical', 'flat' ] );
+			gui.add( settings, 'walk' ).name( 'walk automatically' );
+			gui.add( settings, 'bounds' ).name( 'overview bounds' );
+			window.addEventListener( 'resize', onWindowResize );
+			await renderer.init();
+			camera.coordinateSystem = renderer.coordinateSystem;
+			camera.updateProjectionMatrix();
+			renderer.setAnimationLoop( animate );
+
+			function build( items, depth ) {
+
+				const bounds = new THREE.Box3();
+				for ( const item of items ) bounds.union( item.box );
+				if ( depth === 4 ) {
+
+					const helper = new THREE.Box3Helper( bounds, 0xd0af61 );
+					helper.layers.set( 1 );
+					boundsGroup.add( helper );
+
+				}
+
+				if ( items.length === 1 ) return { box: bounds, chunk: items[ 0 ] };
+				const axis = depth % 2 === 0 ? 'x' : 'z';
+				items.sort( ( a, b ) => a.box.min[ axis ] - b.box.min[ axis ] );
+				const middle = items.length / 2;
+				return { box: bounds, children: [ build( items.slice( 0, middle ), depth + 1 ), build( items.slice( middle ), depth + 1 ) ] };
+
+			}
+
+			function classify( bounds, mask ) {
+
+				stats.nodes ++;
+				for ( let i = 0; i < 6; i ++ ) {
+
+					if ( ( mask & ( 1 << i ) ) === 0 ) continue;
+					stats.planes ++;
+					const plane = frustum.planes[ i ];
+					const n = plane.normal;
+					point.set( n.x >= 0 ? bounds.max.x : bounds.min.x, n.y >= 0 ? bounds.max.y : bounds.min.y, n.z >= 0 ? bounds.max.z : bounds.min.z );
+					if ( plane.distanceToPoint( point ) < 0 ) return - 1;
+					point.set( n.x >= 0 ? bounds.min.x : bounds.max.x, n.y >= 0 ? bounds.min.y : bounds.max.y, n.z >= 0 ? bounds.min.z : bounds.max.z );
+					if ( plane.distanceToPoint( point ) >= 0 ) mask &= ~ ( 1 << i );
+
+				}
+
+				return mask;
+
+			}
+
+			function select( chunk ) {
+
+				chunk.mesh.visible = true;
+				chunk.mesh.material = visibleMaterial;
+				selected.push( chunk );
+
+			}
+
+			function query( node, mask ) {
+
+				mask = classify( node.box, mask );
+				if ( mask === - 1 ) return;
+				if ( node.chunk ) {
+
+					select( node.chunk );
+
+				} else {
+
+					for ( const child of node.children ) query( child, mask );
+
+				}
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function animate( time ) {
+
+				if ( settings.walk ) {
+
+					const angle = time * 0.0001;
+					camera.position.set( Math.sin( angle ) * 160, 10, Math.cos( angle ) * 160 );
+					controls.target.set( Math.sin( angle + 1 ) * 220, 8, Math.cos( angle + 1 ) * 220 );
+
+				}
+
+				controls.update();
+				camera.updateMatrixWorld();
+				projection.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );
+				frustum.setFromProjectionMatrix( projection, renderer.coordinateSystem );
+				cameraHelper.update();
+				cameraHelper.updateMatrixWorld( true );
+				boundsGroup.visible = settings.bounds;
+				for ( const chunk of selected ) chunk.mesh.visible = false;
+				selected.length = 0;
+				stats.nodes = 0;
+				stats.planes = 0;
+
+				if ( settings.mode === 'hierarchical' ) {
+
+					query( root, 63 );
+
+				} else {
+
+					for ( const chunk of chunks ) {
+
+						if ( classify( chunk.box, 63 ) !== - 1 ) select( chunk );
+
+					}
+
+				}
+
+				readout.innerHTML = `<strong>${ settings.mode.toUpperCase() } FRUSTUM SELECTION</strong><br>16,384 buildings / 1,024 static chunks<br>Selected chunks: ${ selected.length }<br>Bounds visited: ${ stats.nodes }<br>Plane tests: ${ stats.planes }<br>CPU work counts, not an FPS benchmark.<br>Overview draws every chunk. No occlusion.`;
+				const width = window.innerWidth;
+				const height = window.innerHeight;
+				renderer.setScissorTest( true );
+				renderer.setViewport( 0, 0, width, height );
+				renderer.setScissor( 0, 0, width, height );
+				renderer.render( scene, camera );
+
+				// The overview is diagnostic work, excluded from the selection counts.
+
+				for ( const chunk of chunks ) {
+
+					chunk.mesh.material = chunk.mesh.visible ? visibleMaterial : hiddenMaterial;
+					chunk.mesh.visible = true;
+
+				}
+
+				const mapSize = Math.floor( Math.min( width * 0.32, height * 0.44 ) );
+				renderer.setViewport( width - mapSize - 12, height - mapSize - 40, mapSize, mapSize );
+				renderer.setScissor( width - mapSize - 12, height - mapSize - 40, mapSize, mapSize );
+				renderer.render( scene, overhead );
+				for ( const chunk of chunks ) chunk.mesh.visible = false;
+				renderer.setScissorTest( false );
+
+			}
+		</script>
+	</body>
+</html>

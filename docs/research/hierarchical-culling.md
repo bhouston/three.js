@@ -1,6 +1,6 @@
 # Hierarchical culling research
 
-For a large outdoor first person scene, start with a spatial hierarchy of chunks, hierarchical frustum tests, distance limits and spatially partitioned batching. Add occlusion where buildings or terrain actually hide substantial work. Share the hierarchy with streaming, but keep resource residency separate from visibility. This research note proposes a small application-level experiment before considering renderer changes.
+For a large outdoor first person scene, start with a spatial hierarchy of chunks, hierarchical frustum tests, distance limits and spatially partitioned batching. Add occlusion where buildings or terrain actually hide substantial work. Share the hierarchy with streaming, but keep resource residency separate from visibility. The accompanying example demonstrates application-level selection before considering renderer changes.
 
 ## Current Three.js behavior
 
@@ -13,6 +13,16 @@ Code reviewed at dev commit `087f01f5d20fb8ea527395e04780bbbe7d1345a0`:
 - InstancedMesh culls a whole batch; BatchedMesh can cull individual instances. Neither substitutes for a world spatial index. Split huge batches into spatial chunks, trading additional draws for tighter rejection.
 
 Thus the linear-traversal premise is substantially correct for ordinary visible scene graphs, with exceptions for invisible subtrees and cached bundles. It is not accurate to say every Object3D always incurs a geometry/frustum intersection.
+
+## Interactive example
+
+[webgpu_culling_hierarchical.html](../../examples/webgpu_culling_hierarchical.html) renders 16,384 procedural buildings in 1,024 static InstancedMesh chunks. Settings switches between flat chunk tests and a binary hierarchy with inherited plane masks. Both select conservative chunk AABBs; the example disables the meshes' built-in frustum tests to isolate application selection. Drag to orbit or enable automatic walking. The overview draws every chunk, highlights selected chunks in green, and displays the main camera frustum and coarse hierarchy bounds.
+
+At the initial view, both modes select 82 chunks. Flat selection visits 1,024 bounds and performs 2,792 plane tests; hierarchical selection visits 267 bounds and performs 348 plane tests. The counters describe CPU selection work, not measured rendering speedup. The overview updates every chunk and draws the entire world. The renderer also still visits scene children; no core traversal optimization is claimed. Static transforms are initialized once, then automatic scene matrix updates are disabled.
+
+The example owns chunk visibility independently for its main and overview passes. It supports static bounds, one main view and no shadows, probe captures or occlusion. Moving geometry would require bounds updates and ancestor refits; shadows and captures would require their own queries. It introduces no renderer API or reusable spatial-index module.
+
+Hardware verification used a non-fallback NVIDIA Pascal WebGPU adapter. External checks compared actual main-pass candidates with `Frustum.intersectsBox` after camera and projection changes in both modes, and found identical primary-view pixels for the initial flat and hierarchical views. Screenshots illustrate the controls and counts; Inspector FPS is incidental, not a benchmark result.
 
 ## Practical hierarchy choices
 
@@ -88,8 +98,8 @@ These counts establish less plane-testing work for this distribution, not an equ
 
 ## Small follow-up steps
 
-1. Share a standalone browser experiment, for example via jsfiddle, comparing flat and hierarchical chunk selection. Start with static procedural bounds, one camera and no renderer changes. Profile the complete path, including matrix updates and draw submission, before seeking a core hook.
-2. If the result warrants a repository example, submit that foundation separately. Extend validation to dynamic refits, camera cuts, all-visible scenes, shadows and six-view captures before proposing wider integration.
+1. Use the accompanying static example as the foundation. Profile the complete path, including matrix updates, visibility changes and draw submission, before seeking a core hook. Keep throughput experiments external, for example via jsfiddle.
+2. Extend validation to dynamic refits, camera cuts, all-visible scenes, shadows and six-view captures in separate follow-ups before proposing wider integration.
 3. Discuss the smallest necessary renderer change with the relevant maintainers, keeping occlusion, GPU draw generation and streaming policy out of that foundation PR. Discuss node-system architecture with its maintainers before implementing it.
 
 Record index maintenance, candidate construction, matrix updates, draw calls, triangles, memory and GPU cost separately. Keep performance trials external rather than adding `test/benchmark/` or a replacement utility suite. For rendering throughput, verify a physical GPU adapter, disable vsync/frame caps, warm each implementation, run sequential multi-second trials, count GPU-completed frames and drain queued work between implementations. No rendering throughput or rendering-quality verification is claimed by this CPU experiment.

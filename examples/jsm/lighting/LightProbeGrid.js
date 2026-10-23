@@ -515,6 +515,7 @@ function ensureCaptureCamera( near, far ) {
 		}
 
 		_captureCamera = new ArrayCamera( cameras );
+		_captureCamera.perCameraFrustumCulled = true;
 
 	}
 

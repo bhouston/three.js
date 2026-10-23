@@ -23,10 +23,11 @@ import {
 	Vector4
 } from 'three/webgpu';
 
-import { array, atan, Discard, float, Fn, frontFacing, If, instanceIndex, getShIrradianceAt, int, ivec2, ivec3, Loop, perspectiveDepthToViewZ, screenCoordinate, select, texture, texture3D, textureStore, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { context, normalWorldGeometry, indirectDiffuse, indirectSpecular, array, atan, Discard, float, Fn, frontFacing, If, instanceIndex, getShIrradianceAt, int, ivec2, ivec3, Loop, perspectiveDepthToViewZ, screenCoordinate, select, texture, texture3D, textureStore, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
-import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
+import { LightProbeGridNode, lightProbeGridDiffuse, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
 import { replaceSunLights, restoreSunLights } from './LightProbeGridUtils.js';
+import { EnvironmentRadiance } from './EnvironmentRadiance.js';
 
 // Probes captured per render, six sub-cameras each.
 const PROBES_PER_BATCH = 8;
@@ -916,6 +917,7 @@ class LightProbeGrid extends Light {
 		// Indirect captures read a snapshot while the live atlas is updated in place.
 		this._bounceGrid = null;
 		this._bouncePass = - 1;
+		this._environment = null;
 
 		// Per-probe distance moments for visibility, and their normalization scale.
 		this._distanceTarget = null;
@@ -1080,6 +1082,11 @@ class LightProbeGrid extends Light {
 		const currentInspectorEnabled = renderer.inspector.enabled;
 		const currentMatrixWorldAutoUpdate = scene.matrixWorldAutoUpdate;
 		const currentVisible = this.visible;
+		const currentContext = renderer.contextNode;
+		const currentBackground = scene.background;
+		const currentBackgroundNode = scene.backgroundNode;
+		const currentBackgroundRotation = scene.backgroundRotation.clone();
+		const currentBackgroundIntensity = scene.backgroundIntensity;
 		const renderTarget = this._renderTarget;
 		const currentViewport = renderTarget.viewport.clone();
 		const shadowStates = [];
@@ -1090,6 +1097,14 @@ class LightProbeGrid extends Light {
 			renderer.inspector.enabled = false;
 			renderer.xr.enabled = false;
 			this.visible = false;
+			// The environment is a transport boundary, independent of the display
+			// background. Surfaces receive it through the previous bounce grid.
+			this._environment ??= new EnvironmentRadiance();
+			this._environment.update( renderer, scene );
+			scene.background = null;
+			scene.backgroundNode = this._environment.sample( normalWorldGeometry, Math.max( 0, Math.log2( this._environment.size / cubemapSize ) ) );
+			scene.backgroundRotation.set( 0, 0, 0 );
+			scene.backgroundIntensity = 1;
 
 			// Scene is static during the bake: update once, disable auto-update.
 
@@ -1120,6 +1135,11 @@ class LightProbeGrid extends Light {
 			for ( let pass = firstPass; pass <= firstPass + bounces; pass ++ ) {
 
 				this._updateBounceGrid( renderer, scene, pass, start );
+				// Read the completed previous pass, never the live atlas being written.
+				// No unoccluded IBL on captured surfaces: sky arrives via miss rays.
+				const providers = [];
+				if ( pass > 0 && this._bounceGrid ) providers.push( lightProbeGridDiffuse( this._bounceGrid ) );
+				renderer.contextNode = context( { ...currentContext.value, indirectDiffuseNode: indirectDiffuse( providers ), indirectSpecularNode: indirectSpecular( [] ) } );
 				// Geometry is static during the bake, so distances are recorded once.
 				this._captureProbes( renderer, scene, start, end, this.visibility && pass === 0 );
 				this._repackProbes( renderer, start, end );
@@ -1142,6 +1162,11 @@ class LightProbeGrid extends Light {
 			if ( replacedSunLights !== null ) restoreSunLights( scene, replacedSunLights );
 
 			this.visible = currentVisible;
+			renderer.contextNode = currentContext;
+			scene.background = currentBackground;
+			scene.backgroundNode = currentBackgroundNode;
+			scene.backgroundRotation.copy( currentBackgroundRotation );
+			scene.backgroundIntensity = currentBackgroundIntensity;
 			if ( this._bounceGrid !== null ) this._bounceGrid.removeFromParent();
 
 			renderer.inspector.enabled = currentInspectorEnabled;
@@ -1557,6 +1582,8 @@ class LightProbeGrid extends Light {
 	 * Frees GPU resources.
 	 */
 	dispose() {
+
+		if ( this._environment !== null ) this._environment.dispose();
 
 		if ( this._repackCompute !== null ) {
 

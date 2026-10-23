@@ -10,7 +10,7 @@
 		<div id="info">
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Interior</span></div>
-			<small>Light Probe / VXGI diffuse lighting, box-projected reflections and GTAO / GTSO with an animated bunny.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a></small>
+			<small>Light Probe / VXGI diffuse lighting, box-projected reflections and GTAO / GTSO with selectable scenes.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a></small>
 		</div>
 		<script type="importmap">
 			{
@@ -29,8 +29,8 @@
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { VXGIVolume } from 'three/addons/lighting/vxgi/VXGIVolume.js';
@@ -38,7 +38,18 @@
 			import { ReflectionProbe, ReflectionProbes } from 'three/addons/lighting/ReflectionProbes.js';
 			import { reflectionProbes } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
 
+			const models = {
+				'Museum': 'museum.glb',
+				'Dual Rooms': 'dual-rooms.glb',
+				'Cornell Box': 'cornell-box.glb',
+				'Cornell Box (Oblique)': 'cornell-box-oblique.glb',
+				'Cornell Box (Metallic Sphere)': 'cornell-box-metallic-sphere.glb',
+				'Cornell Box (Mirror Wall)': 'cornell-box-mirror-wall.glb'
+			};
+
 			const params = {
+				model: 'Dual Rooms',
+				environment: true,
 				algorithm: 'Light Probes',
 				bounces: 2,
 				voxelResolution: 128,
@@ -46,8 +57,6 @@
 				reflectionBounces: 3,
 				boxProjection: true,
 				capture: () => capture(),
-				dynamicObject: 'Bunny',
-				pause: false,
 				aoType: 'GTAO + GTSO',
 				samples: 16,
 				radius: 0.4,
@@ -57,11 +66,12 @@
 				temporalFiltering: true,
 				aoOnly: false
 			};
-			const timer = new THREE.Timer();
-			let camera, scene, renderer, controls, lightProbes, probes, dynamicObject;
+			let camera, scene, renderer, controls, lightProbes, probes, model;
 			let renderPipeline, scenePass, aoPass, traaPass, voxelVolume;
 			const giFrame = uniform( 0 );
-			let animationTime = 0;
+			let loadId = 0;
+			let currentModel = params.model;
+			let captureFar = 30;
 
 			init();
 
@@ -75,29 +85,11 @@
 				// Scene
 
 				scene = new THREE.Scene();
-				scene.background = new THREE.Color( 0x111111 );
-
-				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/dual-rooms.glb' );
-				gltf.scene.traverse( ( object ) => {
-
-					if ( object.isMesh ) {
-
-						object.castShadow = true;
-						object.receiveShadow = true;
-
-					}
-
-					if ( object.isLight && object.shadow ) {
-
-						object.castShadow = true;
-						object.shadow.mapSize.setScalar( 256 );
-						object.shadow.radius = 12;
-						object.shadow.bias = - 0.002;
-
-					}
-
-				} );
-				scene.add( gltf.scene );
+				const background = new THREE.Color( 0x111111 );
+				const environment = await new HDRLoader().loadAsync( 'textures/equirectangular/pedestrian_overpass_1k.hdr' );
+				environment.mapping = THREE.EquirectangularReflectionMapping;
+				scene.environment = environment;
+				scene.background = environment;
 
 				// Renderer
 
@@ -116,68 +108,7 @@
 				controls.target.set( 0, 2.5, 0 );
 				controls.update();
 
-				// Diffuse lighting for both rooms, with visibility across the divider.
-
-				lightProbes = new LightProbeGrid( 15.6, 4.7, 7.6, 12, 6, 6 );
-				lightProbes.position.set( 0, 2.45, 0 );
-				lightProbes.visibility = true;
-				lightProbes.multiBounce = true;
-				scene.add( lightProbes );
-
-				// One reflection probe per room plus a smaller doorway probe.
-
-				probes = new ReflectionProbes();
-
-				const probeSetup = [
-					{ position: [ - 4, 2.5, 0 ], influenceSize: [ 8.4, 5.4, 8.4 ], projectionSize: [ 8, 5, 8 ] },
-					{ position: [ 4, 2.5, 0 ], influenceSize: [ 8.4, 5.4, 8.4 ], projectionSize: [ 8, 5, 8 ] },
-					// captured at doorway height, projected onto both rooms
-					{ position: [ 0, 1.9, 0 ], influenceSize: [ 2.4, 3.8, 2.5 ], projectionSize: [ 16, 5, 8 ], projectionOffset: [ 0, 0.6, 0 ] }
-				];
-
-				for ( const setup of probeSetup ) {
-
-					const probe = new ReflectionProbe( ...setup.influenceSize );
-					probe.position.set( ...setup.position );
-					probe.projectionSize = new THREE.Vector3( ...setup.projectionSize );
-					if ( setup.projectionOffset ) probe.projectionOffset.set( ...setup.projectionOffset );
-					probes.add( probe );
-
-				}
-
-				scene.add( probes );
-
-				// The dynamic object evaluates the probe blend at its own world position.
-
-				const dynamicMaterial = new THREE.MeshStandardMaterial( { metalness: 1, roughness: 0 } );
-
-				const loader = new DRACOLoader();
-				const bunnyGeometry = await loader.loadAsync( 'models/draco/bunny.drc' );
-				loader.dispose();
-
-				bunnyGeometry.computeVertexNormals();
-				bunnyGeometry.center();
-				bunnyGeometry.computeBoundingBox();
-				const bunnySize = bunnyGeometry.boundingBox.getSize( new THREE.Vector3() );
-				// Normalize the bunny's longest dimension to 1.08 scene units.
-				const bunnyScale = 1.08 / Math.max( bunnySize.x, bunnySize.y, bunnySize.z );
-				bunnyGeometry.scale( bunnyScale, bunnyScale, bunnyScale );
-				const dynamicGeometries = {
-					Bunny: bunnyGeometry,
-					Sphere: new THREE.SphereGeometry( 0.54, 32, 24 )
-				};
-				dynamicObject = new THREE.Mesh( dynamicGeometries[ params.dynamicObject ], dynamicMaterial );
-				dynamicObject.castShadow = true;
-				dynamicObject.receiveShadow = true;
-				dynamicObject.visible = params.dynamicObject !== 'None';
-				updateDynamicObject( 0 );
-
-				scene.add( dynamicObject );
-
-				// Every physical material picks up the probes, like scene.environment.
-
-				capture();
-				scene.environmentNode = reflectionProbes( probes );
+				await loadModel();
 
 				// Occlusion is evaluated from the main camera, after baking the probes.
 				// Feed it into indirect lighting so direct lights retain their contribution.
@@ -205,6 +136,16 @@
 				updateAO();
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
+				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
+				settings.add( params, 'environment' ).name( 'Environment Map' ).onChange( ( enabled ) => {
+
+					scene.environment = enabled ? environment : null;
+					scene.background = enabled ? environment : background;
+					// Both diffuse and reflection probes cache the environment contribution.
+					capture();
+
+				} );
+
 				const occlusion = settings.addFolder( 'Ambient Occlusion' );
 				occlusion.add( params, 'aoType', [ 'None', 'GTAO', 'GTAO + GTSO' ] ).name( 'AO type' ).onChange( updateAO );
 				occlusion.add( params, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateAOParameters );
@@ -228,16 +169,6 @@
 				gui.add( { capture: () => capture( false ) }, 'capture' ).name( 'Capture' );
 				gui.add( params, 'boxProjection' ).name( 'Box Projection' ).onChange( ( value ) => probes.boxProjection = value );
 
-				const dynamicTest = gui.addFolder( 'Dynamic Test' );
-				dynamicTest.add( params, 'dynamicObject', [ 'None', 'Bunny', 'Sphere' ] ).name( 'Object' ).onChange( ( value ) => {
-
-					if ( value !== 'None' ) dynamicObject.geometry = dynamicGeometries[ value ];
-					dynamicObject.visible = value !== 'None';
-
-				} );
-				dynamicTest.add( params, 'pause' ).name( 'Pause' );
-				dynamicTest.add( dynamicMaterial, 'roughness', 0, 1, 0.01 ).name( 'Roughness' );
-
 				window.addEventListener( 'resize', () => {
 
 					camera.aspect = window.innerWidth / window.innerHeight;
@@ -250,15 +181,6 @@
 			}
 
 			function animate() {
-
-				timer.update();
-
-				if ( ! params.pause && params.dynamicObject !== 'None' ) {
-
-					animationTime += timer.getDelta();
-					updateDynamicObject( animationTime );
-
-				}
 
 				controls.update();
 				giFrame.value = ( giFrame.value + 1 ) % 64;
@@ -293,25 +215,192 @@
 
 			}
 
-			function updateDynamicObject( time ) {
+			async function loadModel() {
 
-				// A figure eight around both room centers, crossing x=0 at the doorway.
-				// Stay above the table objects and inside the rows of columns at z=+/-2.5.
-				const phase = time * 0.35;
-				dynamicObject.position.set( 5.6 * Math.sin( phase ), 2.5, 1.4 * Math.sin( 2 * phase ) );
-				dynamicObject.rotation.y = Math.atan2( 5.6 * Math.cos( phase ), 2.8 * Math.cos( 2 * phase ) );
+				const id = ++ loadId;
+				const name = params.model;
+				let gltf;
+
+				try {
+
+					gltf = await new GLTFLoader().loadAsync( 'models/gltf/' + models[ name ] );
+
+				} catch ( error ) {
+
+					if ( id !== loadId ) return;
+					params.model = currentModel;
+					console.error( 'Unable to load model:', error );
+					return;
+
+				}
+
+				if ( id !== loadId ) {
+
+					disposeModel( gltf.scene );
+					return;
+
+				}
+
+				scene.environmentNode = null;
+				renderer.contextNode = context( { ...renderer.contextNode.value } );
+				delete renderer.contextNode.value.getGI;
+
+				for ( const source of [ lightProbes, probes ] ) {
+
+					if ( source ) {
+
+						source.removeFromParent();
+						source.dispose();
+
+					}
+
+				}
+
+				voxelVolume?.dispose();
+				voxelVolume = null;
+
+				if ( model ) {
+
+					model.removeFromParent();
+					disposeModel( model );
+
+				}
+
+				model = gltf.scene;
+				model.traverse( ( object ) => {
+
+					if ( object.isMesh ) {
+
+						object.castShadow = true;
+						object.receiveShadow = true;
+
+					}
+
+					if ( object.isLight && object.shadow ) {
+
+						object.castShadow = true;
+						object.shadow.mapSize.setScalar( 256 );
+						object.shadow.radius = 12;
+						object.shadow.bias = - 0.002;
+
+					}
+
+				} );
+				scene.add( model );
+				model.updateMatrixWorld( true );
+				setModelCamera( gltf );
+
+				const bounds = new THREE.Box3().setFromObject( model );
+				const fullSize = bounds.getSize( new THREE.Vector3() ).max( new THREE.Vector3( 0.1, 0.1, 0.1 ) );
+				const size = fullSize.clone().multiplyScalar( 0.95 );
+				const center = bounds.getCenter( new THREE.Vector3() );
+				captureFar = Math.max( 30, fullSize.length() * 2 );
+
+				// Fit the diffuse probe grid to the selected scene.
+
+				lightProbes = new LightProbeGrid( size.x, size.y, size.z, 12, 6, 6 );
+				lightProbes.position.copy( center );
+				lightProbes.visibility = true;
+				lightProbes.multiBounce = true;
+				scene.add( lightProbes );
+
+				// Keep room-local reflections for Dual Rooms; fit other scenes to their bounds.
+
+				probes = new ReflectionProbes();
+				probes.boxProjection = params.boxProjection;
+
+				const probeSetup = params.model === 'Dual Rooms' ? [
+					{ position: [ - 4, 2.5, 0 ], influenceSize: [ 8.4, 5.4, 8.4 ], projectionSize: [ 8, 5, 8 ] },
+					{ position: [ 4, 2.5, 0 ], influenceSize: [ 8.4, 5.4, 8.4 ], projectionSize: [ 8, 5, 8 ] },
+					// captured at doorway height, projected onto both rooms
+					{ position: [ 0, 1.9, 0 ], influenceSize: [ 2.4, 3.8, 2.5 ], projectionSize: [ 16, 5, 8 ], projectionOffset: [ 0, 0.6, 0 ] }
+				] : [ { position: center.toArray(), influenceSize: size.clone().multiplyScalar( 1.1 ).toArray(), projectionSize: fullSize.toArray() } ];
+
+				for ( const setup of probeSetup ) {
+
+					const probe = new ReflectionProbe( ...setup.influenceSize );
+					probe.position.set( ...setup.position );
+					probe.projectionSize = new THREE.Vector3( ...setup.projectionSize );
+					if ( setup.projectionOffset ) probe.projectionOffset.set( ...setup.projectionOffset );
+					probes.add( probe );
+
+				}
+
+				scene.add( probes );
+
+				capture();
+				scene.environmentNode = reflectionProbes( probes );
+				currentModel = name;
+
+			}
+
+			function disposeModel( model ) {
+
+				const resources = new Set();
+				model.traverse( ( object ) => {
+
+					if ( object.geometry ) resources.add( object.geometry );
+					if ( object.shadow ) resources.add( object.shadow );
+					const materials = Array.isArray( object.material ) ? object.material : [ object.material ];
+					for ( const material of materials ) {
+
+						if ( ! material ) continue;
+						resources.add( material );
+						for ( const value of Object.values( material ) ) {
+
+							if ( value && value.isTexture ) resources.add( value );
+
+						}
+
+					}
+
+				} );
+				for ( const resource of resources ) resource.dispose();
+
+			}
+
+			function setModelCamera( gltf ) {
+
+				const source = gltf.cameras[ 0 ];
+				const bounds = new THREE.Box3().setFromObject( model );
+				const center = bounds.getCenter( new THREE.Vector3() );
+
+				// Clear any orbit damping left over from the previous scene.
+				const damping = controls.enableDamping;
+				controls.enableDamping = false;
+				controls.update();
+
+				if ( source ) {
+
+					source.getWorldPosition( camera.position );
+					source.getWorldQuaternion( camera.quaternion );
+					camera.fov = source.fov;
+					camera.near = source.near;
+					camera.far = source.far;
+					controls.target.copy( camera.position ).addScaledVector( camera.getWorldDirection( new THREE.Vector3() ), camera.position.distanceTo( center ) );
+
+				} else {
+
+					controls.target.copy( center );
+					camera.position.copy( center ).add( new THREE.Vector3( 1, 0.6, 1 ).multiplyScalar( bounds.getSize( new THREE.Vector3() ).length() ) );
+
+				}
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				controls.update();
+				controls.saveState();
+				controls.enableDamping = damping;
 
 			}
 
 			function capture( bakeDiffuse = true ) {
 
-				// Bake the static scene, then evaluate diffuse GI at the moving bunny's position.
+				if ( ! model || ! lightProbes || ! probes ) return;
 
-				const dynamicVisible = dynamicObject.visible;
 				const environmentNode = scene.environmentNode;
 				const rendererContext = renderer.contextNode;
 				const lightProbesVisible = lightProbes.visible;
-				dynamicObject.visible = false;
 				scene.environmentNode = null;
 				let baked = false;
 
@@ -327,7 +416,7 @@
 
 						if ( params.algorithm === 'Light Probes' ) {
 
-							lightProbes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 30, bounces: params.bounces } );
+							lightProbes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: captureFar, bounces: params.bounces } );
 
 						} else {
 
@@ -352,13 +441,12 @@
 
 					// Record the selected diffuse solution in the local reflections too.
 
-					probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: 30, bounces: params.reflectionBounces } );
+					probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: captureFar, bounces: params.reflectionBounces } );
 					baked = true;
 
 				} finally {
 
 					scene.environmentNode = environmentNode;
-					dynamicObject.visible = dynamicVisible;
 					if ( ! baked ) {
 
 						renderer.contextNode = rendererContext;

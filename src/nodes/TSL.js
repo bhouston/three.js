@@ -141,6 +141,7 @@ export * from './gpgpu/AtomicFunctionNode.js';
 export * from './gpgpu/SubgroupFunctionNode.js';
 
 // lighting
+export * from './lighting/IndirectLightingNode.js';
 export * from './accessors/Lights.js';
 export * from './lighting/LightsNode.js';
 export * from './lighting/LightingContextNode.js';

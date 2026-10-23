@@ -4,11 +4,11 @@ import { hashArray, hashString } from '../../nodes/core/NodeUtils.js';
 import { output, diffuseColor, ambientOcclusion, emissive } from '../../nodes/core/PropertyNode.js';
 import { materialAlphaTest, materialColor, materialOpacity, materialEmissive, materialNormal, materialLightMap, materialAO } from '../../nodes/accessors/MaterialNode.js';
 import { modelViewProjection } from '../../nodes/accessors/ModelViewProjectionNode.js';
-import { normalLocal } from '../../nodes/accessors/Normal.js';
+import { normalLocal, normalWorld } from '../../nodes/accessors/Normal.js';
 import { instancedMesh, instanceColor } from '../../nodes/accessors/Instance.js';
 import { batch, batchColor } from '../../nodes/accessors/Batch.js';
 import { materialReference } from '../../nodes/accessors/MaterialReferenceNode.js';
-import { positionLocal, positionView } from '../../nodes/accessors/Position.js';
+import { positionLocal, positionView, positionWorld } from '../../nodes/accessors/Position.js';
 import { skinning } from '../../nodes/accessors/Skinning.js';
 import { morphReference, morphColor } from '../../nodes/accessors/Morph.js';
 import { fwidth, mix, smoothstep } from '../../nodes/math/MathNode.js';
@@ -1017,6 +1017,7 @@ class NodeMaterial extends Material {
 
 		}
 
+		const indirectDiffuseNode = builder.context.indirectDiffuseNode;
 		const lightMapNode = this.setupLightMap( builder );
 
 		if ( lightMapNode && lightMapNode.isLightingNode ) {
@@ -1031,7 +1032,11 @@ class NodeMaterial extends Material {
 
 		}
 
-		if ( builder.context.getGI ) {
+		if ( indirectDiffuseNode ) {
+
+			materialLightsNode.push( new IrradianceNode( indirectDiffuseNode.sample( { position: positionWorld, normal: normalWorld } ).rgb ) );
+
+		} else if ( builder.context.getGI ) {
 
 			const giNode = builder.context.getGI( null, builder );
 

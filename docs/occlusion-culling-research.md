@@ -8,7 +8,7 @@ For a large first-person world, use a shared spatial index, per-view visibility 
 
 There is a common architecture, but no universally best culling algorithm. Dense interiors, open terrain, destructible worlds, and many repeated instances need different policies. Keep those policies in addons/application code initially; introduce core integration only when a measured prototype identifies a missing renderer contract.
 
-Following the supplied [maintainer review preferences](https://gist.github.com/bhouston/1b66f04b2838229a36844cd66ea31c7e), this PR is a documentation-only spike. Keep benchmarks external (jsbench/jsfiddle or task artifacts), reuse existing abstractions, and propose one small implementation at a time. The summary records review preferences rather than a formal project policy.
+Following the supplied [maintainer review preferences](https://gist.github.com/bhouston/1b66f04b2838229a36844cd66ea31c7e), this spike pairs research with one small renderer example. Keep benchmarks external (jsbench/jsfiddle or task artifacts), reuse existing abstractions, and propose one small implementation at a time. The summary records review preferences rather than a formal project policy.
 
 ## Industry practice
 
@@ -79,6 +79,14 @@ This intentionally establishes the value of the simpler hierarchy before impleme
 
 The original experiment passed candidate-set assertions and ESLint. The initial PR passed `npm test`: core lint, 1,982 core unit tests (one TODO), and 139 addon unit tests, with zero failures. The browser runner printed a resource 404 and Windows already-exited-process cleanup messages but exited successfully. This JavaScript repository has no dedicated typecheck script. These checks establish no GPU rendering correctness or performance result.
 
+## Interactive renderer example
+
+[webgpu_culling_occlusion.html](../examples/webgpu_culling_occlusion.html) compares baseline renderer frustum tests, explicit cluster frustum tests, and cluster frustum plus asynchronous occlusion queries. Thirty static clusters contain 750 meshes behind five opaque walls. Inspector parameters switch modes; counters include query submission, and a map shows drawn, occluded and out-of-frustum clusters.
+
+The first render draws occluders and colorless bounding proxies without proxy depth writes. The second draws surviving detail groups while retaining depth. Query proxies remain active when details are hidden. Bounds are derived from geometry; near-camera bounds remain visible. New proxy identities on camera/projection or viewport changes discard stale results without waiting for GPU readback. This conservative prototype reuses occlusion only while the view is unchanged. It does not implement continuous-motion temporal certificates, spatial hierarchy, dynamic occluders or streaming.
+
+On Windows001's NVIDIA RTX 3060 Ti, the default view drew 13 clusters and rejected 17, reducing draw calls from 758 to 363 including queries. Direct canvas pixels matched baseline at the default view and after an orbit (no channel differences greater than two). Mode switching and same-aspect resizing completed without browser errors. These are visual and submission-count checks, not frame-time benchmarks. Open views can cost more because queries add overhead.
+
 ## Unified design and core integration
 
 Use a shared world index with stable IDs and conservative world bounds. Compose coarse stages followed by renderer-specific refinement:
@@ -107,8 +115,8 @@ Streaming can share the spatial partition and use visibility as a priority signa
 
 ## Suggested next experiments
 
-1. An external jsbench/jsfiddle comparison, followed by a small node-based renderer example if warranted. Use existing Inspector parameters, default WebGPURenderer options and an `animate()` loop; keep instrumentation out of public test hooks. Compare candidate counts, matrix/traversal time, draw calls, triangles and total frame time for interiors and open terrain.
+1. Extend the current example with a spatial hierarchy and a frozen culling-camera view in a separate change if profiling warrants it. Keep CPU benchmarks external and compare matrix/traversal time and total frame time for interiors and open terrain.
 2. An indoor cell/portal prototype supporting open/closed doors, followed by cluster-bound asynchronous queries using the existing common-renderer infrastructure. Render occluders first; bounds queries must not write depth or occlude each other. Transparent surfaces are not general occluders; alpha-tested/deformed occluders require matching coverage. Keep hidden proxies testable and invalidate stale evidence.
 3. A WebGPU HZB/indirect-instance prototype. For ordinary depth use farthest-depth reduction (max); reversed depth needs the opposite reduction and comparison. Cover the entire projected bound conservatively, including mip footprint and screen edges. Recheck disocclusion using current-view depth rather than treating old depth as proof.
 
-Use real hardware adapters for visual/GPU claims. Benchmark open views where culling can lose, dense interiors where it should win, dynamic doors, fast turns, teleports, multiple cameras, shadow passes and camera-inside bounds. For GPU comparisons disable frame caps/vsync, warm variants, run sequentially for several seconds, count GPU-completed frames and drain work before switching. Report CPU selection, GPU pass costs, latency/artifacts and total frame time separately. This spike has only validated CPU candidate selection.
+Use real hardware adapters for visual/GPU claims. Benchmark open views where culling can lose, dense interiors where it should win, dynamic doors, fast turns, teleports, multiple cameras, shadow passes and camera-inside bounds. For GPU comparisons disable frame caps/vsync, warm variants, run sequentially for several seconds, count GPU-completed frames and drain work before switching. Report CPU selection, GPU pass costs, latency/artifacts and total frame time separately. This spike validates CPU candidate selection and selected hardware-rendered views, without a GPU timing benchmark.

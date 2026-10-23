@@ -242,6 +242,7 @@
 				if ( params.algorithm === 'Light Probe' ) {
 
 					const probes = new LightProbeGrid( 5.6, 4.7, 5.6, 8, 8, 8 );
+					probes.visibility = true;
 					probes.position.set( 0, 2.45, 0 );
 					probes.updateBoundingBox();
 					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20 } );

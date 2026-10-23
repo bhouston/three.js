@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - interior</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Interior</span></div>
+			<small>Light Probe / VXGI diffuse lighting, box-projected reflections and GTAO / GTSO with an animated bunny.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a></small>
+		</div>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../src/Three.WebGPU.js",
+					"three/webgpu": "../src/Three.WebGPU.js",
+					"three/tsl": "../src/Three.TSL.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import { sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, builtinGIContext, context, float, positionWorld, normalWorld, uniform } from 'three/tsl';
+			import { ao } from 'three/addons/tsl/display/GTAONode.js';
+			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+			import { VXGIVolume } from 'three/addons/lighting/vxgi/VXGIVolume.js';
+			import { vxgiIrradiance } from 'three/addons/lighting/vxgi/VXGIIrradiance.js';
+			import { ReflectionProbe, ReflectionProbes } from 'three/addons/lighting/ReflectionProbes.js';
+			import { reflectionProbes } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
+
+			const params = {
+				algorithm: 'Light Probes',
+				bounces: 2,
+				voxelResolution: 128,
+				resolution: 256,
+				reflectionBounces: 3,
+				boxProjection: true,
+				capture: () => capture(),
+				dynamicObject: 'Bunny',
+				pause: false,
+				aoType: 'GTAO + GTSO',
+				samples: 16,
+				radius: 0.4,
+				resolutionScale: 0.5,
+				scale: 0.3,
+				thickness: 1,
+				temporalFiltering: true,
+				aoOnly: false
+			};
+			const timer = new THREE.Timer();
+			let camera, scene, renderer, controls, lightProbes, probes, dynamicObject;
+			let renderPipeline, scenePass, aoPass, traaPass, voxelVolume;
+			const giFrame = uniform( 0 );
+			let animationTime = 0;
+
+			init();
+
+			async function init() {
+
+				// Camera
+
+				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 2.5, 16 );
+
+				// Scene
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x111111 );
+
+				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/dual-rooms.glb' );
+				gltf.scene.traverse( ( object ) => {
+
+					if ( object.isMesh ) {
+
+						object.castShadow = true;
+						object.receiveShadow = true;
+
+					}
+
+					if ( object.isLight && object.shadow ) {
+
+						object.castShadow = true;
+						object.shadow.mapSize.setScalar( 256 );
+						object.shadow.radius = 12;
+						object.shadow.bias = - 0.002;
+
+					}
+
+				} );
+				scene.add( gltf.scene );
+
+				// Renderer
+
+				renderer = new THREE.WebGPURenderer();
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.shadowMap.enabled = true;
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+				await renderer.init();
+				if ( renderer.backend.isWebGPUBackend !== true ) throw new Error( 'This example requires WebGPU.' );
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.enableDamping = true;
+				controls.target.set( 0, 2.5, 0 );
+				controls.update();
+
+				// Diffuse lighting for both rooms, with visibility across the divider.
+
+				lightProbes = new LightProbeGrid( 15.6, 4.7, 7.6, 12, 6, 6 );
+				lightProbes.position.set( 0, 2.45, 0 );
+				lightProbes.visibility = true;
+				lightProbes.multiBounce = true;
+				scene.add( lightProbes );
+
+				// One reflection probe per room plus a smaller doorway probe.
+
+				probes = new ReflectionProbes();
+
+				const probeSetup = [
+					{ position: [ - 4, 2.5, 0 ], influenceSize: [ 8.4, 5.4, 8.4 ], projectionSize: [ 8, 5, 8 ] },
+					{ position: [ 4, 2.5, 0 ], influenceSize: [ 8.4, 5.4, 8.4 ], projectionSize: [ 8, 5, 8 ] },
+					// captured at doorway height, projected onto both rooms
+					{ position: [ 0, 1.9, 0 ], influenceSize: [ 2.4, 3.8, 2.5 ], projectionSize: [ 16, 5, 8 ], projectionOffset: [ 0, 0.6, 0 ] }
+				];
+
+				for ( const setup of probeSetup ) {
+
+					const probe = new ReflectionProbe( ...setup.influenceSize );
+					probe.position.set( ...setup.position );
+					probe.projectionSize = new THREE.Vector3( ...setup.projectionSize );
+					if ( setup.projectionOffset ) probe.projectionOffset.set( ...setup.projectionOffset );
+					probes.add( probe );
+
+				}
+
+				scene.add( probes );
+
+				// The dynamic object evaluates the probe blend at its own world position.
+
+				const dynamicMaterial = new THREE.MeshStandardMaterial( { metalness: 1, roughness: 0 } );
+
+				const loader = new DRACOLoader();
+				const bunnyGeometry = await loader.loadAsync( 'models/draco/bunny.drc' );
+				loader.dispose();
+
+				bunnyGeometry.computeVertexNormals();
+				bunnyGeometry.center();
+				bunnyGeometry.computeBoundingBox();
+				const bunnySize = bunnyGeometry.boundingBox.getSize( new THREE.Vector3() );
+				// Normalize the bunny's longest dimension to 1.08 scene units.
+				const bunnyScale = 1.08 / Math.max( bunnySize.x, bunnySize.y, bunnySize.z );
+				bunnyGeometry.scale( bunnyScale, bunnyScale, bunnyScale );
+				const dynamicGeometries = {
+					Bunny: bunnyGeometry,
+					Sphere: new THREE.SphereGeometry( 0.54, 32, 24 )
+				};
+				dynamicObject = new THREE.Mesh( dynamicGeometries[ params.dynamicObject ], dynamicMaterial );
+				dynamicObject.castShadow = true;
+				dynamicObject.receiveShadow = true;
+				dynamicObject.visible = params.dynamicObject !== 'None';
+				updateDynamicObject( 0 );
+
+				scene.add( dynamicObject );
+
+				// Every physical material picks up the probes, like scene.environment.
+
+				capture();
+				scene.environmentNode = reflectionProbes( probes );
+
+				// Occlusion is evaluated from the main camera, after baking the probes.
+				// Feed it into indirect lighting so direct lights retain their contribution.
+
+				renderPipeline = new THREE.RenderPipeline( renderer );
+
+				const prePass = pass( scene, camera ).toInspector( 'Normal', ( inspectNode ) => colorSpaceToWorking( inspectNode, THREE.SRGBColorSpace ) );
+				prePass.name = 'Pre-Pass';
+				prePass.transparent = false;
+				prePass.setMRT( mrt( {
+					output: packNormalToRGB( normalView ),
+					velocity: velocity
+				} ) );
+				prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
+
+				const prePassNormal = sample( ( uv ) => unpackRGBToNormal( prePass.getTextureNode().sample( uv ) ) );
+				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );
+				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
+
+				scenePass = pass( scene, camera ).toInspector( 'Color' );
+				aoPass = ao( prePassDepth, prePassNormal, camera ).toInspector( 'GTAO', ( inspectNode ) => inspectNode.r );
+				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
+				traaPass.useSubpixelCorrection = false;
+				updateAOParameters();
+				updateAO();
+
+				const settings = renderer.inspector.createParameters( 'Interior' );
+				const occlusion = settings.addFolder( 'Ambient Occlusion' );
+				occlusion.add( params, 'aoType', [ 'None', 'GTAO', 'GTAO + GTSO' ] ).name( 'AO type' ).onChange( updateAO );
+				occlusion.add( params, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateAOParameters );
+				occlusion.add( params, 'samples', 4, 32, 1 ).name( 'Samples' ).onChange( updateAOParameters ).debounce( 250 );
+				occlusion.add( params, 'radius', 0.1, 2 ).name( 'Radius' ).onChange( updateAOParameters );
+				occlusion.add( params, 'scale', 0.01, 1 ).name( 'Scale' ).onChange( updateAOParameters );
+				occlusion.add( params, 'thickness', 0.01, 2 ).name( 'Thickness' ).onChange( updateAOParameters );
+				occlusion.add( params, 'temporalFiltering' ).name( 'Temporal filtering' ).onChange( updateAOParameters );
+				occlusion.add( params, 'aoOnly' ).name( 'AO only' ).onChange( updateAO );
+
+				const baking = settings.addFolder( 'Diffuse Baking' );
+				baking.add( params, 'algorithm', [ 'Light Probes', 'VXGI' ] ).name( 'GI Method' ).onChange( () => capture() );
+				// VXGI supports up to two cached indirect bounces.
+				baking.add( params, 'bounces', 0, 2, 1 ).name( 'Additional Bounces' ).onChange( () => capture() ).debounce( 250 );
+				baking.add( params, 'voxelResolution', [ 64, 128, 256 ] ).name( 'Voxel Resolution' ).onChange( () => capture() );
+				baking.add( params, 'capture' ).name( 'Re-Bake' );
+
+				const gui = settings.addFolder( 'Reflection Probes' );
+				gui.add( params, 'resolution', [ 256, 512, 1024 ] ).name( 'Capture Resolution' ).onChange( () => capture( false ) );
+				gui.add( params, 'reflectionBounces', 0, 10, 1 ).name( 'Additional Bounces' ).onChange( () => capture( false ) ).debounce( 250 );
+				gui.add( { capture: () => capture( false ) }, 'capture' ).name( 'Capture' );
+				gui.add( params, 'boxProjection' ).name( 'Box Projection' ).onChange( ( value ) => probes.boxProjection = value );
+
+				const dynamicTest = gui.addFolder( 'Dynamic Test' );
+				dynamicTest.add( params, 'dynamicObject', [ 'None', 'Bunny', 'Sphere' ] ).name( 'Object' ).onChange( ( value ) => {
+
+					if ( value !== 'None' ) dynamicObject.geometry = dynamicGeometries[ value ];
+					dynamicObject.visible = value !== 'None';
+
+				} );
+				dynamicTest.add( params, 'pause' ).name( 'Pause' );
+				dynamicTest.add( dynamicMaterial, 'roughness', 0, 1, 0.01 ).name( 'Roughness' );
+
+				window.addEventListener( 'resize', () => {
+
+					camera.aspect = window.innerWidth / window.innerHeight;
+					camera.updateProjectionMatrix();
+					renderer.setSize( window.innerWidth, window.innerHeight );
+
+				} );
+				renderer.setAnimationLoop( animate );
+
+			}
+
+			function animate() {
+
+				timer.update();
+
+				if ( ! params.pause && params.dynamicObject !== 'None' ) {
+
+					animationTime += timer.getDelta();
+					updateDynamicObject( animationTime );
+
+				}
+
+				controls.update();
+				giFrame.value = ( giFrame.value + 1 ) % 64;
+
+				renderPipeline.render();
+
+			}
+
+			function updateAO() {
+
+				scenePass.contextNode = params.aoType === 'None' ? null : params.aoType === 'GTAO + GTSO'
+					? aoPass.getLightingContext()
+					: builtinAOContext( aoPass.getTextureNode().sample( screenUV ).r );
+				scenePass.needsUpdate = true;
+
+				renderPipeline.outputNode = params.aoOnly ? vec4( vec3( aoPass.getTextureNode().sample( screenUV ).r ), 1 ) : traaPass;
+				renderer.toneMapping = params.aoOnly ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+				renderPipeline.needsUpdate = true;
+				traaPass.setSize( 1, 1 );
+
+			}
+
+			function updateAOParameters() {
+
+				aoPass.samples.value = params.samples;
+				aoPass.radius.value = params.radius;
+				aoPass.resolutionScale = params.resolutionScale;
+				aoPass.scale.value = params.scale;
+				aoPass.thickness.value = params.thickness;
+				aoPass.useTemporalFiltering = params.temporalFiltering;
+				traaPass.setSize( 1, 1 );
+
+			}
+
+			function updateDynamicObject( time ) {
+
+				// A figure eight around both room centers, crossing x=0 at the doorway.
+				// Stay above the table objects and inside the rows of columns at z=+/-2.5.
+				const phase = time * 0.35;
+				dynamicObject.position.set( 5.6 * Math.sin( phase ), 2.5, 1.4 * Math.sin( 2 * phase ) );
+				dynamicObject.rotation.y = Math.atan2( 5.6 * Math.cos( phase ), 2.8 * Math.cos( 2 * phase ) );
+
+			}
+
+			function capture( bakeDiffuse = true ) {
+
+				// Bake the static scene, then evaluate diffuse GI at the moving bunny's position.
+
+				const dynamicVisible = dynamicObject.visible;
+				const environmentNode = scene.environmentNode;
+				const rendererContext = renderer.contextNode;
+				const lightProbesVisible = lightProbes.visible;
+				dynamicObject.visible = false;
+				scene.environmentNode = null;
+				let baked = false;
+
+				try {
+
+					// Clear the previous diffuse source before preparing the new one.
+
+					if ( bakeDiffuse ) {
+
+						renderer.contextNode = context( { ...rendererContext.value } );
+						delete renderer.contextNode.value.getGI;
+						lightProbes.visible = params.algorithm === 'Light Probes';
+
+						if ( params.algorithm === 'Light Probes' ) {
+
+							lightProbes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 30, bounces: params.bounces } );
+
+						} else {
+
+							if ( voxelVolume && voxelVolume.resolution !== Number( params.voxelResolution ) ) {
+
+								voxelVolume.dispose();
+								voxelVolume = null;
+
+							}
+
+							voxelVolume ??= new VXGIVolume( Number( params.voxelResolution ) );
+							voxelVolume.bounces = params.bounces;
+							voxelVolume.update( renderer, scene );
+
+							const irradiance = vxgiIrradiance( voxelVolume, { coneCount: 3 } );
+							const giContext = builtinGIContext( float( 1 ), irradiance( positionWorld, normalWorld, giFrame ) );
+							renderer.contextNode = context( { ...renderer.contextNode.value, getGI: giContext.value.getGI } );
+
+						}
+
+					}
+
+					// Record the selected diffuse solution in the local reflections too.
+
+					probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: 30, bounces: params.reflectionBounces } );
+					baked = true;
+
+				} finally {
+
+					scene.environmentNode = environmentNode;
+					dynamicObject.visible = dynamicVisible;
+					if ( ! baked ) {
+
+						renderer.contextNode = rendererContext;
+						lightProbes.visible = lightProbesVisible;
+
+					}
+
+					if ( traaPass ) traaPass.setSize( 1, 1 );
+
+				}
+
+			}
+
+		</script>
+	</body>
+</html>

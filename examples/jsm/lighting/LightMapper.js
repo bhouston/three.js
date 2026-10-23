@@ -1,18 +1,19 @@
 import { BackSide, CustomBlending, DoubleSide, HalfFloatType, Mesh, MeshLambertNodeMaterial, NearestFilter, NodeMaterial, OneFactor, OrthographicCamera, QuadMesh, RendererUtils, RenderTarget, Scene, Vector2 } from 'three/webgpu';
-import { Fn, If, Loop, ivec2, lights, modelViewMatrix, normalViewGeometry, normalWorldGeometry, output, positionLocal, positionWorld, screenCoordinate, textureLoad, uniform, uv, vec4 } from 'three/tsl';
+import { Fn, If, Loop, indirectDiffuse, indirectSpecular, indirectLightingContext, ivec2, lights, modelViewMatrix, normalViewGeometry, normalWorldGeometry, output, positionLocal, positionWorld, screenCoordinate, textureLoad, uniform, uv, vec4 } from 'three/tsl';
 
 let _rendererState;
 
 /**
  * Bakes indirect diffuse irradiance into a light map. The irradiance is defined by a
- * function that returns a TSL node for a world-space position and normal, so any
+ * diffuse provider chain, or a function returning a TSL node for position and normal, so any
  * global illumination technique can be baked, e.g. a {@link LightProbeGrid} via
- * `lightProbeGridIrradiance()` or a prepared {@link VXGIVolume} via `vxgiIrradiance()`.
+ * `lightProbeGridDiffuse()` or a prepared {@link VXGIVolume} via `vxgiDiffuse()`.
+ * Use world-space providers; a screen-space provider cannot answer UV-space queries.
  *
  * Meshes need light map UVs in the `uv1` attribute, e.g. generated with {@link unwrapUVs}.
  * Each sample rasterizes the meshes in UV space with a sub-texel jitter and accumulates
  * the result. The function also receives the sample index, so stochastic sources like
- * `vxgiIrradiance()` can vary their samples and converge as they accumulate. Call
+ * `vxgiDiffuse()` can vary their samples and converge as they accumulate. Call
  * `update()` once per frame to bake progressively, or pass a sample count to bake at once.
  * Keep the source geometry and GI data static while accumulating. Call `reset()`
  * after changing transforms or lighting. Atlas charts need at least three texels
@@ -23,7 +24,8 @@ let _rendererState;
  * included in the bake out of runtime diffuse lighting to avoid counting them twice.
  *
  * ```js
- * const lightMapper = new LightMapper( renderer, size, ( position, normal ) => lightProbeGridIrradiance( probes, position, normal ) );
+ * const diffuse = indirectDiffuse( [ lightProbeGridDiffuse( probes ) ] );
+ * const lightMapper = new LightMapper( renderer, size, diffuse );
  * lightMapper.addObjects( meshes );
  * lightMapper.update( 16 );
  *
@@ -41,7 +43,7 @@ class LightMapper {
 	 *
 	 * @param {WebGPURenderer} renderer - The renderer.
 	 * @param {number} size - The light map size in texels.
-	 * @param {function(Node<vec3>, Node<vec3>, Node<float>): Node<vec3>} irradianceNode - Returns the irradiance for a world-space position, normal and sample index.
+	 * @param {IndirectDiffuseNode|function(Node<vec3>, Node<vec3>, Node<float>): Node<vec3>} irradianceNode - A diffuse chain or legacy irradiance sampler.
 	 * @param {Object} [options] - Bake options.
 	 * @param {Array<Light>} [options.lights=[]] - Direct lights to include in the diffuse bake. Render their shadows in the source scene first and disable shadow updates during the UV bake.
 	 */
@@ -57,7 +59,7 @@ class LightMapper {
 		/**
 		 * The source of indirect irradiance.
 		 *
-		 * @type {function(Node<vec3>, Node<vec3>, Node<float>): Node<vec3>}
+		 * @type {IndirectDiffuseNode|function(Node<vec3>, Node<vec3>, Node<float>): Node<vec3>}
 		 */
 		this.irradianceNode = irradianceNode;
 
@@ -231,7 +233,7 @@ class LightMapper {
 	 * Creates a material that rasterizes meshes in UV space and outputs irradiance.
 	 *
 	 * @private
-	 * @param {function(Node<vec3>, Node<vec3>, Node<float>): Node<vec3>} irradianceNode - The irradiance function.
+	 * @param {IndirectDiffuseNode|function(Node<vec3>, Node<vec3>, Node<float>): Node<vec3>} irradianceNode - The diffuse chain or legacy irradiance function.
 	 * @param {boolean} flipNormal - Whether to flip the normal, for back-sided meshes.
 	 * @param {Array<Light>} directLights - Direct lights to include.
 	 * @return {NodeMaterial} The material.
@@ -242,6 +244,9 @@ class LightMapper {
 		material.side = DoubleSide;
 		material.depthTest = false;
 		material.depthWrite = false;
+		// The bake evaluates its source explicitly. Do not inherit runtime GI,
+		// especially when the Lambert bake material also evaluates direct lights.
+		material.contextNode = indirectLightingContext( indirectDiffuse( [] ), indirectSpecular( [] ) );
 
 		// additive blending, the sample count accumulates in alpha
 
@@ -252,6 +257,9 @@ class LightMapper {
 		material.vertexNode = vec4( uv( 1 ).flipY().mul( 2 ).sub( 1 ).add( this._jitter ), 0, 1 );
 
 		const normal = flipNormal ? normalWorldGeometry.negate() : normalWorldGeometry;
+		const irradiance = irradianceNode.isIndirectDiffuseNode
+			? irradianceNode.sample( { position: positionWorld, normal, sampleIndex: this._sample } ).rgb
+			: irradianceNode( positionWorld, normal, this._sample );
 
 		if ( directLights.length > 0 ) {
 
@@ -259,12 +267,12 @@ class LightMapper {
 
 			material.lightsNode = lights( directLights ).context( { positionView: modelViewMatrix.mul( positionLocal ).xyz.toVarying() } );
 			material.normalNode = flipNormal ? normalViewGeometry.negate() : normalViewGeometry;
-			material.emissiveNode = irradianceNode( positionWorld, normal, this._sample ).div( Math.PI );
+			material.emissiveNode = irradiance.div( Math.PI );
 			material.outputNode = vec4( output.rgb.mul( Math.PI ), 1 );
 
 		} else {
 
-			material.fragmentNode = vec4( irradianceNode( positionWorld, normal, this._sample ), 1 );
+			material.fragmentNode = vec4( irradiance, 1 );
 
 		}
 

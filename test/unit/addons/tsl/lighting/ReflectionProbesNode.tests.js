@@ -1,14 +1,101 @@
-import { BoxGeometry, CubeArrayTexture, Mesh, MeshStandardNodeMaterial, PMREMGenerator, Scene, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
-import { vec3 } from 'three/tsl';
+import { BackSide, BoxGeometry, CubeArrayTexture, DataTexture, EquirectangularReflectionMapping, FloatType, Mesh, MeshBasicMaterial, MeshStandardNodeMaterial, NodeMaterial, OrthographicCamera, PlaneGeometry, PMREMGenerator, RenderTarget, Scene, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
+import { context, environmentSpecular, float, indirectSpecular, vec3 } from 'three/tsl';
 import { ReflectionProbe, ReflectionProbes } from '../../../../../examples/jsm/lighting/ReflectionProbes.js';
-import { ReflectionProbesNode } from '../../../../../examples/jsm/tsl/lighting/ReflectionProbesNode.js';
+import { ReflectionProbesNode, reflectionProbesDiffuse, reflectionProbesSpecular, reflectionProbesEnvironment } from '../../../../../examples/jsm/tsl/lighting/ReflectionProbesNode.js';
 import WGSLNodeBuilder from '../../../../../src/renderers/webgpu/nodes/WGSLNodeBuilder.js';
+import { getSharedRenderer } from '../../../src/nodes/tsl/gpu-test-utils.js';
 
 export default QUnit.module( 'Addons', () => {
 
 	QUnit.module( 'TSL', () => {
 
 		QUnit.module( 'ReflectionProbesNode', () => {
+
+			QUnit.test( 'Local providers expose coverage and explicit environment fallback follows rebakes', async assert => {
+
+				const adapter = await navigator.gpu?.requestAdapter();
+				const info = adapter?.info;
+				if ( ! info || info.isFallbackAdapter || /swiftshader|llvmpipe|lavapipe|software/i.test( `${ info.vendor } ${ info.device } ${ info.description }` ) ) {
+
+					assert.ok( true, 'SKIPPED: a hardware WebGPU adapter is required.' );
+					return;
+
+				}
+
+				const renderer = await getSharedRenderer( 'webgpu' );
+				if ( ! renderer ) return;
+				const previousContext = renderer.contextNode;
+				const previousTarget = renderer.getRenderTarget();
+				const source = new Scene();
+				const boxGeometry = new BoxGeometry( 4, 4, 4 );
+				const boxMaterial = new MeshBasicMaterial( { side: BackSide } );
+				source.add( new Mesh( boxGeometry, boxMaterial ) );
+				const data = new Float32Array( 8 * 4 * 4 );
+				for ( let i = 0; i < data.length; i += 4 ) {
+
+					data[ i + 1 ] = data[ i + 3 ] = 1;
+
+				}
+
+				const environment = new DataTexture( data, 8, 4 );
+				environment.type = FloatType;
+				environment.mapping = EquirectangularReflectionMapping;
+				environment.needsUpdate = true;
+				source.environment = environment;
+				const probes = new ReflectionProbes();
+				probes.add( new ReflectionProbe( 4, 4, 4 ) );
+				const geometry = new PlaneGeometry( 2, 2 );
+				const material = new NodeMaterial();
+				const view = new Scene();
+				view.add( new Mesh( geometry, material ) );
+				const camera = new OrthographicCamera( - 1, 1, 1, - 1, 0.1, 10 );
+				camera.position.z = 2;
+				const target = new RenderTarget( 16, 16, { type: FloatType } );
+				const query = { position: vec3( 0 ), normal: vec3( 0, 0, 1 ), direction: vec3( 0, 0, 1 ), viewDirection: vec3( 0, 0, 1 ), roughness: float( 0 ) };
+				const outside = { ...query, position: vec3( 10 ) };
+
+				async function sample( node ) {
+
+					material.fragmentNode = node;
+					material.needsUpdate = true;
+					renderer.contextNode = context();
+					renderer.setRenderTarget( target );
+					renderer.render( view, camera );
+					return Array.from( await renderer.readRenderTargetPixelsAsync( target, 8, 8, 1, 1 ) );
+
+				}
+
+				try {
+
+					probes.bake( renderer, source );
+					const local = reflectionProbesSpecular( probes );
+					const inside = await sample( local( query ) );
+					assert.ok( inside.every( v => Math.abs( v - 1 ) < 0.005 ), 'The local probe covers the interior with white radiance' );
+					assert.deepEqual( await sample( local( outside ) ), [ 0, 0, 0, 0 ], 'Outside the probe, local coverage and radiance are zero despite the environment' );
+					const diffuse = await sample( reflectionProbesDiffuse( probes )( query ) );
+					assert.ok( Math.abs( diffuse[ 0 ] - Math.PI ) < 0.01 && diffuse[ 3 ] === 1, 'The diffuse adapter supplies irradiance with local coverage' );
+
+					const chain = indirectSpecular( [ local, environmentSpecular( reflectionProbesEnvironment( probes ) ) ] );
+					const resolved = chain.sample( outside );
+					const sky = await sample( resolved );
+					assert.ok( sky[ 0 ] < 0.005 && sky[ 1 ] > 0.99 && sky[ 3 ] === 1, 'Explicit environment fallback supplies green' );
+					source.environment = null;
+					probes.bake( renderer, source );
+					// Reuse the compiled graph, rather than hiding stale bindings with a new node.
+					renderer.setRenderTarget( target );
+					renderer.render( view, camera );
+					const emptySky = await renderer.readRenderTargetPixelsAsync( target, 8, 8, 1, 1 );
+					assert.deepEqual( Array.from( emptySky ), [ 0, 0, 0, 1 ], 'Removing the environment and rebaking updates the existing chain' );
+
+				} finally {
+
+					renderer.contextNode = previousContext;
+					renderer.setRenderTarget( previousTarget );
+					for ( const resource of [ boxGeometry, boxMaterial, geometry, material, target, environment, probes ] ) resource.dispose();
+
+				}
+
+			} );
 
 			QUnit.test( 'bounces sample complete previous passes and restore state on failure', ( assert ) => {
 
@@ -23,6 +110,7 @@ export default QUnit.module( 'Addons', () => {
 				let disposed = [];
 				let fail = false;
 				const renderer = {
+					contextNode: context(),
 					backend: { isWebGPUBackend: true },
 					initRenderTarget: target => {
 
@@ -36,6 +124,7 @@ export default QUnit.module( 'Addons', () => {
 
 					}
 				};
+				const previousContext = renderer.contextNode;
 
 				PMREMGenerator.prototype.fromScene = function () {
 
@@ -54,6 +143,7 @@ export default QUnit.module( 'Addons', () => {
 					assert.strictEqual( probes.texture, targets[ 1 ].texture, 'publishes the last completed pass' );
 					assert.deepEqual( disposed, [ targets[ 0 ] ], 'disposes the spare target' );
 					assert.strictEqual( scene.environmentNode, environmentNode, 'restores the scene environment node' );
+					assert.strictEqual( renderer.contextNode, previousContext, 'restores the caller lighting chains' );
 
 					const previousTexture = probes.texture;
 					const previousProbes = probes.bakedProbes;
@@ -67,6 +157,7 @@ export default QUnit.module( 'Addons', () => {
 					assert.strictEqual( disposed.length, 2, 'disposes both failed bake targets' );
 					assert.strictEqual( scene.environmentNode, environmentNode, 'restores the scene after failure' );
 					assert.false( probes.capturing, 'clears the capture flag after failure' );
+					assert.strictEqual( renderer.contextNode, previousContext, 'restores lighting chains after failure' );
 
 					fail = false;
 					captures = [];

@@ -11,7 +11,8 @@ import {
 	Scene,
 	Vector3
 } from 'three/webgpu';
-import { reflectionProbes } from '../tsl/lighting/ReflectionProbesNode.js';
+import { context, environmentDiffuse, environmentSpecular, indirectDiffuse, indirectSpecular } from 'three/tsl';
+import { reflectionProbesDiffuse, reflectionProbesSpecular, reflectionProbesEnvironment } from '../tsl/lighting/ReflectionProbesNode.js';
 
 const _position = /*@__PURE__*/ new Vector3();
 const _size = /*@__PURE__*/ new Vector3();
@@ -103,10 +104,13 @@ class ReflectionProbe extends Object3D {
 /**
  * A set of {@link ReflectionProbe} children baked into one cube-array texture.
  *
- * Assign `reflectionProbes( probes )` to `scene.environmentNode` and every
- * physical material samples the probes with its own roughness and normal.
+ * Use `reflectionProbesSpecular( probes )` in an `indirectSpecular()` chain and
+ * explicitly append an environment provider. Use `reflectionProbesDiffuse()`
+ * in a diffuse chain only when no better diffuse source is available.
  * Smaller volumes take priority over larger ones; uncovered surfaces fall
- * back to `scene.environment`. Requires the WebGPU backend.
+ * through to the next provider. Requires the WebGPU backend.
+ * The legacy `reflectionProbes()` environment node still combines both lobes
+ * and the cached environment for applications without explicit lighting chains.
  *
  * ```js
  * const probes = new ReflectionProbes();
@@ -115,7 +119,11 @@ class ReflectionProbe extends Object3D {
  * scene.add( probes );
  *
  * probes.bake( renderer, scene );
- * scene.environmentNode = reflectionProbes( probes ); // from three/addons/tsl/lighting/ReflectionProbesNode.js
+ * const environment = reflectionProbesEnvironment( probes );
+ * renderer.contextNode = indirectLightingContext(
+ *   indirectDiffuse( [ reflectionProbesDiffuse( probes ), environmentDiffuse( environment ) ] ),
+ *   indirectSpecular( [ reflectionProbesSpecular( probes ), environmentSpecular( environment ) ] )
+ * );
  * ```
  *
  * @augments Object3D
@@ -243,6 +251,7 @@ class ReflectionProbes extends Object3D {
 		const previousTexture = this.texture;
 		const previousProbes = this.bakedProbes;
 		const previousEnvironmentNode = scene.environmentNode;
+		const previousContext = renderer.contextNode;
 
 		let pmrem = null;
 		let spareTarget = null;
@@ -293,7 +302,15 @@ class ReflectionProbes extends Object3D {
 
 			this.texture = renderTarget.texture;
 			this.bakedProbes = probes;
-			scene.environmentNode = reflectionProbes( this );
+			const cachedEnvironment = reflectionProbesEnvironment( this );
+			// Bounce zero uses only the environment; local providers report no
+			// coverage until a complete previous reflection pass is available.
+			scene.environmentNode = null;
+			renderer.contextNode = context( {
+				...previousContext.value,
+				indirectDiffuseNode: previousContext.value.indirectDiffuseNode || indirectDiffuse( [ reflectionProbesDiffuse( this ), environmentDiffuse( cachedEnvironment ) ] ),
+				indirectSpecularNode: indirectSpecular( [ reflectionProbesSpecular( this ), environmentSpecular( cachedEnvironment ) ] )
+			} );
 
 			for ( let bounce = 0; bounce <= bounces; bounce ++ ) {
 
@@ -336,6 +353,7 @@ class ReflectionProbes extends Object3D {
 			this.capturing = false;
 			this._captureBounce = 0;
 			scene.environmentNode = previousEnvironmentNode;
+			renderer.contextNode = previousContext;
 
 			if ( pmrem !== null ) pmrem.dispose();
 			generator.dispose();

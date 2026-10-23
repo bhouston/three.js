@@ -8,6 +8,8 @@
 		<style>
 			#readout { position: absolute; bottom: 24px; left: 24px; padding: 16px; background: #10202ee8; color: #fff; font: 13px/1.7 monospace; pointer-events: none; }
 			#readout strong { color: #78f0bb; }
+			#navigation { position: absolute; top: 85px; left: 24px; z-index: 100; color: white; font: 12px/1.6 sans-serif; text-shadow: 1px 1px 3px #000; pointer-events: none; }
+			#navigation button { pointer-events: auto; padding: 8px 12px; margin-bottom: 6px; cursor: pointer; }
 			#map-label { position: absolute; bottom: 12px; right: 12px; width: 32%; text-align: center; color: #fff; font: 12px monospace; pointer-events: none; }
 			@media (max-width: 600px) { #readout { left: 8px; bottom: 8px; padding: 8px; font-size: 10px; } #map-label { font-size: 9px; } }
 		</style>
@@ -18,10 +20,15 @@
 			<div class="title-wrapper">
 				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Hierarchical culling</span>
 			</div>
-			<small>Drag to look around. Compare flat and hierarchical chunk selection in Settings.</small>
+			<small>Drag to orbit or enter first person. Compare chunk selection in Settings.</small>
 		</div>
 		<div id="readout" class="lbl"></div>
 		<div id="map-label" class="lbl">OVERVIEW · green: selected · gray: rejected</div>
+		<div id="navigation" class="lbl">
+			<button id="enter-first-person">Enter first person</button><br>
+			WASD / arrows: move · mouse: look · Shift: fast<br>
+			E / Space: up · Q: down · Esc: orbit · no collisions
+		</div>
 		<script type="importmap">
 			{
 				"imports": {
@@ -35,6 +42,7 @@
 		<script type="module">
 			import * as THREE from 'three/webgpu';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const search = new URLSearchParams( window.location.search );
@@ -66,6 +74,52 @@
 			controls.target.set( 0, 6, - 100 );
 			controls.maxPolarAngle = Math.PI * 0.49;
 			controls.update();
+			const firstPerson = new PointerLockControls( camera, renderer.domElement );
+			const enterButton = document.getElementById( 'enter-first-person' );
+			const keys = new Set();
+			const movement = new THREE.Vector3();
+			const timer = new THREE.Timer();
+			timer.connect( document );
+			enterButton.addEventListener( 'click', () => firstPerson.lock() );
+			firstPerson.addEventListener( 'lock', () => {
+
+				controls.enabled = false;
+				settings.walk = false;
+				camera.position.y = 3;
+				enterButton.hidden = true;
+
+			} );
+			firstPerson.addEventListener( 'unlock', () => {
+
+				keys.clear();
+				camera.getWorldDirection( movement );
+				controls.target.copy( camera.position ).addScaledVector( movement, 100 );
+				controls.maxPolarAngle = Math.max( controls.maxPolarAngle, Math.acos( - movement.y ) );
+				controls.enabled = true;
+				enterButton.hidden = false;
+
+			} );
+			window.addEventListener( 'keydown', event => {
+
+				if ( ! firstPerson.isLocked ) return;
+				if ( event.code === 'Escape' ) {
+
+					firstPerson.unlock();
+					return;
+
+				}
+
+				keys.add( event.code );
+				if ( [ 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space' ].includes( event.code ) ) event.preventDefault();
+
+			} );
+			window.addEventListener( 'keyup', event => keys.delete( event.code ) );
+			window.addEventListener( 'blur', () => {
+
+				keys.clear();
+				if ( firstPerson.isLocked ) firstPerson.unlock();
+
+			} );
 
 			scene.add( new THREE.HemisphereLight( 0xc5e8ff, 0x625641, 3 ) );
 			const sunlight = new THREE.DirectionalLight( 0xffe1b0, 3 );
@@ -127,7 +181,7 @@
 
 			const gui = renderer.inspector.createParameters( 'Settings' );
 			gui.add( settings, 'mode', [ 'hierarchical', 'flat' ] );
-			gui.add( settings, 'walk' ).name( 'walk automatically' );
+			gui.add( settings, 'walk' ).name( 'walk automatically' ).listen();
 			gui.add( settings, 'bounds' ).name( 'overview bounds' );
 			window.addEventListener( 'resize', onWindowResize );
 			await renderer.init();
@@ -209,7 +263,8 @@
 
 			function animate( time ) {
 
-				if ( settings.walk ) {
+				timer.update();
+				if ( settings.walk && ! firstPerson.isLocked ) {
 
 					const angle = time * 0.0001;
 					camera.position.set( Math.sin( angle ) * 160, 10, Math.cos( angle ) * 160 );
@@ -217,7 +272,24 @@
 
 				}
 
-				controls.update();
+				if ( firstPerson.isLocked ) {
+
+					movement.set(
+						Number( keys.has( 'KeyD' ) || keys.has( 'ArrowRight' ) ) - Number( keys.has( 'KeyA' ) || keys.has( 'ArrowLeft' ) ),
+						Number( keys.has( 'KeyE' ) || keys.has( 'Space' ) ) - Number( keys.has( 'KeyQ' ) ),
+						Number( keys.has( 'KeyW' ) || keys.has( 'ArrowUp' ) ) - Number( keys.has( 'KeyS' ) || keys.has( 'ArrowDown' ) )
+					).normalize();
+					const distance = Math.min( timer.getDelta(), 0.1 ) * 35 * ( keys.has( 'ShiftLeft' ) || keys.has( 'ShiftRight' ) ? 3 : 1 );
+					firstPerson.moveRight( movement.x * distance );
+					firstPerson.moveForward( movement.z * distance );
+					camera.position.y = Math.max( 2, camera.position.y + movement.y * distance );
+
+				} else {
+
+					controls.update();
+
+				}
+
 				camera.updateMatrixWorld();
 				projection.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );
 				frustum.setFromProjectionMatrix( projection, renderer.coordinateSystem );
@@ -243,7 +315,8 @@
 
 				}
 
-				readout.innerHTML = `<strong>${ settings.mode.toUpperCase() } FRUSTUM SELECTION</strong><br>16,384 buildings / 1,024 static chunks<br>Selected chunks: ${ selected.length }<br>Bounds visited: ${ stats.nodes }<br>Plane tests: ${ stats.planes }<br>CPU work counts, not an FPS benchmark.<br>Overview draws every chunk. No occlusion.`;
+				const description = `<strong>${ settings.mode.toUpperCase() } FRUSTUM SELECTION</strong><br>16,384 buildings / 1,024 static chunks<br>Selected chunks: ${ selected.length }<br>Bounds visited: ${ stats.nodes }<br>Plane tests: ${ stats.planes }<br>Renderer scans all chunk children.<br>CPU work counts, not an FPS benchmark.<br>Overview draws every chunk. No occlusion.`;
+				if ( readout.innerHTML !== description ) readout.innerHTML = description;
 				const width = window.innerWidth;
 				const height = window.innerHeight;
 				renderer.setScissorTest( true );

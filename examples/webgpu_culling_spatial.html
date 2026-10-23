@@ -8,6 +8,8 @@
 		<style>
 			#readout { position: absolute; z-index: 1; bottom: 20px; left: 20px; background: #10202ee8; padding: 16px; color: white; font: 13px/1.7 monospace; pointer-events: none; }
 			#readout strong { color: #78f0bb; }
+			#navigation { position: absolute; top: 85px; left: 20px; z-index: 100; color: white; font: 12px/1.6 sans-serif; text-shadow: 1px 1px 3px #000; pointer-events: none; }
+			#navigation button { pointer-events: auto; padding: 8px 12px; margin-bottom: 6px; cursor: pointer; }
 		</style>
 	</head>
 	<body>
@@ -16,9 +18,14 @@
 			<div class="title-wrapper">
 				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Scene spatial index</span>
 			</div>
-			<small>Independent Mesh spheres. Drag to orbit. The spatial BVH preserves the authored scene graph.</small>
+			<small>Independent Mesh spheres. Orbit or enter first person. The spatial BVH preserves the authored scene graph.</small>
 		</div>
 		<div id="readout" class="lbl">Building static spatial index…</div>
+		<div id="navigation" class="lbl">
+			<button id="enter-first-person">Enter first person</button><br>
+			WASD / arrows: move · mouse: look · Shift: fast<br>
+			E / Space: up · Q: down · Esc: orbit · no collisions
+		</div>
 		<script type="importmap">
 			{
 				"imports": {
@@ -32,6 +39,7 @@
 		<script type="module">
 			import * as THREE from 'three/webgpu';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { SceneSpatialIndex } from 'three/addons/utils/SceneSpatialIndex.js';
 
@@ -56,6 +64,50 @@
 			const controls = new OrbitControls( camera, renderer.domElement );
 			controls.target.set( 0, 3, - 100 );
 			controls.update();
+			const firstPerson = new PointerLockControls( camera, renderer.domElement );
+			const enterButton = document.getElementById( 'enter-first-person' );
+			const keys = new Set();
+			const movement = new THREE.Vector3();
+			const timer = new THREE.Timer();
+			timer.connect( document );
+			enterButton.addEventListener( 'click', () => firstPerson.lock() );
+			firstPerson.addEventListener( 'lock', () => {
+
+				controls.enabled = false;
+				camera.position.y = 3;
+				enterButton.hidden = true;
+
+			} );
+			firstPerson.addEventListener( 'unlock', () => {
+
+				keys.clear();
+				camera.getWorldDirection( movement );
+				controls.target.copy( camera.position ).addScaledVector( movement, 100 );
+				controls.enabled = true;
+				enterButton.hidden = false;
+
+			} );
+			window.addEventListener( 'keydown', event => {
+
+				if ( ! firstPerson.isLocked ) return;
+				if ( event.code === 'Escape' ) {
+
+					firstPerson.unlock();
+					return;
+
+				}
+
+				keys.add( event.code );
+				if ( [ 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space' ].includes( event.code ) ) event.preventDefault();
+
+			} );
+			window.addEventListener( 'keyup', event => keys.delete( event.code ) );
+			window.addEventListener( 'blur', () => {
+
+				keys.clear();
+				if ( firstPerson.isLocked ) firstPerson.unlock();
+
+			} );
 			const geometry = new THREE.SphereGeometry( 2, 8, 6 );
 			const material = new THREE.MeshNormalMaterial();
 			const groups = [];
@@ -138,12 +190,31 @@
 
 			function animate() {
 
-				controls.update();
+				timer.update();
+				if ( firstPerson.isLocked ) {
+
+					movement.set(
+						Number( keys.has( 'KeyD' ) || keys.has( 'ArrowRight' ) ) - Number( keys.has( 'KeyA' ) || keys.has( 'ArrowLeft' ) ),
+						Number( keys.has( 'KeyE' ) || keys.has( 'Space' ) ) - Number( keys.has( 'KeyQ' ) ),
+						Number( keys.has( 'KeyW' ) || keys.has( 'ArrowUp' ) ) - Number( keys.has( 'KeyS' ) || keys.has( 'ArrowDown' ) )
+					).normalize();
+					const distance = Math.min( timer.getDelta(), 0.1 ) * 35 * ( keys.has( 'ShiftLeft' ) || keys.has( 'ShiftRight' ) ? 3 : 1 );
+					firstPerson.moveRight( movement.x * distance );
+					firstPerson.moveForward( movement.z * distance );
+					camera.position.y = Math.max( 2, camera.position.y + movement.y * distance );
+
+				} else {
+
+					controls.update();
+
+				}
+
 				index.enabled = settings.mode !== 'stock';
 				index.hierarchical = settings.mode === 'bvh';
 				renderer.render( scene, camera );
 				const counts = settings.mode === 'stock' ? 'Stock renderer tests scene objects' : `${ index.stats.nodes } BVH nodes / ${ index.stats.spheres } sphere tests`;
-				const description = `<strong>${ settings.mode.toUpperCase() } · ${ settings.scene.toUpperCase() }</strong><br>${ settings.count.toLocaleString() } independent Mesh spheres<br>${ counts }<br>Draw calls: ${ renderer.info.render.drawCalls }<br>Index build: ${ buildMs.toFixed( 1 ) } ms (startup)<br>Static bounds. CPU index; WebGPU rendering.<br>Parent/child ownership is unchanged.`;
+				const traversal = settings.mode === 'stock' ? 'all scene children' : 'index-selected ancestor paths';
+				const description = `<strong>${ settings.mode.toUpperCase() } · ${ settings.scene.toUpperCase() }</strong><br>${ settings.count.toLocaleString() } independent Mesh spheres<br>${ counts }<br>Traversal: ${ traversal }<br>Draw calls: ${ renderer.info.render.drawCalls }<br>Index build: ${ buildMs.toFixed( 1 ) } ms (startup)<br>Static bounds. CPU index; WebGPU rendering.<br>Parent/child ownership is unchanged.`;
 				if ( readout.innerHTML !== description ) readout.innerHTML = description;
 
 			}

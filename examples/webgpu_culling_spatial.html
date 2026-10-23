@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - scene spatial index</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#readout { position: absolute; z-index: 1; bottom: 20px; left: 20px; background: #10202ee8; padding: 16px; color: white; font: 13px/1.7 monospace; pointer-events: none; }
+			#readout strong { color: #78f0bb; }
+			#navigation { position: absolute; top: 85px; left: 20px; z-index: 100; color: white; font: 12px/1.6 sans-serif; text-shadow: 1px 1px 3px #000; pointer-events: none; }
+			#navigation button { pointer-events: auto; padding: 8px 12px; margin-bottom: 6px; cursor: pointer; }
+		</style>
+	</head>
+	<body>
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Scene spatial index</span>
+			</div>
+			<small>Independent Mesh spheres. Orbit or enter first person. The spatial BVH preserves the authored scene graph.</small>
+		</div>
+		<div id="readout" class="lbl">Building static spatial index…</div>
+		<div id="navigation" class="lbl">
+			<button id="enter-first-person">Enter first person</button><br>
+			WASD / arrows: move · mouse: look · Shift: fast<br>
+			E / Space: up · Q: down · Esc: orbit · no collisions
+		</div>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../src/Three.WebGPU.js",
+					"three/webgpu": "../src/Three.WebGPU.js",
+					"three/tsl": "../src/Three.TSL.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+			import * as THREE from 'three/webgpu';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { SceneSpatialIndex } from 'three/addons/utils/SceneSpatialIndex.js';
+
+			const search = new URLSearchParams( window.location.search );
+			const settings = {
+				mode: search.get( 'mode' ) || 'bvh',
+				scene: search.get( 'scene' ) || 'uniform',
+				count: Number( search.get( 'count' ) ) || 100000
+			};
+			const readout = document.getElementById( 'readout' );
+			const scene = new THREE.Scene();
+			scene.background = new THREE.Color( 0xa9c7db );
+			const root = new THREE.Group();
+			scene.add( root );
+			const camera = new THREE.PerspectiveCamera( 65, window.innerWidth / window.innerHeight, 1, 320 );
+			camera.position.set( 0, 12, 70 );
+			const renderer = new THREE.WebGPURenderer();
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.inspector = new Inspector();
+			document.body.appendChild( renderer.domElement );
+			const controls = new OrbitControls( camera, renderer.domElement );
+			controls.target.set( 0, 3, - 100 );
+			controls.update();
+			const firstPerson = new PointerLockControls( camera, renderer.domElement );
+			const enterButton = document.getElementById( 'enter-first-person' );
+			const keys = new Set();
+			const movement = new THREE.Vector3();
+			const timer = new THREE.Timer();
+			timer.connect( document );
+			enterButton.addEventListener( 'click', () => firstPerson.lock() );
+			firstPerson.addEventListener( 'lock', () => {
+
+				controls.enabled = false;
+				camera.position.y = 3;
+				enterButton.hidden = true;
+
+			} );
+			firstPerson.addEventListener( 'unlock', () => {
+
+				keys.clear();
+				camera.getWorldDirection( movement );
+				controls.target.copy( camera.position ).addScaledVector( movement, 100 );
+				controls.enabled = true;
+				enterButton.hidden = false;
+
+			} );
+			window.addEventListener( 'keydown', event => {
+
+				if ( ! firstPerson.isLocked ) return;
+				if ( event.code === 'Escape' ) {
+
+					firstPerson.unlock();
+					return;
+
+				}
+
+				keys.add( event.code );
+				if ( [ 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space' ].includes( event.code ) ) event.preventDefault();
+
+			} );
+			window.addEventListener( 'keyup', event => keys.delete( event.code ) );
+			window.addEventListener( 'blur', () => {
+
+				keys.clear();
+				if ( firstPerson.isLocked ) firstPerson.unlock();
+
+			} );
+			const geometry = new THREE.SphereGeometry( 2, 8, 6 );
+			const material = new THREE.MeshNormalMaterial();
+			const groups = [];
+
+			if ( settings.scene === 'clustered' ) {
+
+				for ( let i = 0; i < 100; i ++ ) {
+
+					const group = new THREE.Group();
+					root.add( group );
+					groups.push( group );
+
+				}
+
+			}
+
+			THREE.MathUtils.seededRandom( 150 );
+			for ( let i = 0; i < settings.count; i ++ ) {
+
+				const sphere = new THREE.Mesh( geometry, material );
+				let x = THREE.MathUtils.seededRandom() * 4000 - 2000;
+				let z = THREE.MathUtils.seededRandom() * 4000 - 2000;
+				if ( settings.scene === 'clustered' ) {
+
+					const cluster = i % 25;
+					x = ( cluster % 5 - 2 ) * 750 + x * 0.12;
+					z = ( Math.floor( cluster / 5 ) - 2 ) * 750 + z * 0.12;
+
+				}
+
+				sphere.position.set( x, 2, z );
+				sphere.matrixAutoUpdate = false;
+				sphere.updateMatrix();
+				const parent = groups.length > 0 ? groups[ Math.floor( i / 25 ) % groups.length ] : root;
+				parent.add( sphere );
+
+			}
+
+			if ( settings.scene === 'all-visible' ) {
+
+				camera.position.set( 0, 5000, 0 );
+				camera.far = 10000;
+				controls.target.set( 0, 0, 0 );
+				controls.update();
+
+			}
+
+			const ground = new THREE.Mesh( new THREE.PlaneGeometry( 4100, 4100 ), new THREE.MeshBasicMaterial( { color: 0x283d3b } ) );
+			ground.rotation.x = Math.PI * - 0.5;
+			scene.add( ground );
+			const start = performance.now();
+			const index = new SceneSpatialIndex( root );
+			const buildMs = performance.now() - start;
+			scene.updateMatrixWorld( true );
+			scene.matrixWorldAutoUpdate = false;
+
+			const gui = renderer.inspector.createParameters( 'Settings' );
+			gui.add( settings, 'mode', [ 'stock', 'flat', 'bvh' ] );
+			gui.add( settings, 'scene', [ 'uniform', 'clustered', 'all-visible' ] ).onChange( reload );
+			gui.add( settings, 'count', [ 1000, 10000, 100000 ] ).onChange( reload );
+			window.addEventListener( 'resize', onWindowResize );
+			await renderer.init();
+			camera.coordinateSystem = renderer.coordinateSystem;
+			camera.updateProjectionMatrix();
+			renderer.setAnimationLoop( animate );
+
+			function reload() {
+
+				window.location.search = new URLSearchParams( settings ).toString();
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function animate() {
+
+				timer.update();
+				if ( firstPerson.isLocked ) {
+
+					movement.set(
+						Number( keys.has( 'KeyD' ) || keys.has( 'ArrowRight' ) ) - Number( keys.has( 'KeyA' ) || keys.has( 'ArrowLeft' ) ),
+						Number( keys.has( 'KeyE' ) || keys.has( 'Space' ) ) - Number( keys.has( 'KeyQ' ) ),
+						Number( keys.has( 'KeyW' ) || keys.has( 'ArrowUp' ) ) - Number( keys.has( 'KeyS' ) || keys.has( 'ArrowDown' ) )
+					).normalize();
+					const distance = Math.min( timer.getDelta(), 0.1 ) * 35 * ( keys.has( 'ShiftLeft' ) || keys.has( 'ShiftRight' ) ? 3 : 1 );
+					firstPerson.moveRight( movement.x * distance );
+					firstPerson.moveForward( movement.z * distance );
+					camera.position.y = Math.max( 2, camera.position.y + movement.y * distance );
+
+				} else {
+
+					controls.update();
+
+				}
+
+				index.enabled = settings.mode !== 'stock';
+				index.hierarchical = settings.mode === 'bvh';
+				renderer.render( scene, camera );
+				const counts = settings.mode === 'stock' ? 'Stock renderer tests scene objects' : `${ index.stats.nodes } BVH nodes / ${ index.stats.spheres } sphere tests`;
+				const traversal = settings.mode === 'stock' ? 'all scene children' : 'index-selected ancestor paths';
+				const description = `<strong>${ settings.mode.toUpperCase() } · ${ settings.scene.toUpperCase() }</strong><br>${ settings.count.toLocaleString() } independent Mesh spheres<br>${ counts }<br>Traversal: ${ traversal }<br>Draw calls: ${ renderer.info.render.drawCalls }<br>Index build: ${ buildMs.toFixed( 1 ) } ms (startup)<br>Static bounds. CPU index; WebGPU rendering.<br>Parent/child ownership is unchanged.`;
+				if ( readout.innerHTML !== description ) readout.innerHTML = description;
+
+			}
+		</script>
+	</body>
+</html>

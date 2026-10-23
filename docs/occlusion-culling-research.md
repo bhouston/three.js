@@ -8,6 +8,8 @@ For a large first-person world, use a shared spatial index, per-view visibility 
 
 There is a common architecture, but no universally best culling algorithm. Dense interiors, open terrain, destructible worlds, and many repeated instances need different policies. Keep those policies in addons/application code initially; introduce core integration only when a measured prototype identifies a missing renderer contract.
 
+Following the supplied [maintainer review preferences](https://gist.github.com/bhouston/1b66f04b2838229a36844cd66ea31c7e), this PR is a documentation-only spike. Keep benchmarks external (jsbench/jsfiddle or task artifacts), reuse existing abstractions, and propose one small implementation at a time. The summary records review preferences rather than a formal project policy.
+
 ## Industry practice
 
 | Technique | Useful case | Main cost or limitation |
@@ -32,7 +34,7 @@ There is a common architecture, but no universally best culling algorithm. Dense
 - Queries are issued around rendered objects and resolved asynchronously. Removing a queried object from submission prevents fresh queries for it: a hidden object cannot discover its own reappearance. Keep a separate conservative proxy query or periodic/current-view retesting strategy.
 - The scene hierarchy is an ownership/transform hierarchy, not automatically a spatial acceleration structure. A spatially arbitrary Group does not become a BVH merely by setting `frustumCulled`.
 
-For WebGL2, [the specification](https://registry.khronos.org/webgl/specs/2.0/) supplies `ANY_SAMPLES_PASSED_CONSERVATIVE` and availability polling. A prototype can issue cluster-bound queries after opaque occluders, disable color/depth writes for bounds, poll without blocking, and restore renderer state. Raw context state changes must be coordinated with Three.js state caching; an explicit pass is preferable to sprinkling query calls through mesh callbacks.
+For WebGL2, [the specification](https://registry.khronos.org/webgl/specs/2.0/) supplies `ANY_SAMPLES_PASSED_CONSERVATIVE` and availability polling. Reuse the common renderer's query infrastructure for a prototype: query cluster bounds after opaque occluders, disable color/depth writes for bounds, and poll without blocking. Keep new rendering work in the node-based pipeline; do not propose a legacy EffectComposer pass family or bypass renderer state management with raw context calls.
 
 For WebGPU, [the specification](https://www.w3.org/TR/webgpu/) provides compute, storage buffers, occlusion queries and indirect draws. An HZB path should retain results on the GPU and compact visible instances or write indirect counts. Reading thousands of flags back to JavaScript can erase the benefit. API capabilities alone do not mean that an arbitrary existing Three.js scene can be submitted this way without batching/material constraints and pass integration.
 
@@ -57,15 +59,11 @@ An old outside classification remains valid when `sMax + E < 0`; an old inside c
 
 Do not carry old plane masks into a changed view without such proof. Likewise, temporal occlusion is harder than frustum coherence: a moved camera or door can invalidate the depth evidence even if the object's bounds stay unchanged. Camera cuts, moving occluders, near-plane intersections, camera-inside bounds and missing query results should fall back to drawing/retesting.
 
-## Executable CPU experiment
+## External CPU experiment
 
-Run from the repository root, with Node.js:
+The task artifacts for [the research issue](https://github.com/bhouston/agent-swarm/issues/151) preserve `frustum-coherence.mjs` and `frustum-benchmark.txt`; no benchmark suite is added to Three.js. In the retained task workspace, run `node .swarm/artifacts/frustum-coherence.mjs` from the task root alongside its `three.js` checkout. The artifact imports that checkout's source files.
 
-```sh
-node test/benchmarks/frustum-coherence.js
-```
-
-[The script](../test/benchmarks/frustum-coherence.js) compares a flat AABB scan, binary spatial hierarchy with per-traversal plane masks, and the same hierarchy trying each node's previous rejecting plane first. All modes enumerate candidate IDs. It checks all candidate sets against `Frustum.intersectsBox` over 720 views covering walking, fast turns, camera cuts and FOV/aspect changes: 2,160 set comparisons over 4,096 static boxes.
+The experiment compares a flat AABB scan, binary spatial hierarchy with per-traversal plane masks, and the same hierarchy trying each node's previous rejecting plane first. All modes enumerate candidate IDs. It checks all candidate sets against `Frustum.intersectsBox` over 720 views covering walking, fast turns, camera cuts and FOV/aspect changes: 2,160 set comparisons over 4,096 static boxes.
 
 An initial Windows001 run produced:
 
@@ -79,7 +77,7 @@ The large reduction comes from spatial hierarchy and masks. Temporal ordering ad
 
 This intentionally establishes the value of the simpler hierarchy before implementing temporal boundary certificates. It does **not** implement occlusion, a production addon, or an incrementally maintained visible scene.
 
-Validation: the experiment's candidate-set assertions and ESLint check pass. `npm test` passes core lint, 1,982 core unit tests (one TODO), and 139 addon unit tests with zero failures. The browser runner printed a resource 404 and Windows already-exited-process cleanup messages, but exited successfully. This JavaScript repository has no dedicated typecheck script. Browser unit tests are not used as evidence of GPU rendering correctness; this spike does not perform GPU visual validation.
+The original experiment passed candidate-set assertions and ESLint. The initial PR passed `npm test`: core lint, 1,982 core unit tests (one TODO), and 139 addon unit tests, with zero failures. The browser runner printed a resource 404 and Windows already-exited-process cleanup messages but exited successfully. This JavaScript repository has no dedicated typecheck script. These checks establish no GPU rendering correctness or performance result.
 
 ## Unified design and core integration
 
@@ -91,11 +89,11 @@ world metadata / spatial index
   └─ per-view distance → frustum → PVS/portals → optional occlusion → draw candidates
 ```
 
-Proposed addon contracts should accept a view/pass identifier, current frustum, world/bounds revision and previous view state, and return candidates plus entered/exited IDs and counters. Occlusion backends additionally need depth provenance, query age and invalidation state. Unknown must mean potentially visible. Index residency, geometric visibility, query scheduling and asset lifetime are separate concerns even when sharing cells.
+An application prototype can track view/pass identity, current frustum, bounds revisions, candidate IDs and previous state internally. Occlusion additionally needs depth provenance, query age and invalidation state. Unknown must mean potentially visible. Avoid exposing these implementation details as new public result fields before a concrete use case requires them. Keep shared spatial/loading code independent of TSL/WebGPU; register renderer-specific integration explicitly at application level.
 
 For CPU integration, select spatial chunk roots before rendering, so rejected branches avoid traversal. Toggling thousands of leaves can leave the full traversal and matrix-update costs intact. A production integration should measure those costs explicitly. Global `visible` flags also affect other passes; maintain per-view results or conservatively include the union of required passes when adapting through scene membership.
 
-Keep policy (BVH vs grid vs portals, query budgets, streaming priority) outside core. Possible future core primitives are a supported per-pass candidate provider before render-list construction, conservative aggregate bounds for subtree pruning, and explicit occluder/query/refinement passes. Any such API must define matrix updates, lights, transparent sorting, nested groups/LOD, shadows, reflections, XR views, clipping, disposal and query lifetime. Existing query and frustum extension points should be evaluated first. Avoid a global `object.isVisibleThisFrame` property: visibility is view- and pass-dependent.
+Keep policy (BVH vs grid vs portals, query budgets, streaming priority) outside core. First evaluate existing query and frustum extension points with one small example. If measurements then demonstrate a missing primitive, discuss that specific core change separately with the relevant maintainers, including sunag for node-system architecture. Its contract must cover matrix updates, lights, sorting, LOD, shadows, reflections, XR, clipping and lifetime. Reuse math/object abstractions rather than introducing selective direct-access fast paths. Keep pass-specific setup local; document restrictions without adding validation throws. A new public visibility API or helper module is not justified by this spike alone.
 
 ## The proposed two-scene FPS architecture
 
@@ -109,7 +107,7 @@ Streaming can share the spatial partition and use visibility as a priority signa
 
 ## Suggested next experiments
 
-1. A renderer example with selectable flat/hierarchical modes, frozen culling camera and a top-down candidate view. Include candidate counts, matrix/traversal time, draw calls, triangles and total frame time. Test static interiors and open terrain, with bounds refits as a separate workload.
+1. An external jsbench/jsfiddle comparison, followed by a small node-based renderer example if warranted. Use existing Inspector parameters, default WebGPURenderer options and an `animate()` loop; keep instrumentation out of public test hooks. Compare candidate counts, matrix/traversal time, draw calls, triangles and total frame time for interiors and open terrain.
 2. An indoor cell/portal prototype supporting open/closed doors, followed by cluster-bound asynchronous queries using the existing common-renderer infrastructure. Render occluders first; bounds queries must not write depth or occlude each other. Transparent surfaces are not general occluders; alpha-tested/deformed occluders require matching coverage. Keep hidden proxies testable and invalidate stale evidence.
 3. A WebGPU HZB/indirect-instance prototype. For ordinary depth use farthest-depth reduction (max); reversed depth needs the opposite reduction and comparison. Cover the entire projected bound conservatively, including mip footprint and screen edges. Recheck disocclusion using current-view depth rather than treating old depth as proof.
 

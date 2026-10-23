@@ -1,4 +1,5 @@
 import { AmbientLight, ArrayCamera, BoxGeometry, Frustum, Group, LOD, MathUtils, Matrix4, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, SphereGeometry } from 'three';
+import BundleGroup from '../../../../src/renderers/common/BundleGroup.js';
 import { FrustumArray } from '../../../../src/math/FrustumArray.js';
 import { SceneSpatialIndex } from '../../../../examples/jsm/utils/SceneSpatialIndex.js';
 
@@ -182,6 +183,39 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'unsupported index roots retain nested traversal and existing providers', ( assert ) => {
+
+				const customRoot = new Group();
+				const customHook = () => customRoot.children.slice( 0, 1 );
+				customRoot.getRenderChildren = customHook;
+				for ( const root of [ new BundleGroup(), new LOD(), customRoot ] ) {
+
+					const branch = new Group();
+					const mesh = new Mesh( geometry, material );
+					branch.add( mesh );
+					root.add( branch, new Mesh( geometry, material ) );
+					const camera = makeCamera();
+					const frustum = makeFrustum( camera );
+					root.updateMatrixWorld( true );
+					const expected = collect( root, camera, frustum );
+					const previous = root.getRenderChildren;
+					const index = new SceneSpatialIndex( root );
+					for ( let rebuild = 0; rebuild < 2; rebuild ++ ) {
+
+						assert.strictEqual( root.getRenderChildren, previous, 'Root provider preserved' );
+						assert.strictEqual( branch.getRenderChildren, undefined, 'Nested branch has no unprepared index hook' );
+						assert.deepEqual( collect( root, camera, frustum ), expected, 'Nested meshes survive fallback' );
+						index.rebuild();
+
+					}
+
+					index.dispose();
+					assert.strictEqual( root.getRenderChildren, previous, 'Disposal preserves original root provider' );
+					assert.deepEqual( collect( root, camera, frustum ), expected, 'Disposal preserves ordinary nested traversal' );
+
+				}
+
+			} );
 			QUnit.test( 'lights, uncullable meshes, LOD and custom subtrees retain ordinary traversal', ( assert ) => {
 
 				const root = new Group();
@@ -219,4 +253,3 @@ export default QUnit.module( 'Addons', () => {
 	} );
 
 } );
-

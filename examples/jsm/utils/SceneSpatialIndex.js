@@ -51,14 +51,14 @@ class SceneSpatialIndex {
 
 	_visit( object ) {
 
+		if ( object.isLOD || object.isBundleGroup || object.isSkinnedMesh || object.getRenderChildren !== undefined ) {
+
+			if ( object !== this.root ) this._always.push( object );
+			return;
+
+		}
+
 		if ( object !== this.root ) {
-
-			if ( object.isLOD || object.isBundleGroup || object.isSkinnedMesh || object.getRenderChildren !== undefined ) {
-
-				this._always.push( object );
-				return;
-
-			}
 
 			if ( object.constructor === Mesh && object.frustumCulled && object.intersectsFrustum === Mesh.prototype.intersectsFrustum ) {
 

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - culling and occlusion</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<link rel="icon" href="../files/favicon.ico">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			#stats { position: absolute; bottom: 24px; left: 24px; padding: 16px; background: #101822e8; color: #fff; font: 14px/1.6 monospace; pointer-events: none; }
+			#map { position: absolute; bottom: 24px; right: 24px; width: 240px; height: 300px; }
+		</style>
+	</head>
+	<body>
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Culling and occlusion</span></div>
+			<small>Drag to explore. Stop moving to reuse occlusion queries.<br>Map: green drawn · orange occluded · gray outside frustum.</small>
+		</div>
+		<div id="stats"></div>
+		<canvas id="map" width="240" height="300"></canvas>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module">
+			import * as THREE from 'three/webgpu';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+			const renderer = new THREE.WebGPURenderer();
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.setClearColor( 0x172534 );
+			renderer.inspector = new Inspector();
+			renderer.info.autoReset = false;
+			document.body.appendChild( renderer.domElement );
+
+			const camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 0.1, 160 );
+			camera.position.set( 14, 8, 32 );
+			const controls = new OrbitControls( camera, renderer.domElement );
+			controls.target.set( 0, 3, - 30 );
+			controls.maxDistance = 120;
+			controls.update();
+
+			const queryScene = new THREE.Scene();
+			const detailScene = new THREE.Scene();
+			detailScene.add( new THREE.HemisphereLight( 0xc7e8ff, 0x40502b, 3 ) );
+			const light = new THREE.DirectionalLight( 0xffffff, 3 );
+			light.position.set( 10, 30, 20 );
+			detailScene.add( light );
+
+			const wallMaterial = new THREE.MeshBasicNodeMaterial( { color: 0x41647b } );
+			const wallGeometry = new THREE.BoxGeometry( 10, 12, 1 );
+			for ( const x of [ - 24, - 12, 0, 12, 24 ] ) {
+
+				const wall = new THREE.Mesh( wallGeometry, wallMaterial );
+				wall.position.set( x, 6, 0 );
+				queryScene.add( wall );
+
+			}
+
+			const floor = new THREE.Mesh( new THREE.BoxGeometry( 70, 0.2, 120 ), new THREE.MeshBasicNodeMaterial( { color: 0x263d43 } ) );
+			floor.position.set( 0, - 0.2, - 25 );
+			queryScene.add( floor );
+
+			const clusters = [];
+			const geometry = new THREE.TorusKnotGeometry( 0.55, 0.18, 48, 8 );
+			const proxyGeometry = new THREE.BoxGeometry( 1, 1, 1 );
+			const proxyMaterial = new THREE.MeshBasicNodeMaterial( { colorWrite: false, depthWrite: false, side: THREE.DoubleSide } );
+			for ( let row = 0; row < 6; row ++ ) {
+
+				for ( let column = 0; column < 5; column ++ ) {
+
+					const center = new THREE.Vector3( ( column - 2 ) * 12, 3, - 12 - row * 12 );
+					const group = new THREE.Group();
+					const material = new THREE.MeshStandardNodeMaterial( { color: new THREE.Color().setHSL( row / 9 + column / 30, 0.7, 0.6 ), roughness: 0.4 } );
+					for ( let i = 0; i < 25; i ++ ) {
+
+						const mesh = new THREE.Mesh( geometry, material );
+						mesh.position.set( center.x + ( i % 5 - 2 ) * 1.05, 1 + Math.floor( i / 5 ) * 0.9, center.z );
+						group.add( mesh );
+
+					}
+
+					detailScene.add( group );
+					const bounds = new THREE.Box3().setFromObject( group );
+					clusters.push( { center: bounds.getCenter( new THREE.Vector3() ), size: bounds.getSize( new THREE.Vector3() ), sphere: bounds.getBoundingSphere( new THREE.Sphere() ), group, bounds, proxy: null, state: 'drawn' } );
+
+				}
+
+			}
+
+			const settings = { mode: 'Frustum + occlusion' };
+			const gui = renderer.inspector.createParameters( 'Culling' );
+			gui.add( settings, 'mode', [ 'Baseline', 'Frustum', 'Frustum + occlusion' ] );
+			const frustum = new THREE.Frustum();
+			const matrix = new THREE.Matrix4();
+			const previousView = new THREE.Matrix4().makeScale( 0, 0, 0 );
+			const stats = document.getElementById( 'stats' );
+			const map = document.getElementById( 'map' ).getContext( '2d' );
+			let invalidate = true;
+
+			window.addEventListener( 'resize', () => {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				invalidate = true;
+
+			} );
+
+			renderer.setAnimationLoop( animate );
+
+			function animate() {
+
+				controls.update();
+				camera.updateMatrixWorld();
+				matrix.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );
+				frustum.setFromProjectionMatrix( matrix, renderer.coordinateSystem );
+				const changed = invalidate || ! matrix.equals( previousView );
+				invalidate = false;
+				previousView.copy( matrix );
+				const occlusion = settings.mode === 'Frustum + occlusion';
+				let candidates = 0, hidden = 0;
+
+				// New proxy identities discard query evidence from a different view.
+				for ( const cluster of clusters ) {
+
+					if ( changed || cluster.proxy === null ) {
+
+						if ( cluster.proxy ) queryScene.remove( cluster.proxy );
+						cluster.proxy = new THREE.Mesh( proxyGeometry, proxyMaterial );
+						cluster.proxy.position.copy( cluster.center );
+						cluster.proxy.scale.copy( cluster.size );
+						cluster.proxy.occlusionTest = true;
+						cluster.proxy.renderOrder = 1;
+						cluster.proxy.onBeforeRender = () => {
+
+							cluster.occluded = renderer.isOccluded( cluster.proxy ) === true;
+
+						};
+
+						queryScene.add( cluster.proxy );
+
+					}
+
+					cluster.group.visible = settings.mode === 'Baseline' || frustum.intersectsBox( cluster.bounds );
+					cluster.proxy.visible = occlusion && cluster.group.visible;
+					cluster.state = cluster.group.visible ? 'drawn' : 'outside';
+					if ( cluster.group.visible ) candidates ++;
+
+				}
+
+				renderer.info.reset();
+				renderer.autoClear = true;
+				renderer.render( queryScene, camera );
+				const queryCalls = renderer.info.render.drawCalls;
+				for ( const cluster of clusters ) {
+
+					// Keep near-camera bounds and unknown query results visible.
+					if ( occlusion && cluster.group.visible && camera.position.distanceTo( cluster.center ) > cluster.sphere.radius + camera.near && cluster.occluded === true ) {
+
+						cluster.group.visible = false;
+						cluster.state = 'occluded';
+						hidden ++;
+
+					}
+
+				}
+
+				renderer.autoClear = false;
+				renderer.render( detailScene, camera );
+				stats.innerHTML = `${ settings.mode }<br>Clusters: ${ candidates - hidden } drawn / ${ hidden } occluded / ${ clusters.length - candidates } outside<br>Draw calls: ${ renderer.info.render.drawCalls } (occluders + queries: ${ queryCalls })<br>Triangles: ${ renderer.info.render.triangles.toLocaleString() }<br>Query bounds stay active while details are hidden.<br>Static world; camera motion invalidates query history.`;
+				drawMap();
+
+			}
+
+			function drawMap() {
+
+				map.fillStyle = '#101822ee';
+				map.fillRect( 0, 0, 240, 300 );
+				map.fillStyle = '#fff';
+				map.font = '12px monospace';
+				map.fillText( 'World / visibility', 14, 22 );
+				for ( const cluster of clusters ) {
+
+					map.fillStyle = { drawn: '#65efa1', occluded: '#ffaa55', outside: '#53616f' }[ cluster.state ];
+					map.fillRect( 120 + cluster.center.x * 3 - 7, 104 - cluster.center.z * 2, 14, 10 );
+
+				}
+
+				map.fillStyle = '#78b5dd';
+				for ( const x of [ - 24, - 12, 0, 12, 24 ] ) map.fillRect( 120 + x * 3 - 15, 98, 30, 4 );
+				map.fillStyle = '#fff';
+				map.beginPath();
+				map.arc( 120 + camera.position.x * 3, 104 - camera.position.z * 2, 4, 0, Math.PI * 2 );
+				map.fill();
+
+			}
+		</script>
+	</body>
+</html>

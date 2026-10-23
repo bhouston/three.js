@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass } from 'three/tsl';
+			import { pass, indirectDiffuse, indirectLightingContext, environmentDiffuse, pmremTexture } from 'three/tsl';
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
@@ -47,6 +47,7 @@
 			import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 			import { CityGenerator, createBuildingMaterial, createRoadMaterial } from 'three/addons/generators/CityGenerator.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+			import { lightProbeGridDiffuse } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 			import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 
 			let camera, scene, renderer, controls, timer;
@@ -324,6 +325,12 @@
 						count: GRID_PROBES.x,
 						pass: bakePass
 					} );
+
+					if ( bakeIndex === 0 && bakePass === 0 ) {
+
+						renderer.contextNode = indirectLightingContext( indirectDiffuse( [ lightProbeGridDiffuse( probes ), environmentDiffuse( pmremTexture( scene.environment ) ) ] ) );
+
+					}
 
 				} finally {
 

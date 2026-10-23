@@ -25,7 +25,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, builtinGIContext, context, float, positionWorld, normalWorld, uniform } from 'three/tsl';
+			import { sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, uniform, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -34,9 +34,10 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { VXGIVolume } from 'three/addons/lighting/vxgi/VXGIVolume.js';
-			import { vxgiIrradiance } from 'three/addons/lighting/vxgi/VXGIIrradiance.js';
+			import { vxgiDiffuse } from 'three/addons/lighting/vxgi/VXGIIrradiance.js';
 			import { ReflectionProbe, ReflectionProbes } from 'three/addons/lighting/ReflectionProbes.js';
-			import { reflectionProbes } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
+			import { reflectionProbesSpecular } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
+			import { lightProbeGridDiffuse } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 
 			const models = {
 				'Museum': 'museum.glb',
@@ -244,6 +245,8 @@
 				scene.environmentNode = null;
 				renderer.contextNode = context( { ...renderer.contextNode.value } );
 				delete renderer.contextNode.value.getGI;
+				renderer.contextNode.value.indirectDiffuseNode = null;
+				renderer.contextNode.value.indirectSpecularNode = null;
 
 				for ( const source of [ lightProbes, probes ] ) {
 
@@ -329,7 +332,6 @@
 				scene.add( probes );
 
 				capture();
-				scene.environmentNode = reflectionProbes( probes );
 				currentModel = name;
 
 			}
@@ -394,6 +396,38 @@
 
 			}
 
+			function configureIndirectLighting( reflections = true ) {
+
+				const diffuseProviders = [];
+				const specularProviders = reflections ? [ reflectionProbesSpecular( probes ) ] : [];
+
+				if ( params.algorithm === 'Light Probes' ) {
+
+					diffuseProviders.push( lightProbeGridDiffuse( lightProbes ) );
+
+				} else {
+
+					const provider = vxgiDiffuse( voxelVolume, { coneCount: 3 } );
+					diffuseProviders.push( query => provider( { ...query, sampleIndex: giFrame } ) );
+
+				}
+
+				if ( scene.environment ) {
+
+					const environment = pmremTexture( scene.environment );
+					diffuseProviders.push( environmentDiffuse( environment ) );
+					specularProviders.push( environmentSpecular( environment ) );
+
+				}
+
+				renderer.contextNode = context( {
+					...renderer.contextNode.value,
+					indirectDiffuseNode: indirectDiffuse( diffuseProviders ),
+					indirectSpecularNode: indirectSpecular( specularProviders )
+				} );
+
+			}
+
 			function capture( bakeDiffuse = true ) {
 
 				if ( ! model || ! lightProbes || ! probes ) return;
@@ -412,6 +446,8 @@
 
 						renderer.contextNode = context( { ...rendererContext.value } );
 						delete renderer.contextNode.value.getGI;
+						renderer.contextNode.value.indirectDiffuseNode = null;
+						renderer.contextNode.value.indirectSpecularNode = null;
 						lightProbes.visible = params.algorithm === 'Light Probes';
 
 						if ( params.algorithm === 'Light Probes' ) {
@@ -431,17 +467,16 @@
 							voxelVolume.bounces = params.bounces;
 							voxelVolume.update( renderer, scene );
 
-							const irradiance = vxgiIrradiance( voxelVolume, { coneCount: 3 } );
-							const giContext = builtinGIContext( float( 1 ), irradiance( positionWorld, normalWorld, giFrame ) );
-							renderer.contextNode = context( { ...renderer.contextNode.value, getGI: giContext.value.getGI } );
-
 						}
 
 					}
 
-					// Record the selected diffuse solution in the local reflections too.
+					// Record the resolved diffuse solution in the local reflections too.
+
+					configureIndirectLighting( false );
 
 					probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: captureFar, bounces: params.reflectionBounces } );
+					configureIndirectLighting();
 					baked = true;
 
 				} finally {

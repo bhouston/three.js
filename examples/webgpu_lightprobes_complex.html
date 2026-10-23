@@ -36,11 +36,13 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
+			import { indirectDiffuse, indirectLightingContext } from 'three/tsl';
 
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+			import { lightProbeGridDiffuse } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 			import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 
 			let camera, scene, renderer, controls;
@@ -150,6 +152,7 @@
 					if ( probesHelper ) probesHelper.visible = false;
 
 					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20, bounces: params.bounces } );
+					renderer.contextNode = indirectLightingContext( indirectDiffuse( [ lightProbeGridDiffuse( probes ) ] ) );
 
 					scene.add( probes );
 					probes.visible = params.enabled;

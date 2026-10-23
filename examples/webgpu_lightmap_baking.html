@@ -36,15 +36,15 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { builtinGIContext, float, mrt, normalWorld, output, pass, positionWorld, uniform, velocity } from 'three/tsl';
+			import { context, indirectDiffuse, indirectLightingContext, mrt, output, pass, uniform, velocity } from 'three/tsl';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
 			import { VXGIVolume } from 'three/addons/lighting/vxgi/VXGIVolume.js';
-			import { vxgiIrradiance } from 'three/addons/lighting/vxgi/VXGIIrradiance.js';
-			import { lightProbeGridIrradiance } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
+			import { vxgiDiffuse } from 'three/addons/lighting/vxgi/VXGIIrradiance.js';
+			import { lightProbeGridDiffuse } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 
@@ -221,6 +221,9 @@
 
 				light.intensity = params.lightIntensity;
 
+				// Do not sample a previous light map while preparing the next GI source.
+				renderer.contextNode = context( { ...renderer.contextNode.value, indirectDiffuseNode: null, indirectSpecularNode: null } );
+
 				for ( const material of materials ) material.lightMap = null;
 
 				lightMapper?.dispose();
@@ -246,7 +249,7 @@
 					probes.position.set( 0, 2.45, 0 );
 					probes.updateBoundingBox();
 					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20 } );
-					irradiance = ( position, normal ) => lightProbeGridIrradiance( probes, position, normal );
+					irradiance = indirectDiffuse( [ lightProbeGridDiffuse( probes ) ] );
 					source = probes;
 
 				} else {
@@ -256,7 +259,7 @@
 
 					// three cones like webgpu_vxgi, shared by the live view and the light map
 
-					irradiance = vxgiIrradiance( volume, { coneCount: 3 } );
+					irradiance = indirectDiffuse( [ vxgiDiffuse( volume, { coneCount: 3 } ) ] );
 					source = volume;
 
 				}
@@ -271,7 +274,8 @@
 				// traa needs a single-sampled depth buffer
 
 				livePass = pass( scene, camera, { samples: 0 } );
-				livePass.contextNode = builtinGIContext( float( 1 ), irradiance( positionWorld, normalWorld, liveFrame ) );
+				livePass.contextNode = indirectLightingContext( indirectDiffuse( [ query => irradiance.asProvider()( { ...query, sampleIndex: liveFrame } ) ] ) );
+				bakedPass.contextNode = indirectLightingContext( indirectDiffuse( [] ) );
 				liveOutput = livePass;
 
 				if ( params.algorithm === 'VXGI' ) {

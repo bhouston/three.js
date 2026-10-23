@@ -25,13 +25,15 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
+			import { indirectDiffuse, indirectSpecular, indirectLightingContext, environmentSpecular } from 'three/tsl';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+			import { lightProbeGridDiffuse } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 			import { ReflectionProbe, ReflectionProbes } from 'three/addons/lighting/ReflectionProbes.js';
-			import { reflectionProbes } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
+			import { reflectionProbesSpecular, reflectionProbesEnvironment } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
 			import { ReflectionProbesHelper } from 'three/addons/helpers/ReflectionProbesHelper.js';
 
 			const params = { showProbes: false, dynamicObject: 'Bunny', pause: false, showGrid: false, gridResolution: 6, gridSize: 0.12, resolution: 256, boxProjection: true, bounces: 3, capture: capture };
@@ -157,7 +159,6 @@
 				// Every physical material picks up the probes, like scene.environment.
 
 				capture();
-				scene.environmentNode = reflectionProbes( probes );
 
 				const gui = renderer.inspector.createParameters( 'Reflection Probes' );
 				gui.add( params, 'resolution', [ 256, 512, 1024 ] ).name( 'Capture Resolution' );
@@ -281,7 +282,10 @@
 
 				}
 
+				const diffuse = indirectDiffuse( [ lightProbeGridDiffuse( lightProbes ) ] );
+				renderer.contextNode = indirectLightingContext( diffuse );
 				probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: 30, bounces: params.bounces } );
+				renderer.contextNode = indirectLightingContext( diffuse, indirectSpecular( [ reflectionProbesSpecular( probes ), environmentSpecular( reflectionProbesEnvironment( probes ) ) ] ) );
 				probesHelper.visible = params.showProbes;
 				grid.visible = params.showGrid;
 				dynamicObject.visible = params.dynamicObject !== 'None';

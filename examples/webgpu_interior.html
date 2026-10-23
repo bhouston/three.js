@@ -51,9 +51,18 @@
 			const params = {
 				model: 'Dual Rooms',
 				environment: true,
+				environmentSource: 'HDR',
+				directLights: true,
+				diffuseGI: true,
+				reflectionProbes: true,
 				algorithm: 'Light Probes',
 				bounces: 2,
 				voxelResolution: 128,
+				probeResolution: 32,
+				coneCount: 8,
+				coneAngle: 40,
+				bounceConeAngle: 60,
+				directionalVoxels: false,
 				resolution: 256,
 				reflectionBounces: 3,
 				boxProjection: true,
@@ -138,14 +147,23 @@
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
-				settings.add( params, 'environment' ).name( 'Environment Map' ).onChange( ( enabled ) => {
+				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
+				settings.add( params, 'diffuseGI' ).name( 'Diffuse GI' ).onChange( updateIndirectLighting );
+				settings.add( params, 'reflectionProbes' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
+				const whiteEnvironment = new THREE.DataTexture( new Float32Array( [ 1, 1, 1, 1 ] ), 1, 1, THREE.RGBAFormat, THREE.FloatType );
+				whiteEnvironment.mapping = THREE.EquirectangularReflectionMapping;
+				whiteEnvironment.needsUpdate = true;
+				const updateEnvironment = () => {
 
-					scene.environment = enabled ? environment : null;
-					scene.background = enabled ? environment : background;
-					// Both diffuse and reflection probes cache the environment contribution.
+					const selected = params.environmentSource === 'HDR' ? environment : whiteEnvironment;
+					scene.environment = params.environment ? selected : null;
+					scene.background = params.environment ? selected : background;
 					capture();
 
-				} );
+				};
+
+				settings.add( params, 'environment' ).name( 'Environment Map' ).onChange( updateEnvironment );
+				settings.add( params, 'environmentSource', [ 'HDR', 'Unit White' ] ).name( 'Environment Source' ).onChange( updateEnvironment );
 
 				const occlusion = settings.addFolder( 'Ambient Occlusion' );
 				occlusion.add( params, 'aoType', [ 'None', 'GTAO', 'GTAO + GTSO' ] ).name( 'AO type' ).onChange( updateAO );
@@ -161,6 +179,11 @@
 				baking.add( params, 'algorithm', [ 'Light Probes', 'VXGI' ] ).name( 'GI Method' ).onChange( () => capture() );
 				// VXGI supports up to two cached indirect bounces.
 				baking.add( params, 'bounces', 0, 2, 1 ).name( 'Additional Bounces' ).onChange( () => capture() ).debounce( 250 );
+				baking.add( params, 'probeResolution', [ 16, 32, 64, 128 ] ).name( 'Probe Capture Size' ).onChange( () => capture() );
+				baking.add( params, 'coneCount', [ 3, 8, 16, 32 ] ).name( 'Voxel Cones' ).onChange( () => capture( false ) );
+				baking.add( params, 'coneAngle', 5, 60, 1 ).name( 'Voxel Cone Angle' ).onChange( () => capture( false ) ).debounce( 250 );
+				baking.add( params, 'bounceConeAngle', 5, 60, 1 ).name( 'Voxel Bake Cone Angle' ).onChange( () => capture() ).debounce( 250 );
+				baking.add( params, 'directionalVoxels' ).name( 'Directional Voxels' ).onChange( () => capture() );
 				baking.add( params, 'voxelResolution', [ 64, 128, 256 ] ).name( 'Voxel Resolution' ).onChange( () => capture() );
 				baking.add( params, 'capture' ).name( 'Re-Bake' );
 
@@ -290,6 +313,7 @@
 
 				} );
 				scene.add( model );
+				updateDirectLights();
 				model.updateMatrixWorld( true );
 				setModelCamera( gltf );
 
@@ -396,18 +420,37 @@
 
 			}
 
-			function configureIndirectLighting( reflections = true ) {
+			function updateDirectLights() {
+
+				model.traverse( object => {
+
+					if ( object.isLight ) object.visible = params.directLights;
+
+				} );
+				if ( traaPass ) traaPass.setSize( 1, 1 );
+
+			}
+
+			function updateIndirectLighting() {
+
+				configureIndirectLighting();
+				traaPass.setSize( 1, 1 );
+
+			}
+
+			function configureIndirectLighting( reflections = true, baking = false ) {
 
 				const diffuseProviders = [];
-				const specularProviders = reflections ? [ reflectionProbesSpecular( probes ) ] : [];
+				const specularProviders = reflections && params.reflectionProbes ? [ reflectionProbesSpecular( probes ) ] : [];
+				const diffuseEnabled = baking || params.diffuseGI;
 
-				if ( params.algorithm === 'Light Probes' ) {
+				if ( diffuseEnabled && params.algorithm === 'Light Probes' ) {
 
 					diffuseProviders.push( lightProbeGridDiffuse( lightProbes ) );
 
-				} else {
+				} else if ( diffuseEnabled ) {
 
-					const provider = vxgiDiffuse( voxelVolume, { coneCount: 3 } );
+					const provider = vxgiDiffuse( voxelVolume, { coneCount: Number( params.coneCount ), coneAngle: params.coneAngle } );
 					diffuseProviders.push( query => provider( { ...query, sampleIndex: giFrame } ) );
 
 				}
@@ -415,7 +458,7 @@
 				if ( scene.environment ) {
 
 					const environment = pmremTexture( scene.environment );
-					diffuseProviders.push( environmentDiffuse( environment ) );
+					if ( diffuseEnabled ) diffuseProviders.push( environmentDiffuse( environment ) );
 					specularProviders.push( environmentSpecular( environment ) );
 
 				}
@@ -435,6 +478,18 @@
 				const environmentNode = scene.environmentNode;
 				const rendererContext = renderer.contextNode;
 				const lightProbesVisible = lightProbes.visible;
+				// Display toggles isolate contributions without changing the bake inputs.
+				const lightStates = [];
+				model.traverse( object => {
+
+					if ( object.isLight ) {
+
+						lightStates.push( [ object, object.visible ] );
+						object.visible = true;
+
+					}
+
+				} );
 				scene.environmentNode = null;
 				let baked = false;
 
@@ -452,7 +507,7 @@
 
 						if ( params.algorithm === 'Light Probes' ) {
 
-							lightProbes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: captureFar, bounces: params.bounces } );
+							lightProbes.bake( renderer, scene, { cubemapSize: Number( params.probeResolution ), near: 0.05, far: captureFar, bounces: params.bounces } );
 
 						} else {
 
@@ -465,6 +520,8 @@
 
 							voxelVolume ??= new VXGIVolume( Number( params.voxelResolution ) );
 							voxelVolume.bounces = params.bounces;
+							voxelVolume.bounceConeAngle.value = params.bounceConeAngle;
+							voxelVolume.directionalRadiance = params.directionalVoxels;
 							voxelVolume.update( renderer, scene );
 
 						}
@@ -473,7 +530,7 @@
 
 					// Record the resolved diffuse solution in the local reflections too.
 
-					configureIndirectLighting( false );
+					configureIndirectLighting( false, true );
 
 					probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: captureFar, bounces: params.reflectionBounces } );
 					configureIndirectLighting();
@@ -482,6 +539,7 @@
 				} finally {
 
 					scene.environmentNode = environmentNode;
+					for ( const [ light, visible ] of lightStates ) light.visible = visible;
 					if ( ! baked ) {
 
 						renderer.contextNode = rendererContext;

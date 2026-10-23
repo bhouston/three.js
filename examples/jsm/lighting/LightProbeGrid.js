@@ -25,7 +25,7 @@ import {
 
 import { array, atan, Discard, float, Fn, frontFacing, getShIrradianceAt, int, ivec2, ivec3, Loop, perspectiveDepthToViewZ, screenCoordinate, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
-import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, DISTANCE_TILE, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, packGridSH, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
+import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, packGridSH, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
 import { replaceSunLights, restoreSunLights } from './LightProbeGridUtils.js';
 
 // Probes captured per render, six sub-cameras each.
@@ -33,7 +33,6 @@ const PROBES_PER_BATCH = 8;
 
 // Row blocks per face, so each probe's projection spreads over more fragments.
 const FACE_BLOCKS = 4;
-
 // Classification sample count and threshold for probes inside geometry.
 const CLASSIFY_SAMPLES = 64;
 const INSIDE_FRACTION = 0.25;
@@ -62,6 +61,8 @@ const _copyRegion = /*@__PURE__*/ new Box3();
 // Bake materials, shared across grids so the shaders compile once, not per bake.
 let _shMaterial = null;
 let _shFaceSize = - 1;
+let _distanceResolution = - 1;
+let _distanceFaceSize = - 1;
 let _faceNode = null;
 let _batchNode = null;
 let _batchStartUniform = null;
@@ -189,7 +190,6 @@ function repackNode( batch, textureIndex, resolution, sliceZ ) {
 		const nz = int( resolution.z );
 		const probeIndex = ix.add( sliceZ.mul( nx ) ).add( iy.mul( nx ).mul( nz ) ).toVar();
 
-		// Sum the face block projections of each coefficient.
 		const coefficient = ( c ) => {
 
 			let sum = batch.load( ivec2( c * 6 * FACE_BLOCKS, probeIndex ) );
@@ -205,15 +205,11 @@ function repackNode( batch, textureIndex, resolution, sliceZ ) {
 }
 
 /**
- * Returns the capture texel and face coordinates a direction falls on.
+ * Reads the capture texel and radial distance along a unit direction.
  *
  * @private
- * @param {Node<vec3>} dir - The unit direction.
- * @param {number} size - The face resolution.
- * @param {Node<int>} slot - The probe's batch slot.
- * @return {Object} The texel `coord` and the face coordinates `fx`, `fy`.
  */
-function captureTexel( dir, size, slot ) {
+function captureDistance( depth, dir, size, slot, near, far ) {
 
 	const toVec3 = ( v ) => vec3( ...v );
 
@@ -236,26 +232,7 @@ function captureTexel( dir, size, slot ) {
 	const i = int( fx.add( 1.0 ).mul( 0.5 * size ).floor() ).clamp( 0, size - 1 );
 	const j = int( float( 1.0 ).sub( fy ).mul( 0.5 * size ).floor() ).clamp( 0, size - 1 );
 
-	return { coord: ivec2( face.mul( size ).add( i ), slot.mul( size ).add( j ) ), fx, fy };
-
-}
-
-/**
- * Returns the distance from a probe to the nearest surface in the classification
- * capture along a direction, and the capture texel it was read from.
- *
- * @private
- * @param {Node} depth - The classification capture's depth.
- * @param {Node<vec3>} dir - The unit direction.
- * @param {number} size - The face resolution.
- * @param {Node<int>} slot - The probe's batch slot.
- * @param {Node<float>} near - The capture near plane.
- * @param {Node<float>} far - The capture far plane.
- * @return {Object} The texel `coord` and the `distance`.
- */
-function captureDistance( depth, dir, size, slot, near, far ) {
-
-	const { coord, fx, fy } = captureTexel( dir, size, slot );
+	const coord = ivec2( face.mul( size ).add( i ), slot.mul( size ).add( j ) );
 	const viewZ = perspectiveDepthToViewZ( depth.load( coord ).r, near, far );
 
 	// Depth along the face axis to distance along the direction.
@@ -264,14 +241,9 @@ function captureDistance( depth, dir, size, slot, near, far ) {
 }
 
 /**
- * Samples Fibonacci directions for each probe's back-face fraction and nearest hit.
+ * Samples Fibonacci directions for each probe’s back-face fraction and nearest hit.
  *
  * @private
- * @param {Node} flags - The classification capture's back-face flags.
- * @param {Node} depth - The classification capture's depth.
- * @param {number} size - The face resolution.
- * @param {Object} uniforms - The batch and camera uniforms.
- * @return {Node<vec4>} The back-face fraction in x and the nearest hit distance in y.
  */
 function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
 
@@ -303,20 +275,13 @@ function backFaceFractionNode( flags, depth, size, { batchStart, near, far } ) {
 }
 
 /**
- * Averages four distance samples per octahedral texel. Probes inside or too
- * close to geometry receive a negative mean distance to exclude them from lighting.
+ * Averages four normalized distance samples per texel, marking hidden probes with a negative mean.
  *
  * @private
- * @param {Node} depth - The classification capture's depth.
- * @param {Node} batch - The batch texture holding each probe's back-face fraction.
- * @param {number} fractionColumn - The batch column of the back-face fraction.
- * @param {number} size - The face resolution.
- * @param {Object} uniforms - The batch, camera and distance scale uniforms.
- * @return {Node<vec4>} The mean and mean squared normalized distance.
  */
-function distanceMomentsNode( depth, batch, fractionColumn, size, { batchStart, batchCount, near, far, distanceScale, clearance } ) {
+function distanceMomentsNode( depth, batch, fractionColumn, size, resolution, { batchStart, batchCount, near, far, distanceScale, clearance } ) {
 
-	const R = DISTANCE_RESOLUTION;
+	const R = resolution;
 
 	return Fn( () => {
 
@@ -357,14 +322,9 @@ function distanceMomentsNode( depth, batch, fractionColumn, size, { batchStart, 
 }
 
 /**
- * Evaluates SH irradiance for each octahedral texel, including its border.
+ * Evaluates SH irradiance for octahedral tiles, including their borders.
  *
  * @private
- * @param {Node} atlas - The SH atlas texture node.
- * @param {Vector3} resolution - The probe grid resolution.
- * @param {Node<int>} start - The first probe index to write.
- * @param {Node<int>} end - The exclusive end probe index to write.
- * @return {Node<vec4>} The irradiance.
  */
 function irradianceNode( atlas, resolution, start, end ) {
 
@@ -401,8 +361,7 @@ function irradianceNode( atlas, resolution, start, end ) {
 }
 
 /**
- * Render object function of the classification capture: opaque meshes are drawn
- * with the classification material for their side, everything else is skipped.
+ * Captures opaque meshes with the classification material for their sidedness.
  *
  * @private
  */
@@ -415,13 +374,9 @@ function classifyRenderObject( object, scene, camera, geometry, material, group,
 }
 
 /**
- * Creates the material that replaces meshes of the given side in the
- * classification capture. It draws both sides and flags the side the original
- * material does not show, which is what a probe inside a closed mesh sees.
+ * Draws both sides, flagging faces hidden by the original material’s sidedness.
  *
  * @private
- * @param {number} side - The side of the replaced material.
- * @return {NodeMaterial} The classification material.
  */
 function createClassifyMaterial( side ) {
 
@@ -483,7 +438,6 @@ function ensureCaptureCamera( near, far ) {
  * Sets the near plane of every capture sub-camera.
  *
  * @private
- * @param {number} near - The near plane.
  */
 function setCaptureNear( near ) {
 
@@ -504,8 +458,9 @@ function setCaptureNear( near ) {
  * @private
  * @param {number} cubemapSize - Resolution of each cubemap face.
  * @param {number} totalProbes - Number of probes (batch target height).
+ * @param {boolean} visibility - Whether visibility data is required.
  */
-function ensureBakeTargets( cubemapSize, totalProbes ) {
+function ensureBakeTargets( cubemapSize, totalProbes, visibility ) {
 
 	if ( _faceTarget === null || _faceSize !== cubemapSize ) {
 
@@ -525,6 +480,12 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
 
 		} );
 
+		_faceSize = cubemapSize;
+
+	}
+
+	if ( visibility && ( _classifyTarget === null || _classifyTarget.width !== 6 * cubemapSize ) ) {
+
 		// The classification capture: back-face flags and depth for visibility.
 		if ( _classifyTarget !== null ) _classifyTarget.dispose();
 
@@ -535,15 +496,13 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
 			depthTexture: new DepthTexture( 6 * cubemapSize, PROBES_PER_BATCH * cubemapSize )
 		} );
 
-		_faceSize = cubemapSize;
-
 	}
 
 	if ( _batchTarget === null || _batchProbes !== totalProbes ) {
 
 		if ( _batchTarget !== null ) _batchTarget.dispose();
 
-		// SH face blocks followed by the classification column.
+		// One row per probe: 9 coefficients x 6 faces x face blocks.
 		_batchTarget = new RenderTarget( 9 * 6 * FACE_BLOCKS + 1, totalProbes, {
 			type: FloatType,
 			format: RGBAFormat,
@@ -567,18 +526,15 @@ function ensureBakeTargets( cubemapSize, totalProbes ) {
  * @param {number} cubemapSize - Resolution of each cubemap face.
  * @param {Texture} faceMap - The current face atlas texture.
  * @param {Texture} batchMap - The current batch render target texture.
- * @param {Texture} classifyMap - The current classification capture texture.
- * @param {DepthTexture} depthMap - The current classification capture depth texture.
+ * @param {number} visibilityGridSize - The octahedral distance resolution.
+ * @param {boolean} visibility - Whether visibility data is required.
  */
-function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depthMap ) {
+function ensureBakeMaterials( cubemapSize, faceMap, batchMap, visibilityGridSize, visibility ) {
 
 	if ( _repackMaterials === null ) {
 
 		_faceNode = texture( faceMap );
 		_batchNode = texture( batchMap );
-		_classifyNode = texture( classifyMap );
-		_depthNode = texture( depthMap );
-		_classifyMaterials = [ FrontSide, BackSide, DoubleSide ].map( createClassifyMaterial );
 		_batchStartUniform = uniform( 0, 'int' );
 		_batchCountUniform = uniform( 0, 'int' );
 		_nearUniform = uniform( 0.1 );
@@ -603,26 +559,47 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 
 		_faceNode.value = faceMap;
 		_batchNode.value = batchMap;
-		_classifyNode.value = classifyMap;
-		_depthNode.value = depthMap;
 
 	}
 
 	if ( _shMaterial === null || _shFaceSize !== cubemapSize ) {
 
-		if ( _shMaterial !== null ) {
-
-			_shMaterial.dispose();
-			_distanceMaterial.dispose();
-			_fractionMaterial.dispose();
-
-		}
+		if ( _shMaterial !== null ) _shMaterial.dispose();
 
 		_shMaterial = new NodeMaterial();
 		_shMaterial.outputNode = projectSHNode( _faceNode, cubemapSize, _batchStartUniform );
 		_shMaterial.depthTest = false;
 		_shMaterial.depthWrite = false;
 		_shFaceSize = cubemapSize;
+
+	}
+
+	if ( visibility === false ) return;
+
+	if ( _classifyNode === null ) {
+
+		_classifyNode = texture( _classifyTarget.texture );
+		_depthNode = texture( _classifyTarget.depthTexture );
+		_classifyMaterials = [ FrontSide, BackSide, DoubleSide ].map( createClassifyMaterial );
+
+	} else {
+
+		_classifyNode.value = _classifyTarget.texture;
+		_depthNode.value = _classifyTarget.depthTexture;
+
+	}
+
+	if ( _distanceMaterial === null || _distanceFaceSize !== cubemapSize || _distanceResolution !== visibilityGridSize ) {
+
+		if ( _distanceMaterial !== null ) {
+
+			_distanceMaterial.dispose();
+			_fractionMaterial.dispose();
+
+		}
+
+		_distanceFaceSize = cubemapSize;
+		_distanceResolution = visibilityGridSize;
 
 		_fractionMaterial = new NodeMaterial();
 		_fractionMaterial.outputNode = backFaceFractionNode( _classifyNode, _depthNode, cubemapSize, {
@@ -634,7 +611,7 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, classifyMap, depth
 		_fractionMaterial.depthWrite = false;
 
 		_distanceMaterial = new NodeMaterial();
-		_distanceMaterial.outputNode = distanceMomentsNode( _depthNode, _batchNode, 9 * 6 * FACE_BLOCKS, cubemapSize, {
+		_distanceMaterial.outputNode = distanceMomentsNode( _depthNode, _batchNode, 9 * 6 * FACE_BLOCKS, cubemapSize, visibilityGridSize, {
 			batchStart: _batchStartUniform,
 			batchCount: _batchCountUniform,
 			near: _nearUniform,
@@ -736,6 +713,16 @@ class LightProbeGrid extends Light {
 		this.boundingBox = new Box3();
 
 		/**
+		 * Optional world-space bounds of the grid's lighting influence, independent
+		 * of probe placement. Outside this box the grid is not sampled. When set,
+		 * these bounds replace the contribution boundary defined by `falloff`.
+		 *
+		 * @type {?Box3}
+		 * @default null
+		 */
+		this.influenceBox = null;
+
+		/**
 		 * Distance in world units over which the grid contribution fades out
 		 * past the volume boundary. `0` applies the contribution everywhere
 		 * (clamped), which matches a single-volume setup. Use a small positive
@@ -756,13 +743,24 @@ class LightProbeGrid extends Light {
 		this.multiBounce = false;
 
 		/**
-		 * Whether shading weighs each probe by surface visibility to reduce light leaking.
-		 * Can be changed at any time.
+		 * Whether shading weighs each probe by whether it can see the surface, using
+		 * distance moments recorded during the bake. This keeps light from leaking
+		 * through walls between probes, at the cost of more texture reads per
+		 * fragment. Set before the first bake; recreate the grid to change it.
 		 *
 		 * @type {boolean}
 		 * @default false
 		 */
 		this.visibility = false;
+
+		/**
+		 * Octahedral distance-map resolution per probe, excluding the border.
+		 * Set before the first bake. Recreate the grid to change the resolution.
+		 *
+		 * @type {number}
+		 * @default 8
+		 */
+		this.visibilityGridSize = DISTANCE_RESOLUTION;
 
 		/**
 		 * With {@link LightProbeGrid#visibility}, how far the shaded point is moved
@@ -870,8 +868,7 @@ class LightProbeGrid extends Light {
 	 * Indices advance along X, then Z, then Y, filling horizontal layers from bottom
 	 * to top. For incremental indirect bounces, finish the whole grid for `pass: 0`,
 	 * then repeat with `pass: 1`, etc. Start each pass at index 0 to snapshot the
-	 * previous pass before updating its cells. Set {@link LightProbeGrid#multiBounce}
-	 * so that the passes share their shaders.
+	 * previous pass before updating its cells.
 	 *
 	 * Shadow-casting instances of `SunLight` are temporarily replaced with
 	 * equivalent directional lights, since their view-fitted shadow cascades
@@ -949,8 +946,8 @@ class LightProbeGrid extends Light {
 		// Bind the pooled bake resources to the current textures.
 
 		ensureCaptureCamera( near, far );
-		ensureBakeTargets( cubemapSize, totalProbes );
-		ensureBakeMaterials( cubemapSize, _faceTarget.texture, _batchTarget.texture, _classifyTarget.texture, _classifyTarget.depthTexture );
+		ensureBakeTargets( cubemapSize, totalProbes, this.visibility );
+		ensureBakeMaterials( cubemapSize, _faceTarget.texture, _batchTarget.texture, this.visibilityGridSize, this.visibility );
 
 		_nearUniform.value = near * CLASSIFY_NEAR_SCALE;
 		_clearanceUniform.value = near * CLEARANCE_NEAR_PLANES;
@@ -1009,9 +1006,9 @@ class LightProbeGrid extends Light {
 
 				this._updateBounceGrid( renderer, scene, pass, start );
 				// Geometry is static during the bake, so distances are recorded once.
-				this._captureProbes( renderer, scene, start, end, pass === 0 );
+				this._captureProbes( renderer, scene, start, end, this.visibility && pass === 0 );
 				this._repackProbes( renderer, start, end );
-				this._updateIrradiance( renderer, start, end );
+				if ( this.visibility ) this._updateIrradiance( renderer, start, end );
 
 			}
 
@@ -1061,6 +1058,8 @@ class LightProbeGrid extends Light {
 
 			const res = this.resolution;
 			this._bounceGrid = new LightProbeGrid( this.width, this.height, this.depth, res.x, res.y, res.z );
+			this._bounceGrid.visibility = this.visibility;
+			this._bounceGrid.visibilityGridSize = this.visibilityGridSize;
 			this._bounceGrid._ensureTextures();
 			renderer.initRenderTarget( this._bounceGrid._renderTarget );
 
@@ -1080,24 +1079,28 @@ class LightProbeGrid extends Light {
 			renderer.copyTextureToTexture( renderTarget.texture, this._bounceGrid.texture, _copyRegion );
 			this._bouncePass = pass;
 
-			const irradianceTarget = this._irradianceTarget;
-			_copyRegion.max.set( irradianceTarget.width, irradianceTarget.height, 1 );
-			renderer.initRenderTarget( this._bounceGrid._irradianceTarget );
-			renderer.copyTextureToTexture( irradianceTarget.texture, this._bounceGrid._irradianceTarget.texture, _copyRegion );
+			if ( this.visibility ) {
 
-			const distanceTarget = this._distanceTarget;
-			renderer.initRenderTarget( this._bounceGrid._distanceTarget );
-			_copyRegion.max.set( distanceTarget.width, distanceTarget.height, 1 );
-			renderer.copyTextureToTexture( distanceTarget.texture, this._bounceGrid._distanceTarget.texture, _copyRegion );
+				const irradianceTarget = this._irradianceTarget;
+				_copyRegion.max.set( irradianceTarget.width, irradianceTarget.height, 1 );
+				renderer.initRenderTarget( this._bounceGrid._irradianceTarget );
+				renderer.copyTextureToTexture( irradianceTarget.texture, this._bounceGrid._irradianceTarget.texture, _copyRegion );
+
+				const distanceTarget = this._distanceTarget;
+				renderer.initRenderTarget( this._bounceGrid._distanceTarget );
+				_copyRegion.max.set( distanceTarget.width, distanceTarget.height, 1 );
+				renderer.copyTextureToTexture( distanceTarget.texture, this._bounceGrid._distanceTarget.texture, _copyRegion );
+
+			}
 
 		}
 
 		const bounceGrid = this._bounceGrid;
 		bounceGrid.boundingBox.copy( this.boundingBox );
+		bounceGrid.influenceBox = this.influenceBox;
 		// The direct pass adds the grid unlit, so all passes share the lights and their shaders.
 		bounceGrid.intensity = pass === 0 ? 0 : this.intensity;
 		bounceGrid.falloff = this.falloff;
-		bounceGrid.visibility = this.visibility;
 		bounceGrid.normalBias = this.normalBias;
 		bounceGrid.viewBias = this.viewBias;
 		bounceGrid._distanceScale = this._distanceScale;
@@ -1189,14 +1192,20 @@ class LightProbeGrid extends Light {
 
 				setCaptureNear( _nearUniform.value );
 
-				renderer.setRenderObjectFunction( classifyRenderObject );
-				renderer.autoClear = true;
-				renderer.setRenderTarget( _classifyTarget );
-				renderer.render( scene, _captureCamera );
-				renderer.autoClear = false;
-				renderer.setRenderObjectFunction( currentRenderObjectFunction );
+				try {
 
-				setCaptureNear( near );
+					renderer.setRenderObjectFunction( classifyRenderObject );
+					renderer.autoClear = true;
+					renderer.setRenderTarget( _classifyTarget );
+					renderer.render( scene, _captureCamera );
+
+				} finally {
+
+					renderer.autoClear = false;
+					renderer.setRenderObjectFunction( currentRenderObjectFunction );
+					setCaptureNear( near );
+
+				}
 
 				_batchTarget.viewport.set( 9 * 6 * FACE_BLOCKS, batchStart, 1, batchCount );
 				renderer.setRenderTarget( _batchTarget );
@@ -1204,7 +1213,8 @@ class LightProbeGrid extends Light {
 				_quad.render( renderer );
 
 				_batchCountUniform.value = batchCount;
-				distanceTarget.viewport.set( 0, firstRow * DISTANCE_TILE, distanceTarget.width, ( lastRow - firstRow + 1 ) * DISTANCE_TILE );
+				const tileHeight = this.visibilityGridSize + 2;
+				distanceTarget.viewport.set( 0, firstRow * tileHeight, distanceTarget.width, ( lastRow - firstRow + 1 ) * tileHeight );
 				renderer.setRenderTarget( distanceTarget );
 				_quad.material = _distanceMaterial;
 				_quad.render( renderer );
@@ -1289,12 +1299,9 @@ class LightProbeGrid extends Light {
 	}
 
 	/**
-	 * Evaluates the irradiance tiles of a probe range from the live SH atlas.
+	 * Updates a probe range’s irradiance tiles from the SH atlas.
 	 *
 	 * @private
-	 * @param {WebGPURenderer} renderer - The renderer.
-	 * @param {number} start - The first probe index.
-	 * @param {number} end - The exclusive end probe index.
 	 */
 	_updateIrradiance( renderer, start, end ) {
 
@@ -1350,6 +1357,10 @@ class LightProbeGrid extends Light {
 			depthBuffer: false
 		} );
 
+		this.texture = this._renderTarget.texture;
+
+		if ( this.visibility === false ) return;
+
 		// Irradiance per probe for visibility shading, as octahedral tiles in bake order.
 
 		const rows = Math.ceil( nx * ny * nz / DISTANCE_COLUMNS );
@@ -1365,7 +1376,9 @@ class LightProbeGrid extends Light {
 
 		// Distance moments per probe, as octahedral tiles in bake order.
 
-		this._distanceTarget = new RenderTarget( DISTANCE_COLUMNS * DISTANCE_TILE, rows * DISTANCE_TILE, {
+		const distanceTile = this.visibilityGridSize + 2;
+
+		this._distanceTarget = new RenderTarget( DISTANCE_COLUMNS * distanceTile, rows * distanceTile, {
 			type: HalfFloatType,
 			format: RGFormat,
 			minFilter: LinearFilter,
@@ -1373,8 +1386,6 @@ class LightProbeGrid extends Light {
 			generateMipmaps: false,
 			depthBuffer: false
 		} );
-
-		this.texture = this._renderTarget.texture;
 
 	}
 
@@ -1393,8 +1404,8 @@ class LightProbeGrid extends Light {
 
 		if ( this._renderTarget !== null ) {
 
-			this._distanceTarget.dispose();
-			this._irradianceTarget.dispose();
+			if ( this._distanceTarget !== null ) this._distanceTarget.dispose();
+			if ( this._irradianceTarget !== null ) this._irradianceTarget.dispose();
 			this._distanceTarget = null;
 			this._irradianceTarget = null;
 			this._renderTarget.dispose();

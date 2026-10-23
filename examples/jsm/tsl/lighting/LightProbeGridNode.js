@@ -1,12 +1,11 @@
 import { AnalyticLightNode, NodeUpdateType, Vector3 } from 'three/webgpu';
-import { array, cameraPosition, float, getShIrradianceAt, If, int, Loop, normalWorld, positionWorld, renderGroup, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { array, cameraPosition, float, Fn, getShIrradianceAt, If, int, Loop, normalWorld, positionWorld, renderGroup, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
 // Padding texels at each boundary of every atlas sub-volume.
 export const ATLAS_PADDING = 1;
 
 // Distance tiles have a one-texel mirrored border and follow bake order.
-export const DISTANCE_RESOLUTION = 16;
-export const DISTANCE_TILE = DISTANCE_RESOLUTION + 2;
+export const DISTANCE_RESOLUTION = 8;
 export const DISTANCE_COLUMNS = 32;
 
 // Negative mean distance excludes hidden probes from lighting.
@@ -16,34 +15,30 @@ export const HIDDEN_DISTANCE = - 1;
 export const IRRADIANCE_RESOLUTION = 8;
 export const IRRADIANCE_TILE = IRRADIANCE_RESOLUTION + 2;
 
-// Normalized distance slack reduces flickering on slanted surfaces.
-const VISIBILITY_SLACK = 0.03;
-
 const signNotZero = ( value ) => select( value.greaterThanEqual( 0.0 ), float( 1.0 ), float( - 1.0 ) );
 
 /**
  * Maps a direction to octahedral coordinates in [0, 1]².
  *
  * @private
- * @param {Node<vec3>} direction - The direction.
- * @return {Node<vec2>} The octahedral coordinates.
  */
-export function octEncode( direction ) {
+export const octEncode = /*@__PURE__*/ Fn( ( [ direction ] ) => {
 
-	const p = direction.div( direction.abs().dot( vec3( 1.0 ) ).max( 1e-6 ) );
+	const p = direction.div( direction.abs().dot( vec3( 1.0 ) ).max( 1e-6 ) ).toConst();
 	const folded = vec2( p.y.abs().oneMinus().mul( signNotZero( p.x ) ), p.x.abs().oneMinus().mul( signNotZero( p.y ) ) );
 
 	return select( p.z.lessThan( 0.0 ), folded, p.xy ).mul( 0.5 ).add( 0.5 );
 
-}
+} ).setLayout( {
+	name: 'lightProbeOctEncode',
+	type: 'vec2',
+	inputs: [ { name: 'direction', type: 'vec3' } ]
+} );
 
 /**
  * Returns the probe index and tile texel, mirroring borders across octahedral seams.
  *
  * @private
- * @param {Node<ivec2>} texel - The atlas texel.
- * @param {number} resolution - The octahedral resolution of a tile.
- * @return {Object} The `probeIndex` and the octahedral texel `x`, `y`.
  */
 export function octTileTexel( texel, resolution ) {
 
@@ -62,46 +57,49 @@ export function octTileTexel( texel, resolution ) {
 }
 
 /**
- * Returns the UV of a direction in a probe's tile of an octahedral atlas.
+ * Returns the atlas UV for a direction in a probe’s octahedral tile.
  *
  * @private
- * @param {Node<int>} probeIndex - The probe index in bake order.
- * @param {Node<vec3>} direction - The unit direction.
- * @param {number} resolution - The octahedral resolution of a tile.
- * @param {Node<vec2>} atlasSize - The atlas size in texels.
- * @return {Node<vec2>} The atlas UV.
  */
-function octTileUV( probeIndex, direction, resolution, atlasSize ) {
+const octTileUV = /*@__PURE__*/ Fn( ( [ probeIndex, direction, resolution, atlasSize ] ) => {
 
 	const tile = vec2( float( probeIndex.mod( DISTANCE_COLUMNS ) ), float( probeIndex.div( DISTANCE_COLUMNS ) ) );
 
-	return tile.mul( resolution + 2 ).add( 1.0 ).add( octEncode( direction ).mul( resolution ) ).div( atlasSize );
+	return tile.mul( resolution.add( 2.0 ) ).add( 1.0 ).add( octEncode( direction ).mul( resolution ) ).div( atlasSize );
 
-}
+} ).setLayout( {
+	name: 'lightProbeOctTileUV',
+	type: 'vec2',
+	inputs: [
+		{ name: 'probeIndex', type: 'int' },
+		{ name: 'direction', type: 'vec3' },
+		{ name: 'resolution', type: 'float' },
+		{ name: 'atlasSize', type: 'vec2' }
+	]
+} );
 
 /**
  * Maps octahedral coordinates in [-1, 1]² to a unit direction.
  *
  * @private
- * @param {Node<vec2>} e - The octahedral coordinates.
- * @return {Node<vec3>} The direction.
  */
-export function octDecode( e ) {
+export const octDecode = /*@__PURE__*/ Fn( ( [ e ] ) => {
 
-	const z = float( 1.0 ).sub( e.x.abs() ).sub( e.y.abs() );
+	const z = float( 1.0 ).sub( e.x.abs() ).sub( e.y.abs() ).toConst();
 	const folded = vec2( e.y.abs().oneMinus().mul( signNotZero( e.x ) ), e.x.abs().oneMinus().mul( signNotZero( e.y ) ) );
 
 	return vec3( select( z.lessThan( 0.0 ), folded, e ), z ).normalize();
 
-}
+} ).setLayout( {
+	name: 'lightProbeOctDecode',
+	type: 'vec3',
+	inputs: [ { name: 'e', type: 'vec2' } ]
+} );
 
 /**
- * Packs nine RGB SH coefficients into seven RGBA texels.
+ * Packs nine RGB SH coefficients into seven RGBA texels, requesting only the required coefficients.
  *
  * @private
- * @param {function(number): Node<vec3>} c - Returns coefficient i. Only the coefficients this texel stores are requested.
- * @param {number} textureIndex - The atlas texel (0–6).
- * @return {Node<vec4>} The packed texel.
  */
 export function packGridSH( c, textureIndex ) {
 
@@ -120,12 +118,9 @@ export function packGridSH( c, textureIndex ) {
 }
 
 /**
- * Unpacks the nine L2 SH coefficients from the seven atlas texels of a probe,
- * as packed by {@link packGridSH}.
+ * Unpacks nine RGB SH coefficients from seven RGBA texels.
  *
  * @private
- * @param {Array<Node<vec4>>} s - The seven packed texels.
- * @return {Node} The coefficient array, as expected by `getShIrradianceAt()`.
  */
 export function unpackGridSH( s ) {
 
@@ -144,14 +139,9 @@ export function unpackGridSH( s ) {
 }
 
 /**
- * Samples SH coefficients with trilinear filtering. Each of the seven
- * sub-volumes has one padding slice at each end to prevent color bleeding.
+ * Samples SH coefficients at texel-center coordinates, with padded Z slices for trilinear filtering.
  *
  * @private
- * @param {Texture3DNode} atlas - The atlas texture node.
- * @param {Node<vec3>} uvw - The probe-grid sample coordinate (texel centers).
- * @param {Node<float>} nz - The number of probes along Z.
- * @return {Node} The coefficient array, as expected by `getShIrradianceAt()`.
  */
 export function sampleGridSH( atlas, uvw, nz ) {
 
@@ -167,35 +157,60 @@ export function sampleGridSH( atlas, uvw, nz ) {
 }
 
 /**
- * Returns the cubed Chebyshev visibility bound from distance moments
- * (Majercik et al., 2019). Points nearer than the mean are fully visible.
+ * Returns the cubed Chebyshev visibility bound from distance moments (Majercik et al., 2019).
  *
  * @private
- * @param {Node<vec2>} moments - The mean and mean squared distance.
- * @param {Node<float>} distance - The distance to test, in the same units.
- * @param {number} [slack=VISIBILITY_SLACK] - Distance past the mean that still counts as visible.
- * @return {Node<float>} The visibility in [0, 1].
  */
-function chebyshevVisibility( moments, distance, slack = VISIBILITY_SLACK ) {
+function chebyshevVisibility( moments, distance ) {
 
 	const variance = moments.y.sub( moments.x.mul( moments.x ) ).max( 1e-6 );
-	const delta = distance.sub( moments.x ).sub( slack ).max( 0.0 );
+	const delta = distance.sub( moments.x ).max( 0.0 );
 
 	return variance.div( variance.add( delta.mul( delta ) ) ).pow( 3.0 );
 
 }
 
+// Share the visibility and interpolation math across grids. Texture bindings
+// remain per grid, so each volume still performs its own atlas lookups.
+const probeInterpolationWeight = /*@__PURE__*/ Fn( ( [ moments, distance, normal, toProbe, offset, alpha ] ) => {
+
+	const visibility = chebyshevVisibility( moments, distance );
+	const direction = toProbe.div( toProbe.length().max( 1e-6 ) ).toConst();
+	const wrap = normal.dot( direction ).mul( 0.5 ).add( 0.5 ).pow( 2.0 ).add( 0.2 );
+	const weight = wrap.mul( visibility.max( 0.05 ) ).max( 1e-6 ).toVar();
+
+	If( weight.lessThan( 0.2 ), () => {
+
+		weight.mulAssign( weight.mul( weight ).div( 0.04 ) );
+
+	} );
+
+	const blend = offset.mul( alpha ).add( offset.oneMinus().mul( alpha.oneMinus() ) ).max( vec3( 0.001 ) ).toConst();
+
+	return weight.mul( blend.x.mul( blend.y ).mul( blend.z ) );
+
+} ).setLayout( {
+	name: 'lightProbeInterpolationWeight',
+	type: 'float',
+	inputs: [
+		{ name: 'moments', type: 'vec2' },
+		{ name: 'distance', type: 'float' },
+		{ name: 'normal', type: 'vec3' },
+		{ name: 'toProbe', type: 'vec3' },
+		{ name: 'offset', type: 'vec3' },
+		{ name: 'alpha', type: 'vec3' }
+	]
+} );
+
 /**
- * Blends eight probes using trilinear, back-face and Chebyshev visibility weights.
+ * Blends eight probes with trilinear, wrapped-normal and Chebyshev visibility weights.
  *
  * @private
- * @param {Object} grid - The grid parameters.
- * @param {function(Node<vec2>): Node<vec4>} sampleIrradiance - Samples the irradiance atlas.
- * @return {Node<vec3>} The non-negative irradiance.
+ * @see {@link https://github.com/NVIDIAGameWorks/RTXGI-DDGI/blob/main/rtxgi-sdk/shaders/ddgi/Irradiance.hlsl}
  */
-function evaluateGridIrradianceVisibility( grid, sampleIrradiance ) {
+function evaluateGridIrradianceVisibility( grid, irradianceAtlas ) {
 
-	const { min, res, spacing, moments, distanceScale, normalBias, viewBias, momentsSize, irradianceSize } = grid;
+	const { min, res, spacing, moments, distanceScale, normalBias, viewBias, momentsSize, irradianceSize, visibilityGridSize } = grid;
 
 	const nx = int( res.x ), nz = int( res.z );
 
@@ -223,96 +238,69 @@ function evaluateGridIrradianceVisibility( grid, sampleIrradiance ) {
 
 		// Chebyshev visibility from the probe's distance moments toward the receiver.
 
-		const toReceiver = biased.sub( probePosition );
-		const distance = toReceiver.length().max( 1e-6 );
+		const toReceiver = biased.sub( probePosition ).toConst();
+		const distance = toReceiver.length().max( 1e-6 ).toConst();
 		const direction = toReceiver.div( distance );
 
 		const ix = int( cell.x ).toVar(), iy = int( cell.y ).toVar(), iz = int( cell.z ).toVar();
 		const probeIndex = ix.add( iz.mul( nx ) ).add( iy.mul( nx ).mul( nz ) ).toVar();
-		const momentsUV = octTileUV( probeIndex, direction, DISTANCE_RESOLUTION, momentsSize );
-		const visibility = chebyshevVisibility( moments.sample( momentsUV ).xy, distance.div( distanceScale ) );
+		const momentsUV = octTileUV( probeIndex, direction, visibilityGridSize, momentsSize );
+		const probeMoments = moments.sample( momentsUV ).xy.toVar();
 
-		// Soft backface weight: probes behind the surface count less.
+		// Inactive probes are excluded before accumulating any weights.
 
-		const toProbe = probePosition.sub( positionWorld );
-		const wrap = normalWorld.dot( toProbe.div( toProbe.length().max( 1e-6 ) ) ).mul( 0.5 ).add( 0.5 ).pow( 2.0 ).add( 0.2 );
+		If( probeMoments.x.greaterThanEqual( 0.0 ), () => {
 
-		const blend = offset.mul( alpha ).add( offset.oneMinus().mul( alpha.oneMinus() ) );
-		const weight = blend.x.mul( blend.y ).mul( blend.z ).mul( wrap ).mul( visibility ).toVar();
+			const weight = probeInterpolationWeight( probeMoments, distance.div( distanceScale ), normalWorld, probePosition.sub( positionWorld ), offset, alpha ).toConst();
 
-		const tile = vec2( float( probeIndex.mod( DISTANCE_COLUMNS ) ), float( probeIndex.div( DISTANCE_COLUMNS ) ) );
-		const irradianceUV = tile.mul( IRRADIANCE_TILE ).add( normalOct ).div( irradianceSize );
+			const tile = vec2( float( probeIndex.mod( DISTANCE_COLUMNS ) ), float( probeIndex.div( DISTANCE_COLUMNS ) ) );
+			const irradianceUV = tile.mul( IRRADIANCE_TILE ).add( normalOct ).div( irradianceSize );
 
-		total.addAssign( sampleIrradiance( irradianceUV ).rgb.mul( weight ) );
-		weights.addAssign( weight );
+			total.addAssign( irradianceAtlas.sample( irradianceUV ).rgb.mul( weight ) );
+			weights.addAssign( weight );
+
+		} );
 
 	} );
 
-	// Fade to black when no probe sees the receiver.
+	// Normalize only the active probes. With no active neighbors, return black.
 
-	return total.div( weights.max( 1e-6 ) );
+	const result = vec3( 0.0 ).toVar();
 
-}
+	If( weights.greaterThan( 0.0 ), () => {
 
-/**
- * Evaluates the irradiance of a light probe grid at the given world-space position and normal.
- *
- * @private
- * @param {LightProbeGrid} light - The light probe grid.
- * @param {Node<vec3>} min - The minimum of the grid bounds.
- * @param {Node<vec3>} max - The maximum of the grid bounds.
- * @param {Node<vec3>} res - The probe resolution.
- * @param {Node<float>} intensity - The intensity.
- * @param {Node<float>} falloff - The falloff distance.
- * @param {Node<vec3>} position - The world-space position.
- * @param {Node<vec3>} normal - The world-space normal.
- * @return {Node<vec3>} The irradiance.
- */
-function getGridIrradiance( light, min, max, res, intensity, falloff, position, normal ) {
+		result.assign( total.div( weights ) );
 
-	const range = max.sub( min );
-	const resMinusOne = res.sub( 1.0 );
-	const spacing = range.div( resMinusOne );
+	} );
 
-	// Offset along the normal by half a probe spacing, then remap to texel centers.
-
-	const samplePos = position.add( normal.mul( spacing ).mul( 0.5 ) );
-	const uvw = samplePos.sub( min ).div( range ).clamp( 0.0, 1.0 ).mul( resMinusOne ).div( res ).add( vec3( 0.5 ).div( res ) );
-
-	let irradiance = getShIrradianceAt( normal, sampleGridSH( texture3D( light.texture ), uvw, res.z ) ).max( vec3( 0.0 ) ).mul( intensity );
-
-	// Optional smooth boundary for blending grids; falloff 0 applies everywhere.
-
-	if ( light.falloff > 0 ) {
-
-		const outside = min.sub( position ).max( 0.0 ).add( position.sub( max ).max( 0.0 ) );
-		const weight = outside.length().smoothstep( 0.0, falloff ).oneMinus();
-
-		irradiance = irradiance.mul( weight );
-
-	}
-
-	return irradiance;
+	return result;
 
 }
 
-/**
- * Returns the irradiance of a baked {@link LightProbeGrid} at the given world-space
- * position and normal. Use this to evaluate the grid outside of the lighting context,
- * e.g. when baking light maps with {@link LightMapper}.
- *
- * @param {LightProbeGrid} light - The baked light probe grid.
- * @param {Node<vec3>} position - The world-space position.
- * @param {Node<vec3>} normal - The world-space normal.
- * @return {Node<vec3>} The irradiance.
- */
-export function lightProbeGridIrradiance( light, position, normal ) {
 
-	const box = light.boundingBox;
+const gridInfluence = /*@__PURE__*/ Fn( ( [ position, probeMin, probeMax, influenceMin, influenceMax, hasInfluenceBox, falloff, intensity ] ) => {
 
-	return getGridIrradiance( light, uniform( box.min ), uniform( box.max ), uniform( light.resolution ), uniform( light.intensity ), uniform( light.falloff ), position, normal );
+	const inside = position.greaterThanEqual( influenceMin ).all().and( position.lessThanEqual( influenceMax ).all() );
+	const outside = probeMin.sub( position ).max( 0.0 ).add( position.sub( probeMax ).max( 0.0 ) ).toConst();
+	const fade = select( falloff.greaterThan( 0.0 ), outside.length().smoothstep( 0.0, falloff.max( 1e-6 ) ).oneMinus(), 1.0 );
+	const influence = select( hasInfluenceBox.equal( 1 ), select( inside, 1.0, 0.0 ), fade );
 
-}
+	return select( intensity.greaterThan( 0.0 ), influence, 0.0 );
+
+} ).setLayout( {
+	name: 'lightProbeGridInfluence',
+	type: 'float',
+	inputs: [
+		{ name: 'position', type: 'vec3' },
+		{ name: 'probeMin', type: 'vec3' },
+		{ name: 'probeMax', type: 'vec3' },
+		{ name: 'influenceMin', type: 'vec3' },
+		{ name: 'influenceMax', type: 'vec3' },
+		{ name: 'hasInfluenceBox', type: 'int' },
+		{ name: 'falloff', type: 'float' },
+		{ name: 'intensity', type: 'float' }
+	]
+} );
 
 /**
  * The light node that applies a {@link LightProbeGrid} to the scene. It samples
@@ -340,15 +328,16 @@ class LightProbeGridNode extends AnalyticLightNode {
 
 		this._min = uniform( new Vector3() ).setGroup( renderGroup );
 		this._max = uniform( new Vector3() ).setGroup( renderGroup );
+		this._influenceMin = uniform( new Vector3() ).setGroup( renderGroup );
+		this._influenceMax = uniform( new Vector3() ).setGroup( renderGroup );
+		this._hasInfluenceBox = uniform( 0, 'int' ).setGroup( renderGroup );
 		this._resolution = uniform( new Vector3() ).setGroup( renderGroup );
 		this._intensity = uniform( 1 ).setGroup( renderGroup );
 		this._falloff = uniform( 0 ).setGroup( renderGroup );
 		this._distanceScale = uniform( 1 ).setGroup( renderGroup );
 		this._normalBias = uniform( 0 ).setGroup( renderGroup );
 		this._viewBias = uniform( 0 ).setGroup( renderGroup );
-		this._visibility = uniform( 0, 'int' ).setGroup( renderGroup );
 
-		// A bake renders the grid's captures in the same frame as the main view.
 		this.updateType = NodeUpdateType.RENDER;
 
 	}
@@ -359,13 +348,35 @@ class LightProbeGridNode extends AnalyticLightNode {
 
 		this._min.value.copy( light.boundingBox.min );
 		this._max.value.copy( light.boundingBox.max );
+		this._influenceMin.value.copy( ( light.influenceBox || light.boundingBox ).min );
+		this._influenceMax.value.copy( ( light.influenceBox || light.boundingBox ).max );
+		this._hasInfluenceBox.value = light.influenceBox !== null ? 1 : 0;
 		this._resolution.value.copy( light.resolution );
 		this._intensity.value = light.intensity;
 		this._falloff.value = light.falloff;
 		this._distanceScale.value = light._distanceScale;
 		this._normalBias.value = light.normalBias;
 		this._viewBias.value = light.viewBias;
-		this._visibility.value = light.visibility ? 1 : 0;
+
+	}
+
+
+	/**
+	 * Returns spatial influence without intensity, for blending overlapping grids.
+	 *
+	 * @private
+	 */
+	getInfluenceWeight( builder ) {
+
+		const nodeData = builder.getDataFromNode( this );
+
+		if ( nodeData.influenceWeight === undefined ) {
+
+			nodeData.influenceWeight = gridInfluence( positionWorld, this._min, this._max, this._influenceMin, this._influenceMax, this._hasInfluenceBox, this._falloff, this._intensity ).toVar();
+
+		}
+
+		return nodeData.influenceWeight;
 
 	}
 
@@ -385,50 +396,29 @@ class LightProbeGridNode extends AnalyticLightNode {
 		const resMinusOne = res.sub( 1.0 );
 		const spacing = range.div( resMinusOne );
 
-		// Initialize atlases before creating texture bindings.
+		const lightsData = builder.getDataFromNode( builder.lightsNode );
 
-		builder.renderer.initRenderTarget( light._renderTarget );
+		if ( lightsData.probeGridInfluenceSum === undefined ) {
 
-		// Select visibility with a uniform to reuse the material.
+			let totalInfluence = float( 0.0 );
 
-		builder.renderer.initRenderTarget( light._distanceTarget );
+			for ( const node of builder.lightsNode.getLightNodes( builder ) ) {
 
-		const distanceTarget = light._distanceTarget;
-		const grid = {
-			min,
-			res,
-			spacing,
-			moments: texture( distanceTarget.texture ),
-			distanceScale: this._distanceScale,
-			normalBias: this._normalBias,
-			viewBias: this._viewBias,
-			momentsSize: vec2( distanceTarget.width, distanceTarget.height ),
-			irradianceSize: vec2( light._irradianceTarget.width, light._irradianceTarget.height )
-		};
+				if ( node.light && node.light.isLightProbeGrid && node.light.texture !== null ) {
 
-		// Without visibility: offset along the normal by half a probe spacing, then
-		// remap to texel centers for hardware trilinear filtering.
+					totalInfluence = totalInfluence.add( node.getInfluenceWeight( builder ) );
 
-		const samplePos = positionWorld.add( normalWorld.mul( spacing ).mul( 0.5 ) );
-		const uvw = samplePos.sub( min ).div( range ).clamp( 0.0, 1.0 ).mul( resMinusOne ).div( res ).add( vec3( 0.5 ).div( res ) );
+				}
 
-		const atlas = texture3D( light.texture );
-		builder.renderer.initRenderTarget( light._irradianceTarget );
-		const irradianceAtlas = texture( light._irradianceTarget.texture );
-		const sampleIrradiance = ( uv ) => irradianceAtlas.sample( uv );
+			}
 
-		// Optional smooth boundary for blending grids; falloff 0 applies everywhere.
+			// Share the normalization across grids, preserving outer boundary fades.
 
-		let weight = this._intensity;
-
-		if ( light.falloff > 0 ) {
-
-			const outside = min.sub( positionWorld ).max( 0.0 ).add( positionWorld.sub( max ).max( 0.0 ) );
-			weight = weight.mul( outside.length().smoothstep( 0.0, this._falloff ).oneMinus() );
+			lightsData.probeGridInfluenceSum = totalInfluence.max( 1.0 ).toVar();
 
 		}
 
-		weight = weight.toVar();
+		const weight = this._intensity.mul( this.getInfluenceWeight( builder ) ).div( lightsData.probeGridInfluenceSum ).toVar();
 
 		// Skip lookups when the grid contributes nothing.
 
@@ -436,15 +426,39 @@ class LightProbeGridNode extends AnalyticLightNode {
 
 		If( weight.greaterThan( 0.0 ), () => {
 
-			If( this._visibility.equal( 1 ), () => {
+			if ( light.visibility ) {
 
-				result.assign( evaluateGridIrradianceVisibility( grid, sampleIrradiance ) );
+				const distanceTarget = light._distanceTarget;
+				const irradianceTarget = light._irradianceTarget;
+				builder.renderer.initRenderTarget( distanceTarget );
+				builder.renderer.initRenderTarget( irradianceTarget );
 
-			} ).Else( () => {
+				const grid = {
+					min,
+					res,
+					spacing,
+					moments: texture( distanceTarget.texture ),
+					visibilityGridSize: light.visibilityGridSize,
+					distanceScale: this._distanceScale,
+					normalBias: this._normalBias,
+					viewBias: this._viewBias,
+					momentsSize: vec2( distanceTarget.width, distanceTarget.height ),
+					irradianceSize: vec2( irradianceTarget.width, irradianceTarget.height )
+				};
 
-				result.assign( getShIrradianceAt( normalWorld, sampleGridSH( atlas, uvw, res.z ) ).max( vec3( 0.0 ) ) );
+				result.assign( evaluateGridIrradianceVisibility( grid, texture( irradianceTarget.texture ) ) );
 
-			} );
+			} else {
+
+				// Offset along the normal by half a probe spacing, then remap to texel centers.
+
+				const samplePos = positionWorld.add( normalWorld.mul( spacing ).mul( 0.5 ) );
+				const uvw = samplePos.sub( min ).div( range ).clamp( 0.0, 1.0 ).mul( resMinusOne ).div( res ).add( vec3( 0.5 ).div( res ) );
+
+				builder.renderer.initRenderTarget( light._renderTarget );
+				result.assign( getShIrradianceAt( normalWorld, sampleGridSH( texture3D( light.texture ), uvw, res.z ) ).max( vec3( 0.0 ) ) );
+
+			}
 
 		} );
 

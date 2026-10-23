@@ -9,7 +9,6 @@ import {
 	HalfFloatType,
 	Light,
 	LinearFilter,
-	MathUtils,
 	MeshBasicNodeMaterial,
 	NearestFilter,
 	NodeMaterial,
@@ -23,9 +22,9 @@ import {
 	Vector4
 } from 'three/webgpu';
 
-import { array, atan, Discard, float, Fn, frontFacing, getShIrradianceAt, int, ivec2, ivec3, Loop, perspectiveDepthToViewZ, screenCoordinate, select, texture, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { array, atan, Discard, float, Fn, frontFacing, If, instanceIndex, getShIrradianceAt, int, ivec2, ivec3, Loop, perspectiveDepthToViewZ, screenCoordinate, select, texture, texture3D, textureStore, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
-import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, packGridSH, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
+import { LightProbeGridNode, ATLAS_PADDING, DISTANCE_COLUMNS, DISTANCE_RESOLUTION, HIDDEN_DISTANCE, IRRADIANCE_RESOLUTION, IRRADIANCE_TILE, octDecode, octTileTexel, unpackGridSH } from '../tsl/lighting/LightProbeGridNode.js';
 import { replaceSunLights, restoreSunLights } from './LightProbeGridUtils.js';
 
 // Probes captured per render, six sub-cameras each.
@@ -77,9 +76,6 @@ let _clearanceUniform = null;
 let _distanceScaleUniform = null;
 let _distanceMaterial = null;
 let _fractionMaterial = null;
-let _resolutionUniform = null;
-let _sliceZUniform = null;
-let _repackMaterials = null;
 
 // Bake render targets, pooled by size so rebakes don't churn allocations.
 let _faceTarget = null;
@@ -166,39 +162,97 @@ function projectSHNode( faces, size, batchStart ) {
 }
 
 /**
- * Returns the repack output node for one of the seven SH textures. It sums the
- * per-face projections of the 9 coefficients from the batch texture for the
- * probe at the current texel and packs the four floats stored by this texture
- * index.
+ * Packs nine RGB coefficients into one of the seven atlas texels.
  *
  * @private
- * @param {Node} batch - The batch texture node holding projected coefficients.
- * @param {number} textureIndex - The output texture index (0–6).
- * @param {Node<vec3>} resolution - The probe grid resolution uniform.
- * @param {Node<int>} sliceZ - The current Z slice being written.
+ * @param {Array<Node>} coefficients - The nine SH coefficients.
+ * @param {number} textureIndex - The packed texel index.
  * @return {Node<vec4>} The packed texel.
  */
-function repackNode( batch, textureIndex, resolution, sliceZ ) {
+function packSH( coefficients, textureIndex ) {
+
+	const [ c0, c1, c2, c3, c4, c5, c6, c7, c8 ] = coefficients;
+
+	let packed;
+
+	switch ( textureIndex ) {
+
+		case 0: packed = vec4( c0.xyz, c1.x ); break;
+		case 1: packed = vec4( c1.yz, c2.xy ); break;
+		case 2: packed = vec4( c2.z, c3.xyz ); break;
+		case 3: packed = vec4( c4.xyz, c5.x ); break;
+		case 4: packed = vec4( c5.yz, c6.xy ); break;
+		case 5: packed = vec4( c6.z, c7.xyz ); break;
+		default: packed = vec4( c8.xyz, 0.0 ); break;
+
+	}
+
+	return packed;
+
+}
+
+/**
+ * Packs all seven coefficient groups and their boundary padding in one dispatch.
+ * Each invocation reduces one probe, sharing its nine coefficients across stores.
+ *
+ * @private
+ * @param {Node} batch - The projected face blocks.
+ * @param {Texture} atlas - The destination 3D atlas.
+ * @param {Vector3} resolution - The probe grid resolution.
+ * @param {Node<int>} start - The first probe index to write.
+ * @return {Node} The compute shader body.
+ */
+function repackComputeNode( batch, atlas, resolution, start ) {
+
+	const { x: nx, z: nz } = resolution;
+	const paddedSlices = nz + 2 * ATLAS_PADDING;
 
 	return Fn( () => {
 
-		const ix = int( screenCoordinate.x );
-		const iy = int( screenCoordinate.y );
+		const probeIndex = int( instanceIndex ).add( start ).toVar();
+		const ix = probeIndex.mod( nx ).toVar();
+		const iz = probeIndex.div( nx ).mod( nz ).toVar();
+		const iy = probeIndex.div( nx * nz ).toVar();
+		const coefficients = [];
 
-		// Batch rows follow the bake order (X, then Z, then Y).
-		const nx = int( resolution.x );
-		const nz = int( resolution.z );
-		const probeIndex = ix.add( sliceZ.mul( nx ) ).add( iy.mul( nx ).mul( nz ) ).toVar();
+		for ( let c = 0; c < 9; c ++ ) {
 
-		const coefficient = ( c ) => {
+			coefficients.push( batch.load( ivec2( c * 6 * FACE_BLOCKS, probeIndex ) ).rgb.toVar() );
 
-			let sum = batch.load( ivec2( c * 6 * FACE_BLOCKS, probeIndex ) );
-			for ( let k = 1; k < 6 * FACE_BLOCKS; k ++ ) sum = sum.add( batch.load( ivec2( c * 6 * FACE_BLOCKS + k, probeIndex ) ) );
-			return sum;
+		}
 
-		};
+		// Keep the raster path's summation order before rounding to half float.
 
-		return packGridSH( coefficient, textureIndex );
+		Loop( { start: 1, end: 6 * FACE_BLOCKS, type: 'int' }, ( { i } ) => {
+
+			for ( let c = 0; c < 9; c ++ ) {
+
+				coefficients[ c ].addAssign( batch.load( ivec2( i.add( c * 6 * FACE_BLOCKS ), probeIndex ) ).rgb );
+
+			}
+
+		} );
+
+		for ( let t = 0; t < 7; t ++ ) {
+
+			const base = t * paddedSlices;
+			const packed = packSH( coefficients, t ).toVar();
+
+			textureStore( atlas, ivec3( ix, iy, iz.add( base + ATLAS_PADDING ) ), packed );
+
+			If( iz.equal( 0 ), () => {
+
+				textureStore( atlas, ivec3( ix, iy, base ), packed );
+
+			} );
+
+			If( iz.equal( nz - 1 ), () => {
+
+				textureStore( atlas, ivec3( ix, iy, base + ATLAS_PADDING + nz ), packed );
+
+			} );
+
+		}
 
 	} )();
 
@@ -520,7 +574,7 @@ function ensureBakeTargets( cubemapSize, totalProbes, visibility ) {
 /**
  * Lazily builds the shared bake materials and rebinds them to the current
  * face/batch textures. The SH projection material is rebuilt only when the
- * face size changes; the repack materials are static.
+ * face size changes.
  *
  * @private
  * @param {number} cubemapSize - Resolution of each cubemap face.
@@ -531,7 +585,7 @@ function ensureBakeTargets( cubemapSize, totalProbes, visibility ) {
  */
 function ensureBakeMaterials( cubemapSize, faceMap, batchMap, visibilityGridSize, visibility ) {
 
-	if ( _repackMaterials === null ) {
+	if ( _faceNode === null ) {
 
 		_faceNode = texture( faceMap );
 		_batchNode = texture( batchMap );
@@ -541,19 +595,6 @@ function ensureBakeMaterials( cubemapSize, faceMap, batchMap, visibilityGridSize
 		_farUniform = uniform( 100 );
 		_clearanceUniform = uniform( 0 );
 		_distanceScaleUniform = uniform( 1 );
-		_resolutionUniform = uniform( new Vector3() );
-		_sliceZUniform = uniform( 0, 'int' );
-		_repackMaterials = [];
-
-		for ( let t = 0; t < 7; t ++ ) {
-
-			const material = new NodeMaterial();
-			material.outputNode = repackNode( _batchNode, t, _resolutionUniform, _sliceZUniform );
-			material.depthTest = false;
-			material.depthWrite = false;
-			_repackMaterials.push( material );
-
-		}
 
 	} else {
 
@@ -799,6 +840,8 @@ class LightProbeGrid extends Light {
 		 * @default null
 		 */
 		this._renderTarget = null;
+		this._repackCompute = null;
+		this._repackStart = null;
 
 		// Indirect captures read a snapshot while the live atlas is updated in place.
 		this._bounceGrid = null;
@@ -901,6 +944,12 @@ class LightProbeGrid extends Light {
 
 		}
 
+		if ( renderer.backend.isWebGPUBackend !== true ) {
+
+			throw new Error( 'THREE.LightProbeGrid: .bake() requires a WebGPU backend. For WebGLRenderer, use LightProbeGridWebGL.' );
+
+		}
+
 		const res = this.resolution;
 		const totalProbes = res.x * res.y * res.z;
 		const {
@@ -953,7 +1002,6 @@ class LightProbeGrid extends Light {
 		_clearanceUniform.value = near * CLEARANCE_NEAR_PLANES;
 		_farUniform.value = far;
 		_distanceScaleUniform.value = this._distanceScale;
-		_resolutionUniform.value.copy( res );
 
 		// Save renderer / scene state to restore after the bake.
 
@@ -1235,66 +1283,19 @@ class LightProbeGrid extends Light {
 	 */
 	_repackProbes( renderer, start, end ) {
 
-		const { x: nx, y: ny, z: nz } = this.resolution;
-		const probesPerLayer = nx * nz;
-		const startY = Math.floor( start / probesPerLayer );
-		const endY = Math.floor( end / probesPerLayer );
-		const paddedSlices = nz + 2 * ATLAS_PADDING;
-		const renderTarget = this._renderTarget;
+		if ( start === end ) return;
 
-		// Map the horizontal bake range to contiguous rows in each Z slice.
-		for ( let iz = 0; iz < nz; iz ++ ) {
+		if ( this._repackCompute === null ) {
 
-			const sliceStart = startY * nx + MathUtils.clamp( start % probesPerLayer - iz * nx, 0, nx );
-			const sliceEnd = endY * nx + MathUtils.clamp( end % probesPerLayer - iz * nx, 0, nx );
-
-			for ( let probeIndex = sliceStart; probeIndex < sliceEnd; ) {
-
-				const ix = probeIndex % nx;
-				const iy = Math.floor( probeIndex / nx );
-
-				// Coalesce complete rows within a slice into one rectangle.
-				const width = Math.min( nx - ix, sliceEnd - probeIndex );
-				let height = 1;
-
-				if ( width === nx ) {
-
-					height = Math.min( ny - iy, Math.floor( ( sliceEnd - probeIndex ) / nx ) );
-
-				}
-
-				renderTarget.viewport.set( ix, iy, width, height );
-				_sliceZUniform.value = iz;
-
-				for ( let t = 0; t < 7; t ++ ) {
-
-					_quad.material = _repackMaterials[ t ];
-					const base = t * paddedSlices;
-
-					renderer.setRenderTarget( renderTarget, base + ATLAS_PADDING + iz );
-					_quad.render( renderer );
-
-					if ( iz === 0 ) {
-
-						renderer.setRenderTarget( renderTarget, base );
-						_quad.render( renderer );
-
-					}
-
-					if ( iz === nz - 1 ) {
-
-						renderer.setRenderTarget( renderTarget, base + ATLAS_PADDING + nz );
-						_quad.render( renderer );
-
-					}
-
-				}
-
-				probeIndex += width * height;
-
-			}
+			this._repackStart = uniform( 0, 'int' );
+			this._repackCompute = repackComputeNode( _batchNode, this.texture, this.resolution, this._repackStart ).compute( end - start ).setName( 'LightProbeGrid Repack' );
 
 		}
+
+		this._repackStart.value = start;
+		this._repackCompute.count = end - start;
+		renderer.initRenderTarget( this._renderTarget );
+		renderer.compute( this._repackCompute );
 
 	}
 
@@ -1357,6 +1358,9 @@ class LightProbeGrid extends Light {
 			depthBuffer: false
 		} );
 
+		// Repacking writes the same half-float 3D atlas used by lighting.
+		this._renderTarget.texture.isStorageTexture = true;
+		this._renderTarget.texture.is3DTexture = true;
 		this.texture = this._renderTarget.texture;
 
 		if ( this.visibility === false ) return;
@@ -1393,6 +1397,14 @@ class LightProbeGrid extends Light {
 	 * Frees GPU resources.
 	 */
 	dispose() {
+
+		if ( this._repackCompute !== null ) {
+
+			this._repackCompute.dispose();
+			this._repackCompute = null;
+			this._repackStart = null;
+
+		}
 
 		if ( this._bounceGrid !== null ) {
 

@@ -205,15 +205,21 @@ const probeInterpolationWeight = /*@__PURE__*/ Fn( ( [ moments, distance, normal
  * @see {@link https://github.com/NVIDIAGameWorks/RTXGI-DDGI/blob/main/rtxgi-sdk/shaders/ddgi/Irradiance.hlsl}
  * @see {@link https://diglib.eg.org/items/1059265a-b11c-41ce-b1f0-4953c34a5105}
  */
-function evaluateGridIrradianceVisibility( grid, irradianceAtlas, position = positionWorld, normal = normalWorld ) {
+function evaluateGridIrradianceVisibility( grid, irradianceAtlas, position = positionWorld, normal = normalWorld, withCoverage = false ) {
 
 	const { min, res, spacing, moments, distanceScale, normalBias, viewBias, momentsSize, irradianceSize, visibilityGridSize } = grid;
 
 	const nx = int( res.x ), nz = int( res.z );
 
 	const clearance = spacing.x.min( spacing.y ).min( spacing.z );
-	const viewDirection = cameraPosition.sub( position ).normalize();
-	const biased = position.add( normal.mul( clearance.mul( normalBias ) ) ).add( viewDirection.mul( clearance.mul( viewBias ) ) ).toVar();
+	const biased = position.add( normal.mul( clearance.mul( normalBias ) ) ).toVar();
+	// World-space providers disable view bias, including its camera dependency.
+	if ( ! ( viewBias.isConstNode && viewBias.value === 0 ) ) {
+
+		const viewDirection = cameraPosition.sub( position ).normalize();
+		biased.addAssign( viewDirection.mul( clearance.mul( viewBias ) ) );
+
+	}
 
 	const gridPosition = biased.sub( min ).div( spacing ).clamp( vec3( 0.0 ), res.sub( 1.0 ) ).toVar();
 	const base = gridPosition.floor().min( res.sub( 2.0 ) ).max( 0.0 ).toVar();
@@ -304,7 +310,7 @@ function evaluateGridIrradianceVisibility( grid, irradianceAtlas, position = pos
 
 	} );
 
-	return result;
+	return withCoverage ? vec4( result, weights.greaterThan( 0.0 ).select( 1, 0 ) ) : result;
 
 }
 
@@ -339,7 +345,7 @@ const gridInfluence = /*@__PURE__*/ Fn( ( [ position, probeMin, probeMax, influe
  *
  * @private
  */
-function getGridIrradiance( light, grid, position, normal, builder ) {
+function getGridIrradiance( light, grid, position, normal, builder, withCoverage = false ) {
 
 	const { min, max, res } = grid;
 	const range = max.sub( min );
@@ -361,7 +367,7 @@ function getGridIrradiance( light, grid, position, normal, builder ) {
 			visibilityInterpolation: light.visibilityInterpolation,
 			momentsSize: vec2( distanceTarget.width, distanceTarget.height ),
 			irradianceSize: vec2( irradianceTarget.width, irradianceTarget.height )
-		}, texture( irradianceTarget.texture ), position, normal );
+		}, texture( irradianceTarget.texture ), position, normal, withCoverage );
 
 	}
 
@@ -372,7 +378,8 @@ function getGridIrradiance( light, grid, position, normal, builder ) {
 
 	builder.renderer.initRenderTarget( light._renderTarget );
 
-	return getShIrradianceAt( normal, sampleGridSH( texture3D( light.texture ), uvw, res.z ) ).max( vec3( 0.0 ) );
+	const irradiance = getShIrradianceAt( normal, sampleGridSH( texture3D( light.texture ), uvw, res.z ) ).max( vec3( 0.0 ) );
+	return withCoverage ? vec4( irradiance, 1 ) : irradiance;
 
 }
 
@@ -408,6 +415,48 @@ export function lightProbeGridIrradiance( light, position, normal ) {
 		const irradiance = getGridIrradiance( light, grid, position, normal, builder ).mul( uniform( light.intensity ) ).mul( weight );
 
 		return irradiance;
+
+	} )();
+
+}
+
+/**
+ * Creates a diffuse provider with spatial coverage independent of intensity.
+ * Inactive visibility probes yield no coverage; valid black probes remain covered.
+ * The sample is camera-independent, so the same provider works in LightMapper.
+ *
+ * @param {LightProbeGrid} light - The baked grid.
+ * @return {Function} An indirect diffuse provider.
+ */
+export function lightProbeGridDiffuse( light ) {
+
+	return ( { position, normal } ) => Fn( ( inputs, builder ) => {
+
+		if ( light.texture === null ) return vec4( 0 );
+
+		const box = light.boundingBox;
+		const influence = light.influenceBox || box;
+		const min = uniform( box.min ), max = uniform( box.max );
+		const grid = {
+			min, max,
+			res: uniform( light.resolution ),
+			distanceScale: uniform( light._distanceScale ),
+			normalBias: uniform( light.normalBias ),
+			viewBias: float( 0 )
+		};
+		const enabled = uniform( 1 ).onRenderUpdate( () => light.visible ? 1 : 0 );
+		const intensity = uniform( light.intensity ).onRenderUpdate( () => light.intensity );
+		const coverage = gridInfluence( position, min, max, uniform( influence.min ), uniform( influence.max ), uniform( light.influenceBox !== null ? 1 : 0, 'int' ), uniform( light.falloff ), float( 1 ) ).mul( enabled ).toConst();
+		const result = vec4( 0 ).toVar();
+
+		If( coverage.greaterThan( 0 ), () => {
+
+			const sample = getGridIrradiance( light, grid, position, normal, builder, true ).toConst();
+			result.assign( vec4( sample.rgb.mul( intensity ), coverage.mul( sample.a ) ) );
+
+		} );
+
+		return result;
 
 	} )();
 
@@ -494,6 +543,9 @@ class LightProbeGridNode extends AnalyticLightNode {
 	setup( builder ) {
 
 		const light = this.light;
+
+		// An explicit chain owns diffuse probe selection and blending.
+		if ( builder.context.indirectDiffuseNode ) return;
 
 		// No baked data yet: contribute nothing.
 

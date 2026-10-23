@@ -1,5 +1,5 @@
 import { RenderTarget, Vector2, Vector3, Node, QuadMesh, NodeMaterial, RendererUtils, HalfFloatType, RGBAFormat, RedFormat, UnsignedByteType } from 'three/webgpu';
-import { Fn, NodeUpdateType, uniform, reference, vec2, vec4, float, uv, mix, passTexture, getViewPosition, getNormalFromDepth, logarithmicDepthToViewZ, viewZToPerspectiveDepth, screenCoordinate, interleavedGradientNoise, normalize, floor, exp2, pow, PI, Loop, If, Break, property, outputStruct, context } from 'three/tsl';
+import { Fn, NodeUpdateType, uniform, reference, vec2, vec4, float, uv, mix, passTexture, getViewPosition, getNormalFromDepth, logarithmicDepthToViewZ, viewZToPerspectiveDepth, screenCoordinate, screenUV, interleavedGradientNoise, normalize, floor, exp2, pow, PI, Loop, If, Break, property, outputStruct, context } from 'three/tsl';
 
 import { VXGIVolume } from './VXGIVolume.js';
 import { createConeTracer, gather, intersectVolume, sampleDirectional } from './VXGIConeTracer.js';
@@ -338,6 +338,26 @@ class VXGINode extends Node {
 	}
 
 	/**
+	 * Returns an indirect diffuse provider for the camera used by this pass.
+	 * RGB is unweighted irradiance; alpha is spatial confidence. Escaping cones
+	 * already include the volume's environment, with directional visibility. Use vxgiDiffuse( volume ) for
+	 * arbitrary world-space queries such as light-map or probe baking.
+	 *
+	 * @param {Node<vec2>} [uvNode=screenUV] - The screen coordinates.
+	 * @return {Function} A diffuse provider for this camera.
+	 */
+	getDiffuseProvider( uvNode = screenUV ) {
+
+		return () => Fn( () => {
+
+			const sample = this._giNode.sample( uvNode ).toConst();
+			return sample;
+
+		} )();
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
@@ -497,7 +517,7 @@ class VXGINode extends Node {
 			const aoDistance = this.aoDistance;
 			const origin = worldPosition.add( worldNormal.mul( voxelSize.mul( this.normalOffset ) ) ).toConst();
 
-			const { color: radiance, ao: occlusion } = gather( trace, origin, worldNormal, CONE_COUNT, tanHalfAngle, traceDistance, rotationNoise, elevationNoise, aoDistance );
+			const { color: radiance, ao: occlusion } = gather( trace, origin, worldNormal, CONE_COUNT, tanHalfAngle, traceDistance, rotationNoise, elevationNoise, aoDistance, direction => volume.getEnvironmentRadiance( direction, tanHalfAngle ) );
 
 			// the mean radiance over the cosine-weighted hemisphere times PI is the irradiance
 
@@ -586,7 +606,7 @@ class VXGINode extends Node {
 			} );
 
 			aoField.assign( ao );
-			giField.assign( vec4( color, 1 ) );
+			giField.assign( vec4( color, volume.getCoverage( worldPosition ) ) );
 
 			return vec4( 0 );
 

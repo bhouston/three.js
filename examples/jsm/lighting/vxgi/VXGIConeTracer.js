@@ -205,9 +205,10 @@ export function createConeTracer( volume, options = {} ) {
  * @param {Node<float>|number} rotation - Rotation of the cones around the normal in `[0, 1)`.
  * @param {Node<float>|number} elevation - Offset of the cones within their elevation strata in `[0, 1)`.
  * @param {?Node<float>} [aoDistance=null] - The AO falloff distance. AO is only computed if given.
- * @return {{color: Node<vec3>, ao: Node<float>}} The mean radiance and the mean AO of the cones.
+ * @param {?Function} [environment=null] - Raw distant radiance `( direction ) => vec3`, gathered with each cone's remaining transmittance.
+ * @return {{color: Node<vec3>, ao: Node<float>, coverage: Node<float>}} The mean premultiplied radiance, AO and hit coverage of the cones.
  */
-export function gather( trace, origin, normal, coneCount, tanHalfAngle, maxDistance, rotation, elevation, aoDistance = null ) {
+export function gather( trace, origin, normal, coneCount, tanHalfAngle, maxDistance, rotation, elevation, aoDistance = null, environment = null ) {
 
 	// tangent frame
 
@@ -217,6 +218,7 @@ export function gather( trace, origin, normal, coneCount, tanHalfAngle, maxDista
 
 	const color = vec3( 0 ).toVar();
 	const ao = float( 0 ).toVar();
+	const coverage = float( 0 ).toVar();
 
 	Loop( { start: 0, end: coneCount, type: 'uint', condition: '<', name: 'c' }, ( { c } ) => {
 
@@ -233,11 +235,13 @@ export function gather( trace, origin, normal, coneCount, tanHalfAngle, maxDista
 		const cone = trace( origin, direction, tanHalfAngle, maxDistance, aoDistance );
 
 		color.addAssign( cone.color );
+		if ( environment !== null ) color.addAssign( environment( direction ).mul( cone.alpha.oneMinus() ) );
+		coverage.addAssign( cone.alpha );
 
 		if ( aoDistance !== null ) ao.addAssign( cone.ao );
 
 	} );
 
-	return { color: color.div( float( coneCount ) ), ao: ao.div( float( coneCount ) ) };
+	return { color: color.div( float( coneCount ) ), ao: ao.div( float( coneCount ) ), coverage: coverage.div( float( coneCount ) ) };
 
 }

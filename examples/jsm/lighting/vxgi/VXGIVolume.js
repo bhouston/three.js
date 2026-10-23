@@ -3,6 +3,7 @@ import { Fn, If, Loop, uniform, uniformArray, storage, instanceIndex, textureSto
 
 import { collectSceneTriangles, computeSceneBounds, computeSolidVoxels, TRIANGLE_STRIDE } from './VXGISceneCollector.js';
 import { createConeTracer, gather } from './VXGIConeTracer.js';
+import { EnvironmentRadiance } from '../EnvironmentRadiance.js';
 
 const _box = /*@__PURE__*/ new Box3();
 const _size = /*@__PURE__*/ new Vector3();
@@ -52,7 +53,8 @@ class MipStorageTexture3DNode extends StorageTexture3DNode {
  * (a dense mip chain instead of a sparse octree, which keeps cone samples to two texture fetches):
  * opacity stores visibility per major axis and is filtered directionally (volumetric integration
  * along the axis, averaging across it), radiance is stored opacity-premultiplied and indirect bounces
- * are cached in the volume via cone tracing. Only direct lights are injected.
+ * are cached in the volume via cone tracing. Escaping cones gather scene.environment radiance,
+ * both at the shaded surface and during cached bounces. Environment nodes are not sampled.
  * Voxelization uses conservative rasterization along the dominant triangle axis in a compute shader.
  * The interiors of closed meshes are filled, so cones starting inside an object (e.g. near contact
  * points) are blocked.
@@ -341,6 +343,8 @@ class VXGIVolume {
 
 		this._exclude = new Set();
 
+		this._environment = new EnvironmentRadiance();
+
 	}
 
 	/**
@@ -378,6 +382,8 @@ class VXGIVolume {
 
 		}
 
+		if ( this._environment.update( renderer, scene ) ) this.lightingNeedsUpdate = true;
+
 		const lightKey = this._collectLights( renderer, scene );
 
 		if ( this.lightingNeedsUpdate === true || lightKey !== this._lightKey ) {
@@ -399,6 +405,35 @@ class VXGIVolume {
 	dispose() {
 
 		this._disposeGrid();
+		this._environment.dispose();
+
+	}
+
+	/**
+	 * Samples raw distant radiance for a world-space cone direction. Visibility is
+	 * applied per cone, before hemisphere integration, rather than as scalar AO.
+	 *
+	 * @param {Node<vec3>} direction - World-space direction.
+	 * @param {Node<float>} [tanHalfAngle=0] - Cone footprint used to filter distant radiance.
+	 * @return {Node<vec3>} Distant radiance.
+	 */
+	getEnvironmentRadiance( direction, tanHalfAngle = float( 0 ) ) {
+
+		return this._environment.sample( direction, tanHalfAngle.mul( this._environment.size ).max( 1 ).log2() );
+
+	}
+
+	/**
+	 * Spatial confidence of a world-space query. Empty cones are valid observations
+	 * of the distant environment, not missing provider data.
+	 *
+	 * @param {Node<vec3>} position - World-space position.
+	 * @return {Node<float>} One inside the volume, zero outside.
+	 */
+	getCoverage( position ) {
+
+		const uvw = position.sub( this.boundsMinNode ).div( this.volumeSizeNode );
+		return uvw.greaterThanEqual( vec3( 0 ) ).all().and( uvw.lessThanEqual( vec3( 1 ) ).all() ).select( 1, 0 );
 
 	}
 
@@ -1419,7 +1454,7 @@ class VXGIVolume {
 					const rotation = hash( instanceIndex ).toConst();
 					const origin = position.add( normal.mul( voxelSize.mul( 1.5 ) ) ).toConst();
 
-					const { color } = gather( trace, origin, normal, BOUNCE_CONE_COUNT, tanHalfAngle, traceDistance, rotation, 0.5 );
+					const { color } = gather( trace, origin, normal, BOUNCE_CONE_COUNT, tanHalfAngle, traceDistance, rotation, 0.5, null, direction => this.getEnvironmentRadiance( direction, tanHalfAngle ) );
 
 					const bounce = albedo.mul( color );
 

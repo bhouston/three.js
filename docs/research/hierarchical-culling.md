@@ -1,6 +1,6 @@
 # Hierarchical culling research
 
-For a large outdoor first person scene, start with a spatial hierarchy of chunks, hierarchical frustum tests, distance limits and spatially partitioned batching. Add occlusion where buildings or terrain actually hide substantial work. Share the hierarchy with streaming, but keep resource residency separate from visibility. This is a design study and reproducible CPU experiment, not a renderer API proposal or measured rendering optimization.
+For a large outdoor first person scene, start with a spatial hierarchy of chunks, hierarchical frustum tests, distance limits and spatially partitioned batching. Add occlusion where buildings or terrain actually hide substantial work. Share the hierarchy with streaming, but keep resource residency separate from visibility. This research note proposes a small application-level experiment before considering renderer changes.
 
 ## Current Three.js behavior
 
@@ -54,19 +54,27 @@ For WebGPU, a depth pyramid (Hi-Z/HZB), conservative projected bounds, GPU compa
 
 Unity offers both [baked occlusion data](https://docs.unity.com/en-us/engine/6000.3/manual/cameras/occlusion-culling/occlusion-culling) used at runtime and [GPU occlusion with GPU Resident Drawer in URP](https://docs.unity.com/en-us/engine/6000.3/manual/analysis/graphics-performance-profiling/in-urp/gpu-culling). The latter uses current and previous frame depth and retains objects tested visible in either frame. The baked and GPU systems have different constraints; neither should be summarized as simply an octree that rejects invisible objects.
 
-## Core integration and streaming
+## Integration scope
 
 An initial addon can query chunks and set group visibility before each render invocation, provided it owns those flags and restores them afterward. Player-camera visibility must not leak into reflection or shadow passes. Updating all flags or attaching all objects can reintroduce linear work; chunk-level selection is more useful. This approach does not automatically handle renderer-internal shadow views.
 
-A future opt-in core boundary should enumerate candidates per view/pass while preserving render-list construction semantics. The default enumerator remains scene traversal. An indexed provider owns bounds and updates and supplies a conservative candidate superset. Core must still preserve inherited visibility, layers, group renderOrder, LOD behavior, clipping groups, lights, material groups, callbacks, bundles, ArrayCamera behavior and unbounded objects. Shadows require their own candidates; main-camera rejection must not remove offscreen shadow casters. A hook after full scene traversal would be too late to solve the CPU problem. CPU and GPU providers may need different submission paths rather than one callback pretending they are interchangeable.
+A core candidate-enumeration hook is a question for a separate design discussion after profiling demonstrates a traversal bottleneck. It would need to preserve inherited visibility, layers, group renderOrder, LOD, clipping groups, lights, material groups, callbacks, bundles and ArrayCamera behavior. Shadows need their own candidates, including offscreen casters. Filtering after full traversal would not solve the CPU cost. CPU enumeration and GPU-driven submission may need different designs; this note does not propose a shared provider API.
+
+Keep the first implementation local to one example, using existing Box3, Frustum and rendering APIs. Avoid a public spatial-index abstraction, new Object3D fields, shared helper modules or dependencies on TSL/WebGPU from general addons. Document supported bounds and update ownership rather than adding defensive runtime throws. Keep correctness assertions in the external experiment; they verify candidate results, not input-validation behavior.
+
+For an eventual Three.js example, use small procedural assets, a default WebGPURenderer, Inspector controls and an `animate()` loop. Keep comments short and avoid test-only globals or backend-selection toggles. Treat WebGL2 occlusion queries as research context, not a proposal for a new EffectComposer pass family. A later node-based occlusion feature should be reviewed independently from the CPU hierarchy foundation.
+
+## Streaming
 
 Share chunk IDs, conservative bounds, HLOD metadata and dirty versions with streaming. Keep loaded, GPU-resident, render-candidate and occluded states separate. Prefetch in an expanded region using velocity and expected turns; retain nearby content behind the player and use hysteresis, request cancellation, concurrency limits and CPU/GPU byte budgets. Keep coarse parents until detailed children are resident. Shadows, probes, gameplay and physics can need resources outside the main frustum. Do not unload based on a transient occlusion result.
 
 [3D Tiles](https://github.com/CesiumGS/3d-tiles/blob/main/specification/README.adoc) is a useful reference for hierarchical refinement and screen-space error; [Unreal World Partition](https://dev.epicgames.com/documentation/unreal-engine/world-partition-in-unreal-engine) illustrates loading cells around streaming sources. For an FPS, share spatial metadata but let gameplay and streaming policies remain application-owned.
 
-## Reproducible experiment and next validation
+## External experiment
 
-Run `node utils/culling/experiment.js` from the repository root. It uses source modules, seeded static AABBs, a median-split BVH with eight-object leaves and inherited plane masks. It compares exact sorted candidate IDs with Three.js `Frustum.intersectsBox` for every view. The baseline deliberately uses the same AABBs rather than default renderer bounding spheres, isolating hierarchy effects. It is a synthetic operation-count experiment with no graphics context, not a renderer benchmark or visual demo.
+The [original experimental script](https://github.com/bhouston/three.js/blob/26ee982277a/utils/culling/experiment.js) remains available at its historical commit, and a standalone copy accompanies the task artifacts. To reproduce the original, place the script at `utils/culling/experiment.js` in a checkout of the reviewed commit and run `node utils/culling/experiment.js`. The standalone artifact accepts the checkout path: `node culling-experiment.mjs <three.js-checkout>`.
+
+The experiment uses source modules, seeded static AABBs, a median-split BVH with eight-object leaves and inherited plane masks. It compares exact candidate IDs with Three.js `Frustum.intersectsBox` across 206 views and checks fully contained, fully outside and plane-touching cases. The baseline uses the same AABBs rather than renderer bounding spheres. It counts operations without a graphics context. It is retained externally rather than introducing a maintained benchmark suite into Three.js.
 
 Observed counts for 32,768 objects:
 
@@ -78,4 +86,12 @@ Observed counts for 32,768 objects:
 
 These counts establish less plane-testing work for this distribution, not an equivalent speedup: containment tests do extra arithmetic, tree building allocates and sorts, and accepted leaves still require output processing. Static data means there is no refit cost here. The experiment implements neither temporal caching nor occlusion nor renderer integration.
 
-Next step: a visual chunk-selection example with identical flat and indexed outputs, dynamic refits, camera cuts, shadows and six-view captures. Record index maintenance, candidate construction, matrix updates, draw calls, triangles, memory and GPU cost separately. Include clustered, all-visible, sparse and moving scenes. For rendering throughput, verify a physical GPU adapter, disable vsync/frame caps, warm each implementation, run sequential multi-second trials, count GPU-completed frames and drain queued work between implementations. No rendering throughput or rendering-quality verification is claimed by this CPU experiment.
+## Small follow-up steps
+
+1. Share a standalone browser experiment, for example via jsfiddle, comparing flat and hierarchical chunk selection. Start with static procedural bounds, one camera and no renderer changes. Profile the complete path, including matrix updates and draw submission, before seeking a core hook.
+2. If the result warrants a repository example, submit that foundation separately. Extend validation to dynamic refits, camera cuts, all-visible scenes, shadows and six-view captures before proposing wider integration.
+3. Discuss the smallest necessary renderer change with the relevant maintainers, keeping occlusion, GPU draw generation and streaming policy out of that foundation PR. Discuss node-system architecture with its maintainers before implementing it.
+
+Record index maintenance, candidate construction, matrix updates, draw calls, triangles, memory and GPU cost separately. Keep performance trials external rather than adding `test/benchmark/` or a replacement utility suite. For rendering throughput, verify a physical GPU adapter, disable vsync/frame caps, warm each implementation, run sequential multi-second trials, count GPU-completed frames and drain queued work between implementations. No rendering throughput or rendering-quality verification is claimed by this CPU experiment.
+
+The scope follows the supplied [summary of Mugen87's review preferences](https://gist.github.com/bhouston/1b66f04b2838229a36844cd66ea31c7e): small foundation changes, minimal API surface, existing abstractions and external performance experiments. The summary informs this proposal; it does not imply maintainer endorsement of a culling API or the research-note location.

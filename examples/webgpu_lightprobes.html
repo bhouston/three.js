@@ -115,6 +115,7 @@
 					probes.position.copy( bounds.getCenter( new THREE.Vector3() ) );
 					if ( probesHelper ) probesHelper.visible = false;
 					probes.visibility = params.visibility;
+					probes.visibilityInterpolation = params.visibilityInterpolation;
 					probes.visibilityGridSize = params.visibilityGridSize;
 					probes.multiBounce = params.bounces > 0;
 					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: size.length() * 2, bounces: params.bounces } );
@@ -143,6 +144,7 @@
 					model: 'Cornell Box',
 					enabled: true,
 					visibility: true,
+					visibilityInterpolation: 'trilinear',
 					visibilityGridSize: 8,
 					showProbes: false,
 					resolution: 6,
@@ -233,6 +235,8 @@
 				} );
 
 				gui.add( params, 'visibility' ).name( 'Visibility' ).onChange( requestBake );
+
+				gui.add( params, 'visibilityInterpolation', { 'Trilinear (8 probes)': 'trilinear', 'Tetrahedral (4 probes)': 'tetrahedral' } ).name( 'Interpolation' ).onChange( requestBake );
 
 				gui.add( params, 'visibilityGridSize', [ 4, 8, 16, 32 ] ).name( 'Visibility Map Size' ).onChange( requestBake );
 

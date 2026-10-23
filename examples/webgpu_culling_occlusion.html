@@ -116,6 +116,9 @@
 
 			} );
 
+			await renderer.init();
+			camera.coordinateSystem = renderer.coordinateSystem;
+			camera.updateProjectionMatrix();
 			renderer.setAnimationLoop( animate );
 
 			function animate() {
@@ -165,7 +168,7 @@
 				for ( const cluster of clusters ) {
 
 					// Keep near-camera bounds and unknown query results visible.
-					if ( occlusion && cluster.group.visible && camera.position.distanceTo( cluster.center ) > cluster.sphere.radius + camera.near && cluster.occluded === true ) {
+					if ( occlusion && cluster.group.visible && frustum.planes[ 5 ].distanceToPoint( cluster.center ) > cluster.sphere.radius && cluster.occluded === true ) {
 
 						cluster.group.visible = false;
 						cluster.state = 'occluded';

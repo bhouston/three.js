@@ -360,7 +360,7 @@ export default QUnit.module( 'Addons', () => {
 					const beauty = Array.from( await renderer.readRenderTargetPixelsAsync( target, 4, 4, 1, 1, 0 ), DataUtils.fromHalfFloat );
 					assert.ok( diffuse.every( ( value, i ) => Math.abs( value - [ 0.1, 0.2, 0.3, 1 ][ i ] ) < 0.002 ), 'A pure metal supplies emission and no camera-direction specular to SSGI' );
 					assert.ok( beauty[ 0 ] > diffuse[ 0 ] + 0.01, 'Full beauty retains the lit metallic reflection for SSR' );
-					for ( const layers of [ { clearcoat: 1 }, { sheen: 1 }, { clearcoatNode: float( 1 ) }, { sheenNode: vec3( 1 ) }, { transmissionNode: float( 0 ) } ] ) {
+					for ( const layers of [ { clearcoat: 1 }, { sheen: 1 }, { clearcoatNode: float( 1 ) }, { sheenNode: vec3( 1 ) } ] ) {
 
 						const layered = new MeshPhysicalNodeMaterial( { metalness: 0.5, roughness: 0.3, emissive: new Color( 0.1, 0.2, 0.3 ), ...layers } );
 						scene.children[ 0 ].material = layered;
@@ -385,6 +385,17 @@ export default QUnit.module( 'Addons', () => {
 					renderer.contextNode = oldContext;
 					geometry.dispose(); material.dispose(); target.dispose();
 					RendererUtils.restoreRendererState( renderer, state );
+
+				}
+
+			} );
+
+
+			QUnit.test( 'diffuse source scope rejects transmission and custom output paths', assert => {
+
+				for ( const overrides of [ { transmission: 0.5 }, { transmissionNode: {} }, { transparent: true }, { fragmentNode: {} }, { outputNode: {} }, { backdropNode: {} }, { lightsNode: {} } ] ) {
+
+					assert.notOk( supportsUnlayeredDiffuse( { isMeshStandardNodeMaterial: true, ...overrides } ), `${ Object.keys( overrides )[ 0 ] } retains beauty source` );
 
 				}
 

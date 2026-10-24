@@ -20,13 +20,15 @@ const results = await runSSGIParameterSweep( {
   drain: window.__drain,
   read: window.__read,
   width: 960,
-  height: 720
+  height: 720,
+  freezeLighting: value => { window.__freezeLighting = value; },
+  getFreezeLighting: () => window.__freezeLighting
 } );
 ```
 
 `state` supplies `model` (or `scene`), `camera`, `params`, `ssgiParams`, `ssgiPass`, `ssgiDenoise`, `lightingHistory`, `updateOutput()` and `updateSSGIParameters()`. `read(target, index)` returns decoded float RGBA pixels; it must handle source and GI targets. Stop automatic animation first. Use a real hardware adapter with vsync and frame limits disabled.
 
-Each implementation warms for 64 whole frames, then runs for at least five seconds in batches of four frames followed by GPU completion. A GI update counter verifies that the completed frame count represents actual rendering. Source, raw GI and filtered GI are read only after timing. CPU triangle tracing then estimates geometry visibility independently of the screen-space integrator, using the exact world radius reported by the pass. Results contain settings, GPU-completed throughput and compact geometry coverage/irradiance error statistics. Original settings and output are restored even if a case fails.
+Each implementation warms for 64 whole frames, then runs for at least five seconds in batches of four frames followed by GPU completion. A GI update counter verifies that the completed frame count represents actual rendering. Source, raw GI and filtered GI are read only after timing. CPU triangle tracing then estimates geometry visibility independently of the screen-space integrator, using the exact world radius reported by the pass. Results contain settings, GPU-completed throughput and compact geometry coverage/irradiance error statistics. After geometry evaluation, a separate 32-frame capture freezes source copying through the provided setter/getter callbacks. Welford accumulation measures per-pixel premultiplied irradiance and coverage variation, returning only aggregate temporal deviation and means. These readback-heavy observations are outside throughput timing. Source-freeze state, original settings and output are restored even if a case fails. Without the optional freeze callbacks, temporal statistics are explicitly marked `sourceFreezeControlled: false`.
 
 The CPU reference uses static triangle geometry and screen radiance. It does not provide full path-traced lighting, missing illumination, normal-map shading, transparency, or a converged temporal ground truth. Fifteen cases on each of Cornell Box and Dual Rooms provide a controlled comparison; they do not establish universal best defaults.
 

@@ -22,11 +22,12 @@ export const SSGI_PARAMETER_CONFIGS = Object.freeze( [
  * @param {Object} options - State, frame helpers, dimensions and optional reference injection for CPU harness tests.
  * @return {Promise<Array<Object>>} Compact comparison records, with no image arrays.
  */
-export async function runSSGIParameterSweep( { state, step, drain, read, width = 960, height = 720, geometryReference = null } ) {
+export async function runSSGIParameterSweep( { state, step, drain, read, width = 960, height = 720, geometryReference = null, freezeLighting = null, getFreezeLighting = () => false } ) {
 
 	const reference = geometryReference || ( await import( '/test/benchmarks/ssgi-geometry-reference.js' ) ).ssgiGeometryReference;
 	const original = { ...state.ssgiParams };
 	const originalOutput = state.params.output;
+	const originalFreeze = getFreezeLighting();
 	const baseline = {
 		...original,
 		enabled: true, denoise: true,
@@ -80,12 +81,71 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 				filtered: { data: filtered, width: filteredTarget.width, height: filteredTarget.height },
 				radiance: { data: source, width: state.lightingHistory.width, height: state.lightingHistory.height }
 			} );
+			// Temporal statistics have their own readback-heavy stage. They are
+			// deliberately outside the sustained-throughput interval and use a
+			// fixed source so feedback variation is not mistaken for sampling noise.
+			const previousFreeze = getFreezeLighting();
+			let temporal;
+			try {
+
+				freezeLighting?.( true );
+				let mean, moments;
+				for ( let frame = 1; frame <= 32; frame ++ ) {
+
+					step();
+					const value = await read( filteredTarget, 0 );
+					mean ||= new Float64Array( value.length );
+					moments ||= new Float64Array( value.length );
+					if ( value.length !== mean.length ) throw new Error( 'Filtered target size changed during temporal capture' );
+
+					for ( let i = 0; i < value.length; i += 4 ) for ( let channel = 0; channel < 4; channel ++ ) {
+
+						const sample = channel === 3 ? value[ i + 3 ] : value[ i + channel ] * value[ i + 3 ];
+						const delta = sample - mean[ i + channel ];
+						mean[ i + channel ] += delta / frame;
+						moments[ i + channel ] += delta * ( sample - mean[ i + channel ] );
+
+					}
+
+				}
+
+				let colorVariance = 0, coverageVariance = 0, meanCoverage = 0;
+				const meanColor = [ 0, 0, 0 ];
+				for ( let i = 0; i < mean.length; i += 4 ) {
+
+					meanCoverage += mean[ i + 3 ];
+					coverageVariance += moments[ i + 3 ] / 32;
+					for ( let channel = 0; channel < 3; channel ++ ) {
+
+						colorVariance += moments[ i + channel ] / 32;
+						meanColor[ channel ] += mean[ i + channel ];
+
+					}
+
+				}
+
+				const pixels = mean.length / 4;
+				temporal = {
+					frames: 32, sourceFreezeControlled: freezeLighting !== null,
+					temporalDeviation: Math.sqrt( Math.max( colorVariance / ( pixels * 3 ), 0 ) ),
+					coverageDeviation: Math.sqrt( Math.max( coverageVariance / pixels, 0 ) ),
+					meanCoverage: meanCoverage / pixels,
+					meanPremultipliedRGB: meanColor.map( value => value / pixels )
+				};
+
+			} finally {
+
+				freezeLighting?.( previousFreeze );
+
+			}
+
 			const validCount = geometry.valid.filter( Boolean ).length;
 			const coverageSum = geometry.coverage.reduce( ( sum, value, index ) => sum + ( geometry.valid[ index ] ? value : 0 ), 0 );
 			results.push( {
 				label: config.label,
 				settings: { ...state.ssgiParams }, worldRadius, worldThickness,
 				throughput: { completed, giFrames, seconds, fps: completed / seconds },
+				temporal,
 				geometry: {
 					method: geometry.method,
 					gridWidth: geometry.gridWidth, gridHeight: geometry.gridHeight, rays: geometry.rays,
@@ -113,6 +173,7 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 
 			}
 
+			freezeLighting?.( originalFreeze );
 			Object.assign( state.ssgiParams, original );
 			state.params.output = originalOutput;
 			state.updateSSGIParameters();

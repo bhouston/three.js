@@ -11,10 +11,10 @@ const performanceDescriptor = Object.getOwnPropertyDescriptor( globalThis, 'perf
 let clock = 0, referenceCalls = 0, reads = 0, temporalReads = 0, lightingFrozen = false;
 Object.defineProperty( globalThis, 'performance', { configurable: true, value: { now: () => clock } } );
 const original = { sampling: 'Original', sliceCount: 7, stepCount: 5, radius: 0.9, thickness: 0.02 };
-const rawTarget = { width: 4, height: 3 }, filteredTarget = { width: 8, height: 6 };
+const rawTarget = { width: 4, height: 3 }, filteredTarget = { width: 8, height: 6 }, sourceTarget = { width: 16, height: 12 };
 const state = {
 	ssgiParams: { ...original }, params: { output: 'Original Output' }, model: {}, camera: {},
-	ssgiPass: { radius: {}, thickness: {}, getRenderTarget: () => rawTarget },
+	ssgiPass: { radius: {}, thickness: {}, beautyNode: { renderTarget: sourceTarget }, getRenderTarget: () => rawTarget },
 	ssgiDenoise: { _frames: 0, getRenderTarget: () => filteredTarget },
 	lightingHistory: { width: 8, height: 6 },
 	updateSSGIParameters() {
@@ -54,6 +54,8 @@ try {
 			assert.equal( options.radius, state.ssgiParams.radius * 10 );
 			assert.equal( options.raw.width, 4 );
 			assert.equal( options.filtered.width, 8 );
+			assert.equal( options.radiance.width, 16, 'CPU irradiance uses the actual SSGI source rather than full beauty history' );
+			assert.equal( options.radiance.height, 12 );
 			assert.equal( state.params.output, 'Beauty' );
 			return { valid: [ true, false, true ], coverage: [ 0.5, 1, 0.25 ], gridWidth: 3, gridHeight: 1, rays: 128, comparisons: {}, method: 'injected CPU harness test', milliseconds: 1 };
 
@@ -62,6 +64,7 @@ try {
 	assert.equal( results.length, 15 );
 	assert.equal( referenceCalls, 15 );
 	assert.equal( temporalReads, 15 * 32 );
+	assert.ok( results.every( value => value.geometry.radianceSource === 'actual reprojected SSGI source' ) );
 	assert.ok( results.every( value => value.temporal.frames === 32 && value.temporal.sourceFreezeControlled ) );
 	assert.ok( results.every( value => Math.abs( value.temporal.temporalDeviation - 0.5 ) < 1e-12 && Math.abs( value.temporal.coverageDeviation - 0.25 ) < 1e-12 ) );
 	assert.ok( results.every( value => value.temporal.meanCoverage === 0.75 && value.temporal.meanPremultipliedRGB.every( channel => channel === 1.5 ) ) );

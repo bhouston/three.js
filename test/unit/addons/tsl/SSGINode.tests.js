@@ -1,5 +1,5 @@
-import { DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
-import { Fn, Loop, context, float, texture, uint, vec2 } from 'three/tsl';
+import { HalfFloatType, Mesh, MeshStandardNodeMaterial, PlaneGeometry, RenderTarget, Scene, DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
+import { Fn, Loop, context, float, texture, uint, vec2, vec3, vec4, indirectDiffuse, indirectSpecular } from 'three/tsl';
 import { ssgi, ssgiSectorCoverage } from '../../../../examples/jsm/tsl/display/SSGINode.js';
 import { getSharedRenderer, gpuTest } from '../../src/nodes/tsl/gpu-test-utils.js';
 
@@ -317,6 +317,59 @@ export default QUnit.module( 'Addons', () => {
 					renderer.contextNode = previousContext;
 					renderer.setPixelRatio( previousRatio );
 					renderer.setSize( previousSize.x, previousSize.y );
+					RendererUtils.restoreRendererState( renderer, state );
+
+				}
+
+			} );
+
+
+			QUnit.test( 'fallback-only AO preserves visible SSGI in the physical lighting model', async assert => {
+
+				const renderer = await getSharedRenderer( 'webgpu' );
+				if ( ! renderer ) {
+
+					assert.ok( true, 'SKIPPED: WebGPU unavailable' );
+					return;
+
+				}
+
+				const state = RendererUtils.saveRendererState( renderer );
+				const oldContext = renderer.contextNode;
+				const scene = new Scene();
+				const camera = new PerspectiveCamera( 50, 1, 0.1, 10 );
+				camera.position.z = 2;
+				const geometry = new PlaneGeometry( 4, 4 );
+				const material = new MeshStandardNodeMaterial( { roughness: 1, metalness: 0 } );
+				scene.add( new Mesh( geometry, material ) );
+				const target = new RenderTarget( 8, 8, { type: HalfFloatType } );
+				const screen = () => vec4( vec3( 2 * Math.PI ), 0.5 );
+				const render = async scoped => {
+
+					const fallback = () => vec4( vec3( Math.PI * ( scoped ? 0.25 : 1 ) ), 1 );
+					renderer.contextNode = context( {
+						getAO: input => scoped ? input : input !== null ? input.mul( 0.25 ) : float( 0.25 ),
+						indirectDiffuseNode: indirectDiffuse( [ screen, fallback ] ),
+						indirectSpecularNode: indirectSpecular( [] )
+					} );
+					material.needsUpdate = true;
+					renderer.setRenderTarget( target );
+					renderer.render( scene, camera );
+					return Array.from( await renderer.readRenderTargetPixelsAsync( target, 4, 4, 1, 1 ), DataUtils.fromHalfFloat )[ 0 ];
+
+				};
+
+				try {
+
+					const all = await render( false );
+					const scoped = await render( true );
+					assert.ok( all > 0.01, 'The actual physical material receives the controlled irradiance' );
+					assert.ok( Math.abs( scoped / all - 3 ) < 0.02, 'Visible SSGI retains its energy while fallback alone receives quarter AO' );
+
+				} finally {
+
+					renderer.contextNode = oldContext;
+					geometry.dispose(); material.dispose(); target.dispose();
 					RendererUtils.restoreRendererState( renderer, state );
 
 				}

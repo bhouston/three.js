@@ -81,6 +81,7 @@
 				reflectionDiffuse: false,
 				reflectionSpecular: true,
 				planarMirrors: true,
+				denoisePlanarMirrors: false,
 				aoType: 'GTAO + GTSO',
 				samples: 16,
 				radius: 0.4,
@@ -214,10 +215,12 @@
 					output: vec4( packNormalToRGB( normalView ), roughness ),
 					albedo: vec4( diffuseColor.rgb, metalness ),
 					velocity: velocity,
-					fallback: Fn( builder => builder.context.indirectSpecularNode.sample() )()
+					fallback: Fn( builder => builder.context.indirectSpecularNode.sample() )(),
+					planarMirror: Fn( builder => vec4( builder.material.userData.planarMirror === true ? 1 : 0, 0, 0, 1 ) )()
 				} ) );
 				prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
 				prePass.getTexture( 'albedo' ).type = THREE.UnsignedByteType;
+				prePass.getTexture( 'planarMirror' ).type = THREE.UnsignedByteType;
 
 				const prePassNormal = sample( ( uv ) => unpackRGBToNormal( prePass.getTextureNode().sample( uv ) ) );
 				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );
@@ -274,6 +277,12 @@
 				indirectDiffuseSettings.add( params, 'environmentDiffuse' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const indirectSpecularSettings = settings.addFolder( 'Indirect Specular' );
 				indirectSpecularSettings.add( params, 'planarMirrors' ).name( 'Planar Mirrors' ).onChange( updatePlanarMirrors );
+				indirectSpecularSettings.add( params, 'denoisePlanarMirrors' ).name( 'Denoise Planar Mirrors' ).onChange( () => {
+
+					for ( const mirror of mirrors ) mirror.material.needsUpdate = true;
+					updateIndirectLighting();
+
+				} );
 				indirectSpecularSettings.add( ssrParams, 'enabled' ).name( 'SSR' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
@@ -476,9 +485,12 @@
 
 				ssrCoverage = sample( ( uv ) => {
 
+					if ( ! ssrParams.enabled ) return float( 0 );
 					const roughness = normalRoughness.sample( uv ).a;
 					const roughnessFade = roughness.smoothstep( ssrMaxRoughness.sub( 0.1 ), ssrMaxRoughness ).oneMinus();
-					return ssrPass.getCoverageNode().sample( uv ).r.mul( roughnessFade ).mul( historyValid );
+					// A planar capture already supplies these pixels, so SSR must not replace it.
+					const planar = prePass.getTextureNode( 'planarMirror' ).sample( uv ).r;
+					return ssrPass.getCoverageNode().sample( uv ).r.mul( roughnessFade ).mul( historyValid ).mul( planar.oneMinus() );
 
 				} ).toInspector( 'SSR Coverage' );
 
@@ -509,10 +521,13 @@
 				// incoming radiance; the fallback chain already weights its own coverage.
 				indirectSpecularRaw = sample( ( uv ) => {
 
+					const fallback = prePass.getTextureNode( 'fallback' ).sample( uv );
+					// Planar filtering remains available when SSR tracing is disabled.
+					if ( ! ssrParams.enabled ) return vec4( fallback.rgb, 0 );
 					const coverage = ssrCoverage.sample( uv );
 					const radiance = ssrRadiance.sample( uv );
-					const fallback = prePass.getTextureNode( 'fallback' ).sample( uv );
-					return vec4( radiance.rgb.mul( coverage ).add( fallback.rgb.mul( coverage.oneMinus() ) ), radiance.a );
+					const planar = prePass.getTextureNode( 'planarMirror' ).sample( uv ).r;
+					return vec4( radiance.rgb.mul( coverage ).add( fallback.rgb.mul( coverage.oneMinus() ) ), radiance.a.mul( planar.oneMinus() ) );
 
 				} ).toInspector( 'Indirect Specular Raw' );
 				indirectSpecularCoverage = sample( uv => {
@@ -558,10 +573,19 @@
 
 				indirectSpecularFiltered = sample( uv => {
 
-					if ( ssrParams.resolveOrder === 'Before filtering' ) return ssrDenoise.getTextureNode().sample( uv );
-					const filtered = ssrCoverageDenoise.getTextureNode().sample( uv );
 					const fallback = prePass.getTextureNode( 'fallback' ).sample( uv );
-					return vec4( filtered.rgb.mul( filtered.a ).add( fallback.rgb.mul( filtered.a.oneMinus() ) ), filtered.a.add( fallback.a.mul( filtered.a.oneMinus() ) ) );
+					const denoised = ssrDenoise.getTextureNode().sample( uv );
+					let resolved = denoised;
+					if ( ssrParams.resolveOrder !== 'Before filtering' ) {
+
+						const filtered = ssrCoverageDenoise.getTextureNode().sample( uv );
+						resolved = vec4( filtered.rgb.mul( filtered.a ).add( fallback.rgb.mul( filtered.a.oneMinus() ) ), filtered.a.add( fallback.a.mul( filtered.a.oneMinus() ) ) );
+
+					}
+
+					const planar = prePass.getTextureNode( 'planarMirror' ).sample( uv ).r;
+					const mirror = params.denoisePlanarMirrors ? denoised : fallback;
+					return mix( resolved, vec4( mirror.rgb, 1 ), planar );
 
 				} ).toInspector( 'Indirect Specular Filtered' );
 
@@ -947,8 +971,18 @@
 					} );
 					// Supply incoming radiance to the physical BRDF. It retains base color,
 					// metalness, roughness and their maps; SSR/probes do not add a second lobe.
+					material.userData.planarMirror = true;
 					material.contextNode = context( {
-						indirectSpecularNode: indirectSpecular( [ query => vec4( reflection.level( query.roughness.mul( maxMip ) ).rgb, 1 ) ] )
+						indirectSpecularNode: indirectSpecular( [ query => Fn( ( inputs, builder ) => {
+
+							const raw = vec4( reflection.level( query.roughness.mul( maxMip ) ).rgb, 1 );
+							// The pre-pass and reflected cameras always use raw planar radiance.
+							// Only beauty shading may read the filtered buffer, avoiding a cycle.
+							if ( builder.context.planarReflectionFallback === true || ! params.denoisePlanarMirrors || ! ssrDenoise ) return raw;
+							const filtered = vec4( ssrDenoise.getTextureNode().sample( screenUV ).rgb, 1 );
+							return matchesSSRQuery( query ).select( filtered, raw );
+
+						} )() ] )
 					} );
 					const mirror = { mesh, originalMaterial, material, reflection };
 					mirrors.push( mirror );
@@ -966,7 +1000,7 @@
 							for ( const entry of mirrors ) entry.mesh.material = entry.originalMaterial;
 							mesh.visible = false;
 							renderer.contextNode = context( {
-								...previousContext.value, getGI: null, getAO: null, getSpecularOcclusion: null,
+								...previousContext.value, getGI: null, getAO: null, getSpecularOcclusion: null, planarReflectionFallback: true,
 								indirectDiffuseNode: indirectDiffuse( diffuseProviders ),
 								indirectSpecularNode: indirectSpecular( specularProviders )
 							} );
@@ -1121,7 +1155,7 @@
 
 					// Nested pass updates can run while the beauty context is active.
 					// Explicitly pin the pre-pass to the camera-independent fallback chain.
-					prePass.contextNode = context( { ...renderer.contextNode.value, getAO: null, getSpecularOcclusion: null } );
+					prePass.contextNode = context( { ...renderer.contextNode.value, getAO: null, getSpecularOcclusion: null, planarReflectionFallback: true } );
 					prePass.needsUpdate = true;
 					updateAO();
 

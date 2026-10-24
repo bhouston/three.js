@@ -69,7 +69,8 @@ export default QUnit.module( 'Addons', () => {
 					await new Promise( resolve => requestAnimationFrame( resolve ) );
 					renderer.setRenderTarget( null );
 					quad.render( renderer );
-					const data = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), 0, 0, size, size, 1 );
+					const target = node.getRenderTarget();
+					const data = await renderer.readRenderTargetPixelsAsync( target, 0, 0, target.width, target.height, 1 );
 					return Array.from( data, DataUtils.fromHalfFloat );
 
 				};
@@ -106,6 +107,16 @@ export default QUnit.module( 'Addons', () => {
 					setSource( [ 2, 1, 0.5 ], 0 );
 					const invalid = await render();
 					assert.ok( invalid.every( v => v === 0 ), 'Rejected history contributes neither lighting nor coverage' );
+					setSource( [ 2, 1, 0.5 ], 1 );
+					node.resolutionScale = 0.5;
+					const halfResolution = await render();
+					assert.strictEqual( halfResolution.length, 8 * 8 * 4, 'Resolution scale resizes the irradiance/coverage target' );
+					assert.ok( halfResolution.some( ( v, i ) => i % 4 === 3 && v > 0 ), 'Half-resolution tracing retains valid coverage' );
+					for ( let i = 0; i < depth.image.data.length; i += 4 ) depth.image.data[ i ] = 1;
+					depth.needsUpdate = true;
+					const background = await render();
+					assert.ok( background.every( v => v === 0 ), 'Background pixels clear both irradiance and coverage' );
+
 
 				} finally {
 

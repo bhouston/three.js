@@ -614,92 +614,110 @@ class SSGINode extends Node {
 
 			const depth = sampleDepth( uvNode ).toVar();
 
-			isBackgroundDepth( depth ).discard();
-
-			const viewPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar();
-			const viewNormal = sampleNormal( uvNode ).toVar();
-			const viewDir = normalize( viewPosition.xyz.negate() ).toVar();
-
-			//
-
-			const noiseOffset = spatialOffsets( screenCoordinate );
-			const noiseDirection = interleavedGradientNoise( screenCoordinate );
-			const noiseJitterIdx = this._temporalDirection.mul( 0.02 ); // Port: Add noiseJitterIdx here for slightly better noise convergence with TRAA (see #31890 for more details)
-			const initialRayStep = fract( noiseOffset.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ).mul( 2 ).sub( 1 ) ) );
-
-			const ao = float( 0 );
-			const color = vec3( 0 );
-
-			const ROTATION_COUNT = this.sliceCount.toConst();
-			const STEP_COUNT = this.stepCount.toConst();
-			const AO_INTENSITY = this.aoIntensity.toConst();
-			const GI_INTENSITY = this.giIntensity.toConst();
-			const RADIUS = this.radius.toConst();
-
-			const stepRadius = float( 0 ).toVar();
-
-			If( this.useScreenSpaceSampling, () => {
-
-				stepRadius.assign( RADIUS.mul( this._resolution.x.div( 2 ) ).div( float( 16 ) ) ); // SSRT3 has a bug where stepRadius is divided by STEP_COUNT twice; fix here
-
-			} ).Else( () => {
-
-				stepRadius.assign( max( RADIUS.mul( this._halfProjScale ).div( viewPosition.z.negate() ), float( STEP_COUNT ) ) ); // Port note: viewZ is negative so a negate is required
-
-			} );
-
-			stepRadius.divAssign( float( STEP_COUNT ).add( 1 ) );
-			const radiusVS = max( 1, float( STEP_COUNT.sub( 1 ) ) ).mul( stepRadius ).toConst();
-
-			//
-
-			Loop( { start: uint( 0 ), end: ROTATION_COUNT, type: 'uint', condition: '<' }, ( { i } ) => {
-
-				const rotationAngle = mul( float( i ).add( noiseDirection ).add( this._temporalDirection ), PI.div( float( ROTATION_COUNT ) ) ).toConst();
-				const sliceDir = vec3( vec2( cos( rotationAngle ), sin( rotationAngle ) ), 0 ).toConst();
-				const slideDirTexelSize = sliceDir.xy.mul( float( 1 ).div( this._resolution ) ).toConst();
-
-				const planeNormal = normalize( cross( sliceDir, viewDir ) ).toConst();
-				const tangent = cross( viewDir, planeNormal ).toConst();
-				const projectedNormal = viewNormal.sub( planeNormal.mul( dot( viewNormal, planeNormal ) ) ).toConst();
-				const projectedNormalNormalized = normalize( projectedNormal ).toConst();
-
-				const cos_n = clamp( dot( projectedNormalNormalized, viewDir ), - 1, 1 ).toConst();
-				const n = sign( dot( projectedNormal, tangent ) ).negate().mul( acos( cos_n ) ).toConst();
-
-				globalOccludedBitfield.assign( 0 );
-
-				color.addAssign( horizonSampling( bool( true ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ) );
-				color.addAssign( horizonSampling( bool( false ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ) );
-
-				ao.addAssign( float( countOneBits( globalOccludedBitfield ) ).div( float( MAX_RAY ) ) );
-
-			} );
-
-			ao.divAssign( float( ROTATION_COUNT ) );
-			ao.assign( pow( ao.clamp().oneMinus(), AO_INTENSITY ).clamp() );
-
-			color.divAssign( float( ROTATION_COUNT ) );
-			color.mulAssign( GI_INTENSITY );
 			if ( this.outputCoverage ) {
 
-				coverageField.assign( coverageField.div( float( ROTATION_COUNT ) ).clamp() );
-				// E = pi * mean incoming radiance for cosine-weighted diffuse transport.
-				// The resolver supplies coverage once; no receiver albedo is baked here.
-				color.assign( coverageField.greaterThan( 1e-6 ).select( color.mul( PI ).div( coverageField.max( 1e-6 ) ), vec3( 0 ) ) );
+				// Secondary MRT attachments clear to opaque black on WebGPU. Write an
+				// explicit zero-coverage result for sky instead of discarding to that alpha.
+				aoField.assign( 1 );
+				giField.assign( vec4( 0 ) );
+
+			} else {
+
+				isBackgroundDepth( depth ).discard();
 
 			}
 
-			// scale color based on luminance
+			const computeGI = () => {
 
-			const maxLuminance = this.maxLuminance.toConst();
-			const currentLuminance = luminance( color );
+				const viewPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar();
+				const viewNormal = sampleNormal( uvNode ).toVar();
+				const viewDir = normalize( viewPosition.xyz.negate() ).toVar();
 
-			const scale = currentLuminance.greaterThan( maxLuminance ).select( maxLuminance.div( currentLuminance ), float( 1 ) );
-			color.mulAssign( scale );
+				//
 
-			aoField.assign( ao );
-			giField.assign( this.outputCoverage ? vec4( color, coverageField ) : color );
+				const noiseOffset = spatialOffsets( screenCoordinate );
+				const noiseDirection = interleavedGradientNoise( screenCoordinate );
+				const noiseJitterIdx = this._temporalDirection.mul( 0.02 ); // Port: Add noiseJitterIdx here for slightly better noise convergence with TRAA (see #31890 for more details)
+				const initialRayStep = fract( noiseOffset.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ).mul( 2 ).sub( 1 ) ) );
+
+				const ao = float( 0 );
+				const color = vec3( 0 );
+
+				const ROTATION_COUNT = this.sliceCount.toConst();
+				const STEP_COUNT = this.stepCount.toConst();
+				const AO_INTENSITY = this.aoIntensity.toConst();
+				const GI_INTENSITY = this.giIntensity.toConst();
+				const RADIUS = this.radius.toConst();
+
+				const stepRadius = float( 0 ).toVar();
+
+				If( this.useScreenSpaceSampling, () => {
+
+					stepRadius.assign( RADIUS.mul( this._resolution.x.div( 2 ) ).div( float( 16 ) ) ); // SSRT3 has a bug where stepRadius is divided by STEP_COUNT twice; fix here
+
+				} ).Else( () => {
+
+					stepRadius.assign( max( RADIUS.mul( this._halfProjScale ).div( viewPosition.z.negate() ), float( STEP_COUNT ) ) ); // Port note: viewZ is negative so a negate is required
+
+				} );
+
+				stepRadius.divAssign( float( STEP_COUNT ).add( 1 ) );
+				const radiusVS = max( 1, float( STEP_COUNT.sub( 1 ) ) ).mul( stepRadius ).toConst();
+
+				//
+
+				Loop( { start: uint( 0 ), end: ROTATION_COUNT, type: 'uint', condition: '<' }, ( { i } ) => {
+
+					const rotationAngle = mul( float( i ).add( noiseDirection ).add( this._temporalDirection ), PI.div( float( ROTATION_COUNT ) ) ).toConst();
+					const sliceDir = vec3( vec2( cos( rotationAngle ), sin( rotationAngle ) ), 0 ).toConst();
+					const slideDirTexelSize = sliceDir.xy.mul( float( 1 ).div( this._resolution ) ).toConst();
+
+					const planeNormal = normalize( cross( sliceDir, viewDir ) ).toConst();
+					const tangent = cross( viewDir, planeNormal ).toConst();
+					const projectedNormal = viewNormal.sub( planeNormal.mul( dot( viewNormal, planeNormal ) ) ).toConst();
+					const projectedNormalNormalized = normalize( projectedNormal ).toConst();
+
+					const cos_n = clamp( dot( projectedNormalNormalized, viewDir ), - 1, 1 ).toConst();
+					const n = sign( dot( projectedNormal, tangent ) ).negate().mul( acos( cos_n ) ).toConst();
+
+					globalOccludedBitfield.assign( 0 );
+
+					color.addAssign( horizonSampling( bool( true ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ) );
+					color.addAssign( horizonSampling( bool( false ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ) );
+
+					ao.addAssign( float( countOneBits( globalOccludedBitfield ) ).div( float( MAX_RAY ) ) );
+
+				} );
+
+				ao.divAssign( float( ROTATION_COUNT ) );
+				ao.assign( pow( ao.clamp().oneMinus(), AO_INTENSITY ).clamp() );
+
+				color.divAssign( float( ROTATION_COUNT ) );
+				color.mulAssign( GI_INTENSITY );
+				if ( this.outputCoverage ) {
+
+					coverageField.assign( coverageField.div( float( ROTATION_COUNT ) ).clamp() );
+					// E = pi * mean incoming radiance for cosine-weighted diffuse transport.
+					// The resolver supplies coverage once; no receiver albedo is baked here.
+					color.assign( coverageField.greaterThan( 1e-6 ).select( color.mul( PI ).div( coverageField.max( 1e-6 ) ), vec3( 0 ) ) );
+
+				}
+
+				// scale color based on luminance
+
+				const maxLuminance = this.maxLuminance.toConst();
+				const currentLuminance = luminance( color );
+
+				const scale = currentLuminance.greaterThan( maxLuminance ).select( maxLuminance.div( currentLuminance ), float( 1 ) );
+				color.mulAssign( scale );
+
+				aoField.assign( ao );
+				giField.assign( this.outputCoverage ? vec4( color, coverageField ) : color );
+
+			};
+
+			if ( this.outputCoverage ) If( isBackgroundDepth( depth ).not(), computeGI );
+			else computeGI();
 
 			return vec4( 0 );
 

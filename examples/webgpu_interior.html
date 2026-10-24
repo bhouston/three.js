@@ -32,6 +32,7 @@
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { fastNoise } from 'three/addons/tsl/utils/FASTNoise.js';
 			import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
+			import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
 			import { recurrentDenoise, demodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -160,6 +161,10 @@
 			const samplingModes = [ 'Original', 'FAST Product', 'FAST Separate' ];
 			const ssrSampling = uniform( 0, 'uint' );
 			const ssgiSampling = uniform( 0, 'uint' );
+			const ssgiHistoryPixels = uniform( 1.5 );
+			const ssgiHistoryWorld = uniform( 0.001 );
+			const ssrHistoryPixels = uniform( 1.5 );
+			const ssrHistoryWorld = uniform( 0.001 );
 			let noiseAtlases;
 			const ssrParams = {
 				sampling: 'FAST Separate',
@@ -170,6 +175,8 @@
 				quality: 1,
 				maxDistance: 0.5,
 				thickness: 0.01,
+				historyTolerancePixels: 1.5,
+				historyToleranceWorld: 0.0001,
 				intensity: 1,
 				mirrorBias: 0.5,
 				stepExponent: 3,
@@ -189,6 +196,8 @@
 				stepCount: 8,
 				radius: 0.25,
 				thickness: 0.01,
+				historyTolerancePixels: 1.5,
+				historyToleranceWorld: 0.0001,
 				intensity: 1,
 				backfaceLighting: 0,
 				maxLuminance: 35,
@@ -370,6 +379,8 @@
 				ssgiSettings.add( ssgiParams, 'stepCount', 2, 32, 1 ).name( 'Steps' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'radius', 0.01, 1 ).name( 'Relative Radius' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'thickness', 0.0001, 0.05 ).name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'historyTolerancePixels', 0, 4 ).name( 'History tolerance (pixels)' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'historyToleranceWorld', 0, 0.01 ).name( 'History floor (relative)' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'intensity', 0, 2 ).name( 'Intensity' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'backfaceLighting', 0, 1 ).name( 'Backface Lighting' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'maxLuminance', 1, 100 ).name( 'Max Luminance' ).onChange( updateSSGIParameters );
@@ -383,6 +394,8 @@
 				ssrSettings.add( ssrParams, 'quality', 0.05, 1 ).name( 'Quality' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'maxDistance', 0.01, 2 ).name( 'Relative Max Distance' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'thickness', 0.0001, 0.02 ).name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'historyTolerancePixels', 0, 4 ).name( 'History tolerance (pixels)' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'historyToleranceWorld', 0, 0.01 ).name( 'History floor (relative)' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'intensity', 0, 2 ).name( 'Intensity' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'mirrorBias', 0, 1 ).name( 'Mirror Bias' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'stepExponent', 1, 4, 1 ).name( 'Step Exponent' ).onChange( updateSSRParameters );
@@ -504,28 +517,10 @@
 
 			}
 
-			function createHistorySource( depth, thickness ) {
+			function createHistorySource( depth, normal, tolerancePixels, toleranceWorld ) {
 
-				const projectionInverse = uniform( camera.projectionMatrixInverse );
-				const worldMatrix = uniform( camera.matrixWorld );
-				// Trace current geometry, then project each hit into the previous resolved
-				// color. Depth rejection prevents newly visible surfaces reading stale color.
-				return sample( ( uv ) => {
-
-					const viewPosition = getViewPosition( uv, depth.sample( uv ).r, projectionInverse );
-					const worldPosition = worldMatrix.mul( vec4( viewPosition, 1 ) );
-					const previousPosition = previousView.mul( worldPosition );
-					const clip = previousProjection.mul( previousPosition );
-					const previousUV = clip.xy.div( clip.w.max( 1e-6 ) ).mul( vec2( 0.5, - 0.5 ) ).add( 0.5 );
-					const oldDepth = texture( lightingHistory.depthTexture ).sample( previousUV ).r;
-					const oldPosition = getViewPosition( previousUV, oldDepth, previousProjectionInverse );
-					const valid = historyValid.and( clip.w.greaterThan( 0 ) )
-						.and( previousUV.x.greaterThanEqual( 0 ).and( previousUV.x.lessThanEqual( 1 ) ) )
-						.and( previousUV.y.greaterThanEqual( 0 ).and( previousUV.y.lessThanEqual( 1 ) ) )
-						.and( oldPosition.z.sub( previousPosition.z ).abs().lessThan( thickness().max( 0.001 ) ) );
-
-					return vec4( texture( lightingHistory.texture ).sample( previousUV ).rgb, valid );
-
+				return reprojectedRadiance( texture( lightingHistory.texture ), texture( lightingHistory.depthTexture ), depth, normal, camera, {
+					previousView, previousProjection, previousProjectionInverse, valid: historyValid, tolerancePixels, toleranceWorld
 				} );
 
 			}
@@ -546,7 +541,7 @@
 
 			function setupSSGI( depth, normal, motion ) {
 
-				const source = createHistorySource( depth, () => ssgiPass.thickness );
+				const source = createHistorySource( depth, normal, ssgiHistoryPixels, ssgiHistoryWorld );
 				ssgiPass = ssgi( source, depth, normal, camera, { outputCoverage: true, noiseNode: samplingNoise( ssgiSampling, new THREE.Vector2( 73, 29 ) ).wxy } );
 				ssgiPass.useScreenSpaceSampling.value = false;
 				// Diffuse filtering uses surface reprojection, without specular hit distance
@@ -578,6 +573,8 @@
 				ssgiPass.stepCount.value = ssgiParams.stepCount;
 				ssgiPass.radius.value = ssgiParams.radius * sceneScale;
 				ssgiPass.thickness.value = ssgiParams.thickness * sceneScale;
+				ssgiHistoryPixels.value = ssgiParams.historyTolerancePixels;
+				ssgiHistoryWorld.value = ssgiParams.historyToleranceWorld * sceneScale;
 				ssgiPass.giIntensity.value = ssgiParams.intensity;
 				ssgiPass.backfaceLighting.value = ssgiParams.backfaceLighting;
 				ssgiPass.maxLuminance.value = ssgiParams.maxLuminance;
@@ -597,7 +594,7 @@
 				lightingHistory.depthTexture.minFilter = THREE.NearestFilter;
 				lightingHistory.depthTexture.magFilter = THREE.NearestFilter;
 
-				const source = createHistorySource( depth, () => ssrPass.thickness );
+				const source = createHistorySource( depth, normal, ssrHistoryPixels, ssrHistoryWorld );
 
 				const normalRoughness = prePass.getTextureNode();
 				const albedoMetalness = prePass.getTextureNode( 'albedo' );
@@ -755,6 +752,8 @@
 				ssrPass.quality.value = ssrParams.quality;
 				ssrPass.maxDistance.value = ssrParams.maxDistance * sceneScale;
 				ssrPass.thickness.value = ssrParams.thickness * sceneScale;
+				ssrHistoryPixels.value = ssrParams.historyTolerancePixels;
+				ssrHistoryWorld.value = ssrParams.historyToleranceWorld * sceneScale;
 				ssrPass.intensity.value = ssrParams.intensity;
 				ssrPass.mirrorBias.value = ssrParams.mirrorBias;
 				ssrPass.binaryRefine = ssrParams.binaryRefine;

@@ -1,5 +1,5 @@
 import { DataTexture, DataUtils, FloatType, NodeMaterial, OrthographicCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
-import { context, float, texture, vec4 } from 'three/tsl';
+import { bool, context, float, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { ssr } from '../../../../examples/jsm/tsl/display/SSRNode.js';
 import { getSharedRenderer } from '../../src/nodes/tsl/gpu-test-utils.js';
 
@@ -8,6 +8,12 @@ export default QUnit.module( 'Addons', () => {
 	QUnit.module( 'TSL', () => {
 
 		QUnit.module( 'SSRNode', () => {
+
+			QUnit.test( 'a trace mask requires coverage and external fallback', assert => {
+
+				assert.throws( () => ssr( vec4( 1 ), float( 1 ), vec3( 0, 0, 1 ), { traceMaskNode: bool( false ) } ), /requires outputCoverage/, 'A mask cannot silently remove internal environment fallback' );
+
+			} );
 
 			QUnit.test( 'short rays respect their endpoint and refinement requires a depth bracket', async assert => {
 
@@ -54,8 +60,9 @@ export default QUnit.module( 'Addons', () => {
 				// The stripe is slightly nearer than the origin to accommodate the
 				// sampler's minimum GGX alpha, which perturbs a roughness-zero ray.
 				const depth = makeTexture( x => [ projectDepth( x === originX ? - 2 : target( x ) ? - 1.9 : - 1 ), 0, 0, 1 ] );
+				const eligible = uniform( true );
 				const node = ssr( texture( source ), texture( depth ), texture( normal ), {
-					camera, stochastic: true, outputCoverage: true,
+					camera, stochastic: true, outputCoverage: true, traceMaskNode: eligible,
 					metalnessNode: float( 1 ), roughnessNode: float( 0 ),
 					noiseNode: vec4( 0.5 )
 				} );
@@ -99,6 +106,17 @@ export default QUnit.module( 'Addons', () => {
 					node.binaryRefine = true;
 					const refinedHit = await renderOrigin();
 					assert.ok( refinedHit[ 0 ] > 0.9, `Refinement preserves a hit following a rejected depth gap (actual ${ refinedHit[ 0 ] })` );
+					eligible.value = false;
+					const masked = await renderOrigin();
+					assert.deepEqual( masked, [ 0, 0, 0, 0 ], 'Excluding a previously lit texel clears stale radiance and distance' );
+					const coverage = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), originX, height / 2, 1, 1, 1 );
+					assert.strictEqual( DataUtils.fromHalfFloat( coverage[ 0 ] ), 0, 'Masked texels have zero screen-space coverage' );
+					node.useTraceMask.value = false;
+					assert.deepEqual( await renderOrigin(), refinedHit, 'Disabling classification retains the original hit, including distance' );
+					eligible.value = true;
+					node.useTraceMask.value = true;
+					assert.deepEqual( await renderOrigin(), refinedHit, 'Eligible texels preserve radiance and distance' );
+
 
 				} finally {
 

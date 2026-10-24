@@ -25,6 +25,7 @@ const MAX_STEPS = 64;
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
  * @property {boolean} [outputCoverage=false] - Stochastic path only: expose hit coverage separately from ray length. Input color alpha is validity; screen-edge fading reduces coverage. No environment fallback is allowed.
  * @property {Node<vec4>} [noiseNode=null] - Uniform random samples in [0,1): GGX in xy, march jitter in z, mirror-bias jitter in w. Evaluated at the tracing resolution.
+ * @property {Node<bool>} [traceMaskNode=null] - Optional per-texel eligibility mask. Requires outputCoverage and external fallback; rejected texels clear to zero radiance, coverage and distance. Fixed at construction.
  * @property {?HiZNode} [hiZ=null] - Optional hierarchy built from the same raw depth texture; requires WebGPU.
  * @property {'conservative'|'adaptive'} [hiZTraversal='conservative'] - Adaptive traversal changes hits and trades quality for speed.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
@@ -69,7 +70,8 @@ class SSRNode extends Node {
 			diffuseNode = null,
 			binaryRefine = false,
 			outputCoverage = false,
-			noiseNode = null
+			noiseNode = null,
+			traceMaskNode = null
 		} = options;
 
 		if ( outputCoverage && ( ! stochastic || environmentNode !== null ) ) {
@@ -77,6 +79,8 @@ class SSRNode extends Node {
 			throw new Error( 'SSRNode: outputCoverage requires stochastic tracing without an environment map.' );
 
 		}
+
+		if ( traceMaskNode !== null && ! outputCoverage ) throw new Error( 'SSRNode: traceMaskNode requires outputCoverage and external fallback.' );
 
 		/**
 		 * Whether to write screen-space validity to a separate attachment. Fixed at
@@ -92,6 +96,11 @@ class SSRNode extends Node {
 		this.noiseNode = noiseNode;
 		/** @type {UniformNode<bool>} Enables the custom pattern; false uses the analytic pattern. */
 		this.useNoiseNode = uniform( true );
+
+		/** @type {?Node<bool>} Per-texel tracing eligibility; fixed at construction. */
+		this.traceMaskNode = traceMaskNode !== null ? nodeObject( traceMaskNode ) : null;
+		/** @type {UniformNode<bool>} Enables an optional mask without rebuilding the shader. */
+		this.useTraceMask = uniform( true );
 
 		let camera = options.camera ?? null;
 
@@ -1032,6 +1041,11 @@ class SSRNode extends Node {
 			const adaptive = this.hiZEnabled && this.hiZTraversal === 'adaptive';
 
 			if ( this.outputCoverage ) this._coverage.assign( 0 );
+
+			// Reject work before noise generation, GGX sampling and ray construction.
+			// The cleared MRT carries zero radiance/coverage; consumers must resolve
+			// missing hit distances using effective coverage before reconstruction.
+			if ( this.traceMaskNode !== null ) this.useTraceMask.and( this.traceMaskNode.not() ).discard();
 
 			const noise = this.stochastic === true ? sampleMarchNoise( uvNode, this._noiseIndex ).toVar() : null;
 

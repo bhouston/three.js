@@ -173,6 +173,7 @@
 			let noiseAtlases;
 			const ssrParams = {
 				traversal: 'Linear',
+				classify: true,
 				sampling: 'FAST Separate',
 				enabled: true,
 				denoise: true,
@@ -441,6 +442,7 @@
 				ssrSettings.add( ssrParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssrSettings.add( ssrParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'traversal', [ 'Linear', 'Conservative Hi-Z', 'Adaptive Hi-Z (experimental)' ] ).name( 'Traversal' ).info( 'Hi-Z costs extra construction; adaptive changes hits and can lose detail.' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'classify' ).name( 'Skip Unused Rays' ).info( 'Skips fully roughness-rejected rays at full tracing resolution.' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'quality', 0.05, 1 ).name( 'Quality' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'maxDistance', 0.01, 2 ).name( 'Relative Max Distance' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'thickness', 0.0001, 0.02 ).name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSRParameters );
@@ -671,6 +673,7 @@
 					stochastic: true,
 					noiseNode: samplingNoise( ssrSampling, new THREE.Vector2( 0, 0 ) ),
 					outputCoverage: true,
+					traceMaskNode: normalRoughness.a.lessThan( ssrMaxRoughness ),
 					diffuseNode: albedoMetalness,
 					metalnessNode: albedoMetalness.a,
 					roughnessNode: normalRoughness.a,
@@ -819,6 +822,10 @@
 
 				ssrSampling.value = samplingModes.indexOf( ssrParams.sampling );
 				ssrPass.useNoiseNode.value = ssrSampling.value !== 0;
+				// At reduced resolution, bilinear upsampling can reuse an apparently
+				// rejected trace texel at a contributing neighbor. Keep those rays until
+				// classification accounts for the complete reconstruction footprint.
+				ssrPass.useTraceMask.value = ssrParams.classify && ssrParams.resolutionScale === 1;
 				ssrPass.hiZEnabled = ssrParams.traversal !== 'Linear';
 				ssrPass.hiZTraversal = ssrParams.traversal.startsWith( 'Adaptive' ) ? 'adaptive' : 'conservative';
 				ssrPass.resolutionScale = ssrParams.resolutionScale;

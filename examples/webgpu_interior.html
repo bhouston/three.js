@@ -346,7 +346,7 @@
 				updateAO();
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
-				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSGI Raw', 'SSGI Filtered', 'SSGI Coverage', 'SSGI Filtered Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
+				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSGI Raw', 'SSGI Filtered', 'SSGI Coverage', 'SSGI Filtered Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).info( 'SSR Raw and Filtered show incoming radiance times coverage, before material BRDF weighting.' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'environmentSource', Object.keys( environments ) ).name( 'Environment Source' ).listen().onChange( updateEnvironment );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
@@ -608,7 +608,7 @@
 					metalnessNode: albedoMetalness.a,
 					roughnessNode: normalRoughness.a,
 					binaryRefine: ssrParams.binaryRefine
-				} ).toInspector( 'SSR Raw' );
+				} ).toInspector( 'SSR Trace (BRDF Weighted)' );
 
 				ssrCoverage = sample( ( uv ) => {
 
@@ -818,7 +818,8 @@
 						renderPipeline.outputNode = mix( scenePass, vec4( vec3( ssgiDenoise.a ), 1 ), debugWeight );
 						break;
 					case 'SSR Raw':
-						renderPipeline.outputNode = mix( scenePass, vec4( ssrPass.rgb, 1 ), debugWeight );
+						// Match the filtered view: incoming radiance times the same roughness-faded coverage.
+						renderPipeline.outputNode = mix( scenePass, vec4( ssrRadiance.sample( screenUV ).rgb.mul( ssrCoverage.sample( screenUV ) ), 1 ), debugWeight );
 						break;
 					case 'SSR Filtered':
 						renderPipeline.outputNode = mix( scenePass, vec4( ssrCoverageDenoise.rgb.mul( ssrCoverageDenoise.a ), 1 ), debugWeight );

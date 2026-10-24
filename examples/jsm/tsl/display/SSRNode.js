@@ -83,13 +83,13 @@ class SSRNode extends Node {
 		 * @type {boolean}
 		 * @default false
 		 */
+		this.outputCoverage = outputCoverage;
+		this._coverage = outputCoverage ? property( 'float' ) : null;
+
 		/** @type {?Node<vec4>} Custom sampling pattern, fixed at construction. */
 		this.noiseNode = noiseNode;
 		/** @type {UniformNode<bool>} Enables the custom pattern; false uses the analytic pattern. */
 		this.useNoiseNode = uniform( true );
-
-		this.outputCoverage = outputCoverage;
-		this._coverage = outputCoverage ? property( 'float' ) : null;
 
 		let camera = options.camera ?? null;
 

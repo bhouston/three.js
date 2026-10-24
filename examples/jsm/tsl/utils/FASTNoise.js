@@ -1,7 +1,7 @@
 import { Fn, frameId, ivec2, screenCoordinate, textureLoad, uint, vec4 } from 'three/tsl';
 
 /**
- * Reads a 128×128×32 FAST volume packed as a opaque RGB atlas.
+ * Reads a 128×128×32 FAST volume packed as an opaque RGB atlas.
  * The texture must use NoColorSpace and contain unmodified discrete samples.
  * The left tile stores uniform vector3 samples, the right a scalar mask.
  * Opaque RGB storage avoids losing sample precision to image alpha conversion.

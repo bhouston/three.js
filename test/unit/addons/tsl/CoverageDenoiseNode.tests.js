@@ -143,6 +143,61 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'spatial radius uses input texels at half resolution', async assert => {
+
+				await fixture( assert, async ( { node, input, render } ) => {
+
+					const half = size / 2;
+					input.image = { width: half, height: half, data: new Float32Array( half * half * 4 ) };
+					for ( let y = 0; y < half; y ++ ) {
+
+						for ( let x = 0; x < half; x ++ ) input.image.data.set( [ 4, 2, 1, x === half / 2 ? 1 : 0 ], 4 * ( x + half * y ) );
+
+					}
+
+					input.needsUpdate = true;
+					node.radius.value = 1;
+					const data = await render();
+					const i = 4 * ( size / 2 + size * size / 2 );
+					const expected = 1 / ( 1 + 2 * Math.exp( - 0.5 ) );
+					assert.ok( Math.abs( data[ i + 3 ] - expected ) < 0.002, 'Neighbors are one source texel away, rather than half a source texel' );
+					assert.ok( Math.abs( data[ i ] - 4 ) < 0.01, 'Filtering coverage preserves unweighted radiance' );
+
+				} );
+
+			} );
+
+			QUnit.test( 'history clipping covers neighboring input texels at half resolution', async assert => {
+
+				await fixture( assert, async ( { node, input, render } ) => {
+
+					const half = size / 2;
+					input.image = { width: half, height: half, data: new Float32Array( half * half * 4 ) };
+					const updateStripe = column => {
+
+						for ( let y = 0; y < half; y ++ ) {
+
+							for ( let x = 0; x < half; x ++ ) input.image.data.set( [ 4, 2, 1, x === column ? 1 : 0 ], 4 * ( x + half * y ) );
+
+						}
+
+						input.needsUpdate = true;
+
+					};
+
+					node.radius.value = 0;
+					updateStripe( half / 2 );
+					await render();
+					updateStripe( half / 2 + 1 );
+					const data = await render();
+					const i = 4 * ( size / 2 + size * size / 2 );
+					assert.ok( Math.abs( data[ i + 3 ] - 0.5 ) < 0.002, 'A neighboring source hit allows valid history to accumulate instead of clipping it to zero' );
+					assert.ok( Math.abs( data[ i ] - 4 ) < 0.01, 'Temporal filtering retains matching radiance and coverage weights' );
+
+				} );
+
+			} );
+
 			QUnit.test( 'valid black and fractional coverage survive normalization', async assert => {
 
 				await fixture( assert, async ( { update, render } ) => {

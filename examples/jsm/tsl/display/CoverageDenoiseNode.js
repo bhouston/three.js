@@ -1,5 +1,5 @@
 import { HalfFloatType, Matrix4, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
-import { Fn, If, context, convertToTexture, float, getViewPosition, isBackgroundDepth, mix, outputStruct, passTexture, texture, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { textureSize, Fn, If, context, convertToTexture, float, getViewPosition, isBackgroundDepth, mix, outputStruct, passTexture, texture, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
 
 /**
@@ -151,6 +151,9 @@ class CoverageDenoiseNode extends Node {
 
 	setup( builder ) {
 
+		// Radius and clipping neighborhoods are measured in input texels. Using
+		// output pixels under-filters lower-resolution inputs and clips away valid history.
+		const inputResolution = this.inputNode.isTextureNode ? vec2( textureSize( this.inputNode ) ) : this._resolution;
 		const viewPosition = coordinate => getViewPosition( coordinate, this.depthNode.sample( coordinate ).r, this._projectionInverse );
 		const normal = coordinate => unpackRGBToNormal( this.normalNode.sample( coordinate ).rgb );
 		const toWeighted = value => vec4( value.rgb.mul( value.a ), value.a );
@@ -174,7 +177,7 @@ class CoverageDenoiseNode extends Node {
 
 				for ( let x = - 1; x <= 1; x ++ ) {
 
-					const tapUV = coordinate.add( vec2( x, y ).mul( stride ).div( this._resolution ) ).toConst();
+					const tapUV = coordinate.add( vec2( x, y ).mul( stride ).div( inputResolution ) ).toConst();
 					const tap = this.inputNode.sample( tapUV ).toConst();
 					const planeDistance = viewPosition( tapUV ).sub( centerPosition ).dot( centerNormal ).abs();
 					const depthWeight = planeDistance.div( tolerance ).pow2().negate().exp();
@@ -267,7 +270,7 @@ class CoverageDenoiseNode extends Node {
 
 					for ( let x = - 1; x <= 1; x ++ ) {
 
-						const value = toWeighted( spatialTexture.sample( coordinate.add( vec2( x, y ).div( this._resolution ) ) ) );
+						const value = toWeighted( spatialTexture.sample( coordinate.add( vec2( x, y ).div( inputResolution ) ) ) );
 						minimum.assign( minimum.min( value ) );
 						maximum.assign( maximum.max( value ) );
 

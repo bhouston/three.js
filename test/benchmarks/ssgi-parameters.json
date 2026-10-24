@@ -1,0 +1,22 @@
+[
+  {
+    "label": "parameters",
+    "root": "../three.js-interior-ssgi-parameter-sweep",
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ],
+    "quality": false,
+    "parameterSweep": true
+  },
+  {
+    "label": "parameters-merged",
+    "root": "../three.js-interior-ssgi-audit",
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ],
+    "quality": false,
+    "parameterSweep": true
+  }
+]

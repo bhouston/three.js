@@ -1,0 +1,181 @@
+[
+  {
+    "label": "geometry-v2-baseline",
+    "root": "../three.js-ssgi-experiments",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-adaptive",
+    "root": "../three.js-ssgi-adaptive-history",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-variance",
+    "root": "../three.js-ssgi-variance-atrous",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-bilinear",
+    "root": "../three.js-ssgi-bilinear-reconstruction",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-r2",
+    "root": "../three.js-interior-ssgi-r2",
+    "ssgi": {
+      "sampling": "Hilbert R2"
+    },
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-azimuth",
+    "root": "../three.js-interior-ssgi-view-azimuth",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-radius",
+    "root": "../three.js-interior-ssgi-world-radius",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-hierarchy",
+    "root": "../three.js-interior-ssgi-depth-hierarchy",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-history-source",
+    "root": "../three.js-ssgi-history-tolerance",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-diffuse-source",
+    "root": "../three.js-ssgi-diffuse-source",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-fallback-ao",
+    "root": "../three.js-ssgi-fallback-ao",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-stratified",
+    "root": "../three.js-ssgi-light-guided",
+    "ssgi": {
+      "radialSampling": "Stratified"
+    },
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-guided",
+    "root": "../three.js-ssgi-light-guided",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-world-cache",
+    "root": "../three.js-ssgi-world-cache",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-scene-settings",
+    "root": "../three.js-interior-ssgi-scene-settings",
+    "ssgi": {},
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-gather-confidence",
+    "root": "../three.js-ssgi-gather-confidence",
+    "ssgi": {},
+    "quality": false,
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ],
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-history-source-fast",
+    "root": "../three.js-ssgi-history-tolerance",
+    "ssgi": {},
+    "quality": false,
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ],
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-guarded-source",
+    "root": "../three.js-ssgi-diffuse-source-guarded",
+    "ssgi": {},
+    "quality": false,
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ],
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-guarded-ao",
+    "root": "../three.js-ssgi-fallback-ao-guarded",
+    "ssgi": {},
+    "quality": false,
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ],
+    "captures": false,
+    "throughput": false
+  },
+  {
+    "label": "geometry-v2-merged",
+    "root": "../three.js-interior-ssgi-audit",
+    "quality": false,
+    "captures": false,
+    "throughput": false
+  }
+]

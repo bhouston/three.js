@@ -13,7 +13,7 @@ export function supportsUnlayeredDiffuse( material ) {
 
 	}
 
-	for ( const name of [ 'fragmentNode', 'outputNode', 'backdropNode', 'lightsNode' ] ) {
+	for ( const name of [ 'fragmentNode', 'outputNode', 'mrtNode', 'backdropNode', 'lightsNode' ] ) {
 
 		if ( material[ name ] != null ) return false;
 

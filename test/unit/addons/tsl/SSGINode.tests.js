@@ -393,7 +393,7 @@ export default QUnit.module( 'Addons', () => {
 
 			QUnit.test( 'diffuse source scope rejects transmission and custom output paths', assert => {
 
-				for ( const overrides of [ { transmission: 0.5 }, { transmissionNode: {} }, { transparent: true }, { fragmentNode: {} }, { outputNode: {} }, { backdropNode: {} }, { lightsNode: {} } ] ) {
+				for ( const overrides of [ { transmission: 0.5 }, { transmissionNode: {} }, { transparent: true }, { fragmentNode: {} }, { outputNode: {} }, { mrtNode: {} }, { backdropNode: {} }, { lightsNode: {} } ] ) {
 
 					assert.notOk( supportsUnlayeredDiffuse( { isMeshStandardNodeMaterial: true, ...overrides } ), `${ Object.keys( overrides )[ 0 ] } retains beauty source` );
 

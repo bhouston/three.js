@@ -25,11 +25,12 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix } from 'three/tsl';
+			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+			import { fastNoise } from 'three/addons/tsl/utils/FASTNoise.js';
 			import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
 			import { recurrentDenoise, demodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -156,7 +157,12 @@
 				thickness: 1,
 				temporalFiltering: true
 			};
+			const samplingModes = [ 'Original', 'FAST Product', 'FAST Separate' ];
+			const ssrSampling = uniform( 0, 'uint' );
+			const ssgiSampling = uniform( 0, 'uint' );
+			let noiseAtlases;
 			const ssrParams = {
+				sampling: 'Original',
 				enabled: true,
 				denoise: true,
 				resolveOrder: 'Before filtering',
@@ -175,6 +181,7 @@
 				radius: 1.5
 			};
 			const ssgiParams = {
+				sampling: 'Original',
 				enabled: true,
 				denoise: true,
 				resolutionScale: 0.5,
@@ -267,6 +274,15 @@
 				uvTexture.colorSpace = THREE.SRGBColorSpace;
 				uvTexture.channel = 1;
 
+				noiseAtlases = await Promise.all( [ 'product', 'separate05' ].map( async variant => {
+
+					const atlas = await new THREE.TextureLoader().loadAsync( `textures/noises/fast/gauss1-ema01-${ variant }.png` );
+					atlas.generateMipmaps = false;
+					atlas.minFilter = atlas.magFilter = THREE.NearestFilter;
+					return atlas;
+
+				} ) );
+
 				await loadModel();
 
 				// Occlusion is evaluated from the main camera, after baking the probes.
@@ -345,6 +361,7 @@
 				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const ssgiSettings = settings.addFolder( 'SSGI Settings' ).close();
+				ssgiSettings.add( ssgiParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssgiSettings.add( ssgiParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'sliceCount', 1, 8, 1 ).name( 'Slices' ).onChange( updateSSGIParameters );
@@ -358,6 +375,7 @@
 				ssgiSettings.add( ssgiParams, 'denoiseRadius', 0, 3 ).name( 'Denoise Radius' ).onChange( updateSSGIParameters );
 				const ssrSettings = settings.addFolder( 'SSR Settings' ).close();
 				ssrSettings.add( ssrParams, 'resolveOrder', [ 'Before filtering', 'After filtering (coverage-aware)' ] ).name( 'Resolve Fallback' ).info( 'Before: filter combined reflections. After: filter SSR radiance and coverage, then resolve probes/environment.' ).onChange( updateIndirectLighting );
+				ssrSettings.add( ssrParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssrSettings.add( ssrParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'quality', 0.05, 1 ).name( 'Quality' ).onChange( updateSSRParameters );
@@ -510,10 +528,24 @@
 
 			}
 
+			function samplingNoise( mode, offset ) {
+
+				const product = fastNoise( noiseAtlases[ 0 ], offset );
+				const separate = fastNoise( noiseAtlases[ 1 ], offset );
+				return Fn( () => {
+
+					const value = vec4().toVar();
+					If( mode.equal( 2 ), () => value.assign( separate ) ).Else( () => value.assign( product ) );
+					return value;
+
+				} )();
+
+			}
+
 			function setupSSGI( depth, normal, motion ) {
 
 				const source = createHistorySource( depth, () => ssgiPass.thickness );
-				ssgiPass = ssgi( source, depth, normal, camera, { outputCoverage: true } );
+				ssgiPass = ssgi( source, depth, normal, camera, { outputCoverage: true, noiseNode: samplingNoise( ssgiSampling, new THREE.Vector2( 73, 29 ) ).xyz } );
 				ssgiPass.useScreenSpaceSampling.value = false;
 				// Diffuse filtering uses surface reprojection, without specular hit distance
 				// or roughness guides. RGB is irradiance before receiver albedo is applied.
@@ -537,6 +569,8 @@
 
 			function updateSSGIParameters() {
 
+				ssgiSampling.value = samplingModes.indexOf( ssgiParams.sampling );
+				ssgiPass.useNoiseNode.value = ssgiSampling.value !== 0;
 				ssgiPass.resolutionScale = ssgiParams.resolutionScale;
 				ssgiPass.sliceCount.value = ssgiParams.sliceCount;
 				ssgiPass.stepCount.value = ssgiParams.stepCount;
@@ -568,6 +602,7 @@
 				ssrPass = ssr( source, depth, normal, {
 					camera,
 					stochastic: true,
+					noiseNode: samplingNoise( ssrSampling, new THREE.Vector2( 0, 0 ) ),
 					outputCoverage: true,
 					diffuseNode: albedoMetalness,
 					metalnessNode: albedoMetalness.a,
@@ -712,6 +747,8 @@
 
 			function updateSSRParameters() {
 
+				ssrSampling.value = samplingModes.indexOf( ssrParams.sampling );
+				ssrPass.useNoiseNode.value = ssrSampling.value !== 0;
 				ssrPass.resolutionScale = ssrParams.resolutionScale;
 				ssrPass.quality.value = ssrParams.quality;
 				ssrPass.maxDistance.value = ssrParams.maxDistance * sceneScale;

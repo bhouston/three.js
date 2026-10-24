@@ -62,9 +62,10 @@ class SSGINode extends Node {
 	 * @param {TextureNode} normalNode - A texture node that represents the scene's normals.
 	 * @param {PerspectiveCamera} camera - The camera the scene is rendered with.
 	 * @param {Object} [options] - Optional coverage output.
+	 * @param {Node<vec3>} [options.noiseNode=null] - Uniform random samples in [0,1): slice rotation in x, summed radial jitter in yz. Evaluated at the tracing resolution.
 	 * @param {boolean} [options.outputCoverage=false] - Output unweighted irradiance and cosine-weighted sector coverage. Input beauty alpha is sample validity.
 	 */
-	constructor( beautyNode, depthNode, normalNode, camera, { outputCoverage = false } = {} ) {
+	constructor( beautyNode, depthNode, normalNode, camera, { outputCoverage = false, noiseNode = null } = {} ) {
 
 		super( 'vec4' );
 
@@ -75,6 +76,10 @@ class SSGINode extends Node {
 		 * @default false
 		 */
 		this.outputCoverage = outputCoverage;
+		/** @type {?Node<vec3>} Custom sampling pattern, fixed at construction. */
+		this.noiseNode = noiseNode;
+		/** @type {UniformNode<bool>} Enables the custom pattern; false uses the original pattern. */
+		this.useNoiseNode = uniform( true );
 		/** @type {number} */
 		this.resolutionScale = 1;
 		/** @type {UniformNode<float>} */
@@ -641,9 +646,22 @@ class SSGINode extends Node {
 				//
 
 				const noiseOffset = spatialOffsets( screenCoordinate );
-				const noiseDirection = interleavedGradientNoise( screenCoordinate );
+				const noiseDirection = interleavedGradientNoise( screenCoordinate ).add( this._temporalDirection ).toVar();
 				const noiseJitterIdx = this._temporalDirection.mul( 0.02 ); // Port: Add noiseJitterIdx here for slightly better noise convergence with TRAA (see #31890 for more details)
-				const initialRayStep = fract( noiseOffset.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ).mul( 2 ).sub( 1 ) ) );
+				const initialRayStep = fract( noiseOffset.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ).mul( 2 ).sub( 1 ) ) ).toVar();
+
+				if ( this.noiseNode !== null ) {
+
+					If( this.useNoiseNode, () => {
+
+						const noise = vec3( this.noiseNode ).toVar();
+						noiseDirection.assign( noise.x );
+						// Keep the original sum-of-two-uniforms radial distribution in [0,2).
+						initialRayStep.assign( noise.y.add( noise.z ) );
+
+					} );
+
+				}
 
 				const ao = float( 0 );
 				const color = vec3( 0 );
@@ -673,7 +691,7 @@ class SSGINode extends Node {
 
 				Loop( { start: uint( 0 ), end: ROTATION_COUNT, type: 'uint', condition: '<' }, ( { i } ) => {
 
-					const rotationAngle = mul( float( i ).add( noiseDirection ).add( this._temporalDirection ), PI.div( float( ROTATION_COUNT ) ) ).toConst();
+					const rotationAngle = mul( float( i ).add( noiseDirection ), PI.div( float( ROTATION_COUNT ) ) ).toConst();
 					const sliceDir = vec3( vec2( cos( rotationAngle ), sin( rotationAngle ) ), 0 ).toConst();
 					const slideDirTexelSize = sliceDir.xy.mul( float( 1 ).div( this._resolution ) ).toConst();
 

@@ -15,6 +15,7 @@ import { ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
  * reprojection, and neighborhood clipping of history. Inspired by the separate
  * SSR/confidence architecture documented by Diligent Engine and Forspoken; this
  * is a small independent implementation, not a port of their complete denoisers.
+ * Reference: {@link https://diligentgraphics.github.io/docs/dc/dd9/DiligentFX_PostProcess_ScreenSpaceReflection_README.html}.
  *
  * @augments Node
  * @three_import import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
@@ -248,7 +249,11 @@ class CoverageDenoiseNode extends Node {
 						const hitUV = clip.xy.div( clip.w.max( 1e-6 ) ).mul( vec2( 0.5, - 0.5 ) ).add( 0.5 );
 						const hit = gather( hitUV ).toConst();
 						const error = value => fromWeighted( value ).rgb.sub( current.rgb ).length();
-						If( clip.w.greaterThan( 0 ).and( inBounds( hitUV ) ).and( hit.a.greaterThan( 0 ) ).and( error( hit ).lessThan( error( history ) ) ), () => history.assign( hit ) );
+						If( clip.w.greaterThan( 0 ).and( inBounds( hitUV ) ).and( hit.a.greaterThan( 0 ) ).and( error( hit ).lessThan( error( history ) ) ), () => {
+
+							history.assign( hit );
+
+						} );
 
 					} );
 

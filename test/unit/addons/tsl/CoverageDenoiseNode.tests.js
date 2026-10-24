@@ -1,5 +1,5 @@
-import { DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2 } from 'three/webgpu';
-import { context, texture } from 'three/tsl';
+import { DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
+import { context, float, indirectSpecular, texture, vec4 } from 'three/tsl';
 import { coverageDenoise } from '../../../../examples/jsm/tsl/display/CoverageDenoiseNode.js';
 import { getSharedRenderer } from '../../src/nodes/tsl/gpu-test-utils.js';
 
@@ -43,7 +43,7 @@ async function fixture( assert, run ) {
 	const velocity = makeTexture( () => [ 0, 0, 0, 0 ] );
 	const camera = new PerspectiveCamera( 50, 1, 0.1, 100 );
 	camera.updateMatrixWorld();
-	const node = coverageDenoise( texture( input ), camera, { depth: texture( depth ), normal: texture( normal ), velocity: texture( velocity ) } );
+	const node = coverageDenoise( texture( input ), camera, { depth: texture( depth ), normal: texture( normal ), velocity: texture( velocity ), hitDistance: float( 1 ) } );
 	node.radius.value = 1;
 	const material = new NodeMaterial();
 	material.fragmentNode = node;
@@ -77,7 +77,29 @@ async function fixture( assert, run ) {
 		renderer.setPixelRatio( 1 );
 		renderer.setSize( size, size );
 		renderer.contextNode = context();
-		await run( { node, renderer, input, depth, normal, velocity, update, render } );
+		const compose = async providers => {
+
+			await new Promise( resolve => requestAnimationFrame( resolve ) );
+			const target = new RenderTarget( size, size, { type: FloatType, depthBuffer: false } );
+			const resolveMaterial = new NodeMaterial();
+			resolveMaterial.fragmentNode = indirectSpecular( [ () => node, ...providers ] ).sample();
+			try {
+
+				renderer.setRenderTarget( target );
+				new QuadMesh( resolveMaterial ).render( renderer );
+				return Array.from( await renderer.readRenderTargetPixelsAsync( target, 8, 8, 1, 1 ) );
+
+			} finally {
+
+				renderer.setRenderTarget( null );
+				resolveMaterial.dispose();
+				target.dispose();
+
+			}
+
+		};
+
+		await run( { node, renderer, input, depth, normal, velocity, update, render, compose } );
 
 	} finally {
 
@@ -132,6 +154,28 @@ export default QUnit.module( 'Addons', () => {
 					const hdr = await render();
 					const expected = [ 8, 4, 2, 0.25 ];
 					assert.ok( hdr.every( ( v, i ) => Math.abs( v - expected[ i % 4 ] ) < 0.01 ), 'Fractional coverage does not attenuate unweighted radiance' );
+
+				} );
+
+			} );
+
+			QUnit.test( 'fallback resolves after filtering without contaminating SSR history', async assert => {
+
+				await fixture( assert, async ( { node, update, render, compose } ) => {
+
+					update( () => [ 0, 0, 0, 0.25 ] );
+					const fallback = [ () => vec4( 0, 4, 0, 0.25 ), () => vec4( 0, 0, 2, 1 ) ];
+					const resolved = await compose( fallback );
+					assert.ok( resolved.every( ( v, i ) => Math.abs( v - [ 0, 0.75, 1.125, 1 ][ i ] ) < 0.001 ), 'Probe and environment consume only remaining coverage, once each' );
+					const ssr = await render();
+					assert.ok( ssr.every( ( v, i ) => Math.abs( v - ( i % 4 === 3 ? 0.25 : 0 ) ) < 0.001 ), 'Colored fallback never enters filtered SSR or its history' );
+					update( () => [ 0, 0, 0, 1 ] );
+					node.reset();
+					assert.deepEqual( await compose( fallback ), [ 0, 0, 0, 1 ], 'Fully covered black prevents all fallback lighting' );
+					update( () => [ 0, 0, 0, 0 ] );
+					node.reset();
+					const missed = await compose( fallback );
+					assert.ok( missed.every( ( v, i ) => Math.abs( v - [ 0, 1, 1.5, 1 ][ i ] ) < 0.001 ), 'A complete miss falls through the ordered fallback chain' );
 
 				} );
 

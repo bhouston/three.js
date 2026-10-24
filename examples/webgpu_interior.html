@@ -35,6 +35,7 @@
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { DRACOLoader, DRACO_GLTF_CONFIG } from 'three/addons/loaders/DRACOLoader.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
@@ -50,8 +51,22 @@
 				'Cornell Box': 'cornell-box.glb',
 				'Cornell Box (Oblique)': 'cornell-box-oblique.glb',
 				'Cornell Box (Metallic Sphere)': 'cornell-box-metallic-sphere.glb',
-				'Cornell Box (Mirror Wall)': 'cornell-box-mirror-wall.glb'
+				'Cornell Box (Mirror Wall)': 'cornell-box-mirror-wall.glb',
+				'Tennyson Bust': 'tennyson-bust.glb',
+				'Steampunk Camera': 'steampunk_camera.glb',
+				'Space Ship Hallway': 'space_ship_hallway.glb',
+				'Shader Ball 2': 'ShaderBall2.glb',
+				'Shader Ball': 'ShaderBall.glb',
+				'Rolex': 'rolex.glb',
+				'Primitives Floor (Metallic Mirror)': 'primitives-floor-metallic-mirror.glb',
+				'Primitives Floor (Color Rough)': 'primitives-floor-color-rough.glb',
+				'Primitives Floor (Color Dielectric)': 'primitives-floor-color-dielectric.glb',
+				'Littlest Tokyo': 'LittlestTokyo.glb',
+				'Ferrari': 'ferrari.glb',
+				'Stripped Emissive Mirror Floor': 'stripped-emissive-mirror-floor.glb'
 			};
+
+			const loader = new GLTFLoader().setDRACOLoader( new DRACOLoader().setDecoderPath( DRACO_GLTF_CONFIG ) );
 
 			const params = {
 				output: 'Beauty',
@@ -709,7 +724,7 @@
 
 				try {
 
-					gltf = await new GLTFLoader().loadAsync( 'models/gltf/' + models[ name ] );
+					gltf = await loader.loadAsync( 'models/gltf/' + models[ name ] );
 
 				} catch ( error ) {
 

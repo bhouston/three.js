@@ -24,5 +24,6 @@ import './addons/exporters/OBJExporter.tests.js';
 import './addons/exporters/USDZExporter.tests.js';
 import './addons/tsl/WebGLNodesHandler.tests.js';
 import './addons/tsl/RecurrentDenoiseNode.tests.js';
+import './addons/tsl/CoverageDenoiseNode.tests.js';
 import './addons/postprocessing/GTAOPass.tests.js';
 import './addons/tsl/lighting/ReflectionProbesNode.tests.js';

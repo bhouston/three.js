@@ -1,0 +1,315 @@
+import { HalfFloatType, Matrix4, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
+import { Fn, If, context, convertToTexture, float, getViewPosition, isBackgroundDepth, mix, outputStruct, passTexture, texture, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
+
+/**
+ * Reconstructs sparse reflection radiance and its coverage together. The input and
+ * output are unweighted linear radiance in RGB and coverage in A. Hit distance is
+ * supplied separately; alpha is never used for frame count or ray length.
+ *
+ * Spatial and temporal sums operate on (radiance * coverage, coverage), then
+ * normalize RGB by accumulated coverage. Missing samples cannot darken valid
+ * reflections, and a valid black reflection still contributes coverage.
+ *
+ * Uses geometric edge stopping, depth/normal-validated surface and virtual-hit
+ * reprojection, and neighborhood clipping of history. Inspired by the separate
+ * SSR/confidence architecture documented by Diligent Engine and Forspoken; this
+ * is a small independent implementation, not a port of their complete denoisers.
+ *
+ * @augments Node
+ * @three_import import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
+ */
+class CoverageDenoiseNode extends Node {
+
+	static get type() {
+
+		return 'CoverageDenoiseNode';
+
+	}
+
+	/**
+	 * @param {TextureNode} inputNode - Unweighted radiance and coverage.
+	 * @param {Camera} camera - Scene camera.
+	 * @param {Object} options - Geometry and motion guides.
+	 * @param {TextureNode} options.depth - Device depth.
+	 * @param {TextureNode} options.normal - Packed view normal in RGB, roughness in A.
+	 * @param {TextureNode} options.velocity - Screen-space motion vectors.
+	 * @param {?Node<float>} [options.hitDistance=null] - World-space SSR hit distance.
+	 */
+	constructor( inputNode, camera, { depth, normal, velocity, hitDistance = null } ) {
+
+		super( 'vec4' );
+		this.inputNode = inputNode;
+		this.camera = camera;
+		this.depthNode = depth;
+		this.normalNode = normal;
+		this.velocityNode = velocity;
+		this.hitDistanceNode = hitDistance;
+		this.radius = uniform( 1.5 );
+		this.maxFrames = uniform( 16 );
+		this.depthThreshold = uniform( 0.01 );
+		this.updateBeforeType = NodeUpdateType.FRAME;
+
+		this._spatialTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
+		this._target = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 2 } );
+		this._historyTarget = this._target.clone();
+		this._spatialTarget.texture.name = 'CoverageDenoise.spatial';
+		for ( const target of [ this._target, this._historyTarget ] ) {
+
+			target.textures[ 0 ].name = 'CoverageDenoise.radianceCoverage';
+			target.textures[ 1 ].name = 'CoverageDenoise.geometry';
+
+		}
+
+		this._textureNode = passTexture( this, this._target.texture );
+		this._historyColor = texture( this._historyTarget.texture );
+		this._historyGeometry = texture( this._historyTarget.textures[ 1 ] );
+		this._spatialMaterial = new NodeMaterial();
+		this._temporalMaterial = new NodeMaterial();
+		this._quad = new QuadMesh();
+		this._size = new Vector2();
+		this._rendererState = {};
+		this._resolution = uniform( new Vector2( 1, 1 ) );
+		this._projectionInverse = uniform( new Matrix4() );
+		this._world = uniform( new Matrix4() );
+		this._previousView = uniform( new Matrix4() );
+		this._previousProjection = uniform( new Matrix4() );
+		this._historyValid = uniform( false );
+		this._historyWeight = uniform( 0 );
+		this._frames = 0;
+
+	}
+
+	/** Clears temporal validity without reallocating textures. */
+	reset() {
+
+		this._historyValid.value = false;
+		this._frames = 0;
+
+	}
+
+	setSize( width, height ) {
+
+		if ( this._target.width === width && this._target.height === height ) return;
+		for ( const target of [ this._spatialTarget, this._target, this._historyTarget ] ) target.setSize( width, height );
+		this._resolution.value.set( width, height );
+		this.reset();
+
+	}
+
+	getTextureNode() {
+
+		return this._textureNode;
+
+	}
+
+	getRenderTarget() {
+
+		return this._target;
+
+	}
+
+	updateBefore( frame ) {
+
+		const { renderer } = frame;
+		renderer.getDrawingBufferSize( this._size );
+		this.setSize( this._size.x, this._size.y );
+		this._projectionInverse.value.copy( this.camera.projectionMatrixInverse );
+		this._world.value.copy( this.camera.matrixWorld );
+		const frames = Math.min( this._frames, Math.max( 0, this.maxFrames.value - 1 ) );
+		this._historyWeight.value = frames / ( frames + 1 );
+
+		RendererUtils.resetRendererState( renderer, this._rendererState );
+		try {
+
+			renderer.setClearColor( 0, 0 );
+			renderer.setRenderTarget( this._spatialTarget );
+			this._quad.material = this._spatialMaterial;
+			this._quad.name = 'Coverage Denoise [ Spatial ]';
+			this._quad.render( renderer );
+
+			renderer.setRenderTarget( this._target );
+			this._quad.material = this._temporalMaterial;
+			this._quad.name = 'Coverage Denoise [ Temporal ]';
+			this._quad.render( renderer );
+
+			for ( let i = 0; i < 2; i ++ ) renderer.copyTextureToTexture( this._target.textures[ i ], this._historyTarget.textures[ i ] );
+			this._previousView.value.copy( this.camera.matrixWorldInverse );
+			this._previousProjection.value.copy( this.camera.projectionMatrix );
+			this._frames ++;
+			this._historyValid.value = true;
+
+		} finally {
+
+			RendererUtils.restoreRendererState( renderer, this._rendererState );
+
+		}
+
+	}
+
+	setup( builder ) {
+
+		const viewPosition = coordinate => getViewPosition( coordinate, this.depthNode.sample( coordinate ).r, this._projectionInverse );
+		const normal = coordinate => unpackRGBToNormal( this.normalNode.sample( coordinate ).rgb );
+		const toWeighted = value => vec4( value.rgb.mul( value.a ), value.a );
+		const fromWeighted = value => vec4( value.a.greaterThan( 1e-6 ).select( value.rgb.div( value.a.max( 1e-6 ) ), vec3( 0 ) ), value.a.clamp() );
+		const inBounds = coordinate => coordinate.x.greaterThanEqual( 0 ).and( coordinate.x.lessThanEqual( 1 ) )
+			.and( coordinate.y.greaterThanEqual( 0 ) ).and( coordinate.y.lessThanEqual( 1 ) );
+
+		const spatial = Fn( () => {
+
+			const coordinate = uv();
+			isBackgroundDepth( this.depthNode.sample( coordinate ).r ).discard();
+			const centerPosition = viewPosition( coordinate ).toConst();
+			const centerNormal = normal( coordinate ).toConst();
+			const roughness = this.normalNode.sample( coordinate ).a.toConst();
+			const sum = vec4( 0 ).toVar();
+			const totalWeight = float( 0 ).toVar();
+			const stride = this.radius.mul( roughness.sqrt().max( 0.25 ) );
+			const tolerance = centerPosition.z.abs().mul( this.depthThreshold ).max( 0.001 );
+
+			for ( let y = - 1; y <= 1; y ++ ) {
+
+				for ( let x = - 1; x <= 1; x ++ ) {
+
+					const tapUV = coordinate.add( vec2( x, y ).mul( stride ).div( this._resolution ) ).toConst();
+					const tap = this.inputNode.sample( tapUV ).toConst();
+					const planeDistance = viewPosition( tapUV ).sub( centerPosition ).dot( centerNormal ).abs();
+					const depthWeight = planeDistance.div( tolerance ).pow2().negate().exp();
+					const normalWeight = normal( tapUV ).dot( centerNormal ).max( 0 ).pow( 32 );
+					const roughnessWeight = this.normalNode.sample( tapUV ).a.sub( roughness ).abs().mul( - 64 ).exp();
+					const weight = depthWeight.mul( normalWeight ).mul( roughnessWeight ).mul( Math.exp( - 0.5 * ( x * x + y * y ) ) ).mul( inBounds( tapUV ) ).toConst();
+					sum.addAssign( toWeighted( vec4( tap.rgb, tap.a.clamp() ) ).mul( weight ) );
+					totalWeight.addAssign( weight );
+
+				}
+
+			}
+
+			return fromWeighted( sum.div( totalWeight.max( 1e-6 ) ) );
+
+		} );
+
+		const spatialTexture = texture( this._spatialTarget.texture );
+		const temporal = Fn( () => {
+
+			const coordinate = uv();
+			const current = spatialTexture.sample( coordinate ).toConst();
+			const currentWeighted = toWeighted( current ).toConst();
+			const result = currentWeighted.toVar();
+			const position = viewPosition( coordinate ).toConst();
+			const worldPosition = this._world.mul( vec4( position, 1 ) ).xyz.toConst();
+			const worldNormal = normal( coordinate ).transformDirection( this._world ).toConst();
+			const expectedZ = this._previousView.mul( vec4( worldPosition, 1 ) ).z;
+			const surfaceUV = coordinate.sub( this.velocityNode.sample( coordinate ).xy ).toConst();
+
+			// Manual bilinear gather: geometry validation and premultiplication must
+			// happen per tap, before interpolation, to avoid bright invalid neighbors.
+			const gather = Fn( ( [ historyUV ] ) => {
+
+				const pixel = historyUV.mul( this._resolution ).sub( 0.5 );
+				const base = pixel.floor();
+				const fraction = pixel.fract();
+				const sum = vec4( 0 ).toVar();
+				const total = float( 0 ).toVar();
+				for ( let y = 0; y <= 1; y ++ ) {
+
+					for ( let x = 0; x <= 1; x ++ ) {
+
+						const tapUV = base.add( vec2( x, y ) ).add( 0.5 ).div( this._resolution ).toConst();
+						const geometry = this._historyGeometry.sample( tapUV ).toConst();
+						const valid = inBounds( tapUV ).and( worldNormal.dot( geometry.xyz ).greaterThan( 0.9 ) )
+							.and( geometry.w.sub( expectedZ ).abs().lessThanEqual( expectedZ.abs().mul( this.depthThreshold ).max( 0.001 ) ) );
+						const wx = x === 0 ? fraction.x.oneMinus() : fraction.x;
+						const wy = y === 0 ? fraction.y.oneMinus() : fraction.y;
+						const weight = wx.mul( wy ).mul( valid ).toConst();
+						sum.addAssign( toWeighted( this._historyColor.sample( tapUV ) ).mul( weight ) );
+						total.addAssign( weight );
+
+					}
+
+				}
+
+				return sum.div( total.max( 1e-6 ) );
+
+			} );
+
+			If( this._historyValid, () => {
+
+				const history = gather( surfaceUV ).toVar();
+				if ( this.hitDistanceNode !== null ) {
+
+					const rayLength = float( this.hitDistanceNode ).toConst();
+					If( rayLength.greaterThan( 0 ).and( rayLength.lessThan( ENV_RAY_LENGTH_THRESHOLD ) ).and( current.a.greaterThan( 0 ) ), () => {
+
+						const virtualPosition = position.add( position.normalize().mul( rayLength ) );
+						const previousPosition = this._previousView.mul( this._world.mul( vec4( virtualPosition, 1 ) ) );
+						const clip = this._previousProjection.mul( previousPosition );
+						const hitUV = clip.xy.div( clip.w.max( 1e-6 ) ).mul( vec2( 0.5, - 0.5 ) ).add( 0.5 );
+						const hit = gather( hitUV ).toConst();
+						const error = value => fromWeighted( value ).rgb.sub( current.rgb ).length();
+						If( clip.w.greaterThan( 0 ).and( inBounds( hitUV ) ).and( hit.a.greaterThan( 0 ) ).and( error( hit ).lessThan( error( history ) ) ), () => history.assign( hit ) );
+
+					} );
+
+				}
+
+				// Clip radiance and confidence as the same premultiplied signal.
+				const minimum = currentWeighted.toVar();
+				const maximum = currentWeighted.toVar();
+				for ( let y = - 1; y <= 1; y ++ ) {
+
+					for ( let x = - 1; x <= 1; x ++ ) {
+
+						const value = toWeighted( spatialTexture.sample( coordinate.add( vec2( x, y ).div( this._resolution ) ) ) );
+						minimum.assign( minimum.min( value ) );
+						maximum.assign( maximum.max( value ) );
+
+					}
+
+				}
+
+				// A rejected gather is zero, and must not count as valid black history.
+				const geometry = this._historyGeometry.sample( surfaceUV );
+				const valid = inBounds( surfaceUV ).and( worldNormal.dot( geometry.xyz ).greaterThan( 0.9 ) )
+					.and( geometry.w.sub( expectedZ ).abs().lessThanEqual( expectedZ.abs().mul( this.depthThreshold ).max( 0.001 ) ) );
+				result.assign( mix( currentWeighted, history.clamp( minimum, maximum ), this._historyWeight.mul( valid ) ) );
+
+			} );
+
+			return fromWeighted( result );
+
+		} );
+
+		const geometry = Fn( () => vec4( normal( uv() ).transformDirection( this._world ), viewPosition( uv() ).z ) );
+		this._spatialMaterial.contextNode = context( builder.getSharedContext() );
+		this._spatialMaterial.fragmentNode = spatial();
+		this._spatialMaterial.needsUpdate = true;
+		this._temporalMaterial.contextNode = context( builder.getSharedContext() );
+		this._temporalMaterial.fragmentNode = outputStruct( temporal(), geometry() );
+		this._temporalMaterial.needsUpdate = true;
+		return this._textureNode;
+
+	}
+
+	dispose() {
+
+		super.dispose();
+		for ( const target of [ this._spatialTarget, this._target, this._historyTarget ] ) target.dispose();
+		this._spatialMaterial.dispose();
+		this._temporalMaterial.dispose();
+
+	}
+
+}
+
+export default CoverageDenoiseNode;
+
+/**
+ * @tsl
+ * @param {Node<vec4>} input - Unweighted radiance and coverage.
+ * @param {Camera} camera - Scene camera.
+ * @param {Object} options - Depth, packed normal/roughness, velocity and optional hit distance.
+ * @return {CoverageDenoiseNode} The coverage-aware reflection denoiser.
+ */
+export const coverageDenoise = ( input, camera, options ) => new CoverageDenoiseNode( convertToTexture( input ), camera, options );

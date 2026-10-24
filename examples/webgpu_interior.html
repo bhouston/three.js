@@ -31,6 +31,7 @@
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+			import { resolveSSRHitDistance } from 'three/addons/tsl/utils/SpecularHelpers.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { fastNoise } from 'three/addons/tsl/utils/FASTNoise.js';
 			import { SSGI_QUALITY_PRESETS, resolveSSGISettings } from 'three/addons/tsl/utils/SSGISettings.js';
@@ -704,7 +705,9 @@
 
 					const raw = ssrPass.getTextureNode().sample( uv );
 					const coverage = ssrPass.getCoverageNode().sample( uv ).r;
-					return vec4( raw.rgb.div( coverage.max( 1e-4 ) ), raw.a );
+					// Only contributing screen hits can guide virtual-hit reprojection.
+					const hitDistance = resolveSSRHitDistance( raw.a, ssrCoverage.sample( uv ) );
+					return vec4( raw.rgb.div( coverage.max( 1e-4 ) ), hitDistance );
 
 				} );
 				ssrRadiance = sample( uv => demodulate( unweighted.sample( uv ), ssrModulation.sample( uv ) ) );
@@ -751,7 +754,7 @@
 					depth,
 					normal: normalRoughness,
 					velocity: motion,
-					hitDistance: sample( uv => ssrPass.getTextureNode().sample( uv ).a )
+					hitDistance: sample( uv => ssrRadiance.sample( uv ).a )
 				} ).toInspector( 'SSR Filtered', node => vec4( node.rgb.mul( node.a ), 1 ) );
 				updateSSRProvider();
 

@@ -1,5 +1,5 @@
 import { float, vec3, vec4 } from 'three/tsl';
-import { ggxReflectionSample } from '../../../../examples/jsm/tsl/utils/SpecularHelpers.js';
+import { ggxReflectionSample, resolveSSRHitDistance, ENV_RAY_LENGTH, ENV_RAY_LENGTH_THRESHOLD } from '../../../../examples/jsm/tsl/utils/SpecularHelpers.js';
 import { gpuTest } from '../../src/nodes/tsl/gpu-test-utils.js';
 
 export default QUnit.module( 'Addons', () => {
@@ -7,6 +7,23 @@ export default QUnit.module( 'Addons', () => {
 	QUnit.module( 'TSL', () => {
 
 		QUnit.module( 'SpecularHelpers', () => {
+
+			gpuTest( 'SSR reconstruction distances require contributing screen hits', ( { assert } ) => {
+
+				for ( const coverage of [ 0.001, 0.5, 1 ] ) {
+
+					assert.closeAbs( resolveSSRHitDistance( float( 2.5 ), float( coverage ) ), float( 2.5 ), 0, `Positive coverage ${ coverage } retains hit distance, independently of RGB` );
+
+				}
+
+				assert.closeAbs( resolveSSRHitDistance( float( 2.5 ), float( 0 ) ), float( ENV_RAY_LENGTH ), 0, 'A roughness/history-rejected hit cannot guide fallback reprojection' );
+				for ( const distance of [ - 1, 0, ENV_RAY_LENGTH_THRESHOLD, ENV_RAY_LENGTH ] ) {
+
+					assert.closeAbs( resolveSSRHitDistance( float( distance ), float( 1 ) ), float( ENV_RAY_LENGTH ), 0, `Invalid or sentinel distance ${ distance } maps to fallback` );
+
+				}
+
+			} );
 
 			gpuTest( 'GGX sampling remains finite at either tangent-frame pole', ( { assert } ) => {
 

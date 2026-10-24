@@ -20,7 +20,7 @@ try {
 	} );
 	const page = await browser.newPage();
 	const results = [];
-	for ( const fixture of [ 'hi-z', 'ssr-hi-z', 'ssr-hi-z?traversal=adaptive', 'ssr-hi-z?traversal=adaptive&minMip=1', 'ssr-hi-z?coverage=1' ] ) {
+	for ( const fixture of ( process.env.HIZ_UNITS_ONLY === '1' ? [] : [ 'hi-z', 'ssr-hi-z', 'ssr-hi-z?traversal=adaptive', 'ssr-hi-z?traversal=adaptive&minMip=1', 'ssr-hi-z?coverage=1' ] ) ) {
 
 		const [ name, query ] = fixture.split( '?' );
 		await page.goto( `http://localhost:${ server.address().port }/test/webgpu/${ name }.html${ query ? '?' + query : '' }` );
@@ -33,17 +33,24 @@ try {
 
 	}
 
-	await page.goto( `http://localhost:${ server.address().port }/test/unit/UnitTestsAddons.html?filter=SSRNode` );
-	await page.waitForFunction( () => window._QUnitStats !== undefined, { timeout: 120000 } );
-	const units = await page.evaluate( () => ( {
-		stats: window._QUnitStats,
-		skipped: document.getElementById( 'qunit-tests' ).textContent.includes( 'SKIPPED' ),
-		failures: Array.from( document.querySelectorAll( '#qunit-tests > .fail' ), node => node.textContent )
-	} ) );
-	await writeFile( `${ directory }/units.json`, JSON.stringify( units, null, 2 ) );
-	assert.equal( units.stats.failed, 0, 'SSR unit regressions pass' );
-	assert.equal( units.skipped, false, 'GPU unit tests must execute' );
-	console.log( units );
+	const unitResults = [];
+	for ( const filter of ( process.env.HIZ_UNIT_FILTERS || 'SSRNode,SpecularHelpers' ).split( ',' ) ) {
+
+		await page.goto( `http://localhost:${ server.address().port }/test/unit/UnitTestsAddons.html?filter=${ encodeURIComponent( filter ) }` );
+		await page.waitForFunction( () => window._QUnitStats !== undefined, { timeout: 120000 } );
+		const units = await page.evaluate( () => ( {
+			stats: window._QUnitStats,
+			skipped: document.getElementById( 'qunit-tests' ).textContent.includes( 'SKIPPED' ),
+			failures: Array.from( document.querySelectorAll( '#qunit-tests > .fail' ), node => node.textContent )
+		} ) );
+		unitResults.push( { filter, ...units } );
+		await writeFile( `${ directory }/units.json`, JSON.stringify( unitResults, null, 2 ) );
+		assert.equal( units.stats.failed, 0, `${ filter }: unit regressions pass` );
+		assert.ok( units.stats.passed > 0, `${ filter }: tests execute` );
+		assert.equal( units.skipped, false, 'GPU unit tests must execute' );
+		console.log( filter, units );
+
+	}
 
 } finally {
 

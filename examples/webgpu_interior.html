@@ -75,6 +75,47 @@
 				'Stripped Emissive Mirror Floor': 'stripped-emissive-mirror-floor.glb'
 			};
 
+			// Capture points checked against each asset's floor plan. These scenes
+			// are open/cutaway, so local coverage is useful but box projection is not.
+			// Entries contain position, influence size, and blend distance.
+			const reflectionLayouts = {
+				'Dungeon Warkarma': {
+					scale: 0.1,
+					probes: [
+						[[ - 7.5, 3, 3 ], [ 17, 7, 9 ], 1 ],
+						[[ - 2.5, 1.7, - 4.5 ], [ 7, 4, 9 ], 0.7 ],
+						[[ - 2.5, 1.7, - 10 ], [ 7, 4, 9 ], 0.7 ],
+						[[ 2, 1.7, - 10 ], [ 7, 4, 9 ], 0.7 ],
+						[[ 10, 2.8, - 12 ], [ 15, 7, 12 ], 1.5 ],
+						[[ 11, 2.8, - 2 ], [ 8, 6, 10 ], 1 ],
+						[[ 11, 2.8, 8 ], [ 8, 6, 10 ], 1 ],
+						[[ 11, 1.7, 16 ], [ 8, 5, 8 ], 0.8 ]
+					]
+				},
+				'Bath Day': {
+					probes: [
+						[[ - 1.5, 1.7, 1.2 ], [ 5, 5, 5 ], 1 ],
+						[[ 1, 1.7, 1.2 ], [ 5, 5, 5 ], 1 ],
+						[[ 0, 1.7, - 1.5 ], [ 5, 5, 5 ], 1 ]
+					]
+				},
+				'Godrays Demo': {
+					probes: [
+						[[ 0, 35, 0 ], [ 160, 150, 280 ], 40 ],
+						[[ - 90, 35, - 90 ], [ 180, 150, 180 ], 40 ],
+						[[ 90, 35, - 90 ], [ 180, 150, 180 ], 40 ],
+						[[ - 90, 35, 90 ], [ 180, 150, 180 ], 40 ],
+						[[ 90, 35, 90 ], [ 180, 150, 180 ], 40 ]
+					]
+				},
+				'Dragon Attenuation': {
+					probes: [
+						[[ - 2.2, 0.8, 1.5 ], [ 7, 5, 8 ], 1.5 ],
+						[[ 2.2, 0.8, 1.5 ], [ 7, 5, 8 ], 1.5 ]
+					]
+				}
+			};
+
 			const environments = {
 				'Pedestrian Overpass (1K HDR)': 'equirectangular/pedestrian_overpass_1k.hdr',
 				'752 HDRI Skies (1K HDR)': 'equirectangular/752-hdri-skies-com_1k.hdr',
@@ -932,14 +973,27 @@
 
 				}
 
-				const environmentOnly = [ 'Tennyson Bust', 'Shader Ball', 'Shader Ball 2', 'Rolex', 'Littlest Tokyo', 'Damaged Helmet', 'Anisotropy Barn Lamp', 'Carbon Frame Bike', 'Dragon Attenuation' ];
+				const environmentOnly = [ 'Tennyson Bust', 'Shader Ball', 'Shader Ball 2', 'Rolex', 'Littlest Tokyo', 'Damaged Helmet', 'Anisotropy Barn Lamp', 'Carbon Frame Bike' ];
+				const localLayout = reflectionLayouts[ name ];
 				const openFloor = name.startsWith( 'Primitives Floor' ) || name === 'Stripped Emissive Mirror Floor';
-				bakeSettings.boxProjection = ! environmentOnly.includes( name ) && name !== 'Steampunk Camera' && ! openFloor && name !== 'Museum';
+				bakeSettings.boxProjection = ! environmentOnly.includes( name ) && name !== 'Steampunk Camera' && ! openFloor && name !== 'Museum' && ! localLayout;
 				probes.boxProjection = bakeSettings.boxProjection;
 
 				if ( environmentOnly.includes( name ) ) {
 
 					probeSetup = [];
+
+				} else if ( localLayout ) {
+
+					const scale = localLayout.scale ?? 1;
+					probeSetup = localLayout.probes.map( ( [ position, influenceSize, blendDistance ] ) => ( {
+						position: position.map( value => value * scale ),
+						influenceSize: influenceSize.map( value => value * scale ),
+						projectionSize: influenceSize.map( value => value * scale ),
+						blendDistance: blendDistance * scale,
+						// Layout sizes already include overlap; preserve room-local coverage.
+						influenceExpansion: [ 0, 0, 0 ]
+					} ) );
 
 				} else if ( name === 'Steampunk Camera' || openFloor ) {
 

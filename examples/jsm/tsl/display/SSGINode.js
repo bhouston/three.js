@@ -1,5 +1,5 @@
-import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
-import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth } from 'three/tsl';
+import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, HalfFloatType, RGBAFormat, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
+import { sample, countTrailingZeros, clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -17,6 +17,12 @@ let _rendererState;
  * - {@link https://github.com/cdrinmatane/SSRT3}.
  * - {@link https://cdrinmatane.github.io/posts/ssaovb-code/}.
  * - {@link https://cdrinmatane.github.io/cgspotlight-slides/ssilvb_slides.pdf}.
+ *
+ * With `outputCoverage: true`, GI is unweighted diffuse irradiance in RGB and
+ * cosine-weighted visibility-sector coverage in alpha. Beauty alpha must contain
+ * sample validity (e.g. previous-frame depth rejection). Black samples remain
+ * valid. This opt-in mode omits receiver albedo and leaves fallback to the caller.
+ * The default mode retains the original GI/AO behavior and packed RGB target.
  *
  * The quality and performance of the effect mainly depend on `sliceCount` and `stepCount`.
  * The total number of samples taken per pixel is `sliceCount` * `stepCount` * `2`. Here are some
@@ -55,10 +61,24 @@ class SSGINode extends Node {
 	 * @param {TextureNode} depthNode - A texture node that represents the scene's depth.
 	 * @param {TextureNode} normalNode - A texture node that represents the scene's normals.
 	 * @param {PerspectiveCamera} camera - The camera the scene is rendered with.
+	 * @param {Object} [options] - Optional coverage output.
+	 * @param {boolean} [options.outputCoverage=false] - Output unweighted irradiance and cosine-weighted sector coverage. Input beauty alpha is sample validity.
 	 */
-	constructor( beautyNode, depthNode, normalNode, camera ) {
+	constructor( beautyNode, depthNode, normalNode, camera, { outputCoverage = false } = {} ) {
 
 		super( 'vec4' );
+
+		/**
+		 * Whether GI stores unweighted irradiance and lighting coverage. Fixed at construction.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.outputCoverage = outputCoverage;
+		/** @type {number} */
+		this.resolutionScale = 1;
+		/** @type {UniformNode<float>} */
+		this.maxLuminance = uniform( 7 );
 
 		/**
 		 * A texture node that represents the beauty or scene pass.
@@ -124,7 +144,7 @@ class SSGINode extends Node {
 		 * @type {UniformNode<float>}
 		 * @default 10
 		 */
-		this.giIntensity = uniform( 10, 'float' );
+		this.giIntensity = uniform( outputCoverage ? 1 : 10, 'float' );
 
 		/**
 		 * Effective sampling radius in world space. AO and GI can only have influence within that radius.
@@ -267,8 +287,8 @@ class SSGINode extends Node {
 		this._camera = camera;
 
 		/**
-		 * The render target the effect is rendered into. The first texture holds the GI,
-		 * the second one the AO.
+		 * The render target the effect is rendered into. The first texture holds AO,
+		 * the second holds GI and optional lighting coverage.
 		 *
 		 * @private
 		 * @type {RenderTarget}
@@ -282,8 +302,8 @@ class SSGINode extends Node {
 
 		const giTexture = this._ssgiRenderTarget.textures[ 1 ];
 		giTexture.name = 'SSGI.GI';
-		giTexture.type = UnsignedInt101111Type;
-		giTexture.format = RGBFormat;
+		giTexture.type = outputCoverage ? HalfFloatType : UnsignedInt101111Type;
+		giTexture.format = outputCoverage ? RGBAFormat : RGBFormat;
 
 		/**
 		 * The material that is used to render the effect.
@@ -324,9 +344,29 @@ class SSGINode extends Node {
 	}
 
 	/**
-	 * Returns the GI result of the effect as a texture node.
+	 * Returns lighting coverage, independent of radiance and AO. Requires outputCoverage.
 	 *
-	 * @return {PassTextureNode} A texture node that represents the GI result of the effect.
+	 * @return {SampleNode} Cosine-weighted hemisphere coverage.
+	 */
+	getCoverageNode() {
+
+		if ( ! this.outputCoverage ) throw new Error( 'SSGINode: enable outputCoverage to read lighting coverage.' );
+		return this._coverageNode ??= sample( uv => this._giNode.sample( uv ).a );
+
+	}
+
+	/** @return {RenderTarget} The AO/GI render target. */
+	getRenderTarget() {
+
+		return this._ssgiRenderTarget;
+
+	}
+
+	/**
+	 * Returns GI. With outputCoverage enabled, RGB is unweighted irradiance and A
+	 * is lighting coverage; the default remains the legacy packed RGB signal.
+	 *
+	 * @return {PassTextureNode} GI result.
 	 */
 	getGINode() {
 
@@ -342,6 +382,8 @@ class SSGINode extends Node {
 	 */
 	setSize( width, height ) {
 
+		width = Math.max( 1, Math.round( width * this.resolutionScale ) );
+		height = Math.max( 1, Math.round( height * this.resolutionScale ) );
 		this._resolution.value.set( width, height );
 		this._ssgiRenderTarget.setSize( width, height );
 
@@ -390,6 +432,8 @@ class SSGINode extends Node {
 
 		renderer.setClearColor( 0xffffff, 1 );
 
+		if ( this.outputCoverage ) renderer.setClearColor( 0, 0 );
+
 		// gi
 
 		renderer.setRenderTarget( this._ssgiRenderTarget );
@@ -411,7 +455,7 @@ class SSGINode extends Node {
 
 		const renderer = builder.renderer;
 
-		if ( renderer.backend.isWebGPUBackend === true && renderer.hasFeature( 'rg11b10ufloat-renderable' ) === false ) {
+		if ( renderer.backend.isWebGPUBackend === true && ! this.outputCoverage && renderer.hasFeature( 'rg11b10ufloat-renderable' ) === false ) {
 
 			console.error( 'THREE.SSGINode: The device does not support the "rg11b10ufloat-renderable" feature which is required for SSGI.' );
 
@@ -420,6 +464,7 @@ class SSGINode extends Node {
 		const uvNode = uv();
 		const MAX_RAY = uint( 32 );
 		const globalOccludedBitfield = uint( 0 );
+		const coverageField = this.outputCoverage ? property( 'float' ) : null;
 
 		const sampleDepth = ( uv ) => {
 
@@ -514,27 +559,41 @@ class SSGINode extends Node {
 
 					const lightColor = sampleBeauty( sampleUV );
 
-					If( luminance( lightColor ).greaterThan( 0.001 ), () => { // Continue if there is light at that location (intensity > 0)
+					if ( this.outputCoverage ) {
 
-						const lightDirectionVS = normalize( pixelToSample );
-						const normalDotLightDirection = clamp( dot( viewNormal, lightDirectionVS ) );
+						// Known geometry consumes angular coverage even if it is black or
+						// back-facing. Invalid history leaves that fraction to the fallback.
+						const valid = lightColor.a.clamp().mul( isBackgroundDepth( sampleDepth( sampleUV ) ).not() );
+						const weight = ssgiSectorCoverage( currentOccludedBitfield ).mul( valid );
+						const facing = sampleNormal( sampleUV ).dot( pixelToSample.negate() ).greaterThan( 0 ).select( float( 1 ), BACKFACE_LIGHTING );
+						coverageField.addAssign( weight );
+						color.addAssign( lightColor.rgb.mul( weight ).mul( facing ) );
 
-						If( normalDotLightDirection.greaterThan( 0.001 ), () => { // Continue if light is facing surface normal
+					} else {
 
-							const lightNormalVS = sampleNormal( sampleUV );
+						If( luminance( lightColor ).greaterThan( 0.001 ), () => { // Continue if there is light at that location (intensity > 0)
 
-							// Intensity of outgoing light in the direction of the shading point
+							const lightDirectionVS = normalize( pixelToSample );
+							const normalDotLightDirection = clamp( dot( viewNormal, lightDirectionVS ) );
 
-							let lightNormalDotLightDirection = dot( lightNormalVS, lightDirectionVS.negate() );
+							If( normalDotLightDirection.greaterThan( 0.001 ), () => { // Continue if light is facing surface normal
 
-							const d = sign( lightNormalDotLightDirection ).lessThan( 0 ).select( abs( lightNormalDotLightDirection ).mul( BACKFACE_LIGHTING ), abs( lightNormalDotLightDirection ) );
-							lightNormalDotLightDirection = BACKFACE_LIGHTING.greaterThan( 0 ).and( dot( lightNormalVS, viewDir ).greaterThan( 0 ) ).select( d, clamp( lightNormalDotLightDirection ) );
+								const lightNormalVS = sampleNormal( sampleUV );
 
-							color.rgb.addAssign( float( numOccludedZones ).div( float( MAX_RAY ) ).mul( lightColor ).mul( normalDotLightDirection ).mul( lightNormalDotLightDirection ) );
+								// Intensity of outgoing light in the direction of the shading point
+
+								let lightNormalDotLightDirection = dot( lightNormalVS, lightDirectionVS.negate() );
+
+								const d = sign( lightNormalDotLightDirection ).lessThan( 0 ).select( abs( lightNormalDotLightDirection ).mul( BACKFACE_LIGHTING ), abs( lightNormalDotLightDirection ) );
+								lightNormalDotLightDirection = BACKFACE_LIGHTING.greaterThan( 0 ).and( dot( lightNormalVS, viewDir ).greaterThan( 0 ) ).select( d, clamp( lightNormalDotLightDirection ) );
+
+								color.rgb.addAssign( float( numOccludedZones ).div( float( MAX_RAY ) ).mul( lightColor ).mul( normalDotLightDirection ).mul( lightNormalDotLightDirection ) );
+
+							} );
 
 						} );
 
-					} );
+					}
 
 				} );
 
@@ -545,11 +604,13 @@ class SSGINode extends Node {
 		} );
 
 		const aoField = property( 'float' );
-		const giField = property( 'vec3' );
+		const giField = property( this.outputCoverage ? 'vec4' : 'vec3' );
 
 		const outputNode = outputStruct( aoField, giField );
 
 		const gi = Fn( () => {
+
+			if ( this.outputCoverage ) coverageField.assign( 0 );
 
 			const depth = sampleDepth( uvNode ).toVar();
 
@@ -620,17 +681,25 @@ class SSGINode extends Node {
 
 			color.divAssign( float( ROTATION_COUNT ) );
 			color.mulAssign( GI_INTENSITY );
+			if ( this.outputCoverage ) {
+
+				coverageField.assign( coverageField.div( float( ROTATION_COUNT ) ).clamp() );
+				// E = pi * mean incoming radiance for cosine-weighted diffuse transport.
+				// The resolver supplies coverage once; no receiver albedo is baked here.
+				color.assign( coverageField.greaterThan( 1e-6 ).select( color.mul( PI ).div( coverageField.max( 1e-6 ) ), vec3( 0 ) ) );
+
+			}
 
 			// scale color based on luminance
 
-			const maxLuminance = float( 7 ).toConst(); // 7 represent a HDR luminance value
+			const maxLuminance = this.maxLuminance.toConst();
 			const currentLuminance = luminance( color );
 
 			const scale = currentLuminance.greaterThan( maxLuminance ).select( maxLuminance.div( currentLuminance ), float( 1 ) );
 			color.mulAssign( scale );
 
 			aoField.assign( ao );
-			giField.assign( color );
+			giField.assign( this.outputCoverage ? vec4( color, coverageField ) : color );
 
 			return vec4( 0 );
 
@@ -674,6 +743,38 @@ export default SSGINode;
  * @param {TextureNode} depthNode - A texture node that represents the scene's depth.
  * @param {TextureNode} normalNode - A texture node that represents the scene's normals.
  * @param {Camera} camera - The camera the scene is rendered with.
+ * @param {Object} [options] - Optional coverage output; see constructor.
  * @returns {SSGINode}
  */
-export const ssgi = ( beautyNode, depthNode, normalNode, camera ) => new SSGINode( convertToTexture( beautyNode ), depthNode, normalNode, camera );
+export const ssgi = ( beautyNode, depthNode, normalNode, camera, options ) => new SSGINode( convertToTexture( beautyNode ), depthNode, normalNode, camera, options );
+
+/**
+ * Cosine-weighted measure of the occupied sectors in a normal-aligned hemisphere
+ * slice. Complementary masks sum to one. Iterates only over occupied bits; the
+ * caller visits each sector at most once per slice, independently of brightness.
+ *
+ * @tsl
+ * @param {Node<uint>} bitfield - The 32-sector visibility mask.
+ * @return {Node<float>} Fraction of cosine-weighted hemisphere coverage.
+ */
+export const ssgiSectorCoverage = /*@__PURE__*/ Fn( ( [ bitfield ] ) => {
+
+	const bits = uint( bitfield ).toVar();
+	const weight = float( 0 ).toVar();
+	Loop( 32, () => {
+
+		If( bits.equal( uint( 0 ) ), () => {
+
+			Break();
+
+		} );
+		const sector = float( countTrailingZeros( bits ) ).toConst();
+		const low = sector.div( 32 ).mul( PI ).sub( HALF_PI );
+		const high = sector.add( 1 ).div( 32 ).mul( PI ).sub( HALF_PI );
+		weight.addAssign( high.sin().sub( low.sin() ).mul( 0.5 ) );
+		bits.assign( bits.bitAnd( bits.sub( uint( 1 ) ) ) );
+
+	} );
+	return weight;
+
+}, { bitfield: 'uint', return: 'float' } );

@@ -20,6 +20,7 @@ const atlasDirectory = process.env.SAMPLING_ATLAS_DIRECTORY;
 await mkdir( directory, { recursive: true } );
 const html = ( await readFile( 'examples/webgpu_interior.html', 'utf8' ) )
 	.replace( 'new THREE.Vector2( 73, 29 ) ).wxy', `new THREE.Vector2( 73, 29 ) ).${ swizzle }` )
+	.replace( "sampling: 'FAST Separate'", "sampling: 'Original'" )
 	.replace( "model: 'Dual Rooms'", `model: ${ JSON.stringify( model ) }` )
 	.replace( "output: 'Beauty'", "output: 'SSR Filtered'" )
 	.replace( "const samplingModes = [ 'Original', 'FAST Product', 'FAST Separate' ];", "const samplingModes = [ 'Original', 'FAST Product', 'FAST Separate', 'Reference' ];" )

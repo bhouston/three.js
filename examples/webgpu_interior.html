@@ -10,7 +10,7 @@
 		<div id="info">
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Interior</span></div>
-			<small>Baked Light Probe light maps, SSR, box-projected reflections and GTAO / GTSO with selectable scenes.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a><br /><span id="status"></span></small>
+			<small>Baked Light Probe light maps, SSGI, SSR, box-projected reflections and GTAO / GTSO with selectable scenes.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a><br /><span id="status"></span></small>
 		</div>
 		<script type="importmap">
 			{
@@ -27,6 +27,7 @@
 			import * as THREE from 'three/webgpu';
 			import { Fn, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
+			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
@@ -89,6 +90,20 @@
 				maxFrames: 16,
 				radius: 1.5
 			};
+			const ssgiParams = {
+				enabled: true,
+				denoise: true,
+				resolutionScale: 0.5,
+				sliceCount: 2,
+				stepCount: 8,
+				radius: 0.25,
+				thickness: 0.01,
+				intensity: 1,
+				backfaceLighting: 0,
+				maxLuminance: 35,
+				maxFrames: 16,
+				denoiseRadius: 1.5
+			};
 			const bakeSettings = {
 				bounces: 2,
 				probeResolution: 32,
@@ -99,8 +114,10 @@
 			let camera, scene, renderer, controls, lightProbes, probes, model;
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
-			let ssrCoverage, ssrProvider, ssrHistory;
+			let ssrCoverage, ssrProvider, lightingHistory;
 			let indirectSpecularRaw, indirectSpecularCoverage, indirectSpecularFiltered, ssrCoverageDenoise;
+			let ssgiPass, ssgiDenoise, ssgiProvider;
+			let diffuseProviders = [];
 			let sceneScale = 1;
 			let specularProviders = [];
 			const currentView = new THREE.Matrix4();
@@ -186,6 +203,7 @@
 
 				scenePass = pass( scene, camera ).toInspector( 'Color' );
 				setupSSR( prePassDepth, prePassNormal, prePassVelocity );
+				setupSSGI( prePassDepth, prePassNormal, prePassVelocity );
 				const onAfterRender = scene.onAfterRender;
 				scene.onAfterRender = function ( render, sourceScene, sourceCamera, ...args ) {
 
@@ -218,14 +236,16 @@
 				traaPass.useSubpixelCorrection = false;
 				updateAOParameters();
 				updateSSRParameters();
+				updateSSGIParameters();
 				configureIndirectLighting();
 				updateAO();
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
-				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
+				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSGI Raw', 'SSGI Filtered', 'SSGI Coverage', 'SSGI Filtered Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
 				const indirectDiffuseSettings = settings.addFolder( 'Indirect Diffuse' );
+				indirectDiffuseSettings.add( ssgiParams, 'enabled' ).name( 'SSGI' ).onChange( updateIndirectLighting );
 				indirectDiffuseSettings.add( params, 'lightProbeDiffuse' ).name( 'Light Probes' ).onChange( updateIndirectLighting );
 				indirectDiffuseSettings.add( params, 'diffuseBaking' ).name( 'Diffuse Lightmaps' ).onChange( updateIndirectLighting );
 				indirectDiffuseSettings.add( params, 'reflectionDiffuse' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
@@ -234,6 +254,18 @@
 				indirectSpecularSettings.add( ssrParams, 'enabled' ).name( 'SSR' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
+				const ssgiSettings = settings.addFolder( 'SSGI Settings' ).close();
+				ssgiSettings.add( ssgiParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
+				ssgiSettings.add( ssgiParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'sliceCount', 1, 8, 1 ).name( 'Slices' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'stepCount', 2, 32, 1 ).name( 'Steps' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'radius', 0.01, 1 ).name( 'Relative Radius' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'thickness', 0.0001, 0.05 ).name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'intensity', 0, 2 ).name( 'Intensity' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'backfaceLighting', 0, 1 ).name( 'Backface Lighting' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'maxLuminance', 1, 100 ).name( 'Max Luminance' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'maxFrames', 1, 32, 1 ).name( 'History Frames' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'denoiseRadius', 0, 3 ).name( 'Denoise Radius' ).onChange( updateSSGIParameters );
 				const ssrSettings = settings.addFolder( 'SSR Settings' ).close();
 				ssrSettings.add( ssrParams, 'resolveOrder', [ 'Before filtering', 'After filtering (coverage-aware)' ] ).name( 'Resolve Fallback' ).info( 'Before: filter combined reflections. After: filter SSR radiance and coverage, then resolve probes/environment.' ).onChange( updateIndirectLighting );
 				ssrSettings.add( ssrParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
@@ -278,7 +310,7 @@
 					camera.aspect = window.innerWidth / window.innerHeight;
 					camera.updateProjectionMatrix();
 					renderer.setSize( window.innerWidth, window.innerHeight );
-					resetSSR();
+					resetScreenSpaceLighting();
 
 				} );
 				renderer.setAnimationLoop( animate );
@@ -314,22 +346,22 @@
 				}
 
 				const size = renderer.getDrawingBufferSize( drawingSize );
-				if ( ssrHistory.width !== size.x || ssrHistory.height !== size.y ) {
+				if ( lightingHistory.width !== size.x || lightingHistory.height !== size.y ) {
 
-					ssrHistory.setSize( size.x, size.y );
+					lightingHistory.setSize( size.x, size.y );
 					historyValid.value = false;
 
 				}
 
-				renderer.initRenderTarget( ssrHistory );
+				renderer.initRenderTarget( lightingHistory );
 				renderPipeline.render();
 
-				// Only beauty and SSR diagnostic views render the source color. Copy after
-				// resolve so tracing never depends on this frame's indirect specular chain.
-				if ( params.output === 'Beauty' || ( params.output.startsWith( 'SSR' ) || params.output.startsWith( 'Indirect Specular' ) ) ) {
+				// Copy resolved lighting after rendering. Both screen-space effects trace
+				// current geometry and read only the previous frame, avoiding feedback cycles.
+				if ( params.output === 'Beauty' || ( params.output.startsWith( 'SSGI' ) || params.output.startsWith( 'SSR' ) || params.output.startsWith( 'Indirect Specular' ) ) ) {
 
-					renderer.copyTextureToTexture( scenePass.getTexture( 'output' ), ssrHistory.texture );
-					renderer.copyTextureToTexture( prePass.getTexture( 'depth' ), ssrHistory.depthTexture );
+					renderer.copyTextureToTexture( scenePass.getTexture( 'output' ), lightingHistory.texture );
+					renderer.copyTextureToTexture( prePass.getTexture( 'depth' ), lightingHistory.depthTexture );
 					previousView.value.copy( currentView );
 					previousProjection.value.copy( currentProjection );
 					previousProjectionInverse.value.copy( currentProjectionInverse );
@@ -343,35 +375,84 @@
 
 			}
 
-			function setupSSR( depth, normal, motion ) {
+			function createHistorySource( depth, thickness ) {
 
-				const ssrProjectionInverse = uniform( camera.projectionMatrixInverse );
-				const ssrWorldMatrix = uniform( camera.matrixWorld );
-				ssrHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture( 1, 1 ) } );
-				ssrHistory.depthTexture.format = depth.value.format;
-				ssrHistory.depthTexture.type = depth.value.type;
-				ssrHistory.depthTexture.minFilter = THREE.NearestFilter;
-				ssrHistory.depthTexture.magFilter = THREE.NearestFilter;
-
+				const projectionInverse = uniform( camera.projectionMatrixInverse );
+				const worldMatrix = uniform( camera.matrixWorld );
 				// Trace current geometry, then project each hit into the previous resolved
 				// color. Depth rejection prevents newly visible surfaces reading stale color.
-				const source = sample( ( uv ) => {
+				return sample( ( uv ) => {
 
-					const viewPosition = getViewPosition( uv, depth.sample( uv ).r, ssrProjectionInverse );
-					const worldPosition = ssrWorldMatrix.mul( vec4( viewPosition, 1 ) );
+					const viewPosition = getViewPosition( uv, depth.sample( uv ).r, projectionInverse );
+					const worldPosition = worldMatrix.mul( vec4( viewPosition, 1 ) );
 					const previousPosition = previousView.mul( worldPosition );
 					const clip = previousProjection.mul( previousPosition );
 					const previousUV = clip.xy.div( clip.w.max( 1e-6 ) ).mul( vec2( 0.5, - 0.5 ) ).add( 0.5 );
-					const oldDepth = texture( ssrHistory.depthTexture ).sample( previousUV ).r;
+					const oldDepth = texture( lightingHistory.depthTexture ).sample( previousUV ).r;
 					const oldPosition = getViewPosition( previousUV, oldDepth, previousProjectionInverse );
 					const valid = historyValid.and( clip.w.greaterThan( 0 ) )
 						.and( previousUV.x.greaterThanEqual( 0 ).and( previousUV.x.lessThanEqual( 1 ) ) )
 						.and( previousUV.y.greaterThanEqual( 0 ).and( previousUV.y.lessThanEqual( 1 ) ) )
-						.and( oldPosition.z.sub( previousPosition.z ).abs().lessThan( ssrPass.thickness.max( 0.001 ) ) );
+						.and( oldPosition.z.sub( previousPosition.z ).abs().lessThan( thickness().max( 0.001 ) ) );
 
-					return vec4( texture( ssrHistory.texture ).sample( previousUV ).rgb, valid );
+					return vec4( texture( lightingHistory.texture ).sample( previousUV ).rgb, valid );
 
 				} );
+
+			}
+
+			function setupSSGI( depth, normal, motion ) {
+
+				const source = createHistorySource( depth, () => ssgiPass.thickness );
+				ssgiPass = ssgi( source, depth, normal, camera, { outputCoverage: true } );
+				ssgiPass.useScreenSpaceSampling.value = false;
+				// Diffuse filtering uses surface reprojection, without specular hit distance
+				// or roughness guides. RGB is irradiance before receiver albedo is applied.
+				const diffuseNormal = sample( uv => vec4( prePass.getTextureNode().sample( uv ).rgb, 1 ) );
+				ssgiDenoise = coverageDenoise( ssgiPass.getGINode(), camera, { depth, normal: diffuseNormal, velocity: motion } );
+				updateSSGIProvider();
+
+			}
+
+			function updateSSGIProvider() {
+
+				ssgiProvider = ssgiParams.enabled && ssgiPass ? ( { normal } ) => {
+
+					const baseNormal = unpackRGBToNormal( prePass.getTextureNode().sample( screenUV ).rgb ).transformDirection( cameraWorldMatrix );
+					const value = ( ssgiParams.denoise ? ssgiDenoise.getTextureNode() : ssgiPass.getGINode() ).sample( screenUV );
+					return vec4( value.rgb, value.a.mul( normal.dot( baseNormal ).greaterThan( 0.999 ) ) );
+
+				} : null;
+
+			}
+
+			function updateSSGIParameters() {
+
+				ssgiPass.resolutionScale = ssgiParams.resolutionScale;
+				ssgiPass.sliceCount.value = ssgiParams.sliceCount;
+				ssgiPass.stepCount.value = ssgiParams.stepCount;
+				ssgiPass.radius.value = ssgiParams.radius * sceneScale;
+				ssgiPass.thickness.value = ssgiParams.thickness * sceneScale;
+				ssgiPass.giIntensity.value = ssgiParams.intensity;
+				ssgiPass.backfaceLighting.value = ssgiParams.backfaceLighting;
+				ssgiPass.maxLuminance.value = ssgiParams.maxLuminance;
+				ssgiDenoise.radius.value = ssgiParams.denoiseRadius;
+				ssgiDenoise.maxFrames.value = ssgiParams.maxFrames;
+				resetScreenSpaceLighting();
+				traaPass?.setSize( 1, 1 );
+
+			}
+
+			function setupSSR( depth, normal, motion ) {
+
+				const ssrProjectionInverse = uniform( camera.projectionMatrixInverse );
+				lightingHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture( 1, 1 ) } );
+				lightingHistory.depthTexture.format = depth.value.format;
+				lightingHistory.depthTexture.type = depth.value.type;
+				lightingHistory.depthTexture.minFilter = THREE.NearestFilter;
+				lightingHistory.depthTexture.magFilter = THREE.NearestFilter;
+
+				const source = createHistorySource( depth, () => ssrPass.thickness );
 
 				const normalRoughness = prePass.getTextureNode();
 				const albedoMetalness = prePass.getTextureNode( 'albedo' );
@@ -510,12 +591,13 @@
 
 			}
 
-			function resetSSR() {
+			function resetScreenSpaceLighting() {
 
 				historyValid.value = false;
 				ssrTemporal?.setSize( 1, 1 );
 				ssrDenoise?.setSize( 1, 1 );
 				ssrCoverageDenoise?.reset();
+				ssgiDenoise?.reset();
 
 			}
 
@@ -537,7 +619,7 @@
 				ssrDenoise.radius.value = ssrParams.radius;
 				ssrCoverageDenoise.radius.value = ssrParams.radius;
 				ssrCoverageDenoise.maxFrames.value = ssrParams.maxFrames;
-				resetSSR();
+				resetScreenSpaceLighting();
 				traaPass?.setSize( 1, 1 );
 
 			}
@@ -556,7 +638,11 @@
 					return vec4( value.rgb, value.a.mul( matchesSSRQuery( query ).not() ) );
 
 				} ) : specularProviders;
-				scenePass.contextNode = context( { ...aoContext.value, indirectSpecularNode: indirectSpecular( ssrProvider ? [ ssrProvider, ...fallback ] : fallback ) } );
+				scenePass.contextNode = context( {
+					...aoContext.value,
+					indirectDiffuseNode: indirectDiffuse( ssgiProvider ? [ ssgiProvider, ...diffuseProviders ] : diffuseProviders ),
+					indirectSpecularNode: indirectSpecular( ssrProvider ? [ ssrProvider, ...fallback ] : fallback )
+				} );
 				scenePass.needsUpdate = true;
 
 				updateOutput();
@@ -572,6 +658,18 @@
 						break;
 					case 'Spec Coverage':
 						renderPipeline.outputNode = vec4( vec3( scenePass.getTextureNode( 'coverage' ).g ), 1 );
+						break;
+					case 'SSGI Raw':
+						renderPipeline.outputNode = mix( scenePass, vec4( ssgiPass.getGINode().rgb.mul( ssgiPass.getGINode().a ), 1 ), debugWeight );
+						break;
+					case 'SSGI Filtered':
+						renderPipeline.outputNode = mix( scenePass, vec4( ssgiDenoise.rgb.mul( ssgiDenoise.a ), 1 ), debugWeight );
+						break;
+					case 'SSGI Coverage':
+						renderPipeline.outputNode = mix( scenePass, vec4( vec3( ssgiPass.getGINode().a ), 1 ), debugWeight );
+						break;
+					case 'SSGI Filtered Coverage':
+						renderPipeline.outputNode = mix( scenePass, vec4( vec3( ssgiDenoise.a ), 1 ), debugWeight );
 						break;
 					case 'SSR Raw':
 						renderPipeline.outputNode = mix( scenePass, vec4( ssrPass.rgb, 1 ), debugWeight );
@@ -602,7 +700,7 @@
 
 				}
 
-				renderer.toneMapping = [ 'Beauty', 'SSR Raw', 'SSR Filtered', 'Indirect Specular Raw', 'Indirect Specular Filtered' ].includes( params.output ) ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+				renderer.toneMapping = [ 'Beauty', 'SSGI Raw', 'SSGI Filtered', 'SSR Raw', 'SSR Filtered', 'Indirect Specular Raw', 'Indirect Specular Filtered' ].includes( params.output ) ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
 				renderPipeline.needsUpdate = true;
 				traaPass.setSize( 1, 1 );
 
@@ -711,6 +809,7 @@
 				captureFar = Math.max( 30, fullSize.length() * 2 );
 				sceneScale = Math.max( fullSize.length(), 0.001 );
 				if ( ssrPass ) updateSSRParameters();
+				if ( ssgiPass ) updateSSGIParameters();
 
 				// Fit the diffuse probe grid to the selected scene.
 
@@ -836,15 +935,16 @@
 
 				} );
 				if ( traaPass ) traaPass.setSize( 1, 1 );
-				resetSSR();
+				resetScreenSpaceLighting();
 
 			}
 
 			function updateIndirectLighting() {
 
 				updateSSRProvider();
+				updateSSGIProvider();
 				configureIndirectLighting();
-				resetSSR();
+				resetScreenSpaceLighting();
 				traaPass.setSize( 1, 1 );
 
 			}
@@ -852,7 +952,7 @@
 			function configureIndirectLighting( reflections = true, baking = false ) {
 
 				lightProbes.visible = ! baking && params.lightProbeDiffuse;
-				const diffuseProviders = [];
+				diffuseProviders = [];
 				if ( ! baking && params.lightProbeDiffuse ) {
 
 					diffuseProviders.push( lightProbeGridDiffuse( lightProbes ) );
@@ -1005,7 +1105,7 @@
 					if ( ! prepared ) renderer.contextNode = rendererContext;
 					nextMapper?.dispose();
 					if ( traaPass ) traaPass.setSize( 1, 1 );
-					resetSSR();
+					resetScreenSpaceLighting();
 
 				}
 

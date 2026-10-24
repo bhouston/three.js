@@ -3,13 +3,14 @@ import { Fn, If, context, convertToTexture, float, getViewPosition, isBackground
 import { ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
 
 /**
- * Reconstructs sparse reflection radiance and its coverage together. The input and
- * output are unweighted linear radiance in RGB and coverage in A. Hit distance is
- * supplied separately; alpha is never used for frame count or ray length.
+ * Reconstructs sparse lighting and its coverage together. The input and output
+ * are unweighted linear radiance (specular) or irradiance (diffuse) in RGB, with
+ * coverage in A. Hit distance is supplied separately; alpha is never used for
+ * frame count or ray length.
  *
  * Spatial and temporal sums operate on (radiance * coverage, coverage), then
  * normalize RGB by accumulated coverage. Missing samples cannot darken valid
- * reflections, and a valid black reflection still contributes coverage.
+ * lighting, and a valid black sample still contributes coverage.
  *
  * Uses geometric edge stopping, depth/normal-validated surface and virtual-hit
  * reprojection, and neighborhood clipping of history. Inspired by the separate
@@ -35,7 +36,7 @@ class CoverageDenoiseNode extends Node {
 	 * @param {TextureNode} options.depth - Device depth.
 	 * @param {TextureNode} options.normal - Packed view normal in RGB, roughness in A.
 	 * @param {TextureNode} options.velocity - Screen-space motion vectors.
-	 * @param {?Node<float>} [options.hitDistance=null] - World-space SSR hit distance.
+	 * @param {?Node<float>} [options.hitDistance=null] - World-space SSR hit distance. Omit for diffuse surface reprojection.
 	 */
 	constructor( inputNode, camera, { depth, normal, velocity, hitDistance = null } ) {
 

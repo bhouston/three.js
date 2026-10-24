@@ -52,6 +52,9 @@ class CoverageDenoiseNode extends Node {
 		this.radius = uniform( 1.5 );
 		this.maxFrames = uniform( 16 );
 		this.depthThreshold = uniform( 0.01 );
+		// Rejected bilinear taps reduce supported history evidence even after
+		// the surviving radiance has been normalized. Disable to compare behavior.
+		this.useGatherConfidence = uniform( true );
 		this.updateBeforeType = NodeUpdateType.FRAME;
 
 		this._spatialTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
@@ -301,7 +304,9 @@ class CoverageDenoiseNode extends Node {
 				// screen-space hits still has a valid age and lighting history.
 				If( history.get( 'weight' ).greaterThan( 0 ), () => {
 
-					age.assign( history.get( 'age' ).add( 1 ).min( this.maxFrames.max( 1 ) ) );
+					const previousAge = history.get( 'age' ).toVar();
+					If( this.useGatherConfidence, () => previousAge.mulAssign( history.get( 'weight' ).clamp() ) );
+					age.assign( previousAge.add( 1 ).min( this.maxFrames.max( 1 ) ) );
 					const historyWeight = age.sub( 1 ).div( age );
 					result.assign( mix( currentWeighted, history.get( 'color' ).clamp( minimum, maximum ), historyWeight ) );
 

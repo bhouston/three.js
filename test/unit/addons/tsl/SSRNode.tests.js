@@ -116,6 +116,15 @@ export default QUnit.module( 'Addons', () => {
 					eligible.value = true;
 					node.useTraceMask.value = true;
 					assert.deepEqual( await renderOrigin(), refinedHit, 'Eligible texels preserve radiance and distance' );
+					// Black radiance and partial source validity are still real hits.
+					for ( let i = 0; i < source.image.data.length; i += 4 ) source.image.data.set( [ 0, 0, 0, 0.25 ], i );
+					source.needsUpdate = true;
+					const black = await renderOrigin();
+					assert.deepEqual( black.slice( 0, 3 ), [ 0, 0, 0 ], 'A valid black hit keeps black radiance' );
+					assert.strictEqual( black[ 3 ], refinedHit[ 3 ], 'Black partial-coverage hits retain their geometry distance' );
+					const partial = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), originX, height / 2, 1, 1, 1 );
+					assert.strictEqual( DataUtils.fromHalfFloat( partial[ 0 ] ), 0.25, 'Black hits retain partial validity independently of RGB' );
+
 
 
 				} finally {

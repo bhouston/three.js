@@ -1,0 +1,552 @@
+{
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "model": "Primitives Floor (Metallic Mirror)",
+  "quality": [
+    {
+      "traversal": "Linear",
+      "resolveOrder": "Before filtering",
+      "resolutionScale": 1,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Linear",
+      "resolveOrder": "Before filtering",
+      "resolutionScale": 0.5,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Linear",
+      "resolveOrder": "After filtering (coverage-aware)",
+      "resolutionScale": 1,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Linear",
+      "resolveOrder": "After filtering (coverage-aware)",
+      "resolutionScale": 0.5,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Conservative Hi-Z",
+      "resolveOrder": "Before filtering",
+      "resolutionScale": 1,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Conservative Hi-Z",
+      "resolveOrder": "Before filtering",
+      "resolutionScale": 0.5,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Conservative Hi-Z",
+      "resolveOrder": "After filtering (coverage-aware)",
+      "resolutionScale": 1,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Conservative Hi-Z",
+      "resolveOrder": "After filtering (coverage-aware)",
+      "resolutionScale": 0.5,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Adaptive Hi-Z (experimental)",
+      "resolveOrder": "Before filtering",
+      "resolutionScale": 1,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Adaptive Hi-Z (experimental)",
+      "resolveOrder": "Before filtering",
+      "resolutionScale": 0.5,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Adaptive Hi-Z (experimental)",
+      "resolveOrder": "After filtering (coverage-aware)",
+      "resolutionScale": 1,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    },
+    {
+      "traversal": "Adaptive Hi-Z (experimental)",
+      "resolveOrder": "After filtering (coverage-aware)",
+      "resolutionScale": 0.5,
+      "comparisons": [
+        {
+          "motion": false,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        },
+        {
+          "motion": true,
+          "resolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "filtered": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedResolved": {
+            "maxError": 0,
+            "rmse": 0
+          },
+          "repeatedFiltered": {
+            "maxError": 0,
+            "rmse": 0
+          }
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,80 @@
+{
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "browser": "Chrome/155.0.8059.85",
+  "model": "Primitives Floor (Metallic Mirror)",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "throughput": [
+    {
+      "traversal": "Linear",
+      "classify": false,
+      "frames": 328,
+      "seconds": 5.048199999988079,
+      "fps": 64.97365397582793
+    },
+    {
+      "traversal": "Linear",
+      "classify": true,
+      "frames": 336,
+      "seconds": 5.05659999999404,
+      "fps": 66.44781078202666
+    },
+    {
+      "traversal": "Linear",
+      "classify": false,
+      "frames": 328,
+      "seconds": 5.044899999991059,
+      "fps": 65.01615492885514
+    },
+    {
+      "traversal": "Conservative Hi-Z",
+      "classify": false,
+      "frames": 312,
+      "seconds": 5.02040000000596,
+      "fps": 62.1464425144669
+    },
+    {
+      "traversal": "Conservative Hi-Z",
+      "classify": true,
+      "frames": 316,
+      "seconds": 5.03770000000298,
+      "fps": 62.72703813244399
+    },
+    {
+      "traversal": "Conservative Hi-Z",
+      "classify": false,
+      "frames": 312,
+      "seconds": 5.01529999999702,
+      "fps": 62.20963850620808
+    },
+    {
+      "traversal": "Adaptive Hi-Z (experimental)",
+      "classify": false,
+      "frames": 328,
+      "seconds": 5.005600000008941,
+      "fps": 65.5266101964628
+    },
+    {
+      "traversal": "Adaptive Hi-Z (experimental)",
+      "classify": true,
+      "frames": 340,
+      "seconds": 5.0425,
+      "fps": 67.42687159147248
+    },
+    {
+      "traversal": "Adaptive Hi-Z (experimental)",
+      "classify": false,
+      "frames": 328,
+      "seconds": 5.006300000011921,
+      "fps": 65.51744801534447
+    }
+  ],
+  "errors": []
+}

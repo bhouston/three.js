@@ -1,5 +1,7 @@
 # Optional Hi-Z SSR investigation
 
+For the next implementation stage and its measured gains, see [SSR eligibility classification and reconstruction distance](interior-ssr-classification.md).
+
 Studied October 24, 2026 on `interior-ssr-review`, starting at `d303775b6a43`. Sources are [PR #76](https://github.com/bhouston/three.js/pull/76) (head `faa7a27dcb30`) and [PR #79](https://github.com/bhouston/three.js/pull/79) (head `8e72a8b525e7`). Both PRs are merged remotely, but their implementations were absent from this local branch. This is a selective port, preserving the newer local SSR fixes, rather than a merge of their older SSRNode.
 
 ## Follow-up: online research and optimized construction

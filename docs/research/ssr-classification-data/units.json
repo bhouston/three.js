@@ -1,0 +1,34 @@
+[
+  {
+    "filter": "SSRNode",
+    "hardware": {
+      "webgpu": "apple metal-3  ",
+      "webgl": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)"
+    },
+    "stats": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "total": 2
+    },
+    "skipped": false,
+    "failures": []
+  },
+  {
+    "filter": "SpecularHelpers",
+    "hardware": {
+      "webgpu": "apple metal-3  ",
+      "webgl": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)"
+    },
+    "stats": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "total": 4
+    },
+    "skipped": false,
+    "failures": []
+  }
+]

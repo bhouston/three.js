@@ -1,4 +1,4 @@
-/* global window, document */
+/* global window, document, navigator */
 import puppeteer from 'puppeteer';
 import { createServer } from '../../utils/server.js';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -43,7 +43,21 @@ try {
 			skipped: document.getElementById( 'qunit-tests' ).textContent.includes( 'SKIPPED' ),
 			failures: Array.from( document.querySelectorAll( '#qunit-tests > .fail' ), node => node.textContent )
 		} ) );
-		unitResults.push( { filter, ...units } );
+		const hardware = await page.evaluate( async () => {
+
+			const { getSharedRenderer } = await import( '/test/unit/src/nodes/tsl/gpu-test-utils.js' );
+			const webgpu = await getSharedRenderer( 'webgpu' );
+			const info = webgpu?.backend.device?.adapterInfo || ( await navigator.gpu.requestAdapter() )?.info;
+			const gpu = info && [ info.vendor, info.architecture, info.device, info.description ].join( ' ' );
+			const webgl = await getSharedRenderer( 'webgl' );
+			const gl = webgl?.backend.gl;
+			const debug = gl?.getExtension( 'WEBGL_debug_renderer_info' );
+			const rasterizer = debug && gl.getParameter( debug.UNMASKED_RENDERER_WEBGL );
+			if ( ! gpu?.trim() || info.isFallbackAdapter || ! rasterizer || /software|swiftshader|llvmpipe|lavapipe/i.test( gpu + rasterizer ) ) throw new Error( 'Both unit-test backends must identify physical GPUs' );
+			return { webgpu: gpu, webgl: rasterizer };
+
+		} );
+		unitResults.push( { filter, hardware, ...units } );
 		await writeFile( `${ directory }/units.json`, JSON.stringify( unitResults, null, 2 ) );
 		assert.equal( units.stats.failed, 0, `${ filter }: unit regressions pass` );
 		assert.ok( units.stats.passed > 0, `${ filter }: tests execute` );

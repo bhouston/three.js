@@ -1,0 +1,38 @@
+{
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "results": {
+    "default": {
+      "relativeRMSE": 0.16460417346140832
+    },
+    "miss-unfiltered": {
+      "relativeRMSE": 0.07589279853830792
+    },
+    "miss-filtered": {
+      "relativeRMSE": 0.16016258356733365
+    }
+  },
+  "highlights": {
+    "disabled": {
+      "peak": 1528.1435000000001,
+      "top100": 119.39996848437497
+    },
+    "default": {
+      "peak": 900.544225,
+      "top100": 83.24647120312494
+    },
+    "miss-unfiltered": {
+      "peak": 853.5029999999999,
+      "top100": 110.75491919531251
+    },
+    "miss-filtered": {
+      "peak": 866.3467249999999,
+      "top100": 88.96508471093752
+    }
+  },
+  "errors": []
+}

@@ -411,8 +411,8 @@
 				ssgiSettings.add( ssgiParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'sliceCount', 1, 8, 1 ).name( 'Slices' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'stepCount', 2, 32, 1 ).name( 'Steps' ).onChange( updateSSGIParameters );
-				ssgiSettings.add( ssgiParams, 'radius', 0.01, 1 ).listen().name( 'Relative Radius' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
-				ssgiSettings.add( ssgiParams, 'thickness', 0.0001, 0.05 ).listen().name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'radius', 0.01, 1 ).listen().name( 'Relative Radius' ).info( 'Fraction of authored reference scale or scene diagonal; explicit metadata distances take precedence.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'thickness', 0.0001, 0.05 ).listen().name( 'Relative Thickness' ).info( 'Fraction of authored reference scale or scene diagonal; explicit metadata distances take precedence.' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'historyTolerancePixels', 0, 4 ).name( 'History tolerance (pixels)' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'historyToleranceWorld', 0, 0.01 ).name( 'History floor (relative)' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'intensity', 0, 2 ).name( 'Intensity' ).onChange( updateSSGIParameters );

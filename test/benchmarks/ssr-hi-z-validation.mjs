@@ -1,4 +1,4 @@
-/* global window */
+/* global window, document */
 import puppeteer from 'puppeteer';
 import { createServer } from '../../utils/server.js';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -32,6 +32,18 @@ try {
 		assert.equal( result.status, 'passed', result.message );
 
 	}
+
+	await page.goto( `http://localhost:${ server.address().port }/test/unit/UnitTestsAddons.html?filter=SSRNode` );
+	await page.waitForFunction( () => window._QUnitStats !== undefined, { timeout: 120000 } );
+	const units = await page.evaluate( () => ( {
+		stats: window._QUnitStats,
+		skipped: document.getElementById( 'qunit-tests' ).textContent.includes( 'SKIPPED' ),
+		failures: Array.from( document.querySelectorAll( '#qunit-tests > .fail' ), node => node.textContent )
+	} ) );
+	await writeFile( `${ directory }/units.json`, JSON.stringify( units, null, 2 ) );
+	assert.equal( units.stats.failed, 0, 'SSR unit regressions pass' );
+	assert.equal( units.skipped, false, 'GPU unit tests must execute' );
+	console.log( units );
 
 } finally {
 

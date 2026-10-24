@@ -121,7 +121,8 @@ export async function runSSRHiZTests( { traversal = 'conservative', minMip = 0, 
 									const label = JSON.stringify( { reversedDepth, logarithmicDepthBuffer, orthographic, stochastic, binaryRefine, quality } );
 									assert( hits > 0, `Scene produced no SSR hits: ${label}` );
 									assert( adaptiveHits > 0, `Hierarchy produced no hits: ${label}` );
-									if ( traversal === 'conservative' ) assert( changedHits === 0 && maxError === 0, `SSR mismatch ${label}: changed hits=${changedHits}, max error=${maxError}` );
+									// Allow float32 compiler roundoff between shader variants; hit masks must match.
+									if ( traversal === 'conservative' ) assert( changedHits === 0 && maxError <= 1e-4, `SSR mismatch ${label}: changed hits=${changedHits}, max error=${maxError}` );
 									results.push( { reversedDepth, logarithmicDepthBuffer, orthographic, stochastic, binaryRefine, quality, hits, adaptiveHits, changedHits, maxError, rgbRMSE: Math.sqrt( squaredRGBError / ( width * height * 3 ) ) } );
 
 								}

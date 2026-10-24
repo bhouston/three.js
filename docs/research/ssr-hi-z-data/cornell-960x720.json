@@ -1,0 +1,56 @@
+{
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "setup": {
+    "width": 960,
+    "height": 720
+  },
+  "model": "Cornell Box (Mirror Wall)",
+  "results": [
+    {
+      "mode": "Linear",
+      "maxError": 0,
+      "rgbRMSE": 0,
+      "changedCoverage": 0,
+      "frames": 268,
+      "seconds": 5.047800000011921,
+      "fps": 53.092436308761656,
+      "pyramidBuilds": 0
+    },
+    {
+      "mode": "Conservative Hi-Z",
+      "maxError": 0,
+      "rgbRMSE": 0,
+      "changedCoverage": 0,
+      "frames": 256,
+      "seconds": 5.02140000000596,
+      "fps": 50.98179790490623,
+      "pyramidBuilds": 256
+    },
+    {
+      "mode": "Adaptive Hi-Z (experimental)",
+      "maxError": 10000,
+      "rgbRMSE": 0.2673285266442051,
+      "changedCoverage": 234055,
+      "frames": 236,
+      "seconds": 5.04170000000298,
+      "fps": 46.809607870333515,
+      "pyramidBuilds": 236
+    },
+    {
+      "mode": "Linear",
+      "maxError": 0,
+      "rgbRMSE": 0,
+      "changedCoverage": 0,
+      "frames": 252,
+      "seconds": 5.06270000000298,
+      "fps": 49.775811325943,
+      "pyramidBuilds": 0
+    }
+  ],
+  "errors": []
+}

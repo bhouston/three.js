@@ -1018,7 +1018,7 @@
 
 					}
 
-					group.add( ...object.children );
+					if ( object.children.length > 0 ) group.add( ...object.children );
 					object.parent.add( group );
 					object.removeFromParent();
 					object.dispose();

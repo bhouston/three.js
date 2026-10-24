@@ -105,6 +105,23 @@ try {
 	assert.equal( lightingFrozen, false, 'Temporal readback failures restore source copying' );
 	assert.deepEqual( state.ssgiParams, original );
 
+	let mutationReadbacks = 0;
+	await assert.rejects( runSSGIParameterSweep( {
+		state,
+		step: () => {
+
+			clock += 50;
+			state.ssgiDenoise._frames ++;
+			state.ssgiParams.thickness = 0.0001;
+
+		},
+		drain: async () => {},
+		read: async () => { mutationReadbacks ++; return new Float32Array( 4 ); },
+		geometryReference: async () => { throw new Error( 'Reference must not run after parameter mutation' ); }
+	} ), /Parameter mutation in radius-0\.1-thickness-0\.0025: thickness: requested 0\.0025, observed 0\.0001/ );
+	assert.equal( mutationReadbacks, 0, 'External slider mutation fails before throughput readback or reference work' );
+	assert.deepEqual( state.ssgiParams, original, 'Mutation failures restore caller settings' );
+
 } finally {
 
 	Object.defineProperty( globalThis, 'performance', performanceDescriptor );

@@ -23,11 +23,13 @@ import { Fn, float, getViewPosition, isBackgroundDepth, sample, textureSize, uni
  * @param {Node<bool>} options.valid - Whether history exists.
  * @param {Node<float>} [options.tolerancePixels] - Surface uncertainty in previous pixels. Default 1.5.
  * @param {Node<float>} [options.toleranceWorld] - Minimum uncertainty in world units. Default 0.001.
+ * @param {boolean} [options.analyticPixelFootprint] - Use diagonal projection scaling for standard perspective/orthographic cameras. Disable for custom projection matrices.
  * @return {Node<vec4>} Linear radiance and accepted history support.
  */
 export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, camera, {
 	previousView, previousProjection, previousProjectionInverse, valid,
-	tolerancePixels = uniform( 1.5 ), toleranceWorld = uniform( 0.001 )
+	tolerancePixels = uniform( 1.5 ), toleranceWorld = uniform( 0.001 ),
+	analyticPixelFootprint = camera.isPerspectiveCamera === true || camera.isOrthographicCamera === true
 } ) => {
 
 	const projectionInverse = uniform( camera.projectionMatrixInverse );
@@ -46,11 +48,27 @@ export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, came
 		const clip = previousProjection.mul( vec4( oldPosition, 1 ) ).toConst();
 		const previousUV = clip.xy.div( clip.w.max( 1e-6 ) ).mul( vec2( 0.5, - 0.5 ) ).add( 0.5 ).toConst();
 		const resolution = vec2( textureSize( historyDepth ) );
-		let expectedDepth = clip.z.div( clip.w.max( 1e-6 ) );
-		if ( builder.renderer.coordinateSystem !== WebGPUCoordinateSystem && builder.renderer.reversedDepthBuffer !== true ) expectedDepth = expectedDepth.mul( 0.5 ).add( 0.5 );
-		const pixelX = getViewPosition( previousUV.add( vec2( 1, 0 ).div( resolution ) ), expectedDepth, previousProjectionInverse ).sub( oldPosition ).length();
-		const pixelY = getViewPosition( previousUV.add( vec2( 0, 1 ).div( resolution ) ), expectedDepth, previousProjectionInverse ).sub( oldPosition ).length();
-		const tolerance = toleranceWorld.max( 0 ).add( tolerancePixels.max( 0 ).mul( pixelX.max( pixelY ) ) ).max( 1e-6 );
+		let footprint;
+		if ( analyticPixelFootprint ) {
+
+			// For standard perspective and orthographic projections, clip.w is
+			// the homogeneous scale converting a pixel displacement to view space.
+			const scaling = vec2( previousProjection.element( 0 ).x.abs(), previousProjection.element( 1 ).y.abs() ).mul( resolution ).max( vec2( 1e-6 ) );
+			const pixelSize = vec2( clip.w.abs().mul( 2 ) ).div( scaling );
+			footprint = pixelSize.x.max( pixelSize.y );
+
+		} else {
+
+			// Retain the inverse-projection construction for custom cameras.
+			let expectedDepth = clip.z.div( clip.w.max( 1e-6 ) );
+			if ( builder.renderer.coordinateSystem !== WebGPUCoordinateSystem && builder.renderer.reversedDepthBuffer !== true ) expectedDepth = expectedDepth.mul( 0.5 ).add( 0.5 );
+			const pixelX = getViewPosition( previousUV.add( vec2( 1, 0 ).div( resolution ) ), expectedDepth, previousProjectionInverse ).sub( oldPosition ).length();
+			const pixelY = getViewPosition( previousUV.add( vec2( 0, 1 ).div( resolution ) ), expectedDepth, previousProjectionInverse ).sub( oldPosition ).length();
+			footprint = pixelX.max( pixelY );
+
+		}
+
+		const tolerance = toleranceWorld.max( 0 ).add( tolerancePixels.max( 0 ).mul( footprint ) ).max( 1e-6 );
 		const pixel = previousUV.mul( resolution ).sub( 0.5 );
 		const base = pixel.floor();
 		const fraction = pixel.fract();

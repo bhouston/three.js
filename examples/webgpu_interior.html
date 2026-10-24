@@ -37,6 +37,8 @@
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { DRACOLoader, DRACO_GLTF_CONFIG } from 'three/addons/loaders/DRACOLoader.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
+			import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
@@ -66,12 +68,34 @@
 				'Stripped Emissive Mirror Floor': 'stripped-emissive-mirror-floor.glb'
 			};
 
+			const environments = {
+				'Pedestrian Overpass (1K HDR)': 'equirectangular/pedestrian_overpass_1k.hdr',
+				'752 HDRI Skies (1K HDR)': 'equirectangular/752-hdri-skies-com_1k.hdr',
+				'Blouberg Sunrise (1K HDR)': 'equirectangular/blouberg_sunrise_2_1k.hdr',
+				'Ferndale Studio (1K HDR)': 'equirectangular/ferndale_studio_04_1k.hdr',
+				'Monochrome Studio (1K HDR)': 'equirectangular/monochrome_studio_02_1k.hdr',
+				'Moonless Golf (1K HDR)': 'equirectangular/moonless_golf_1k.hdr',
+				'Moonless Golf (2K Ultra HDR)': 'equirectangular/moonless_golf_2k.hdr.jpg',
+				'Quarry (1K HDR)': 'equirectangular/quarry_01_1k.hdr',
+				'Royal Esplanade (2K Ultra HDR)': 'equirectangular/royal_esplanade_2k.hdr.jpg',
+				'San Giuseppe Bridge (2K HDR)': 'equirectangular/san_giuseppe_bridge_2k.hdr',
+				'Spruit Sunrise (1K HDR)': 'equirectangular/spruit_sunrise_1k.hdr',
+				'Spruit Sunrise (2K Ultra HDR)': 'equirectangular/spruit_sunrise_2k.hdr.jpg',
+				'Spruit Sunrise (4K Ultra HDR)': 'equirectangular/spruit_sunrise_4k.hdr.jpg',
+				'Venice Sunset (1K HDR)': 'equirectangular/venice_sunset_1k.hdr',
+				'Ice Planet (Ultra HDR)': 'equirectangular/ice_planet_close.jpg',
+				'Lobe (HDR)': 'equirectangular/lobe.hdr',
+				'Spot 1 Lux (HDR)': 'equirectangular/spot1Lux.hdr',
+				'PIZ Environment (1K EXR)': 'piz_compressed.exr',
+				'Unit White': null
+			};
+
 			const loader = new GLTFLoader().setDRACOLoader( new DRACOLoader().setDecoderPath( DRACO_GLTF_CONFIG ) );
 
 			const params = {
 				output: 'Beauty',
 				model: 'Dual Rooms',
-				environmentSource: 'HDR',
+				environmentSource: 'Pedestrian Overpass (1K HDR)',
 				directLights: true,
 				lightProbeDiffuse: false,
 				diffuseBaking: true,
@@ -157,6 +181,8 @@
 			const status = document.getElementById( 'status' );
 			let loadId = 0;
 			let currentModel = params.model;
+			let environmentLoadId = 0;
+			let currentEnvironment = params.environmentSource;
 			let captureFar = 30;
 
 			init();
@@ -171,10 +197,7 @@
 				// Scene
 
 				scene = new THREE.Scene();
-				const environment = await new HDRLoader().loadAsync( 'textures/equirectangular/pedestrian_overpass_1k.hdr' );
-				environment.mapping = THREE.EquirectangularReflectionMapping;
-				scene.environment = environment;
-				scene.background = environment;
+				await updateEnvironment();
 
 				// Renderer
 
@@ -301,17 +324,6 @@
 				ssrSettings.add( ssrParams, 'maxRoughness', 0.1, 0.95 ).name( 'Max Roughness' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'maxFrames', 1, 32, 1 ).name( 'History Frames' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'radius', 0, 3 ).name( 'Denoise Radius' ).onChange( updateSSRParameters );
-				const whiteEnvironment = new THREE.DataTexture( new Float32Array( [ 1, 1, 1, 1 ] ), 1, 1, THREE.RGBAFormat, THREE.FloatType );
-				whiteEnvironment.mapping = THREE.EquirectangularReflectionMapping;
-				whiteEnvironment.needsUpdate = true;
-				const updateEnvironment = () => {
-
-					const selected = params.environmentSource === 'HDR' ? environment : whiteEnvironment;
-					scene.environment = selected;
-					scene.background = selected;
-					capture();
-
-				};
 
 				settings.add( bakeSettings, 'style', [ 'interleaved', 'sequential' ] ).name( 'Bake Style' ).onChange( capture );
 				settings.add( bakeSettings, 'boxProjection' ).name( 'Box Projection' ).listen().onChange( () => {
@@ -321,7 +333,7 @@
 
 				} );
 
-				settings.add( params, 'environmentSource', [ 'HDR', 'Unit White' ] ).name( 'Environment Source' ).onChange( updateEnvironment );
+				settings.add( params, 'environmentSource', Object.keys( environments ) ).name( 'Environment Source' ).listen().onChange( updateEnvironment );
 
 				const occlusion = settings.addFolder( 'Ambient Occlusion' );
 				occlusion.add( params, 'aoType', [ 'None', 'GTAO', 'GTAO + GTSO' ] ).name( 'AO type' ).onChange( updateAO );
@@ -341,6 +353,52 @@
 
 				} );
 				renderer.setAnimationLoop( animate );
+
+			}
+
+			async function updateEnvironment() {
+
+				const id = ++ environmentLoadId;
+				const name = params.environmentSource;
+				const file = environments[ name ];
+				let selected;
+				try {
+
+					if ( file === null ) {
+
+						selected = new THREE.DataTexture( new Float32Array( [ 1, 1, 1, 1 ] ), 1, 1, THREE.RGBAFormat, THREE.FloatType );
+						selected.needsUpdate = true;
+
+					} else {
+
+						const loader = file.endsWith( '.exr' ) ? new EXRLoader() : file.endsWith( '.jpg' ) ? new UltraHDRLoader() : new HDRLoader();
+						selected = await loader.loadAsync( 'textures/' + file );
+
+					}
+
+				} catch ( error ) {
+
+					if ( id !== environmentLoadId ) return;
+					params.environmentSource = currentEnvironment;
+					console.error( 'Unable to load environment:', error );
+					return;
+
+				}
+
+				if ( id !== environmentLoadId ) {
+
+					selected.dispose();
+					return;
+
+				}
+
+				const previous = scene.environment;
+				selected.mapping = THREE.EquirectangularReflectionMapping;
+				scene.environment = selected;
+				scene.background = selected;
+				currentEnvironment = name;
+				capture();
+				previous?.dispose();
 
 			}
 

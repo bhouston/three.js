@@ -78,7 +78,7 @@
 			let camera, scene, renderer, controls, lightProbes, probes, model;
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let lightMapper, atlas;
-			let uvScene, uvCamera, uvPass;
+			let uvScene, uvCamera, uvPass, uvTexture;
 			let meshes = [];
 			let bakingLightMap = false;
 			const bakeSamples = 16;
@@ -126,6 +126,9 @@
 				uvCamera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0.1, 10 );
 				uvCamera.position.z = 1;
 				updateUVCamera();
+				uvTexture = await new THREE.TextureLoader().loadAsync( 'textures/uv_grid_opengl.jpg' );
+				uvTexture.colorSpace = THREE.SRGBColorSpace;
+				uvTexture.channel = 1;
 
 				await loadModel();
 
@@ -590,7 +593,7 @@
 
 					const material = new THREE.MeshBasicNodeMaterial();
 					material.positionNode = vec3( uv( 1 ).mul( 2 ).sub( 1 ), 0 );
-					material.colorNode = vec3( uv( 1 ), 0.5 );
+					material.map = uvTexture;
 					material.side = THREE.DoubleSide;
 					material.depthTest = false;
 					const mesh = new THREE.Mesh( source.geometry, material );
@@ -598,7 +601,8 @@
 					uvScene.add( mesh );
 
 					const wireMaterial = material.clone();
-					wireMaterial.colorNode = vec3( 0 );
+					wireMaterial.map = null;
+					wireMaterial.color.set( 0x000000 );
 					wireMaterial.wireframe = true;
 					const wire = new THREE.Mesh( source.geometry, wireMaterial );
 					wire.frustumCulled = false;

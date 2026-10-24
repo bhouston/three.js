@@ -25,6 +25,7 @@ import './addons/exporters/USDZExporter.tests.js';
 import './addons/tsl/WebGLNodesHandler.tests.js';
 import './addons/tsl/RecurrentDenoiseNode.tests.js';
 import './addons/tsl/CoverageDenoiseNode.tests.js';
+import './addons/tsl/TemporalPipeline.tests.js';
 import './addons/tsl/SSGINode.tests.js';
 import './addons/tsl/FASTNoise.tests.js';
 import './addons/postprocessing/GTAOPass.tests.js';

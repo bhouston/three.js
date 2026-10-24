@@ -1,4 +1,4 @@
-import { DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
+import { DataTexture, DataUtils, FloatType, Matrix4, NodeMaterial, PerspectiveCamera, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
 import { context, float, indirectSpecular, texture, vec4 } from 'three/tsl';
 import { coverageDenoise } from '../../../../examples/jsm/tsl/display/CoverageDenoiseNode.js';
 import { getSharedRenderer } from '../../src/nodes/tsl/gpu-test-utils.js';
@@ -99,7 +99,7 @@ async function fixture( assert, run ) {
 
 		};
 
-		await run( { node, renderer, input, depth, normal, velocity, update, render, compose } );
+		await run( { node, renderer, input, depth, normal, velocity, camera, update, render, compose } );
 
 	} finally {
 
@@ -265,6 +265,44 @@ export default QUnit.module( 'Addons', () => {
 				} );
 
 			} );
+
+			for ( const axis of [ 'x', 'y', 'jitter' ] ) {
+
+				QUnit.test( `${ axis } reprojection uses the previous raster grid`, async assert => {
+
+					await fixture( assert, async ( { node, camera, velocity, update, render } ) => {
+
+						node.radius.value = 0;
+						node.hitDistanceNode = null;
+						const component = axis === 'y' ? 1 : 0;
+						update( ( x, y ) => [ 4, 2, 1, ( component === 0 ? x : y ) % 3 === 1 ? 1 : 0 ] );
+						await render();
+						if ( axis === 'jitter' ) {
+
+							// A one-pixel raster shift with zero physical motion. Lighting
+							// history moves with jitter even though the AA history does not.
+							node._velocityNode = { projectionMatrix: camera.projectionMatrix.clone() };
+							camera.projectionMatrix.premultiply( new Matrix4().makeTranslation( 2 / size, 0, 0 ) );
+							camera.projectionMatrixInverse.copy( camera.projectionMatrix ).invert();
+
+						} else {
+
+							for ( let i = 0; i < velocity.image.data.length; i += 4 ) velocity.image.data[ i + component ] = ( axis === 'y' ? - 2 : 2 ) / size;
+							velocity.needsUpdate = true;
+
+						}
+
+						update( ( x, y ) => [ 4, 2, 1, x === 8 && y === 8 ? 0.25 : ( x + y ) % 2 ] );
+						const data = await render();
+						const i = 4 * ( 8 + size * 8 );
+						assert.ok( Math.abs( data[ i + 3 ] - 0.625 ) < 0.002, 'Center blends current coverage 0.25 with previous texel coverage 1' );
+						assert.ok( Math.abs( data[ i ] - 4 ) < 0.01, 'Radiance stays normalized during reprojection' );
+
+					} );
+
+				} );
+
+			}
 
 			for ( const guide of [ 'depth', 'normal', 'velocity' ] ) {
 

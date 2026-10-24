@@ -55,7 +55,7 @@ try {
 		if ( ! adapter.vendor || adapter.isFallbackAdapter || /swiftshader|llvmpipe|lavapipe|software/i.test( JSON.stringify( adapter ) ) ) throw new Error( 'Hardware GPU required' );
 		console.log( adapter );
 		const results = [];
-		for ( const filter of [ 'FASTNoise', 'SSGINode', 'CoverageDenoiseNode' ] ) {
+		for ( const filter of [ 'FASTNoise', 'SSGINode', 'CoverageDenoiseNode', 'TemporalPipeline' ] ) {
 
 			await page.goto( `http://localhost:${ server.address().port }/test/unit/UnitTestsAddons.html?filter=${ filter }` );
 			await page.waitForFunction( () => window._QUnitStats !== undefined, { timeout: 120000 } );

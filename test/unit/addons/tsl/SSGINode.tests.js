@@ -1,5 +1,5 @@
-import { DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
-import { Fn, Loop, context, float, texture, uint, vec2 } from 'three/tsl';
+import { Color, DirectionalLight, HalfFloatType, Mesh, MeshStandardNodeMaterial, PlaneGeometry, RenderTarget, Scene, DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
+import { Fn, Loop, context, float, texture, uint, vec2, vec4, output, property, emissive, mrt } from 'three/tsl';
 import { ssgi, ssgiSectorCoverage } from '../../../../examples/jsm/tsl/display/SSGINode.js';
 import { getSharedRenderer, gpuTest } from '../../src/nodes/tsl/gpu-test-utils.js';
 
@@ -317,6 +317,52 @@ export default QUnit.module( 'Addons', () => {
 					renderer.contextNode = previousContext;
 					renderer.setPixelRatio( previousRatio );
 					renderer.setSize( previousSize.x, previousSize.y );
+					RendererUtils.restoreRendererState( renderer, state );
+
+				}
+
+			} );
+
+
+			QUnit.test( 'diffuse-emission MRT excludes metallic specular source radiance', async assert => {
+
+				const renderer = await getSharedRenderer( 'webgpu' );
+				if ( ! renderer ) {
+
+					assert.ok( true, 'SKIPPED: WebGPU unavailable' );
+					return;
+
+				}
+
+				const state = RendererUtils.saveRendererState( renderer );
+				const oldContext = renderer.contextNode;
+				const scene = new Scene();
+				const camera = new PerspectiveCamera( 50, 1, 0.1, 10 );
+				camera.position.z = 2;
+				const geometry = new PlaneGeometry( 4, 4 );
+				const material = new MeshStandardNodeMaterial( { metalness: 1, roughness: 0.2, emissive: new Color( 0.1, 0.2, 0.3 ) } );
+				scene.add( new Mesh( geometry, material ) );
+				const light = new DirectionalLight( 0xffffff, 2 );
+				light.position.z = 2;
+				scene.add( light );
+				const target = new RenderTarget( 8, 8, { type: HalfFloatType, count: 2 } );
+				target.textures[ 1 ].name = 'diffuseSource';
+				const diffuseSource = Fn( () => vec4( property( 'vec3', 'totalDiffuse' ).add( emissive ).max( 0 ), 1 ) );
+				try {
+
+					renderer.contextNode = context();
+					renderer.setRenderTarget( target );
+					renderer.setMRT( mrt( { output, diffuseSource: diffuseSource() } ) );
+					renderer.render( scene, camera );
+					const diffuse = Array.from( await renderer.readRenderTargetPixelsAsync( target, 4, 4, 1, 1, 1 ), DataUtils.fromHalfFloat );
+					const beauty = Array.from( await renderer.readRenderTargetPixelsAsync( target, 4, 4, 1, 1, 0 ), DataUtils.fromHalfFloat );
+					assert.ok( diffuse.every( ( value, i ) => Math.abs( value - [ 0.1, 0.2, 0.3, 1 ][ i ] ) < 0.002 ), 'A pure metal supplies emission and no camera-direction specular to SSGI' );
+					assert.ok( beauty[ 0 ] > diffuse[ 0 ] + 0.01, 'Full beauty retains the lit metallic reflection for SSR' );
+
+				} finally {
+
+					renderer.contextNode = oldContext;
+					geometry.dispose(); material.dispose(); target.dispose();
 					RendererUtils.restoreRendererState( renderer, state );
 
 				}

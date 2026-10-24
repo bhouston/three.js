@@ -1,0 +1,131 @@
+{
+  "baseline": "876361339e40",
+  "width": 256,
+  "height": 192,
+  "reference": "4x per axis ordinary rasterization, box downsampled in linear RGB; synthetic unlit geometry. Stress: entire Beauty passes through temporal reprojection then TRAA. Dependency: Beauty plus runtime-zero temporal dependency before TRAA, preserving original sharp input",
+  "limitations": "Check recorded ownership per fixture; a simple temporal input need not reproduce the baseline jitter-owner defect. Stress double-filters whole Beauty whereas the interior denoises indirect lighting only, so it is not a prediction of interior quality. Dependency fixture preserves sharp Beauty input. Neither establishes physical lighting correctness.",
+  "gradientMetric": "Squared horizontal/vertical luminance-gradient energy divided by reference energy; below1 may indicate extra blur, above1 excess high-frequency energy; not a standalone quality score",
+  "results": [
+    {
+      "fixture": "stress",
+      "method": "baseline",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false,
+        "backend": "WebGPUBackend"
+      },
+      "distinctProjectionCount": 32,
+      "jitterOwner": "TRAA",
+      "maximumMotion": 5.960464477539063e-8,
+      "frames": [
+        {
+          "frame": 64,
+          "linearRGBRMSE": 0.018719662288632283,
+          "referenceEdgeBandRMSE": 0.07628211521601609,
+          "gradientEnergyRatio": 0.8768109606544964,
+          "edgePixelCount": 2960
+        },
+        {
+          "frame": 96,
+          "linearRGBRMSE": 0.019144540314935062,
+          "referenceEdgeBandRMSE": 0.07801348078645931,
+          "gradientEnergyRatio": 0.8728561844328647,
+          "edgePixelCount": 2960
+        }
+      ]
+    },
+    {
+      "fixture": "stress",
+      "method": "current",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false,
+        "backend": "WebGPUBackend"
+      },
+      "distinctProjectionCount": 32,
+      "jitterOwner": "TRAA",
+      "maximumMotion": 5.960464477539063e-8,
+      "frames": [
+        {
+          "frame": 64,
+          "linearRGBRMSE": 0.029315291386755198,
+          "referenceEdgeBandRMSE": 0.11933759141529782,
+          "gradientEnergyRatio": 0.8252802711561535,
+          "edgePixelCount": 2960
+        },
+        {
+          "frame": 96,
+          "linearRGBRMSE": 0.03038013886294452,
+          "referenceEdgeBandRMSE": 0.12358524046881537,
+          "gradientEnergyRatio": 0.8110203484992969,
+          "edgePixelCount": 2960
+        }
+      ]
+    },
+    {
+      "fixture": "dependency",
+      "method": "baseline",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false,
+        "backend": "WebGPUBackend"
+      },
+      "distinctProjectionCount": 32,
+      "jitterOwner": "TRAA",
+      "maximumMotion": 5.960464477539063e-8,
+      "frames": [
+        {
+          "frame": 64,
+          "linearRGBRMSE": 0.01260133668857213,
+          "referenceEdgeBandRMSE": 0.051350107472855365,
+          "gradientEnergyRatio": 0.9316846648322427,
+          "edgePixelCount": 2960
+        },
+        {
+          "frame": 96,
+          "linearRGBRMSE": 0.012825130764234834,
+          "referenceEdgeBandRMSE": 0.05226206230122606,
+          "gradientEnergyRatio": 0.9280467981553043,
+          "edgePixelCount": 2960
+        }
+      ]
+    },
+    {
+      "fixture": "dependency",
+      "method": "current",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false,
+        "backend": "WebGPUBackend"
+      },
+      "distinctProjectionCount": 32,
+      "jitterOwner": "TRAA",
+      "maximumMotion": 5.960464477539063e-8,
+      "frames": [
+        {
+          "frame": 64,
+          "linearRGBRMSE": 0.012646995619355134,
+          "referenceEdgeBandRMSE": 0.05153616638555223,
+          "gradientEnergyRatio": 0.9468607143952289,
+          "edgePixelCount": 2960
+        },
+        {
+          "frame": 96,
+          "linearRGBRMSE": 0.012864011146281589,
+          "referenceEdgeBandRMSE": 0.052420498810465364,
+          "gradientEnergyRatio": 0.9429771694288582,
+          "edgePixelCount": 2960
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

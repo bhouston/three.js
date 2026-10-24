@@ -204,6 +204,26 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'newly revealed lighting gives its second observation half weight', async assert => {
+
+				await fixture( assert, async ( { node, depth, update, render } ) => {
+
+					node.hitDistanceNode = null;
+					node.radius.value = 0;
+					update( () => [ 4, 2, 1, 0 ] );
+					for ( let frame = 0; frame < 16; frame ++ ) await render();
+					for ( let i = 0; i < depth.image.data.length; i += 4 ) depth.image.data[ i ] = 0.8;
+					depth.needsUpdate = true;
+					update( x => [ 4, 2, 1, x % 2 ] );
+					await render();
+					update( x => [ 4, 2, 1, 1 - x % 2 ] );
+					const data = await render();
+					assert.ok( data.every( ( value, i ) => Math.abs( value - [ 4, 2, 1, 0.5 ][ i % 4 ] ) < 0.01 ), 'Disocclusion recovery is correct without inspecting implementation-specific age storage' );
+
+				} );
+
+			} );
+
 			QUnit.test( 'interpolated geometry cannot validate an entirely rejected history gather', async assert => {
 
 				await fixture( assert, async ( { node, depth, velocity, update, render } ) => {

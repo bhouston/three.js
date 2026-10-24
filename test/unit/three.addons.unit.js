@@ -26,6 +26,7 @@ import './addons/tsl/WebGLNodesHandler.tests.js';
 import './addons/tsl/RecurrentDenoiseNode.tests.js';
 import './addons/tsl/CoverageDenoiseNode.tests.js';
 import './addons/tsl/SSGINode.tests.js';
+import './addons/tsl/SSGISettings.tests.js';
 import './addons/tsl/FASTNoise.tests.js';
 import './addons/postprocessing/GTAOPass.tests.js';
 import './addons/tsl/lighting/ReflectionProbesNode.tests.js';

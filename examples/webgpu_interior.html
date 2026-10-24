@@ -31,6 +31,7 @@
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { fastNoise } from 'three/addons/tsl/utils/FASTNoise.js';
+			import { SSGI_QUALITY_PRESETS, resolveSSGISettings } from 'three/addons/tsl/utils/SSGISettings.js';
 			import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
 			import { recurrentDenoise, demodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -180,7 +181,15 @@
 				maxFrames: 16,
 				radius: 1.5
 			};
+			// Candidate relative distances for these authored scenes, kept separate from
+			// work-budget presets. Measurements can select different values later.
+			const ssgiSceneCandidates = {
+				'Dual Rooms': { radius: 0.25, thickness: 0.005 },
+				'Cornell Box': { radius: 0.25, thickness: 0.005 }
+			};
 			const ssgiParams = {
+				quality: 'Balanced',
+				scenePreset: 'Baseline',
 				sampling: 'Original',
 				viewSpaceAzimuth: true,
 				enabled: true,
@@ -212,6 +221,8 @@
 			let ssgiPass, ssgiDenoise, ssgiProvider;
 			let diffuseProviders = [];
 			let sceneScale = 1;
+			let ssgiSceneMetadata = {};
+			let ssgiModelScale = 1;
 			let specularProviders = [];
 			const currentView = new THREE.Matrix4();
 			const currentProjection = new THREE.Matrix4();
@@ -365,13 +376,25 @@
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const ssgiSettings = settings.addFolder( 'SSGI Settings' ).close();
 				ssgiSettings.add( ssgiParams, 'viewSpaceAzimuth' ).name( 'View Azimuth' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'quality', Object.keys( SSGI_QUALITY_PRESETS ) ).name( 'Quality Preset' ).onChange( value => {
+
+					Object.assign( ssgiParams, SSGI_QUALITY_PRESETS[ value ] );
+					updateSSGIParameters();
+
+				} );
+				ssgiSettings.add( ssgiParams, 'scenePreset', [ 'Baseline', 'Thinner Candidate' ] ).name( 'Scene Preset' ).onChange( () => {
+
+					applySSGIScenePreset( params.model );
+					updateSSGIParameters();
+
+				} );
 				ssgiSettings.add( ssgiParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssgiSettings.add( ssgiParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'sliceCount', 1, 8, 1 ).name( 'Slices' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'stepCount', 2, 32, 1 ).name( 'Steps' ).onChange( updateSSGIParameters );
-				ssgiSettings.add( ssgiParams, 'radius', 0.01, 1 ).name( 'Relative Radius' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
-				ssgiSettings.add( ssgiParams, 'thickness', 0.0001, 0.05 ).name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'radius', 0.01, 1 ).listen().name( 'Relative Radius' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'thickness', 0.0001, 0.05 ).listen().name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'intensity', 0, 2 ).name( 'Intensity' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'backfaceLighting', 0, 1 ).name( 'Backface Lighting' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'maxLuminance', 1, 100 ).name( 'Max Luminance' ).onChange( updateSSGIParameters );
@@ -571,6 +594,13 @@
 
 			}
 
+			function applySSGIScenePreset( name ) {
+
+				const candidate = ssgiParams.scenePreset === 'Thinner Candidate' ? ssgiSceneCandidates[ name ] : null;
+				Object.assign( ssgiParams, candidate || { radius: 0.25, thickness: 0.01 } );
+
+			}
+
 			function updateSSGIParameters() {
 
 				ssgiSampling.value = samplingModes.indexOf( ssgiParams.sampling );
@@ -579,8 +609,9 @@
 				ssgiPass.resolutionScale = ssgiParams.resolutionScale;
 				ssgiPass.sliceCount.value = ssgiParams.sliceCount;
 				ssgiPass.stepCount.value = ssgiParams.stepCount;
-				ssgiPass.radius.value = ssgiParams.radius * sceneScale;
-				ssgiPass.thickness.value = ssgiParams.thickness * sceneScale;
+				const resolved = resolveSSGISettings( ssgiParams, sceneScale, ssgiSceneMetadata, ssgiModelScale );
+				ssgiPass.radius.value = resolved.radius;
+				ssgiPass.thickness.value = resolved.thickness;
 				ssgiPass.giIntensity.value = ssgiParams.intensity;
 				ssgiPass.backfaceLighting.value = ssgiParams.backfaceLighting;
 				ssgiPass.maxLuminance.value = ssgiParams.maxLuminance;
@@ -976,6 +1007,12 @@
 				captureNear = Math.max( 0.001, Math.min( 0.05, Math.min( fullSize.x, fullSize.y, fullSize.z ) * 0.01 ) );
 				captureFar = Math.max( 30, fullSize.length() * 2 );
 				sceneScale = Math.max( fullSize.length(), 0.001 );
+				// glTF extras.ssgi may author localScale, localRadius/localThickness,
+				// or worldRadius/worldThickness. Unrelated distant geometry then does
+				// not silently change explicit physical distance overrides.
+				ssgiSceneMetadata = gltf.scene.userData.ssgi || {};
+				ssgiModelScale = model.getWorldScale( new THREE.Vector3() ).x;
+				applySSGIScenePreset( name );
 				if ( ssrPass ) updateSSRParameters();
 				if ( ssgiPass ) updateSSGIParameters();
 

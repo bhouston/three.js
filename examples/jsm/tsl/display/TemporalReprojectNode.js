@@ -1,5 +1,6 @@
-import { EPSILON, Fn, If, abs, convertToTexture, dFdx, dFdy, dot, exp, float, floor, fwidth, getViewPosition, ivec2, luminance, max, min, mix, nodeObject, normalize, passTexture, screenCoordinate, select, smoothstep, sqrt, struct, texture, textureLoad, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4, velocity, context, OnBeforeRenderPipeline, OnAfterRenderPipeline, isBackgroundDepth } from 'three/tsl';
+import { EPSILON, Fn, If, abs, convertToTexture, dFdx, dFdy, dot, exp, float, floor, fwidth, getViewPosition, ivec2, luminance, max, min, mix, nodeObject, normalize, passTexture, screenCoordinate, select, smoothstep, sqrt, struct, texture, textureLoad, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4, velocity, context, isBackgroundDepth } from 'three/tsl';
 import { DepthTexture, HalfFloatType, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
+import { getProjectionJitter } from '../utils/TAAUtils.js';
 import { ENV_RAY_LENGTH, ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
 
 // Reprojection helpers
@@ -575,14 +576,15 @@ class TemporalReprojectNode extends Node {
 
 		this._textureNode = passTexture( this, this._resolveRenderTarget.texture );
 
-		this._originalProjectionMatrix = new Matrix4();
+		this._jitter = new Vector2();
+		this._jitterDelta = uniform( new Vector2() );
+		this._velocityNode = velocity;
 
 		this._placeholderPreviousDepthTexture = new DepthTexture( 1, 1 );
 		this._previousDepthNode = texture( this._placeholderPreviousDepthTexture );
 		this._previousNormalTexture = normalNode.value.clone();
 		this._previousNormalNode = texture( this._previousNormalTexture );
 
-		this._needsPostProcessingSync = false;
 		this._externalHistoryTexture = null;
 
 		this._syncHistoryTextureBinding();
@@ -606,36 +608,18 @@ class TemporalReprojectNode extends Node {
 
 	}
 
-	setViewOffset() {
-
-		this.camera.updateProjectionMatrix();
-		this._originalProjectionMatrix.copy( this.camera.projectionMatrix );
-		velocity.setProjectionMatrix( this._originalProjectionMatrix );
-
-	}
-
-	clearViewOffset() {
-
-		velocity.setProjectionMatrix( null );
-
-	}
-
 	updateBefore( frame ) {
 
 		const { renderer } = frame;
 
+		this._jitterDelta.value.copy( this._jitter );
+		getProjectionJitter( this.camera, this._velocityNode.projectionMatrix, this._jitter );
+		this._jitterDelta.value.sub( this._jitter );
 		this._cameraUniforms.updateFromCamera( this.camera );
 
 		const drawingBufferSize = renderer.getDrawingBufferSize( _size );
 		const width = drawingBufferSize.width;
 		const height = drawingBufferSize.height;
-
-		if ( this._needsPostProcessingSync === true ) {
-
-			this.setViewOffset();
-			this._needsPostProcessingSync = false;
-
-		}
 
 		_rendererState = RendererUtils.resetRendererState( renderer, _rendererState );
 
@@ -727,25 +711,7 @@ class TemporalReprojectNode extends Node {
 
 		const sharedContext = context( builder.getSharedContext() );
 
-		if ( builder.renderPipeline && ! builder.context.renderPipelineState.viewOffsetOwner ) {
-
-			builder.context.renderPipelineState.viewOffsetOwner = this;
-
-			this._needsPostProcessingSync = true;
-
-			OnBeforeRenderPipeline( () => {
-
-				this.setViewOffset();
-
-			} );
-
-			OnAfterRenderPipeline( () => {
-
-				this.clearViewOffset();
-
-			} );
-
-		}
+		this._velocityNode = builder.context.velocity || velocity;
 
 		this._resolveMaterial.contextNode = sharedContext;
 		this._resolveMaterial.fragmentNode = this._buildResolve();
@@ -820,7 +786,7 @@ class TemporalReprojectNode extends Node {
 			const velocityOff = velocityToUVOffset( textureLoad( this.velocityNode, screenTexel ).xy ).toVar();
 			const motionFactor = velocityOff.mul( this._resolution ).length().div( float( this.maxVelocityLength ) ).saturate();
 
-			const historyUV = uvNode.sub( velocityOff ).toVar();
+			const historyUV = uvNode.sub( velocityOff ).add( this._jitterDelta ).toVar();
 			const surf = sampleHistory( historyUV );
 
 			const historyColor = surf.get( 'color' ).toVar();

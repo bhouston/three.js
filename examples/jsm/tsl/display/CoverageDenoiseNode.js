@@ -1,5 +1,6 @@
 import { HalfFloatType, Matrix4, Node, NodeMaterial, NodeUpdateType, QuadMesh, RedFormat, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
-import { textureSize, Fn, If, context, convertToTexture, float, getViewPosition, isBackgroundDepth, mix, outputStruct, passTexture, property, struct, texture, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { textureSize, Fn, If, context, convertToTexture, float, getViewPosition, isBackgroundDepth, mix, outputStruct, passTexture, property, struct, texture, uniform, velocity as cameraVelocity, unpackRGBToNormal, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { getProjectionJitter } from '../utils/TAAUtils.js';
 import { ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
 
 const historySample = struct( { color: 'vec4', weight: 'float', age: 'float' } );
@@ -77,6 +78,9 @@ class CoverageDenoiseNode extends Node {
 		this._size = new Vector2();
 		this._rendererState = {};
 		this._resolution = uniform( new Vector2( 1, 1 ) );
+		this._velocityNode = cameraVelocity;
+		this._jitter = new Vector2();
+		this._jitterDelta = uniform( new Vector2() );
 		this._projectionInverse = uniform( new Matrix4() );
 		this._world = uniform( new Matrix4() );
 		this._previousView = uniform( new Matrix4() );
@@ -120,6 +124,9 @@ class CoverageDenoiseNode extends Node {
 		const { renderer } = frame;
 		renderer.getDrawingBufferSize( this._size );
 		this.setSize( this._size.x, this._size.y );
+		this._jitterDelta.value.copy( this._jitter );
+		getProjectionJitter( this.camera, this._velocityNode.projectionMatrix, this._jitter );
+		this._jitterDelta.value.sub( this._jitter );
 		this._projectionInverse.value.copy( this.camera.projectionMatrixInverse );
 		this._world.value.copy( this.camera.matrixWorld );
 
@@ -152,6 +159,8 @@ class CoverageDenoiseNode extends Node {
 	}
 
 	setup( builder ) {
+
+		this._velocityNode = builder.context.velocity || cameraVelocity;
 
 		// Radius and clipping neighborhoods are measured in input texels. Using
 		// output pixels under-filters lower-resolution inputs and clips away valid history.
@@ -222,10 +231,9 @@ class CoverageDenoiseNode extends Node {
 			const worldPosition = this._world.mul( vec4( position, 1 ) ).xyz.toConst();
 			const worldNormal = normal( coordinate ).transformDirection( this._world ).toConst();
 			const expectedZ = this._previousView.mul( vec4( worldPosition, 1 ) ).z;
-			// Three.js velocity is an NDC delta. UV spans half the NDC range and
-			// has a downward Y axis, so convert before looking up previous history.
+			// Convert NDC motion to UV, then account for the previous raster grid's jitter.
 			const velocityUV = this.velocityNode.sample( coordinate ).xy.mul( vec2( 0.5, - 0.5 ) );
-			const surfaceUV = coordinate.sub( velocityUV ).toConst();
+			const surfaceUV = coordinate.sub( velocityUV ).add( this._jitterDelta ).toConst();
 
 			// Manual bilinear gather: geometry validation and premultiplication must
 			// happen per tap, before interpolation, to avoid bright invalid neighbors.

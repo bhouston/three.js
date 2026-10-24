@@ -1,6 +1,6 @@
 import { DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
-import { Fn, Loop, context, float, texture, uint, vec2 } from 'three/tsl';
-import { ssgi, ssgiSectorCoverage } from '../../../../examples/jsm/tsl/display/SSGINode.js';
+import { Fn, Loop, context, float, texture, uint, vec2, vec3 } from 'three/tsl';
+import { ssgi, ssgiSectorCoverage, ssgiViewSliceDirection } from '../../../../examples/jsm/tsl/display/SSGINode.js';
 import { getSharedRenderer, gpuTest } from '../../src/nodes/tsl/gpu-test-utils.js';
 
 export default QUnit.module( 'Addons', () => {
@@ -118,6 +118,30 @@ export default QUnit.module( 'Addons', () => {
 						} )();
 						assert.closeAbs( partition.x, float( 1 ), 2e-5, `Complementary masks partition unity at tilt ${ tilt }, phase ${ phase }` );
 						assert.closeAbs( partition.y, float( 1 ), 2e-5, `Fully observed furnace stays normalized with only two slices at tilt ${ tilt }, phase ${ phase }` );
+
+					}
+
+				}
+
+			} );
+
+			gpuTest( 'view azimuth sampling preserves equal angular intervals off axis', ( { assert } ) => {
+
+				for ( const direction of [[ 0, 0, 1 ], [ 0.7, 0.3, 1 ], [ - 1.2, 0.8, 0.4 ]] ) {
+
+					const view = vec3( ...direction ).normalize();
+					const tangents = [];
+					for ( let i = 0; i < 8; i ++ ) {
+
+						const screen = ssgiViewSliceDirection( view, float( i * Math.PI / 8 ) );
+						assert.closeAbs( screen.z, float( 0 ), 1e-6, 'Sampling directions remain in the screen plane' );
+						tangents.push( screen.sub( view.mul( screen.dot( view ) ) ).normalize() );
+
+					}
+
+					for ( let i = 1; i < tangents.length; i ++ ) {
+
+						assert.closeAbs( tangents[ i ].dot( tangents[ i - 1 ] ), float( Math.cos( Math.PI / 8 ) ), 2e-5, `Equal view azimuths for view ${ direction }` );
 
 					}
 

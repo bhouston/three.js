@@ -182,6 +182,7 @@
 			};
 			const ssgiParams = {
 				sampling: 'Original',
+				viewSpaceAzimuth: true,
 				enabled: true,
 				denoise: true,
 				resolutionScale: 0.5,
@@ -363,6 +364,7 @@
 				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const ssgiSettings = settings.addFolder( 'SSGI Settings' ).close();
+				ssgiSettings.add( ssgiParams, 'viewSpaceAzimuth' ).name( 'View Azimuth' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssgiSettings.add( ssgiParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSGIParameters );
@@ -573,6 +575,7 @@
 
 				ssgiSampling.value = samplingModes.indexOf( ssgiParams.sampling );
 				ssgiPass.useNoiseNode.value = ssgiSampling.value !== 0;
+				ssgiPass.useViewSpaceAzimuth.value = ssgiParams.viewSpaceAzimuth;
 				ssgiPass.resolutionScale = ssgiParams.resolutionScale;
 				ssgiPass.sliceCount.value = ssgiParams.sliceCount;
 				ssgiPass.stepCount.value = ssgiParams.stepCount;

@@ -1,5 +1,5 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, HalfFloatType, RGBAFormat, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
-import { sample, countTrailingZeros, clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth } from 'three/tsl';
+import { textureSize, sample, countTrailingZeros, clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -461,7 +461,10 @@ class SSGINode extends Node {
 
 		}
 
-		const uvNode = uv();
+		const depthSize = vec2( textureSize( this.depthNode, 0 ) ).toConst();
+		// Reconstruct at the center of the texel whose depth is read, including
+		// when the effect runs at a lower resolution than the depth buffer.
+		const uvNode = uv().mul( depthSize ).floor().add( 0.5 ).div( depthSize );
 		const MAX_RAY = uint( 32 );
 		const globalOccludedBitfield = uint( 0 );
 		const coverageField = this.outputCoverage ? property( 'float' ) : null;
@@ -521,7 +524,9 @@ class SSGINode extends Node {
 
 				const offset = pow( abs( mul( stepRadius, float( i ).add( initialRayStep ) ).div( radiusVS ) ), EXP_FACTOR ).mul( radiusVS ).toConst();
 				const uvOffset = slideDirTexelSize.mul( max( offset, float( i ).add( 1 ) ) ).toConst();
-				const sampleUV = uvNode.add( uvOffset.mul( uvDirection ) ).toConst();
+				// A continuous UV paired with nearest-sampled depth moves the reconstructed
+				// point off its surface, producing striped self-occlusion on planar geometry.
+				const sampleUV = uvNode.add( uvOffset.mul( uvDirection ) ).mul( depthSize ).floor().add( 0.5 ).div( depthSize ).toConst();
 
 				If( sampleUV.x.lessThanEqual( 0 ).or( sampleUV.y.lessThanEqual( 0 ) ).or( sampleUV.x.greaterThanEqual( 1 ) ).or( sampleUV.y.greaterThanEqual( 1 ) ), () => {
 

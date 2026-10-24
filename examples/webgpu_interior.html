@@ -29,7 +29,7 @@
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
-			import { recurrentDenoise, demodulate, remodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
+			import { recurrentDenoise, demodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -98,6 +98,7 @@
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
 			let ssrCoverage, ssrProvider, ssrHistory;
+			let indirectSpecularRaw, indirectSpecularCoverage;
 			let sceneScale = 1;
 			let specularProviders = [];
 			const currentView = new THREE.Matrix4();
@@ -172,7 +173,7 @@
 					output: vec4( packNormalToRGB( normalView ), roughness ),
 					albedo: vec4( diffuseColor.rgb, metalness ),
 					velocity: velocity,
-					fallback: Fn( builder => vec4( builder.context.indirectSpecularNode.sample().rgb, 1 ) )()
+					fallback: Fn( builder => builder.context.indirectSpecularNode.sample() )()
 				} ) );
 				prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
 				prePass.getTexture( 'albedo' ).type = THREE.UnsignedByteType;
@@ -219,7 +220,7 @@
 				updateAO();
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
-				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
+				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSR Raw', 'SSR Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
 				const indirectDiffuseSettings = settings.addFolder( 'Indirect Diffuse' );
@@ -322,7 +323,7 @@
 
 				// Only beauty and SSR diagnostic views render the source color. Copy after
 				// resolve so tracing never depends on this frame's indirect specular chain.
-				if ( params.output === 'Beauty' || params.output.startsWith( 'SSR' ) ) {
+				if ( params.output === 'Beauty' || ( params.output.startsWith( 'SSR' ) || params.output.startsWith( 'Indirect Specular' ) ) ) {
 
 					renderer.copyTextureToTexture( scenePass.getTexture( 'output' ), ssrHistory.texture );
 					renderer.copyTextureToTexture( prePass.getTexture( 'depth' ), ssrHistory.depthTexture );
@@ -412,25 +413,32 @@
 
 				} );
 				ssrRadiance = sample( uv => demodulate( unweighted.sample( uv ), ssrModulation.sample( uv ) ) );
-				// Seed misses with the same fallback radiance used by beauty. This keeps
-				// the spatial filter from pulling black miss pixels into valid reflections.
-				const filledRadiance = sample( ( uv ) => {
+				// Resolve alternative estimates once, before denoising. Both inputs are
+				// incoming radiance; the fallback chain already weights its own coverage.
+				indirectSpecularRaw = sample( ( uv ) => {
 
+					const coverage = ssrCoverage.sample( uv );
 					const radiance = ssrRadiance.sample( uv );
-					const covered = ssrPass.getCoverageNode().sample( uv ).r.greaterThan( 0 );
-					return vec4( covered.select( radiance.rgb, prePass.getTextureNode( 'fallback' ).sample( uv ).rgb ), radiance.a );
+					const fallback = prePass.getTextureNode( 'fallback' ).sample( uv );
+					return vec4( radiance.rgb.mul( coverage ).add( fallback.rgb.mul( coverage.oneMinus() ) ), radiance.a );
+
+				} ).toInspector( 'Indirect Specular Raw' );
+				indirectSpecularCoverage = sample( uv => {
+
+					const coverage = ssrCoverage.sample( uv );
+					return coverage.add( prePass.getTextureNode( 'fallback' ).sample( uv ).a.mul( coverage.oneMinus() ) );
 
 				} );
-				const filledTexture = convertToTexture( filledRadiance.sample( uv() ) );
-				ssrTemporal = temporalReproject( filledTexture, depth, normalRoughness, motion, camera, { mode: 'specular', accumulate: false } );
+				const resolvedTexture = convertToTexture( indirectSpecularRaw.sample( uv() ) );
+				ssrTemporal = temporalReproject( resolvedTexture, depth, normalRoughness, motion, camera, { mode: 'specular', accumulate: false } );
 				ssrDenoise = recurrentDenoise( ssrTemporal, camera, {
 					depth,
 					normal: normalRoughness,
-					raw: filledTexture,
+					raw: resolvedTexture,
 					metalRoughness: sample( uv => vec2( albedoMetalness.sample( uv ).a, normalRoughness.sample( uv ).a ) ),
 					mode: 'specular',
 					accumulate: true
-				} ).toInspector( 'SSR Filtered Radiance' );
+				} ).toInspector( 'Indirect Specular Filtered' );
 				ssrDenoise.alphaSource = 'raylength';
 				// Inverse-luminance firefly weighting biases demodulated radiance toward
 				// black at hit/miss boundaries, especially without a probe fallback.
@@ -457,8 +465,11 @@
 					const matches = roughness.sub( baseRoughness ).abs().lessThan( 0.01 )
 						.and( normal.dot( baseNormal ).greaterThan( 0.999 ) )
 						.and( direction.dot( baseDirection ).greaterThan( 0.999 ) );
-					const radiance = ssrParams.denoise ? ssrDenoise.getTextureNode().sample( screenUV ) : ssrRadiance.sample( screenUV );
-					return vec4( radiance.rgb, ssrCoverage.sample( screenUV ).mul( matches ) );
+					const radiance = ssrParams.denoise ? ssrDenoise.getTextureNode().sample( screenUV ) : indirectSpecularRaw.sample( screenUV );
+					const coverage = indirectSpecularCoverage.sample( screenUV );
+					// The buffer is already resolved. Unweight only to adapt to the
+					// provider contract; the outer chain must not add fallback a second time.
+					return vec4( radiance.rgb.div( coverage.max( 1e-4 ) ), coverage.mul( matches ) );
 
 				} : null;
 
@@ -518,8 +529,11 @@
 					case 'SSR Raw':
 						renderPipeline.outputNode = mix( scenePass, vec4( ssrPass.rgb, 1 ), debugWeight );
 						break;
-					case 'SSR Filtered':
-						renderPipeline.outputNode = mix( scenePass, vec4( remodulate( ssrDenoise, ssrModulation ).rgb, 1 ), debugWeight );
+					case 'Indirect Specular Raw':
+						renderPipeline.outputNode = mix( scenePass, vec4( indirectSpecularRaw.rgb, 1 ), debugWeight );
+						break;
+					case 'Indirect Specular Filtered':
+						renderPipeline.outputNode = mix( scenePass, vec4( ssrDenoise.rgb, 1 ), debugWeight );
 						break;
 					case 'SSR Coverage':
 						renderPipeline.outputNode = mix( scenePass, vec4( vec3( ssrCoverage ), 1 ), debugWeight );
@@ -535,7 +549,7 @@
 
 				}
 
-				renderer.toneMapping = [ 'Beauty', 'SSR Raw', 'SSR Filtered' ].includes( params.output ) ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+				renderer.toneMapping = [ 'Beauty', 'SSR Raw', 'Indirect Specular Raw', 'Indirect Specular Filtered' ].includes( params.output ) ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
 				renderPipeline.needsUpdate = true;
 				traaPass.setSize( 1, 1 );
 

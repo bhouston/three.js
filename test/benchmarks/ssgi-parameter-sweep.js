@@ -40,13 +40,34 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 
 		for ( const config of SSGI_PARAMETER_CONFIGS ) {
 
-			Object.assign( state.ssgiParams, baseline, config.settings );
+			const requested = { ...baseline, ...config.settings };
+			const verifySettings = () => {
+
+				const changed = Object.entries( requested ).filter( ( [ key, value ] ) => {
+
+					const actual = state.ssgiParams[ key ];
+					if ( typeof value !== 'number' || typeof actual !== 'number' ) return actual !== value;
+
+					return actual !== value && ( ! Number.isFinite( actual ) || ! Number.isFinite( value ) || Math.abs( actual - value ) > 1e-12 * Math.max( 1, Math.abs( value ) ) );
+
+				} );
+				if ( changed.length > 0 ) {
+
+					const details = changed.map( ( [ key, value ] ) => `${ key }: requested ${ value }, observed ${ state.ssgiParams[ key ] }` ).join( '; ' );
+					throw new Error( `Parameter mutation in ${ config.label }: ${ details }` );
+
+				}
+
+			};
+
+			Object.assign( state.ssgiParams, requested );
 			state.updateSSGIParameters();
 			state.params.output = 'Beauty';
 			state.updateOutput();
 			for ( let frame = 0; frame < 64; frame ++ ) step();
 
 			await drain();
+			verifySettings();
 			const initialGI = state.ssgiDenoise._frames;
 			if ( ! Number.isFinite( initialGI ) ) throw new Error( 'Missing GI frame counter; cannot verify completed full frames' );
 
@@ -65,6 +86,7 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 			const giFrames = state.ssgiDenoise._frames - initialGI;
 			if ( giFrames !== completed ) throw new Error( `GI updated ${ giFrames } times for ${ completed } completed frames in ${ config.label }` );
 
+			verifySettings();
 			const rawTarget = state.ssgiPass.getRenderTarget();
 			const filteredTarget = state.ssgiDenoise.getRenderTarget();
 			// These operations are outside the measured interval. Keep them serial so
@@ -139,6 +161,7 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 
 			}
 
+			verifySettings();
 			const validCount = geometry.valid.filter( Boolean ).length;
 			const coverageSum = geometry.coverage.reduce( ( sum, value, index ) => sum + ( geometry.valid[ index ] ? value : 0 ), 0 );
 			results.push( {

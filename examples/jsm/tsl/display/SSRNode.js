@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, logarithmicDepthToViewZ, luminance, max, min, mix, mul, nodeObject, normalize, outputStruct, property, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, trunc, uniform, uv, vec2, vec3, vec4, viewZToPerspectiveDepth, context, isBackgroundDepth } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, logarithmicDepthToViewZ, luminance, max, min, mix, mul, nodeObject, normalize, outputStruct, property, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, textureSize, trunc, uint, uniform, uv, vec2, vec3, vec4, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, context, isBackgroundDepth } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -25,6 +25,8 @@ const MAX_STEPS = 64;
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
  * @property {boolean} [outputCoverage=false] - Stochastic path only: expose hit coverage separately from ray length. Input color alpha is validity; screen-edge fading reduces coverage. No environment fallback is allowed.
  * @property {Node<vec4>} [noiseNode=null] - Uniform random samples in [0,1): GGX in xy, march jitter in z, mirror-bias jitter in w. Evaluated at the tracing resolution.
+ * @property {?HiZNode} [hiZ=null] - Optional hierarchy built from the same raw depth texture; requires WebGPU.
+ * @property {'conservative'|'adaptive'} [hiZTraversal='conservative'] - Adaptive traversal changes hits and trades quality for speed.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
 
@@ -131,6 +133,17 @@ class SSRNode extends Node {
 		 * @type {Node<float>}
 		 */
 		this.depthNode = depthNode;
+
+		/** @type {?HiZNode} */
+		this.hiZ = options.hiZ ?? null;
+		this._hiZEnabled = this.hiZ !== null;
+		this._hiZTraversal = options.hiZTraversal ?? 'conservative';
+		if ( ! [ 'conservative', 'adaptive' ].includes( this._hiZTraversal ) ) throw new Error( 'SSRNode: Invalid hiZTraversal.' );
+		/** Minimum adaptive leaf mip. Larger values trade thin-detail accuracy for speed. @type {UniformNode<int>} */
+		this.hiZMinMip = uniform( 0, 'int' );
+		/** Adaptive iteration budget at quality one, clamped to 8..512. @type {UniformNode<float>} */
+		this.hiZMaxSteps = uniform( 64 );
+
 
 		/**
 		 * A node that represents the beauty pass's normals.
@@ -515,6 +528,56 @@ class SSRNode extends Node {
 		if ( environmentNode !== null && environmentNode.isTexture === true ) {
 
 			this.setEnvMap( environmentNode );
+
+		}
+
+	}
+
+	/**
+	 * Enables conservative hierarchical skips when a Hi-Z input was supplied.
+	 * Changing this property recompiles the SSR material. The linear path remains
+	 * available for quality/performance comparisons.
+	 *
+	 * @type {boolean}
+	 */
+	get hiZEnabled() {
+
+		return this._hiZEnabled;
+
+	}
+
+	set hiZEnabled( value ) {
+
+		value = value === true && this.hiZ !== null;
+		if ( value !== this._hiZEnabled ) {
+
+			this._hiZEnabled = value;
+			this._buildSSRMaterial();
+
+		}
+
+	}
+
+	/**
+	 * Hi-Z traversal strategy. Adaptive traversal follows hierarchy cell boundaries,
+	 * uses a quality-scaled iteration cap, and solves leaf depth planes directly.
+	 * Its hits can differ from the original sample schedule; binaryRefine applies
+	 * only to the conservative/linear paths. Changing this rebuilds the shader.
+	 * @type {'conservative'|'adaptive'}
+	 */
+	get hiZTraversal() {
+
+		return this._hiZTraversal;
+
+	}
+
+	set hiZTraversal( value ) {
+
+		if ( ! [ 'conservative', 'adaptive' ].includes( value ) ) throw new Error( 'SSRNode: Invalid hiZTraversal.' );
+		if ( value !== this._hiZTraversal ) {
+
+			this._hiZTraversal = value;
+			this._buildSSRMaterial();
 
 		}
 
@@ -918,6 +981,33 @@ class SSRNode extends Node {
 
 		};
 
+		const hierarchicalDepth = this.hiZ;
+		// A batch is skipped only if every original sample lies in front of the
+		// nearest surface bound. Keep the original sample schedule and all leaf
+		// acceptance/refinement rules, so this optimization cannot add/move hits.
+		const canSkipBatch = ( uvStart, uvEnd, rayNearZ, level ) => {
+
+			// Raw depth is monotonic. Reduce four bounds before linearizing so
+			// only the winning depth needs the perspective/logarithmic conversion.
+			// The padded rectangle spans at most one cell per axis at this level;
+			// its four corners cover every touched cell, including odd footprints.
+			const nearest = coord => hierarchicalDepth.getNearestDepthNode( level, coord );
+			const reduce = builder.renderer.reversedDepthBuffer === true ? max : min;
+			let depth = reduce( reduce( nearest( uvStart ), nearest( uvEnd ) ), reduce(
+				nearest( vec2( uvStart.x, uvEnd.y ) ), nearest( vec2( uvEnd.x, uvStart.y ) )
+			) );
+			if ( builder.renderer.logarithmicDepthBuffer === true ) {
+
+				depth = viewZToPerspectiveDepth( logarithmicDepthToViewZ( depth, this._cameraNear, this._cameraFar ), this._cameraNear, this._cameraFar );
+
+			}
+
+			const closest = getViewZ( depth );
+			const margin = closest.abs().max( 1 ).mul( 1e-5 );
+			return rayNearZ.greaterThan( closest.add( margin ) );
+
+		};
+
 		const sampleMarchNoise = this.stochastic === true ? bindAnalyticNoise( this._resolution, 47 ) : null;
 
 		const computeScreenBorderFactor = Fn( ( [ uvCoord, borderWidth ] ) => {
@@ -938,6 +1028,8 @@ class SSRNode extends Node {
 		}, { uvCoord: 'vec2', borderWidth: 'float', return: 'float' } );
 
 		const ssr = Fn( () => {
+
+			const adaptive = this.hiZEnabled && this.hiZTraversal === 'adaptive';
 
 			if ( this.outputCoverage ) this._coverage.assign( 0 );
 
@@ -1170,11 +1262,39 @@ class SSRNode extends Node {
 			const previousInFront = bool( true ).toVar();
 			const canRefine = bool( false ).toVar();
 
+			// Adaptive traversal operates in the projected ray parameter, independent
+			// of the legacy sample schedule. An XY crossing enters a new hierarchy cell;
+			// a depth crossing descends toward a leaf. Tiny offsets apply only to XY.
+			const marchS = adaptive ? rayLen.reciprocal().toVar() : null;
+			const mip = adaptive ? this.hiZMinMip.max( 0 ).min( int( hierarchicalDepth.getLastLevelNode() ) ).toVar() : null;
+			const minMip = adaptive ? mip.toConst() : null;
+			const rayUV = adaptive ? vec2( xLen, yLen ).mul( invResolution ).toVar() : null;
+			// Standard/reversed projected depth is affine in s, so hierarchy tests
+			// need no per-cell perspective divide. Log depth keeps the general path.
+			const projectedTraversal = adaptive && builder.renderer.logarithmicDepthBuffer !== true;
+			const toProjectedDepth = this.camera.isPerspectiveCamera
+				? z => builder.renderer.reversedDepthBuffer === true
+					? viewZToReversedPerspectiveDepth( z, this._cameraNear, this._cameraFar )
+					: viewZToPerspectiveDepth( z, this._cameraNear, this._cameraFar )
+				: z => builder.renderer.reversedDepthBuffer === true
+					? z.add( this._cameraFar ).div( this._cameraFar.sub( this._cameraNear ) )
+					: z.add( this._cameraNear ).div( this._cameraNear.sub( this._cameraFar ) );
+			const rayDepthStart = projectedTraversal ? toProjectedDepth( viewPosition.z ).toConst() : null;
+			const rayDepthDelta = projectedTraversal ? toProjectedDepth( d1viewPosition.z ).sub( rayDepthStart ).toConst() : null;
+			const invDepthDelta = projectedTraversal ? rayDepthDelta.greaterThanEqual( 0 ).select( 1, - 1 ).div( rayDepthDelta.abs().max( 1e-20 ) ).toConst() : null;
+			const invRayUV = adaptive ? vec2(
+				rayUV.x.greaterThanEqual( 0 ).select( 1, - 1 ).div( rayUV.x.abs().max( 1e-20 ) ),
+				rayUV.y.greaterThanEqual( 0 ).select( 1, - 1 ).div( rayUV.y.abs().max( 1e-20 ) )
+			).toConst() : null;
+
+			const boundaryEpsilon = adaptive ? rayLen.reciprocal().mul( 0.005 ).max( 1e-7 ).toVar() : null;
+			const iterationEnd = adaptive ? int( this.quality.clamp().mul( this.hiZMaxSteps.clamp( 8, 512 ) ) ).max( 8 ).add( 1 ) : totalStep;
+
 			// March from d0 toward d1, looking for an intersection with the depth buffer.
-			Loop( { start: int( 1 ), end: totalStep }, ( { i } ) => {
+			Loop( { start: int( 1 ), end: iterationEnd }, ( { i } ) => {
 
 				// Exponentially-distributed ray parameter, shared by the sample position and ray depth.
-				const s = sampleFraction( float( i ) ).toVar();
+				const s = adaptive ? marchS.toVar() : sampleFraction( float( i ) ).toVar();
 
 				// The one-texel stride floor can otherwise extend short rays past their
 				// endpoint (including past the near-plane clip).
@@ -1193,12 +1313,124 @@ class SSRNode extends Node {
 				} );
 
 				const uvS = xy.mul( invResolution ).toVar();
+				if ( this.hiZEnabled && ! adaptive && this.stepExponent > 0 ) {
+
+					// Check aligned batches, not every leaf. On a failed bound test
+					// the next samples use the unchanged linear path without further
+					// hierarchy overhead until the next batch boundary.
+					If( i.sub( 1 ).mod( 16 ).equal( 0 ).and( i.add( 3 ).lessThan( totalStep ) ), () => {
+
+						const last = min( i.add( 15 ), totalStep.sub( 1 ) ).toVar();
+						const sEnd = sampleFraction( float( last ) ).toVar();
+						const endUV = screenPosAt( sEnd ).mul( invResolution ).toVar();
+
+						If( sEnd.lessThanEqual( 1 ).and( endUV.greaterThanEqual( vec2( 0 ) ).all() ).and( endUV.lessThanEqual( vec2( 1 ) ).all() ), () => {
+
+							const size = vec2( textureSize( this.depthNode ) ).toVar();
+							const padding = size.reciprocal();
+							const uvMin = min( uvS, endUV ).sub( padding ).clamp( 0, 1 ).toVar();
+							const uvMax = max( uvS, endUV ).add( padding ).clamp( 0, 1 ).toVar();
+							const extent = uvMax.sub( uvMin ).mul( size ).toVar();
+							const level = uint( max( extent.x, extent.y ).max( 1 ).log2().ceil() ).toVar();
+							const rayFarZ = min( reflectRayZAt( s ), reflectRayZAt( sEnd ) );
+
+							If( canSkipBatch( uvMin, uvMax, rayFarZ, level ), () => {
+
+								// Preserve the refinement bracket as if every skipped
+								// sample had executed and been proven in front.
+								previousS.assign( sEnd );
+								previousInFront.assign( true );
+								i.assign( last );
+								Continue();
+
+							} );
+
+						} );
+
+					} );
+
+				}
+
+				if ( adaptive ) {
+
+					const bounds = hierarchicalDepth.getCellBoundsNode( uint( mip ), uvS ).toVar();
+					const exitS = float( 1e20 ).toVar();
+					If( rayUV.x.abs().greaterThan( 1e-8 ), () => {
+
+						exitS.assign( rayUV.x.greaterThan( 0 ).select( bounds.z, bounds.x ).sub( uvPos.x ).mul( invRayUV.x ) );
+
+					} );
+					If( rayUV.y.abs().greaterThan( 1e-8 ), () => {
+
+						exitS.assign( min( exitS, rayUV.y.greaterThan( 0 ).select( bounds.w, bounds.y ).sub( uvPos.y ).mul( invRayUV.y ) ) );
+
+					} );
+					let nearestDepth = hierarchicalDepth.getNearestDepthNode( uint( mip ), uvS );
+					const depthS = float( 1e20 ).toVar();
+					const inFront = bool( false ).toVar();
+					if ( projectedTraversal ) {
+
+						nearestDepth = nearestDepth.toVar();
+						const rayDepth = rayDepthStart.add( s.mul( rayDepthDelta ) );
+						inFront.assign( builder.renderer.reversedDepthBuffer === true ? rayDepth.greaterThan( nearestDepth ) : rayDepth.lessThan( nearestDepth ) );
+						If( d1viewPosition.z.lessThan( viewPosition.z.sub( 1e-7 ) ), () => {
+
+							depthS.assign( nearestDepth.sub( rayDepthStart ).mul( invDepthDelta ) );
+							// Treat a solved plane as reached despite rounding in affine depth.
+							inFront.assign( inFront.and( depthS.greaterThan( s.add( 1e-7 ) ) ) );
+
+						} );
+
+					} else {
+
+						nearestDepth = viewZToPerspectiveDepth( logarithmicDepthToViewZ( nearestDepth, this._cameraNear, this._cameraFar ), this._cameraNear, this._cameraFar );
+						const nearestZ = getViewZ( nearestDepth ).toVar();
+						const zMargin = nearestZ.abs().max( 1 ).mul( 1e-6 );
+						inFront.assign( reflectRayZAt( s ).greaterThan( nearestZ.add( zMargin ) ) );
+						If( d1viewPosition.z.lessThan( viewPosition.z.sub( 1e-7 ) ), () => {
+
+							depthS.assign( this.camera.isPerspectiveCamera
+								? nearestZ.reciprocal().sub( recipVPZ ).div( recipD1VPZ.sub( recipVPZ ) )
+								: nearestZ.sub( viewPosition.z ).div( d1viewPosition.z.sub( viewPosition.z ) ) );
+
+						} );
+
+					}
+
+					If( inFront, () => {
+
+						If( depthS.greaterThan( s ).and( depthS.lessThanEqual( exitS ) ), () => {
+
+							marchS.assign( depthS );
+							mip.assign( mip.sub( 1 ).max( minMip ) );
+
+						} ).Else( () => {
+
+							marchS.assign( max( exitS.add( boundaryEpsilon ), s.add( boundaryEpsilon ) ) );
+							mip.assign( mip.add( 1 ).min( int( hierarchicalDepth.getLastLevelNode() ) ) );
+
+						} );
+						Continue();
+
+					} );
+					If( mip.greaterThan( minMip ), () => {
+
+						mip.subAssign( 1 );
+						Continue();
+
+					} );
+					// Failed leaf acceptance (including normal/thickness) must make progress.
+					marchS.assign( max( exitS.add( boundaryEpsilon ), s.add( boundaryEpsilon ) ) );
+					mip.assign( mip.add( 1 ).min( int( hierarchicalDepth.getLastLevelNode() ) ) );
+
+				}
+
 				const d = sampleDepth( uvS ).toVar();
 				const vZ = getViewZ( d ).toVar();
 
 				const viewReflectRayZ = reflectRayZAt( s ).toVar();
 
-				If( isBackgroundDepth( d ).not().and( viewReflectRayZ.lessThanEqual( vZ ) ), () => {
+				If( isBackgroundDepth( d ).not().and( viewReflectRayZ.lessThanEqual( adaptive ? vZ.add( vZ.abs().max( 1 ).mul( 1e-6 ) ) : vZ ) ), () => {
 
 					// Depth crossing: ray went behind the depth buffer. Gate by thickness before stopping
 					// so an occluder gap doesn't end the march prematurely.
@@ -1241,7 +1473,7 @@ class SSRNode extends Node {
 						hitUvS.assign( uvS );
 						hitD.assign( d );
 
-						if ( this.binaryRefine ) {
+						if ( this.binaryRefine && ! adaptive ) {
 
 							// Refine only a genuine front-to-back bracket. A previous
 							// behind-depth sample may have been rejected by thickness.
@@ -1267,7 +1499,7 @@ class SSRNode extends Node {
 
 				// Bisect the bracketed crossing toward the exact intersection. Run after the march, not
 				// nested (a loop-inside-a-loop tripped shader-compiler bugs on some drivers).
-				if ( this.binaryRefine ) {
+				if ( this.binaryRefine && ! adaptive ) {
 
 					If( canRefine, () => {
 
@@ -1305,7 +1537,7 @@ class SSRNode extends Node {
 				const distancePointPlane = this.stochastic === false ? pointPlaneDistance( vP, viewPosition, viewNormal ).toVar() : float( 0 );
 				const withinRange = distancePointPlane.lessThanEqual( this.maxDistance ).toVar();
 
-				if ( this.binaryRefine ) {
+				if ( this.binaryRefine && ! adaptive ) {
 
 					// Bisection can land on a depth discontinuity rather than geometry.
 					// Validate the final sample, not just the coarse crossing.

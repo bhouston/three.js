@@ -25,8 +25,9 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix } from 'three/tsl';
+			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix, property, emissive } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
+			import { supportsUnlayeredDiffuse } from 'three/addons/tsl/utils/UnlayeredDiffuseScope.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
@@ -161,6 +162,7 @@
 			const samplingModes = [ 'Original', 'FAST Product', 'FAST Separate' ];
 			const ssrSampling = uniform( 0, 'uint' );
 			const ssgiSampling = uniform( 0, 'uint' );
+			const diffuseSourceWeight = uniform( 1 );
 			let noiseAtlases;
 			const ssrParams = {
 				sampling: 'FAST Separate',
@@ -192,6 +194,7 @@
 				scenePreset: 'Baseline',
 				sampling: 'Original',
 				viewSpaceAzimuth: true,
+				source: 'Diffuse + emission',
 				enabled: true,
 				denoise: true,
 				resolutionScale: 0.5,
@@ -216,7 +219,7 @@
 			let camera, scene, renderer, controls, lightProbes, probes, model;
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
-			let ssrCoverage, ssrProvider, lightingHistory;
+			let ssrCoverage, ssrProvider, lightingHistory, diffuseHistory;
 			let indirectSpecularRaw, indirectSpecularCoverage, indirectSpecularFiltered, ssrCoverageDenoise;
 			let ssgiPass, ssgiDenoise, ssgiProvider;
 			let diffuseProviders = [];
@@ -345,7 +348,12 @@
 					return vec4( builder.context.indirectDiffuseNode.sample().a, builder.context.indirectSpecularNode.sample().a, 0, 1 );
 
 				} );
-				scenePass.setMRT( mrt( { output, coverage: coverage() } ) );
+				// This source excludes camera-dependent specular. totalDiffuse is the
+				// lighting model's direct + indirect diffuse outgoing radiance.
+				const diffuseSource = Fn( builder => supportsUnlayeredDiffuse( builder.material )
+					? vec4( property( 'vec3', 'totalDiffuse' ).add( emissive ).max( 0 ), 1 )
+					: output );
+				scenePass.setMRT( mrt( { output, coverage: coverage(), diffuseSource: diffuseSource() } ) );
 				const uvMaterial = new THREE.MeshBasicNodeMaterial( { map: uvTexture } );
 				uvPass = pass( scene, camera );
 				uvPass.overrideMaterial = uvMaterial;
@@ -388,6 +396,7 @@
 					updateSSGIParameters();
 
 				} );
+				ssgiSettings.add( ssgiParams, 'source', [ 'Beauty', 'Diffuse + emission' ] ).name( 'Source radiance' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssgiSettings.add( ssgiParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSGIParameters );
@@ -503,11 +512,13 @@
 				if ( lightingHistory.width !== size.x || lightingHistory.height !== size.y ) {
 
 					lightingHistory.setSize( size.x, size.y );
+					diffuseHistory.setSize( size.x, size.y );
 					historyValid.value = false;
 
 				}
 
 				renderer.initRenderTarget( lightingHistory );
+				renderer.initRenderTarget( diffuseHistory );
 				renderPipeline.render();
 
 				// Copy resolved lighting after rendering. Both screen-space effects trace
@@ -515,6 +526,7 @@
 				if ( params.output === 'Beauty' || ( params.output.startsWith( 'SSGI' ) || params.output.startsWith( 'SSR' ) || params.output.startsWith( 'Indirect Specular' ) ) ) {
 
 					renderer.copyTextureToTexture( scenePass.getTexture( 'output' ), lightingHistory.texture );
+					renderer.copyTextureToTexture( scenePass.getTexture( 'diffuseSource' ), diffuseHistory.texture );
 					renderer.copyTextureToTexture( prePass.getTexture( 'depth' ), lightingHistory.depthTexture );
 					previousView.value.copy( currentView );
 					previousProjection.value.copy( currentProjection );
@@ -529,7 +541,7 @@
 
 			}
 
-			function createHistorySource( depth, thickness ) {
+			function createHistorySource( depth, thickness, diffuse = false ) {
 
 				const projectionInverse = uniform( camera.projectionMatrixInverse );
 				const worldMatrix = uniform( camera.matrixWorld );
@@ -549,7 +561,9 @@
 						.and( previousUV.y.greaterThanEqual( 0 ).and( previousUV.y.lessThanEqual( 1 ) ) )
 						.and( oldPosition.z.sub( previousPosition.z ).abs().lessThan( thickness().max( 0.001 ) ) );
 
-					return vec4( texture( lightingHistory.texture ).sample( previousUV ).rgb, valid );
+					const beauty = texture( lightingHistory.texture ).sample( previousUV ).rgb;
+					const radiance = diffuse ? mix( beauty, texture( diffuseHistory.texture ).sample( previousUV ).rgb, diffuseSourceWeight ) : beauty;
+					return vec4( radiance, valid );
 
 				} );
 
@@ -571,7 +585,7 @@
 
 			function setupSSGI( depth, normal, motion ) {
 
-				const source = createHistorySource( depth, () => ssgiPass.thickness );
+				const source = createHistorySource( depth, () => ssgiPass.thickness, true );
 				ssgiPass = ssgi( source, depth, normal, camera, { outputCoverage: true, noiseNode: samplingNoise( ssgiSampling, new THREE.Vector2( 73, 29 ) ).wxy } );
 				ssgiPass.useScreenSpaceSampling.value = false;
 				// Diffuse filtering uses surface reprojection, without specular hit distance
@@ -603,6 +617,7 @@
 
 			function updateSSGIParameters() {
 
+				diffuseSourceWeight.value = ssgiParams.source === 'Diffuse + emission' ? 1 : 0;
 				ssgiSampling.value = samplingModes.indexOf( ssgiParams.sampling );
 				ssgiPass.useNoiseNode.value = ssgiSampling.value !== 0;
 				ssgiPass.useViewSpaceAzimuth.value = ssgiParams.viewSpaceAzimuth;
@@ -626,6 +641,7 @@
 
 				const ssrProjectionInverse = uniform( camera.projectionMatrixInverse );
 				lightingHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture( 1, 1 ) } );
+				diffuseHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
 				lightingHistory.depthTexture.format = depth.value.format;
 				lightingHistory.depthTexture.type = depth.value.type;
 				lightingHistory.depthTexture.minFilter = THREE.NearestFilter;

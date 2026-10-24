@@ -35,7 +35,7 @@ class CoverageDenoiseNode extends Node {
 	 * @param {Object} options - Geometry and motion guides.
 	 * @param {TextureNode} options.depth - Device depth.
 	 * @param {TextureNode} options.normal - Packed view normal in RGB, roughness in A.
-	 * @param {TextureNode} options.velocity - Screen-space motion vectors.
+	 * @param {TextureNode} options.velocity - Current-minus-previous NDC motion vectors, as produced by `velocity`.
 	 * @param {?Node<float>} [options.hitDistance=null] - World-space SSR hit distance. Omit for diffuse surface reprojection.
 	 */
 	constructor( inputNode, camera, { depth, normal, velocity, hitDistance = null } ) {
@@ -206,7 +206,10 @@ class CoverageDenoiseNode extends Node {
 			const worldPosition = this._world.mul( vec4( position, 1 ) ).xyz.toConst();
 			const worldNormal = normal( coordinate ).transformDirection( this._world ).toConst();
 			const expectedZ = this._previousView.mul( vec4( worldPosition, 1 ) ).z;
-			const surfaceUV = coordinate.sub( this.velocityNode.sample( coordinate ).xy ).toConst();
+			// Three.js velocity is an NDC delta. UV spans half the NDC range and
+			// has a downward Y axis, so convert before looking up previous history.
+			const velocityUV = this.velocityNode.sample( coordinate ).xy.mul( vec2( 0.5, - 0.5 ) );
+			const surfaceUV = coordinate.sub( velocityUV ).toConst();
 
 			// Manual bilinear gather: geometry validation and premultiplication must
 			// happen per tap, before interpolation, to avoid bright invalid neighbors.

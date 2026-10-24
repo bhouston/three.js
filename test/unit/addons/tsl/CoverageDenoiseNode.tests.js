@@ -266,6 +266,39 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			for ( const [ dx, dy ] of [[ 1, 0 ], [ - 1, 0 ], [ 0, 1 ], [ 0, - 1 ]] ) {
+
+				QUnit.test( `NDC velocity reprojects history by (${ dx }, ${ dy }) UV pixels`, async assert => {
+
+					await fixture( assert, async ( { node, velocity, update, render } ) => {
+
+						node.radius.value = 0;
+						// Exercise surface motion alone; specular virtual motion is a separate estimate.
+						node.hitDistanceNode = null;
+						const center = size / 2;
+						const stripe = ( x, y, offset ) => ( dx !== 0 ? x === center + dx * offset : y === center + dy * offset );
+						update( ( x, y ) => [ 4, 2, 1, stripe( x, y, - 1 ) ? 1 : 0 ] );
+						await render();
+						for ( let i = 0; i < velocity.image.data.length; i += 4 ) {
+
+							velocity.image.data.set( [ 2 * dx / size, - 2 * dy / size, 0, 0 ], i );
+
+						}
+
+						velocity.needsUpdate = true;
+						// A neighboring current hit keeps history inside the clipping bounds.
+						update( ( x, y ) => [ 4, 2, 1, stripe( x, y, 1 ) ? 1 : 0 ] );
+						const data = await render();
+						const i = 4 * ( center + size * center );
+						assert.ok( Math.abs( data[ i + 3 ] - 0.5 ) < 0.002, 'The previous hit moves exactly one pixel in the expected direction' );
+						assert.ok( Math.abs( data[ i ] - 4 ) < 0.01, 'Reprojected radiance retains its coverage weighting' );
+
+					} );
+
+				} );
+
+			}
+
 			for ( const guide of [ 'depth', 'normal', 'velocity' ] ) {
 
 				QUnit.test( `${ guide } rejects disoccluded or off-screen history`, async assert => {

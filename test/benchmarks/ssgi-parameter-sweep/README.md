@@ -37,3 +37,5 @@ CPU-only harness verification (uses simulated time and injected frame/reference 
 ```sh
 node test/benchmarks/ssgi-parameter-sweep.test.mjs
 ```
+
+For a reference-only repair run, pass `geometryOnly: true`. Each case still resets settings, warms 64 whole frames and drains before the three readbacks, but returns `throughput: null` and `temporal: null`; it neither retimes throughput nor captures 32 temporal frames. Such rows can replace separately captured reference statistics without claiming a new performance measurement. The caller exposes `diffuseHistory` when the selected source is `Diffuse + emission`: a callback SampleNode has no render target, so source selection must use that history explicitly. A missing selected history throws rather than comparing against the wrong beauty input. Output metadata records the chosen source and reference version.

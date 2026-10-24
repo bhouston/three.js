@@ -22,7 +22,7 @@ export const SSGI_PARAMETER_CONFIGS = Object.freeze( [
  * @param {Object} options - State, frame helpers, dimensions and optional reference injection for CPU harness tests.
  * @return {Promise<Array<Object>>} Compact comparison records, with no image arrays.
  */
-export async function runSSGIParameterSweep( { state, step, drain, read, width = 960, height = 720, geometryReference = null, freezeLighting = null, getFreezeLighting = () => false } ) {
+export async function runSSGIParameterSweep( { state, step, drain, read, width = 960, height = 720, geometryReference = null, freezeLighting = null, getFreezeLighting = () => false, geometryOnly = false } ) {
 
 	const reference = geometryReference || ( await import( '/test/benchmarks/ssgi-geometry-reference.js' ) ).ssgiGeometryReference;
 	const original = { ...state.ssgiParams };
@@ -68,23 +68,30 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 
 			await drain();
 			verifySettings();
-			const initialGI = state.ssgiDenoise._frames;
-			if ( ! Number.isFinite( initialGI ) ) throw new Error( 'Missing GI frame counter; cannot verify completed full frames' );
+			let throughput = null;
+			if ( ! geometryOnly ) {
 
-			let completed = 0;
-			const started = performance.now();
-			while ( performance.now() - started < 5000 ) {
+				const initialGI = state.ssgiDenoise._frames;
+				if ( ! Number.isFinite( initialGI ) ) throw new Error( 'Missing GI frame counter; cannot verify completed full frames' );
 
-				for ( let frame = 0; frame < 4; frame ++ ) step();
+				let completed = 0;
+				const started = performance.now();
+				while ( performance.now() - started < 5000 ) {
 
-				await drain();
-				completed += 4;
+					for ( let frame = 0; frame < 4; frame ++ ) step();
+
+					await drain();
+					completed += 4;
+
+				}
+
+				const seconds = ( performance.now() - started ) / 1000;
+				const giFrames = state.ssgiDenoise._frames - initialGI;
+				if ( giFrames !== completed ) throw new Error( `GI updated ${ giFrames } times for ${ completed } completed frames in ${ config.label }` );
+
+				throughput = { completed, giFrames, seconds, fps: completed / seconds };
 
 			}
-
-			const seconds = ( performance.now() - started ) / 1000;
-			const giFrames = state.ssgiDenoise._frames - initialGI;
-			if ( giFrames !== completed ) throw new Error( `GI updated ${ giFrames } times for ${ completed } completed frames in ${ config.label }` );
 
 			verifySettings();
 			const rawTarget = state.ssgiPass.getRenderTarget();
@@ -93,13 +100,15 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 			// CPU geometry work and GPU readback cannot contaminate throughput.
 			const raw = await read( rawTarget, 1 );
 			const filtered = await read( filteredTarget, 0 );
-			const sourceTarget = state.ssgiPass.beautyNode?.renderTarget || state.lightingHistory;
+			const sourceTarget = state.ssgiPass.beautyNode?.renderTarget || ( state.ssgiParams.source === 'Diffuse + emission' ? state.diffuseHistory : state.lightingHistory );
+			if ( ! sourceTarget ) throw new Error( `Missing selected SSGI source history for ${ state.ssgiParams.source }` );
 			const source = await read( sourceTarget, 0 );
 			const worldRadius = state.ssgiPass.radius.value;
 			const worldThickness = state.ssgiPass.thickness.value;
 			const geometry = await reference( {
 				model: state.model || state.scene,
 				camera: state.camera, width, height, radius: worldRadius,
+				backfaceLighting: state.ssgiPass.backfaceLighting?.value ?? 0,
 				raw: { data: raw, width: rawTarget.width, height: rawTarget.height },
 				filtered: { data: filtered, width: filteredTarget.width, height: filteredTarget.height },
 				radiance: { data: source, width: sourceTarget.width, height: sourceTarget.height }
@@ -107,58 +116,62 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 			// Temporal statistics have their own readback-heavy stage. They are
 			// deliberately outside the sustained-throughput interval and use a
 			// fixed source so feedback variation is not mistaken for sampling noise.
-			const previousFreeze = getFreezeLighting();
-			let temporal;
-			try {
+			let temporal = null;
+			if ( ! geometryOnly ) {
 
-				freezeLighting?.( true );
-				let mean, moments;
-				for ( let frame = 1; frame <= 32; frame ++ ) {
+				const previousFreeze = getFreezeLighting();
+				try {
 
-					step();
-					const value = await read( filteredTarget, 0 );
-					mean ||= new Float64Array( value.length );
-					moments ||= new Float64Array( value.length );
-					if ( value.length !== mean.length ) throw new Error( 'Filtered target size changed during temporal capture' );
+					freezeLighting?.( true );
+					let mean, moments;
+					for ( let frame = 1; frame <= 32; frame ++ ) {
 
-					for ( let i = 0; i < value.length; i += 4 ) for ( let channel = 0; channel < 4; channel ++ ) {
+						step();
+						const value = await read( filteredTarget, 0 );
+						mean ||= new Float64Array( value.length );
+						moments ||= new Float64Array( value.length );
+						if ( value.length !== mean.length ) throw new Error( 'Filtered target size changed during temporal capture' );
 
-						const sample = channel === 3 ? value[ i + 3 ] : value[ i + channel ] * value[ i + 3 ];
-						const delta = sample - mean[ i + channel ];
-						mean[ i + channel ] += delta / frame;
-						moments[ i + channel ] += delta * ( sample - mean[ i + channel ] );
+						for ( let i = 0; i < value.length; i += 4 ) for ( let channel = 0; channel < 4; channel ++ ) {
 
-					}
+							const sample = channel === 3 ? value[ i + 3 ] : value[ i + channel ] * value[ i + 3 ];
+							const delta = sample - mean[ i + channel ];
+							mean[ i + channel ] += delta / frame;
+							moments[ i + channel ] += delta * ( sample - mean[ i + channel ] );
 
-				}
-
-				let colorVariance = 0, coverageVariance = 0, meanCoverage = 0;
-				const meanColor = [ 0, 0, 0 ];
-				for ( let i = 0; i < mean.length; i += 4 ) {
-
-					meanCoverage += mean[ i + 3 ];
-					coverageVariance += moments[ i + 3 ] / 32;
-					for ( let channel = 0; channel < 3; channel ++ ) {
-
-						colorVariance += moments[ i + channel ] / 32;
-						meanColor[ channel ] += mean[ i + channel ];
+						}
 
 					}
 
+					let colorVariance = 0, coverageVariance = 0, meanCoverage = 0;
+					const meanColor = [ 0, 0, 0 ];
+					for ( let i = 0; i < mean.length; i += 4 ) {
+
+						meanCoverage += mean[ i + 3 ];
+						coverageVariance += moments[ i + 3 ] / 32;
+						for ( let channel = 0; channel < 3; channel ++ ) {
+
+							colorVariance += moments[ i + channel ] / 32;
+							meanColor[ channel ] += mean[ i + channel ];
+
+						}
+
+					}
+
+					const pixels = mean.length / 4;
+					temporal = {
+						frames: 32, sourceFreezeControlled: freezeLighting !== null,
+						temporalDeviation: Math.sqrt( Math.max( colorVariance / ( pixels * 3 ), 0 ) ),
+						coverageDeviation: Math.sqrt( Math.max( coverageVariance / pixels, 0 ) ),
+						meanCoverage: meanCoverage / pixels,
+						meanPremultipliedRGB: meanColor.map( value => value / pixels )
+					};
+
+				} finally {
+
+					freezeLighting?.( previousFreeze );
+
 				}
-
-				const pixels = mean.length / 4;
-				temporal = {
-					frames: 32, sourceFreezeControlled: freezeLighting !== null,
-					temporalDeviation: Math.sqrt( Math.max( colorVariance / ( pixels * 3 ), 0 ) ),
-					coverageDeviation: Math.sqrt( Math.max( coverageVariance / pixels, 0 ) ),
-					meanCoverage: meanCoverage / pixels,
-					meanPremultipliedRGB: meanColor.map( value => value / pixels )
-				};
-
-			} finally {
-
-				freezeLighting?.( previousFreeze );
 
 			}
 
@@ -168,15 +181,14 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 			results.push( {
 				label: config.label,
 				settings: { ...state.ssgiParams }, worldRadius, worldThickness,
-				throughput: { completed, giFrames, seconds, fps: completed / seconds },
-				temporal,
+				throughput, temporal, geometryOnly,
 				geometry: {
-					method: geometry.method,
+					method: geometry.method, referenceVersion: geometry.referenceVersion,
 					gridWidth: geometry.gridWidth, gridHeight: geometry.gridHeight, rays: geometry.rays,
 					validCount, sampleCount: geometry.valid.length,
 					meanTrueCoverage: validCount > 0 ? coverageSum / validCount : null,
 					comparisons: geometry.comparisons, milliseconds: geometry.milliseconds,
-					radianceSource: sourceTarget === state.lightingHistory ? 'lighting history fallback' : 'actual reprojected SSGI source'
+					radianceSource: sourceTarget === state.ssgiPass.beautyNode?.renderTarget ? 'actual reprojected SSGI source' : sourceTarget === state.diffuseHistory ? 'diffuse + emission history' : 'beauty lighting history'
 				}
 			} );
 

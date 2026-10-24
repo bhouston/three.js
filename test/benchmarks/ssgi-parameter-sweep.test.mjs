@@ -125,6 +125,54 @@ try {
 	assert.equal( mutationReadbacks, 0, 'External slider mutation fails before throughput readback or reference work' );
 	assert.deepEqual( state.ssgiParams, original, 'Mutation failures restore caller settings' );
 
+	// Production reprojectedRadiance is a SampleNode, so convertToTexture()
+	// keeps it as a callback and there is no beautyNode.renderTarget.
+	state.ssgiPass.beautyNode = { isSampleNode: true };
+	state.diffuseHistory = { width: 32, height: 24 };
+	state.ssgiParams.source = 'Diffuse + emission';
+	const geometryOnlyOriginal = { ...state.ssgiParams };
+	const beforeGeometryOnly = clock;
+	let geometryOnlyReads = 0, selectedSourceReads = 0, geometryOnlyReferences = 0;
+	const geometryFreezes = [];
+	const geometryResults = await runSSGIParameterSweep( {
+		state, geometryOnly: true,
+		step: () => { clock += 50; state.ssgiDenoise._frames ++; },
+		drain: async () => {},
+		read: async target => {
+
+			geometryOnlyReads ++;
+			if ( target === state.diffuseHistory ) selectedSourceReads ++;
+
+			return new Float32Array( 4 );
+
+		},
+		freezeLighting: value => { geometryFreezes.push( value ); },
+		geometryReference: async options => {
+
+			geometryOnlyReferences ++;
+			assert.equal( options.radiance.width, 32, 'SampleNode source resolves to selected diffuse history, not beauty' );
+			assert.equal( options.radiance.height, 24 );
+			assert.equal( selectedSourceReads, geometryOnlyReferences );
+			return { valid: [ true ], coverage: [ 0.25 ], comparisons: {}, referenceVersion: 'test-v2' };
+
+		}
+	} );
+	assert.equal( geometryOnlyReads, 15 * 3, 'Geometry-only mode performs no temporal frame readbacks' );
+	assert.equal( clock - beforeGeometryOnly, 15 * 64 * 50, 'Only warmup frames run: no five-second timing or temporal sequence' );
+	assert.ok( geometryFreezes.every( value => value === false ), 'Geometry-only mode does not freeze source copying' );
+	assert.ok( geometryResults.every( value => value.geometryOnly && value.throughput === null && value.temporal === null ) );
+	assert.ok( geometryResults.every( value => value.geometry.radianceSource === 'diffuse + emission history' && value.geometry.referenceVersion === 'test-v2' ) );
+	assert.deepEqual( state.ssgiParams, geometryOnlyOriginal );
+	assert.equal( state.params.output, 'Original Output' );
+	delete state.diffuseHistory;
+	await assert.rejects( runSSGIParameterSweep( {
+		state, geometryOnly: true,
+		step: () => { clock += 50; state.ssgiDenoise._frames ++; },
+		drain: async () => {}, read: async () => new Float32Array( 4 ),
+		geometryReference: async () => { throw new Error( 'Should not compare mismatched radiance' ); }
+	} ), /Missing selected SSGI source history for Diffuse \+ emission/ );
+	assert.deepEqual( state.ssgiParams, geometryOnlyOriginal, 'Missing selected source restores all settings' );
+
 } finally {
 
 	Object.defineProperty( globalThis, 'performance', performanceDescriptor );

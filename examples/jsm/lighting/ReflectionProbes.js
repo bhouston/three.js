@@ -308,6 +308,9 @@ class ReflectionProbes extends Object3D {
 			scene.environmentNode = null;
 			renderer.contextNode = context( {
 				...previousContext.value,
+				// Camera-space occlusion must not be sampled by a cube capture.
+				getAO: null,
+				getSpecularOcclusion: null,
 				indirectDiffuseNode: previousContext.value.indirectDiffuseNode || indirectDiffuse( [ reflectionProbesDiffuse( this ), environmentDiffuse( cachedEnvironment ) ] ),
 				indirectSpecularNode: indirectSpecular( [ reflectionProbesSpecular( this ), environmentSpecular( cachedEnvironment ) ] )
 			} );

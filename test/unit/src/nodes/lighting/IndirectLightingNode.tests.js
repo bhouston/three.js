@@ -1,5 +1,5 @@
 import { DataTexture, FloatType, Mesh, MeshStandardNodeMaterial, NodeMaterial, OrthographicCamera, PlaneGeometry, RenderTarget, Scene } from 'three/webgpu';
-import { context, float, indirectDiffuse, indirectSpecular, indirectLightingContext, vec3, vec4 } from 'three/tsl';
+import { context, float, indirectDiffuse, indirectSpecular, indirectLightingContext, lightMapDiffuse, texture, uv, vec3, vec4 } from 'three/tsl';
 import { getSharedRenderer } from '../tsl/gpu-test-utils.js';
 
 // These tests render and read back actual shader results. Do not accept a
@@ -83,6 +83,8 @@ export default QUnit.module( 'Nodes', () => {
 				const query = { position: vec3( 0 ), normal: vec3( 0, 1, 0 ) };
 				const cases = [
 					[ 'Remaining coverage', indirectDiffuse( [ () => vec4( 1, 0, 0, 0.8 ), () => vec4( 0, 1, 0, 0.5 ), () => vec4( 0, 0, 1, 1 ) ] ), [ 0.8, 0.1, 0.1, 1 ]],
+					[ 'Light map coverage and intensity', indirectDiffuse( [ lightMapDiffuse( vec3( 2, 4, 6 ), 0.25, 0.5 ), () => vec4( 0, 0, 1, 1 ) ] ), [ 0.25, 0.5, 1.5, 1 ]],
+					[ 'Black light maps block environment fallback', indirectDiffuse( [ lightMapDiffuse( vec3( 0 ) ), () => vec4( 100, 100, 100, 1 ) ] ), [ 0, 0, 0, 1 ]],
 					[ 'Valid black consumes coverage', indirectDiffuse( [ () => vec4( 0, 0, 0, 1 ), () => vec4( 100, 100, 100, 1 ) ] ), [ 0, 0, 0, 1 ]],
 					[ 'Missing data permits fallback', indirectDiffuse( [ () => vec4( 100, 0, 0, 0 ), () => vec4( 0, 1, 0, 1 ) ] ), [ 0, 1, 0, 1 ]],
 					[ 'Unresolved coverage remains black', indirectDiffuse( [] ), [ 0, 0, 0, 0 ]],
@@ -136,7 +138,15 @@ export default QUnit.module( 'Nodes', () => {
 					assert.ok( baked[ 1 ] > 0.8, 'The material light map still adds green irradiance' );
 					assert.ok( Math.abs( baked[ 0 ] - unbaked[ 0 ] ) < 1e-4, 'The provider chain still supplies the same red irradiance' );
 
+					const bakedOnly = await view.draw( material, indirectLightingContext( indirectDiffuse( [] ), indirectSpecular( [] ) ) );
+					assert.ok( bakedOnly[ 0 ] < 1e-4 && Math.abs( bakedOnly[ 1 ] - baked[ 1 ] ) < 1e-4, 'The baked view disables live diffuse GI while keeping the material light map' );
+
 					material.lightMap = null;
+					material.needsUpdate = true;
+					const atlasChain = indirectDiffuse( [ lightMapDiffuse( texture( lightMap, uv( 1 ) ) ), () => vec4( 100, 0, 0, 1 ) ] );
+					const atlasOnly = await view.draw( material, indirectLightingContext( atlasChain, indirectSpecular( [] ) ) );
+					close( assert, atlasOnly, bakedOnly, 'An explicit light-map provider matches material irradiance without adding environment twice' );
+
 					material.envNode = vec3( 1 );
 					material.needsUpdate = true;
 					const legacy = await view.draw( material );

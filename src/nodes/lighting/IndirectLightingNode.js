@@ -198,6 +198,19 @@ export const indirectLightingContext = ( diffuse = null, specular = null ) => {
 export const environmentDiffuse = ( environment, intensity = materialEnvIntensity ) => ( { normal } ) => vec4( environment.context( { getUV: () => normal, getTextureLevel: () => float( 1 ) } ).rgb.mul( Math.PI ).mul( intensity ), 1 );
 
 /**
+ * Diffuse adapter for sampled light-map irradiance, e.g. texture( atlas, uv( 1 ) ).
+ * This is a surface/UV-space provider, not a world-space sampler for LightMapper.
+ * Coverage is validity, independent of RGB and intensity; valid black blocks fallback.
+ * Do not also assign the same irradiance to material.lightMap, which remains additive.
+ *
+ * @param {Node<vec3|vec4>} irradiance - Sampled linear irradiance, not divided by pi.
+ * @param {Node<float>|number} [coverage=1] - Coverage of the sampled surface.
+ * @param {Node<float>|number} [intensity=1] - Irradiance scale.
+ * @return {Function} A surface-bound irradiance provider.
+ */
+export const lightMapDiffuse = ( irradiance, coverage = 1, intensity = 1 ) => () => vec4( irradiance.rgb.mul( intensity ), coverage );
+
+/**
  * Specular adapter for a filtered environment node.
  *
  * @param {Node} environment - The filtered environment.

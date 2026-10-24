@@ -1083,6 +1083,8 @@ class LightProbeGrid extends Light {
 		const currentMatrixWorldAutoUpdate = scene.matrixWorldAutoUpdate;
 		const currentVisible = this.visible;
 		const currentContext = renderer.contextNode;
+		// Camera-space GTAO/GTSO must not enter GI captures.
+		const bakeContext = { ...currentContext.value, getAO: null, getSpecularOcclusion: null };
 		const currentBackground = scene.background;
 		const currentBackgroundNode = scene.backgroundNode;
 		const currentBackgroundRotation = scene.backgroundRotation.clone();
@@ -1097,6 +1099,7 @@ class LightProbeGrid extends Light {
 			renderer.inspector.enabled = false;
 			renderer.xr.enabled = false;
 			this.visible = false;
+			renderer.contextNode = context( bakeContext );
 			// The environment is a transport boundary, independent of the display
 			// background. Surfaces receive it through the previous bounce grid.
 			this._environment ??= new EnvironmentRadiance();
@@ -1139,7 +1142,7 @@ class LightProbeGrid extends Light {
 				// No unoccluded IBL on captured surfaces: sky arrives via miss rays.
 				const providers = [];
 				if ( pass > 0 && this._bounceGrid ) providers.push( lightProbeGridDiffuse( this._bounceGrid ) );
-				renderer.contextNode = context( { ...currentContext.value, indirectDiffuseNode: indirectDiffuse( providers ), indirectSpecularNode: indirectSpecular( [] ) } );
+				renderer.contextNode = context( { ...bakeContext, indirectDiffuseNode: indirectDiffuse( providers ), indirectSpecularNode: indirectSpecular( [] ) } );
 				// Geometry is static during the bake, so distances are recorded once.
 				this._captureProbes( renderer, scene, start, end, this.visibility && pass === 0 );
 				this._repackProbes( renderer, start, end );

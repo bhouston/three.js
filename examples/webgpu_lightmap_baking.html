@@ -275,6 +275,8 @@
 
 				livePass = pass( scene, camera, { samples: 0 } );
 				livePass.contextNode = indirectLightingContext( indirectDiffuse( [ query => irradiance.asProvider()( { ...query, sampleIndex: liveFrame } ) ] ) );
+				// The baked view uses the material light map exclusively for diffuse GI.
+				// Neither VXGI nor light probes are queried by this pass.
 				bakedPass.contextNode = indirectLightingContext( indirectDiffuse( [] ) );
 				liveOutput = livePass;
 

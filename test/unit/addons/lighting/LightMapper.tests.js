@@ -33,7 +33,20 @@ export default QUnit.module( 'Addons', () => {
 				];
 				const previousContext = renderer.contextNode;
 				renderer.contextNode = indirectLightingContext( indirectDiffuse( [ () => vec4( 100, 100, 100, 1 ) ] ) );
+				renderer.contextNode.value.getAO = () => {
+
+					throw new Error( 'Camera GTAO must not run during a light-map bake' );
+
+				};
+
+				renderer.contextNode.value.getSpecularOcclusion = () => {
+
+					throw new Error( 'Camera GTSO must not run during a light-map bake' );
+
+				};
+
 				const previousTarget = renderer.getRenderTarget();
+				const bakeContext = renderer.contextNode;
 
 				try {
 
@@ -41,6 +54,7 @@ export default QUnit.module( 'Addons', () => {
 
 						mapper.addObjects( [ mesh ] );
 						mapper.update( 4 );
+						assert.strictEqual( renderer.contextNode, bakeContext, 'The light-map bake preserves the caller camera occlusion context' );
 						const pixel = await renderer.readRenderTargetPixelsAsync( mapper._renderTarget, 8, 8, 1, 1 );
 						const value = Array.from( pixel, DataUtils.fromHalfFloat );
 						assert.ok( Math.abs( value[ 0 ] - 2.5 ) < 0.005, 'The chain receives each progressive sample index' );

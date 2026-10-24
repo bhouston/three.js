@@ -10,7 +10,7 @@
 		<div id="info">
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Interior</span></div>
-			<small>Light Probe / VXGI diffuse lighting, box-projected reflections and GTAO / GTSO with selectable scenes.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a></small>
+			<small>Baked Light Probe light maps, box-projected reflections and GTAO / GTSO with selectable scenes.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a><br /><span id="status"></span></small>
 		</div>
 		<script type="importmap">
 			{
@@ -25,18 +25,18 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, uniform, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture } from 'three/tsl';
+			import { sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
+			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
-			import { VXGIVolume } from 'three/addons/lighting/vxgi/VXGIVolume.js';
-			import { vxgiDiffuse } from 'three/addons/lighting/vxgi/VXGIIrradiance.js';
 			import { ReflectionProbe, ReflectionProbes } from 'three/addons/lighting/ReflectionProbes.js';
-			import { reflectionProbesSpecular } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
+			import { reflectionProbesDiffuse, reflectionProbesSpecular } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
 			import { lightProbeGridDiffuse } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 
 			const models = {
@@ -50,19 +50,16 @@
 
 			const params = {
 				model: 'Dual Rooms',
-				environment: true,
 				environmentSource: 'HDR',
 				directLights: true,
-				diffuseGI: true,
-				reflectionProbes: true,
-				algorithm: 'Light Probes',
+				diffuseBaking: true,
+				environmentDiffuse: true,
+				environmentSpecular: true,
+				reflectionDiffuse: false,
+				reflectionSpecular: true,
 				bounces: 2,
-				voxelResolution: 128,
 				probeResolution: 32,
-				coneCount: 8,
-				coneAngle: 40,
-				bounceConeAngle: 60,
-				directionalVoxels: false,
+				lightMapResolution: 1024,
 				resolution: 256,
 				reflectionBounces: 3,
 				boxProjection: true,
@@ -77,8 +74,12 @@
 				aoOnly: false
 			};
 			let camera, scene, renderer, controls, lightProbes, probes, model;
-			let renderPipeline, scenePass, aoPass, traaPass, voxelVolume;
-			const giFrame = uniform( 0 );
+			let renderPipeline, scenePass, aoPass, traaPass;
+			let lightMapper, atlas;
+			let meshes = [];
+			let bakingLightMap = false;
+			const bakeSamples = 16;
+			const status = document.getElementById( 'status' );
 			let loadId = 0;
 			let currentModel = params.model;
 			let captureFar = 30;
@@ -95,7 +96,6 @@
 				// Scene
 
 				scene = new THREE.Scene();
-				const background = new THREE.Color( 0x111111 );
 				const environment = await new HDRLoader().loadAsync( 'textures/equirectangular/pedestrian_overpass_1k.hdr' );
 				environment.mapping = THREE.EquirectangularReflectionMapping;
 				scene.environment = environment;
@@ -148,21 +148,25 @@
 				const settings = renderer.inspector.createParameters( 'Interior' );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
-				settings.add( params, 'diffuseGI' ).name( 'Diffuse GI' ).onChange( updateIndirectLighting );
-				settings.add( params, 'reflectionProbes' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
+				const indirectDiffuseSettings = settings.addFolder( 'Indirect Diffuse' );
+				indirectDiffuseSettings.add( params, 'diffuseBaking' ).name( 'Diffuse Lightmaps' ).onChange( updateIndirectLighting );
+				indirectDiffuseSettings.add( params, 'reflectionDiffuse' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
+				indirectDiffuseSettings.add( params, 'environmentDiffuse' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
+				const indirectSpecularSettings = settings.addFolder( 'Indirect Specular' );
+				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
+				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const whiteEnvironment = new THREE.DataTexture( new Float32Array( [ 1, 1, 1, 1 ] ), 1, 1, THREE.RGBAFormat, THREE.FloatType );
 				whiteEnvironment.mapping = THREE.EquirectangularReflectionMapping;
 				whiteEnvironment.needsUpdate = true;
 				const updateEnvironment = () => {
 
 					const selected = params.environmentSource === 'HDR' ? environment : whiteEnvironment;
-					scene.environment = params.environment ? selected : null;
-					scene.background = params.environment ? selected : background;
+					scene.environment = selected;
+					scene.background = selected;
 					capture();
 
 				};
 
-				settings.add( params, 'environment' ).name( 'Environment Map' ).onChange( updateEnvironment );
 				settings.add( params, 'environmentSource', [ 'HDR', 'Unit White' ] ).name( 'Environment Source' ).onChange( updateEnvironment );
 
 				const occlusion = settings.addFolder( 'Ambient Occlusion' );
@@ -175,16 +179,10 @@
 				occlusion.add( params, 'temporalFiltering' ).name( 'Temporal filtering' ).onChange( updateAOParameters );
 				occlusion.add( params, 'aoOnly' ).name( 'AO only' ).onChange( updateAO );
 
-				const baking = settings.addFolder( 'Diffuse Baking' );
-				baking.add( params, 'algorithm', [ 'Light Probes', 'VXGI' ] ).name( 'GI Method' ).onChange( () => capture() );
-				// VXGI supports up to two cached indirect bounces.
+				const baking = settings.addFolder( 'Diffuse Lightmaps' );
 				baking.add( params, 'bounces', 0, 2, 1 ).name( 'Additional Bounces' ).onChange( () => capture() ).debounce( 250 );
+				baking.add( params, 'lightMapResolution', [ 512, 1024, 2048, 4096 ] ).name( 'Light Map Resolution' ).listen().onChange( () => capture() );
 				baking.add( params, 'probeResolution', [ 16, 32, 64, 128 ] ).name( 'Probe Capture Size' ).onChange( () => capture() );
-				baking.add( params, 'coneCount', [ 3, 8, 16, 32 ] ).name( 'Voxel Cones' ).onChange( () => capture( false ) );
-				baking.add( params, 'coneAngle', 5, 60, 1 ).name( 'Voxel Cone Angle' ).onChange( () => capture( false ) ).debounce( 250 );
-				baking.add( params, 'bounceConeAngle', 5, 60, 1 ).name( 'Voxel Bake Cone Angle' ).onChange( () => capture() ).debounce( 250 );
-				baking.add( params, 'directionalVoxels' ).name( 'Directional Voxels' ).onChange( () => capture() );
-				baking.add( params, 'voxelResolution', [ 64, 128, 256 ] ).name( 'Voxel Resolution' ).onChange( () => capture() );
 				baking.add( params, 'capture' ).name( 'Re-Bake' );
 
 				const gui = settings.addFolder( 'Reflection Probes' );
@@ -207,7 +205,30 @@
 			function animate() {
 
 				controls.update();
-				giFrame.value = ( giFrame.value + 1 ) % 64;
+				if ( bakingLightMap ) {
+
+					// Only the UV bake samples the light probes. The view samples the atlas.
+					lightProbes.visible = true;
+					try {
+
+						lightMapper.update();
+
+					} finally {
+
+						lightProbes.visible = false;
+
+					}
+
+					status.textContent = `Baking Light Probes light map: ${ lightMapper.samples } / ${ bakeSamples } samples`;
+					traaPass.setSize( 1, 1 );
+					if ( lightMapper.samples >= bakeSamples ) {
+
+						bakingLightMap = false;
+						capture( false );
+
+					}
+
+				}
 
 				renderPipeline.render();
 
@@ -282,8 +303,11 @@
 
 				}
 
-				voxelVolume?.dispose();
-				voxelVolume = null;
+				lightMapper?.dispose();
+				lightMapper = null;
+				atlas = null;
+				meshes = [];
+				bakingLightMap = false;
 
 				if ( model ) {
 
@@ -308,6 +332,9 @@
 						object.shadow.mapSize.setScalar( 256 );
 						object.shadow.radius = 12;
 						object.shadow.bias = - 0.002;
+						// The model and lights are static; reuse the captured shadow maps.
+						object.shadow.autoUpdate = false;
+						object.shadow.needsUpdate = true;
 
 					}
 
@@ -441,25 +468,27 @@
 			function configureIndirectLighting( reflections = true, baking = false ) {
 
 				const diffuseProviders = [];
-				const specularProviders = reflections && params.reflectionProbes ? [ reflectionProbesSpecular( probes ) ] : [];
-				const diffuseEnabled = baking || params.diffuseGI;
+				const specularProviders = reflections && params.reflectionSpecular && probes.texture ? [ reflectionProbesSpecular( probes ) ] : [];
+				if ( lightMapper && ( baking || params.diffuseBaking ) ) {
 
-				if ( diffuseEnabled && params.algorithm === 'Light Probes' ) {
+					// Keep material.lightMap independent: this atlas is supplied exactly once.
+					diffuseProviders.push( lightMapDiffuse( texture( lightMapper.texture, uv( 1 ) ) ) );
 
-					diffuseProviders.push( lightProbeGridDiffuse( lightProbes ) );
+				}
 
-				} else if ( diffuseEnabled ) {
+				if ( ! baking && params.reflectionDiffuse && probes.texture ) {
 
-					const provider = vxgiDiffuse( voxelVolume, { coneCount: Number( params.coneCount ), coneAngle: params.coneAngle } );
-					diffuseProviders.push( query => provider( { ...query, sampleIndex: giFrame } ) );
+					diffuseProviders.push( reflectionProbesDiffuse( probes ) );
 
 				}
 
 				if ( scene.environment ) {
 
 					const environment = pmremTexture( scene.environment );
-					if ( diffuseEnabled ) diffuseProviders.push( environmentDiffuse( environment ) );
-					specularProviders.push( environmentSpecular( environment ) );
+					// Environment illumination is already baked into the atlas. Optional
+					// fallback is an alternative for uncovered surfaces, not another sum.
+					if ( ! baking && params.environmentDiffuse ) diffuseProviders.push( environmentDiffuse( environment ) );
+					if ( baking || params.environmentSpecular ) specularProviders.push( environmentSpecular( environment ) );
 
 				}
 
@@ -471,14 +500,48 @@
 
 			}
 
+			function prepareAtlas() {
+
+				if ( atlas && atlas.resolution === Number( params.lightMapResolution ) ) return;
+				const geometries = new Set();
+				model.traverse( object => {
+
+					if ( object.isMesh ) geometries.add( object.geometry );
+
+				} );
+				let nextAtlas = null;
+				// Preserve chart gutters when a selected model needs a larger atlas.
+				for ( let resolution = Number( params.lightMapResolution ); resolution <= 4096 && ! nextAtlas; resolution *= 2 ) {
+
+					nextAtlas = unwrapUVs( model, { resolution, padding: 3 } );
+
+				}
+
+				if ( ! nextAtlas ) throw new Error( 'The scene does not fit in the light-map atlas.' );
+				params.lightMapResolution = nextAtlas.resolution;
+				atlas = nextAtlas;
+				meshes = atlas.meshes.map( record => record.mesh );
+				for ( const geometry of geometries ) geometry.dispose();
+
+			}
+
+			function getBakeDiffuse() {
+
+				const providers = [ lightProbeGridDiffuse( lightProbes ) ];
+				if ( scene.environment ) providers.push( environmentDiffuse( pmremTexture( scene.environment ) ) );
+				return indirectDiffuse( providers );
+
+			}
+
 			function capture( bakeDiffuse = true ) {
 
 				if ( ! model || ! lightProbes || ! probes ) return;
+				// Reflection-only requests wait for the current atlas to finish.
+				if ( ! bakeDiffuse && bakingLightMap ) return;
 
 				const environmentNode = scene.environmentNode;
 				const rendererContext = renderer.contextNode;
 				const lightProbesVisible = lightProbes.visible;
-				// Display toggles isolate contributions without changing the bake inputs.
 				const lightStates = [];
 				model.traverse( object => {
 
@@ -491,62 +554,55 @@
 
 				} );
 				scene.environmentNode = null;
-				let baked = false;
+				let prepared = false;
+				let nextMapper = null;
 
 				try {
 
-					// Clear the previous diffuse source before preparing the new one.
+					// Neither previous runtime GI nor camera occlusion enters source preparation.
+					renderer.contextNode = context( {
+						...rendererContext.value,
+						getGI: null, getAO: null, getSpecularOcclusion: null,
+						indirectDiffuseNode: indirectDiffuse( [] ),
+						indirectSpecularNode: indirectSpecular( [] )
+					} );
 
 					if ( bakeDiffuse ) {
 
-						renderer.contextNode = context( { ...rendererContext.value } );
-						delete renderer.contextNode.value.getGI;
-						renderer.contextNode.value.indirectDiffuseNode = null;
-						renderer.contextNode.value.indirectSpecularNode = null;
-						lightProbes.visible = params.algorithm === 'Light Probes';
+						prepareAtlas();
+						lightProbes.visible = true;
 
-						if ( params.algorithm === 'Light Probes' ) {
+						lightProbes.bake( renderer, scene, { cubemapSize: Number( params.probeResolution ), near: 0.05, far: captureFar, bounces: params.bounces } );
 
-							lightProbes.bake( renderer, scene, { cubemapSize: Number( params.probeResolution ), near: 0.05, far: captureFar, bounces: params.bounces } );
+						nextMapper = new LightMapper( renderer, atlas.resolution, getBakeDiffuse() );
+						nextMapper.addObjects( meshes );
+						lightMapper?.dispose();
+						lightMapper = nextMapper;
+						nextMapper = null;
+						bakingLightMap = true;
+						status.textContent = `Baking Light Probes light map: 0 / ${ bakeSamples } samples`;
 
-						} else {
+					} else {
 
-							if ( voxelVolume && voxelVolume.resolution !== Number( params.voxelResolution ) ) {
-
-								voxelVolume.dispose();
-								voxelVolume = null;
-
-							}
-
-							voxelVolume ??= new VXGIVolume( Number( params.voxelResolution ) );
-							voxelVolume.bounces = params.bounces;
-							voxelVolume.bounceConeAngle.value = params.bounceConeAngle;
-							voxelVolume.directionalRadiance = params.directionalVoxels;
-							voxelVolume.update( renderer, scene );
-
-						}
+						// Capture the finished atlas with live diffuse probes disabled.
+						configureIndirectLighting( false, true );
+						probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: captureFar, bounces: params.reflectionBounces } );
+						status.textContent = `Light Probes light map baked: ${ lightMapper.samples } samples`;
 
 					}
 
-					// Record the resolved diffuse solution in the local reflections too.
-
-					configureIndirectLighting( false, true );
-
-					probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: captureFar, bounces: params.reflectionBounces } );
+					// Restore display AO hooks while installing only the baked diffuse provider.
+					renderer.contextNode = rendererContext;
 					configureIndirectLighting();
-					baked = true;
+					prepared = true;
 
 				} finally {
 
 					scene.environmentNode = environmentNode;
 					for ( const [ light, visible ] of lightStates ) light.visible = visible;
-					if ( ! baked ) {
-
-						renderer.contextNode = rendererContext;
-						lightProbes.visible = lightProbesVisible;
-
-					}
-
+					lightProbes.visible = prepared ? false : lightProbesVisible;
+					if ( ! prepared ) renderer.contextNode = rendererContext;
+					nextMapper?.dispose();
 					if ( traaPass ) traaPass.setSize( 1, 1 );
 
 				}

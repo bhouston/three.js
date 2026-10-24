@@ -1,5 +1,5 @@
 import { Box3, Vector3, Vector4, Matrix4, Layers, Storage3DTexture, StorageBufferAttribute, StorageTexture3DNode, RendererUtils, HalfFloatType, UnsignedByteType, RGBAFormat, LinearFilter, LinearMipmapLinearFilter, ClampToEdgeWrapping, MathUtils } from 'three/webgpu';
-import { Fn, If, Loop, uniform, uniformArray, storage, instanceIndex, textureStore, texture3D, texture, cubeTexture, float, int, uint, vec2, vec3, vec4, ivec3, uvec3, max, min, abs, dot, cross, normalize, floor, sign, select, countOneBits, atomicOr, smoothstep, hash, length, PI, getDistanceAttenuation, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth } from 'three/tsl';
+import { Fn, If, Loop, context, uniform, uniformArray, storage, instanceIndex, textureStore, texture3D, texture, cubeTexture, float, int, uint, vec2, vec3, vec4, ivec3, uvec3, max, min, abs, dot, cross, normalize, floor, sign, select, countOneBits, atomicOr, smoothstep, hash, length, PI, getDistanceAttenuation, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth } from 'three/tsl';
 
 import { collectSceneTriangles, computeSceneBounds, computeSolidVoxels, TRIANGLE_STRIDE } from './VXGISceneCollector.js';
 import { createConeTracer, gather } from './VXGIConeTracer.js';
@@ -16,6 +16,8 @@ const BOUNCE_CONE_COUNT = 8;
 // the six directions a ray can travel, as (axis, sign) pairs
 
 const DIRECTIONS = [[ 0, 1 ], [ 0, - 1 ], [ 1, 1 ], [ 1, - 1 ], [ 2, 1 ], [ 2, - 1 ]];
+
+const _bakeContext = /*@__PURE__*/ context();
 
 let _rendererState;
 
@@ -369,33 +371,45 @@ class VXGIVolume {
 
 		_rendererState = RendererUtils.resetRendererState( renderer, _rendererState );
 
-		// the volume might be updated before the scene was rendered for the first time
+		const currentContext = renderer.contextNode;
+		// Voxel preparation and its nested sky/shadow renders must not inherit
+		// camera GTAO/GTSO or sample the live GI solution they are updating.
+		renderer.contextNode = _bakeContext;
 
-		if ( scene.matrixWorldAutoUpdate === true ) scene.updateMatrixWorld();
+		try {
 
-		if ( this.needsUpdate === true || this._allocated === false || this._directional !== this.directionalRadiance ) {
+			// the volume might be updated before the scene was rendered for the first time
 
-			this._voxelize( renderer, scene );
+			if ( scene.matrixWorldAutoUpdate === true ) scene.updateMatrixWorld();
 
-			this.needsUpdate = false;
-			this.lightingNeedsUpdate = true;
+			if ( this.needsUpdate === true || this._allocated === false || this._directional !== this.directionalRadiance ) {
+
+				this._voxelize( renderer, scene );
+
+				this.needsUpdate = false;
+				this.lightingNeedsUpdate = true;
+
+			}
+
+			if ( this._environment.update( renderer, scene ) ) this.lightingNeedsUpdate = true;
+
+			const lightKey = this._collectLights( renderer, scene );
+
+			if ( this.lightingNeedsUpdate === true || lightKey !== this._lightKey ) {
+
+				this._lightKey = lightKey;
+				this._updateLighting( renderer );
+
+				this.lightingNeedsUpdate = false;
+
+			}
+
+		} finally {
+
+			renderer.contextNode = currentContext;
+			RendererUtils.restoreRendererState( renderer, _rendererState );
 
 		}
-
-		if ( this._environment.update( renderer, scene ) ) this.lightingNeedsUpdate = true;
-
-		const lightKey = this._collectLights( renderer, scene );
-
-		if ( this.lightingNeedsUpdate === true || lightKey !== this._lightKey ) {
-
-			this._lightKey = lightKey;
-			this._updateLighting( renderer );
-
-			this.lightingNeedsUpdate = false;
-
-		}
-
-		RendererUtils.restoreRendererState( renderer, _rendererState );
 
 	}
 

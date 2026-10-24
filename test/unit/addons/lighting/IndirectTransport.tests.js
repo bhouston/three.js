@@ -1,5 +1,6 @@
 import { BoxGeometry, DataTexture, EquirectangularReflectionMapping, FloatType, Mesh, MeshStandardNodeMaterial, NodeMaterial, OrthographicCamera, PlaneGeometry, RenderTarget, RGBAFormat, Scene, Vector3 } from 'three/webgpu';
 import { Fn, context, float, indirectDiffuse, vec3, vec4 } from 'three/tsl';
+import { ReflectionProbe, ReflectionProbes } from '../../../../examples/jsm/lighting/ReflectionProbes.js';
 import { LightProbeGrid } from '../../../../examples/jsm/lighting/LightProbeGrid.js';
 import { lightProbeGridDiffuse } from '../../../../examples/jsm/tsl/lighting/LightProbeGridNode.js';
 import { VXGIVolume } from '../../../../examples/jsm/lighting/vxgi/VXGIVolume.js';
@@ -23,6 +24,18 @@ QUnit.module( 'Addons / Lighting / Indirect transport', () => {
 		if ( ! renderer ) return;
 		const previousContext = renderer.contextNode;
 		const previousTarget = renderer.getRenderTarget();
+		const cameraContext = context( {
+			getAO: () => {
+
+				throw new Error( 'Camera GTAO must not run during a bake' );
+
+			},
+			getSpecularOcclusion: () => {
+
+				throw new Error( 'Camera GTSO must not run during a bake' );
+
+			}
+		} );
 		const scene = new Scene();
 		const sky = new DataTexture( new Float32Array( [ 1, 1, 1, 1 ] ), 1, 1, RGBAFormat, FloatType );
 		sky.mapping = EquirectangularReflectionMapping;
@@ -48,6 +61,8 @@ QUnit.module( 'Addons / Lighting / Indirect transport', () => {
 		grid.visibility = true;
 		grid.multiBounce = true;
 		scene.add( grid );
+		const reflections = new ReflectionProbes();
+		reflections.add( new ReflectionProbe( 3, 3, 3 ) );
 		const volume = new VXGIVolume( 32 );
 		volume.bounds.set( new Vector3( - 2.2, - 2.2, - 2.2 ), new Vector3( 2.2, 2.2, 2.2 ) );
 		const output = new Scene();
@@ -86,16 +101,44 @@ QUnit.module( 'Addons / Lighting / Indirect transport', () => {
 			} )() );
 			assert.ok( Math.abs( directional[ 0 ] ) < 0.001 && Math.abs( directional[ 2 ] - 0.5 ) < 0.02, 'A blocked red sky contributes nothing; only the visible blue half is integrated' );
 
+			renderer.contextNode = cameraContext;
 			grid.bake( renderer, scene, { cubemapSize: 16, near: 0.05, far: 20, bounces: 2 } );
+			assert.strictEqual( renderer.contextNode, cameraContext, 'Diffuse probe baking restores the camera occlusion context' );
 			const probe = await draw( lightProbeGridDiffuse( grid )( query ) );
 			assert.ok( probe.slice( 0, 3 ).every( x => Math.abs( x ) < 0.001 ), 'A sealed unlit white room receives no sky irradiance, including cached bounces' );
 			assert.ok( probe[ 3 ] > 0.99, 'Valid dark probe data remains covered' );
 			assert.strictEqual( scene.background, null, 'The display background is restored' );
 			assert.strictEqual( scene.backgroundNode, previousBackgroundNode, 'The display background node is restored' );
 
+			renderer.contextNode = cameraContext;
+			reflections.bake( renderer, scene );
+			assert.strictEqual( renderer.contextNode, cameraContext, 'Reflection baking excludes camera occlusion and restores the caller context' );
+
 			scene.remove( ...walls );
 			grid.visible = false;
+			renderer.contextNode = cameraContext;
 			volume.update( renderer, scene );
+			assert.strictEqual( renderer.contextNode, cameraContext, 'Voxel preparation restores the camera occlusion context' );
+			const collectLights = volume._collectLights;
+			try {
+
+				volume._collectLights = () => {
+
+					throw new Error( 'Voxel preparation failed' );
+
+				};
+
+				renderer.setRenderTarget( target );
+				assert.throws( () => volume.update( renderer, scene ), /Voxel preparation failed/ );
+				assert.strictEqual( renderer.contextNode, cameraContext, 'A failed voxel preparation restores the camera occlusion context' );
+				assert.strictEqual( renderer.getRenderTarget(), target, 'A failed voxel preparation restores the render target' );
+
+			} finally {
+
+				volume._collectLights = collectLights;
+
+			}
+
 			const source = vxgiDiffuse( volume, { coneCount: 16 } );
 			const node = indirectDiffuse( [ source, () => vec4( 100, 0, 0, 1 ) ] ).sample( query );
 			const empty = await draw( node );
@@ -133,6 +176,7 @@ QUnit.module( 'Addons / Lighting / Indirect transport', () => {
 
 			renderer.contextNode = previousContext;
 			renderer.setRenderTarget( previousTarget );
+			reflections.dispose();
 			volume.dispose();
 			grid.dispose();
 			geometry.dispose();

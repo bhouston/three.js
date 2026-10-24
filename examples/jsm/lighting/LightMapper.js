@@ -1,5 +1,5 @@
 import { BackSide, CustomBlending, DoubleSide, HalfFloatType, Mesh, MeshLambertNodeMaterial, NearestFilter, NodeMaterial, OneFactor, OrthographicCamera, QuadMesh, RendererUtils, RenderTarget, Scene, Vector2 } from 'three/webgpu';
-import { Fn, If, Loop, indirectDiffuse, indirectSpecular, indirectLightingContext, ivec2, lights, modelViewMatrix, normalViewGeometry, normalWorldGeometry, output, positionLocal, positionWorld, screenCoordinate, textureLoad, uniform, uv, vec4 } from 'three/tsl';
+import { Fn, If, Loop, context, indirectDiffuse, indirectSpecular, indirectLightingContext, ivec2, lights, modelViewMatrix, normalViewGeometry, normalWorldGeometry, output, positionLocal, positionWorld, screenCoordinate, textureLoad, uniform, uv, vec4 } from 'three/tsl';
 
 let _rendererState;
 
@@ -135,6 +135,8 @@ class LightMapper {
 		} );
 
 		const resolveMaterial = new NodeMaterial();
+		// Even the unlit resolve must not inherit camera-space occlusion hooks.
+		resolveMaterial.contextNode = context( { getAO: null, getSpecularOcclusion: null } );
 		resolveMaterial.fragmentNode = resolve();
 
 		this._quad = new QuadMesh( resolveMaterial );
@@ -247,6 +249,8 @@ class LightMapper {
 		// The bake evaluates its source explicitly. Do not inherit runtime GI,
 		// especially when the Lambert bake material also evaluates direct lights.
 		material.contextNode = indirectLightingContext( indirectDiffuse( [] ), indirectSpecular( [] ) );
+		material.contextNode.value.getAO = null;
+		material.contextNode.value.getSpecularOcclusion = null;
 
 		// additive blending, the sample count accumulates in alpha
 

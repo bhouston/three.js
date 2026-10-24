@@ -53,6 +53,7 @@
 				model: 'Dual Rooms',
 				environmentSource: 'HDR',
 				directLights: true,
+				lightProbeDiffuse: false,
 				diffuseBaking: true,
 				environmentDiffuse: true,
 				environmentSpecular: true,
@@ -168,6 +169,7 @@
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
 				const indirectDiffuseSettings = settings.addFolder( 'Indirect Diffuse' );
+				indirectDiffuseSettings.add( params, 'lightProbeDiffuse' ).name( 'Light Probes' ).onChange( updateIndirectLighting );
 				indirectDiffuseSettings.add( params, 'diffuseBaking' ).name( 'Diffuse Lightmaps' ).onChange( updateIndirectLighting );
 				indirectDiffuseSettings.add( params, 'reflectionDiffuse' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectDiffuseSettings.add( params, 'environmentDiffuse' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
@@ -214,7 +216,7 @@
 				controls.update();
 				if ( bakingLightMap ) {
 
-					// Only the UV bake samples the light probes. The view samples the atlas.
+					// The UV bake always samples the probes, independently of the display toggle.
 					lightProbes.visible = true;
 					try {
 
@@ -222,7 +224,7 @@
 
 					} finally {
 
-						lightProbes.visible = false;
+						lightProbes.visible = params.lightProbeDiffuse;
 
 					}
 
@@ -498,7 +500,14 @@
 
 			function configureIndirectLighting( reflections = true, baking = false ) {
 
+				lightProbes.visible = ! baking && params.lightProbeDiffuse;
 				const diffuseProviders = [];
+				if ( ! baking && params.lightProbeDiffuse ) {
+
+					diffuseProviders.push( lightProbeGridDiffuse( lightProbes ) );
+
+				}
+
 				const specularProviders = reflections && params.reflectionSpecular && probes.texture ? [ reflectionProbesSpecular( probes ) ] : [];
 				if ( lightMapper && ( baking || params.diffuseBaking ) ) {
 
@@ -666,7 +675,7 @@
 
 					}
 
-					// Restore display AO hooks while installing only the baked diffuse provider.
+					// Restore display AO hooks and the selected runtime lighting providers.
 					renderer.contextNode = rendererContext;
 					configureIndirectLighting();
 					prepared = true;
@@ -675,7 +684,7 @@
 
 					scene.environmentNode = environmentNode;
 					for ( const [ light, visible ] of lightStates ) light.visible = visible;
-					lightProbes.visible = prepared ? false : lightProbesVisible;
+					lightProbes.visible = prepared ? params.lightProbeDiffuse : lightProbesVisible;
 					if ( ! prepared ) renderer.contextNode = rendererContext;
 					nextMapper?.dispose();
 					if ( traaPass ) traaPass.setSize( 1, 1 );

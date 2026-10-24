@@ -29,6 +29,7 @@
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+			import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
 			import { recurrentDenoise, demodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -73,6 +74,7 @@
 			const ssrParams = {
 				enabled: true,
 				denoise: true,
+				resolveOrder: 'Before filtering',
 				resolutionScale: 1,
 				quality: 1,
 				maxDistance: 0.5,
@@ -98,7 +100,7 @@
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
 			let ssrCoverage, ssrProvider, ssrHistory;
-			let indirectSpecularRaw, indirectSpecularCoverage;
+			let indirectSpecularRaw, indirectSpecularCoverage, indirectSpecularFiltered, ssrCoverageDenoise;
 			let sceneScale = 1;
 			let specularProviders = [];
 			const currentView = new THREE.Matrix4();
@@ -220,7 +222,7 @@
 				updateAO();
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
-				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSR Raw', 'SSR Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
+				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
 				const indirectDiffuseSettings = settings.addFolder( 'Indirect Diffuse' );
@@ -233,6 +235,7 @@
 				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const ssrSettings = settings.addFolder( 'SSR Settings' ).close();
+				ssrSettings.add( ssrParams, 'resolveOrder', [ 'Before filtering', 'After filtering (coverage-aware)' ] ).name( 'Resolve Fallback' ).info( 'Before: filter combined reflections. After: filter SSR radiance and coverage, then resolve probes/environment.' ).onChange( updateIndirectLighting );
 				ssrSettings.add( ssrParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssrSettings.add( ssrParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'quality', 0.05, 1 ).name( 'Quality' ).onChange( updateSSRParameters );
@@ -438,7 +441,7 @@
 					metalRoughness: sample( uv => vec2( albedoMetalness.sample( uv ).a, normalRoughness.sample( uv ).a ) ),
 					mode: 'specular',
 					accumulate: true
-				} ).toInspector( 'Indirect Specular Filtered' );
+				} );
 				ssrDenoise.alphaSource = 'raylength';
 				// Inverse-luminance firefly weighting biases demodulated radiance toward
 				// black at hit/miss boundaries, especially without a probe fallback.
@@ -448,23 +451,41 @@
 				ssrDenoise.normalPhi.value = 0.3;
 				ssrDenoise.strength.value = 0.725;
 				ssrTemporal.setHistoryTexture( ssrDenoise );
+
+				// The alternative pipeline never sees fallback lighting. Confidence is
+				// filtered with the same spatial and temporal weights as SSR radiance.
+				const sparseSSR = convertToTexture( vec4( ssrRadiance.sample( uv() ).rgb, ssrCoverage.sample( uv() ) ) );
+				ssrCoverageDenoise = coverageDenoise( sparseSSR, camera, {
+					depth,
+					normal: normalRoughness,
+					velocity: motion,
+					hitDistance: sample( uv => ssrPass.getTextureNode().sample( uv ).a )
+				} ).toInspector( 'SSR Filtered', node => vec4( node.rgb.mul( node.a ), 1 ) );
 				updateSSRProvider();
 
 			}
 
 			function updateSSRProvider() {
 
+				indirectSpecularFiltered = sample( uv => {
+
+					if ( ssrParams.resolveOrder === 'Before filtering' ) return ssrDenoise.getTextureNode().sample( uv );
+					const filtered = ssrCoverageDenoise.getTextureNode().sample( uv );
+					const fallback = prePass.getTextureNode( 'fallback' ).sample( uv );
+					return vec4( filtered.rgb.mul( filtered.a ).add( fallback.rgb.mul( filtered.a.oneMinus() ) ), filtered.a.add( fallback.a.mul( filtered.a.oneMinus() ) ) );
+
+				} ).toInspector( 'Indirect Specular Filtered' );
+
 				ssrProvider = ssrParams.enabled && ssrPass ? ( { direction, roughness, normal, viewDirection } ) => {
 
-					// SSR describes this camera's base specular lobe. Broad irradiance,
-					// clearcoat and other directional queries must retain probe fallback.
-					const baseRoughness = prePass.getTextureNode().sample( screenUV ).a;
-					const baseNormal = unpackRGBToNormal( prePass.getTextureNode().sample( screenUV ).rgb ).transformDirection( cameraWorldMatrix );
-					const mirrorDirection = viewDirection.negate().reflect( baseNormal );
-					const baseDirection = baseRoughness.pow4().mix( mirrorDirection, baseNormal ).normalize();
-					const matches = roughness.sub( baseRoughness ).abs().lessThan( 0.01 )
-						.and( normal.dot( baseNormal ).greaterThan( 0.999 ) )
-						.and( direction.dot( baseDirection ).greaterThan( 0.999 ) );
+					const matches = matchesSSRQuery( { direction, roughness, normal, viewDirection } );
+					if ( ssrParams.resolveOrder !== 'Before filtering' && ssrParams.denoise ) {
+
+						const filtered = ssrCoverageDenoise.getTextureNode().sample( screenUV );
+						return vec4( filtered.rgb, filtered.a.mul( matches ) );
+
+					}
+
 					const radiance = ssrParams.denoise ? ssrDenoise.getTextureNode().sample( screenUV ) : indirectSpecularRaw.sample( screenUV );
 					const coverage = indirectSpecularCoverage.sample( screenUV );
 					// The buffer is already resolved. Unweight only to adapt to the
@@ -475,11 +496,26 @@
 
 			}
 
+			function matchesSSRQuery( { direction, roughness, normal, viewDirection } ) {
+
+				// SSR describes this camera's base specular lobe. Broad irradiance,
+				// clearcoat and other directional queries must retain probe fallback.
+				const baseRoughness = prePass.getTextureNode().sample( screenUV ).a;
+				const baseNormal = unpackRGBToNormal( prePass.getTextureNode().sample( screenUV ).rgb ).transformDirection( cameraWorldMatrix );
+				const mirrorDirection = viewDirection.negate().reflect( baseNormal );
+				const baseDirection = baseRoughness.pow4().mix( mirrorDirection, baseNormal ).normalize();
+				return roughness.sub( baseRoughness ).abs().lessThan( 0.01 )
+					.and( normal.dot( baseNormal ).greaterThan( 0.999 ) )
+					.and( direction.dot( baseDirection ).greaterThan( 0.999 ) );
+
+			}
+
 			function resetSSR() {
 
 				historyValid.value = false;
 				ssrTemporal?.setSize( 1, 1 );
 				ssrDenoise?.setSize( 1, 1 );
+				ssrCoverageDenoise?.reset();
 
 			}
 
@@ -499,6 +535,8 @@
 				ssrTemporal.maxFrames.value = ssrParams.maxFrames;
 				ssrDenoise.maxFrames.value = ssrParams.maxFrames;
 				ssrDenoise.radius.value = ssrParams.radius;
+				ssrCoverageDenoise.radius.value = ssrParams.radius;
+				ssrCoverageDenoise.maxFrames.value = ssrParams.maxFrames;
 				resetSSR();
 				traaPass?.setSize( 1, 1 );
 
@@ -509,7 +547,16 @@
 				const aoContext = params.aoType === 'None' ? context( {} ) : params.aoType === 'GTAO + GTSO'
 					? aoPass.getLightingContext()
 					: builtinAOContext( aoPass.getTextureNode().sample( screenUV ).r );
-				scenePass.contextNode = context( { ...aoContext.value, indirectSpecularNode: indirectSpecular( ssrProvider ? [ ssrProvider, ...specularProviders ] : specularProviders ) } );
+				// In the combined mode, fallback has already been resolved for the base
+				// lobe. Only other lobes may query it again (including partial probes).
+				const combined = ssrParams.resolveOrder === 'Before filtering' || ! ssrParams.denoise;
+				const fallback = ssrProvider && combined ? specularProviders.map( provider => query => {
+
+					const value = provider( query );
+					return vec4( value.rgb, value.a.mul( matchesSSRQuery( query ).not() ) );
+
+				} ) : specularProviders;
+				scenePass.contextNode = context( { ...aoContext.value, indirectSpecularNode: indirectSpecular( ssrProvider ? [ ssrProvider, ...fallback ] : fallback ) } );
 				scenePass.needsUpdate = true;
 
 				updateOutput();
@@ -529,11 +576,17 @@
 					case 'SSR Raw':
 						renderPipeline.outputNode = mix( scenePass, vec4( ssrPass.rgb, 1 ), debugWeight );
 						break;
+					case 'SSR Filtered':
+						renderPipeline.outputNode = mix( scenePass, vec4( ssrCoverageDenoise.rgb.mul( ssrCoverageDenoise.a ), 1 ), debugWeight );
+						break;
+					case 'SSR Filtered Coverage':
+						renderPipeline.outputNode = mix( scenePass, vec4( vec3( ssrCoverageDenoise.a ), 1 ), debugWeight );
+						break;
 					case 'Indirect Specular Raw':
 						renderPipeline.outputNode = mix( scenePass, vec4( indirectSpecularRaw.rgb, 1 ), debugWeight );
 						break;
 					case 'Indirect Specular Filtered':
-						renderPipeline.outputNode = mix( scenePass, vec4( ssrDenoise.rgb, 1 ), debugWeight );
+						renderPipeline.outputNode = mix( scenePass, vec4( indirectSpecularFiltered.rgb, 1 ), debugWeight );
 						break;
 					case 'SSR Coverage':
 						renderPipeline.outputNode = mix( scenePass, vec4( vec3( ssrCoverage ), 1 ), debugWeight );
@@ -549,7 +602,7 @@
 
 				}
 
-				renderer.toneMapping = [ 'Beauty', 'SSR Raw', 'Indirect Specular Raw', 'Indirect Specular Filtered' ].includes( params.output ) ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+				renderer.toneMapping = [ 'Beauty', 'SSR Raw', 'SSR Filtered', 'Indirect Specular Raw', 'Indirect Specular Filtered' ].includes( params.output ) ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
 				renderPipeline.needsUpdate = true;
 				traaPass.setSize( 1, 1 );
 

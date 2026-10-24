@@ -36,6 +36,7 @@
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { DRACOLoader, DRACO_GLTF_CONFIG } from 'three/addons/loaders/DRACOLoader.js';
+			import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
 			import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
@@ -64,7 +65,13 @@
 				'Primitives Floor (Color Rough)': 'primitives-floor-color-rough.glb',
 				'Primitives Floor (Color Dielectric)': 'primitives-floor-color-dielectric.glb',
 				'Littlest Tokyo': 'LittlestTokyo.glb',
-				'Ferrari': 'ferrari.glb',
+				'Dungeon Warkarma': 'dungeon_warkarma.glb',
+				'Damaged Helmet': 'DamagedHelmet/glTF/DamagedHelmet.gltf',
+				'Anisotropy Barn Lamp': 'AnisotropyBarnLamp.glb',
+				'Bath Day': 'bath_day.glb',
+				'Carbon Frame Bike': 'CarbonFrameBike.glb',
+				'Dragon Attenuation': 'DragonAttenuation.glb',
+				'Godrays Demo': 'godrays_demo.glb',
 				'Stripped Emissive Mirror Floor': 'stripped-emissive-mirror-floor.glb'
 			};
 
@@ -207,6 +214,7 @@
 				document.body.appendChild( renderer.domElement );
 				await renderer.init();
 				if ( renderer.backend.isWebGPUBackend !== true ) throw new Error( 'This example requires WebGPU.' );
+				loader.setKTX2Loader( await new KTX2Loader().detectSupport( renderer ) );
 
 				controls = new OrbitControls( camera, renderer.domElement );
 				controls.enableDamping = true;
@@ -834,6 +842,7 @@
 				}
 
 				model = gltf.scene;
+				expandInstances( model );
 				model.traverse( ( object ) => {
 
 					if ( object.isMesh ) {
@@ -906,7 +915,7 @@
 
 				}
 
-				const environmentOnly = [ 'Tennyson Bust', 'Shader Ball', 'Shader Ball 2', 'Rolex', 'Ferrari', 'Littlest Tokyo' ];
+				const environmentOnly = [ 'Tennyson Bust', 'Shader Ball', 'Shader Ball 2', 'Rolex', 'Littlest Tokyo', 'Damaged Helmet', 'Anisotropy Barn Lamp', 'Carbon Frame Bike', 'Dragon Attenuation' ];
 				const openFloor = name.startsWith( 'Primitives Floor' ) || name === 'Stripped Emissive Mirror Floor';
 				bakeSettings.boxProjection = ! environmentOnly.includes( name ) && name !== 'Steampunk Camera' && ! openFloor && name !== 'Museum';
 				probes.boxProjection = bakeSettings.boxProjection;
@@ -961,6 +970,60 @@
 
 				capture();
 				currentModel = name;
+
+			}
+
+			function expandInstances( root ) {
+
+				// The atlas baker needs one static mesh per instance, with its own UVs.
+				const instances = [];
+				root.traverse( object => {
+
+					if ( object.isInstancedMesh ) instances.push( object );
+
+				} );
+				for ( const object of instances ) {
+
+					if ( object.matrixAutoUpdate ) object.updateMatrix();
+					const group = new THREE.Group();
+					group.name = object.name;
+					group.matrix.copy( object.matrix );
+					group.matrixAutoUpdate = false;
+					group.visible = object.visible;
+					group.layers.mask = object.layers.mask;
+					for ( let i = 0; i < object.count; i ++ ) {
+
+						const mesh = new THREE.Mesh( object.geometry, object.material );
+						mesh.name = `${ object.name }_${ i }`;
+						object.getMatrixAt( i, mesh.matrix );
+						mesh.matrixAutoUpdate = false;
+						if ( object.instanceColor !== null ) {
+
+							const color = new THREE.Color();
+							object.getColorAt( i, color );
+							const tint = material => {
+
+								const result = material.clone();
+								result.color.multiply( color );
+								return result;
+
+							};
+
+							mesh.material = Array.isArray( object.material ) ? object.material.map( tint ) : tint( object.material );
+
+						}
+
+						if ( object.morphTexture !== null ) object.getMorphAt( i, mesh );
+						group.add( mesh );
+
+					}
+
+					group.add( ...object.children );
+					object.parent.add( group );
+					object.removeFromParent();
+					object.dispose();
+
+				}
 
 			}
 

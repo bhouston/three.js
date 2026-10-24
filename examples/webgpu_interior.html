@@ -337,6 +337,8 @@
 				} ) );
 				prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
 				prePass.getTexture( 'albedo' ).type = THREE.UnsignedByteType;
+				// Attachments inherit the normal buffer's byte type; radiance needs HDR.
+				prePass.getTexture( 'fallback' ).type = THREE.HalfFloatType;
 
 				const prePassNormal = sample( ( uv ) => unpackRGBToNormal( prePass.getTextureNode().sample( uv ) ) );
 				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );

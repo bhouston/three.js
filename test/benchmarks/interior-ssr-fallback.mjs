@@ -13,7 +13,7 @@ const html = ( await readFile( process.env.SSR_FALLBACK_SOURCE || 'examples/webg
 	.replace( "model: 'Dual Rooms'", "model: 'Damaged Helmet'" )
 	.replace( 'lightMapResolution: 4096', 'lightMapResolution: 1024' )
 	.replace( 'renderer.setPixelRatio( window.devicePixelRatio );', 'renderer.setPixelRatio( 1 );' )
-	.replace( 'renderer.setAnimationLoop( animate );', `window.__fallbackTest = { renderer, scenePass, ssrPass, ssrParams, controls, animate, updateIndirectLighting, updateSSRParameters }; renderer.setAnimationLoop( animate );` );
+	.replace( 'renderer.setAnimationLoop( animate );', `window.__fallbackTest = { renderer, scene, camera, params, prePass, scenePass, ssrPass, ssrParams, controls, animate, updateIndirectLighting, updateSSRParameters }; renderer.setAnimationLoop( animate );` );
 const server = createServer();
 let browser;
 try {
@@ -80,6 +80,28 @@ try {
 			return Array.from( values, DataUtils.fromHalfFloat );
 
 		};
+
+		const distance = s.camera.position.distanceTo( s.controls.target );
+		window.__fallbackHDRCapture = async mode => {
+
+			s.camera.position.set( distance * 0.94 * Math.SQRT1_2, distance * 0.34, distance * 0.94 * Math.SQRT1_2 ).add( s.controls.target );
+			s.controls.update();
+			s.params.reflectionSpecular = false;
+			s.scene.background = null;
+			await window.__fallbackCapture( mode );
+			const target = s.scenePass.renderTarget;
+			const data = await s.renderer.readRenderTargetPixelsAsync( target, 0, 0, target.width, target.height );
+			const luminance = [];
+			for ( let i = 0; i < data.length; i += 4 ) {
+
+				luminance.push( DataUtils.fromHalfFloat( data[ i ] ) * 0.2126 + DataUtils.fromHalfFloat( data[ i + 1 ] ) * 0.7152 + DataUtils.fromHalfFloat( data[ i + 2 ] ) * 0.0722 );
+
+			}
+			// Average the brightest pixels to tolerate subpixel highlight movement.
+			luminance.sort( ( a, b ) => b - a );
+			return { peak: luminance[ 0 ], top100: luminance.slice( 0, 100 ).reduce( ( sum, value ) => sum + value, 0 ) / 100 };
+
+		};
 		return {};
 
 	} );
@@ -104,7 +126,14 @@ try {
 		results[ mode ] = { relativeRMSE: Math.sqrt( error / Math.max( energy, 1e-8 ) ) };
 
 	}
-	const report = { hardware, results, errors };
+	const highlights = {};
+	for ( const mode of [ 'disabled', 'default', 'miss-unfiltered', 'miss-filtered' ] ) {
+
+		highlights[ mode ] = await page.evaluate( mode => window.__fallbackHDRCapture( mode ), mode );
+		await page.screenshot( { path: `${ directory }/hdr-${ mode }.png` } );
+
+	}
+	const report = { hardware, results, highlights, errors };
 	await writeFile( `${ directory }/results.json`, JSON.stringify( report, null, 2 ) );
 	console.log( report );
 	assert.deepEqual( errors, [], 'No browser/GPU errors' );
@@ -114,6 +143,13 @@ try {
 
 		const tolerance = mode === 'miss-unfiltered' ? 0.1 : 0.25;
 		assert.ok( result.relativeRMSE < tolerance, `${ mode }: fallback changed visor radiance (${ result.relativeRMSE })` );
+
+	}
+
+	assert.ok( highlights.disabled.top100 > 10, 'The reference contains bright HDR sun reflections' );
+	for ( const mode of [ 'default', 'miss-unfiltered', 'miss-filtered' ] ) {
+
+		assert.ok( highlights[ mode ].top100 > highlights.disabled.top100 * 0.5, `${ mode }: preserve HDR highlight energy (${ highlights[ mode ].top100 } vs ${ highlights.disabled.top100 })` );
 
 	}
 

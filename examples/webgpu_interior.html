@@ -164,7 +164,6 @@
 			const samplingModes = [ 'Original', 'FAST Product', 'FAST Separate' ];
 			const ssrSampling = uniform( 0, 'uint' );
 			const ssgiSampling = uniform( 0, 'uint' );
-			const diffuseSourceWeight = uniform( 1 );
 			const ssgiHistoryPixels = uniform( 1.5 );
 			const ssgiHistoryWorld = uniform( 0.001 );
 			const ssrHistoryPixels = uniform( 1.5 );
@@ -231,7 +230,7 @@
 			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
 			let ssrCoverage, ssrProvider, lightingHistory, diffuseHistory;
 			let indirectSpecularRaw, indirectSpecularCoverage, indirectSpecularFiltered, ssrCoverageDenoise;
-			let ssgiPass, ssgiDenoise, ssgiProvider;
+			let ssgiPass, ssgiDenoise, ssgiProvider, ssgiSourceTexture;
 			let diffuseProviders = [];
 			let sceneScale = 1;
 			let ssgiSceneMetadata = {};
@@ -558,8 +557,9 @@
 
 			function createHistorySource( depth, normal, tolerancePixels, toleranceWorld, diffuse = false ) {
 
-				// Mix the source at each historical texel, before validated interpolation.
-				const radiance = diffuse ? sample( coordinate => mix( texture( lightingHistory.texture ).sample( coordinate ), texture( diffuseHistory.texture ).sample( coordinate ), diffuseSourceWeight ) ) : texture( lightingHistory.texture );
+				// Select one source texture before validated per-texel interpolation.
+				const radiance = texture( diffuse && ssgiParams.source === 'Diffuse + emission' ? diffuseHistory.texture : lightingHistory.texture );
+				if ( diffuse ) ssgiSourceTexture = radiance;
 				return reprojectedRadiance( radiance, texture( lightingHistory.depthTexture ), depth, normal, camera, {
 					previousView, previousProjection, previousProjectionInverse, valid: historyValid, tolerancePixels, toleranceWorld
 				} );
@@ -614,7 +614,7 @@
 
 			function updateSSGIParameters() {
 
-				diffuseSourceWeight.value = ssgiParams.source === 'Diffuse + emission' ? 1 : 0;
+				ssgiSourceTexture.value = ssgiParams.source === 'Diffuse + emission' ? diffuseHistory.texture : lightingHistory.texture;
 				ssgiSampling.value = samplingModes.indexOf( ssgiParams.sampling );
 				ssgiPass.useNoiseNode.value = ssgiSampling.value !== 0;
 				ssgiPass.useViewSpaceAzimuth.value = ssgiParams.viewSpaceAzimuth;

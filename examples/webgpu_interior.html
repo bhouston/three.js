@@ -314,6 +314,12 @@
 				};
 
 				settings.add( bakeSettings, 'style', [ 'interleaved', 'sequential' ] ).name( 'Bake Style' ).onChange( capture );
+				settings.add( bakeSettings, 'boxProjection' ).name( 'Box Projection' ).listen().onChange( () => {
+
+					probes.boxProjection = bakeSettings.boxProjection;
+					capture();
+
+				} );
 
 				settings.add( params, 'environmentSource', [ 'HDR', 'Unit White' ] ).name( 'Environment Source' ).onChange( updateEnvironment );
 
@@ -817,7 +823,7 @@
 				lightProbes.multiBounce = true;
 				scene.add( lightProbes );
 
-				// Keep room-local reflections for Dual Rooms; fit other scenes to their bounds.
+				// Capture the surrounding space: an object bounding box is not a room.
 
 				probes = new ReflectionProbes();
 				probes.boxProjection = bakeSettings.boxProjection;
@@ -842,6 +848,44 @@
 					} );
 					// Extend the doorway into the floor, lintel and jambs, keeping its depth.
 					probeSetup.push( { position: [ 0, 1.9, 0 ], influenceSize: [ 2.4, 3.8, 2.5 ], projectionSize: [ 16, 5, 8 ], projectionOffset: [ 0, 0.6, 0 ], influenceExpansion: [ 0, 1, 1 ] } );
+
+				}
+
+				const environmentOnly = [ 'Tennyson Bust', 'Shader Ball', 'Shader Ball 2', 'Rolex', 'Ferrari', 'Littlest Tokyo' ];
+				const openFloor = name.startsWith( 'Primitives Floor' ) || name === 'Stripped Emissive Mirror Floor';
+				bakeSettings.boxProjection = ! environmentOnly.includes( name ) && name !== 'Steampunk Camera' && ! openFloor && name !== 'Museum';
+				probes.boxProjection = bakeSettings.boxProjection;
+
+				if ( environmentOnly.includes( name ) ) {
+
+					probeSetup = [];
+
+				} else if ( name === 'Steampunk Camera' || openFloor ) {
+
+					// Capture outside the camera body, or above the floor near its corners.
+					const offsets = openFloor ? [[ - 0.35, - 0.35 ], [ 0.35, - 0.35 ], [ - 0.35, 0.35 ], [ 0.35, 0.35 ]] : [[ - 0.65, 0 ], [ 0.65, 0 ], [ 0, - 0.65 ], [ 0, 0.65 ]];
+					probeSetup = offsets.map( ( [ x, z ] ) => {
+
+						const position = center.clone().add( new THREE.Vector3( x * fullSize.x, 0, z * fullSize.z ) );
+						if ( openFloor ) position.y = bounds.min.y + fullSize.y * 0.65;
+						const influenceSize = fullSize.clone().multiplyScalar( 1.5 );
+						return { position: position.toArray(), influenceSize: influenceSize.toArray(), projectionSize: fullSize.toArray(), blendDistance: Math.max( fullSize.x, fullSize.z ) * 0.75 };
+
+					} );
+
+				} else if ( name === 'Space Ship Hallway' || name === 'Museum' ) {
+
+					// The hallway runs along Z. The museum is an open gallery with two walls.
+					const axis = name === 'Space Ship Hallway' || fullSize.z > fullSize.x ? 'z' : 'x';
+					probeSetup = [ - 1 / 3, 0, 1 / 3 ].map( offset => {
+
+						const position = center.clone();
+						position[ axis ] += fullSize[ axis ] * offset;
+						const influenceSize = fullSize.clone();
+						influenceSize[ axis ] *= 0.5;
+						return { position: position.toArray(), influenceSize: influenceSize.toArray(), projectionSize: fullSize.toArray(), projectionOffset: center.clone().sub( position ).toArray(), blendDistance: fullSize[ axis ] / 12 };
+
+					} );
 
 				}
 
@@ -1072,7 +1116,10 @@
 				try {
 
 					// Captures use world-space transport only, independent of display toggles.
-					const specular = indirectSpecular( interleaved && probes.texture ? [ reflectionProbesSpecular( probes ) ] : [] );
+					const hasReflectionProbes = probes.children.length > 0;
+					const specularProviders = interleaved && probes.texture ? [ reflectionProbesSpecular( probes ) ] : [];
+					if ( ! hasReflectionProbes && scene.environment ) specularProviders.push( environmentSpecular( pmremTexture( scene.environment ) ) );
+					const specular = indirectSpecular( specularProviders );
 					renderer.contextNode = context( {
 						...rendererContext.value,
 						getGI: null, getAO: null, getSpecularOcclusion: null,
@@ -1104,13 +1151,31 @@
 						lightMapper.update( interleaved && bakeIteration === bakeIterations - 1 ? bakeSamples : 1 );
 						status.textContent = interleaved ? `Interleaved: diffuse ${ bakeIteration + 1 } / ${ bakeIterations }` : `Sequential: diffuse light map ${ lightMapper.samples } / ${ bakeSamples }`;
 						bakePhase = interleaved ? 'reflection' : 'lightmap';
+						if ( interleaved && ! hasReflectionProbes ) {
+
+							bakeIteration ++;
+							bakePhase = 'diffuse';
+							bakingLightMap = bakeIteration < bakeIterations;
+							if ( ! bakingLightMap ) status.textContent += ' — complete (HDR reflections)';
+
+						}
 
 					} else if ( bakePhase === 'lightmap' ) {
 
 						lightProbes.visible = true;
 						lightMapper.update();
 						status.textContent = `Sequential: diffuse light map ${ lightMapper.samples } / ${ bakeSamples }`;
-						if ( lightMapper.samples >= bakeSamples ) bakePhase = 'reflection';
+						if ( lightMapper.samples >= bakeSamples ) {
+
+							bakePhase = 'reflection';
+							if ( ! hasReflectionProbes ) {
+
+								bakingLightMap = false;
+								status.textContent = 'Sequential bake complete (HDR reflections)';
+
+							}
+
+						}
 
 					} else {
 

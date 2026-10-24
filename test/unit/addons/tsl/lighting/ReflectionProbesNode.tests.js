@@ -168,7 +168,7 @@ export default QUnit.module( 'Addons', () => {
 
 				try {
 
-					probes.bake( renderer, scene, { bounces: 3 } );
+					probes.bake( renderer, scene, { bounces: 3, usePrevious: true } );
 					assert.deepEqual( captures.map( capture => capture.bounce ), [ 0, 0, 1, 1, 2, 2, 3, 3 ], 'captures all probes in each pass' );
 					assert.strictEqual( captures[ 2 ].texture, targets[ 0 ].texture, 'first bounce reads the base pass' );
 					assert.strictEqual( captures[ 4 ].texture, targets[ 1 ].texture, 'second bounce reads the first bounce' );
@@ -176,6 +176,14 @@ export default QUnit.module( 'Addons', () => {
 					assert.deepEqual( disposed, [ targets[ 0 ] ], 'disposes the spare target' );
 					assert.strictEqual( scene.environmentNode, environmentNode, 'restores the scene environment node' );
 					assert.strictEqual( renderer.contextNode, previousContext, 'restores the caller lighting chains' );
+
+					const completedTexture = probes.texture;
+					captures = [];
+					probes.bake( renderer, scene, { usePrevious: true, bounces: 1 } );
+					assert.deepEqual( captures.map( capture => capture.bounce ), [ 1, 1, 2, 2 ], 'continued captures enable reflections from the first pass' );
+					assert.strictEqual( captures[ 0 ].texture, completedTexture, 'continued bake reads the last completed bake' );
+					assert.notStrictEqual( captures[ 2 ].texture, completedTexture, 'additional bounce reads the newly completed pass' );
+					assert.notStrictEqual( probes.texture, completedTexture, 'publishes a separate completed texture' );
 
 					const previousTexture = probes.texture;
 					const previousProbes = probes.bakedProbes;
@@ -190,6 +198,12 @@ export default QUnit.module( 'Addons', () => {
 					assert.strictEqual( scene.environmentNode, environmentNode, 'restores the scene after failure' );
 					assert.false( probes.capturing, 'clears the capture flag after failure' );
 					assert.strictEqual( renderer.contextNode, previousContext, 'restores lighting chains after failure' );
+
+					disposed = [];
+					assert.throws( () => probes.bake( renderer, scene, { usePrevious: true } ), /capture failed/ );
+					assert.strictEqual( probes.texture, previousTexture, 'failed continued bake keeps the completed texture' );
+					assert.strictEqual( probes.bakedProbes, previousProbes, 'failed continued bake keeps the completed probe order' );
+					assert.strictEqual( disposed.length, 1, 'disposes only the failed continued target' );
 
 					fail = false;
 					captures = [];

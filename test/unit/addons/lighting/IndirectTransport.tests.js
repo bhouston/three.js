@@ -1,6 +1,7 @@
 import { BoxGeometry, DataTexture, EquirectangularReflectionMapping, FloatType, Mesh, MeshStandardNodeMaterial, NodeMaterial, OrthographicCamera, PlaneGeometry, RenderTarget, RGBAFormat, Scene, Vector3 } from 'three/webgpu';
-import { Fn, context, float, indirectDiffuse, vec3, vec4 } from 'three/tsl';
+import { Fn, context, float, indirectDiffuse, indirectSpecular, vec3, vec4 } from 'three/tsl';
 import { ReflectionProbe, ReflectionProbes } from '../../../../examples/jsm/lighting/ReflectionProbes.js';
+import { reflectionProbesSpecular } from '../../../../examples/jsm/tsl/lighting/ReflectionProbesNode.js';
 import { LightProbeGrid } from '../../../../examples/jsm/lighting/LightProbeGrid.js';
 import { lightProbeGridDiffuse } from '../../../../examples/jsm/tsl/lighting/LightProbeGridNode.js';
 import { VXGIVolume } from '../../../../examples/jsm/lighting/vxgi/VXGIVolume.js';
@@ -113,6 +114,28 @@ QUnit.module( 'Addons / Lighting / Indirect transport', () => {
 			renderer.contextNode = cameraContext;
 			reflections.bake( renderer, scene );
 			assert.strictEqual( renderer.contextNode, cameraContext, 'Reflection baking excludes camera occlusion and restores the caller context' );
+
+			// Seed completed reflection probes, then remove emission. With metallic
+			// walls, the diffuse grid can now receive light only through specular feedback.
+			wallMaterial.metalness = 1;
+			wallMaterial.roughness = 0.2;
+			wallMaterial.emissive.setScalar( 1 );
+			renderer.contextNode = cameraContext;
+			reflections.bake( renderer, scene );
+			wallMaterial.emissive.setScalar( 0 );
+			grid.bake( renderer, scene, { cubemapSize: 16, near: 0.05, far: 20 } );
+			const withoutReflections = await draw( lightProbeGridDiffuse( grid )( query ) );
+			assert.ok( withoutReflections.slice( 0, 3 ).every( x => Math.abs( x ) < 0.001 ), 'Metallic walls stay dark when diffuse capture excludes specular feedback' );
+			renderer.contextNode = cameraContext;
+			grid.bake( renderer, scene, {
+				cubemapSize: 16, near: 0.05, far: 20,
+				indirectSpecularNode: indirectSpecular( [ reflectionProbesSpecular( reflections ) ] )
+			} );
+			assert.strictEqual( renderer.contextNode, cameraContext, 'Specular feedback restores the caller context' );
+			const withReflections = await draw( lightProbeGridDiffuse( grid )( query ) );
+			assert.ok( withReflections.slice( 0, 3 ).every( x => x > 0.1 ), 'Diffuse probes capture radiance reflected by metallic surfaces from completed reflection probes' );
+			wallMaterial.metalness = 0;
+			wallMaterial.roughness = 1;
 
 			scene.remove( ...walls );
 			grid.visible = false;

@@ -346,6 +346,7 @@ export default QUnit.module( 'Addons', () => {
 				light.position.z = 2;
 				scene.add( light );
 				const target = new RenderTarget( 8, 8, { type: HalfFloatType, count: 2 } );
+				target.textures[ 0 ].name = 'output';
 				target.textures[ 1 ].name = 'diffuseSource';
 				const diffuseSource = Fn( () => vec4( property( 'vec3', 'totalDiffuse' ).add( emissive ).max( 0 ), 1 ) );
 				try {

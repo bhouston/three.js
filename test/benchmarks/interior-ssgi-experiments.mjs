@@ -48,7 +48,7 @@ try {
 						.replace( "model: 'Dual Rooms'", `model: ${ JSON.stringify( model ) }` )
 						.replace( 'lightMapResolution: 4096', 'lightMapResolution: 1024' )
 						.replace( 'renderer.setPixelRatio( window.devicePixelRatio );', 'renderer.setPixelRatio( 1 );' )
-						.replace( 'renderer.setAnimationLoop( animate );', 'window.__experiment = { renderer, scene, model, camera, controls, params, ssgiParams, ssrParams, ssgiPass, ssgiDenoise, ssrPass, scenePass, prePass, lightingHistory, animate, updateOutput, updateSSGIParameters, updateSSRParameters, resetScreenSpaceLighting }; renderer.setAnimationLoop( animate );' );
+						.replace( 'renderer.setAnimationLoop( animate );', 'window.__experiment = { renderer, scene, model, camera, controls, params, ssgiParams, ssrParams, ssgiPass, ssgiDenoise, ssrPass, scenePass, prePass, lightingHistory, ...( typeof diffuseHistory === "undefined" ? {} : { diffuseHistory } ), animate, updateOutput, updateSSGIParameters, updateSSRParameters, resetScreenSpaceLighting }; renderer.setAnimationLoop( animate );' );
 					const animateStart = html.indexOf( 'function animate()' );
 					const animateEnd = html.indexOf( 'function createHistorySource', animateStart );
 					if ( animateStart < 0 || animateEnd < 0 ) throw new Error( 'Missing scene instrumentation anchors' );
@@ -144,13 +144,15 @@ try {
 						const target = s.ssgiPass.getRenderTarget();
 						const raw = await window.__read( target, 1 );
 						const filtered = await window.__read( s.ssgiDenoise.getRenderTarget() );
-						const sourceTarget = s.ssgiPass.beautyNode.renderTarget;
-						const radiance = sourceTarget ? await window.__read( sourceTarget ) : await window.__read( s.lightingHistory );
-						return ssgiGeometryReference( { model: s.model, camera: s.camera, width: 960, height: 720, radius: s.ssgiPass.radius.value,
+						const sourceTarget = s.ssgiPass.beautyNode.renderTarget || ( s.ssgiParams.source === 'Diffuse + emission' ? s.diffuseHistory : s.lightingHistory );
+						if ( ! sourceTarget ) throw new Error( 'Missing selected source history' );
+						const radiance = { data: await window.__read( sourceTarget ), width: sourceTarget.width, height: sourceTarget.height };
+						const reference = await ssgiGeometryReference( { model: s.model, camera: s.camera, width: 960, height: 720, radius: s.ssgiPass.radius.value,
 							radiance, raw: { data: raw, width: target.width, height: target.height }, filtered } );
+						return { ...reference, radianceSource: sourceTarget === s.diffuseHistory ? 'diffuse + emission history' : 'beauty lighting history' };
 
 					} );
-					const parameterSweep = experiment.parameterSweep ? await page.evaluate( async () => {
+					const parameterSweep = experiment.parameterSweep ? await page.evaluate( async geometryOnly => {
 
 						const s = window.__experiment;
 						window.__freezeLighting = false;
@@ -160,12 +162,12 @@ try {
 						const { runSSGIParameterSweep } = await import( '/test/benchmarks/ssgi-parameter-sweep.js' );
 						return runSSGIParameterSweep( {
 							state: s, step: window.__step, drain: window.__drain, read: window.__read,
-							width: 960, height: 720,
+							width: 960, height: 720, geometryOnly,
 							freezeLighting: value => { window.__freezeLighting = value; },
 							getFreezeLighting: () => window.__freezeLighting
 						} );
 
-					} ) : null;
+					}, experiment.parameterGeometryOnly === true ) : null;
 					let quality = null;
 					if ( experiment.quality !== false ) quality = await page.evaluate( async ( { referenceFrames, measurementFrames, gainResponse } ) => {
 

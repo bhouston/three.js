@@ -1,5 +1,7 @@
 # Interior SSGI algorithm and parameter audit
 
+Follow-up: [isolated technique experiments and selected merges](interior-ssgi-experiments.md) measure the proposed changes below and document the combined implementation. The remaining-limitations discussion here records the initial audit state.
+
 The `interior-blue-noise` implementation has a sensible lightweight SSGI architecture, but it is not a complete implementation of current reconstruction and GI best practices. Several correctness defects can be repaired locally. Larger limitations remain in directional fallback, source radiance, temporal reconstruction, and the geometry available to screen tracing. Replacing the noise pattern does not address those limitations.
 
 This audit starts at `eedbf3e9833e`, covers `webgpu_interior.html`, and focuses on Cornell Box and Dual Rooms. The fixes are on `interior-ssgi-audit`. The previous [FAST sampling study](interior-sampling.md) supports retaining Original sampling as the starting configuration. Its reference uses the same screen-space integrator, so it measures sampling behavior rather than physical GI correctness. The changed integration and filter would require a new comparison to establish the sampling ranking after these fixes.

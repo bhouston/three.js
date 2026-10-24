@@ -207,6 +207,7 @@ class ReflectionProbes extends Object3D {
 	 * @param {number} [options.resolution=256] - Cube face size, rounded down to a power of two and at least 256.
 	 * @param {number} [options.near=0.1] - Near plane of the capture camera.
 	 * @param {number} [options.far=100] - Far plane of the capture camera.
+	 * @param {boolean} [options.usePrevious=false] - Sample the last completed bake during the first pass. The previous texture remains read-only until the new bake completes.
 	 * @param {number} [options.bounces=0] - Additional passes sampling the previous pass's reflections.
 	 */
 	bake( renderer, scene, options = {} ) {
@@ -214,7 +215,7 @@ class ReflectionProbes extends Object3D {
 		// cube arrays can't be emulated on WebGL 2
 		if ( renderer.backend.isWebGPUBackend !== true ) throw new Error( 'ReflectionProbes: .bake() requires the WebGPU backend.' );
 
-		const { near = 0.1, far = 100, bounces = 0 } = options;
+		const { near = 0.1, far = 100, bounces = 0, usePrevious = false } = options;
 
 		// match the size PMREMGenerator renders at
 		const resolution = Math.max( 256, MathUtils.floorPowerOfTwo( options.resolution ?? 256 ) );
@@ -252,6 +253,7 @@ class ReflectionProbes extends Object3D {
 
 		const previousTexture = this.texture;
 		const previousProbes = this.bakedProbes;
+		const hasPrevious = usePrevious && previousTexture !== null;
 		const previousEnvironmentNode = scene.environmentNode;
 		const previousContext = renderer.contextNode;
 		const previousBackground = scene.background;
@@ -306,8 +308,8 @@ class ReflectionProbes extends Object3D {
 
 			} );
 
-			this.texture = renderTarget.texture;
-			this.bakedProbes = probes;
+			this.texture = hasPrevious ? previousTexture : renderTarget.texture;
+			this.bakedProbes = hasPrevious ? previousProbes : probes;
 			// Distant light enters through background miss rays, not unoccluded
 			// environment lighting on surfaces inside closed rooms.
 			scene.background = scene.environment;
@@ -327,12 +329,13 @@ class ReflectionProbes extends Object3D {
 
 			for ( let bounce = 0; bounce <= bounces; bounce ++ ) {
 
-				this._captureBounce = bounce;
+				this._captureBounce = bounce + ( hasPrevious ? 1 : 0 );
 
 				if ( bounce > 0 ) {
 
 					// Read a complete pass while writing the next into a separate texture.
 					this.texture = renderTarget.texture;
+					this.bakedProbes = probes;
 					if ( spareTarget === null ) {
 
 						spareTarget = renderTarget.clone();

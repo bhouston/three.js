@@ -996,6 +996,7 @@ class LightProbeGrid extends Light {
 	 * @param {number} [options.near=0.1] - Near plane for the cube camera.
 	 * @param {number} [options.far=100] - Far plane for the cube camera.
 	 * @param {number} [options.bounces=0] - Additional bounce passes. Only available when baking the whole grid.
+	 * @param {IndirectSpecularNode} [options.indirectSpecularNode] - World-space specular lighting for captured surfaces, e.g. completed reflection probes. Defaults to no indirect specular. Do not use screen-space providers.
 	 * @param {number} [options.start=0] - Index of the first probe to bake.
 	 * @param {number} [options.count] - Number of probes to bake. Defaults to the remaining probes.
 	 * @param {number} [options.pass=0] - Starting pass. Zero captures direct light; later passes sample the previous pass. Ranged calls require `bounces: 0`.
@@ -1025,7 +1026,8 @@ class LightProbeGrid extends Light {
 			bounces = 0,
 			start = 0,
 			count = totalProbes - start,
-			pass: firstPass = 0
+			pass: firstPass = 0,
+			indirectSpecularNode = indirectSpecular( [] )
 		} = options;
 		const end = start + count;
 
@@ -1142,7 +1144,7 @@ class LightProbeGrid extends Light {
 				// No unoccluded IBL on captured surfaces: sky arrives via miss rays.
 				const providers = [];
 				if ( pass > 0 && this._bounceGrid ) providers.push( lightProbeGridDiffuse( this._bounceGrid ) );
-				renderer.contextNode = context( { ...bakeContext, indirectDiffuseNode: indirectDiffuse( providers ), indirectSpecularNode: indirectSpecular( [] ) } );
+				renderer.contextNode = context( { ...bakeContext, indirectDiffuseNode: indirectDiffuse( providers ), indirectSpecularNode } );
 				// Geometry is static during the bake, so distances are recorded once.
 				this._captureProbes( renderer, scene, start, end, this.visibility && pass === 0 );
 				this._repackProbes( renderer, start, end );

@@ -842,6 +842,8 @@
 				}
 
 				model = gltf.scene;
+				// Match the dungeon presentation in webgpu_postprocessing_ssr_denoise.
+				if ( name === 'Dungeon Warkarma' ) model.scale.multiplyScalar( 0.1 );
 				expandInstances( model );
 				model.traverse( ( object ) => {
 
@@ -849,6 +851,17 @@
 
 						object.castShadow = true;
 						object.receiveShadow = true;
+						if ( name === 'Dungeon Warkarma' ) {
+
+							const materials = Array.isArray( object.material ) ? object.material : [ object.material ];
+							for ( const material of materials ) {
+
+								material.roughness = 0.3;
+								material.normalMap = null;
+
+							}
+
+						}
 
 					}
 

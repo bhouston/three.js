@@ -25,7 +25,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture } from 'three/tsl';
+			import { Fn, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -49,6 +49,7 @@
 			};
 
 			const params = {
+				output: 'Beauty',
 				model: 'Dual Rooms',
 				environmentSource: 'HDR',
 				directLights: true,
@@ -57,25 +58,26 @@
 				environmentSpecular: true,
 				reflectionDiffuse: false,
 				reflectionSpecular: true,
-				bounces: 2,
-				probeResolution: 32,
-				lightMapResolution: 1024,
-				resolution: 256,
-				reflectionBounces: 3,
-				boxProjection: true,
-				capture: () => capture(),
 				aoType: 'GTAO + GTSO',
 				samples: 16,
 				radius: 0.4,
 				resolutionScale: 0.5,
 				scale: 0.3,
 				thickness: 1,
-				temporalFiltering: true,
-				aoOnly: false
+				temporalFiltering: true
+			};
+			const bakeSettings = {
+				bounces: 2,
+				probeResolution: 32,
+				lightMapResolution: 1024,
+				resolution: 256,
+				reflectionBounces: 3,
+				boxProjection: true
 			};
 			let camera, scene, renderer, controls, lightProbes, probes, model;
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let lightMapper, atlas;
+			let uvScene, uvCamera, uvPass;
 			let meshes = [];
 			let bakingLightMap = false;
 			const bakeSamples = 16;
@@ -118,6 +120,12 @@
 				controls.target.set( 0, 2.5, 0 );
 				controls.update();
 
+				uvScene = new THREE.Scene();
+				uvScene.background = new THREE.Color( 0x111111 );
+				uvCamera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0.1, 10 );
+				uvCamera.position.z = 1;
+				updateUVCamera();
+
 				await loadModel();
 
 				// Occlusion is evaluated from the main camera, after baking the probes.
@@ -139,6 +147,16 @@
 				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
 				scenePass = pass( scene, camera ).toInspector( 'Color' );
+				// Resolve the same ordered chains used by the beauty materials. Alpha
+				// measures validity, independent of brightness and AO.
+				const coverage = Fn( ( builder ) => {
+
+					if ( ! builder.geometry.hasAttribute( 'uv1' ) ) return vec4( 0 );
+					return vec4( builder.context.indirectDiffuseNode.sample().a, builder.context.indirectSpecularNode.sample().a, 0, 1 );
+
+				} );
+				scenePass.setMRT( mrt( { output, coverage: coverage() } ) );
+				uvPass = pass( uvScene, uvCamera );
 				aoPass = ao( prePassDepth, prePassNormal, camera ).toInspector( 'GTAO', ( inspectNode ) => inspectNode.r );
 				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
 				traaPass.useSubpixelCorrection = false;
@@ -146,6 +164,7 @@
 				updateAO();
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
+				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
 				const indirectDiffuseSettings = settings.addFolder( 'Indirect Diffuse' );
@@ -177,25 +196,13 @@
 				occlusion.add( params, 'scale', 0.01, 1 ).name( 'Scale' ).onChange( updateAOParameters );
 				occlusion.add( params, 'thickness', 0.01, 2 ).name( 'Thickness' ).onChange( updateAOParameters );
 				occlusion.add( params, 'temporalFiltering' ).name( 'Temporal filtering' ).onChange( updateAOParameters );
-				occlusion.add( params, 'aoOnly' ).name( 'AO only' ).onChange( updateAO );
-
-				const baking = settings.addFolder( 'Diffuse Lightmaps' );
-				baking.add( params, 'bounces', 0, 2, 1 ).name( 'Additional Bounces' ).onChange( () => capture() ).debounce( 250 );
-				baking.add( params, 'lightMapResolution', [ 512, 1024, 2048, 4096 ] ).name( 'Light Map Resolution' ).listen().onChange( () => capture() );
-				baking.add( params, 'probeResolution', [ 16, 32, 64, 128 ] ).name( 'Probe Capture Size' ).onChange( () => capture() );
-				baking.add( params, 'capture' ).name( 'Re-Bake' );
-
-				const gui = settings.addFolder( 'Reflection Probes' );
-				gui.add( params, 'resolution', [ 256, 512, 1024 ] ).name( 'Capture Resolution' ).onChange( () => capture( false ) );
-				gui.add( params, 'reflectionBounces', 0, 10, 1 ).name( 'Additional Bounces' ).onChange( () => capture( false ) ).debounce( 250 );
-				gui.add( { capture: () => capture( false ) }, 'capture' ).name( 'Capture' );
-				gui.add( params, 'boxProjection' ).name( 'Box Projection' ).onChange( ( value ) => probes.boxProjection = value );
 
 				window.addEventListener( 'resize', () => {
 
 					camera.aspect = window.innerWidth / window.innerHeight;
 					camera.updateProjectionMatrix();
 					renderer.setSize( window.innerWidth, window.innerHeight );
+					updateUVCamera();
 
 				} );
 				renderer.setAnimationLoop( animate );
@@ -241,8 +248,32 @@
 					: builtinAOContext( aoPass.getTextureNode().sample( screenUV ).r );
 				scenePass.needsUpdate = true;
 
-				renderPipeline.outputNode = params.aoOnly ? vec4( vec3( aoPass.getTextureNode().sample( screenUV ).r ), 1 ) : traaPass;
-				renderer.toneMapping = params.aoOnly ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+				updateOutput();
+
+			}
+
+			function updateOutput() {
+
+				switch ( params.output ) {
+
+					case 'Diffuse Coverage':
+						renderPipeline.outputNode = vec4( vec3( scenePass.getTextureNode( 'coverage' ).r ), 1 );
+						break;
+					case 'Spec Coverage':
+						renderPipeline.outputNode = vec4( vec3( scenePass.getTextureNode( 'coverage' ).g ), 1 );
+						break;
+					case 'AO':
+						renderPipeline.outputNode = vec4( vec3( aoPass.getTextureNode().sample( screenUV ).r ), 1 );
+						break;
+					case 'UV Unwrap':
+						renderPipeline.outputNode = uvPass;
+						break;
+					default:
+						renderPipeline.outputNode = traaPass;
+
+				}
+
+				renderer.toneMapping = params.output === 'Beauty' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
 				renderPipeline.needsUpdate = true;
 				traaPass.setSize( 1, 1 );
 
@@ -361,7 +392,7 @@
 				// Keep room-local reflections for Dual Rooms; fit other scenes to their bounds.
 
 				probes = new ReflectionProbes();
-				probes.boxProjection = params.boxProjection;
+				probes.boxProjection = bakeSettings.boxProjection;
 
 				const probeSetup = params.model === 'Dual Rooms' ? [
 					{ position: [ - 4, 2.5, 0 ], influenceSize: [ 8.4, 5.4, 8.4 ], projectionSize: [ 8, 5, 8 ] },
@@ -502,7 +533,7 @@
 
 			function prepareAtlas() {
 
-				if ( atlas && atlas.resolution === Number( params.lightMapResolution ) ) return;
+				if ( atlas && atlas.resolution === Number( bakeSettings.lightMapResolution ) ) return;
 				const geometries = new Set();
 				model.traverse( object => {
 
@@ -511,17 +542,61 @@
 				} );
 				let nextAtlas = null;
 				// Preserve chart gutters when a selected model needs a larger atlas.
-				for ( let resolution = Number( params.lightMapResolution ); resolution <= 4096 && ! nextAtlas; resolution *= 2 ) {
+				for ( let resolution = Number( bakeSettings.lightMapResolution ); resolution <= 4096 && ! nextAtlas; resolution *= 2 ) {
 
 					nextAtlas = unwrapUVs( model, { resolution, padding: 3 } );
 
 				}
 
 				if ( ! nextAtlas ) throw new Error( 'The scene does not fit in the light-map atlas.' );
-				params.lightMapResolution = nextAtlas.resolution;
+				bakeSettings.lightMapResolution = nextAtlas.resolution;
 				atlas = nextAtlas;
 				meshes = atlas.meshes.map( record => record.mesh );
 				for ( const geometry of geometries ) geometry.dispose();
+				updateUVUnwrap();
+
+			}
+
+			function updateUVCamera() {
+
+				const aspect = window.innerWidth / window.innerHeight;
+				uvCamera.left = - Math.max( aspect, 1 ) * 1.05;
+				uvCamera.right = - uvCamera.left;
+				uvCamera.top = Math.max( 1 / aspect, 1 ) * 1.05;
+				uvCamera.bottom = - uvCamera.top;
+				uvCamera.updateProjectionMatrix();
+
+			}
+
+			function updateUVUnwrap() {
+
+				for ( const mesh of [ ...uvScene.children ] ) {
+
+					mesh.material.dispose();
+					mesh.removeFromParent();
+
+				}
+
+				for ( const source of meshes ) {
+
+					const material = new THREE.MeshBasicNodeMaterial();
+					material.positionNode = vec3( uv( 1 ).mul( 2 ).sub( 1 ), 0 );
+					material.colorNode = vec3( uv( 1 ), 0.5 );
+					material.side = THREE.DoubleSide;
+					material.depthTest = false;
+					const mesh = new THREE.Mesh( source.geometry, material );
+					mesh.frustumCulled = false;
+					uvScene.add( mesh );
+
+					const wireMaterial = material.clone();
+					wireMaterial.colorNode = vec3( 0 );
+					wireMaterial.wireframe = true;
+					const wire = new THREE.Mesh( source.geometry, wireMaterial );
+					wire.frustumCulled = false;
+					wire.renderOrder = 1;
+					uvScene.add( wire );
+
+				}
 
 			}
 
@@ -572,7 +647,7 @@
 						prepareAtlas();
 						lightProbes.visible = true;
 
-						lightProbes.bake( renderer, scene, { cubemapSize: Number( params.probeResolution ), near: 0.05, far: captureFar, bounces: params.bounces } );
+						lightProbes.bake( renderer, scene, { cubemapSize: Number( bakeSettings.probeResolution ), near: 0.05, far: captureFar, bounces: bakeSettings.bounces } );
 
 						nextMapper = new LightMapper( renderer, atlas.resolution, getBakeDiffuse() );
 						nextMapper.addObjects( meshes );
@@ -586,7 +661,7 @@
 
 						// Capture the finished atlas with live diffuse probes disabled.
 						configureIndirectLighting( false, true );
-						probes.bake( renderer, scene, { resolution: Number( params.resolution ), near: 0.05, far: captureFar, bounces: params.reflectionBounces } );
+						probes.bake( renderer, scene, { resolution: Number( bakeSettings.resolution ), near: 0.05, far: captureFar, bounces: bakeSettings.reflectionBounces } );
 						status.textContent = `Light Probes light map baked: ${ lightMapper.samples } samples`;
 
 					}

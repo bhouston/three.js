@@ -1,0 +1,324 @@
+{
+  "layout": "uniform-vector2-and-scalar",
+  "quality": [
+    {
+      "mode": "Original",
+      "frames": 96,
+      "signals": {
+        "ssrRaw": {
+          "meanRGB": 0.019422865205683183,
+          "rmseRGB": 0.031045627658024346,
+          "temporalStdRGB": 0.030803720552835825,
+          "frameDeltaRGB": 0.0412690464716479,
+          "meanAlpha": 0.070206670589791,
+          "rmseAlpha": 0.06197440263462328,
+          "temporalStdAlpha": 0.061576946720114024
+        },
+        "ssrFiltered": {
+          "meanRGB": 0.018868783650892652,
+          "rmseRGB": 0.007110154016587908,
+          "temporalStdRGB": 0.0027485315645651583,
+          "frameDeltaRGB": 0.001508227205711606,
+          "meanAlpha": 0.07027804351068832,
+          "rmseAlpha": 0.011604545673428524,
+          "temporalStdAlpha": 0.0063968511187009
+        },
+        "ssgiRaw": {
+          "meanRGB": 0.015239756291638248,
+          "rmseRGB": 0.023818660628754307,
+          "temporalStdRGB": 0.023149225318473896,
+          "frameDeltaRGB": 0.03498915784184141,
+          "meanAlpha": 0.0299823330535937,
+          "rmseAlpha": 0.020967561809852393,
+          "temporalStdAlpha": 0.020679328049768308
+        },
+        "ssgiFiltered": {
+          "meanRGB": 0.014717155494346018,
+          "rmseRGB": 0.008303465126580608,
+          "temporalStdRGB": 0.0011662985608854853,
+          "frameDeltaRGB": 0.0012093522692198516,
+          "meanAlpha": 0.02979002975738152,
+          "rmseAlpha": 0.004727889590072114,
+          "temporalStdAlpha": 0.0005096765935731503
+        }
+      }
+    },
+    {
+      "mode": "FAST Product",
+      "frames": 96,
+      "signals": {
+        "ssrRaw": {
+          "meanRGB": 0.019416267255442668,
+          "rmseRGB": 0.031205649117226335,
+          "temporalStdRGB": 0.030705146316697685,
+          "frameDeltaRGB": 0.04431843321937289,
+          "meanAlpha": 0.07018049916666415,
+          "rmseAlpha": 0.062335062966779396,
+          "temporalStdAlpha": 0.0613143017614998
+        },
+        "ssrFiltered": {
+          "meanRGB": 0.018855303550844468,
+          "rmseRGB": 0.007074833597707881,
+          "temporalStdRGB": 0.0020568549715441835,
+          "frameDeltaRGB": 0.0014776146448806126,
+          "meanAlpha": 0.07028649454256856,
+          "rmseAlpha": 0.011231283880510215,
+          "temporalStdAlpha": 0.004657162377408846
+        },
+        "ssgiRaw": {
+          "meanRGB": 0.01518656988100261,
+          "rmseRGB": 0.023798083244454964,
+          "temporalStdRGB": 0.023409804370311666,
+          "frameDeltaRGB": 0.0337623062729179,
+          "meanAlpha": 0.029881223459831543,
+          "rmseAlpha": 0.020856098540206824,
+          "temporalStdAlpha": 0.02052049039800423
+        },
+        "ssgiFiltered": {
+          "meanRGB": 0.014624032912813752,
+          "rmseRGB": 0.008369551576729754,
+          "temporalStdRGB": 0.0013977258048402201,
+          "frameDeltaRGB": 0.0011927524736325718,
+          "meanAlpha": 0.029676483775116173,
+          "rmseAlpha": 0.004708341825682905,
+          "temporalStdAlpha": 0.0006683661386955361
+        }
+      }
+    },
+    {
+      "mode": "FAST Separate",
+      "frames": 96,
+      "signals": {
+        "ssrRaw": {
+          "meanRGB": 0.01941478853417625,
+          "rmseRGB": 0.031215109085864248,
+          "temporalStdRGB": 0.030935579752639105,
+          "frameDeltaRGB": 0.04639304952749301,
+          "meanAlpha": 0.07015731309988985,
+          "rmseAlpha": 0.062407992978973474,
+          "temporalStdAlpha": 0.06190555168400491
+        },
+        "ssrFiltered": {
+          "meanRGB": 0.01885340273014685,
+          "rmseRGB": 0.007057298570416835,
+          "temporalStdRGB": 0.0020723837556123306,
+          "frameDeltaRGB": 0.0015155216794838472,
+          "meanAlpha": 0.0702759994931357,
+          "rmseAlpha": 0.010834767413013629,
+          "temporalStdAlpha": 0.0044477025589772885
+        },
+        "ssgiRaw": {
+          "meanRGB": 0.015191474147443424,
+          "rmseRGB": 0.023828944138525137,
+          "temporalStdRGB": 0.023620235663329006,
+          "frameDeltaRGB": 0.03552880838522481,
+          "meanAlpha": 0.029874396811894795,
+          "rmseAlpha": 0.020881728508400012,
+          "temporalStdAlpha": 0.02077361186872832
+        },
+        "ssgiFiltered": {
+          "meanRGB": 0.014632469856274382,
+          "rmseRGB": 0.008385254587349216,
+          "temporalStdRGB": 0.0014078747017935629,
+          "frameDeltaRGB": 0.0011883037780633366,
+          "meanAlpha": 0.02967063365882851,
+          "rmseAlpha": 0.004729531366248243,
+          "temporalStdAlpha": 0.0006978949897879913
+        }
+      }
+    },
+    {
+      "mode": "Selected",
+      "frames": 96,
+      "signals": {
+        "ssrRaw": {
+          "meanRGB": 0.01941478853417625,
+          "rmseRGB": 0.031215109085864248,
+          "temporalStdRGB": 0.030935579752639105,
+          "frameDeltaRGB": 0.04639304952749301,
+          "meanAlpha": 0.07015731309988985,
+          "rmseAlpha": 0.062407992978973474,
+          "temporalStdAlpha": 0.06190555168400491
+        },
+        "ssrFiltered": {
+          "meanRGB": 0.01885340273014685,
+          "rmseRGB": 0.007057298570416835,
+          "temporalStdRGB": 0.0020723837556123306,
+          "frameDeltaRGB": 0.0015155216794838472,
+          "meanAlpha": 0.0702759994931357,
+          "rmseAlpha": 0.010834767413013629,
+          "temporalStdAlpha": 0.0044477025589772885
+        },
+        "ssgiRaw": {
+          "meanRGB": 0.015239756291638248,
+          "rmseRGB": 0.023818660628754307,
+          "temporalStdRGB": 0.023149225318473896,
+          "frameDeltaRGB": 0.03498915784184141,
+          "meanAlpha": 0.0299823330535937,
+          "rmseAlpha": 0.020967561809852393,
+          "temporalStdAlpha": 0.020679328049768308
+        },
+        "ssgiFiltered": {
+          "meanRGB": 0.014717155494346018,
+          "rmseRGB": 0.008303465126580608,
+          "temporalStdRGB": 0.0011662985608854853,
+          "frameDeltaRGB": 0.0012093522692198516,
+          "meanAlpha": 0.02979002975738152,
+          "rmseAlpha": 0.004727889590072114,
+          "temporalStdAlpha": 0.0005096765935731503
+        }
+      }
+    },
+    {
+      "mode": "Reference",
+      "frames": 256,
+      "signals": {
+        "ssrRaw": {
+          "meanRGB": 0.019417101790703696,
+          "rmseRGB": 0.031081896068971437,
+          "temporalStdRGB": 0.031081896068971437,
+          "frameDeltaRGB": 0.04405568408500315,
+          "meanAlpha": 0.07017723543008927,
+          "rmseAlpha": 0.06209339136955275,
+          "temporalStdAlpha": 0.06209339136955275
+        },
+        "ssgiRaw": {
+          "meanRGB": 0.015190069491172,
+          "rmseRGB": 0.023759649661818975,
+          "temporalStdRGB": 0.023759649661818975,
+          "frameDeltaRGB": 0.03366184924137467,
+          "meanAlpha": 0.029878167907095136,
+          "rmseAlpha": 0.020787134023522422,
+          "temporalStdAlpha": 0.020787134023522422
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "model": "Primitives Floor (Metallic Mirror)",
+    "frames": 96,
+    "referenceFrames": 256,
+    "swizzle": "wxy",
+    "captureOnly": false,
+    "hardware": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false
+    },
+    "errors": [],
+    "browserVersion": "Chrome/155.0.8059.85",
+    "viewport": {
+      "width": 960,
+      "height": 720
+    },
+    "lightMapResolution": 1024
+  },
+  "throughput": {
+    "original": [
+      {
+        "completed": 900,
+        "effectFrames": 900,
+        "ssrFrames": 900,
+        "drawCalls": 23400,
+        "seconds": 5.00720000000298,
+        "fps": 179.74117271118877
+      },
+      {
+        "completed": 900,
+        "effectFrames": 900,
+        "ssrFrames": 900,
+        "drawCalls": 23400,
+        "seconds": 5.010899999991059,
+        "fps": 179.60845357153522
+      },
+      {
+        "completed": 900,
+        "effectFrames": 900,
+        "ssrFrames": 900,
+        "drawCalls": 23400,
+        "seconds": 5.014,
+        "fps": 179.4974072596729
+      }
+    ],
+    "fast-product": [
+      {
+        "completed": 896,
+        "effectFrames": 896,
+        "ssrFrames": 896,
+        "drawCalls": 23296,
+        "seconds": 5.0195,
+        "fps": 178.503835043331
+      },
+      {
+        "completed": 892,
+        "effectFrames": 892,
+        "ssrFrames": 892,
+        "drawCalls": 23192,
+        "seconds": 5.00059999999404,
+        "fps": 178.37859456886437
+      },
+      {
+        "completed": 892,
+        "effectFrames": 892,
+        "ssrFrames": 892,
+        "drawCalls": 23192,
+        "seconds": 5.00290000000596,
+        "fps": 178.2965879787598
+      }
+    ],
+    "fast-separate": [
+      {
+        "completed": 892,
+        "effectFrames": 892,
+        "ssrFrames": 892,
+        "drawCalls": 23192,
+        "seconds": 5.00820000000298,
+        "fps": 178.10790303891002
+      },
+      {
+        "completed": 892,
+        "effectFrames": 892,
+        "ssrFrames": 892,
+        "drawCalls": 23192,
+        "seconds": 5.005299999997019,
+        "fps": 178.21109623809386
+      },
+      {
+        "completed": 896,
+        "effectFrames": 896,
+        "ssrFrames": 896,
+        "drawCalls": 23296,
+        "seconds": 5.01679999999702,
+        "fps": 178.5999043215859
+      }
+    ],
+    "selected": [
+      {
+        "completed": 900,
+        "effectFrames": 900,
+        "ssrFrames": 900,
+        "drawCalls": 23400,
+        "seconds": 5.01729999999702,
+        "fps": 179.37934745790258
+      },
+      {
+        "completed": 896,
+        "effectFrames": 896,
+        "ssrFrames": 896,
+        "drawCalls": 23296,
+        "seconds": 5.00740000000596,
+        "fps": 178.9351759393964
+      },
+      {
+        "completed": 892,
+        "effectFrames": 892,
+        "ssrFrames": 892,
+        "drawCalls": 23192,
+        "seconds": 5.00279999999702,
+        "fps": 178.30015191503387
+      }
+    ]
+  }
+}

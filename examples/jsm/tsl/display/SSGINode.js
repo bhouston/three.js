@@ -61,7 +61,7 @@ class SSGINode extends Node {
 	 * @param {TextureNode} depthNode - A texture node that represents the scene's depth.
 	 * @param {TextureNode} normalNode - A texture node that represents the scene's normals.
 	 * @param {PerspectiveCamera} camera - The camera the scene is rendered with.
-	 * @param {Object} [options] - Optional coverage output.
+	 * @param {Object} [options] - Optional sampling and coverage output.
 	 * @param {Node<vec3>} [options.noiseNode=null] - Uniform random samples in [0,1): slice rotation in x, summed radial jitter in yz. Evaluated at the tracing resolution.
 	 * @param {boolean} [options.outputCoverage=false] - Output unweighted irradiance and cosine-weighted sector coverage. Input beauty alpha is sample validity.
 	 */
@@ -204,7 +204,8 @@ class SSGINode extends Node {
 		this.backfaceLighting = uniform( 0, 'float' );
 
 		/**
-		 * Whether to use temporal filtering or not. Setting this property to
+		 * With a custom `noiseNode`, the caller controls whether the pattern animates.
+		 * Otherwise, whether to use temporal filtering or not. Setting this property to
 		 * `true` requires the usage of `TRAANode`. This will help to reduce noise
 		 * although it introduces typical TAA artifacts like ghosting and temporal
 		 * instabilities.

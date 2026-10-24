@@ -1,0 +1,46 @@
+{
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "results": [
+    {
+      "filter": "FASTNoise",
+      "stats": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 2
+      },
+      "failures": [],
+      "skipped": false
+    },
+    {
+      "filter": "SSGINode",
+      "stats": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 4
+      },
+      "failures": [],
+      "skipped": false
+    },
+    {
+      "filter": "CoverageDenoiseNode",
+      "stats": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 12
+      },
+      "failures": [],
+      "skipped": false
+    }
+  ]
+}

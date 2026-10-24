@@ -711,7 +711,9 @@ class RecurrentDenoiseNode extends Node {
 					polarBias.assign( mix( polarBias, sampleDir.mul( w.sub( 0.5 ) ), 0.5 ) );
 
 					// to mitigate the effect of fireflies and high variance in recently disoccluded regions, we weigh by the inverse luminance for the first 5 frames
-					w.mulAssign( mix( float( 1 ).div( luminance( rawNeighborColor.rgb ).pow( 2 ).add( 0.01 ) ), 1, frameNum.div( 5 ).min( 1 ) ) );
+					const fireflyWeight = float( 1 ).div( luminance( rawNeighborColor.rgb ).pow( 2 ).add( 0.01 ) );
+					const earlyFrameWeight = mix( float( 1 ), fireflyWeight, this.flickerSuppression.clamp() );
+					w.mulAssign( mix( earlyFrameWeight, 1, frameNum.div( 5 ).min( 1 ) ) );
 
 					denoisedRaw.addAssign( rawNeighborColor.rgb.mul( w ) );
 					totalWeightRaw.addAssign( w );
@@ -798,6 +800,37 @@ class RecurrentDenoiseNode extends Node {
 }
 
 export default RecurrentDenoiseNode;
+
+/**
+ * Removes material modulation before temporal and spatial denoising. Modulation is
+ * linear albedo for diffuse, or the integrated BRDF for specular. Alpha metadata
+ * is preserved. Keep history demodulated and remodulate only at lighting resolve.
+ *
+ * @tsl
+ * @param {Node<vec4>} signal - Modulated linear lighting and alpha metadata.
+ * @param {Node<vec3>} modulation - Linear albedo or integrated specular BRDF.
+ * @return {Node<vec4>} Demodulated lighting with unchanged alpha.
+ */
+export const demodulate = /*@__PURE__*/ Fn( ( [ signal, modulation ] ) => {
+
+	return vec4( signal.rgb.div( modulation.max( 1e-4 ) ), signal.a );
+
+}, { signal: 'vec4', modulation: 'vec3', return: 'vec4' } );
+
+/**
+ * Restores the current pixel's material modulation after denoising. The matching
+ * floor keeps the round trip finite and reversible even for black modulation.
+ *
+ * @tsl
+ * @param {Node<vec4>} signal - Demodulated lighting and alpha metadata.
+ * @param {Node<vec3>} modulation - The modulation used by demodulate().
+ * @return {Node<vec4>} Remodulated lighting with unchanged alpha.
+ */
+export const remodulate = /*@__PURE__*/ Fn( ( [ signal, modulation ] ) => {
+
+	return vec4( signal.rgb.mul( modulation.max( 1e-4 ) ), signal.a );
+
+}, { signal: 'vec4', modulation: 'vec3', return: 'vec4' } );
 
 /**
  * @tsl

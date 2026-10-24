@@ -10,7 +10,7 @@
 		<div id="info">
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Interior</span></div>
-			<small>Baked Light Probe light maps, box-projected reflections and GTAO / GTSO with selectable scenes.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a><br /><span id="status"></span></small>
+			<small>Baked Light Probe light maps, SSR, box-projected reflections and GTAO / GTSO with selectable scenes.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a><br /><span id="status"></span></small>
 		</div>
 		<script type="importmap">
 			{
@@ -25,8 +25,11 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture } from 'three/tsl';
+			import { Fn, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
+			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+			import { recurrentDenoise, demodulate, remodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -67,6 +70,23 @@
 				thickness: 1,
 				temporalFiltering: true
 			};
+			const ssrParams = {
+				enabled: true,
+				denoise: true,
+				resolutionScale: 1,
+				quality: 1,
+				maxDistance: 0.5,
+				thickness: 0.0035,
+				intensity: 1,
+				mirrorBias: 0.5,
+				stepExponent: 3,
+				binaryRefine: true,
+				maxLuminance: 35,
+				screenEdgeFade: 0.1,
+				maxRoughness: 0.8,
+				maxFrames: 16,
+				radius: 1.5
+			};
 			const bakeSettings = {
 				bounces: 2,
 				probeResolution: 32,
@@ -76,6 +96,20 @@
 			};
 			let camera, scene, renderer, controls, lightProbes, probes, model;
 			let renderPipeline, scenePass, aoPass, traaPass;
+			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
+			let ssrCoverage, ssrProvider, ssrHistory;
+			let sceneScale = 1;
+			let specularProviders = [];
+			const currentView = new THREE.Matrix4();
+			const currentProjection = new THREE.Matrix4();
+			const currentProjectionInverse = new THREE.Matrix4();
+			const historyValid = uniform( false );
+			const previousView = uniform( new THREE.Matrix4() );
+			const previousProjection = uniform( new THREE.Matrix4() );
+			const previousProjectionInverse = uniform( new THREE.Matrix4() );
+			const ssrMaxRoughness = uniform( ssrParams.maxRoughness );
+			const debugWeight = uniform( 1 );
+			const drawingSize = new THREE.Vector2();
 			let lightMapper, atlas;
 			let uvPass, uvTexture;
 			let meshes = [];
@@ -131,20 +165,38 @@
 
 				renderPipeline = new THREE.RenderPipeline( renderer );
 
-				const prePass = pass( scene, camera ).toInspector( 'Normal', ( inspectNode ) => colorSpaceToWorking( inspectNode, THREE.SRGBColorSpace ) );
+				prePass = pass( scene, camera ).toInspector( 'Normal', ( inspectNode ) => colorSpaceToWorking( inspectNode, THREE.SRGBColorSpace ) );
 				prePass.name = 'Pre-Pass';
 				prePass.transparent = false;
 				prePass.setMRT( mrt( {
-					output: packNormalToRGB( normalView ),
-					velocity: velocity
+					output: vec4( packNormalToRGB( normalView ), roughness ),
+					albedo: vec4( diffuseColor.rgb, metalness ),
+					velocity: velocity,
+					fallback: Fn( builder => vec4( builder.context.indirectSpecularNode.sample().rgb, 1 ) )()
 				} ) );
 				prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
+				prePass.getTexture( 'albedo' ).type = THREE.UnsignedByteType;
 
 				const prePassNormal = sample( ( uv ) => unpackRGBToNormal( prePass.getTextureNode().sample( uv ) ) );
 				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );
 				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
 				scenePass = pass( scene, camera ).toInspector( 'Color' );
+				setupSSR( prePassDepth, prePassNormal, prePassVelocity );
+				const onAfterRender = scene.onAfterRender;
+				scene.onAfterRender = function ( render, sourceScene, sourceCamera, ...args ) {
+
+					onAfterRender.call( this, render, sourceScene, sourceCamera, ...args );
+					if ( sourceCamera === camera ) {
+
+						currentView.copy( camera.matrixWorldInverse );
+						currentProjection.copy( camera.projectionMatrix );
+						currentProjectionInverse.copy( camera.projectionMatrixInverse );
+
+					}
+
+				};
+
 				// Resolve the same ordered chains used by the beauty materials. Alpha
 				// measures validity, independent of brightness and AO.
 				const coverage = Fn( ( builder ) => {
@@ -162,10 +214,12 @@
 				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
 				traaPass.useSubpixelCorrection = false;
 				updateAOParameters();
+				updateSSRParameters();
+				configureIndirectLighting();
 				updateAO();
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
-				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
+				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
 				const indirectDiffuseSettings = settings.addFolder( 'Indirect Diffuse' );
@@ -174,8 +228,24 @@
 				indirectDiffuseSettings.add( params, 'reflectionDiffuse' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectDiffuseSettings.add( params, 'environmentDiffuse' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const indirectSpecularSettings = settings.addFolder( 'Indirect Specular' );
+				indirectSpecularSettings.add( ssrParams, 'enabled' ).name( 'SSR' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
+				const ssrSettings = settings.addFolder( 'SSR Settings' ).close();
+				ssrSettings.add( ssrParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
+				ssrSettings.add( ssrParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'quality', 0.05, 1 ).name( 'Quality' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'maxDistance', 0.01, 2 ).name( 'Relative Max Distance' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'thickness', 0.0001, 0.02 ).name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'intensity', 0, 2 ).name( 'Intensity' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'mirrorBias', 0, 1 ).name( 'Mirror Bias' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'stepExponent', 1, 4, 1 ).name( 'Step Exponent' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'binaryRefine' ).name( 'Binary Refine' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'maxLuminance', 1, 100 ).name( 'Max Luminance' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'screenEdgeFade', 0, 0.5 ).name( 'Edge Fade' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'maxRoughness', 0.1, 0.95 ).name( 'Max Roughness' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'maxFrames', 1, 32, 1 ).name( 'History Frames' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'radius', 0, 3 ).name( 'Denoise Radius' ).onChange( updateSSRParameters );
 				const whiteEnvironment = new THREE.DataTexture( new Float32Array( [ 1, 1, 1, 1 ] ), 1, 1, THREE.RGBAFormat, THREE.FloatType );
 				whiteEnvironment.mapping = THREE.EquirectangularReflectionMapping;
 				whiteEnvironment.needsUpdate = true;
@@ -204,6 +274,7 @@
 					camera.aspect = window.innerWidth / window.innerHeight;
 					camera.updateProjectionMatrix();
 					renderer.setSize( window.innerWidth, window.innerHeight );
+					resetSSR();
 
 				} );
 				renderer.setAnimationLoop( animate );
@@ -238,15 +309,196 @@
 
 				}
 
+				const size = renderer.getDrawingBufferSize( drawingSize );
+				if ( ssrHistory.width !== size.x || ssrHistory.height !== size.y ) {
+
+					ssrHistory.setSize( size.x, size.y );
+					historyValid.value = false;
+
+				}
+
+				renderer.initRenderTarget( ssrHistory );
 				renderPipeline.render();
+
+				// Only beauty and SSR diagnostic views render the source color. Copy after
+				// resolve so tracing never depends on this frame's indirect specular chain.
+				if ( params.output === 'Beauty' || params.output.startsWith( 'SSR' ) ) {
+
+					renderer.copyTextureToTexture( scenePass.getTexture( 'output' ), ssrHistory.texture );
+					renderer.copyTextureToTexture( prePass.getTexture( 'depth' ), ssrHistory.depthTexture );
+					previousView.value.copy( currentView );
+					previousProjection.value.copy( currentProjection );
+					previousProjectionInverse.value.copy( currentProjectionInverse );
+					historyValid.value = true;
+
+				} else {
+
+					historyValid.value = false;
+
+				}
+
+			}
+
+			function setupSSR( depth, normal, motion ) {
+
+				const ssrProjectionInverse = uniform( camera.projectionMatrixInverse );
+				const ssrWorldMatrix = uniform( camera.matrixWorld );
+				ssrHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture( 1, 1 ) } );
+				ssrHistory.depthTexture.format = depth.value.format;
+				ssrHistory.depthTexture.type = depth.value.type;
+				ssrHistory.depthTexture.minFilter = THREE.NearestFilter;
+				ssrHistory.depthTexture.magFilter = THREE.NearestFilter;
+
+				// Trace current geometry, then project each hit into the previous resolved
+				// color. Depth rejection prevents newly visible surfaces reading stale color.
+				const source = sample( ( uv ) => {
+
+					const viewPosition = getViewPosition( uv, depth.sample( uv ).r, ssrProjectionInverse );
+					const worldPosition = ssrWorldMatrix.mul( vec4( viewPosition, 1 ) );
+					const previousPosition = previousView.mul( worldPosition );
+					const clip = previousProjection.mul( previousPosition );
+					const previousUV = clip.xy.div( clip.w.max( 1e-6 ) ).mul( vec2( 0.5, - 0.5 ) ).add( 0.5 );
+					const oldDepth = texture( ssrHistory.depthTexture ).sample( previousUV ).r;
+					const oldPosition = getViewPosition( previousUV, oldDepth, previousProjectionInverse );
+					const valid = historyValid.and( clip.w.greaterThan( 0 ) )
+						.and( previousUV.x.greaterThanEqual( 0 ).and( previousUV.x.lessThanEqual( 1 ) ) )
+						.and( previousUV.y.greaterThanEqual( 0 ).and( previousUV.y.lessThanEqual( 1 ) ) )
+						.and( oldPosition.z.sub( previousPosition.z ).abs().lessThan( ssrPass.thickness.max( 0.001 ) ) );
+
+					return vec4( texture( ssrHistory.texture ).sample( previousUV ).rgb, valid );
+
+				} );
+
+				const normalRoughness = prePass.getTextureNode();
+				const albedoMetalness = prePass.getTextureNode( 'albedo' );
+				ssrPass = ssr( source, depth, normal, {
+					camera,
+					stochastic: true,
+					outputCoverage: true,
+					diffuseNode: albedoMetalness,
+					metalnessNode: albedoMetalness.a,
+					roughnessNode: normalRoughness.a,
+					binaryRefine: ssrParams.binaryRefine
+				} ).toInspector( 'SSR Raw' );
+
+				ssrCoverage = sample( ( uv ) => {
+
+					const roughness = normalRoughness.sample( uv ).a;
+					const roughnessFade = roughness.smoothstep( ssrMaxRoughness.sub( 0.1 ), ssrMaxRoughness ).oneMinus();
+					return ssrPass.getCoverageNode().sample( uv ).r.mul( roughnessFade ).mul( historyValid );
+
+				} ).toInspector( 'SSR Coverage' );
+
+				// Match the integrated GGX BRDF used in the demodulation example. The
+				// chain consumes incoming radiance: the beauty material remodulates it.
+				ssrModulation = sample( ( uv ) => {
+
+					const base = albedoMetalness.sample( uv );
+					const surface = normalRoughness.sample( uv );
+					const viewPosition = getViewPosition( uv, depth.sample( uv ).r, ssrProjectionInverse );
+					return EnvironmentBRDF( {
+						dotNV: unpackRGBToNormal( surface.rgb ).dot( viewPosition.negate().normalize() ).clamp( 0, 1 ),
+						specularColor: mix( vec3( 0.04 ), base.rgb, base.a ),
+						specularF90: float( 1 ),
+						roughness: surface.a
+					} );
+
+				} );
+				const unweighted = sample( ( uv ) => {
+
+					const raw = ssrPass.getTextureNode().sample( uv );
+					const coverage = ssrPass.getCoverageNode().sample( uv ).r;
+					return vec4( raw.rgb.div( coverage.max( 1e-4 ) ), raw.a );
+
+				} );
+				ssrRadiance = sample( uv => demodulate( unweighted.sample( uv ), ssrModulation.sample( uv ) ) );
+				// Seed misses with the same fallback radiance used by beauty. This keeps
+				// the spatial filter from pulling black miss pixels into valid reflections.
+				const filledRadiance = sample( ( uv ) => {
+
+					const radiance = ssrRadiance.sample( uv );
+					const covered = ssrPass.getCoverageNode().sample( uv ).r.greaterThan( 0 );
+					return vec4( covered.select( radiance.rgb, prePass.getTextureNode( 'fallback' ).sample( uv ).rgb ), radiance.a );
+
+				} );
+				const filledTexture = convertToTexture( filledRadiance.sample( uv() ) );
+				ssrTemporal = temporalReproject( filledTexture, depth, normalRoughness, motion, camera, { mode: 'specular', accumulate: false } );
+				ssrDenoise = recurrentDenoise( ssrTemporal, camera, {
+					depth,
+					normal: normalRoughness,
+					raw: filledTexture,
+					metalRoughness: sample( uv => vec2( albedoMetalness.sample( uv ).a, normalRoughness.sample( uv ).a ) ),
+					mode: 'specular',
+					accumulate: true
+				} ).toInspector( 'SSR Filtered Radiance' );
+				ssrDenoise.alphaSource = 'raylength';
+				// Inverse-luminance firefly weighting biases demodulated radiance toward
+				// black at hit/miss boundaries, especially without a probe fallback.
+				ssrTemporal.flickerSuppression.value = 0;
+				ssrDenoise.flickerSuppression.value = 0;
+				ssrDenoise.lumaPhi.value = 0.75;
+				ssrDenoise.normalPhi.value = 0.3;
+				ssrDenoise.strength.value = 0.725;
+				ssrTemporal.setHistoryTexture( ssrDenoise );
+				updateSSRProvider();
+
+			}
+
+			function updateSSRProvider() {
+
+				ssrProvider = ssrParams.enabled && ssrPass ? ( { direction, roughness, normal, viewDirection } ) => {
+
+					// SSR describes this camera's base specular lobe. Broad irradiance,
+					// clearcoat and other directional queries must retain probe fallback.
+					const baseRoughness = prePass.getTextureNode().sample( screenUV ).a;
+					const baseNormal = unpackRGBToNormal( prePass.getTextureNode().sample( screenUV ).rgb ).transformDirection( cameraWorldMatrix );
+					const mirrorDirection = viewDirection.negate().reflect( baseNormal );
+					const baseDirection = baseRoughness.pow4().mix( mirrorDirection, baseNormal ).normalize();
+					const matches = roughness.sub( baseRoughness ).abs().lessThan( 0.01 )
+						.and( normal.dot( baseNormal ).greaterThan( 0.999 ) )
+						.and( direction.dot( baseDirection ).greaterThan( 0.999 ) );
+					const radiance = ssrParams.denoise ? ssrDenoise.getTextureNode().sample( screenUV ) : ssrRadiance.sample( screenUV );
+					return vec4( radiance.rgb, ssrCoverage.sample( screenUV ).mul( matches ) );
+
+				} : null;
+
+			}
+
+			function resetSSR() {
+
+				historyValid.value = false;
+				ssrTemporal?.setSize( 1, 1 );
+				ssrDenoise?.setSize( 1, 1 );
+
+			}
+
+			function updateSSRParameters() {
+
+				ssrPass.resolutionScale = ssrParams.resolutionScale;
+				ssrPass.quality.value = ssrParams.quality;
+				ssrPass.maxDistance.value = ssrParams.maxDistance * sceneScale;
+				ssrPass.thickness.value = ssrParams.thickness * sceneScale;
+				ssrPass.intensity.value = ssrParams.intensity;
+				ssrPass.mirrorBias.value = ssrParams.mirrorBias;
+				ssrPass.binaryRefine = ssrParams.binaryRefine;
+				ssrPass.stepExponent = ssrParams.stepExponent;
+				ssrPass.maxLuminance.value = ssrParams.maxLuminance;
+				ssrPass.screenEdgeFade.value = ssrParams.screenEdgeFade;
+				ssrMaxRoughness.value = ssrParams.maxRoughness;
+				ssrTemporal.maxFrames.value = ssrParams.maxFrames;
+				ssrDenoise.maxFrames.value = ssrParams.maxFrames;
+				ssrDenoise.radius.value = ssrParams.radius;
+				resetSSR();
+				traaPass?.setSize( 1, 1 );
 
 			}
 
 			function updateAO() {
 
-				scenePass.contextNode = params.aoType === 'None' ? null : params.aoType === 'GTAO + GTSO'
+				const aoContext = params.aoType === 'None' ? context( {} ) : params.aoType === 'GTAO + GTSO'
 					? aoPass.getLightingContext()
 					: builtinAOContext( aoPass.getTextureNode().sample( screenUV ).r );
+				scenePass.contextNode = context( { ...aoContext.value, indirectSpecularNode: indirectSpecular( ssrProvider ? [ ssrProvider, ...specularProviders ] : specularProviders ) } );
 				scenePass.needsUpdate = true;
 
 				updateOutput();
@@ -263,6 +515,15 @@
 					case 'Spec Coverage':
 						renderPipeline.outputNode = vec4( vec3( scenePass.getTextureNode( 'coverage' ).g ), 1 );
 						break;
+					case 'SSR Raw':
+						renderPipeline.outputNode = mix( scenePass, vec4( ssrPass.rgb, 1 ), debugWeight );
+						break;
+					case 'SSR Filtered':
+						renderPipeline.outputNode = mix( scenePass, vec4( remodulate( ssrDenoise, ssrModulation ).rgb, 1 ), debugWeight );
+						break;
+					case 'SSR Coverage':
+						renderPipeline.outputNode = mix( scenePass, vec4( vec3( ssrCoverage ), 1 ), debugWeight );
+						break;
 					case 'AO':
 						renderPipeline.outputNode = vec4( vec3( aoPass.getTextureNode().sample( screenUV ).r ), 1 );
 						break;
@@ -274,7 +535,7 @@
 
 				}
 
-				renderer.toneMapping = params.output === 'Beauty' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+				renderer.toneMapping = [ 'Beauty', 'SSR Raw', 'SSR Filtered' ].includes( params.output ) ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
 				renderPipeline.needsUpdate = true;
 				traaPass.setSize( 1, 1 );
 
@@ -381,6 +642,8 @@
 				const size = fullSize.clone().multiplyScalar( 0.95 );
 				const center = bounds.getCenter( new THREE.Vector3() );
 				captureFar = Math.max( 30, fullSize.length() * 2 );
+				sceneScale = Math.max( fullSize.length(), 0.001 );
+				if ( ssrPass ) updateSSRParameters();
 
 				// Fit the diffuse probe grid to the selected scene.
 
@@ -506,12 +769,15 @@
 
 				} );
 				if ( traaPass ) traaPass.setSize( 1, 1 );
+				resetSSR();
 
 			}
 
 			function updateIndirectLighting() {
 
+				updateSSRProvider();
 				configureIndirectLighting();
+				resetSSR();
 				traaPass.setSize( 1, 1 );
 
 			}
@@ -526,7 +792,7 @@
 
 				}
 
-				const specularProviders = ! baking && reflections && params.reflectionSpecular && probes.texture ? [ reflectionProbesSpecular( probes ) ] : [];
+				specularProviders = ! baking && reflections && params.reflectionSpecular && probes.texture ? [ reflectionProbesSpecular( probes ) ] : [];
 				if ( lightMapper && ( baking || params.diffuseBaking ) ) {
 
 					// Keep material.lightMap independent: this atlas is supplied exactly once.
@@ -555,6 +821,15 @@
 					indirectDiffuseNode: indirectDiffuse( diffuseProviders ),
 					indirectSpecularNode: indirectSpecular( specularProviders )
 				} );
+				if ( prePass && ! baking ) {
+
+					// Nested pass updates can run while the beauty context is active.
+					// Explicitly pin the pre-pass to the camera-independent fallback chain.
+					prePass.contextNode = context( { ...renderer.contextNode.value, getAO: null, getSpecularOcclusion: null } );
+					prePass.needsUpdate = true;
+					updateAO();
+
+				}
 
 			}
 
@@ -663,6 +938,7 @@
 					if ( ! prepared ) renderer.contextNode = rendererContext;
 					nextMapper?.dispose();
 					if ( traaPass ) traaPass.setSize( 1, 1 );
+					resetSSR();
 
 				}
 

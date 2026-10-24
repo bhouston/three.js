@@ -187,6 +187,7 @@
 			let currentModel = params.model;
 			let environmentLoadId = 0;
 			let currentEnvironment = params.environmentSource;
+			let captureNear = 0.05;
 			let captureFar = 30;
 
 			init();
@@ -885,16 +886,19 @@
 
 				const bounds = new THREE.Box3().setFromObject( model );
 				const fullSize = bounds.getSize( new THREE.Vector3() ).max( new THREE.Vector3( 0.1, 0.1, 0.1 ) );
-				const size = fullSize.clone().multiplyScalar( 0.95 );
+				const elongated = name === 'Dungeon Warkarma' || name === 'Space Ship Hallway';
+				const size = fullSize.clone().multiplyScalar( elongated ? 0.99 : 0.95 );
 				const center = bounds.getCenter( new THREE.Vector3() );
+				captureNear = Math.max( 0.001, Math.min( 0.05, Math.min( fullSize.x, fullSize.y, fullSize.z ) * 0.01 ) );
 				captureFar = Math.max( 30, fullSize.length() * 2 );
 				sceneScale = Math.max( fullSize.length(), 0.001 );
 				if ( ssrPass ) updateSSRParameters();
 				if ( ssgiPass ) updateSSGIParameters();
 
-				// Fit the diffuse probe grid to the selected scene.
+				// Use denser, proportioned grids for the dungeon floor plan and long hallway.
 
-				lightProbes = new LightProbeGrid( size.x, size.y, size.z, 12, 6, 6 );
+				const gridResolution = name === 'Dungeon Warkarma' ? [ 20, 6, 26 ] : name === 'Space Ship Hallway' ? [ 8, 6, 24 ] : [ 12, 6, 6 ];
+				lightProbes = new LightProbeGrid( size.x, size.y, size.z, ...gridResolution );
 				lightProbes.position.copy( center );
 				lightProbes.visibility = true;
 				lightProbes.multiBounce = true;
@@ -1261,7 +1265,7 @@
 					if ( bakePhase === 'diffuse' ) {
 
 						lightProbes.bake( renderer, scene, {
-							cubemapSize: Number( bakeSettings.probeResolution ), near: 0.05, far: captureFar,
+							cubemapSize: Number( bakeSettings.probeResolution ), near: captureNear, far: captureFar,
 							bounces: interleaved ? 0 : bakeSettings.bounces,
 							pass: interleaved ? bakeIteration : 0,
 							indirectSpecularNode: specular
@@ -1327,7 +1331,7 @@
 						renderer.contextNode = context( { ...renderer.contextNode.value, indirectDiffuseNode: indirectDiffuse( diffuse ) } );
 						providersChanged = probes.texture === null;
 						probes.bake( renderer, scene, {
-							resolution: Number( bakeSettings.resolution ), near: 0.05, far: captureFar,
+							resolution: Number( bakeSettings.resolution ), near: captureNear, far: captureFar,
 							usePrevious: interleaved
 						} );
 						bakeIteration ++;

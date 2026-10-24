@@ -290,6 +290,7 @@
 				const settings = renderer.inspector.createParameters( 'Interior' );
 				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSGI Raw', 'SSGI Filtered', 'SSGI Coverage', 'SSGI Filtered Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
+				settings.add( params, 'environmentSource', Object.keys( environments ) ).name( 'Environment Source' ).listen().onChange( updateEnvironment );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
 				const indirectDiffuseSettings = settings.addFolder( 'Indirect Diffuse' );
 				indirectDiffuseSettings.add( ssgiParams, 'enabled' ).name( 'SSGI' ).onChange( updateIndirectLighting );
@@ -338,7 +339,6 @@
 
 				} );
 
-				settings.add( params, 'environmentSource', Object.keys( environments ) ).name( 'Environment Source' ).listen().onChange( updateEnvironment );
 
 				const occlusion = settings.addFolder( 'Ambient Occlusion' );
 				occlusion.add( params, 'aoType', [ 'None', 'GTAO', 'GTAO + GTSO' ] ).name( 'AO type' ).onChange( updateAO );

@@ -1,5 +1,5 @@
 import { FloatType, NearestFilter, Node, NodeUpdateType, RGFormat, StorageTexture, Vector4 } from 'three/webgpu';
-import { Fn, Loop, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uniformArray, uv, vec2, vec4, texture, instanceIndex } from 'three/tsl';
+import { Fn, Loop, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uniformArray, uv, vec2, vec4, texture, invocationLocalIndex, workgroupId, workgroupArray, workgroupBarrier, If } from 'three/tsl';
 
 const WORKGROUP_SIZE = 64;
 const MAX_LEVELS = 16;
@@ -14,8 +14,8 @@ const MAX_LEVELS = 16;
  * The red channel stores farthest depth and green stores nearest depth, allowing
  * consumers to conservatively reject intervals in front of every surface.
  *
- * Each dispatch reduces the preceding level. Dispatch boundaries provide portable
- * synchronization; source reads scale linearly with the input pixel count.
+ * Each dispatch reduces up to three levels using workgroup memory. Dispatch
+ * boundaries provide portable synchronization; source reads scale linearly with the input pixel count.
  * Separate intermediate textures avoid sampling the atlas while writing to it.
  * The atlas height is less than twice the input height and must fit the
  * device's maximum 2D texture dimension.
@@ -208,54 +208,97 @@ class HiZNode extends Node {
 		const reduce = ( a, b ) => vec2( reversed ? min( a.x, b.x ) : max( a.x, b.x ), reversed ? max( a.y, b.y ) : min( a.y, b.y ) );
 		this._computeNode = [];
 
-		for ( let level = 0; level < this.levels.length; level ++ ) {
+		// Three local reductions share workgroup memory. Dispatch boundaries
+		// synchronize successive tiles; no cross-workgroup spin waits or atomics
+		// are needed. Odd trailing footprints retain the original floor layout.
+		let source = this.depthNode;
+		if ( this.levels.length === 1 ) {
 
-			const entry = this.levels[ level ];
-			const previous = this.levels[ Math.max( 0, level - 1 ) ];
-			const source = level < 2 ? this.depthNode : texture( this._levelTextures[ level - 2 ] );
+			this._computeNode.push( Fn( () => {
+
+				const depth = textureLoad( source, ivec2( 0 ) ).r;
+				textureStore( this.texture, ivec2( 0 ), vec4( depth, depth, 0, 1 ) ).toWriteOnly();
+
+			} )().compute( 1, [ WORKGROUP_SIZE ] ).setName( 'Hi-Z [ 1x1 ]' ) );
+			return;
+
+		}
+
+		for ( let first = 1; first < this.levels.length; first += 3 ) {
+
+			const last = Math.min( first + 2, this.levels.length - 1 );
+			const parent = this.levels[ last ];
+			const input = source;
 			let target = null;
-			if ( level > 0 ) {
+			if ( last < this.levels.length - 1 ) {
 
-				target = new StorageTexture( entry.width, entry.height );
+				target = new StorageTexture( parent.width, parent.height );
 				target.type = FloatType;
 				target.format = RGFormat;
 				target.minFilter = target.magFilter = NearestFilter;
 				target.generateMipmaps = false;
 				this._levelTextures.push( target );
+				source = texture( target );
 
 			}
 
+			const shared = Array.from( { length: last - first + 1 }, ( _, i ) => workgroupArray( 'vec2', ( 8 >> i ) ** 2 ) );
 			const compute = Fn( () => {
 
-				const x = instanceIndex.mod( entry.width ).toVar();
-				const y = instanceIndex.div( entry.width ).toVar();
-				const value = vec2( reversed ? 1 : 0, reversed ? 0 : 1 ).toVar();
-				if ( level === 0 ) {
+				const groupX = workgroupId.x.toVar();
+				const groupY = workgroupId.y.toVar();
+				for ( let level = first; level <= last; level ++ ) {
 
-					value.assign( vec2( textureLoad( source, ivec2( x, y ) ).r ) );
+					const stage = level - first;
+					const pitch = 8 >> stage;
+					const entry = this.levels[ level ];
+					const previous = this.levels[ level - 1 ];
+					const span = 2 ** ( last - level );
+					const base = ivec2( groupX, groupY ).mul( span ).toVar();
+					const x = uint( base.x ).add( invocationLocalIndex.mod( pitch ) ).toVar();
+					const y = uint( base.y ).add( invocationLocalIndex.div( pitch ) ).toVar();
+					const endX = groupX.equal( parent.width - 1 ).select( uint( entry.width ), uint( base.x ).add( span ) );
+					const endY = groupY.equal( parent.height - 1 ).select( uint( entry.height ), uint( base.y ).add( span ) );
+					If( invocationLocalIndex.lessThan( pitch * pitch ).and( x.lessThan( endX ) ).and( y.lessThan( endY ) ), () => {
 
-				} else {
+						const value = vec2( reversed ? 1 : 0, reversed ? 0 : 1 ).toVar();
+						const sampleEndX = x.equal( entry.width - 1 ).select( uint( previous.width ), x.mul( 2 ).add( 2 ) );
+						const sampleEndY = y.equal( entry.height - 1 ).select( uint( previous.height ), y.mul( 2 ).add( 2 ) );
+						Loop( { start: y.mul( 2 ), end: sampleEndY, type: 'uint', name: 'sy' + stage }, ( indices ) => {
 
-					const begin = ivec2( x, y ).mul( 2 ).toVar();
-					const endX = x.equal( entry.width - 1 ).select( uint( previous.width ), x.mul( 2 ).add( 2 ) );
-					const endY = y.equal( entry.height - 1 ).select( uint( previous.height ), y.mul( 2 ).add( 2 ) );
-					Loop( { start: uint( begin.y ), end: endY, type: 'uint', name: 'sy' }, ( { sy } ) => {
+							const sy = indices[ 'sy' + stage ];
+							Loop( { start: x.mul( 2 ), end: sampleEndX, type: 'uint', name: 'sx' + stage }, ( indices ) => {
 
-						Loop( { start: uint( begin.x ), end: endX, type: 'uint', name: 'sx' }, ( { sx } ) => {
+								const sx = indices[ 'sx' + stage ];
+								let range;
+								if ( stage === 0 ) {
 
-							const sample = textureLoad( source, ivec2( sx, sy ) );
-							value.assign( reduce( value, level === 1 ? vec2( sample.r ) : sample.rg ) );
+									const sample = textureLoad( input, ivec2( sx, sy ) );
+									range = level === 1 ? vec2( sample.r ) : sample.rg;
+									if ( level === 1 ) textureStore( this.texture, ivec2( sx, sy ), vec4( range, 0, 1 ) ).toWriteOnly();
+
+								} else {
+
+									const local = ivec2( sx, sy ).sub( base.mul( 2 ) );
+									range = shared[ stage - 1 ].element( local.y.mul( pitch * 2 ).add( local.x ) );
+
+								}
+
+								value.assign( reduce( value, range ) );
+
+							} );
 
 						} );
+						shared[ stage ].element( invocationLocalIndex ).assign( value );
+						textureStore( this.texture, ivec2( x, y.add( entry.offset ) ), vec4( value, 0, 1 ) ).toWriteOnly();
+						if ( level === last && target !== null ) textureStore( target, ivec2( x, y ), vec4( value, 0, 1 ) ).toWriteOnly();
 
 					} );
-					textureStore( target, ivec2( x, y ), vec4( value, 0, 1 ) ).toWriteOnly();
+					if ( level !== last ) workgroupBarrier();
 
 				}
 
-				textureStore( this.texture, ivec2( x, y.add( entry.offset ) ), vec4( value, 0, 1 ) ).toWriteOnly();
-
-			} )().compute( entry.width * entry.height, [ WORKGROUP_SIZE ] ).setName( 'Hi-Z [ Level ' + level + ' ]' );
+			} )().compute( [ parent.width, parent.height, 1 ], [ WORKGROUP_SIZE ] ).setName( 'Hi-Z [ Levels ' + first + '-' + last + ' ]' );
 			this._computeNode.push( compute );
 
 		}

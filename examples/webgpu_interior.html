@@ -1259,7 +1259,18 @@
 				controls.enableDamping = false;
 				controls.update();
 
-				if ( source ) {
+				if ( params.model === 'Space Ship Hallway' ) {
+
+					const size = bounds.getSize( new THREE.Vector3() );
+					const eyeHeight = bounds.min.y + size.y * 0.35;
+					const endInset = size.z * 0.08;
+					camera.position.set( center.x, eyeHeight, bounds.max.z - endInset );
+					controls.target.set( center.x, eyeHeight, bounds.min.z + endInset );
+					camera.fov = 60;
+					camera.near = 0.05;
+					camera.far = Math.max( 100, size.length() * 2 );
+
+				} else if ( source ) {
 
 					source.getWorldPosition( camera.position );
 					source.getWorldQuaternion( camera.quaternion );

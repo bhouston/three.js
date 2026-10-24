@@ -27,6 +27,7 @@
 			import * as THREE from 'three/webgpu';
 			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix, property, emissive } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
+			import { supportsUnlayeredDiffuse } from 'three/addons/tsl/utils/UnlayeredDiffuseScope.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
@@ -337,7 +338,7 @@
 				} );
 				// This source excludes camera-dependent specular. totalDiffuse is the
 				// lighting model's direct + indirect diffuse outgoing radiance.
-				const diffuseSource = Fn( builder => builder.material.emissive !== undefined
+				const diffuseSource = Fn( builder => supportsUnlayeredDiffuse( builder.material )
 					? vec4( property( 'vec3', 'totalDiffuse' ).add( emissive ).max( 0 ), 1 )
 					: output );
 				scenePass.setMRT( mrt( { output, coverage: coverage(), diffuseSource: diffuseSource() } ) );

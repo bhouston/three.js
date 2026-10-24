@@ -11,3 +11,5 @@ Validate Cornell metallic sphere and mirror wall, then Dual Rooms. Look for fals
 Syntax/lint passed. Hardware rendering is delegated to the central sequential validation run; no GPU result is claimed here.
 
 References: [AMD Brixelizer GI source feedback](https://gpuopen.com/manuals/fidelityfx_sdk/techniques/brixelizer-gi/), [SSILVB](https://cdrinmatane.github.io/cgspotlight-slides/ssilvb_slides.pdf).
+
+The guarded refinement applies diffuse+emission source only to opaque standard/physical materials without active clearcoat, sheen, transmission, corresponding node variants, or custom lighting/output/backdrop nodes. Unsupported materials write beauty into the separate source attachment, preserving legacy source behavior. This is selected per compiled material, not per scene. The metallic regression remains; added clearcoat/sheen/node-layer MRT regressions require source and beauty to match exactly for unsupported materials. Hardware execution of these added guards is pending central validation.

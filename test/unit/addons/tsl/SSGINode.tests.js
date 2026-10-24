@@ -1,5 +1,6 @@
-import { Color, DirectionalLight, HalfFloatType, Mesh, MeshStandardNodeMaterial, PlaneGeometry, RenderTarget, Scene, DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
-import { Fn, Loop, context, float, texture, uint, vec2, vec4, output, property, emissive, mrt } from 'three/tsl';
+import { Color, DirectionalLight, HalfFloatType, Mesh, MeshStandardNodeMaterial, MeshPhysicalNodeMaterial, PlaneGeometry, RenderTarget, Scene, DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
+import { Fn, Loop, context, float, texture, uint, vec2, vec3, vec4, output, property, emissive, mrt } from 'three/tsl';
+import { supportsUnlayeredDiffuse } from '../../../../examples/jsm/tsl/utils/UnlayeredDiffuseScope.js';
 import { ssgi, ssgiSectorCoverage } from '../../../../examples/jsm/tsl/display/SSGINode.js';
 import { getSharedRenderer, gpuTest } from '../../src/nodes/tsl/gpu-test-utils.js';
 
@@ -348,7 +349,7 @@ export default QUnit.module( 'Addons', () => {
 				const target = new RenderTarget( 8, 8, { type: HalfFloatType, count: 2 } );
 				target.textures[ 0 ].name = 'output';
 				target.textures[ 1 ].name = 'diffuseSource';
-				const diffuseSource = Fn( () => vec4( property( 'vec3', 'totalDiffuse' ).add( emissive ).max( 0 ), 1 ) );
+				const diffuseSource = Fn( builder => supportsUnlayeredDiffuse( builder.material ) ? vec4( property( 'vec3', 'totalDiffuse' ).add( emissive ).max( 0 ), 1 ) : output );
 				try {
 
 					renderer.contextNode = context();
@@ -359,6 +360,25 @@ export default QUnit.module( 'Addons', () => {
 					const beauty = Array.from( await renderer.readRenderTargetPixelsAsync( target, 4, 4, 1, 1, 0 ), DataUtils.fromHalfFloat );
 					assert.ok( diffuse.every( ( value, i ) => Math.abs( value - [ 0.1, 0.2, 0.3, 1 ][ i ] ) < 0.002 ), 'A pure metal supplies emission and no camera-direction specular to SSGI' );
 					assert.ok( beauty[ 0 ] > diffuse[ 0 ] + 0.01, 'Full beauty retains the lit metallic reflection for SSR' );
+					for ( const layers of [ { clearcoat: 1 }, { sheen: 1 }, { clearcoatNode: float( 1 ) }, { sheenNode: vec3( 1 ) }, { transmissionNode: float( 0 ) } ] ) {
+
+						const layered = new MeshPhysicalNodeMaterial( { metalness: 0.5, roughness: 0.3, emissive: new Color( 0.1, 0.2, 0.3 ), ...layers } );
+						scene.children[ 0 ].material = layered;
+						try {
+
+							renderer.render( scene, camera );
+							const source = Array.from( await renderer.readRenderTargetPixelsAsync( target, 4, 4, 1, 1, 1 ), DataUtils.fromHalfFloat );
+							const reference = Array.from( await renderer.readRenderTargetPixelsAsync( target, 4, 4, 1, 1, 0 ), DataUtils.fromHalfFloat );
+							assert.deepEqual( source, reference, `Unsupported layer ${ Object.keys( layers )[ 0 ] } retains beauty source exactly` );
+
+						} finally {
+
+							layered.dispose();
+
+						}
+
+					}
+
 
 				} finally {
 

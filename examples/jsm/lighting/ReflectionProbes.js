@@ -11,8 +11,8 @@ import {
 	Scene,
 	Vector3
 } from 'three/webgpu';
-import { context, environmentDiffuse, environmentSpecular, indirectDiffuse, indirectSpecular } from 'three/tsl';
-import { reflectionProbesDiffuse, reflectionProbesSpecular, reflectionProbesEnvironment } from '../tsl/lighting/ReflectionProbesNode.js';
+import { context, indirectDiffuse, indirectSpecular } from 'three/tsl';
+import { reflectionProbesDiffuse, reflectionProbesSpecular } from '../tsl/lighting/ReflectionProbesNode.js';
 
 const _position = /*@__PURE__*/ new Vector3();
 const _size = /*@__PURE__*/ new Vector3();
@@ -247,11 +247,17 @@ class ReflectionProbes extends Object3D {
 		const generator = new PMREMGenerator( renderer );
 		const environment = new Scene();
 		environment.background = scene.environment;
+		environment.backgroundIntensity = scene.environmentIntensity;
+		environment.backgroundRotation.copy( scene.environmentRotation );
 
 		const previousTexture = this.texture;
 		const previousProbes = this.bakedProbes;
 		const previousEnvironmentNode = scene.environmentNode;
 		const previousContext = renderer.contextNode;
+		const previousBackground = scene.background;
+		const previousBackgroundNode = scene.backgroundNode;
+		const previousBackgroundIntensity = scene.backgroundIntensity;
+		const previousBackgroundRotation = scene.backgroundRotation.clone();
 
 		let pmrem = null;
 		let spareTarget = null;
@@ -302,17 +308,21 @@ class ReflectionProbes extends Object3D {
 
 			this.texture = renderTarget.texture;
 			this.bakedProbes = probes;
-			const cachedEnvironment = reflectionProbesEnvironment( this );
-			// Bounce zero uses only the environment; local providers report no
-			// coverage until a complete previous reflection pass is available.
+			// Distant light enters through background miss rays, not unoccluded
+			// environment lighting on surfaces inside closed rooms.
+			scene.background = scene.environment;
+			scene.backgroundNode = null;
+			scene.backgroundIntensity = scene.environmentIntensity;
+			scene.backgroundRotation.copy( scene.environmentRotation );
+			// Local providers report no coverage until a complete previous pass exists.
 			scene.environmentNode = null;
 			renderer.contextNode = context( {
 				...previousContext.value,
 				// Camera-space occlusion must not be sampled by a cube capture.
 				getAO: null,
 				getSpecularOcclusion: null,
-				indirectDiffuseNode: previousContext.value.indirectDiffuseNode || indirectDiffuse( [ reflectionProbesDiffuse( this ), environmentDiffuse( cachedEnvironment ) ] ),
-				indirectSpecularNode: indirectSpecular( [ reflectionProbesSpecular( this ), environmentSpecular( cachedEnvironment ) ] )
+				indirectDiffuseNode: previousContext.value.indirectDiffuseNode || indirectDiffuse( [ reflectionProbesDiffuse( this ) ] ),
+				indirectSpecularNode: previousContext.value.indirectSpecularNode || indirectSpecular( [ reflectionProbesSpecular( this ) ] )
 			} );
 
 			for ( let bounce = 0; bounce <= bounces; bounce ++ ) {
@@ -356,6 +366,10 @@ class ReflectionProbes extends Object3D {
 			this.capturing = false;
 			this._captureBounce = 0;
 			scene.environmentNode = previousEnvironmentNode;
+			scene.background = previousBackground;
+			scene.backgroundNode = previousBackgroundNode;
+			scene.backgroundIntensity = previousBackgroundIntensity;
+			scene.backgroundRotation.copy( previousBackgroundRotation );
 			renderer.contextNode = previousContext;
 
 			if ( pmrem !== null ) pmrem.dispose();

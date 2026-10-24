@@ -72,7 +72,6 @@
 				probeResolution: 32,
 				lightMapResolution: 4096,
 				resolution: 256,
-				reflectionBounces: 3,
 				boxProjection: true
 			};
 			let camera, scene, renderer, controls, lightProbes, probes, model;
@@ -527,7 +526,7 @@
 
 				}
 
-				const specularProviders = reflections && params.reflectionSpecular && probes.texture ? [ reflectionProbesSpecular( probes ) ] : [];
+				const specularProviders = ! baking && reflections && params.reflectionSpecular && probes.texture ? [ reflectionProbesSpecular( probes ) ] : [];
 				if ( lightMapper && ( baking || params.diffuseBaking ) ) {
 
 					// Keep material.lightMap independent: this atlas is supplied exactly once.
@@ -546,8 +545,8 @@
 					const environment = pmremTexture( scene.environment );
 					// Environment illumination is already baked into the atlas. Optional
 					// fallback is an alternative for uncovered surfaces, not another sum.
-					if ( ! baking && params.environmentDiffuse ) diffuseProviders.push( environmentDiffuse( environment ) );
-					if ( baking || params.environmentSpecular ) specularProviders.push( environmentSpecular( environment ) );
+					if ( baking || params.environmentDiffuse ) diffuseProviders.push( environmentDiffuse( environment ) );
+					if ( ! baking && params.environmentSpecular ) specularProviders.push( environmentSpecular( environment ) );
 
 				}
 
@@ -596,7 +595,7 @@
 
 				if ( ! model || ! lightProbes || ! probes ) return;
 				// Reflection-only requests wait for the current atlas to finish.
-				if ( ! bakeDiffuse && bakingLightMap ) return;
+				if ( ! bakeDiffuse && ( bakingLightMap || ! lightMapper || lightMapper.samples < bakeSamples ) ) return;
 
 				const environmentNode = scene.environmentNode;
 				const rendererContext = renderer.contextNode;
@@ -643,9 +642,10 @@
 
 					} else {
 
-						// Capture the finished atlas with live diffuse probes disabled.
+						// Capture direct light and the finished diffuse atlas, with environment
+						// diffuse fallback and no indirect specular or reflection feedback.
 						configureIndirectLighting( false, true );
-						probes.bake( renderer, scene, { resolution: Number( bakeSettings.resolution ), near: 0.05, far: captureFar, bounces: bakeSettings.reflectionBounces } );
+						probes.bake( renderer, scene, { resolution: Number( bakeSettings.resolution ), near: 0.05, far: captureFar } );
 						status.textContent = `Light Probes light map baked: ${ lightMapper.samples } samples`;
 
 					}

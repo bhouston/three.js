@@ -1,5 +1,5 @@
 import { BackSide, BoxGeometry, CubeArrayTexture, DataTexture, EquirectangularReflectionMapping, FloatType, Mesh, MeshBasicMaterial, MeshStandardNodeMaterial, NodeMaterial, OrthographicCamera, PlaneGeometry, PMREMGenerator, RenderTarget, Scene, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
-import { context, environmentSpecular, float, indirectSpecular, vec3 } from 'three/tsl';
+import { context, environmentDiffuse, environmentSpecular, float, indirectDiffuse, indirectSpecular, lightMapDiffuse, vec3 } from 'three/tsl';
 import { ReflectionProbe, ReflectionProbes } from '../../../../../examples/jsm/lighting/ReflectionProbes.js';
 import { ReflectionProbesNode, reflectionProbesDiffuse, reflectionProbesSpecular, reflectionProbesEnvironment } from '../../../../../examples/jsm/tsl/lighting/ReflectionProbesNode.js';
 import WGSLNodeBuilder from '../../../../../src/renderers/webgpu/nodes/WGSLNodeBuilder.js';
@@ -87,6 +87,38 @@ export default QUnit.module( 'Addons', () => {
 					const emptySky = await renderer.readRenderTargetPixelsAsync( target, 8, 8, 1, 1 );
 					assert.deepEqual( Array.from( emptySky ), [ 0, 0, 0, 1 ], 'Removing the environment and rebaking updates the existing chain' );
 
+					// A sealed, unlit room cannot receive the exterior environment through its walls.
+					const physicalMaterial = new MeshStandardNodeMaterial( { side: BackSide, roughness: 1 } );
+					source.children[ 0 ].material = physicalMaterial;
+					source.environment = environment;
+					renderer.contextNode = context( { indirectDiffuseNode: indirectDiffuse( [] ), indirectSpecularNode: indirectSpecular( [] ) } );
+					try {
+
+						probes.bake( renderer, source, { bounces: 1 } );
+						const sealed = await sample( reflectionProbesDiffuse( probes )( query ) );
+						assert.ok( sealed.slice( 0, 3 ).every( v => Math.abs( v ) < 0.001 ), `Sealed room stays dark despite the exterior environment: ${ sealed }` );
+						probes.bake( renderer, source, { bounces: 1 } );
+						const automatic = await sample( reflectionProbesDiffuse( probes )( query ) );
+						assert.ok( automatic.slice( 0, 3 ).every( v => Math.abs( v ) < 0.001 ), 'Automatic diffuse bounces also exclude exterior light behind walls' );
+
+						source.children[ 0 ].visible = false;
+						source.backgroundNode = vec3( 1, 0, 0 );
+						source.backgroundIntensity = 0.25;
+						source.environmentIntensity = 2;
+						const backgroundNode = source.backgroundNode;
+						probes.bake( renderer, source );
+						const open = await sample( reflectionProbesDiffuse( probes )( query ) );
+						assert.ok( open[ 0 ] < 0.001 && Math.abs( open[ 1 ] - 2 * Math.PI ) < 0.02 && open[ 2 ] < 0.001, 'Unoccluded rays capture the environment with its lighting intensity, independently of the display background' );
+						assert.strictEqual( source.backgroundNode, backgroundNode, 'Restores the display background node' );
+						assert.strictEqual( source.backgroundIntensity, 0.25, 'Restores the display background intensity' );
+
+					} finally {
+
+						physicalMaterial.dispose();
+						source.children[ 0 ].material = boxMaterial;
+
+					}
+
 				} finally {
 
 					renderer.contextNode = previousContext;
@@ -163,6 +195,42 @@ export default QUnit.module( 'Addons', () => {
 					captures = [];
 					probes.bake( renderer, scene );
 					assert.deepEqual( captures.map( capture => capture.bounce ), [ 0, 0 ], 'default bake uses only one pass' );
+
+				} finally {
+
+					PMREMGenerator.prototype.fromScene = fromScene;
+					probes.dispose();
+
+				}
+
+			} );
+
+			QUnit.test( 'capture preserves explicitly configured diffuse and specular pipelines', ( assert ) => {
+
+				const probes = new ReflectionProbes();
+				probes.add( new ReflectionProbe() );
+				const diffuse = indirectDiffuse( [ lightMapDiffuse( vec3( 0.5 ) ), environmentDiffuse( vec3( 1 ) ) ] );
+				const specular = indirectSpecular( [] );
+				const captureContext = context( { indirectDiffuseNode: diffuse, indirectSpecularNode: specular } );
+				const renderer = {
+					contextNode: captureContext,
+					backend: { isWebGPUBackend: true },
+					initRenderTarget() {},
+					copyTextureToTexture() {}
+				};
+				const fromScene = PMREMGenerator.prototype.fromScene;
+				PMREMGenerator.prototype.fromScene = function () {
+
+					assert.strictEqual( renderer.contextNode.value.indirectDiffuseNode, diffuse, 'Uses the supplied diffuse pipeline' );
+					assert.strictEqual( renderer.contextNode.value.indirectSpecularNode, specular, 'Keeps the supplied specular pipeline empty' );
+					return { texture: {}, dispose() {} };
+
+				};
+
+				try {
+
+					probes.bake( renderer, new Scene() );
+					assert.strictEqual( renderer.contextNode, captureContext, 'Restores the caller context' );
 
 				} finally {
 

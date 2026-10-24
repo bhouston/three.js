@@ -78,7 +78,7 @@
 			let camera, scene, renderer, controls, lightProbes, probes, model;
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let lightMapper, atlas;
-			let uvScene, uvCamera, uvPass, uvTexture;
+			let uvPass, uvTexture;
 			let meshes = [];
 			let bakingLightMap = false;
 			const bakeSamples = 16;
@@ -121,11 +121,6 @@
 				controls.target.set( 0, 2.5, 0 );
 				controls.update();
 
-				uvScene = new THREE.Scene();
-				uvScene.background = new THREE.Color( 0x111111 );
-				uvCamera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0.1, 10 );
-				uvCamera.position.z = 1;
-				updateUVCamera();
 				uvTexture = await new THREE.TextureLoader().loadAsync( 'textures/uv_grid_opengl.jpg' );
 				uvTexture.colorSpace = THREE.SRGBColorSpace;
 				uvTexture.channel = 1;
@@ -160,7 +155,10 @@
 
 				} );
 				scenePass.setMRT( mrt( { output, coverage: coverage() } ) );
-				uvPass = pass( uvScene, uvCamera );
+				const uvMaterial = new THREE.MeshBasicNodeMaterial( { map: uvTexture } );
+				uvPass = pass( scene, camera );
+				uvPass.overrideMaterial = uvMaterial;
+				uvPass.contextNode = context( { getAO: null, getSpecularOcclusion: null } );
 				aoPass = ao( prePassDepth, prePassNormal, camera ).toInspector( 'GTAO', ( inspectNode ) => inspectNode.r );
 				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
 				traaPass.useSubpixelCorrection = false;
@@ -207,7 +205,6 @@
 					camera.aspect = window.innerWidth / window.innerHeight;
 					camera.updateProjectionMatrix();
 					renderer.setSize( window.innerWidth, window.innerHeight );
-					updateUVCamera();
 
 				} );
 				renderer.setAnimationLoop( animate );
@@ -565,51 +562,6 @@
 				atlas = nextAtlas;
 				meshes = atlas.meshes.map( record => record.mesh );
 				for ( const geometry of geometries ) geometry.dispose();
-				updateUVUnwrap();
-
-			}
-
-			function updateUVCamera() {
-
-				const aspect = window.innerWidth / window.innerHeight;
-				uvCamera.left = - Math.max( aspect, 1 ) * 1.05;
-				uvCamera.right = - uvCamera.left;
-				uvCamera.top = Math.max( 1 / aspect, 1 ) * 1.05;
-				uvCamera.bottom = - uvCamera.top;
-				uvCamera.updateProjectionMatrix();
-
-			}
-
-			function updateUVUnwrap() {
-
-				for ( const mesh of [ ...uvScene.children ] ) {
-
-					mesh.material.dispose();
-					mesh.removeFromParent();
-
-				}
-
-				for ( const source of meshes ) {
-
-					const material = new THREE.MeshBasicNodeMaterial();
-					material.positionNode = vec3( uv( 1 ).mul( 2 ).sub( 1 ), 0 );
-					material.map = uvTexture;
-					material.side = THREE.DoubleSide;
-					material.depthTest = false;
-					const mesh = new THREE.Mesh( source.geometry, material );
-					mesh.frustumCulled = false;
-					uvScene.add( mesh );
-
-					const wireMaterial = material.clone();
-					wireMaterial.map = null;
-					wireMaterial.color.set( 0x000000 );
-					wireMaterial.wireframe = true;
-					const wire = new THREE.Mesh( source.geometry, wireMaterial );
-					wire.frustumCulled = false;
-					wire.renderOrder = 1;
-					uvScene.add( wire );
-
-				}
 
 			}
 

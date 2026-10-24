@@ -25,7 +25,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix, property, emissive, positionViewDirection } from 'three/tsl';
+			import { Fn, If, isolate, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix, property, emissive, positionViewDirection } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { supportsUnlayeredDiffuse } from 'three/addons/tsl/utils/UnlayeredDiffuseScope.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
@@ -323,7 +323,17 @@
 					output: vec4( packNormalToRGB( normalView ), roughness ),
 					albedo: vec4( diffuseColor.rgb, metalness ),
 					velocity: velocity,
-					fallback: Fn( builder => builder.context.indirectSpecularNode.sample() )()
+					fallback: Fn( builder => {
+
+						// Match the beauty material's roughness-adjusted reflection query.
+						const normal = normalView.transformDirection( cameraWorldMatrix );
+						const viewDirection = positionViewDirection.transformDirection( cameraWorldMatrix );
+						const direction = roughness.pow4().mix( viewDirection.negate().reflect( normal ), normal ).normalize();
+						// A parent cache can contain the shared PMREM's diffuse sample.
+						// Build this MRT query independently to preserve direction and mip.
+						return isolate( builder.context.indirectSpecularNode.sample( { normal, viewDirection, direction, roughness } ) ).setParent( false );
+
+					} )()
 				} ) );
 				prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
 				prePass.getTexture( 'albedo' ).type = THREE.UnsignedByteType;

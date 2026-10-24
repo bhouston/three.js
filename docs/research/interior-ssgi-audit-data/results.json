@@ -1,0 +1,158 @@
+{
+  "baseline": "eedbf3e9833e",
+  "viewport": [
+    960,
+    720
+  ],
+  "lightMapResolution": 1024,
+  "results": [
+    {
+      "model": "Cornell Box",
+      "method": "baseline",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "captures": [
+        "cornell-box-baseline-beauty.png",
+        "cornell-box-baseline-ssgi-raw.png",
+        "cornell-box-baseline-ssgi-filtered.png",
+        "cornell-box-baseline-ssgi-filtered-coverage.png"
+      ],
+      "throughput": [
+        {
+          "completed": 540,
+          "drawCalls": 15120,
+          "seconds": 5.01079999999702,
+          "fps": 107.76722279881878
+        },
+        {
+          "completed": 540,
+          "drawCalls": 15120,
+          "seconds": 5.012900000005961,
+          "fps": 107.72207704110552
+        },
+        {
+          "completed": 540,
+          "drawCalls": 15120,
+          "seconds": 5.022099999994039,
+          "fps": 107.52474064647078
+        }
+      ],
+      "errors": []
+    },
+    {
+      "model": "Cornell Box",
+      "method": "current",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "captures": [
+        "cornell-box-current-beauty.png",
+        "cornell-box-current-ssgi-raw.png",
+        "cornell-box-current-ssgi-filtered.png",
+        "cornell-box-current-ssgi-filtered-coverage.png"
+      ],
+      "throughput": [
+        {
+          "completed": 544,
+          "drawCalls": 15232,
+          "seconds": 5.02840000000596,
+          "fps": 108.185506323951
+        },
+        {
+          "completed": 544,
+          "drawCalls": 15232,
+          "seconds": 5.026,
+          "fps": 108.23716673298847
+        },
+        {
+          "completed": 540,
+          "drawCalls": 15120,
+          "seconds": 5.005099999994039,
+          "fps": 107.88995224883482
+        }
+      ],
+      "errors": []
+    },
+    {
+      "model": "Dual Rooms",
+      "method": "baseline",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "captures": [
+        "dual-rooms-baseline-beauty.png",
+        "dual-rooms-baseline-ssgi-raw.png",
+        "dual-rooms-baseline-ssgi-filtered.png",
+        "dual-rooms-baseline-ssgi-filtered-coverage.png"
+      ],
+      "throughput": [
+        {
+          "completed": 904,
+          "drawCalls": 57856,
+          "seconds": 5.01009999999404,
+          "fps": 180.43552024931148
+        },
+        {
+          "completed": 912,
+          "drawCalls": 58368,
+          "seconds": 5.014599999994039,
+          "fps": 181.8689426875691
+        },
+        {
+          "completed": 912,
+          "drawCalls": 58368,
+          "seconds": 5.003600000008941,
+          "fps": 182.26876648780285
+        }
+      ],
+      "errors": []
+    },
+    {
+      "model": "Dual Rooms",
+      "method": "current",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "captures": [
+        "dual-rooms-current-beauty.png",
+        "dual-rooms-current-ssgi-raw.png",
+        "dual-rooms-current-ssgi-filtered.png",
+        "dual-rooms-current-ssgi-filtered-coverage.png"
+      ],
+      "throughput": [
+        {
+          "completed": 916,
+          "drawCalls": 58624,
+          "seconds": 5.012599999994039,
+          "fps": 182.73949646911566
+        },
+        {
+          "completed": 912,
+          "drawCalls": 58368,
+          "seconds": 5.0162999999970195,
+          "fps": 181.8073081754564
+        },
+        {
+          "completed": 896,
+          "drawCalls": 57344,
+          "seconds": 5.000699999988079,
+          "fps": 179.17491551225547
+        }
+      ],
+      "errors": []
+    }
+  ]
+}

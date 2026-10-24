@@ -1,0 +1,48 @@
+{
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": "",
+    "isFallbackAdapter": false,
+    "webglRenderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)"
+  },
+  "results": [
+    {
+      "filter": "FASTNoise",
+      "stats": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 2
+      },
+      "failures": [],
+      "skipped": false
+    },
+    {
+      "filter": "SSGINode",
+      "stats": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 10
+      },
+      "failures": [],
+      "skipped": false
+    },
+    {
+      "filter": "CoverageDenoiseNode",
+      "stats": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 16
+      },
+      "failures": [],
+      "skipped": false
+    }
+  ],
+  "errors": []
+}

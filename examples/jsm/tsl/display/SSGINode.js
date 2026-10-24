@@ -1,5 +1,5 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, HalfFloatType, RGBAFormat, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
-import { textureSize, sample, countTrailingZeros, clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth } from 'three/tsl';
+import { textureSize, sample, countTrailingZeros, clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, Continue, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -514,7 +514,7 @@ class SSGINode extends Node {
 
 		}, { value: 'vec2', return: 'vec2' } );
 
-		const horizonSampling = Fn( ( [ directionIsRight, stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ] ) => {
+		const horizonSampling = Fn( ( [ directionIsRight, stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n, projectedNormalLength ] ) => {
 
 			const STEP_COUNT = this.stepCount.toConst();
 			const EXP_FACTOR = this.expFactor.toConst();
@@ -540,13 +540,22 @@ class SSGINode extends Node {
 
 				} );
 
-				const sampleViewPosition = getViewPosition( sampleUV, sampleDepth( sampleUV ), this._cameraProjectionMatrixInverse ).toConst();
+				const sampleDepthValue = sampleDepth( sampleUV ).toConst();
+				// Sky is missing geometry, so it must not reserve visibility sectors.
+				If( isBackgroundDepth( sampleDepthValue ), () => {
+
+					Continue();
+
+				} );
+				const sampleViewPosition = getViewPosition( sampleUV, sampleDepthValue, this._cameraProjectionMatrixInverse ).toConst();
 				const pixelToSample = sampleViewPosition.sub( viewPosition ).normalize().toConst();
 				const linearThicknessMultiplier = this.useLinearThickness.select( sampleViewPosition.z.negate().div( this._cameraFar ).clamp().mul( 100 ), float( 1 ) );
 				const pixelToSampleBackface = normalize( sampleViewPosition.sub( linearThicknessMultiplier.mul( viewDir ).mul( THICKNESS ) ).sub( viewPosition ) );
 
 				let frontBackHorizon = vec2( dot( pixelToSample, viewDir ), dot( pixelToSampleBackface, viewDir ) );
-				frontBackHorizon = GTAOFastAcos( clamp( frontBackHorizon, - 1, 1 ) );
+				// The fast approximation can move coplanar samples inside the receiver
+				// hemisphere. Quantization then promotes that error to an entire sector.
+				frontBackHorizon = this.outputCoverage ? acos( clamp( frontBackHorizon, - 1, 1 ) ) : GTAOFastAcos( clamp( frontBackHorizon, - 1, 1 ) );
 				frontBackHorizon = clamp( div( mul( samplingDirection, frontBackHorizon.negate() ).sub( n.sub( HALF_PI ) ), PI ) ); // Port note: subtract half pi instead of adding it
 				frontBackHorizon = directionIsRight.select( frontBackHorizon.yx, frontBackHorizon.xy ); // Front/Back get inverted depending on angle
 
@@ -555,8 +564,12 @@ class SSGINode extends Node {
 				const minHorizon = frontBackHorizon.x.toConst();
 				const maxHorizon = frontBackHorizon.y.toConst();
 
-				const startHorizonInt = uint( frontBackHorizon.mul( float( MAX_RAY ) ) ).toConst();
-				const angleHorizonInt = uint( ceil( maxHorizon.sub( minHorizon ).mul( float( MAX_RAY ) ) ) ).toConst();
+				// Classify the sector centers, rather than expanding every nonzero
+				// interval to one sector. The latter turns tiny normal/depth errors on
+				// a coplanar surface into false occlusion. Retain legacy quantization.
+				const startHorizonInt = this.outputCoverage ? uint( ceil( minHorizon.mul( float( MAX_RAY ) ).sub( 0.5 ) ) ).toConst() : uint( frontBackHorizon.mul( float( MAX_RAY ) ) ).toConst();
+				const endHorizonInt = this.outputCoverage ? uint( ceil( maxHorizon.mul( float( MAX_RAY ) ).sub( 0.5 ) ) ).toConst() : null;
+				const angleHorizonInt = this.outputCoverage ? endHorizonInt.sub( startHorizonInt ).toConst() : uint( ceil( maxHorizon.sub( minHorizon ).mul( float( MAX_RAY ) ) ) ).toConst();
 				const angleHorizonBitfield = angleHorizonInt.greaterThan( uint( 0 ) ).select( uint( shiftRight( uint( 0xFFFFFFFF ), uint( 32 ).sub( MAX_RAY ).add( MAX_RAY.sub( angleHorizonInt ) ) ) ), uint( 0 ) ).toConst();
 				let currentOccludedBitfield = angleHorizonBitfield.shiftLeft( startHorizonInt );
 				currentOccludedBitfield = currentOccludedBitfield.bitAnd( globalOccludedBitfield.bitNot() );
@@ -574,8 +587,8 @@ class SSGINode extends Node {
 
 						// Known geometry consumes angular coverage even if it is black or
 						// back-facing. Invalid history leaves that fraction to the fallback.
-						const valid = lightColor.a.clamp().mul( isBackgroundDepth( sampleDepth( sampleUV ) ).not() );
-						const weight = ssgiSectorCoverage( currentOccludedBitfield ).mul( valid );
+						const valid = lightColor.a.clamp();
+						const weight = ssgiSectorCoverage( currentOccludedBitfield, n, projectedNormalLength ).mul( valid );
 						const facing = sampleNormal( sampleUV ).dot( pixelToSample.negate() ).greaterThan( 0 ).select( float( 1 ), BACKFACE_LIGHTING );
 						coverageField.addAssign( weight );
 						color.addAssign( lightColor.rgb.mul( weight ).mul( facing ) );
@@ -666,6 +679,7 @@ class SSGINode extends Node {
 
 				const ao = float( 0 );
 				const color = vec3( 0 );
+				const fullSliceWeight = this.outputCoverage ? float( 0 ).toVar() : null;
 
 				const ROTATION_COUNT = this.sliceCount.toConst();
 				const STEP_COUNT = this.stepCount.toConst();
@@ -699,15 +713,26 @@ class SSGINode extends Node {
 					const planeNormal = normalize( cross( sliceDir, viewDir ) ).toConst();
 					const tangent = cross( viewDir, planeNormal ).toConst();
 					const projectedNormal = viewNormal.sub( planeNormal.mul( dot( viewNormal, planeNormal ) ) ).toConst();
-					const projectedNormalNormalized = normalize( projectedNormal ).toConst();
+					const projectedNormalLength = projectedNormal.length().toConst();
+					const projectedNormalNormalized = projectedNormal.div( projectedNormalLength.max( 1e-6 ) ).toConst();
 
 					const cos_n = clamp( dot( projectedNormalNormalized, viewDir ), - 1, 1 ).toConst();
 					const n = sign( dot( projectedNormal, tangent ) ).negate().mul( acos( cos_n ) ).toConst();
 
+					if ( this.outputCoverage ) {
+
+						// Individual tilted slices have unequal projected solid angles.
+						// Normalize by the full measure of these same sampled slices so
+						// screen coverage and its fallback complement partition unity.
+						const a = abs( n ).min( PI.sub( abs( n ) ) ).toConst();
+						fullSliceWeight.addAssign( projectedNormalLength.mul( a.cos().add( a.mul( a.sin() ) ) ) );
+
+					}
+
 					globalOccludedBitfield.assign( 0 );
 
-					color.addAssign( horizonSampling( bool( true ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ) );
-					color.addAssign( horizonSampling( bool( false ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n ) );
+					color.addAssign( horizonSampling( bool( true ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n, projectedNormalLength ) );
+					color.addAssign( horizonSampling( bool( false ), stepRadius, radiusVS, viewPosition, slideDirTexelSize, initialRayStep, uvNode, viewDir, viewNormal, n, projectedNormalLength ) );
 
 					ao.addAssign( float( countOneBits( globalOccludedBitfield ) ).div( float( MAX_RAY ) ) );
 
@@ -716,11 +741,11 @@ class SSGINode extends Node {
 				ao.divAssign( float( ROTATION_COUNT ) );
 				ao.assign( pow( ao.clamp().oneMinus(), AO_INTENSITY ).clamp() );
 
-				color.divAssign( float( ROTATION_COUNT ) );
+				color.divAssign( this.outputCoverage ? fullSliceWeight.max( 1e-6 ) : float( ROTATION_COUNT ) );
 				color.mulAssign( GI_INTENSITY );
 				if ( this.outputCoverage ) {
 
-					coverageField.assign( coverageField.div( float( ROTATION_COUNT ) ).clamp() );
+					coverageField.assign( coverageField.div( fullSliceWeight.max( 1e-6 ) ).clamp() );
 					// E = pi * mean incoming radiance for cosine-weighted diffuse transport.
 					// The resolver supplies coverage once; no receiver albedo is baked here.
 					color.assign( coverageField.greaterThan( 1e-6 ).select( color.mul( PI ).div( coverageField.max( 1e-6 ) ), vec3( 0 ) ) );
@@ -791,18 +816,29 @@ export default SSGINode;
 export const ssgi = ( beautyNode, depthNode, normalNode, camera, options ) => new SSGINode( convertToTexture( beautyNode ), depthNode, normalNode, camera, options );
 
 /**
- * Cosine-weighted measure of the occupied sectors in a normal-aligned hemisphere
- * slice. Complementary masks sum to one. Iterates only over occupied bits; the
- * caller visits each sector at most once per slice, independently of brightness.
+ * Projected solid angle of occupied sectors in a view-aligned hemisphere slice.
+ * The slice angle beta is measured from the projected normal. Slices rotate
+ * around the view direction, so the spherical area Jacobian is |sin(beta + n)|.
+ * The azimuthal mean of a fully occupied hemisphere is one; an individual tilted
+ * slice can have a measure larger than one.
  *
  * @tsl
  * @param {Node<uint>} bitfield - The 32-sector visibility mask.
- * @return {Node<float>} Fraction of cosine-weighted hemisphere coverage.
+ * @param {Node<float>} [n=0] - Signed angle from view direction to projected normal.
+ * @param {Node<float>} [projectedNormalLength=1] - Length of the normal projected onto the slice.
+ * @return {Node<float>} Slice integral of the cosine-weighted spherical area.
  */
-export const ssgiSectorCoverage = /*@__PURE__*/ Fn( ( [ bitfield ] ) => {
+export const ssgiSectorCoverage = /*@__PURE__*/ Fn( ( [ bitfield, n = float( 0 ), projectedNormalLength = float( 1 ) ] ) => {
 
 	const bits = uint( bitfield ).toVar();
 	const weight = float( 0 ).toVar();
+	// Integrate cos(beta) * |sin(beta + n)|. Split at the zero of the
+	// sine inside this hemisphere, including normals facing away from the view.
+	const crossingIndex = n.div( PI ).add( 0.5 ).floor().toConst();
+	const crossing = crossingIndex.mul( PI ).sub( n ).toConst();
+	const crossingSign = crossingIndex.mul( PI ).cos().toConst();
+	const sinN = n.sin().toConst();
+	const primitive = beta => beta.mul( 2 ).add( n ).cos().mul( - 0.25 ).add( beta.mul( 0.5 ).mul( sinN ) );
 	Loop( 32, () => {
 
 		If( bits.equal( uint( 0 ) ), () => {
@@ -811,12 +847,13 @@ export const ssgiSectorCoverage = /*@__PURE__*/ Fn( ( [ bitfield ] ) => {
 
 		} );
 		const sector = float( countTrailingZeros( bits ) ).toConst();
-		const low = sector.div( 32 ).mul( PI ).sub( HALF_PI );
-		const high = sector.add( 1 ).div( 32 ).mul( PI ).sub( HALF_PI );
-		weight.addAssign( high.sin().sub( low.sin() ).mul( 0.5 ) );
+		const low = sector.div( 32 ).mul( PI ).sub( HALF_PI ).toConst();
+		const high = sector.add( 1 ).div( 32 ).mul( PI ).sub( HALF_PI ).toConst();
+		const split = crossing.clamp( low, high );
+		weight.addAssign( primitive( low ).add( primitive( high ) ).sub( primitive( split ).mul( 2 ) ).mul( crossingSign ) );
 		bits.assign( bits.bitAnd( bits.sub( uint( 1 ) ) ) );
 
 	} );
-	return weight;
+	return weight.max( 0 ).mul( projectedNormalLength );
 
-}, { bitfield: 'uint', return: 'float' } );
+} );

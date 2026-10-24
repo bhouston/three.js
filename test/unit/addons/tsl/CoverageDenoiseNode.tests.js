@@ -123,6 +123,43 @@ export default QUnit.module( 'Addons', () => {
 
 		QUnit.module( 'CoverageDenoiseNode', () => {
 
+			for ( const enabled of [ true, false ] ) {
+
+				QUnit.test( `partial reprojection support discounts age with gather confidence ${ enabled ? 'enabled' : 'disabled' }`, async assert => {
+
+					await fixture( assert, async ( { node, renderer, normal, velocity, render } ) => {
+
+						node.hitDistanceNode = null;
+						node.useGatherConfidence.value = enabled;
+						for ( let y = 0; y < size; y ++ ) {
+
+							for ( let x = 0; x < size; x ++ ) normal.image.data.set( [ 0.5, 0.5, x % 2 === 0 ? 1 : 0, 1 ], 4 * ( x + size * y ) );
+
+						}
+
+						normal.needsUpdate = true;
+						for ( let frame = 0; frame < 16; frame ++ ) await render();
+						for ( let i = 0; i < normal.image.data.length; i += 4 ) {
+
+							normal.image.data.set( [ 0.5, 0.5, 1, 1 ], i );
+							// A half-pixel UV displacement is one pixel divided by size in NDC.
+							velocity.image.data[ i ] = 1 / size;
+
+						}
+
+						normal.needsUpdate = velocity.needsUpdate = true;
+						const data = await render();
+						const age = DataUtils.fromHalfFloat( ( await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), 8, 8, 1, 1, 2 ) )[ 0 ] );
+						const expected = enabled ? 9 : 16;
+						assert.ok( Math.abs( age - expected ) < 0.02, `Half the bilinear support carries half the previous age when enabled; actual=${ age }` );
+						assert.ok( data.every( value => value === 0 ), 'Confidence changes age independently of zero lighting coverage' );
+
+					} );
+
+				} );
+
+			}
+
 			QUnit.test( 'sparse HDR hits retain radiance; invalid colored samples are ignored', async assert => {
 
 				await fixture( assert, async ( { update, render } ) => {

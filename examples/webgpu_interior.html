@@ -25,13 +25,16 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix } from 'three/tsl';
+			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix, property, emissive, positionViewDirection } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
+			import { supportsUnlayeredDiffuse } from 'three/addons/tsl/utils/UnlayeredDiffuseScope.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { fastNoise } from 'three/addons/tsl/utils/FASTNoise.js';
+			import { SSGI_QUALITY_PRESETS, resolveSSGISettings } from 'three/addons/tsl/utils/SSGISettings.js';
 			import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
+			import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
 			import { recurrentDenoise, demodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -150,6 +153,7 @@
 				reflectionDiffuse: false,
 				reflectionSpecular: true,
 				aoType: 'GTAO + GTSO',
+				diffuseAOScope: 'Fallback only',
 				samples: 16,
 				radius: 0.4,
 				resolutionScale: 0.5,
@@ -160,6 +164,10 @@
 			const samplingModes = [ 'Original', 'FAST Product', 'FAST Separate' ];
 			const ssrSampling = uniform( 0, 'uint' );
 			const ssgiSampling = uniform( 0, 'uint' );
+			const ssgiHistoryPixels = uniform( 1.5 );
+			const ssgiHistoryWorld = uniform( 0.001 );
+			const ssrHistoryPixels = uniform( 1.5 );
+			const ssrHistoryWorld = uniform( 0.001 );
 			let noiseAtlases;
 			const ssrParams = {
 				sampling: 'FAST Separate',
@@ -170,6 +178,8 @@
 				quality: 1,
 				maxDistance: 0.5,
 				thickness: 0.01,
+				historyTolerancePixels: 1.5,
+				historyToleranceWorld: 0.0001,
 				intensity: 1,
 				mirrorBias: 0,
 				stepExponent: 3,
@@ -180,8 +190,18 @@
 				maxFrames: 16,
 				radius: 1.5
 			};
+			// Candidate relative distances for these authored scenes, kept separate from
+			// work-budget presets. Measurements can select different values later.
+			const ssgiSceneCandidates = {
+				'Dual Rooms': { radius: 0.25, thickness: 0.005 },
+				'Cornell Box': { radius: 0.25, thickness: 0.005 }
+			};
 			const ssgiParams = {
+				quality: 'Balanced',
+				scenePreset: 'Baseline',
 				sampling: 'Original',
+				viewSpaceAzimuth: true,
+				source: 'Diffuse + emission',
 				enabled: true,
 				denoise: true,
 				resolutionScale: 0.5,
@@ -189,6 +209,8 @@
 				stepCount: 8,
 				radius: 0.25,
 				thickness: 0.01,
+				historyTolerancePixels: 1.5,
+				historyToleranceWorld: 0.0001,
 				intensity: 1,
 				backfaceLighting: 0,
 				maxLuminance: 35,
@@ -206,11 +228,13 @@
 			let camera, scene, renderer, controls, lightProbes, probes, model;
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
-			let ssrCoverage, ssrProvider, lightingHistory;
+			let ssrCoverage, ssrProvider, lightingHistory, diffuseHistory;
 			let indirectSpecularRaw, indirectSpecularCoverage, indirectSpecularFiltered, ssrCoverageDenoise;
-			let ssgiPass, ssgiDenoise, ssgiProvider;
+			let ssgiPass, ssgiDenoise, ssgiProvider, ssgiSourceTexture;
 			let diffuseProviders = [];
 			let sceneScale = 1;
+			let ssgiSceneMetadata = {};
+			let ssgiModelScale = 1;
 			let specularProviders = [];
 			const currentView = new THREE.Matrix4();
 			const currentProjection = new THREE.Matrix4();
@@ -333,7 +357,12 @@
 					return vec4( builder.context.indirectDiffuseNode.sample().a, builder.context.indirectSpecularNode.sample().a, 0, 1 );
 
 				} );
-				scenePass.setMRT( mrt( { output, coverage: coverage() } ) );
+				// This source excludes camera-dependent specular. totalDiffuse is the
+				// lighting model's direct + indirect diffuse outgoing radiance.
+				const diffuseSource = Fn( builder => supportsUnlayeredDiffuse( builder.material )
+					? vec4( property( 'vec3', 'totalDiffuse' ).add( emissive ).max( 0 ), 1 )
+					: output );
+				scenePass.setMRT( mrt( { output, coverage: coverage(), diffuseSource: diffuseSource() } ) );
 				const uvMaterial = new THREE.MeshBasicNodeMaterial( { map: uvTexture } );
 				uvPass = pass( scene, camera );
 				uvPass.overrideMaterial = uvMaterial;
@@ -363,13 +392,29 @@
 				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const ssgiSettings = settings.addFolder( 'SSGI Settings' ).close();
+				ssgiSettings.add( ssgiParams, 'viewSpaceAzimuth' ).name( 'View Azimuth' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'quality', Object.keys( SSGI_QUALITY_PRESETS ) ).name( 'Quality Preset' ).onChange( value => {
+
+					Object.assign( ssgiParams, SSGI_QUALITY_PRESETS[ value ] );
+					updateSSGIParameters();
+
+				} );
+				ssgiSettings.add( ssgiParams, 'scenePreset', [ 'Baseline', 'Thinner Candidate' ] ).name( 'Scene Preset' ).onChange( () => {
+
+					applySSGIScenePreset( params.model );
+					updateSSGIParameters();
+
+				} );
+				ssgiSettings.add( ssgiParams, 'source', [ 'Beauty', 'Diffuse + emission' ] ).name( 'Source radiance' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssgiSettings.add( ssgiParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'sliceCount', 1, 8, 1 ).name( 'Slices' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'stepCount', 2, 32, 1 ).name( 'Steps' ).onChange( updateSSGIParameters );
-				ssgiSettings.add( ssgiParams, 'radius', 0.01, 1 ).name( 'Relative Radius' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
-				ssgiSettings.add( ssgiParams, 'thickness', 0.0001, 0.05 ).name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'radius', 0.01, 1, 0.001 ).listen().name( 'Relative Radius' ).info( 'Fraction of authored reference scale or scene diagonal; explicit metadata distances take precedence.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'thickness', 0.0001, 0.05, 0.0001 ).listen().name( 'Relative Thickness' ).info( 'Fraction of authored reference scale or scene diagonal; explicit metadata distances take precedence.' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'historyTolerancePixels', 0, 4 ).name( 'History tolerance (pixels)' ).onChange( updateSSGIParameters );
+				ssgiSettings.add( ssgiParams, 'historyToleranceWorld', 0, 0.01 ).name( 'History floor (relative)' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'intensity', 0, 2 ).name( 'Intensity' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'backfaceLighting', 0, 1 ).name( 'Backface Lighting' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'maxLuminance', 1, 100 ).name( 'Max Luminance' ).onChange( updateSSGIParameters );
@@ -383,6 +428,8 @@
 				ssrSettings.add( ssrParams, 'quality', 0.05, 1 ).name( 'Quality' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'maxDistance', 0.01, 2 ).name( 'Relative Max Distance' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'thickness', 0.0001, 0.02 ).name( 'Relative Thickness' ).info( 'Fraction of the scene bounding-box diagonal.' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'historyTolerancePixels', 0, 4 ).name( 'History tolerance (pixels)' ).onChange( updateSSRParameters );
+				ssrSettings.add( ssrParams, 'historyToleranceWorld', 0, 0.01 ).name( 'History floor (relative)' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'intensity', 0, 2 ).name( 'Intensity' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'mirrorBias', 0, 1 ).name( 'Mirror Bias' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'stepExponent', 1, 4, 1 ).name( 'Step Exponent' ).onChange( updateSSRParameters );
@@ -403,6 +450,7 @@
 
 
 				const occlusion = settings.addFolder( 'Ambient Occlusion' );
+				occlusion.add( params, 'diffuseAOScope', [ 'All indirect', 'Fallback only' ] ).name( 'Diffuse AO scope' ).onChange( updateIndirectLighting );
 				occlusion.add( params, 'aoType', [ 'None', 'GTAO', 'GTAO + GTSO' ] ).name( 'AO type' ).onChange( updateAO );
 				occlusion.add( params, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateAOParameters );
 				occlusion.add( params, 'samples', 4, 32, 1 ).name( 'Samples' ).onChange( updateAOParameters ).debounce( 250 );
@@ -478,11 +526,13 @@
 				if ( lightingHistory.width !== size.x || lightingHistory.height !== size.y ) {
 
 					lightingHistory.setSize( size.x, size.y );
+					diffuseHistory.setSize( size.x, size.y );
 					historyValid.value = false;
 
 				}
 
 				renderer.initRenderTarget( lightingHistory );
+				renderer.initRenderTarget( diffuseHistory );
 				renderPipeline.render();
 
 				// Copy resolved lighting after rendering. Both screen-space effects trace
@@ -490,6 +540,7 @@
 				if ( params.output === 'Beauty' || ( params.output.startsWith( 'SSGI' ) || params.output.startsWith( 'SSR' ) || params.output.startsWith( 'Indirect Specular' ) ) ) {
 
 					renderer.copyTextureToTexture( scenePass.getTexture( 'output' ), lightingHistory.texture );
+					renderer.copyTextureToTexture( scenePass.getTexture( 'diffuseSource' ), diffuseHistory.texture );
 					renderer.copyTextureToTexture( prePass.getTexture( 'depth' ), lightingHistory.depthTexture );
 					previousView.value.copy( currentView );
 					previousProjection.value.copy( currentProjection );
@@ -504,28 +555,13 @@
 
 			}
 
-			function createHistorySource( depth, thickness ) {
+			function createHistorySource( depth, normal, tolerancePixels, toleranceWorld, diffuse = false ) {
 
-				const projectionInverse = uniform( camera.projectionMatrixInverse );
-				const worldMatrix = uniform( camera.matrixWorld );
-				// Trace current geometry, then project each hit into the previous resolved
-				// color. Depth rejection prevents newly visible surfaces reading stale color.
-				return sample( ( uv ) => {
-
-					const viewPosition = getViewPosition( uv, depth.sample( uv ).r, projectionInverse );
-					const worldPosition = worldMatrix.mul( vec4( viewPosition, 1 ) );
-					const previousPosition = previousView.mul( worldPosition );
-					const clip = previousProjection.mul( previousPosition );
-					const previousUV = clip.xy.div( clip.w.max( 1e-6 ) ).mul( vec2( 0.5, - 0.5 ) ).add( 0.5 );
-					const oldDepth = texture( lightingHistory.depthTexture ).sample( previousUV ).r;
-					const oldPosition = getViewPosition( previousUV, oldDepth, previousProjectionInverse );
-					const valid = historyValid.and( clip.w.greaterThan( 0 ) )
-						.and( previousUV.x.greaterThanEqual( 0 ).and( previousUV.x.lessThanEqual( 1 ) ) )
-						.and( previousUV.y.greaterThanEqual( 0 ).and( previousUV.y.lessThanEqual( 1 ) ) )
-						.and( oldPosition.z.sub( previousPosition.z ).abs().lessThan( thickness().max( 0.001 ) ) );
-
-					return vec4( texture( lightingHistory.texture ).sample( previousUV ).rgb, valid );
-
+				// Select one source texture before validated per-texel interpolation.
+				const radiance = texture( diffuse && ssgiParams.source === 'Diffuse + emission' ? diffuseHistory.texture : lightingHistory.texture );
+				if ( diffuse ) ssgiSourceTexture = radiance;
+				return reprojectedRadiance( radiance, texture( lightingHistory.depthTexture ), depth, normal, camera, {
+					previousView, previousProjection, previousProjectionInverse, valid: historyValid, tolerancePixels, toleranceWorld
 				} );
 
 			}
@@ -546,7 +582,7 @@
 
 			function setupSSGI( depth, normal, motion ) {
 
-				const source = createHistorySource( depth, () => ssgiPass.thickness );
+				const source = createHistorySource( depth, normal, ssgiHistoryPixels, ssgiHistoryWorld, true );
 				ssgiPass = ssgi( source, depth, normal, camera, { outputCoverage: true, noiseNode: samplingNoise( ssgiSampling, new THREE.Vector2( 73, 29 ) ).wxy } );
 				ssgiPass.useScreenSpaceSampling.value = false;
 				// Diffuse filtering uses surface reprojection, without specular hit distance
@@ -569,15 +605,27 @@
 
 			}
 
+			function applySSGIScenePreset( name ) {
+
+				const candidate = ssgiParams.scenePreset === 'Thinner Candidate' ? ssgiSceneCandidates[ name ] : null;
+				Object.assign( ssgiParams, candidate || { radius: 0.25, thickness: 0.01 } );
+
+			}
+
 			function updateSSGIParameters() {
 
+				ssgiSourceTexture.value = ssgiParams.source === 'Diffuse + emission' ? diffuseHistory.texture : lightingHistory.texture;
 				ssgiSampling.value = samplingModes.indexOf( ssgiParams.sampling );
 				ssgiPass.useNoiseNode.value = ssgiSampling.value !== 0;
+				ssgiPass.useViewSpaceAzimuth.value = ssgiParams.viewSpaceAzimuth;
 				ssgiPass.resolutionScale = ssgiParams.resolutionScale;
 				ssgiPass.sliceCount.value = ssgiParams.sliceCount;
 				ssgiPass.stepCount.value = ssgiParams.stepCount;
-				ssgiPass.radius.value = ssgiParams.radius * sceneScale;
-				ssgiPass.thickness.value = ssgiParams.thickness * sceneScale;
+				const resolved = resolveSSGISettings( ssgiParams, sceneScale, ssgiSceneMetadata, ssgiModelScale );
+				ssgiPass.radius.value = resolved.radius;
+				ssgiPass.thickness.value = resolved.thickness;
+				ssgiHistoryPixels.value = ssgiParams.historyTolerancePixels;
+				ssgiHistoryWorld.value = ssgiParams.historyToleranceWorld * sceneScale;
 				ssgiPass.giIntensity.value = ssgiParams.intensity;
 				ssgiPass.backfaceLighting.value = ssgiParams.backfaceLighting;
 				ssgiPass.maxLuminance.value = ssgiParams.maxLuminance;
@@ -592,12 +640,13 @@
 
 				const ssrProjectionInverse = uniform( camera.projectionMatrixInverse );
 				lightingHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture( 1, 1 ) } );
+				diffuseHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
 				lightingHistory.depthTexture.format = depth.value.format;
 				lightingHistory.depthTexture.type = depth.value.type;
 				lightingHistory.depthTexture.minFilter = THREE.NearestFilter;
 				lightingHistory.depthTexture.magFilter = THREE.NearestFilter;
 
-				const source = createHistorySource( depth, () => ssrPass.thickness );
+				const source = createHistorySource( depth, normal, ssrHistoryPixels, ssrHistoryWorld );
 
 				const normalRoughness = prePass.getTextureNode();
 				const albedoMetalness = prePass.getTextureNode( 'albedo' );
@@ -755,6 +804,8 @@
 				ssrPass.quality.value = ssrParams.quality;
 				ssrPass.maxDistance.value = ssrParams.maxDistance * sceneScale;
 				ssrPass.thickness.value = ssrParams.thickness * sceneScale;
+				ssrHistoryPixels.value = ssrParams.historyTolerancePixels;
+				ssrHistoryWorld.value = ssrParams.historyToleranceWorld * sceneScale;
 				ssrPass.intensity.value = ssrParams.intensity;
 				ssrPass.mirrorBias.value = ssrParams.mirrorBias;
 				ssrPass.binaryRefine = ssrParams.binaryRefine;
@@ -777,6 +828,34 @@
 				const aoContext = params.aoType === 'None' ? context( {} ) : params.aoType === 'GTAO + GTSO'
 					? aoPass.getLightingContext()
 					: builtinAOContext( aoPass.getTextureNode().sample( screenUV ).r );
+				// Screen-space GI already integrated visibility. Apply the additional
+				// AO only to fallback irradiance, retaining material AO and specular AO.
+				const scopeAO = params.diffuseAOScope === 'Fallback only' && params.aoType !== 'None';
+				const visibility = aoPass.getTextureNode().sample( screenUV ).r;
+				const diffuseFallback = scopeAO ? diffuseProviders.map( provider => query => Fn( builder => {
+
+					const value = provider( query );
+					return supportsUnlayeredDiffuse( builder.material ) ? vec4( value.rgb.mul( visibility ), value.a ) : value;
+
+				} )() ) : diffuseProviders;
+				if ( scopeAO ) {
+
+					const originalAO = aoContext.value.getAO;
+					const originalSpecular = aoContext.value.getSpecularOcclusion;
+					aoContext.value.getAO = ( inputNode, builder ) => supportsUnlayeredDiffuse( builder.material ) ? inputNode : originalAO( inputNode, builder );
+					aoContext.value.getSpecularOcclusion = ( query, builder ) => {
+
+						if ( ! supportsUnlayeredDiffuse( builder.material ) ) return originalSpecular ? originalSpecular( query, builder ) : query.node;
+						if ( builder.material.transparent === true ) return query.node;
+						const combinedAO = builder.context.ambientOcclusion.mul( visibility );
+						if ( originalSpecular ) return originalSpecular( query, { material: builder.material, context: { ...builder.context, ambientOcclusion: combinedAO } } );
+						const dotNV = query.normal.dot( positionViewDirection ).clamp();
+						return combinedAO.sub( dotNV.add( combinedAO ).pow( query.roughness.mul( - 16 ).oneMinus().negate().exp2() ).oneMinus() ).clamp();
+
+					};
+
+				}
+
 				// In the combined mode, fallback has already been resolved for the base
 				// lobe. Only other lobes may query it again (including partial probes).
 				const combined = ssrParams.resolveOrder === 'Before filtering' || ! ssrParams.denoise;
@@ -788,7 +867,7 @@
 				} ) : specularProviders;
 				scenePass.contextNode = context( {
 					...aoContext.value,
-					indirectDiffuseNode: indirectDiffuse( ssgiProvider ? [ ssgiProvider, ...diffuseProviders ] : diffuseProviders ),
+					indirectDiffuseNode: indirectDiffuse( ssgiProvider ? [ ssgiProvider, ...diffuseFallback ] : diffuseFallback ),
 					indirectSpecularNode: indirectSpecular( ssrProvider ? [ ssrProvider, ...fallback ] : fallback )
 				} );
 				scenePass.needsUpdate = true;
@@ -973,6 +1052,12 @@
 				captureNear = Math.max( 0.001, Math.min( 0.05, Math.min( fullSize.x, fullSize.y, fullSize.z ) * 0.01 ) );
 				captureFar = Math.max( 30, fullSize.length() * 2 );
 				sceneScale = Math.max( fullSize.length(), 0.001 );
+				// glTF extras.ssgi may author localScale, localRadius/localThickness,
+				// or worldRadius/worldThickness. Unrelated distant geometry then does
+				// not silently change explicit physical distance overrides.
+				ssgiSceneMetadata = gltf.scene.userData.ssgi || {};
+				ssgiModelScale = model.getWorldScale( new THREE.Vector3() ).x;
+				applySSGIScenePreset( name );
 				if ( ssrPass ) updateSSRParameters();
 				if ( ssgiPass ) updateSSGIParameters();
 

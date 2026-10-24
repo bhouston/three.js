@@ -1,0 +1,132 @@
+[
+  {
+    "label": "baseline",
+    "root": "../three.js-ssgi-experiments",
+    "ssgi": {}
+  },
+  {
+    "label": "adaptive",
+    "root": "../three.js-ssgi-adaptive-history",
+    "ssgi": {}
+  },
+  {
+    "label": "variance",
+    "root": "../three.js-ssgi-variance-atrous",
+    "ssgi": {}
+  },
+  {
+    "label": "bilinear",
+    "root": "../three.js-ssgi-bilinear-reconstruction",
+    "ssgi": {}
+  },
+  {
+    "label": "r2",
+    "root": "../three.js-interior-ssgi-r2",
+    "ssgi": {
+      "sampling": "Hilbert R2"
+    }
+  },
+  {
+    "label": "azimuth",
+    "root": "../three.js-interior-ssgi-view-azimuth",
+    "ssgi": {}
+  },
+  {
+    "label": "radius",
+    "root": "../three.js-interior-ssgi-world-radius",
+    "ssgi": {}
+  },
+  {
+    "label": "hierarchy",
+    "root": "../three.js-interior-ssgi-depth-hierarchy",
+    "ssgi": {}
+  },
+  {
+    "label": "history-source",
+    "root": "../three.js-ssgi-history-tolerance",
+    "ssgi": {}
+  },
+  {
+    "label": "diffuse-source",
+    "root": "../three.js-ssgi-diffuse-source",
+    "ssgi": {}
+  },
+  {
+    "label": "fallback-ao",
+    "root": "../three.js-ssgi-fallback-ao",
+    "ssgi": {}
+  },
+  {
+    "label": "directional",
+    "root": "../three.js-ssgi-directional-fallback",
+    "ssgi": {},
+    "gainResponse": false,
+    "geometry": false
+  },
+  {
+    "label": "stratified",
+    "root": "../three.js-ssgi-light-guided",
+    "ssgi": {
+      "radialSampling": "Stratified"
+    }
+  },
+  {
+    "label": "guided",
+    "root": "../three.js-ssgi-light-guided",
+    "ssgi": {}
+  },
+  {
+    "label": "world-cache",
+    "root": "../three.js-ssgi-world-cache",
+    "ssgi": {}
+  },
+  {
+    "label": "scene-settings",
+    "root": "../three.js-interior-ssgi-scene-settings",
+    "ssgi": {}
+  },
+  {
+    "label": "gather-confidence",
+    "root": "../three.js-ssgi-gather-confidence",
+    "ssgi": {},
+    "quality": true,
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ]
+  },
+  {
+    "label": "history-source-fast",
+    "root": "../three.js-ssgi-history-tolerance",
+    "ssgi": {},
+    "quality": false,
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ]
+  },
+  {
+    "label": "guarded-source",
+    "root": "../three.js-ssgi-diffuse-source-guarded",
+    "ssgi": {},
+    "quality": false,
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ]
+  },
+  {
+    "label": "guarded-ao",
+    "root": "../three.js-ssgi-fallback-ao-guarded",
+    "ssgi": {},
+    "quality": false,
+    "models": [
+      "Cornell Box",
+      "Dual Rooms"
+    ]
+  },
+  {
+    "label": "merged",
+    "root": "../three.js-interior-ssgi-audit"
+  }
+]

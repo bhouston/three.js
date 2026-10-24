@@ -167,6 +167,8 @@ class SSGINode extends Node {
 		 * @default true
 		 */
 		this.useScreenSpaceSampling = uniform( true, 'bool' );
+		/** @type {UniformNode<bool>} Sample equal azimuths around the view direction. */
+		this.useViewSpaceAzimuth = uniform( false, 'bool' );
 
 		/**
 		 * Controls samples distribution. It's an exponent applied at each step get increasing step size over the distance.
@@ -707,7 +709,12 @@ class SSGINode extends Node {
 				Loop( { start: uint( 0 ), end: ROTATION_COUNT, type: 'uint', condition: '<' }, ( { i } ) => {
 
 					const rotationAngle = mul( float( i ).add( noiseDirection ), PI.div( float( ROTATION_COUNT ) ) ).toConst();
-					const sliceDir = vec3( vec2( cos( rotationAngle ), sin( rotationAngle ) ), 0 ).toConst();
+					const sliceDir = vec3( vec2( cos( rotationAngle ), sin( rotationAngle ) ), 0 ).toVar();
+					If( this.useViewSpaceAzimuth, () => {
+
+						sliceDir.assign( ssgiViewSliceDirection( viewDir, rotationAngle ) );
+
+					} );
 					const slideDirTexelSize = sliceDir.xy.mul( float( 1 ).div( this._resolution ) ).toConst();
 
 					const planeNormal = normalize( cross( sliceDir, viewDir ) ).toConst();
@@ -855,5 +862,24 @@ export const ssgiSectorCoverage = /*@__PURE__*/ Fn( ( [ bitfield, n = float( 0 )
 
 	} );
 	return weight.max( 0 ).mul( projectedNormalLength );
+
+} );
+
+/**
+ * Projects a uniformly rotated view-tangent slice onto the camera image plane.
+ * Uniform screen angles distort azimuth sampling away from the optical axis.
+ * The returned direction stays in the desired slice plane, so its screen-space
+ * depth and radiance gathers retain the same geometric interpretation.
+ * @param {Node<vec3>} viewDir - Unit direction toward the perspective camera.
+ * @param {Node<float>} angle - Azimuth around the view direction, in radians.
+ * @return {Node<vec3>} Unit screen-plane direction (z = 0).
+ */
+export const ssgiViewSliceDirection = /*@__PURE__*/ Fn( ( [ viewDir, angle ] ) => {
+
+	const basisX = vec3( viewDir.z, 0, viewDir.x.negate() ).normalize().toConst();
+	const basisY = cross( viewDir, basisX ).toConst();
+	const tangent = basisX.mul( angle.cos() ).add( basisY.mul( angle.sin() ) ).toConst();
+	const screenDirection = tangent.sub( viewDir.mul( tangent.z.div( viewDir.z.max( 1e-6 ) ) ) );
+	return vec3( screenDirection.xy.normalize(), 0 );
 
 } );

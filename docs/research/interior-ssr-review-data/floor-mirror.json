@@ -1,0 +1,21 @@
+{
+  "model": "Primitives Floor (Metallic Mirror)",
+  "frames": 96,
+  "referenceFrames": 256,
+  "swizzle": "wxy",
+  "captureOnly": true,
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "errors": [],
+  "browserVersion": "Chrome/155.0.8059.85",
+  "viewport": {
+    "width": 960,
+    "height": 720
+  },
+  "lightMapResolution": 1024
+}

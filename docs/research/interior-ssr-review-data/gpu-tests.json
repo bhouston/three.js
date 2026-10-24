@@ -1,0 +1,207 @@
+[
+  {
+    "filter": "CoverageDenoiseNode",
+    "stats": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "total": 16
+    },
+    "failures": [],
+    "adapters": [
+      {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      }
+    ],
+    "backend": "WebGPUBackend",
+    "webgpu": true
+  },
+  {
+    "filter": "SpecularHelpers",
+    "stats": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "total": 2
+    },
+    "failures": [],
+    "adapters": [
+      {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      }
+    ],
+    "backend": "WebGPUBackend",
+    "webgpu": true,
+    "webglHardware": {
+      "backend": "WebGLBackend",
+      "vendor": "Google Inc. (Apple)",
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)",
+      "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+      "stats": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 2
+      }
+    }
+  },
+  {
+    "filter": "SSRNode",
+    "stats": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "total": 1
+    },
+    "failures": [],
+    "adapters": [
+      {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      }
+    ],
+    "backend": "WebGPUBackend",
+    "webgpu": true
+  },
+  {
+    "filter": "RecurrentDenoiseNode",
+    "stats": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "total": 6
+    },
+    "failures": [],
+    "adapters": [
+      {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      }
+    ],
+    "backend": "WebGPUBackend",
+    "webgpu": true
+  },
+  {
+    "filter": "SSGINode",
+    "stats": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "total": 4
+    },
+    "failures": [],
+    "adapters": [
+      {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      }
+    ],
+    "backend": "WebGPUBackend",
+    "webgpu": true
+  },
+  {
+    "filter": "SSRNode-baseline",
+    "stats": {
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0,
+      "total": 1
+    },
+    "failures": [
+      {
+        "name": [
+          "Addons",
+          "TSL",
+          "SSRNode",
+          "short rays respect their endpoint and refinement requires a depth bracket"
+        ],
+        "errors": [
+          "A target beyond the endpoint contributes no reflection",
+          "Refinement preserves a hit following a rejected depth gap (actual 0)"
+        ]
+      }
+    ],
+    "adapters": [
+      {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      }
+    ],
+    "backend": "WebGPUBackend",
+    "webgpu": true
+  },
+  {
+    "filter": "SpecularHelpers-baseline",
+    "stats": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "total": 2
+    },
+    "failures": [],
+    "adapters": [
+      {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false
+      }
+    ],
+    "backend": "WebGPUBackend",
+    "webgpu": true,
+    "webglHardware": {
+      "backend": "WebGLBackend",
+      "vendor": "Google Inc. (Apple)",
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)",
+      "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+      "stats": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 2
+      }
+    }
+  },
+  {
+    "filter": "CoverageDenoiseNode-baseline",
+    "override": "Original raw NDC velocity expression substituted in browser response only",
+    "stats": {
+      "passed": 0,
+      "failed": 4,
+      "skipped": 0,
+      "todo": 0,
+      "total": 4
+    },
+    "note": "All four new directional moving-history tests fail; original shader regression verified before final combined run",
+    "adapters": [
+      {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "isFallbackAdapter": false
+      }
+    ]
+  }
+]

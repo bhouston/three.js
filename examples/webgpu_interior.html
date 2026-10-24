@@ -277,6 +277,8 @@
 				noiseAtlases = await Promise.all( [ 'product', 'separate05' ].map( async variant => {
 
 					const atlas = await new THREE.TextureLoader().loadAsync( `textures/noises/fast/gauss1-ema01-${ variant }.png` );
+					atlas.flipY = false;
+					atlas.colorSpace = THREE.NoColorSpace;
 					atlas.generateMipmaps = false;
 					atlas.minFilter = atlas.magFilter = THREE.NearestFilter;
 					return atlas;
@@ -545,7 +547,7 @@
 			function setupSSGI( depth, normal, motion ) {
 
 				const source = createHistorySource( depth, () => ssgiPass.thickness );
-				ssgiPass = ssgi( source, depth, normal, camera, { outputCoverage: true, noiseNode: samplingNoise( ssgiSampling, new THREE.Vector2( 73, 29 ) ).xyz } );
+				ssgiPass = ssgi( source, depth, normal, camera, { outputCoverage: true, noiseNode: samplingNoise( ssgiSampling, new THREE.Vector2( 73, 29 ) ).wxy } );
 				ssgiPass.useScreenSpaceSampling.value = false;
 				// Diffuse filtering uses surface reprojection, without specular hit distance
 				// or roughness guides. RGB is irradiance before receiver albedo is applied.

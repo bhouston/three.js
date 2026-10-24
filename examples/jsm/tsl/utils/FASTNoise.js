@@ -2,8 +2,9 @@ import { Fn, frameId, ivec2, screenCoordinate, textureLoad, uint, vec4 } from 't
 
 /**
  * Reads a 128×128×32 FAST volume packed as an opaque RGB atlas.
- * The texture must use NoColorSpace and contain unmodified discrete samples.
- * The left tile stores uniform vector3 samples, the right a scalar mask.
+ * The texture must use flipY=false and NoColorSpace and contain unmodified discrete samples.
+ * The left tile stores a uniform vector2 in RG and a scalar in B. The right
+ * tile stores a spatially offset copy of the scalar mask for a fourth input.
  * Opaque RGB storage avoids losing sample precision to image alpha conversion.
  * Keep the frame slices in order: moving the tile every frame destroys the
  * temporal correlations. A fixed offset can decorrelate different passes.

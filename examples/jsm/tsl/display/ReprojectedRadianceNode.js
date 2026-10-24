@@ -74,7 +74,11 @@ export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, came
 		const fraction = pixel.fract();
 		const color = vec3( 0 ).toVar();
 		const support = float( 0 ).toVar();
-		const historyValid = valid.and( clip.w.greaterThan( 0 ) ).and( inBounds( previousUV ) ).and( isBackgroundDepth( currentDepth ).not() );
+		// Positive w makes homogeneous bounds equivalent to NDC depth bounds.
+		// Reversed depth also uses [0,1], including the WebGL backend.
+		const minimumDepth = builder.renderer.coordinateSystem === WebGPUCoordinateSystem || builder.renderer.reversedDepthBuffer === true ? 0 : - 1;
+		const inDepthBounds = clip.z.greaterThanEqual( clip.w.mul( minimumDepth ) ).and( clip.z.lessThanEqual( clip.w ) );
+		const historyValid = valid.and( clip.w.greaterThan( 0 ) ).and( inBounds( previousUV ) ).and( inDepthBounds ).and( isBackgroundDepth( currentDepth ).not() );
 
 		for ( let y = 0; y <= 1; y ++ ) {
 

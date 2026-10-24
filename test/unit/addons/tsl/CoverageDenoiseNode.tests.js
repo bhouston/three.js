@@ -1,4 +1,4 @@
-import { DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
+import { DataTexture, DataUtils, FloatType, HalfFloatType, LinearFilter, NodeMaterial, PerspectiveCamera, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
 import { context, float, indirectSpecular, texture, vec4 } from 'three/tsl';
 import { coverageDenoise } from '../../../../examples/jsm/tsl/display/CoverageDenoiseNode.js';
 import { getSharedRenderer } from '../../src/nodes/tsl/gpu-test-utils.js';
@@ -42,6 +42,8 @@ async function fixture( assert, run ) {
 	const normal = makeTexture( () => [ 0.5, 0.5, 1, 1 ] );
 	const velocity = makeTexture( () => [ 0, 0, 0, 0 ] );
 	const camera = new PerspectiveCamera( 50, 1, 0.1, 100 );
+	camera.coordinateSystem = renderer.coordinateSystem;
+	camera.updateProjectionMatrix();
 	camera.updateMatrixWorld();
 	const node = coverageDenoise( texture( input ), camera, { depth: texture( depth ), normal: texture( normal ), velocity: texture( velocity ), hitDistance: float( 1 ) } );
 	node.radius.value = 1;
@@ -143,6 +145,102 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'half-resolution linear input filters coverage before radiance', async assert => {
+
+				await fixture( assert, async ( { node, input, render } ) => {
+
+					const half = size / 2;
+					input.image = { width: half, height: half, data: new Uint16Array( half * half * 4 ) };
+					input.type = HalfFloatType;
+					input.minFilter = input.magFilter = LinearFilter;
+					for ( let y = 0; y < half; y ++ ) {
+
+						for ( let x = 0; x < half; x ++ ) {
+
+							const value = ( x + y ) % 2 === 0 ? [ 4, 2, 1, 1 ] : [ 100, 50, 25, 0 ];
+							input.image.data.set( value.map( DataUtils.toHalfFloat ), 4 * ( x + half * y ) );
+
+						}
+
+					}
+
+					input.needsUpdate = true;
+					node.radius.value = 1.5;
+					const data = await render();
+					assert.ok( data.every( ( value, i ) => i % 4 === 3 || Math.abs( value - ( data[ i - i % 4 + 3 ] > 0 ? [ 4, 2, 1 ][ i % 4 ] : 0 ) ) < 0.01 ), `Bright invalid source texels never enter reconstructed radiance through hardware interpolation; minR=${ Math.min( ...data.filter( ( _, i ) => i % 4 === 0 ) ) }, maxR=${ Math.max( ...data.filter( ( _, i ) => i % 4 === 0 ) ) }, zeroCoverage=${ data.filter( ( v, i ) => i % 4 === 3 && v === 0 ).length }` );
+					assert.ok( data.some( ( value, i ) => i % 4 === 3 && value > 0 && value < 1 ), 'Sparse coverage is reconstructed at full resolution' );
+
+				} );
+
+			} );
+
+			QUnit.test( 'disocclusion restarts per-pixel history age independently of coverage', async assert => {
+
+				await fixture( assert, async ( { node, renderer, depth, update, render } ) => {
+
+					node.hitDistanceNode = null;
+					node.radius.value = 0;
+					update( () => [ 4, 2, 1, 0 ] );
+					for ( let frame = 0; frame < 16; frame ++ ) await render();
+					const readAge = async () => {
+
+						const values = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), 8, 8, 1, 1, 2 );
+						return DataUtils.fromHalfFloat( values[ 0 ] );
+
+					};
+
+					assert.strictEqual( await readAge(), 16, 'Valid geometry ages even when lighting coverage is zero' );
+					for ( let i = 0; i < depth.image.data.length; i += 4 ) depth.image.data[ i ] = 0.8;
+					depth.needsUpdate = true;
+					update( x => [ 4, 2, 1, x % 2 ] );
+					await render();
+					assert.strictEqual( await readAge(), 1, 'A disoccluded pixel begins with one observation' );
+					update( x => [ 4, 2, 1, 1 - x % 2 ] );
+					const data = await render();
+					assert.strictEqual( await readAge(), 2, 'Age follows the reprojected pixel rather than the global frame count' );
+					assert.ok( data.every( ( value, i ) => Math.abs( value - [ 4, 2, 1, 0.5 ][ i % 4 ] ) < 0.01 ), 'The second observation receives half weight instead of the mature 1/16 weight' );
+
+				} );
+
+			} );
+
+			QUnit.test( 'interpolated geometry cannot validate an entirely rejected history gather', async assert => {
+
+				await fixture( assert, async ( { node, depth, velocity, update, render } ) => {
+
+					node.hitDistanceNode = null;
+					node.radius.value = 0;
+					const deviceDepth = distance => 100 / 99.9 - 10 / ( 99.9 * distance );
+					for ( let y = 0; y < size; y ++ ) {
+
+						for ( let x = 0; x < size; x ++ ) depth.image.data[ 4 * ( x + size * y ) ] = deviceDepth( x % 2 === 0 ? 0.18 : 0.22 );
+
+					}
+
+					depth.needsUpdate = true;
+					update( () => [ 4, 2, 1, 1 ] );
+					await render();
+					for ( let i = 0; i < depth.image.data.length; i += 4 ) {
+
+						depth.image.data[ i ] = deviceDepth( 0.2 );
+						velocity.image.data[ i ] = 0.5 / size;
+
+					}
+
+					depth.needsUpdate = velocity.needsUpdate = true;
+					update( x => [ 4, 2, 1, x % 2 ] );
+					const data = await render();
+					assert.ok( data.every( ( value, i ) => {
+
+						const coverage = Math.floor( i / 4 ) % size % 2;
+						return Math.abs( value - ( i % 4 === 3 ? coverage : coverage * [ 4, 2, 1 ][ i % 4 ] ) ) < 0.01;
+
+					} ), 'Neither tap belongs to the current surface, even though their interpolated depth matches it' );
+
+				} );
+
+			} );
+
 			QUnit.test( 'spatial radius uses input texels at half resolution', async assert => {
 
 				await fixture( assert, async ( { node, input, render } ) => {
@@ -162,6 +260,48 @@ export default QUnit.module( 'Addons', () => {
 					const expected = 1 / ( 1 + 2 * Math.exp( - 0.5 ) );
 					assert.ok( Math.abs( data[ i + 3 ] - expected ) < 0.002, 'Neighbors are one source texel away, rather than half a source texel' );
 					assert.ok( Math.abs( data[ i ] - 4 ) < 0.01, 'Filtering coverage preserves unweighted radiance' );
+
+				} );
+
+			} );
+
+			QUnit.test( 'half-resolution filtering reconstructs guides at their depth texel centers', async assert => {
+
+				await fixture( assert, async ( { node, input, depth, normal, render } ) => {
+
+					const half = size / 2;
+					input.image = { width: half, height: half, data: new Float32Array( half * half * 4 ) };
+					for ( let y = 0; y < half; y ++ ) {
+
+						for ( let x = 0; x < half; x ++ ) input.image.data.set( [ 4, 2, 1, x === half / 2 ? 1 : 0 ], 4 * ( x + half * y ) );
+
+					}
+
+					// Exact tilted plane: n=(0.8,0,0.6), dot(n,p)=-0.6.
+					// Sampling depth at one texel but reconstructing its position at an
+					// adjacent coordinate falsely breaks this plane at half resolution.
+					const tanHalfFov = Math.tan( 25 * Math.PI / 180 );
+					for ( let y = 0; y < size; y ++ ) {
+
+						for ( let x = 0; x < size; x ++ ) {
+
+							const rayX = ( 2 * ( x + 0.5 ) / size - 1 ) * tanHalfFov;
+							const distance = 0.6 / ( 0.6 - 0.8 * rayX );
+							const i = 4 * ( x + size * y );
+							depth.image.data[ i ] = 100 / 99.9 - 10 / ( 99.9 * distance );
+							normal.image.data.set( [ 0.9, 0.5, 0.8, 1 ], i );
+
+						}
+
+					}
+
+					input.needsUpdate = depth.needsUpdate = normal.needsUpdate = true;
+					node.depthThreshold.value = 0.0001;
+					const data = await render();
+					const i = 4 * ( size / 2 + size * size / 2 );
+					const expected = 1 / ( 1 + 2 * Math.exp( - 0.5 ) );
+					assert.ok( Math.abs( data[ i + 3 ] - expected ) < 0.002, `A coplanar source neighborhood keeps the Gaussian coverage weights; actual=${ data[ i + 3 ] }, expected=${ expected }` );
+					assert.ok( Math.abs( data[ i ] - 4 ) < 0.01, 'Tilted surfaces retain their valid source irradiance' );
 
 				} );
 

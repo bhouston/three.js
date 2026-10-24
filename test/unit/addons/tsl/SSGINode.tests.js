@@ -1,5 +1,5 @@
 import { DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
-import { context, float, texture, uint } from 'three/tsl';
+import { Fn, Loop, context, float, texture, uint, vec2 } from 'three/tsl';
 import { ssgi, ssgiSectorCoverage } from '../../../../examples/jsm/tsl/display/SSGINode.js';
 import { getSharedRenderer, gpuTest } from '../../src/nodes/tsl/gpu-test-utils.js';
 
@@ -15,7 +15,113 @@ export default QUnit.module( 'Addons', () => {
 				assert.closeAbs( ssgiSectorCoverage( uint( 0xFFFFFFFF ) ), float( 1 ), 1e-5, 'A complete hemisphere has unit coverage' );
 				assert.closeAbs( ssgiSectorCoverage( uint( 0xFFFF ) ), float( 0.5 ), 1e-5, 'Half the hemisphere has half coverage' );
 				assert.closeAbs( ssgiSectorCoverage( uint( 0x55555555 ) ).add( ssgiSectorCoverage( uint( 0xAAAAAAAA ) ) ), float( 1 ), 1e-5, 'Disjoint masks partition the same integral' );
-				assert.greaterThan( ssgiSectorCoverage( uint( 1 << 15 ) ), ssgiSectorCoverage( uint( 1 ) ), 'Near-normal sectors carry more cosine weight than grazing sectors' );
+				assert.closeAbs( ssgiSectorCoverage( uint( 0x00FFFF00 ) ), float( 0.5 ), 1e-5, 'The central half of a frontal slice covers half its projected solid angle' );
+				assert.greaterThan( ssgiSectorCoverage( uint( 1 << 8 ) ), ssgiSectorCoverage( uint( 1 << 15 ) ), 'The spherical area Jacobian suppresses sectors near the view axis' );
+
+			} );
+
+			gpuTest( 'sector integration matches independent spherical quadrature', ( { assert } ) => {
+
+				// Midpoint quadrature of n dot omega times the spherical area measure,
+				// rather than the closed-form primitive used by the shader.
+				const quadrature = ( mask, n, projectedLength ) => {
+
+					let integral = 0;
+					const samplesPerSector = 256;
+					const step = Math.PI / ( 32 * samplesPerSector );
+					for ( let sector = 0; sector < 32; sector ++ ) {
+
+						if ( ( ( mask >>> sector ) & 1 ) === 0 ) continue;
+						for ( let j = 0; j < samplesPerSector; j ++ ) {
+
+							const beta = - Math.PI / 2 + ( sector + ( j + 0.5 ) / samplesPerSector ) * Math.PI / 32;
+							integral += projectedLength * Math.cos( beta ) * Math.abs( Math.sin( beta + n ) ) * step;
+
+						}
+
+					}
+
+					return integral;
+
+				};
+
+				for ( const [ mask, n, length ] of [
+					[ 0x00FFFF00, 0, 1 ],
+					[ 0x55555555, 0.8, 0.75 ],
+					[ 0x12345678, - 1.2, 0.4 ],
+					[ 0xFFFFFFFF, 0.7, 0.9 ],
+					[ 0xFFFFFFFF, 2.1, 0.9 ],
+					[ 0xFFFFFFFF, - 2.1, 0.9 ],
+					[ 0xFFFFFFFF, 0, 0 ]
+				] ) {
+
+					assert.closeAbs( ssgiSectorCoverage( uint( mask ), float( n ), float( length ) ), float( quadrature( mask, n, length ) ), 2e-5, `Mask ${ mask.toString( 16 ) }, normal angle ${ n }, projection ${ length }` );
+
+				}
+
+			} );
+
+			gpuTest( 'tilted white furnace is normalized over view-aligned slice orientations', ( { assert } ) => {
+
+				for ( const tilt of [ 0, 0.5, 1.2, 1.5 ] ) {
+
+					const average = Fn( () => {
+
+						const sum = float( 0 ).toVar();
+						Loop( 256, ( { i } ) => {
+
+							const phi = float( i ).add( 0.5 ).mul( Math.PI / 256 );
+							const tangent = phi.cos().mul( Math.sin( tilt ) );
+							const projectedLength = tangent.mul( tangent ).add( Math.cos( tilt ) ** 2 ).sqrt().toConst();
+							const n = float( Math.cos( tilt ) ).div( projectedLength ).clamp( - 1, 1 ).acos().mul( tangent.sign() );
+							sum.addAssign( ssgiSectorCoverage( uint( 0xFFFFFFFF ), n, projectedLength ) );
+
+						} );
+						return sum.div( 256 );
+
+					} )();
+					assert.closeAbs( average, float( 1 ), 2e-4, `Unit incoming radiance integrates to pi irradiance at normal tilt ${ tilt }` );
+
+				}
+
+			} );
+
+			gpuTest( 'two-slice normalization preserves a matched screen and fallback furnace', ( { assert } ) => {
+
+				for ( const tilt of [ 0.5, 1.2, 1.5 ] ) {
+
+					for ( let phase = 0; phase < 8; phase ++ ) {
+
+						const partition = Fn( () => {
+
+							const observed = float( 0 ).toVar();
+							const fallback = float( 0 ).toVar();
+							const full = float( 0 ).toVar();
+							const normalization = float( 0 ).toVar();
+							Loop( 2, ( { i } ) => {
+
+								const phi = float( i ).add( phase / 8 ).mul( Math.PI / 2 );
+								const tangent = phi.cos().mul( Math.sin( tilt ) );
+								const length = tangent.mul( tangent ).add( Math.cos( tilt ) ** 2 ).sqrt().toConst();
+								const n = float( Math.cos( tilt ) ).div( length ).clamp( - 1, 1 ).acos().mul( tangent.sign() ).toConst();
+								const a = n.abs();
+								normalization.addAssign( length.mul( a.cos().add( a.mul( a.sin() ) ) ) );
+								// Complementary directional radiance fields: their sum is
+								// uniform even though neither field is uniform on its own.
+								observed.addAssign( ssgiSectorCoverage( uint( 0x12345678 ), n, length ) );
+								fallback.addAssign( ssgiSectorCoverage( uint( 0xEDCBA987 ), n, length ) );
+								full.addAssign( ssgiSectorCoverage( uint( 0xFFFFFFFF ), n, length ) );
+
+							} );
+							return vec2( observed.add( fallback ).div( normalization ), full.div( normalization ) );
+
+						} )();
+						assert.closeAbs( partition.x, float( 1 ), 2e-5, `Complementary masks partition unity at tilt ${ tilt }, phase ${ phase }` );
+						assert.closeAbs( partition.y, float( 1 ), 2e-5, `Fully observed furnace stays normalized with only two slices at tilt ${ tilt }, phase ${ phase }` );
+
+					}
+
+				}
 
 			} );
 
@@ -87,10 +193,10 @@ export default QUnit.module( 'Addons', () => {
 					const pixels = await renderer.readRenderTargetPixelsAsync( target, 0, 0, target.width, target.height, 1 );
 					const coverage = Array.from( pixels ).filter( ( v, i ) => i % 4 === 3 ).map( DataUtils.fromHalfFloat );
 					const mean = coverage.reduce( ( sum, value ) => sum + value, 0 ) / coverage.length;
-					// Sector quantization leaves a small residual. Unsnapped reconstruction
-					// produces about 0.013 mean and 0.037 peak coverage on this isolated plane.
+					// Quantized normals and discrete depth can leave a small residual;
+					// a coplanar surface must not create large false-occlusion bands.
 					assert.ok( mean < 0.006, `Mean false coverage stays below 0.006 (actual ${ mean })` );
-					assert.ok( coverage.every( value => Number.isFinite( value ) && value >= 0 && value < 0.03 ), 'No large false-occlusion bands' );
+					assert.ok( coverage.every( value => Number.isFinite( value ) && value >= 0 && value < 0.03 ), `No large false-occlusion bands (peak ${ Math.max( ...coverage ) })` );
 
 				} finally {
 

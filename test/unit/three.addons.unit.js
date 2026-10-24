@@ -4,7 +4,6 @@ import './addons/utils/BufferGeometryUtils.tests.js';
 import './addons/utils/ColorUtils.tests.js';
 import './addons/utils/GaussianSplatUtils.tests.js';
 import './addons/utils/unwrapUVs.tests.js';
-import './addons/utils/PlanarMirrorUtils.tests.js';
 import './addons/lighting/LightMapper.tests.js';
 import './addons/lighting/IndirectTransport.tests.js';
 import './addons/math/ColorConverter.tests.js';

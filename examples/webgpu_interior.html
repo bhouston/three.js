@@ -10,7 +10,7 @@
 		<div id="info">
 			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
 			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Interior</span></div>
-			<small>Baked Light Probe light maps, SSGI, SSR, box-projected reflections and GTAO / GTSO with selectable scenes.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a><br /><span id="status"></span><br /><span id="mirrors"></span></small>
+			<small>Baked Light Probe light maps, SSGI, SSR, box-projected reflections and GTAO / GTSO with selectable scenes.<br />Scene by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a><br /><span id="status"></span></small>
 		</div>
 		<script type="importmap">
 			{
@@ -25,7 +25,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix, reflector } from 'three/tsl';
+			import { Fn, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
@@ -40,7 +40,6 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
-			import { getPlanarMirrorPlane } from 'three/addons/utils/PlanarMirrorUtils.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { ReflectionProbe, ReflectionProbes } from 'three/addons/lighting/ReflectionProbes.js';
 			import { reflectionProbesDiffuse, reflectionProbesSpecular } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
@@ -80,7 +79,6 @@
 				environmentSpecular: true,
 				reflectionDiffuse: false,
 				reflectionSpecular: true,
-				planarMirrors: true,
 				aoType: 'GTAO + GTSO',
 				samples: 16,
 				radius: 0.4,
@@ -151,7 +149,6 @@
 			let lightMapper, atlas;
 			let uvPass, uvTexture;
 			let meshes = [];
-			const mirrors = [];
 			let bakingLightMap = false;
 			let bakePhase = 'diffuse';
 			let bakeIteration = 0;
@@ -273,7 +270,6 @@
 				indirectDiffuseSettings.add( params, 'reflectionDiffuse' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectDiffuseSettings.add( params, 'environmentDiffuse' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const indirectSpecularSettings = settings.addFolder( 'Indirect Specular' );
-				indirectSpecularSettings.add( params, 'planarMirrors' ).name( 'Planar Mirrors' ).onChange( updatePlanarMirrors );
 				indirectSpecularSettings.add( ssrParams, 'enabled' ).name( 'SSR' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
@@ -775,17 +771,6 @@
 				meshes = [];
 				bakingLightMap = false;
 
-				for ( const mirror of mirrors ) {
-
-					mirror.mesh.material = mirror.originalMaterial;
-					mirror.material.dispose();
-					mirror.reflection.dispose();
-					mirror.reflection.target.removeFromParent();
-
-				}
-
-				mirrors.length = 0;
-
 				if ( model ) {
 
 					model.removeFromParent();
@@ -918,81 +903,9 @@
 				}
 
 				scene.add( probes );
-				setupPlanarMirrors( center );
 
 				capture();
 				currentModel = name;
-
-			}
-
-			function setupPlanarMirrors( center ) {
-
-				model.traverse( mesh => {
-
-					if ( ! mesh.isMesh ) return;
-					const plane = getPlanarMirrorPlane( mesh, center );
-					if ( ! plane ) return;
-					const originalMaterial = mesh.material;
-					const material = renderer.library.fromMaterial( originalMaterial )?.clone();
-					if ( ! material ) return;
-					const reflection = reflector( { resolutionScale: 0.5, generateMipmaps: true, bounces: false } );
-					plane.coplanarPoint( reflection.target.position );
-					reflection.target.quaternion.setFromUnitVectors( new THREE.Vector3( 0, 0, 1 ), plane.normal );
-					scene.add( reflection.target );
-					const maxMip = uniform( 0 ).onRenderUpdate( () => {
-
-						renderer.getDrawingBufferSize( drawingSize );
-						return Math.max( 0, Math.floor( Math.log2( Math.max( drawingSize.x, drawingSize.y ) * 0.5 ) ) );
-
-					} );
-					// Supply incoming radiance to the physical BRDF. It retains base color,
-					// metalness, roughness and their maps; SSR/probes do not add a second lobe.
-					material.contextNode = context( {
-						indirectSpecularNode: indirectSpecular( [ query => vec4( reflection.level( query.roughness.mul( maxMip ) ).rgb, 1 ) ] )
-					} );
-					const mirror = { mesh, originalMaterial, material, reflection };
-					mirrors.push( mirror );
-
-					// A reflected camera cannot sample the main camera's SSGI, SSR or AO.
-					// Other mirrors use their physical probe fallback, bounding recursion.
-					const updateBefore = reflection.reflector.updateBefore.bind( reflection.reflector );
-					reflection.reflector.updateBefore = frame => {
-
-						const previousContext = renderer.contextNode;
-						const visible = mesh.visible;
-						const materials = mirrors.map( entry => entry.mesh.material );
-						try {
-
-							for ( const entry of mirrors ) entry.mesh.material = entry.originalMaterial;
-							mesh.visible = false;
-							renderer.contextNode = context( {
-								...previousContext.value, getGI: null, getAO: null, getSpecularOcclusion: null,
-								indirectDiffuseNode: indirectDiffuse( diffuseProviders ),
-								indirectSpecularNode: indirectSpecular( specularProviders )
-							} );
-							return updateBefore( frame );
-
-						} finally {
-
-							mirrors.forEach( ( entry, i ) => entry.mesh.material = materials[ i ] );
-							mesh.visible = visible;
-							renderer.contextNode = previousContext;
-
-						}
-
-					};
-
-				} );
-				updatePlanarMirrors();
-
-			}
-
-			function updatePlanarMirrors() {
-
-				for ( const mirror of mirrors ) mirror.mesh.material = params.planarMirrors ? mirror.material : mirror.originalMaterial;
-				document.getElementById( 'mirrors' ).textContent = `Planar metallic mirrors: ${ mirrors.length } (${ params.planarMirrors ? 'enabled' : 'disabled' })`;
-				resetScreenSpaceLighting();
-				traaPass?.setSize( 1, 1 );
 
 			}
 
@@ -1202,8 +1115,6 @@
 
 				try {
 
-					for ( const mirror of mirrors ) mirror.mesh.material = mirror.originalMaterial;
-
 					// Captures use world-space transport only, independent of display toggles.
 					const hasReflectionProbes = probes.children.length > 0;
 					const specularProviders = interleaved && probes.texture ? [ reflectionProbesSpecular( probes ) ] : [];
@@ -1303,7 +1214,6 @@
 
 				} finally {
 
-					for ( const mirror of mirrors ) mirror.mesh.material = params.planarMirrors ? mirror.material : mirror.originalMaterial;
 					scene.environmentNode = environmentNode;
 					for ( const [ light, visible ] of lightStates ) light.visible = visible;
 					lightProbes.visible = lightProbesVisible;

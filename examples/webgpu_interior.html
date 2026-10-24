@@ -396,16 +396,35 @@
 				probes = new ReflectionProbes();
 				probes.boxProjection = bakeSettings.boxProjection;
 
-				const probeSetup = params.model === 'Dual Rooms' ? [
-					{ position: [ - 4, 2.5, 0 ], influenceSize: [ 8.4, 5.4, 8.4 ], projectionSize: [ 8, 5, 8 ] },
-					{ position: [ 4, 2.5, 0 ], influenceSize: [ 8.4, 5.4, 8.4 ], projectionSize: [ 8, 5, 8 ] },
-					// captured at doorway height, projected onto both rooms
-					{ position: [ 0, 1.9, 0 ], influenceSize: [ 2.4, 3.8, 2.5 ], projectionSize: [ 16, 5, 8 ], projectionOffset: [ 0, 0.6, 0 ] }
-				] : [ { position: center.toArray(), influenceSize: size.clone().multiplyScalar( 1.1 ).toArray(), projectionSize: fullSize.toArray() } ];
+				let probeSetup = [ { position: center.toArray(), influenceSize: fullSize.toArray(), projectionSize: fullSize.toArray() } ];
+
+				if ( params.model === 'Dual Rooms' ) {
+
+					const roomBounds = new THREE.Box3().setFromObject( model.getObjectByName( 'room' ) );
+					const dividerBounds = new THREE.Box3().setFromObject( model.getObjectByName( 'dividerLeft' ) );
+					const blendDistance = dividerBounds.max.x - dividerBounds.min.x;
+					const leftBounds = roomBounds.clone();
+					const rightBounds = roomBounds.clone();
+					leftBounds.max.x = dividerBounds.min.x;
+					rightBounds.min.x = dividerBounds.max.x;
+
+					probeSetup = [ leftBounds, rightBounds ].map( ( room ) => {
+
+						const roomSize = room.getSize( new THREE.Vector3() ).toArray();
+						return { position: room.getCenter( new THREE.Vector3() ).toArray(), influenceSize: roomSize, projectionSize: roomSize, blendDistance };
+
+					} );
+					// Extend the doorway into the floor, lintel and jambs, keeping its depth.
+					probeSetup.push( { position: [ 0, 1.9, 0 ], influenceSize: [ 2.4, 3.8, 2.5 ], projectionSize: [ 16, 5, 8 ], projectionOffset: [ 0, 0.6, 0 ], influenceExpansion: [ 0, 1, 1 ] } );
+
+				}
 
 				for ( const setup of probeSetup ) {
 
 					const probe = new ReflectionProbe( ...setup.influenceSize );
+					if ( setup.blendDistance !== undefined ) probe.blendDistance = setup.blendDistance;
+					// Extend the selected faces by the fade distance for full influence at walls.
+					probe.influenceSize.addScaledVector( new THREE.Vector3( ... ( setup.influenceExpansion ?? [ 1, 1, 1 ] ) ), 2 * probe.blendDistance );
 					probe.position.set( ...setup.position );
 					probe.projectionSize = new THREE.Vector3( ...setup.projectionSize );
 					if ( setup.projectionOffset ) probe.projectionOffset.set( ...setup.projectionOffset );

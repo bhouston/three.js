@@ -400,7 +400,7 @@ export default QUnit.module( 'Addons', () => {
 			QUnit.test( 'unlayered diffuse scope conservatively rejects unsupported materials', assert => {
 
 				assert.ok( supportsUnlayeredDiffuse( { isMeshStandardMaterial: true } ), 'Standard opaque material supported' );
-				for ( const overrides of [ { clearcoat: 1 }, { sheen: 1 }, { transmission: 0.5 }, { clearcoatNode: {} }, { sheenNode: {} }, { transmissionNode: {} }, { transparent: true }, { fragmentNode: {} }, { outputNode: {} }, { backdropNode: {} }, { lightsNode: {} } ] ) {
+				for ( const overrides of [ { clearcoat: 1 }, { sheen: 1 }, { transmission: 0.5 }, { clearcoatNode: {} }, { sheenNode: {} }, { transmissionNode: {} }, { transparent: true }, { fragmentNode: {} }, { outputNode: {} }, { mrtNode: {} }, { backdropNode: {} }, { lightsNode: {} } ] ) {
 
 					assert.notOk( supportsUnlayeredDiffuse( { isMeshStandardNodeMaterial: true, ...overrides } ), `${ Object.keys( overrides )[ 0 ] } keeps legacy integration` );
 

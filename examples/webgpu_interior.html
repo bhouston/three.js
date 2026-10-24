@@ -25,7 +25,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix } from 'three/tsl';
+			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix, positionViewDirection } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
@@ -150,6 +150,7 @@
 				reflectionDiffuse: false,
 				reflectionSpecular: true,
 				aoType: 'GTAO + GTSO',
+				diffuseAOScope: 'Fallback only',
 				samples: 16,
 				radius: 0.4,
 				resolutionScale: 0.5,
@@ -403,6 +404,7 @@
 
 
 				const occlusion = settings.addFolder( 'Ambient Occlusion' );
+				occlusion.add( params, 'diffuseAOScope', [ 'All indirect', 'Fallback only' ] ).name( 'Diffuse AO scope' ).onChange( updateIndirectLighting );
 				occlusion.add( params, 'aoType', [ 'None', 'GTAO', 'GTAO + GTSO' ] ).name( 'AO type' ).onChange( updateAO );
 				occlusion.add( params, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateAOParameters );
 				occlusion.add( params, 'samples', 4, 32, 1 ).name( 'Samples' ).onChange( updateAOParameters ).debounce( 250 );
@@ -777,6 +779,32 @@
 				const aoContext = params.aoType === 'None' ? context( {} ) : params.aoType === 'GTAO + GTSO'
 					? aoPass.getLightingContext()
 					: builtinAOContext( aoPass.getTextureNode().sample( screenUV ).r );
+				// Screen-space GI already integrated visibility. Apply the additional
+				// AO only to fallback irradiance, retaining material AO and specular AO.
+				const scopeAO = params.diffuseAOScope === 'Fallback only' && params.aoType !== 'None';
+				const visibility = aoPass.getTextureNode().sample( screenUV ).r;
+				const diffuseFallback = scopeAO ? diffuseProviders.map( provider => query => Fn( builder => {
+
+					const value = provider( query );
+					return builder.material.transparent === true ? value : vec4( value.rgb.mul( visibility ), value.a );
+
+				} )() ) : diffuseProviders;
+				if ( scopeAO ) {
+
+					const originalSpecular = aoContext.value.getSpecularOcclusion;
+					aoContext.value.getAO = inputNode => inputNode;
+					aoContext.value.getSpecularOcclusion = ( query, builder ) => {
+
+						if ( builder.material.transparent === true ) return query.node;
+						const combinedAO = builder.context.ambientOcclusion.mul( visibility );
+						if ( originalSpecular ) return originalSpecular( query, { material: builder.material, context: { ...builder.context, ambientOcclusion: combinedAO } } );
+						const dotNV = query.normal.dot( positionViewDirection ).clamp();
+						return combinedAO.sub( dotNV.add( combinedAO ).pow( query.roughness.mul( - 16 ).oneMinus().negate().exp2() ).oneMinus() ).clamp();
+
+					};
+
+				}
+
 				// In the combined mode, fallback has already been resolved for the base
 				// lobe. Only other lobes may query it again (including partial probes).
 				const combined = ssrParams.resolveOrder === 'Before filtering' || ! ssrParams.denoise;
@@ -788,7 +816,7 @@
 				} ) : specularProviders;
 				scenePass.contextNode = context( {
 					...aoContext.value,
-					indirectDiffuseNode: indirectDiffuse( ssgiProvider ? [ ssgiProvider, ...diffuseProviders ] : diffuseProviders ),
+					indirectDiffuseNode: indirectDiffuse( ssgiProvider ? [ ssgiProvider, ...diffuseFallback ] : diffuseFallback ),
 					indirectSpecularNode: indirectSpecular( ssrProvider ? [ ssrProvider, ...fallback ] : fallback )
 				} );
 				scenePass.needsUpdate = true;

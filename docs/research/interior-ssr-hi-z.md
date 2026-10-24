@@ -2,6 +2,92 @@
 
 Studied October 24, 2026 on `interior-ssr-review`, starting at `d303775b6a43`. Sources are [PR #76](https://github.com/bhouston/three.js/pull/76) (head `faa7a27dcb30`) and [PR #79](https://github.com/bhouston/three.js/pull/79) (head `8e72a8b525e7`). Both PRs are merged remotely, but their implementations were absent from this local branch. This is a selective port, preserving the newer local SSR fixes, rather than a merge of their older SSRNode.
 
+## Follow-up: online research and optimized construction
+
+The user subsequently stopped another concurrent render. The first investigation's absolute FPS values below are therefore historical, potentially contended measurements; use the new clean runs for performance conclusions. Quality equality is unaffected by that contention.
+
+Primary sources reviewed:
+
+- [AMD SSSR integration and pipeline](https://gpuopen.com/manuals/fidelityfx_sdk/techniques/stochastic-screen-space-reflections/): depth hierarchy, classification, indirect ray dispatch, roughness/variance driven ray density, hit confidence, and reconstruction.
+- [Pinned AMD SSSR traversal and validator source](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/blob/v1.1.4/sdk/include/FidelityFX/gpu/sssr/ffx_sssr_intersect.h): exact cell-boundary advancement, initial cell exit, depth-direction guard, mirror leaf selection, and validation.
+- [AMD SPD implementation design](https://gpuopen.com/manuals/fidelityfx_sdk/techniques/single-pass-downsampler/): local shared-memory reductions, optional wave operations, and the cross-workgroup synchronization requirements of its final reduction.
+- [McGuire and Mara's implementation and paper](https://casual-effects.blogspot.com/2014/08/screen-space-ray-tracing.html): perspective-correct screen-space DDA and finite depth intervals.
+- [Stachowiak's original stochastic SSR work](https://h3.gd/stochastic-ssr/): importance sampling coupled to spatiotemporal reconstruction, including its ratio-estimator interpretation.
+
+### Are the implementations correct?
+
+**The hierarchy is correct for its stated nearest/farthest footprint contract.** Normal depth reduces nearest with min and farthest with max; reversed depth swaps these operations. Odd dimensions retain every trailing texel. The hardware reference checks both channels and exact footprints rather than relying on a pretty rendered image.
+
+**Conservative skipping preserves the existing marcher; it is not the SSSR traversal algorithm.** Four corner samples conservatively cover a padded batch rectangle at the selected mip, since its extent is at most one nominal cell width per axis. The margin permits skipping only when all original ray samples are in front of the nearest surface. Updating refinement history at the skipped endpoint is necessary. This preserves the original sparse exponential sample schedule and its existing limitations; it does not give the complete pixel coverage of DDA.
+
+**Adaptive implements the central cell-boundary traversal idea, but is not a complete AMD SSSR implementation or a proven reference tracer.** It advances to an XY exit or eligible depth plane, coarsens after empty-space traversal, and descends for leaf acceptance. Projected depth is affine for standard/reversed depth, and depth-plane advancement is disabled for rays moving toward the camera. These are consistent with the published algorithm. Its one-texel initial step differs from AMD's first-cell exit. Leaf acceptance retains our permissive infinite-line distance test; stochastic tracing lacks AMD's explicit self-hit and hit-backface validation. These differences can affect correctness and must not be dismissed as pure optimization. The current adaptive tests establish finite execution and actual hits across camera/depth modes, not nearest-intersection correctness or physical fidelity.
+
+Adaptive also caps all hierarchy visits, including descents and ascents. Its 64 iterations are not 64 leaf tests. Coarse leaves, starts, iteration caps and changed hit validation all need reference-image assessment. Perfect mirrors should retain mip-zero leaf resolution; raising the minimum mip is a quality tradeoff.
+
+### Why the expected large gain is absent
+
+1. **The comparison workload is different.** The original fast mirror demo replaced a potentially very long pixel march. Interior's stochastic baseline already uses at most 63 coarse samples at quality one. Replacing those cheap, incomplete samples with hierarchy visits is not guaranteed to save work or retain the same intersections.
+2. **Construction and representation have real costs.** Our RG32F atlas stores both nearest and farthest bounds, whereas SSSR consumes a single-channel hierarchy. The original local builder dispatched once per level, copied full-resolution depth, and retained intermediate textures. Construction must be repaid by tracing savings every frame.
+3. **Conservative failures add work.** An attempted skip performs four hierarchy loads and rectangle/depth math. If any foreground object makes the bound inconclusive, the original leaf tests still run. Low quality can leave only one useful batch opportunity.
+4. **Only part of the published pipeline is present.** AMD classifies rays, compacts them into compute work, reduces ray density on rough surfaces, uses temporal variance, and can terminate low-occupancy rough-ray waves. Ours is a fragment shader over the output image. Divergent stochastic rays and expensive lanes remain. A roughness fade applied after tracing saves no ray work.
+5. **The benchmark includes the entire application.** Geometry, SSGI, AO, fallback and denoising still run. A substantial builder-only gain can yield only a small full-frame change. The new isolated builder benchmark and untimed ray counters distinguish these costs; full-frame FPS alone cannot identify their cause.
+
+The first three points follow directly from the implementation; the relative costs of memory bandwidth, divergence and instruction scheduling are hardware-dependent inferences, not GPU-profiler measurements.
+
+### Quality-preserving improvement retained
+
+The builder now reduces three successive levels per workgroup using 64 threads and shared memory, then uses a dispatch boundary before the next group of levels. It writes the same atlas, copies mip zero during the first reduction's depth read, and stores only the final local level as an intermediate. There are no cross-workgroup atomic completion tricks or spin waits. Explicit two-dimensional dispatches keep 4K group addressing correct. This is inspired by SPD's local-reduction design, not a full port of SPD.
+
+Standalone GPU-completed throughput, before/after/after/before order, one-second warmup and five-second windows, hardware Apple Metal:
+
+| Size | Previous builds/s | New builds/s | Throughput improvement | Dispatches before → after | Intermediate storage before → after |
+| --- | ---: | ---: | ---: | --- | --- |
+| 801×603 | 4,344 | 4,788–4,808 | 10–11% | 10 → 3 | 1.28 MB → 0.061 MB |
+| 1920×1080 | 1,374–1,378 | 1,917–1,920 | 39–40% | 11 → 4 | 5.53 MB → 0.263 MB |
+| 3840×2160 | 371–374 | 553–562 | 48–51% | 12 → 4 | 22.12 MB → 1.053 MB |
+
+Intermediate storage excludes the unchanged atlas. All active atlas texels match the previous builder exactly at these sizes, including non-power-of-two sizes. This benchmark uses a synthetic R32F source; full application depth formats/workloads differ. It includes submission overhead and all construction work, not GPU timestamps. [Raw builder measurements](ssr-hi-z-data/research/tiled-builder.json).
+
+A rejected prototype fused pairs serially within one thread. Despite fewer dispatches and less memory, it regressed standalone throughput. It was not retained. This is evidence that dispatch count alone is insufficient: parallelism and per-thread work matter. [Rejected prototype measurements](ssr-hi-z-data/research/rejected-serial-pairs.json).
+
+### Clean complete-frame comparison and ray diagnostics
+
+These are fresh 1920×1080 runs after the concurrent render stopped. Each row runs linear, conservative, adaptive, then linear, with the same completion/warmup rules as above. The previous-builder runs explicitly inject the saved source at `6f2c0f703b35` instead of relying on branch state.
+
+| Scene / builder | Linear before FPS | Conservative FPS | Adaptive FPS | Linear after FPS |
+| --- | ---: | ---: | ---: | ---: |
+| Floor / previous | 65.03 | 61.79 | 64.82 | 63.05 |
+| Floor / tiled | 64.94 | 62.20 | 65.42 | 64.99 |
+| Cornell / previous | 44.00 | 42.89 | 40.68 | 44.23 |
+| Cornell / tiled | 44.42 | 42.98 | 40.79 | 44.35 |
+
+The builder improves, but the complete-frame changes are small and do not establish a meaningful Hi-Z win over linear. The floor improvement versus the prior builder is within run drift; Cornell's tiny change is inconclusive. Conservative still loses to linear, and adaptive only ties the floor while losing on Cornell. Every conservative and repeated-linear raw comparison remains exact, including coverage. All runs record zero browser/GPU errors. [Previous floor](ssr-hi-z-data/research/previous-floor-1080p.json), [tiled floor](ssr-hi-z-data/research/tiled-floor-1080p.json), [previous Cornell](ssr-hi-z-data/research/previous-cornell-1080p.json), [tiled Cornell](ssr-hi-z-data/research/tiled-cornell-1080p.json).
+
+The untimed diagnostic compiles counters into an intercepted SSR shader, renders a fixed camera/noise frame, and reads out loop counts. It never times an instrumented shader. Counts include loop entries that terminate at an endpoint or screen boundary; they are not counts of GPU instructions, texture accesses, or wave occupancy.
+
+| Scene | Active traced pixels | Mean loop entries linear / conservative / adaptive | Conservative checks / scheduled samples skipped | Adaptive cap reached without a hit |
+| --- | ---: | --- | --- | ---: |
+| Floor | 1,433,663 | 44.78 / 44.43 / 20.34 | 3,651,471 / 528,418 | 4.22% |
+| Cornell | 1,583,667 | 36.15 / 30.70 / 31.01 | 3,409,009 / 9,203,309 | 12.01% |
+
+Floor conservative pays four atlas samples for each of 3.65 million checks but skips only 0.53 million original sample positions. Its loop-entry count falls by less than 1%. Cornell skips more, but 3.41 million four-load checks remain expensive. Adaptive averages fewer visits on the floor, but each visit computes boundaries, depth planes, mip transitions and conditionals. Execution time depends on slow lanes within GPU groups as well as averages; divergence/register effects remain plausible explanations rather than profiler-proven causes. The capped-miss counts show that the iteration budget still affects adaptive coverage. Increasing it is not free.
+
+The guide-buffer readback also shows **79.56% of Cornell traced surface pixels and 5.08% of floor pixels are at or above the existing downstream roughness cutoff**. About 70.8% of Cornell's linear loop entries belong to those roughness-rejected pixels. This is a concrete opportunity for classification. It cannot be fixed by blindly discarding them: the current before-filtering resolve still carries the original raw ray length into reconstruction even when roughness fades RGB coverage to zero. A safe change must first define the fallback hit-distance/history contract and verify filtered lighting and motion. This investigation therefore retains the existing integration and records that next target explicitly. [Floor counters](ssr-hi-z-data/research/floor-ray-counters.json), [Cornell counters](ssr-hi-z-data/research/cornell-ray-counters.json).
+
+### Reproducing the follow-up
+
+```sh
+git-dedup show 6f2c0f703b35:examples/jsm/tsl/display/HiZNode.js > /tmp/HiZNode-before-research.js
+node test/benchmarks/hi-z-builder.mjs /tmp/HiZNode-before-research.js /tmp/hiz-builder.json
+HIZ_NODE_SOURCE=/tmp/HiZNode-before-research.js HIZ_WIDTH=1920 HIZ_HEIGHT=1080 HIZ_OUTPUT=/tmp/hiz-before node test/benchmarks/interior-ssr-hi-z.mjs
+HIZ_WIDTH=1920 HIZ_HEIGHT=1080 HIZ_OUTPUT=/tmp/hiz-after node test/benchmarks/interior-ssr-hi-z.mjs
+HIZ_DIAGNOSTIC=1 HIZ_WIDTH=1920 HIZ_HEIGHT=1080 HIZ_OUTPUT=/tmp/hiz-counters node test/benchmarks/interior-ssr-hi-z.mjs
+```
+
+Set `HIZ_MODEL='Cornell Box (Mirror Wall)'` to repeat the scene comparison/counters on Cornell. `HIZ_NODE_SOURCE` and `HIZ_SSR_SOURCE` support exact saved-source comparisons; reports include those paths and the browser version. Run all GPU workloads sequentially with other renders stopped. The standalone benchmark compares both channel bounds exactly at every active atlas texel before timing, and reverses mode order.
+
+Final hardware validation passes the 200-case pyramid suite, 192 traversal/coverage cases and the local endpoint/refinement unit regression, with no skipped GPU tests. [Final validation](ssr-hi-z-data/research/validation.json), [unit result](ssr-hi-z-data/research/units.json). The standalone comparison additionally covers full 1080p and 4K atlases; 2D workgroup addressing is necessary at 4K. Changed-file lint and whitespace checks pass. Root build outputs are not included.
+
 ## Decision
 
 Keep **Linear** as the interior default. **Conservative Hi-Z** is an optional, quality-preserving candidate for workloads with useful empty-space skips. **Adaptive Hi-Z (experimental)** changes hit sampling and is explicitly a speed/quality experiment. Neither alternative establishes a meaningful speed improvement in the two locally measured interior scenes, including a 1080p floor check. Do not automatically enable either based on the presence of mirrors.

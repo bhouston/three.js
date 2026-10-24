@@ -1,0 +1,127 @@
+{
+  "browser": "Chrome/155.0.8059.85",
+  "hardware": "apple metal-3  ",
+  "results": [
+    {
+      "width": 801,
+      "height": 603,
+      "name": "before",
+      "dispatches": 10,
+      "intermediateBytes": 1282712,
+      "completed": 21552,
+      "seconds": 5,
+      "buildsPerSecond": 4310.4
+    },
+    {
+      "width": 801,
+      "height": 603,
+      "name": "after",
+      "dispatches": 5,
+      "intermediateBytes": 255712,
+      "completed": 14680,
+      "seconds": 5.001,
+      "buildsPerSecond": 2935.4129174165164
+    },
+    {
+      "width": 801,
+      "height": 603,
+      "name": "after",
+      "dispatches": 5,
+      "intermediateBytes": 255712,
+      "completed": 14060,
+      "seconds": 5.00079999999702,
+      "buildsPerSecond": 2811.5501519773593
+    },
+    {
+      "width": 801,
+      "height": 603,
+      "name": "before",
+      "dispatches": 10,
+      "intermediateBytes": 1282712,
+      "completed": 21676,
+      "seconds": 5.0004000000059605,
+      "buildsPerSecond": 4334.853211737894
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "name": "before",
+      "dispatches": 11,
+      "intermediateBytes": 5528440,
+      "completed": 4816,
+      "seconds": 5.00320000000298,
+      "buildsPerSecond": 962.583946273811
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "name": "after",
+      "dispatches": 5,
+      "intermediateBytes": 1105184,
+      "completed": 3496,
+      "seconds": 5.00310000000894,
+      "buildsPerSecond": 698.7667646046957
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "name": "after",
+      "dispatches": 5,
+      "intermediateBytes": 1105184,
+      "completed": 3480,
+      "seconds": 5.0045,
+      "buildsPerSecond": 695.3741632530722
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "name": "before",
+      "dispatches": 11,
+      "intermediateBytes": 5528440,
+      "completed": 4316,
+      "seconds": 5.00090000000596,
+      "buildsPerSecond": 863.0446519616181
+    },
+    {
+      "width": 3840,
+      "height": 2160,
+      "name": "before",
+      "dispatches": 12,
+      "intermediateBytes": 22117240,
+      "completed": 1892,
+      "seconds": 5.00740000000596,
+      "buildsPerSecond": 377.840795622029
+    },
+    {
+      "width": 3840,
+      "height": 2160,
+      "name": "after",
+      "dispatches": 6,
+      "intermediateBytes": 4423248,
+      "completed": 904,
+      "seconds": 5.019,
+      "buildsPerSecond": 180.11556086869894
+    },
+    {
+      "width": 3840,
+      "height": 2160,
+      "name": "after",
+      "dispatches": 6,
+      "intermediateBytes": 4423248,
+      "completed": 904,
+      "seconds": 5.0004000000059605,
+      "buildsPerSecond": 180.78553715681193
+    },
+    {
+      "width": 3840,
+      "height": 2160,
+      "name": "before",
+      "dispatches": 12,
+      "intermediateBytes": 22117240,
+      "completed": 1852,
+      "seconds": 5.0003999999910596,
+      "buildsPerSecond": 370.37037037103255
+    }
+  ],
+  "errors": []
+}

@@ -8,6 +8,23 @@ import console from 'node:console';
 import assert from 'node:assert/strict';
 
 const directory = process.env.HIZ_OUTPUT || '/tmp/three-interior-ssr-hi-z';
+const hierarchySource = process.env.HIZ_NODE_SOURCE ? await readFile( process.env.HIZ_NODE_SOURCE, 'utf8' ) : null;
+const diagnostic = process.env.HIZ_DIAGNOSTIC === '1';
+let reflectionSource = process.env.HIZ_SSR_SOURCE ? await readFile( process.env.HIZ_SSR_SOURCE, 'utf8' ) : null;
+
+if ( diagnostic ) {
+
+	// Compile counters only for this untimed diagnostic; production shaders and
+	// throughput windows contain no instrumentation.
+	reflectionSource ??= await readFile( 'examples/jsm/tsl/display/SSRNode.js', 'utf8' );
+	reflectionSource = reflectionSource
+		.replace( 'const hitD = float( 0 ).toVar();', 'const hitD = float( 0 ).toVar(); const traceIterations = float( 0 ).toVar(); const boundChecks = float( 0 ).toVar(); const skippedSamples = float( 0 ).toVar();' )
+		.replace( 'const s = adaptive ?', 'traceIterations.addAssign( 1 ); const s = adaptive ?' )
+		.replace( 'If( canSkipBatch(', 'boundChecks.addAssign( 1 ); If( canSkipBatch(' )
+		.replace( 'i.assign( last );', 'skippedSamples.addAssign( float( last.sub( i ).add( 1 ) ) ); i.assign( last );' )
+		.replace( 'return output.max( 0 );', 'return vec4( traceIterations, boundChecks, skippedSamples, foundHit.select( 1, traceIterations.greaterThanEqual( iterationEnd.sub( 1 ) ).select( 2, 0 ) ) );' );
+
+}
 const model = process.env.HIZ_MODEL || 'Primitives Floor (Metallic Mirror)';
 await mkdir( directory, { recursive: true } );
 const html = ( await readFile( 'examples/webgpu_interior.html', 'utf8' ) )
@@ -32,11 +49,15 @@ try {
 	page.on( 'pageerror', error => errors.push( error.message ) );
 	page.on( 'console', message => { if ( message.type() === 'error' ) errors.push( message.text() ); } );
 	await page.setRequestInterception( true );
-	page.on( 'request', request => request.url().endsWith( '/favicon.ico' )
-		? request.respond( { status: 204 } )
-		: request.url().endsWith( '/examples/webgpu_interior.html' )
-			? request.respond( { status: 200, contentType: 'text/html', body: html } )
-			: request.continue() );
+	page.on( 'request', request => {
+
+		if ( hierarchySource && request.url().endsWith( '/HiZNode.js' ) ) return request.respond( { status: 200, contentType: 'application/javascript', body: hierarchySource } );
+		if ( reflectionSource && request.url().endsWith( '/SSRNode.js' ) ) return request.respond( { status: 200, contentType: 'application/javascript', body: reflectionSource } );
+		if ( request.url().endsWith( '/favicon.ico' ) ) return request.respond( { status: 204 } );
+		if ( request.url().endsWith( '/examples/webgpu_interior.html' ) ) return request.respond( { status: 200, contentType: 'text/html', body: html } );
+		return request.continue();
+
+	} );
 	const origin = `http://localhost:${ server.address().port }`;
 	await page.goto( origin );
 	const hardware = await page.evaluate( async () => {
@@ -79,6 +100,7 @@ try {
 		return { width: s.renderer.domElement.width, height: s.renderer.domElement.height };
 
 	} );
+	await page.evaluate( value => { window.__hizDiagnostic = value; }, diagnostic );
 	const captures = {};
 	const results = [];
 	for ( const mode of [ 'Linear', 'Conservative Hi-Z', 'Adaptive Hi-Z (experimental)', 'Linear' ] ) {
@@ -102,9 +124,51 @@ try {
 			const rgba = await s.renderer.readRenderTargetPixelsAsync( target, 0, 0, target.width, target.height );
 			const coverage = await s.renderer.readRenderTargetPixelsAsync( target, 0, 0, target.width, target.height, 1 );
 			const { DataUtils } = await import( '/src/Three.WebGPU.js' );
-			return { rgba: Array.from( rgba, DataUtils.fromHalfFloat ), coverage: Array.from( coverage, DataUtils.fromHalfFloat ) };
+			let rejectedByRoughness = 0, rejectedIterations = 0;
+			if ( window.__hizDiagnostic ) {
+
+				const guideIndex = s.prePass.renderTarget.textures.indexOf( s.prePass.getTexture( 'output' ) );
+				const guides = await s.renderer.readRenderTargetPixelsAsync( s.prePass.renderTarget, 0, 0, target.width, target.height, guideIndex );
+				const decode = guides instanceof Uint16Array ? DataUtils.fromHalfFloat : guides instanceof Uint8Array ? value => value / 255 : value => value;
+				for ( let i = 0; i < rgba.length; i += 4 ) {
+
+					const count = DataUtils.fromHalfFloat( rgba[ i ] );
+					if ( count > 0 && decode( guides[ i + 3 ] ) >= s.ssrParams.maxRoughness ) {
+
+						rejectedByRoughness ++;
+						rejectedIterations += count;
+
+					}
+
+				}
+
+			}
+			return { rgba: Array.from( rgba, DataUtils.fromHalfFloat ), coverage: Array.from( coverage, DataUtils.fromHalfFloat ), rejectedByRoughness, rejectedIterations };
 
 		}, mode );
+		if ( diagnostic ) {
+
+			let active = 0, iterations = 0, checks = 0, skipped = 0, hits = 0, exhausted = 0;
+			const histogram = {};
+			for ( let i = 0; i < capture.rgba.length; i += 4 ) {
+
+				const count = capture.rgba[ i ];
+				if ( count === 0 ) continue;
+				active ++;
+				iterations += count;
+				checks += capture.rgba[ i + 1 ];
+				skipped += capture.rgba[ i + 2 ];
+				hits += capture.rgba[ i + 3 ] === 1 ? 1 : 0;
+				exhausted += capture.rgba[ i + 3 ] === 2 ? 1 : 0;
+				histogram[ count ] = ( histogram[ count ] || 0 ) + 1;
+
+			}
+			results.push( { mode, active, rejectedByRoughness: capture.rejectedByRoughness, rejectedIterations: capture.rejectedIterations, meanIterations: iterations / active, checks, skipped, hits, exhausted, histogram } );
+			await writeFile( `${ directory }/diagnostic.json`, JSON.stringify( { hardware, setup, model, results, errors }, null, 2 ) );
+			console.log( { ...results.at( - 1 ), histogram: undefined } );
+			continue;
+
+		}
 		let maxError = 0, rgbError = 0, changedCoverage = 0;
 		if ( captures.Linear ) {
 
@@ -162,11 +226,11 @@ try {
 		} );
 		results.push( { mode, maxError, rgbRMSE: Math.sqrt( rgbError / ( capture.rgba.length * 0.75 ) ), changedCoverage, ...throughput } );
 		console.log( results.at( - 1 ) );
-		await writeFile( `${ directory }/results.json`, JSON.stringify( { hardware, setup, model, results, errors }, null, 2 ) );
+		await writeFile( `${ directory }/results.json`, JSON.stringify( { hardware, browser: await browser.version(), hierarchySource: process.env.HIZ_NODE_SOURCE || null, reflectionSource: process.env.HIZ_SSR_SOURCE || null, setup, model, results, errors }, null, 2 ) );
 
 	}
 	assert.deepEqual( errors, [], 'No browser/GPU errors' );
-	for ( const result of results.filter( row => row.mode === 'Conservative Hi-Z' || row === results.at( - 1 ) ) ) {
+	for ( const result of ( diagnostic ? [] : results ).filter( row => row.mode === 'Conservative Hi-Z' || row === results.at( - 1 ) ) ) {
 
 		assert.equal( result.maxError, 0, 'Conservative and repeated linear traces match the baseline exactly' );
 		assert.equal( result.changedCoverage, 0, 'Coverage matches exactly' );

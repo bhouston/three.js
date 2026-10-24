@@ -1,0 +1,59 @@
+{
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "browser": "Chrome/155.0.8059.85",
+  "hierarchySource": null,
+  "reflectionSource": null,
+  "setup": {
+    "width": 1920,
+    "height": 1080
+  },
+  "model": "Primitives Floor (Metallic Mirror)",
+  "results": [
+    {
+      "mode": "Linear",
+      "maxError": 0,
+      "rgbRMSE": 0,
+      "changedCoverage": 0,
+      "frames": 328,
+      "seconds": 5.05110000000894,
+      "fps": 64.93635049779641,
+      "pyramidBuilds": 0
+    },
+    {
+      "mode": "Conservative Hi-Z",
+      "maxError": 0,
+      "rgbRMSE": 0,
+      "changedCoverage": 0,
+      "frames": 312,
+      "seconds": 5.01579999999702,
+      "fps": 62.20343713867885,
+      "pyramidBuilds": 312
+    },
+    {
+      "mode": "Adaptive Hi-Z (experimental)",
+      "maxError": 10000,
+      "rgbRMSE": 0.03605142847830649,
+      "changedCoverage": 23508,
+      "frames": 328,
+      "seconds": 5.014,
+      "fps": 65.41683286796969,
+      "pyramidBuilds": 328
+    },
+    {
+      "mode": "Linear",
+      "maxError": 0,
+      "rgbRMSE": 0,
+      "changedCoverage": 0,
+      "frames": 328,
+      "seconds": 5.04670000000298,
+      "fps": 64.99296570032027,
+      "pyramidBuilds": 0
+    }
+  ],
+  "errors": []
+}

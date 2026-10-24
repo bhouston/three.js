@@ -1,0 +1,59 @@
+{
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "browser": "Chrome/155.0.8059.85",
+  "hierarchySource": "/tmp/three-hiz-sequential.js",
+  "reflectionSource": null,
+  "setup": {
+    "width": 1920,
+    "height": 1080
+  },
+  "model": "Cornell Box (Mirror Wall)",
+  "results": [
+    {
+      "mode": "Linear",
+      "maxError": 0,
+      "rgbRMSE": 0,
+      "changedCoverage": 0,
+      "frames": 224,
+      "seconds": 5.091400000005961,
+      "fps": 43.99575755189884,
+      "pyramidBuilds": 0
+    },
+    {
+      "mode": "Conservative Hi-Z",
+      "maxError": 0,
+      "rgbRMSE": 0,
+      "changedCoverage": 0,
+      "frames": 216,
+      "seconds": 5.03590000000596,
+      "fps": 42.892035187304025,
+      "pyramidBuilds": 216
+    },
+    {
+      "mode": "Adaptive Hi-Z (experimental)",
+      "maxError": 10000,
+      "rgbRMSE": 0.26948825164389,
+      "changedCoverage": 518965,
+      "frames": 204,
+      "seconds": 5.014399999991059,
+      "fps": 40.68283343976622,
+      "pyramidBuilds": 204
+    },
+    {
+      "mode": "Linear",
+      "maxError": 0,
+      "rgbRMSE": 0,
+      "changedCoverage": 0,
+      "frames": 224,
+      "seconds": 5.0645,
+      "fps": 44.2294402211472,
+      "pyramidBuilds": 0
+    }
+  ],
+  "errors": []
+}

@@ -1,5 +1,6 @@
-import { HalfFloatType, Mesh, MeshStandardNodeMaterial, PlaneGeometry, RenderTarget, Scene, DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
+import { HalfFloatType, Mesh, MeshStandardNodeMaterial, MeshPhysicalNodeMaterial, PlaneGeometry, RenderTarget, Scene, DataTexture, DataUtils, FloatType, NodeMaterial, PerspectiveCamera, QuadMesh, RendererUtils, Vector2, Vector3 } from 'three/webgpu';
 import { Fn, Loop, context, float, texture, uint, vec2, vec3, vec4, indirectDiffuse, indirectSpecular } from 'three/tsl';
+import { supportsUnlayeredDiffuse } from '../../../../examples/jsm/tsl/utils/UnlayeredDiffuseScope.js';
 import { ssgi, ssgiSectorCoverage } from '../../../../examples/jsm/tsl/display/SSGINode.js';
 import { getSharedRenderer, gpuTest } from '../../src/nodes/tsl/gpu-test-utils.js';
 
@@ -346,9 +347,10 @@ export default QUnit.module( 'Addons', () => {
 				const screen = () => vec4( vec3( 2 * Math.PI ), 0.5 );
 				const render = async scoped => {
 
-					const fallback = () => vec4( vec3( Math.PI * ( scoped ? 0.25 : 1 ) ), 1 );
+					const scopeAO = scoped && supportsUnlayeredDiffuse( scene.children[ 0 ].material );
+					const fallback = () => vec4( vec3( Math.PI * ( scopeAO ? 0.25 : 1 ) ), 1 );
 					renderer.contextNode = context( {
-						getAO: input => scoped ? input : input !== null ? input.mul( 0.25 ) : float( 0.25 ),
+						getAO: input => scopeAO ? input : input !== null ? input.mul( 0.25 ) : float( 0.25 ),
 						indirectDiffuseNode: indirectDiffuse( [ screen, fallback ] ),
 						indirectSpecularNode: indirectSpecular( [] )
 					} );
@@ -365,12 +367,42 @@ export default QUnit.module( 'Addons', () => {
 					const scoped = await render( true );
 					assert.ok( all > 0.01, 'The actual physical material receives the controlled irradiance' );
 					assert.ok( Math.abs( scoped / all - 3 ) < 0.02, 'Visible SSGI retains its energy while fallback alone receives quarter AO' );
+					for ( const layers of [ { clearcoat: 1 }, { sheen: 1 }, { clearcoatNode: float( 1 ) }, { sheenNode: vec3( 1 ) } ] ) {
+
+						const layered = new MeshPhysicalNodeMaterial( { roughness: 0.4, ...layers } );
+						scene.children[ 0 ].material = layered;
+						try {
+
+							const legacy = await render( false );
+							const guarded = await render( true );
+							assert.strictEqual( guarded, legacy, `Unsupported ${ Object.keys( layers )[ 0 ] } retains legacy whole-indirect AO` );
+
+						} finally {
+
+							layered.dispose();
+
+						}
+
+					}
+
 
 				} finally {
 
 					renderer.contextNode = oldContext;
 					geometry.dispose(); material.dispose(); target.dispose();
 					RendererUtils.restoreRendererState( renderer, state );
+
+				}
+
+			} );
+
+
+			QUnit.test( 'unlayered diffuse scope conservatively rejects unsupported materials', assert => {
+
+				assert.ok( supportsUnlayeredDiffuse( { isMeshStandardMaterial: true } ), 'Standard opaque material supported' );
+				for ( const overrides of [ { clearcoat: 1 }, { sheen: 1 }, { transmission: 0.5 }, { clearcoatNode: {} }, { sheenNode: {} }, { transmissionNode: {} }, { transparent: true }, { fragmentNode: {} }, { outputNode: {} }, { backdropNode: {} }, { lightsNode: {} } ] ) {
+
+					assert.notOk( supportsUnlayeredDiffuse( { isMeshStandardNodeMaterial: true, ...overrides } ), `${ Object.keys( overrides )[ 0 ] } keeps legacy integration` );
 
 				}
 

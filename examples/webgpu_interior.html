@@ -27,6 +27,7 @@
 			import * as THREE from 'three/webgpu';
 			import { Fn, If, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix, positionViewDirection } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
+			import { supportsUnlayeredDiffuse } from 'three/addons/tsl/utils/UnlayeredDiffuseScope.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
@@ -786,15 +787,17 @@
 				const diffuseFallback = scopeAO ? diffuseProviders.map( provider => query => Fn( builder => {
 
 					const value = provider( query );
-					return builder.material.transparent === true ? value : vec4( value.rgb.mul( visibility ), value.a );
+					return supportsUnlayeredDiffuse( builder.material ) ? vec4( value.rgb.mul( visibility ), value.a ) : value;
 
 				} )() ) : diffuseProviders;
 				if ( scopeAO ) {
 
+					const originalAO = aoContext.value.getAO;
 					const originalSpecular = aoContext.value.getSpecularOcclusion;
-					aoContext.value.getAO = inputNode => inputNode;
+					aoContext.value.getAO = ( inputNode, builder ) => supportsUnlayeredDiffuse( builder.material ) ? inputNode : originalAO( inputNode, builder );
 					aoContext.value.getSpecularOcclusion = ( query, builder ) => {
 
+						if ( ! supportsUnlayeredDiffuse( builder.material ) ) return originalSpecular ? originalSpecular( query, builder ) : query.node;
 						if ( builder.material.transparent === true ) return query.node;
 						const combinedAO = builder.context.ambientOcclusion.mul( visibility );
 						if ( originalSpecular ) return originalSpecular( query, { material: builder.material, context: { ...builder.context, ambientOcclusion: combinedAO } } );

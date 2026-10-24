@@ -93,7 +93,8 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 			// CPU geometry work and GPU readback cannot contaminate throughput.
 			const raw = await read( rawTarget, 1 );
 			const filtered = await read( filteredTarget, 0 );
-			const source = await read( state.lightingHistory, 0 );
+			const sourceTarget = state.ssgiPass.beautyNode?.renderTarget || state.lightingHistory;
+			const source = await read( sourceTarget, 0 );
 			const worldRadius = state.ssgiPass.radius.value;
 			const worldThickness = state.ssgiPass.thickness.value;
 			const geometry = await reference( {
@@ -101,7 +102,7 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 				camera: state.camera, width, height, radius: worldRadius,
 				raw: { data: raw, width: rawTarget.width, height: rawTarget.height },
 				filtered: { data: filtered, width: filteredTarget.width, height: filteredTarget.height },
-				radiance: { data: source, width: state.lightingHistory.width, height: state.lightingHistory.height }
+				radiance: { data: source, width: sourceTarget.width, height: sourceTarget.height }
 			} );
 			// Temporal statistics have their own readback-heavy stage. They are
 			// deliberately outside the sustained-throughput interval and use a
@@ -174,7 +175,8 @@ export async function runSSGIParameterSweep( { state, step, drain, read, width =
 					gridWidth: geometry.gridWidth, gridHeight: geometry.gridHeight, rays: geometry.rays,
 					validCount, sampleCount: geometry.valid.length,
 					meanTrueCoverage: validCount > 0 ? coverageSum / validCount : null,
-					comparisons: geometry.comparisons, milliseconds: geometry.milliseconds
+					comparisons: geometry.comparisons, milliseconds: geometry.milliseconds,
+					radianceSource: sourceTarget === state.lightingHistory ? 'lighting history fallback' : 'actual reprojected SSGI source'
 				}
 			} );
 

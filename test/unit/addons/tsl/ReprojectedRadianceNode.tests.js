@@ -101,6 +101,35 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'previous near and far clip bounds reject history despite large geometric tolerance', async assert => {
+
+				await fixture( assert, async ( { options, render } ) => {
+
+					options.tolerancePixels.value = 0;
+					options.toleranceWorld.value = 10000;
+					const projection = options.previousProjection.value;
+					const original = projection.clone();
+					assert.ok( ( await render() )[ 3 ] > 0.99, 'Valid previous depth retains all bilinear support under the control tolerance' );
+					for ( const shift of [ - 2, 2 ] ) {
+
+						// Change only clip Z: projected XY and positive W stay identical.
+						// Preserve an invertible matrix so rejection cannot come from NaNs.
+						projection.copy( original );
+						projection.elements[ 14 ] += shift;
+						options.previousProjectionInverse.value.copy( projection ).invert();
+						assert.notEqual( projection.determinant(), 0, 'The changed previous projection remains invertible' );
+						assert.deepEqual( await render(), [ 0, 0, 0, 0 ], `${ shift < 0 ? 'Before the previous near plane' : 'Beyond the previous far plane' } has no source history` );
+
+					}
+
+					projection.copy( original );
+					options.previousProjectionInverse.value.copy( projection ).invert();
+					assert.ok( ( await render() )[ 3 ] > 0.99, 'Restoring the previous clip range restores the valid control' );
+
+				} );
+
+			} );
+
 			QUnit.test( 'coplanar history survives depth variation within its pixel footprint', async assert => {
 
 				await fixture( assert, async ( { color, depth, historyDepth, normal, options, render } ) => {

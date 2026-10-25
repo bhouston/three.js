@@ -1551,11 +1551,13 @@
 						lightMapper.update( interleaved && bakeIteration === bakeIterations - 1 ? bakeSamples : 1 );
 						status.textContent = interleaved ? `Interleaved: diffuse ${ bakeIteration + 1 } / ${ bakeIterations }` : `Sequential: diffuse light map ${ lightMapper.samples } / ${ bakeSamples }`;
 						bakePhase = interleaved ? 'reflection' : 'lightmap';
-						if ( interleaved && ! hasReflectionProbes ) {
+						if ( interleaved ) {
 
 							bakeIteration ++;
-							bakePhase = 'diffuse';
-							bakingLightMap = bakeIteration < bakeIterations;
+							// Update reflections after every two diffuse passes, including the final pass.
+							const updateReflections = hasReflectionProbes && ( bakeIteration % 2 === 0 || bakeIteration === bakeIterations );
+							bakePhase = updateReflections ? 'reflection' : 'diffuse';
+							bakingLightMap = updateReflections || bakeIteration < bakeIterations;
 							if ( ! bakingLightMap ) status.textContent += ' — complete (HDR reflections)';
 
 						}
@@ -1599,10 +1601,9 @@
 							resolution: Number( bakeSettings.resolution ), near: captureNear, far: captureFar,
 							usePrevious: interleaved
 						} );
-						bakeIteration ++;
 						bakingLightMap = interleaved && bakeIteration < bakeIterations;
 						bakePhase = 'diffuse';
-						status.textContent = interleaved ? `Interleaved: reflection ${ bakeIteration } / ${ bakeIterations }${ bakingLightMap ? '' : ' — complete' }` : 'Sequential bake complete';
+						status.textContent = interleaved ? `Interleaved: reflection ${ Math.ceil( bakeIteration / 2 ) } / ${ Math.ceil( bakeIterations / 2 ) }${ bakingLightMap ? '' : ' — complete' }` : 'Sequential bake complete';
 
 					}
 

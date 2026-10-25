@@ -13,7 +13,7 @@ const validate = process.env.INTERIOR_PROFILE_VALIDATE === '1';
 const pixelRatio = Number( process.env.INTERIOR_PROFILE_PIXEL_RATIO || 1 );
 const seconds = Number( process.env.INTERIOR_PROFILE_SECONDS || 5 );
 const repeats = Number( process.env.INTERIOR_PROFILE_REPEATS || 3 );
-const supported = [ 'baseline', 'baseline-repeat', 'ssr-half', 'ssr-quarter', 'ssr-quality-half', 'ssr-half-quality-half', 'ssr-no-denoise', 'ssgi-no-denoise', 'no-ssr', 'no-ssgi', 'no-ao', 'no-screen-effects', 'half-pixels', 'prepass-unlit', 'merge-static' ];
+const supported = [ 'baseline', 'baseline-repeat', 'ssr-full', 'ssr-half', 'ssr-quarter', 'ssr-quality-half', 'ssr-half-quality-half', 'ssr-no-denoise', 'ssgi-no-denoise', 'no-ssr', 'no-ssgi', 'no-ao', 'no-screen-effects', 'half-pixels', 'prepass-unlit', 'merge-static' ];
 if ( variants.some( variant => ! supported.includes( variant ) ) || ! Number.isFinite( pixelRatio ) || pixelRatio <= 0 || ! Number.isFinite( seconds ) || seconds < 5 || ! Number.isInteger( repeats ) || repeats < 1 ) throw new Error( 'Use supported variants, at least five seconds and a positive repeat count' );
 const source = await readFile( 'examples/webgpu_interior.html', 'utf8' );
 await mkdir( directory, { recursive: true } );
@@ -131,6 +131,7 @@ try {
 				}
 				s.prePass.needsUpdate = true;
 				s.renderer.setPixelRatio( window.__defaults.pixelRatio * ( variant === 'half-pixels' ? Math.SQRT1_2 : 1 ) );
+				if ( variant === 'ssr-full' ) s.ssrParams.resolutionScale = 1;
 				if ( variant === 'ssr-half' ) s.ssrParams.resolutionScale = 0.5;
 				if ( variant === 'ssr-quarter' ) s.ssrParams.resolutionScale = 0.25;
 				if ( variant === 'ssr-quality-half' ) s.ssrParams.quality = 0.5;

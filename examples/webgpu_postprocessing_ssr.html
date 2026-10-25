@@ -240,16 +240,6 @@
 					if ( isCamera ) {
 
 						model.position.y = 0.1;
-						model.traverse( ( object ) => {
-
-							if ( object.material ) {
-
-								if ( object.material.name === 'Lense_Casing' ) object.material.transparent = true;
-								object.material.side = THREE.FrontSide;
-
-							}
-
-						} );
 
 					}
 

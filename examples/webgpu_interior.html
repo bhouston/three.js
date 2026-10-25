@@ -356,7 +356,7 @@
 				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );
 				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
-				// Prepare geometry once on the exact pixel grid shared by SSR, SSGI and AO.
+				// Prepare aligned geometry for SSR and SSGI on their shared output grid.
 				screenSpaceGuides = screenSpaceGBuffer( prePassDepth, prePass.getTextureNode(), prePass.getTextureNode( 'albedo' ) );
 				const effectDepth = screenSpaceGuides.getTextureNode();
 				const effectNormal = sample( uv => unpackRGBToNormal( screenSpaceGuides.getTextureNode( 'normal' ).sample( uv ) ) );
@@ -396,7 +396,9 @@
 				uvPass = pass( scene, camera );
 				uvPass.overrideMaterial = uvMaterial;
 				uvPass.contextNode = context( { getAO: null, getSpecularOcclusion: null } );
-				aoPass = ao( effectDepth, effectNormal, camera ).toInspector( 'GTAO', ( inspectNode ) => inspectNode.r );
+				// AO shares the effect resolution, but needs fine geometry for horizon
+				// searches. Reducing these guides destabilizes grazing specular occlusion.
+				aoPass = ao( prePassDepth, prePassNormal, camera ).toInspector( 'GTAO', ( inspectNode ) => inspectNode.r );
 				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
 				traaPass.useSubpixelCorrection = false;
 				updateScreenSpaceResolution();

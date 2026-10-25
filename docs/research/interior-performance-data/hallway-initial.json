@@ -1,0 +1,136 @@
+{
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "seconds": 5,
+  "repeats": 3,
+  "bakeAtlas": 4096,
+  "scenes": [
+    {
+      "model": "Space Ship Hallway",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false,
+        "webglRenderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)",
+        "timestampQuery": true,
+        "device": {}
+      },
+      "meshes": 8,
+      "triangles": 53400,
+      "materials": 8,
+      "lights": 1,
+      "camera": [
+        20.115792274475098,
+        -0.6296777248382555,
+        1.2461872100830078
+      ],
+      "target": [
+        20.115792274475098,
+        -0.629677724838257,
+        -23.24618911743164
+      ],
+      "bakeStatus": "Interleaved: reflection 16 / 16 \u2014 complete",
+      "variants": [
+        {
+          "variant": "baseline",
+          "measurements": [
+            {
+              "completed": 416,
+              "elapsedMs": 5039.5,
+              "fps": 82.54787181267983,
+              "drawCallsPerFrame": 28
+            },
+            {
+              "completed": 412,
+              "elapsedMs": 5032.29999999702,
+              "fps": 81.8711126125716,
+              "drawCallsPerFrame": 28
+            },
+            {
+              "completed": 412,
+              "elapsedMs": 5022.79999999702,
+              "fps": 82.02596161508411,
+              "drawCallsPerFrame": 28
+            }
+          ]
+        },
+        {
+          "variant": "ssr-half",
+          "measurements": [
+            {
+              "completed": 504,
+              "elapsedMs": 5025.0999999940395,
+              "fps": 100.29651151232768,
+              "drawCallsPerFrame": 28
+            },
+            {
+              "completed": 500,
+              "elapsedMs": 5021.899999991059,
+              "fps": 99.56391007405368,
+              "drawCallsPerFrame": 28
+            },
+            {
+              "completed": 500,
+              "elapsedMs": 5010.600000008941,
+              "fps": 99.78844848902483,
+              "drawCallsPerFrame": 28
+            }
+          ]
+        },
+        {
+          "variant": "ssr-quarter",
+          "measurements": [
+            {
+              "completed": 524,
+              "elapsedMs": 5022.5,
+              "fps": 104.33051269288202,
+              "drawCallsPerFrame": 28
+            },
+            {
+              "completed": 524,
+              "elapsedMs": 5036.899999991059,
+              "fps": 104.03224205382877,
+              "drawCallsPerFrame": 28
+            },
+            {
+              "completed": 524,
+              "elapsedMs": 5017.800000011921,
+              "fps": 104.42823548143711,
+              "drawCallsPerFrame": 28
+            }
+          ]
+        },
+        {
+          "variant": "no-ssr",
+          "measurements": [
+            {
+              "completed": 816,
+              "elapsedMs": 5019.70000000298,
+              "fps": 162.55951550879846,
+              "drawCallsPerFrame": 24
+            },
+            {
+              "completed": 812,
+              "elapsedMs": 5021.70000000298,
+              "fps": 161.69822968307906,
+              "drawCallsPerFrame": 24
+            },
+            {
+              "completed": 812,
+              "elapsedMs": 5004.0999999940395,
+              "fps": 162.26694110848447,
+              "drawCallsPerFrame": 24
+            }
+          ]
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "browser": "Chrome/155.0.8059.85",
+  "note": "Initial hallway sweep: 64 warmup frames per variant; three five-second runs. Stale Inspector data from baking was omitted. Main runs use a 2.5-second warmup and only their own diagnostic frames."
+}

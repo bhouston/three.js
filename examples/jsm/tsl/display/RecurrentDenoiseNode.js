@@ -8,7 +8,6 @@ const _size = /*@__PURE__*/ new Vector2();
 
 let _rendererState;
 
-const KERNEL_SAMPLES = 8;
 const NOISE_ROTATION_SEED = 83;
 const WORLD_RADIUS_SCALE = 0.1;
 
@@ -25,14 +24,13 @@ const FLICKER_COV_GATE_MAX = 2;
  *
  * @tsl
  */
-const vogelDisk = Fn( ( [ i, radius ] ) => {
+const vogelDisk = Fn( ( [ i, radius, sampleCount ] ) => {
 
-	const sampleCount = 8;
 	const theta = i.add( 0.5 ).mul( 2.399827721492203 );
 	const r = radius.mul( sqrt( i.add( 0.5 ).div( sampleCount ) ) );
 	return vec2( cos( theta ), sin( theta ) ).mul( r );
 
-}, { i: 'float', radius: 'float', return: 'vec2' } );
+}, { i: 'float', radius: 'float', sampleCount: 'float', return: 'vec2' } );
 
 /**
  * Chromatic color-similarity distance between two linear base colors (albedo).
@@ -240,7 +238,7 @@ const toTextureNode = ( value ) => {
  * such as SSGI (ambient occlusion / indirect diffuse) and SSR (specular reflections).
  *
  * The denoising kernel is selected at construction time via `mode`:
- * `'diffuse'` (SSGI) or `'specular'` (SSR). The kernel uses a fixed 8-sample Vogel disk.
+ * `'diffuse'` (SSGI) or `'specular'` (SSR). The kernel uses a Vogel disk with up to eight samples (eight by default).
  *
  * @augments Node
  * @three_import import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
@@ -303,6 +301,15 @@ class RecurrentDenoiseNode extends Node {
 		this.depthPhi = uniform( 5 );
 		this.normalPhi = uniform( 5 );
 		this.radius = uniform( 5 );
+
+		/**
+		 * Spatial kernel sample budget, clamped to 1–8. Lower counts trade
+		 * spatial noise reduction for speed; temporal reconstruction is retained.
+		 *
+		 * @type {UniformNode<int>}
+		 * @default 8
+		 */
+		this.samples = uniform( 8, 'int' );
 		this.alphaPhi = uniform( 1 );
 		this.roughnessPhi = uniform( 100 );
 		this.diffusePhi = uniform( 100 );
@@ -629,9 +636,10 @@ class RecurrentDenoiseNode extends Node {
 				// Lobe geometry depends only on per-pixel terms, so compute its falloff constant once here.
 				const lobeFalloff = lobeNormalFalloff( roughness, aggressivity, this.normalPhi.oneMinus() ).toConst();
 
-				Loop( { start: int( 0 ), end: int( KERNEL_SAMPLES ), type: 'int', condition: '<', name: 'i' }, ( { i } ) => {
+				const sampleCount = this.samples.clamp( 1, 8 ).toConst();
+				Loop( { start: int( 0 ), end: sampleCount, type: 'int', condition: '<', name: 'i' }, ( { i } ) => {
 
-					const baseOffset = vogelDisk( float( i ), 1 ).toVar();
+					const baseOffset = vogelDisk( float( i ), 1, float( sampleCount ) ).toVar();
 					const sampleDir = baseOffset.normalize().toConst();
 
 					// Blend the tap direction toward the polar bias, then restore the Vogel radius and shrink.

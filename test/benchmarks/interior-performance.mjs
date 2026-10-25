@@ -9,11 +9,12 @@ import { createServer } from '../../utils/server.js';
 const directory = process.env.INTERIOR_PROFILE_OUTPUT || '/tmp/three-interior-profile-20261024';
 const models = ( process.env.INTERIOR_PROFILE_MODELS || 'Space Ship Hallway,Dungeon Warkarma' ).split( ',' );
 const variants = ( process.env.INTERIOR_PROFILE_VARIANTS || 'baseline,ssr-half,ssr-quarter,no-ssr,no-ssgi,no-ao,no-screen-effects,half-pixels,baseline-repeat' ).split( ',' );
+const unitFilters = ( process.env.INTERIOR_PROFILE_UNIT_FILTERS || '' ).split( ',' ).filter( Boolean );
 const validate = process.env.INTERIOR_PROFILE_VALIDATE === '1';
 const pixelRatio = Number( process.env.INTERIOR_PROFILE_PIXEL_RATIO || 1 );
 const seconds = Number( process.env.INTERIOR_PROFILE_SECONDS || 5 );
 const repeats = Number( process.env.INTERIOR_PROFILE_REPEATS || 3 );
-const supported = [ 'baseline', 'baseline-repeat', 'ssr-full', 'ssr-half', 'ssr-quarter', 'ssr-quality-half', 'ssr-half-quality-half', 'ssr-no-denoise', 'ssgi-no-denoise', 'no-ssr', 'no-ssgi', 'no-ao', 'no-screen-effects', 'half-pixels', 'prepass-unlit', 'merge-static' ];
+const supported = [ 'baseline', 'baseline-repeat', 'ssr-full', 'ssr-half', 'ssr-quarter', 'ssr-filter-4', 'ssr-quality-half', 'ssr-half-quality-half', 'ssr-no-denoise', 'ssgi-no-denoise', 'no-ssr', 'no-ssgi', 'no-ao', 'no-screen-effects', 'half-pixels', 'prepass-unlit', 'merge-static' ];
 if ( variants.some( variant => ! supported.includes( variant ) ) || ! Number.isFinite( pixelRatio ) || pixelRatio <= 0 || ! Number.isFinite( seconds ) || seconds < 5 || ! Number.isInteger( repeats ) || repeats < 1 ) throw new Error( 'Use supported variants, at least five seconds and a positive repeat count' );
 const source = await readFile( 'examples/webgpu_interior.html', 'utf8' );
 await mkdir( directory, { recursive: true } );
@@ -30,7 +31,33 @@ try {
 		defaultViewport: results.viewport
 	} );
 	results.browser = await browser.version();
-	for ( const model of models ) {
+	if ( unitFilters.length ) {
+
+		const page = await browser.newPage();
+		await page.goto( `http://localhost:${ server.address().port }/` );
+		results.hardware = await page.evaluate( async () => {
+
+			const info = ( await navigator.gpu.requestAdapter() ).info;
+			if ( ! info.vendor || info.isFallbackAdapter || /swiftshader|llvmpipe|lavapipe|software/i.test( JSON.stringify( info ) ) ) throw new Error( 'Hardware GPU required' );
+			return { vendor: info.vendor, architecture: info.architecture, isFallbackAdapter: info.isFallbackAdapter };
+
+		} );
+		results.units = [];
+		for ( const filter of unitFilters ) {
+
+			await page.goto( `http://localhost:${ server.address().port }/test/unit/UnitTestsAddons.html?filter=${ encodeURIComponent( filter ) }` );
+			await page.waitForFunction( () => window._QUnitStats !== undefined, { timeout: 180000 } );
+			const result = await page.evaluate( () => ( { stats: window._QUnitStats, failures: Array.from( document.querySelectorAll( '#qunit-tests > .fail' ), element => element.textContent ), skipped: document.getElementById( 'qunit-tests' ).textContent.includes( 'SKIPPED' ) } ) );
+			results.units.push( { filter, ...result } );
+			console.log( filter, result );
+			await writeFile( `${ directory }/results.json`, JSON.stringify( results, null, 2 ) );
+			if ( result.stats.failed || ! result.stats.passed || result.skipped ) throw new Error( 'GPU unit tests failed or skipped' );
+
+		}
+		await page.close();
+
+	}
+	for ( const model of unitFilters.length ? [] : models ) {
 
 		const page = await browser.newPage();
 		const errors = [];
@@ -131,6 +158,7 @@ try {
 				}
 				s.prePass.needsUpdate = true;
 				s.renderer.setPixelRatio( window.__defaults.pixelRatio * ( variant === 'half-pixels' ? Math.SQRT1_2 : 1 ) );
+				if ( variant === 'ssr-filter-4' ) s.ssrParams.denoiseSamples = 4;
 				if ( variant === 'ssr-full' ) s.ssrParams.resolutionScale = 1;
 				if ( variant === 'ssr-half' ) s.ssrParams.resolutionScale = 0.5;
 				if ( variant === 'ssr-quarter' ) s.ssrParams.resolutionScale = 0.25;
@@ -207,7 +235,7 @@ try {
 		}
 		if ( validate ) {
 
-			entry.validation = await page.evaluate( async () => {
+			entry.validation = await page.evaluate( async reducedFilter => {
 
 				const s = window.__profile;
 				const { DataUtils } = await import( '/src/Three.WebGPU.js' );
@@ -230,6 +258,7 @@ try {
 				}
 				// Exercise camera motion and recovery with both native and reduced SSR tracing.
 				const position = s.camera.position.clone(), target = s.controls.target.clone();
+				if ( reducedFilter ) s.ssrParams.denoiseSamples = 4;
 				for ( const resolutionScale of [ 1, 0.5 ] ) {
 
 					s.ssrParams.resolutionScale = resolutionScale; s.updateSSRParameters();
@@ -238,9 +267,10 @@ try {
 
 				}
 				s.camera.position.copy( position ); s.controls.target.copy( target ); s.ssrParams.resolutionScale = window.__defaults.ssr.resolutionScale; s.updateSSRParameters();
-				return { snapshots, cameraMotionFrames: 64, recoveryFrames: 64 };
+				return { snapshots, cameraMotionFrames: 64, recoveryFrames: 64, denoiseSamples: s.ssrParams.denoiseSamples };
 
-			} );
+			}, variants.includes( 'ssr-filter-4' ) );
+			await page.screenshot( { path: `${ directory }/${ model.replaceAll( ' ', '-' ) }-after-motion.png` } );
 			await writeFile( `${ directory }/results.json`, JSON.stringify( results, null, 2 ) );
 			console.log( 'Validated scale changes, resize and camera motion', model );
 			if ( errors.length ) throw new Error( 'Validation reported browser or GPU errors' );

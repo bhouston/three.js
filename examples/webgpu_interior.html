@@ -178,6 +178,7 @@
 				sampling: 'FAST Separate',
 				enabled: true,
 				denoise: true,
+				denoiseSamples: 8,
 				resolveOrder: 'Before filtering',
 				resolutionScale: 0.5,
 				quality: 1,
@@ -439,6 +440,7 @@
 				ssgiSettings.add( ssgiParams, 'maxFrames', 1, 32, 1 ).name( 'History Frames' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'denoiseRadius', 0, 3 ).name( 'Denoise Radius' ).onChange( updateSSGIParameters );
 				const ssrSettings = settings.addFolder( 'SSR Settings' ).close();
+				ssrSettings.add( ssrParams, 'denoiseSamples', [ 4, 8 ] ).name( 'Denoise Samples' ).info( 'Four samples reduce spatial filtering work while retaining temporal reconstruction; eight samples suppress more spatial noise.' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'resolveOrder', [ 'Before filtering', 'After filtering (coverage-aware)' ] ).name( 'Resolve Fallback' ).info( 'Before: filter combined reflections. After: filter SSR radiance and coverage, then resolve probes/environment.' ).onChange( updateIndirectLighting );
 				ssrSettings.add( ssrParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
@@ -852,6 +854,7 @@
 				ssrMaxRoughness.value = ssrParams.maxRoughness;
 				ssrTemporal.maxFrames.value = ssrParams.maxFrames;
 				ssrDenoise.maxFrames.value = ssrParams.maxFrames;
+				ssrDenoise.samples.value = ssrParams.denoiseSamples;
 				ssrDenoise.radius.value = ssrParams.radius;
 				ssrCoverageDenoise.radius.value = ssrParams.radius;
 				ssrCoverageDenoise.maxFrames.value = ssrParams.maxFrames;

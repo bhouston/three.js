@@ -861,6 +861,9 @@
 				ssrPass.hiZEnabled = ssrParams.traversal !== 'Linear';
 				ssrPass.hiZTraversal = ssrParams.traversal.startsWith( 'Adaptive' ) ? 'adaptive' : 'conservative';
 				ssrPass.resolutionScale = ssrParams.resolutionScale;
+				// Preserve the tracing texel footprint when packing radiance/coverage.
+				// Expanding first makes the denoiser repeatedly sample the same SSR ray.
+				ssrCoverageDenoise.inputNode.setResolutionScale( ssrParams.resolutionScale );
 				ssrPass.quality.value = ssrParams.quality;
 				ssrPass.maxDistance.value = ssrParams.maxDistance * sceneScale;
 				ssrPass.thickness.value = ssrParams.thickness * sceneScale;

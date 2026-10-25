@@ -410,6 +410,43 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'grazing coplanar history survives fractional reprojection', async assert => {
+
+				await fixture( assert, async ( { node, renderer, depth, normal, velocity, update, render } ) => {
+
+					node.hitDistanceNode = null;
+					node.radius.value = 0;
+					const tanHalfFov = Math.tan( 25 * Math.PI / 180 );
+					for ( let y = 0; y < size; y ++ ) {
+
+						for ( let x = 0; x < size; x ++ ) {
+
+							// All pixels lie on dot((0.8,0,0.6),p)=-0.6, but adjacent
+							// depths differ by much more than the 1% history threshold.
+							const rayX = ( 2 * ( x + 0.5 ) / size - 1 ) * tanHalfFov;
+							const distance = 0.6 / ( 0.6 - 0.8 * rayX );
+							const i = 4 * ( x + size * y );
+							depth.image.data[ i ] = 100 / 99.9 - 10 / ( 99.9 * distance );
+							normal.image.data.set( [ 0.9, 0.5, 0.8, 1 ], i );
+
+						}
+
+					}
+
+					depth.needsUpdate = normal.needsUpdate = true;
+					update( () => [ 4, 2, 1, 1 ] );
+					for ( let frame = 0; frame < 16; frame ++ ) await render();
+					for ( let i = 0; i < velocity.image.data.length; i += 4 ) velocity.image.data[ i ] = 1 / size;
+					velocity.needsUpdate = true;
+					await render();
+					const data = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), 8, 8, 1, 1, 2 );
+					const age = DataUtils.fromHalfFloat( data[ 0 ] );
+					assert.ok( Math.abs( age - 16 ) < 0.02, `Both coplanar history taps retain their evidence; actual age=${ age }` );
+
+				} );
+
+			} );
+
 			QUnit.test( 'history clipping covers neighboring input texels at half resolution', async assert => {
 
 				await fixture( assert, async ( { node, input, render } ) => {

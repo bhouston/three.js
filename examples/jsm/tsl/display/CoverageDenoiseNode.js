@@ -88,6 +88,7 @@ class CoverageDenoiseNode extends Node {
 		this._world = uniform( new Matrix4() );
 		this._previousView = uniform( new Matrix4() );
 		this._previousProjection = uniform( new Matrix4() );
+		this._previousProjectionInverse = uniform( new Matrix4() );
 		this._historyValid = uniform( false );
 		this._frames = 0;
 
@@ -159,6 +160,7 @@ class CoverageDenoiseNode extends Node {
 
 			this._previousView.value.copy( this.camera.matrixWorldInverse );
 			this._previousProjection.value.copy( this.camera.projectionMatrix );
+			this._previousProjectionInverse.value.copy( this.camera.projectionMatrixInverse );
 			this._historyValid.value = true;
 			this._frames ++;
 
@@ -242,7 +244,9 @@ class CoverageDenoiseNode extends Node {
 			const position = viewPosition( coordinate ).toConst();
 			const worldPosition = this._world.mul( vec4( position, 1 ) ).xyz.toConst();
 			const worldNormal = normal( coordinate ).transformDirection( this._world ).toConst();
-			const expectedZ = this._previousView.mul( vec4( worldPosition, 1 ) ).z;
+			const previousPosition = this._previousView.mul( vec4( worldPosition, 1 ) ).xyz.toConst();
+			const previousNormal = worldNormal.transformDirection( this._previousView ).toConst();
+			const historyTolerance = previousPosition.z.abs().mul( this.depthThreshold ).max( 0.001 );
 			// Convert NDC motion to UV, then account for the previous raster grid's jitter.
 			const velocityUV = this.velocityNode.sample( coordinate ).xy.mul( vec2( 0.5, - 0.5 ) );
 			const surfaceUV = coordinate.sub( velocityUV ).add( this._jitterDelta ).toConst();
@@ -263,8 +267,14 @@ class CoverageDenoiseNode extends Node {
 
 						const tapUV = base.add( vec2( x, y ) ).add( 0.5 ).div( this._resolution ).toConst();
 						const geometry = this._historyGeometry.sample( tapUV ).toConst();
+						// Compare surfaces in the same view-space plane. At grazing angles,
+						// neighboring pixels on one surface can have very different Z values.
+						// A Z-only test rejects that history every time the raster grid jitters.
+						const clipDepth = this._previousProjection.mul( vec4( 0, 0, geometry.w, 1 ) );
+						const tapPosition = getViewPosition( tapUV, clipDepth.z.div( clipDepth.w ), this._previousProjectionInverse );
+						const planeDistance = tapPosition.sub( previousPosition ).dot( previousNormal ).abs();
 						const valid = inBounds( tapUV ).and( worldNormal.dot( geometry.xyz ).greaterThan( 0.9 ) )
-							.and( geometry.w.sub( expectedZ ).abs().lessThanEqual( expectedZ.abs().mul( this.depthThreshold ).max( 0.001 ) ) );
+							.and( planeDistance.lessThanEqual( historyTolerance ) );
 						const wx = x === 0 ? fraction.x.oneMinus() : fraction.x;
 						const wy = y === 0 ? fraction.y.oneMinus() : fraction.y;
 						const weight = wx.mul( wy ).mul( valid ).toConst();

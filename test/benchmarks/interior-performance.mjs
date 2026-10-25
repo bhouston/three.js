@@ -14,7 +14,7 @@ const validate = process.env.INTERIOR_PROFILE_VALIDATE === '1';
 const pixelRatio = Number( process.env.INTERIOR_PROFILE_PIXEL_RATIO || 1 );
 const seconds = Number( process.env.INTERIOR_PROFILE_SECONDS || 5 );
 const repeats = Number( process.env.INTERIOR_PROFILE_REPEATS || 3 );
-const supported = [ 'baseline', 'baseline-repeat', 'ssr-full', 'ssr-half', 'ssr-quarter', 'ssr-filter-4', 'ssr-quality-half', 'ssr-half-quality-half', 'ssr-no-denoise', 'ssgi-no-denoise', 'no-ssr', 'no-ssgi', 'no-ao', 'no-screen-effects', 'half-pixels', 'prepass-unlit', 'merge-static' ];
+const supported = [ 'baseline', 'baseline-repeat', 'ssr-full', 'ssr-half', 'ssr-quarter', 'ssr-filter-4', 'no-batching', 'ssr-quality-half', 'ssr-half-quality-half', 'ssr-no-denoise', 'ssgi-no-denoise', 'no-ssr', 'no-ssgi', 'no-ao', 'no-screen-effects', 'half-pixels', 'prepass-unlit', 'merge-static' ];
 if ( variants.some( variant => ! supported.includes( variant ) ) || ! Number.isFinite( pixelRatio ) || pixelRatio <= 0 || ! Number.isFinite( seconds ) || seconds < 5 || ! Number.isInteger( repeats ) || repeats < 1 ) throw new Error( 'Use supported variants, at least five seconds and a positive repeat count' );
 const source = ( await readFile( 'examples/webgpu_interior.html', 'utf8' ) ).replace( 'cache: diffuse', process.env.INTERIOR_PROFILE_SOURCE_CACHE === '0' ? 'cache: false' : 'cache: diffuse' );
 await mkdir( directory, { recursive: true } );
@@ -65,7 +65,7 @@ try {
 		page.on( 'console', message => { if ( message.type() === 'error' ) { errors.push( message.text() ); console.error( message.text().slice( 0, 1000 ) ); } } );
 		const html = source.replace( "model: 'Dual Rooms'", `model: ${ JSON.stringify( model ) }` )
 			.replace( 'renderer.setPixelRatio( window.devicePixelRatio );', `renderer.setPixelRatio( ${ pixelRatio } );` )
-			.replace( 'renderer.setAnimationLoop( animate );', 'window.__profile = { renderer, camera, scene, model, controls, params, ssrParams, ssgiParams, prePass, scenePass, traaPass, renderPipeline, animate, updateRenderSize, resetScreenSpaceLighting, updateAO, updateOutput, updateSSRParameters, updateSSGIParameters, updateIndirectLighting }; renderer.setAnimationLoop( animate );' );
+			.replace( 'renderer.setAnimationLoop( animate );', 'window.__profile = { renderer, camera, scene, get model() { return model; }, controls, params, ssrParams, ssgiParams, prePass, scenePass, uvPass, traaPass, renderPipeline, capture, loadModel, updateBatching, animate, updateRenderSize, resetScreenSpaceLighting, updateAO, updateOutput, updateSSRParameters, updateSSGIParameters, updateIndirectLighting }; renderer.setAnimationLoop( animate );' );
 		await page.setRequestInterception( true );
 		page.on( 'request', request => request.url().endsWith( '/favicon.ico' ) ? request.respond( { status: 204 } ) : request.url().split( '?' )[ 0 ].endsWith( '/examples/webgpu_interior.html' ) ? request.respond( { status: 200, contentType: 'text/html', body: html } ) : request.continue() );
 		console.log( 'Loading and baking', model );
@@ -116,6 +116,8 @@ try {
 				Object.assign( s.params, window.__defaults.params ); Object.assign( s.ssrParams, window.__defaults.ssr ); Object.assign( s.ssgiParams, window.__defaults.ssgi );
 				if ( s.merged ) s.merged.visible = false;
 				s.model.visible = true;
+				if ( variant === 'no-batching' || variant === 'merge-static' ) s.params.batching = false;
+				s.updateBatching();
 				if ( variant === 'merge-static' ) {
 
 					if ( ! s.merged ) {
@@ -264,6 +266,9 @@ try {
 					s.ssrParams.resolutionScale = resolutionScale; s.updateSSRParameters();
 					for ( let i = 0; i < 32; i ++ ) { s.camera.position.x += 0.0005; s.controls.target.x += 0.0005; window.__step(); await window.__drain(); }
 					for ( let i = 0; i < 32; i ++ ) { window.__step(); await window.__drain(); }
+					const reconstructed = s.traaPass._resolveRenderTarget;
+					const pixels = await s.renderer.readRenderTargetPixelsAsync( reconstructed, 0, 0, reconstructed.width, reconstructed.height );
+					if ( ! pixels.every( value => Number.isFinite( DataUtils.fromHalfFloat( value ) ) ) ) throw new Error( 'Non-finite output after camera motion' );
 
 				}
 				s.camera.position.copy( position ); s.controls.target.copy( target ); s.ssrParams.resolutionScale = window.__defaults.ssr.resolutionScale; s.updateSSRParameters();
@@ -274,6 +279,45 @@ try {
 			await writeFile( `${ directory }/results.json`, JSON.stringify( results, null, 2 ) );
 			console.log( 'Validated scale changes, resize and camera motion', model );
 			if ( errors.length ) throw new Error( 'Validation reported browser or GPU errors' );
+
+		}
+		if ( process.env.INTERIOR_PROFILE_VALIDATE_BATCHING === '1' && model === 'Dungeon Warkarma' ) {
+
+			entry.batchingValidation = await page.evaluate( async () => {
+
+				const s = window.__profile;
+				const { DataUtils } = await import( '/src/Three.WebGPU.js' );
+				const readUV = async enabled => {
+
+					s.params.batching = enabled; s.updateBatching(); s.params.output = 'UV Unwrap'; s.updateOutput();
+					window.__step(); await window.__drain();
+					const target = s.uvPass.renderTarget;
+					return Array.from( await s.renderer.readRenderTargetPixelsAsync( target, 0, 0, target.width, target.height ), DataUtils.fromHalfFloat );
+
+				};
+				const original = await readUV( false ), batched = await readUV( true );
+				let changed = 0;
+				for ( let i = 0; i < original.length; i += 4 ) if ( [ 0, 1, 2 ].some( channel => Math.abs( original[ i + channel ] - batched[ i + channel ] ) > 0.005 ) ) changed ++;
+				const changedFraction = changed / ( original.length / 4 );
+				if ( changedFraction > 0.005 ) throw new Error( `Batching changed UV coverage: ${ changedFraction }` );
+				const group = s.scene.getObjectByName( 'Interior Render Batches' );
+				if ( ! group || ! group.children.length ) throw new Error( 'No render batches were created' );
+				let batches = 0; group.traverse( object => { if ( object.isMesh ) batches ++; } );
+				s.params.output = 'Beauty'; s.updateOutput(); s.capture();
+				if ( s.scene.getObjectByName( 'Interior Render Batches' ) ) throw new Error( 'Batches survived rebake start' );
+				let meshes = 0; s.model.traverseVisible( object => { if ( object.isMesh ) meshes ++; } );
+				if ( meshes !== 798 ) throw new Error( 'Original dungeon meshes were not restored' );
+				for ( let i = 0; i < 64 && ! document.getElementById( 'status' ).textContent.includes( 'complete' ); i ++ ) { window.__step(); await window.__drain(); }
+				if ( ! document.getElementById( 'status' ).textContent.includes( 'complete' ) || ! s.scene.getObjectByName( 'Interior Render Batches' ) ) throw new Error( 'Rebake did not recreate batches' );
+				s.params.model = 'Space Ship Hallway'; await s.loadModel();
+				if ( s.scene.getObjectByName( 'Interior Render Batches' ) ) throw new Error( 'Batches survived model change' );
+				window.__step(); await window.__drain();
+				return { changedUVPixelFraction: changedFraction, batches, originalMeshesRestored: meshes, rebake: true, modelSwitch: true };
+
+			} );
+			await writeFile( `${ directory }/results.json`, JSON.stringify( results, null, 2 ) );
+			console.log( 'Batching UV, toggle, rebake and model-switch validation', entry.batchingValidation );
+			if ( errors.length ) throw new Error( 'Batching validation reported browser or GPU errors' );
 
 		}
 		await page.close();

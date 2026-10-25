@@ -49,6 +49,7 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
+			import { batchStaticMeshes } from 'three/addons/utils/batchStaticMeshes.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { ReflectionProbe, ReflectionProbes } from 'three/addons/lighting/ReflectionProbes.js';
 			import { reflectionProbesDiffuse, reflectionProbesSpecular } from 'three/addons/tsl/lighting/ReflectionProbesNode.js';
@@ -146,6 +147,7 @@
 			const params = {
 				output: 'Beauty',
 				renderScale: 1,
+				batching: true,
 				model: 'Dual Rooms',
 				environmentSource: 'Pedestrian Overpass (1K HDR)',
 				directLights: true,
@@ -255,6 +257,8 @@
 			let lightMapper, atlas;
 			let uvPass, uvTexture;
 			let meshes = [];
+			let renderBatches = null;
+			let modelAnimations = [];
 			let bakingLightMap = false;
 			let bakePhase = 'diffuse';
 			let bakeIteration = 0;
@@ -396,6 +400,7 @@
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
 				settings.add( params, 'renderScale', 0.5, 1, 0.1 ).name( 'Render Scale' ).info( 'Scales the native device pixel ratio. Lower values reduce rendering work while keeping the interface at native resolution.' ).onChange( updateRenderSize );
+				settings.add( params, 'batching' ).name( 'Batch Static Meshes' ).info( 'Groups compatible static geometry by material and spatial cell after baking. Animated and unsupported meshes remain separate; original meshes are restored for rebaking.' ).onChange( updateBatching );
 				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSGI Raw', 'SSGI Filtered', 'SSGI Coverage', 'SSGI Filtered Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).info( 'SSR Raw and Filtered show incoming radiance times coverage, before material BRDF weighting.' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'environmentSource', Object.keys( environments ) ).name( 'Environment Source' ).listen().onChange( updateEnvironment );
@@ -549,7 +554,12 @@
 			function animate() {
 
 				controls.update();
-				if ( bakingLightMap ) advanceBake();
+				if ( bakingLightMap ) {
+
+					advanceBake();
+					if ( ! bakingLightMap ) updateBatching();
+
+				}
 
 				const size = renderer.getDrawingBufferSize( drawingSize );
 				if ( lightingHistory.width !== size.x || lightingHistory.height !== size.y ) {
@@ -1029,6 +1039,7 @@
 
 				}
 
+				disposeRenderBatches();
 				lightMapper?.dispose();
 				lightMapper = null;
 				atlas = null;
@@ -1043,6 +1054,7 @@
 				}
 
 				model = gltf.scene;
+				modelAnimations = gltf.animations;
 				// Match the dungeon presentation in webgpu_postprocessing_ssr_denoise.
 				if ( name === 'Dungeon Warkarma' ) model.scale.multiplyScalar( 0.1 );
 				expandInstances( model );
@@ -1206,6 +1218,28 @@
 
 				capture();
 				currentModel = name;
+
+			}
+
+			function disposeRenderBatches() {
+
+				renderBatches?.dispose();
+				renderBatches = null;
+
+			}
+
+			function updateBatching() {
+
+				disposeRenderBatches();
+				if ( params.batching && ! bakingLightMap ) {
+
+					renderBatches = batchStaticMeshes( model, { animations: modelAnimations } );
+					renderBatches.group.name = 'Interior Render Batches';
+
+				}
+
+				resetScreenSpaceLighting();
+				traaPass?.setSize( 1, 1 );
 
 			}
 
@@ -1444,6 +1478,7 @@
 
 				if ( ! model || ! lightProbes || ! probes ) return;
 
+				disposeRenderBatches();
 				prepareAtlas();
 				// A fresh bake must not inherit lighting from a previous scene or environment.
 				probes.dispose();

@@ -273,6 +273,7 @@ export * from './shaders/WaterRefractionShader.js';
 export * from './textures/FlakesTexture.js';
 
 export * as BufferGeometryUtils from './utils/BufferGeometryUtils.js';
+export * from './utils/batchStaticMeshes.js';
 export * as CameraUtils from './utils/CameraUtils.js';
 export * as ColorUtils from './utils/ColorUtils.js';
 export * as GeometryCompressionUtils from './utils/GeometryCompressionUtils.js';

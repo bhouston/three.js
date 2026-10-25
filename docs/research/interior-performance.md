@@ -2,7 +2,7 @@
 
 The Space Ship Hallway and Dungeon Warkarma views are primarily limited by GPU pixel work on Apple M3. Half-resolution SSR improves sustained throughput by about 21–24%, while lowering the overall render resolution has a much larger effect. Dungeon batching substantially reduces CPU work but improves the complete scene by only about 4% in the tested view.
 
-Measurements were taken on October 24, 2026, against checkout `b0875904ca91`. The benchmark substitutes the example HTML in a dedicated browser; production rendering code and example defaults are unchanged.
+Measurements were taken on October 24, 2026, against checkout `b0875904ca91`. This initial study substituted the example HTML in a dedicated browser without changing production defaults. Subsequent changes and their validation are recorded in the [implementation results](interior-performance-implementation.md).
 
 ## Measurement method and cameras
 

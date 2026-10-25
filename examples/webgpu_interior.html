@@ -1078,6 +1078,19 @@
 
 						object.castShadow = true;
 						object.receiveShadow = true;
+						if ( name === 'Steampunk Camera' ) {
+
+							// The asset omits alphaMode for its textured glass. Match the SSR example.
+							const materials = Array.isArray( object.material ) ? object.material : [ object.material ];
+							for ( const material of materials ) {
+
+								if ( material.name === 'Lense_Casing' ) material.transparent = true;
+								material.side = THREE.FrontSide;
+
+							}
+
+						}
+
 						if ( name === 'Dungeon Warkarma' ) {
 
 							const materials = Array.isArray( object.material ) ? object.material : [ object.material ];

@@ -1,0 +1,104 @@
+{
+  "stage": "pr39",
+  "units": [
+    {
+      "filter": "SSGINode",
+      "stats": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 15
+      },
+      "failures": []
+    },
+    {
+      "filter": "CoverageDenoiseNode",
+      "stats": {
+        "passed": 28,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 28
+      },
+      "failures": []
+    },
+    {
+      "filter": "TemporalPipeline",
+      "stats": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 2
+      },
+      "failures": []
+    }
+  ],
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": "",
+    "fallback": false,
+    "webgl": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)"
+  },
+  "taau": {
+    "samples": [
+      {
+        "size": 64,
+        "finite": true,
+        "nonzeroLocks": 4096,
+        "resolveMatchesHistory": true
+      },
+      {
+        "size": 80,
+        "finite": true,
+        "nonzeroLocks": 6400,
+        "resolveMatchesHistory": true
+      }
+    ],
+    "black": {
+      "finite": true,
+      "maxColor": 0,
+      "maxLock": 0
+    },
+    "motion": [
+      {
+        "frame": 0,
+        "passes": [
+          0,
+          0
+        ]
+      },
+      {
+        "frame": 1,
+        "passes": [
+          0.0999755859375,
+          0
+        ]
+      },
+      {
+        "frame": 2,
+        "passes": [
+          0.0999755859375,
+          0
+        ]
+      }
+    ]
+  },
+  "hallway": {
+    "model": "Space Ship Hallway",
+    "status": "Interleaved: reflection 8 / 8 — complete",
+    "stationary": {
+      "finite": true,
+      "nonzero": 359220
+    },
+    "afterMotion": {
+      "finite": true,
+      "nonzero": 359463
+    },
+    "traaOwnsJitter": true
+  },
+  "errors": []
+}

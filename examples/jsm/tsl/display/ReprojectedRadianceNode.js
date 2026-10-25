@@ -1,5 +1,29 @@
-import { WebGPUCoordinateSystem } from 'three/webgpu';
-import { Fn, float, getViewPosition, isBackgroundDepth, sample, textureSize, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { FloatType, NearestFilter, RTTNode, WebGPUCoordinateSystem } from 'three/webgpu';
+import { Fn, If, float, getViewPosition, isBackgroundDepth, nodeObject, sample, textureSize, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
+
+// Cache on the guide's texel grid, independent of the output viewport. The
+// source is constant within each depth texel, so nearest sampling preserves
+// both validated radiance and its coverage without interpolating surfaces.
+class ReprojectedRadianceCacheNode extends RTTNode {
+
+	constructor( source, depth ) {
+
+		super( source.sample( uv() ), 1, 1, { type: FloatType, minFilter: NearestFilter, magFilter: NearestFilter, depthBuffer: false } );
+		this.depthNode = depth;
+		this.name = 'Reprojected Radiance Cache';
+
+	}
+
+	updateBefore( frame ) {
+
+		if ( this.depthNode.isPassTextureNode ) frame.updateBeforeNode( this.depthNode.passNode );
+		const { width, height } = this.depthNode.value.image;
+		if ( this.renderTarget.width !== width || this.renderTarget.height !== height ) this.setSize( width, height );
+		super.updateBefore( frame );
+
+	}
+
+}
 
 /**
  * Reprojects radiance from static scene geometry into the previous camera.
@@ -24,12 +48,14 @@ import { Fn, float, getViewPosition, isBackgroundDepth, sample, textureSize, uni
  * @param {Node<float>} [options.tolerancePixels] - Surface uncertainty in previous pixels. Default 1.5.
  * @param {Node<float>} [options.toleranceWorld] - Minimum uncertainty in world units. Default 0.001.
  * @param {boolean} [options.analyticPixelFootprint] - Use diagonal projection scaling for standard perspective/orthographic cameras. Disable for custom projection matrices.
+ * @param {boolean} [options.cache=false] - Evaluate once per depth texel per frame into a nearest-sampled float texture. Useful when many rays reuse the same source texels.
  * @return {Node<vec4>} Linear radiance and accepted history support.
  */
 export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, camera, {
 	previousView, previousProjection, previousProjectionInverse, valid,
 	tolerancePixels = uniform( 1.5 ), toleranceWorld = uniform( 0.001 ),
-	analyticPixelFootprint = camera.isPerspectiveCamera === true || camera.isOrthographicCamera === true
+	analyticPixelFootprint = camera.isPerspectiveCamera === true || camera.isOrthographicCamera === true,
+	cache = false
 } ) => {
 
 	const projectionInverse = uniform( camera.projectionMatrixInverse );
@@ -37,7 +63,7 @@ export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, came
 	const inBounds = coordinate => coordinate.x.greaterThanEqual( 0 ).and( coordinate.x.lessThanEqual( 1 ) )
 		.and( coordinate.y.greaterThanEqual( 0 ) ).and( coordinate.y.lessThanEqual( 1 ) );
 
-	return sample( coordinate => Fn( ( _, builder ) => {
+	const source = sample( coordinate => Fn( ( _, builder ) => {
 
 		const currentResolution = vec2( textureSize( depth ) );
 		const guideUV = coordinate.mul( currentResolution ).floor().add( 0.5 ).div( currentResolution ).toConst();
@@ -102,5 +128,21 @@ export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, came
 		return vec4( color.div( support.max( 1e-6 ) ), support.clamp() );
 
 	} )() );
+
+	if ( cache === false ) return source;
+
+	const cached = nodeObject( new ReprojectedRadianceCacheNode( source, depth ) );
+	const result = sample( coordinate => Fn( () => {
+
+		const value = vec4().toVar();
+		// Outside the current raster grid, retain the original reconstruction
+		// instead of clamping to a potentially valid edge cache texel.
+		const inside = coordinate.greaterThanEqual( vec2( 0 ) ).all().and( coordinate.lessThan( vec2( 1 ) ).all() );
+		If( inside, () => value.assign( cached.sample( coordinate ) ) ).Else( () => value.assign( source.sample( coordinate ) ) );
+		return value;
+
+	} )() );
+	result.addEventListener( 'dispose', () => cached.dispose() );
+	return result;
 
 };

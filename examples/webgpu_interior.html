@@ -590,7 +590,7 @@
 				const radiance = texture( diffuse && ssgiParams.source === 'Diffuse + emission' ? diffuseHistory.texture : lightingHistory.texture );
 				if ( diffuse ) ssgiSourceTexture = radiance;
 				return reprojectedRadiance( radiance, texture( lightingHistory.depthTexture ), depth, normal, camera, {
-					previousView, previousProjection, previousProjectionInverse, valid: historyValid, tolerancePixels, toleranceWorld
+					previousView, previousProjection, previousProjectionInverse, valid: historyValid, tolerancePixels, toleranceWorld, cache: diffuse
 				} );
 
 			}

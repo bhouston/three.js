@@ -1,0 +1,71 @@
+{
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "seconds": 5,
+  "repeats": 3,
+  "pixelRatio": 1,
+  "bakeAtlas": 4096,
+  "batchFrames": 4,
+  "warmupMs": 2500,
+  "inspectorDuringThroughput": false,
+  "scenes": [],
+  "browser": "Chrome/155.0.8059.85",
+  "hardware": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "isFallbackAdapter": false
+  },
+  "units": [
+    {
+      "filter": "ReprojectedRadianceNode",
+      "stats": {
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 6
+      },
+      "failures": [],
+      "skipped": false
+    },
+    {
+      "filter": "SSGINode",
+      "stats": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 15
+      },
+      "failures": [],
+      "skipped": false
+    },
+    {
+      "filter": "CoverageDenoiseNode",
+      "stats": {
+        "passed": 27,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 27
+      },
+      "failures": [],
+      "skipped": false
+    },
+    {
+      "filter": "TemporalPipeline",
+      "stats": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "total": 2
+      },
+      "failures": [],
+      "skipped": false
+    }
+  ]
+}

@@ -16,7 +16,7 @@ const seconds = Number( process.env.INTERIOR_PROFILE_SECONDS || 5 );
 const repeats = Number( process.env.INTERIOR_PROFILE_REPEATS || 3 );
 const supported = [ 'baseline', 'baseline-repeat', 'ssr-full', 'ssr-half', 'ssr-quarter', 'ssr-filter-4', 'ssr-quality-half', 'ssr-half-quality-half', 'ssr-no-denoise', 'ssgi-no-denoise', 'no-ssr', 'no-ssgi', 'no-ao', 'no-screen-effects', 'half-pixels', 'prepass-unlit', 'merge-static' ];
 if ( variants.some( variant => ! supported.includes( variant ) ) || ! Number.isFinite( pixelRatio ) || pixelRatio <= 0 || ! Number.isFinite( seconds ) || seconds < 5 || ! Number.isInteger( repeats ) || repeats < 1 ) throw new Error( 'Use supported variants, at least five seconds and a positive repeat count' );
-const source = await readFile( 'examples/webgpu_interior.html', 'utf8' );
+const source = ( await readFile( 'examples/webgpu_interior.html', 'utf8' ) ).replace( 'cache: diffuse', process.env.INTERIOR_PROFILE_SOURCE_CACHE === '0' ? 'cache: false' : 'cache: diffuse' );
 await mkdir( directory, { recursive: true } );
 const results = { viewport: { width: 1280, height: 720, deviceScaleFactor: pixelRatio }, seconds, repeats, pixelRatio, bakeAtlas: 4096, batchFrames: 4, warmupMs: 2500, inspectorDuringThroughput: false, scenes: [] };
 const server = createServer();

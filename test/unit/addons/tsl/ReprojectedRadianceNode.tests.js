@@ -1,5 +1,5 @@
 import { DataTexture, DataUtils, FloatType, HalfFloatType, LinearFilter, NodeMaterial, PerspectiveCamera, QuadMesh, RenderTarget, RendererUtils } from 'three/webgpu';
-import { context, texture, uniform, uv } from 'three/tsl';
+import { context, texture, uniform, uv, vec2 } from 'three/tsl';
 import { reprojectedRadiance } from '../../../../examples/jsm/tsl/display/ReprojectedRadianceNode.js';
 import { getSharedRenderer } from '../../src/nodes/tsl/gpu-test-utils.js';
 
@@ -55,11 +55,16 @@ async function fixture( assert, run ) {
 		valid: uniform( true ), tolerancePixels: uniform( 0.25 ), toleranceWorld: uniform( 0 )
 	};
 	const source = reprojectedRadiance( texture( color ), texture( historyDepth ), texture( depth ), texture( normal ), camera, options );
+	const cached = reprojectedRadiance( texture( color ), texture( historyDepth ), texture( depth ), texture( normal ), camera, { ...options, cache: true } );
 	const material = new NodeMaterial();
 	material.fragmentNode = source.sample( uv() );
 	const target = new RenderTarget( size, size, { type: FloatType, depthBuffer: false } );
 	const quad = new QuadMesh( material );
-	const render = async () => {
+	const render = async ( useCache = false, coordinate = uv() ) => {
+
+		await new Promise( resolve => requestAnimationFrame( resolve ) );
+		material.fragmentNode = ( useCache ? cached : source ).sample( coordinate );
+		material.needsUpdate = true;
 
 		renderer.setRenderTarget( target );
 		quad.render( renderer );
@@ -70,10 +75,12 @@ async function fixture( assert, run ) {
 	try {
 
 		renderer.contextNode = context();
-		await run( { color, depth, historyDepth, normal, options, render } );
+		await run( { color, depth, historyDepth, normal, camera, options, render } );
 
 	} finally {
 
+		source.dispose();
+		cached.dispose();
 		material.dispose();
 		target.dispose();
 		for ( const value of textures ) value.dispose();
@@ -89,6 +96,60 @@ export default QUnit.module( 'Addons', () => {
 	QUnit.module( 'TSL', () => {
 
 		QUnit.module( 'ReprojectedRadianceNode', () => {
+
+			QUnit.test( 'cache follows resized guides rather than the output viewport', async assert => {
+
+				await fixture( assert, async ( { color, depth, historyDepth, normal, render } ) => {
+
+					await render( true );
+					for ( const value of [ color, depth, historyDepth, normal ] ) {
+
+						const data = new value.image.data.constructor( 8 * 16 * 4 );
+						for ( let y = 0; y < 16; y ++ ) {
+
+							for ( let x = 0; x < 8; x ++ ) data.set( value.image.data.subarray( ( x * 2 + 16 * y ) * 4, ( x * 2 + 16 * y ) * 4 + 4 ), ( x + 8 * y ) * 4 );
+
+						}
+
+						value.dispose();
+						value.image = { width: 8, height: 16, data };
+						value.needsUpdate = true;
+
+					}
+
+					for ( const coordinate of [ vec2( 0.49, 0.5 ), vec2( 0.51, 0.5 ) ] ) {
+
+						const direct = await render( false, coordinate ), cached = await render( true, coordinate );
+						assert.ok( cached.every( ( value, i ) => Number.isFinite( value ) && Math.abs( value - direct[ i ] ) < 0.00001 ), 'Resized depth texels retain the direct radiance and coverage' );
+
+					}
+
+				} );
+
+			} );
+
+			QUnit.test( 'cached radiance matches direct sampling across rejection, motion and invalidation', async assert => {
+
+				await fixture( assert, async ( { options, render, camera } ) => {
+
+					for ( const shift of [ 0, 0.02, - 0.03 ] ) {
+
+						camera.position.x = shift; camera.updateMatrixWorld();
+						for ( const coordinate of [ vec2( 0.49, 0.5 ), vec2( 0.51, 0.5 ), vec2( - 0.01, 0.5 ), vec2( 1, 0.5 ) ] ) {
+
+							const direct = await render( false, coordinate ), cached = await render( true, coordinate );
+							assert.ok( cached.every( ( value, i ) => Number.isFinite( value ) && Math.abs( value - direct[ i ] ) < 0.00001 ), `Cache retains validated HDR and coverage at camera shift ${ shift }` );
+
+						}
+
+					}
+
+					options.valid.value = false;
+					assert.deepEqual( await render( true ), [ 0, 0, 0, 0 ], 'A new frame invalidates previously cached lighting' );
+
+				} );
+
+			} );
 
 			QUnit.test( 'historical depth rejection precedes bilinear radiance interpolation', async assert => {
 

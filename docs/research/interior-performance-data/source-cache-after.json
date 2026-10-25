@@ -1,0 +1,633 @@
+{
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1
+  },
+  "seconds": 5,
+  "repeats": 2,
+  "pixelRatio": 1,
+  "bakeAtlas": 4096,
+  "batchFrames": 4,
+  "warmupMs": 2500,
+  "inspectorDuringThroughput": false,
+  "scenes": [
+    {
+      "model": "Space Ship Hallway",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false,
+        "webglRenderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)",
+        "timestampQuery": true,
+        "device": {},
+        "deviceLabel": ""
+      },
+      "meshes": 8,
+      "triangles": 53400,
+      "materials": 8,
+      "lights": 1,
+      "camera": [
+        20.115792274475098,
+        -0.6296777248382555,
+        1.2461872100830078
+      ],
+      "target": [
+        20.115792274475098,
+        -0.629677724838257,
+        -23.24618911743164
+      ],
+      "fov": 60,
+      "near": 0.05,
+      "far": 100,
+      "loadedModel": "Space Ship Hallway",
+      "bakeStatus": "Interleaved: reflection 16 / 16 — complete",
+      "variants": [
+        {
+          "variant": "baseline",
+          "measurements": [
+            {
+              "completed": 552,
+              "elapsedMs": 5032.5,
+              "fps": 109.68703427719821,
+              "drawCallsPerFrame": 29
+            },
+            {
+              "completed": 552,
+              "elapsedMs": 5032,
+              "fps": 109.69793322734499,
+              "drawCallsPerFrame": 29
+            }
+          ],
+          "passes": [
+            {
+              "id": "r:1:9",
+              "name": "Render Pipeline",
+              "parent": null,
+              "cpuMs": 1.4625000022351742,
+              "gpuMs": 5.518677333333333,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:2:10",
+              "name": "Pre-Pass",
+              "parent": "r:1:9",
+              "cpuMs": 0.2749999991307656,
+              "gpuMs": 0.3713706666666667,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:3:21",
+              "name": "Scene",
+              "parent": "r:1:9",
+              "cpuMs": 1,
+              "gpuMs": 5.226496,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:4:13",
+              "name": "AO",
+              "parent": "r:3:21",
+              "cpuMs": 0.05416666716337204,
+              "gpuMs": 0.770048,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:5:14",
+              "name": "TemporalReproject",
+              "parent": "r:3:21",
+              "cpuMs": 0.19166666641831398,
+              "gpuMs": 2.6842453333333336,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:6:15",
+              "name": "RTT",
+              "parent": "r:5:14",
+              "cpuMs": 0.12499999937911828,
+              "gpuMs": 1.8486613333333333,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:7:16",
+              "name": "SSR [ Reflections ]",
+              "parent": "r:6:15",
+              "cpuMs": 0.06250000062088172,
+              "gpuMs": 1.753088,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:8:14",
+              "name": "RecurrentDenoise",
+              "parent": "r:3:21",
+              "cpuMs": 0.06666666455566883,
+              "gpuMs": 4.000426666666667,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:9:14",
+              "name": "Coverage Denoise [ Spatial ]",
+              "parent": "r:3:21",
+              "cpuMs": 0.1583333338300387,
+              "gpuMs": 6.373376,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:10:17",
+              "name": "SSGI",
+              "parent": "r:9:14",
+              "cpuMs": 0.11249999950329463,
+              "gpuMs": 6.034773333333334,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:11:18",
+              "name": "Reprojected Radiance Cache [ RTT ]",
+              "parent": "r:10:17",
+              "cpuMs": 0.049999999503294625,
+              "gpuMs": 4.166997333333332,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:12:19",
+              "name": "Coverage Denoise [ Temporal ]",
+              "parent": "r:3:21",
+              "cpuMs": 0.07500000049670537,
+              "gpuMs": 6.802090666666667,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:13:20",
+              "name": "TRAA",
+              "parent": "r:1:9",
+              "cpuMs": 0.054166667784253754,
+              "gpuMs": 5.363029333333333,
+              "gpuSamples": 24
+            }
+          ]
+        },
+        {
+          "variant": "baseline-repeat",
+          "measurements": [
+            {
+              "completed": 552,
+              "elapsedMs": 5023.20000000298,
+              "fps": 109.8901098900447,
+              "drawCallsPerFrame": 29
+            },
+            {
+              "completed": 548,
+              "elapsedMs": 5011.5,
+              "fps": 109.34849845355681,
+              "drawCallsPerFrame": 29
+            }
+          ],
+          "passes": [
+            {
+              "id": "r:1:9",
+              "name": "Render Pipeline",
+              "parent": null,
+              "cpuMs": 1.1249999993791182,
+              "gpuMs": 5.548714666666666,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:2:10",
+              "name": "Pre-Pass",
+              "parent": "r:1:9",
+              "cpuMs": 0.23750000012417635,
+              "gpuMs": 0.3577173333333333,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:3:21",
+              "name": "Scene",
+              "parent": "r:1:9",
+              "cpuMs": 0.7375000007450581,
+              "gpuMs": 5.2374186666666676,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:4:13",
+              "name": "AO",
+              "parent": "r:3:21",
+              "cpuMs": 0.045833331843217216,
+              "gpuMs": 0.7536639999999998,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:5:14",
+              "name": "TemporalReproject",
+              "parent": "r:3:21",
+              "cpuMs": 0.12916666766007742,
+              "gpuMs": 2.7115520000000006,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:6:15",
+              "name": "RTT",
+              "parent": "r:5:14",
+              "cpuMs": 0.07916666753590107,
+              "gpuMs": 1.8950826666666665,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:7:16",
+              "name": "SSR [ Reflections ]",
+              "parent": "r:6:15",
+              "cpuMs": 0.045833333084980644,
+              "gpuMs": 1.780394666666667,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:8:14",
+              "name": "RecurrentDenoise",
+              "parent": "r:3:21",
+              "cpuMs": 0.045833333084980644,
+              "gpuMs": 4.060501333333334,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:9:14",
+              "name": "Coverage Denoise [ Spatial ]",
+              "parent": "r:3:21",
+              "cpuMs": 0.1333333340783914,
+              "gpuMs": 6.378837333333334,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:10:17",
+              "name": "SSGI",
+              "parent": "r:9:14",
+              "cpuMs": 0.08749999975164731,
+              "gpuMs": 6.111232,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:11:18",
+              "name": "Reprojected Radiance Cache [ RTT ]",
+              "parent": "r:10:17",
+              "cpuMs": 0.024999999130765598,
+              "gpuMs": 4.224341333333333,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:12:19",
+              "name": "Coverage Denoise [ Temporal ]",
+              "parent": "r:3:21",
+              "cpuMs": 0.03333333320915699,
+              "gpuMs": 6.8485119999999995,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:13:20",
+              "name": "TRAA",
+              "parent": "r:1:9",
+              "cpuMs": 0.037500000248352684,
+              "gpuMs": 5.376682666666667,
+              "gpuSamples": 24
+            }
+          ]
+        }
+      ],
+      "errors": [],
+      "validation": {
+        "snapshots": [
+          {
+            "scale": 1,
+            "width": 1280,
+            "height": 720
+          },
+          {
+            "scale": 0.5,
+            "width": 640,
+            "height": 360
+          },
+          {
+            "scale": 0.8,
+            "width": 1024,
+            "height": 576
+          },
+          {
+            "scale": 1,
+            "width": 1280,
+            "height": 720
+          }
+        ],
+        "cameraMotionFrames": 64,
+        "recoveryFrames": 64,
+        "denoiseSamples": 8
+      }
+    },
+    {
+      "model": "Dungeon Warkarma",
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": "",
+        "isFallbackAdapter": false,
+        "webglRenderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)",
+        "timestampQuery": true,
+        "device": {},
+        "deviceLabel": ""
+      },
+      "meshes": 798,
+      "triangles": 72137,
+      "materials": 25,
+      "lights": 1,
+      "camera": [
+        1.259878548682251,
+        0.5391287340899181,
+        -0.27217301481427114
+      ],
+      "target": [
+        1.0258536154689288,
+        0.2746440590977971,
+        -1.0815876858987743
+      ],
+      "fov": 35,
+      "near": 0.1,
+      "far": 8,
+      "loadedModel": "Dungeon Warkarma",
+      "bakeStatus": "Interleaved: reflection 16 / 16 — complete",
+      "variants": [
+        {
+          "variant": "baseline",
+          "measurements": [
+            {
+              "completed": 432,
+              "elapsedMs": 5014.29999999702,
+              "fps": 86.1536007020435,
+              "drawCallsPerFrame": 357
+            },
+            {
+              "completed": 436,
+              "elapsedMs": 5000.29999999702,
+              "fps": 87.19476831395313,
+              "drawCallsPerFrame": 357
+            }
+          ],
+          "passes": [
+            {
+              "id": "r:1:9",
+              "name": "Render Pipeline",
+              "parent": null,
+              "cpuMs": 4.054166665300727,
+              "gpuMs": 6.0730026666666665,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:2:10",
+              "name": "Pre-Pass",
+              "parent": "r:1:9",
+              "cpuMs": 2.0208333333333335,
+              "gpuMs": 0.37410133333333334,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:3:21",
+              "name": "Scene",
+              "parent": "r:1:9",
+              "cpuMs": 1.9333333342025678,
+              "gpuMs": 5.682517333333333,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:4:13",
+              "name": "AO",
+              "parent": "r:3:21",
+              "cpuMs": 0.020833332712451618,
+              "gpuMs": 1.949696,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:5:14",
+              "name": "TemporalReproject",
+              "parent": "r:3:21",
+              "cpuMs": 0.07916666567325592,
+              "gpuMs": 4.074154666666666,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:6:15",
+              "name": "RTT",
+              "parent": "r:5:14",
+              "cpuMs": 0.049999999503294625,
+              "gpuMs": 3.2194559999999997,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:7:16",
+              "name": "SSR [ Reflections ]",
+              "parent": "r:6:15",
+              "cpuMs": 0.037499999006589256,
+              "gpuMs": 3.047424,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:8:14",
+              "name": "RecurrentDenoise",
+              "parent": "r:3:21",
+              "cpuMs": 0.029166667411724728,
+              "gpuMs": 5.234688000000001,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:9:14",
+              "name": "Coverage Denoise [ Spatial ]",
+              "parent": "r:3:21",
+              "cpuMs": 0.062499999379118286,
+              "gpuMs": 8.200192,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:10:17",
+              "name": "SSGI",
+              "parent": "r:9:14",
+              "cpuMs": 0.04583333246409893,
+              "gpuMs": 7.8725119999999995,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:11:18",
+              "name": "Reprojected Radiance Cache [ RTT ]",
+              "parent": "r:10:17",
+              "cpuMs": 0.00416666641831398,
+              "gpuMs": 5.403989333333333,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:12:19",
+              "name": "Coverage Denoise [ Temporal ]",
+              "parent": "r:3:21",
+              "cpuMs": 0.024999999130765598,
+              "gpuMs": 8.566101333333334,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:13:20",
+              "name": "TRAA",
+              "parent": "r:1:9",
+              "cpuMs": 0.016666666294137638,
+              "gpuMs": 5.928277333333333,
+              "gpuSamples": 24
+            }
+          ]
+        },
+        {
+          "variant": "baseline-repeat",
+          "measurements": [
+            {
+              "completed": 436,
+              "elapsedMs": 5024.20000000298,
+              "fps": 86.77998487316216,
+              "drawCallsPerFrame": 357
+            },
+            {
+              "completed": 436,
+              "elapsedMs": 5039.199999988079,
+              "fps": 86.52167010657077,
+              "drawCallsPerFrame": 357
+            }
+          ],
+          "passes": [
+            {
+              "id": "r:1:9",
+              "name": "Render Pipeline",
+              "parent": null,
+              "cpuMs": 4.108333335568507,
+              "gpuMs": 6.092117333333333,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:2:10",
+              "name": "Pre-Pass",
+              "parent": "r:1:9",
+              "cpuMs": 2.0958333344509206,
+              "gpuMs": 0.36590933333333325,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:3:21",
+              "name": "Scene",
+              "parent": "r:1:9",
+              "cpuMs": 1.920833334326744,
+              "gpuMs": 5.682517333333333,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:4:13",
+              "name": "AO",
+              "parent": "r:3:21",
+              "cpuMs": 0.02916666679084301,
+              "gpuMs": 1.9770026666666667,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:5:14",
+              "name": "TemporalReproject",
+              "parent": "r:3:21",
+              "cpuMs": 0.08333333395421505,
+              "gpuMs": 4.063232,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:6:15",
+              "name": "RTT",
+              "parent": "r:5:14",
+              "cpuMs": 0.054166667784253754,
+              "gpuMs": 3.2030719999999993,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:7:16",
+              "name": "SSR [ Reflections ]",
+              "parent": "r:6:15",
+              "cpuMs": 0.03333333507180214,
+              "gpuMs": 3.0501546666666663,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:8:14",
+              "name": "RecurrentDenoise",
+              "parent": "r:3:21",
+              "cpuMs": 0.029166667411724728,
+              "gpuMs": 5.210112,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:9:14",
+              "name": "Coverage Denoise [ Spatial ]",
+              "parent": "r:3:21",
+              "cpuMs": 0.08333333271245162,
+              "gpuMs": 8.235690666666667,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:10:17",
+              "name": "SSGI",
+              "parent": "r:9:14",
+              "cpuMs": 0.058333332960804306,
+              "gpuMs": 7.875242666666666,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:11:18",
+              "name": "Reprojected Radiance Cache [ RTT ]",
+              "parent": "r:10:17",
+              "cpuMs": 0.012500000496705374,
+              "gpuMs": 5.403989333333334,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:12:19",
+              "name": "Coverage Denoise [ Temporal ]",
+              "parent": "r:3:21",
+              "cpuMs": 0.020833333333333332,
+              "gpuMs": 8.533333333333333,
+              "gpuSamples": 24
+            },
+            {
+              "id": "r:13:20",
+              "name": "TRAA",
+              "parent": "r:1:9",
+              "cpuMs": 0.033333333830038704,
+              "gpuMs": 5.922816,
+              "gpuSamples": 24
+            }
+          ]
+        }
+      ],
+      "errors": [],
+      "validation": {
+        "snapshots": [
+          {
+            "scale": 1,
+            "width": 1280,
+            "height": 720
+          },
+          {
+            "scale": 0.5,
+            "width": 640,
+            "height": 360
+          },
+          {
+            "scale": 0.8,
+            "width": 1024,
+            "height": 576
+          },
+          {
+            "scale": 1,
+            "width": 1280,
+            "height": 720
+          }
+        ],
+        "cameraMotionFrames": 64,
+        "recoveryFrames": 64,
+        "denoiseSamples": 8
+      }
+    }
+  ],
+  "browser": "Chrome/155.0.8059.85"
+}

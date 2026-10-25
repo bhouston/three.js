@@ -30,6 +30,7 @@ import './addons/tsl/TemporalPipeline.tests.js';
 import './addons/tsl/ReprojectedRadianceNode.tests.js';
 import './addons/tsl/SSGINode.tests.js';
 import './addons/tsl/SSRNode.tests.js';
+import './addons/tsl/GTAONode.tests.js';
 import './addons/tsl/SSGISettings.tests.js';
 import './addons/tsl/SSGISettingsDOM.tests.js';
 import './addons/tsl/FASTNoise.tests.js';

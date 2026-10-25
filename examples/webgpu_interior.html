@@ -149,7 +149,7 @@
 				output: 'Beauty',
 				renderScale: 0.5,
 				batching: true,
-				model: 'Dual Rooms',
+				model: 'Space Ship Hallway',
 				environmentSource: 'Pedestrian Overpass (1K HDR)',
 				directLights: true,
 				lightProbeDiffuse: false,
@@ -421,7 +421,7 @@
 				indirectDiffuseSettings.add( params, 'environmentDiffuse' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const indirectSpecularSettings = settings.addFolder( 'Indirect Specular' );
 				indirectSpecularSettings.add( ssrParams, 'enabled' ).name( 'SSR' ).onChange( updateIndirectLighting );
-				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).onChange( updateIndirectLighting );
+				indirectSpecularSettings.add( params, 'reflectionSpecular' ).name( 'Reflection Probes' ).listen().onChange( updateIndirectLighting );
 				indirectSpecularSettings.add( params, 'environmentSpecular' ).name( 'Environment Map' ).onChange( updateIndirectLighting );
 				const ssgiSettings = settings.addFolder( 'SSGI Settings' ).close();
 				ssgiSettings.add( ssgiParams, 'viewSpaceAzimuth' ).name( 'View Azimuth' ).onChange( updateSSGIParameters );
@@ -1052,6 +1052,8 @@
 					return;
 
 				}
+
+				params.reflectionSpecular = name !== 'Stripped Emissive Mirror Floor';
 
 				scene.environmentNode = null;
 				renderer.contextNode = context( { ...renderer.contextNode.value } );

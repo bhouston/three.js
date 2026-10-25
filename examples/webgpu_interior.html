@@ -1344,6 +1344,15 @@
 					camera.near = 0.05;
 					camera.far = Math.max( 100, size.length() * 2 );
 
+				} else if ( params.model === 'Dungeon Warkarma' ) {
+
+					// Match the interior view in webgpu_postprocessing_ssr_denoise.
+					camera.position.set( 1.259878548682251, 0.5391287340899181, - 0.27217301481427114 );
+					controls.target.set( 1.0258536154689288, 0.2746440590977971, - 1.0815876858987743 );
+					camera.fov = 35;
+					camera.near = 0.1;
+					camera.far = 8;
+
 				} else if ( source ) {
 
 					source.getWorldPosition( camera.position );

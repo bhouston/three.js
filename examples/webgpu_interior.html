@@ -145,6 +145,7 @@
 
 			const params = {
 				output: 'Beauty',
+				renderScale: 1,
 				model: 'Dual Rooms',
 				environmentSource: 'Pedestrian Overpass (1K HDR)',
 				directLights: true,
@@ -283,7 +284,7 @@
 				// Renderer
 
 				renderer = new THREE.WebGPURenderer();
-				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setPixelRatio( window.devicePixelRatio * params.renderScale );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.shadowMap.enabled = true;
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -393,6 +394,7 @@
 				updateAO();
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
+				settings.add( params, 'renderScale', 0.5, 1, 0.1 ).name( 'Render Scale' ).info( 'Scales the native device pixel ratio. Lower values reduce rendering work while keeping the interface at native resolution.' ).onChange( updateRenderSize );
 				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSGI Raw', 'SSGI Filtered', 'SSGI Coverage', 'SSGI Filtered Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).info( 'SSR Raw and Filtered show incoming radiance times coverage, before material BRDF weighting.' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'environmentSource', Object.keys( environments ) ).name( 'Environment Source' ).listen().onChange( updateEnvironment );
@@ -481,8 +483,7 @@
 
 					camera.aspect = window.innerWidth / window.innerHeight;
 					camera.updateProjectionMatrix();
-					renderer.setSize( window.innerWidth, window.innerHeight );
-					resetScreenSpaceLighting();
+					updateRenderSize();
 
 				} );
 				renderer.setAnimationLoop( animate );
@@ -532,6 +533,14 @@
 				currentEnvironment = name;
 				capture();
 				previous?.dispose();
+
+			}
+
+			function updateRenderSize() {
+
+				renderer.setPixelRatio( window.devicePixelRatio * params.renderScale );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				resetScreenSpaceLighting();
 
 			}
 

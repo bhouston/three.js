@@ -1,4 +1,4 @@
-/* global window, document, navigator, performance */
+/* global window, document, navigator, performance, Event */
 // Hardware-only sustained full-pipeline throughput and separate Inspector diagnostics.
 import puppeteer from 'puppeteer';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -9,6 +9,7 @@ import { createServer } from '../../utils/server.js';
 const directory = process.env.INTERIOR_PROFILE_OUTPUT || '/tmp/three-interior-profile-20261024';
 const models = ( process.env.INTERIOR_PROFILE_MODELS || 'Space Ship Hallway,Dungeon Warkarma' ).split( ',' );
 const variants = ( process.env.INTERIOR_PROFILE_VARIANTS || 'baseline,ssr-half,ssr-quarter,no-ssr,no-ssgi,no-ao,no-screen-effects,half-pixels,baseline-repeat' ).split( ',' );
+const validate = process.env.INTERIOR_PROFILE_VALIDATE === '1';
 const pixelRatio = Number( process.env.INTERIOR_PROFILE_PIXEL_RATIO || 1 );
 const seconds = Number( process.env.INTERIOR_PROFILE_SECONDS || 5 );
 const repeats = Number( process.env.INTERIOR_PROFILE_REPEATS || 3 );
@@ -16,7 +17,7 @@ const supported = [ 'baseline', 'baseline-repeat', 'ssr-half', 'ssr-quarter', 's
 if ( variants.some( variant => ! supported.includes( variant ) ) || ! Number.isFinite( pixelRatio ) || pixelRatio <= 0 || ! Number.isFinite( seconds ) || seconds < 5 || ! Number.isInteger( repeats ) || repeats < 1 ) throw new Error( 'Use supported variants, at least five seconds and a positive repeat count' );
 const source = await readFile( 'examples/webgpu_interior.html', 'utf8' );
 await mkdir( directory, { recursive: true } );
-const results = { viewport: { width: 1280, height: 720, deviceScaleFactor: 1 }, seconds, repeats, pixelRatio, bakeAtlas: 4096, batchFrames: 4, warmupMs: 2500, inspectorDuringThroughput: false, scenes: [] };
+const results = { viewport: { width: 1280, height: 720, deviceScaleFactor: pixelRatio }, seconds, repeats, pixelRatio, bakeAtlas: 4096, batchFrames: 4, warmupMs: 2500, inspectorDuringThroughput: false, scenes: [] };
 const server = createServer();
 let browser;
 try {
@@ -37,7 +38,7 @@ try {
 		page.on( 'console', message => { if ( message.type() === 'error' ) { errors.push( message.text() ); console.error( message.text().slice( 0, 1000 ) ); } } );
 		const html = source.replace( "model: 'Dual Rooms'", `model: ${ JSON.stringify( model ) }` )
 			.replace( 'renderer.setPixelRatio( window.devicePixelRatio );', `renderer.setPixelRatio( ${ pixelRatio } );` )
-			.replace( 'renderer.setAnimationLoop( animate );', 'window.__profile = { renderer, camera, scene, model, controls, params, ssrParams, ssgiParams, prePass, scenePass, traaPass, renderPipeline, animate, updateAO, updateOutput, updateSSRParameters, updateSSGIParameters, updateIndirectLighting }; renderer.setAnimationLoop( animate );' );
+			.replace( 'renderer.setAnimationLoop( animate );', 'window.__profile = { renderer, camera, scene, model, controls, params, ssrParams, ssgiParams, prePass, scenePass, traaPass, renderPipeline, animate, updateRenderSize, resetScreenSpaceLighting, updateAO, updateOutput, updateSSRParameters, updateSSGIParameters, updateIndirectLighting }; renderer.setAnimationLoop( animate );' );
 		await page.setRequestInterception( true );
 		page.on( 'request', request => request.url().endsWith( '/favicon.ico' ) ? request.respond( { status: 204 } ) : request.url().split( '?' )[ 0 ].endsWith( '/examples/webgpu_interior.html' ) ? request.respond( { status: 200, contentType: 'text/html', body: html } ) : request.continue() );
 		console.log( 'Loading and baking', model );
@@ -201,6 +202,47 @@ try {
 			await writeFile( `${ directory }/results.json`, JSON.stringify( results, null, 2 ) );
 			console.log( model, variant, measurements.map( sample => sample.fps.toFixed( 2 ) ), 'fps' );
 			if ( errors.length ) throw new Error( 'Scene reported browser or GPU errors; inspect results.json' );
+
+		}
+		if ( validate ) {
+
+			entry.validation = await page.evaluate( async () => {
+
+				const s = window.__profile;
+				const { DataUtils } = await import( '/src/Three.WebGPU.js' );
+				const snapshots = [];
+				for ( const scale of [ 1, 0.5, 0.8, 1 ] ) {
+
+					s.params.renderScale = scale; s.updateRenderSize();
+					window.dispatchEvent( new Event( 'resize' ) );
+					for ( let i = 0; i < 16; i ++ ) { window.__step(); await window.__drain(); }
+					const width = Math.floor( window.innerWidth * window.devicePixelRatio * scale );
+					const height = Math.floor( window.innerHeight * window.devicePixelRatio * scale );
+					if ( s.renderer.domElement.width !== width || s.renderer.domElement.height !== height ) throw new Error( 'Incorrect render scale' );
+					if ( s.camera.aspect !== window.innerWidth / window.innerHeight ) throw new Error( 'Render scale changed camera aspect' );
+					const target = s.traaPass._resolveRenderTarget;
+					if ( target.width !== width || target.height !== height ) throw new Error( 'Temporal target did not resize' );
+					const pixels = await s.renderer.readRenderTargetPixelsAsync( target, 0, 0, width, height );
+					if ( ! pixels.every( value => Number.isFinite( DataUtils.fromHalfFloat( value ) ) ) ) throw new Error( 'Non-finite reconstructed output' );
+					snapshots.push( { scale, width, height } );
+
+				}
+				// Exercise camera motion and recovery with both native and reduced SSR tracing.
+				const position = s.camera.position.clone(), target = s.controls.target.clone();
+				for ( const resolutionScale of [ 1, 0.5 ] ) {
+
+					s.ssrParams.resolutionScale = resolutionScale; s.updateSSRParameters();
+					for ( let i = 0; i < 32; i ++ ) { s.camera.position.x += 0.0005; s.controls.target.x += 0.0005; window.__step(); await window.__drain(); }
+					for ( let i = 0; i < 32; i ++ ) { window.__step(); await window.__drain(); }
+
+				}
+				s.camera.position.copy( position ); s.controls.target.copy( target ); s.ssrParams.resolutionScale = window.__defaults.ssr.resolutionScale; s.updateSSRParameters();
+				return { snapshots, cameraMotionFrames: 64, recoveryFrames: 64 };
+
+			} );
+			await writeFile( `${ directory }/results.json`, JSON.stringify( results, null, 2 ) );
+			console.log( 'Validated scale changes, resize and camera motion', model );
+			if ( errors.length ) throw new Error( 'Validation reported browser or GPU errors' );
 
 		}
 		await page.close();

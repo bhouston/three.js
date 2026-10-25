@@ -31,6 +31,7 @@
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { hiZ } from 'three/addons/tsl/display/HiZNode.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+			import { screenSpaceGBuffer } from 'three/addons/tsl/display/ScreenSpaceGBufferNode.js';
 			import { resolveSSRHitDistance } from 'three/addons/tsl/utils/SpecularHelpers.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { fastNoise } from 'three/addons/tsl/utils/FASTNoise.js';
@@ -182,7 +183,6 @@
 				denoise: true,
 				denoiseSamples: 8,
 				resolveOrder: 'After filtering (coverage-aware)',
-				resolutionScale: 0.5,
 				quality: 1,
 				maxDistance: 0.5,
 				thickness: 0.01,
@@ -212,7 +212,6 @@
 				source: 'Diffuse + emission',
 				enabled: true,
 				denoise: true,
-				resolutionScale: 0.5,
 				sliceCount: 2,
 				stepCount: 8,
 				radius: 0.25,
@@ -237,6 +236,7 @@
 			let camera, scene, renderer, controls, lightProbes, probes, model;
 			let lightProbeGridResolution;
 			let renderPipeline, scenePass, aoPass, traaPass;
+			let screenSpaceGuides;
 			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
 			let ssrCoverage, ssrProvider, lightingHistory, diffuseHistory;
 			let indirectSpecularRaw, indirectSpecularCoverage, indirectSpecularFiltered, ssrCoverageDenoise;
@@ -356,9 +356,14 @@
 				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );
 				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
+				// Prepare geometry once on the exact pixel grid shared by SSR, SSGI and AO.
+				screenSpaceGuides = screenSpaceGBuffer( prePassDepth, prePass.getTextureNode(), prePass.getTextureNode( 'albedo' ) );
+				const effectDepth = screenSpaceGuides.getTextureNode();
+				const effectNormal = sample( uv => unpackRGBToNormal( screenSpaceGuides.getTextureNode( 'normal' ).sample( uv ) ) );
+
 				scenePass = pass( scene, camera ).toInspector( 'Color' );
-				setupSSR( prePassDepth, prePassNormal, prePassVelocity );
-				setupSSGI( prePassDepth, prePassNormal, prePassVelocity );
+				setupSSR( prePassDepth, prePassNormal, prePassVelocity, effectDepth, effectNormal );
+				setupSSGI( prePassDepth, prePassNormal, prePassVelocity, effectDepth, effectNormal );
 				const onAfterRender = scene.onAfterRender;
 				scene.onAfterRender = function ( render, sourceScene, sourceCamera, ...args ) {
 
@@ -391,17 +396,16 @@
 				uvPass = pass( scene, camera );
 				uvPass.overrideMaterial = uvMaterial;
 				uvPass.contextNode = context( { getAO: null, getSpecularOcclusion: null } );
-				aoPass = ao( prePassDepth, prePassNormal, camera ).toInspector( 'GTAO', ( inspectNode ) => inspectNode.r );
+				aoPass = ao( effectDepth, effectNormal, camera ).toInspector( 'GTAO', ( inspectNode ) => inspectNode.r );
 				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
 				traaPass.useSubpixelCorrection = false;
-				updateAOParameters();
-				updateSSRParameters();
-				updateSSGIParameters();
+				updateScreenSpaceResolution();
 				configureIndirectLighting();
 				updateAO();
 
 				const settings = renderer.inspector.createParameters( 'Interior' );
 				settings.add( params, 'renderScale', 0.5, 1, 0.1 ).name( 'Render Scale' ).info( 'Scales the native device pixel ratio. Lower values reduce rendering work while keeping the interface at native resolution.' ).onChange( updateRenderSize );
+				settings.add( params, 'resolutionScale', { Full: 1, Half: 0.5, Quarter: 0.25 } ).name( 'Screen-space Resolution' ).info( 'Shared SSR, SSGI and GTAO resolution relative to the rendered scene. Half uses one quarter as many pixels.' ).onChange( updateScreenSpaceResolution );
 				settings.add( params, 'batching' ).name( 'Batch Static Meshes' ).info( 'Groups compatible static geometry by material and spatial cell after baking. Animated and unsupported meshes remain separate; original meshes are restored for rebaking.' ).onChange( updateBatching );
 				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSGI Raw', 'SSGI Filtered', 'SSGI Coverage', 'SSGI Filtered Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).info( 'SSR Raw and Filtered show incoming radiance times coverage, before material BRDF weighting.' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
@@ -421,7 +425,10 @@
 				ssgiSettings.add( ssgiParams, 'viewSpaceAzimuth' ).name( 'View Azimuth' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'quality', Object.keys( SSGI_QUALITY_PRESETS ) ).name( 'Quality Preset' ).onChange( value => {
 
-					Object.assign( ssgiParams, SSGI_QUALITY_PRESETS[ value ] );
+					// Effect presets change sampling/filtering budgets; resolution is shared.
+					const sampling = { ...SSGI_QUALITY_PRESETS[ value ] };
+					delete sampling.resolutionScale;
+					Object.assign( ssgiParams, sampling );
 					updateSSGIParameters();
 
 				} );
@@ -434,7 +441,6 @@
 				ssgiSettings.add( ssgiParams, 'source', [ 'Beauty', 'Diffuse + emission' ] ).name( 'Source radiance' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
-				ssgiSettings.add( ssgiParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'sliceCount', 1, 8, 1 ).name( 'Slices' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'stepCount', 2, 32, 1 ).name( 'Steps' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'radius', 0.01, 1, 0.001 ).listen().name( 'Relative Radius' ).info( 'Fraction of authored reference scale or scene diagonal; explicit metadata distances take precedence.' ).onChange( updateSSGIParameters );
@@ -451,7 +457,6 @@
 				ssrSettings.add( ssrParams, 'resolveOrder', [ 'Before filtering', 'After filtering (coverage-aware)' ] ).name( 'Resolve Fallback' ).info( 'Before: filter combined reflections. After: filter SSR radiance and coverage, then resolve probes/environment.' ).onChange( updateIndirectLighting );
 				ssrSettings.add( ssrParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
-				ssrSettings.add( ssrParams, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'traversal', [ 'Linear', 'Conservative Hi-Z', 'Adaptive Hi-Z (experimental)' ] ).name( 'Traversal' ).info( 'Hi-Z costs extra construction; adaptive changes hits and can lose detail.' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'classify' ).name( 'Skip Unused Rays' ).info( 'Skips fully roughness-rejected rays at full tracing resolution.' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'quality', 0.05, 1 ).name( 'Quality' ).onChange( updateSSRParameters );
@@ -482,7 +487,6 @@
 				const occlusion = settings.addFolder( 'Ambient Occlusion' );
 				occlusion.add( params, 'diffuseAOScope', [ 'All indirect', 'Fallback only' ] ).name( 'Diffuse AO scope' ).onChange( updateIndirectLighting );
 				occlusion.add( params, 'aoType', [ 'None', 'GTAO', 'GTAO + GTSO' ] ).name( 'AO type' ).onChange( updateAO );
-				occlusion.add( params, 'resolutionScale', 0.25, 1, 0.25 ).name( 'Resolution' ).onChange( updateAOParameters );
 				occlusion.add( params, 'samples', 4, 32, 1 ).name( 'Samples' ).onChange( updateAOParameters ).debounce( 250 );
 				occlusion.add( params, 'radius', 0.1, 2 ).name( 'Radius' ).onChange( updateAOParameters );
 				occlusion.add( params, 'scale', 0.01, 1 ).name( 'Scale' ).onChange( updateAOParameters );
@@ -630,10 +634,10 @@
 
 			}
 
-			function setupSSGI( depth, normal, motion ) {
+			function setupSSGI( depth, normal, motion, effectDepth, effectNormal ) {
 
 				const source = createHistorySource( depth, normal, ssgiHistoryPixels, ssgiHistoryWorld, true );
-				ssgiPass = ssgi( source, depth, normal, camera, { outputCoverage: true, noiseNode: samplingNoise( ssgiSampling, new THREE.Vector2( 73, 29 ) ).wxy } );
+				ssgiPass = ssgi( sample( uv => source.sample( effectDepth.sample( uv ).gb ) ), effectDepth, effectNormal, camera, { outputCoverage: true, noiseNode: samplingNoise( ssgiSampling, new THREE.Vector2( 73, 29 ) ).wxy } );
 				ssgiPass.useScreenSpaceSampling.value = false;
 				// Diffuse filtering uses surface reprojection, without specular hit distance
 				// or roughness guides. RGB is irradiance before receiver albedo is applied.
@@ -668,7 +672,7 @@
 				ssgiSampling.value = samplingModes.indexOf( ssgiParams.sampling );
 				ssgiPass.useNoiseNode.value = ssgiSampling.value !== 0;
 				ssgiPass.useViewSpaceAzimuth.value = ssgiParams.viewSpaceAzimuth;
-				ssgiPass.resolutionScale = ssgiParams.resolutionScale;
+				ssgiPass.resolutionScale = params.resolutionScale;
 				ssgiPass.sliceCount.value = ssgiParams.sliceCount;
 				ssgiPass.stepCount.value = ssgiParams.stepCount;
 				const resolved = resolveSSGISettings( ssgiParams, sceneScale, ssgiSceneMetadata, ssgiModelScale );
@@ -686,7 +690,7 @@
 
 			}
 
-			function setupSSR( depth, normal, motion ) {
+			function setupSSR( depth, normal, motion, effectDepth, effectNormal ) {
 
 				const ssrProjectionInverse = uniform( camera.projectionMatrixInverse );
 				lightingHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture( 1, 1 ) } );
@@ -700,16 +704,18 @@
 
 				const normalRoughness = prePass.getTextureNode();
 				const albedoMetalness = prePass.getTextureNode( 'albedo' );
-				ssrPass = ssr( source, depth, normal, {
+				const traceNormalRoughness = screenSpaceGuides.getTextureNode( 'normal' );
+				const traceAlbedoMetalness = screenSpaceGuides.getTextureNode( 'material' );
+				ssrPass = ssr( sample( uv => source.sample( effectDepth.sample( uv ).gb ) ), effectDepth, effectNormal, {
 					camera,
 					stochastic: true,
 					noiseNode: samplingNoise( ssrSampling, new THREE.Vector2( 0, 0 ) ),
 					outputCoverage: true,
-					traceMaskNode: normalRoughness.a.lessThan( ssrMaxRoughness ),
-					diffuseNode: albedoMetalness,
-					metalnessNode: albedoMetalness.a,
-					roughnessNode: normalRoughness.a,
-					hiZ: hiZ( depth ),
+					traceMaskNode: traceNormalRoughness.a.lessThan( ssrMaxRoughness ),
+					diffuseNode: traceAlbedoMetalness,
+					metalnessNode: traceAlbedoMetalness.a,
+					roughnessNode: traceNormalRoughness.a,
+					hiZ: hiZ( effectDepth ),
 					binaryRefine: ssrParams.binaryRefine
 				} ).toInspector( 'SSR Trace (BRDF Weighted)' );
 
@@ -857,13 +863,13 @@
 				// At reduced resolution, bilinear upsampling can reuse an apparently
 				// rejected trace texel at a contributing neighbor. Keep those rays until
 				// classification accounts for the complete reconstruction footprint.
-				ssrPass.useTraceMask.value = ssrParams.classify && ssrParams.resolutionScale === 1;
+				ssrPass.useTraceMask.value = ssrParams.classify && params.resolutionScale === 1;
 				ssrPass.hiZEnabled = ssrParams.traversal !== 'Linear';
 				ssrPass.hiZTraversal = ssrParams.traversal.startsWith( 'Adaptive' ) ? 'adaptive' : 'conservative';
-				ssrPass.resolutionScale = ssrParams.resolutionScale;
+				ssrPass.resolutionScale = params.resolutionScale;
 				// Preserve the tracing texel footprint when packing radiance/coverage.
 				// Expanding first makes the denoiser repeatedly sample the same SSR ray.
-				ssrCoverageDenoise.inputNode.setResolutionScale( ssrParams.resolutionScale );
+				ssrCoverageDenoise.inputNode.setResolutionScale( params.resolutionScale );
 				ssrPass.quality.value = ssrParams.quality;
 				ssrPass.maxDistance.value = ssrParams.maxDistance * sceneScale;
 				ssrPass.thickness.value = ssrParams.thickness * sceneScale;
@@ -995,6 +1001,15 @@
 				renderer.toneMapping = [ 'Beauty', 'SSGI Raw', 'SSGI Filtered', 'SSR Raw', 'SSR Filtered', 'Indirect Specular Raw', 'Indirect Specular Filtered' ].includes( params.output ) ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
 				renderPipeline.needsUpdate = true;
 				traaPass.setSize( 1, 1 );
+
+			}
+
+			function updateScreenSpaceResolution() {
+
+				screenSpaceGuides.resolutionScale = params.resolutionScale;
+				updateSSRParameters();
+				updateSSGIParameters();
+				updateAOParameters();
 
 			}
 

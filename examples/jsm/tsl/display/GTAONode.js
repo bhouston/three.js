@@ -1,5 +1,5 @@
 import { Color, DataTexture, HalfFloatType, RenderTarget, RepeatWrapping, Vector2, Vector3, Node, QuadMesh, NodeMaterial, RendererUtils, RGBAFormat } from 'three/webgpu';
-import { reference, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getNormalFromDepth, getViewPosition, getScreenPositionFromClip, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec2, vec3, vec4, int, dot, max, min, pow, abs, If, textureSize, sin, cos, PI, texture, passTexture, mat3, normalize, cross, mix, acos, clamp, interleavedGradientNoise, screenCoordinate, rand, context, isBackgroundDepth, screenUV, reflect, sqrt, exp2, positionViewDirection } from 'three/tsl';
+import { reference, logarithmicDepthToViewZ, viewZToPerspectiveDepth, getNormalFromDepth, getViewPosition, getScreenPositionFromClip, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec2, vec3, vec4, int, dot, max, min, pow, abs, If, textureLoad, ivec2, textureSize, sin, cos, PI, texture, passTexture, mat3, normalize, cross, mix, acos, clamp, interleavedGradientNoise, screenCoordinate, rand, context, isBackgroundDepth, screenUV, reflect, sqrt, exp2, positionViewDirection } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -475,7 +475,12 @@ class GTAONode extends Node {
 
 			// Sidestep the nearest-rounding during depth access for the unjittered center pixel to avoid banding
 
-			const g = this.depthNode.gather().sample( uv );
+			// Integer loads also support unfilterable float guide textures. Match
+			// the gather footprint without requiring a filtering sampler.
+			const size = vec2( textureSize( this.depthNode ) ).toConst();
+			const pixel = uv.mul( size ).sub( 0.5 ).floor().toConst();
+			const load = ( x, y ) => textureLoad( this.depthNode, ivec2( pixel.add( vec2( x, y ) ).clamp( vec2( 0 ), size.sub( 1 ) ) ) ).r;
+			const g = vec4( load( 0, 0 ), load( 1, 0 ), load( 0, 1 ), load( 1, 1 ) );
 			const depth = builder.renderer.reversedDepthBuffer === true ? max( max( g.x, g.y ), max( g.z, g.w ) ) : min( min( g.x, g.y ), min( g.z, g.w ) );
 
 			return linearizeDepth( depth );
@@ -498,7 +503,10 @@ class GTAONode extends Node {
 
 		this._ao = Fn( () => {
 
-			const depth = this._resolutionScale.lessThan( 1 ).select( sampleCenterDepth( uvNode ), sampleDepth( uvNode ) ).toConst();
+			// A prepared guide already matches the AO grid; gathering it again
+			// would select a different surface than the corresponding normal.
+			const matchingGuides = vec2( textureSize( this.depthNode ) ).equal( this._resolution ).all();
+			const depth = matchingGuides.select( sampleDepth( uvNode ), sampleCenterDepth( uvNode ) ).toConst();
 
 			isBackgroundDepth( depth ).discard();
 

@@ -1059,7 +1059,9 @@ class SSRNode extends Node {
 
 			}
 
-			const uvPos = uvNode.toVar();
+			// Reconstruct at the sampled depth texel center, including reduced-resolution inputs.
+			const depthSize = vec2( textureSize( this.depthNode ) ).toConst();
+			const uvPos = uvNode.mul( depthSize ).floor().add( 0.5 ).div( depthSize ).toVar();
 
 			const depth = sampleDepth( uvPos ).toVar();
 

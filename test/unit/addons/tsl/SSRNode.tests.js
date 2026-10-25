@@ -29,7 +29,7 @@ export default QUnit.module( 'Addons', () => {
 				const previousContext = renderer.contextNode;
 				const previousSize = renderer.getSize( new Vector2() );
 				const previousRatio = renderer.getPixelRatio();
-				const width = 64, height = 32, originX = 16;
+				const width = 64, height = 32, originX = 17;
 				const camera = new OrthographicCamera( - 4, 4, 2, - 2, 0.1, 10 );
 				camera.coordinateSystem = renderer.coordinateSystem;
 				camera.updateProjectionMatrix();
@@ -79,7 +79,7 @@ export default QUnit.module( 'Addons', () => {
 					renderer.setRenderTarget( null );
 					quad.render( renderer );
 					const result = node.getRenderTarget();
-					const pixels = await renderer.readRenderTargetPixelsAsync( result, originX, height / 2, 1, 1 );
+					const pixels = await renderer.readRenderTargetPixelsAsync( result, Math.floor( originX * node.resolutionScale ), Math.floor( height * node.resolutionScale / 2 ), 1, 1 );
 					return Array.from( pixels, DataUtils.fromHalfFloat );
 
 				};
@@ -116,6 +116,24 @@ export default QUnit.module( 'Addons', () => {
 					eligible.value = true;
 					node.useTraceMask.value = true;
 					assert.deepEqual( await renderOrigin(), refinedHit, 'Eligible texels preserve radiance and distance' );
+					// A half-resolution texel lands between full-resolution depth centers.
+					// Both passes must launch from the selected source texel's position.
+					const originalDepth = depth.image.data.slice();
+					for ( let y = 0; y < height; y ++ ) {
+
+						for ( let x = 0; x < width; x ++ ) depth.image.data[ 4 * ( x + y * width ) ] = projectDepth( x === originX ? - 2 : target( x ) ? - 1.9 : - 4 );
+
+					}
+
+					depth.needsUpdate = true;
+					const fullResolutionHit = await renderOrigin();
+					node.resolutionScale = 0.5;
+					const halfResolutionHit = await renderOrigin();
+					assert.ok( halfResolutionHit[ 0 ] > 0.9, 'The half-resolution ray reaches the same target' );
+					assert.ok( Math.abs( halfResolutionHit[ 3 ] - fullResolutionHit[ 3 ] ) < 0.01, `Full and half resolution reconstruct the same ray origin: ${ fullResolutionHit[ 3 ] }, ${ halfResolutionHit[ 3 ] }` );
+					node.resolutionScale = 1;
+					depth.image.data.set( originalDepth );
+					depth.needsUpdate = true;
 					// Black radiance and partial source validity are still real hits.
 					for ( let i = 0; i < source.image.data.length; i += 4 ) source.image.data.set( [ 0, 0, 0, 0.25 ], i );
 					source.needsUpdate = true;

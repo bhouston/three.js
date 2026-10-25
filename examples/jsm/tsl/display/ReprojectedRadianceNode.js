@@ -138,7 +138,15 @@ export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, came
 		// Outside the current raster grid, retain the original reconstruction
 		// instead of clamping to a potentially valid edge cache texel.
 		const inside = coordinate.greaterThanEqual( vec2( 0 ) ).all().and( coordinate.lessThan( vec2( 1 ) ).all() );
-		If( inside, () => value.assign( cached.sample( coordinate ) ) ).Else( () => value.assign( source.sample( coordinate ) ) );
+		If( inside, () => {
+
+			value.assign( cached.sample( coordinate ) );
+
+		} ).Else( () => {
+
+			value.assign( source.sample( coordinate ) );
+
+		} );
 		return value;
 
 	} )() );

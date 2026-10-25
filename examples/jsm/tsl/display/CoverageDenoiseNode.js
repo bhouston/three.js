@@ -325,7 +325,11 @@ class CoverageDenoiseNode extends Node {
 				If( history.get( 'weight' ).greaterThan( 0 ), () => {
 
 					const previousAge = history.get( 'age' ).toVar();
-					If( this.useGatherConfidence, () => previousAge.mulAssign( history.get( 'weight' ).clamp() ) );
+					If( this.useGatherConfidence, () => {
+
+						previousAge.mulAssign( history.get( 'weight' ).clamp() );
+
+					} );
 					age.assign( previousAge.add( 1 ).min( this.maxFrames.max( 1 ) ) );
 					const historyWeight = age.sub( 1 ).div( age );
 					result.assign( mix( currentWeighted, history.get( 'color' ).clamp( minimum, maximum ), historyWeight ) );

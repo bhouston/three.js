@@ -146,7 +146,7 @@
 
 			const params = {
 				output: 'Beauty',
-				renderScale: 1,
+				renderScale: 0.5,
 				batching: true,
 				model: 'Dual Rooms',
 				environmentSource: 'Pedestrian Overpass (1K HDR)',
@@ -181,7 +181,7 @@
 				enabled: true,
 				denoise: true,
 				denoiseSamples: 8,
-				resolveOrder: 'Before filtering',
+				resolveOrder: 'After filtering (coverage-aware)',
 				resolutionScale: 0.5,
 				quality: 1,
 				maxDistance: 0.5,
@@ -229,11 +229,13 @@
 				style: 'interleaved',
 				bounces: 2,
 				probeResolution: 40,
+				probeDensity: 1,
 				lightMapResolution: 4096,
 				resolution: 256,
 				boxProjection: true
 			};
 			let camera, scene, renderer, controls, lightProbes, probes, model;
+			let lightProbeGridResolution;
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
 			let ssrCoverage, ssrProvider, lightingHistory, diffuseHistory;
@@ -467,6 +469,7 @@
 				ssrSettings.add( ssrParams, 'maxFrames', 1, 32, 1 ).name( 'History Frames' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'radius', 0, 3 ).name( 'Denoise Radius' ).onChange( updateSSRParameters );
 
+				settings.add( bakeSettings, 'probeDensity', 0.5, 4, 0.05 ).name( 'Light Probe Density' ).info( 'Scales the probe count along each axis, rounded to the nearest whole number, within the same bounds. Rebakes lighting.' ).onChange( updateLightProbeDensity ).debounce( 250 );
 				settings.add( bakeSettings, 'style', [ 'interleaved', 'sequential' ] ).name( 'Bake Style' ).onChange( capture );
 				settings.add( bakeSettings, 'boxProjection' ).name( 'Box Projection' ).listen().onChange( () => {
 
@@ -612,7 +615,15 @@
 				return Fn( () => {
 
 					const value = vec4().toVar();
-					If( mode.equal( 2 ), () => value.assign( separate ) ).Else( () => value.assign( product ) );
+					If( mode.equal( 2 ), () => {
+
+						value.assign( separate );
+
+					} ).Else( () => {
+
+						value.assign( product );
+
+					} );
 					return value;
 
 				} )();
@@ -1115,12 +1126,8 @@
 
 				// Use denser, proportioned grids for the dungeon floor plan and long hallway.
 
-				const gridResolution = name === 'Dungeon Warkarma' ? [ 20, 6, 26 ] : name === 'Space Ship Hallway' ? [ 8, 6, 24 ] : [ 12, 6, 6 ];
-				lightProbes = new LightProbeGrid( size.x, size.y, size.z, ...gridResolution );
-				lightProbes.position.copy( center );
-				lightProbes.visibility = true;
-				lightProbes.multiBounce = true;
-				scene.add( lightProbes );
+				lightProbeGridResolution = name === 'Dungeon Warkarma' ? [ 20, 6, 26 ] : name === 'Space Ship Hallway' ? [ 8, 6, 24 ] : [ 12, 6, 6 ];
+				createLightProbeGrid( size, center );
 
 				// Capture the surrounding space: an object bounding box is not a room.
 
@@ -1472,6 +1479,30 @@
 				atlas = nextAtlas;
 				meshes = atlas.meshes.map( record => record.mesh );
 				for ( const geometry of geometries ) geometry.dispose();
+
+			}
+
+			function createLightProbeGrid( size, center ) {
+
+				const resolution = lightProbeGridResolution.map( count => Math.max( 2, Math.round( count * bakeSettings.probeDensity ) ) );
+				lightProbes = new LightProbeGrid( size.x, size.y, size.z, ...resolution );
+				lightProbes.position.copy( center );
+				lightProbes.visibility = true;
+				lightProbes.multiBounce = true;
+				scene.add( lightProbes );
+
+			}
+
+			function updateLightProbeDensity() {
+
+				if ( ! lightProbes ) return;
+
+				const size = new THREE.Vector3( lightProbes.width, lightProbes.height, lightProbes.depth );
+				const center = lightProbes.position.clone();
+				lightProbes.removeFromParent();
+				lightProbes.dispose();
+				createLightProbeGrid( size, center );
+				capture();
 
 			}
 

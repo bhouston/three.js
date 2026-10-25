@@ -1051,7 +1051,11 @@ class SSRNode extends Node {
 
 			if ( this.stochastic === true && this.noiseNode !== null ) {
 
-				If( this.useNoiseNode, () => noise.assign( this.noiseNode ) );
+				If( this.useNoiseNode, () => {
+
+					noise.assign( this.noiseNode );
+
+				} );
 
 			}
 

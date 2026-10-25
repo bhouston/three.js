@@ -123,6 +123,52 @@ export default QUnit.module( 'Addons', () => {
 
 		QUnit.module( 'CoverageDenoiseNode', () => {
 
+			QUnit.test( 'a compiled consumer follows consecutive outputs without history copies', async assert => {
+
+				await fixture( assert, async ( { node, renderer, update } ) => {
+
+					node.maxFrames.value = 1;
+					const target = new RenderTarget( size, size, { type: FloatType, depthBuffer: false } );
+					const material = new NodeMaterial();
+					material.fragmentNode = node.getTextureNode().sample();
+					const quad = new QuadMesh( material );
+					const copy = renderer.copyTextureToTexture;
+					let copies = 0;
+					renderer.copyTextureToTexture = function ( ...args ) {
+
+						copies ++;
+						return copy.apply( this, args );
+
+					};
+
+					try {
+
+						for ( const value of [ 1, 2, 3, 4, 5 ] ) {
+
+							update( () => [ value, value / 2, 0, 1 ] );
+							await new Promise( resolve => requestAnimationFrame( resolve ) );
+							renderer.setRenderTarget( target );
+							quad.render( renderer );
+							const data = await renderer.readRenderTargetPixelsAsync( target, 8, 8, 1, 1 );
+							assert.ok( Math.abs( data[ 0 ] - value ) < 0.01 && Math.abs( data[ 1 ] - value / 2 ) < 0.01, `Consumer sees frame ${ value } rather than an older buffer` );
+
+						}
+
+						assert.strictEqual( copies, 0, 'Radiance, geometry and age history require no texture copies' );
+
+					} finally {
+
+						renderer.copyTextureToTexture = copy;
+						renderer.setRenderTarget( null );
+						material.dispose();
+						target.dispose();
+
+					}
+
+				} );
+
+			} );
+
 			for ( const enabled of [ true, false ] ) {
 
 				QUnit.test( `partial reprojection support discounts age with gather confidence ${ enabled ? 'enabled' : 'disabled' }`, async assert => {

@@ -76,6 +76,15 @@ export default QUnit.module( 'Addons', () => {
 				const pipeline = new RenderPipeline( renderer, aa );
 				const projections = [];
 				scene.onAfterRender = () => projections.push( camera.projectionMatrix.clone() );
+				const copy = renderer.copyTextureToTexture;
+				let resolveCopies = 0;
+				renderer.copyTextureToTexture = function ( source, ...args ) {
+
+					if ( source === temporal._resolveRenderTarget.texture || source === aa._resolveRenderTarget.texture ) resolveCopies ++;
+					return copy.call( this, source, ...args );
+
+				};
+
 				try {
 
 					renderer.setPixelRatio( 1 );
@@ -93,6 +102,7 @@ export default QUnit.module( 'Addons', () => {
 					assert.strictEqual( aa._jitterIndex, 3, 'Jitter advances on each frame after pipeline compilation' );
 					assert.ok( ! projections.at( - 1 ).equals( original ), 'Geometry renders with jitter' );
 					assert.ok( ! projections.at( - 1 ).equals( projections.at( - 2 ) ), 'Geometry receives a different jitter each frame' );
+					assert.strictEqual( resolveCopies, 0, 'Temporal resolve and TRAA retain color history without copies' );
 					const target = source.renderTarget;
 					const index = target.textures.indexOf( source.getTexture( 'velocity' ) );
 					const data = await renderer.readRenderTargetPixelsAsync( target, 8, 8, 1, 1, index );
@@ -100,6 +110,7 @@ export default QUnit.module( 'Addons', () => {
 
 				} finally {
 
+					renderer.copyTextureToTexture = copy;
 					pipeline.dispose();
 					aa.dispose();
 					temporal.dispose();

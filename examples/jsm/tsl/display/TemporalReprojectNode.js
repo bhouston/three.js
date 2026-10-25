@@ -543,7 +543,7 @@ class TemporalReprojectNode extends Node {
 		this.mode = mode;
 
 		/**
-		 * When `true`, resolve output is copied into the internal history buffer each frame.
+		 * When `true`, resolve and internal history color buffers alternate each frame.
 		 * When `false`, history is supplied externally via {@link TemporalReprojectNode#setHistoryTexture}.
 		 *
 		 * @type {boolean}
@@ -642,6 +642,18 @@ class TemporalReprojectNode extends Node {
 		const needsRestart = depthFormatChanged === true || this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
 		this.setSize( width, height );
 
+		if ( this.accumulate === true ) {
+
+			// Swap only color; previous depth stays attached to its history target.
+			const historyTexture = this._historyRenderTarget.texture;
+			this._historyRenderTarget.texture = this._resolveRenderTarget.texture;
+			this._resolveRenderTarget.texture = historyTexture;
+
+		}
+
+		this._textureNode.value = this._resolveRenderTarget.texture;
+		this._syncHistoryTextureBinding();
+
 		let historySwappedForRestart = false;
 
 		if ( needsRestart === true ) {
@@ -680,10 +692,6 @@ class TemporalReprojectNode extends Node {
 		if ( historySwappedForRestart === true ) {
 
 			this._syncHistoryTextureBinding();
-
-		} else if ( this.accumulate === true ) {
-
-			renderer.copyTextureToTexture( this._resolveRenderTarget.texture, this._historyRenderTarget.texture );
 
 		}
 

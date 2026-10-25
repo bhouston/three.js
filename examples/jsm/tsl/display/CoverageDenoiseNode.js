@@ -127,6 +127,16 @@ class CoverageDenoiseNode extends Node {
 		const { renderer } = frame;
 		renderer.getDrawingBufferSize( this._size );
 		this.setSize( this._size.x, this._size.y );
+
+		// Keep the previous output as history and render into the other target.
+		const historyTarget = this._historyTarget;
+		this._historyTarget = this._target;
+		this._target = historyTarget;
+		this._textureNode.value = this._target.texture;
+		this._historyColor.value = this._historyTarget.texture;
+		this._historyGeometry.value = this._historyTarget.textures[ 1 ];
+		this._historyAge.value = this._historyTarget.textures[ 2 ];
+
 		this._jitterDelta.value.copy( this._jitter );
 		getProjectionJitter( this.camera, this._velocityNode.projectionMatrix, this._jitter );
 		this._jitterDelta.value.sub( this._jitter );
@@ -147,7 +157,6 @@ class CoverageDenoiseNode extends Node {
 			this._quad.name = 'Coverage Denoise [ Temporal ]';
 			this._quad.render( renderer );
 
-			for ( let i = 0; i < 3; i ++ ) renderer.copyTextureToTexture( this._target.textures[ i ], this._historyTarget.textures[ i ] );
 			this._previousView.value.copy( this.camera.matrixWorldInverse );
 			this._previousProjection.value.copy( this.camera.projectionMatrix );
 			this._historyValid.value = true;

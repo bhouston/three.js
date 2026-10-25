@@ -146,6 +146,7 @@ class TRAANode extends Node {
 		 */
 		this._historyRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, depthTexture: new DepthTexture() } );
 		this._historyRenderTarget.texture.name = 'TRAANode.history';
+		this._historyTextureNode = texture( this._historyRenderTarget.texture );
 
 		/**
 		 * The render target for the resolve.
@@ -367,6 +368,14 @@ class TRAANode extends Node {
 		const needsRestart = this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
 		this.setSize( width, height );
 
+		// Keep last frame's resolve as history without copying its color buffer.
+		// Depth stays attached to the history target and is updated independently.
+		const historyTexture = this._historyRenderTarget.texture;
+		this._historyRenderTarget.texture = this._resolveRenderTarget.texture;
+		this._resolveRenderTarget.texture = historyTexture;
+		this._historyTextureNode.value = this._historyRenderTarget.texture;
+		this._textureNode.value = this._resolveRenderTarget.texture;
+
 		// every time when the dimensions change we need fresh history data
 
 		if ( needsRestart === true ) {
@@ -390,10 +399,6 @@ class TRAANode extends Node {
 		_quadMesh.name = 'TRAA';
 		_quadMesh.render( renderer );
 		renderer.setRenderTarget( null );
-
-		// update history
-
-		renderer.copyTextureToTexture( this._resolveRenderTarget.texture, this._historyRenderTarget.texture );
 
 		// Copy current depth to previous depth buffer
 
@@ -508,7 +513,7 @@ class TRAANode extends Node {
 
 		}, { velocityUV: 'vec2', textureSize: 'ivec2', return: 'float' } );
 
-		const historyNode = texture( this._historyRenderTarget.texture );
+		const historyNode = this._historyTextureNode;
 
 		const resolve = Fn( () => {
 

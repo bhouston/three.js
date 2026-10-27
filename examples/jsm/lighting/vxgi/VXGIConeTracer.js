@@ -206,9 +206,10 @@ export function createConeTracer( volume, options = {} ) {
  * @param {Node<float>|number} elevation - Offset of the cones within their elevation strata in `[0, 1)`.
  * @param {?Node<float>} [aoDistance=null] - The AO falloff distance. AO is only computed if given.
  * @param {?Function} [environment=null] - Raw distant radiance `( direction ) => vec3`, gathered with each cone's remaining transmittance.
+ * @param {?Function} [onCone=null] - Called with the direction and radiance of each cone, e.g. to accumulate light directions.
  * @return {{color: Node<vec3>, ao: Node<float>, coverage: Node<float>}} The mean premultiplied radiance, AO and hit coverage of the cones.
  */
-export function gather( trace, origin, normal, coneCount, tanHalfAngle, maxDistance, rotation, elevation, aoDistance = null, environment = null ) {
+export function gather( trace, origin, normal, coneCount, tanHalfAngle, maxDistance, rotation, elevation, aoDistance = null, environment = null, onCone = null ) {
 
 	// tangent frame
 
@@ -234,8 +235,9 @@ export function gather( trace, origin, normal, coneCount, tanHalfAngle, maxDista
 
 		const cone = trace( origin, direction, tanHalfAngle, maxDistance, aoDistance );
 
-		color.addAssign( cone.color );
-		if ( environment !== null ) color.addAssign( environment( direction ).mul( cone.alpha.oneMinus() ) );
+		const radiance = environment !== null ? cone.color.add( environment( direction ).mul( cone.alpha.oneMinus() ) ).toConst() : cone.color;
+		color.addAssign( radiance );
+		if ( onCone !== null ) onCone( direction, radiance );
 		coverage.addAssign( cone.alpha );
 
 		if ( aoDistance !== null ) ao.addAssign( cone.ao );

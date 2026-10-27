@@ -18,7 +18,9 @@
 					"three": "../src/Three.WebGPU.js",
 					"three/webgpu": "../src/Three.WebGPU.js",
 					"three/tsl": "../src/Three.TSL.js",
-					"three/addons/": "./jsm/"
+					"three/addons/": "./jsm/",
+					"three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/index.js",
+					"three-mesh-bvh/webgpu": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/webgpu/index.js"
 				}
 			}
 		</script>
@@ -226,6 +228,7 @@
 			};
 			const bakeSettings = {
 				style: 'interleaved',
+				lightMapSource: 'Light Probes',
 				bounces: 2,
 				probeResolution: 40,
 				probeDensity: 1,
@@ -257,6 +260,8 @@
 			const debugWeight = uniform( 1 );
 			const drawingSize = new THREE.Vector2();
 			let lightMapper, atlas;
+			// Ray radiosity loads three-mesh-bvh on demand.
+			let rayRadiosityModule = null, rayRadiosity = null;
 			let uvPass, uvTexture;
 			let meshes = [];
 			let renderBatches = null;
@@ -266,6 +271,8 @@
 			let bakeIteration = 0;
 			const bakeIterations = 16;
 			const bakeSamples = 16;
+			// Ray radiosity converges per texel, so it needs many more progressive samples.
+			const rayBakeSamples = 256;
 			const status = document.getElementById( 'status' );
 			let loadId = 0;
 			let currentModel = params.model;
@@ -288,9 +295,11 @@
 				scene = new THREE.Scene();
 				await updateEnvironment();
 
-				// Renderer
+				// Renderer. Ray radiosity can need more storage buffers per shader stage than the default eight.
 
-				renderer = new THREE.WebGPURenderer();
+				const adapter = await navigator.gpu?.requestAdapter();
+				const requiredLimits = adapter ? { maxStorageBuffersPerShaderStage: adapter.limits.maxStorageBuffersPerShaderStage } : {};
+				renderer = new THREE.WebGPURenderer( { requiredLimits } );
 				renderer.setPixelRatio( window.devicePixelRatio * params.renderScale );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.shadowMap.enabled = true;
@@ -477,7 +486,8 @@
 				ssrSettings.add( ssrParams, 'radius', 0, 3 ).name( 'Denoise Radius' ).onChange( updateSSRParameters );
 
 				settings.add( bakeSettings, 'probeDensity', 0.5, 4, 0.05 ).name( 'Light Probe Density' ).info( 'Scales the probe count along each axis, rounded to the nearest whole number, within the same bounds. Rebakes lighting.' ).onChange( updateLightProbeDensity ).debounce( 250 );
-				settings.add( bakeSettings, 'style', [ 'interleaved', 'sequential' ] ).name( 'Bake Style' ).onChange( capture );
+				settings.add( bakeSettings, 'style', [ 'interleaved', 'sequential' ] ).name( 'Bake Style' ).info( 'Ray radiosity always bakes sequentially.' ).onChange( capture );
+				settings.add( bakeSettings, 'lightMapSource', [ 'Light Probes', 'Ray Radiosity' ] ).name( 'Light Map Source' ).info( 'Light Probes interpolate the probe grid into the light map. Ray Radiosity traces rays per texel through a three-mesh-bvh BVH of the scene. Rebakes lighting.' ).onChange( capture );
 				settings.add( bakeSettings, 'boxProjection' ).name( 'Box Projection' ).listen().onChange( () => {
 
 					probes.boxProjection = bakeSettings.boxProjection;
@@ -1057,6 +1067,8 @@
 				disposeRenderBatches();
 				lightMapper?.dispose();
 				lightMapper = null;
+				rayRadiosity?.dispose();
+				rayRadiosity = null;
 				atlas = null;
 				meshes = [];
 				bakingLightMap = false;
@@ -1531,9 +1543,16 @@
 
 			}
 
-			function capture() {
+			async function capture() {
 
 				if ( ! model || ! lightProbes || ! probes ) return;
+
+				if ( bakeSettings.lightMapSource === 'Ray Radiosity' && rayRadiosityModule === null ) {
+
+					status.textContent = 'Loading three-mesh-bvh…';
+					rayRadiosityModule = await import( 'three/addons/lighting/RayTracedRadiosity.js' );
+
+				}
 
 				disposeRenderBatches();
 				prepareAtlas();
@@ -1541,6 +1560,8 @@
 				probes.dispose();
 				lightMapper?.dispose();
 				lightMapper = null;
+				rayRadiosity?.dispose();
+				rayRadiosity = null;
 				bakeIteration = 0;
 				bakePhase = 'diffuse';
 				bakingLightMap = true;
@@ -1552,7 +1573,9 @@
 
 			function advanceBake() {
 
-				const interleaved = bakeSettings.style === 'interleaved';
+				const rayTraced = bakeSettings.lightMapSource === 'Ray Radiosity';
+				const interleaved = bakeSettings.style === 'interleaved' && ! rayTraced;
+				const targetSamples = rayTraced ? rayBakeSamples : bakeSamples;
 				const environmentNode = scene.environmentNode;
 				const rendererContext = renderer.contextNode;
 				const lightProbesVisible = lightProbes.visible;
@@ -1595,7 +1618,20 @@
 
 						if ( lightMapper === null ) {
 
-							lightMapper = new LightMapper( renderer, atlas.resolution, getBakeDiffuse() );
+							let source = getBakeDiffuse();
+
+							if ( rayTraced ) {
+
+								// Rays gather bounces through a BVH of the static scene, with lights visible.
+								const { RayTracedRadiosity, rayTracedRadiosityIrradiance } = rayRadiosityModule;
+								// Bound each frame's GPU work: 8 rays per texel at 1024², fewer for larger atlases.
+								rayRadiosity = new RayTracedRadiosity( { rays: Math.max( 1, Math.round( 8 * ( 1024 / atlas.resolution ) ** 2 ) ) } );
+								rayRadiosity.update( renderer, scene );
+								source = rayTracedRadiosityIrradiance( rayRadiosity );
+
+							}
+
+							lightMapper = new LightMapper( renderer, atlas.resolution, source );
 							lightMapper.addObjects( meshes );
 							providersChanged = true;
 
@@ -1606,7 +1642,7 @@
 						lightProbes.visible = true;
 						lightMapper.reset();
 						lightMapper.update( interleaved && bakeIteration === bakeIterations - 1 ? bakeSamples : 1 );
-						status.textContent = interleaved ? `Interleaved: diffuse ${ bakeIteration + 1 } / ${ bakeIterations }` : `Sequential: diffuse light map ${ lightMapper.samples } / ${ bakeSamples }`;
+						status.textContent = interleaved ? `Interleaved: diffuse ${ bakeIteration + 1 } / ${ bakeIterations }` : `Sequential: diffuse light map ${ lightMapper.samples } / ${ targetSamples }`;
 						bakePhase = interleaved ? 'reflection' : 'lightmap';
 						if ( interleaved ) {
 
@@ -1623,8 +1659,8 @@
 
 						lightProbes.visible = true;
 						lightMapper.update();
-						status.textContent = `Sequential: diffuse light map ${ lightMapper.samples } / ${ bakeSamples }`;
-						if ( lightMapper.samples >= bakeSamples ) {
+						status.textContent = `Sequential: diffuse light map ${ lightMapper.samples } / ${ targetSamples }`;
+						if ( lightMapper.samples >= targetSamples ) {
 
 							bakePhase = 'reflection';
 							if ( ! hasReflectionProbes ) {

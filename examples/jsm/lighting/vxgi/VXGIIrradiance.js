@@ -1,4 +1,4 @@
-import { Fn, PI, float, interleavedGradientNoise, screenCoordinate, vec2, vec4 } from 'three/tsl';
+import { Fn, PI, float, interleavedGradientNoise, luminance, screenCoordinate, vec2, vec3, vec4 } from 'three/tsl';
 import { createConeTracer, gather } from './VXGIConeTracer.js';
 
 /**
@@ -10,7 +10,8 @@ import { createConeTracer, gather } from './VXGIConeTracer.js';
  * Coverage is spatial confidence, independently of cone opacity and surface brightness.
  * The cones are rotated per pixel with interleaved gradient noise like `VXGINode`. When baking, the
  * pixel is the light map texel. The optional sample index shifts the noise so that accumulated
- * samples, or a temporal filter like TRAA, converge.
+ * samples, or a temporal filter like TRAA, converge. An optional `directionNode` in the query
+ * receives the luminance-weighted cone directions, for the directional light maps of {@link LightMapper}.
  *
  * @param {VXGIVolume} volume - The prepared voxel volume.
  * @param {Object} [options] - Options.
@@ -26,7 +27,7 @@ function vxgiDiffuse( volume, { coneCount = 8, coneAngle = 40 } = {} ) {
 		directionalNode: volume.directionalRadiance ? volume.directionalNode : null
 	} );
 
-	return ( { position, normal, sampleIndex = float( 0 ) } ) => Fn( () => {
+	return ( { position, normal, sampleIndex = float( 0 ), directionNode = null } ) => Fn( () => {
 
 		// interleaved gradient noise offsets of the stratified cone set, see VXGINode
 
@@ -36,7 +37,12 @@ function vxgiDiffuse( volume, { coneCount = 8, coneAngle = 40 } = {} ) {
 
 		const origin = position.add( normal.mul( volume.voxelSizeNode.mul( 1.5 ) ) ).toConst();
 
-		const { color } = gather( trace, origin, normal, coneCount, tanHalfAngle, volume.traceDistanceNode, rotation, elevation, null, direction => volume.getEnvironmentRadiance( direction, tanHalfAngle ) );
+		const directionSum = directionNode !== null ? vec3( 0 ).toVar() : null;
+		const onCone = directionSum !== null ? ( direction, radiance ) => directionSum.addAssign( direction.mul( luminance( radiance ) ) ) : null;
+
+		const { color } = gather( trace, origin, normal, coneCount, tanHalfAngle, volume.traceDistanceNode, rotation, elevation, null, direction => volume.getEnvironmentRadiance( direction, tanHalfAngle ), onCone );
+
+		if ( directionNode !== null ) directionNode.addAssign( directionSum.mul( PI.div( coneCount ) ) );
 
 		return vec4( color.mul( PI ), volume.getCoverage( position ) );
 
@@ -50,14 +56,14 @@ function vxgiDiffuse( volume, { coneCount = 8, coneAngle = 40 } = {} ) {
  *
  * @param {VXGIVolume} volume - The prepared volume.
  * @param {Object} [options] - Cone tracing options.
- * @return {Function} The coverage-weighted irradiance sampler.
+ * @return {function(Node<vec3>, Node<vec3>, ?Node<float>, ?Node<vec3>): Node<vec3>} The coverage-weighted irradiance sampler. The optional fourth argument receives the light directions.
  */
 function vxgiIrradiance( volume, options ) {
 
 	const provider = vxgiDiffuse( volume, options );
-	return ( position, normal, sampleIndex = float( 0 ) ) => Fn( () => {
+	return ( position, normal, sampleIndex = float( 0 ), directionNode = null ) => Fn( () => {
 
-		const sample = provider( { position, normal, sampleIndex } ).toConst();
+		const sample = provider( { position, normal, sampleIndex, directionNode } ).toConst();
 		return sample.rgb.mul( sample.a );
 
 	} )();

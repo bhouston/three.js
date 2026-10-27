@@ -79,8 +79,11 @@ export default QUnit.module( 'Addons', () => {
 					renderer.setRenderTarget( null );
 					quad.render( renderer );
 					const result = node.getRenderTarget();
-					const pixels = await renderer.readRenderTargetPixelsAsync( result, Math.floor( originX * node.resolutionScale ), Math.floor( height * node.resolutionScale / 2 ), 1, 1 );
-					return Array.from( pixels, DataUtils.fromHalfFloat );
+					const x = Math.floor( originX * node.resolutionScale ), y = Math.floor( height * node.resolutionScale / 2 );
+					// radiance and coverage, then the hit distance from the hit texture
+					const pixels = await renderer.readRenderTargetPixelsAsync( result, x, y, 1, 1 );
+					const hit = await renderer.readRenderTargetPixelsAsync( result, x, y, 1, 1, 1 );
+					return [ ...Array.from( pixels, DataUtils.fromHalfFloat ), DataUtils.fromHalfFloat( hit[ 0 ] ) ];
 
 				};
 
@@ -108,9 +111,7 @@ export default QUnit.module( 'Addons', () => {
 					assert.ok( refinedHit[ 0 ] > 0.9, `Refinement preserves a hit following a rejected depth gap (actual ${ refinedHit[ 0 ] })` );
 					eligible.value = false;
 					const masked = await renderOrigin();
-					assert.deepEqual( masked, [ 0, 0, 0, 0 ], 'Excluding a previously lit texel clears stale radiance and distance' );
-					const coverage = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), originX, height / 2, 1, 1, 1 );
-					assert.strictEqual( DataUtils.fromHalfFloat( coverage[ 0 ] ), 0, 'Masked texels have zero screen-space coverage' );
+					assert.deepEqual( masked, [ 0, 0, 0, 0, 0 ], 'Excluding a previously lit texel clears stale radiance, coverage and distance' );
 					node.useTraceMask.value = false;
 					assert.deepEqual( await renderOrigin(), refinedHit, 'Disabling classification retains the original hit, including distance' );
 					eligible.value = true;
@@ -130,7 +131,7 @@ export default QUnit.module( 'Addons', () => {
 					node.resolutionScale = 0.5;
 					const halfResolutionHit = await renderOrigin();
 					assert.ok( halfResolutionHit[ 0 ] > 0.9, 'The half-resolution ray reaches the same target' );
-					assert.ok( Math.abs( halfResolutionHit[ 3 ] - fullResolutionHit[ 3 ] ) < 0.01, `Full and half resolution reconstruct the same ray origin: ${ fullResolutionHit[ 3 ] }, ${ halfResolutionHit[ 3 ] }` );
+					assert.ok( Math.abs( halfResolutionHit[ 4 ] - fullResolutionHit[ 4 ] ) < 0.01, `Full and half resolution reconstruct the same ray origin: ${ fullResolutionHit[ 4 ] }, ${ halfResolutionHit[ 4 ] }` );
 					node.resolutionScale = 1;
 					depth.image.data.set( originalDepth );
 					depth.needsUpdate = true;
@@ -139,9 +140,8 @@ export default QUnit.module( 'Addons', () => {
 					source.needsUpdate = true;
 					const black = await renderOrigin();
 					assert.deepEqual( black.slice( 0, 3 ), [ 0, 0, 0 ], 'A valid black hit keeps black radiance' );
-					assert.strictEqual( black[ 3 ], refinedHit[ 3 ], 'Black partial-coverage hits retain their geometry distance' );
-					const partial = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), originX, height / 2, 1, 1, 1 );
-					assert.strictEqual( DataUtils.fromHalfFloat( partial[ 0 ] ), 0.25, 'Black hits retain partial validity independently of RGB' );
+					assert.strictEqual( black[ 4 ], refinedHit[ 4 ], 'Black partial-coverage hits retain their geometry distance' );
+					assert.strictEqual( black[ 3 ], 0.25, 'Black hits retain partial validity independently of RGB' );
 
 
 

@@ -1,9 +1,7 @@
-import { FloatType, NearestFilter, RTTNode, WebGPUCoordinateSystem } from 'three/webgpu';
-import { Fn, If, float, getViewPosition, isBackgroundDepth, nodeObject, sample, textureSize, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { FloatType, Matrix4, NearestFilter, Node, RTTNode, Vector2, WebGPUCoordinateSystem } from 'three/webgpu';
+import { Fn, If, OnAfterRenderPipeline, float, getViewPosition, isBackgroundDepth, nodeObject, sample, textureSize, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 
-// Cache on the guide's texel grid, independent of the output viewport. The
-// source is constant within each depth texel, so nearest sampling preserves
-// both validated radiance and its coverage without interpolating surfaces.
+// cached on the depth texel grid and nearest sampled
 class ReprojectedRadianceCacheNode extends RTTNode {
 
 	constructor( source, depth ) {
@@ -26,15 +24,12 @@ class ReprojectedRadianceCacheNode extends RTTNode {
 }
 
 /**
- * Reprojects radiance from static scene geometry into the previous camera.
- * Each historical texel is validated before bilinear radiance interpolation.
- * RGB is conditional linear radiance; alpha is the accepted bilinear support.
+ * Reprojects explicitly managed history into the current frame, for callers that
+ * capture their own radiance, depth and camera matrices. Each history texel is
+ * validated before interpolation. Only camera motion is handled.
  *
- * The tolerance is independent of ray-marching thickness. A world-space floor
- * and previous-frame pixel footprint express uncertainty in the surface plane.
- * Object motion needs previous object positions or motion vectors at the hit;
- * this helper deliberately only handles camera motion and static geometry.
- *
+ * @tsl
+ * @function
  * @param {TextureNode} radiance - Previous resolved linear radiance.
  * @param {TextureNode} historyDepth - Previous device depth, nearest sampled.
  * @param {TextureNode} depth - Current device depth, nearest sampled.
@@ -48,10 +43,10 @@ class ReprojectedRadianceCacheNode extends RTTNode {
  * @param {Node<float>} [options.tolerancePixels] - Surface uncertainty in previous pixels. Default 1.5.
  * @param {Node<float>} [options.toleranceWorld] - Minimum uncertainty in world units. Default 0.001.
  * @param {boolean} [options.analyticPixelFootprint] - Use diagonal projection scaling for standard perspective/orthographic cameras. Disable for custom projection matrices.
- * @param {boolean} [options.cache=false] - Evaluate once per depth texel per frame into a nearest-sampled float texture. Useful when many rays reuse the same source texels.
+ * @param {boolean} [options.cache=false] - Evaluate once per depth texel per frame into a nearest-sampled float texture.
  * @return {Node<vec4>} Linear radiance and accepted history support.
  */
-export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, camera, {
+export const reprojectedHistoryRadiance = ( radiance, historyDepth, depth, normal, camera, {
 	previousView, previousProjection, previousProjectionInverse, valid,
 	tolerancePixels = uniform( 1.5 ), toleranceWorld = uniform( 0.001 ),
 	analyticPixelFootprint = camera.isPerspectiveCamera === true || camera.isOrthographicCamera === true,
@@ -77,15 +72,14 @@ export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, came
 		let footprint;
 		if ( analyticPixelFootprint ) {
 
-			// For standard perspective and orthographic projections, clip.w is
-			// the homogeneous scale converting a pixel displacement to view space.
+			// clip.w scales a pixel displacement to view space
 			const scaling = vec2( previousProjection.element( 0 ).x.abs(), previousProjection.element( 1 ).y.abs() ).mul( resolution ).max( vec2( 1e-6 ) );
 			const pixelSize = vec2( clip.w.abs().mul( 2 ) ).div( scaling );
 			footprint = pixelSize.x.max( pixelSize.y );
 
 		} else {
 
-			// Retain the inverse-projection construction for custom cameras.
+			// custom projections
 			let expectedDepth = clip.z.div( clip.w.max( 1e-6 ) );
 			if ( builder.renderer.coordinateSystem !== WebGPUCoordinateSystem && builder.renderer.reversedDepthBuffer !== true ) expectedDepth = expectedDepth.mul( 0.5 ).add( 0.5 );
 			const pixelX = getViewPosition( previousUV.add( vec2( 1, 0 ).div( resolution ) ), expectedDepth, previousProjectionInverse ).sub( oldPosition ).length();
@@ -100,8 +94,7 @@ export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, came
 		const fraction = pixel.fract();
 		const color = vec3( 0 ).toVar();
 		const support = float( 0 ).toVar();
-		// Positive w makes homogeneous bounds equivalent to NDC depth bounds.
-		// Reversed depth also uses [0,1], including the WebGL backend.
+		// depth is in [0,1] for all backends, including reversed depth
 		const minimumDepth = builder.renderer.coordinateSystem === WebGPUCoordinateSystem || builder.renderer.reversedDepthBuffer === true ? 0 : - 1;
 		const inDepthBounds = clip.z.greaterThanEqual( clip.w.mul( minimumDepth ) ).and( clip.z.lessThanEqual( clip.w ) );
 		const historyValid = valid.and( clip.w.greaterThan( 0 ) ).and( inBounds( previousUV ) ).and( inDepthBounds ).and( isBackgroundDepth( currentDepth ).not() );
@@ -135,8 +128,7 @@ export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, came
 	const result = sample( coordinate => Fn( () => {
 
 		const value = vec4().toVar();
-		// Outside the current raster grid, retain the original reconstruction
-		// instead of clamping to a potentially valid edge cache texel.
+		// don't clamp to edge cache texels outside the raster grid
 		const inside = coordinate.greaterThanEqual( vec2( 0 ) ).all().and( coordinate.lessThan( vec2( 1 ) ).all() );
 		If( inside, () => {
 
@@ -154,3 +146,137 @@ export const reprojectedRadiance = ( radiance, historyDepth, depth, normal, came
 	return result;
 
 };
+
+/**
+ * Reprojects the previous frame's lighting of static geometry into the current
+ * frame. The beauty pass keeps its previous color and depth by swapping textures,
+ * and after every render pipeline frame the node captures the camera matrices
+ * they were rendered with. Each history texel is validated before interpolation. Only
+ * camera motion is handled.
+ *
+ * Like {@link TRAANode}, the history is captured from a render pipeline callback,
+ * so the node must be built in the pipeline's output graph. Sample it with
+ * {@link ReprojectedRadianceNode#sample}.
+ *
+ * @augments Node
+ * @three_import import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
+ */
+class ReprojectedRadianceNode extends Node {
+
+	static get type() {
+
+		return 'ReprojectedRadianceNode';
+
+	}
+
+	/**
+	 * @param {PassNode} beautyNode - The pass whose resolved linear radiance and depth become the history.
+	 * @param {TextureNode} depth - Current device depth, nearest sampled.
+	 * @param {Node<vec3>} normal - Current unpacked view-space surface normal.
+	 * @param {Camera} camera - Current camera.
+	 * @param {Object} [options] - Tolerance settings.
+	 * @param {Node<float>} [options.tolerancePixels] - Surface uncertainty in previous pixels. Default 1.5.
+	 * @param {Node<float>} [options.toleranceWorld] - Minimum uncertainty in world units. Default 0.001.
+	 * @param {boolean} [options.analyticPixelFootprint] - Use diagonal projection scaling for standard perspective/orthographic cameras. Disable for custom projection matrices.
+	 * @param {boolean} [options.cache=false] - Evaluate once per depth texel per frame into a nearest-sampled float texture. Useful when many rays reuse the same source texels.
+	 */
+	constructor( beautyNode, depth, normal, camera, {
+		tolerancePixels = uniform( 1.5 ), toleranceWorld = uniform( 0.001 ),
+		analyticPixelFootprint = camera.isPerspectiveCamera === true || camera.isOrthographicCamera === true,
+		cache = false
+	} = {} ) {
+
+		super( 'vec4' );
+
+		this.beautyNode = beautyNode;
+		this.camera = camera;
+
+		this._previousView = uniform( new Matrix4() );
+		this._previousProjection = uniform( new Matrix4() );
+		this._previousProjectionInverse = uniform( new Matrix4() );
+		this._valid = uniform( false );
+		// history resized textures hold no data until the pass renders into them
+		this._capturedSize = uniform( new Vector2() );
+
+		// the pass swaps current and previous textures before rendering, so no copy is needed
+		const radiance = beautyNode.getPreviousTextureNode( 'output' );
+		const historyDepth = beautyNode.getPreviousTextureNode( 'depth' );
+		const previousView = this._previousView;
+		const previousProjection = this._previousProjection;
+		const previousProjectionInverse = this._previousProjectionInverse;
+
+		this._source = reprojectedHistoryRadiance( radiance, historyDepth, depth, normal, camera, {
+			previousView, previousProjection, previousProjectionInverse,
+			valid: this._valid.and( vec2( textureSize( historyDepth ) ).equal( this._capturedSize ).all() ),
+			tolerancePixels, toleranceWorld, analyticPixelFootprint, cache
+		} );
+
+	}
+
+	/**
+	 * Samples the reprojected history.
+	 *
+	 * @param {Node<vec2>} coordinate - Screen coordinate.
+	 * @return {Node<vec4>} Linear radiance and accepted history support.
+	 */
+	sample( coordinate ) {
+
+		return this._source.sample( coordinate );
+
+	}
+
+	/**
+	 * Invalidates the history, e.g. after a camera cut or a scene change.
+	 */
+	reset() {
+
+		this._valid.value = false;
+
+	}
+
+	setup() {
+
+		// runs before callbacks registered later, e.g. TRAA clearing its jitter, so the
+		// captured projection matches the depth that was rendered
+		OnAfterRenderPipeline( () => this._capture() );
+
+		return this.beautyNode;
+
+	}
+
+	_capture() {
+
+		const { width, height } = this.beautyNode.getTexture( 'depth' ).image;
+		this._capturedSize.value.set( width, height );
+		this._previousView.value.copy( this.camera.matrixWorldInverse );
+		this._previousProjection.value.copy( this.camera.projectionMatrix );
+		this._previousProjectionInverse.value.copy( this.camera.projectionMatrixInverse );
+		this._valid.value = true;
+
+	}
+
+	dispose() {
+
+		super.dispose();
+
+		this._source.dispose();
+
+	}
+
+}
+
+export default ReprojectedRadianceNode;
+
+/**
+ * TSL function for creating a {@link ReprojectedRadianceNode}.
+ *
+ * @tsl
+ * @function
+ * @param {PassNode} beautyNode - The pass whose resolved linear radiance and depth become the history.
+ * @param {TextureNode} depth - Current device depth, nearest sampled.
+ * @param {Node<vec3>} normal - Current unpacked view-space surface normal.
+ * @param {Camera} camera - Current camera.
+ * @param {Object} [options] - See {@link ReprojectedRadianceNode}.
+ * @return {ReprojectedRadianceNode}
+ */
+export const reprojectedRadiance = ( beautyNode, depth, normal, camera, options ) => new ReprojectedRadianceNode( beautyNode, depth, normal, camera, options );

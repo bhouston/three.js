@@ -25,7 +25,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, isolate, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, EnvironmentBRDF, getViewPosition, cameraWorldMatrix, convertToTexture, uniform, float, vec2, mix, property, emissive, positionViewDirection } from 'three/tsl';
+			import { Fn, If, isolate, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, cameraWorldMatrix, convertToTexture, uniform, vec2, mix, property, emissive, positionViewDirection } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { supportsUnlayeredDiffuse } from 'three/addons/tsl/utils/UnlayeredDiffuseScope.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
@@ -37,8 +37,8 @@
 			import { fastNoise } from 'three/addons/tsl/utils/FASTNoise.js';
 			import { SSGI_QUALITY_PRESETS, resolveSSGISettings } from 'three/addons/tsl/utils/SSGISettings.js';
 			import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
-			import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
-			import { recurrentDenoise, demodulate } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
+			import { reprojectedHistoryRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
+			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -237,7 +237,7 @@
 			let lightProbeGridResolution;
 			let renderPipeline, scenePass, aoPass, traaPass;
 			let screenSpaceGuides;
-			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance, ssrModulation;
+			let prePass, ssrPass, ssrTemporal, ssrDenoise, ssrRadiance;
 			let ssrCoverage, ssrProvider, lightingHistory, diffuseHistory;
 			let indirectSpecularRaw, indirectSpecularCoverage, indirectSpecularFiltered, ssrCoverageDenoise;
 			let ssgiPass, ssgiDenoise, ssgiProvider, ssgiSourceTexture;
@@ -608,7 +608,7 @@
 				// Select one source texture before validated per-texel interpolation.
 				const radiance = texture( diffuse && ssgiParams.source === 'Diffuse + emission' ? diffuseHistory.texture : lightingHistory.texture );
 				if ( diffuse ) ssgiSourceTexture = radiance;
-				return reprojectedRadiance( radiance, texture( lightingHistory.depthTexture ), depth, normal, camera, {
+				return reprojectedHistoryRadiance( radiance, texture( lightingHistory.depthTexture ), depth, normal, camera, {
 					previousView, previousProjection, previousProjectionInverse, valid: historyValid, tolerancePixels, toleranceWorld, cache: diffuse
 				} );
 
@@ -694,7 +694,6 @@
 
 			function setupSSR( depth, normal, motion, effectDepth, effectNormal ) {
 
-				const ssrProjectionInverse = uniform( camera.projectionMatrixInverse );
 				lightingHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture( 1, 1 ) } );
 				diffuseHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
 				lightingHistory.depthTexture.format = depth.value.format;
@@ -719,41 +718,24 @@
 					roughnessNode: traceNormalRoughness.a,
 					hiZ: hiZ( effectDepth ),
 					binaryRefine: ssrParams.binaryRefine
-				} ).toInspector( 'SSR Trace (BRDF Weighted)' );
+				} ).toInspector( 'SSR Trace' );
 
 				ssrCoverage = sample( ( uv ) => {
 
 					const roughness = normalRoughness.sample( uv ).a;
 					const roughnessFade = roughness.smoothstep( ssrMaxRoughness.sub( 0.1 ), ssrMaxRoughness ).oneMinus();
-					return ssrPass.getCoverageNode().sample( uv ).r.mul( roughnessFade ).mul( historyValid );
+					return ssrPass.getTextureNode().sample( uv ).a.mul( roughnessFade ).mul( historyValid );
 
 				} ).toInspector( 'SSR Coverage' );
 
-				// Match the integrated GGX BRDF used in the demodulation example. The
-				// chain consumes incoming radiance: the beauty material remodulates it.
-				ssrModulation = sample( ( uv ) => {
+				// SSR outputs coverage-normalized incoming radiance; the beauty material applies the BRDF.
+				ssrRadiance = sample( ( uv ) => {
 
-					const base = albedoMetalness.sample( uv );
-					const surface = normalRoughness.sample( uv );
-					const viewPosition = getViewPosition( uv, depth.sample( uv ).r, ssrProjectionInverse );
-					return EnvironmentBRDF( {
-						dotNV: unpackRGBToNormal( surface.rgb ).dot( viewPosition.negate().normalize() ).clamp( 0, 1 ),
-						specularColor: mix( vec3( 0.04 ), base.rgb, base.a ),
-						specularF90: float( 1 ),
-						roughness: surface.a
-					} );
-
-				} );
-				const unweighted = sample( ( uv ) => {
-
-					const raw = ssrPass.getTextureNode().sample( uv );
-					const coverage = ssrPass.getCoverageNode().sample( uv ).r;
 					// Only contributing screen hits can guide virtual-hit reprojection.
-					const hitDistance = resolveSSRHitDistance( raw.a, ssrCoverage.sample( uv ) );
-					return vec4( raw.rgb.div( coverage.max( 1e-4 ) ), hitDistance );
+					const hitDistance = resolveSSRHitDistance( ssrPass.getHitNode().sample( uv ).r, ssrCoverage.sample( uv ) );
+					return vec4( ssrPass.getTextureNode().sample( uv ).rgb, hitDistance );
 
 				} );
-				ssrRadiance = sample( uv => demodulate( unweighted.sample( uv ), ssrModulation.sample( uv ) ) );
 				// Resolve alternative estimates once, before denoising. Both inputs are
 				// incoming radiance; the fallback chain already weights its own coverage.
 				indirectSpecularRaw = sample( ( uv ) => {

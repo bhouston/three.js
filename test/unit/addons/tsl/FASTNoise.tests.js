@@ -48,8 +48,11 @@ export default QUnit.module( 'Addons', () => {
 						let maximumError = 0;
 						for ( let y = 0; y < 130; y ++ ) for ( let x = 0; x < 132; x ++ ) {
 
-							const expected = [ ( x + 11 ) % 128, ( y + 23 ) % 128, ( frame % 32 ) * 8, 255 - frame % 32 ];
-							for ( let c = 0; c < 4; c ++ ) maximumError = Math.max( maximumError, Math.abs( pixels[ 4 * ( y * 132 + x ) + c ] - ( expected[ c ] + 0.5 ) / 256 ) );
+							// each 32 frame cycle shifts the tile and rotates the byte values
+							const cycle = Math.floor( frame / 32 );
+							const rotation = Math.floor( ( cycle * 2654435769 ) % 2 ** 32 / 2 ** 24 );
+							const expected = [ ( x + 11 + 37 * cycle ) % 128, ( y + 23 + 71 * cycle ) % 128, ( frame % 32 ) * 8, 255 - frame % 32 ];
+							for ( let c = 0; c < 4; c ++ ) maximumError = Math.max( maximumError, Math.abs( pixels[ 4 * ( y * 132 + x ) + c ] - ( ( expected[ c ] + rotation ) % 256 + 0.5 ) / 256 ) );
 
 						}
 

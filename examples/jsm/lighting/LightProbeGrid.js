@@ -1218,8 +1218,6 @@ class LightProbeGrid extends Light {
 		} else if ( start === 0 ) {
 
 			const renderTarget = this._renderTarget;
-
-			renderer.initRenderTarget( renderTarget );
 			_copyRegion.min.set( 0, 0, 0 );
 			_copyRegion.max.set( renderTarget.width, renderTarget.height, renderTarget.depth );
 			renderer.copyTextureToTexture( renderTarget.texture, this._bounceGrid.texture, _copyRegion );

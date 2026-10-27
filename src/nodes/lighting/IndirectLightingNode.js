@@ -195,7 +195,16 @@ export const indirectLightingContext = ( diffuse = null, specular = null ) => {
  * @param {Node<float>|number} [intensity=materialEnvIntensity] - Lighting intensity. Pass an explicit value when baking independently of a material or scene.
  * @return {Function} An irradiance provider.
  */
-export const environmentDiffuse = ( environment, intensity = materialEnvIntensity ) => ( { normal } ) => vec4( environment.context( { getUV: () => normal, getTextureLevel: () => float( 1 ) } ).rgb.mul( Math.PI ).mul( intensity ), 1 );
+export const environmentDiffuse = ( environment, intensity = materialEnvIntensity ) => ( { normal } ) => {
+
+	// isolate query inputs from the environment's UV and mip context
+	const queryContext = { getUV: null, getTextureLevel: null };
+	return vec4( environment.context( {
+		getUV: () => nodeObject( normal ).context( queryContext ),
+		getTextureLevel: () => float( 1 )
+	} ).rgb.mul( Math.PI ).mul( intensity ), 1 );
+
+};
 
 /**
  * Diffuse adapter for sampled light-map irradiance, e.g. texture( atlas, uv( 1 ) ).
@@ -217,4 +226,13 @@ export const lightMapDiffuse = ( irradiance, coverage = 1, intensity = 1 ) => ()
  * @param {Node<float>|number} [intensity=materialEnvIntensity] - Lighting intensity.
  * @return {Function} A radiance provider.
  */
-export const environmentSpecular = ( environment, intensity = materialEnvIntensity ) => ( { direction, roughness: level } ) => vec4( environment.context( { getUV: () => direction, getTextureLevel: () => level } ).rgb.mul( intensity ), 1 );
+export const environmentSpecular = ( environment, intensity = materialEnvIntensity ) => ( { direction, roughness: level } ) => {
+
+	// isolate query inputs from the environment's UV and mip context
+	const queryContext = { getUV: null, getTextureLevel: null };
+	return vec4( environment.context( {
+		getUV: () => nodeObject( direction ).context( queryContext ),
+		getTextureLevel: () => float( level ).context( queryContext )
+	} ).rgb.mul( intensity ), 1 );
+
+};

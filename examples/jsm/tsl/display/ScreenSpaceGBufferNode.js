@@ -1,19 +1,12 @@
 import { FloatType, NearestFilter, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, UnsignedByteType, Vector2 } from 'three/webgpu';
-import { Fn, If, Loop, context, float, ivec2, nodeObject, outputStruct, passTexture, property, screenCoordinate, textureLoad, textureSize, uniform, vec2, vec4 } from 'three/tsl';
+import { Fn, If, Loop, context, float, ivec2, nodeObject, outputStruct, passTexture, property, screenCoordinate, textureLoad, textureSize, uniform, vec2, vec4, sample, unpackRGBToNormal } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 
 /**
- * Prepares a shared, nearest-sampled G-buffer for reduced-resolution screen-space
- * effects. Each footprint selects its nearest depth and copies the normal,
- * roughness and material properties from that same source texel. Depth is never
- * averaged across surfaces. Integer loads avoid ambiguous nearest filtering at
- * the boundaries between source texels.
- *
- * The depth attachment stores raw depth in R and the selected source UV in GB.
- * Use that UV when fetching full-resolution radiance so lighting and geometry
- * refer to the same surface. Full-resolution guides should still be retained for
- * temporal validation and edge-aware upsampling.
+ * Downsamples a G-buffer for reduced-resolution screen-space effects. Each texel
+ * copies depth, normal and material from the nearest source texel, so surfaces are
+ * never averaged. The depth attachment stores depth in R and the source UV in GB.
  *
  * @augments Node
  * @three_import import { screenSpaceGBuffer } from 'three/addons/tsl/display/ScreenSpaceGBufferNode.js';
@@ -64,6 +57,25 @@ class ScreenSpaceGBufferNode extends Node {
 	getTextureNode( name = 'depth' ) {
 
 		return this._textures[ { depth: 0, normal: 1, material: 2 }[ name ] ];
+
+	}
+
+	/**
+	 * Samples a full resolution node at the source texel each effect texel was copied from.
+	 *
+	 * @param {Node} node - Full resolution texture or sample node.
+	 * @return {SampleNode} The node at the effect resolution.
+	 */
+	resample( node ) {
+
+		return sample( coordinate => node.sample( this.getTextureNode().sample( coordinate ).gb ) );
+
+	}
+
+	/** @return {SampleNode} Unpacked, normalized view-space normals at the effect resolution. */
+	getViewNormalNode() {
+
+		return this._viewNormalNode ??= sample( coordinate => unpackRGBToNormal( this.getTextureNode( 'normal' ).sample( coordinate ).rgb ).normalize() );
 
 	}
 

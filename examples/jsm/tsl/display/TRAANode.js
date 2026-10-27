@@ -297,8 +297,8 @@ class TRAANode extends Node {
 
 		const jitterOffset = _haltonOffsets[ this._jitterIndex ];
 
-		// Translate clip space so custom projections and existing tiled view
-		// offsets survive jittering. Keep the inverse in sync for all depth users.
+		// jitter in clip space so custom projections and view offsets are preserved
+
 		this.camera.projectionMatrix.premultiply( _jitterMatrix.makeTranslation(
 			- 2 * ( jitterOffset[ 0 ] - 0.5 ) / width,
 			2 * ( jitterOffset[ 1 ] - 0.5 ) / height,
@@ -314,6 +314,7 @@ class TRAANode extends Node {
 	clearViewOffset() {
 
 		// On the compilation frame only the after-pipeline callback runs.
+
 		if ( this._viewOffsetApplied === false ) return;
 		this._viewOffsetApplied = false;
 
@@ -368,8 +369,8 @@ class TRAANode extends Node {
 		const needsRestart = this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
 		this.setSize( width, height );
 
-		// Keep last frame's resolve as history without copying its color buffer.
-		// Depth stays attached to the history target and is updated independently.
+		// swap history instead of copying
+
 		const historyTexture = this._historyRenderTarget.texture;
 		this._historyRenderTarget.texture = this._resolveRenderTarget.texture;
 		this._resolveRenderTarget.texture = historyTexture;
@@ -380,7 +381,7 @@ class TRAANode extends Node {
 
 		if ( needsRestart === true ) {
 
-			// make sure render targets are initialized after the resize which triggers a dispose()
+			// initialize both targets after a resize disposes their GPU resources
 
 			renderer.initRenderTarget( this._historyRenderTarget );
 			renderer.initRenderTarget( this._resolveRenderTarget );

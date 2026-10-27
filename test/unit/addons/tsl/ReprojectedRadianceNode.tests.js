@@ -1,6 +1,6 @@
 import { DataTexture, DataUtils, FloatType, HalfFloatType, LinearFilter, NodeMaterial, PerspectiveCamera, QuadMesh, RenderTarget, RendererUtils } from 'three/webgpu';
 import { context, texture, uniform, uv, vec2 } from 'three/tsl';
-import { reprojectedRadiance } from '../../../../examples/jsm/tsl/display/ReprojectedRadianceNode.js';
+import { reprojectedHistoryRadiance } from '../../../../examples/jsm/tsl/display/ReprojectedRadianceNode.js';
 import { getSharedRenderer } from '../../src/nodes/tsl/gpu-test-utils.js';
 
 const size = 16;
@@ -54,8 +54,8 @@ async function fixture( assert, run ) {
 		previousProjectionInverse: uniform( previousProjection.value.clone().invert() ),
 		valid: uniform( true ), tolerancePixels: uniform( 0.25 ), toleranceWorld: uniform( 0 )
 	};
-	const source = reprojectedRadiance( texture( color ), texture( historyDepth ), texture( depth ), texture( normal ), camera, options );
-	const cached = reprojectedRadiance( texture( color ), texture( historyDepth ), texture( depth ), texture( normal ), camera, { ...options, cache: true } );
+	const source = reprojectedHistoryRadiance( texture( color ), texture( historyDepth ), texture( depth ), texture( normal ), camera, options );
+	const cached = reprojectedHistoryRadiance( texture( color ), texture( historyDepth ), texture( depth ), texture( normal ), camera, { ...options, cache: true } );
 	const material = new NodeMaterial();
 	material.fragmentNode = source.sample( uv() );
 	const target = new RenderTarget( size, size, { type: FloatType, depthBuffer: false } );

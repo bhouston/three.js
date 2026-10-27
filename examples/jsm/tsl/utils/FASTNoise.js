@@ -1,13 +1,26 @@
+import { NearestFilter, NoColorSpace, TextureLoader } from 'three/webgpu';
 import { Fn, frameId, ivec2, screenCoordinate, textureLoad, uint, vec4 } from 'three/tsl';
 
 /**
- * Reads a 128×128×32 FAST volume packed as an opaque RGB atlas.
- * The texture must use flipY=false and NoColorSpace and contain unmodified discrete samples.
- * The left tile stores a uniform vector2 in RG and a scalar in B. The right
- * tile stores a spatially offset copy of the scalar mask for a fourth input.
- * Opaque RGB storage avoids losing sample precision to image alpha conversion.
- * Keep the frame slices in order: moving the tile every frame destroys the
- * temporal correlations. A fixed offset can decorrelate different passes.
+ * Loads a FAST noise atlas with the sampling settings {@link fastNoise} requires.
+ *
+ * @param {string} url - The atlas URL.
+ * @return {Promise<Texture>} The configured atlas.
+ */
+export const loadFASTNoise = async ( url ) => {
+
+	const atlas = await new TextureLoader().loadAsync( url );
+	atlas.flipY = false;
+	atlas.colorSpace = NoColorSpace;
+	atlas.generateMipmaps = false;
+	atlas.minFilter = atlas.magFilter = NearestFilter;
+	return atlas;
+
+};
+
+/**
+ * Reads a 128×128×32 FAST blue noise volume packed as an RGB atlas. Load the
+ * atlas with {@link loadFASTNoise}, or use `flipY = false` and `NoColorSpace`.
  *
  * @param {Texture} atlas - The 256×4096 noise atlas.
  * @param {Vector2} offset - Fixed integer offset in tracing pixels.
@@ -16,9 +29,12 @@ import { Fn, frameId, ivec2, screenCoordinate, textureLoad, uint, vec4 } from 't
  */
 export const fastNoise = ( atlas, offset, index = frameId ) => Fn( () => {
 
-	const pixel = ivec2( screenCoordinate ).add( ivec2( offset.x, offset.y ) ).mod( 128 );
+	// shift the tile and rotate the values (golden ratio, mod 1) once per 32 frame cycle so the loop doesn't repeat
+	const cycle = uint( index ).div( 32 );
+	const pixel = ivec2( screenCoordinate ).add( ivec2( offset.x, offset.y ) ).add( ivec2( 37, 71 ).mul( cycle.mod( 128 ).toInt() ) ).mod( 128 );
 	const coordinate = ivec2( pixel.x, pixel.y.add( uint( index ).mod( 32 ).mul( 128 ).toInt() ) );
-	// Decode byte bin centers, avoiding exact 0/1 at GGX singularities.
-	return vec4( textureLoad( atlas, coordinate ).rgb, textureLoad( atlas, coordinate.add( ivec2( 128, 0 ) ) ).r ).mul( 255 ).add( 0.5 ).div( 256 );
+	const rotation = cycle.mul( uint( 2654435769 ) ).shiftRight( 24 ).toFloat(); // fract( cycle * φ ) in 1/256 bins
+	// bin centers avoid exact 0 and 1
+	return vec4( textureLoad( atlas, coordinate ).rgb, textureLoad( atlas, coordinate.add( ivec2( 128, 0 ) ) ).r ).mul( 255 ).add( rotation ).round().mod( 256 ).add( 0.5 ).div( 256 );
 
 } )();

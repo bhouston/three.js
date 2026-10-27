@@ -267,6 +267,9 @@ import './src/textures/TextureSource.tests.js';
 import './src/textures/VideoTexture.tests.js';
 
 
+//src/nodes/accessors
+import './src/nodes/accessors/VelocityNode.tests.js';
+
 //src/nodes/display
 import './src/nodes/display/ViewportTextureNode.tests.js';
 import './src/nodes/display/ViewportDepthTextureNode.tests.js';
@@ -313,4 +316,3 @@ import './src/nodes/tsl/TSLProceduralUtils.tests.js';
 import './src/nodes/tsl/TSLBSDFLightingRemainder.tests.js';
 import './src/nodes/tsl/TSL.Irradiance.tests.js';
 import './src/nodes/tsl/TSLUtilsMisc.tests.js';
-import './src/nodes/accessors/VelocityNode.tests.js';

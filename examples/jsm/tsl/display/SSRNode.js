@@ -1138,13 +1138,13 @@ class SSRNode extends Node {
 
 			let viewReflectDir, finalSampleWeight, specDominantFactor;
 			let sampleEnvReflection = null;
+			// The base color only feeds the metalness F0 fallback.
+			const albedo = this.outputCoverage ? null : ( this.specularNode === null && this.diffuseNode !== null ? this.diffuseNode.sample( uvPos ).rgb : vec3( 1 ) ).toVar();
 
 			if ( this.stochastic === false ) {
 
 				viewReflectDir = reflect( viewIncidentDir, viewNormal ).normalize().toVar();
-				// Metalness alone gives dielectrics zero weight even when they are allowed above.
-				finalSampleWeight = this.specularNode !== null ? vec3( this.specularNode ) :
-					( this._reflectNonMetals ? mix( vec3( 0.04 ), vec3( 1 ), metalness ) : vec3( metalness ) );
+				finalSampleWeight = this.specularNode !== null ? vec3( this.specularNode ) : mix( vec3( 0.04 ), albedo, metalness );
 				specDominantFactor = float( 1 );
 
 			} else {
@@ -1165,8 +1165,6 @@ class SSRNode extends Node {
 
 				} else {
 
-					// The base color only feeds the metalness F0 fallback.
-					const albedo = ( this.specularNode === null && this.diffuseNode !== null ? this.diffuseNode.sample( uvPos ).rgb : vec3( 1 ) ).toVar();
 					const ggxSample = ggxReflectionSample( viewNormal, V, roughness, metalness, albedo, Xi, this.specularNode, this.specularF90Node ?? 1 ).toVar();
 
 					// Sometimes the GGX sample is facing away from the surface, so we need to re-sample.

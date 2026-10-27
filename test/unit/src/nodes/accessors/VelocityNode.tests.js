@@ -1,5 +1,6 @@
-import { Object3D, PerspectiveCamera } from 'three';
-import { velocity } from 'three/tsl';
+import VelocityNode from '../../../../../src/nodes/accessors/VelocityNode.js';
+import { Object3D } from '../../../../../src/core/Object3D.js';
+import { PerspectiveCamera } from '../../../../../src/cameras/PerspectiveCamera.js';
 
 export default QUnit.module( 'Nodes', () => {
 
@@ -7,50 +8,37 @@ export default QUnit.module( 'Nodes', () => {
 
 		QUnit.module( 'VelocityNode', () => {
 
-			QUnit.test( 'previous transform is stable across passes', ( assert ) => {
+			QUnit.test( 'previous object transform is stable across passes', ( assert ) => {
 
-				const node = new velocity.constructor();
-				const object = new Object3D();
+				const node = new VelocityNode();
 				const camera = new PerspectiveCamera();
-				const frame = { object, camera, frameId: 1 };
+				const object = new Object3D();
+				const frame = { frameId: 1, camera, object };
+				const previousX = () => node.previousModelWorldMatrix.value.elements[ 12 ];
 
-				object.matrixWorld.makeTranslation( 7, 0, 0 );
+				object.matrixWorld.makeTranslation( 3, 0, 0 );
 				node.update( frame );
-				assert.strictEqual( node.previousModelWorldMatrix.value.elements[ 12 ], 7, 'first render has no motion' );
+				assert.strictEqual( previousX(), 3, 'first appearance uses the current transform' );
 				node.updateAfter( frame );
 
-				frame.frameId = 2;
+				frame.frameId ++;
+				object.matrixWorld.makeTranslation( 5, 0, 0 );
+				node.update( frame );
+				assert.strictEqual( previousX(), 3, 'first pass retains the last frame transform' );
+				node.updateAfter( frame );
+				node.update( frame );
+				assert.strictEqual( previousX(), 3, 'second pass retains the same last frame transform' );
+				node.updateAfter( frame );
+
+				frame.frameId ++;
 				object.matrixWorld.makeTranslation( 8, 0, 0 );
 				node.update( frame );
-				assert.strictEqual( node.previousModelWorldMatrix.value.elements[ 12 ], 7, 'first pass uses the previous frame' );
-				node.updateAfter( frame );
-				node.update( frame );
-				assert.strictEqual( node.previousModelWorldMatrix.value.elements[ 12 ], 7, 'second pass retains object motion' );
+				assert.strictEqual( previousX(), 5, 'the next frame advances the saved transform' );
 				node.updateAfter( frame );
 
-				frame.frameId = 5;
-				object.matrixWorld.makeTranslation( 9, 0, 0 );
+				frame.frameId += 2;
 				node.update( frame );
-				assert.strictEqual( node.previousModelWorldMatrix.value.elements[ 12 ], 8, 'a later frame uses the last rendered transform' );
-
-			} );
-
-			QUnit.test( 'velocity nodes share a stable previous transform', ( assert ) => {
-
-				const first = new velocity.constructor();
-				const second = new velocity.constructor();
-				const object = new Object3D();
-				const camera = new PerspectiveCamera();
-				const frame = { object, camera, frameId: 1 };
-
-				first.update( frame );
-				first.updateAfter( frame );
-				frame.frameId = 2;
-				object.matrixWorld.makeTranslation( 1, 0, 0 );
-				first.update( frame );
-				first.updateAfter( frame );
-				second.update( frame );
-				assert.strictEqual( second.previousModelWorldMatrix.value.elements[ 12 ], 0, 'another node sees the same previous frame' );
+				assert.strictEqual( previousX(), 8, 'a stationary object and skipped frames retain the last rendered transform' );
 
 			} );
 

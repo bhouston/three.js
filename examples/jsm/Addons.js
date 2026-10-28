@@ -279,6 +279,7 @@ export * as GeometryCompressionUtils from './utils/GeometryCompressionUtils.js';
 export * as GeometryUtils from './utils/GeometryUtils.js';
 export * from './utils/LDrawUtils.js';
 export * from './utils/SceneOptimizer.js';
+export * from './utils/SceneSpatialIndex.js';
 export * as SceneUtils from './utils/SceneUtils.js';
 export * from './utils/ShadowMapViewer.js';
 export * as SkeletonUtils from './utils/SkeletonUtils.js';

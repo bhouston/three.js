@@ -3677,7 +3677,10 @@ class Renderer {
 
 		//
 
-		const children = object.children;
+		// Optional providers return existing direct children for this view.
+		const children = object.getRenderChildren !== undefined
+			? object.getRenderChildren( camera, camera.isArrayCamera ? _frustumArray : _frustum )
+			: object.children;
 
 		for ( let i = 0, l = children.length; i < l; i ++ ) {
 

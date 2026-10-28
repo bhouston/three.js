@@ -189,6 +189,33 @@ try {
 
 	}
 
+	// Fresh document gives an empty loader cache for retry and race checks.
+	await page.reload();
+	await page.waitForFunction( () => window.__noiseTest?.ready && document.querySelectorAll( 'select' )[ 1 ]?.options.length === 6, { timeout: 60000 } );
+	await page.evaluate( async () => {
+
+		window.__noiseTest.renderer.setAnimationLoop( null );
+		await window.__noiseTest.renderer.init();
+		await window.__noiseTest.renderer.backend.device.queue.onSubmittedWorkDone();
+
+	} );
+	const atlasMethods = report.startup.filter( entry => entry.pngURLs.length > 0 );
+	assert.equal( atlasMethods.length, 2 );
+	failURL = atlasMethods[ 0 ].pngURLs[ 0 ];
+	await select( atlasMethods[ 0 ].label );
+	await page.waitForFunction( () => document.getElementById( 'noiseStatus' ).textContent.startsWith( 'Could not load' ) );
+	assert.equal( await page.evaluate( () => window.__noiseTest.params.noise ), '3LHW' );
+	await select( atlasMethods[ 0 ].label );
+	await waitNoise( atlasMethods[ 0 ].label );
+	report.assertions.push( 'A failed atlas request retains the active procedural selection and retries successfully' );
+	delayURL = atlasMethods[ 1 ].pngURLs[ 0 ];
+	await select( atlasMethods[ 1 ].label );
+	await page.waitForFunction( () => document.getElementById( 'noiseStatus' ).textContent.startsWith( 'Loading' ) );
+	await select( 'White' );
+	await waitNoise( 'White' );
+	await new Promise( resolve => setTimeout( resolve, 800 ) );
+	assert.equal( await page.$eval( '#blueLabel', element => element.textContent ), 'White' );
+	report.assertions.push( 'A late atlas completion cannot overwrite a newer arithmetic selection' );
 	assert.deepEqual( report.errors, [] );
 	report.pngRequests = requests.filter( entry => entry.url.endsWith( '.png' ) );
 	report.passed = true;

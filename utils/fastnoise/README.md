@@ -2,6 +2,11 @@
 
 Tools behind `examples/textures/noises/fast/` and `examples/jsm/tsl/utils/FASTNoise.js`.
 
+Three experimental faster generators, browser preview, benchmarks and quality
+tradeoffs are documented in [ALTERNATIVES.md](ALTERNATIVES.md). The cached
+threshold-energy method is about 14× faster on the tested GTX 1050, with higher
+filtered error. The shipped textures and FAST reference are unchanged.
+
 - `generator.html`: WebGPU port of EA's [FAST](https://github.com/electronicarts/fastnoise) generator (`fastnoise/shaders/*.hlsl`, `main.cpp`). Real sample space, uniform distribution, Gaussian spatial filter, weighted exponential temporal filter, product or separate combine.
 - `generate.js`: runs `generator.html` in headless Chrome and writes the volume as raw float32 (z, y, x).
 - `compare.py`: scores volumes (ours as `.f32`, or EA's PNG slices) on spectra and filtered error.

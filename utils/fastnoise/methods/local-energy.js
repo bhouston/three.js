@@ -16,7 +16,7 @@
  * Thresholds are (c + 0.5) / thresholdCount, c=0..thresholdCount-1;
  * 7 includes 0.5, while 15 includes 0.1, 0.5 and 0.9 exactly.
  */
-export function generate( { size = 128, depth = 32, seed = 1, passes = 4, temporalWeight = 1, temporalAlpha = 0.25, temporalRadius = 4, thresholdCount = 0 } = {} ) {
+export function generate( { size = 128, depth = 32, seed = 1, passes = 32, temporalWeight = 1, temporalAlpha = 0.25, temporalRadius = 4, thresholdCount = 15 } = {} ) {
 
 	if ( ! Number.isInteger( size ) || size < 1 || ! Number.isInteger( depth ) || depth < 1 ) throw new RangeError( 'size and depth must be positive integers.' );
 	if ( ! Number.isInteger( passes ) || passes < 0 || ! Number.isInteger( temporalRadius ) || temporalRadius < 0 ) throw new RangeError( 'passes and temporalRadius must be nonnegative integers.' );
@@ -147,6 +147,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 			delta = cb < ca ? 1 : - 1;
 
 		}
+
 		// Exact change in the sum of binary-mask quadratic energies.
 		let energy = 0;
 		for ( let c = lower; c < upper; c ++ ) energy += delta * ( potential[ a * channels + c ] - potential[ b * channels + c ] + delta * ( self - coupling ) );

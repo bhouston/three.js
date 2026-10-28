@@ -62,3 +62,14 @@ the existing FAST license and attribution with redistributed derived assets;
 the asset directory's documentation links that notice. PR116 provenance and
 the exact offline generation schedules are recorded in the comparison reports
 and generation tooling, rather than inferred from the PNG contents.
+
+## Browser validation
+
+Run `node utils/fastnoise/check-noise-example.js --root . --artifacts OUTPUT`
+with installed Chrome and a physical WebGPU adapter. This checks all 24 choices
+in both Sphere and Uniform modes, exact PNG midpoint readback, frames 1/31/32/1024
+for experimental atlases, download retry, stale request handling and caching.
+The check passed on NVIDIA Pascal / WebGPU with software rasterization disabled.
+Its access to example state is injected by the test server, not shipped in the
+example. These checks verify playback and integration, not scene-level sampling
+superiority.

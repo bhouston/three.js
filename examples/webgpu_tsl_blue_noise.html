@@ -32,12 +32,12 @@
 			</div>
 
 			<small>
-				White noise vs. <a href="https://github.com/electronicarts/fastnoise" target="_blank" rel="noopener">FAST</a> spatiotemporal blue noise by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br/>A 1-bit dithered sphere or a uniform noise field, accumulated over time.<br/>Frames accumulated: <span id="frames">0</span>
+				White noise vs. procedural sampling or <a href="https://github.com/electronicarts/fastnoise" target="_blank" rel="noopener">FAST</a> blue noise.<br/>A 1-bit dithered sphere or a uniform noise field, accumulated over time.<br/>Frames accumulated: <span id="frames">0</span><br/><span id="noiseStatus" role="status" aria-live="polite">Procedural: no texture download or generation.</span>
 			</small>
 		</div>
 
 		<div class="label" style="left: 0;">White Noise</div>
-		<div class="label" id="blueLabel" style="right: 0;">FAST Spatio-Temporal Blue Noise</div>
+		<div class="label" id="blueLabel" style="right: 0;">3LHW</div>
 
 		<script type="importmap">
 			{
@@ -55,13 +55,16 @@
 			import * as THREE from 'three/webgpu';
 			import { Fn, float, hash, mix, screenCoordinate, screenSize, screenUV, texture, uint, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
+			import { threeLevelHierarchyWeyl, animatedIGN } from 'three/addons/tsl/utils/ProceduralNoise.js';
 			import { fastNoise, loadFASTNoise } from 'three/addons/tsl/utils/FASTNoise.js';
 			import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const modes = { 'Sphere': 0, 'Uniform': 1 };
-			const noises = { 'FAST Spatio-Temporal': 0, 'FAST Spatial': 1, 'Golden Ratio': 2 };
-			const params = { mode: 'Sphere', noise: 'FAST Spatio-Temporal', pixelSize: 2, temporalBlur: true, spatialBlur: true, animate: true };
+			const noises = [ '3LHW', 'Animated IGN', 'FAST Separate', 'FAST Product', 'Golden Ratio', 'White' ];
+			const atlasCache = new Map();
+			let selectVersion = 0, activeNoise = '3LHW', noiseControl, setNoise;
+			const params = { mode: 'Sphere', noise: '3LHW', pixelSize: 2, temporalBlur: true, spatialBlur: true, animate: true };
 
 			let renderer, computeQuad, displayQuad, targets, history, current, display, blurredDisplay;
 			let samples = 0;
@@ -69,11 +72,15 @@
 			const framesElement = document.getElementById( 'frames' );
 
 			const mode = uniform( modes[ params.mode ] );
-			const noiseType = uniform( noises[ params.noise ] );
 			const index = uniform( 0, 'uint' );
 			const blend = uniform( 1 );
 
-			init();
+			init().catch( ( error ) => {
+
+				document.getElementById( 'noiseStatus' ).textContent = 'Could not initialize: ' + error.message;
+				console.error( error );
+
+			} );
 
 			async function init() {
 
@@ -84,13 +91,6 @@
 				renderer.inspector = new Inspector();
 				document.body.appendChild( renderer.domElement );
 
-				// both optimized for a sigma = 1 gaussian in space and an alpha = 0.1 EMA in time. spatial is blue noise
-				// in space only, spatio-temporal is also blue noise in time per pixel so it converges faster when accumulated
-				const [ spatioTemporal, spatial ] = await Promise.all( [
-					loadFASTNoise( 'textures/noises/fast/gauss1-ema01-spatio-temporal.png' ),
-					loadFASTNoise( 'textures/noises/fast/gauss1-ema01-spatial.png' )
-				] );
-
 				targets = [ 0, 1 ].map( () => new THREE.RenderTarget( 1, 1, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false } ) );
 				history = texture( targets[ 1 ].texture );
 				current = texture( targets[ 0 ].texture );
@@ -99,13 +99,6 @@
 
 				const left = screenUV.x.lessThan( 0.5 );
 				const white = hash( uint( screenCoordinate.x ).add( uint( screenCoordinate.y ).mul( 4096 ) ).add( index.mul( 16777259 ) ) );
-				const fastSpatioTemporal = fastNoise( spatioTemporal, new THREE.Vector2(), index ).x;
-				const fastSpatial = fastNoise( spatial, new THREE.Vector2(), index ).x;
-
-				// a single spatial blue noise slice rotated by the golden ratio each frame, so every pixel gets a low discrepancy sequence in time
-				const golden = fastNoise( spatial, new THREE.Vector2(), uint( 0 ) ).x.add( index.mul( uint( 2654435769 ) ).shiftRight( 8 ).toFloat().div( 16777216 ) ).fract();
-
-				const noise = left.select( white, noiseType.equal( 0 ).select( fastSpatioTemporal, noiseType.equal( 1 ).select( fastSpatial, golden ) ) );
 
 				// the same shaded sphere over a gradient in each half
 
@@ -120,13 +113,22 @@
 
 				} )();
 
-				// 1 sample per frame, accumulated with an exponential moving average
-
-				const sample = mode.equal( 0 ).select( noise.lessThan( image ).select( 1, 0 ), noise );
-				const accumulated = mix( history.sample( screenUV ).r, sample, blend );
+				// One sample per frame, accumulated with an arithmetic running average.
 
 				computeQuad = new THREE.QuadMesh( new THREE.NodeMaterial() );
-				computeQuad.material.fragmentNode = vec4( accumulated, 0, 0, 1 );
+				setNoise = ( right ) => {
+
+					// Rebuild the graph so procedural modes have no atlas or texture binding.
+					const noise = left.select( white, right );
+					const sample = mode.equal( 0 ).select( noise.lessThan( image ).select( 1, 0 ), noise );
+					const accumulated = mix( history.sample( screenUV ).r, sample, blend );
+					computeQuad.material.fragmentNode = vec4( accumulated, 0, 0, 1 );
+					computeQuad.material.needsUpdate = true;
+					reset();
+
+				};
+
+				setNoise( threeLevelHierarchyWeyl( screenCoordinate, index ) );
 
 				// the FAST atlases are optimized for a sigma = 1 gaussian, which GaussianBlurNode uses for sigma = 0 ( kernel radius 3 )
 
@@ -143,28 +145,78 @@
 				gui.add( params, 'mode', Object.keys( modes ) ).onChange( ( value ) => {
 
 					mode.value = modes[ value ];
-					samples = 0;
+					reset();
 
 				} );
-				gui.add( params, 'noise', Object.keys( noises ) ).onChange( ( value ) => {
-
-					noiseType.value = noises[ value ];
-					document.getElementById( 'blueLabel' ).textContent = value + ' Blue Noise';
-					samples = 0;
-
-				} );
+				noiseControl = gui.add( params, 'noise', noises ).onChange( selectNoise );
 				gui.add( params, 'pixelSize', 1, 8, 1 ).name( 'pixel size' ).onChange( onWindowResize );
-				gui.add( params, 'temporalBlur' ).name( 'temporal blur' ).onChange( () => samples = 0 );
+				gui.add( params, 'temporalBlur' ).name( 'temporal blur' ).onChange( reset );
 				gui.add( params, 'spatialBlur' ).name( 'spatial blur' ).onChange( ( value ) => {
 
 					displayQuad.material.fragmentNode = value ? blurredDisplay : display;
 					displayQuad.material.needsUpdate = true;
 
 				} );
-				gui.add( params, 'animate' ).onChange( () => samples = 0 );
+				gui.add( params, 'animate' ).onChange( reset );
 
 				onWindowResize();
 				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			function reset() {
+
+				samples = 0;
+				index.value = 0;
+
+			}
+
+			async function selectNoise( value ) {
+
+				const version = ++ selectVersion;
+				const status = document.getElementById( 'noiseStatus' );
+				status.textContent = 'Loading ' + value + '…';
+				try {
+
+					let right;
+					if ( value === '3LHW' ) right = threeLevelHierarchyWeyl( screenCoordinate, index );
+					else if ( value === 'Animated IGN' ) right = animatedIGN( screenCoordinate, index );
+					else if ( value === 'White' ) right = hash( uint( screenCoordinate.x ).add( uint( screenCoordinate.y ).mul( 4096 ) ).add( index.mul( 16777259 ) ) );
+					else {
+
+						const name = value === 'FAST Separate' ? 'spatio-temporal' : 'spatial';
+						if ( ! atlasCache.has( name ) ) {
+
+							atlasCache.set( name, loadFASTNoise( 'textures/noises/fast/gauss1-ema01-' + name + '.png' ).catch( ( error ) => {
+
+								atlasCache.delete( name );
+								throw error;
+
+							} ) );
+
+						}
+
+						const atlas = await atlasCache.get( name );
+						right = fastNoise( atlas, new THREE.Vector2(), value === 'Golden Ratio' ? uint( 0 ) : index ).x;
+						if ( value === 'Golden Ratio' ) right = right.add( index.mul( uint( 2654435769 ) ).shiftRight( 8 ).toFloat().div( 16777216 ) ).fract();
+
+					}
+
+					if ( version !== selectVersion ) return;
+					setNoise( right );
+					activeNoise = value;
+					document.getElementById( 'blueLabel' ).textContent = value;
+					status.textContent = value === '3LHW' || value === 'Animated IGN' || value === 'White' ? 'Procedural: no texture download or generation.' : 'FAST atlas loaded and cached.';
+
+				} catch ( error ) {
+
+					if ( version !== selectVersion ) return;
+					params.noise = activeNoise;
+					noiseControl.select.value = activeNoise;
+					status.textContent = 'Could not load ' + value + '. Choose it again to retry.';
+					console.error( error );
+
+				}
 
 			}
 
@@ -174,15 +226,13 @@
 
 				const size = renderer.getDrawingBufferSize( new THREE.Vector2() ).divideScalar( params.pixelSize ).ceil();
 				for ( const target of targets ) target.setSize( size.x, size.y );
-				samples = 0;
+				reset();
 
 			}
 
 			function animate() {
 
 				if ( computeQuad === undefined ) return;
-
-				if ( params.animate ) index.value ++;
 
 				// temporal blur is a running average of every sample since the last reset
 
@@ -198,6 +248,7 @@
 				targets.reverse();
 				history.value = targets[ 1 ].texture;
 				current.value = targets[ 0 ].texture;
+				if ( params.animate ) index.value ++;
 
 			}
 

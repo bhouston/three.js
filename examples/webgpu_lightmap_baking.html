@@ -68,7 +68,7 @@
 			let world, materials, status, warning, lightBaker;
 			let busy = false, bakePending = false, bakeController = null, bakeId = 0;
 			let capture = null, captureBakeId = - 1, previewBakeId = - 1, captureStatus = '', probeMaterialKey = '';
-			let gltfLoader = null, gltfSky = null, sceneControl;
+			let gltfLoader = null, gltfSky = null, sceneControl, samplesControl, noiseControl;
 			let framesInFlight = 0;
 
 			const worlds = {};
@@ -88,6 +88,8 @@
 				scene: 'Cornell Box',
 				algorithm: 'Ray Radiosity',
 				resolution: 1024,
+				samples: 1024,
+				noise: 0.02,
 				denoiser: 'none'
 			};
 
@@ -96,6 +98,14 @@
 			// stochastic radiosity per frame
 
 			const algorithms = { 'Stochastic Radiosity': 'stochastic', 'Ray Radiosity': 'ray', 'Light Probe': 'probes', 'VXGI': 'vxgi' };
+
+			// the default maximum samples and noise tolerances of the algorithms that accumulate samples, the
+			// light probes are deterministic and need only a few samples to antialias. The few directions that
+			// all texels of a stochastic radiosity sample share leave blotchy noise, so it bakes to a lower
+			// tolerance
+
+			const sampleDefaults = { 'Stochastic Radiosity': 8192, 'Ray Radiosity': 1024, 'VXGI': 256 };
+			const noiseDefaults = { 'Stochastic Radiosity': 0.01, 'Ray Radiosity': 0.02, 'VXGI': 0.02 };
 
 			init().catch( error => {
 
@@ -189,9 +199,17 @@
 				const gui = renderer.inspector.createParameters( 'Light Baking' );
 				gui.add( { openGLTF }, 'openGLTF' ).name( 'Open glTF…' ).info( 'or drop a .glb, or a .gltf with its files, onto the page' );
 				sceneControl = gui.add( params, 'scene', Object.keys( scenes ) ).name( 'Scene' ).onChange( setScene );
-				gui.add( params, 'algorithm', Object.keys( algorithms ) ).name( 'GI Algorithm' ).onChange( bake );
 				gui.add( params, 'resolution', [ 256, 512, 1024, 2048, 4096 ] ).name( 'Resolution' ).listen().onChange( bake );
-				gui.add( params, 'denoiser', { None: 'none', 'Variance à-trous': 'variance', 'OIDN RTLightmap (experimental)': 'oidn' } ).name( 'Denoiser' ).info( 'OIDN currently supports atlas pages up to 512 pixels.' ).onChange( setDenoise );
+
+				const giFolder = gui.addFolder( 'GI Algorithm' );
+				giFolder.add( params, 'algorithm', Object.keys( algorithms ) ).name( 'Engine' ).onChange( setAlgorithm );
+				samplesControl = giFolder.add( params, 'samples', [ 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192 ] ).name( 'Samples' ).info( 'the maximum, the bake stops earlier once the noise drops below the threshold' ).listen().onChange( bake );
+				noiseControl = giFolder.add( params, 'noise', { '1%': 0.01, '2%': 0.02, '4%': 0.04, '8%': 0.08, '16%': 0.16 } ).name( 'Noise Threshold' ).info( 'the bake stops once the estimated noise of the light map drops below this' ).listen().onChange( bake );
+				setAlgorithm( params.algorithm, false );
+
+				const denoiserFolder = gui.addFolder( 'Denoiser' );
+				denoiserFolder.add( params, 'denoiser', { None: 'none', 'Variance à-trous': 'variance', 'OIDN RTLightmap (experimental)': 'oidn' } ).name( 'Denoiser' ).info( 'OIDN currently supports atlas pages up to 512 pixels.' ).onChange( setDenoise );
+
 				gui.add( { bake }, 'bake' ).name( 'Re-Bake GI' );
 
 				window.addEventListener( 'resize', onWindowResize );
@@ -208,6 +226,28 @@
 				} );
 
 				renderer.setAnimationLoop( animate );
+
+			}
+
+			function setAlgorithm( algorithm, rebake = true ) {
+
+				const samples = sampleDefaults[ algorithm ];
+
+				if ( samples !== undefined ) {
+
+					params.samples = samples;
+					params.noise = noiseDefaults[ algorithm ];
+					samplesControl.show();
+					noiseControl.show();
+
+				} else {
+
+					samplesControl.hide();
+					noiseControl.hide();
+
+				}
+
+				if ( rebake ) bake();
 
 			}
 
@@ -998,11 +1038,9 @@
 
 				// stochastic radiosity converges in fewer samples with more directions per sample, desktop GPUs
 				// render them at almost no extra cost, but they take memory and more time per sample on phones.
-				// A VXGI volume of 256³ takes about 700 MB of GPU memory, phones use 128³. The emissive panel is
-				// small and bright, few of the directions that all texels of a stochastic radiosity sample share
-				// find it, so its blotchy noise bakes to a lower tolerance
+				// A VXGI volume of 256³ takes about 700 MB of GPU memory, phones use 128³
 
-				const panelRadiosity = params.algorithm === 'Stochastic Radiosity' && world.lightPanel !== null;
+				const sampled = sampleDefaults[ params.algorithm ] !== undefined;
 
 				lightBaker.setOptions( {
 					algorithm: algorithms[ params.algorithm ],
@@ -1013,7 +1051,8 @@
 					cacheSize: params.algorithm === 'Stochastic Radiosity' ? world.cacheSize : 256,
 					probes: world.probes,
 					vxgiResolution: phone ? 128 : 256,
-					noiseTolerance: panelRadiosity ? 0.014 : null
+					noiseTolerance: sampled ? params.noise : null,
+					maxSamples: sampled ? params.samples : null
 				} );
 
 				// unwrapping a large model takes a moment

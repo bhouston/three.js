@@ -29,6 +29,7 @@
 					"three/webgpu": "../build/three.webgpu.js",
 					"three/tsl": "../build/three.tsl.js",
 					"three/addons/": "./jsm/",
+					"oidn-webgpu": "https://esm.sh/oidn-webgpu@0.6.0?bundle",
 					"three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/index.js",
 					"three-mesh-bvh/webgpu": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/webgpu/index.js"
 				}
@@ -43,6 +44,7 @@
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightBaker } from 'three/addons/lighting/LightBaker.js';
+			import { runLightMapDenoisingBenchmark } from 'three/addons/lighting/LightMapDenoisingBenchmark.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { lightProbeGridIrradiance } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 			import { ReflectionProbes } from 'three/addons/lighting/ReflectionProbes.js';
@@ -66,7 +68,7 @@
 			let world, materials, status, warning, lightBaker;
 			let busy = false, bakePending = false, bakeController = null, bakeId = 0;
 			let capture = null, captureBakeId = - 1, previewBakeId = - 1, captureStatus = '', probeMaterialKey = '';
-			let gltfLoader = null, gltfSky = null, sceneControl;
+			let gltfLoader = null, gltfSky = null, sceneControl, samplesControl, noiseControl;
 			let framesInFlight = 0;
 
 			const worlds = {};
@@ -79,12 +81,16 @@
 			// phones have less GPU memory and slower GPUs
 
 			const phone = window.matchMedia( '(pointer: coarse)' ).matches;
+			const benchmarkParams = new URLSearchParams( location.search );
+			const benchmarkScene = benchmarkParams.get( 'benchmarkScene' );
 
 			const params = {
 				scene: 'Cornell Box',
 				algorithm: 'Ray Radiosity',
 				resolution: 1024,
-				denoise: true
+				samples: 1024,
+				noise: 0.02,
+				denoiser: 'none'
 			};
 
 			// the algorithms of LightBaker. It stops the bake once the estimated noise of the light map drops
@@ -93,7 +99,20 @@
 
 			const algorithms = { 'Stochastic Radiosity': 'stochastic', 'Ray Radiosity': 'ray', 'Light Probe': 'probes', 'VXGI': 'vxgi' };
 
-			init();
+			// the default maximum samples and noise tolerances of the algorithms that accumulate samples, the
+			// light probes are deterministic and need only a few samples to antialias. The few directions that
+			// all texels of a stochastic radiosity sample share leave blotchy noise, so it bakes to a lower
+			// tolerance
+
+			const sampleDefaults = { 'Stochastic Radiosity': 8192, 'Ray Radiosity': 1024, 'VXGI': 256 };
+			const noiseDefaults = { 'Stochastic Radiosity': 0.01, 'Ray Radiosity': 0.02, 'VXGI': 0.02 };
+
+			init().catch( error => {
+
+				if ( benchmarkScene !== null ) window.benchmarkError = error.stack || String( error );
+				console.error( error );
+
+			} );
 
 			async function init() {
 
@@ -114,7 +133,18 @@
 				// at most twice the resolution of the page, three times on phones would take memory and GPU time
 				// from the bake
 
-				renderer = new THREE.WebGPURenderer( { antialias: true, requiredLimits } );
+				let device;
+				if ( benchmarkScene !== null ) {
+
+					if ( ! adapter ) throw new Error( 'Benchmark blocked: no WebGPU adapter.' );
+					const info = adapter.info;
+					const name = [ info.vendor, info.architecture, info.device, info.description ].join( ' ' );
+					if ( adapter.isFallbackAdapter || info.isFallbackAdapter || /swiftshader|llvmpipe|lavapipe|software|microsoft basic/i.test( name ) || ! /nvidia|amd|intel|apple|qualcomm|arm/i.test( name ) ) throw new Error( 'Benchmark blocked: physical GPU not confirmed: ' + name );
+					device = await adapter.requestDevice( { requiredFeatures: [ ...adapter.features ], requiredLimits } );
+
+				}
+
+				renderer = new THREE.WebGPURenderer( { antialias: true, requiredLimits, device } );
 				renderer.setPixelRatio( Math.min( window.devicePixelRatio, 2 ) );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.shadowMap.enabled = true;
@@ -155,6 +185,12 @@
 				// the light maps and assigns them to the materials
 
 				lightBaker = new LightBaker( renderer );
+				if ( benchmarkScene !== null ) {
+
+					await prepareBenchmark( adapter.info );
+					return;
+
+				}
 
 				await setScene();
 
@@ -163,9 +199,17 @@
 				const gui = renderer.inspector.createParameters( 'Light Baking' );
 				gui.add( { openGLTF }, 'openGLTF' ).name( 'Open glTF…' ).info( 'or drop a .glb, or a .gltf with its files, onto the page' );
 				sceneControl = gui.add( params, 'scene', Object.keys( scenes ) ).name( 'Scene' ).onChange( setScene );
-				gui.add( params, 'algorithm', Object.keys( algorithms ) ).name( 'GI Algorithm' ).onChange( bake );
-				gui.add( params, 'resolution', [ 256, 1024, 2048, 4096 ] ).name( 'Resolution' ).listen().onChange( bake );
-				gui.add( params, 'denoise' ).name( 'Denoise' ).onChange( setDenoise );
+				gui.add( params, 'resolution', [ 256, 512, 1024, 2048, 4096 ] ).name( 'Resolution' ).listen().onChange( bake );
+
+				const giFolder = gui.addFolder( 'GI Algorithm' );
+				giFolder.add( params, 'algorithm', Object.keys( algorithms ) ).name( 'Engine' ).onChange( setAlgorithm );
+				samplesControl = giFolder.add( params, 'samples', [ 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192 ] ).name( 'Samples' ).info( 'the maximum, the bake stops earlier once the noise drops below the threshold' ).listen().onChange( bake );
+				noiseControl = giFolder.add( params, 'noise', { '1%': 0.01, '2%': 0.02, '4%': 0.04, '8%': 0.08, '16%': 0.16 } ).name( 'Noise Threshold' ).info( 'the bake stops once the estimated noise of the light map drops below this' ).listen().onChange( bake );
+				setAlgorithm( params.algorithm, false );
+
+				const denoiserFolder = gui.addFolder( 'Denoiser' );
+				denoiserFolder.add( params, 'denoiser', { None: 'none', 'Variance à-trous': 'variance', 'OIDN RTLightmap (experimental)': 'oidn' } ).name( 'Denoiser' ).info( 'OIDN currently supports atlas pages up to 512 pixels.' ).onChange( setDenoise );
+
 				gui.add( { bake }, 'bake' ).name( 'Re-Bake GI' );
 
 				window.addEventListener( 'resize', onWindowResize );
@@ -182,6 +226,115 @@
 				} );
 
 				renderer.setAnimationLoop( animate );
+
+			}
+
+			function setAlgorithm( algorithm, rebake = true ) {
+
+				const samples = sampleDefaults[ algorithm ];
+
+				if ( samples !== undefined ) {
+
+					params.samples = samples;
+					params.noise = noiseDefaults[ algorithm ];
+					samplesControl.show();
+					noiseControl.show();
+
+				} else {
+
+					samplesControl.hide();
+					noiseControl.hide();
+
+				}
+
+				if ( rebake ) bake();
+
+			}
+
+			async function prepareBenchmark( adapterInfo ) {
+
+				if ( scenes[ benchmarkScene ] === undefined ) throw new Error( 'Unknown benchmark scene: ' + benchmarkScene );
+				status.textContent = 'Loading ' + benchmarkScene;
+				const next = await scenes[ benchmarkScene ]();
+				showWorld( next );
+				if ( world.light !== null ) world.light.visible = false;
+				if ( world.lightPanel !== null ) world.lightPanel.visible = true;
+				const integer = ( key, fallback, min, max ) => Math.min( max, Math.max( min, Number( benchmarkParams.get( key ) ) || fallback ) ) | 0;
+				const config = {
+					resolution: integer( 'resolution', 256, 32, 512 ),
+					samples: integer( 'samples', 16, 1, 4096 ),
+					reference: integer( 'reference', 512, 32, 65536 ),
+					seconds: integer( 'seconds', 5, 5, 60 ),
+					qualityTrials: 5,
+					oidn: benchmarkParams.get( 'oidn' ) === '1'
+				};
+				config.reference = Math.max( config.reference, config.samples * 4 );
+				lightBaker.setOptions( { algorithm: 'ray', resolution: config.resolution, pageSize: 512, unwrap: world.unwrap ?? true, cacheSize: 256, directional: false, denoiser: 'none', stitchSeams: false } );
+				status.textContent = 'Preparing ' + benchmarkScene;
+				await lightBaker.prepare( scene, world.root );
+
+				// The benchmark shares these exact example scene loaders and leaves the render loop stopped.
+				// Screenshots use atlas previews so exposure/reflection-probe capture cannot affect the metrics.
+				renderer.domElement.style.display = 'none';
+				document.body.style.backgroundColor = '#202124';
+				const report = document.createElement( 'main' );
+				report.style.cssText = 'position:relative;margin:100px 16px 16px;color:white;font:13px monospace';
+				const results = document.createElement( 'pre' );
+				results.style.cssText = 'max-height:250px;overflow:auto;white-space:pre-wrap';
+				const images = document.createElement( 'div' );
+				images.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))';
+				report.append( results, images );
+				document.body.appendChild( report );
+				window.runDenoisingBenchmark = async () => {
+
+					try {
+
+						const result = await runLightMapDenoisingBenchmark( {
+							renderer, baker: lightBaker, config, sceneName: benchmarkScene,
+							onStatus: text => {
+
+								status.textContent = text;
+
+							},
+							onPreview: ( label, data, size, page ) => {
+
+								if ( page !== 0 ) return;
+								const canvas = document.createElement( 'canvas' );
+								canvas.width = canvas.height = size;
+								canvas.style.cssText = 'width:256px;image-rendering:pixelated';
+								const context = canvas.getContext( '2d' );
+								const pixels = context.createImageData( size, size );
+								for ( let i = 0; i < data.length; i += 4 ) {
+
+									for ( let c = 0; c < 3; c ++ ) pixels.data[ i + c ] = Math.round( 255 * Math.pow( Math.max( 0, data[ i + c ] ) / ( 1 + Math.max( 0, data[ i + c ] ) ), 1 / 2.2 ) );
+									pixels.data[ i + 3 ] = 255;
+
+								}
+
+								context.putImageData( pixels, 0, 0 );
+								const figure = document.createElement( 'figure' );
+								const caption = document.createElement( 'figcaption' );
+								caption.textContent = `${ label } (page 1, Reinhard preview)`;
+								figure.append( caption, canvas );
+								images.appendChild( figure );
+
+							}
+						} );
+						result.adapter = { vendor: adapterInfo.vendor, architecture: adapterInfo.architecture, device: adapterInfo.device, description: adapterInfo.description };
+						result.userAgent = navigator.userAgent;
+						window.benchmarkResult = result;
+						results.textContent = JSON.stringify( result, null, 2 );
+						status.textContent = benchmarkScene + ' benchmark complete';
+						return result;
+
+					} finally {
+
+						lightBaker.dispose();
+						renderer.dispose();
+
+					}
+
+				};
 
 			}
 
@@ -885,11 +1038,9 @@
 
 				// stochastic radiosity converges in fewer samples with more directions per sample, desktop GPUs
 				// render them at almost no extra cost, but they take memory and more time per sample on phones.
-				// A VXGI volume of 256³ takes about 700 MB of GPU memory, phones use 128³. The emissive panel is
-				// small and bright, few of the directions that all texels of a stochastic radiosity sample share
-				// find it, so its blotchy noise bakes to a lower tolerance
+				// A VXGI volume of 256³ takes about 700 MB of GPU memory, phones use 128³
 
-				const panelRadiosity = params.algorithm === 'Stochastic Radiosity' && world.lightPanel !== null;
+				const sampled = sampleDefaults[ params.algorithm ] !== undefined;
 
 				lightBaker.setOptions( {
 					algorithm: algorithms[ params.algorithm ],
@@ -900,7 +1051,8 @@
 					cacheSize: params.algorithm === 'Stochastic Radiosity' ? world.cacheSize : 256,
 					probes: world.probes,
 					vxgiResolution: phone ? 128 : 256,
-					noiseTolerance: panelRadiosity ? 0.014 : null
+					noiseTolerance: sampled ? params.noise : null,
+					maxSamples: sampled ? params.samples : null
 				} );
 
 				// unwrapping a large model takes a moment
@@ -969,7 +1121,12 @@
 
 				lightBaker.bake( scene, { root: world.root, signal: controller.signal } ).catch( ( error ) => {
 
-					if ( error.name !== 'AbortError' ) console.error( error );
+					if ( error.name !== 'AbortError' ) {
+
+						console.error( error );
+						warning.textContent = `The bake failed: ${ error.message }`;
+
+					}
 
 				} );
 
@@ -982,17 +1139,27 @@
 
 			}
 
-			function setDenoise() {
+			async function setDenoise() {
 
-				lightBaker.denoise = params.denoise;
+				lightBaker.denoiser = params.denoiser;
 
 				// a running bake denoises once it has finished, a finished one at once. The probes capture the
 				// light maps again
 
 				if ( lightBaker.baking ) return;
 
-				lightBaker.process();
-				captureBakeId = - 1;
+				try {
+
+					if ( warning.textContent.startsWith( 'Denoising failed:' ) ) warning.textContent = '';
+					status.textContent = 'Processing light maps…';
+					await lightBaker.processAsync();
+					captureBakeId = - 1;
+
+				} catch ( error ) {
+
+					warning.textContent = `Denoising failed: ${ error.message }`;
+
+				}
 
 			}
 

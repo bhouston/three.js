@@ -1,6 +1,6 @@
 # Procedural noise comparison
 
-This focused comparison extends the uniform-field chart and table in [Three.js PR 35244](https://github.com/mrdoob/three.js/pull/35244), pinned to `f14867640c96eb324665cb68948fccb12318231e`. FAST Product is the original **FAST Spatial** texture; FAST Separate is **FAST Spatio-Temporal**. The underlying texture metadata identifies the product and separate filters. All four original series are reproduced from the original textures and NumPy seed, rather than copied or fitted. Their values match the published table at its displayed precision.
+This focused comparison extends the uniform-field chart and table in [Three.js PR 35244](https://github.com/mrdoob/three.js/pull/35244), pinned to `f14867640c96eb324665cb68948fccb12318231e`. FAST Product is the original **FAST Spatial** texture; FAST Separate is **FAST Spatio-Temporal**. The underlying texture metadata identifies the product and separate filters. All four original series are reproduced from the original textures and NumPy seed, rather than copied or fitted. All 88 original raw/blur data points match the original convergence script exactly at its five-decimal output precision. The PR body uses fewer displayed digits, sometimes rounding that five-decimal intermediate.
 
 ![Spatially filtered convergence](convergence-blur.png)
 

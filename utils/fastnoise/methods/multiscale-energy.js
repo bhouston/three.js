@@ -60,6 +60,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 			for ( let i = 0; i < filter.length; i ++ ) if ( i + d >= 0 && i + d < filter.length ) correlation[ d + 2 * radius ] += filter[ i ] * filter[ i + d ];
 
 		}
+
 		const selfWeight = correlation[ 2 * radius ] ** 2;
 		for ( let dy = - 2 * radius; dy <= 2 * radius; dy ++ ) {
 
@@ -73,6 +74,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		}
 
 	}
+
 	// Exact autocorrelation of a cyclic EMA, including the infinite periodic tail.
 	const impulse = Array.from( { length: depth }, ( _, i ) => ( 1 - temporalAlpha ) ** i );
 	let normalization = 0;
@@ -84,6 +86,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		temporal[ dz ] = temporalWeight * weight / normalization;
 
 	}
+
 	// Consolidate periodic aliases so self and pair couplings stay exact.
 	for ( let y = 0; y < size; y ++ ) for ( let x = 0; x < size; x ++ ) if ( spatial[ y * size + x ] !== 0 ) stencil.push( [ x, y, 0, spatial[ y * size + x ] ] );
 	for ( let z = 0; z < depth; z ++ ) if ( temporal[ z ] !== 0 ) stencil.push( [ 0, 0, z, temporal[ z ] ] );

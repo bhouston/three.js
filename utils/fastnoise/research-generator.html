@@ -57,7 +57,7 @@ for ( let m = 1; m <= Z; m ++ ) {
 		}
 
 		Fz[ ( ( j % Z ) + Z ) % Z ] += Fj * weight;
- signedFz[ j + Z - 1 ] += Fj * weight;
+		signedFz[ j + Z - 1 ] += Fj * weight;
 
 	}
 
@@ -75,22 +75,32 @@ const W = new Float32Array( ( 2 * fs + 1 ) ** 2 * Z ), taps = [];
 let spatialMass = 0;
 for ( let i = - jointRadius; i <= jointRadius; i ++ ) spatialMass += Fxy( i );
 const mixedWeight = ( i, j, k, temporal ) => {
- const original = mode === 'product' ? Fxy( i ) * Fxy( j ) * temporal :
-  ( k === 0 ? Fxy( i ) * Fxy( j ) * sepWeight : 0 ) + ( i === 0 && j === 0 ? temporal * ( 1 - sepWeight ) : 0 );
- const joint = Math.abs( i ) <= jointRadius && Math.abs( j ) <= jointRadius ? Fxy( i ) * Fxy( j ) * temporal / ( spatialMass * spatialMass ) : 0;
- return ( 1 - jointMix ) * original + jointMix * joint;
+
+	const original = mode === 'product' ? Fxy( i ) * Fxy( j ) * temporal :
+		( k === 0 ? Fxy( i ) * Fxy( j ) * sepWeight : 0 ) + ( i === 0 && j === 0 ? temporal * ( 1 - sepWeight ) : 0 );
+	const joint = Math.abs( i ) <= jointRadius && Math.abs( j ) <= jointRadius ? Fxy( i ) * Fxy( j ) * temporal / ( spatialMass * spatialMass ) : 0;
+	return ( 1 - jointMix ) * original + jointMix * joint;
+
 };
+
 for ( let i = - fs; i <= fs; i ++ ) for ( let j = - fs; j <= fs; j ++ ) for ( let k = 0; k < Z; k ++ ) {
- const w = jointMix === 0 ? combine( i, j, k ) : mixedWeight( i, j, k, Fz[ k ] );
- W[ ( ( i + fs ) * ( 2 * fs + 1 ) + ( j + fs ) ) * Z + k ] = w;
- if ( w !== 0 && seamWeight < 1 ) taps.push( i, j, k, w * ( 1 - seamWeight ) );
+
+	const w = jointMix === 0 ? combine( i, j, k ) : mixedWeight( i, j, k, Fz[ k ] );
+	W[ ( ( i + fs ) * ( 2 * fs + 1 ) + ( j + fs ) ) * Z + k ] = w;
+	if ( w !== 0 && seamWeight < 1 ) taps.push( i, j, k, w * ( 1 - seamWeight ) );
+
 }
+
 if ( seamWeight > 0 ) {
- for ( let i = - fs; i <= fs; i ++ ) for ( let j = - fs; j <= fs; j ++ ) for ( let k = 1 - Z; k < Z; k ++ ) {
-  const w = mixedWeight( i, j, k, signedFz[ k + Z - 1 ] ) * seamWeight;
-  // x + 4*S marks signed playback-seam taps, decoded in the shader.
-  if ( w !== 0 ) taps.push( i + 4 * S, j, k, w );
- }
+
+	for ( let i = - fs; i <= fs; i ++ ) for ( let j = - fs; j <= fs; j ++ ) for ( let k = 1 - Z; k < Z; k ++ ) {
+
+		const w = mixedWeight( i, j, k, signedFz[ k + Z - 1 ] ) * seamWeight;
+		// x + 4*S marks signed playback-seam taps, decoded in the shader.
+		if ( w !== 0 ) taps.push( i + 4 * S, j, k, w );
+
+	}
+
 }
 
 log( `mode=${mode} steps=${steps} size=${S}x${S}x${Z} taps=${taps.length / 4} fs=${fs}` );
@@ -111,12 +121,15 @@ for ( let z = 0; z < Z; z ++ ) {
 }
 
 if ( q.has( 'initial' ) ) {
- const response = await fetch( q.get( 'initial' ) );
- if ( ! response.ok ) throw new Error( 'Initial volume fetch failed' );
- const initial = new Float32Array( await response.arrayBuffer() );
- if ( initial.length !== N || initial.some( x => ! Number.isFinite( x ) || x < 0 || x >= 1 ) ) throw new Error( 'Invalid initial volume' );
- values.set( initial );
+
+	const response = await fetch( q.get( 'initial' ) );
+	if ( ! response.ok ) throw new Error( 'Initial volume fetch failed' );
+	const initial = new Float32Array( await response.arrayBuffer() );
+	if ( initial.length !== N || initial.some( x => ! Number.isFinite( x ) || x < 0 || x >= 1 ) ) throw new Error( 'Invalid initial volume' );
+	values.set( initial );
+
 }
+
 const adapter = await navigator.gpu.requestAdapter();
 if ( ! adapter ) throw new Error( 'Hardware WebGPU adapter unavailable' );
 const device = await adapter.requestDevice();
@@ -221,6 +234,10 @@ const deltaBuf = device.createBuffer( { size: N * 4, usage: GPUBufferUsage.STORA
 const tapsBuf = buf( new Float32Array( taps ), GPUBufferUsage.STORAGE );
 const wBuf = buf( W, GPUBufferUsage.STORAGE );
 const BATCH = 100, STRIDE = 256;
+// Keep algorithmic suppression/key boundaries at 100 iterations, but drain
+// smaller submissions to avoid Windows watchdog resets on heavier objectives.
+const submissionBatch = Number( q.get( 'submissionBatch' ) || 10 );
+if ( ! Number.isInteger( submissionBatch ) || submissionBatch < 1 || submissionBatch > BATCH ) throw new Error( 'Invalid submissionBatch' );
 const paramsBuf = device.createBuffer( { size: BATCH * STRIDE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST } );
 const swapsBuf = device.createBuffer( { size: 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST } );
 const swapsRead = device.createBuffer( { size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST } );
@@ -258,7 +275,7 @@ for ( let step = 0; step < steps; step += BATCH ) {
 
 	device.queue.writeBuffer( paramsBuf, 0, p );
 	device.queue.writeBuffer( swapsBuf, 0, new Uint32Array( [ 0 ] ) );
-	const enc = device.createCommandEncoder();
+	let enc = device.createCommandEncoder();
 	for ( let b = 0; b < n; b ++ ) {
 
 		const pass = enc.beginComputePass();
@@ -266,6 +283,13 @@ for ( let step = 0; step < steps; step += BATCH ) {
 		pass.setPipeline( lossPipeline ); pass.dispatchWorkgroups( S / workgroupX, S / workgroupY, Z );
 		pass.setPipeline( swapPipeline ); pass.dispatchWorkgroups( S / workgroupX, S / workgroupY, Z );
 		pass.end();
+		if ( ( b + 1 ) % submissionBatch === 0 && b + 1 < n ) {
+
+			device.queue.submit( [ enc.finish() ] );
+			await device.queue.onSubmittedWorkDone();
+			enc = device.createCommandEncoder();
+
+		}
 
 	}
 

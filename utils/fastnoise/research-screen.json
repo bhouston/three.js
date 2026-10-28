@@ -1,0 +1,13 @@
+[
+  { "name": "control-original", "kind": "gpu", "file": "generator.html", "parameters": { "steps": 100 }, "seeds": [1] },
+  { "name": "control-research", "kind": "gpu", "file": "research-generator.html", "parameters": { "steps": 100, "seam": 0, "mix": 0 }, "seeds": [1] },
+  { "name": "control-research-drained", "kind": "gpu", "file": "research-generator.html", "parameters": { "steps": 100, "seam": 0, "mix": 0 }, "seeds": [1] },
+  { "name": "continuation-polish", "kind": "gpu", "file": "research-generator.html", "initial": "fast-seed{seed}", "parameters": { "steps": 2000 }, "seeds": [1] },
+  { "name": "seam-polish", "kind": "gpu", "file": "research-generator.html", "initial": "fast-seed{seed}", "parameters": { "steps": 2000, "seam": 0.25 }, "seeds": [1] },
+  { "name": "joint-polish", "kind": "gpu", "file": "research-generator.html", "initial": "fast-seed{seed}", "parameters": { "steps": 2000, "mix": 0.15 }, "seeds": [1] },
+  { "name": "seam-joint-polish", "kind": "gpu", "file": "research-generator.html", "initial": "fast-seed{seed}", "parameters": { "steps": 2000, "seam": 0.25, "mix": 0.15 }, "seeds": [1] },
+  { "name": "multiscale-scratch", "kind": "cpu", "module": "./methods/multiscale-energy.js", "options": { "passes": 16 }, "seeds": [1] },
+  { "name": "multiscale-polish", "kind": "cpu", "module": "./methods/multiscale-energy.js", "initial": "fast-seed{seed}", "options": { "passes": 4 }, "seeds": [1] },
+  { "name": "stratified-scratch", "kind": "cpu", "module": "./methods/stratified-refine.js", "options": { "passes": 24 }, "seeds": [1] },
+  { "name": "stratified-midpoint", "kind": "cpu", "module": "./methods/stratified-refine.js", "options": { "passes": 24, "jitter": 0 }, "seeds": [1] }
+]

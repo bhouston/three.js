@@ -1,6 +1,5 @@
 // Arithmetic scalar sampling candidates; these are not optimized blue-noise masks.
-const UINT_SCALE = 1 / 4294967296;
-const GOLDEN = 0.6180339887498949;
+const f32 = Math.fround;
 
 function fract( value ) {
 
@@ -34,15 +33,16 @@ function reverseBits( value ) {
 
 export function animatedIGN( x, y, frame, seed = 1 ) {
 
-	const shift = frame * 5.588238;
-	const offset = hash( seed ) * UINT_SCALE * 256;
-	return fract( 52.9829189 * fract( 0.06711056 * ( x + shift + offset ) + 0.00583715 * ( y + shift + offset ) ) );
+	const shift = f32( frame * f32( 5.588238 ) );
+	const offset = f32( ( hash( seed ) >>> 8 ) / 16777216 * 256 );
+	const px = f32( f32( x + shift ) + offset ), py = f32( f32( y + shift ) + offset );
+	return fract( f32( f32( 52.9829189 ) * fract( f32( f32( f32( .06711056 ) * px ) + f32( f32( .00583715 ) * py ) ) ) ) );
 
 }
 
 export function r2Weyl( x, y, frame, seed = 1 ) {
 
-	return fract( x * 0.7548776662466927 + y * 0.5698402909980532 + frame * GOLDEN + hash( seed ) * UINT_SCALE );
+	return ( ( Math.imul( x, 3242174889 ) + Math.imul( y, 2447445414 ) + Math.imul( frame, 2654435769 ) + hash( seed ) ) >>> 8 ) / 16777216;
 
 }
 
@@ -67,6 +67,7 @@ function spatialRank( x, y, seed, levels ) {
 		rank |= ( child ^ ( scramble & 3 ) ) << ( 30 - 2 * level );
 
 	}
+
 	return rank >>> 0;
 
 }
@@ -81,9 +82,9 @@ export function hierarchicalDigital( x, y, frame, seed = 1 ) {
 
 export function tiledBayerWeyl( x, y, frame, seed = 1 ) {
 
-	const rank = spatialRank( x, y, seed, 3 ) * UINT_SCALE;
-	const tileShift = pixelHash( x >> 3, y >> 3, seed ^ 0x02e5be93 ) * UINT_SCALE;
-	return fract( rank + tileShift + frame * GOLDEN );
+	const rank = spatialRank( x, y, seed, 3 );
+	const tileShift = pixelHash( x >> 3, y >> 3, seed ^ 0x02e5be93 );
+	return ( ( rank + tileShift + Math.imul( frame, 2654435769 ) ) >>> 8 ) / 16777216;
 
 }
 
@@ -98,7 +99,7 @@ export const proceduralSamplers = {
 
 const wgslHelpers = /* wgsl */`
 fn hash(v0:u32)->u32 { var v=v0; v=(v^(v>>16u))*0x21f0aaadu; v=(v^(v>>15u))*0x735a2d97u; return v^(v>>15u); }
-fn pixelHash(x:u32,y:u32,s:u32)->u32 { return hash(x*0x9e3779b1u ^ y*0x85ebca77u ^ s); }
+fn pixelHash(x:u32,y:u32,s:u32)->u32 { return hash((x*0x9e3779b1u) ^ (y*0x85ebca77u) ^ s); }
 fn unit(v:u32)->f32 { return f32(v>>8u)/16777216.0; }
 fn spatialRank(x:u32,y:u32,s:u32,levels:u32)->u32 {
  var rank=0u;
@@ -115,10 +116,10 @@ fn spatialRank(x:u32,y:u32,s:u32,levels:u32)->u32 {
 const wgslBodies = {
 	white: 'return unit(pixelHash(x,y,seed^hash(frame)));',
 	'animated-ign': 'let shift=f32(frame)*5.588238; let offset=unit(hash(seed))*256.0; return fract(52.9829189*fract(0.06711056*(f32(x)+shift+offset)+0.00583715*(f32(y)+shift+offset)));',
-	'r2-weyl': 'return fract(f32(x)*0.7548776662466927+f32(y)*0.5698402909980532+f32(frame)*0.6180339887498949+unit(hash(seed)));',
+	'r2-weyl': 'return unit(x*3242174889u+y*2447445414u+frame*2654435769u+hash(seed));',
 	'hashed-digital': 'return unit(reverseBits(frame)^pixelHash(x,y,seed));',
 	'hierarchical-digital': 'return unit(spatialRank(x,y,seed,8u)^(pixelHash(x,y,seed^0x68bc21ebu)&0xffffu)^reverseBits(frame));',
-	'tiled-bayer-weyl': 'return fract(unit(spatialRank(x,y,seed,3u))+unit(pixelHash(x>>3u,y>>3u,seed^0x02e5be93u))+f32(frame)*0.6180339887498949);'
+	'tiled-bayer-weyl': 'return unit(spatialRank(x,y,seed,3u)+pixelHash(x>>3u,y>>3u,seed^0x02e5be93u)+frame*2654435769u);'
 };
 
 export const proceduralWGSL = Object.fromEntries( Object.entries( wgslBodies ).map( ( [ name, body ] ) => [ name, `${wgslHelpers}\nfn sample(x:u32,y:u32,frame:u32,seed:u32)->f32 { ${body} }` ] ) );

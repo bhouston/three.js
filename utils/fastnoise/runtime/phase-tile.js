@@ -5,9 +5,9 @@
  */
 export function generate( { size = 32, seed = 1, passes = 8 } = {} ) {
 
-	if ( ! [ 16, 32, 64 ].includes( size ) || ! Number.isInteger( passes ) || passes < 0 ) {
+	if ( ! [ 16, 32, 64, 128 ].includes( size ) || ! Number.isInteger( passes ) || passes < 0 ) {
 
-		throw new RangeError( 'size must be 16, 32, or 64 and passes must be a nonnegative integer' );
+		throw new RangeError( 'size must be 16, 32, 64, or 128 and passes must be a nonnegative integer' );
 
 	}
 
@@ -122,6 +122,8 @@ export function sample( tile, x, y, frame ) {
 	const size = Math.sqrt( tile.length );
 	const mask = size - 1;
 	const phase = tile[ ( y & mask ) * size + ( x & mask ) ];
-	return ( phase + frame * ( ( Math.sqrt( 5 ) - 1 ) / 2 ) ) % 1;
+	const rotation = ( Math.imul( frame, 2654435769 ) >>> 8 ) / 16777216;
+	const value = Math.fround( phase + rotation );
+	return value - Math.floor( value );
 
 }

@@ -153,6 +153,7 @@
 				batching: true,
 				model: 'Space Ship Hallway',
 				environmentSource: 'Pedestrian Overpass (1K HDR)',
+				exposure: 1,
 				directLights: true,
 				lightProbeDiffuse: false,
 				diffuseBaking: true,
@@ -228,7 +229,7 @@
 			};
 			const bakeSettings = {
 				style: 'interleaved',
-				lightMapSource: 'Light Probes',
+				lightMapSource: 'Ray Radiosity',
 				bounces: 2,
 				probeResolution: 40,
 				probeDensity: 1,
@@ -421,6 +422,7 @@
 				settings.add( params, 'output', [ 'Beauty', 'Diffuse Coverage', 'Spec Coverage', 'SSGI Raw', 'SSGI Filtered', 'SSGI Coverage', 'SSGI Filtered Coverage', 'SSR Raw', 'SSR Filtered', 'SSR Coverage', 'SSR Filtered Coverage', 'Indirect Specular Raw', 'Indirect Specular Filtered', 'AO', 'UV Unwrap' ] ).name( 'Output' ).info( 'SSR Raw and Filtered show incoming radiance times coverage, before material BRDF weighting.' ).onChange( updateOutput );
 				settings.add( params, 'model', Object.keys( models ) ).name( 'Model' ).listen().onChange( loadModel );
 				settings.add( params, 'environmentSource', Object.keys( environments ) ).name( 'Environment Source' ).listen().onChange( updateEnvironment );
+				settings.add( params, 'exposure', 0, 10, 0.01 ).name( 'Exposure' ).onChange( v => renderer.toneMappingExposure = v );
 				settings.add( params, 'directLights' ).name( 'Direct Lights' ).onChange( updateDirectLights );
 				const indirectDiffuseSettings = settings.addFolder( 'Indirect Diffuse' );
 				indirectDiffuseSettings.add( ssgiParams, 'enabled' ).name( 'SSGI' ).onChange( updateIndirectLighting );

@@ -16,9 +16,10 @@ U = np.uint32
 F = np.float32
 
 def hash32(v):
-    v = (v ^ (v >> U(16))) * U(0x21f0aaad)
-    v = (v ^ (v >> U(15))) * U(0x735a2d97)
-    return v ^ (v >> U(15))
+    with np.errstate(over='ignore'):
+        v = (v ^ (v >> U(16))) * U(0x21f0aaad)
+        v = (v ^ (v >> U(15))) * U(0x735a2d97)
+        return v ^ (v >> U(15))
 
 def pixel_hash(x, y, seed):
     return hash32(x * U(0x9e3779b1) ^ y * U(0x85ebca77) ^ U(seed))
@@ -92,7 +93,8 @@ def main():
         power = (abs(np.fft.fft2(v - .5, axes=(-2, -1)))**2).mean(axis=0)
         temporal = (abs(np.fft.fft(v - .5, axis=0))**2).mean(axis=(1, 2))
         result['spectral'][name] = {'spatialLowHigh': float(power[(r > 0) & (r < .1)].mean() / power[r > .3].mean()), 'temporalLowAll': float(temporal[1:4].mean() / temporal[1:].mean())}
-    (OUT / 'results.json').write_text(json.dumps(result, indent=2) + '\n')
+    result['referenceSamples'] = [{'x': x, 'y': y, 'frame': frame, 'hierarchy': float(hierarchy(frame)[y, x]), 'ign': float(ign(frame)[y, x])} for frame in (0, 1, 31, 32, 255, 1023) for x, y in ((0, 0), (3, 7), (12, 98), (127, 127))]
+    (OUT / 'results.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     names = list(samplers)
     lines = ['# Reproduced comparison', '', 'Uniform field: standard deviation after arithmetic running average and wrapped sigma=1 Gaussian. Lower is better. Full precision is in results.json.', '', '| Frames | ' + ' | '.join(names) + ' |', '|---|' + '---|' * len(names)]
     for i, n in enumerate(FRAMES):
@@ -103,7 +105,7 @@ def main():
     lines += ['', '## First 32 frames: spectrum diagnostics', '', 'Ratios of mean power: spatial frequencies 0<r<0.1 / r>0.3; temporal bins 1–3 / all non-DC bins. Lower indicates more suppression in those bands, not universally better rendering.', '', '| Method | Spatial low/high | Temporal low/all |', '|---|---|---|']
     for name in names:
         lines.append(f"| {name} | {result['spectral'][name]['spatialLowHigh']:.6g} | {result['spectral'][name]['temporalLowAll']:.6g} |")
-    (OUT / 'TABLES.md').write_text('\n'.join(lines) + '\n')
+    (OUT / 'TABLES.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     print('Wrote results.json and TABLES.md')
 
 if __name__ == '__main__':

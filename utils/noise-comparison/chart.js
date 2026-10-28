@@ -13,11 +13,13 @@ function text( x, y, value, size = 14, extra = '' ) {
 	return `<text x="${x}" y="${y}" font-size="${size}" ${extra}>${value}</text>`;
 
 }
+
 function background( title, subtitle ) {
 
 	return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" font-family="Segoe UI,Arial,sans-serif" fill="#252525"><rect width="100%" height="100%" fill="#fcfcfb"/>${text( 70, 36, title, 23 )}${text( 70, 62, subtitle, 14 )}`;
 
 }
+
 const browser = await puppeteer.launch( { headless: true, executablePath: process.env.CHROME_PATH || ( process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : puppeteer.executablePath() ), args: [ '--disable-software-rasterizer' ] } );
 try {
 
@@ -30,6 +32,7 @@ try {
 		await page.screenshot( { path: path.join( directory, `${name}.png` ) } );
 
 	}
+
 	for ( const field of [ 'blur', 'raw' ] ) {
 
 		let svg = background( field === 'blur' ? 'Convergence after temporal and spatial filtering' : 'Convergence before spatial filtering', 'Uniform field · 128×128 · arithmetic running average · logarithmic axes · lower is better' );
@@ -44,6 +47,7 @@ try {
 			svg += `<line x1="${L}" x2="${right}" y1="${y( value )}" y2="${y( value )}" stroke="#ddd"/>${text( L - 12, y( value ) + 4, value, 12, 'text-anchor="end"' )}`;
 
 		}
+
 		for ( const n of data.frames ) svg += text( x( n ), bottom + 24, n, 12, 'text-anchor="middle"' );
 		for ( const [ index, name ] of names.entries() ) {
 
@@ -55,18 +59,21 @@ try {
 			svg += `<rect x="930" y="${T + index * 75 - 12}" width="20" height="4" fill="${color}"/>${text( 960, T + index * 75, label, 16 )}${text( 960, T + index * 75 + 23, `${data[ field ][ name ].at( - 1 ).toPrecision( 3 )} at 1024 frames`, 13 )}`;
 
 		}
+
 		svg += text( 430, 700, 'Frames accumulated', 14 ) + text( 70, 735, 'Raw-value convergence is not a rendering-quality guarantee. See threshold RMSE and spectrum checks in TABLES.md.', 13 ) + '</svg>';
 		await save( `convergence-${field}`, svg );
 
 	}
+
 	let svg = background( 'Texture download and intrinsic setup cost', 'Exact repository PNG bytes; excludes HTTP overhead. Shader compilation and network latency are not zero-cost.' );
-	const costs = [ [ 'White', 0 ], [ 'FAST Product', data.metadata.textures[ 0 ].bytes ], [ 'FAST Separate', data.metadata.textures[ 1 ].bytes ], [ 'Golden Ratio', data.metadata.textures[ 0 ].bytes ], [ '3LHW', 0 ], [ 'Animated IGN', 0 ] ];
-	for ( const [ i, [ name, bytes ] ] of costs.entries() ) {
+	const costs = [[ 'White', 0 ], [ 'FAST Product', data.metadata.textures[ 0 ].bytes ], [ 'FAST Separate', data.metadata.textures[ 1 ].bytes ], [ 'Golden Ratio', data.metadata.textures[ 0 ].bytes ], [ '3LHW', 0 ], [ 'Animated IGN', 0 ]];
+	for ( const [ i, [ name, bytes ]] of costs.entries() ) {
 
 		const y = 130 + i * 70;
 		svg += text( 70, y + 21, name, 17 ) + `<rect x="250" y="${y}" width="${bytes / 3100000 * 650}" height="30" fill="${colors[ i ]}"/>` + text( 920, y + 21, `${bytes.toLocaleString( 'en-US' )} bytes`, 16 );
 
 	}
+
 	svg += text( 70, 600, 'White / 3LHW / Animated IGN: 0 texture bytes, no mask construction or texture upload.', 16 );
 	svg += text( 70, 632, 'FAST / Golden Ratio: offline texture optimization; runtime fetch, PNG decode and GPU upload.', 16 );
 	svg += text( 70, 664, 'All methods incur normal shader compilation. Procedural arithmetic executes per sample.', 16 );

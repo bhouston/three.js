@@ -8,7 +8,7 @@ import { wgslSamplers } from './procedural.js';
 const root = new URL( './', import.meta.url );
 const report = JSON.parse( fs.readFileSync( new URL( 'results.json', root ) ) );
 const gpu = JSON.parse( fs.readFileSync( new URL( 'gpu-results.json', root ) ) );
-const ids = [ 'white', 'animated-ign', 'r2-weyl', 'hashed-digital', 'hierarchical-digital', 'tiled-bayer-weyl', 'phase-16-p8', 'phase-32-p0', 'phase-32-p2', 'phase-32-p8', 'phase-64-p8', 'phase-128-p8', 'FAST-scalar' ];
+const ids = [ 'white', 'animated-ign', 'r2-weyl', 'hashed-digital', 'hierarchical-digital', 'houston-stratified-noise', 'phase-16-p8', 'phase-32-p0', 'phase-32-p2', 'phase-32-p8', 'phase-64-p8', 'phase-128-p8', 'FAST-scalar' ];
 const thresholds = [ .1, .25, .5, .75, .9, .07, .37, .83, .94 ].map( p => 'threshold-' + p );
 const smooth = [ 'squared', 'fourth', 'cosine', 'sine7' ];
 const rms = values => Math.sqrt( values.reduce( ( sum, v ) => sum + v * v, 0 ) / values.length );

@@ -6,7 +6,7 @@ original image is 3,025,821 bytes and contains vector and scalar channels. A
 procedural sampler or a tiny startup-generated phase tile removes that image
 request entirely.
 
-**My leading prototype is `tiled-bayer-weyl`: zero texture bytes, no startup
+**My leading prototype is Houston Stratified Noise (`houston-stratified-noise`, HSN): zero texture bytes, no startup
 solve, and useful threshold/EMA behavior.** It trades some single-frame quality
 for much smaller construction/storage cost. A 32x32 generated phase tile is a
 useful alternative when a texture-like integration is easier. Neither is a
@@ -53,7 +53,7 @@ CPU arithmetic. Full data retain every attempted profile and every regression.
 | Animated IGN, continuous translation | none / 0 | .880 / .622 / .660 | Strong directional spectra; long-running float-coordinate precision requires another strategy |
 | Fixed-point R2 + Weyl | none / 0 | .808 / .856 / 1.012 | Minimal arithmetic, pronounced ordered spectral peaks |
 | Hashed digital temporal sequence | none / 0 | 2.171 / .543 / 1.215 | Strong box-average stratification; spatially hash-like at one frame |
-| Three-level tiled hierarchy + Weyl | none / 0 | 1.328 / .734 / .971 | Leading balanced code-only prototype; single-frame and some individual tests regress |
+| Houston Stratified Noise (HSN): three-level tiled hierarchy + Weyl | none / 0 | 1.328 / .734 / .971 | Leading balanced code-only prototype; single-frame and some individual tests regress |
 | Generated 16x16 phase tile, 8 passes | .461 ms warm / 1 KiB | 1.302 / .896 / 1.153 | Very small; 16-pixel repetition |
 | Generated 32x32 phase tile, 8 passes | 1.778 ms warm / 4 KiB | 1.328 / .899 / 1.139 | Easy small-texture integration; 32-pixel repetition |
 | Generated 64x64 phase tile, 8 passes | 7.272 ms warm / 16 KiB | 1.327 / .901 / 1.145 | Little measured quality gain over size32 |
@@ -65,21 +65,21 @@ results and each candidate's worst individual ratio.
 
 ![Runtime alternatives and retained regressions](summary.png)
 
-The three-level hybrid's 32-frame ramp/sphere error is .810x FAST. Its worst
+HSN's 32-frame ramp/sphere error is .810x FAST. Its worst
 individual error is **2.334x FAST**, despite the favorable aggregate thresholds.
 The phase32 method's threshold EMA error is 14% above FAST but 64% below white.
 Thus useful benefits survive at tiny cost, with material quality tradeoffs.
 
 Spectra explain why the simpler winners deserve care. The largest Fourier bin
 contains about **24.6%** of averaged threshold-mask power for R2 and **17.8%**
-for IGN, versus **0.014%** for FAST. The three-level hybrid is about **0.044%**,
+for IGN, versus **0.014%** for FAST. HSN is about **0.044%**,
 and phase32 about **0.49–0.68%**. This diagnostic is computed at threshold .5
 over 32 frames after per-frame DC removal; it measures concentrated peaks,
 not a universal quality score. A low raw-value variance can hide such structure.
 
 ## Recommendations
 
-1. **First integration candidate to investigate: the three-level hybrid.**
+1. **First integration candidate to investigate: Houston Stratified Noise (HSN).**
    `procedural.js` exports matching CPU and WGSL functions. It scrambles local
    8x8 hierarchical ranks, gives each tile a hashed circular phase, and advances
    time with a fixed-point Weyl rotation. The WGSL module is about 411 gzip
@@ -106,7 +106,7 @@ choices: their excellent filtered raw-value averages conceal threshold and
 nonlinear losses. Cached threshold energy, annealing and FAST refinements have
 startup costs far outside this goal. Cheap hierarchy remains worth considering
 for ordered dithering; the deeper eight-level digital prototype in this round
-lost to the three-level hybrid on the main threshold/EMA diagnostics.
+lost to HSN on the main threshold/EMA diagnostics.
 
 For a texture-based Three.js integration, phases can be uploaded directly:
 
@@ -122,6 +122,38 @@ Decode the phase directly; it is a float, not an 8-bit noise midpoint. Add
 Integer arithmetic wraps at 2^32 frames, avoiding a growing float multiply.
 The arithmetic prototypes likewise ship WGSL; a public TSL API and scene-level
 default selection would be a follow-up integration decision.
+
+## Multiple dimensions
+
+Effects often need several values per pixel, such as a GGX direction pair or cone rotation and
+elevation. Giving each dimension its own HSN seed decorrelates them spatially, but a **shared**
+golden-ratio step moves every dimension by the same amount each frame. Over time a pixel's samples
+then stay on one diagonal line in the unit square and stop converging, which showed up as grain in a
+VXGI light map bake. The fix is a separate temporal step per dimension from the R2 (two values) or
+R4 (four values) generalized golden ratio sequences; `procedural.js` exports `R2_STEPS` and
+`R4_STEPS`. The spatial pattern is unchanged.
+
+Per-pixel RMSE ×1e-3 over 14 known 2D integrals, 64×64 pixels (`multidim.py`):
+
+| Method | Per pixel, 16 | Per pixel, 256 | Blurred, 1 frame | EMA, blurred |
+| --- | ---: | ---: | ---: | ---: |
+| White | 77.92 | 19.29 | 88.74 | 20.06 |
+| Animated IGN, offset second dimension | 106.86 | 89.95 | 102.41 | 90.13 |
+| HSN, shared golden step | 92.79 | 84.20 | 71.59 | 31.66 |
+| **HSN, R2 steps** | **42.40** | **4.08** | 71.59 | **11.29** |
+| HSN, R4 steps, worst pair | 45.57 | 12.08 | 71.59 | 12.27 |
+
+Offset copies of IGN are not independent dimensions either: the second value is nearly a constant
+shift of the first. Pairing the dimensions within each tile (bit-reversed ranks) was also tried; it
+nearly doubled single-frame error, so it was dropped.
+
+## Three.js adoption
+
+[bhouston/three.js#121](https://github.com/bhouston/three.js/pull/121) uses HSN with R2 steps for
+VXGI cone rotation and elevation and with R4 steps for SSR and its denoiser. On hardware WebGPU
+against dev, the VXGI light map bake at 64 samples has 52% lower RMSE and 13% less texel grain, real-time
+VXGI has 23% lower RMSE (with 7% more flicker), and SSR has 4–5% lower flicker, RMSE and bias. GTAO
+and SSGI kept their existing schedules, which measured better there.
 
 ## Cost and evidence limits
 
@@ -161,6 +193,7 @@ python utils/fastnoise/runtime/check-ema.py
 node utils/fastnoise/runtime/verify-streams.js runtime-data runtime-gpu-data
 node utils/fastnoise/runtime/check.js
 node utils/fastnoise/runtime/chart.js
+python utils/fastnoise/runtime/multidim.py
 ```
 
 Use a fresh score JSON after any protocol change. Cache entries use stream

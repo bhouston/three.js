@@ -6,7 +6,7 @@
 * **r2-weyl**: fixed-point R2 spatial lattice plus a golden-ratio temporal rotation and seeded phase. Highly structured low discrepancy, rather than isotropic blue noise.
 * **hashed-digital**: reverse the frame bits and XOR with a pixel hash. Each pixel has stratified aligned power-of-two temporal prefixes, but the spatial distribution is hash noise. A useful control separating temporal discrepancy from spatial spectrum.
 * **hierarchical-digital** (experiment): recursively affine-permute each quadtree parent's four children, pack fine-to-coarse child ranks, add hashed low bits, then XOR a common bit-reversed frame. At a fixed frame, every aligned 2^k square up to 256 contains every leading 2k-bit rank. The global temporal XOR preserves these strata. Tests must check shifted windows, arbitrary thresholds, anisotropy and moving/reprojected histories: aligned-stratum guarantees alone do not establish general rendering quality.
-* **tiled-bayer-weyl** (experiment): use three scrambled quadtree levels (8x8 local stratification), an independently hashed tile phase, and a global golden temporal rotation. This trades global ordered patterns for tile boundaries and inter-tile phase noise. No tuned weights or scene-specific objective are used.
+* **houston-stratified-noise** (experiment): use three scrambled quadtree levels (8x8 local stratification), an independently hashed tile phase, and a global golden temporal rotation. This trades global ordered patterns for tile boundaries and inter-tile phase noise. No tuned weights or scene-specific objective are used.
 
 Inputs are integer pixel coordinates, uint32 frame and uint32 seed. Integer
 methods retain the top 24 bits for an exactly representable f32 result below

@@ -80,11 +80,17 @@ export function hierarchicalDigital( x, y, frame, seed = 1 ) {
 
 }
 
-export function tiledBayerWeyl( x, y, frame, seed = 1 ) {
+// Houston Stratified Noise (HSN): scrambled 8x8 hierarchical ranks, a hashed tile phase and a Weyl
+// temporal step. For several dimensions give each its own seed and step (R2_STEPS / R4_STEPS); with a
+// shared step a pixel's samples stay on one diagonal line over time and stop converging.
+export const R2_STEPS = [ 3242174889, 2447445413 ];
+export const R4_STEPS = [ 3679390609, 3152041523, 2700274805, 2313257605 ];
+
+export function houstonStratifiedNoise( x, y, frame, seed = 1, step = 2654435769 ) {
 
 	const rank = spatialRank( x, y, seed, 3 );
 	const tileShift = pixelHash( x >> 3, y >> 3, seed ^ 0x02e5be93 );
-	return ( ( rank + tileShift + Math.imul( frame, 2654435769 ) ) >>> 8 ) / 16777216;
+	return ( ( rank + tileShift + Math.imul( frame, step ) ) >>> 8 ) / 16777216;
 
 }
 
@@ -94,7 +100,7 @@ export const proceduralSamplers = {
 	'r2-weyl': r2Weyl,
 	'hashed-digital': hashedDigital,
 	'hierarchical-digital': hierarchicalDigital,
-	'tiled-bayer-weyl': tiledBayerWeyl
+	'houston-stratified-noise': houstonStratifiedNoise
 };
 
 const wgslHelpers = /* wgsl */`
@@ -119,7 +125,7 @@ const wgslBodies = {
 	'r2-weyl': 'return unit(x*3242174889u+y*2447445414u+frame*2654435769u+hash(seed));',
 	'hashed-digital': 'return unit(reverseBits(frame)^pixelHash(x,y,seed));',
 	'hierarchical-digital': 'return unit(spatialRank(x,y,seed,8u)^(pixelHash(x,y,seed^0x68bc21ebu)&0xffffu)^reverseBits(frame));',
-	'tiled-bayer-weyl': 'return unit(spatialRank(x,y,seed,3u)+pixelHash(x>>3u,y>>3u,seed^0x02e5be93u)+frame*2654435769u);'
+	'houston-stratified-noise': 'return unit(spatialRank(x,y,seed,3u)+pixelHash(x>>3u,y>>3u,seed^0x02e5be93u)+frame*2654435769u);'
 };
 
 export const proceduralWGSL = Object.fromEntries( Object.entries( wgslBodies ).map( ( [ name, body ] ) => [ name, `${wgslHelpers}\nfn sample(x:u32,y:u32,frame:u32,seed:u32)->f32 { ${body} }` ] ) );

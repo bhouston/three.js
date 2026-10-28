@@ -59,11 +59,11 @@
       "sha256": "24eedc3a0df3825a1e6cb55c12d086087973bf582b2746f31302409b48b4079e"
     },
     {
-      "file": "tiled-bayer-weyl-seed1.f32",
+      "file": "houston-stratified-noise-seed1.f32",
       "sha256": "c5dad483a872b669b62454ac36a8a5dd1540f1e7e6ec1ba86e96166ef4426796"
     },
     {
-      "file": "tiled-bayer-weyl-seed2.f32",
+      "file": "houston-stratified-noise-seed2.f32",
       "sha256": "f3a222a7347dfd1eed5511de5323d501b4d67b26123f21e7d2150380cdc0cf1b"
     },
     {

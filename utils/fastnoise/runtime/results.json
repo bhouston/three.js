@@ -3749,7 +3749,7 @@
         "max_bin_fraction": 0.24582688946989656
       }
     },
-    "tiled-bayer-weyl-seed1": {
+    "houston-stratified-noise-seed1": {
       "sha256": "c5dad483a872b669b62454ac36a8a5dd1540f1e7e6ec1ba86e96166ef4426796",
       "metrics": {
         "identity/raw/1": 0.2886751243065595,
@@ -3919,7 +3919,7 @@
         "max_bin_fraction": 0.00043812628428496704
       }
     },
-    "tiled-bayer-weyl-seed2": {
+    "houston-stratified-noise-seed2": {
       "sha256": "f3a222a7347dfd1eed5511de5323d501b4d67b26123f21e7d2150380cdc0cf1b",
       "metrics": {
         "identity/raw/1": 0.2886751249851843,

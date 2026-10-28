@@ -79,7 +79,7 @@
     "gpuSamplesPerSecond": 690133990.1372241,
     "standaloneWGSLGzipBytes": 417
   },
-  "tiled-bayer-weyl": {
+  "houston-stratified-noise": {
     "ratios": {
       "Identity 32": 2.045540479782226,
       "Threshold 1": 1.3281296378874672,

@@ -1,0 +1,988 @@
+{
+  "recordedDate": "2026-10-28",
+  "machine": "Build001",
+  "gpu": "NVIDIA GeForce GTX 1050",
+  "settings": {
+    "algorithm": "ray",
+    "cacheSize": 256,
+    "directional": false,
+    "stitchSeams": false,
+    "requestedResolution": 256,
+    "pageSize": 512,
+    "samples": 16,
+    "reference": 512,
+    "seconds": 5,
+    "qualityTrials": 5
+  },
+  "scenes": [
+    {
+      "config": {
+        "resolution": 256,
+        "samples": 16,
+        "reference": 512,
+        "seconds": 5,
+        "qualityTrials": 5,
+        "oidn": true
+      },
+      "sceneName": "Cornell Box",
+      "atlasSize": 256,
+      "atlasPages": 1,
+      "rows": [
+        {
+          "mode": "none",
+          "samples": 16,
+          "completedBakes": 41,
+          "measurementSeconds": 5.056900000095367,
+          "bakesPerSecond": 8.107733987072473,
+          "meanCompletedBakeSeconds": 0.12333902439256993,
+          "qualityTrials": [
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.05049914939189906,
+              "relativeRMSE": 0.018750835045628113,
+              "mae": 0.03301959850730047
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.050373987972043864,
+              "relativeRMSE": 0.018704361369020844,
+              "mae": 0.03355352316518205
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.04983479509788235,
+              "relativeRMSE": 0.018504153706853713,
+              "mae": 0.033107826588565425
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.050716624367145614,
+              "relativeRMSE": 0.018831585660965298,
+              "mae": 0.0338032418843342
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.04986253926335902,
+              "relativeRMSE": 0.01851445539067604,
+              "mae": 0.03323756465785604
+            }
+          ],
+          "error": {
+            "coveredTexels": 43028,
+            "rmse": 0.05025864774334671,
+            "relativeRMSE": 0.018661534398102152,
+            "mae": 0.03334435096064764,
+            "relativeRMSEStd": 0.00013048069823977179,
+            "relativeRMSEMin": 0.018504153706853713,
+            "relativeRMSEMax": 0.018831585660965298
+          },
+          "moreSamples": {
+            "samples": 16,
+            "targetSeconds": 0.12333902439256993,
+            "actualSeconds": 0.12341707316840568,
+            "completedBakes": 41,
+            "measurementSeconds": 5.060099999904633,
+            "budgetRatio": 1.000632798712493,
+            "error": {
+              "coveredTexels": 43028,
+              "rmse": 0.05028395829992724,
+              "relativeRMSE": 0.018670932458803562,
+              "mae": 0.03296024261527256,
+              "relativeRMSEStd": 0.00025360176598290075,
+              "relativeRMSEMin": 0.01829171415696438,
+              "relativeRMSEMax": 0.019027114451668645
+            },
+            "qualityTrials": [
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.0499532971700941,
+                "relativeRMSE": 0.018548154701630154,
+                "mae": 0.033249444683075155
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.050159142389786825,
+                "relativeRMSE": 0.01862458707338033,
+                "mae": 0.03250433237320068
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.05124321625428656,
+                "relativeRMSE": 0.019027114451668645,
+                "mae": 0.033351866585129473
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.05077828271820905,
+                "relativeRMSE": 0.018854480018274243,
+                "mae": 0.03310232188139697
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.04926265969481876,
+                "relativeRMSE": 0.01829171415696438,
+                "mae": 0.03259324755356053
+              }
+            ]
+          }
+        },
+        {
+          "mode": "variance",
+          "samples": 16,
+          "completedBakes": 40,
+          "measurementSeconds": 5.0862000000476835,
+          "bakesPerSecond": 7.86441744320416,
+          "meanCompletedBakeSeconds": 0.1271550000011921,
+          "qualityTrials": [
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.035840745404151365,
+              "relativeRMSE": 0.01330802425542248,
+              "mae": 0.018743827655980247
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.03378679834249956,
+              "relativeRMSE": 0.012545373339332722,
+              "mae": 0.019720301849827072
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.035352992426374755,
+              "relativeRMSE": 0.013126916736990294,
+              "mae": 0.019455949968742167
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.03234098771635711,
+              "relativeRMSE": 0.012008529513556075,
+              "mae": 0.018995949439606297
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.03292263000861659,
+              "relativeRMSE": 0.012224499065698037,
+              "mae": 0.018450126340497044
+            }
+          ],
+          "error": {
+            "coveredTexels": 43028,
+            "rmse": 0.03407573887684627,
+            "relativeRMSE": 0.012652659825595792,
+            "mae": 0.019073231050930565,
+            "relativeRMSEStd": 0.0005027243607592171,
+            "relativeRMSEMin": 0.012008529513556075,
+            "relativeRMSEMax": 0.01330802425542248
+          },
+          "moreSamples": {
+            "samples": 16,
+            "targetSeconds": 0.1271550000011921,
+            "actualSeconds": 0.12342195121834917,
+            "completedBakes": 41,
+            "measurementSeconds": 5.060299999952316,
+            "budgetRatio": 0.970641746035878,
+            "error": {
+              "coveredTexels": 43028,
+              "rmse": 0.05063439572943709,
+              "relativeRMSE": 0.018801053352198397,
+              "mae": 0.033558722074720174,
+              "relativeRMSEStd": 0.000371246628693507,
+              "relativeRMSEMin": 0.018318620279042925,
+              "relativeRMSEMax": 0.01923261716920883
+            },
+            "qualityTrials": [
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.04954956810710345,
+                "relativeRMSE": 0.018398246096150195,
+                "mae": 0.033126025112471466
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.0517966696022708,
+                "relativeRMSE": 0.01923261716920883,
+                "mae": 0.03394918354584668
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.05100199349723896,
+                "relativeRMSE": 0.01893754604940608,
+                "mae": 0.03370140066904787
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.05143926350345969,
+                "relativeRMSE": 0.01909990873978361,
+                "mae": 0.03429202832853468
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.04933512240248457,
+                "relativeRMSE": 0.018318620279042925,
+                "mae": 0.032724972717700154
+              }
+            ]
+          }
+        },
+        {
+          "mode": "oidn",
+          "samples": 16,
+          "completedBakes": 23,
+          "measurementSeconds": 5.1765,
+          "bakesPerSecond": 4.443156572974018,
+          "meanCompletedBakeSeconds": 0.22506521739130433,
+          "qualityTrials": [
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.03259289798177276,
+              "relativeRMSE": 0.012102066293679882,
+              "mae": 0.01745872854066383
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.03392127483745244,
+              "relativeRMSE": 0.012595305795715446,
+              "mae": 0.01848786881993079
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.03367009824347374,
+              "relativeRMSE": 0.012502041435073104,
+              "mae": 0.01772911489032981
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.034215904859361435,
+              "relativeRMSE": 0.012704704845141643,
+              "mae": 0.018789623151965855
+            },
+            {
+              "coveredTexels": 43028,
+              "rmse": 0.03344612870502552,
+              "relativeRMSE": 0.012418879324002744,
+              "mae": 0.01812206927167857
+            }
+          ],
+          "error": {
+            "coveredTexels": 43028,
+            "rmse": 0.03357379058691887,
+            "relativeRMSE": 0.012466281446965643,
+            "mae": 0.018117480934913773,
+            "relativeRMSEStd": 0.0002047717124923349,
+            "relativeRMSEMin": 0.012102066293679882,
+            "relativeRMSEMax": 0.012704704845141643
+          },
+          "moreSamples": {
+            "samples": 29,
+            "targetSeconds": 0.22506521739130433,
+            "actualSeconds": 0.22190869565632032,
+            "completedBakes": 23,
+            "measurementSeconds": 5.103900000095368,
+            "budgetRatio": 0.9859750797054704,
+            "error": {
+              "coveredTexels": 43028,
+              "rmse": 0.03512434311181936,
+              "relativeRMSE": 0.01304201697863492,
+              "mae": 0.022518357100575707,
+              "relativeRMSEStd": 0.00039043786017939846,
+              "relativeRMSEMin": 0.012519081970242667,
+              "relativeRMSEMax": 0.01361759677277796
+            },
+            "qualityTrials": [
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.036674476209393854,
+                "relativeRMSE": 0.01361759677277796,
+                "mae": 0.023158583225458024
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.03476319841620049,
+                "relativeRMSE": 0.01290792037113366,
+                "mae": 0.02224015927900997
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.0337159912679258,
+                "relativeRMSE": 0.012519081970242667,
+                "mae": 0.021792726464767428
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.0344865104509283,
+                "relativeRMSE": 0.01280518338529521,
+                "mae": 0.022372601592065323
+              },
+              {
+                "coveredTexels": 43028,
+                "rmse": 0.03590282378261777,
+                "relativeRMSE": 0.013331074573072196,
+                "mae": 0.02302771494157779
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "Linear RGB irradiance over all atlas pages; caller supplies the prepared scene and baker.",
+        "Reset repeats UV jitter but the ray source continues its render-pass sequence. Quality trials are sequential phases, not independently seeded trials. Reference uses the same bounce cache and is not ground truth.",
+        "Quality uses five sequential phase trials per mode and raw comparator outside throughput timing; RMSE is sqrt(mean trial MSE), with relative RMSE standard deviation and range. Readback and preview excluded from timings; GPU completion included. Setup, shader/model warmup excluded.",
+        "Equal-time sample count estimated from warmed throughput, rounded and capped below reference. Actual elapsed time reported; CPU/browser variance can cause budget mismatch.",
+        "Each mode measured sequentially for at least five seconds, counting complete GPU-fenced bakes. No requestAnimationFrame or per-frame timers."
+      ],
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": ""
+      },
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36"
+    },
+    {
+      "config": {
+        "resolution": 256,
+        "samples": 16,
+        "reference": 512,
+        "seconds": 5,
+        "qualityTrials": 5,
+        "oidn": true
+      },
+      "sceneName": "Courtyard",
+      "atlasSize": 256,
+      "atlasPages": 1,
+      "rows": [
+        {
+          "mode": "none",
+          "samples": 16,
+          "completedBakes": 36,
+          "measurementSeconds": 5.118,
+          "bakesPerSecond": 7.033997655334114,
+          "meanCompletedBakeSeconds": 0.14216666666666666,
+          "qualityTrials": [
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.10345802751780911,
+              "relativeRMSE": 0.07076247152574426,
+              "mae": 0.053466434305502276
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.1016947571815108,
+              "relativeRMSE": 0.0695564426659439,
+              "mae": 0.05381904506273782
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.09813688655081562,
+              "relativeRMSE": 0.06712295610876484,
+              "mae": 0.050724106575419446
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.1047670128456431,
+              "relativeRMSE": 0.07165778181930775,
+              "mae": 0.052819583136822355
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.10102924858837459,
+              "relativeRMSE": 0.06910125292376722,
+              "mae": 0.05232447772820606
+            }
+          ],
+          "error": {
+            "coveredTexels": 17192,
+            "rmse": 0.10184230127888959,
+            "relativeRMSE": 0.06965735880788136,
+            "mae": 0.05263072936173759,
+            "relativeRMSEStd": 0.001546875937057846,
+            "relativeRMSEMin": 0.06712295610876484,
+            "relativeRMSEMax": 0.07165778181930775
+          },
+          "moreSamples": {
+            "samples": 16,
+            "targetSeconds": 0.14216666666666666,
+            "actualSeconds": 0.14085555555423102,
+            "completedBakes": 36,
+            "measurementSeconds": 5.070799999952317,
+            "budgetRatio": 0.9907776475092451,
+            "error": {
+              "coveredTexels": 17192,
+              "rmse": 0.1042895699978854,
+              "relativeRMSE": 0.07133122392205991,
+              "mae": 0.053368930688741247,
+              "relativeRMSEStd": 0.0024468738786537357,
+              "relativeRMSEMin": 0.06883115226700295,
+              "relativeRMSEMax": 0.07599677855548835
+            },
+            "qualityTrials": [
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.10306294821557596,
+                "relativeRMSE": 0.07049224804917671,
+                "mae": 0.05234984329514343
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.10295239457701931,
+                "relativeRMSE": 0.07041663237306026,
+                "mae": 0.05373709788914335
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.10063434885441139,
+                "relativeRMSE": 0.06883115226700295,
+                "mae": 0.05204151648688875
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.10338044750019564,
+                "relativeRMSE": 0.070709408907801,
+                "mae": 0.053960336345387036
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.11111082806368759,
+                "relativeRMSE": 0.07599677855548835,
+                "mae": 0.054755859427143665
+              }
+            ]
+          }
+        },
+        {
+          "mode": "variance",
+          "samples": 16,
+          "completedBakes": 35,
+          "measurementSeconds": 5.053400000095367,
+          "bakesPerSecond": 6.92602999947352,
+          "meanCompletedBakeSeconds": 0.1443828571455819,
+          "qualityTrials": [
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.0862378293594293,
+              "relativeRMSE": 0.05898432524666246,
+              "mae": 0.0407491242546286
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.08876610356926476,
+              "relativeRMSE": 0.06071359590912468,
+              "mae": 0.04428581983470466
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.08761790932387112,
+              "relativeRMSE": 0.05992826233429207,
+              "mae": 0.04205067547875189
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.09143685764048347,
+              "relativeRMSE": 0.06254031891410702,
+              "mae": 0.04410012659336664
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.09224497574920039,
+              "relativeRMSE": 0.06309304967874177,
+              "mae": 0.0455092484056626
+            }
+          ],
+          "error": {
+            "coveredTexels": 17192,
+            "rmse": 0.08928954796158192,
+            "relativeRMSE": 0.06107161760928011,
+            "mae": 0.043338998913422876,
+            "relativeRMSEStd": 0.0015513580822425217,
+            "relativeRMSEMin": 0.05898432524666246,
+            "relativeRMSEMax": 0.06309304967874177
+          },
+          "moreSamples": {
+            "samples": 16,
+            "targetSeconds": 0.1443828571455819,
+            "actualSeconds": 0.1442228571483067,
+            "completedBakes": 35,
+            "measurementSeconds": 5.047800000190735,
+            "budgetRatio": 0.9988918352189563,
+            "error": {
+              "coveredTexels": 17192,
+              "rmse": 0.1039714608823275,
+              "relativeRMSE": 0.07111364595569215,
+              "mae": 0.05292195040592209,
+              "relativeRMSEStd": 0.0014062797081328632,
+              "relativeRMSEMin": 0.06974511811930247,
+              "relativeRMSEMax": 0.07359314590384258
+            },
+            "qualityTrials": [
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.10475684643014468,
+                "relativeRMSE": 0.07165082826814806,
+                "mae": 0.053074311002180595
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.10305000247146832,
+                "relativeRMSE": 0.07048339351298676,
+                "mae": 0.0525549990478201
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.1075966052326464,
+                "relativeRMSE": 0.07359314590384258,
+                "mae": 0.05478841144136815
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.10197060947757432,
+                "relativeRMSE": 0.06974511811930247,
+                "mae": 0.05281714972080289
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.10238158453477038,
+                "relativeRMSE": 0.07002621385909531,
+                "mae": 0.0513748808174387
+              }
+            ]
+          }
+        },
+        {
+          "mode": "oidn",
+          "samples": 16,
+          "completedBakes": 24,
+          "measurementSeconds": 5.123399999856949,
+          "bakesPerSecond": 4.684389272879359,
+          "meanCompletedBakeSeconds": 0.21347499999403954,
+          "qualityTrials": [
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.07080806901271687,
+              "relativeRMSE": 0.04843078964020267,
+              "mae": 0.03867697818735567
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.07247595443788296,
+              "relativeRMSE": 0.049571577820087524,
+              "mae": 0.03978778471767618
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.07235377280447995,
+              "relativeRMSE": 0.04948800891236637,
+              "mae": 0.03939047287292171
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.07067229026850155,
+              "relativeRMSE": 0.04833792067921572,
+              "mae": 0.038678120103216904
+            },
+            {
+              "coveredTexels": 17192,
+              "rmse": 0.07228002971733112,
+              "relativeRMSE": 0.04943757065030215,
+              "mae": 0.039707652815883655
+            }
+          ],
+          "error": {
+            "coveredTexels": 17192,
+            "rmse": 0.07172250742377552,
+            "relativeRMSE": 0.04905624059434391,
+            "mae": 0.03924820173941082,
+            "relativeRMSEStd": 0.000548549780907757,
+            "relativeRMSEMin": 0.04833792067921572,
+            "relativeRMSEMax": 0.049571577820087524
+          },
+          "moreSamples": {
+            "samples": 24,
+            "targetSeconds": 0.21347499999403954,
+            "actualSeconds": 0.21512916667262713,
+            "completedBakes": 24,
+            "measurementSeconds": 5.163100000143051,
+            "budgetRatio": 1.0077487606447302,
+            "error": {
+              "coveredTexels": 17192,
+              "rmse": 0.08672272776693397,
+              "relativeRMSE": 0.05931598254360853,
+              "mae": 0.041726002749850145,
+              "relativeRMSEStd": 0.0026428596286888414,
+              "relativeRMSEMin": 0.05550329763268148,
+              "relativeRMSEMax": 0.06257080360918112
+            },
+            "qualityTrials": [
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.0845485212356562,
+                "relativeRMSE": 0.05782888452471245,
+                "mae": 0.04107817840475398
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.09148142768381073,
+                "relativeRMSE": 0.06257080360918112,
+                "mae": 0.043548214604535805
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.08545589534313237,
+                "relativeRMSE": 0.05844950368770999,
+                "mae": 0.04096457816814108
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.09054877044745459,
+                "relativeRMSE": 0.06193289147501086,
+                "mae": 0.04273952074188289
+              },
+              {
+                "coveredTexels": 17192,
+                "rmse": 0.08114840493837194,
+                "relativeRMSE": 0.05550329763268148,
+                "mae": 0.04029952182993697
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "Linear RGB irradiance over all atlas pages; caller supplies the prepared scene and baker.",
+        "Reset repeats UV jitter but the ray source continues its render-pass sequence. Quality trials are sequential phases, not independently seeded trials. Reference uses the same bounce cache and is not ground truth.",
+        "Quality uses five sequential phase trials per mode and raw comparator outside throughput timing; RMSE is sqrt(mean trial MSE), with relative RMSE standard deviation and range. Readback and preview excluded from timings; GPU completion included. Setup, shader/model warmup excluded.",
+        "Equal-time sample count estimated from warmed throughput, rounded and capped below reference. Actual elapsed time reported; CPU/browser variance can cause budget mismatch.",
+        "Each mode measured sequentially for at least five seconds, counting complete GPU-fenced bakes. No requestAnimationFrame or per-frame timers."
+      ],
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": ""
+      },
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36"
+    },
+    {
+      "config": {
+        "resolution": 256,
+        "samples": 16,
+        "reference": 512,
+        "seconds": 5,
+        "qualityTrials": 5,
+        "oidn": true
+      },
+      "sceneName": "Space Ship Hallway",
+      "atlasSize": 512,
+      "atlasPages": 4,
+      "rows": [
+        {
+          "mode": "none",
+          "samples": 16,
+          "completedBakes": 5,
+          "measurementSeconds": 5.166199999809265,
+          "bakesPerSecond": 0.9678293523643294,
+          "meanCompletedBakeSeconds": 1.0332399999618531,
+          "qualityTrials": [
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.43503534055924026,
+              "relativeRMSE": 0.41359422535116697,
+              "mae": 0.14824508489878085
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.4239782665537288,
+              "relativeRMSE": 0.4030821093651846,
+              "mae": 0.1493386940743441
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.44570583161538896,
+              "relativeRMSE": 0.4237388114825169,
+              "mae": 0.15183471818194252
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.4697805450833097,
+              "relativeRMSE": 0.44662698064715534,
+              "mae": 0.15088884541348263
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.415142094653059,
+              "relativeRMSE": 0.394681436289684,
+              "mae": 0.150018960451457
+            }
+          ],
+          "error": {
+            "coveredTexels": 63982,
+            "rmse": 0.4383386192598287,
+            "relativeRMSE": 0.4167346989355259,
+            "mae": 0.15006526060400144,
+            "relativeRMSEStd": 0.018024693182029088,
+            "relativeRMSEMin": 0.394681436289684,
+            "relativeRMSEMax": 0.44662698064715534
+          },
+          "moreSamples": {
+            "samples": 16,
+            "targetSeconds": 1.0332399999618531,
+            "actualSeconds": 1.032339999961853,
+            "completedBakes": 5,
+            "measurementSeconds": 5.161699999809265,
+            "budgetRatio": 0.999128953582872,
+            "error": {
+              "coveredTexels": 63982,
+              "rmse": 0.44266561170330554,
+              "relativeRMSE": 0.4208484315933361,
+              "mae": 0.15066784934744515,
+              "relativeRMSEStd": 0.027978092351333805,
+              "relativeRMSEMin": 0.3780024071851678,
+              "relativeRMSEMax": 0.4513934488501556
+            },
+            "qualityTrials": [
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.41756872728809635,
+                "relativeRMSE": 0.3969884701127521,
+                "mae": 0.15288550711004278
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.4660443984273372,
+                "relativeRMSE": 0.44307497340105695,
+                "mae": 0.15192850939700084
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.4747941114990313,
+                "relativeRMSE": 0.4513934488501556,
+                "mae": 0.15358313586562755
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.4524259635691386,
+                "relativeRMSE": 0.43012773557796113,
+                "mae": 0.15007502649175797
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.39759840892940096,
+                "relativeRMSE": 0.3780024071851678,
+                "mae": 0.14486706787279663
+              }
+            ]
+          }
+        },
+        {
+          "mode": "variance",
+          "samples": 16,
+          "completedBakes": 5,
+          "measurementSeconds": 5.2515999999046326,
+          "bakesPerSecond": 0.9520907913951555,
+          "meanCompletedBakeSeconds": 1.0503199999809265,
+          "qualityTrials": [
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.4287006428967002,
+              "relativeRMSE": 0.407571739064871,
+              "mae": 0.13039669394027312
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.4630790888480194,
+              "relativeRMSE": 0.4402558118202812,
+              "mae": 0.12862998141629126
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.3527975853287671,
+              "relativeRMSE": 0.335409633208739,
+              "mae": 0.12628526764564746
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.4122909803117669,
+              "relativeRMSE": 0.39197084173003643,
+              "mae": 0.12974845063941873
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.5472948751009837,
+              "relativeRMSE": 0.5203209459145793,
+              "mae": 0.12722691737506106
+            }
+          ],
+          "error": {
+            "coveredTexels": 63982,
+            "rmse": 0.44546787824048634,
+            "relativeRMSE": 0.4235125858576377,
+            "mae": 0.12845746220333834,
+            "relativeRMSEStd": 0.060936389161199846,
+            "relativeRMSEMin": 0.335409633208739,
+            "relativeRMSEMax": 0.5203209459145793
+          },
+          "moreSamples": {
+            "samples": 16,
+            "targetSeconds": 1.0503199999809265,
+            "actualSeconds": 1.0312800000190736,
+            "completedBakes": 5,
+            "measurementSeconds": 5.156400000095368,
+            "budgetRatio": 0.9818721913681557,
+            "error": {
+              "coveredTexels": 63982,
+              "rmse": 0.4332632323569657,
+              "relativeRMSE": 0.41190945712471433,
+              "mae": 0.1505711995075848,
+              "relativeRMSEStd": 0.05843794772235802,
+              "relativeRMSEMin": 0.35447916002219176,
+              "relativeRMSEMax": 0.5190363330366605
+            },
+            "qualityTrials": [
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.4259058836511868,
+                "relativeRMSE": 0.4049147220884911,
+                "mae": 0.14792179400660546
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.41315763627726293,
+                "relativeRMSE": 0.39279478376250326,
+                "mae": 0.15122062057530275
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.5459436666783862,
+                "relativeRMSE": 0.5190363330366605,
+                "mae": 0.15864635704420077
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.37285569441999106,
+                "relativeRMSE": 0.35447916002219176,
+                "mae": 0.14571396244677343
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.3865413721342932,
+                "relativeRMSE": 0.3674903265756404,
+                "mae": 0.14935326346504152
+              }
+            ]
+          }
+        },
+        {
+          "mode": "oidn",
+          "samples": 16,
+          "completedBakes": 3,
+          "measurementSeconds": 6.255700000047684,
+          "bakesPerSecond": 0.4795626388696921,
+          "meanCompletedBakeSeconds": 2.085233333349228,
+          "qualityTrials": [
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.33322782575072685,
+              "relativeRMSE": 0.31680438715543374,
+              "mae": 0.1333857003857756
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.2970770387744465,
+              "relativeRMSE": 0.2824353248257638,
+              "mae": 0.13099470792579337
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.3083160517223043,
+              "relativeRMSE": 0.2931204127266811,
+              "mae": 0.13336745021563884
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.3055247434535456,
+              "relativeRMSE": 0.29046667664250575,
+              "mae": 0.13159768602080155
+            },
+            {
+              "coveredTexels": 63982,
+              "rmse": 0.30199695841506713,
+              "relativeRMSE": 0.2871127617207449,
+              "mae": 0.1313256483760777
+            }
+          ],
+          "error": {
+            "coveredTexels": 63982,
+            "rmse": 0.3094840449281636,
+            "relativeRMSE": 0.29423084031762536,
+            "mae": 0.1321342385848174,
+            "relativeRMSEStd": 0.011953854221390427,
+            "relativeRMSEMin": 0.2824353248257638,
+            "relativeRMSEMax": 0.31680438715543374
+          },
+          "moreSamples": {
+            "samples": 32,
+            "targetSeconds": 2.085233333349228,
+            "actualSeconds": 2.0788333333333333,
+            "completedBakes": 3,
+            "measurementSeconds": 6.2365,
+            "budgetRatio": 0.9969307991036115,
+            "error": {
+              "coveredTexels": 63982,
+              "rmse": 0.35107632379250486,
+              "relativeRMSE": 0.33377320562379387,
+              "mae": 0.11086955073675415,
+              "relativeRMSEStd": 0.04523639241514146,
+              "relativeRMSEMin": 0.29223318517914765,
+              "relativeRMSEMax": 0.41890881454606904
+            },
+            "qualityTrials": [
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.3073828294608788,
+                "relativeRMSE": 0.29223318517914765,
+                "mae": 0.11158742943901429
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.33651137951323956,
+                "relativeRMSE": 0.319926107963356,
+                "mae": 0.11067238403377966
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.44062544307668633,
+                "relativeRMSE": 0.41890881454606904,
+                "mae": 0.11141086612453957
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.3200996633361112,
+                "relativeRMSE": 0.3043232582494986,
+                "mae": 0.11202628148427714
+              },
+              {
+                "coveredTexels": 63982,
+                "rmse": 0.3345657449509759,
+                "relativeRMSE": 0.31807636578249915,
+                "mae": 0.10865079260216005
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "Linear RGB irradiance over all atlas pages; caller supplies the prepared scene and baker.",
+        "Reset repeats UV jitter but the ray source continues its render-pass sequence. Quality trials are sequential phases, not independently seeded trials. Reference uses the same bounce cache and is not ground truth.",
+        "Quality uses five sequential phase trials per mode and raw comparator outside throughput timing; RMSE is sqrt(mean trial MSE), with relative RMSE standard deviation and range. Readback and preview excluded from timings; GPU completion included. Setup, shader/model warmup excluded.",
+        "Equal-time sample count estimated from warmed throughput, rounded and capped below reference. Actual elapsed time reported; CPU/browser variance can cause budget mismatch.",
+        "Each mode measured sequentially for at least five seconds, counting complete GPU-fenced bakes. No requestAnimationFrame or per-frame timers."
+      ],
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": ""
+      },
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36"
+    }
+  ]
+}

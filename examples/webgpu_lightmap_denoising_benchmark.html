@@ -130,7 +130,7 @@
 				await renderer.init();
 				const drain = () => device.queue.onSubmittedWorkDone();
 				const scene = makeScene();
-				baker = new LightBaker( renderer, { algorithm: 'ray', resolution: config.resolution, cacheSize: 64, directional: false, denoiser: 'none', denoise: false, stitchSeams: false, noiseTolerance: 0 } );
+				baker = new LightBaker( renderer, { algorithm: 'ray', resolution: config.resolution, cacheSize: 64, directional: false, denoiser: 'none', denoise: false, stitchSeams: false } );
 				status.textContent = 'Preparing ' + adapterName;
 				await baker.prepare( scene );
 				const mapper = baker.lightMapper;
@@ -260,4 +260,5 @@
 	</script>
 </body>
 </html>
+
 

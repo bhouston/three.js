@@ -11,6 +11,86 @@ sampling state of the art. FAST remains the default and is unchanged.
 
 ![Original metrics and the broader integration-error audit](results/frontier/frontier.png)
 
+## Latest PR #117 candidates on the same protocol
+
+The chart now includes the most promising playback-aware schedules and the
+guarded Pareto refinement from [PR #117](https://github.com/bhouston/three.js/pull/117),
+pinned to `2a065526980261bcf5b129f07ddb12ff7eda1f91`. It also includes two
+extra-FAST controls, because these refinements spend additional work after
+constructing the original FAST texture. The third panel magnifies their small
+integration-error differences; the upper panels retain the full comparison.
+
+All rows below use **our unchanged 318 diagnostics**, against the identical
+seed-1, 10,000-step FAST separate reference. Counts use absolute error tolerance
+1e-12. Worst regression is the largest error ratio minus one; median change is
+the median ratio minus one. These correlated quantities are descriptive.
+
+| PR #117 profile | Wins / losses / ties | Worst regression | Median error change |
+| --- | --- | --- | --- |
+| Light playback, `light-seam-03` | 285 / 11 / 22 | +0.1373% | -0.1759% |
+| Playback 25%, `seam-polish` | 289 / 7 / 22 | +3.8943% | -1.2995% |
+| Pareto polish | 93 / 175 / 50 | +0.3713% | +0.0029% |
+| Extra FAST, same 13,000 total iterations | 260 / 36 / 22 | +0.4204% | -0.1006% |
+| Extra FAST, similar reported total time | 268 / 27 / 23 | +0.4510% | -0.1147% |
+
+Light playback beats the same-iteration control on 254 diagnostics, loses 42,
+and ties 22. Against the similar-time control, those counts are 223 / 73 / 22.
+It offers a useful but small tradeoff; it does not dominate either control.
+Its worst loss here is threshold .8 with spatial filtering after 64 frames.
+The stronger playback weight wins more tests but loses five of the ten legacy
+metrics, including the 3.89% regression in 32-frame filtered scalar error.
+Pareto guarding on #117's own objective does not guarantee improvement across
+this different suite.
+
+Our annealed candidate still gives substantially larger gains across much of
+this suite: in a direct seed-1 comparison it beats light playback on 263
+diagnostics, loses 52 and ties three. Light playback has a smaller worst loss
+relative to FAST. There is no unique ordering of these tradeoffs, and counting
+wins alone discards their magnitude. The example therefore exposes these two
+complementary experimental choices: **GPU Stratified Annealed** and
+**PR117 Light Playback**, alongside six baseline controls. Both are precomputed
+scalar PNGs, loaded on selection and cached; no optimization runs at runtime.
+The other methods remain in the research code and analysis, outside the demo.
+
+The light schedule is FAST 10,000 steps, then an original-loss restart of 2,000
+steps, then a 1,000-step restart with playback weight .03. The stronger schedule
+starts from FAST and adds 2,000 steps with playback weight .25. The controls use
+the same restart boundaries with zero playback weight. These restarts reset
+random keys and suppression, so they are not uninterrupted longer FAST runs.
+The Pareto profile starts from FAST and applies four CPU refinement passes.
+#117 reports total times including FAST input of approximately 117s, 119s and
+83s, respectively, versus 75s baseline; its similar-time control costs 116s.
+Those measurements use another GPU and are **not** a speed comparison with our
+AMD measurements or a claim of faster construction.
+
+This addition imports published seed-1 PNGs, validates their recorded hashes,
+and reconstructs exact 8-bit midpoints before our quantize-first scorer. The
+imported FAST reference reproduces **every** previously recorded baseline
+result exactly, including bias statistics, validating the common normalization.
+The pinned source manifest records the same original Float32 reference hash.
+The decoded midpoint Float32 hashes differ from original prequantization hashes
+by design; both are recorded in [import provenance](results/frontier/pr117-import.json).
+The freshly regenerated annealed example asset also matches its historical
+Float32 hash exactly.
+
+Only seed-1 PNGs were published for this comparison. #117 reports seed-2 results
+under its own **74-metric** suite, which cannot be substituted for seed-2 results
+under our 318-metric suite. There is no new untouched scene, moving-camera,
+disocclusion, multidimensional sampling or state-of-the-art evidence here.
+
+To reproduce this extension after fetching the pinned PR #117 commit:
+
+```sh
+node utils/fastnoise/experiments/import-pr117.js /path/to/pr117-volumes
+python utils/fastnoise/experiments/score-frontier.py /path/to/pr117-volumes utils/fastnoise/results/frontier/scores.json
+python utils/fastnoise/experiments/audit-frontier.py utils/fastnoise/results/frontier/box-screen.json utils/fastnoise/results/frontier/scores.json utils/fastnoise/results/frontier/audit.json
+node utils/fastnoise/experiments/chart-frontier.js utils/fastnoise/results/frontier/audit.json utils/fastnoise/results/frontier/frontier.png
+```
+
+The importer uses git-dedup to read the pinned sources without changing branches.
+Its generation records preserve the original profile parameters and dependency
+costs. The existing box screen is unchanged; the new profiles are fully audited.
+
 ## What was attempted
 
 Three sub-agents independently implemented the CPU methods, followed by a GPU
@@ -250,6 +330,26 @@ an appropriate physical backend and verification, not a software fallback.
 Numerical plots use 2D SVG rasterization, not a GPU-rendered scene.
 
 ## Validation
+
+- Latest example validation: all eight dropdown entries work on physical AMD
+  GCN-5 WebGPU/D3D11, fallback=false, with software rasterization disabled.
+  Tests exercise failed-load recovery and retry, lazy loading, cache reuse,
+  stale-selection protection, Sphere and Uniform modes. GPU readback of both
+  experimental atlases matches every sampled right-half texel **exactly** at
+  frames 0, 31 and 32, including cycle shifting and midpoint decoding.
+  `node utils/fastnoise/check-example.js /path/to/artifacts` reproduces this
+  Windows hardware check. It saves canvas exports because this machine's
+  headless compositor screenshots omit the WebGPU canvas despite valid output.
+- The PR #117 reference import matches the entire existing baseline result,
+  including bias terms; all imported PNG hashes match the pinned manifest.
+  Only seed 1 was added to this common-protocol extension.
+- The latest `npm test` run exits zero: 1,982 core passes, one TODO, and 141
+  addon passes. Its WebGPU context creation warning means renderer tests
+  internally bypassed execution again; the dedicated hardware example check
+  above provides separate validation. A resource 404 and Windows process
+  cleanup warnings remain. The tracked launcher was restored, and scoped lint
+  passes for the example, baker, importer, chart and browser check. No typecheck
+  script is defined and no root build outputs are committed.
 
 - New experiment tests pass determinism, dimensions/range, input immutability,
   temporal multiset preservation, exact cached energy deltas on tiny wrapped

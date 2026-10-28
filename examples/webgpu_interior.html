@@ -27,7 +27,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, isolate, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, cameraWorldMatrix, convertToTexture, uniform, vec2, mix, property, emissive, positionViewDirection } from 'three/tsl';
+			import { Fn, isolate, output, sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext, context, texture, uv, lightMapDiffuse, indirectDiffuse, indirectSpecular, environmentDiffuse, environmentSpecular, pmremTexture, metalness, roughness, diffuseColor, cameraWorldMatrix, convertToTexture, uniform, vec2, mix, property, emissive, positionViewDirection } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { supportsUnlayeredDiffuse } from 'three/addons/tsl/utils/UnlayeredDiffuseScope.js';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
@@ -36,7 +36,6 @@
 			import { screenSpaceGBuffer } from 'three/addons/tsl/display/ScreenSpaceGBufferNode.js';
 			import { resolveSSRHitDistance } from 'three/addons/tsl/utils/SpecularHelpers.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
-			import { fastNoise } from 'three/addons/tsl/utils/FASTNoise.js';
 			import { SSGI_QUALITY_PRESETS, resolveSSGISettings } from 'three/addons/tsl/utils/SSGISettings.js';
 			import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
 			import { reprojectedHistoryRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
@@ -170,18 +169,13 @@
 				thickness: 1,
 				temporalFiltering: true
 			};
-			const samplingModes = [ 'Original', 'FAST Product', 'FAST Separate' ];
-			const ssrSampling = uniform( 0, 'uint' );
-			const ssgiSampling = uniform( 0, 'uint' );
 			const ssgiHistoryPixels = uniform( 1.5 );
 			const ssgiHistoryWorld = uniform( 0.001 );
 			const ssrHistoryPixels = uniform( 1.5 );
 			const ssrHistoryWorld = uniform( 0.001 );
-			let noiseAtlases;
 			const ssrParams = {
 				traversal: 'Linear',
 				classify: true,
-				sampling: 'FAST Separate',
 				enabled: true,
 				denoise: true,
 				denoiseSamples: 8,
@@ -210,7 +204,6 @@
 			const ssgiParams = {
 				quality: 'Balanced',
 				scenePreset: 'Baseline',
-				sampling: 'Original',
 				viewSpaceAzimuth: true,
 				source: 'Diffuse + emission',
 				enabled: true,
@@ -319,17 +312,6 @@
 				uvTexture = await new THREE.TextureLoader().loadAsync( 'textures/uv_grid_opengl.jpg' );
 				uvTexture.colorSpace = THREE.SRGBColorSpace;
 				uvTexture.channel = 1;
-
-				noiseAtlases = await Promise.all( [ 'product', 'separate05' ].map( async variant => {
-
-					const atlas = await new THREE.TextureLoader().loadAsync( `textures/noises/fast/gauss1-ema01-${ variant }.png` );
-					atlas.flipY = false;
-					atlas.colorSpace = THREE.NoColorSpace;
-					atlas.generateMipmaps = false;
-					atlas.minFilter = atlas.magFilter = THREE.NearestFilter;
-					return atlas;
-
-				} ) );
 
 				await loadModel();
 
@@ -452,7 +434,6 @@
 
 				} );
 				ssgiSettings.add( ssgiParams, 'source', [ 'Beauty', 'Diffuse + emission' ] ).name( 'Source radiance' ).onChange( updateSSGIParameters );
-				ssgiSettings.add( ssgiParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssgiSettings.add( ssgiParams, 'sliceCount', 1, 8, 1 ).name( 'Slices' ).onChange( updateSSGIParameters );
 				ssgiSettings.add( ssgiParams, 'stepCount', 2, 32, 1 ).name( 'Steps' ).onChange( updateSSGIParameters );
@@ -468,7 +449,6 @@
 				const ssrSettings = settings.addFolder( 'SSR Settings' ).close();
 				ssrSettings.add( ssrParams, 'denoiseSamples', [ 4, 8 ] ).name( 'Denoise Samples' ).info( 'Four samples reduce spatial filtering work while retaining temporal reconstruction; eight samples suppress more spatial noise.' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'resolveOrder', [ 'Before filtering', 'After filtering (coverage-aware)' ] ).name( 'Resolve Fallback' ).info( 'Before: filter combined reflections. After: filter SSR radiance and coverage, then resolve probes/environment.' ).onChange( updateIndirectLighting );
-				ssrSettings.add( ssrParams, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'denoise' ).name( 'Denoise' ).onChange( updateIndirectLighting );
 				ssrSettings.add( ssrParams, 'traversal', [ 'Linear', 'Conservative Hi-Z', 'Adaptive Hi-Z (experimental)' ] ).name( 'Traversal' ).info( 'Hi-Z costs extra construction; adaptive changes hits and can lose detail.' ).onChange( updateSSRParameters );
 				ssrSettings.add( ssrParams, 'classify' ).name( 'Skip Unused Rays' ).info( 'Skips fully roughness-rejected rays at full tracing resolution.' ).onChange( updateSSRParameters );
@@ -626,32 +606,10 @@
 
 			}
 
-			function samplingNoise( mode, offset ) {
-
-				const product = fastNoise( noiseAtlases[ 0 ], offset );
-				const separate = fastNoise( noiseAtlases[ 1 ], offset );
-				return Fn( () => {
-
-					const value = vec4().toVar();
-					If( mode.equal( 2 ), () => {
-
-						value.assign( separate );
-
-					} ).Else( () => {
-
-						value.assign( product );
-
-					} );
-					return value;
-
-				} )();
-
-			}
-
 			function setupSSGI( depth, normal, motion, effectDepth, effectNormal ) {
 
 				const source = createHistorySource( depth, normal, ssgiHistoryPixels, ssgiHistoryWorld, true );
-				ssgiPass = ssgi( sample( uv => source.sample( effectDepth.sample( uv ).gb ) ), effectDepth, effectNormal, camera, { outputCoverage: true, noiseNode: samplingNoise( ssgiSampling, new THREE.Vector2( 73, 29 ) ).wxy } );
+				ssgiPass = ssgi( sample( uv => source.sample( effectDepth.sample( uv ).gb ) ), effectDepth, effectNormal, camera, { outputCoverage: true } );
 				ssgiPass.useScreenSpaceSampling.value = false;
 				// Diffuse filtering uses surface reprojection, without specular hit distance
 				// or roughness guides. RGB is irradiance before receiver albedo is applied.
@@ -683,8 +641,6 @@
 			function updateSSGIParameters() {
 
 				ssgiSourceTexture.value = ssgiParams.source === 'Diffuse + emission' ? diffuseHistory.texture : lightingHistory.texture;
-				ssgiSampling.value = samplingModes.indexOf( ssgiParams.sampling );
-				ssgiPass.useNoiseNode.value = ssgiSampling.value !== 0;
 				ssgiPass.useViewSpaceAzimuth.value = ssgiParams.viewSpaceAzimuth;
 				ssgiPass.resolutionScale = params.resolutionScale;
 				ssgiPass.sliceCount.value = ssgiParams.sliceCount;
@@ -722,7 +678,6 @@
 				ssrPass = ssr( sample( uv => source.sample( effectDepth.sample( uv ).gb ) ), effectDepth, effectNormal, {
 					camera,
 					stochastic: true,
-					noiseNode: samplingNoise( ssrSampling, new THREE.Vector2( 0, 0 ) ),
 					outputCoverage: true,
 					traceMaskNode: traceNormalRoughness.a.lessThan( ssrMaxRoughness ),
 					diffuseNode: traceAlbedoMetalness,
@@ -854,8 +809,6 @@
 
 			function updateSSRParameters() {
 
-				ssrSampling.value = samplingModes.indexOf( ssrParams.sampling );
-				ssrPass.useNoiseNode.value = ssrSampling.value !== 0;
 				// At reduced resolution, bilinear upsampling can reuse an apparently
 				// rejected trace texel at a contributing neighbor. Keep those rays until
 				// classification accounts for the complete reconstruction footprint.

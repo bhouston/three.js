@@ -37,7 +37,6 @@ import './addons/tsl/ScreenSpaceGBufferNode.tests.js';
 import './addons/tsl/GTAONode.tests.js';
 import './addons/tsl/SSGISettings.tests.js';
 import './addons/tsl/SSGISettingsDOM.tests.js';
-import './addons/tsl/FASTNoise.tests.js';
 import './addons/tsl/SpecularHelpers.tests.js';
 import './addons/postprocessing/GTAOPass.tests.js';
 import './addons/tsl/lighting/ReflectionProbesNode.tests.js';

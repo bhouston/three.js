@@ -44,13 +44,12 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, velocity, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec3, vec4, Fn, If, uniform, context, cameraWorldMatrix, getViewPosition, diffuseColor, indirectSpecular, environmentSpecular, pmremTexture, reference, } from 'three/tsl';
+		import { pass, mrt, output, normalView, velocity, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec3, vec4, Fn, uniform, context, cameraWorldMatrix, getViewPosition, diffuseColor, indirectSpecular, environmentSpecular, pmremTexture, reference } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { screenSpaceGBuffer } from 'three/addons/tsl/display/ScreenSpaceGBufferNode.js';
 		import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
 		import { coverageDenoise } from 'three/addons/tsl/display/CoverageDenoiseNode.js';
 		import { resolveSSRHitDistance } from 'three/addons/tsl/utils/SpecularHelpers.js';
-		import { fastNoise, loadFASTNoise } from 'three/addons/tsl/utils/FASTNoise.js';
 		import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
@@ -79,7 +78,6 @@
 			stepExponent: 2,
 			maxLuminance: 35,
 			screenEdgeFade: 0.1,
-			sampling: 'FAST Separate',
 			environment: true,
 			maxDistance: 5,
 			intensity: 1,
@@ -99,8 +97,6 @@
 		const lastCameraQuaternion = new THREE.Quaternion();
 		const lastProjection = new THREE.Matrix4();
 		let cameraHistoryValid = false;
-		const samplingModes = [ 'Original', 'FAST Product', 'FAST Separate' ];
-		const samplingMode = uniform( 2, 'uint' );
 		const denoiseEnabled = uniform( 1 );
 		const maxRoughness = uniform( params.maxRoughness );
 		const ssrStrength = uniform( params.intensity );
@@ -166,25 +162,6 @@
 			document.body.appendChild( renderer.domElement );
 
 			await renderer.init();
-
-			const noiseAtlases = await Promise.all( [ 'product', 'separate05' ].map( variant => loadFASTNoise( `textures/noises/fast/gauss1-ema01-${ variant }.png` ) ) );
-			const productNoise = fastNoise( noiseAtlases[ 0 ], new THREE.Vector2() );
-			const separateNoise = fastNoise( noiseAtlases[ 1 ], new THREE.Vector2() );
-			const samplingNoise = Fn( () => {
-
-				const value = vec4().toVar();
-				If( samplingMode.equal( 2 ), () => {
-
-					value.assign( separateNoise );
-
-				} ).Else( () => {
-
-					value.assign( productNoise );
-
-				} );
-				return value;
-
-			} )();
 
 			const pmremGenerator = new THREE.PMREMGenerator( renderer );
 
@@ -256,7 +233,6 @@
 				stochastic: true,
 				outputCoverage: true,
 				traceMaskNode: effectNormalRoughness.a.lessThan( maxRoughness ),
-				noiseNode: samplingNoise,
 				hitReactiveNode: sample( coordinate => effectMotion.sample( coordinate ).w ),
 				roughnessNode: effectNormalRoughness.a
 			} ).toInspector( 'SSR' );
@@ -420,7 +396,6 @@
 
 			} );
 			denoiseFolder.add( params, 'radius', 0, 3 ).name( 'Radius' ).onChange( updateParameters );
-			denoiseFolder.add( params, 'sampling', samplingModes ).name( 'Sampling' ).onChange( updateParameters );
 			denoiseFolder.add( params, 'maxFrames', 1, 128, 1 ).name( 'Max frames' ).onChange( updateParameters );
 
 			const sceneFolder = gui.addFolder( 'Scene' );
@@ -450,8 +425,6 @@
 
 		function updateParameters() {
 
-			samplingMode.value = samplingModes.indexOf( params.sampling );
-			ssrPass.useNoiseNode.value = samplingMode.value !== 0;
 			ssrPass.quality.value = params.quality;
 			ssrPass.raysPerPixel.value = params.raysPerPixel;
 			ssrPass.maxSteps.value = params.traceSteps;

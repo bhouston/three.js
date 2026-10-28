@@ -513,7 +513,6 @@
 		"webgpu_textures_partialupdate",
 		"webgpu_tonemapping",
 		"webgpu_tsl_angular_slicing",
-		"webgpu_tsl_blue_noise",
 		"webgpu_tsl_stratified_noise",
 		"webgpu_tsl_compute_attractors_particles",
 		"webgpu_tsl_earth",

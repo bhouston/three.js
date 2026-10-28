@@ -52,3 +52,19 @@ regressed spatial spectrum and shorter-frame error. These are partial,
 one-seed numerical screens, not evidence of exceeding FAST on all metrics.
 The benchmark harness should evaluate complete held-out integrands, thresholds,
 start phases, seeds and frame counts before recommending any configuration.
+
+Warm-start follow-up: starting from the shipped FAST scalar atlas,4 default
+passes with within-column swaps took3.11 seconds and improved raw temporal
+low-frequency energy (.1542 to .1081), blurred1-frame standard deviation
+(.02521 to .02218), blurred4-frame (.007762 to .006836), and EMA/blur
+(.002283 to .002142). Complete-cycle raw metrics were exactly preserved,
+as required by the column constraint. Spatial low-frequency ratio worsened
+(.00304 to .01517), and held-out threshold .1/.5 blurred RMSE worsened
+approximately9–26% across the tested frame counts. Unconstrained4-pass
+warm-start took8.07 seconds and also regressed long-cycle metrics. This
+warm-start is therefore not a recommended improvement over FAST. Generation
+time for FAST itself is additional, not included in those refinement times.
+
+ESLint passes with the repository's shared configuration. Exact-delta tests
+also pass for size1,2,3 with depth3, both swap constraints, exercising
+periodic duplicate kernel offsets as well as sample-multiset preservation.

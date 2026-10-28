@@ -1,0 +1,78 @@
+{
+  "verifiedSamples": 46891008,
+  "exactCPUAndGPU": true,
+  "checks": [
+    {
+      "file": "animated-ign-seed1.f32",
+      "sha256": "c278688ce2c3e82f64f4dcdf736314f05d401cf7527831020d6259d9c3d1010b"
+    },
+    {
+      "file": "animated-ign-seed2.f32",
+      "sha256": "c5632ab4deab5ba435ffd90887bb1400a92618bbfe732a17951385fdf5be8a8a"
+    },
+    {
+      "file": "FAST-scalar-seed1.f32",
+      "sha256": "3d1da67200c09c753745672bf36d7c6545ed0ea4c577597a1d2dc3569e73f83b"
+    },
+    {
+      "file": "FAST-scalar-seed2.f32",
+      "sha256": "3d1da67200c09c753745672bf36d7c6545ed0ea4c577597a1d2dc3569e73f83b"
+    },
+    {
+      "file": "hashed-digital-seed1.f32",
+      "sha256": "f8bf1e578a49ccb8e8bdd44df2768a9d8ef384f3521a784204c781ab7f0a08e2"
+    },
+    {
+      "file": "hashed-digital-seed2.f32",
+      "sha256": "bccefa5ac346c38a856a8f6dba2074a3091bfe940913729e0f553fc6efeac3fa"
+    },
+    {
+      "file": "hierarchical-digital-seed1.f32",
+      "sha256": "3a721e9ced79a73e011fdfee3885dc70d170198aa69debe31cec0305cefad77d"
+    },
+    {
+      "file": "hierarchical-digital-seed2.f32",
+      "sha256": "b30063bfe87a944a3a179d907ccde08badb909d71d04138f072405ec49647722"
+    },
+    {
+      "file": "phase-32-p8-seed1.f32",
+      "sha256": "eca28c35b4691654a95d9fd6047aeaee8c32c770e0b1c12b8dea84c574ab9110"
+    },
+    {
+      "file": "phase-32-p8-seed2.f32",
+      "sha256": "b725f3120ec6573f94823f5f03f603e267594e77935c34d7e8ecd6a45561be7c"
+    },
+    {
+      "file": "phase-64-p8-seed1.f32",
+      "sha256": "98d3285d410237d85949dc0defddcbc7855f1887c4199ea3aebe2c2a5cdccb02"
+    },
+    {
+      "file": "phase-64-p8-seed2.f32",
+      "sha256": "e5fc8836654ec05814c7785e98c19634a1f5b0a2ec1119bea7d0b467d5c784ac"
+    },
+    {
+      "file": "r2-weyl-seed1.f32",
+      "sha256": "497016b44a075ef8a5d996706ce45cb23028a21f3620228328c2894247ac4220"
+    },
+    {
+      "file": "r2-weyl-seed2.f32",
+      "sha256": "24eedc3a0df3825a1e6cb55c12d086087973bf582b2746f31302409b48b4079e"
+    },
+    {
+      "file": "tiled-bayer-weyl-seed1.f32",
+      "sha256": "c5dad483a872b669b62454ac36a8a5dd1540f1e7e6ec1ba86e96166ef4426796"
+    },
+    {
+      "file": "tiled-bayer-weyl-seed2.f32",
+      "sha256": "f3a222a7347dfd1eed5511de5323d501b4d67b26123f21e7d2150380cdc0cf1b"
+    },
+    {
+      "file": "white-seed1.f32",
+      "sha256": "d6e4753539ff2916758769efa1311785ede7fbe4c57b3fa459993d964db4bec8"
+    },
+    {
+      "file": "white-seed2.f32",
+      "sha256": "f8b8bbdf36a1077ed0a842f2f564c0dc388859000b60bac0fa6dff04f93f5d30"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 // Numerical summary; not a rendered-scene benchmark.
 import fs from 'node:fs';
 import { gzipSync } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 import { wgslSamplers } from './procedural.js';
 
@@ -58,7 +59,7 @@ const browser = await puppeteer.launch( { executablePath: process.env.CHROME_PAT
 try {
 
 	const page = await browser.newPage(); await page.setViewport( { width: W, height: H, deviceScaleFactor: 2 } );
-	await page.setContent( `<body style="margin:0">${svg}</body>` ); await page.screenshot( { path: new URL( 'summary.png', root ).pathname.replace( /^\/([A-Z]:)/i, '$1' ) } );
+	await page.setContent( `<body style="margin:0">${svg}</body>` ); await page.screenshot( { path: fileURLToPath( new URL( 'summary.png', root ) ) } );
 
 } finally {
 

@@ -1,0 +1,219 @@
+{
+  "size": 128,
+  "frames": 159,
+  "seeds": [
+    1,
+    2
+  ],
+  "atlasBytes": 3025821,
+  "methods": [
+    {
+      "name": "white",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 1,
+      "file": "white-seed1.f32",
+      "sha256": "d6e4753539ff2916758769efa1311785ede7fbe4c57b3fa459993d964db4bec8"
+    },
+    {
+      "name": "animated-ign",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 1,
+      "file": "animated-ign-seed1.f32",
+      "sha256": "c278688ce2c3e82f64f4dcdf736314f05d401cf7527831020d6259d9c3d1010b"
+    },
+    {
+      "name": "r2-weyl",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 1,
+      "file": "r2-weyl-seed1.f32",
+      "sha256": "497016b44a075ef8a5d996706ce45cb23028a21f3620228328c2894247ac4220"
+    },
+    {
+      "name": "hashed-digital",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 1,
+      "file": "hashed-digital-seed1.f32",
+      "sha256": "f8bf1e578a49ccb8e8bdd44df2768a9d8ef384f3521a784204c781ab7f0a08e2"
+    },
+    {
+      "name": "hierarchical-digital",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 1,
+      "file": "hierarchical-digital-seed1.f32",
+      "sha256": "3a721e9ced79a73e011fdfee3885dc70d170198aa69debe31cec0305cefad77d"
+    },
+    {
+      "name": "tiled-bayer-weyl",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 1,
+      "file": "tiled-bayer-weyl-seed1.f32",
+      "sha256": "c5dad483a872b669b62454ac36a8a5dd1540f1e7e6ec1ba86e96166ef4426796"
+    },
+    {
+      "name": "phase-16-p8",
+      "persistentBytes": 1024,
+      "startupMilliseconds": 3.6119000000000483,
+      "seed": 1,
+      "file": "phase-16-p8-seed1.f32",
+      "sha256": "2dffae9e81b20aa46142345ffafc0f300d7c2ba6609a9bbdb8ef4cb271b464fc"
+    },
+    {
+      "name": "phase-32-p0",
+      "persistentBytes": 4096,
+      "startupMilliseconds": 0.1360000000000241,
+      "seed": 1,
+      "file": "phase-32-p0-seed1.f32",
+      "sha256": "d13492c21eeeca9843668cc399dbb58ce0dafc0ef05b44d1a0365cc902b2df7e"
+    },
+    {
+      "name": "phase-32-p2",
+      "persistentBytes": 4096,
+      "startupMilliseconds": 3.7922999999999547,
+      "seed": 1,
+      "file": "phase-32-p2-seed1.f32",
+      "sha256": "542837f25bc53b656ef6180e69942400527f96df52d786e0fc6c5c5b09b23224"
+    },
+    {
+      "name": "phase-32-p8",
+      "persistentBytes": 4096,
+      "startupMilliseconds": 3.162899999999979,
+      "seed": 1,
+      "file": "phase-32-p8-seed1.f32",
+      "sha256": "eca28c35b4691654a95d9fd6047aeaee8c32c770e0b1c12b8dea84c574ab9110"
+    },
+    {
+      "name": "phase-64-p8",
+      "persistentBytes": 16384,
+      "startupMilliseconds": 23.776099999999985,
+      "seed": 1,
+      "file": "phase-64-p8-seed1.f32",
+      "sha256": "98d3285d410237d85949dc0defddcbc7855f1887c4199ea3aebe2c2a5cdccb02"
+    },
+    {
+      "name": "phase-128-p8",
+      "persistentBytes": 65536,
+      "startupMilliseconds": 85.75779999999997,
+      "seed": 1,
+      "file": "phase-128-p8-seed1.f32",
+      "sha256": "1d323b646e033d33faf228fe3b0df14dd2fcbe49d44b32cf3d52dedb27d6b518"
+    },
+    {
+      "name": "FAST-scalar",
+      "persistentBytes": 524288,
+      "startupMilliseconds": null,
+      "seed": 1,
+      "file": "FAST-scalar-seed1.f32",
+      "sha256": "3d1da67200c09c753745672bf36d7c6545ed0ea4c577597a1d2dc3569e73f83b"
+    },
+    {
+      "name": "white",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 2,
+      "file": "white-seed2.f32",
+      "sha256": "f8b8bbdf36a1077ed0a842f2f564c0dc388859000b60bac0fa6dff04f93f5d30"
+    },
+    {
+      "name": "animated-ign",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 2,
+      "file": "animated-ign-seed2.f32",
+      "sha256": "c5632ab4deab5ba435ffd90887bb1400a92618bbfe732a17951385fdf5be8a8a"
+    },
+    {
+      "name": "r2-weyl",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 2,
+      "file": "r2-weyl-seed2.f32",
+      "sha256": "24eedc3a0df3825a1e6cb55c12d086087973bf582b2746f31302409b48b4079e"
+    },
+    {
+      "name": "hashed-digital",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 2,
+      "file": "hashed-digital-seed2.f32",
+      "sha256": "bccefa5ac346c38a856a8f6dba2074a3091bfe940913729e0f553fc6efeac3fa"
+    },
+    {
+      "name": "hierarchical-digital",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 2,
+      "file": "hierarchical-digital-seed2.f32",
+      "sha256": "b30063bfe87a944a3a179d907ccde08badb909d71d04138f072405ec49647722"
+    },
+    {
+      "name": "tiled-bayer-weyl",
+      "persistentBytes": 0,
+      "startupMilliseconds": 0,
+      "seed": 2,
+      "file": "tiled-bayer-weyl-seed2.f32",
+      "sha256": "f3a222a7347dfd1eed5511de5323d501b4d67b26123f21e7d2150380cdc0cf1b"
+    },
+    {
+      "name": "phase-16-p8",
+      "persistentBytes": 1024,
+      "startupMilliseconds": 0.491800000000012,
+      "seed": 2,
+      "file": "phase-16-p8-seed2.f32",
+      "sha256": "8e333b7c3f655a69d606246d5b43cd270aef2536ebb81ac8479e8e9d73751441"
+    },
+    {
+      "name": "phase-32-p0",
+      "persistentBytes": 4096,
+      "startupMilliseconds": 0.011299999999891952,
+      "seed": 2,
+      "file": "phase-32-p0-seed2.f32",
+      "sha256": "c2f69a32c35228e2b674ed0cb6b4f1e2f8d85c63ece4322479055f38838a52f3"
+    },
+    {
+      "name": "phase-32-p2",
+      "persistentBytes": 4096,
+      "startupMilliseconds": 0.5503000000001066,
+      "seed": 2,
+      "file": "phase-32-p2-seed2.f32",
+      "sha256": "2c947028e876fd7e95fe3f0b99978f70c5033a6bb73b6ede620f316342009e67"
+    },
+    {
+      "name": "phase-32-p8",
+      "persistentBytes": 4096,
+      "startupMilliseconds": 1.8153999999999542,
+      "seed": 2,
+      "file": "phase-32-p8-seed2.f32",
+      "sha256": "b725f3120ec6573f94823f5f03f603e267594e77935c34d7e8ecd6a45561be7c"
+    },
+    {
+      "name": "phase-64-p8",
+      "persistentBytes": 16384,
+      "startupMilliseconds": 7.3366000000000895,
+      "seed": 2,
+      "file": "phase-64-p8-seed2.f32",
+      "sha256": "e5fc8836654ec05814c7785e98c19634a1f5b0a2ec1119bea7d0b467d5c784ac"
+    },
+    {
+      "name": "phase-128-p8",
+      "persistentBytes": 65536,
+      "startupMilliseconds": 86.18869999999993,
+      "seed": 2,
+      "file": "phase-128-p8-seed2.f32",
+      "sha256": "9fd25117e06bfcf76c07a62afa8caeaae493506c491e7cbd9c9aa06a6872b50c"
+    },
+    {
+      "name": "FAST-scalar",
+      "persistentBytes": 524288,
+      "startupMilliseconds": null,
+      "seed": 2,
+      "file": "FAST-scalar-seed2.f32",
+      "sha256": "3d1da67200c09c753745672bf36d7c6545ed0ea4c577597a1d2dc3569e73f83b"
+    }
+  ]
+}

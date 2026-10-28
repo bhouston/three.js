@@ -1,0 +1,210 @@
+{
+  "white": {
+    "ratios": {
+      "Identity 32": 10.248497540868073,
+      "Threshold 1": 2.1670428857974895,
+      "Threshold 32": 3.574670467662168,
+      "Threshold 128": 3.792698308032994,
+      "Threshold EMA": 3.166598055302119,
+      "Smooth 32": 2.2743839014043687,
+      "Ramp/sphere 32": 3.802717689917771
+    },
+    "worstRatio": 16.773243879430254,
+    "threshold32RMSE": 0.018975978850584097,
+    "thresholdEMARMSE": 0.024709662974106303,
+    "gpuSamplesPerSecond": 739969069.602318,
+    "standaloneWGSLGzipBytes": 386
+  },
+  "animated-ign": {
+    "ratios": {
+      "Identity 32": 1.5789270900149124,
+      "Threshold 1": 0.8797883632479246,
+      "Threshold 32": 0.6215686389029104,
+      "Threshold 128": 0.5706973675887982,
+      "Threshold EMA": 0.6599045531400108,
+      "Smooth 32": 0.6569442676989674,
+      "Ramp/sphere 32": 0.6925840462468078
+    },
+    "worstRatio": 2.201962282055007,
+    "threshold32RMSE": 0.0032995694156171575,
+    "thresholdEMARMSE": 0.005149380760802674,
+    "gpuSamplesPerSecond": 719684991.6212606,
+    "standaloneWGSLGzipBytes": 454
+  },
+  "r2-weyl": {
+    "ratios": {
+      "Identity 32": 2.1832468200649147,
+      "Threshold 1": 0.8079744366432127,
+      "Threshold 32": 0.8556521349568703,
+      "Threshold 128": 0.48852811934716556,
+      "Threshold EMA": 1.0119723285478206,
+      "Smooth 32": 0.29588238831281816,
+      "Ramp/sphere 32": 0.7453049960899257
+    },
+    "worstRatio": 2.1832569038464915,
+    "threshold32RMSE": 0.004542191221060324,
+    "thresholdEMARMSE": 0.00789664325589706,
+    "gpuSamplesPerSecond": 735416171.7851708,
+    "standaloneWGSLGzipBytes": 410
+  },
+  "hashed-digital": {
+    "ratios": {
+      "Identity 32": 1.2805018382576838,
+      "Threshold 1": 2.170682175685997,
+      "Threshold 32": 0.5433769158946953,
+      "Threshold 128": 0.294836440586024,
+      "Threshold EMA": 1.214520414843231,
+      "Smooth 32": 0.16825735419567894,
+      "Ramp/sphere 32": 0.6548410581462436
+    },
+    "worstRatio": 3.216534840461626,
+    "threshold32RMSE": 0.0028844921391192766,
+    "thresholdEMARMSE": 0.009477170642386686,
+    "gpuSamplesPerSecond": 716910543.3882571,
+    "standaloneWGSLGzipBytes": 394
+  },
+  "hierarchical-digital": {
+    "ratios": {
+      "Identity 32": 3.463661979238813,
+      "Threshold 1": 1.1824329246233616,
+      "Threshold 32": 1.3283388872720152,
+      "Threshold 128": 0.8601628560889316,
+      "Threshold EMA": 1.4656804128786844,
+      "Smooth 32": 0.2997790545170078,
+      "Ramp/sphere 32": 1.2672299154682596
+    },
+    "worstRatio": 3.836346103047225,
+    "threshold32RMSE": 0.007051427777556019,
+    "thresholdEMARMSE": 0.011437027496856062,
+    "gpuSamplesPerSecond": 690133990.1372241,
+    "standaloneWGSLGzipBytes": 417
+  },
+  "tiled-bayer-weyl": {
+    "ratios": {
+      "Identity 32": 2.045540479782226,
+      "Threshold 1": 1.3281296378874672,
+      "Threshold 32": 0.7336920345931407,
+      "Threshold 128": 0.556613729581218,
+      "Threshold EMA": 0.9711324419826151,
+      "Smooth 32": 0.24058064307476362,
+      "Ramp/sphere 32": 0.8099147555436794
+    },
+    "worstRatio": 2.333940945973566,
+    "threshold32RMSE": 0.0038947714641754867,
+    "thresholdEMARMSE": 0.0075779606143672115,
+    "gpuSamplesPerSecond": 726524151.6280046,
+    "standaloneWGSLGzipBytes": 411
+  },
+  "phase-16-p8": {
+    "ratios": {
+      "Identity 32": 2.244840131232465,
+      "Threshold 1": 1.3016406566498304,
+      "Threshold 32": 0.8959379578787621,
+      "Threshold 128": 0.591772085894789,
+      "Threshold EMA": 1.153209090211414,
+      "Smooth 32": 0.36073448775505706,
+      "Ramp/sphere 32": 0.8372016204045073
+    },
+    "worstRatio": 2.470274758330812,
+    "threshold32RMSE": 0.00475604671645768,
+    "thresholdEMARMSE": 0.008998744854935846,
+    "gpuSamplesPerSecond": null,
+    "standaloneWGSLGzipBytes": null
+  },
+  "phase-32-p0": {
+    "ratios": {
+      "Identity 32": 2.638160594960294,
+      "Threshold 1": 2.113369478667998,
+      "Threshold 32": 1.014843110495099,
+      "Threshold 128": 0.6075748836181435,
+      "Threshold EMA": 1.3415493273546328,
+      "Smooth 32": 0.41417478242030803,
+      "Ramp/sphere 32": 0.9874208432394717
+    },
+    "worstRatio": 3.214301071276685,
+    "threshold32RMSE": 0.005387249419387869,
+    "thresholdEMARMSE": 0.010468405261149977,
+    "gpuSamplesPerSecond": null,
+    "standaloneWGSLGzipBytes": null
+  },
+  "phase-32-p2": {
+    "ratios": {
+      "Identity 32": 2.3545506076424654,
+      "Threshold 1": 1.4919545447753173,
+      "Threshold 32": 0.9315829708442532,
+      "Threshold 128": 0.5806262762881181,
+      "Threshold EMA": 1.173870766623502,
+      "Smooth 32": 0.3759764401127676,
+      "Ramp/sphere 32": 0.8822438143309146
+    },
+    "worstRatio": 2.550459812719258,
+    "threshold32RMSE": 0.004945266679047496,
+    "thresholdEMARMSE": 0.009159972472620978,
+    "gpuSamplesPerSecond": null,
+    "standaloneWGSLGzipBytes": null
+  },
+  "phase-32-p8": {
+    "ratios": {
+      "Identity 32": 2.2913411609517547,
+      "Threshold 1": 1.3277411548199596,
+      "Threshold 32": 0.8994803444194536,
+      "Threshold 128": 0.5841068675880557,
+      "Threshold EMA": 1.1390655737301567,
+      "Smooth 32": 0.35377663034145057,
+      "Ramp/sphere 32": 0.8513239919677712
+    },
+    "worstRatio": 2.4541864227996717,
+    "threshold32RMSE": 0.004774851317520871,
+    "thresholdEMARMSE": 0.008888379876679316,
+    "gpuSamplesPerSecond": 716881880.6835985,
+    "standaloneWGSLGzipBytes": null
+  },
+  "phase-64-p8": {
+    "ratios": {
+      "Identity 32": 2.271817805020704,
+      "Threshold 1": 1.3265039239984873,
+      "Threshold 32": 0.9006698487164272,
+      "Threshold 128": 0.5800008972107645,
+      "Threshold EMA": 1.1445035400138173,
+      "Smooth 32": 0.36113475745812074,
+      "Ramp/sphere 32": 0.8532566280743946
+    },
+    "worstRatio": 2.42830301361075,
+    "threshold32RMSE": 0.004781165748063839,
+    "thresholdEMARMSE": 0.008930813526857562,
+    "gpuSamplesPerSecond": 741118694.4402469,
+    "standaloneWGSLGzipBytes": null
+  },
+  "phase-128-p8": {
+    "ratios": {
+      "Identity 32": 2.2563803008990098,
+      "Threshold 1": 1.3430850224420485,
+      "Threshold 32": 0.8979063803697324,
+      "Threshold 128": 0.5840137335600843,
+      "Threshold EMA": 1.1524929104358312,
+      "Smooth 32": 0.3635955632093595,
+      "Ramp/sphere 32": 0.8529616679707435
+    },
+    "worstRatio": 2.458401832508007,
+    "threshold32RMSE": 0.004766495999516237,
+    "thresholdEMARMSE": 0.008993156346203613,
+    "gpuSamplesPerSecond": null,
+    "standaloneWGSLGzipBytes": null
+  },
+  "FAST-scalar": {
+    "ratios": {
+      "Identity 32": 1,
+      "Threshold 1": 1,
+      "Threshold 32": 1,
+      "Threshold 128": 1,
+      "Threshold EMA": 1,
+      "Smooth 32": 1,
+      "Ramp/sphere 32": 1
+    },
+    "worstRatio": 1,
+    "threshold32RMSE": 0.005308455428898422,
+    "thresholdEMARMSE": 0.007803220535910044,
+    "gpuSamplesPerSecond": 738616934.4,
+    "standaloneWGSLGzipBytes": null
+  }
+}

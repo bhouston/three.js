@@ -21,6 +21,10 @@ cost more than FAST; no robust all-metric or state-of-the-art advance is claimed
 
 ## Usage
 
+For zero-download arithmetic samplers and tiny startup-generated phase tiles,
+see [the runtime comparison](runtime/RUNTIME.md), including actual GPU sampling
+measurements, nonlinear errors and recommendations.
+
 For the interactive dropdown and offline PNG generation, see
 [EXAMPLE.md](EXAMPLE.md). The example loads precomputed experimental atlases;
 it never runs these optimizers at runtime.

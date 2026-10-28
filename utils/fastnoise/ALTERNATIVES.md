@@ -50,7 +50,8 @@ centers for every quality comparison. FAST uses unchanged separate mode,
 sigma=1, alpha=beta=0.1, weight=0.5 and all 10,000 iterations. Only separate is
 benchmarked; product mode and other filter parameters are not covered.
 
-Run implementations sequentially. Warm FAST with 100 iterations for each seed,
+Run implementations sequentially, with no tests running concurrently. The committed
+measurements are an isolated repeat of the initial timing screen. Warm FAST with 100 iterations for each seed,
 then run twice, waiting for final GPU readback before navigating away. Disable
 vsync and frame caps. These are compute dispatches, not displayed animation
 frames; completion is established by final mapped GPU output, not submission.
@@ -58,7 +59,7 @@ FAST timings include page navigation, initialization, shader compilation and
 readback, excluding browser launch and base64 retrieval/file writing. Reloading
 recreates pipelines, so this is end-to-end construction after an execution
 warmup, not a pure warmed shader throughput measurement. Its own completed
-iteration-loop log is 61.0–61.8 seconds, close to the 61.2–62.0 second wall time.
+iteration-loop log is approximately 61 seconds, close to the end-to-end wall time.
 
 The alternatives run synchronously on the CPU in Node/V8, one full warmup and
 three timed generations per seed, including allocation, initialization and all
@@ -68,14 +69,14 @@ measure same-backend kernel acceleration or rendered frame performance.
 
 | Method | Completed generation time, all repetitions | Approximate construction speedup over FAST |
 | --- | ---: | ---: |
-| FAST separate 10,000 | 61.2–62.0 s | 1x |
-| Hierarchy | 1.28–2.12 ms | 29,000–48,000x |
-| Lattice | 114–135 ms | 455–536x |
-| Relaxation | 147–254 ms | 241–417x |
+| FAST separate 10,000 | 61.07–61.13 s | 1x |
+| Hierarchy | 1.22–2.06 ms | 29,706–50,176x |
+| Lattice | 91.62–111.02 ms | 550–667x |
+| Relaxation | 97.89–198.11 ms | 308–625x |
 
 These exceed the requested 10–100x construction target, with quality losses.
 They are not equal-quality speedups. Full repetition times: [timings.json](results/timings.json).
-The slower relaxation seed-1 repetition is retained, not discarded as an outlier.
+Every repetition is retained; no outliers are discarded.
 
 ## Original ten metrics
 

@@ -6,7 +6,11 @@ const options = { size, depth, passes: 4, thresholdCount: 7 };
 const initial = generate( { ...options, passes: 0 } );
 const saved = initial.slice();
 let report;
-const output = generate( { ...options, initialVolume: initial, onProgress: value => { report = value; } } );
+const output = generate( { ...options, initialVolume: initial, onProgress: value => {
+
+	report = value;
+
+} } );
 const wrap = ( value, period ) => ( value % period + period ) % period;
 const transforms = [ x => x, x => x * x, x => x ** 4, x => Math.cos( 2 * Math.PI * x ) ];
 
@@ -34,6 +38,7 @@ function energy( volume ) {
 		}
 
 	}
+
 	return result;
 
 }
@@ -49,6 +54,7 @@ for ( let family = 0; family < 2; family ++ ) for ( let channel = 0; channel < 5
 	assert.ok( Math.abs( difference - report.objectiveChanges[ family ][ channel ] ) < 1e-8, 'Cached predicted change must match direct convolution.' );
 
 }
+
 assert.deepEqual( initial, saved, 'initialVolume must remain unchanged.' );
 assert.deepEqual( initial.slice().sort(), output.slice().sort(), 'Raw histogram must remain exact.' );
 assert.deepEqual( output, generate( { ...options, initialVolume: initial } ), 'Refinement must be deterministic.' );

@@ -9,6 +9,10 @@ equal-quality replacements. Defaults are 128×128×32, seeds 1 and 2.
 includes new common-protocol nonlinear tests. The raw-value winner does not
 generalize to graphics sampling; it loses to white noise on some integrands.
 
+The next [four-approach research round](FRONTIER.md) targets broader metrics,
+including independent-seed checks and extra-budget FAST controls. It records
+both the promising seed-1 sweep and the seed-2 failure.
+
 ## Convergence chart
 
 The [seven-method chart and numerical table](results/CONVERGENCE.md) compare

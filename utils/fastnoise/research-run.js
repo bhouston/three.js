@@ -15,12 +15,34 @@ const out = path.resolve( outputDirectory ), root = path.dirname( fileURLToPath(
 fs.mkdirSync( out, { recursive: true } );
 const manifestFile = path.join( out, 'generation.json' );
 const manifest = fs.existsSync( manifestFile ) ? JSON.parse( fs.readFileSync( manifestFile ) ) : { environment: { node: process.version, cpu: os.cpus()[ 0 ].model }, runs: [] };
+function totalCost( row, seen = new Set() ) {
+
+	if ( seen.has( row.name ) ) throw new Error( 'Generation dependency cycle' );
+	seen.add( row.name );
+	if ( ! row.profile.initial ) return row.secondsPerVolume;
+	const name = row.profile.initial.replace( '{seed}', row.seed );
+	const input = manifest.runs.find( v => v.name === name );
+	if ( ! input ) throw new Error( 'Missing generation dependency ' + name );
+	return row.secondsPerVolume + totalCost( input, seen );
+
+}
+
+for ( const row of manifest.runs ) row.totalSecondsPerVolume = totalCost( row );
 const save = () => fs.writeFileSync( manifestFile, JSON.stringify( manifest, null, 2 ) + '\n' );
 const record = ( profile, seed, bytes, seconds, count, extra = {} ) => {
 
 	const name = `${profile.name}-seed${seed}`;
 	fs.writeFileSync( path.join( out, name + '.f32' ), bytes );
 	const row = { name, profile, seed, seconds, count, secondsPerVolume: seconds / count, sha256: createHash( 'sha256' ).update( bytes ).digest( 'hex' ), ...extra };
+	if ( profile.initial ) {
+
+		row.inputName = profile.initial.replace( '{seed}', seed );
+		const input = manifest.runs.find( v => v.name === row.inputName );
+		if ( ! input ) throw new Error( 'Missing input generation cost for ' + row.inputName );
+		row.inputSecondsPerVolume = input.totalSecondsPerVolume ?? input.secondsPerVolume;
+		row.totalSecondsPerVolume = row.secondsPerVolume + row.inputSecondsPerVolume;
+
+	} else row.totalSecondsPerVolume = row.secondsPerVolume;
 	manifest.runs = manifest.runs.filter( v => v.name !== name ); manifest.runs.push( row ); save();
 	console.log( name, row.secondsPerVolume, row.sha256 );
 

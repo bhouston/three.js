@@ -4,7 +4,12 @@ import { generate as stratified } from './methods/stratified-refine.js';
 
 const options = { size: 4, depth: 4, thresholdCount: 7, passes: 3, seed: 4 };
 const initial = multiscale( { ...options, passes: 0 } );
-const refined = multiscale( { ...options, initialVolume: initial } );
+let finalProgress;
+const refined = multiscale( { ...options, initialVolume: initial, onProgress: value => {
+
+	finalProgress = value;
+
+} } );
 assert.deepEqual( initial.slice().sort(), refined.slice().sort() );
 assert.deepEqual( refined, multiscale( { ...options, initialVolume: initial } ) );
 assert.ok( refined.every( x => x >= 0 && x < 1 && Number.isFinite( x ) ) );
@@ -20,6 +25,7 @@ for ( let p = 0; p < 16; p ++ ) {
 	assert.deepEqual( a, b ); assert.equal( new Set( b.map( x => Math.floor( x * 4 ) ) ).size, 4 );
 
 }
+
 // Independent convolution-based CDF energy, not the optimizer's cached stencil.
 function energy( volume ) {
 
@@ -42,6 +48,7 @@ function energy( volume ) {
 			}
 
 		}
+
 		const temporal = [ 1, 0.9, 0.9 ** 2, 0.9 ** 3 ], norm = temporal.reduce( ( sum, x ) => sum + x * x, 0 );
 		for ( let z = 0; z < Z; z ++ ) for ( let p = 0; p < P; p ++ ) {
 
@@ -52,8 +59,11 @@ function energy( volume ) {
 		}
 
 	}
+
 	return result;
 
 }
+
 assert.ok( energy( refined ) < energy( initial ) );
+assert.ok( Math.abs( energy( refined ) - energy( initial ) - finalProgress.energyChange ) < 1e-7 );
 console.log( 'Frontier determinism, bounds, histogram/strata and independent CDF energy checks passed.' );

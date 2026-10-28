@@ -1,0 +1,6 @@
+[
+  { "name": "continuation-polish", "kind": "gpu", "file": "research-generator.html", "initial": "fast-seed{seed}", "parameters": { "steps": 2000 }, "seeds": [2] },
+  { "name": "continuation-deep", "kind": "gpu", "file": "research-generator.html", "initial": "continuation-polish-seed{seed}", "parameters": { "steps": 1000 }, "seeds": [2] },
+  { "name": "light-seam-03", "kind": "gpu", "file": "research-generator.html", "initial": "continuation-polish-seed{seed}", "parameters": { "steps": 1000, "seam": 0.03 }, "seeds": [2] },
+  { "name": "continuation-time-control", "kind": "gpu", "file": "research-generator.html", "initial": "continuation-polish-seed{seed}", "parameters": { "steps": 2000 }, "seeds": [1,2] }
+]

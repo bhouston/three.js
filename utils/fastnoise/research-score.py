@@ -120,6 +120,12 @@ for file in sorted(Path(sys.argv[1]).glob('*.f32')):
     digest = hashlib.sha256(file.read_bytes()).hexdigest()
     if report['methods'].get(file.stem, {}).get('sha256') == digest:
         continue
+    identical = next((row for row in report['methods'].values() if row['sha256'] == digest), None)
+    if identical is not None:
+        report['methods'][file.stem] = identical.copy()
+        output.write_text(json.dumps(report, indent=2) + '\n')
+        print(file.stem, 'reused identical-volume scores', flush=True)
+        continue
     raw = np.fromfile(file, np.float32).reshape(32, 128, 128)
     assert np.isfinite(raw).all() and (raw >= 0).all() and (raw < 1).all(), file
     volume = (np.floor(raw.astype(np.float64) * 256) + .5) / 256

@@ -72,6 +72,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 			for ( let i = 0; i < filter.length; i ++ ) if ( i + d >= 0 && i + d < filter.length ) correlation[ d + 2 * radius ] += filter[ i ] * filter[ i + d ];
 
 		}
+
 		const selfWeight = correlation[ 2 * radius ] ** 2;
 		for ( let dy = - 2 * radius; dy <= 2 * radius; dy ++ ) {
 
@@ -85,6 +86,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		}
 
 	}
+
 	// Exact autocorrelation of a cyclic EMA, including the infinite periodic tail.
 	const impulse = Array.from( { length: depth }, ( _, i ) => ( 1 - temporalAlpha ) ** i );
 	let normalization = 0;
@@ -96,8 +98,9 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		temporal[ dz ] = temporalWeight * weight / normalization;
 
 	}
+
 	const wrapIndex = ( x, y, z ) => wrap( z, depth ) * plane + wrap( y, size ) * size + wrap( x, size );
-	const kernels = [ [], [] ];
+	const kernels = [[], []];
 	for ( let y = 0; y < size; y ++ ) for ( let x = 0; x < size; x ++ ) if ( spatial[ y * size + x ] !== 0 ) kernels[ 0 ].push( [ x, y, 0, spatial[ y * size + x ] ] );
 	for ( let z = 0; z < depth; z ++ ) if ( temporal[ z ] !== 0 ) kernels[ 1 ].push( [ 0, 0, z, temporal[ z ] ] );
 	const lookup = kernels.map( kernel => kernel.map( ( [ dx, dy, dz, weight ] ) => ( {
@@ -116,6 +119,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		}
 
 	}
+
 	for ( let z = 0; z < depth; z ++ ) for ( let y = 0; y < size; y ++ ) for ( let x = 0; x < size; x ++ ) {
 
 		const value = sample( values[ wrapIndex( x, y, z ) ] );
@@ -127,6 +131,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		}
 
 	}
+
 	let accepted = 0;
 	const objectiveChanges = [ new Float64Array( features.length + 1 ), new Float64Array( features.length + 1 ) ];
 	const changes = [ new Float64Array( features.length + 1 ), new Float64Array( features.length + 1 ) ];
@@ -136,6 +141,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		if ( onProgress ) onProgress( { pass, accepted, objectives: [ 'cdf', ...featureGuards ], objectiveChanges: objectiveChanges.map( row => Array.from( row ) ) } );
 
 	}
+
 	for ( let step = 0; step < passes * count; step ++ ) {
 
 		if ( step % count === 0 ) report( step / count );
@@ -170,6 +176,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 			}
 
 		}
+
 		if ( ! allowed || totalChange >= - 1e-12 ) continue;
 		accepted ++;
 		[ values[ a ], values[ b ] ] = [ values[ b ], values[ a ] ];
@@ -188,6 +195,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		}
 
 	}
+
 	report( passes );
 	return values;
 

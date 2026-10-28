@@ -1,0 +1,35 @@
+{
+  "note": "Seed1, frame0 spatial ablation. Global-phase variant is a diagnostic, not a selected general replacement.",
+  "fields": {
+    "3LHW": {
+      "sliding3x3_circular_gap_rms": 0.0692377051243691,
+      "blurred_std": 0.04966761417200468,
+      "blurred_rmse": 0.049667734915826406,
+      "mean_bias": 0.00010951771400862016,
+      "boundary_rmse": 0.049667617161985284,
+      "interior_rmse": 0.049668088175674745,
+      "harmonic64_filtered_rms": 0.8640539714652816,
+      "harmonic64_max_within8x8_std": 1.2395630436899362e-14
+    },
+    "Animated IGN": {
+      "sliding3x3_circular_gap_rms": 0.030540438647024007,
+      "blurred_std": 0.0293556749449071,
+      "blurred_rmse": 0.02935850815920815,
+      "mean_bias": -0.00040786010254130456,
+      "boundary_rmse": 0.029552248390697845,
+      "interior_rmse": 0.02876946037903137,
+      "harmonic64_filtered_rms": 0.028931705797011962,
+      "harmonic64_max_within8x8_std": 0.9999504437375731
+    },
+    "3LHW global instead of tile phase": {
+      "sliding3x3_circular_gap_rms": 0.06904044254513564,
+      "blurred_std": 0.03980773843975963,
+      "blurred_rmse": 0.03993769635396792,
+      "mean_bias": 0.0032192468643187713,
+      "boundary_rmse": 0.03991301093061836,
+      "interior_rmse": 0.04001166124524185,
+      "harmonic64_filtered_rms": 0.9999999999999999,
+      "harmonic64_max_within8x8_std": 1.1781007658187229e-14
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Temporal schedule ablation
 
-`temporal.py` preserves the original 3LHW spatial phase and changes only its animation. It evaluates two hierarchy seeds, starts 0, 13, and 97, powers of two and additional 3, 7, 31, and 100 sample endpoints. `temporal-results.json` contains raw and Gaussian-filtered uniform-field standard deviation plus filtered threshold RMSE at probabilities 0.1, 0.5 and 0.9. IGN retains the original seed-1 implementation in these runs. These are CPU reference quality measurements, not runtime benchmarks or independent evidence of rendering quality.
+`temporal.py` preserves the original 3LHW spatial phase and changes only its animation. It evaluates hierarchy seed/start pairs (1,0), (2,0), (1,13), and (2,97), powers of two and additional 3, 7, 31, and 100 sample endpoints. `temporal-results.json` contains raw and Gaussian-filtered uniform-field standard deviation plus filtered threshold RMSE at probabilities 0.1, 0.5 and 0.9. IGN retains the original seed-1 implementation in these runs. These are CPU reference quality measurements, not runtime benchmarks or independent evidence of rendering quality.
 
 Changing the temporal schedule alone cannot improve frame 1. Every candidate retains the same spatial phase. In this experiment, no temporal replacement consistently fixes the early-frame IGN gap while retaining all later advantages.
 

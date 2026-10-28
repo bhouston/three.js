@@ -1,5 +1,5 @@
 import { DataTexture, FloatType, LinearFilter, NodeMaterial, NoBlending, NoColorSpace, QuadMesh, RendererUtils, RenderTarget, RGBAFormat } from 'three/webgpu';
-import { texture } from 'three/tsl';
+import { texture, uv } from 'three/tsl';
 
 const WEIGHTS_URL = 'https://media.githubusercontent.com/media/RenderKit/oidn-weights/28883d1769d5930e13cf7f1676dd852bd81ed9e7/rtlightmap_hdr.tza';
 
@@ -41,7 +41,7 @@ class LightMapOIDNDenoiser {
 
 		this._target = new RenderTarget( size, size, { type: FloatType, depthBuffer: false } );
 		this._material = new NodeMaterial();
-		this._material.fragmentNode = texture( lightMapper.pages[ page ].texture );
+		this._material.fragmentNode = texture( lightMapper.pages[ page ].texture, uv() );
 		this._material.blending = NoBlending;
 		this._material.depthTest = false;
 		this._material.depthWrite = false;

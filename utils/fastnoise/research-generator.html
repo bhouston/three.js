@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html><body><pre id="log"></pre>
+<script type="module">
+// WebGPU port of EA's FAST generator (fastnoise/shaders/{loss,swap,fastnoise,init}.hlsl and main.cpp) for
+// sampleSpace Real, distribution Uniform1D, spatial Gauss(sigma), temporal WeightedExponential(alpha, beta)
+const q = new URLSearchParams( location.search );
+window.failure = null;
+window.addEventListener( 'error', e => window.failure = e.message );
+window.addEventListener( 'unhandledrejection', e => window.failure = String( e.reason ) );
+const seamWeight = Number( q.get( 'seam' ) || 0 ), jointMix = Number( q.get( 'mix' ) || 0 );
+const jointRadius = Number( q.get( 'radius' ) || 1 );
+if ( seamWeight < 0 || seamWeight > 1 || jointMix < 0 || jointMix > 1 ) throw new Error( 'seam and mix must be in [0,1]' );
+const mode = q.get( 'mode' ) || 'separate';
+const steps = + ( q.get( 'steps' ) || 10000 );
+const S = + ( q.get( 'size' ) || 128 ), Z = + ( q.get( 'depth' ) || 32 );
+const sigma = + ( q.get( 'sigma' ) || 1 ), alpha = + ( q.get( 'alpha' ) || 0.1 ), beta = + ( q.get( 'beta' ) || 0.1 ), sepWeight = + ( q.get( 'weight' ) || 0.5 );
+let seed = + ( q.get( 'seed' ) || 1 );
+const rand = () => ( seed = ( seed * 1664525 + 1013904223 ) >>> 0, seed / 4294967296 );
+const log = s => document.getElementById( 'log' ).textContent += s + '\n';
+
+// erf (Abramowitz & Stegun 7.1.26)
+const erf = x => {
+
+	const s = Math.sign( x ); x = Math.abs( x ); const t = 1 / ( 1 + 0.3275911 * x ); return s * ( 1 - ( ( ( ( ( 1.061405429 * t - 1.453152027 ) * t ) + 1.421413741 ) * t - 0.284496736 ) * t + 0.254829592 ) * t * Math.exp( - x * x ) );
+
+};
+
+// spatial: gaussian cut at 99.5% energy, then convolved with itself
+const f = []; let total = 0; const scale = Math.sqrt( 0.5 ) / sigma;
+for ( let i = 0; total < 0.995; i ++ ) {
+
+	const v = 0.5 * ( erf( scale * ( i + 0.5 ) ) - erf( scale * ( i - 0.5 ) ) ); f.push( v ); total += ( i > 0 ? 2 : 1 ) * v;
+
+}
+
+const fs = 2 * ( f.length - 1 );
+const Fxy = i => {
+
+	let v = 0; for ( let j = Math.max( 0, i ) - f.length + 1; j < f.length + Math.min( 0, i ); j ++ ) v += f[ Math.abs( j ) ] * f[ Math.abs( i - j ) ]; return v;
+
+};
+
+// temporal: weighted exponential, wrapped over the depth
+const Fz = new Float64Array( Z ), signedFz = new Float64Array( 2 * Z - 1 );
+for ( let m = 1; m <= Z; m ++ ) {
+
+	const weight = beta > 0 ? beta * Math.pow( 1 - beta, m - 1 ) / ( 1 - Math.pow( 1 - beta, Z ) ) : 1 / Z;
+	for ( let j = - m + 1; j < m; j ++ ) {
+
+		let Fj = 0;
+		for ( let i = Math.max( 0, - j ); i < Math.min( m, m - j ); i ++ ) {
+
+			let fi = Math.pow( 1 - alpha, i ); if ( i < m - 1 ) fi *= alpha;
+			let fij = Math.pow( 1 - alpha, i + j ); if ( i + j < m - 1 ) fij *= alpha;
+			Fj += fi * fij;
+
+		}
+
+		Fz[ ( ( j % Z ) + Z ) % Z ] += Fj * weight;
+ signedFz[ j + Z - 1 ] += Fj * weight;
+
+	}
+
+}
+
+const combine = ( i, j, k ) => {
+
+	const fx = Fxy( i ), fy = Fxy( j ), fz = Fz[ k ];
+	if ( mode === 'product' ) return fx * fy * fz;
+	return ( k === 0 ? fx * fy * sepWeight : 0 ) + ( i === 0 && j === 0 ? fz * ( 1 - sepWeight ) : 0 );
+
+};
+
+const W = new Float32Array( ( 2 * fs + 1 ) ** 2 * Z ), taps = [];
+let spatialMass = 0;
+for ( let i = - jointRadius; i <= jointRadius; i ++ ) spatialMass += Fxy( i );
+const mixedWeight = ( i, j, k, temporal ) => {
+ const original = mode === 'product' ? Fxy( i ) * Fxy( j ) * temporal :
+  ( k === 0 ? Fxy( i ) * Fxy( j ) * sepWeight : 0 ) + ( i === 0 && j === 0 ? temporal * ( 1 - sepWeight ) : 0 );
+ const joint = Math.abs( i ) <= jointRadius && Math.abs( j ) <= jointRadius ? Fxy( i ) * Fxy( j ) * temporal / ( spatialMass * spatialMass ) : 0;
+ return ( 1 - jointMix ) * original + jointMix * joint;
+};
+for ( let i = - fs; i <= fs; i ++ ) for ( let j = - fs; j <= fs; j ++ ) for ( let k = 0; k < Z; k ++ ) {
+ const w = jointMix === 0 ? combine( i, j, k ) : mixedWeight( i, j, k, Fz[ k ] );
+ W[ ( ( i + fs ) * ( 2 * fs + 1 ) + ( j + fs ) ) * Z + k ] = w;
+ if ( w !== 0 && seamWeight < 1 ) taps.push( i, j, k, w * ( 1 - seamWeight ) );
+}
+if ( seamWeight > 0 ) {
+ for ( let i = - fs; i <= fs; i ++ ) for ( let j = - fs; j <= fs; j ++ ) for ( let k = 1 - Z; k < Z; k ++ ) {
+  const w = mixedWeight( i, j, k, signedFz[ k + Z - 1 ] ) * seamWeight;
+  // x + 4*S marks signed playback-seam taps, decoded in the shader.
+  if ( w !== 0 ) taps.push( i + 4 * S, j, k, w );
+ }
+}
+
+log( `mode=${mode} steps=${steps} size=${S}x${S}x${Z} taps=${taps.length / 4} fs=${fs}` );
+
+// init: every slice holds each of the S*S strata once, jittered, in random order
+const N = S * S * Z, values = new Float32Array( N );
+for ( let z = 0; z < Z; z ++ ) {
+
+	const perm = Array.from( { length: S * S }, ( _, i ) => i );
+	for ( let i = perm.length - 1; i > 0; i -- ) {
+
+		const j = Math.floor( rand() * ( i + 1 ) ); [ perm[ i ], perm[ j ] ] = [ perm[ j ], perm[ i ] ];
+
+	}
+
+	for ( let i = 0; i < S * S; i ++ ) values[ z * S * S + i ] = ( perm[ i ] + rand() ) / ( S * S );
+
+}
+
+if ( q.has( 'initial' ) ) {
+ const response = await fetch( q.get( 'initial' ) );
+ if ( ! response.ok ) throw new Error( 'Initial volume fetch failed' );
+ const initial = new Float32Array( await response.arrayBuffer() );
+ if ( initial.length !== N || initial.some( x => ! Number.isFinite( x ) || x < 0 || x >= 1 ) ) throw new Error( 'Invalid initial volume' );
+ values.set( initial );
+}
+const adapter = await navigator.gpu.requestAdapter();
+if ( ! adapter ) throw new Error( 'Hardware WebGPU adapter unavailable' );
+const device = await adapter.requestDevice();
+device.lost.then( info => window.failure = 'Device lost: ' + info.message );
+device.addEventListener( 'uncapturederror', e => window.failure = String( e.error ) );
+const bits = Math.log2( S );
+// Keep 64 invocations, but put a full warp along contiguous x coordinates.
+// Small slices retain the original layout so dispatch dimensions stay integral.
+const workgroupX = S >= 32 ? 32 : 8, workgroupY = S >= 32 ? 2 : 8;
+
+const code = /* wgsl */`
+struct Params { key: vec4u, iteration: u32, suppression: u32, numTaps: u32, pad: u32 }
+@group( 0 ) @binding( 0 ) var<storage, read_write> values: array<f32>;
+@group( 0 ) @binding( 1 ) var<storage, read_write> delta: array<f32>;
+@group( 0 ) @binding( 2 ) var<storage, read> taps: array<vec4f>;
+@group( 0 ) @binding( 3 ) var<storage, read> W: array<f32>;
+@group( 0 ) @binding( 4 ) var<uniform> params: Params;
+@group( 0 ) @binding( 5 ) var<storage, read_write> swaps: atomic<u32>;
+
+const S = ${S}u; const Z = ${Z}u; const FS = ${fs}; const BITS = ${bits}u;
+
+fn wang_hash_init( s: vec3u ) -> u32 { return ( s.x * 1973u + s.y * 9277u + s.z * 26699u ) | 1u; }
+fn wang_hash_uint( seed_in: u32 ) -> u32 {
+	var seed = ( seed_in ^ 61u ) ^ ( seed_in >> 16u );
+	seed *= 9u; seed = seed ^ ( seed >> 4u ); seed *= 0x27d4eb2du; seed = seed ^ ( seed >> 15u );
+	return seed;
+}
+fn roundFunction( subkey: u32, r: u32 ) -> u32 { return wang_hash_uint( subkey ^ r ); }
+fn getOtherIndex( index: vec3u, key_in: vec4u ) -> vec3u {
+	let mask = ( 1u << BITS ) - 1u;
+	var lr = index.xy & vec2u( mask );
+	let highIndex = index.xy & vec2u( ~mask );
+	let key = key_in ^ vec4u( index.z ) ^ highIndex.xyxy;
+	lr = lr.yx ^ vec2u( 0u, roundFunction( key.x, lr.y ) & mask );
+	lr = lr.yx ^ vec2u( 0u, roundFunction( key.y, lr.y ) & mask );
+	lr = lr.yx ^ vec2u( 0u, roundFunction( key.z, lr.y ) & mask );
+	lr ^= vec2u( key.w >> BITS, key.w ) & vec2u( mask );
+	lr = lr.yx ^ vec2u( roundFunction( key.z, lr.x ) & mask, 0u );
+	lr = lr.yx ^ vec2u( roundFunction( key.y, lr.x ) & mask, 0u );
+	lr = lr.yx ^ vec2u( roundFunction( key.x, lr.x ) & mask, 0u );
+	return vec3u( highIndex | lr, index.z );
+}
+fn flat( p: vec3u ) -> u32 { return ( p.z * S + p.y ) * S + p.x; }
+fn K2( a: f32, b: f32 ) -> f32 { return - abs( a - b ); }
+fn weight( d: vec3i ) -> f32 {
+	if ( abs( d.x ) > FS || abs( d.y ) > FS ) { return 0.0; }
+	return W[ ( u32( d.x + FS ) * u32( 2 * FS + 1 ) + u32( d.y + FS ) ) * Z + u32( d.z ) ];
+}
+
+@compute @workgroup_size( ${workgroupX}, ${workgroupY}, 1 )
+fn loss( @builtin( global_invocation_id ) id: vec3u ) {
+	let c = values[ flat( id ) ];
+	let other = getOtherIndex( id, params.key );
+	let o = values[ flat( other ) ];
+	var d = 0.0;
+	for ( var t = 0u; t < params.numTaps; t ++ ) {
+		let tap = taps[ t ];
+		var offset = vec3i( tap.xyz );
+  var position = vec3i( id );
+  if ( offset.x > 2 * i32( S ) ) {
+   offset.x -= 4 * i32( S );
+   let cycle = i32( floor( f32( position.z + offset.z ) / f32( Z ) ) );
+   position.x += cycle * 37;
+   position.y += cycle * 71;
+  }
+  let extent = vec3i( i32( S ), i32( S ), i32( Z ) );
+  let p = vec3u( ( ( position + offset ) % extent + extent ) % extent );
+		let n = values[ flat( p ) ];
+		d += tap.w * ( K2( o, n ) - K2( c, n ) );
+	}
+	let diff = vec3i( id ) - vec3i( other );
+	let s = vec3i( i32( S ), i32( S ), i32( Z ) );
+	let dij = min( abs( diff ), min( abs( diff - s ), abs( diff + s ) ) );
+	d += ( weight( dij ) - weight( vec3i( 0 ) ) ) * K2( c, o );
+	delta[ flat( id ) ] = d;
+}
+
+@compute @workgroup_size( ${workgroupX}, ${workgroupY}, 1 )
+fn swap( @builtin( global_invocation_id ) id: vec3u ) {
+	let other = getOtherIndex( id, params.key );
+	let i = flat( id ); let j = flat( other );
+	let l = delta[ i ] + delta[ j ];
+	let r = wang_hash_uint( wang_hash_init( id + vec3u( params.iteration ) ) );
+	if ( i < j && l < 0.0 && ( r % params.suppression ) == 0u ) {
+		let v = values[ i ]; values[ i ] = values[ j ]; values[ j ] = v;
+		atomicAdd( &swaps, 1u );
+	}
+}`;
+const module = device.createShaderModule( { code } );
+const info = await module.getCompilationInfo();
+if ( info.messages.some( m => m.type === 'error' ) ) throw new Error( 'WGSL compilation failed' );
+for ( const m of info.messages ) log( `wgsl ${m.type}: ${m.message} (line ${m.lineNum})` );
+
+const buf = ( data, usage ) => {
+
+	const b = device.createBuffer( { size: Math.max( 16, data.byteLength ), usage: usage | GPUBufferUsage.COPY_DST } ); device.queue.writeBuffer( b, 0, data ); return b;
+
+};
+
+const valuesBuf = buf( values, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC );
+const deltaBuf = device.createBuffer( { size: N * 4, usage: GPUBufferUsage.STORAGE } );
+const tapsBuf = buf( new Float32Array( taps ), GPUBufferUsage.STORAGE );
+const wBuf = buf( W, GPUBufferUsage.STORAGE );
+const BATCH = 100, STRIDE = 256;
+const paramsBuf = device.createBuffer( { size: BATCH * STRIDE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST } );
+const swapsBuf = device.createBuffer( { size: 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST } );
+const swapsRead = device.createBuffer( { size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST } );
+
+const layout = device.createBindGroupLayout( { entries: [
+	{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+	{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+	{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+	{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+	{ binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 32 } },
+	{ binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+] } );
+const pipelineLayout = device.createPipelineLayout( { bindGroupLayouts: [ layout ] } );
+const lossPipeline = device.createComputePipeline( { layout: pipelineLayout, compute: { module, entryPoint: 'loss' } } );
+const swapPipeline = device.createComputePipeline( { layout: pipelineLayout, compute: { module, entryPoint: 'swap' } } );
+const bindGroup = device.createBindGroup( { layout, entries: [
+	{ binding: 0, resource: { buffer: valuesBuf } }, { binding: 1, resource: { buffer: deltaBuf } },
+	{ binding: 2, resource: { buffer: tapsBuf } }, { binding: 3, resource: { buffer: wBuf } },
+	{ binding: 4, resource: { buffer: paramsBuf, size: 32 } }, { binding: 5, resource: { buffer: swapsBuf } },
+] } );
+
+let suppression = 8;
+const t0 = performance.now();
+for ( let step = 0; step < steps; step += BATCH ) {
+
+	const n = Math.min( BATCH, steps - step );
+	const p = new Uint32Array( BATCH * STRIDE / 4 );
+	for ( let b = 0; b < n; b ++ ) {
+
+		const o = b * STRIDE / 4;
+		for ( let k = 0; k < 4; k ++ ) p[ o + k ] = Math.floor( rand() * 4294967296 ) >>> 0;
+		p[ o + 4 ] = step + b; p[ o + 5 ] = suppression; p[ o + 6 ] = taps.length / 4;
+
+	}
+
+	device.queue.writeBuffer( paramsBuf, 0, p );
+	device.queue.writeBuffer( swapsBuf, 0, new Uint32Array( [ 0 ] ) );
+	const enc = device.createCommandEncoder();
+	for ( let b = 0; b < n; b ++ ) {
+
+		const pass = enc.beginComputePass();
+		pass.setBindGroup( 0, bindGroup, [ b * STRIDE ] );
+		pass.setPipeline( lossPipeline ); pass.dispatchWorkgroups( S / workgroupX, S / workgroupY, Z );
+		pass.setPipeline( swapPipeline ); pass.dispatchWorkgroups( S / workgroupX, S / workgroupY, Z );
+		pass.end();
+
+	}
+
+	enc.copyBufferToBuffer( swapsBuf, 0, swapsRead, 0, 4 );
+	device.queue.submit( [ enc.finish() ] );
+	await swapsRead.mapAsync( GPUMapMode.READ );
+	const swaps = new Uint32Array( swapsRead.getMappedRange() )[ 0 ] / n;
+	swapsRead.unmap();
+	// dynamic swap suppression, as in main.cpp
+	if ( suppression > 1 && 8 * swaps * suppression < N ) suppression /= 2;
+	if ( step % ( steps / 10 ) === 0 ) log( `step ${step} swaps/iter ${swaps.toFixed( 0 )} suppression ${suppression} ${( ( performance.now() - t0 ) / 1000 ).toFixed( 1 )}s` );
+
+}
+
+const read = device.createBuffer( { size: N * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST } );
+const enc = device.createCommandEncoder(); enc.copyBufferToBuffer( valuesBuf, 0, read, 0, N * 4 ); device.queue.submit( [ enc.finish() ] );
+await read.mapAsync( GPUMapMode.READ );
+const result = new Float32Array( read.getMappedRange().slice( 0 ) );
+log( `done in ${( ( performance.now() - t0 ) / 1000 ).toFixed( 1 )}s on ${adapter.info.vendor} ${adapter.info.architecture}` );
+const bytes = new Uint8Array( result.buffer ); let bin = ''; for ( let i = 0; i < bytes.length; i += 0x8000 ) bin += String.fromCharCode( ...bytes.subarray( i, i + 0x8000 ) );
+window.result = btoa( bin );
+</script></body></html>

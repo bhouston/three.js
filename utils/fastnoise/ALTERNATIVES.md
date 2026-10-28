@@ -219,3 +219,52 @@ above in mind. Raw .f32 volumes remain swarm artifacts; their hashes are in
   and one addon 404 were emitted; no task server or browser remains running.
 - Atlas export smoke test passes; after the reviewed Float32 upper-endpoint
   clamp, relaxation seed-1 output hashes identically to the scored volume.
+
+## Convergence chart through 1,024 frames
+
+![Seven-method temporal and spatial filtering comparison](results/alternatives-convergence.png)
+
+This extends the [original PR chart](https://github.com/mrdoob/three.js/pull/35244)
+at exactly 1, 2, 4, 8, 16, 32, 128, 256, 512 and 1,024 frames. It preserves
+the original four curves and their conventions: fresh white noise (seed 0),
+Golden Ratio rotating the first spatial slice, and the **left R channel** of
+the shipped FAST atlases. That channel is a vector2 component, unlike the B
+scalar reference used in the earlier integrand tables. The new methods use
+seed 1 scalar outputs, quantized to the same 8-bit bin centers, and the same
+32-frame volume playback and cycle offsets. No fresh generation or infinite
+sequence continuation replaces their frozen volumes.
+
+The metric is standard deviation of the phase-zero temporal mean after wrapped
+sigma=1 Gaussian blur. It measures noise values, not general sampling error.
+Relaxation is best on this metric, while the threshold and nonlinear tests
+above explain why that does not establish it as the best Monte Carlo sampler.
+The precise raw/unblurred and blurred values are in
+[convergence.json](results/convergence.json); an editable
+[SVG](results/alternatives-convergence.svg) is also included.
+
+| Frames | White | FAST Spatial | FAST Spatio-Temporal | Golden Ratio | Hierarchy | Lattice | Relaxation |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.0791102 | 0.0191279 | 0.0221912 | 0.0191279 | 0.0593569 | 0.0469628 | 0.0138857 |
+| 2 | 0.0566971 | 0.0130400 | 0.0129899 | 0.0274788 | 0.0402634 | 0.0313190 | 0.0043209 |
+| 4 | 0.0398381 | 0.0084527 | 0.0068197 | 0.0198493 | 0.0338556 | 0.0203164 | 0.0027577 |
+| 8 | 0.0287830 | 0.0053819 | 0.0034544 | 0.0106018 | 0.0192471 | 0.0108246 | 0.0013156 |
+| 16 | 0.0205297 | 0.0034740 | 0.0018485 | 0.0063535 | 0.0131375 | 0.0063878 | 0.0006676 |
+| 32 | 0.0144189 | 0.0021662 | 0.0006355 | 0.0033397 | 0.0067722 | 0.0031517 | 0.0000966 |
+| 128 | 0.0072490 | 0.0010743 | 0.0003149 | 0.0010004 | 0.0033180 | 0.0016814 | 0.0000469 |
+| 256 | 0.0051203 | 0.0007599 | 0.0002226 | 0.0005128 | 0.0023974 | 0.0011982 | 0.0000327 |
+| 512 | 0.0036536 | 0.0005464 | 0.0001589 | 0.0002753 | 0.0018372 | 0.0008238 | 0.0000232 |
+| 1024 | 0.0025768 | 0.0003821 | 0.0001151 | 0.0001380 | 0.0013332 | 0.0005716 | 0.0000167 |
+
+Reproduce from the repository root (create `noise-results` first):
+
+```sh
+node utils/fastnoise/generate-alternative.js hierarchy noise-results/hierarchy-1.f32 1
+node utils/fastnoise/generate-alternative.js lattice noise-results/lattice-1.f32 1
+node utils/fastnoise/generate-alternative.js relaxation noise-results/relaxation-1.f32 1
+python utils/fastnoise/convergence.py examples/textures/noises/fast/gauss1-ema01-spatial.png examples/textures/noises/fast/gauss1-ema01-spatio-temporal.png noise-results > convergence.json
+node utils/fastnoise/chart.js convergence.json alternatives-convergence.png
+```
+
+Set `CHROME_PATH` to an installed Chrome executable if needed. The PNG is a
+2D SVG chart rasterization; no WebGL/WebGPU rendering or GPU performance
+measurement is involved.

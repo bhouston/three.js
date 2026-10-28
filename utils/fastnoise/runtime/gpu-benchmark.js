@@ -11,6 +11,7 @@ const option = ( name, fallback ) => args.includes( name ) ? args[ args.indexOf(
 const root = path.resolve( option( '--root', '.' ) );
 const output = path.resolve( option( '--output', 'runtime-gpu.json' ) );
 const seconds = Number( option( '--seconds', 5 ) );
+const sequences = option( '--sequences', null );
 if ( ! ( seconds >= 5 ) ) throw new Error( 'Use at least five seconds per method.' );
 const require = createRequire( path.join( root, 'package.json' ) );
 const puppeteer = require( 'puppeteer' );
@@ -21,20 +22,22 @@ const phase = await import( moduleURL( 'phase-tile.js' ) );
 const atlas = PNG.sync.read( await fs.readFile( path.join( root, 'examples/textures/noises/fast/gauss1-ema01-spatio-temporal.png' ) ) );
 const checks = [[ 0, 0, 0 ], [ 7, 19, 1 ], [ 63, 91, 31 ], [ 129, 253, 32 ], [ 511, 511, 1023 ]];
 const profiles = Object.entries( wgslSamplers ).map( ( [ id, wgsl ] ) => ( { id, wgsl, expected: checks.map( xyz => proceduralSamplers[ id ]( ...xyz, 1 ) ), allocationBytes: 0 } ) );
-for ( const passes of [ 2, 8 ] ) {
+for ( const size of [ 32, 64 ] ) {
 
-	const tile = phase.generate( { size: 32, seed: 1, passes } );
-	profiles.push( { id: `phase-tile-32-${ passes }`, allocationBytes: tile.byteLength, tile: Array.from( tile ), expected: checks.map( xyz => phase.sample( tile, ...xyz ) ), wgsl: 'fn sample(x:u32,y:u32,frame:u32,seed:u32)->f32 { return fract(tile[(y & 31u)*32u+(x & 31u)]+f32((frame*2654435769u)>>8u)/16777216.0); }' } );
+	const passes = 8;
+
+	const tile = phase.generate( { size, seed: 1, passes } );
+	profiles.push( { id: `phase-${ size }-p${ passes }`, allocationBytes: tile.byteLength, tile: Array.from( tile ), tile2: Array.from( phase.generate( { size, seed: 2, passes } ) ), expected: checks.map( xyz => phase.sample( tile, ...xyz ) ), wgsl: `fn sample(x:u32,y:u32,frame:u32,seed:u32)->f32 { return fract(tile[(y & ${ size - 1 }u)*${ size }u+(x & ${ size - 1 }u)]+f32((frame*2654435769u)>>8u)/16777216.0); }` } );
 
 }
 
 profiles.push( {
-	id: 'fast-texture-reference', allocationBytes: atlas.width * atlas.height * 4, atlas: true,
-	wgsl: 'fn sample(x:u32,y:u32,frame:u32,seed:u32)->f32 { let cycle=(frame/32u)%128u; let p=vec2u((x+37u*cycle)%128u, (y+71u*cycle)%128u+128u*(frame%32u)); return (textureLoad(atlas, vec2i(p), 0).r*255.0+0.5)/256.0; }',
+	id: 'FAST-scalar', allocationBytes: atlas.width * atlas.height * 4, atlas: true,
+	wgsl: 'fn sample(x:u32,y:u32,frame:u32,seed:u32)->f32 { let cycle=(frame/32u)%128u; let p=vec2u((x+37u*cycle)%128u, (y+71u*cycle)%128u+128u*(frame%32u)); return (textureLoad(atlas, vec2i(p), 0).b*255.0+0.5)/256.0; }',
 	expected: checks.map( ( [ x, y, frame ] ) => {
 
 		const cycle = Math.floor( frame / 32 ) % 128;
-		return ( atlas.data[ ( ( ( y + 71 * cycle ) % 128 + 128 * ( frame % 32 ) ) * atlas.width + ( x + 37 * cycle ) % 128 ) * 4 ] + .5 ) / 256;
+		return ( atlas.data[ ( ( ( y + 71 * cycle ) % 128 + 128 * ( frame % 32 ) ) * atlas.width + ( x + 37 * cycle ) % 128 ) * 4 + 2 ] + .5 ) / 256;
 
 	} )
 } );
@@ -46,7 +49,14 @@ try {
 	browser = await puppeteer.launch( { executablePath: process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: [ '--enable-unsafe-webgpu', '--disable-software-rasterizer', '--disable-frame-rate-limit', '--disable-gpu-vsync' ], protocolTimeout: 600000 } );
 	const page = await browser.newPage();
 	await page.goto( `http://127.0.0.1:${ server.address().port }` );
-	const report = await page.evaluate( async ( { profiles, checks, seconds, pixels, width, height } ) => {
+	if ( sequences ) {
+
+		await fs.mkdir( path.resolve( sequences ), { recursive: true } );
+		await page.exposeFunction( 'saveSequence', async ( id, seed, data ) => fs.writeFile( path.join( path.resolve( sequences ), `${ id }-seed${ seed }.f32` ), Buffer.from( data, 'base64' ) ) );
+
+	}
+
+	const report = await page.evaluate( async ( { profiles, checks, seconds, pixels, width, height, exportSequences } ) => {
 
 		const adapter = await navigator.gpu?.requestAdapter( { powerPreference: 'high-performance' } );
 		const info = adapter?.info;
@@ -133,15 +143,60 @@ try {
 			const elapsedSeconds = ( performance.now() - start ) / 1000;
 			await device.queue.onSubmittedWorkDone();
 			results.push( { id: profile.id, allocationBytes: profile.allocationBytes, completedFrames, elapsedSeconds, samplesPerSecond: completedFrames * count / elapsedSeconds, maxCPUError, actual } );
+
 			output.destroy(); readback.destroy(); tile?.destroy(); texture?.destroy(); for ( const buffer of frameBuffers ) buffer.destroy();
 			if ( errors.length ) throw new Error( errors.join( '\n' ) );
+
+		}
+
+		if ( exportSequences ) {
+
+			for ( const profile of profiles ) {
+
+				let tile, texture; let declaration = '';
+				if ( profile.tile ) {
+
+					tile = device.createBuffer( { size: profile.tile.length * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST } ); declaration = '@group(0) @binding(1) var<storage,read> tile:array<f32>;';
+
+				}
+
+				if ( profile.atlas ) {
+
+					texture = device.createTexture( { size: [ width, height ], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST } ); device.queue.writeTexture( { texture }, new Uint8Array( pixels ), { bytesPerRow: width * 4 }, [ width, height ] ); declaration = '@group(0) @binding(1) var atlas:texture_2d<f32>;';
+
+				}
+
+				const total = 128 * 128 * 159;
+				const sequence = device.createBuffer( { size: total * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC } );
+				const staging = device.createBuffer( { size: total * 4, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ } );
+				for ( const seed of [ 1, 2 ] ) {
+
+					if ( tile ) device.queue.writeBuffer( tile, 0, new Float32Array( seed === 1 ? profile.tile : profile.tile2 ) );
+					const sequenceModule = device.createShaderModule( { code: `@group(0) @binding(0) var<storage,read_write> output:array<f32>; ${ declaration } ${ profile.wgsl } @compute @workgroup_size(256) fn sequence(@builtin(global_invocation_id) gid:vec3u) { let i=gid.x; if(i<2605056u) { output[i]=sample(i%128u,(i/128u)%128u,i/16384u,${ seed }u); } }` } );
+					const sequencePipeline = await device.createComputePipelineAsync( { layout: 'auto', compute: { module: sequenceModule, entryPoint: 'sequence' } } );
+					const sequenceBind = device.createBindGroup( { layout: sequencePipeline.getBindGroupLayout( 0 ), entries: [ { binding: 0, resource: { buffer: sequence } }, ...( tile ? [ { binding: 1, resource: { buffer: tile } } ] : texture ? [ { binding: 1, resource: texture.createView() } ] : [] ) ] } );
+					const sequenceEncoder = device.createCommandEncoder();
+					const sequencePass = sequenceEncoder.beginComputePass(); sequencePass.setPipeline( sequencePipeline ); sequencePass.setBindGroup( 0, sequenceBind ); sequencePass.dispatchWorkgroups( Math.ceil( total / 256 ) ); sequencePass.end();
+					sequenceEncoder.copyBufferToBuffer( sequence, 0, staging, 0, total * 4 );
+					device.queue.submit( [ sequenceEncoder.finish() ] );
+					await staging.mapAsync( GPUMapMode.READ );
+					const bytes = new Uint8Array( staging.getMappedRange() );
+					let binary = ''; for ( let offset = 0; offset < bytes.length; offset += 8192 ) binary += String.fromCharCode( ...bytes.subarray( offset, offset + 8192 ) );
+					await window.saveSequence( profile.id, seed, btoa( binary ) );
+					staging.unmap();
+
+				}
+
+				sequence.destroy(); staging.destroy(); tile?.destroy(); texture?.destroy();
+
+			}
 
 		}
 
 		device.destroy();
 		return { gpu: { vendor: info.vendor, architecture: info.architecture, description: info.description, isFallbackAdapter: info.isFallbackAdapter }, userAgent: navigator.userAgent, workload: '512x512 scalar samples, eight sequential compute dispatches per completion wait; two-second warmup; no vsync or frame cap; end-to-end throughput including submission/completion overhead', results };
 
-	}, { profiles, checks, seconds, pixels: Array.from( atlas.data ), width: atlas.width, height: atlas.height } );
+	}, { profiles, checks, seconds, pixels: Array.from( atlas.data ), width: atlas.width, height: atlas.height, exportSequences: Boolean( sequences ) } );
 	await fs.mkdir( path.dirname( output ), { recursive: true } );
 	await fs.writeFile( output, JSON.stringify( report, null, 2 ) + '\n' );
 	console.log( JSON.stringify( report, null, 2 ) );

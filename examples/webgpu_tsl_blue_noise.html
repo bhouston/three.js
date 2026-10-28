@@ -32,7 +32,7 @@
 			</div>
 
 			<small>
-				White noise vs. <a href="https://github.com/electronicarts/fastnoise" target="_blank" rel="noopener">FAST</a> spatiotemporal blue noise by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br/>A 1-bit dithered sphere or a uniform noise field, accumulated over time.<br/>Frames accumulated: <span id="frames">0</span>
+				Compare white noise with <a href="https://github.com/electronicarts/fastnoise" target="_blank" rel="noopener">FAST</a> and experimental sampling methods.<br/>A 1-bit dithered sphere or a uniform noise field, accumulated over time.<br/>Frames accumulated: <span id="frames">0</span><br/><span id="status" role="status" aria-live="polite"></span>
 			</small>
 		</div>
 
@@ -53,27 +53,60 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, float, hash, mix, screenCoordinate, screenSize, screenUV, texture, uint, uniform, vec2, vec3, vec4 } from 'three/tsl';
+			import { Fn, float, hash, ivec2, mix, screenCoordinate, screenSize, screenUV, texture, textureLoad, uint, uniform, uniformTexture, vec2, vec3, vec4 } from 'three/tsl';
 
 			import { fastNoise, loadFASTNoise } from 'three/addons/tsl/utils/FASTNoise.js';
 			import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const modes = { 'Sphere': 0, 'Uniform': 1 };
-			const noises = { 'FAST Spatio-Temporal': 0, 'FAST Spatial': 1, 'Golden Ratio': 2 };
+			const experimentalNoises = {
+				'Hierarchy': 'hierarchy',
+				'Lattice': 'lattice',
+				'Relaxation': 'relaxation',
+				'Threshold Refine': 'threshold-unconstrained',
+				'Threshold Refine Stratified': 'threshold-columns',
+				'Stratified Threshold': 'stratified',
+				'Stratified Threshold Helical': 'stratified-helical',
+				'Multifeature Projection': 'multifeature',
+				'GPU Identity Weighted': 'gpu-identity',
+				'GPU Mixed Objective': 'gpu-hybrid',
+				'GPU Fourier Weighted': 'gpu-spectral',
+				'GPU Mixed Filter': 'gpu-mixed',
+				'GPU Sparse Swaps': 'gpu-sparse',
+				'GPU Stratified': 'gpu-stratified',
+				'GPU Stratified Mixed': 'gpu-stratified-hybrid',
+				'GPU Stratified Valid Filter': 'gpu-stratified-psd',
+				'GPU Stratified Annealed': 'gpu-stratified-annealed',
+				'PR117 Filter Rank': 'pr117-filter-rank',
+				'PR117 Hierarchy': 'pr117-hierarchy',
+				'PR117 Threshold Energy': 'pr117-local-energy'
+			};
+			const noises = { 'FAST Spatio-Temporal': 0, 'FAST Spatial': 1, 'Golden Ratio': 2, 'White': 3, 'FAST Spatio-Temporal Scalar B': 4, 'FAST Spatial Scalar B': 5, ...Object.fromEntries( Object.keys( experimentalNoises ).map( name => [ name, 6 ] ) ) };
 			const params = { mode: 'Sphere', noise: 'FAST Spatio-Temporal', pixelSize: 2, temporalBlur: true, spatialBlur: true, animate: true };
 
 			let renderer, computeQuad, displayQuad, targets, history, current, display, blurredDisplay;
 			let samples = 0;
+			let selectionVersion = 0;
+			let loading = false;
+			let selectedAtlas;
+			const atlasCache = new Map();
 
 			const framesElement = document.getElementById( 'frames' );
+			const statusElement = document.getElementById( 'status' );
 
 			const mode = uniform( modes[ params.mode ] );
 			const noiseType = uniform( noises[ params.noise ] );
 			const index = uniform( 0, 'uint' );
 			const blend = uniform( 1 );
 
-			init();
+			init().catch( error => {
+
+				statusElement.textContent = 'Unable to initialize noise comparison. Please reload to try again.';
+				console.error( error );
+				if ( renderer ) renderer.setAnimationLoop( null );
+
+			} );
 
 			async function init() {
 
@@ -90,6 +123,7 @@
 					loadFASTNoise( 'textures/noises/fast/gauss1-ema01-spatio-temporal.png' ),
 					loadFASTNoise( 'textures/noises/fast/gauss1-ema01-spatial.png' )
 				] );
+				selectedAtlas = uniformTexture( spatioTemporal );
 
 				targets = [ 0, 1 ].map( () => new THREE.RenderTarget( 1, 1, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false } ) );
 				history = texture( targets[ 1 ].texture );
@@ -99,13 +133,29 @@
 
 				const left = screenUV.x.lessThan( 0.5 );
 				const white = hash( uint( screenCoordinate.x ).add( uint( screenCoordinate.y ).mul( 4096 ) ).add( index.mul( 16777259 ) ) );
-				const fastSpatioTemporal = fastNoise( spatioTemporal, new THREE.Vector2(), index ).x;
-				const fastSpatial = fastNoise( spatial, new THREE.Vector2(), index ).x;
+				const fastSpatioTemporal = fastNoise( spatioTemporal, new THREE.Vector2(), index );
+				const fastSpatial = fastNoise( spatial, new THREE.Vector2(), index );
+
+				// Experimental scalar atlases share one binding and the FAST 32-frame cycle shifts.
+				const scalar = Fn( () => {
+
+					const cycle = index.div( 32 ).mod( 128 ).toInt();
+					const pixel = ivec2( screenCoordinate ).add( ivec2( 37, 71 ).mul( cycle ) ).mod( 128 );
+					const coordinate = ivec2( pixel.x, pixel.y.add( index.mod( 32 ).mul( 128 ).toInt() ) );
+					return textureLoad( selectedAtlas, coordinate ).r.mul( 255 ).add( 0.5 ).div( 256 );
+
+				} )();
 
 				// a single spatial blue noise slice rotated by the golden ratio each frame, so every pixel gets a low discrepancy sequence in time
 				const golden = fastNoise( spatial, new THREE.Vector2(), uint( 0 ) ).x.add( index.mul( uint( 2654435769 ) ).shiftRight( 8 ).toFloat().div( 16777216 ) ).fract();
 
-				const noise = left.select( white, noiseType.equal( 0 ).select( fastSpatioTemporal, noiseType.equal( 1 ).select( fastSpatial, golden ) ) );
+				const rightNoise = noiseType.equal( 0 ).select( fastSpatioTemporal.x,
+					noiseType.equal( 1 ).select( fastSpatial.x,
+						noiseType.equal( 2 ).select( golden,
+							noiseType.equal( 3 ).select( white,
+								noiseType.equal( 4 ).select( fastSpatioTemporal.z,
+									noiseType.equal( 5 ).select( fastSpatial.z, scalar ) ) ) ) ) );
+				const noise = left.select( white, rightNoise );
 
 				// the same shaded sphere over a gradient in each half
 
@@ -143,28 +193,77 @@
 				gui.add( params, 'mode', Object.keys( modes ) ).onChange( ( value ) => {
 
 					mode.value = modes[ value ];
-					samples = 0;
+					resetAccumulation();
 
 				} );
-				gui.add( params, 'noise', Object.keys( noises ) ).onChange( ( value ) => {
-
-					noiseType.value = noises[ value ];
-					document.getElementById( 'blueLabel' ).textContent = value + ' Blue Noise';
-					samples = 0;
-
-				} );
+				gui.add( params, 'noise', Object.keys( noises ) ).onChange( selectNoise );
 				gui.add( params, 'pixelSize', 1, 8, 1 ).name( 'pixel size' ).onChange( onWindowResize );
-				gui.add( params, 'temporalBlur' ).name( 'temporal blur' ).onChange( () => samples = 0 );
+				gui.add( params, 'temporalBlur' ).name( 'temporal blur' ).onChange( resetAccumulation );
 				gui.add( params, 'spatialBlur' ).name( 'spatial blur' ).onChange( ( value ) => {
 
 					displayQuad.material.fragmentNode = value ? blurredDisplay : display;
 					displayQuad.material.needsUpdate = true;
+					resetAccumulation();
 
 				} );
-				gui.add( params, 'animate' ).onChange( () => samples = 0 );
+				gui.add( params, 'animate' ).onChange( resetAccumulation );
 
 				onWindowResize();
 				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			function resetAccumulation() {
+
+				samples = 0;
+				index.value = 0;
+				framesElement.textContent = '0';
+
+			}
+
+			async function selectNoise( name ) {
+
+				const version = ++ selectionVersion;
+				resetAccumulation();
+				loading = true;
+				statusElement.textContent = 'Loading ' + name + '…';
+
+				try {
+
+					const filename = experimentalNoises[ name ];
+					if ( filename !== undefined ) {
+
+						if ( ! atlasCache.has( filename ) ) {
+
+							atlasCache.set( filename, loadFASTNoise( 'textures/noises/experimental/' + filename + '.png' ).catch( error => {
+
+								atlasCache.delete( filename );
+								throw error;
+
+							} ) );
+
+						}
+
+						const atlas = await atlasCache.get( filename );
+						if ( version !== selectionVersion ) return;
+						selectedAtlas.value = atlas;
+
+					}
+
+					if ( version !== selectionVersion ) return;
+					noiseType.value = noises[ name ];
+					document.getElementById( 'blueLabel' ).textContent = name;
+					statusElement.textContent = '';
+					loading = false;
+					resetAccumulation();
+
+				} catch ( error ) {
+
+					if ( version !== selectionVersion ) return;
+					statusElement.textContent = 'Unable to load ' + name + '. Select another method or retry.';
+					console.error( error );
+
+				}
 
 			}
 
@@ -174,13 +273,13 @@
 
 				const size = renderer.getDrawingBufferSize( new THREE.Vector2() ).divideScalar( params.pixelSize ).ceil();
 				for ( const target of targets ) target.setSize( size.x, size.y );
-				samples = 0;
+				resetAccumulation();
 
 			}
 
 			function animate() {
 
-				if ( computeQuad === undefined ) return;
+				if ( computeQuad === undefined || loading ) return;
 
 				if ( params.animate ) index.value ++;
 

@@ -1,0 +1,61 @@
+{
+  "node": "v26.11.1",
+  "cpu": "AMD Ryzen 9 5950X",
+  "note": "CPU sequential completed startup generations; 1s warmup and >=5s measured per profile. Shared machine load can affect timings.",
+  "results": [
+    {
+      "size": 16,
+      "passes": 8,
+      "firstMs": 11.408100000000001,
+      "count": 10851,
+      "elapsedMs": 5000.344800000001,
+      "meanMs": 0.46081880011058896,
+      "storageBytes": 1024
+    },
+    {
+      "size": 32,
+      "passes": 0,
+      "firstMs": 0.012900000000627188,
+      "count": 803332,
+      "elapsedMs": 5000.0107,
+      "meanMs": 0.006224090039983469,
+      "storageBytes": 4096
+    },
+    {
+      "size": 32,
+      "passes": 2,
+      "firstMs": 0.5406000000002678,
+      "count": 9178,
+      "elapsedMs": 5000.3094,
+      "meanMs": 0.5448147090869471,
+      "storageBytes": 4096
+    },
+    {
+      "size": 32,
+      "passes": 8,
+      "firstMs": 1.7762000000002445,
+      "count": 2813,
+      "elapsedMs": 5000.242000000002,
+      "meanMs": 1.7775478137220058,
+      "storageBytes": 4096
+    },
+    {
+      "size": 64,
+      "passes": 2,
+      "firstMs": 2.1334999999999127,
+      "count": 2404,
+      "elapsedMs": 5001.490600000001,
+      "meanMs": 2.0804869384359406,
+      "storageBytes": 16384
+    },
+    {
+      "size": 64,
+      "passes": 8,
+      "firstMs": 6.932300000000396,
+      "count": 688,
+      "elapsedMs": 5003.2572999999975,
+      "meanMs": 7.272176308139532,
+      "storageBytes": 16384
+    }
+  ]
+}

@@ -154,7 +154,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 16, initi
 	for ( let step = 0; step < passes * count; step ++ ) {
 
 		const a = Math.floor( random() * count );
-        const b = preserveColumns ? a % plane + Math.floor( random() * depth ) * plane : Math.floor( random() * count );
+		const b = preserveColumns ? a % plane + Math.floor( random() * depth ) * plane : Math.floor( random() * count );
 		const dx = wrap( b % size - a % size, size );
 		const dy = wrap( Math.floor( b % plane / size ) - Math.floor( a % plane / size ), size );
 		const dz = wrap( Math.floor( b / plane ) - Math.floor( a / plane ), depth );
@@ -184,4 +184,5 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 16, initi
 	return values;
 
 }
+
 

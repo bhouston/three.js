@@ -236,6 +236,7 @@
 				// The benchmark shares these exact example scene loaders and leaves the render loop stopped.
 				// Screenshots use atlas previews so exposure/reflection-probe capture cannot affect the metrics.
 				renderer.domElement.style.display = 'none';
+				document.body.style.backgroundColor = '#202124';
 				const report = document.createElement( 'main' );
 				report.style.cssText = 'position:relative;margin:100px 16px 16px;color:white;font:13px monospace';
 				const results = document.createElement( 'pre' );

@@ -24,7 +24,7 @@ for ( const key of [ 'resolution', 'samples', 'reference', 'seconds' ] ) {
 if ( args.includes( '--oidn' ) ) query.set( 'oidn', '1' );
 const scene = option( 'scene', null );
 if ( scene !== null ) query.set( 'benchmarkScene', scene );
-const mime = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png' };
+const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png' };
 const server = http.createServer( async ( request, response ) => {
 
 	try {

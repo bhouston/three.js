@@ -1,5 +1,7 @@
 # Browser lightmap denoiser experiment
 
+For tables measured on the actual Cornell Box, Courtyard and Space Ship Hallway examples, see [existing-scene metrics](lightmap-denoising-scenes.md). The standalone fixture below remains useful for small controlled experiments.
+
 `LightBaker` now has a `denoiser` option: `'none'` (default), `'variance'`, or `'oidn'`. The baking example exposes all three. The legacy `denoise: true` selects `'variance'`; `false` selects `'none'`. Avoid specifying both options. All methods preserve raw accumulated samples, and seam stitching remains an independent option.
 
 ```js

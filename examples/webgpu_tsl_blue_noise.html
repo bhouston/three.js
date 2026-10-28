@@ -61,26 +61,8 @@
 
 			const modes = { 'Sphere': 0, 'Uniform': 1 };
 			const experimentalNoises = {
-				'Hierarchy': 'hierarchy',
-				'Lattice': 'lattice',
-				'Relaxation': 'relaxation',
-				'Threshold Refine': 'threshold-unconstrained',
-				'Threshold Refine Stratified': 'threshold-columns',
-				'Stratified Threshold': 'stratified',
-				'Stratified Threshold Helical': 'stratified-helical',
-				'Multifeature Projection': 'multifeature',
-				'GPU Identity Weighted': 'gpu-identity',
-				'GPU Mixed Objective': 'gpu-hybrid',
-				'GPU Fourier Weighted': 'gpu-spectral',
-				'GPU Mixed Filter': 'gpu-mixed',
-				'GPU Sparse Swaps': 'gpu-sparse',
-				'GPU Stratified': 'gpu-stratified',
-				'GPU Stratified Mixed': 'gpu-stratified-hybrid',
-				'GPU Stratified Valid Filter': 'gpu-stratified-psd',
 				'GPU Stratified Annealed': 'gpu-stratified-annealed',
-				'PR117 Filter Rank': 'pr117-filter-rank',
-				'PR117 Hierarchy': 'pr117-hierarchy',
-				'PR117 Threshold Energy': 'pr117-local-energy'
+				'PR117 Light Playback': 'pr117-light-seam-03'
 			};
 			const noises = { 'FAST Spatio-Temporal': 0, 'FAST Spatial': 1, 'Golden Ratio': 2, 'White': 3, 'FAST Spatio-Temporal Scalar B': 4, 'FAST Spatial Scalar B': 5, ...Object.fromEntries( Object.keys( experimentalNoises ).map( name => [ name, 6 ] ) ) };
 			const params = { mode: 'Sphere', noise: 'FAST Spatio-Temporal', pixelSize: 2, temporalBlur: true, spatialBlur: true, animate: true };
@@ -89,7 +71,8 @@
 			let samples = 0;
 			let selectionVersion = 0;
 			let loading = false;
-			let selectedAtlas;
+			let selectedAtlas, noiseController;
+			let activeNoise = params.noise;
 			const atlasCache = new Map();
 
 			const framesElement = document.getElementById( 'frames' );
@@ -196,7 +179,7 @@
 					resetAccumulation();
 
 				} );
-				gui.add( params, 'noise', Object.keys( noises ) ).onChange( selectNoise );
+				noiseController = gui.add( params, 'noise', Object.keys( noises ) ).onChange( selectNoise );
 				gui.add( params, 'pixelSize', 1, 8, 1 ).name( 'pixel size' ).onChange( onWindowResize );
 				gui.add( params, 'temporalBlur' ).name( 'temporal blur' ).onChange( resetAccumulation );
 				gui.add( params, 'spatialBlur' ).name( 'spatial blur' ).onChange( ( value ) => {
@@ -252,6 +235,7 @@
 
 					if ( version !== selectionVersion ) return;
 					noiseType.value = noises[ name ];
+					activeNoise = name;
 					document.getElementById( 'blueLabel' ).textContent = name;
 					statusElement.textContent = '';
 					loading = false;
@@ -260,7 +244,11 @@
 				} catch ( error ) {
 
 					if ( version !== selectionVersion ) return;
-					statusElement.textContent = 'Unable to load ' + name + '. Select another method or retry.';
+					params.noise = activeNoise;
+					noiseController.select.value = activeNoise;
+					loading = false;
+					resetAccumulation();
+					statusElement.textContent = 'Unable to load ' + name + '. Previous method restored. Select it again to retry.';
 					console.error( error );
 
 				}
@@ -281,8 +269,6 @@
 
 				if ( computeQuad === undefined || loading ) return;
 
-				if ( params.animate ) index.value ++;
-
 				// temporal blur is a running average of every sample since the last reset
 
 				samples ++;
@@ -297,6 +283,9 @@
 				targets.reverse();
 				history.value = targets[ 1 ].texture;
 				current.value = targets[ 0 ].texture;
+
+				// Start at slice zero after every reset, matching the comparison analysis.
+				if ( params.animate ) index.value ++;
 
 			}
 

@@ -85,6 +85,7 @@ try {
 		await test.renderer.init();
 		test.renderer.setAnimationLoop( null );
 		test.params.animate = false;
+		test.params.temporalBlur = false;
 		const adapter = await navigator.gpu.requestAdapter();
 		const info = adapter?.info;
 		if ( ! info || info.isFallbackAdapter || ! /nvidia|amd|intel|apple|qualcomm/i.test( info.vendor ) || /swiftshader|software|llvmpipe|lavapipe/i.test( JSON.stringify( info ) ) ) throw new Error( 'Physical GPU verification blocked' );
@@ -163,6 +164,30 @@ try {
 			const expected = ( png.data[ ( ( y % 128 ) * png.width + x % 128 ) * 4 ] + 0.5 ) / 256;
 			assert.ok( Math.abs( value - expected ) < 1e-6, `${ label }: readback ${ value }, expected ${ expected }` );
 			result.expectedMidpoint = expected;
+			if ( entry ) {
+
+				result.playbackFrames = [];
+				for ( const frame of [ 1, 31, 32, 1024 ] ) {
+
+					const actual = await page.evaluate( async ( frame ) => {
+
+						const test = window.__noiseTest;
+						test.index.value = frame;
+						test.animate();
+						await test.renderer.backend.device.queue.onSubmittedWorkDone();
+						const target = test.targets[ 1 ];
+						return ( await test.renderer.readRenderTargetPixelsAsync( target, Math.floor( target.width * 0.75 ), Math.floor( target.height * 0.5 ), 1, 1 ) )[ 0 ];
+
+					}, frame );
+					const cycle = Math.floor( frame / 32 ) % 128;
+					const px = ( x + 37 * cycle ) % 128, py = frame % 32 * 128 + ( y + 71 * cycle ) % 128;
+					const midpoint = ( png.data[ ( py * png.width + px ) * 4 ] + 0.5 ) / 256;
+					assert.ok( Math.abs( actual - midpoint ) < 1e-6, `${ label } frame ${ frame }: ${ actual } != ${ midpoint }` );
+					result.playbackFrames.push( frame );
+
+				}
+
+			}
 
 		}
 

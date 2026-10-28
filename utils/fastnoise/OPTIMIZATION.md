@@ -75,5 +75,19 @@ At the full default 10,000 iterations, separate mode fell from 81.309 to
 75.007 seconds (7.75% lower time, 8.40% higher throughput), with identical
 SHA-256 `ad64707c4d4551ac6eacd4ce7c732e48d1ca5b83e3fc2c9cdc678fe5b5983df9`.
 Consequently all ten quality metrics are identical at the default iteration count.
+The reversed-order seed-2 check at 1,000 iterations took 7.526 seconds optimized
+and 8.155 seconds baseline, again with identical bytes. A second product screen
+gave 20.403 seconds optimized and 22.568 seconds baseline, also identical.
+Functional checks at widths 8, 16 and 32 matched baseline bytes in both modes;
+their short runtimes are not used as performance evidence.
 Timings are specific to this GPU and browser; other GPU architectures need
 their own throughput measurements.
+
+## Repository validation
+
+`npm test` passed: core lint, 1,982 passing core tests (one TODO), and 141
+passing addon tests, with zero failures. On this Windows machine the test
+launcher used installed Chrome, removed the runner's Linux lavapipe environment
+setting and Vulkan flags, and disabled software rasterization. The test run
+emitted a resource 404 and Windows process-cleanup warnings but exited zero.
+There is no typecheck script in this JavaScript repository.

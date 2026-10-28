@@ -48,11 +48,12 @@ export default QUnit.module( 'Addons', () => {
 				for ( const algorithm in maxSamples ) {
 
 					baker.setOptions( { algorithm } );
-					assert.strictEqual( baker.getNoiseTolerance(), 0.02, `${ algorithm } stops at 2% noise` );
+					assert.strictEqual( baker.getNoiseTolerance(), 0.1, `${ algorithm } stops at 10% noise when denoising` );
 					assert.strictEqual( baker.getMaxSamples(), maxSamples[ algorithm ] );
 
 				}
 
+				assert.strictEqual( new LightBaker( renderer, { denoise: false } ).getNoiseTolerance(), 0.02, 'Without denoising it stops at 2% noise' );
 				assert.strictEqual( new LightBaker( renderer, { algorithm: 'stochastic' } ).getSamplesPerFrame(), 4 );
 				assert.strictEqual( new LightBaker( renderer, { algorithm: 'ray' } ).getSamplesPerFrame(), 1 );
 

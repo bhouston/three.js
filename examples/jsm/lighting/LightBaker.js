@@ -18,9 +18,11 @@ const ALGORITHMS = [ 'stochastic', 'ray', 'probes', 'vxgi' ];
 // whenever the samples have grown by a quarter, or after the maximum samples. Light probes are
 // deterministic and only need a few samples to antialias the light map, the rays, the VXGI cones and
 // the stochastic radiosity directions vary per sample and converge over more samples. Stochastic
-// radiosity samples are cheap, so several are baked per frame
+// radiosity samples are cheap, so several are baked per frame. The denoiser removes the remaining
+// noise, so a denoised bake stops earlier
 
 const NOISE_TOLERANCE = 0.02;
+const DENOISED_NOISE_TOLERANCE = 0.1;
 const MAX_SAMPLES = { ray: 1024, stochastic: 8192, probes: 16, vxgi: 256 };
 const SAMPLES_PER_FRAME = { ray: 1, stochastic: 4, probes: 1, vxgi: 1 };
 
@@ -207,7 +209,8 @@ class LightBaker {
 		this.stitchSeams = true;
 
 		/**
-		 * The relative noise at which the bake stops, see {@link LightMapper#estimateNoise}, 2% by default.
+		 * The relative noise at which the bake stops, see {@link LightMapper#estimateNoise}. By default 10%
+		 * when denoising and 2% otherwise.
 		 *
 		 * @type {?number}
 		 * @default null
@@ -509,7 +512,7 @@ class LightBaker {
 	 */
 	getNoiseTolerance() {
 
-		return this.noiseTolerance ?? NOISE_TOLERANCE;
+		return this.noiseTolerance ?? ( this.denoise ? DENOISED_NOISE_TOLERANCE : NOISE_TOLERANCE );
 
 	}
 

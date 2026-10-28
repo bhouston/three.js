@@ -88,23 +88,20 @@
 				algorithm: 'Ray Radiosity',
 				resolution: 1024,
 				samples: 1024,
-				noise: 0.02,
+				noise: 0.1,
 				denoise: true
 			};
 
 			// the algorithms of LightBaker. It stops the bake once the estimated noise of the light map drops
-			// below 2%, or after a maximum of samples per algorithm, and bakes several cheap samples of the
-			// stochastic radiosity per frame
+			// below the threshold, 10% by default since the light maps are denoised, or after a maximum of
+			// samples per algorithm, and bakes several cheap samples of the stochastic radiosity per frame
 
 			const algorithms = { 'Stochastic Radiosity': 'stochastic', 'Ray Radiosity': 'ray', 'Light Probe': 'probes', 'VXGI': 'vxgi' };
 
-			// the default maximum samples and noise tolerances of the algorithms that accumulate samples, the
-			// light probes are deterministic and need only a few samples to antialias. The few directions that
-			// all texels of a stochastic radiosity sample share leave blotchy noise, so it bakes to a lower
-			// tolerance
+			// the default maximum samples of the algorithms that accumulate samples, the light probes are
+			// deterministic and need only a few samples to antialias
 
 			const sampleDefaults = { 'Stochastic Radiosity': 8192, 'Ray Radiosity': 1024, 'VXGI': 256 };
-			const noiseDefaults = { 'Stochastic Radiosity': 0.01, 'Ray Radiosity': 0.02, 'VXGI': 0.02 };
 
 			init().catch( error => {
 
@@ -203,7 +200,7 @@
 				const giFolder = gui.addFolder( 'GI Algorithm' );
 				giFolder.add( params, 'algorithm', Object.keys( algorithms ) ).name( 'Engine' ).onChange( setAlgorithm );
 				samplesControl = giFolder.add( params, 'samples', [ 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192 ] ).name( 'Samples' ).info( 'the maximum, the bake stops earlier once the noise drops below the threshold' ).listen().onChange( bake );
-				noiseControl = giFolder.add( params, 'noise', { '1%': 0.01, '2%': 0.02, '4%': 0.04, '8%': 0.08, '16%': 0.16 } ).name( 'Noise Threshold' ).info( 'the bake stops once the estimated noise of the light map drops below this' ).listen().onChange( bake );
+				noiseControl = giFolder.add( params, 'noise', { '1%': 0.01, '2%': 0.02, '5%': 0.05, '10%': 0.1, '20%': 0.2 } ).name( 'Noise Threshold' ).info( 'the bake stops once the estimated noise of the light map drops below this' ).listen().onChange( bake );
 				setAlgorithm( params.algorithm, false );
 
 				gui.add( params, 'denoise' ).name( 'Denoise' ).onChange( setDenoise );
@@ -234,7 +231,6 @@
 				if ( samples !== undefined ) {
 
 					params.samples = samples;
-					params.noise = noiseDefaults[ algorithm ];
 					samplesControl.show();
 					noiseControl.show();
 

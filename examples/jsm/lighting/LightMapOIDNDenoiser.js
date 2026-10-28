@@ -161,6 +161,8 @@ class LightMapOIDNDenoiser {
 				// OIDN replaces alpha with one; preserve the atlas coverage and padding.
 				for ( let i = 3; i < pixels.length; i += 4 ) this.texture.image.data[ i ] = pixels[ i ];
 				this.texture.needsUpdate = true;
+				renderer.initTexture( this.texture );
+				await renderer.backend.device.queue.onSubmittedWorkDone();
 				return this.texture;
 
 			} )();

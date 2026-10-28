@@ -93,6 +93,9 @@ for ( let z = 0; z < Z; z ++ ) {
 const adapter = await navigator.gpu.requestAdapter();
 const device = await adapter.requestDevice();
 const bits = Math.log2( S );
+// Keep 64 invocations, but put a full warp along contiguous x coordinates.
+// Small slices retain the original layout so dispatch dimensions stay integral.
+const workgroupX = S >= 32 ? 32 : 8, workgroupY = S >= 32 ? 2 : 8;
 
 const code = /* wgsl */`
 struct Params { key: vec4u, iteration: u32, suppression: u32, numTaps: u32, pad: u32 }
@@ -133,7 +136,7 @@ fn weight( d: vec3i ) -> f32 {
 	return W[ ( u32( d.x + FS ) * u32( 2 * FS + 1 ) + u32( d.y + FS ) ) * Z + u32( d.z ) ];
 }
 
-@compute @workgroup_size( 8, 8, 1 )
+@compute @workgroup_size( ${workgroupX}, ${workgroupY}, 1 )
 fn loss( @builtin( global_invocation_id ) id: vec3u ) {
 	let c = values[ flat( id ) ];
 	let other = getOtherIndex( id, params.key );
@@ -152,7 +155,7 @@ fn loss( @builtin( global_invocation_id ) id: vec3u ) {
 	delta[ flat( id ) ] = d;
 }
 
-@compute @workgroup_size( 8, 8, 1 )
+@compute @workgroup_size( ${workgroupX}, ${workgroupY}, 1 )
 fn swap( @builtin( global_invocation_id ) id: vec3u ) {
 	let other = getOtherIndex( id, params.key );
 	let i = flat( id ); let j = flat( other );
@@ -220,8 +223,8 @@ for ( let step = 0; step < steps; step += BATCH ) {
 
 		const pass = enc.beginComputePass();
 		pass.setBindGroup( 0, bindGroup, [ b * STRIDE ] );
-		pass.setPipeline( lossPipeline ); pass.dispatchWorkgroups( S / 8, S / 8, Z );
-		pass.setPipeline( swapPipeline ); pass.dispatchWorkgroups( S / 8, S / 8, Z );
+		pass.setPipeline( lossPipeline ); pass.dispatchWorkgroups( S / workgroupX, S / workgroupY, Z );
+		pass.setPipeline( swapPipeline ); pass.dispatchWorkgroups( S / workgroupX, S / workgroupY, Z );
 		pass.end();
 
 	}

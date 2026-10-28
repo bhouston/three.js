@@ -27,6 +27,10 @@ node utils/noise-comparison/check-results.js
 
 The benchmark preserves the original 128×128 R-channel viewport, 32-slice FAST indexing, 37/71-pixel cycle shift, midpoint byte decoding, and seven-tap separable wrapped sigma=1 Gaussian. White is NumPy `default_rng(0)`, as in the original published benchmark. Procedural methods use seed 1, continuous frame indices 0 through 1023, and no artificial 32-frame restart or texture quantization. IGN explicitly rounds each arithmetic operation to float32. 3LHW uses unsigned 32-bit arithmetic, then converts its upper 24 bits to a unit float. Accumulation and statistics use float64. These are CPU reference quality numbers; GPU float fusion may cause small IGN differences.
 
+The original Golden Ratio chart uses the full 32-bit Weyl fraction; its example
+uses the upper 24 bits for float arithmetic. This inherited distinction and the
+NumPy-versus-shader white realization are preserved when extending the chart.
+
 `original-convergence.py` preserves the preceding benchmark source from
 `bhouston/three.js` commit `bf71e556b63c20af6b5f7f61ba30bcb11461e9e6`.
 The Python cross-check executes it unchanged and checks all 88 original points;
@@ -69,11 +73,14 @@ indices through 1024, failed-load retry, stale selection handling and atlas
 caching pass on physical NVIDIA GTX 1050 hardware, with both WebGPU and WebGL.
 The independent procedural readbacks agree exactly at the sampled points.
 Hardware reports are in `hardware-webgpu.json` and `hardware-webgl.json`.
+The checked-in build modules used by the live demo also pass the WebGPU checks
+(`hardware-built.json`), without rebuilding or committing generated outputs.
 
 ```sh
 node utils/noise-comparison/check-example.js --root . --artifacts OUTPUT
 node utils/noise-comparison/check-example.js --root . --backend webgl --artifacts OUTPUT_WEBGL
 node utils/noise-comparison/check-example.js --root . --benchmark --artifacts OUTPUT_BENCHMARK
+node utils/noise-comparison/check-example.js --root . --built --artifacts OUTPUT_BUILT
 ```
 
 The checker serves current source modules and injects test access only into its

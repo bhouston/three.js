@@ -1,0 +1,330 @@
+{
+  "backend": "webgpu",
+  "options": [
+    {
+      "label": "3LHW",
+      "modes": [
+        "Sphere",
+        "Uniform"
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.8521760106086731
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.6729162931442261
+            }
+          ]
+        },
+        {
+          "frame": 1,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.4702100157737732
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.29095029830932617
+            }
+          ]
+        },
+        {
+          "frame": 31,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.01122969388961792
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.8319699764251709
+            }
+          ]
+        },
+        {
+          "frame": 32,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.6292636394500732
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.4500039219856262
+            }
+          ]
+        },
+        {
+          "frame": 128,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.9605265855789185
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.7812668681144714
+            }
+          ]
+        },
+        {
+          "frame": 1024,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.7189803719520569
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.5397206544876099
+            }
+          ]
+        }
+      ],
+      "maximumReferenceError": 0
+    },
+    {
+      "label": "Animated IGN",
+      "modes": [
+        "Sphere",
+        "Uniform"
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.36150646209716797
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.7319679260253906
+            }
+          ]
+        },
+        {
+          "frame": 1,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.9597911834716797
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.3475360870361328
+            }
+          ]
+        },
+        {
+          "frame": 31,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.11794662475585938
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.5054893493652344
+            }
+          ]
+        },
+        {
+          "frame": 32,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.7335138320922852
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.10417556762695312
+            }
+          ]
+        },
+        {
+          "frame": 128,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.8499412536621094
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.23768581449985504
+            }
+          ]
+        },
+        {
+          "frame": 1024,
+          "points": [
+            {
+              "x": 375,
+              "y": 30,
+              "value": 0.2896995544433594
+            },
+            {
+              "x": 392,
+              "y": 117,
+              "value": 0.6774444580078125
+            }
+          ]
+        }
+      ],
+      "maximumReferenceError": 0
+    },
+    {
+      "label": "White",
+      "modes": [
+        "Sphere",
+        "Uniform"
+      ]
+    },
+    {
+      "label": "FAST Separate",
+      "modes": [
+        "Sphere",
+        "Uniform"
+      ]
+    },
+    {
+      "label": "FAST Product",
+      "modes": [
+        "Sphere",
+        "Uniform"
+      ]
+    },
+    {
+      "label": "Golden Ratio",
+      "modes": [
+        "Sphere",
+        "Uniform"
+      ]
+    }
+  ],
+  "errors": [],
+  "assertions": [
+    "Default method initializes without requesting an image",
+    "All six choices render in Sphere and Uniform modes",
+    "Procedural readbacks match independent CPU formulas at six frame indices",
+    "Reselecting methods reuses loaded atlases",
+    "A failed atlas request retains the active procedural selection and retries successfully",
+    "A late atlas completion cannot overwrite a newer arithmetic selection"
+  ],
+  "startup": [
+    {
+      "label": "3LHW",
+      "selectionToGPUCompletedMs": 18.680399999999963,
+      "pngURLs": [],
+      "pngBytes": 0,
+      "intrinsicPrecomputeMs": 0
+    },
+    {
+      "label": "Animated IGN",
+      "selectionToGPUCompletedMs": 38.92699999999991,
+      "pngURLs": [],
+      "pngBytes": 0,
+      "intrinsicPrecomputeMs": 0
+    },
+    {
+      "label": "White",
+      "selectionToGPUCompletedMs": 36.326699999999846,
+      "pngURLs": [],
+      "pngBytes": 0,
+      "intrinsicPrecomputeMs": 0
+    },
+    {
+      "label": "FAST Separate",
+      "selectionToGPUCompletedMs": 135.27940000000012,
+      "pngURLs": [
+        "/examples/textures/noises/fast/gauss1-ema01-spatio-temporal.png"
+      ],
+      "pngBytes": 3025821,
+      "intrinsicPrecomputeMs": null
+    },
+    {
+      "label": "FAST Product",
+      "selectionToGPUCompletedMs": 46.33259999999996,
+      "pngURLs": [
+        "/examples/textures/noises/fast/gauss1-ema01-spatial.png"
+      ],
+      "pngBytes": 3019696,
+      "intrinsicPrecomputeMs": null
+    },
+    {
+      "label": "Golden Ratio",
+      "selectionToGPUCompletedMs": 35.353799999999865,
+      "pngURLs": [],
+      "pngBytes": 0,
+      "intrinsicPrecomputeMs": null
+    }
+  ],
+  "timingNote": "Local HTTP selection-to-GPU-completion includes decode/upload and shader work; it is not an Internet download time or intrinsic generator cost. Arithmetic methods have zero mask bytes and zero precomputation.",
+  "gpu": {
+    "vendor": "nvidia",
+    "architecture": "pascal",
+    "description": "",
+    "backend": "WebGPU"
+  },
+  "initialPageStartupMs": 989.9806,
+  "pngRequests": [
+    {
+      "url": "/examples/textures/noises/fast/gauss1-ema01-spatio-temporal.png",
+      "bytes": 3025821,
+      "started": 1666.3002,
+      "elapsedMs": 1.2976000000001022
+    },
+    {
+      "url": "/examples/textures/noises/fast/gauss1-ema01-spatial.png",
+      "bytes": 3019696,
+      "started": 1823.8554,
+      "elapsedMs": 1.189200000000028
+    },
+    {
+      "url": "/examples/textures/noises/fast/gauss1-ema01-spatio-temporal.png",
+      "bytes": 0,
+      "started": 2443.9661
+    },
+    {
+      "url": "/examples/textures/noises/fast/gauss1-ema01-spatio-temporal.png",
+      "bytes": 3025821,
+      "started": 2456.1684,
+      "elapsedMs": 1.3418000000001484
+    },
+    {
+      "url": "/examples/textures/noises/fast/gauss1-ema01-spatial.png",
+      "bytes": 3019696,
+      "started": 2474.0718,
+      "elapsedMs": 607.5288999999998
+    }
+  ],
+  "passed": true
+}

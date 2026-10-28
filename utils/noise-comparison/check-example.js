@@ -34,7 +34,7 @@ const server = http.createServer( async ( request, response ) => {
 		}
 
 		if ( url === delayURL ) await new Promise( resolve => setTimeout( resolve, 600 ) );
-		if ( url === '/build/three.webgpu.js' || url === '/build/three.tsl.js' ) {
+		if ( ! args.includes( '--built' ) && ( url === '/build/three.webgpu.js' || url === '/build/three.tsl.js' ) ) {
 
 			response.setHeader( 'Content-Type', 'text/javascript' );
 			response.end( `export * from '/src/${ url.includes( 'webgpu' ) ? 'Three.WebGPU.js' : 'Three.TSL.js' }';` );

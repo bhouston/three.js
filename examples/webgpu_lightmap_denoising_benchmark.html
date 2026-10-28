@@ -3,7 +3,7 @@
 <head>
 	<meta charset="utf-8">
 	<title>Lightmap denoising experiment</title>
-	<style>body { margin: 16px; background: #202124; color: #eee; font: 14px monospace; } canvas { max-width: 100%; } pre { white-space: pre-wrap; } button { padding: 8px; }</style>
+	<style>body { margin: 16px; background: #202124; color: #eee; font: 14px monospace; } canvas { max-width: 100%; } pre { white-space: pre-wrap; } button { padding: 8px; } #images { display: grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); } figure { margin: 8px; } canvas { width: 256px; image-rendering: pixelated; } #status { max-height: 300px; overflow: auto; }</style>
 </head>
 <body>
 	<h1>Lightmap denoising experiment</h1>
@@ -25,7 +25,7 @@
 
 		const params = new URLSearchParams( location.search );
 		const integer = ( key, fallback, min, max ) => Math.min( max, Math.max( min, Number( params.get( key ) ) || fallback ) ) | 0;
-		const config = { resolution: integer( 'resolution', 128, 32, 1024 ), samples: integer( 'samples', 16, 1, 4096 ), reference: integer( 'reference', 1024, 32, 65536 ), seconds: integer( 'seconds', 5, 5, 60 ) };
+		const config = { resolution: integer( 'resolution', 128, 32, 1024 ), samples: integer( 'samples', 16, 1, 4096 ), reference: integer( 'reference', 1024, 32, 65536 ), seconds: integer( 'seconds', 5, 5, 60 ), qualityTrials: 5 };
 		config.reference = Math.max( config.reference, config.samples * 4 );
 		const status = document.getElementById( 'status' );
 		const runButton = document.getElementById( 'run' );
@@ -88,6 +88,22 @@
 
 			if ( count === 0 ) throw new Error( 'No covered texels.' );
 			return { coveredTexels: count, rmse: Math.sqrt( squared / ( 3 * count ) ), relativeRMSE: Math.sqrt( squared / Math.max( energy, 1e-20 ) ), mae: absolute / ( 3 * count ) };
+
+		}
+
+		function aggregate( trials ) {
+
+			const mean = key => trials.reduce( ( sum, trial ) => sum + trial[ key ], 0 ) / trials.length;
+			const relativeMean = mean( 'relativeRMSE' );
+			return {
+				coveredTexels: trials[ 0 ].coveredTexels,
+				rmse: Math.sqrt( trials.reduce( ( sum, trial ) => sum + trial.rmse ** 2, 0 ) / trials.length ),
+				relativeRMSE: Math.sqrt( trials.reduce( ( sum, trial ) => sum + trial.relativeRMSE ** 2, 0 ) / trials.length ),
+				mae: mean( 'mae' ),
+				relativeRMSEStd: Math.sqrt( trials.reduce( ( sum, trial ) => sum + ( trial.relativeRMSE - relativeMean ) ** 2, 0 ) / trials.length ),
+				relativeRMSEMin: Math.min( ...trials.map( trial => trial.relativeRMSE ) ),
+				relativeRMSEMax: Math.max( ...trials.map( trial => trial.relativeRMSE ) )
+			};
 
 		}
 
@@ -202,8 +218,19 @@
 				const baseline = rows[ 0 ];
 				for ( const row of rows ) {
 
-					row.error = metrics( row.output, reference, mask );
-					preview( row.mode + ': ' + config.samples + ' samples', row.output, size );
+					status.textContent = 'Quality trials: ' + row.mode;
+					row.qualityTrials = [];
+					for ( let trial = 0; trial < config.qualityTrials; trial ++ ) {
+
+						baker.reset();
+						mapper.update( config.samples );
+						const output = await read( await process( row.mode ) );
+						row.qualityTrials.push( metrics( output, reference, mask ) );
+						if ( trial === 0 ) preview( row.mode + ': ' + config.samples + ' samples (first quality trial)', output, size );
+
+					}
+
+					row.error = aggregate( row.qualityTrials );
 					delete row.output;
 					// More raw rays at the denoiser's measured end-to-end time budget.
 					const samples = Math.max( config.samples, Math.min( config.reference - 1, Math.round( config.samples * row.meanCompletedBakeSeconds / baseline.meanCompletedBakeSeconds ) ) );
@@ -226,13 +253,23 @@
 
 					const measurementSeconds = ( performance.now() - start ) / 1000;
 					const actualSeconds = measurementSeconds / completedBakes;
-					const output = await read( mapper.texture );
-					row.moreSamples = { samples, targetSeconds: row.meanCompletedBakeSeconds, actualSeconds, completedBakes, measurementSeconds, budgetRatio: actualSeconds / row.meanCompletedBakeSeconds, error: metrics( output, reference, mask ) };
-					preview( 'Raw time-matched to ' + row.mode + ': ' + samples + ' samples', output, size );
+					const qualityTrials = [];
+					for ( let trial = 0; trial < config.qualityTrials; trial ++ ) {
+
+						baker.reset();
+						mapper.update( samples );
+						await process( 'none' );
+						const output = await read( mapper.texture );
+						qualityTrials.push( metrics( output, reference, mask ) );
+						if ( trial === 0 ) preview( 'Raw time-matched to ' + row.mode + ': ' + samples + ' samples (first quality trial)', output, size );
+
+					}
+
+					row.moreSamples = { samples, targetSeconds: row.meanCompletedBakeSeconds, actualSeconds, completedBakes, measurementSeconds, budgetRatio: actualSeconds / row.meanCompletedBakeSeconds, error: aggregate( qualityTrials ), qualityTrials };
 
 				}
 
-				const result = { config, adapter: { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description }, userAgent: navigator.userAgent, atlasSize: size, rows, notes: [ 'Single Cornell-like scene; nondirectional linear RGB irradiance; seam stitching disabled to isolate denoisers.', 'All modes share the same reset sample sequence. Reference contains that prefix and is not ground truth.', 'Readback and preview excluded from timings; GPU completion included. Setup, shader/model warmup excluded.', 'Equal-time sample count estimated from warmed throughput, rounded and capped below reference. Actual elapsed time reported; CPU/browser variance can cause budget mismatch.', 'Each mode measured sequentially for at least five seconds, counting complete GPU-fenced bakes. No requestAnimationFrame or per-frame timers.' ] };
+				const result = { config, adapter: { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description }, userAgent: navigator.userAgent, atlasSize: size, rows, notes: [ 'Single Cornell-like scene; nondirectional linear RGB irradiance; seam stitching disabled to isolate denoisers.', 'Reset repeats UV jitter but the ray source continues its render-pass sequence. Quality trials are sequential phases, not independently seeded trials. Reference uses the same bounce cache and is not ground truth.', 'Quality uses five sequential phase trials per mode and raw comparator outside throughput timing; RMSE is sqrt(mean trial MSE), with relative RMSE standard deviation and range. Readback and preview excluded from timings; GPU completion included. Setup, shader/model warmup excluded.', 'Equal-time sample count estimated from warmed throughput, rounded and capped below reference. Actual elapsed time reported; CPU/browser variance can cause budget mismatch.', 'Each mode measured sequentially for at least five seconds, counting complete GPU-fenced bakes. No requestAnimationFrame or per-frame timers.' ] };
 				window.benchmarkResult = result;
 				status.textContent = JSON.stringify( result, null, 2 );
 				saveButton.disabled = false;

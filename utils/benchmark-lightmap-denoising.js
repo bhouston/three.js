@@ -48,15 +48,23 @@ try {
 	browser = await puppeteer.launch( { headless: true, args: [ '--use-angle=d3d11', '--enable-unsafe-webgpu', '--disable-frame-rate-limit', '--disable-gpu-vsync' ] } );
 	const page = await browser.newPage();
 	await page.setViewport( { width: 1100, height: 900, deviceScaleFactor: 1 } );
+	const renderingErrors = [];
+	page.on( 'pageerror', error => renderingErrors.push( String( error ) ) );
 	page.on( 'console', message => {
 
-		if ( message.type() === 'error' ) console.error( message.text() );
+		if ( message.type() === 'error' ) {
+
+			console.error( message.text() );
+			if ( /GPUValidationError|validation error|uncaptured|device.*lost|WebGPU.*error/i.test( message.text() ) ) renderingErrors.push( message.text() );
+
+		}
 
 	} );
 	await page.goto( `http://127.0.0.1:${ server.address().port }/examples/webgpu_lightmap_denoising_benchmark.html?${ query }`, { waitUntil: 'networkidle0' } );
 	await page.waitForFunction( () => typeof window.runDenoisingBenchmark === 'function', { timeout: 60000 } );
 	page.setDefaultTimeout( 0 );
 	const result = await page.evaluate( () => window.runDenoisingBenchmark() );
+	if ( renderingErrors.length > 0 ) throw new Error( 'Rendering validation failed: ' + renderingErrors.join( '\n' ) );
 	await writeFile( path.join( output, 'lightmap-denoising-results.json' ), JSON.stringify( result, null, 2 ) + '\n' );
 	await page.screenshot( { path: path.join( output, 'lightmap-denoising-comparison.png' ), fullPage: true } );
 	console.log( JSON.stringify( result, null, 2 ) );

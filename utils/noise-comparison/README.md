@@ -90,6 +90,12 @@ FAST is established.
 
 ## Sustained example throughput
 
+For the additional implementation-size chart (raw, minified and minified+gzip,
+including all setup/runtime helpers), see [code-size.md](code-size.md).
+For a separate six-method sampler throughput benchmark, see
+[sampling-throughput.md](sampling-throughput.md). The sampler benchmark omits
+the accumulation, blur and display work measured below.
+
 The optional benchmark counts GPU-completed frames after a two-second warmup,
 for at least five seconds per method, sequentially. Vsync and frame caps are
 disabled. It includes the complete example workload: Uniform mode, 1000x700

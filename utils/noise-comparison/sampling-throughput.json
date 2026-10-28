@@ -1,0 +1,302 @@
+{
+  "gpu": {
+    "vendor": "nvidia",
+    "architecture": "pascal",
+    "device": "",
+    "description": ""
+  },
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+  "samplesPerDraw": 1048576,
+  "rows": [
+    {
+      "method": "White",
+      "repeat": 0,
+      "completedDraws": 10656,
+      "samples": 11173625856,
+      "seconds": 5.002299999952316,
+      "millionSamplesPerSecond": 2233.6976702929674,
+      "msPerMillionSamples": 0.44768815999563716,
+      "finalIndex": 160,
+      "readback": [
+        0.532015860080719,
+        0.530446469783783,
+        0.028025684878230095,
+        0.5190948843955994
+      ]
+    },
+    {
+      "method": "FAST Separate",
+      "repeat": 0,
+      "completedDraws": 10552,
+      "samples": 11064573952,
+      "seconds": 5.003800000190735,
+      "millionSamplesPerSecond": 2211.2342522839126,
+      "msPerMillionSamples": 0.45223612060419754,
+      "finalIndex": 432,
+      "readback": [
+        0.826171875,
+        0.169921875,
+        0.626953125,
+        0.087890625
+      ]
+    },
+    {
+      "method": "FAST Product",
+      "repeat": 0,
+      "completedDraws": 10760,
+      "samples": 11282677760,
+      "seconds": 5.002799999952316,
+      "millionSamplesPerSecond": 2255.2725993658632,
+      "msPerMillionSamples": 0.44340537825945286,
+      "finalIndex": 72,
+      "readback": [
+        0.158203125,
+        0.791015625,
+        0.123046875,
+        0.564453125
+      ]
+    },
+    {
+      "method": "Golden Ratio",
+      "repeat": 0,
+      "completedDraws": 10984,
+      "samples": 11517558784,
+      "seconds": 5.002399999856949,
+      "millionSamplesPerSecond": 2302.406601697058,
+      "msPerMillionSamples": 0.43432815005955944,
+      "finalIndex": 952,
+      "readback": [
+        0.34296655654907227,
+        0.9562477469444275,
+        0.21015405654907227,
+        0.8781227469444275
+      ]
+    },
+    {
+      "method": "3LHW",
+      "repeat": 0,
+      "completedDraws": 10792,
+      "samples": 11316232192,
+      "seconds": 5.000700000047684,
+      "millionSamplesPerSecond": 2262.9296282304667,
+      "msPerMillionSamples": 0.441905036517625,
+      "finalIndex": 600,
+      "readback": [
+        0.0787699818611145,
+        0.5787699818611145,
+        0.2037699818611145,
+        0.7037699818611145
+      ]
+    },
+    {
+      "method": "Animated IGN",
+      "repeat": 0,
+      "completedDraws": 11728,
+      "samples": 12297699328,
+      "seconds": 5.002900000095368,
+      "millionSamplesPerSecond": 2458.1141593406974,
+      "msPerMillionSamples": 0.40681593090380097,
+      "finalIndex": 432,
+      "readback": [
+        0.7798194885253906,
+        0.3524864614009857,
+        0.9080722332000732,
+        0.46365833282470703
+      ]
+    },
+    {
+      "method": "FAST Product",
+      "repeat": 1,
+      "completedDraws": 11640,
+      "samples": 12205424640,
+      "seconds": 5.002400000095367,
+      "millionSamplesPerSecond": 2439.913769344177,
+      "msPerMillionSamples": 0.40985054986955105,
+      "finalIndex": 392,
+      "readback": [
+        0.341796875,
+        0.533203125,
+        0.119140625,
+        0.763671875
+      ]
+    },
+    {
+      "method": "Golden Ratio",
+      "repeat": 1,
+      "completedDraws": 11320,
+      "samples": 11869880320,
+      "seconds": 5.000899999856949,
+      "millionSamplesPerSecond": 2373.5488252793575,
+      "msPerMillionSamples": 0.42131006084625366,
+      "finalIndex": 936,
+      "readback": [
+        0.4544227123260498,
+        0.0677039623260498,
+        0.3216102123260498,
+        0.9895789623260498
+      ]
+    },
+    {
+      "method": "3LHW",
+      "repeat": 1,
+      "completedDraws": 10640,
+      "samples": 11156848640,
+      "seconds": 5.002599999904633,
+      "millionSamplesPerSecond": 2230.2100188327445,
+      "msPerMillionSamples": 0.44838826458298464,
+      "finalIndex": 464,
+      "readback": [
+        0.026147544384002686,
+        0.5261475443840027,
+        0.15114754438400269,
+        0.6511475443840027
+      ]
+    },
+    {
+      "method": "Animated IGN",
+      "repeat": 1,
+      "completedDraws": 10528,
+      "samples": 11039408128,
+      "seconds": 5.0015,
+      "millionSamplesPerSecond": 2207.219459762071,
+      "msPerMillionSamples": 0.4530587094895383,
+      "finalIndex": 968,
+      "readback": [
+        0.285125732421875,
+        0.8407115936279297,
+        0.3962974548339844,
+        0.9518814086914062
+      ]
+    },
+    {
+      "method": "White",
+      "repeat": 1,
+      "completedDraws": 10672,
+      "samples": 11190403072,
+      "seconds": 5.001,
+      "millionSamplesPerSecond": 2237.6330877824435,
+      "msPerMillionSamples": 0.44690079238639957,
+      "finalIndex": 544,
+      "readback": [
+        0.7221142649650574,
+        0.9498672485351562,
+        0.6878677606582642,
+        0.20426855981349945
+      ]
+    },
+    {
+      "method": "FAST Separate",
+      "repeat": 1,
+      "completedDraws": 10768,
+      "samples": 11291066368,
+      "seconds": 5.000799999952316,
+      "millionSamplesPerSecond": 2257.8520172987646,
+      "msPerMillionSamples": 0.44289882257047736,
+      "finalIndex": 336,
+      "readback": [
+        0.966796875,
+        0.501953125,
+        0.099609375,
+        0.556640625
+      ]
+    },
+    {
+      "method": "3LHW",
+      "repeat": 2,
+      "completedDraws": 10856,
+      "samples": 11383341056,
+      "seconds": 5.0015,
+      "millionSamplesPerSecond": 2275.9854155753274,
+      "msPerMillionSamples": 0.43937012652043655,
+      "finalIndex": 144,
+      "readback": [
+        0.25527119636535645,
+        0.7552711963653564,
+        0.38027119636535645,
+        0.8802711963653564
+      ]
+    },
+    {
+      "method": "Animated IGN",
+      "repeat": 2,
+      "completedDraws": 11456,
+      "samples": 12012486656,
+      "seconds": 5.000700000047684,
+      "millionSamplesPerSecond": 2402.1610286330824,
+      "msPerMillionSamples": 0.41629182560214817,
+      "finalIndex": 496,
+      "readback": [
+        0.5417239665985107,
+        0.09730958938598633,
+        0.6528959274291992,
+        0.2084817886352539
+      ]
+    },
+    {
+      "method": "White",
+      "repeat": 2,
+      "completedDraws": 12016,
+      "samples": 12599689216,
+      "seconds": 5.001,
+      "millionSamplesPerSecond": 2519.433956408718,
+      "msPerMillionSamples": 0.3969145519596918,
+      "finalIndex": 832,
+      "readback": [
+        0.6568288803100586,
+        0.49205514788627625,
+        0.38320937752723694,
+        0.3587532937526703
+      ]
+    },
+    {
+      "method": "FAST Separate",
+      "repeat": 2,
+      "completedDraws": 11480,
+      "samples": 12037652480,
+      "seconds": 5.0012000000476835,
+      "millionSamplesPerSecond": 2406.952827298494,
+      "msPerMillionSamples": 0.415463065440454,
+      "finalIndex": 624,
+      "readback": [
+        0.736328125,
+        0.201171875,
+        0.927734375,
+        0.318359375
+      ]
+    },
+    {
+      "method": "FAST Product",
+      "repeat": 2,
+      "completedDraws": 10808,
+      "samples": 11333009408,
+      "seconds": 5.000900000095368,
+      "millionSamplesPerSecond": 2266.1939666427797,
+      "msPerMillionSamples": 0.4412684945417251,
+      "finalIndex": 496,
+      "readback": [
+        0.123046875,
+        0.943359375,
+        0.275390625,
+        0.396484375
+      ]
+    },
+    {
+      "method": "Golden Ratio",
+      "repeat": 2,
+      "completedDraws": 10952,
+      "samples": 11484004352,
+      "seconds": 5.0025,
+      "millionSamplesPerSecond": 2295.653043878061,
+      "msPerMillionSamples": 0.43560589552796436,
+      "finalIndex": 504,
+      "readback": [
+        0.46373963356018066,
+        0.07702088356018066,
+        0.33092713356018066,
+        0.9988958835601807
+      ]
+    }
+  ],
+  "node": "v26.11.1",
+  "note": "Three sequential trials, rotated order. Each method: 2s warmup, >=5s measurement, batches of 8 draws followed by GPU completion. 1024x1024 RGBA32F target, one scalar sample/pixel stored in R. Includes render submission, target writes and completion waits; excludes atlas loading/upload and shader compilation (warmed), accumulation, blur and display. Index cycles through 0..1023. Vsync/frame caps disabled. ms/1M is amortized sustained throughput, not per-draw GPU timestamp latency."
+}

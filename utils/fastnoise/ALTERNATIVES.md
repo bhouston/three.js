@@ -5,6 +5,15 @@ textures. All methods return the same z/y/x float32 volume and can be used with
 the existing atlas/texture consumers. They are experimental alternatives, not
 equal-quality replacements. Defaults are 128×128×32, seeds 1 and 2.
 
+## Convergence chart
+
+The [seven-method chart and numerical table](results/CONVERGENCE.md) compare
+the three alternatives against White, Golden Ratio and the original shipped
+FAST Spatial and FAST Spatio-Temporal textures at 1, 2, 4, 8, 16, 32, 128,
+256, 512 and 1024 frames, using the base PR's uniform-field experiment.
+
+![Convergence of all seven methods](results/convergence-alternatives.png)
+
 ## Research and choices
 
 - [FAST, Donnelly et al., 2024](https://www.ea.com/news/spatio-temporal-sampling)

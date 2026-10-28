@@ -165,8 +165,8 @@
 				gui.add( { openGLTF }, 'openGLTF' ).name( 'Open glTF…' ).info( 'or drop a .glb, or a .gltf with its files, onto the page' );
 				sceneControl = gui.add( params, 'scene', Object.keys( scenes ) ).name( 'Scene' ).onChange( setScene );
 				gui.add( params, 'algorithm', Object.keys( algorithms ) ).name( 'GI Algorithm' ).onChange( bake );
-				gui.add( params, 'resolution', [ 256, 1024, 2048, 4096 ] ).name( 'Resolution' ).listen().onChange( bake );
-				gui.add( params, 'denoiser', { None: 'none', 'Variance à-trous': 'variance', 'OIDN RTLightmap (experimental)': 'oidn' } ).name( 'Denoiser' ).onChange( setDenoise );
+				gui.add( params, 'resolution', [ 256, 512, 1024, 2048, 4096 ] ).name( 'Resolution' ).listen().onChange( bake );
+				gui.add( params, 'denoiser', { None: 'none', 'Variance à-trous': 'variance', 'OIDN RTLightmap (experimental)': 'oidn' } ).name( 'Denoiser' ).info( 'OIDN currently supports atlas pages up to 512 pixels.' ).onChange( setDenoise );
 				gui.add( { bake }, 'bake' ).name( 'Re-Bake GI' );
 
 				window.addEventListener( 'resize', onWindowResize );
@@ -970,7 +970,12 @@
 
 				lightBaker.bake( scene, { root: world.root, signal: controller.signal } ).catch( ( error ) => {
 
-					if ( error.name !== 'AbortError' ) console.error( error );
+					if ( error.name !== 'AbortError' ) {
+
+						console.error( error );
+						warning.textContent = `The bake failed: ${ error.message }`;
+
+					}
 
 				} );
 

@@ -937,7 +937,8 @@ class LightBaker {
 
 			}
 
-			await this.processAsync();
+			await this.processAsync( { signal } );
+			if ( aborted() ) throw signal?.aborted ? signal.reason : new DOMException( 'The bake was superseded by another one.', 'AbortError' );
 
 		} finally {
 
@@ -1027,13 +1028,32 @@ class LightBaker {
 	 * automatically. OIDN loads its optional dependency/model on first use; errors propagate
 	 * without silently selecting another denoiser. Raw accumulation is never overwritten.
 	 *
+	 * @param {Object} [options] - Processing options.
+	 * @param {AbortSignal} [options.signal] - Cancels asynchronous processing.
 	 * @return {Promise<Array<Texture>>} The processed irradiance maps.
 	 */
-	async processAsync() {
+	async processAsync( { signal } = {} ) {
 
+		signal?.throwIfAborted();
 		if ( this.lightMapper === null ) throw new Error( 'THREE.LightBaker: Call prepare() or bake() first.' );
 		this._validate();
-		if ( this._processing !== null ) await this._processing;
+		while ( this._processing !== null ) {
+
+			try {
+
+				await this._processing;
+
+			} catch {
+
+				// A queued request processes current options even if its predecessor failed or was superseded.
+
+			}
+
+		}
+
+		signal?.throwIfAborted();
+		if ( this.lightMapper === null ) throw new Error( 'THREE.LightBaker: The bake was disposed during processing.' );
+		this._validate();
 		if ( this.denoiser !== 'oidn' ) return this.process();
 
 		const key = this._processingKey();
@@ -1046,7 +1066,8 @@ class LightBaker {
 			for ( let i = 0; i < mapper.pages.length; i ++ ) {
 
 				const denoiser = this._oidnDenoisers[ i ] ??= new LightMapOIDNDenoiser( this.renderer, mapper, { page: i } );
-				await denoiser.update();
+				await denoiser.update( { signal } );
+				signal?.throwIfAborted();
 				if ( mapper !== this.lightMapper || key !== this._processingKey() ) throw new Error( 'THREE.LightBaker: Denoising was superseded; process the current samples again.' );
 				let map = denoiser.texture;
 				if ( stitch ) {

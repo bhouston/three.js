@@ -74,7 +74,12 @@ class LightMapOIDNDenoiser {
 				this._model = model;
 				return model;
 
-			} )();
+			} )().catch( ( error ) => {
+
+				this._modelPromise = null;
+				throw error;
+
+			} );
 
 		}
 
@@ -87,10 +92,13 @@ class LightMapOIDNDenoiser {
 	 * The returned promise resolves only after GPU inference and CPU readback finish.
 	 * Concurrent updates are rejected. Dispose rejects a pending update.
 	 *
+	 * @param {Object} [options] - Processing options.
+	 * @param {AbortSignal} [options.signal] - Cancels the update.
 	 * @return {Promise<Texture>} The output texture.
 	 */
-	async update() {
+	async update( { signal } = {} ) {
 
+		signal?.throwIfAborted();
 		if ( this._disposed ) throw new Error( 'LightMapOIDNDenoiser: Already disposed.' );
 		if ( this._pending !== null ) throw new Error( 'LightMapOIDNDenoiser: An update is already running.' );
 
@@ -102,12 +110,22 @@ class LightMapOIDNDenoiser {
 		} );
 		const pending = { reject: rejectCancelled, abort: null, rejectInference: null };
 		this._pending = pending;
+		const onAbort = () => {
+
+			pending.abort?.();
+			pending.rejectInference?.( signal.reason );
+			pending.reject( signal.reason );
+
+		};
+
+		signal?.addEventListener( 'abort', onAbort, { once: true } );
 
 		try {
 
 			const operation = ( async () => {
 
 				const model = await this._loadModel();
+				signal?.throwIfAborted();
 				if ( this._disposed ) throw new Error( 'LightMapOIDNDenoiser: Already disposed.' );
 				const renderer = this.renderer;
 				const state = RendererUtils.resetRendererState( renderer );
@@ -124,6 +142,7 @@ class LightMapOIDNDenoiser {
 
 				const size = this.lightMapper.size;
 				const pixels = await renderer.readRenderTargetPixelsAsync( this._target, 0, 0, size, size );
+				signal?.throwIfAborted();
 				if ( this._disposed ) throw new Error( 'LightMapOIDNDenoiser: Already disposed.' );
 				const result = await new Promise( ( resolve, reject ) => {
 
@@ -136,6 +155,7 @@ class LightMapOIDNDenoiser {
 					} );
 
 				} );
+				signal?.throwIfAborted();
 				if ( this._disposed ) throw new Error( 'LightMapOIDNDenoiser: Already disposed.' );
 				this.texture.image.data.set( result.data );
 				// OIDN replaces alpha with one; preserve the atlas coverage and padding.
@@ -148,6 +168,7 @@ class LightMapOIDNDenoiser {
 
 		} finally {
 
+			signal?.removeEventListener( 'abort', onAbort );
 			if ( this._pending === pending ) this._pending = null;
 
 		}

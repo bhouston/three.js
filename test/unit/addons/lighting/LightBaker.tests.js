@@ -152,6 +152,34 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'Queued selection survives supersession and aborted output is not published', async assert => {
+
+				const baker = new LightBaker( renderer, { denoiser: 'oidn', stitchSeams: false } );
+				const raw = new Texture();
+				baker.lightMapper = { pages: [ { texture: raw } ] };
+				let finish;
+				baker._oidnDenoisers = [ { texture: new Texture(), update: () => new Promise( resolve => {
+
+					finish = resolve;
+
+				} ) } ];
+				const first = baker.processAsync();
+				baker.denoiser = 'none';
+				const second = baker.processAsync();
+				finish();
+				await assert.rejects( first, /superseded/ );
+				assert.deepEqual( await second, [ raw ], 'Queued None request processes after stale OIDN fails' );
+
+				baker.denoiser = 'oidn';
+				const controller = new AbortController();
+				const aborted = baker.processAsync( { signal: controller.signal } );
+				controller.abort();
+				finish();
+				await assert.rejects( aborted, error => error.name === 'AbortError' );
+				assert.deepEqual( baker._lightMaps, [ raw ], 'Aborted output does not replace the published maps' );
+
+			} );
+
 			QUnit.test( 'Methods that need a prepared bake throw before it', async assert => {
 
 				const baker = new LightBaker( renderer );

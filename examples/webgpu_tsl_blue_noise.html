@@ -32,7 +32,7 @@
 			</div>
 
 			<small>
-				White noise vs. <a href="https://github.com/electronicarts/fastnoise" target="_blank" rel="noopener">FAST</a> spatiotemporal blue noise by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br/>A 1-bit dithered sphere or a uniform noise field, accumulated over time.<br/>Frames accumulated: <span id="frames">0</span>
+				White noise vs. <a href="https://github.com/electronicarts/fastnoise" target="_blank" rel="noopener">FAST</a> and experimental noise by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br/>A 1-bit dithered sphere or a uniform noise field, accumulated over time.<br/>Frames accumulated: <span id="frames">0</span><br/><span id="noiseStatus" role="status" aria-live="polite"></span>
 			</small>
 		</div>
 
@@ -53,14 +53,19 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, float, hash, mix, screenCoordinate, screenSize, screenUV, texture, uint, uniform, vec2, vec3, vec4 } from 'three/tsl';
+			import { Fn, float, hash, ivec2, mix, screenCoordinate, screenSize, screenUV, texture, uint, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
-			import { fastNoise, loadFASTNoise } from 'three/addons/tsl/utils/FASTNoise.js';
+			import { loadFASTNoise } from 'three/addons/tsl/utils/FASTNoise.js';
 			import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const modes = { 'Sphere': 0, 'Uniform': 1 };
-			const noises = { 'FAST Spatio-Temporal': 0, 'FAST Spatial': 1, 'Golden Ratio': 2 };
+			const noises = new Map( [
+				[ 'FAST Spatio-Temporal', { type: 0, url: 'textures/noises/fast/gauss1-ema01-spatio-temporal.png', description: 'FAST spatial and temporal blue noise.' } ],
+				[ 'FAST Spatial', { type: 0, url: 'textures/noises/fast/gauss1-ema01-spatial.png', description: 'FAST spatial blue noise.' } ],
+				[ 'Golden Ratio', { type: 1, url: 'textures/noises/fast/gauss1-ema01-spatial.png', description: 'Spatial blue noise with a golden ratio sequence over time.' } ],
+				[ 'White', { type: 2, description: 'Independent white noise on both sides.' } ]
+			] );
 			const params = { mode: 'Sphere', noise: 'FAST Spatio-Temporal', pixelSize: 2, temporalBlur: true, spatialBlur: true, animate: true };
 
 			let renderer, computeQuad, displayQuad, targets, history, current, display, blurredDisplay;
@@ -69,7 +74,7 @@
 			const framesElement = document.getElementById( 'frames' );
 
 			const mode = uniform( modes[ params.mode ] );
-			const noiseType = uniform( noises[ params.noise ] );
+			const noiseType = uniform( 0 );
 			const index = uniform( 0, 'uint' );
 			const blend = uniform( 1 );
 
@@ -86,10 +91,29 @@
 
 				// both optimized for a sigma = 1 gaussian in space and an alpha = 0.1 EMA in time. spatial is blue noise
 				// in space only, spatio-temporal is also blue noise in time per pixel so it converges faster when accumulated
-				const [ spatioTemporal, spatial ] = await Promise.all( [
-					loadFASTNoise( 'textures/noises/fast/gauss1-ema01-spatio-temporal.png' ),
-					loadFASTNoise( 'textures/noises/fast/gauss1-ema01-spatial.png' )
-				] );
+				const statusElement = document.getElementById( 'noiseStatus' );
+				const atlasCache = new Map();
+				const loadAtlas = ( url ) => {
+
+					if ( ! atlasCache.has( url ) ) {
+
+						const promise = loadFASTNoise( url ).catch( ( error ) => {
+
+							atlasCache.delete( url ); // Allow a failed download to be retried.
+							throw error;
+
+						} );
+						atlasCache.set( url, promise );
+
+					}
+
+					return atlasCache.get( url );
+
+				};
+
+				statusElement.textContent = 'Loading FAST Spatio-Temporal…';
+				const atlasNode = texture( await loadAtlas( noises.get( params.noise ).url ) );
+				statusElement.textContent = noises.get( params.noise ).description;
 
 				targets = [ 0, 1 ].map( () => new THREE.RenderTarget( 1, 1, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false } ) );
 				history = texture( targets[ 1 ].texture );
@@ -99,13 +123,22 @@
 
 				const left = screenUV.x.lessThan( 0.5 );
 				const white = hash( uint( screenCoordinate.x ).add( uint( screenCoordinate.y ).mul( 4096 ) ).add( index.mul( 16777259 ) ) );
-				const fastSpatioTemporal = fastNoise( spatioTemporal, new THREE.Vector2(), index ).x;
-				const fastSpatial = fastNoise( spatial, new THREE.Vector2(), index ).x;
+				// One mutable texture binding serves the original FAST and experimental atlases.
+				const atlasSample = ( frame ) => {
+
+					const cycle = uint( frame ).div( 32 );
+					const pixel = ivec2( screenCoordinate ).add( ivec2( 37, 71 ).mul( cycle.mod( 128 ).toInt() ) ).mod( 128 );
+					const coordinate = ivec2( pixel.x, pixel.y.add( uint( frame ).mod( 32 ).mul( 128 ).toInt() ) );
+					return atlasNode.load( coordinate ).r.mul( 255 ).add( 0.5 ).div( 256 );
+
+				};
+
+				const atlasNoise = atlasSample( index );
 
 				// a single spatial blue noise slice rotated by the golden ratio each frame, so every pixel gets a low discrepancy sequence in time
-				const golden = fastNoise( spatial, new THREE.Vector2(), uint( 0 ) ).x.add( index.mul( uint( 2654435769 ) ).shiftRight( 8 ).toFloat().div( 16777216 ) ).fract();
+				const golden = atlasSample( uint( 0 ) ).add( index.mul( uint( 2654435769 ) ).shiftRight( 8 ).toFloat().div( 16777216 ) ).fract();
 
-				const noise = left.select( white, noiseType.equal( 0 ).select( fastSpatioTemporal, noiseType.equal( 1 ).select( fastSpatial, golden ) ) );
+				const noise = left.select( white, noiseType.equal( 2 ).select( white, noiseType.equal( 1 ).select( golden, atlasNoise ) ) );
 
 				// the same shaded sphere over a gradient in each half
 
@@ -146,11 +179,58 @@
 					samples = 0;
 
 				} );
-				gui.add( params, 'noise', Object.keys( noises ) ).onChange( ( value ) => {
+				let activeNoise = params.noise;
+				let selectionVersion = 0;
+				const noiseControl = gui.add( params, 'noise', Array.from( noises.keys() ) ).onChange( async ( value ) => {
 
-					noiseType.value = noises[ value ];
-					document.getElementById( 'blueLabel' ).textContent = value + ' Blue Noise';
-					samples = 0;
+					const version = ++ selectionVersion;
+					const entry = noises.get( value );
+					statusElement.textContent = `Loading ${ value }…`;
+
+					try {
+
+						const atlas = entry.url ? await loadAtlas( entry.url ) : null;
+						if ( version !== selectionVersion ) return;
+						if ( atlas ) atlasNode.value = atlas;
+						noiseType.value = entry.type;
+						activeNoise = value;
+						document.getElementById( 'blueLabel' ).textContent = value;
+						statusElement.textContent = entry.description;
+						samples = 0;
+						index.value = 0;
+
+					} catch ( error ) {
+
+						if ( version !== selectionVersion ) return;
+						params.noise = activeNoise;
+						noiseControl.setValue( activeNoise );
+						statusElement.textContent = `Could not load ${ value }. Still showing ${ activeNoise }; select it again to retry.`;
+						console.error( error );
+
+					}
+
+				} );
+
+				// Fetch the catalog once; atlas downloads happen only when selected.
+				fetch( 'textures/noises/experimental/manifest.json' ).then( ( response ) => {
+
+					if ( ! response.ok ) throw new Error( `Noise catalog: HTTP ${ response.status }` );
+					return response.json();
+
+				} ).then( ( manifest ) => {
+
+					for ( const entry of manifest.entries ) {
+
+						noises.set( entry.label, { ...entry, type: 0, url: `textures/noises/experimental/${ entry.file }` } );
+						noiseControl.options.push( entry.label );
+						noiseControl.select.add( new Option( entry.label, entry.label ) );
+
+					}
+
+				} ).catch( ( error ) => {
+
+					statusElement.textContent = 'Experimental noise catalog unavailable. Original comparisons remain available.';
+					console.error( error );
 
 				} );
 				gui.add( params, 'pixelSize', 1, 8, 1 ).name( 'pixel size' ).onChange( onWindowResize );

@@ -1,7 +1,7 @@
 /**
  * Cheap, filter-aware quadratic swap optimizer. This is an experimental
- * surrogate, NOT FAST: FAST minimizes error for threshold (Heaviside)
- * integrands, whereas this method minimizes filtered scalar-value energy.
+ * approximation to FAST: minimizes filtered threshold (Heaviside) energy
+ * at a finite grid of thresholds, using a short filter and greedy swaps.
  * https://www.ea.com/seed/news/spatio-temporal-sampling
  * https://arxiv.org/abs/2310.15364
  *
@@ -9,20 +9,25 @@
  * filter; the temporal kernel is the autocorrelation of a finite EMA.
  * Their SUM encourages both spatial and temporal quality independently.
  * It does not optimize their composition or the full threshold distribution.
- * A cached convolution makes each accepted swap O(25 + 2 * temporalRadius).
- * Threshold masks can therefore remain much worse than FAST despite good
- * scalar-value error. Evaluate multiple thresholds and temporal filters.
+ * Cached convolutions update only thresholds crossed by each swap. Memory
+ * is O(voxelCount * thresholdCount); sparse threshold grids leave residual
+ * noise between optimized thresholds. thresholdCount=0 uses the cheaper
+ * original scalar-value surrogate. Evaluate multiple thresholds and filters.
+ * Thresholds are (c + 0.5) / thresholdCount, c=0..thresholdCount-1;
+ * 7 includes 0.5, while 15 includes 0.1, 0.5 and 0.9 exactly.
  */
-export function generate( { size = 128, depth = 32, seed = 1, passes = 4, temporalWeight = 1, temporalAlpha = 0.25, temporalRadius = 4 } = {} ) {
+export function generate( { size = 128, depth = 32, seed = 1, passes = 4, temporalWeight = 1, temporalAlpha = 0.25, temporalRadius = 4, thresholdCount = 0 } = {} ) {
 
 	if ( ! Number.isInteger( size ) || size < 1 || ! Number.isInteger( depth ) || depth < 1 ) throw new RangeError( 'size and depth must be positive integers.' );
 	if ( ! Number.isInteger( passes ) || passes < 0 || ! Number.isInteger( temporalRadius ) || temporalRadius < 0 ) throw new RangeError( 'passes and temporalRadius must be nonnegative integers.' );
+	if ( ! Number.isInteger( thresholdCount ) || thresholdCount < 0 ) throw new RangeError( 'thresholdCount must be a nonnegative integer.' );
 	if ( ! Number.isFinite( temporalWeight ) || temporalWeight < 0 || ! Number.isFinite( temporalAlpha ) || temporalAlpha <= 0 || temporalAlpha > 1 ) throw new RangeError( 'Invalid temporal filter.' );
 
 	const plane = size * size;
 	const count = plane * depth;
 	const values = new Float32Array( count );
-	const potential = new Float64Array( count );
+	const channels = Math.max( 1, thresholdCount );
+	const potential = new Float64Array( count * channels );
 	let state = seed >>> 0;
 	const random = () => {
 
@@ -92,12 +97,14 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		z: Int32Array.from( { length: depth }, ( _, i ) => wrap( i + dz, depth ) * plane ),
 		weight
 	} ) );
-	function update( x, y, z, delta ) {
+	function update( x, y, z, delta, lower = 0, upper = channels ) {
 
 		for ( let k = 0; k < lookup.length; k ++ ) {
 
 			const s = lookup[ k ];
-			potential[ s.x[ x ] + s.y[ y ] + s.z[ z ] ] += delta * s.weight;
+			const base = ( s.x[ x ] + s.y[ y ] + s.z[ z ] ) * channels;
+			const change = delta * s.weight;
+			for ( let c = lower; c < upper; c ++ ) potential[ base + c ] += change;
 
 		}
 
@@ -107,7 +114,13 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 
 		for ( let y = 0; y < size; y ++ ) {
 
-			for ( let x = 0; x < size; x ++ ) update( x, y, z, values[ z * plane + y * size + x ] - 0.5 );
+			for ( let x = 0; x < size; x ++ ) {
+
+				const value = values[ z * plane + y * size + x ];
+				if ( thresholdCount === 0 ) update( x, y, z, value - 0.5 );
+				else update( x, y, z, 1, Math.floor( value * channels + 0.5 ) );
+
+			}
 
 		}
 
@@ -123,15 +136,27 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		const ax = a % size, bx = b % size;
 		const dx = wrap( bx - ax, size ), dy = wrap( by - ay, size ), dz = wrap( bz - az, depth );
 		const coupling = ( dz === 0 ? spatial[ dy * size + dx ] : 0 ) + ( dx === 0 && dy === 0 ? temporal[ dz ] : 0 );
-		const delta = values[ b ] - values[ a ];
-		// Exact change in v^T K v for swapping a and b, including overlap.
-		if ( delta * ( potential[ a ] - potential[ b ] + delta * ( self - coupling ) ) < - 1e-12 ) {
+		let delta = values[ b ] - values[ a ];
+		let lower = 0, upper = channels;
+		if ( thresholdCount > 0 ) {
+
+			const ca = Math.floor( values[ a ] * channels + 0.5 );
+			const cb = Math.floor( values[ b ] * channels + 0.5 );
+			lower = Math.min( ca, cb );
+			upper = Math.max( ca, cb );
+			delta = cb < ca ? 1 : - 1;
+
+		}
+		// Exact change in the sum of binary-mask quadratic energies.
+		let energy = 0;
+		for ( let c = lower; c < upper; c ++ ) energy += delta * ( potential[ a * channels + c ] - potential[ b * channels + c ] + delta * ( self - coupling ) );
+		if ( energy < - 1e-12 ) {
 
 			const t = values[ a ];
 			values[ a ] = values[ b ];
 			values[ b ] = t;
-			update( ax, ay, az, delta );
-			update( bx, by, bz, - delta );
+			update( ax, ay, az, delta, lower, upper );
+			update( bx, by, bz, - delta, lower, upper );
 
 		}
 

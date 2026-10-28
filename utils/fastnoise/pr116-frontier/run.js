@@ -9,7 +9,8 @@ import { specialize } from './original/gpu-features.js';
 const output = process.argv[ 2 ];
 if ( ! output ) throw new Error( 'Usage: node utils/fastnoise/pr116-frontier/run.js OUTPUT_DIRECTORY [--resume]' );
 const pin = 'd8b1acffaada09223b5133d965f3a7cf9028fe5b';
-const original = fs.readFileSync( new URL( './original/generator.html', import.meta.url ), 'utf8' );
+// Normalize Git checkout line endings before guarded source specialization.
+const original = fs.readFileSync( new URL( './original/generator.html', import.meta.url ), 'utf8' ).replaceAll( '\r\n', '\n' );
 const hash = value => createHash( 'sha256' ).update( value ).digest( 'hex' );
 const expected = JSON.parse( fs.readFileSync( new URL( './original/volume-hashes.json', import.meta.url ) ) );
 const profiles = [

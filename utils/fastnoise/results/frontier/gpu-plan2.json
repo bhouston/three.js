@@ -1,0 +1,36 @@
+[
+  {
+    "name": "sparse2-3000-s1",
+    "swapFloor": 2,
+    "seed": 1,
+    "steps": 3000
+  },
+  {
+    "name": "sparse4-3000-s1",
+    "swapFloor": 4,
+    "seed": 1,
+    "steps": 3000
+  },
+  {
+    "frequencyWeight": 0.05,
+    "name": "spectral-1000-s1",
+    "identityWeight": 0.25,
+    "seed": 1,
+    "steps": 1000
+  },
+  {
+    "mixedWeight": 0.2,
+    "steps": 1000,
+    "name": "spectralmix-1000-s1",
+    "identityWeight": 0.25,
+    "frequencyWeight": 0.05,
+    "seed": 1
+  },
+  {
+    "frequencyWeight": 0.1,
+    "name": "spectral1-1000-s1",
+    "identityWeight": 1,
+    "seed": 1,
+    "steps": 1000
+  }
+]

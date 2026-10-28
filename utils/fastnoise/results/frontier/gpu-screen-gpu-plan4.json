@@ -1,0 +1,44 @@
+{
+  "note": "Quality-screen elapsed times, not isolated performance benchmarks.",
+  "runs": [
+    {
+      "swapFloor": 2,
+      "name": "sparse2-10000-s1",
+      "seed": 1,
+      "steps": 10000,
+      "milliseconds": 61336.437300000005,
+      "log": "mode=separate steps=10000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 0.8s\nstep 1000 swaps/iter 878 suppression 1 6.9s\nstep 2000 swaps/iter 471 suppression 1 13.0s\nstep 3000 swaps/iter 341 suppression 1 19.1s\nstep 4000 swaps/iter 283 suppression 1 25.1s\nstep 5000 swaps/iter 239 suppression 1 31.2s\nstep 6000 swaps/iter 221 suppression 1 37.3s\nstep 7000 swaps/iter 206 suppression 1 43.4s\nstep 8000 swaps/iter 191 suppression 1 49.5s\nstep 9000 swaps/iter 181 suppression 1 55.6s\ndone in 61.1s on amd gcn-5\n"
+    },
+    {
+      "mixedWeight": 0.05,
+      "identityWeight": 0.05,
+      "seed": 1,
+      "steps": 10000,
+      "swapFloor": 2,
+      "frequencyWeight": 0.005,
+      "name": "balanced-10000-s1",
+      "milliseconds": 126826.71590000001,
+      "log": "mode=separate steps=10000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 5229 suppression 4 1.5s\nstep 1000 swaps/iter 876 suppression 1 14.1s\nstep 2000 swaps/iter 474 suppression 1 26.7s\nstep 3000 swaps/iter 339 suppression 1 39.3s\nstep 4000 swaps/iter 282 suppression 1 51.8s\nstep 5000 swaps/iter 243 suppression 1 64.4s\nstep 6000 swaps/iter 220 suppression 1 77.0s\nstep 7000 swaps/iter 205 suppression 1 89.7s\nstep 8000 swaps/iter 192 suppression 1 102.3s\nstep 9000 swaps/iter 177 suppression 1 115.1s\ndone in 126.6s on amd gcn-5\n"
+    },
+    {
+      "name": "fast-10000-s2",
+      "seed": 2,
+      "steps": 10000,
+      "milliseconds": 61211.663700000005,
+      "log": "mode=separate steps=10000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5209 suppression 4 0.7s\nstep 1000 swaps/iter 1057 suppression 1 6.8s\nstep 2000 swaps/iter 571 suppression 1 12.9s\nstep 3000 swaps/iter 444 suppression 1 19.0s\nstep 4000 swaps/iter 384 suppression 1 25.1s\nstep 5000 swaps/iter 351 suppression 1 31.2s\nstep 6000 swaps/iter 331 suppression 1 37.3s\nstep 7000 swaps/iter 318 suppression 1 43.3s\nstep 8000 swaps/iter 316 suppression 1 49.4s\nstep 9000 swaps/iter 293 suppression 1 55.5s\ndone in 61.0s on amd gcn-5\n"
+    },
+    {
+      "name": "identity1-1000-s2",
+      "seed": 2,
+      "identityWeight": 1,
+      "steps": 1000,
+      "milliseconds": 6812.5478,
+      "log": "mode=separate steps=1000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5461 suppression 4 0.8s\nstep 100 swaps/iter 3829 suppression 2 1.4s\nstep 200 swaps/iter 4246 suppression 1 2.1s\nstep 300 swaps/iter 5009 suppression 1 2.7s\nstep 400 swaps/iter 3302 suppression 1 3.4s\nstep 500 swaps/iter 2493 suppression 1 4.0s\nstep 600 swaps/iter 2020 suppression 1 4.7s\nstep 700 swaps/iter 1705 suppression 1 5.3s\nstep 800 swaps/iter 1462 suppression 1 6.0s\nstep 900 swaps/iter 1290 suppression 1 6.6s\ndone in 6.6s on amd gcn-5\n"
+    }
+  ],
+  "gpu": {
+    "vendor": "amd",
+    "architecture": "gcn-5",
+    "fallback": false
+  }
+}

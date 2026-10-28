@@ -1,0 +1,27 @@
+[
+  {
+    "swapFloor": 2,
+    "steps": 3000,
+    "name": "latin-3000-s1",
+    "seed": 1,
+    "stratified": true
+  },
+  {
+    "mixedWeight": 0.2,
+    "steps": 3000,
+    "swapFloor": 2,
+    "identityWeight": 0.25,
+    "seed": 1,
+    "stratified": true,
+    "name": "latin-hybrid-3000-s1"
+  },
+  {
+    "mixedWeight": 0.2,
+    "steps": 3000,
+    "swapFloor": 2,
+    "identityWeight": 0.25,
+    "seed": 1,
+    "frequencyWeight": 0.05,
+    "name": "sparsehybrid-3000-s1"
+  }
+]

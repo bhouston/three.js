@@ -1,0 +1,30 @@
+[
+  {
+    "steps": 10000,
+    "seed": 1,
+    "stratified": true,
+    "identityWeight": 0.25,
+    "mixedWeight": 0.2,
+    "name": "latin-hybrid-10000-s1",
+    "swapFloor": 2
+  },
+  {
+    "name": "latin-psd-3000-s1",
+    "mixedKernel": "binomial",
+    "mixedWeight": 0.02,
+    "swapFloor": 2,
+    "seed": 1,
+    "stratified": true,
+    "steps": 3000,
+    "identityWeight": 0.25
+  },
+  {
+    "steps": 3000,
+    "seed": 2,
+    "stratified": true,
+    "identityWeight": 0.25,
+    "mixedWeight": 0.2,
+    "name": "latin-hybrid-3000-s2",
+    "swapFloor": 2
+  }
+]

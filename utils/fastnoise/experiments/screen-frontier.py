@@ -11,7 +11,8 @@ spec.loader.exec_module(frontier)
 directory = Path(sys.argv[1])
 output = directory/'box-screen.json'
 report = json.loads(output.read_text()) if output.exists() else {}
-for name in sys.argv[2:]:
+names = sys.argv[2:] or [p.stem for p in sorted(directory.glob('*.f32'))]
+for name in names:
     raw = np.fromfile(directory/(name+'.f32'), np.float32).reshape(32,128,128)
     v = (np.floor(raw*256).astype(float)+.5)/256
     row = {'compare': frontier.score.compare(v), 'integrands': {}}

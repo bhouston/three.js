@@ -1,0 +1,54 @@
+{
+  "note": "Quality-screen elapsed times, not isolated performance benchmarks.",
+  "runs": [
+    {
+      "name": "sparse2-3000-s1",
+      "swapFloor": 2,
+      "seed": 1,
+      "steps": 3000,
+      "milliseconds": 18751.0903,
+      "log": "mode=separate steps=3000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 0.9s\nstep 300 swaps/iter 2585 suppression 1 2.7s\nstep 600 swaps/iter 1379 suppression 1 4.5s\nstep 900 swaps/iter 966 suppression 1 6.4s\nstep 1200 swaps/iter 744 suppression 1 8.2s\nstep 1500 swaps/iter 608 suppression 1 10.0s\nstep 1800 swaps/iter 517 suppression 1 11.9s\nstep 2100 swaps/iter 452 suppression 1 13.7s\nstep 2400 swaps/iter 405 suppression 1 15.5s\nstep 2700 swaps/iter 371 suppression 1 17.3s\ndone in 18.6s on amd gcn-5\n"
+    },
+    {
+      "name": "sparse4-3000-s1",
+      "swapFloor": 4,
+      "seed": 1,
+      "steps": 3000,
+      "milliseconds": 18565.178600000003,
+      "log": "mode=separate steps=3000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 0.7s\nstep 300 swaps/iter 1679 suppression 1 2.5s\nstep 600 swaps/iter 1045 suppression 1 4.3s\nstep 900 swaps/iter 776 suppression 1 6.2s\nstep 1200 swaps/iter 615 suppression 1 8.0s\nstep 1500 swaps/iter 524 suppression 1 9.8s\nstep 1800 swaps/iter 448 suppression 1 11.7s\nstep 2100 swaps/iter 390 suppression 1 13.5s\nstep 2400 swaps/iter 353 suppression 1 15.3s\nstep 2700 swaps/iter 316 suppression 1 17.1s\ndone in 18.4s on amd gcn-5\n"
+    },
+    {
+      "frequencyWeight": 0.05,
+      "name": "spectral-1000-s1",
+      "identityWeight": 0.25,
+      "seed": 1,
+      "steps": 1000,
+      "milliseconds": 8915.806800000006,
+      "log": "mode=separate steps=1000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5253 suppression 4 1.0s\nstep 100 swaps/iter 3673 suppression 2 1.9s\nstep 200 swaps/iter 4118 suppression 1 2.7s\nstep 300 swaps/iter 4861 suppression 1 3.6s\nstep 400 swaps/iter 3205 suppression 1 4.4s\nstep 500 swaps/iter 2430 suppression 1 5.3s\nstep 600 swaps/iter 1968 suppression 1 6.2s\nstep 700 swaps/iter 1652 suppression 1 7.0s\nstep 800 swaps/iter 1433 suppression 1 7.9s\nstep 900 swaps/iter 1268 suppression 1 8.7s\ndone in 8.7s on amd gcn-5\n"
+    },
+    {
+      "mixedWeight": 0.2,
+      "steps": 1000,
+      "name": "spectralmix-1000-s1",
+      "identityWeight": 0.25,
+      "frequencyWeight": 0.05,
+      "seed": 1,
+      "milliseconds": 12929.843500000003,
+      "log": "mode=separate steps=1000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 5246 suppression 4 1.4s\nstep 100 swaps/iter 3647 suppression 2 2.6s\nstep 200 swaps/iter 4094 suppression 1 3.9s\nstep 300 swaps/iter 4852 suppression 1 5.1s\nstep 400 swaps/iter 3194 suppression 1 6.4s\nstep 500 swaps/iter 2424 suppression 1 7.7s\nstep 600 swaps/iter 1955 suppression 1 8.9s\nstep 700 swaps/iter 1641 suppression 1 10.2s\nstep 800 swaps/iter 1422 suppression 1 11.4s\nstep 900 swaps/iter 1262 suppression 1 12.7s\ndone in 12.7s on amd gcn-5\n"
+    },
+    {
+      "frequencyWeight": 0.1,
+      "name": "spectral1-1000-s1",
+      "identityWeight": 1,
+      "seed": 1,
+      "steps": 1000,
+      "milliseconds": 8731.465699999993,
+      "log": "mode=separate steps=1000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5377 suppression 4 1.0s\nstep 100 swaps/iter 3871 suppression 2 1.8s\nstep 200 swaps/iter 4400 suppression 1 2.7s\nstep 300 swaps/iter 5260 suppression 1 3.5s\nstep 400 swaps/iter 3518 suppression 1 4.3s\nstep 500 swaps/iter 2685 suppression 1 5.2s\nstep 600 swaps/iter 2184 suppression 1 6.0s\nstep 700 swaps/iter 1851 suppression 1 6.9s\nstep 800 swaps/iter 1599 suppression 1 7.7s\nstep 900 swaps/iter 1416 suppression 1 8.5s\ndone in 8.5s on amd gcn-5\n"
+    }
+  ],
+  "gpu": {
+    "vendor": "amd",
+    "architecture": "gcn-5",
+    "fallback": false
+  }
+}

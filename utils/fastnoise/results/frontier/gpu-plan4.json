@@ -1,0 +1,28 @@
+[
+  {
+    "swapFloor": 2,
+    "name": "sparse2-10000-s1",
+    "seed": 1,
+    "steps": 10000
+  },
+  {
+    "mixedWeight": 0.05,
+    "identityWeight": 0.05,
+    "seed": 1,
+    "steps": 10000,
+    "swapFloor": 2,
+    "frequencyWeight": 0.005,
+    "name": "balanced-10000-s1"
+  },
+  {
+    "name": "fast-10000-s2",
+    "seed": 2,
+    "steps": 10000
+  },
+  {
+    "name": "identity1-1000-s2",
+    "seed": 2,
+    "identityWeight": 1,
+    "steps": 1000
+  }
+]

@@ -1,5 +1,8 @@
 # Three faster noise construction experiments
 
+Latest experiments: [searching beyond FAST separate](FRONTIER.md), including
+annealed stratified GPU optimization and a 318-diagnostic finite audit.
+
 Follow-up: [comparison with PR #117 and interpretation of the chart](RESEARCH-COMPARISON.md)
 includes a common-protocol re-evaluation and explains why the raw-value winner
 does not establish a better general graphics sampler.

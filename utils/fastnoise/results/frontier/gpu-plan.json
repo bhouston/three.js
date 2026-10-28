@@ -1,0 +1,37 @@
+[
+  {
+    "name": "fast-10000-s1",
+    "steps": 10000,
+    "seed": 1
+  },
+  {
+    "name": "fast-1000-s1",
+    "steps": 1000,
+    "seed": 1
+  },
+  {
+    "name": "identity025-1000-s1",
+    "steps": 1000,
+    "identityWeight": 0.25,
+    "seed": 1
+  },
+  {
+    "name": "identity1-1000-s1",
+    "steps": 1000,
+    "identityWeight": 1,
+    "seed": 1
+  },
+  {
+    "name": "mixed02-1000-s1",
+    "steps": 1000,
+    "seed": 1,
+    "mixedWeight": 0.2
+  },
+  {
+    "name": "hybrid-1000-s1",
+    "steps": 1000,
+    "identityWeight": 0.25,
+    "seed": 1,
+    "mixedWeight": 0.2
+  }
+]

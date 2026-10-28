@@ -109,6 +109,94 @@ hyperparameter selection. They are not a fully blind function-level test set.
 Two seeds and constant-integrand diagnostics remain far short of scene-level
 or universal sampling validation.
 
+## Updated common-protocol comparison with PR #116
+
+The latest [PR #116](https://github.com/bhouston/three.js/pull/116), pinned at
+`d8b1acffaada09223b5133d965f3a7cf9028fe5b`, contains stronger methods than its
+three initial cheap constructors. We regenerated its three promising frontier
+profiles on this machine, at seeds 1 and 2, and evaluated them with the exact
+unchanged **74-metric** protocol above. Every previously scored row is unchanged.
+The five outputs published by #116 reproduce byte for byte, and 58 compatible
+measurements per published output agree with its independent scorer within
+1e-12. Autocorrelation seed 2 is an additional confirmation run here.
+
+![Focused comparison of both investigations](results/cross-frontier-summary.png)
+
+| Method | Seed 1 wins / 74 | Seed 2 wins / 74 | Worst ratio, seed 1 / seed 2 | Total seconds, seed 1 / seed 2 |
+| --- | ---: | ---: | ---: | ---: |
+| #116 annealed stratified hybrid | 65 | 64 | 1.054430 / 1.057645 | 37.49 / 37.71 |
+| #116 greedy stratified hybrid | 53 | 53 | 1.082664 / 1.084890 | 37.56 / 37.60 |
+| #116 valid mixed autocorrelation | 52 | 53 | 1.092379 / 1.106372 | 37.80 / 37.80 |
+| #117 light seam 3% | 74 | 68 | .999636 / 1.008221 | 117.11 / 117.66 |
+| #117 extra-FAST time control | 72 | 66 | 1.002830 / 1.003328 | 116.06 / 116.67 |
+
+All ratios in this table divide by ordinary FAST for the same seed. The #116
+constructors start from scratch; #117 polishing includes its FAST dependency.
+The new runs used the same physical NVIDIA Pascal adapter, warmup, sequential
+completed readbacks and no concurrent scoring. They take about half the earlier
+74.69/75.33-second FAST reference times on this machine. This is a practical
+construction-cost comparison at different quality, not an equal-quality speedup
+or a rendering throughput benchmark. The historical runs were separate sessions.
+
+The **annealed method is the strongest #116 candidate here**. It improves all
+ten original metrics on both seeds: raw per-pixel 32-frame error is about 60%
+lower, single-frame blurred error 20–21% lower, and scalar EMA+blur 23% lower.
+Directly against #117's light-seam method, it has lower error in 65/74 and 64/74
+measurements, but higher error in the remaining 9 and 10. Its worst relative
+regression is about 5.85%/5.82%. Neither method dominates the other. The annealed
+method makes larger gains; light-seam stays closer to FAST across this suite.
+
+The largest annealed regression against FAST is the sigma-2 five-threshold
+aggregate at four frames, up 5.44%/5.76%. Threshold .07, .83 and .94 also expose
+losses; seed 2 additionally loses on threshold .1 EMA. These results retain
+bias, seam crossings and all start phases instead of selecting a favorable
+frame or integrand. The full heatmap still includes every earlier rejected
+profile and control; the [focused table](results/cross-frontier-summary.md)
+also compares #116 directly with light-seam, extra FAST and Pareto refinement.
+
+The annealed construction initializes one jittered sample in each of 32 strata
+per pixel, then swaps temporal positions within that pixel. It preserves the
+full-cycle sample multiset while optimizing a mixed threshold/raw-value loss.
+Its hard stratification explains much of the strong full-cycle quadrature
+result. The compact mixed kernel in the annealed/greedy profiles is a heuristic,
+whereas the third profile uses a valid binomial autocorrelation. Neither this
+constraint nor annealing guarantees better error for every transformed
+integrand, window, reconstruction filter or scene.
+
+**The 74- and 318-metric suites differ; their win counts are not interchangeable.**
+Our suite adds some tail thresholds and sigma-.5/2 aggregates; #116's broader
+suite adds unblurred errors, more temporal windows and high-frequency functions.
+It reports 262 wins, 53 losses and 3 ties for the annealed method on each seed,
+with roughly 7% worst regression on a high-frequency sine. That function is
+absent from our frozen 74, so this chart cannot replace that audit. #116 uses
+an absolute 1e-12 tie tolerance; our original strict comparisons remain intact.
+Both are correlated development diagnostics, not independent trials, fully
+blind tests, rendered scenes or state-of-the-art evidence.
+
+The example keeps just two complementary leading experiments: **#116 annealed
+stratified** for its larger improvements and cheaper construction, and **#117
+light seam 3%** for its conservative FAST refinement. Both load precomputed
+PNGs. This is a practical selection for visual comparison, not a universal
+ranking. Other methods remain available through the research tools.
+
+Pinned sources, execution adaptations and exact schedules are documented in
+[pr116-frontier/README.md](pr116-frontier/README.md). Reproduce the added data:
+
+```sh
+node utils/fastnoise/pr116-frontier/run.js pr116-data
+python utils/fastnoise/research-score.py pr116-data utils/fastnoise/results/frontier.json
+node utils/fastnoise/merge-pr116-frontier.js pr116-data/pr116-generation.json
+node utils/fastnoise/check-cross-frontier.js
+node utils/fastnoise/chart-frontier.js
+node utils/fastnoise/chart-cross-frontier.js
+```
+
+The default physical backend replaces #116's forced D3D11 selection. GPU work
+is drained every ten iterations without changing its logical 100-step RNG and
+suppression schedule; published output hashes confirm the result. The pinned
+[published measurements](results/pr116-frontier-published.json) and
+[reproduction records](results/pr116-frontier-generation.json) retain provenance.
+
 ## Other attempts and rejected profiles
 
 Seed-1 screening results (rejected here because they already fail the target;
@@ -204,7 +292,9 @@ finite, generator/quantized Pareto invariant checks and scoped JS/HTML lint
 pass. `npm test` passes: 1,982 core tests (one TODO), 141 addon tests, zero
 failures. The Windows unit-launcher hardware adaptation was temporary and
 restored; no typecheck script exists. The heatmap is a 2D numerical chart,
-not rendered-scene validation. No shipped assets or root build outputs changed.
+not rendered-scene validation. Original FAST assets and root build outputs are
+unchanged; the separate experimental example catalog is described in
+[EXAMPLE.md](EXAMPLE.md).
 
 ## What would justify the next advance?
 

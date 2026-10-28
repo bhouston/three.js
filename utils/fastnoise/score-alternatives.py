@@ -127,10 +127,11 @@ def main():
             file = output / f'{name}-{seed}.f32'
             if file.exists():
                 raw = np.fromfile(file, np.float32).reshape(32, 128, 128)
-                volumes[f'{name}-{seed}'] = (np.floor(np.clip(raw, 0, .999999) * 256) + .5) / 256
+                volumes[f'{name}-{seed}'] = (np.floor(np.clip(raw, 0, .999999) * 256).astype(np.float64) + .5) / 256
     atlas = Path(__file__).resolve().parents[2] / 'examples/textures/noises/fast/gauss1-ema01-spatio-temporal.png'
     if atlas.exists():
-        raw = np.asarray(Image.open(atlas).convert('RGB')).reshape(32, 128, 256, 3)[:, :, :128, 0]
+        # make_atlas.py packs vector2 in RG and the independently optimized scalar in B.
+        raw = np.asarray(Image.open(atlas).convert('RGB')).reshape(32, 128, 256, 3)[:, :, :128, 2]
         volumes['ea-shipped'] = (raw.astype(float) + .5) / 256
     for seed in (1, 2):
         raw = np.random.default_rng(seed).random((32, 128, 128))

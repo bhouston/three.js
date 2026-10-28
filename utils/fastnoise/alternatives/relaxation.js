@@ -11,7 +11,7 @@ export function generate( { size = 128, depth = 32, seed = 1, iterations = 8 } =
 	}
 
 	const plane = size * size, count = plane * depth;
-	let values = new Float32Array( count );
+	const values = new Float32Array( count );
 	const scratch = new Float32Array( count ), blurred = new Float32Array( count );
 	const bins = 8192, histogram = new Uint32Array( bins ), cdf = new Float32Array( bins );
 	let state = seed >>> 0;
@@ -20,7 +20,7 @@ export function generate( { size = 128, depth = 32, seed = 1, iterations = 8 } =
 		state = ( state + 0x6D2B79F5 ) >>> 0;
 		let t = Math.imul( state ^ state >>> 15, state | 1 );
 		t ^= t + Math.imul( t ^ t >>> 7, t | 61 );
-		values[ i ] = ( ( t ^ t >>> 14 ) >>> 0 ) / 4294967296;
+		values[ i ] = Math.min( 1 - 2 ** - 24, ( ( t ^ t >>> 14 ) >>> 0 ) / 4294967296 );
 
 	}
 
@@ -34,11 +34,17 @@ export function generate( { size = 128, depth = 32, seed = 1, iterations = 8 } =
 			min = Math.min( min, scratch[ i ] ); max = Math.max( max, scratch[ i ] );
 
 		}
+
 		const scale = ( bins - 1 ) / ( max - min || 1 );
 		histogram.fill( 0 );
 		for ( let i = 0; i < count; i ++ ) histogram[ Math.floor( ( scratch[ i ] - min ) * scale ) ] ++;
 		let total = 0;
-		for ( let b = 0; b < bins; b ++ ) { cdf[ b ] = total / count; total += histogram[ b ]; }
+		for ( let b = 0; b < bins; b ++ ) {
+
+			cdf[ b ] = total / count; total += histogram[ b ];
+
+		}
+
 		for ( let i = 0; i < count; i ++ ) {
 
 			const position = ( scratch[ i ] - min ) * scale;
@@ -58,6 +64,7 @@ export function generate( { size = 128, depth = 32, seed = 1, iterations = 8 } =
 			blurred[ i ] = ( values[ base + ( x + size - 2 ) % size ] + 4 * values[ base + ( x + size - 1 ) % size ] + 6 * values[ i ] + 4 * values[ base + ( x + 1 ) % size ] + values[ base + ( x + 2 ) % size ] ) / 16;
 
 		}
+
 		for ( let z = 0; z < depth; z ++ ) for ( let y = 0; y < size; y ++ ) for ( let x = 0; x < size; x ++ ) {
 
 			const base = z * plane + x, i = base + y * size;
@@ -65,6 +72,7 @@ export function generate( { size = 128, depth = 32, seed = 1, iterations = 8 } =
 			scratch[ i ] = values[ i ] - 0.95 * smooth;
 
 		}
+
 		equalize();
 		// A separate temporal projection encourages blue spectra along each pixel's
 		// time sequence, without treating all 3D neighbors as a single distance.
@@ -75,9 +83,11 @@ export function generate( { size = 128, depth = 32, seed = 1, iterations = 8 } =
 			scratch[ i ] = values[ i ] - 0.95 * smooth;
 
 		}
+
 		equalize();
 
 	}
+
 	return values;
 
 }

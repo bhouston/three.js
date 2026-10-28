@@ -15,7 +15,12 @@ for ( const [ name, generate ] of Object.entries( { hierarchy, lattice, relaxati
 	assert.ok( a.every( value => Number.isFinite( value ) && value >= 0 && value < 1 ), `${name}: finite half-open range` );
 	const histogram = new Uint32Array( 16 );
 	let mean = 0;
-	for ( const value of a ) { mean += value / a.length; histogram[ Math.floor( value * 16 ) ] ++; }
+	for ( const value of a ) {
+
+		mean += value / a.length; histogram[ Math.floor( value * 16 ) ] ++;
+
+	}
+
 	assert.ok( mean > 0.48 && mean < 0.52, `${name}: marginal mean ${mean}` );
 	assert.ok( histogram.every( count => count > a.length / 32 ), `${name}: no collapsed histogram strata` );
 	for ( const options of [ { size: 0 }, { depth: 0 }, { size: 1.5 }, { depth: NaN } ] ) assert.throws( () => generate( options ), RangeError, `${name}: rejects invalid dimensions` );

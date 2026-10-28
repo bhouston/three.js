@@ -90,6 +90,7 @@ export function generate( { size = 128, depth = 32, seed = 1 } = {} ) {
 				delta += weights[ k ] * ( potential[ Math.round( Math.abs( bv - value ) * resolution ) ] - potential[ Math.round( Math.abs( av - value ) * resolution ) ] );
 
 			}
+
 			if ( bn !== a && bn !== b ) {
 
 				const value = shifts[ bn ];
@@ -98,6 +99,7 @@ export function generate( { size = 128, depth = 32, seed = 1 } = {} ) {
 			}
 
 		}
+
 		if ( delta < 0 ) {
 
 			shifts[ a ] = bv;

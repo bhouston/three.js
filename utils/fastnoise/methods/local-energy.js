@@ -33,6 +33,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		return ( ( t ^ t >>> 14 ) >>> 0 ) / 4294967296;
 
 	};
+
 	const wrap = ( v, n ) => ( v % n + n ) % n;
 
 	// One jittered sample per temporal stratum at every pixel, independently
@@ -50,6 +51,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 			order[ j ] = t;
 
 		}
+
 		for ( let z = 0; z < depth; z ++ ) values[ z * plane + p ] = Math.min( ( order[ z ] + random() ) / depth, 1 - 2 ** - 24 );
 
 	}
@@ -69,6 +71,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		}
 
 	}
+
 	const impulse = Array.from( { length: temporalRadius + 1 }, ( _, i ) => ( 1 - temporalAlpha ) ** i );
 	let normalization = 0;
 	for ( const v of impulse ) normalization += v * v;
@@ -99,6 +102,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		}
 
 	}
+
 	for ( let z = 0; z < depth; z ++ ) {
 
 		for ( let y = 0; y < size; y ++ ) {
@@ -132,6 +136,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		}
 
 	}
+
 	return values;
 
 }

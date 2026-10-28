@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Experimental noise generators</title>
+<style>body { font: 16px system-ui; max-width: 850px; margin: 32px auto; background: #222; color: #eee; } canvas { width: 512px; image-rendering: pixelated; } label { display: block; margin: 12px 0; }</style>
+<h1>Experimental noise generators</h1>
+<p>128 × 128 × 32, float32 volumes. These methods trade quality for generation speed. See ALTERNATIVES.md for measured limitations.</p>
+<label>Method <select id="method"><option>filter-rank</option><option>hierarchy</option><option>local-energy</option></select></label>
+<label>Seed <input id="seed" type="number" min="0" max="4294967295" value="1"></label>
+<button id="generate">Generate volume</button> <button id="download" disabled>Download .f32</button>
+<label>Frame <input id="frame" type="range" min="0" max="31" value="0"></label>
+<label><input id="threshold" type="checkbox"> Threshold at 0.5</label>
+<p id="status"></p><canvas width="128" height="128"></canvas>
+<script type="module">
+const methods = {};
+for ( const name of [ 'filter-rank', 'hierarchy', 'local-energy' ] ) methods[ name ] = ( await import( `./methods/${name}.js` ) ).generate;
+const get = id => document.getElementById( id );
+const canvas = document.querySelector( 'canvas' ), context = canvas.getContext( '2d' );
+let volume;
+function draw() {
+
+	if ( ! volume ) return;
+	const image = context.createImageData( 128, 128 ), offset = Number( get( 'frame' ).value ) * 16384;
+	for ( let i = 0; i < 16384; i ++ ) {
+
+		const sample = volume[ offset + i ], value = 255 * ( get( 'threshold' ).checked ? Number( sample < 0.5 ) : sample );
+		image.data[ i * 4 ] = image.data[ i * 4 + 1 ] = image.data[ i * 4 + 2 ] = value; image.data[ i * 4 + 3 ] = 255;
+
+	}
+
+	context.putImageData( image, 0, 0 );
+
+}
+
+get( 'generate' ).onclick = () => {
+
+	try {
+
+		const start = performance.now();
+		volume = methods[ get( 'method' ).value ]( { seed: Number( get( 'seed' ).value ) } );
+		get( 'status' ).textContent = `Generated in ${( performance.now() - start ).toFixed( 1 )} ms. This single UI timing is not a benchmark.`;
+		get( 'download' ).disabled = false; draw();
+
+	} catch ( error ) {
+
+		get( 'status' ).textContent = error.message;
+
+	}
+
+};
+
+get( 'frame' ).oninput = draw; get( 'threshold' ).onchange = draw;
+get( 'download' ).onclick = () => {
+
+	const url = URL.createObjectURL( new Blob( [ volume ], { type: 'application/octet-stream' } ) ), a = document.createElement( 'a' );
+	a.href = url; a.download = 'noise.f32'; a.click(); setTimeout( () => URL.revokeObjectURL( url ), 1000 );
+
+};
+</script>
+</html>

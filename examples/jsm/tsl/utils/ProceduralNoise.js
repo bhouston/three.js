@@ -56,8 +56,8 @@ export const animatedIGN = ( coordinate = screenCoordinate, index = frameId, see
 
 	const shift = float( index ).mul( 5.588238 );
 	const offset = hashUint( uint( seed ) ).shiftRight( 8 ).toFloat().div( 16777216 ).mul( 256 );
-	const px = float( coordinate.x ).add( shift ).add( offset );
-	const py = float( coordinate.y ).add( shift ).add( offset );
+	const px = uint( coordinate.x ).toFloat().add( shift ).add( offset );
+	const py = uint( coordinate.y ).toFloat().add( shift ).add( offset );
 	return px.mul( 0.06711056 ).add( py.mul( 0.00583715 ) ).fract().mul( 52.9829189 ).fract();
 
 } )();

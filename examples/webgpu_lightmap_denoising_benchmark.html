@@ -7,14 +7,14 @@
 </head>
 <body>
 	<h1>Lightmap denoising experiment</h1>
-	<p>Linear irradiance, covered texels only. The reference is a high sample estimate, not ground truth. Runtime options: ?resolution=128&amp;samples=16&amp;reference=1024&amp;seconds=5&amp;oidn=1</p>
+	<p>Linear irradiance, covered texels only. The reference is a high sample estimate, not ground truth. Runtime options: ?resolution=128&amp;samples=16&amp;reference=1024&amp;seconds=5</p>
 	<button id="run">Run comparison</button> <button id="save" disabled>Save JSON</button>
 	<pre id="status">Ready. Use a physical WebGPU adapter.</pre>
 	<div id="images"></div>
 	<script type="importmap">
 		{ "imports": {
 			"three": "../build/three.webgpu.js", "three/webgpu": "../build/three.webgpu.js", "three/tsl": "../build/three.tsl.js",
-			"three/addons/": "./jsm/", "oidn-webgpu": "https://esm.sh/oidn-webgpu@0.6.0?bundle", "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/index.js",
+			"three/addons/": "./jsm/", "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/index.js",
 			"three-mesh-bvh/webgpu": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/webgpu/index.js"
 		} }
 	</script>
@@ -25,7 +25,7 @@
 
 		const params = new URLSearchParams( location.search );
 		const integer = ( key, fallback, min, max ) => Math.min( max, Math.max( min, Number( params.get( key ) ) || fallback ) ) | 0;
-		const config = { resolution: integer( 'resolution', 128, 32, 1024 ), samples: integer( 'samples', 16, 1, 4096 ), reference: integer( 'reference', 1024, 32, 65536 ), seconds: integer( 'seconds', 5, 5, 60 ), qualityTrials: 5, oidn: params.get( 'oidn' ) === '1' };
+		const config = { resolution: integer( 'resolution', 128, 32, 1024 ), samples: integer( 'samples', 16, 1, 4096 ), reference: integer( 'reference', 1024, 32, 65536 ), seconds: integer( 'seconds', 5, 5, 60 ), qualityTrials: 5 };
 		config.reference = Math.max( config.reference, config.samples * 4 );
 		const status = document.getElementById( 'status' );
 		const runButton = document.getElementById( 'run' );
@@ -105,7 +105,7 @@
 				renderer = new THREE.WebGPURenderer( { device } );
 				await renderer.init();
 				const scene = makeScene();
-				baker = new LightBaker( renderer, { algorithm: 'ray', resolution: config.resolution, cacheSize: 64, directional: false, denoiser: 'none', stitchSeams: false } );
+				baker = new LightBaker( renderer, { algorithm: 'ray', resolution: config.resolution, cacheSize: 64, directional: false, denoise: false, stitchSeams: false } );
 				status.textContent = 'Preparing ' + adapterName;
 				await baker.prepare( scene );
 				const result = await runLightMapDenoisingBenchmark( { renderer, baker, config, sceneName: 'Cornell-like fixture', onStatus: message => status.textContent = message, onPreview: preview } );

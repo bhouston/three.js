@@ -3,7 +3,6 @@ import { cubeTexture, dot, equirectUV, lights, luminance, positionWorld, texture
 
 import { LightMapper } from './LightMapper.js';
 import { LightMapDenoiser } from './LightMapDenoiser.js';
-import { LightMapOIDNDenoiser } from './LightMapOIDNDenoiser.js';
 import { LightMapSeams } from './LightMapSeams.js';
 import { LightProbeGrid } from './LightProbeGrid.js';
 import { StochasticRadiosity, radiosityIrradiance } from './StochasticRadiosity.js';
@@ -14,7 +13,6 @@ import { directionalLightMap, instancedLightMap } from '../tsl/lighting/Directio
 import { unwrapUVs } from '../utils/unwrapUVs.js';
 
 const ALGORITHMS = [ 'stochastic', 'ray', 'probes', 'vxgi' ];
-const DENOISERS = [ 'none', 'variance', 'oidn' ];
 
 // the bake stops once the estimated noise of the light map drops below the tolerance, which is checked
 // whenever the samples have grown by a quarter, or after the maximum samples. Light probes are
@@ -37,7 +35,7 @@ const FRAMES_IN_FLIGHT = 3;
 
 const FIRST_NOISE_CHECK = 8;
 
-const OPTIONS = [ 'algorithm', 'resolution', 'pageSize', 'padding', 'unwrap', 'ignoreOutlines', 'directional', 'specularIntensity', 'denoise', 'denoiser', 'stitchSeams', 'noiseTolerance', 'maxSamples', 'samplesPerFrame', 'directLight', 'directions', 'cacheSize', 'probes', 'vxgiResolution' ];
+const OPTIONS = [ 'algorithm', 'resolution', 'pageSize', 'padding', 'unwrap', 'ignoreOutlines', 'directional', 'specularIntensity', 'denoise', 'stitchSeams', 'noiseTolerance', 'maxSamples', 'samplesPerFrame', 'directLight', 'directions', 'cacheSize', 'probes', 'vxgiResolution' ];
 
 // the ray traced source needs three-mesh-bvh, so it is loaded on demand
 
@@ -193,14 +191,12 @@ class LightBaker {
 		this.specularIntensity = 1;
 
 		/**
-		 * The light map denoiser: `'none'`, `'variance'` (geometry/variance-guided à-trous),
-		 * or `'oidn'` (experimental browser OIDN RTLightmap, requires `oidn-webgpu`).
-		 * OIDN processes irradiance only, not dominant directions, and needs {@link LightBaker#processAsync}.
+		 * Whether to denoise the light maps once the bake has converged.
 		 *
-		 * @type {string}
-		 * @default 'none'
+		 * @type {boolean}
+		 * @default true
 		 */
-		this.denoiser = 'none';
+		this.denoise = true;
 
 		/**
 		 * Whether to stitch the seams of the light maps.
@@ -360,8 +356,6 @@ class LightBaker {
 		this._record = null;
 		this._preparedKey = null;
 		this._denoisers = [];
-		this._oidnDenoisers = [];
-		this._processing = null;
 		this._stitchers = [];
 		this._seams = [];
 		this._seamsKey = null;
@@ -406,24 +400,6 @@ class LightBaker {
 		this._validate();
 
 		return this;
-
-	}
-
-	/**
-	 * Compatibility alias: `true` selects the variance filter, `false` selects none.
-	 * Prefer {@link LightBaker#denoiser} when selecting a specific method.
-	 *
-	 * @type {boolean}
-	 */
-	get denoise() {
-
-		return this.denoiser !== 'none';
-
-	}
-
-	set denoise( value ) {
-
-		this.denoiser = value ? 'variance' : 'none';
 
 	}
 
@@ -937,8 +913,7 @@ class LightBaker {
 
 			}
 
-			await this.processAsync( { signal } );
-			if ( aborted() ) throw signal?.aborted ? signal.reason : new DOMException( 'The bake was superseded by another one.', 'AbortError' );
+			this.process();
 
 		} finally {
 
@@ -982,10 +957,8 @@ class LightBaker {
 	process() {
 
 		if ( this.lightMapper === null ) throw new Error( 'THREE.LightBaker: Call prepare() or bake() first.' );
-		this._validate();
-		if ( this.denoiser === 'oidn' ) throw new Error( 'THREE.LightBaker: OIDN requires await processAsync().' );
 
-		const key = this._processingKey();
+		const key = `${ this._epoch },${ this.samples },${ this.noise },${ this.denoise },${ this.stitchSeams }`;
 
 		if ( key !== this._processedKey ) {
 
@@ -1020,90 +993,6 @@ class LightBaker {
 		}
 
 		return this._lightMaps;
-
-	}
-
-	/**
-	 * Processes the current raw samples with the selected denoiser. `bake()` awaits this
-	 * automatically. OIDN loads its optional dependency/model on first use; errors propagate
-	 * without silently selecting another denoiser. Raw accumulation is never overwritten.
-	 *
-	 * @param {Object} [options] - Processing options.
-	 * @param {AbortSignal} [options.signal] - Cancels asynchronous processing.
-	 * @return {Promise<Array<Texture>>} The processed irradiance maps.
-	 */
-	async processAsync( { signal } = {} ) {
-
-		signal?.throwIfAborted();
-		if ( this.lightMapper === null ) throw new Error( 'THREE.LightBaker: Call prepare() or bake() first.' );
-		this._validate();
-		while ( this._processing !== null ) {
-
-			try {
-
-				await this._processing;
-
-			} catch {
-
-				// A queued request processes current options even if its predecessor failed or was superseded.
-
-			}
-
-		}
-
-		signal?.throwIfAborted();
-		if ( this.lightMapper === null ) throw new Error( 'THREE.LightBaker: The bake was disposed during processing.' );
-		this._validate();
-		if ( this.denoiser !== 'oidn' ) return this.process();
-
-		const key = this._processingKey();
-		if ( key === this._processedKey ) return this._lightMaps;
-		const mapper = this.lightMapper;
-		const stitch = this.stitchSeams;
-		const run = async () => {
-
-			const maps = [];
-			for ( let i = 0; i < mapper.pages.length; i ++ ) {
-
-				const denoiser = this._oidnDenoisers[ i ] ??= new LightMapOIDNDenoiser( this.renderer, mapper, { page: i } );
-				await denoiser.update( { signal } );
-				signal?.throwIfAborted();
-				if ( mapper !== this.lightMapper || key !== this._processingKey() ) throw new Error( 'THREE.LightBaker: Denoising was superseded; process the current samples again.' );
-				let map = denoiser.texture;
-				if ( stitch ) {
-
-					this._stitchers[ i ].update( map );
-					map = this._stitchers[ i ].texture;
-
-				}
-
-				maps.push( map );
-
-			}
-
-			this._lightMaps = maps;
-			this._processedKey = key;
-			if ( this._applied ) this._assignLightMaps();
-			return maps;
-
-		};
-
-		this._processing = run();
-		try {
-
-			return await this._processing;
-
-		} finally {
-
-			this._processing = null;
-
-		}
-
-	}
-
-	_processingKey() {
-
-		return `${ this._epoch },${ this.samples },${ this.noise },${ this.denoiser },${ this.stitchSeams }`;
 
 	}
 
@@ -1190,7 +1079,6 @@ class LightBaker {
 		const integer = ( value, min ) => Number.isInteger( value ) && value >= min;
 
 		if ( ALGORITHMS.includes( this.algorithm ) === false ) throw new Error( `THREE.LightBaker: Unknown algorithm "${ this.algorithm }", use one of ${ ALGORITHMS.join( ', ' ) }.` );
-		if ( DENOISERS.includes( this.denoiser ) === false ) throw new Error( `THREE.LightBaker: Unknown denoiser "${ this.denoiser }", use one of ${ DENOISERS.join( ', ' ) }.` );
 		if ( this.unwrap !== true && this.unwrap !== false && this.unwrap !== 'repack' ) throw new Error( `THREE.LightBaker: unwrap must be true, false or 'repack', not "${ this.unwrap }".` );
 		if ( this.directLight !== 'live' && this.directLight !== 'baked' ) throw new Error( `THREE.LightBaker: directLight must be 'live' or 'baked', not "${ this.directLight }".` );
 		if ( integer( this.resolution, 16 ) === false ) throw new Error( 'THREE.LightBaker: The resolution must be an integer of at least 16.' );
@@ -1537,7 +1425,6 @@ class LightBaker {
 
 		this.lightMapper?.dispose();
 		for ( const denoiser of this._denoisers ) denoiser.dispose();
-		for ( const denoiser of this._oidnDenoisers ) denoiser.dispose();
 		for ( const stitcher of this._stitchers ) stitcher.dispose();
 		this.source?.dispose();
 		for ( const light of this._lightCopies ) light.dispose();
@@ -1546,7 +1433,6 @@ class LightBaker {
 		this.source = null;
 		this.irradianceNode = null;
 		this._denoisers = [];
-		this._oidnDenoisers = [];
 		this._stitchers = [];
 		this._lightCopies = [];
 		this._preparedObjects = null;

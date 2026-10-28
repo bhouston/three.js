@@ -93,14 +93,14 @@ async function runLightMapDenoisingBenchmark( { renderer, baker, config, onStatu
 
 	async function process( mode ) {
 
-		baker.denoiser = mode;
-		return await baker.processAsync();
+		baker.denoise = mode === 'variance';
+		return baker.process();
 
 	}
 
 	try {
 
-		const modes = config.oidn ? [ 'none', 'variance', 'oidn' ] : [ 'none', 'variance' ];
+		const modes = [ 'none', 'variance' ];
 		const rows = [];
 		for ( const mode of modes ) {
 

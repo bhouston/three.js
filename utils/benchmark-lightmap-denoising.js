@@ -1,6 +1,6 @@
 /**
  * Run after `npm run build`:
- * node utils/benchmark-lightmap-denoising.js --output C:/path/to/artifacts --resolution 128 --samples 16 --reference 1024 --oidn
+ * node utils/benchmark-lightmap-denoising.js --output C:/path/to/artifacts --resolution 128 --samples 16 --reference 1024
  * Uses a physical WebGPU adapter only. Writes JSON and a screenshot, then closes Chrome and server.
  */
 import http from 'node:http';
@@ -21,7 +21,6 @@ for ( const key of [ 'resolution', 'samples', 'reference', 'seconds' ] ) {
 
 }
 
-if ( args.includes( '--oidn' ) ) query.set( 'oidn', '1' );
 const scene = option( 'scene', null );
 if ( scene !== null ) query.set( 'benchmarkScene', scene );
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png' };

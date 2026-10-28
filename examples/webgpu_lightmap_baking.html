@@ -29,7 +29,6 @@
 					"three/webgpu": "../build/three.webgpu.js",
 					"three/tsl": "../build/three.tsl.js",
 					"three/addons/": "./jsm/",
-					"oidn-webgpu": "https://esm.sh/oidn-webgpu@0.6.0?bundle",
 					"three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/index.js",
 					"three-mesh-bvh/webgpu": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/webgpu/index.js"
 				}
@@ -90,7 +89,7 @@
 				resolution: 1024,
 				samples: 1024,
 				noise: 0.02,
-				denoiser: 'none'
+				denoise: true
 			};
 
 			// the algorithms of LightBaker. It stops the bake once the estimated noise of the light map drops
@@ -207,8 +206,7 @@
 				noiseControl = giFolder.add( params, 'noise', { '1%': 0.01, '2%': 0.02, '4%': 0.04, '8%': 0.08, '16%': 0.16 } ).name( 'Noise Threshold' ).info( 'the bake stops once the estimated noise of the light map drops below this' ).listen().onChange( bake );
 				setAlgorithm( params.algorithm, false );
 
-				const denoiserFolder = gui.addFolder( 'Denoiser' );
-				denoiserFolder.add( params, 'denoiser', { None: 'none', 'Variance à-trous': 'variance', 'OIDN RTLightmap (experimental)': 'oidn' } ).name( 'Denoiser' ).info( 'OIDN currently supports atlas pages up to 512 pixels.' ).onChange( setDenoise );
+				gui.add( params, 'denoise' ).name( 'Denoise' ).onChange( setDenoise );
 
 				gui.add( { bake }, 'bake' ).name( 'Re-Bake GI' );
 
@@ -265,11 +263,10 @@
 					samples: integer( 'samples', 16, 1, 4096 ),
 					reference: integer( 'reference', 512, 32, 65536 ),
 					seconds: integer( 'seconds', 5, 5, 60 ),
-					qualityTrials: 5,
-					oidn: benchmarkParams.get( 'oidn' ) === '1'
+					qualityTrials: 5
 				};
 				config.reference = Math.max( config.reference, config.samples * 4 );
-				lightBaker.setOptions( { algorithm: 'ray', resolution: config.resolution, pageSize: 512, unwrap: world.unwrap ?? true, cacheSize: 256, directional: false, denoiser: 'none', stitchSeams: false } );
+				lightBaker.setOptions( { algorithm: 'ray', resolution: config.resolution, pageSize: 512, unwrap: world.unwrap ?? true, cacheSize: 256, directional: false, denoise: false, stitchSeams: false } );
 				status.textContent = 'Preparing ' + benchmarkScene;
 				await lightBaker.prepare( scene, world.root );
 
@@ -1139,27 +1136,17 @@
 
 			}
 
-			async function setDenoise() {
+			function setDenoise() {
 
-				lightBaker.denoiser = params.denoiser;
+				lightBaker.denoise = params.denoise;
 
 				// a running bake denoises once it has finished, a finished one at once. The probes capture the
 				// light maps again
 
 				if ( lightBaker.baking ) return;
 
-				try {
-
-					if ( warning.textContent.startsWith( 'Denoising failed:' ) ) warning.textContent = '';
-					status.textContent = 'Processing light maps…';
-					await lightBaker.processAsync();
-					captureBakeId = - 1;
-
-				} catch ( error ) {
-
-					warning.textContent = `Denoising failed: ${ error.message }`;
-
-				}
+				lightBaker.process();
+				captureBakeId = - 1;
 
 			}
 

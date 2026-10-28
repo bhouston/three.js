@@ -38,6 +38,7 @@ try {
 	for ( const item of plan ) {
 
 		if ( ! /^[a-zA-Z0-9_-]+$/.test( item.name ) ) throw new Error( 'Unsafe output name' );
+		if ( ! Number.isInteger( item.steps ) || item.steps < 0 ) throw new RangeError( 'steps must be a nonnegative integer.' );
 		html = specialize( source, item );
 		const start = performance.now();
 		await page.goto( `${url}/?mode=separate&steps=${item.steps}&seed=${item.seed || 1}` );

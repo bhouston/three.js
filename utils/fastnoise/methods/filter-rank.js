@@ -7,7 +7,8 @@
  * threshold mask: a blue continuous spectrum does not guarantee blue spectra
  * for every threshold. The separable stencil can also leave directional bias.
  * Filtering is O(iterations * size^2 * depth); histogram ranking is approximate
- * (65536 score bins) but produces an exact uniform discrete marginal. Seeded
+ * (65536 score bins) but produces an exact global uniform discrete histogram.
+ * This alone does not prove uniformity at a fixed pixel over random seeds. Seeded
  * shuffled tie order avoids scan-order patterns within histogram bins.
  */
 export function generate( { size = 128, depth = 32, seed = 1, iterations = 12, strength = 0.8 } = {} ) {

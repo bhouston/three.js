@@ -5,6 +5,10 @@ textures. All methods return the same z/y/x float32 volume and can be used with
 the existing atlas/texture consumers. They are experimental alternatives, not
 equal-quality replacements. Defaults are 128×128×32, seeds 1 and 2.
 
+[Comparison with PR #116 and interpretation of the chart winner](PR116-COMPARISON.md)
+includes new common-protocol nonlinear tests. The raw-value winner does not
+generalize to graphics sampling; it loses to white noise on some integrands.
+
 ## Convergence chart
 
 The [seven-method chart and numerical table](results/CONVERGENCE.md) compare
@@ -46,7 +50,7 @@ adds evaluation, review, refinement and tests.
 
 1. `methods/filter-rank.js`: 12 rounds of periodic binomial spatial high-pass
    and temporal high-pass, blended with the current values, followed by a
-   65,536-bin rank projection. Exact uniform marginal, approximate score ordering.
+   65,536-bin rank projection. Exact global discrete histogram, approximate score ordering.
    O(iterations × voxels), no GPU, roughly 10 MiB of typed-array storage.
    Excellent continuous-value suppression, but nonlinear thresholds reintroduce
    substantial low-frequency noise. This is a specialized continuous-noise option.

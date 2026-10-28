@@ -1,0 +1,309 @@
+{
+  "commit": "2a065526980261bcf5b129f07ddb12ff7eda1f91",
+  "seed": 1,
+  "note": "Published PNGs, not newly generated samples. Midpoint Float32 decode is exact for this quantize-first scorer. Original Float32 and decoded Float32 hashes differ.",
+  "profiles": [
+    {
+      "name": "pr117-fast-s1",
+      "source": {
+        "id": "fast",
+        "label": "FAST Separate (scalar reference)",
+        "description": "Unmodified 10,000-step FAST separate scalar reference for the experimental methods.",
+        "file": "fast-seed1.png",
+        "seed": 1,
+        "width": 128,
+        "height": 4096,
+        "size": 128,
+        "depth": 32,
+        "layout": "z-major vertical slices; atlas(x, z * size + y)",
+        "channels": "scalar grayscale; no vector channels",
+        "quantization": "floor(value * 256); runtime midpoint (byte + 0.5) / 256",
+        "volumeSHA256": "ad64707c4d4551ac6eacd4ce7c732e48d1ca5b83e3fc2c9cdc678fe5b5983df9",
+        "pngSHA256": "8bbdc52ef631df5030a9953cdd128239ea6cef8d942d67731ae44d6b83559456",
+        "source": {
+          "file": "fast-seed1.f32",
+          "format": "little-endian Float32, z/y/x order",
+          "generation": "Offline seed-1 research volume; see utils/fastnoise/EXAMPLE.md and FRONTIER.md"
+        }
+      },
+      "quantizedSHA256": "a7ebec4297bea5514f99261cd5ba550d4d9dd7b0863dab28f138684847480baa",
+      "decodedSHA256": "3ab37c5fc23ebb5743eaff1ada7c996c77d233666b001953fb34f3597f6d3c2b",
+      "generation": {
+        "name": "fast-seed1",
+        "profile": {
+          "name": "fast",
+          "kind": "gpu",
+          "file": "generator.html",
+          "parameters": {
+            "mode": "separate",
+            "steps": 10000
+          }
+        },
+        "seed": 1,
+        "seconds": 74.6885877,
+        "count": 1,
+        "secondsPerVolume": 74.6885877,
+        "sha256": "ad64707c4d4551ac6eacd4ce7c732e48d1ca5b83e3fc2c9cdc678fe5b5983df9",
+        "log": "mode=separate steps=10000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 0.7s\nstep 1000 swaps/iter 1061 suppression 1 8.2s\nstep 2000 swaps/iter 573 suppression 1 15.6s\nstep 3000 swaps/iter 445 suppression 1 23.0s\nstep 4000 swaps/iter 398 suppression 1 30.4s\nstep 5000 swaps/iter 357 suppression 1 37.8s\nstep 6000 swaps/iter 344 suppression 1 45.3s\nstep 7000 swaps/iter 327 suppression 1 52.7s\nstep 8000 swaps/iter 304 suppression 1 60.2s\nstep 9000 swaps/iter 288 suppression 1 67.6s\ndone in 74.3s on nvidia pascal\n",
+        "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+        "totalSecondsPerVolume": 74.6885877
+      }
+    },
+    {
+      "name": "pr117-light-seam-03-s1",
+      "source": {
+        "id": "light-seam-03",
+        "label": "Light seam 3% (FAST polish)",
+        "description": "Restarted FAST refinement with a 3% seam objective.",
+        "file": "light-seam-03-seed1.png",
+        "seed": 1,
+        "width": 128,
+        "height": 4096,
+        "size": 128,
+        "depth": 32,
+        "layout": "z-major vertical slices; atlas(x, z * size + y)",
+        "channels": "scalar grayscale; no vector channels",
+        "quantization": "floor(value * 256); runtime midpoint (byte + 0.5) / 256",
+        "volumeSHA256": "5eb4cddef08e16c3baf09139da34064a7fe2935b32b77ecacb8b667db4ee13c6",
+        "pngSHA256": "cb36850d1e5e5e1a250c489784086d9a173574118b331b18b7f4a7db24c63b01",
+        "source": {
+          "file": "light-seam-03-seed1.f32",
+          "format": "little-endian Float32, z/y/x order",
+          "generation": "Offline seed-1 research volume; see utils/fastnoise/EXAMPLE.md and FRONTIER.md"
+        }
+      },
+      "quantizedSHA256": "fc6c379d68082478e4dcb985f7c68f12f253df9628500006b04e58a2dd9ba86f",
+      "decodedSHA256": "febb845239f09fc486a9dca0e520490b1f838b5f459d036c003b1f45b5fdfcda",
+      "generation": {
+        "name": "light-seam-03-seed1",
+        "profile": {
+          "name": "light-seam-03",
+          "kind": "gpu",
+          "file": "research-generator.html",
+          "initial": "continuation-polish-seed{seed}",
+          "parameters": {
+            "steps": 1000,
+            "seam": 0.03
+          },
+          "seeds": [
+            1
+          ]
+        },
+        "seed": 1,
+        "seconds": 21.994409200000003,
+        "count": 1,
+        "secondsPerVolume": 21.994409200000003,
+        "sha256": "5eb4cddef08e16c3baf09139da34064a7fe2935b32b77ecacb8b667db4ee13c6",
+        "log": "mode=separate steps=1000 size=128x128x32 taps=431 fs=6\nstep 0 swaps/iter 28 suppression 4 2.1s\nstep 100 swaps/iter 57 suppression 2 4.3s\nstep 200 swaps/iter 114 suppression 1 6.4s\nstep 300 swaps/iter 223 suppression 1 8.6s\nstep 400 swaps/iter 220 suppression 1 10.7s\nstep 500 swaps/iter 210 suppression 1 12.9s\nstep 600 swaps/iter 204 suppression 1 15.0s\nstep 700 swaps/iter 199 suppression 1 17.2s\nstep 800 swaps/iter 195 suppression 1 19.3s\nstep 900 swaps/iter 191 suppression 1 21.5s\ndone in 21.5s on nvidia pascal\n",
+        "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+        "inputName": "continuation-polish-seed1",
+        "inputSecondsPerVolume": 95.1147833,
+        "totalSecondsPerVolume": 117.1091925
+      }
+    },
+    {
+      "name": "pr117-seam-polish-s1",
+      "source": {
+        "id": "seam-polish",
+        "label": "Playback seam (FAST polish)",
+        "description": "FAST refinement accounting for the playback cycle seam.",
+        "file": "seam-polish-seed1.png",
+        "seed": 1,
+        "width": 128,
+        "height": 4096,
+        "size": 128,
+        "depth": 32,
+        "layout": "z-major vertical slices; atlas(x, z * size + y)",
+        "channels": "scalar grayscale; no vector channels",
+        "quantization": "floor(value * 256); runtime midpoint (byte + 0.5) / 256",
+        "volumeSHA256": "4592c2988e79a2cc7739e547eaffece30aeffe5e3333205d0faa142bcb7c412e",
+        "pngSHA256": "cf5f1a22e91b8c0e3ce0e36262a0dd63952ece6b844d7b7c08567ebaa4b92432",
+        "source": {
+          "file": "seam-polish-seed1.f32",
+          "format": "little-endian Float32, z/y/x order",
+          "generation": "Offline seed-1 research volume; see utils/fastnoise/EXAMPLE.md and FRONTIER.md"
+        }
+      },
+      "quantizedSHA256": "056d713445d2bd012db14c8fd20ade091439d18199a7c43725b686e1836b7eb0",
+      "decodedSHA256": "53fbadac7c52454817dd717a08e9ecb0f73cb970cd30cf03fd0fbd4d97188b70",
+      "generation": {
+        "name": "seam-polish-seed1",
+        "profile": {
+          "name": "seam-polish",
+          "kind": "gpu",
+          "file": "research-generator.html",
+          "initial": "fast-seed{seed}",
+          "parameters": {
+            "steps": 2000,
+            "seam": 0.25
+          },
+          "seeds": [
+            1
+          ]
+        },
+        "seed": 1,
+        "seconds": 43.931563800000006,
+        "count": 1,
+        "secondsPerVolume": 43.931563800000006,
+        "sha256": "4592c2988e79a2cc7739e547eaffece30aeffe5e3333205d0faa142bcb7c412e",
+        "log": "mode=separate steps=2000 size=128x128x32 taps=431 fs=6\nstep 0 swaps/iter 78 suppression 4 2.1s\nstep 200 swaps/iter 317 suppression 1 6.4s\nstep 400 swaps/iter 574 suppression 1 10.8s\nstep 600 swaps/iter 520 suppression 1 15.2s\nstep 800 swaps/iter 474 suppression 1 19.6s\nstep 1000 swaps/iter 440 suppression 1 23.9s\nstep 1200 swaps/iter 412 suppression 1 28.2s\nstep 1400 swaps/iter 382 suppression 1 32.6s\nstep 1600 swaps/iter 366 suppression 1 37.0s\nstep 1800 swaps/iter 346 suppression 1 41.3s\ndone in 43.5s on nvidia pascal\n",
+        "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+        "totalSecondsPerVolume": 118.6201515
+      }
+    },
+    {
+      "name": "pr117-pareto-polish-s1",
+      "source": {
+        "id": "pareto-polish",
+        "label": "Pareto (FAST polish)",
+        "description": "Ten-objective guarded refinement of FAST.",
+        "file": "pareto-polish-seed1.png",
+        "seed": 1,
+        "width": 128,
+        "height": 4096,
+        "size": 128,
+        "depth": 32,
+        "layout": "z-major vertical slices; atlas(x, z * size + y)",
+        "channels": "scalar grayscale; no vector channels",
+        "quantization": "floor(value * 256); runtime midpoint (byte + 0.5) / 256",
+        "volumeSHA256": "e97fc520f633be931adb4a5e290295f264744f71ff1594937f43ccdfddf0e3d6",
+        "pngSHA256": "0b05eb89b6e935a7cf398941defb43c76c95b33ff5dc23fd360c69b0a9b07b8b",
+        "source": {
+          "file": "pareto-polish-seed1.f32",
+          "format": "little-endian Float32, z/y/x order",
+          "generation": "Offline seed-1 research volume; see utils/fastnoise/EXAMPLE.md and FRONTIER.md"
+        }
+      },
+      "quantizedSHA256": "c4ec523eb20520067b15f80c6e86df5c6555b1b95f11b6eee06fb8a64ead1ba8",
+      "decodedSHA256": "60142d1435910d50432a92841aa3aae3a969fdcf0f3d8dc10bb2ab2ec2b595da",
+      "generation": {
+        "name": "pareto-polish-seed1",
+        "profile": {
+          "name": "pareto-polish",
+          "kind": "cpu",
+          "module": "./methods/pareto-energy.js",
+          "initial": "fast-seed{seed}",
+          "options": {
+            "passes": 4
+          },
+          "seeds": [
+            1,
+            2
+          ]
+        },
+        "seed": 1,
+        "seconds": 16.6766514,
+        "count": 2,
+        "secondsPerVolume": 8.3383257,
+        "sha256": "e97fc520f633be931adb4a5e290295f264744f71ff1594937f43ccdfddf0e3d6",
+        "timing": "complete synchronous generations including initialization, excluding output file write; warmup excluded",
+        "inputName": "fast-seed1",
+        "inputSecondsPerVolume": 74.6885877,
+        "totalSecondsPerVolume": 83.0269134
+      }
+    },
+    {
+      "name": "pr117-continuation-deep-s1",
+      "source": {
+        "id": "continuation-deep",
+        "label": "FAST +3000 original steps",
+        "description": "Original-loss restart control, 3000 additional steps.",
+        "file": "continuation-deep-seed1.png",
+        "seed": 1,
+        "width": 128,
+        "height": 4096,
+        "size": 128,
+        "depth": 32,
+        "layout": "z-major vertical slices; atlas(x, z * size + y)",
+        "channels": "scalar grayscale; no vector channels",
+        "quantization": "floor(value * 256); runtime midpoint (byte + 0.5) / 256",
+        "volumeSHA256": "37f5bf8793fb5f193cbca1cfcb6c8948ef7029b5dbd6de05b52d907d72efd9fb",
+        "pngSHA256": "67fa3385224c18ec26c8e8544276f2c0374a8bace26d8946c25a84294bc5b664",
+        "source": {
+          "file": "continuation-deep-seed1.f32",
+          "format": "little-endian Float32, z/y/x order",
+          "generation": "Offline seed-1 research volume; see utils/fastnoise/EXAMPLE.md and FRONTIER.md"
+        }
+      },
+      "quantizedSHA256": "711e1992a8a5c384ab305dadf7a19b4b59c1ea15af4961e1383299785140c0a1",
+      "decodedSHA256": "3aead5909b22feccc87d4651ee4d3ec3865c8883102375db2ff76482b0ef4d01",
+      "generation": {
+        "name": "continuation-deep-seed1",
+        "profile": {
+          "name": "continuation-deep",
+          "kind": "gpu",
+          "file": "research-generator.html",
+          "initial": "continuation-polish-seed{seed}",
+          "parameters": {
+            "steps": 1000
+          },
+          "seeds": [
+            1
+          ]
+        },
+        "seed": 1,
+        "seconds": 10.2824459,
+        "count": 1,
+        "secondsPerVolume": 10.2824459,
+        "sha256": "37f5bf8793fb5f193cbca1cfcb6c8948ef7029b5dbd6de05b52d907d72efd9fb",
+        "log": "mode=separate steps=1000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 23 suppression 4 1.0s\nstep 100 swaps/iter 46 suppression 2 2.0s\nstep 200 swaps/iter 93 suppression 1 3.0s\nstep 300 swaps/iter 186 suppression 1 4.0s\nstep 400 swaps/iter 183 suppression 1 5.0s\nstep 500 swaps/iter 175 suppression 1 6.0s\nstep 600 swaps/iter 169 suppression 1 7.0s\nstep 700 swaps/iter 164 suppression 1 8.0s\nstep 800 swaps/iter 161 suppression 1 9.0s\nstep 900 swaps/iter 156 suppression 1 10.0s\ndone in 10.1s on nvidia pascal\n",
+        "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+        "inputName": "continuation-polish-seed1",
+        "inputSecondsPerVolume": 95.1147833,
+        "totalSecondsPerVolume": 105.3972292
+      }
+    },
+    {
+      "name": "pr117-continuation-time-control-s1",
+      "source": {
+        "id": "continuation-time-control",
+        "label": "FAST +4000 original steps",
+        "description": "Original-loss restart control, approximately equal runtime.",
+        "file": "continuation-time-control-seed1.png",
+        "seed": 1,
+        "width": 128,
+        "height": 4096,
+        "size": 128,
+        "depth": 32,
+        "layout": "z-major vertical slices; atlas(x, z * size + y)",
+        "channels": "scalar grayscale; no vector channels",
+        "quantization": "floor(value * 256); runtime midpoint (byte + 0.5) / 256",
+        "volumeSHA256": "30f28de3f6ecffc40aa75ed5ccb5b9b2147ce26fe40f87c066ba1f1fe99bce24",
+        "pngSHA256": "9295314d4cac5354d120702c4ef463a964eb5ddc40865ec23c6169d258f663b4",
+        "source": {
+          "file": "continuation-time-control-seed1.f32",
+          "format": "little-endian Float32, z/y/x order",
+          "generation": "Offline seed-1 research volume; see utils/fastnoise/EXAMPLE.md and FRONTIER.md"
+        }
+      },
+      "quantizedSHA256": "ab0065503c41421c4a4c455621e85b6bfeefdf7e8145fb4d91c8bec391f343e7",
+      "decodedSHA256": "f6ad979452f8012b53d18e6306885d87e6a33f87bc2030059077cd5a084e2f97",
+      "generation": {
+        "name": "continuation-time-control-seed1",
+        "profile": {
+          "name": "continuation-time-control",
+          "kind": "gpu",
+          "file": "research-generator.html",
+          "initial": "continuation-polish-seed{seed}",
+          "parameters": {
+            "steps": 2000
+          },
+          "seeds": [
+            1,
+            2
+          ]
+        },
+        "seed": 1,
+        "seconds": 20.95005129999999,
+        "count": 1,
+        "secondsPerVolume": 20.95005129999999,
+        "sha256": "30f28de3f6ecffc40aa75ed5ccb5b9b2147ce26fe40f87c066ba1f1fe99bce24",
+        "log": "mode=separate steps=2000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 23 suppression 4 1.0s\nstep 200 swaps/iter 93 suppression 1 3.0s\nstep 400 swaps/iter 183 suppression 1 5.1s\nstep 600 swaps/iter 169 suppression 1 7.1s\nstep 800 swaps/iter 161 suppression 1 9.1s\nstep 1000 swaps/iter 149 suppression 1 11.2s\nstep 1200 swaps/iter 142 suppression 1 13.2s\nstep 1400 swaps/iter 133 suppression 1 15.2s\nstep 1600 swaps/iter 124 suppression 1 17.2s\nstep 1800 swaps/iter 114 suppression 1 19.3s\ndone in 20.3s on nvidia pascal\n",
+        "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+        "inputName": "continuation-polish-seed1",
+        "inputSecondsPerVolume": 95.1147833,
+        "totalSecondsPerVolume": 116.06483459999998
+      }
+    }
+  ]
+}

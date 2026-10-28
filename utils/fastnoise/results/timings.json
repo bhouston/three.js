@@ -1,0 +1,75 @@
+{
+  "steps": 10000,
+  "node": "v26.11.1",
+  "cpu": "AMD Ryzen 7 5800H with Radeon Graphics         ",
+  "methods": {
+    "fast-1": {
+      "milliseconds": [
+        61087.2067,
+        61134.3883
+      ]
+    },
+    "fast-2": {
+      "milliseconds": [
+        61107.970100000006,
+        61069.4964
+      ]
+    },
+    "hierarchy-1": {
+      "milliseconds": [
+        1.2329000000027008,
+        1.218399999983376,
+        1.2219000000040978
+      ]
+    },
+    "hierarchy-2": {
+      "milliseconds": [
+        1.6508999999787193,
+        1.9836999999824911,
+        2.055800000001909
+      ]
+    },
+    "lattice-1": {
+      "milliseconds": [
+        111.0234000000055,
+        106.29299999997602,
+        91.61540000000969
+      ]
+    },
+    "lattice-2": {
+      "milliseconds": [
+        95.22000000000116,
+        97.57180000000517,
+        100.40670000002137
+      ]
+    },
+    "relaxation-1": {
+      "milliseconds": [
+        129.8126999999804,
+        198.10800000000745,
+        130.09700000000885
+      ]
+    },
+    "relaxation-2": {
+      "milliseconds": [
+        155.39389999999548,
+        127.7326999999932,
+        97.88610000000335
+      ]
+    }
+  },
+  "browserArgs": [
+    "--enable-unsafe-webgpu",
+    "--disable-software-rasterizer",
+    "--disable-frame-rate-limit",
+    "--disable-gpu-vsync",
+    "--use-webgpu-adapter=d3d11"
+  ],
+  "gpu": {
+    "vendor": "amd",
+    "architecture": "gcn-5",
+    "device": "",
+    "description": "",
+    "isFallbackAdapter": false
+  }
+}

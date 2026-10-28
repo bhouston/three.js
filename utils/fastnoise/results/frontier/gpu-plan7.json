@@ -1,0 +1,13 @@
+[
+  {
+    "swapFloor": 2,
+    "annealTemperature": 0.001,
+    "mixedWeight": 0.2,
+    "seed": 2,
+    "identityWeight": 0.25,
+    "stratified": true,
+    "name": "latin-anneal001-3000-s2",
+    "steps": 3000,
+    "annealSteps": 1500
+  }
+]

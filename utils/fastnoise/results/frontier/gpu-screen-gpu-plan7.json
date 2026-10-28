@@ -1,0 +1,23 @@
+{
+  "note": "Quality-screen elapsed times, not isolated performance benchmarks.",
+  "runs": [
+    {
+      "swapFloor": 2,
+      "annealTemperature": 0.001,
+      "mixedWeight": 0.2,
+      "seed": 2,
+      "identityWeight": 0.25,
+      "stratified": true,
+      "name": "latin-anneal001-3000-s2",
+      "steps": 3000,
+      "annealSteps": 1500,
+      "milliseconds": 30705.2493,
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 6157 suppression 4 1.1s\nstep 300 swaps/iter 8142 suppression 1 4.2s\nstep 600 swaps/iter 6100 suppression 1 7.2s\nstep 900 swaps/iter 4171 suppression 1 10.3s\nstep 1200 swaps/iter 2177 suppression 1 13.3s\nstep 1500 swaps/iter 175 suppression 1 16.3s\nstep 1800 swaps/iter 14 suppression 1 19.4s\nstep 2100 swaps/iter 1 suppression 1 22.4s\nstep 2400 swaps/iter 0 suppression 1 25.4s\nstep 2700 swaps/iter 0 suppression 1 28.5s\ndone in 30.5s on amd gcn-5\n"
+    }
+  ],
+  "gpu": {
+    "vendor": "amd",
+    "architecture": "gcn-5",
+    "fallback": false
+  }
+}

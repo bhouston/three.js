@@ -1,0 +1,18 @@
+{
+  "note": "Quality-screen elapsed times, not isolated performance benchmarks.",
+  "runs": [
+    {
+      "name": "sparse2-3000-s1",
+      "swapFloor": 2,
+      "seed": 1,
+      "steps": 3000,
+      "milliseconds": 18751.0903,
+      "log": "mode=separate steps=3000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 0.9s\nstep 300 swaps/iter 2585 suppression 1 2.7s\nstep 600 swaps/iter 1379 suppression 1 4.5s\nstep 900 swaps/iter 966 suppression 1 6.4s\nstep 1200 swaps/iter 744 suppression 1 8.2s\nstep 1500 swaps/iter 608 suppression 1 10.0s\nstep 1800 swaps/iter 517 suppression 1 11.9s\nstep 2100 swaps/iter 452 suppression 1 13.7s\nstep 2400 swaps/iter 405 suppression 1 15.5s\nstep 2700 swaps/iter 371 suppression 1 17.3s\ndone in 18.6s on amd gcn-5\n"
+    }
+  ],
+  "gpu": {
+    "vendor": "amd",
+    "architecture": "gcn-5",
+    "fallback": false
+  }
+}

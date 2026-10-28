@@ -1,0 +1,32 @@
+{
+  "layout": "128x4096 scalar R, z/y/x; floor(value*256); decode as (byte+.5)/256; seed 1",
+  "profiles": [
+    {
+      "name": "gpu-stratified-annealed",
+      "gpu": {
+        "steps": 3000,
+        "stratified": true,
+        "swapFloor": 2,
+        "identityWeight": 0.25,
+        "mixedWeight": 0.2,
+        "annealTemperature": 0.001,
+        "annealSteps": 1500
+      },
+      "seed": 1,
+      "floatSHA256": "9599fa11b7475f6a7442d6f1db3d187ff62ab83422e6812f33f98dc9b42a0270",
+      "quantizedSHA256": "f335d55f6e719d55313080225f7627a4aa684aded481608da2bb72b3e3fc627c",
+      "pngSHA256": "cf538357aff97550a45f74f7c30b8a10a8fc4c2cd78d723cf18f4f39bee74ad5",
+      "bytes": 528557
+    },
+    {
+      "name": "pr117-light-seam-03",
+      "pr117": "light-seam-03",
+      "seed": 1,
+      "pr117Commit": "2a065526980261bcf5b129f07ddb12ff7eda1f91",
+      "floatSHA256": "febb845239f09fc486a9dca0e520490b1f838b5f459d036c003b1f45b5fdfcda",
+      "quantizedSHA256": "fc6c379d68082478e4dcb985f7c68f12f253df9628500006b04e58a2dd9ba86f",
+      "pngSHA256": "cb36850d1e5e5e1a250c489784086d9a173574118b331b18b7f4a7db24c63b01",
+      "bytes": 528602
+    }
+  ]
+}

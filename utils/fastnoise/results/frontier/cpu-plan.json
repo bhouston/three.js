@@ -1,0 +1,54 @@
+[
+  {
+    "name": "threshold-unconstrained16-s1",
+    "options": {
+      "passes": 16,
+      "seed": 1,
+      "preserveColumns": false
+    },
+    "method": "threshold-refine"
+  },
+  {
+    "name": "threshold-columns8-s1",
+    "options": {
+      "scalarWeight": 1,
+      "thresholdWeight": 4,
+      "passes": 8,
+      "seed": 1,
+      "preserveColumns": true
+    },
+    "method": "threshold-refine"
+  },
+  {
+    "name": "multifeature48-s1",
+    "options": {
+      "seed": 1
+    },
+    "method": "multifeature"
+  },
+  {
+    "name": "stratified128-s1",
+    "options": {
+      "passes": 128,
+      "seed": 1
+    },
+    "method": "stratified"
+  },
+  {
+    "name": "stratified-helical64-s1",
+    "options": {
+      "cycleShift": true,
+      "seed": 1
+    },
+    "method": "stratified"
+  },
+  {
+    "name": "threshold-warm-columns4-s1",
+    "initial": "FAST-shipped",
+    "method": "threshold-refine",
+    "options": {
+      "passes": 4,
+      "seed": 1
+    }
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "note": "Quality-screen elapsed times, not isolated performance benchmarks.",
+  "runs": [
+    {
+      "annealSteps": 1500,
+      "steps": 3000,
+      "name": "latin-anneal001-3000-s1",
+      "mixedWeight": 0.2,
+      "stratified": true,
+      "annealTemperature": 0.001,
+      "swapFloor": 2,
+      "identityWeight": 0.25,
+      "seed": 1,
+      "milliseconds": 30798.5621,
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 6159 suppression 4 1.2s\nstep 300 swaps/iter 8145 suppression 1 4.3s\nstep 600 swaps/iter 6067 suppression 1 7.3s\nstep 900 swaps/iter 4173 suppression 1 10.4s\nstep 1200 swaps/iter 2180 suppression 1 13.4s\nstep 1500 swaps/iter 175 suppression 1 16.4s\nstep 1800 swaps/iter 13 suppression 1 19.5s\nstep 2100 swaps/iter 1 suppression 1 22.5s\nstep 2400 swaps/iter 0 suppression 1 25.6s\nstep 2700 swaps/iter 0 suppression 1 28.6s\ndone in 30.6s on amd gcn-5\n"
+    },
+    {
+      "annealSteps": 1500,
+      "steps": 3000,
+      "name": "latin-anneal01-3000-s1",
+      "mixedWeight": 0.2,
+      "stratified": true,
+      "annealTemperature": 0.01,
+      "swapFloor": 2,
+      "identityWeight": 0.25,
+      "seed": 1,
+      "milliseconds": 30727.8413,
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 14490 suppression 8 1.1s\nstep 300 swaps/iter 12040 suppression 8 4.1s\nstep 600 swaps/iter 9828 suppression 8 7.2s\nstep 900 swaps/iter 14797 suppression 2 10.3s\nstep 1200 swaps/iter 16196 suppression 1 13.4s\nstep 1500 swaps/iter 1145 suppression 1 16.4s\nstep 1800 swaps/iter 140 suppression 1 19.4s\nstep 2100 swaps/iter 29 suppression 1 22.5s\nstep 2400 swaps/iter 7 suppression 1 25.5s\nstep 2700 swaps/iter 1 suppression 1 28.5s\ndone in 30.6s on amd gcn-5\n"
+    }
+  ],
+  "gpu": {
+    "vendor": "amd",
+    "architecture": "gcn-5",
+    "fallback": false
+  }
+}

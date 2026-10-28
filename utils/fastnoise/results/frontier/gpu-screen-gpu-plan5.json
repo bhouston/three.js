@@ -1,0 +1,44 @@
+{
+  "note": "Quality-screen elapsed times, not isolated performance benchmarks.",
+  "runs": [
+    {
+      "steps": 10000,
+      "seed": 1,
+      "stratified": true,
+      "identityWeight": 0.25,
+      "mixedWeight": 0.2,
+      "name": "latin-hybrid-10000-s1",
+      "swapFloor": 2,
+      "milliseconds": 101503.9481,
+      "log": "mode=separate steps=10000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 4797 suppression 4 1.2s\nstep 1000 swaps/iter 45 suppression 1 11.3s\nstep 2000 swaps/iter 0 suppression 1 21.4s\nstep 3000 swaps/iter 0 suppression 1 31.5s\nstep 4000 swaps/iter 0 suppression 1 41.7s\nstep 5000 swaps/iter 0 suppression 1 51.8s\nstep 6000 swaps/iter 0 suppression 1 61.9s\nstep 7000 swaps/iter 0 suppression 1 72.0s\nstep 8000 swaps/iter 0 suppression 1 82.1s\nstep 9000 swaps/iter 0 suppression 1 92.2s\ndone in 101.3s on amd gcn-5\n"
+    },
+    {
+      "name": "latin-psd-3000-s1",
+      "mixedKernel": "binomial",
+      "mixedWeight": 0.02,
+      "swapFloor": 2,
+      "seed": 1,
+      "stratified": true,
+      "steps": 3000,
+      "identityWeight": 0.25,
+      "milliseconds": 30618.388099999982,
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 4856 suppression 4 1.1s\nstep 300 swaps/iter 1051 suppression 1 4.1s\nstep 600 swaps/iter 227 suppression 1 7.1s\nstep 900 swaps/iter 71 suppression 1 10.2s\nstep 1200 swaps/iter 22 suppression 1 13.2s\nstep 1500 swaps/iter 9 suppression 1 16.2s\nstep 1800 swaps/iter 4 suppression 1 19.3s\nstep 2100 swaps/iter 2 suppression 1 22.3s\nstep 2400 swaps/iter 0 suppression 1 25.3s\nstep 2700 swaps/iter 0 suppression 1 28.4s\ndone in 30.4s on amd gcn-5\n"
+    },
+    {
+      "steps": 3000,
+      "seed": 2,
+      "stratified": true,
+      "identityWeight": 0.25,
+      "mixedWeight": 0.2,
+      "name": "latin-hybrid-3000-s2",
+      "swapFloor": 2,
+      "milliseconds": 30541.301600000006,
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 4806 suppression 4 1.0s\nstep 300 swaps/iter 1017 suppression 1 4.1s\nstep 600 swaps/iter 211 suppression 1 7.1s\nstep 900 swaps/iter 64 suppression 1 10.2s\nstep 1200 swaps/iter 20 suppression 1 13.2s\nstep 1500 swaps/iter 6 suppression 1 16.2s\nstep 1800 swaps/iter 3 suppression 1 19.2s\nstep 2100 swaps/iter 1 suppression 1 22.3s\nstep 2400 swaps/iter 0 suppression 1 25.3s\nstep 2700 swaps/iter 0 suppression 1 28.3s\ndone in 30.4s on amd gcn-5\n"
+    }
+  ],
+  "gpu": {
+    "vendor": "amd",
+    "architecture": "gcn-5",
+    "fallback": false
+  }
+}

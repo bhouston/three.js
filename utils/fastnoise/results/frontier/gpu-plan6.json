@@ -1,0 +1,24 @@
+[
+  {
+    "annealSteps": 1500,
+    "steps": 3000,
+    "name": "latin-anneal001-3000-s1",
+    "mixedWeight": 0.2,
+    "stratified": true,
+    "annealTemperature": 0.001,
+    "swapFloor": 2,
+    "identityWeight": 0.25,
+    "seed": 1
+  },
+  {
+    "annealSteps": 1500,
+    "steps": 3000,
+    "name": "latin-anneal01-3000-s1",
+    "mixedWeight": 0.2,
+    "stratified": true,
+    "annealTemperature": 0.01,
+    "swapFloor": 2,
+    "identityWeight": 0.25,
+    "seed": 1
+  }
+]

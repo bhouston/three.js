@@ -67,3 +67,6 @@ handling and caching. Access to example state is injected by the test server,
 not shipped in the example. These checks verify playback and integration, not
 scene-level sampling superiority.
 
+All six choices pass on physical NVIDIA Pascal / WebGPU, including both modes,
+atlas decoding across cycle boundaries, retries, stale requests and caching.
+

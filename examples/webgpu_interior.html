@@ -50,6 +50,7 @@
 			import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightMapper } from 'three/addons/lighting/LightMapper.js';
+			import { LightMapDenoiser } from 'three/addons/lighting/LightMapDenoiser.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 			import { batchStaticMeshes } from 'three/addons/utils/batchStaticMeshes.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
@@ -256,6 +257,7 @@
 			let lightMapper, atlas;
 			// Ray radiosity loads three-mesh-bvh on demand.
 			let rayRadiosityModule = null, rayRadiosity = null;
+			let lightMapDenoiser = null, rayNoise = Infinity, rayNoiseCheck = 8;
 			let uvPass, uvTexture;
 			let meshes = [];
 			let renderBatches = null;
@@ -265,8 +267,10 @@
 			let bakeIteration = 0;
 			const bakeIterations = 16;
 			const bakeSamples = 16;
-			// Ray radiosity converges per texel, so it needs many more progressive samples.
+			// Ray radiosity converges per texel. It stops once the estimated noise drops below 10%, or at the
+			// maximum samples, and is then denoised.
 			const rayBakeSamples = 256;
+			const rayNoiseTolerance = 0.1;
 			const status = document.getElementById( 'status' );
 			let loadId = 0;
 			let currentModel = params.model;
@@ -1024,6 +1028,8 @@
 				lightMapper = null;
 				rayRadiosity?.dispose();
 				rayRadiosity = null;
+				lightMapDenoiser?.dispose();
+				lightMapDenoiser = null;
 				atlas = null;
 				meshes = [];
 				bakingLightMap = false;
@@ -1404,7 +1410,7 @@
 				if ( lightMapper && params.diffuseBaking ) {
 
 					// Keep material.lightMap independent: this atlas is supplied exactly once.
-					diffuseProviders.push( lightMapDiffuse( texture( lightMapper.texture, uv( 1 ) ) ) );
+					diffuseProviders.push( lightMapDiffuse( texture( ( lightMapDenoiser ?? lightMapper ).texture, uv( 1 ) ) ) );
 
 				}
 
@@ -1517,7 +1523,11 @@
 				lightMapper = null;
 				rayRadiosity?.dispose();
 				rayRadiosity = null;
+				lightMapDenoiser?.dispose();
+				lightMapDenoiser = null;
 				bakeIteration = 0;
+				rayNoise = Infinity;
+				rayNoiseCheck = 8;
 				bakePhase = 'diffuse';
 				bakingLightMap = true;
 				configureIndirectLighting();
@@ -1615,7 +1625,34 @@
 						lightProbes.visible = true;
 						lightMapper.update();
 						status.textContent = `Sequential: diffuse light map ${ lightMapper.samples } / ${ targetSamples }`;
-						if ( lightMapper.samples >= targetSamples ) {
+
+						if ( rayTraced && lightMapper.samples >= rayNoiseCheck ) {
+
+							// The estimate reads the light map back, so it resolves a few frames later.
+							const mapper = lightMapper;
+							rayNoiseCheck = Infinity;
+							mapper.estimateNoise().then( noise => {
+
+								if ( mapper !== lightMapper ) return;
+								rayNoise = noise;
+								rayNoiseCheck = Math.ceil( mapper.samples * 1.25 );
+
+							} );
+
+						}
+
+						if ( rayTraced && rayNoise < Infinity ) status.textContent += `, ${ ( rayNoise * 100 ).toFixed( 1 ) }% noise`;
+
+						if ( lightMapper.samples >= targetSamples || rayNoise < rayNoiseTolerance ) {
+
+							if ( rayTraced ) {
+
+								lightMapDenoiser = new LightMapDenoiser( renderer, lightMapper );
+								if ( rayNoise < Infinity ) lightMapDenoiser.relativeNoise.value = rayNoise;
+								lightMapDenoiser.update();
+								providersChanged = true;
+
+							}
 
 							bakePhase = 'reflection';
 							if ( ! hasReflectionProbes ) {
@@ -1631,7 +1668,7 @@
 
 						// Diffuse and specular are separate lobes. Reflections shade captured
 						// surfaces; they are never added a second time as diffuse irradiance.
-						const diffuse = [ lightMapDiffuse( texture( lightMapper.texture, uv( 1 ) ) ) ];
+						const diffuse = [ lightMapDiffuse( texture( ( lightMapDenoiser ?? lightMapper ).texture, uv( 1 ) ) ) ];
 						if ( interleaved ) {
 
 							diffuse.push( lightProbeGridDiffuse( lightProbes ) );

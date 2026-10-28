@@ -999,6 +999,7 @@
 
 				try {
 
+					if ( warning.textContent.startsWith( 'Denoising failed:' ) ) warning.textContent = '';
 					status.textContent = 'Processing light maps…';
 					await lightBaker.processAsync();
 					captureBakeId = - 1;

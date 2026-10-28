@@ -9,6 +9,7 @@ const baker = new LightBaker( renderer, {
   denoiser: 'variance'
 } );
 await baker.bake( scene ); // Also awaits final denoising.
+baker.apply();
 
 baker.denoiser = 'oidn';
 await baker.processAsync(); // Reprocess existing samples, without baking again.
@@ -55,6 +56,6 @@ The benchmark warms each method, then runs it sequentially for at least five sec
 
 For each method, additional raw samples are chosen from the measured cost ratio. That raw variant is also warmed and measured over a five-second completed-work batch. `budgetRatio` reports the actual raw/filtered time ratio: a large mismatch is not an equal-time comparison. Integer rounding, fixed overhead and a cap below the reference can prevent exact matches.
 
-Metrics are linear RGB RMSE, energy-normalized RMSE and MAE on covered reference texels. Preview tone mapping is excluded from metrics. Seam stitching and directional output are disabled to isolate irradiance denoising. The fixture is a Cornell-like room with emissive ceiling panel, colored walls and two occluders.
+Metrics are linear RGB RMSE, energy-normalized RMSE and MAE on covered reference texels. Five quality trials use subsequent ray-sequence phases for each method and raw comparator, outside throughput timing. The report includes the relative-RMSE spread and pools mean squared error across trials. Preview tone mapping is excluded from metrics. Seam stitching and directional output are disabled to isolate irradiance denoising. The fixture is a Cornell-like room with emissive ceiling panel, colored walls and two occluders.
 
 Interpret results conservatively: the high-sample reference is still noisy; the fixed bounce cache is shared and its bias is not measured. Reset repeats UV jitter, but the ray source's render-pass sequence continues, so trials and reference use subsequent phases rather than matched rays or explicitly independent seeds. The fixture does not measure world-area weighting, cross-chart seam quality, independent-seed confidence intervals or large production scenes. Cold download/compilation costs make one-off bakes more expensive than warmed results. A lower raw-noise estimate alone is not evidence of better reconstruction.

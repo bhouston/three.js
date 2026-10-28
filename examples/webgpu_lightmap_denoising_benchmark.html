@@ -20,7 +20,7 @@
 	</script>
 	<script type="module">
 		import * as THREE from 'three/webgpu';
-		import { texture } from 'three/tsl';
+		import { texture, uv } from 'three/tsl';
 		import { LightBaker } from 'three/addons/lighting/LightBaker.js';
 
 		const params = new URLSearchParams( location.search );
@@ -130,7 +130,7 @@
 				await renderer.init();
 				const drain = () => device.queue.onSubmittedWorkDone();
 				const scene = makeScene();
-				baker = new LightBaker( renderer, { algorithm: 'ray', resolution: config.resolution, cacheSize: 64, directional: false, denoiser: 'none', denoise: false, stitchSeams: false } );
+				baker = new LightBaker( renderer, { algorithm: 'ray', resolution: config.resolution, cacheSize: 64, directional: false, denoiser: 'none', stitchSeams: false } );
 				status.textContent = 'Preparing ' + adapterName;
 				await baker.prepare( scene );
 				const mapper = baker.lightMapper;
@@ -141,7 +141,7 @@
 				const quad = new THREE.QuadMesh( readMaterial );
 				async function read( source ) {
 
-					readMaterial.fragmentNode = texture( source );
+					readMaterial.fragmentNode = texture( source, uv() );
 					readMaterial.needsUpdate = true;
 					renderer.setRenderTarget( readTarget );
 					quad.render( renderer );
@@ -153,7 +153,6 @@
 				async function process( mode ) {
 
 					baker.denoiser = mode;
-					baker.denoise = mode !== 'none';
 					const maps = baker.processAsync ? await baker.processAsync() : baker.process();
 					return maps[ 0 ];
 
@@ -208,15 +207,27 @@
 					delete row.output;
 					// More raw rays at the denoiser's measured end-to-end time budget.
 					const samples = Math.max( config.samples, Math.min( config.reference - 1, Math.round( config.samples * row.meanCompletedBakeSeconds / baseline.meanCompletedBakeSeconds ) ) );
+					// Warm the candidate, then measure complete batches for several seconds too.
 					baker.reset();
-					await drain();
-					const start = performance.now();
 					mapper.update( samples );
 					await process( 'none' );
 					await drain();
-					const actualSeconds = ( performance.now() - start ) / 1000;
+					let completedBakes = 0;
+					const start = performance.now();
+					do {
+
+						baker.reset();
+						mapper.update( samples );
+						await process( 'none' );
+						await drain();
+						completedBakes ++;
+
+					} while ( performance.now() - start < config.seconds * 1000 );
+
+					const measurementSeconds = ( performance.now() - start ) / 1000;
+					const actualSeconds = measurementSeconds / completedBakes;
 					const output = await read( mapper.texture );
-					row.moreSamples = { samples, targetSeconds: row.meanCompletedBakeSeconds, actualSeconds, error: metrics( output, reference, mask ) };
+					row.moreSamples = { samples, targetSeconds: row.meanCompletedBakeSeconds, actualSeconds, completedBakes, measurementSeconds, budgetRatio: actualSeconds / row.meanCompletedBakeSeconds, error: metrics( output, reference, mask ) };
 					preview( 'Raw time-matched to ' + row.mode + ': ' + samples + ' samples', output, size );
 
 				}

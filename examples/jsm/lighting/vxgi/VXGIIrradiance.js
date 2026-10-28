@@ -1,4 +1,5 @@
-import { Fn, PI, float, interleavedGradientNoise, luminance, screenCoordinate, vec2, vec3, vec4 } from 'three/tsl';
+import { Fn, PI, float, luminance, screenCoordinate, vec3, vec4 } from 'three/tsl';
+import { R2_STEPS, houstonStratifiedNoise } from '../../tsl/utils/HoustonStratifiedNoise.js';
 import { createConeTracer, gather } from './VXGIConeTracer.js';
 
 /**
@@ -8,7 +9,7 @@ import { createConeTracer, gather } from './VXGIConeTracer.js';
  * Compose it with indirectDiffuse() for {@link LightMapper} or live shading.
  * Escaping cones sample the volume's environment before hemisphere integration.
  * Coverage is spatial confidence, independently of cone opacity and surface brightness.
- * The cones are rotated per pixel with interleaved gradient noise like `VXGINode`. When baking, the
+ * The cones are rotated per pixel with stratified noise like `VXGINode`. When baking, the
  * pixel is the light map texel. The optional sample index shifts the noise so that accumulated
  * samples, or a temporal filter like TRAA, converge. An optional `directionNode` in the query
  * receives the luminance-weighted cone directions, for the directional light maps of {@link LightMapper}.
@@ -29,11 +30,10 @@ function vxgiDiffuse( volume, { coneCount = 8, coneAngle = 40 } = {} ) {
 
 	return ( { position, normal, sampleIndex = float( 0 ), directionNode = null } ) => Fn( () => {
 
-		// interleaved gradient noise offsets of the stratified cone set, see VXGINode
+		// stratified noise offsets of the cone set, see VXGINode
 
-		const shift = screenCoordinate.add( sampleIndex.mul( 5.588238 ) ).toConst();
-		const elevation = interleavedGradientNoise( shift.add( vec2( 5.588238, 3.14159 ) ) ).toConst();
-		const rotation = interleavedGradientNoise( shift ).toConst();
+		const elevation = houstonStratifiedNoise( screenCoordinate, sampleIndex, 2, R2_STEPS[ 1 ] ).toConst();
+		const rotation = houstonStratifiedNoise( screenCoordinate, sampleIndex, 1, R2_STEPS[ 0 ] ).toConst();
 
 		const origin = position.add( normal.mul( volume.voxelSizeNode.mul( 1.5 ) ) ).toConst();
 

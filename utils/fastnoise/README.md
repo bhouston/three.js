@@ -2,6 +2,12 @@
 
 Tools behind `examples/textures/noises/fast/` and `examples/jsm/tsl/utils/FASTNoise.js`.
 
+Three optional CPU constructors, generation timings, nonlinear sampling-error
+comparisons and tradeoffs are documented in [ALTERNATIVES.md](ALTERNATIVES.md).
+They construct volumes much faster, with different quality compromises; FAST
+remains the default. Each `alternatives/*.js` module exports `generate()` for
+browser or Node, and `generate-alternative.js` writes scalar volumes/atlases.
+
 - `generator.html`: WebGPU port of EA's [FAST](https://github.com/electronicarts/fastnoise) generator (`fastnoise/shaders/*.hlsl`, `main.cpp`). Real sample space, uniform distribution, Gaussian spatial filter, weighted exponential temporal filter, product or separate combine.
 - `generate.js`: runs `generator.html` in headless Chrome and writes the volume as raw float32 (z, y, x).
 - `compare.py`: scores volumes (ours as `.f32`, or EA's PNG slices) on spectra and filtered error.

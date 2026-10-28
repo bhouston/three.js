@@ -208,3 +208,8 @@ JS/HTML. `check-alternatives.js` verifies
 determinism, bounds, invalid dimensions, different seeds, temporal strata,
 histogram preservation and an independent full-convolution check that cached
 threshold swaps lower the stated quadratic objective.
+
+The seed-1 raw metrics were also cross-checked against the existing NumPy
+`compare.py`; all ten printed metrics match the Node scorer. Used the machine's
+existing Blender Python/NumPy, omitting only the unused Pillow import because
+the inputs are float32 volumes, not PNGs. No repository Python code was changed.

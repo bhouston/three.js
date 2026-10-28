@@ -8,26 +8,8 @@ import { PNG } from 'pngjs';
 
 const definitions = [
 
-	[ 'fast', 'FAST Separate (scalar reference)', 'Unmodified 10,000-step FAST separate scalar reference for the experimental methods.' ],
-	[ 'filter-rank', 'Filter/rank', 'Iterative spectrum shaping and rank restoration; optimized for filtered scalar values.' ],
-	[ 'hierarchy', 'Hierarchical stratification', 'Fast recursive stratification; may exhibit structured artifacts.' ],
-	[ 'local-energy', 'Cached threshold energy', 'Cached local threshold-energy optimization.' ],
-	[ 'pr116-hierarchy', 'PR116 hierarchical', 'Independent hierarchical construction from PR116.' ],
-	[ 'pr116-lattice', 'PR116 lattice', 'Independent lattice construction from PR116.' ],
-	[ 'pr116-relaxation', 'PR116 relaxation', 'Independent filtered-value relaxation from PR116.' ],
-	[ 'multiscale-scratch', 'Multiscale CDF (scratch)', 'Multiscale threshold-energy construction from scratch.' ],
-	[ 'multiscale-polish', 'Multiscale CDF (FAST polish)', 'Multiscale threshold-energy refinement of FAST.' ],
-	[ 'stratified-scratch', 'Temporal strata (scratch)', 'Temporal-stratum-preserving refinement from scratch.' ],
-	[ 'stratified-midpoint', 'Temporal strata (midpoints)', 'Temporal-stratum-preserving refinement with midpoint values.' ],
-	[ 'pareto-polish', 'Pareto (FAST polish)', 'Ten-objective guarded refinement of FAST.' ],
-	[ 'seam-polish', 'Playback seam (FAST polish)', 'FAST refinement accounting for the playback cycle seam.' ],
-	[ 'joint-polish', 'Joint filter (FAST polish)', 'FAST refinement with a joint spatial-temporal kernel.' ],
-	[ 'seam-joint-polish', 'Seam + joint (FAST polish)', 'FAST refinement combining seam and joint objectives.' ],
-	[ 'light-seam-015', 'Light seam 1.5% (FAST polish)', 'Restarted FAST refinement with a 1.5% seam objective.' ],
-	[ 'light-seam-03', 'Light seam 3% (FAST polish)', 'Restarted FAST refinement with a 3% seam objective.' ],
-	[ 'continuation-polish', 'FAST +2000 original steps', 'Original-loss restart control, 2000 additional steps.' ],
-	[ 'continuation-deep', 'FAST +3000 original steps', 'Original-loss restart control, 3000 additional steps.' ],
-	[ 'continuation-time-control', 'FAST +4000 original steps', 'Original-loss restart control, approximately equal runtime.' ]
+	[ 'light-seam-03', 'Light seam 3% (FAST polish)', 'PR117 restarted FAST refinement with a 3% seam objective; selected for its low regression count.' ],
+	[ 'pr116-annealed', 'PR116 annealed stratification', 'PR116 annealed temporal-stratum-preserving construction; selected for its broad improvement and faster generation.' ]
 
 ];
 

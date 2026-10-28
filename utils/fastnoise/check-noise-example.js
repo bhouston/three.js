@@ -14,6 +14,7 @@ const require = createRequire( path.join( root, 'package.json' ) );
 const puppeteer = require( 'puppeteer' );
 const { PNG } = require( 'pngjs' );
 const manifest = JSON.parse( await fs.readFile( path.join( root, 'examples/textures/noises/experimental/manifest.json' ), 'utf8' ) );
+assert.equal( manifest.entries.length, 2, 'The example includes exactly two experimental methods.' );
 const requests = new Map();
 let failURL, delayURL;
 const server = http.createServer( async ( request, response ) => {
@@ -78,7 +79,7 @@ try {
 
 	} );
 	await page.goto( `http://127.0.0.1:${ server.address().port }/examples/webgpu_tsl_blue_noise.html` );
-	await page.waitForFunction( () => window.__noiseTest?.targets && document.querySelectorAll( 'select' )[ 1 ]?.options.length === 24, { timeout: 60000 } );
+	await page.waitForFunction( count => window.__noiseTest?.targets && document.querySelectorAll( 'select' )[ 1 ]?.options.length === count, { timeout: 60000 }, manifest.entries.length + 4 );
 	report.gpu = await page.evaluate( async () => {
 
 		const test = window.__noiseTest;

@@ -39,7 +39,9 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( baker.resolution, 1024 );
 				assert.strictEqual( baker.pageSize, 2048 );
 				assert.strictEqual( baker.directLight, 'live' );
-				assert.true( baker.unwrap && baker.directional && baker.denoise && baker.stitchSeams );
+				assert.true( baker.unwrap && baker.directional && baker.stitchSeams );
+				assert.strictEqual( baker.denoiser, 'none' );
+				assert.false( baker.denoise );
 				assert.strictEqual( baker.samples, 0 );
 				assert.false( baker.converged, 'A bake that has not started has not converged' );
 
@@ -69,6 +71,7 @@ export default QUnit.module( 'Addons', () => {
 			QUnit.test( 'Invalid options throw and unknown ones warn', assert => {
 
 				assert.throws( () => new LightBaker( renderer, { algorithm: 'path tracing' } ), /Unknown algorithm/ );
+				assert.throws( () => new LightBaker( renderer, { denoiser: 'blur' } ), /Unknown denoiser/ );
 				assert.throws( () => new LightBaker( renderer, { directLight: 'Baked' } ), /directLight/ );
 				assert.throws( () => new LightBaker( renderer, { unwrap: 'keep' } ), /unwrap/ );
 				assert.throws( () => new LightBaker( renderer, { resolution: 1000.5 } ), /resolution/ );
@@ -82,6 +85,70 @@ export default QUnit.module( 'Addons', () => {
 				assert.true( warnings[ 0 ].includes( 'tolerance' ), 'Typos are reported' );
 				assert.strictEqual( baker.resolution, 512, 'The known options still apply' );
 				assert.strictEqual( baker.setOptions( { resolution: undefined } ).resolution, 512, 'undefined keeps an option' );
+
+			} );
+
+			QUnit.test( 'Denoiser selection processes raw maps and preserves legacy options', async assert => {
+
+				const baker = new LightBaker( renderer, { stitchSeams: false } );
+				const raw = new Texture(), variance = new Texture(), oidn = new Texture();
+				baker.lightMapper = { pages: [ { texture: raw } ] };
+				let varianceCalls = 0, oidnCalls = 0;
+				baker._denoisers = [ { texture: variance, relativeNoise: { value: 0 }, update() {
+
+					varianceCalls ++;
+
+				} } ];
+				baker._oidnDenoisers = [ { texture: oidn, async update() {
+
+					oidnCalls ++;
+
+				} } ];
+
+				assert.deepEqual( baker.process(), [ raw ], 'None preserves the raw output' );
+				baker.setOptions( { denoise: true } );
+				assert.strictEqual( baker.denoiser, 'variance', 'Legacy true selects variance' );
+				assert.deepEqual( await baker.processAsync(), [ variance ] );
+				assert.strictEqual( varianceCalls, 1 );
+
+				baker.setOptions( { denoiser: 'oidn' } );
+				assert.throws( () => baker.process(), /processAsync/ );
+				assert.deepEqual( await baker.processAsync(), [ oidn ] );
+				await baker.processAsync();
+				assert.strictEqual( oidnCalls, 1, 'Unchanged samples reuse processed output' );
+				assert.strictEqual( baker.lightMapper.pages[ 0 ].texture, raw, 'Raw accumulation is unchanged' );
+
+				baker.denoise = false;
+				assert.strictEqual( baker.denoiser, 'none' );
+				assert.deepEqual( baker.process(), [ raw ], 'Switching back exposes raw output again' );
+
+			} );
+
+			QUnit.test( 'Asynchronous denoising rejects stale results and retries failures', async assert => {
+
+				const baker = new LightBaker( renderer, { denoiser: 'oidn', stitchSeams: false } );
+				baker.lightMapper = { pages: [ { texture: new Texture() } ] };
+				let finish;
+				baker._oidnDenoisers = [ { texture: new Texture(), update: () => new Promise( resolve => {
+
+					finish = resolve;
+
+				} ) } ];
+				const pending = baker.processAsync();
+				baker._epoch ++;
+				finish();
+				await assert.rejects( pending, /superseded/ );
+				assert.strictEqual( baker._processedKey, null, 'Stale output is not cached' );
+				baker._oidnDenoisers[ 0 ].update = async () => {
+
+					throw new Error( 'model failed' );
+
+				};
+
+				await assert.rejects( baker.processAsync(), /model failed/ );
+				baker._oidnDenoisers[ 0 ].update = async () => {};
+
+				assert.strictEqual( ( await baker.processAsync() ).length, 1, 'Failed processing can be retried' );
 
 			} );
 

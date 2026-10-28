@@ -22,6 +22,8 @@ for ( const key of [ 'resolution', 'samples', 'reference', 'seconds' ] ) {
 }
 
 if ( args.includes( '--oidn' ) ) query.set( 'oidn', '1' );
+const scene = option( 'scene', null );
+if ( scene !== null ) query.set( 'benchmarkScene', scene );
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png' };
 const server = http.createServer( async ( request, response ) => {
 
@@ -45,7 +47,7 @@ try {
 
 	await mkdir( output, { recursive: true } );
 	await new Promise( resolve => server.listen( 0, '127.0.0.1', resolve ) );
-	browser = await puppeteer.launch( { headless: true, args: [ '--use-angle=d3d11', '--enable-unsafe-webgpu', '--disable-frame-rate-limit', '--disable-gpu-vsync' ] } );
+	browser = await puppeteer.launch( { headless: true, protocolTimeout: 0, args: [ '--use-angle=d3d11', '--enable-unsafe-webgpu', '--disable-frame-rate-limit', '--disable-gpu-vsync' ] } );
 	const page = await browser.newPage();
 	await page.setViewport( { width: 1100, height: 900, deviceScaleFactor: 1 } );
 	const renderingErrors = [];
@@ -60,8 +62,11 @@ try {
 		}
 
 	} );
-	await page.goto( `http://127.0.0.1:${ server.address().port }/examples/webgpu_lightmap_denoising_benchmark.html?${ query }`, { waitUntil: 'networkidle0' } );
-	await page.waitForFunction( () => typeof window.runDenoisingBenchmark === 'function', { timeout: 60000 } );
+	const filename = scene === null ? 'webgpu_lightmap_denoising_benchmark.html' : 'webgpu_lightmap_baking.html';
+	await page.goto( `http://127.0.0.1:${ server.address().port }/examples/${ filename }?${ query }`, { waitUntil: 'networkidle0', timeout: 180000 } );
+	await page.waitForFunction( () => typeof window.runDenoisingBenchmark === 'function' || window.benchmarkError !== undefined, { timeout: 600000 } );
+	const initializationError = await page.evaluate( () => window.benchmarkError );
+	if ( initializationError ) throw new Error( initializationError );
 	page.setDefaultTimeout( 0 );
 	const result = await page.evaluate( () => window.runDenoisingBenchmark() );
 	if ( renderingErrors.length > 0 ) throw new Error( 'Rendering validation failed: ' + renderingErrors.join( '\n' ) );

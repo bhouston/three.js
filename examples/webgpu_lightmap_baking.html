@@ -44,6 +44,7 @@
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { LightBaker } from 'three/addons/lighting/LightBaker.js';
+			import { runLightMapDenoisingBenchmark } from 'three/addons/lighting/LightMapDenoisingBenchmark.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { lightProbeGridIrradiance } from 'three/addons/tsl/lighting/LightProbeGridNode.js';
 			import { ReflectionProbes } from 'three/addons/lighting/ReflectionProbes.js';
@@ -80,6 +81,8 @@
 			// phones have less GPU memory and slower GPUs
 
 			const phone = window.matchMedia( '(pointer: coarse)' ).matches;
+			const benchmarkParams = new URLSearchParams( location.search );
+			const benchmarkScene = benchmarkParams.get( 'benchmarkScene' );
 
 			const params = {
 				scene: 'Cornell Box',
@@ -94,7 +97,12 @@
 
 			const algorithms = { 'Stochastic Radiosity': 'stochastic', 'Ray Radiosity': 'ray', 'Light Probe': 'probes', 'VXGI': 'vxgi' };
 
-			init();
+			init().catch( error => {
+
+				if ( benchmarkScene !== null ) window.benchmarkError = error.stack || String( error );
+				console.error( error );
+
+			} );
 
 			async function init() {
 
@@ -115,7 +123,18 @@
 				// at most twice the resolution of the page, three times on phones would take memory and GPU time
 				// from the bake
 
-				renderer = new THREE.WebGPURenderer( { antialias: true, requiredLimits } );
+				let device;
+				if ( benchmarkScene !== null ) {
+
+					if ( ! adapter ) throw new Error( 'Benchmark blocked: no WebGPU adapter.' );
+					const info = adapter.info;
+					const name = [ info.vendor, info.architecture, info.device, info.description ].join( ' ' );
+					if ( adapter.isFallbackAdapter || info.isFallbackAdapter || /swiftshader|llvmpipe|lavapipe|software|microsoft basic/i.test( name ) || ! /nvidia|amd|intel|apple|qualcomm|arm/i.test( name ) ) throw new Error( 'Benchmark blocked: physical GPU not confirmed: ' + name );
+					device = await adapter.requestDevice( { requiredFeatures: [ ...adapter.features ], requiredLimits } );
+
+				}
+
+				renderer = new THREE.WebGPURenderer( { antialias: true, requiredLimits, device } );
 				renderer.setPixelRatio( Math.min( window.devicePixelRatio, 2 ) );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.shadowMap.enabled = true;
@@ -156,6 +175,12 @@
 				// the light maps and assigns them to the materials
 
 				lightBaker = new LightBaker( renderer );
+				if ( benchmarkScene !== null ) {
+
+					await prepareBenchmark( adapter.info );
+					return;
+
+				}
 
 				await setScene();
 
@@ -183,6 +208,92 @@
 				} );
 
 				renderer.setAnimationLoop( animate );
+
+			}
+
+			async function prepareBenchmark( adapterInfo ) {
+
+				if ( scenes[ benchmarkScene ] === undefined ) throw new Error( 'Unknown benchmark scene: ' + benchmarkScene );
+				status.textContent = 'Loading ' + benchmarkScene;
+				const next = await scenes[ benchmarkScene ]();
+				showWorld( next );
+				if ( world.light !== null ) world.light.visible = false;
+				if ( world.lightPanel !== null ) world.lightPanel.visible = true;
+				const integer = ( key, fallback, min, max ) => Math.min( max, Math.max( min, Number( benchmarkParams.get( key ) ) || fallback ) ) | 0;
+				const config = {
+					resolution: integer( 'resolution', 256, 32, 512 ),
+					samples: integer( 'samples', 16, 1, 4096 ),
+					reference: integer( 'reference', 512, 32, 65536 ),
+					seconds: integer( 'seconds', 5, 5, 60 ),
+					qualityTrials: 5,
+					oidn: benchmarkParams.get( 'oidn' ) === '1'
+				};
+				config.reference = Math.max( config.reference, config.samples * 4 );
+				lightBaker.setOptions( { algorithm: 'ray', resolution: config.resolution, pageSize: 512, unwrap: world.unwrap ?? true, cacheSize: 256, directional: false, denoiser: 'none', stitchSeams: false } );
+				status.textContent = 'Preparing ' + benchmarkScene;
+				await lightBaker.prepare( scene, world.root );
+
+				// The benchmark shares these exact example scene loaders and leaves the render loop stopped.
+				// Screenshots use atlas previews so exposure/reflection-probe capture cannot affect the metrics.
+				renderer.domElement.style.display = 'none';
+				const report = document.createElement( 'main' );
+				report.style.cssText = 'position:relative;margin:100px 16px 16px;color:white;font:13px monospace';
+				const results = document.createElement( 'pre' );
+				results.style.cssText = 'max-height:250px;overflow:auto;white-space:pre-wrap';
+				const images = document.createElement( 'div' );
+				images.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))';
+				report.append( results, images );
+				document.body.appendChild( report );
+				window.runDenoisingBenchmark = async () => {
+
+					try {
+
+						const result = await runLightMapDenoisingBenchmark( {
+							renderer, baker: lightBaker, config, sceneName: benchmarkScene,
+							onStatus: text => {
+
+								status.textContent = text;
+
+							},
+							onPreview: ( label, data, size, page ) => {
+
+								if ( page !== 0 ) return;
+								const canvas = document.createElement( 'canvas' );
+								canvas.width = canvas.height = size;
+								canvas.style.cssText = 'width:256px;image-rendering:pixelated';
+								const context = canvas.getContext( '2d' );
+								const pixels = context.createImageData( size, size );
+								for ( let i = 0; i < data.length; i += 4 ) {
+
+									for ( let c = 0; c < 3; c ++ ) pixels.data[ i + c ] = Math.round( 255 * Math.pow( Math.max( 0, data[ i + c ] ) / ( 1 + Math.max( 0, data[ i + c ] ) ), 1 / 2.2 ) );
+									pixels.data[ i + 3 ] = 255;
+
+								}
+
+								context.putImageData( pixels, 0, 0 );
+								const figure = document.createElement( 'figure' );
+								const caption = document.createElement( 'figcaption' );
+								caption.textContent = `${ label } (page 1, Reinhard preview)`;
+								figure.append( caption, canvas );
+								images.appendChild( figure );
+
+							}
+						} );
+						result.adapter = { vendor: adapterInfo.vendor, architecture: adapterInfo.architecture, device: adapterInfo.device, description: adapterInfo.description };
+						result.userAgent = navigator.userAgent;
+						window.benchmarkResult = result;
+						results.textContent = JSON.stringify( result, null, 2 );
+						status.textContent = benchmarkScene + ' benchmark complete';
+						return result;
+
+					} finally {
+
+						lightBaker.dispose();
+						renderer.dispose();
+
+					}
+
+				};
 
 			}
 

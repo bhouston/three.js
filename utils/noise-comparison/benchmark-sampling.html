@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Blue noise sampling throughput</title>
+<script type="importmap">
+{"imports":{"three":"/src/Three.WebGPU.js","three/webgpu":"/src/Three.WebGPU.js","three/tsl":"/src/Three.TSL.js","three/addons/":"/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three/webgpu';
+import { hash, screenCoordinate, uint, uniform, vec4 } from 'three/tsl';
+import { threeLevelHierarchyWeyl, animatedIGN } from 'three/addons/tsl/utils/ProceduralNoise.js';
+import { fastNoise, loadFASTNoise } from 'three/addons/tsl/utils/FASTNoise.js';
+
+window.runBenchmark = async () => {
+
+	const renderer = new THREE.WebGPURenderer();
+	await renderer.init();
+	if ( ! renderer.backend.isWebGPUBackend ) throw new Error( 'WebGPU required' );
+	const info = renderer.backend.device.adapterInfo;
+	if ( ! info || info.isFallbackAdapter || ! /nvidia|amd|intel|apple|qualcomm/i.test( info.vendor ) || /swiftshader|software|llvmpipe|lavapipe/i.test( JSON.stringify( info ) ) ) throw new Error( 'Physical GPU verification blocked' );
+	const gpu = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description };
+	const target = new THREE.RenderTarget( 1024, 1024, { type: THREE.FloatType, depthBuffer: false } );
+	renderer.setRenderTarget( target );
+	const index = uniform( 0, 'uint' );
+	const product = await loadFASTNoise( '/examples/textures/noises/fast/gauss1-ema01-spatial.png' );
+	const separate = await loadFASTNoise( '/examples/textures/noises/fast/gauss1-ema01-spatio-temporal.png' );
+	const methods = {
+		'White': hash( uint( screenCoordinate.x ).add( uint( screenCoordinate.y ).mul( 4096 ) ).add( index.mul( 16777259 ) ) ),
+		'FAST Separate': fastNoise( separate, new THREE.Vector2(), index ).x,
+		'FAST Product': fastNoise( product, new THREE.Vector2(), index ).x,
+		'Golden Ratio': fastNoise( product, new THREE.Vector2(), uint( 0 ) ).x.add( index.mul( uint( 2654435769 ) ).shiftRight( 8 ).toFloat().div( 16777216 ) ).fract(),
+		'3LHW': threeLevelHierarchyWeyl( screenCoordinate, index ),
+		'Animated IGN': animatedIGN( screenCoordinate, index )
+	};
+	const rows = [];
+	try {
+
+		for ( let repeat = 0; repeat < 3; repeat ++ ) {
+
+			// Rotate order between trials to reduce a fixed-order thermal bias.
+			const entries = Object.entries( methods );
+			const order = entries.slice( repeat * 2 ).concat( entries.slice( 0, repeat * 2 ) );
+			for ( const [ method, sample ] of order ) {
+
+				const material = new THREE.NodeMaterial();
+				material.fragmentNode = vec4( sample, 0, 0, 1 );
+				const quad = new THREE.QuadMesh( material );
+				await quad.renderAsync( renderer );
+				const batch = async () => {
+
+					for ( let i = 0; i < 8; i ++ ) {
+
+						index.value = ( index.value + 1 ) % 1024;
+						quad.render( renderer );
+
+					}
+
+					await renderer.backend.device.queue.onSubmittedWorkDone();
+
+				};
+
+				let start = performance.now();
+				while ( performance.now() - start < 2000 ) await batch();
+				await renderer.backend.device.queue.onSubmittedWorkDone();
+				let completedDraws = 0;
+				start = performance.now();
+				while ( performance.now() - start < 5000 ) {
+
+					await batch();
+					completedDraws += 8;
+
+				}
+
+				const seconds = ( performance.now() - start ) / 1000;
+				const samples = completedDraws * 1024 * 1024;
+				const pixels = await renderer.readRenderTargetPixelsAsync( target, 0, 0, 4, 1 );
+				const readback = [ 0, 4, 8, 12 ].map( i => pixels[ i ] );
+				if ( ! readback.every( v => Number.isFinite( v ) && v >= 0 && v <= 1 ) ) throw new Error( 'Invalid sample output' );
+				rows.push( { method, repeat, completedDraws, samples, seconds, millionSamplesPerSecond: samples / seconds / 1e6, msPerMillionSamples: seconds * 1e9 / samples, finalIndex: index.value, readback } );
+				material.dispose();
+
+			}
+
+		}
+
+		return { gpu, userAgent: navigator.userAgent, samplesPerDraw: 1024 * 1024, rows };
+
+	} finally {
+
+		target.dispose();
+		product.dispose();
+		separate.dispose();
+		renderer.dispose();
+
+	}
+
+};
+</script>
+</html>

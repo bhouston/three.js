@@ -1,5 +1,9 @@
 # Three faster noise construction experiments
 
+Follow-up: [comparison with PR #117 and interpretation of the chart](RESEARCH-COMPARISON.md)
+includes a common-protocol re-evaluation and explains why the raw-value winner
+does not establish a better general graphics sampler.
+
 These experiments are based on PR #115, commit `1e19ceee26`. Three sub-agents
 independently implemented the methods after a literature review. All are
 experimental alternatives; the existing FAST generator remains the default.

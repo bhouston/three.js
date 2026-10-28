@@ -1,0 +1,37 @@
+{
+  "source": "examples/jsm/tsl/utils/ProceduralNoise.js",
+  "scope": "Standalone TSL JavaScript module per method, including JSDoc, required three/tsl named imports, shared hash helper, and all setup/runtime code. Shared helper is counted independently in each method. LF line endings, UTF-8 bytes. Excludes Three.js engine, generated GPU shader, example UI and benchmark harness. Neither method requires texture precomputation or startup data generation.",
+  "minifier": {
+    "name": "terser",
+    "version": "5.51.2",
+    "options": {
+      "module": true,
+      "compress": true,
+      "mangle": true,
+      "format": {
+        "comments": false
+      }
+    }
+  },
+  "gzip": {
+    "level": 9,
+    "node": "v26.11.1",
+    "zlib": "1.3.2.1-motley-456ae73"
+  },
+  "measurements": [
+    {
+      "name": "Animated IGN",
+      "rawBytes": 1422,
+      "minifiedBytes": 552,
+      "gzipMinifiedBytes": 333,
+      "inputSha256": "d02b993e860a0203220214b6240c699b43af5d711ef05bd07081856197e71a64"
+    },
+    {
+      "name": "3LHW",
+      "rawBytes": 1968,
+      "minifiedBytes": 893,
+      "gzipMinifiedBytes": 479,
+      "inputSha256": "b43e456d8b7287b5e65e8a8949d210b26ebfb447e2e5ef0ddb1306b0cc5ad1a4"
+    }
+  ]
+}

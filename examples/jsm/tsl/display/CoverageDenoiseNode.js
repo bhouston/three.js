@@ -420,7 +420,7 @@ class CoverageDenoiseNode extends Node {
 
 				}
 
-				// clamp the long history to the fast history's neighborhood, not the sparse current frame
+				// clamp the long history to the current neighborhood, the fast history's neighborhood only drives anti-lag
 				const fastUV = virtualField.greaterThan( 0.5 ).select( virtualUV, surfaceUV ).toConst();
 				const fastMin = vec4( 1e9 ).toVar();
 				const fastMax = vec4( - 1e9 ).toVar();
@@ -443,8 +443,8 @@ class CoverageDenoiseNode extends Node {
 
 				}
 
-				const minimum = fastMin.min( currentWeighted ).toVar();
-				const maximum = fastMax.max( currentWeighted ).toVar();
+				const minimum = currentMin.toVar();
+				const maximum = currentMax.toVar();
 
 				If( history.get( 'weight' ).greaterThan( 0 ), () => {
 

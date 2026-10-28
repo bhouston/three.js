@@ -311,7 +311,7 @@ class Inspector extends RendererInspector {
 
 					if ( renderer.hasInitialized() === false ) await renderer.init();
 
-					renderer.backend.trackTimestamp = true;
+					renderer.backend.trackTimestamp = renderer.hasFeature( 'timestamp-query' );
 
 					if ( renderer.hasFeature( 'timestamp-query' ) !== true ) {
 

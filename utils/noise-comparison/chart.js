@@ -80,6 +80,28 @@ try {
 	svg += text( 70, 707, 'Measured local first-ready timings are reported separately; they depend on cache, storage, browser and GPU.', 14 ) + '</svg>';
 	await save( 'texture-cost', svg );
 
+	const startupFile = path.join( directory, 'startup.json' );
+	if ( fs.existsSync( startupFile ) ) {
+
+		const measured = JSON.parse( fs.readFileSync( startupFile, 'utf8' ).replace( /^\uFEFF/, '' ) );
+		svg = background( 'Observed local selection-to-ready delay', 'One hardware WebGPU run; includes download/decode/upload and shader compilation. Not an Internet or cold-start ranking.' );
+		const maximum = Math.max( ...measured.startup.map( row => row.selectionToGPUCompletedMs ) );
+		for ( const [ i, row ] of measured.startup.entries() ) {
+
+			const y = 125 + i * 70;
+			svg += text( 70, y + 20, row.label, 17 ) + `<rect x="250" y="${y}" width="${row.selectionToGPUCompletedMs / maximum * 650}" height="30" fill="${colors[ i ]}"/>`;
+			svg += text( 920, y + 21, `${row.selectionToGPUCompletedMs.toFixed( 1 )} ms`, 16 );
+
+		}
+
+		svg += text( 70, 600, 'Intrinsic runtime mask generation: 0 ms for White, 3LHW and Animated IGN; no mask or texture is constructed.', 15 );
+		svg += text( 70, 632, 'FAST uses preoptimized assets; its readiness also requires an asynchronous image load.', 15 );
+		svg += text( 70, 664, 'Default 3LHW was already compiled; Golden Ratio reused Product. The timing samples have different cache states.', 14 );
+		svg += text( 70, 707, `Physical ${measured.gpu.vendor} ${measured.gpu.architecture}; common initial page load ${measured.initialPageStartupMs.toFixed( 0 )} ms.`, 14 ) + '</svg>';
+		await save( 'startup-cost', svg );
+
+	}
+
 } finally {
 
 	await browser.close();

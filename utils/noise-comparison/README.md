@@ -8,6 +8,8 @@ This focused comparison extends the uniform-field chart and table in [Three.js P
 
 ![Texture download cost](texture-cost.png)
 
+![Observed local selection-to-ready delay](startup-cost.png)
+
 See [TABLES.md](TABLES.md) for numerical tables and nonlinear/spectral checks, and [results.json](results.json) for full precision, input hashes, arithmetic details, and small CPU reference fixtures. PNGs are ordinary raster charts; their SVG sources are included.
 
 ## Reproduce
@@ -17,11 +19,18 @@ From the repository root, with Python 3, NumPy, Pillow, Node.js and the reposito
 ```sh
 python utils/noise-comparison/compare.py
 node utils/noise-comparison/chart.js
+python utils/noise-comparison/check-results.py
+node utils/noise-comparison/check-results.js
 ```
 
 `CHROME_PATH` can select installed Chrome for the chart rasterizer. Chart generation uses 2D SVG and does not measure rendering performance. It does not change repository-root build outputs.
 
 The benchmark preserves the original 128×128 R-channel viewport, 32-slice FAST indexing, 37/71-pixel cycle shift, midpoint byte decoding, and seven-tap separable wrapped sigma=1 Gaussian. White is NumPy `default_rng(0)`, as in the original published benchmark. Procedural methods use seed 1, continuous frame indices 0 through 1023, and no artificial 32-frame restart or texture quantization. IGN explicitly rounds each arithmetic operation to float32. 3LHW uses unsigned 32-bit arithmetic, then converts its upper 24 bits to a unit float. Accumulation and statistics use float64. These are CPU reference quality numbers; GPU float fusion may cause small IGN differences.
+
+`original-convergence.py` preserves the preceding benchmark source from
+`bhouston/three.js` commit `bf71e556b63c20af6b5f7f61ba30bcb11461e9e6`.
+The Python cross-check executes it unchanged and checks all 88 original points;
+the JavaScript check independently verifies all 24 procedural fixtures.
 
 ## Interpretation
 
@@ -43,6 +52,57 @@ The additional nonlinear check thresholds each sample at probabilities 0.1, 0.5 
 | Animated IGN | 0 | None; arithmetic per sample |
 
 Zero intrinsic mask construction does **not** imply zero shader compilation, first draw, or per-sample cost. Texture byte counts are exact repository payload sizes, not estimated HTTP transfer sizes. Network latency and browser caching depend on deployment. The example validation report separately measures local selection-to-GPU-completion latency on a physical adapter; it is not a portable download-time benchmark. The procedural choices require no FAST PNG request.
+
+`startup.json` records that one local run. The default 3LHW graph was already
+compiled before reselection; Golden Ratio reused the Product atlas. These
+different cache states make the graph an illustration of observed UI delay,
+not a cold-start ranking. White, 3LHW and IGN have **0 ms intrinsic mask
+precomputation** and **0 noise-image bytes**; their ordinary shader compilation
+and rendering still take time. FAST masks are preoptimized offline, then require
+image fetching, decoding and upload when selected.
+
+## Example validation
+
+The example defaults to 3LHW and loads no FAST PNG until a texture-based method
+is selected. Both Sphere and Uniform modes, index resets, six procedural frame
+indices through 1024, failed-load retry, stale selection handling and atlas
+caching pass on physical NVIDIA GTX 1050 hardware, with both WebGPU and WebGL.
+The independent procedural readbacks agree exactly at the sampled points.
+Hardware reports are in `hardware-webgpu.json` and `hardware-webgl.json`.
+
+```sh
+node utils/noise-comparison/check-example.js --root . --artifacts OUTPUT
+node utils/noise-comparison/check-example.js --root . --backend webgl --artifacts OUTPUT_WEBGL
+node utils/noise-comparison/check-example.js --root . --benchmark --artifacts OUTPUT_BENCHMARK
+```
+
+The checker serves current source modules and injects test access only into its
+HTTP response. It changes no root build files. These are integration/quality
+checks, not rendering throughput benchmarks. No scene-level superiority over
+FAST is established.
+
+## Sustained example throughput
+
+The optional benchmark counts GPU-completed frames after a two-second warmup,
+for at least five seconds per method, sequentially. Vsync and frame caps are
+disabled. It includes the complete example workload: Uniform mode, 1000x700
+display, 500x350 sampling target, arithmetic accumulation, spatial Gaussian
+and final display. Eight frames are drained before counting; individual frames
+are not timed. Atlases are already cached. Physical NVIDIA GTX 1050 / WebGPU:
+
+| Method | Completed frames | Seconds | Frames/second |
+| --- | ---: | ---: | ---: |
+| 3LHW | 7,824 | 5.003 | 1,564 |
+| Animated IGN | 7,768 | 5.002 | 1,553 |
+| FAST Separate | 7,944 | 5.005 | 1,587 |
+| FAST Product | 7,856 | 5.001 | 1,571 |
+| Golden Ratio | 7,824 | 5.000 | 1,565 |
+| White | 7,768 | 5.004 | 1,552 |
+
+The small spread in this one run does not establish a speed ranking. CPU
+submission, inspector updates, accumulation, blur and display are included;
+this is not isolated sampler instruction cost or a prediction for path tracing.
+The noise-download benefit remains separate from hot rendering throughput.
 
 ## Provenance
 

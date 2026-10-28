@@ -1,0 +1,59 @@
+{
+  "startup": [
+    {
+      "label": "3LHW",
+      "selectionToGPUCompletedMs": 19.308199999999943,
+      "pngURLs": [],
+      "pngBytes": 0,
+      "intrinsicPrecomputeMs": 0
+    },
+    {
+      "label": "Animated IGN",
+      "selectionToGPUCompletedMs": 36.62869999999998,
+      "pngURLs": [],
+      "pngBytes": 0,
+      "intrinsicPrecomputeMs": 0
+    },
+    {
+      "label": "White",
+      "selectionToGPUCompletedMs": 35.40380000000005,
+      "pngURLs": [],
+      "pngBytes": 0,
+      "intrinsicPrecomputeMs": 0
+    },
+    {
+      "label": "FAST Separate",
+      "selectionToGPUCompletedMs": 114.71550000000002,
+      "pngURLs": [
+        "/examples/textures/noises/fast/gauss1-ema01-spatio-temporal.png"
+      ],
+      "pngBytes": 3025821,
+      "intrinsicPrecomputeMs": null
+    },
+    {
+      "label": "FAST Product",
+      "selectionToGPUCompletedMs": 44.30470000000014,
+      "pngURLs": [
+        "/examples/textures/noises/fast/gauss1-ema01-spatial.png"
+      ],
+      "pngBytes": 3019696,
+      "intrinsicPrecomputeMs": null
+    },
+    {
+      "label": "Golden Ratio",
+      "selectionToGPUCompletedMs": 35.046299999999974,
+      "pngURLs": [],
+      "pngBytes": 0,
+      "intrinsicPrecomputeMs": null
+    }
+  ],
+  "initialPageStartupMs": 1198.9473,
+  "timingNote": "Local HTTP selection-to-GPU-completion includes decode/upload and shader work; it is not an Internet download time or intrinsic generator cost. Arithmetic methods have zero mask bytes and zero precomputation.",
+  "note": "3LHW default graph was already rendered before reselection; Golden Ratio reuses cached Product. One local illustration, not a comparable cold-start or network performance ranking.",
+  "gpu": {
+    "vendor": "nvidia",
+    "architecture": "pascal",
+    "description": "",
+    "backend": "WebGPU"
+  }
+}

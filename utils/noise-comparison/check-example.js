@@ -203,6 +203,48 @@ try {
 
 	}
 
+	if ( args.includes( '--benchmark' ) ) {
+
+		report.throughput = [];
+		await select( 'Uniform', 0 );
+		await page.waitForFunction( () => window.__noiseTest.params.mode === 'Uniform' );
+		for ( const label of labels ) {
+
+			await select( label ); await waitNoise( label );
+			const measured = await page.evaluate( async () => {
+
+				const test = window.__noiseTest;
+				test.params.animate = true; test.params.temporalBlur = true;
+				const batch = async () => {
+
+					for ( let i = 0; i < 8; i ++ ) test.animate();
+					await test.complete();
+
+				};
+
+				let start = performance.now();
+				while ( performance.now() - start < 2000 ) await batch();
+				await test.complete();
+				let completedFrames = 0;
+				start = performance.now();
+				while ( performance.now() - start < 5000 ) {
+
+					await batch(); completedFrames += 8;
+
+				}
+
+				const seconds = ( performance.now() - start ) / 1000;
+				return { completedFrames, seconds, framesPerSecond: completedFrames / seconds };
+
+			} );
+			report.throughput.push( { label, ...measured } );
+
+		}
+
+		report.throughputNote = 'Uniform mode; 1000x700 display, pixel size2 (500x350 sample target), running average and spatial Gaussian enabled. Two-second warmup then >=5 seconds, eight complete example frames per GPU completion wait. Includes noise, accumulation, blur, display and CPU submission overhead; single sequential run, hot cached atlases. Vsync/frame caps disabled.';
+
+	}
+
 	// Fresh document gives an empty loader cache for retry and race checks.
 	await page.reload();
 	await page.waitForFunction( () => window.__noiseTest?.ready && document.querySelectorAll( 'select' )[ 1 ]?.options.length === 6, { timeout: 60000 } );

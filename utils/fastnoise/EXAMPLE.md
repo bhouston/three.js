@@ -6,6 +6,11 @@ controls. All experimental volumes are generated offline and shipped as PNGs,
 including the quick constructors. Selecting one loads an atlas; it does not run
 an optimizer or require WebGPU generation in the browser.
 
+There are 19 experimental variants, plus a precomputed FAST separate scalar
+reference. The existing FAST options use the original atlas R component;
+the explicit scalar reference permits the same scalar comparison used in the
+research reports. The original options remain available.
+
 These are research alternatives, not uniformly better blue noise. In particular,
 filter/rank and PR116 relaxation target filtered scalar values and can perform
 poorly after nonlinear transformations. No frontier candidate consistently beat
@@ -18,14 +23,23 @@ sample. These assets cannot be interpreted as a vector-noise texture.
 
 ## Repacking offline volumes
 
-After generating the seed-1 research volumes, run:
+Generate all seed-1 volumes offline, then pack them:
 
 ```sh
+node utils/fastnoise/generate-example-noises.js RAW_DIR
 node utils/fastnoise/export-example-atlases.js RAW_DIR
 ```
 
+Generation takes several minutes and requires a physical WebGPU adapter for
+FAST and its GPU refinements. It runs only on the developer machine; the
+example imports no generator code. `CHROME_PATH` selects an installed Chrome.
+The generation command supports `--resume` for intact outputs from unchanged
+sources. It verifies all 20 volume hashes against the committed research
+records, including the copied PR116 constructors at commit
+`54a6dfe336cd33fc1fe129e4e1e6b10900395832`.
+
 An optional second argument selects a destination instead of
-`examples/textures/noises/experimental/`. The exporter requires all 19 named
+`examples/textures/noises/experimental/`. The exporter requires all 20 named
 `*-seed1.f32` inputs listed in its definitions. Each input contains exactly
 128 × 128 × 32 little-endian Float32 values in z/y/x order, finite and in [0, 1).
 It does not generate volumes or silently substitute another method.

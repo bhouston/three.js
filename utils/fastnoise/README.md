@@ -21,6 +21,10 @@ cost more than FAST; no robust all-metric or state-of-the-art advance is claimed
 
 ## Usage
 
+For the interactive dropdown and offline PNG generation, see
+[EXAMPLE.md](EXAMPLE.md). The example loads precomputed experimental atlases;
+it never runs these optimizers at runtime.
+
 ```sh
 # serve this folder, then generate from the repository root (so puppeteer resolves)
 ( cd utils/fastnoise && node ../server.js -p 8732 & )

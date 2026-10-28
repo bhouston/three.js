@@ -8,6 +8,7 @@ import { PNG } from 'pngjs';
 
 const definitions = [
 
+	[ 'fast', 'FAST Separate (scalar reference)', 'Unmodified 10,000-step FAST separate scalar reference for the experimental methods.' ],
 	[ 'filter-rank', 'Filter/rank', 'Iterative spectrum shaping and rank restoration; optimized for filtered scalar values.' ],
 	[ 'hierarchy', 'Hierarchical stratification', 'Fast recursive stratification; may exhibit structured artifacts.' ],
 	[ 'local-energy', 'Cached threshold energy', 'Cached local threshold-energy optimization.' ],

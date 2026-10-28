@@ -1,10 +1,10 @@
 import { RedFormat, RenderTarget, Vector2, RendererUtils, QuadMesh, Node, NodeMaterial, NodeUpdateType, UnsignedByteType } from 'three/webgpu';
-import { reference, getScreenPosition, getViewPosition, float, Break, Loop, int, max, abs, If, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, perspectiveDepthToViewZ, orthographicDepthToViewZ, vec2, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { reference, getScreenPosition, getViewPosition, float, Break, Loop, int, max, abs, If, screenCoordinate, Fn, passTexture, uv, uniform, perspectiveDepthToViewZ, orthographicDepthToViewZ, vec2, lightPosition, lightTargetPosition, rand, mix, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { animatedInterleavedGradientNoise } from '../utils/IGN.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
 
-const _spatialOffsets = [ 0, 0.5, 0.25, 0.75 ];
 
 let _rendererState;
 
@@ -190,20 +190,12 @@ class SSSNode extends Node {
 		this._resolution = uniform( new Vector2() );
 
 		/**
-		 * Temporal offset added to the initial ray step.
-		 *
-		 * @private
-		 * @type {UniformNode<float>}
-		 */
-		this._temporalOffset = uniform( 0 );
-
-		/**
 		 * The frame ID use when temporal filtering is enabled.
 		 *
 		 * @private
 		 * @type {UniformNode<uint>}
 		 */
-		this._frameId = uniform( 0 );
+		this._frameId = uniform( 0, 'uint' );
 
 		/**
 		 * A reference to the scene's main light.
@@ -297,15 +289,11 @@ class SSSNode extends Node {
 
 		if ( this.useTemporalFiltering === true ) {
 
-			const frameId = frame.frameId;
-
-			this._temporalOffset.value = _spatialOffsets[ frameId % 4 ];
-			this._frameId = frame.frameId;
+			this._frameId.value = frame.frameId % 4;
 
 		} else {
 
-			this._temporalOffset.value = 0;
-			this._frameId = 0;
+			this._frameId.value = 0;
 
 		}
 
@@ -393,8 +381,7 @@ class SSSNode extends Node {
 			const ySpan = yLen.div( totalStep ).toVar();
 
 			// compute noise based ray offset
-			const noise = interleavedGradientNoise( screenCoordinate );
-			const offset = fract( noise.add( this._temporalOffset ) ).add( rand( uvNode.add( this._frameId ) ) ).toConst( 'offset' );
+			const offset = animatedInterleavedGradientNoise( screenCoordinate, this._frameId ).add( rand( uvNode ) ).toConst( 'offset' );
 
 			const occlusion = float( 0 ).toVar();
 

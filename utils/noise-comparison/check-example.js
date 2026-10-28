@@ -1,5 +1,5 @@
 // Hardware integration check. Test access is injected into served HTML only.
-// node utils/noise-comparison/check-example.js --root . --artifacts OUTPUT
+// node utils/noise-comparison/check-example.js --root . --artifacts OUTPUT [--backend webgl]
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -9,13 +9,15 @@ import { animatedIGN, tiledBayerWeyl } from './procedural-reference.js';
 
 const args = process.argv.slice( 2 );
 const option = ( key, fallback ) => args.includes( key ) ? args[ args.indexOf( key ) + 1 ] : fallback;
+const backend = option( '--backend', 'webgpu' );
+assert.ok( [ 'webgpu', 'webgl' ].includes( backend ) );
 const root = path.resolve( option( '--root', '.' ) );
 const artifacts = path.resolve( option( '--artifacts', 'noise-example-check' ) );
 const require = createRequire( path.join( root, 'package.json' ) );
 const puppeteer = require( 'puppeteer' );
 const requests = [];
 let failURL, delayURL;
-const hook = 'window.__noiseTest = { get renderer() { return renderer; }, params, get ready() { return computeQuad !== undefined; }, get samples() { return samples; }, index, animate, get targets() { return targets; } };';
+const hook = 'window.__noiseTest = { get renderer() { return renderer; }, params, get ready() { return computeQuad !== undefined; }, get samples() { return samples; }, index, animate, get targets() { return targets; }, async complete() { if (renderer.backend.isWebGPUBackend) await renderer.backend.device.queue.onSubmittedWorkDone(); else renderer.backend.gl.finish(); } };';
 const server = http.createServer( async ( request, response ) => {
 
 	try {
@@ -43,7 +45,7 @@ const server = http.createServer( async ( request, response ) => {
 		const file = path.resolve( root, '.' + url );
 		if ( ! file.startsWith( root + path.sep ) ) throw new Error( 'Invalid path' );
 		let content = await fs.readFile( file );
-		if ( url.endsWith( '/webgpu_tsl_blue_noise.html' ) ) content = content.toString().replace( /<\/script>\s*<\/body>/, hook + '\n</script>\n</body>' );
+		if ( url.endsWith( '/webgpu_tsl_blue_noise.html' ) ) content = content.toString().replace( 'new THREE.WebGPURenderer()', backend === 'webgl' ? 'new THREE.WebGPURenderer( { forceWebGL: true } )' : 'new THREE.WebGPURenderer()' ).replace( /<\/script>\s*<\/body>/, hook + '\n</script>\n</body>' );
 		const mime = { '.js': 'text/javascript', '.html': 'text/html', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png' };
 		response.setHeader( 'Content-Type', mime[ path.extname( file ) ] || 'application/octet-stream' );
 		record.bytes = Buffer.byteLength( content );
@@ -60,7 +62,7 @@ const server = http.createServer( async ( request, response ) => {
 await fs.mkdir( artifacts, { recursive: true } );
 await new Promise( resolve => server.listen( 0, '127.0.0.1', resolve ) );
 let browser;
-const report = { options: [], errors: [], assertions: [], startup: [], timingNote: 'Local HTTP selection-to-GPU-completion includes decode/upload and shader work; it is not an Internet download time or intrinsic generator cost. Arithmetic methods have zero mask bytes and zero precomputation.' };
+const report = { backend, options: [], errors: [], assertions: [], startup: [], timingNote: 'Local HTTP selection-to-GPU-completion includes decode/upload and shader work; it is not an Internet download time or intrinsic generator cost. Arithmetic methods have zero mask bytes and zero precomputation.' };
 
 try {
 
@@ -83,7 +85,17 @@ try {
 		test.renderer.setAnimationLoop( null );
 		test.params.animate = false;
 		test.params.temporalBlur = false;
-		await test.renderer.backend.device.queue.onSubmittedWorkDone();
+		await test.complete();
+		if ( ! test.renderer.backend.isWebGPUBackend ) {
+
+			const gl = test.renderer.backend.gl;
+			const debug = gl.getExtension( 'WEBGL_debug_renderer_info' );
+			const description = debug ? gl.getParameter( debug.UNMASKED_RENDERER_WEBGL ) : '';
+			if ( ! /nvidia|amd|intel|apple|qualcomm/i.test( description ) || /swiftshader|software|llvmpipe|lavapipe/i.test( description ) ) throw new Error( 'Physical WebGL GPU verification blocked: ' + description );
+			return { description, backend: 'WebGL' };
+
+		}
+
 		const adapter = await navigator.gpu.requestAdapter();
 		const info = adapter?.info;
 		if ( ! info || info.isFallbackAdapter || ! /nvidia|amd|intel|apple|qualcomm/i.test( info.vendor ) || /swiftshader|software|llvmpipe|lavapipe/i.test( JSON.stringify( info ) ) ) throw new Error( 'Physical GPU verification blocked' );
@@ -113,11 +125,11 @@ try {
 		const test = window.__noiseTest;
 		test.index.value = frame;
 		test.animate();
-		await test.renderer.backend.device.queue.onSubmittedWorkDone();
+		await test.complete();
 		const target = test.targets[ 1 ];
 		const points = [[ Math.floor( target.width * .75 ), 30 ], [ Math.floor( target.width * .75 ) + 17, 117 ]];
 		const values = [];
-		for ( const [ x, y ] of points ) values.push( { x, y, value: ( await test.renderer.readRenderTargetPixelsAsync( target, x, y, 1, 1 ) )[ 0 ] } );
+		for ( const [ x, y ] of points ) values.push( { x, y, value: ( await test.renderer.readRenderTargetPixelsAsync( target, x, test.renderer.backend.isWebGPUBackend ? y : target.height - 1 - y, 1, 1 ) )[ 0 ] } );
 		return values;
 
 	}, frame );
@@ -144,15 +156,17 @@ try {
 		if ( /3LHW|IGN/.test( label ) ) {
 
 			result.frames = [];
+			result.maximumReferenceError = 0;
 			for ( const frame of [ 0, 1, 31, 32, 128, 1024 ] ) {
 
 				const points = await render( frame );
 				for ( const point of points ) {
 
 					const expected = /3LHW/.test( label ) ? tiledBayerWeyl( point.x, point.y, frame ) : animatedIGN( point.x, point.y, frame );
-					const tolerance = /IGN/.test( label ) ? .04 : 1e-7;
+					const tolerance = /IGN/.test( label ) ? 2e-5 : 1e-7;
 					const difference = Math.abs( point.value - expected );
-					assert.ok( ( /IGN/.test( label ) ? Math.min( difference, 1 - difference ) : difference ) < tolerance, `${ label } frame ${ frame } (${ point.x },${ point.y }): ${ point.value } != ${ expected }` );
+					result.maximumReferenceError = Math.max( result.maximumReferenceError, difference );
+					assert.ok( difference < tolerance, `${ label } frame ${ frame } (${ point.x },${ point.y }): ${ point.value } != ${ expected }` );
 
 				}
 
@@ -196,7 +210,7 @@ try {
 
 		window.__noiseTest.renderer.setAnimationLoop( null );
 		await window.__noiseTest.renderer.init();
-		await window.__noiseTest.renderer.backend.device.queue.onSubmittedWorkDone();
+		await window.__noiseTest.complete();
 
 	} );
 	const atlasMethods = report.startup.filter( entry => entry.pngURLs.length > 0 );

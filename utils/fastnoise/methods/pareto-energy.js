@@ -2,9 +2,10 @@
  * Experimental Pareto refinement: each accepted swap cannot increase spatial or
  * temporal aggregate CDF energy, or any selected continuous feature's energy.
  * This guards these exact objectives only, not all held-out rendering metrics.
+ * By default objectives evaluate Uint8-bin centers; raw returned values are retained.
  * Two Float64 caches cost 2 * voxelCount * (thresholdCount + features) * 8 bytes.
  */
-export function generate( { size = 128, depth = 32, seed = 1, passes = 4, temporalWeight = 1, temporalAlpha = 0.1, thresholdCount = 31, initialVolume = null, spatialSigmas = [ 1 ], featureGuards = [ 'identity', 'squared', 'fourth', 'cosine' ], onProgress = null } = {} ) {
+export function generate( { size = 128, depth = 32, seed = 1, passes = 4, temporalWeight = 1, temporalAlpha = 0.1, thresholdCount = 31, initialVolume = null, spatialSigmas = [ 1 ], featureGuards = [ 'identity', 'squared', 'fourth', 'cosine' ], quantize = true, onProgress = null } = {} ) {
 
 	if ( ! Number.isInteger( size ) || size < 1 || ! Number.isInteger( depth ) || depth < 1 ) throw new RangeError( 'size and depth must be positive integers.' );
 	if ( ! Number.isInteger( passes ) || passes < 0 ) throw new RangeError( 'passes must be a nonnegative integer.' );
@@ -19,6 +20,9 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 	if ( thresholdCount < 1 ) throw new RangeError( 'thresholdCount must be positive.' );
 	const featureFunctions = { identity: x => x, squared: x => x * x, fourth: x => x ** 4, cosine: x => Math.cos( 2 * Math.PI * x ) };
 	if ( ! Array.isArray( featureGuards ) || featureGuards.some( name => ! Object.hasOwn( featureFunctions, name ) ) ) throw new RangeError( 'Invalid featureGuards.' );
+	if ( typeof quantize !== 'boolean' ) throw new TypeError( 'quantize must be boolean.' );
+	// Match deployed Uint8 textures, while swaps retain the original histogram.
+	const sample = quantize ? x => ( Math.floor( Math.min( Math.max( x, 0 ), 1 - 2 ** - 24 ) * 256 ) + 0.5 ) / 256 : x => x;
 	const features = featureGuards.map( name => featureFunctions[ name ] );
 	const channels = thresholdCount + features.length;
 	const potentials = [ new Float64Array( count * channels ), new Float64Array( count * channels ) ];
@@ -114,7 +118,7 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 	}
 	for ( let z = 0; z < depth; z ++ ) for ( let y = 0; y < size; y ++ ) for ( let x = 0; x < size; x ++ ) {
 
-		const value = values[ wrapIndex( x, y, z ) ];
+		const value = sample( values[ wrapIndex( x, y, z ) ] );
 		for ( let family = 0; family < 2; family ++ ) {
 
 			update( family, x, y, z, 1, Math.floor( value * thresholdCount + 0.5 ), thresholdCount );
@@ -140,9 +144,10 @@ export function generate( { size = 128, depth = 32, seed = 1, passes = 4, tempor
 		const ay = Math.floor( a % plane / size ), by = Math.floor( b % plane / size );
 		const ax = a % size, bx = b % size;
 		const dx = wrap( bx - ax, size ), dy = wrap( by - ay, size ), dz = wrap( bz - az, depth );
-		const ca = Math.floor( values[ a ] * thresholdCount + 0.5 ), cb = Math.floor( values[ b ] * thresholdCount + 0.5 );
+		const va = sample( values[ a ] ), vb = sample( values[ b ] );
+		const ca = Math.floor( va * thresholdCount + 0.5 ), cb = Math.floor( vb * thresholdCount + 0.5 );
 		const lower = Math.min( ca, cb ), upper = Math.max( ca, cb ), delta = cb < ca ? 1 : - 1;
-		for ( let f = 0; f < features.length; f ++ ) featureDeltas[ f ] = features[ f ]( values[ b ] ) - features[ f ]( values[ a ] );
+		for ( let f = 0; f < features.length; f ++ ) featureDeltas[ f ] = features[ f ]( vb ) - features[ f ]( va );
 		let allowed = true, totalChange = 0;
 		for ( let family = 0; family < 2; family ++ ) {
 

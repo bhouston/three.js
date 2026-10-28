@@ -1,6 +1,6 @@
 import { abs, atan, bool, convertToTexture, cos, cross, Discard, dot, EPSILON, exp, float, Fn, getScreenPosition, getViewPosition, If, int, log, Loop, luminance, mat2, max, mix, nodeObject, NodeUpdateType, normalize, passTexture, PI, property, reflect, sin, smoothstep, sqrt, tan, texture, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4, context, isBackgroundDepth } from 'three/tsl';
 import { HalfFloatType, MathUtils, Matrix4, NodeMaterial, QuadMesh, RendererUtils, RenderTarget, Node, Vector2 } from 'three/webgpu';
-import { bindAnalyticNoise } from '../utils/RNoise.js';
+import { bindHoustonStratifiedNoise } from '../utils/HoustonStratifiedNoise.js';
 import { ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
@@ -419,7 +419,7 @@ class RecurrentDenoiseNode extends Node {
 
 	setup( builder ) {
 
-		const sampleAnalyticNoise = bindAnalyticNoise( this._resolution, NOISE_ROTATION_SEED );
+		const sampleAnalyticNoise = bindHoustonStratifiedNoise( this._resolution, NOISE_ROTATION_SEED );
 
 		const noiseRotationMatrix = Fn( ( [ r ] ) => {
 

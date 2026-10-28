@@ -1,0 +1,719 @@
+{
+  "environment": {
+    "node": "v26.11.1",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor            ",
+    "chrome": "Chrome/156.0.8078.48",
+    "gpu": {
+      "vendor": "nvidia",
+      "architecture": "pascal",
+      "description": "",
+      "isFallbackAdapter": false
+    }
+  },
+  "runs": [
+    {
+      "name": "fast-seed1",
+      "profile": {
+        "name": "fast",
+        "kind": "gpu",
+        "file": "generator.html",
+        "parameters": {
+          "mode": "separate",
+          "steps": 10000
+        }
+      },
+      "seed": 1,
+      "seconds": 74.6885877,
+      "count": 1,
+      "secondsPerVolume": 74.6885877,
+      "sha256": "ad64707c4d4551ac6eacd4ce7c732e48d1ca5b83e3fc2c9cdc678fe5b5983df9",
+      "log": "mode=separate steps=10000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 0.7s\nstep 1000 swaps/iter 1061 suppression 1 8.2s\nstep 2000 swaps/iter 573 suppression 1 15.6s\nstep 3000 swaps/iter 445 suppression 1 23.0s\nstep 4000 swaps/iter 398 suppression 1 30.4s\nstep 5000 swaps/iter 357 suppression 1 37.8s\nstep 6000 swaps/iter 344 suppression 1 45.3s\nstep 7000 swaps/iter 327 suppression 1 52.7s\nstep 8000 swaps/iter 304 suppression 1 60.2s\nstep 9000 swaps/iter 288 suppression 1 67.6s\ndone in 74.3s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "totalSecondsPerVolume": 74.6885877
+    },
+    {
+      "name": "fast-seed2",
+      "profile": {
+        "name": "fast",
+        "kind": "gpu",
+        "file": "generator.html",
+        "parameters": {
+          "mode": "separate",
+          "steps": 10000
+        }
+      },
+      "seed": 2,
+      "seconds": 75.3295031,
+      "count": 1,
+      "secondsPerVolume": 75.3295031,
+      "sha256": "c71a155de2239b39b12e1c089e8992e3b53197e6ec971c1ce90c9ab8fac0ae95",
+      "log": "mode=separate steps=10000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5209 suppression 4 0.8s\nstep 1000 swaps/iter 1057 suppression 1 8.2s\nstep 2000 swaps/iter 571 suppression 1 15.7s\nstep 3000 swaps/iter 444 suppression 1 23.2s\nstep 4000 swaps/iter 384 suppression 1 30.7s\nstep 5000 swaps/iter 351 suppression 1 38.2s\nstep 6000 swaps/iter 331 suppression 1 45.7s\nstep 7000 swaps/iter 318 suppression 1 53.2s\nstep 8000 swaps/iter 316 suppression 1 60.7s\nstep 9000 swaps/iter 293 suppression 1 68.2s\ndone in 75.0s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "totalSecondsPerVolume": 75.3295031
+    },
+    {
+      "name": "control-original-seed1",
+      "profile": {
+        "name": "control-original",
+        "kind": "gpu",
+        "file": "generator.html",
+        "parameters": {
+          "steps": 100
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 1.097705,
+      "count": 1,
+      "secondsPerVolume": 1.097705,
+      "sha256": "3cf11594147aac05d51405c28d8641c0685d1ff4c56cfebf1bfce28cabe3f119",
+      "log": "mode=separate steps=100 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 0.8s\ndone in 0.8s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "totalSecondsPerVolume": 1.097705
+    },
+    {
+      "name": "control-research-seed1",
+      "profile": {
+        "name": "control-research",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "parameters": {
+          "steps": 100,
+          "seam": 0,
+          "mix": 0
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 1.6119130999999998,
+      "count": 1,
+      "secondsPerVolume": 1.6119130999999998,
+      "sha256": "3cf11594147aac05d51405c28d8641c0685d1ff4c56cfebf1bfce28cabe3f119",
+      "log": "mode=separate steps=100 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 1.0s\ndone in 1.0s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "totalSecondsPerVolume": 1.6119130999999998
+    },
+    {
+      "name": "seam-polish-seed1",
+      "profile": {
+        "name": "seam-polish",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "fast-seed{seed}",
+        "parameters": {
+          "steps": 2000,
+          "seam": 0.25
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 43.931563800000006,
+      "count": 1,
+      "secondsPerVolume": 43.931563800000006,
+      "sha256": "4592c2988e79a2cc7739e547eaffece30aeffe5e3333205d0faa142bcb7c412e",
+      "log": "mode=separate steps=2000 size=128x128x32 taps=431 fs=6\nstep 0 swaps/iter 78 suppression 4 2.1s\nstep 200 swaps/iter 317 suppression 1 6.4s\nstep 400 swaps/iter 574 suppression 1 10.8s\nstep 600 swaps/iter 520 suppression 1 15.2s\nstep 800 swaps/iter 474 suppression 1 19.6s\nstep 1000 swaps/iter 440 suppression 1 23.9s\nstep 1200 swaps/iter 412 suppression 1 28.2s\nstep 1400 swaps/iter 382 suppression 1 32.6s\nstep 1600 swaps/iter 366 suppression 1 37.0s\nstep 1800 swaps/iter 346 suppression 1 41.3s\ndone in 43.5s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "totalSecondsPerVolume": 118.6201515
+    },
+    {
+      "name": "control-research-drained-seed1",
+      "profile": {
+        "name": "control-research-drained",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "parameters": {
+          "steps": 100,
+          "seam": 0,
+          "mix": 0
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 1.6024705000000004,
+      "count": 1,
+      "secondsPerVolume": 1.6024705000000004,
+      "sha256": "3cf11594147aac05d51405c28d8641c0685d1ff4c56cfebf1bfce28cabe3f119",
+      "log": "mode=separate steps=100 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 1.0s\ndone in 1.0s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "totalSecondsPerVolume": 1.6024705000000004
+    },
+    {
+      "name": "continuation-polish-seed1",
+      "profile": {
+        "name": "continuation-polish",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "fast-seed{seed}",
+        "parameters": {
+          "steps": 2000
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 20.4261956,
+      "count": 1,
+      "secondsPerVolume": 20.4261956,
+      "sha256": "36e2674f189ad09e474af5a7893faea64463c275010b365e84f4451d1207201d",
+      "log": "mode=separate steps=2000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 34 suppression 4 1.0s\nstep 200 swaps/iter 137 suppression 1 3.0s\nstep 400 swaps/iter 271 suppression 1 5.0s\nstep 600 swaps/iter 265 suppression 1 7.1s\nstep 800 swaps/iter 262 suppression 1 9.1s\nstep 1000 swaps/iter 252 suppression 1 11.1s\nstep 1200 swaps/iter 246 suppression 1 13.1s\nstep 1400 swaps/iter 237 suppression 1 15.1s\nstep 1600 swaps/iter 235 suppression 1 17.1s\nstep 1800 swaps/iter 231 suppression 1 19.1s\ndone in 20.2s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "totalSecondsPerVolume": 95.1147833
+    },
+    {
+      "name": "joint-polish-seed1",
+      "profile": {
+        "name": "joint-polish",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "fast-seed{seed}",
+        "parameters": {
+          "steps": 2000,
+          "mix": 0.15
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 45.28835290000001,
+      "count": 1,
+      "secondsPerVolume": 45.28835290000001,
+      "sha256": "6d6d90c19979631fca99a9f56b4c8446a7a78cc7951fcb35c483595a6274bfbf",
+      "log": "mode=separate steps=2000 size=128x128x32 taps=448 fs=6\nstep 0 swaps/iter 166 suppression 4 2.2s\nstep 200 swaps/iter 664 suppression 1 6.7s\nstep 400 swaps/iter 1195 suppression 1 11.2s\nstep 600 swaps/iter 1037 suppression 1 15.6s\nstep 800 swaps/iter 923 suppression 1 20.1s\nstep 1000 swaps/iter 833 suppression 1 24.6s\nstep 1200 swaps/iter 759 suppression 1 29.0s\nstep 1400 swaps/iter 706 suppression 1 33.5s\nstep 1600 swaps/iter 660 suppression 1 37.9s\nstep 1800 swaps/iter 624 suppression 1 42.4s\ndone in 44.7s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "totalSecondsPerVolume": 119.9769406
+    },
+    {
+      "name": "seam-joint-polish-seed1",
+      "profile": {
+        "name": "seam-joint-polish",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "fast-seed{seed}",
+        "parameters": {
+          "steps": 2000,
+          "seam": 0.25,
+          "mix": 0.15
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 117.997486,
+      "count": 1,
+      "secondsPerVolume": 117.997486,
+      "sha256": "bc086bdc9eef5584fb60414bc22899b9bdfa85bfa221fe09c54ee9356a471ba8",
+      "log": "mode=separate steps=2000 size=128x128x32 taps=1175 fs=6\nstep 0 swaps/iter 189 suppression 4 5.9s\nstep 200 swaps/iter 759 suppression 1 17.6s\nstep 400 swaps/iter 1327 suppression 1 29.3s\nstep 600 swaps/iter 1130 suppression 1 41.1s\nstep 800 swaps/iter 990 suppression 1 52.8s\nstep 1000 swaps/iter 897 suppression 1 64.6s\nstep 1200 swaps/iter 809 suppression 1 76.3s\nstep 1400 swaps/iter 739 suppression 1 88.0s\nstep 1600 swaps/iter 685 suppression 1 99.8s\nstep 1800 swaps/iter 652 suppression 1 111.5s\ndone in 117.4s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "totalSecondsPerVolume": 192.6860737
+    },
+    {
+      "name": "multiscale-scratch-seed1",
+      "profile": {
+        "name": "multiscale-scratch",
+        "kind": "cpu",
+        "module": "./methods/multiscale-energy.js",
+        "options": {
+          "passes": 16
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 30.022553799999994,
+      "count": 2,
+      "secondsPerVolume": 15.011276899999997,
+      "sha256": "02e37ca938612b96892ac71afc03052bdfe2dbe679c05043b14912b5dd504f8a",
+      "timing": "complete synchronous generations including initialization, excluding output file write; warmup excluded",
+      "totalSecondsPerVolume": 15.011276899999997
+    },
+    {
+      "name": "multiscale-polish-seed1",
+      "profile": {
+        "name": "multiscale-polish",
+        "kind": "cpu",
+        "module": "./methods/multiscale-energy.js",
+        "initial": "fast-seed{seed}",
+        "options": {
+          "passes": 4
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 7.218445399999997,
+      "count": 2,
+      "secondsPerVolume": 3.6092226999999983,
+      "sha256": "1a3d541e88d075908237012842a45b9423897b0641d730611e82b6b623f7ca54",
+      "timing": "complete synchronous generations including initialization, excluding output file write; warmup excluded",
+      "totalSecondsPerVolume": 78.2978104
+    },
+    {
+      "name": "stratified-scratch-seed1",
+      "profile": {
+        "name": "stratified-scratch",
+        "kind": "cpu",
+        "module": "./methods/stratified-refine.js",
+        "options": {
+          "passes": 24
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 15.206396700000012,
+      "count": 2,
+      "secondsPerVolume": 7.603198350000006,
+      "sha256": "a06c07ff45c293274ed98a6e8b3cecf3d3e869d26d4bd9ea5fd94bad10284da4",
+      "timing": "complete synchronous generations including initialization, excluding output file write; warmup excluded",
+      "totalSecondsPerVolume": 7.603198350000006
+    },
+    {
+      "name": "stratified-midpoint-seed1",
+      "profile": {
+        "name": "stratified-midpoint",
+        "kind": "cpu",
+        "module": "./methods/stratified-refine.js",
+        "options": {
+          "passes": 24,
+          "jitter": 0
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 17.075733499999973,
+      "count": 2,
+      "secondsPerVolume": 8.537866749999987,
+      "sha256": "fd54d8e2987027fcc3a8b48dfde27deed6b79ca19501df10b755effd7ab3227e",
+      "timing": "complete synchronous generations including initialization, excluding output file write; warmup excluded",
+      "totalSecondsPerVolume": 8.537866749999987
+    },
+    {
+      "name": "continuation-deep-seed1",
+      "profile": {
+        "name": "continuation-deep",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "continuation-polish-seed{seed}",
+        "parameters": {
+          "steps": 1000
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 10.2824459,
+      "count": 1,
+      "secondsPerVolume": 10.2824459,
+      "sha256": "37f5bf8793fb5f193cbca1cfcb6c8948ef7029b5dbd6de05b52d907d72efd9fb",
+      "log": "mode=separate steps=1000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 23 suppression 4 1.0s\nstep 100 swaps/iter 46 suppression 2 2.0s\nstep 200 swaps/iter 93 suppression 1 3.0s\nstep 300 swaps/iter 186 suppression 1 4.0s\nstep 400 swaps/iter 183 suppression 1 5.0s\nstep 500 swaps/iter 175 suppression 1 6.0s\nstep 600 swaps/iter 169 suppression 1 7.0s\nstep 700 swaps/iter 164 suppression 1 8.0s\nstep 800 swaps/iter 161 suppression 1 9.0s\nstep 900 swaps/iter 156 suppression 1 10.0s\ndone in 10.1s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "inputName": "continuation-polish-seed1",
+      "inputSecondsPerVolume": 95.1147833,
+      "totalSecondsPerVolume": 105.3972292
+    },
+    {
+      "name": "light-seam-015-seed1",
+      "profile": {
+        "name": "light-seam-015",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "continuation-polish-seed{seed}",
+        "parameters": {
+          "steps": 1000,
+          "seam": 0.015
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 22.028269899999998,
+      "count": 1,
+      "secondsPerVolume": 22.028269899999998,
+      "sha256": "20ea4b864d352a415b5b42dfbf0886b6796467b8d94fd69b48cd687488e255e5",
+      "log": "mode=separate steps=1000 size=128x128x32 taps=431 fs=6\nstep 0 swaps/iter 25 suppression 4 2.1s\nstep 100 swaps/iter 50 suppression 2 4.3s\nstep 200 swaps/iter 103 suppression 1 6.4s\nstep 300 swaps/iter 200 suppression 1 8.5s\nstep 400 swaps/iter 198 suppression 1 10.7s\nstep 500 swaps/iter 191 suppression 1 12.8s\nstep 600 swaps/iter 183 suppression 1 15.0s\nstep 700 swaps/iter 176 suppression 1 17.1s\nstep 800 swaps/iter 175 suppression 1 19.2s\nstep 900 swaps/iter 170 suppression 1 21.4s\ndone in 21.4s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "inputName": "continuation-polish-seed1",
+      "inputSecondsPerVolume": 95.1147833,
+      "totalSecondsPerVolume": 117.1430532
+    },
+    {
+      "name": "light-seam-03-seed1",
+      "profile": {
+        "name": "light-seam-03",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "continuation-polish-seed{seed}",
+        "parameters": {
+          "steps": 1000,
+          "seam": 0.03
+        },
+        "seeds": [
+          1
+        ]
+      },
+      "seed": 1,
+      "seconds": 21.994409200000003,
+      "count": 1,
+      "secondsPerVolume": 21.994409200000003,
+      "sha256": "5eb4cddef08e16c3baf09139da34064a7fe2935b32b77ecacb8b667db4ee13c6",
+      "log": "mode=separate steps=1000 size=128x128x32 taps=431 fs=6\nstep 0 swaps/iter 28 suppression 4 2.1s\nstep 100 swaps/iter 57 suppression 2 4.3s\nstep 200 swaps/iter 114 suppression 1 6.4s\nstep 300 swaps/iter 223 suppression 1 8.6s\nstep 400 swaps/iter 220 suppression 1 10.7s\nstep 500 swaps/iter 210 suppression 1 12.9s\nstep 600 swaps/iter 204 suppression 1 15.0s\nstep 700 swaps/iter 199 suppression 1 17.2s\nstep 800 swaps/iter 195 suppression 1 19.3s\nstep 900 swaps/iter 191 suppression 1 21.5s\ndone in 21.5s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "inputName": "continuation-polish-seed1",
+      "inputSecondsPerVolume": 95.1147833,
+      "totalSecondsPerVolume": 117.1091925
+    },
+    {
+      "name": "pareto-polish-seed1",
+      "profile": {
+        "name": "pareto-polish",
+        "kind": "cpu",
+        "module": "./methods/pareto-energy.js",
+        "initial": "fast-seed{seed}",
+        "options": {
+          "passes": 4
+        },
+        "seeds": [
+          1,
+          2
+        ]
+      },
+      "seed": 1,
+      "seconds": 16.6766514,
+      "count": 2,
+      "secondsPerVolume": 8.3383257,
+      "sha256": "e97fc520f633be931adb4a5e290295f264744f71ff1594937f43ccdfddf0e3d6",
+      "timing": "complete synchronous generations including initialization, excluding output file write; warmup excluded",
+      "inputName": "fast-seed1",
+      "inputSecondsPerVolume": 74.6885877,
+      "totalSecondsPerVolume": 83.0269134
+    },
+    {
+      "name": "pareto-polish-seed2",
+      "profile": {
+        "name": "pareto-polish",
+        "kind": "cpu",
+        "module": "./methods/pareto-energy.js",
+        "initial": "fast-seed{seed}",
+        "options": {
+          "passes": 4
+        },
+        "seeds": [
+          1,
+          2
+        ]
+      },
+      "seed": 2,
+      "seconds": 16.087810700000002,
+      "count": 2,
+      "secondsPerVolume": 8.043905350000001,
+      "sha256": "caaf6e5defe74bc1483f7d016b44545387fc91929bf239e49c56de8541e82a47",
+      "timing": "complete synchronous generations including initialization, excluding output file write; warmup excluded",
+      "inputName": "fast-seed2",
+      "inputSecondsPerVolume": 75.3295031,
+      "totalSecondsPerVolume": 83.37340845
+    },
+    {
+      "name": "continuation-polish-seed2",
+      "profile": {
+        "name": "continuation-polish",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "fast-seed{seed}",
+        "parameters": {
+          "steps": 2000
+        },
+        "seeds": [
+          2
+        ]
+      },
+      "seed": 2,
+      "seconds": 20.4004948,
+      "count": 1,
+      "secondsPerVolume": 20.4004948,
+      "sha256": "b447ebc5eb3ac6115a6184a1ad614940fef78c71983e7bd291c1dc20fbdf8bcf",
+      "log": "mode=separate steps=2000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 34 suppression 4 1.0s\nstep 200 swaps/iter 134 suppression 1 3.0s\nstep 400 swaps/iter 275 suppression 1 5.0s\nstep 600 swaps/iter 265 suppression 1 7.0s\nstep 800 swaps/iter 256 suppression 1 9.1s\nstep 1000 swaps/iter 250 suppression 1 11.1s\nstep 1200 swaps/iter 244 suppression 1 13.1s\nstep 1400 swaps/iter 237 suppression 1 15.1s\nstep 1600 swaps/iter 231 suppression 1 17.1s\nstep 1800 swaps/iter 224 suppression 1 19.1s\ndone in 20.1s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "inputName": "fast-seed2",
+      "inputSecondsPerVolume": 75.3295031,
+      "totalSecondsPerVolume": 95.7299979
+    },
+    {
+      "name": "continuation-deep-seed2",
+      "profile": {
+        "name": "continuation-deep",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "continuation-polish-seed{seed}",
+        "parameters": {
+          "steps": 1000
+        },
+        "seeds": [
+          2
+        ]
+      },
+      "seed": 2,
+      "seconds": 10.728897099999998,
+      "count": 1,
+      "secondsPerVolume": 10.728897099999998,
+      "sha256": "f11ea4a28f40fbc1063c23a50e032b60940d5e91ceafdcac6bdd7374f82e468f",
+      "log": "mode=separate steps=1000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 22 suppression 4 1.0s\nstep 100 swaps/iter 46 suppression 2 2.0s\nstep 200 swaps/iter 91 suppression 1 3.0s\nstep 300 swaps/iter 181 suppression 1 4.0s\nstep 400 swaps/iter 174 suppression 1 5.0s\nstep 500 swaps/iter 169 suppression 1 6.0s\nstep 600 swaps/iter 163 suppression 1 7.1s\nstep 700 swaps/iter 158 suppression 1 8.1s\nstep 800 swaps/iter 153 suppression 1 9.1s\nstep 900 swaps/iter 148 suppression 1 10.1s\ndone in 10.1s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "inputName": "continuation-polish-seed2",
+      "inputSecondsPerVolume": 95.7299979,
+      "totalSecondsPerVolume": 106.458895
+    },
+    {
+      "name": "light-seam-03-seed2",
+      "profile": {
+        "name": "light-seam-03",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "continuation-polish-seed{seed}",
+        "parameters": {
+          "steps": 1000,
+          "seam": 0.03
+        },
+        "seeds": [
+          2
+        ]
+      },
+      "seed": 2,
+      "seconds": 21.929231400000003,
+      "count": 1,
+      "secondsPerVolume": 21.929231400000003,
+      "sha256": "2bed87bc6ea6604f97455c0690e5b805f5f4c0bed297e3aa5ab41d9b541d56eb",
+      "log": "mode=separate steps=1000 size=128x128x32 taps=431 fs=6\nstep 0 swaps/iter 28 suppression 4 2.2s\nstep 100 swaps/iter 57 suppression 2 4.3s\nstep 200 swaps/iter 111 suppression 1 6.5s\nstep 300 swaps/iter 219 suppression 1 8.6s\nstep 400 swaps/iter 213 suppression 1 10.8s\nstep 500 swaps/iter 204 suppression 1 12.9s\nstep 600 swaps/iter 198 suppression 1 15.1s\nstep 700 swaps/iter 192 suppression 1 17.2s\nstep 800 swaps/iter 188 suppression 1 19.4s\nstep 900 swaps/iter 183 suppression 1 21.5s\ndone in 21.5s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "inputName": "continuation-polish-seed2",
+      "inputSecondsPerVolume": 95.7299979,
+      "totalSecondsPerVolume": 117.6592293
+    },
+    {
+      "name": "continuation-time-control-seed1",
+      "profile": {
+        "name": "continuation-time-control",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "continuation-polish-seed{seed}",
+        "parameters": {
+          "steps": 2000
+        },
+        "seeds": [
+          1,
+          2
+        ]
+      },
+      "seed": 1,
+      "seconds": 20.95005129999999,
+      "count": 1,
+      "secondsPerVolume": 20.95005129999999,
+      "sha256": "30f28de3f6ecffc40aa75ed5ccb5b9b2147ce26fe40f87c066ba1f1fe99bce24",
+      "log": "mode=separate steps=2000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 23 suppression 4 1.0s\nstep 200 swaps/iter 93 suppression 1 3.0s\nstep 400 swaps/iter 183 suppression 1 5.1s\nstep 600 swaps/iter 169 suppression 1 7.1s\nstep 800 swaps/iter 161 suppression 1 9.1s\nstep 1000 swaps/iter 149 suppression 1 11.2s\nstep 1200 swaps/iter 142 suppression 1 13.2s\nstep 1400 swaps/iter 133 suppression 1 15.2s\nstep 1600 swaps/iter 124 suppression 1 17.2s\nstep 1800 swaps/iter 114 suppression 1 19.3s\ndone in 20.3s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "inputName": "continuation-polish-seed1",
+      "inputSecondsPerVolume": 95.1147833,
+      "totalSecondsPerVolume": 116.06483459999998
+    },
+    {
+      "name": "continuation-time-control-seed2",
+      "profile": {
+        "name": "continuation-time-control",
+        "kind": "gpu",
+        "file": "research-generator.html",
+        "initial": "continuation-polish-seed{seed}",
+        "parameters": {
+          "steps": 2000
+        },
+        "seeds": [
+          1,
+          2
+        ]
+      },
+      "seed": 2,
+      "seconds": 20.938972500000002,
+      "count": 1,
+      "secondsPerVolume": 20.938972500000002,
+      "sha256": "b644b8974e4ca49dd492f4c3564c7987ab97abe30644cc915cbe1ea38075b5a8",
+      "log": "mode=separate steps=2000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 22 suppression 4 1.0s\nstep 200 swaps/iter 91 suppression 1 3.0s\nstep 400 swaps/iter 174 suppression 1 5.1s\nstep 600 swaps/iter 163 suppression 1 7.1s\nstep 800 swaps/iter 153 suppression 1 9.1s\nstep 1000 swaps/iter 143 suppression 1 11.1s\nstep 1200 swaps/iter 137 suppression 1 13.2s\nstep 1400 swaps/iter 125 suppression 1 15.2s\nstep 1600 swaps/iter 116 suppression 1 17.2s\nstep 1800 swaps/iter 109 suppression 1 19.2s\ndone in 20.3s on nvidia pascal\n",
+      "timing": "navigation through GPU-completed readback and base64 retrieval; warmup excluded",
+      "inputName": "continuation-polish-seed2",
+      "inputSecondsPerVolume": 95.7299979,
+      "totalSecondsPerVolume": 116.6689704
+    },
+    {
+      "name": "pr116-annealed-seed1",
+      "profile": {
+        "steps": 3000,
+        "stratified": true,
+        "identityWeight": 0.25,
+        "swapFloor": 2,
+        "name": "pr116-annealed",
+        "originalName": "latin-anneal001-3000-s",
+        "annealTemperature": 0.001,
+        "annealSteps": 1500,
+        "mixedWeight": 0.2
+      },
+      "seed": 1,
+      "secondsPerVolume": 37.487098599999996,
+      "sha256": "9599fa11b7475f6a7442d6f1db3d187ff62ab83422e6812f33f98dc9b42a0270",
+      "originalSHA256": "9599fa11b7475f6a7442d6f1db3d187ff62ab83422e6812f33f98dc9b42a0270",
+      "matchesOriginal": true,
+      "specializedSHA256": "918f0145fb6e1e11105f0539a1349046d35c44eb3f452137acd2457001bb906d",
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 6159 suppression 4 1.2s\nstep 300 swaps/iter 8145 suppression 1 4.9s\nstep 600 swaps/iter 6067 suppression 1 8.7s\nstep 900 swaps/iter 4173 suppression 1 12.4s\nstep 1200 swaps/iter 2180 suppression 1 16.1s\nstep 1500 swaps/iter 175 suppression 1 19.8s\nstep 1800 swaps/iter 13 suppression 1 23.5s\nstep 2100 swaps/iter 1 suppression 1 27.2s\nstep 2400 swaps/iter 0 suppression 1 30.9s\nstep 2700 swaps/iter 0 suppression 1 34.6s\ndone in 37.1s on nvidia pascal\n",
+      "timing": "warmup excluded; navigation through GPU-completed readback; no competing scoring work",
+      "totalSecondsPerVolume": 37.487098599999996,
+      "sourceCommit": "d8b1acffaada09223b5133d965f3a7cf9028fe5b"
+    },
+    {
+      "name": "pr116-annealed-seed2",
+      "profile": {
+        "steps": 3000,
+        "stratified": true,
+        "identityWeight": 0.25,
+        "swapFloor": 2,
+        "name": "pr116-annealed",
+        "originalName": "latin-anneal001-3000-s",
+        "annealTemperature": 0.001,
+        "annealSteps": 1500,
+        "mixedWeight": 0.2
+      },
+      "seed": 2,
+      "secondsPerVolume": 37.705087,
+      "sha256": "999e36cca419724258c3855669142b950a68827084956f9a6ae96a070300c3b1",
+      "originalSHA256": "999e36cca419724258c3855669142b950a68827084956f9a6ae96a070300c3b1",
+      "matchesOriginal": true,
+      "specializedSHA256": "918f0145fb6e1e11105f0539a1349046d35c44eb3f452137acd2457001bb906d",
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 6157 suppression 4 1.2s\nstep 300 swaps/iter 8142 suppression 1 5.0s\nstep 600 swaps/iter 6100 suppression 1 8.7s\nstep 900 swaps/iter 4171 suppression 1 12.4s\nstep 1200 swaps/iter 2177 suppression 1 16.1s\nstep 1500 swaps/iter 175 suppression 1 19.9s\nstep 1800 swaps/iter 14 suppression 1 23.6s\nstep 2100 swaps/iter 1 suppression 1 27.3s\nstep 2400 swaps/iter 0 suppression 1 31.1s\nstep 2700 swaps/iter 0 suppression 1 34.8s\ndone in 37.3s on nvidia pascal\n",
+      "timing": "warmup excluded; navigation through GPU-completed readback; no competing scoring work",
+      "totalSecondsPerVolume": 37.705087,
+      "sourceCommit": "d8b1acffaada09223b5133d965f3a7cf9028fe5b"
+    },
+    {
+      "name": "pr116-greedy-seed1",
+      "profile": {
+        "steps": 3000,
+        "stratified": true,
+        "identityWeight": 0.25,
+        "swapFloor": 2,
+        "name": "pr116-greedy",
+        "originalName": "latin-hybrid-3000-s",
+        "mixedWeight": 0.2
+      },
+      "seed": 1,
+      "secondsPerVolume": 37.5614222,
+      "sha256": "33d651d093f0f8f3780ba9de644ec212bb255c4852aed38c3731e73af513400e",
+      "originalSHA256": "33d651d093f0f8f3780ba9de644ec212bb255c4852aed38c3731e73af513400e",
+      "matchesOriginal": true,
+      "specializedSHA256": "9edf869e39d52cb8c87852aa13f4a3e2b455dc6755eb2a726c25a61fb67a9681",
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 4797 suppression 4 1.3s\nstep 300 swaps/iter 1008 suppression 1 5.0s\nstep 600 swaps/iter 218 suppression 1 8.7s\nstep 900 swaps/iter 64 suppression 1 12.4s\nstep 1200 swaps/iter 21 suppression 1 16.2s\nstep 1500 swaps/iter 7 suppression 1 19.9s\nstep 1800 swaps/iter 1 suppression 1 23.7s\nstep 2100 swaps/iter 0 suppression 1 27.4s\nstep 2400 swaps/iter 0 suppression 1 31.1s\nstep 2700 swaps/iter 0 suppression 1 34.9s\ndone in 37.4s on nvidia pascal\n",
+      "timing": "warmup excluded; navigation through GPU-completed readback; no competing scoring work",
+      "totalSecondsPerVolume": 37.5614222,
+      "sourceCommit": "d8b1acffaada09223b5133d965f3a7cf9028fe5b"
+    },
+    {
+      "name": "pr116-greedy-seed2",
+      "profile": {
+        "steps": 3000,
+        "stratified": true,
+        "identityWeight": 0.25,
+        "swapFloor": 2,
+        "name": "pr116-greedy",
+        "originalName": "latin-hybrid-3000-s",
+        "mixedWeight": 0.2
+      },
+      "seed": 2,
+      "secondsPerVolume": 37.60237920000001,
+      "sha256": "ff2490111efb00c22307959248dbce8e639b96612900a67bf8b5161e3cc173d5",
+      "originalSHA256": "ff2490111efb00c22307959248dbce8e639b96612900a67bf8b5161e3cc173d5",
+      "matchesOriginal": true,
+      "specializedSHA256": "9edf869e39d52cb8c87852aa13f4a3e2b455dc6755eb2a726c25a61fb67a9681",
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 4806 suppression 4 1.2s\nstep 300 swaps/iter 1017 suppression 1 5.0s\nstep 600 swaps/iter 211 suppression 1 8.7s\nstep 900 swaps/iter 64 suppression 1 12.5s\nstep 1200 swaps/iter 20 suppression 1 16.2s\nstep 1500 swaps/iter 6 suppression 1 20.0s\nstep 1800 swaps/iter 3 suppression 1 23.7s\nstep 2100 swaps/iter 1 suppression 1 27.4s\nstep 2400 swaps/iter 0 suppression 1 31.2s\nstep 2700 swaps/iter 0 suppression 1 34.9s\ndone in 37.4s on nvidia pascal\n",
+      "timing": "warmup excluded; navigation through GPU-completed readback; no competing scoring work",
+      "totalSecondsPerVolume": 37.60237920000001,
+      "sourceCommit": "d8b1acffaada09223b5133d965f3a7cf9028fe5b"
+    },
+    {
+      "name": "pr116-autocorrelation-seed1",
+      "profile": {
+        "steps": 3000,
+        "stratified": true,
+        "identityWeight": 0.25,
+        "swapFloor": 2,
+        "name": "pr116-autocorrelation",
+        "originalName": "latin-psd-3000-s",
+        "mixedWeight": 0.02,
+        "mixedKernel": "binomial"
+      },
+      "seed": 1,
+      "secondsPerVolume": 37.7985845,
+      "sha256": "676a2fde805444156dc8f329c0f0fa458868f641a80ddb87282cf4b5cc8b05e0",
+      "originalSHA256": "676a2fde805444156dc8f329c0f0fa458868f641a80ddb87282cf4b5cc8b05e0",
+      "matchesOriginal": true,
+      "specializedSHA256": "8395fb8327fcb2469b259302703d8503a6091bdbbd3fc2355e48f74ce27cde89",
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 4856 suppression 4 1.2s\nstep 300 swaps/iter 1051 suppression 1 5.0s\nstep 600 swaps/iter 227 suppression 1 8.7s\nstep 900 swaps/iter 71 suppression 1 12.5s\nstep 1200 swaps/iter 22 suppression 1 16.2s\nstep 1500 swaps/iter 9 suppression 1 19.9s\nstep 1800 swaps/iter 4 suppression 1 23.7s\nstep 2100 swaps/iter 2 suppression 1 27.5s\nstep 2400 swaps/iter 0 suppression 1 31.2s\nstep 2700 swaps/iter 0 suppression 1 34.9s\ndone in 37.4s on nvidia pascal\n",
+      "timing": "warmup excluded; navigation through GPU-completed readback; no competing scoring work",
+      "totalSecondsPerVolume": 37.7985845,
+      "sourceCommit": "d8b1acffaada09223b5133d965f3a7cf9028fe5b"
+    },
+    {
+      "name": "pr116-autocorrelation-seed2",
+      "profile": {
+        "steps": 3000,
+        "stratified": true,
+        "identityWeight": 0.25,
+        "swapFloor": 2,
+        "name": "pr116-autocorrelation",
+        "originalName": "latin-psd-3000-s",
+        "mixedWeight": 0.02,
+        "mixedKernel": "binomial"
+      },
+      "seed": 2,
+      "secondsPerVolume": 37.79529079999999,
+      "sha256": "3f05128abdc828cdefe2c4286df0f0f3a9efe05e1ffa5027281802178adc90c2",
+      "originalSHA256": null,
+      "matchesOriginal": null,
+      "specializedSHA256": "8395fb8327fcb2469b259302703d8503a6091bdbbd3fc2355e48f74ce27cde89",
+      "log": "mode=separate steps=3000 size=128x128x32 taps=296 fs=6\nstep 0 swaps/iter 4856 suppression 4 1.3s\nstep 300 swaps/iter 1051 suppression 1 5.0s\nstep 600 swaps/iter 223 suppression 1 8.7s\nstep 900 swaps/iter 62 suppression 1 12.5s\nstep 1200 swaps/iter 23 suppression 1 16.2s\nstep 1500 swaps/iter 9 suppression 1 20.0s\nstep 1800 swaps/iter 2 suppression 1 23.7s\nstep 2100 swaps/iter 1 suppression 1 27.4s\nstep 2400 swaps/iter 0 suppression 1 31.2s\nstep 2700 swaps/iter 0 suppression 1 34.9s\ndone in 37.4s on nvidia pascal\n",
+      "timing": "warmup excluded; navigation through GPU-completed readback; no competing scoring work",
+      "totalSecondsPerVolume": 37.79529079999999,
+      "sourceCommit": "d8b1acffaada09223b5133d965f3a7cf9028fe5b"
+    }
+  ],
+  "pr116Reproduction": {
+    "sourceCommit": "d8b1acffaada09223b5133d965f3a7cf9028fe5b",
+    "sourceSHA256": "d0fa3400a151eb24677724841bff99e2e7137974a3918b13529d4029884a7500",
+    "environment": {
+      "node": "v26.11.1",
+      "cpu": "AMD Ryzen 9 5950X 16-Core Processor            ",
+      "chrome": "Chrome/156.0.8078.48",
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "fallback": false
+      }
+    },
+    "adaptations": [
+      "Default physical backend instead of forced D3D11; no shader/objective/RNG changes.",
+      "Split each logical 100-iteration batch into submissions of 10 iterations, waiting for completion; retain 100-iteration swap counter, suppression update and parameter/RNG construction.",
+      "100-step warmup per profile/seed excluded; sequential complete readbacks."
+    ]
+  }
+}

@@ -2,6 +2,16 @@
 
 Tools behind `examples/textures/noises/fast/` and `examples/jsm/tsl/utils/FASTNoise.js`.
 
+Three experimental faster generators, browser preview, benchmarks and quality
+tradeoffs are documented in [ALTERNATIVES.md](ALTERNATIVES.md). The cached
+threshold-energy method is about 14× faster on the tested GTX 1050, with higher
+filtered error. The shipped textures and FAST reference are unchanged.
+
+The subsequent [multi-objective research round](FRONTIER.md) adds four more
+approaches and a frozen 74-metric suite. A light playback-aware refinement won
+all 74 quality metrics on one seed but failed independent confirmation and
+cost more than FAST; no robust all-metric or state-of-the-art advance is claimed.
+
 - `generator.html`: WebGPU port of EA's [FAST](https://github.com/electronicarts/fastnoise) generator (`fastnoise/shaders/*.hlsl`, `main.cpp`). Real sample space, uniform distribution, Gaussian spatial filter, weighted exponential temporal filter, product or separate combine.
 - `generate.js`: runs `generator.html` in headless Chrome and writes the volume as raw float32 (z, y, x).
 - `compare.py`: scores volumes (ours as `.f32`, or EA's PNG slices) on spectra and filtered error.
@@ -10,6 +20,14 @@ Tools behind `examples/textures/noises/fast/` and `examples/jsm/tsl/utils/FASTNo
 - `procedural.py`: code-only noises (interleaved gradient noise, R2 + golden ratio) for comparison.
 
 ## Usage
+
+For zero-download arithmetic samplers and tiny startup-generated phase tiles,
+see [the runtime comparison](runtime/RUNTIME.md), including actual GPU sampling
+measurements, nonlinear errors and recommendations.
+
+For the interactive dropdown and offline PNG generation, see
+[EXAMPLE.md](EXAMPLE.md). The example loads precomputed experimental atlases;
+it never runs these optimizers at runtime.
 
 ```sh
 # serve this folder, then generate from the repository root (so puppeteer resolves)

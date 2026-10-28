@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "light-seam-03",
+      "label": "Light seam 3% (FAST polish)",
+      "description": "PR117 restarted FAST refinement with a 3% seam objective; selected for its low regression count.",
+      "file": "light-seam-03-seed1.png",
+      "seed": 1,
+      "width": 128,
+      "height": 4096,
+      "size": 128,
+      "depth": 32,
+      "layout": "z-major vertical slices; atlas(x, z * size + y)",
+      "channels": "scalar grayscale; no vector channels",
+      "quantization": "floor(value * 256); runtime midpoint (byte + 0.5) / 256",
+      "volumeSHA256": "5eb4cddef08e16c3baf09139da34064a7fe2935b32b77ecacb8b667db4ee13c6",
+      "pngSHA256": "cb36850d1e5e5e1a250c489784086d9a173574118b331b18b7f4a7db24c63b01",
+      "source": {
+        "file": "light-seam-03-seed1.f32",
+        "format": "little-endian Float32, z/y/x order",
+        "generation": "Offline seed-1 research volume; see utils/fastnoise/EXAMPLE.md and FRONTIER.md"
+      }
+    },
+    {
+      "id": "pr116-annealed",
+      "label": "PR116 annealed stratification",
+      "description": "PR116 annealed temporal-stratum-preserving construction; selected for its broad improvement and faster generation.",
+      "file": "pr116-annealed-seed1.png",
+      "seed": 1,
+      "width": 128,
+      "height": 4096,
+      "size": 128,
+      "depth": 32,
+      "layout": "z-major vertical slices; atlas(x, z * size + y)",
+      "channels": "scalar grayscale; no vector channels",
+      "quantization": "floor(value * 256); runtime midpoint (byte + 0.5) / 256",
+      "volumeSHA256": "9599fa11b7475f6a7442d6f1db3d187ff62ab83422e6812f33f98dc9b42a0270",
+      "pngSHA256": "cf538357aff97550a45f74f7c30b8a10a8fc4c2cd78d723cf18f4f39bee74ad5",
+      "source": {
+        "file": "pr116-annealed-seed1.f32",
+        "format": "little-endian Float32, z/y/x order",
+        "generation": "Offline seed-1 research volume; see utils/fastnoise/EXAMPLE.md and FRONTIER.md"
+      }
+    }
+  ]
+}

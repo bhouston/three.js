@@ -1,0 +1,147 @@
+{
+  "gpu": {
+    "vendor": "nvidia",
+    "architecture": "pascal",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+  "workload": "512x512 scalar samples, eight sequential compute dispatches per completion wait; two-second warmup; no vsync or frame cap; end-to-end throughput including submission/completion overhead",
+  "results": [
+    {
+      "id": "white",
+      "allocationBytes": 0,
+      "completedFrames": 14120,
+      "elapsedSeconds": 5.002200000047684,
+      "samplesPerSecond": 739969069.602318,
+      "maxCPUError": 0,
+      "actual": [
+        0.5266567468643188,
+        0.7203524708747864,
+        0.39994096755981445,
+        0.5272384285926819,
+        0.7932729125022888
+      ]
+    },
+    {
+      "id": "animated-ign",
+      "allocationBytes": 0,
+      "completedFrames": 13728,
+      "elapsedSeconds": 5.000399999856949,
+      "samplesPerSecond": 719684991.6212606,
+      "maxCPUError": 0,
+      "actual": [
+        0.24660110473632812,
+        0.6283340454101562,
+        0.25931262969970703,
+        0.7389280200004578,
+        0.23082304000854492
+      ]
+    },
+    {
+      "id": "r2-weyl",
+      "allocationBytes": 0,
+      "completedFrames": 14032,
+      "elapsedSeconds": 5.001799999952317,
+      "samplesPerSecond": 735416171.7851708,
+      "maxCPUError": 0,
+      "actual": [
+        0.5266567468643188,
+        0.25579994916915894,
+        0.09846985340118408,
+        0.8525569438934326,
+        0.7063032984733582
+      ]
+    },
+    {
+      "id": "hashed-digital",
+      "allocationBytes": 0,
+      "completedFrames": 13680,
+      "elapsedSeconds": 5.002199999809265,
+      "samplesPerSecond": 716910543.3882571,
+      "maxCPUError": 0,
+      "actual": [
+        0.5266567468643188,
+        0.012658417224884033,
+        0.5913041830062866,
+        0.14057523012161255,
+        0.4493570923805237
+      ]
+    },
+    {
+      "id": "hierarchical-digital",
+      "allocationBytes": 0,
+      "completedFrames": 13168,
+      "elapsedSeconds": 5.001800000190735,
+      "samplesPerSecond": 690133990.1372241,
+      "maxCPUError": 0,
+      "actual": [
+        0.2168070673942566,
+        0.12989109754562378,
+        0.49164462089538574,
+        0.7898791432380676,
+        0.8323802947998047
+      ]
+    },
+    {
+      "id": "houston-stratified-noise",
+      "allocationBytes": 0,
+      "completedFrames": 13864,
+      "elapsedSeconds": 5.002399999856949,
+      "samplesPerSecond": 726524151.6280046,
+      "maxCPUError": 0,
+      "actual": [
+        0.2583768367767334,
+        0.029754042625427246,
+        0.794304609298706,
+        0.22955703735351562,
+        0.9470257759094238
+      ]
+    },
+    {
+      "id": "phase-32-p8",
+      "allocationBytes": 4096,
+      "completedFrames": 13680,
+      "elapsedSeconds": 5.002400000095367,
+      "samplesPerSecond": 716881880.6835985,
+      "maxCPUError": 0,
+      "actual": [
+        0.08935546875,
+        0.05406904220581055,
+        0.9280965924263,
+        0.003161907196044922,
+        0.6340242624282837
+      ]
+    },
+    {
+      "id": "phase-64-p8",
+      "allocationBytes": 16384,
+      "completedFrames": 14136,
+      "elapsedSeconds": 5.0000999999046325,
+      "samplesPerSecond": 741118694.4402469,
+      "maxCPUError": 0,
+      "actual": [
+        0.8099365234375,
+        0.5219645500183105,
+        0.27001553773880005,
+        0.6942019462585449,
+        0.7820955514907837
+      ]
+    },
+    {
+      "id": "FAST-scalar",
+      "allocationBytes": 4194304,
+      "completedFrames": 14088,
+      "elapsedSeconds": 5,
+      "samplesPerSecond": 738616934.4,
+      "maxCPUError": 0,
+      "actual": [
+        0.583984375,
+        0.408203125,
+        0.029296875,
+        0.044921875,
+        0.701171875
+      ]
+    }
+  ]
+}

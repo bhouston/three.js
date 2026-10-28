@@ -1,0 +1,73 @@
+{
+  "environment": {
+    "node": "v26.11.1",
+    "platform": "win32",
+    "gpu": {
+      "vendor": "nvidia",
+      "architecture": "pascal",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false
+    }
+  },
+  "runs": [
+    {
+      "name": "fast-separate-seed1",
+      "seed": 1,
+      "seconds": 74.53204070000001,
+      "count": 1,
+      "log": "mode=separate steps=10000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5205 suppression 4 0.7s\nstep 1000 swaps/iter 1061 suppression 1 8.2s\nstep 2000 swaps/iter 573 suppression 1 15.6s\nstep 3000 swaps/iter 445 suppression 1 23.0s\nstep 4000 swaps/iter 398 suppression 1 30.4s\nstep 5000 swaps/iter 357 suppression 1 37.9s\nstep 6000 swaps/iter 344 suppression 1 45.3s\nstep 7000 swaps/iter 327 suppression 1 52.7s\nstep 8000 swaps/iter 304 suppression 1 60.2s\nstep 9000 swaps/iter 288 suppression 1 67.6s\ndone in 74.4s on nvidia pascal\n",
+      "timing": "navigation through completed readback and serialization"
+    },
+    {
+      "name": "fast-separate-seed2",
+      "seed": 2,
+      "seconds": 75.3356437,
+      "count": 1,
+      "log": "mode=separate steps=10000 size=128x128x32 taps=200 fs=6\nstep 0 swaps/iter 5209 suppression 4 0.8s\nstep 1000 swaps/iter 1057 suppression 1 8.2s\nstep 2000 swaps/iter 571 suppression 1 15.7s\nstep 3000 swaps/iter 444 suppression 1 23.2s\nstep 4000 swaps/iter 384 suppression 1 30.7s\nstep 5000 swaps/iter 351 suppression 1 38.2s\nstep 6000 swaps/iter 331 suppression 1 45.7s\nstep 7000 swaps/iter 318 suppression 1 53.2s\nstep 8000 swaps/iter 316 suppression 1 60.7s\nstep 9000 swaps/iter 293 suppression 1 68.2s\ndone in 75.2s on nvidia pascal\n",
+      "timing": "navigation through completed readback and serialization"
+    },
+    {
+      "name": "filter-rank-seed1",
+      "seed": 1,
+      "count": 45,
+      "seconds": 5.0832788,
+      "secondsPerVolume": 0.11296175111111112
+    },
+    {
+      "name": "filter-rank-seed2",
+      "seed": 2,
+      "count": 46,
+      "seconds": 5.046415400000001,
+      "secondsPerVolume": 0.10970468260869568
+    },
+    {
+      "name": "hierarchy-seed1",
+      "seed": 1,
+      "count": 4428,
+      "seconds": 5.0008521,
+      "secondsPerVolume": 0.0011293703929539296
+    },
+    {
+      "name": "hierarchy-seed2",
+      "seed": 2,
+      "count": 4380,
+      "seconds": 5.000586300000001,
+      "secondsPerVolume": 0.001141686369863014
+    },
+    {
+      "name": "local-energy-seed1",
+      "seed": 1,
+      "count": 2,
+      "seconds": 10.804529500000001,
+      "secondsPerVolume": 5.4022647500000005
+    },
+    {
+      "name": "local-energy-seed2",
+      "seed": 2,
+      "count": 2,
+      "seconds": 10.7799217,
+      "secondsPerVolume": 5.38996085
+    }
+  ]
+}

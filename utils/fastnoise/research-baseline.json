@@ -1,0 +1,3 @@
+[
+  { "name": "fast", "kind": "gpu", "file": "generator.html", "parameters": { "mode": "separate", "steps": 10000 } }
+]

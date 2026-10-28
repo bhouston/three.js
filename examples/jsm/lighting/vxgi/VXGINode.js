@@ -1,14 +1,13 @@
 import { RenderTarget, Vector2, Vector3, Node, QuadMesh, NodeMaterial, RendererUtils, HalfFloatType, RGBAFormat, RedFormat, UnsignedByteType } from 'three/webgpu';
-import { Fn, NodeUpdateType, uniform, reference, vec2, vec4, float, uv, mix, passTexture, getViewPosition, getNormalFromDepth, screenCoordinate, interleavedGradientNoise, normalize, floor, exp2, pow, PI, Loop, If, Break, property, outputStruct, context, projectionDepth } from 'three/tsl';
+import { Fn, NodeUpdateType, uniform, reference, vec4, float, uv, mix, passTexture, getViewPosition, getNormalFromDepth, screenCoordinate, normalize, floor, exp2, pow, PI, Loop, If, Break, property, outputStruct, context, projectionDepth } from 'three/tsl';
 
+import { R2_STEPS, houstonStratifiedNoise } from '../../tsl/utils/HoustonStratifiedNoise.js';
 import { VXGIVolume } from './VXGIVolume.js';
 import { createConeTracer, gather, intersectVolume, sampleDirectional } from './VXGIConeTracer.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
 
-const TEMPORAL_SHIFT = 5.588238;
-const TEMPORAL_CYCLE = 64;
 
 let _rendererState;
 
@@ -203,7 +202,7 @@ class VXGINode extends Node {
 		// private uniforms
 
 		this._resolution = uniform( new Vector2() );
-		this._frame = uniform( 0 );
+		this._frame = uniform( 0, 'uint' );
 		this._cameraProjectionMatrix = uniform( camera.projectionMatrix );
 		this._cameraProjectionMatrixInverse = uniform( camera.projectionMatrixInverse );
 		this._cameraWorldMatrix = uniform( camera.matrixWorld );
@@ -388,7 +387,7 @@ class VXGINode extends Node {
 
 		if ( this.useTemporalFiltering === true ) {
 
-			this._frame.value = frame.frameId % TEMPORAL_CYCLE;
+			this._frame.value = frame.frameId;
 
 		} else {
 
@@ -470,11 +469,10 @@ class VXGINode extends Node {
 			const viewNormal = sampleNormal( uvNode ).toConst();
 			const worldNormal = normalize( this._cameraWorldMatrix.mul( vec4( viewNormal, 0 ) ).xyz ).toConst();
 
-			// interleaved gradient noise for both values: its spatial structure converges well under temporal filtering
+			// stratified noise with independent temporal steps, so rotation and elevation converge jointly over time
 
-			const temporalShift = this._frame.mul( TEMPORAL_SHIFT ).toConst();
-			const rotationNoise = interleavedGradientNoise( screenCoordinate.add( temporalShift ) ).toConst();
-			const elevationNoise = interleavedGradientNoise( screenCoordinate.add( temporalShift ).add( vec2( 5.588238, 3.14159 ) ) ).toConst();
+			const rotationNoise = houstonStratifiedNoise( screenCoordinate, this._frame, 1, R2_STEPS[ 0 ] ).toConst();
+			const elevationNoise = houstonStratifiedNoise( screenCoordinate, this._frame, 2, R2_STEPS[ 1 ] ).toConst();
 
 			const CONE_COUNT = this.coneCount.toConst();
 			const tanHalfAngle = this.coneAngle.mul( 0.5 ).radians().tan().toConst();

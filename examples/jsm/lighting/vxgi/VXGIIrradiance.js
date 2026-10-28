@@ -1,4 +1,5 @@
-import { Fn, PI, float, interleavedGradientNoise, screenCoordinate, vec2 } from 'three/tsl';
+import { Fn, PI, float, screenCoordinate } from 'three/tsl';
+import { R2_STEPS, houstonStratifiedNoise } from '../../tsl/utils/HoustonStratifiedNoise.js';
 import { createConeTracer, gather } from './VXGIConeTracer.js';
 
 /**
@@ -6,7 +7,7 @@ import { createConeTracer, gather } from './VXGIConeTracer.js';
  * Call `volume.update( renderer, scene )` before baking. The sampler traces cosine-weighted
  * cones through the volume's radiance, including cached bounces.
  * It can be passed directly to {@link LightMapper}, without a screen-space pass.
- * The cones are rotated per pixel with interleaved gradient noise like `VXGINode`. When baking, the
+ * The cones are rotated per pixel with stratified noise like `VXGINode`. When baking, the
  * pixel is the light map texel. The optional sample index shifts the noise so that accumulated
  * samples, or a temporal filter like TRAA, converge.
  *
@@ -24,11 +25,10 @@ function vxgiIrradiance( volume, { coneCount = 8 } = {} ) {
 
 	return ( position, normal, sample = float( 0 ) ) => Fn( () => {
 
-		// interleaved gradient noise offsets of the stratified cone set, see VXGINode
+		// stratified noise offsets of the cone set, see VXGINode
 
-		const shift = screenCoordinate.add( sample.mul( 5.588238 ) ).toConst();
-		const elevation = interleavedGradientNoise( shift.add( vec2( 5.588238, 3.14159 ) ) ).toConst();
-		const rotation = interleavedGradientNoise( shift ).toConst();
+		const elevation = houstonStratifiedNoise( screenCoordinate, sample, 2, R2_STEPS[ 1 ] ).toConst();
+		const rotation = houstonStratifiedNoise( screenCoordinate, sample, 1, R2_STEPS[ 0 ] ).toConst();
 
 		const origin = position.add( normal.mul( volume.voxelSizeNode.mul( 1.5 ) ) ).toConst();
 

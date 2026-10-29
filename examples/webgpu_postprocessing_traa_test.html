@@ -65,10 +65,11 @@
 
 			const motions = [ 'Static', 'Pan horizontal', 'Pan vertical', 'Orbit', 'Roll', 'Dolly', 'FOV zoom', 'Sub-pixel drift', 'Objects only' ];
 
+			const matrix = new THREE.Matrix4();
 			const views = [ 'TRAA', 'Reference', 'Split TRAA | Reference', 'Delta TRAA', 'MSAA 4×', 'Delta MSAA 4×', 'No AA', 'Delta No AA', 'Input (jittered)', 'Velocity' ];
 			const deltaGain = uniform( params.deltaGain );
 
-			let camera, referenceCamera, msaaCamera, scene, renderer, renderPipeline, scenePass, referencePass, msaaPass, traaPass, spinner;
+			let camera, referenceCamera, msaaCamera, scene, renderer, renderPipeline, scenePass, referencePass, msaaPass, traaPass, spinner, cutout, blended, morph, instances;
 			let phase = 0;
 
 			init();
@@ -340,7 +341,30 @@
 				scene.add( box );
 
 				// specular aliasing: tight highlights on high curvature
-				const knot = new THREE.Mesh( new THREE.TorusKnotGeometry( 0.35, 0.08, 256, 32 ), new THREE.MeshStandardMaterial( { color: 0xcccccc, metalness: 1, roughness: 0.05 } ) );
+				// tangent-space ripples alias the highlights at the pixel scale
+				const waveData = new Uint8Array( 256 * 256 * 4 );
+				for ( let y = 0; y < 256; y ++ ) {
+
+					for ( let x = 0; x < 256; x ++ ) {
+
+						const u = x / 256 * Math.PI * 6;
+						const v = y / 256 * Math.PI * 6;
+						const phase = u * 12 + 0.4 * Math.sin( v * 3 );
+						const nx = - 0.65 * Math.cos( phase );
+						const ny = - 0.9 * Math.cos( v * 6 ) - 0.2 * Math.cos( phase ) * Math.cos( v * 3 );
+						const length = Math.hypot( nx, ny, 1 );
+						waveData.set( [ ( nx / length * 0.5 + 0.5 ) * 255, ( ny / length * 0.5 + 0.5 ) * 255, ( 1 / length * 0.5 + 0.5 ) * 255, 255 ], ( y * 256 + x ) * 4 );
+
+					}
+
+				}
+
+				const waves = new THREE.DataTexture( waveData, 256, 256 );
+				waves.wrapS = waves.wrapT = THREE.RepeatWrapping;
+				waves.generateMipmaps = false;
+				waves.minFilter = THREE.LinearFilter;
+				waves.needsUpdate = true;
+				const knot = new THREE.Mesh( new THREE.TorusKnotGeometry( 0.35, 0.08, 256, 32 ), new THREE.MeshStandardMaterial( { color: 0xcccccc, metalness: 1, roughness: 0.05, normalMap: waves } ) );
 				knot.position.set( 2.3, 0.4, - 0.3 );
 				scene.add( knot );
 
@@ -365,6 +389,34 @@
 
 				spinner.position.set( - 2, 0.2, 0.3 );
 				scene.add( spinner );
+
+				// alpha-tested edges come from the texture, not the geometry
+				const cutoutData = new Uint8Array( 64 * 64 * 4 );
+				for ( let i = 0; i < 64 * 64; i ++ ) cutoutData.set( [ 255, 180, 30, ( ( i % 64 >> 1 ) + ( i >> 7 ) ) % 2 ? 0 : 255 ], i * 4 );
+				const cutoutMap = new THREE.DataTexture( cutoutData, 64, 64 );
+				cutoutMap.magFilter = THREE.NearestFilter;
+				cutoutMap.needsUpdate = true;
+				cutout = new THREE.Mesh( new THREE.PlaneGeometry( 0.7, 0.7 ), new THREE.MeshBasicMaterial( { map: cutoutMap, alphaTest: 0.5, side: THREE.DoubleSide } ) );
+				cutout.position.set( - 0.9, - 0.55, 0.6 );
+				scene.add( cutout );
+
+				// blended surfaces write no depth, so the history behind them is reprojected wrongly
+				blended = new THREE.Mesh( new THREE.PlaneGeometry( 0.5, 0.9 ), new THREE.MeshBasicMaterial( { color: 0x44aaff, transparent: true, opacity: 0.45, depthWrite: false } ) );
+				blended.position.set( - 0.3, 0, 0.3 );
+				scene.add( blended );
+
+				// morph and instanced motion need per-vertex velocity
+				const morphGeometry = new THREE.PlaneGeometry( 0.7, 0.7, 20, 20 );
+				const morphPosition = morphGeometry.attributes.position.clone();
+				for ( let i = 0; i < morphPosition.count; i ++ ) morphPosition.setZ( i, 0.2 * Math.sin( morphPosition.getX( i ) * 18 ) );
+				morphGeometry.morphAttributes.position = [ morphPosition ];
+				morph = new THREE.Mesh( morphGeometry, new THREE.MeshStandardMaterial( { map: cutoutMap, side: THREE.DoubleSide } ) );
+				morph.position.set( 0.3, - 0.55, 0.8 );
+				scene.add( morph );
+
+				instances = new THREE.InstancedMesh( new THREE.BoxGeometry( 0.07, 0.07, 0.07 ), new THREE.MeshStandardMaterial( { color: 0xffffff } ), 12 );
+				instances.position.copy( morph.position );
+				scene.add( instances );
 
 			}
 
@@ -395,6 +447,20 @@
 				camera.updateProjectionMatrix();
 
 				if ( params.motion !== 'Static' ) spinner.rotation.z -= frames * params.speed * 0.05;
+
+				const t = params.motion === 'Static' ? 0 : phase;
+				cutout.rotation.z = t * 0.25;
+				blended.position.x = - 0.3 + 0.6 * Math.sin( t * 1.2 );
+				morph.morphTargetInfluences[ 0 ] = 0.5 + 0.5 * Math.sin( t );
+
+				for ( let i = 0; i < 12; i ++ ) {
+
+					const angle = i * Math.PI / 6 + t * 0.5;
+					instances.setMatrixAt( i, matrix.makeTranslation( 0.5 * Math.cos( angle ), 0.5 * Math.sin( angle ), 0.2 ) );
+
+				}
+
+				instances.instanceMatrix.needsUpdate = true;
 
 			}
 

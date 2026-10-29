@@ -63,7 +63,7 @@
 				reset: () => resetHistory()
 			};
 
-			const motions = [ 'Static', 'Pan horizontal', 'Pan vertical', 'Orbit', 'Roll', 'Dolly', 'FOV zoom', 'Sub-pixel drift', 'Objects only' ];
+			const motions = [ 'Static', 'Pan horizontal', 'Pan vertical', 'Orbit', 'Yaw', 'Roll', 'Dolly', 'FOV zoom', 'Sub-pixel drift', 'Objects only' ];
 
 			const matrix = new THREE.Matrix4();
 			const views = [ 'TRAA', 'Reference', 'Split TRAA | Reference', 'Delta TRAA', 'MSAA 4×', 'Delta MSAA 4×', 'No AA', 'Delta No AA', 'Input (jittered)', 'Velocity' ];
@@ -435,6 +435,8 @@
 					case 'Pan horizontal': camera.position.x += s * 1.5; target.x += s * 1.5; break;
 					case 'Pan vertical': camera.position.y += s * 0.8; target.y += s * 0.8; break;
 					case 'Orbit': camera.position.set( 0.3 + Math.sin( s ) * 5, 0.6, Math.cos( s ) * 5 ); break;
+					// the camera turns in place, so every pixel reprojects to a new sub-pixel position
+					case 'Yaw': target.sub( camera.position ).applyAxisAngle( camera.up, s * 0.3 ).add( camera.position ); break;
 					case 'Roll': camera.up.set( Math.sin( s * 0.5 ), Math.cos( s * 0.5 ), 0 ); break;
 					case 'Dolly': camera.position.z += s * 2.5; break;
 					case 'FOV zoom': camera.fov = 40 + s * 25; break;

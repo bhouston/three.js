@@ -50,6 +50,7 @@
 				referenceScale: 4,
 				referenceFilter: 'Box',
 				historyLength: 20,
+				historySampling: 'catmull-rom',
 				useSubpixelCorrection: true,
 				depthThreshold: 0.0005,
 				edgeDepthDiff: 0.001,
@@ -139,6 +140,7 @@
 
 				} );
 				// the remaining parameters are baked into the shader, so the node is rebuilt
+				traaFolder.add( params, 'historySampling', [ 'catmull-rom', 'linear' ] ).name( 'History sampling' ).onChange( rebuild );
 				traaFolder.add( params, 'useSubpixelCorrection' ).name( 'Subpixel correction' ).onChange( rebuild );
 				traaFolder.add( params, 'depthThreshold', 0, 0.005, 0.0001 ).name( 'Depth threshold' ).onChange( rebuild );
 				traaFolder.add( params, 'edgeDepthDiff', 0, 0.01, 0.0001 ).name( 'Edge depth diff' ).onChange( rebuild );
@@ -156,6 +158,7 @@
 				const color = scenePass.getTextureNode( 'output' );
 				traaPass = traa( color, scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'velocity' ), camera );
 				traaPass.historyLength.value = params.historyLength;
+				traaPass.historySampling = params.historySampling;
 				traaPass.useSubpixelCorrection = params.useSubpixelCorrection;
 				traaPass.depthThreshold = params.depthThreshold;
 				traaPass.edgeDepthDiff = params.edgeDepthDiff;

@@ -1,30 +1,36 @@
 export default /* glsl */`
-#ifdef USE_LIGHT_PROBES_GRID
+#if NUM_LIGHT_PROBE_GRIDS > 0
 
 // Single atlas 3D texture that stores all 7 SH sub-volumes stacked along Z.
 // Atlas depth = 7 * ( nz + 2 ) where nz = probesResolution.z.
 // Each sub-volume occupies ( nz + 2 ) slices: 1 padding + nz data + 1 padding.
 // Padding is a copy of the first / last data slice and prevents color bleeding
 // when the hardware linear filter reads across a sub-volume boundary.
-uniform highp sampler3D probesSH;
+uniform highp sampler3D probesSH[ NUM_LIGHT_PROBE_GRIDS ];
 
-uniform vec3 probesMin;
-uniform vec3 probesMax;
-uniform vec3 probesResolution;
+uniform vec3 probesMin[ NUM_LIGHT_PROBE_GRIDS ];
+uniform vec3 probesMax[ NUM_LIGHT_PROBE_GRIDS ];
+uniform vec3 probesResolution[ NUM_LIGHT_PROBE_GRIDS ];
 
-vec3 getLightProbeGridIrradiance( vec3 worldPos, vec3 worldNormal ) {
+bool isInsideLightProbeGrid( vec3 worldPos, vec3 worldNormal, vec3 probesMin, vec3 probesMax, vec3 probesResolution ) {
+
+	vec3 samplePos = worldPos + worldNormal * ( probesMax - probesMin ) / probesResolution * 0.5;
+	return all( greaterThanEqual( samplePos, probesMin ) ) && all( lessThanEqual( samplePos, probesMax ) );
+
+}
+
+vec3 getLightProbeGridIrradiance( highp sampler3D probesSH, vec3 probesMin, vec3 probesMax, vec3 probesResolution, vec3 worldPos, vec3 worldNormal ) {
 
 	vec3 res = probesResolution;
 	vec3 gridRange = probesMax - probesMin;
-	vec3 resMinusOne = res - 1.0;
-	vec3 probeSpacing = gridRange / resMinusOne;
+	vec3 probeSpacing = gridRange / res;
 
 	// Offset sample position along normal by half a probe spacing
 	vec3 samplePos = worldPos + worldNormal * probeSpacing * 0.5;
-	vec3 uvw = clamp( ( samplePos - probesMin ) / gridRange, 0.0, 1.0 );
 
-	// Remap to texel centers of the probe grid (XY and Z)
-	uvw = uvw * resMinusOne / res + 0.5 / res;
+	// The bounds hold one cell per probe, so they map directly to the probe grid.
+	// Clamp to the texel centers of the outermost probes (XY and Z).
+	vec3 uvw = clamp( ( samplePos - probesMin ) / gridRange, 0.5 / res, 1.0 - 0.5 / res );
 
 	// Atlas UV mapping along Z:
 	//   paddedSlices = nz + 2  (1 padding texel at each end of every sub-volume)

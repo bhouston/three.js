@@ -1,6 +1,6 @@
 import { HalfFloatType, Vector2, RenderTarget, RendererUtils, QuadMesh, NodeMaterial, Node, NodeUpdateType, Matrix4, DepthTexture } from 'three/webgpu';
 import { float, Fn, max, texture, uniform, uv, vec2, convertToTexture, passTexture, velocity, ivec2, mix, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
-import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCurrentDepth, samplePreviousDepth } from '../utils/TAAUtils.js';
+import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCatmullRom, sampleCurrentDepth, samplePreviousDepth } from '../utils/TAAUtils.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -119,6 +119,25 @@ class TRAANode extends Node {
 		 * @default true
 		 */
 		this.useSubpixelCorrection = true;
+
+		/**
+		 * How the reprojected history is sampled. `'linear'` uses a single bilinear fetch which is cheaper
+		 * but blurs the image under motion, since the history is resampled every frame. `'catmull-rom'`
+		 * uses a 5-tap Catmull-Rom filter that keeps the history sharp.
+		 *
+		 * @type {('linear'|'catmull-rom')}
+		 * @default 'catmull-rom'
+		 */
+		this.historySampling = 'catmull-rom';
+
+		/**
+		 * The approximate number of frames the history accumulates. The current frame
+		 * receives at least `1 / historyLength` of the blend weight, so `1` disables the history.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 20
+		 */
+		this.historyLength = uniform( 20 );
 
 		/**
 		 * The jitter index selects the current camera offset value.
@@ -536,12 +555,12 @@ class TRAANode extends Node {
 			// sample the current and previous colors
 
 			const currentColor = this.beautyNode.sample( uvNode );
-			const historyColor = historyNode.sample( historyUV );
+			const historyColor = this.historySampling === 'catmull-rom' ? sampleCatmullRom( historyNode, historyUV, vec2( textureSize ) ) : historyNode.sample( historyUV );
 
 			// increase the weight towards the current frame under motion
 
 			const motionFactor = uvNode.sub( historyUV ).mul( textureSize ).length().div( this.maxVelocityLength ).saturate();
-			const currentWeight = float( 0.05 ).toVar(); // A minimum weight
+			const currentWeight = this.historyLength.reciprocal().toVar(); // A minimum weight
 
 			if ( this.useSubpixelCorrection ) {
 
@@ -554,7 +573,8 @@ class TRAANode extends Node {
 
 			// Perform neighborhood clipping/clamping. We use variance clipping here.
 
-			const varianceGamma = mix( 0.5, 1, motionFactor.oneMinus().pow2() ); // Reasonable gamma range is [0.75, 2]
+			// a 1σ box at rest clips converged sub-pixel detail, so longer histories lost accuracy
+			const varianceGamma = mix( 0.5, 2, motionFactor.oneMinus().pow2() );
 			const clippedHistoryColor = varianceClipping( positionTexel, currentColor, historyColor, varianceGamma );
 
 			// flicker reduction based on luminance weighing

@@ -458,6 +458,7 @@
 		"webgpu_postprocessing_masking",
 		"webgpu_postprocessing_ca",
 		"webgpu_postprocessing_motion_blur",
+		"webgpu_postprocessing_normals",
 		"webgpu_postprocessing_outline",
 		"webgpu_postprocessing_pixel",
 		"webgpu_postprocessing_radial_blur",

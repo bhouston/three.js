@@ -1,12 +1,15 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../../utils/assertions.js';
+
 import { StringKeyframeTrack } from '../../../../../src/animation/tracks/StringKeyframeTrack.js';
 
 import { KeyframeTrack } from '../../../../../src/animation/KeyframeTrack.js';
 
-export default QUnit.module( 'Animation', () => {
+describe( 'Animation', () => {
 
-	QUnit.module( 'Tracks', () => {
+	describe( 'Tracks', () => {
 
-		QUnit.module( 'StringKeyframeTrack', () => {
+		describe( 'StringKeyframeTrack', () => {
 
 			const parameters = {
 				name: '.name',
@@ -15,7 +18,7 @@ export default QUnit.module( 'Animation', () => {
 			};
 
 			// INHERITANCE
-			QUnit.test( 'Extending', ( assert ) => {
+			test( 'Extending', () => {
 
 				const object = new StringKeyframeTrack( parameters.name, parameters.times, parameters.values );
 				assert.strictEqual(
@@ -26,7 +29,7 @@ export default QUnit.module( 'Animation', () => {
 			} );
 
 			// INSTANCING
-			QUnit.test( 'Instancing', ( assert ) => {
+			test( 'Instancing', () => {
 
 				// name, times, values
 				const object = new StringKeyframeTrack( parameters.name, parameters.times, parameters.values );

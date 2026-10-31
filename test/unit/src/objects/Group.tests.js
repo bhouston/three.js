@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Group } from '../../../../src/objects/Group.js';
 
 import { Object3D } from '../../../../src/core/Object3D.js';
 
-export default QUnit.module( 'Objects', () => {
+describe( 'Objects', () => {
 
-	QUnit.module( 'Group', () => {
+	describe( 'Group', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const group = new Group();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Objects', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new Group();
 			assert.ok( object, 'Can instantiate a Group.' );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Objects', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new Group();
 			assert.ok(
@@ -37,7 +40,7 @@ export default QUnit.module( 'Objects', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isGroup', ( assert ) => {
+		test( 'isGroup', () => {
 
 			const object = new Group();
 			assert.ok(

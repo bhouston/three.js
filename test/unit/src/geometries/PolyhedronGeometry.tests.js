@@ -1,14 +1,17 @@
+import { beforeEach, describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { PolyhedronGeometry } from '../../../../src/geometries/PolyhedronGeometry.js';
 
 import { BufferGeometry } from '../../../../src/core/BufferGeometry.js';
-import { runStdGeometryTests } from '../../utils/qunit-utils.js';
+import { runStdGeometryTests } from '../../utils/test-utils.js';
 
-export default QUnit.module( 'Geometries', () => {
+describe( 'Geometries', () => {
 
-	QUnit.module( 'PolyhedronGeometry', ( hooks ) => {
+	describe( 'PolyhedronGeometry', () => {
 
 		let geometries = undefined;
-		hooks.beforeEach( function () {
+		beforeEach( function () {
 
 			const vertices = [
 				1, 1, 1, 	- 1, - 1, 1, 	- 1, 1, - 1, 	1, - 1, - 1
@@ -25,7 +28,7 @@ export default QUnit.module( 'Geometries', () => {
 		} );
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new PolyhedronGeometry();
 			assert.strictEqual(
@@ -36,7 +39,7 @@ export default QUnit.module( 'Geometries', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new PolyhedronGeometry();
 			assert.ok( object, 'Can instantiate a PolyhedronGeometry.' );
@@ -44,7 +47,7 @@ export default QUnit.module( 'Geometries', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new PolyhedronGeometry();
 			assert.ok(
@@ -55,7 +58,7 @@ export default QUnit.module( 'Geometries', () => {
 		} );
 
 		// OTHERS
-		QUnit.test( 'Standard geometry tests', ( assert ) => {
+		test( 'Standard geometry tests', () => {
 
 			runStdGeometryTests( assert, geometries );
 

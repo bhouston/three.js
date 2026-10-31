@@ -1,17 +1,20 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../../utils/assertions.js';
+
 import { viewportDepthTexture } from '../../../../../src/nodes/display/ViewportDepthTextureNode.js';
 import { DepthTexture } from '../../../../../src/textures/DepthTexture.js';
 import { RenderTarget } from '../../../../../src/core/RenderTarget.js';
 
-export default QUnit.module( 'Nodes', () => {
+describe( 'Nodes', () => {
 
-	QUnit.module( 'Display', () => {
+	describe( 'Display', () => {
 
-		QUnit.module( 'ViewportDepthTextureNode', () => {
+		describe( 'ViewportDepthTextureNode', () => {
 
 			// DEPTH TEXTURE CACHING
-			QUnit.module( 'Depth Texture Caching', () => {
+			describe( 'Depth Texture Caching', () => {
 
-				QUnit.test( 'getTextureForReference returns shared buffer for null reference', ( assert ) => {
+				test( 'getTextureForReference returns shared buffer for null reference', () => {
 
 					const node = viewportDepthTexture();
 					const texture = node.getTextureForReference( null );
@@ -23,7 +26,7 @@ export default QUnit.module( 'Nodes', () => {
 
 				} );
 
-				QUnit.test( 'different references get independent cached depth textures', ( assert ) => {
+				test( 'different references get independent cached depth textures', () => {
 
 					const node = viewportDepthTexture();
 
@@ -63,7 +66,7 @@ export default QUnit.module( 'Nodes', () => {
 
 				} );
 
-				QUnit.test( 'same reference returns same cached depth texture', ( assert ) => {
+				test( 'same reference returns same cached depth texture', () => {
 
 					const node = viewportDepthTexture();
 
@@ -81,7 +84,7 @@ export default QUnit.module( 'Nodes', () => {
 				} );
 
 				// Test with RenderTargets
-				QUnit.test( 'RenderTargets get independent cached depth textures', ( assert ) => {
+				test( 'RenderTargets get independent cached depth textures', () => {
 
 					const node = viewportDepthTexture();
 
@@ -103,7 +106,7 @@ export default QUnit.module( 'Nodes', () => {
 				} );
 
 				// Test mixed CanvasTarget and RenderTarget references
-				QUnit.test( 'CanvasTarget and RenderTarget get independent caches', ( assert ) => {
+				test( 'CanvasTarget and RenderTarget get independent caches', () => {
 
 					const node = viewportDepthTexture();
 

@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { CompressedTextureLoader } from '../../../../src/loaders/CompressedTextureLoader.js';
 
 import { Loader } from '../../../../src/loaders/Loader.js';
 
-export default QUnit.module( 'Loaders', () => {
+describe( 'Loaders', () => {
 
-	QUnit.module( 'CompressedTextureLoader', () => {
+	describe( 'CompressedTextureLoader', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new CompressedTextureLoader();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Loaders', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new CompressedTextureLoader();
 			assert.ok( object, 'Can instantiate a CompressedTextureLoader.' );

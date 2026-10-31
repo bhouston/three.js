@@ -1,12 +1,15 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { TextureSource } from '../../../../src/textures/TextureSource.js';
 import { Vector3 } from '../../../../src/math/Vector3.js';
 
-export default QUnit.module( 'Textures', () => {
+describe( 'Textures', () => {
 
-	QUnit.module( 'TextureSource', () => {
+	describe( 'TextureSource', () => {
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new TextureSource();
 			assert.ok( object, 'Can instantiate a TextureSource.' );
@@ -14,7 +17,7 @@ export default QUnit.module( 'Textures', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isTextureSource', ( assert ) => {
+		test( 'isTextureSource', () => {
 
 			const object = new TextureSource();
 			assert.ok(
@@ -24,7 +27,7 @@ export default QUnit.module( 'Textures', () => {
 
 		} );
 
-		QUnit.test( 'getSize', ( assert ) => {
+		test( 'getSize', () => {
 
 			const target = new Vector3();
 

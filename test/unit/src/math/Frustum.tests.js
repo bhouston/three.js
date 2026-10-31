@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Frustum } from '../../../../src/math/Frustum.js';
 
 import { Sphere } from '../../../../src/math/Sphere.js';
@@ -12,12 +15,12 @@ import { zero3, one3, eps } from '../../utils/math-constants.js';
 
 const unit3 = new Vector3( 1, 0, 0 );
 
-export default QUnit.module( 'Maths', () => {
+describe( 'Maths', () => {
 
-	QUnit.module( 'Frustum', () => {
+	describe( 'Frustum', () => {
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			let a = new Frustum();
 
@@ -49,7 +52,7 @@ export default QUnit.module( 'Maths', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'set', ( assert ) => {
+		test( 'set', () => {
 
 			const a = new Frustum();
 			const p0 = new Plane( unit3, - 1 );
@@ -70,7 +73,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'clone', ( assert ) => {
+		test( 'clone', () => {
 
 			const p0 = new Plane( unit3, - 1 );
 			const p1 = new Plane( unit3, 1 );
@@ -94,7 +97,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'copy', ( assert ) => {
+		test( 'copy', () => {
 
 			const p0 = new Plane( unit3, - 1 );
 			const p1 = new Plane( unit3, 1 );
@@ -118,7 +121,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'setFromProjectionMatrix/makeOrthographic/containsPoint', ( assert ) => {
+		test( 'setFromProjectionMatrix/makeOrthographic/containsPoint', () => {
 
 			const m = new Matrix4().makeOrthographic( - 1, 1, 1, - 1, 1, 100 );
 			const a = new Frustum().setFromProjectionMatrix( m );
@@ -139,7 +142,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'setFromProjectionMatrix/makePerspective/containsPoint', ( assert ) => {
+		test( 'setFromProjectionMatrix/makePerspective/containsPoint', () => {
 
 			const m = new Matrix4().makePerspective( - 1, 1, 1, - 1, 1, 100 );
 			const a = new Frustum().setFromProjectionMatrix( m );
@@ -160,7 +163,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'setFromProjectionMatrix/makePerspective/intersectsSphere', ( assert ) => {
+		test( 'setFromProjectionMatrix/makePerspective/intersectsSphere', () => {
 
 			const m = new Matrix4().makePerspective( - 1, 1, 1, - 1, 1, 100 );
 			const a = new Frustum().setFromProjectionMatrix( m );
@@ -188,7 +191,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'intersectsObject', ( assert ) => {
+		test( 'intersectsObject', () => {
 
 			const m = new Matrix4().makePerspective( - 1, 1, 1, - 1, 1, 100 );
 			const a = new Frustum().setFromProjectionMatrix( m );
@@ -212,7 +215,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'intersectsSprite', ( assert ) => {
+		test( 'intersectsSprite', () => {
 
 			const m = new Matrix4().makePerspective( - 1, 1, 1, - 1, 1, 100 );
 			const a = new Frustum().setFromProjectionMatrix( m );
@@ -230,7 +233,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'intersectsBox', ( assert ) => {
+		test( 'intersectsBox', () => {
 
 			const m = new Matrix4().makePerspective( - 1, 1, 1, - 1, 1, 100 );
 			const a = new Frustum().setFromProjectionMatrix( m );

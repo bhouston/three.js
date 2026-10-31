@@ -1,15 +1,18 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../../utils/assertions.js';
+
 import { CubicInterpolant } from '../../../../../src/math/interpolants/CubicInterpolant.js';
 
 import { Interpolant } from '../../../../../src/math/Interpolant.js';
 
-export default QUnit.module( 'Maths', () => {
+describe( 'Maths', () => {
 
-	QUnit.module( 'Interpolants', () => {
+	describe( 'Interpolants', () => {
 
-		QUnit.module( 'CubicInterpolant', () => {
+		describe( 'CubicInterpolant', () => {
 
 			// INHERITANCE
-			QUnit.test( 'Extending', ( assert ) => {
+			test( 'Extending', () => {
 
 				const object = new CubicInterpolant( null, [ 1, 11, 2, 22, 3, 33 ], 2, [] );
 				assert.strictEqual(
@@ -20,7 +23,7 @@ export default QUnit.module( 'Maths', () => {
 			} );
 
 			// INSTANCING
-			QUnit.test( 'Instancing', ( assert ) => {
+			test( 'Instancing', () => {
 
 				// parameterPositions, sampleValues, sampleSize, resultBuffer
 				const object = new CubicInterpolant( null, [ 1, 11, 2, 22, 3, 33 ], 2, [] );

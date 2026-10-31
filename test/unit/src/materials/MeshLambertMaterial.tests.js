@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { MeshLambertMaterial } from '../../../../src/materials/MeshLambertMaterial.js';
 
 import { Material } from '../../../../src/materials/Material.js';
 
-export default QUnit.module( 'Materials', () => {
+describe( 'Materials', () => {
 
-	QUnit.module( 'MeshLambertMaterial', () => {
+	describe( 'MeshLambertMaterial', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new MeshLambertMaterial();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Materials', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new MeshLambertMaterial();
 			assert.ok( object, 'Can instantiate a MeshLambertMaterial.' );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Materials', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new MeshLambertMaterial();
 			assert.ok(
@@ -37,7 +40,7 @@ export default QUnit.module( 'Materials', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isMeshLambertMaterial', ( assert ) => {
+		test( 'isMeshLambertMaterial', () => {
 
 			const object = new MeshLambertMaterial();
 			assert.ok(

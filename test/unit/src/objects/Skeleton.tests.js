@@ -1,11 +1,14 @@
+import { describe, expect, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Skeleton } from '../../../../src/objects/Skeleton.js';
 
-export default QUnit.module( 'Objects', () => {
+describe( 'Objects', () => {
 
-	QUnit.module( 'Skeleton', () => {
+	describe( 'Skeleton', () => {
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new Skeleton();
 			assert.ok( object, 'Can instantiate a Skeleton.' );
@@ -14,9 +17,9 @@ export default QUnit.module( 'Objects', () => {
 
 		// PUBLIC
 
-		QUnit.test( 'dispose', ( assert ) => {
+		test( 'dispose', () => {
 
-			assert.expect( 0 );
+			expect.assertions( 0 );
 
 			const object = new Skeleton();
 			object.dispose();

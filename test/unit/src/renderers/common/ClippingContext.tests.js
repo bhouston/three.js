@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../../utils/assertions.js';
+
 import { ArrayCamera } from '../../../../../src/cameras/ArrayCamera.js';
 import { PerspectiveCamera } from '../../../../../src/cameras/PerspectiveCamera.js';
 import { Plane } from '../../../../../src/math/Plane.js';
@@ -12,13 +15,13 @@ function distance( point, plane ) {
 
 }
 
-export default QUnit.module( 'Renderers', () => {
+describe( 'Renderers', () => {
 
-	QUnit.module( 'Common', () => {
+	describe( 'Common', () => {
 
-		QUnit.module( 'ClippingContext', () => {
+		describe( 'ClippingContext', () => {
 
-			QUnit.test( 'updateGlobal', ( assert ) => {
+			test( 'updateGlobal', () => {
 
 				const scene = new Scene();
 				const root = new ClippingContext();

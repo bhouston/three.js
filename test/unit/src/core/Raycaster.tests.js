@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Raycaster } from '../../../../src/core/Raycaster.js';
 import { Vector3 } from '../../../../src/math/Vector3.js';
 import { Mesh } from '../../../../src/objects/Mesh.js';
@@ -67,12 +70,12 @@ function getSphere() {
 
 }
 
-export default QUnit.module( 'Core', () => {
+describe( 'Core', () => {
 
-	QUnit.module( 'Raycaster', () => {
+	describe( 'Raycaster', () => {
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			// no params
 			const object = new Raycaster();
@@ -81,7 +84,7 @@ export default QUnit.module( 'Core', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'set', ( assert ) => {
+		test( 'set', () => {
 
 			const origin = new Vector3( 0, 0, 0 );
 			const direction = new Vector3( 0, 0, - 1 );
@@ -99,7 +102,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'setFromCamera (Perspective)', ( assert ) => {
+		test( 'setFromCamera (Perspective)', () => {
 
 			const raycaster = new Raycaster();
 			const rayDirection = raycaster.ray.direction;
@@ -133,7 +136,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'setFromCamera (Orthographic)', ( assert ) => {
+		test( 'setFromCamera (Orthographic)', () => {
 
 			const raycaster = new Raycaster();
 			const rayOrigin = raycaster.ray.origin;
@@ -151,7 +154,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'intersectObject', ( assert ) => {
+		test( 'intersectObject', () => {
 
 			const raycaster = getRaycaster();
 			const objectsToCheck = getObjectsToCheck();
@@ -171,7 +174,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'intersectObjects', ( assert ) => {
+		test( 'intersectObjects', () => {
 
 			const raycaster = getRaycaster();
 			const objectsToCheck = getObjectsToCheck();
@@ -191,7 +194,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'intersectObject (Perspective, WebGPU coordinate system)', ( assert ) => {
+		test( 'intersectObject (Perspective, WebGPU coordinate system)', () => {
 
 			const camera = new PerspectiveCamera( 90, 1, 0.1, 100 );
 			camera.coordinateSystem = WebGPUCoordinateSystem;
@@ -216,7 +219,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'intersectObject (Orthographic, WebGPU coordinate system)', ( assert ) => {
+		test( 'intersectObject (Orthographic, WebGPU coordinate system)', () => {
 
 			const camera = new OrthographicCamera( - 1, 1, 1, - 1, 0.1, 10 );
 			camera.coordinateSystem = WebGPUCoordinateSystem;
@@ -241,7 +244,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'intersectObject (Perspective, reversed depth)', ( assert ) => {
+		test( 'intersectObject (Perspective, reversed depth)', () => {
 
 			const camera = new PerspectiveCamera( 90, 1, 0.1, 100 );
 			camera._reversedDepth = true;
@@ -266,7 +269,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'intersectObject (Orthographic, reversed depth)', ( assert ) => {
+		test( 'intersectObject (Orthographic, reversed depth)', () => {
 
 			const camera = new OrthographicCamera( - 1, 1, 1, - 1, 0.1, 10 );
 			camera._reversedDepth = true;
@@ -291,7 +294,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'Line intersection threshold', ( assert ) => {
+		test( 'Line intersection threshold', () => {
 
 			const raycaster = getRaycaster();
 			const points = [ new Vector3( - 2, - 10, - 5 ), new Vector3( - 2, 10, - 5 ) ];
@@ -308,7 +311,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'Points intersection threshold', ( assert ) => {
+		test( 'Points intersection threshold', () => {
 
 			const raycaster = getRaycaster();
 			const coordinates = [ new Vector3( - 2, 0, - 5 ) ];

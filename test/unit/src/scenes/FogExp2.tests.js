@@ -1,11 +1,14 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { FogExp2 } from '../../../../src/scenes/FogExp2.js';
 
-export default QUnit.module( 'Scenes', () => {
+describe( 'Scenes', () => {
 
-	QUnit.module( 'FoxExp2', () => {
+	describe( 'FoxExp2', () => {
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			// FoxExp2( color, density = 0.00025 )
 
@@ -24,7 +27,7 @@ export default QUnit.module( 'Scenes', () => {
 		} );
 
 		// PUBLIC STUFF
-		QUnit.test( 'isFogExp2', ( assert ) => {
+		test( 'isFogExp2', () => {
 
 			const object = new FogExp2();
 			assert.ok(

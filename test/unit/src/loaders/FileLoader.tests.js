@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { FileLoader } from '../../../../src/loaders/FileLoader.js';
 
 import { Loader } from '../../../../src/loaders/Loader.js';
 
-export default QUnit.module( 'Loaders', () => {
+describe( 'Loaders', () => {
 
-	QUnit.module( 'FileLoader', () => {
+	describe( 'FileLoader', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new FileLoader();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Loaders', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new FileLoader();
 			assert.ok( object, 'Can instantiate a FileLoader.' );

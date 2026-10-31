@@ -1,13 +1,16 @@
+import { describe, expect, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { PolarGridHelper } from '../../../../src/helpers/PolarGridHelper.js';
 
 import { LineSegments } from '../../../../src/objects/LineSegments.js';
 
-export default QUnit.module( 'Helpers', () => {
+describe( 'Helpers', () => {
 
-	QUnit.module( 'PolarGridHelper', () => {
+	describe( 'PolarGridHelper', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new PolarGridHelper();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Helpers', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new PolarGridHelper();
 			assert.ok( object, 'Can instantiate a PolarGridHelper.' );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Helpers', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new PolarGridHelper();
 			assert.ok(
@@ -37,9 +40,9 @@ export default QUnit.module( 'Helpers', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'dispose', ( assert ) => {
+		test( 'dispose', () => {
 
-			assert.expect( 0 );
+			expect.assertions( 0 );
 
 			const object = new PolarGridHelper();
 			object.dispose();

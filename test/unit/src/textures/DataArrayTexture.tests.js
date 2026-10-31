@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { DataArrayTexture } from '../../../../src/textures/DataArrayTexture.js';
 
 import { Texture } from '../../../../src/textures/Texture.js';
 
-export default QUnit.module( 'Textures', () => {
+describe( 'Textures', () => {
 
-	QUnit.module( 'DataArrayTexture', () => {
+	describe( 'DataArrayTexture', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new DataArrayTexture();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Textures', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new DataArrayTexture();
 			assert.ok( object, 'Can instantiate a DataArrayTexture.' );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Textures', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isDataArrayTexture', ( assert ) => {
+		test( 'isDataArrayTexture', () => {
 
 			const object = new DataArrayTexture();
 			assert.ok(

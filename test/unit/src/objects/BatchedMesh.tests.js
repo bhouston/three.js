@@ -1,15 +1,18 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { BatchedMesh } from '../../../../src/objects/BatchedMesh.js';
 import { BoxGeometry } from '../../../../src/geometries/BoxGeometry.js';
 import { MeshBasicMaterial } from '../../../../src/materials/MeshBasicMaterial.js';
 import { PerspectiveCamera } from '../../../../src/cameras/PerspectiveCamera.js';
 
-export default QUnit.module( 'Objects', () => {
+describe( 'Objects', () => {
 
-	QUnit.module( 'BatchedMesh', () => {
+	describe( 'BatchedMesh', () => {
 
 		// PUBLIC
 
-		QUnit.test( 'setInstanceCount', ( assert ) => {
+		test( 'setInstanceCount', () => {
 
 			const box = new BoxGeometry( 1, 1, 1 );
 			const material = new MeshBasicMaterial( { color: 0x00ff00 } );
@@ -36,7 +39,7 @@ export default QUnit.module( 'Objects', () => {
 
 		} );
 
-		QUnit.test( 'setGeometrySize', ( assert ) => {
+		test( 'setGeometrySize', () => {
 
 			const material = new MeshBasicMaterial();
 			const camera = new PerspectiveCamera();

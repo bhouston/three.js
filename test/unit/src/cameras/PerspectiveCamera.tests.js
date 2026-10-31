@@ -1,11 +1,14 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { PerspectiveCamera } from '../../../../src/cameras/PerspectiveCamera.js';
 
 import { Matrix4 } from '../../../../src/math/Matrix4.js';
 import { Camera } from '../../../../src/cameras/Camera.js';
 
-export default QUnit.module( 'Cameras', () => {
+describe( 'Cameras', () => {
 
-	QUnit.module( 'PerspectiveCamera', () => {
+	describe( 'PerspectiveCamera', () => {
 
 		// see e.g. math/Matrix4.js
 		const matrixEquals4 = function ( a, b, tolerance ) {
@@ -33,7 +36,7 @@ export default QUnit.module( 'Cameras', () => {
 		};
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new PerspectiveCamera();
 			assert.strictEqual(
@@ -44,7 +47,7 @@ export default QUnit.module( 'Cameras', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new PerspectiveCamera();
 			assert.ok( object, 'Can instantiate a PerspectiveCamera.' );
@@ -52,7 +55,7 @@ export default QUnit.module( 'Cameras', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new PerspectiveCamera();
 			assert.ok(
@@ -63,7 +66,7 @@ export default QUnit.module( 'Cameras', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isPerspectiveCamera', ( assert ) => {
+		test( 'isPerspectiveCamera', () => {
 
 			const object = new PerspectiveCamera();
 			assert.ok(
@@ -73,7 +76,7 @@ export default QUnit.module( 'Cameras', () => {
 
 		} );
 
-		QUnit.test( 'updateProjectionMatrix', ( assert ) => {
+		test( 'updateProjectionMatrix', () => {
 
 			const cam = new PerspectiveCamera( 75, 16 / 9, 0.1, 300.0 );
 
@@ -102,7 +105,7 @@ export default QUnit.module( 'Cameras', () => {
 
 		// OTHERS
 		// TODO: clone is a camera methods that relied to copy method
-		QUnit.test( 'clone', ( assert ) => {
+		test( 'clone', () => {
 
 			const near = 1,
 				far = 3,

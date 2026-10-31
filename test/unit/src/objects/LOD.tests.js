@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Object3D } from '../../../../src/core/Object3D.js';
 import { Raycaster } from '../../../../src/core/Raycaster.js';
 import { LOD } from '../../../../src/objects/LOD.js';
 
-export default QUnit.module( 'Objects', () => {
+describe( 'Objects', () => {
 
-	QUnit.module( 'LOD', () => {
+	describe( 'LOD', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const lod = new LOD();
 
@@ -16,7 +19,7 @@ export default QUnit.module( 'Objects', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new LOD();
 			assert.ok(
@@ -26,7 +29,7 @@ export default QUnit.module( 'Objects', () => {
 
 		} );
 
-		QUnit.test( 'levels', ( assert ) => {
+		test( 'levels', () => {
 
 			const lod = new LOD();
 			const levels = lod.levels;
@@ -36,7 +39,7 @@ export default QUnit.module( 'Objects', () => {
 
 		} );
 
-		QUnit.test( 'autoUpdate', ( assert ) => {
+		test( 'autoUpdate', () => {
 
 			const lod = new LOD();
 
@@ -45,7 +48,7 @@ export default QUnit.module( 'Objects', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isLOD', ( assert ) => {
+		test( 'isLOD', () => {
 
 			const lod = new LOD();
 
@@ -53,7 +56,7 @@ export default QUnit.module( 'Objects', () => {
 
 		} );
 
-		QUnit.test( 'copy', ( assert ) => {
+		test( 'copy', () => {
 
 			const lod1 = new LOD();
 			const lod2 = new LOD();
@@ -75,7 +78,7 @@ export default QUnit.module( 'Objects', () => {
 
 		} );
 
-		QUnit.test( 'addLevel', ( assert ) => {
+		test( 'addLevel', () => {
 
 			const lod = new LOD();
 
@@ -94,7 +97,7 @@ export default QUnit.module( 'Objects', () => {
 
 		} );
 
-		QUnit.test( 'getObjectForDistance', ( assert ) => {
+		test( 'getObjectForDistance', () => {
 
 			const lod = new LOD();
 
@@ -120,7 +123,7 @@ export default QUnit.module( 'Objects', () => {
 
 		} );
 
-		QUnit.test( 'raycast', ( assert ) => {
+		test( 'raycast', () => {
 
 			const lod = new LOD();
 			const raycaster = new Raycaster();

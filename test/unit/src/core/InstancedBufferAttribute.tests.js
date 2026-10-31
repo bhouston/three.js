@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { InstancedBufferAttribute } from '../../../../src/core/InstancedBufferAttribute.js';
 
 import { BufferAttribute } from '../../../../src/core/BufferAttribute.js';
 
-export default QUnit.module( 'Core', () => {
+describe( 'Core', () => {
 
-	QUnit.module( 'InstancedBufferAttribute', () => {
+	describe( 'InstancedBufferAttribute', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new BufferAttribute();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Core', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			// array, itemSize
 			let instance = new InstancedBufferAttribute( new Float32Array( 10 ), 2 );
@@ -34,7 +37,7 @@ export default QUnit.module( 'Core', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isInstancedBufferAttribute', ( assert ) => {
+		test( 'isInstancedBufferAttribute', () => {
 
 			const object = new InstancedBufferAttribute();
 			assert.ok(
@@ -44,7 +47,7 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'copy', ( assert ) => {
+		test( 'copy', () => {
 
 			const array = new Float32Array( [ 1, 2, 3, 7, 8, 9 ] );
 			const instance = new InstancedBufferAttribute( array, 2, true, 123 );

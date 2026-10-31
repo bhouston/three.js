@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import NodeMaterial from '../../../../src/materials/nodes/NodeMaterial.js';
 import { Material } from '../../../../src/materials/Material.js';
 import NodeMaterialInstance from '../../../../src/materials/nodes/NodeMaterialInstance.js';
@@ -7,11 +10,11 @@ import { materialReference } from '../../../../src/nodes/accessors/MaterialRefer
 import { Color } from '../../../../src/math/Color.js';
 import { Texture } from '../../../../src/textures/Texture.js';
 
-export default QUnit.module( 'Materials', () => {
+describe( 'Materials', () => {
 
-	QUnit.module( 'NodeMaterialInstance', () => {
+	describe( 'NodeMaterialInstance', () => {
 
-		QUnit.test( 'shared shader and independent instances', ( assert ) => {
+		test( 'shared shader and independent instances', () => {
 
 			const base = new NodeMaterial();
 			base.colorNode = materialReference( 'myColor', 'color' );
@@ -38,7 +41,7 @@ export default QUnit.module( 'Materials', () => {
 
 		} );
 
-		QUnit.test( 'delegates shader setup with the instance material', ( assert ) => {
+		test( 'delegates shader setup with the instance material', () => {
 
 			const base = new NodeMaterial();
 			const material = new NodeMaterialInstance( base );
@@ -55,7 +58,7 @@ export default QUnit.module( 'Materials', () => {
 
 		} );
 
-		QUnit.test( 'read-only node properties', ( assert ) => {
+		test( 'read-only node properties', () => {
 
 			const base = new NodeMaterial();
 			base.colorNode = materialReference( 'myColor', 'color' );
@@ -67,7 +70,7 @@ export default QUnit.module( 'Materials', () => {
 
 				material.colorNode = materialReference( 'other', 'color' );
 
-			}, TypeError, 'Node properties cannot be assigned' );
+			}, TypeError, undefined, 'Node properties cannot be assigned' );
 			assert.strictEqual( material.colorNode, base.colorNode );
 
 			base.positionNode = materialReference( 'offset', 'vec3' );
@@ -77,7 +80,7 @@ export default QUnit.module( 'Materials', () => {
 
 		} );
 
-		QUnit.test( 'node material updates', ( assert ) => {
+		test( 'node material updates', () => {
 
 			const base = new NodeMaterial();
 			const a = new NodeMaterialInstance( base );
@@ -98,14 +101,14 @@ export default QUnit.module( 'Materials', () => {
 
 		} );
 
-		QUnit.test( 'requires a node material', ( assert ) => {
+		test( 'requires a node material', () => {
 
 			assert.throws( () => new NodeMaterialInstance(), /must be a NodeMaterial/ );
 			assert.throws( () => new NodeMaterialInstance( new Material() ), /must be a NodeMaterial/ );
 
 		} );
 
-		QUnit.test( 'clone', ( assert ) => {
+		test( 'clone', () => {
 
 			const base = new NodeMaterial();
 			base.colorNode = materialReference( 'myColor', 'color' );
@@ -125,7 +128,7 @@ export default QUnit.module( 'Materials', () => {
 
 		} );
 
-		QUnit.test( 'independent user data', ( assert ) => {
+		test( 'independent user data', () => {
 
 			const base = new NodeMaterial();
 			const texture = new Texture();
@@ -157,7 +160,7 @@ export default QUnit.module( 'Materials', () => {
 
 		} );
 
-		QUnit.test( 'independent disposal', ( assert ) => {
+		test( 'independent disposal', () => {
 
 			const base = new NodeMaterial();
 			base.addEventListener( 'dispose', () => assert.ok( false, 'Source must not be disposed' ) );

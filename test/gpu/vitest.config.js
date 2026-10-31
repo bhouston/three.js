@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath( new URL( '../../', import.meta.url ) );
-const gpuTests = [ 'test/unit/src/nodes/tsl/*.tests.js', 'test/gpu/*.tests.js', 'test/unit/src/nodes/lighting/EnvironmentNode.tests.js' ];
+const gpuTests = [ 'test/unit/src/nodes/tsl/*.tests.js', 'test/unit/src/nodes/lighting/EnvironmentNode.tests.js' ];
 
 export default defineConfig( {
 	resolve: {

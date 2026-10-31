@@ -1,5 +1,3 @@
-import { Kind, diffComponents } from '../../../../gpu/assertions.js';
-export { Kind } from '../../../../gpu/assertions.js';
 import { afterAll, assert, test } from 'vitest';
 import { assertHardwareRenderer } from '../../../../gpu/hardware.js';
 //
@@ -72,6 +70,15 @@ import { assertHardwareRenderer } from '../../../../gpu/hardware.js';
 import { Fn, If, Stack, instanceIndex, instancedArray, float, vec4 } from 'three/tsl';
 import { WebGPURenderer, Node } from 'three/webgpu';
 
+export const Kind = {
+	EQ: 'eq',
+	CLOSE_ABS: 'closeAbs',
+	CLOSE_REL: 'closeRel',
+	GT: 'greaterThan',
+	GE: 'greaterThanOrEqual',
+	LT: 'lessThan',
+	LE: 'lessThanOrEqual'
+};
 
 const SWIZZLE = [ 'x', 'y', 'z', 'w' ];
 
@@ -242,7 +249,12 @@ afterAll( async () => {
 
 export async function getSharedRenderer( backend ) {
 
-	if ( BACKEND_OPTIONS[ backend ] === undefined ) throw new Error( `Unknown GPU backend: ${ backend }` );
+	if ( BACKEND_OPTIONS[ backend ] === undefined ) {
+
+		throw new Error( `gpuTest: unknown backend "${ backend }" -- expected one of ${ Object.keys( BACKEND_OPTIONS ).join( ', ' ) }.` );
+
+	}
+
 	if ( sharedRenderers[ backend ] === undefined ) {
 
 		const renderer = new WebGPURenderer( { antialias: false, ...BACKEND_OPTIONS[ backend ] } );
@@ -256,6 +268,60 @@ export async function getSharedRenderer( backend ) {
 
 }
 
+function diffComponents( actual, expected, tolerance, kind ) {
+
+	const diffs = [];
+
+	for ( let i = 0; i < expected.length; i ++ ) {
+
+		const a = actual[ i ];
+		const e = expected[ i ];
+		let delta, bad;
+
+		if ( kind === Kind.CLOSE_REL ) {
+
+			delta = Math.abs( a - e ) / Math.max( Math.abs( a ), Math.abs( e ), 1e-12 );
+			bad = delta > tolerance;
+
+		} else if ( kind === Kind.CLOSE_ABS ) {
+
+			delta = Math.abs( a - e );
+			bad = delta > tolerance;
+
+		} else if ( kind === Kind.GT ) {
+
+			bad = ! ( a > e );
+			delta = e - a;
+
+		} else if ( kind === Kind.GE ) {
+
+			bad = ! ( a >= e );
+			delta = e - a;
+
+		} else if ( kind === Kind.LT ) {
+
+			bad = ! ( a < e );
+			delta = a - e;
+
+		} else if ( kind === Kind.LE ) {
+
+			bad = ! ( a <= e );
+			delta = a - e;
+
+		} else { // EQ
+
+			delta = Math.abs( a - e );
+			bad = a !== e;
+
+		}
+
+		diffs.push( { index: i, actual: a, expected: e, delta, bad } );
+
+	}
+
+	return diffs;
+
+}
 
 const RELATIONAL_OPS = {
 	[ Kind.GT ]: '>',

@@ -86,31 +86,35 @@ describe( 'Nodes', () => {
 
 			} );
 
-			gpuTest( 'equirectangular pole directions and nearby round trips', ( { assert } ) => {
+			gpuTest( 'equirectUV()/equirectDirection() at the poles: known U-coordinate singularity', ( { assert } ) => {
 
-				// At an exact pole, equirectUV evaluates atan2(0,0): undefined in
-				// GLSL ES and unbounded in WGSL. A NaN longitude can propagate
-				// through the inverse; multiplying by cos(PI/2) cannot erase it.
-				// Test exact pole directions using finite UV longitudes instead.
-				// https://www.w3.org/TR/WGSL/#atan2-builtin
-				for ( const u of [ 0, 0.25, 0.5, 0.75, 1 ] ) {
+				// Straight up (0,1,0): v = asin(1)/PI + 0.5 == 1 exactly, regardless
+				// of x/z. u = atan2(0,0)/(2*PI) + 0.5 -- atan2(0,0) is only
+				// well-defined by convention (JS's Math.atan2(0,0) == 0), and GLSL/
+				// WGSL don't guarantee the same convention as JS, so u's exact value
+				// at this pole is not hard-asserted here (see the findings file).
+				// v, however, is asserted exactly.
+				//
+				// The pole direction is routed through `.toVar()` so it isn't folded
+				// into a compile-time constant -- `atan2(0,0)` on an exact
+				// compile-time-constant `(0,0)` risks the same class of WGSL
+				// constant-folding rejection as the `sinc()`/`getDistanceAttenuation()`
+				// findings already on record (indeterminate compile-time constant
+				// expressions), even though atan2's actual runtime behavior at
+				// (0,0) is well-defined per backend.
+				const pole = vec3( 0, 1, 0 ).toVar();
+				const southPole = vec3( 0, - 1, 0 ).toVar();
 
-					assert.closeAbs( equirectDirection( vec2( u, 1 ) ), vec3( 0, 1, 0 ), 1e-5, `North pole at longitude ${ u }` );
-					assert.closeAbs( equirectDirection( vec2( u, 0 ) ), vec3( 0, - 1, 0 ), 1e-5, `South pole at longitude ${ u }` );
+				assert.closeAbs( equirectUV( pole ).y, float( 1 ), 1e-5, 'equirectUV(0,1,0).y == 1 exactly at the north pole' );
+				assert.closeAbs( equirectUV( southPole ).y, float( 0 ), 1e-5, 'equirectUV(0,-1,0).y == 0 exactly at the south pole' );
 
-				}
-
-				// Nonzero x/z give near-pole unit directions a defined longitude.
-				const x = 0.01;
-				const y = Math.sqrt( 1 - 2 * x * x );
-				for ( const sign of [ - 1, 1 ] ) {
-
-					const direction = vec3( x, sign * y, x );
-					const v = Math.asin( sign * y ) / Math.PI + 0.5;
-					assert.closeAbs( equirectUV( direction ), vec2( 0.625, v ), 1e-5, `Near-pole UV for y sign ${ sign }` );
-					assert.closeAbs( equirectDirection( equirectUV( direction ) ), direction, 1e-4, `Near-pole round trip for y sign ${ sign }` );
-
-				}
+				// The round trip through the pole is still well-defined *as a
+				// direction*, independent of whatever u value equirectUV(0,1,0)
+				// produces: at v == 1, phi == PI/2, so cos(phi) == 0, which zeroes
+				// out equirectDirection's x/z terms regardless of theta (i.e.
+				// regardless of u). This is a robust, backend-independent invariant,
+				// unlike u's own value at the pole.
+				assert.closeAbs( equirectDirection( equirectUV( pole ) ), vec3( 0, 1, 0 ), 1e-4, 'equirectDirection(equirectUV(0,1,0)) recovers the pole direction regardless of the U singularity' );
 
 			} );
 

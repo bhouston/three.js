@@ -331,7 +331,7 @@ function evaluateAssertion( assert, actual, expected, meta ) {
 
 }
 
-// Builds the assertion object handed to test bodies -- names follow QUnit's
+// Builds the assertion object handed to test bodies -- names follow Vitest's
 // own assertion terminology (`equal`/`notEqual` style: full words, no
 // abbreviations) for the relational checks, alongside the tolerance-based
 // `closeAbs`/`closeRel` pair. `makeNode(kind, tolerance)` returns a function

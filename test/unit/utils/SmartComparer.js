@@ -9,6 +9,7 @@ function SmartComparer() {
 
 	// Diagnostic message, when comparison fails.
 	let message;
+	const compared = new WeakMap();
 
 	return {
 
@@ -56,6 +57,14 @@ function SmartComparer() {
 			if ( val1.equals( val2 ) ) return true;
 
 			return makeFail( 'Comparison with .equals method returned false' );
+
+		}
+
+		// Object graphs may contain parent references.
+		if ( isObject( val1 ) && isObject( val2 ) ) {
+
+			if ( compared.get( val1 ) === val2 ) return true;
+			compared.set( val1, val2 );
 
 		}
 

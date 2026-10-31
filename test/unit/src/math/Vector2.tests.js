@@ -384,20 +384,20 @@ describe( 'Maths', () => {
 			assert.deepEqual( new Vector2( - 0.5, 0.5 ).floor(), new Vector2( - 1, 0 ), 'floor .5' );
 			assert.deepEqual( new Vector2( - 0.9, 0.9 ).floor(), new Vector2( - 1, 0 ), 'floor .9' );
 
-			assert.smartEqual( new Vector2( - 0.1, 0.1 ).ceil(), new Vector2( 0, 1 ), 'ceil .1' );
-			assert.smartEqual( new Vector2( - 0.5, 0.5 ).ceil(), new Vector2( 0, 1 ), 'ceil .5' );
-			assert.smartEqual( new Vector2( - 0.9, 0.9 ).ceil(), new Vector2( 0, 1 ), 'ceil .9' );
+			assert.equalProperties( new Vector2( - 0.1, 0.1 ).ceil(), new Vector2( 0, 1 ), 'ceil .1' );
+			assert.equalProperties( new Vector2( - 0.5, 0.5 ).ceil(), new Vector2( 0, 1 ), 'ceil .5' );
+			assert.equalProperties( new Vector2( - 0.9, 0.9 ).ceil(), new Vector2( 0, 1 ), 'ceil .9' );
 
-			assert.smartEqual( new Vector2( - 0.1, 0.1 ).round(), new Vector2( 0, 0 ), 'round .1' );
-			assert.smartEqual( new Vector2( - 0.5, 0.5 ).round(), new Vector2( 0, 1 ), 'round .5' );
-			assert.smartEqual( new Vector2( - 0.9, 0.9 ).round(), new Vector2( - 1, 1 ), 'round .9' );
+			assert.equalProperties( new Vector2( - 0.1, 0.1 ).round(), new Vector2( 0, 0 ), 'round .1' );
+			assert.equalProperties( new Vector2( - 0.5, 0.5 ).round(), new Vector2( 0, 1 ), 'round .5' );
+			assert.equalProperties( new Vector2( - 0.9, 0.9 ).round(), new Vector2( - 1, 1 ), 'round .9' );
 
-			assert.smartEqual( new Vector2( - 0.1, 0.1 ).roundToZero(), new Vector2( 0, 0 ), 'roundToZero .1' );
-			assert.smartEqual( new Vector2( - 0.5, 0.5 ).roundToZero(), new Vector2( 0, 0 ), 'roundToZero .5' );
-			assert.smartEqual( new Vector2( - 0.9, 0.9 ).roundToZero(), new Vector2( 0, 0 ), 'roundToZero .9' );
-			assert.smartEqual( new Vector2( - 1.1, 1.1 ).roundToZero(), new Vector2( - 1, 1 ), 'roundToZero 1.1' );
-			assert.smartEqual( new Vector2( - 1.5, 1.5 ).roundToZero(), new Vector2( - 1, 1 ), 'roundToZero 1.5' );
-			assert.smartEqual( new Vector2( - 1.9, 1.9 ).roundToZero(), new Vector2( - 1, 1 ), 'roundToZero 1.9' );
+			assert.equalProperties( new Vector2( - 0.1, 0.1 ).roundToZero(), new Vector2( 0, 0 ), 'roundToZero .1' );
+			assert.equalProperties( new Vector2( - 0.5, 0.5 ).roundToZero(), new Vector2( 0, 0 ), 'roundToZero .5' );
+			assert.equalProperties( new Vector2( - 0.9, 0.9 ).roundToZero(), new Vector2( 0, 0 ), 'roundToZero .9' );
+			assert.equalProperties( new Vector2( - 1.1, 1.1 ).roundToZero(), new Vector2( - 1, 1 ), 'roundToZero 1.1' );
+			assert.equalProperties( new Vector2( - 1.5, 1.5 ).roundToZero(), new Vector2( - 1, 1 ), 'roundToZero 1.5' );
+			assert.equalProperties( new Vector2( - 1.9, 1.9 ).roundToZero(), new Vector2( - 1, 1 ), 'roundToZero 1.9' );
 
 		} );
 

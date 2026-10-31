@@ -71,6 +71,23 @@ for ( const file of files ) {
 		let pageError;
 		let pageSize = 0;
 		const messages = [];
+		const pendingRequests = new Set();
+		let lastNetworkActivity = Date.now();
+		page.on( 'request', request => {
+
+			pendingRequests.add( request );
+			lastNetworkActivity = Date.now();
+
+		} );
+		const finishRequest = request => {
+
+			pendingRequests.delete( request );
+			lastNetworkActivity = Date.now();
+
+		};
+
+		page.on( 'requestfinished', finishRequest );
+		page.on( 'requestfailed', finishRequest );
 		page.on( 'pageerror', error => pageError = error.message );
 		page.on( 'console', message => {
 
@@ -100,8 +117,10 @@ for ( const file of files ) {
 		await client.send( 'Input.setIgnoreInputEvents', { ignore: true } );
 		await page.goto( `/examples/${ file }.html`, { waitUntil: 'networkidle', timeout: 300000 } );
 		await page.evaluate( cleanPage );
-		await page.waitForLoadState( 'networkidle' );
-		await page.waitForTimeout( 1500 );
+		await expect.poll( () => pendingRequests.size === 0 && Date.now() - lastNetworkActivity >= 2000, {
+			message: 'Network remains idle for two seconds',
+			timeout: 300000
+		} ).toBe( true );
 		await page.waitForFunction( () => window._videosReady(), null, { timeout: 5000 } );
 		await page.waitForTimeout( pageSize / 1024 / 1024 * 1000 );
 		await page.evaluate( () => window._renderStarted = true );

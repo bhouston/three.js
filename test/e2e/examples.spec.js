@@ -1,0 +1,161 @@
+import { test, expect } from '@playwright/test';
+import * as fs from 'node:fs/promises';
+import { Image } from './image.js';
+import { exceptionList } from './exceptions.js';
+
+const exact = JSON.parse( process.env.THREE_EXAMPLES || '[]' );
+const files = ( await fs.readdir( 'examples' ) )
+	.filter( file => file.endsWith( '.html' ) && file !== 'index.html' )
+	.map( file => file.slice( 0, - 5 ) );
+
+for ( const name of exact ) {
+
+	if ( ! files.includes( name ) ) throw new Error( `Unrecognised example name: ${ name }` );
+
+}
+
+const injection = await fs.readFile( 'test/e2e/deterministic-injection.js', 'utf8' );
+const cleanPage = await fs.readFile( 'test/e2e/clean-page.js', 'utf8' );
+
+// Workers also need the deterministic clock and random source.
+const builds = new Map();
+
+test.beforeAll( async () => {
+
+	for ( const name of [ 'three.core.js', 'three.module.js', 'three.webgpu.js' ] ) {
+
+		const code = await fs.readFile( `build/${ name }`, 'utf8' );
+		builds.set( name, injection + '\n' + code.replace( /Math\.random\(\) \* 0xffffffff/g, 'Math._random() * 0xffffffff' ) );
+
+	}
+
+	await fs.mkdir( 'test/e2e/output-screenshots', { recursive: true } );
+
+} );
+
+for ( const file of files ) {
+
+	if ( exact.length ? ! exact.includes( file ) : exceptionList.includes( file ) ) continue;
+	if ( process.env.THREE_WEBGPU && ! file.startsWith( 'webgpu_' ) ) continue;
+
+	test( file, async ( { page, context }, testInfo ) => {
+
+		// A screenshot from a software renderer cannot verify hardware rendering.
+		await page.goto( '/' );
+		const renderer = await page.evaluate( async ( webgpu ) => {
+
+			const canvas = document.createElement( 'canvas' );
+			const gl = canvas.getContext( 'webgl2' );
+			if ( ! gl ) throw new Error( 'Hardware WebGL2 context unavailable' );
+			const debug = gl.getExtension( 'WEBGL_debug_renderer_info' );
+			if ( ! debug ) throw new Error( 'Cannot verify the WebGL renderer' );
+			const name = gl.getParameter( debug.UNMASKED_RENDERER_WEBGL );
+			gl.getExtension( 'WEBGL_lose_context' )?.loseContext();
+			if ( webgpu ) {
+
+				const adapter = await navigator.gpu?.requestAdapter();
+				if ( ! adapter || adapter.info?.isFallbackAdapter || adapter.isFallbackAdapter ) throw new Error( 'Hardware WebGPU adapter unavailable' );
+				const device = await adapter.requestDevice();
+				device.destroy();
+				const info = adapter.info;
+				return name + ' ' + JSON.stringify( { vendor: info?.vendor, architecture: info?.architecture, device: info?.device, description: info?.description } );
+
+			}
+
+			return name;
+
+		}, file.startsWith( 'webgpu_' ) );
+		expect( renderer, 'A physical GPU is required' ).not.toMatch( /swiftshader|llvmpipe|lavapipe|software|microsoft basic render/i );
+		await testInfo.attach( 'gpu', { body: renderer, contentType: 'text/plain' } );
+
+		let pageError;
+		let pageSize = 0;
+		const messages = [];
+		page.on( 'pageerror', error => pageError = error.message );
+		page.on( 'console', message => {
+
+			messages.push( `${ message.type() }: ${ message.text() }` );
+			if ( message.type() === 'error' ) pageError = message.text();
+
+		} );
+		page.on( 'response', async response => {
+
+			try {
+
+				if ( response.status() === 200 ) pageSize += ( await response.body() ).length;
+
+			} catch { /* A navigation may discard a response. */ }
+
+		} );
+		await context.addInitScript( { content: injection } );
+		await context.route( '**/build/*.js', async route => {
+
+			const name = new URL( route.request().url() ).pathname.split( '/' ).pop();
+			if ( builds.has( name ) ) await route.fulfill( { contentType: 'application/javascript', body: builds.get( name ) } );
+			else await route.continue();
+
+		} );
+
+		const client = await context.newCDPSession( page );
+		await client.send( 'Input.setIgnoreInputEvents', { ignore: true } );
+		await page.goto( `/examples/${ file }.html`, { waitUntil: 'networkidle', timeout: 300000 } );
+		await page.evaluate( cleanPage );
+		await page.waitForLoadState( 'networkidle' );
+		await page.waitForTimeout( 1500 );
+		await page.waitForFunction( () => window._videosReady(), null, { timeout: 5000 } );
+		await page.waitForTimeout( pageSize / 1024 / 1024 * 1000 );
+		await page.evaluate( () => window._renderStarted = true );
+		// Some examples render once without requestAnimationFrame; preserve that support.
+		await page.waitForFunction( () => window._renderFinished, null, { timeout: 5000 } ).catch( error => {
+
+			if ( error.name !== 'TimeoutError' ) throw error;
+
+		} );
+
+		const screenshot = ( await Image.read( await page.screenshot() ) ).scale( 0.5 );
+		await testInfo.attach( 'browser-console', { body: messages.join( '\n' ), contentType: 'text/plain' } );
+		expect( pageError, 'Browser errors' ).toBeUndefined();
+		if ( process.env.THREE_SCREENSHOTS ) {
+
+			await screenshot.write( `examples/screenshots/${ file }.jpg`, 95 );
+			return;
+
+		}
+
+		const prefix = `test/e2e/output-screenshots/${ file }`;
+		let expected;
+		try {
+
+			expected = await Image.read( `examples/screenshots/${ file }.jpg` );
+
+		} catch ( error ) {
+
+			await screenshot.write( `${ prefix }-actual.jpg`, 95 );
+			throw error;
+
+		}
+
+		const diff = screenshot.clone();
+		let different = Infinity;
+		try {
+
+			different = expected.compare( screenshot, diff, 0.1 ) / ( screenshot.width * screenshot.height ) * 100;
+
+		} finally {
+
+			if ( different >= 0.1 ) {
+
+				await screenshot.write( `${ prefix }-actual.jpg`, 95 );
+				await expected.write( `${ prefix }-expected.jpg`, 95 );
+				await diff.write( `${ prefix }-diff.jpg`, 95 );
+				for ( const kind of [ 'actual', 'expected', 'diff' ] ) await testInfo.attach( kind, { path: `${ prefix }-${ kind }.jpg`, contentType: 'image/jpeg' } );
+
+			}
+
+		}
+
+		expect( different, 'Percentage of differing pixels' ).toBeLessThan( 0.1 );
+
+	} );
+
+}

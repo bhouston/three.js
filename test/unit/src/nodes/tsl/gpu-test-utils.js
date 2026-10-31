@@ -1,3 +1,5 @@
+import { afterAll, assert, test } from 'vitest';
+import { assertHardwareRenderer } from '../../../../gpu/hardware.js';
 //
 // GPU-native TSL unit test harness (prototype).
 //
@@ -236,12 +238,14 @@ const BACKEND_OPTIONS = {
 	webgl: { forceWebGL: true }
 };
 
-// Cached per backend: a real renderer once `init()` succeeds, or `null` once
-// it's failed -- some CI images can support one backend but not the other
-// (confirmed in practice: WebGPU-via-software-Vulkan can work while a forced
-// WebGL2 context comes back `null` in the same environment, or vice versa),
-// so availability is detected empirically per backend rather than assumed.
+// Each native Vitest project owns one backend and one renderer per suite.
 const sharedRenderers = {};
+
+afterAll( async () => {
+
+	for ( const renderer of Object.values( sharedRenderers ) ) await renderer.dispose();
+
+} );
 
 export async function getSharedRenderer( backend ) {
 
@@ -254,18 +258,9 @@ export async function getSharedRenderer( backend ) {
 	if ( sharedRenderers[ backend ] === undefined ) {
 
 		const renderer = new WebGPURenderer( { antialias: false, ...BACKEND_OPTIONS[ backend ] } );
-
-		try {
-
-			await renderer.init();
-			sharedRenderers[ backend ] = renderer;
-
-		} catch ( error ) {
-
-			console.warn( `gpu-test-utils: "${ backend }" backend is not available in this environment (${ error.message }) -- skipping tests that require it.` );
-			sharedRenderers[ backend ] = null;
-
-		}
+		await renderer.init();
+		assertHardwareRenderer( renderer, backend );
+		sharedRenderers[ backend ] = renderer;
 
 	}
 
@@ -398,16 +393,11 @@ function evaluateAssertion( assert, actual, expected, meta ) {
 	const diffs = diffComponents( actual, expected, meta.tolerance, meta.kind );
 	const failure = formatFailure( meta.label, diffs, meta.tolerance, meta.kind, labels );
 
-	assert.pushResult( {
-		result: failure === null,
-		actual: actual.length === 1 ? actual[ 0 ] : actual,
-		expected: expected.length === 1 ? expected[ 0 ] : expected,
-		message: failure || `${ meta.label }: OK`
-	} );
+	assert.ok( failure === null, failure || `${ meta.label }: OK` );
 
 }
 
-// Builds the assertion object handed to test bodies -- names follow QUnit's
+// Builds the assertion object handed to test bodies -- names follow Vitest's
 // own assertion terminology (`equal`/`notEqual` style: full words, no
 // abbreviations) for the relational checks, alongside the tolerance-based
 // `closeAbs`/`closeRel` pair. `makeNode(kind, tolerance)` returns a function
@@ -428,38 +418,22 @@ function buildAssertAPI( makeNode ) {
 
 }
 
-// Registers one QUnit.test per requested backend. When only one backend is
-// requested (the default), the test name is left untouched; with more than
-// one, each gets a `[backend]` suffix so failures say which backend failed.
-// Backend availability is detected at runtime (see getSharedRenderer) rather
-// than assumed, so no static "skip this backend" flag is needed here.
+// Register each case in the Vitest project for its selected native backend.
 function declareTest( name, backends, run ) {
 
-	for ( const backend of backends ) {
+	const backend = process.env.THREE_GPU_BACKEND;
+	if ( ! backends.includes( backend ) ) {
 
-		const testName = backends.length > 1 ? `${ name } [${ backend }]` : name;
-
-		QUnit.test( testName, async ( assert ) => {
-
-			const renderer = await getSharedRenderer( backend );
-
-			if ( renderer === null ) {
-
-				// Availability can only be known after an async init() call,
-				// so this can't use QUnit.skip() (which needs to be decided
-				// at registration time) -- a clearly-labeled soft pass is the
-				// practical equivalent: it never fails the build, and the
-				// console.warn from getSharedRenderer explains why.
-				assert.ok( true, `SKIPPED: "${ backend }" backend is not available in this environment.` );
-				return;
-
-			}
-
-			await run( assert, renderer );
-
-		} );
+		test.skip( name );
+		return;
 
 	}
+
+	test( name, async () => {
+
+		await run( assert, await getSharedRenderer( backend ) );
+
+	} );
 
 }
 
@@ -554,12 +528,7 @@ function assertKernelRan( assert, data, row, canaryValue, name, kind = 'gpuTest'
 
 	if ( ! ran ) {
 
-		assert.pushResult( {
-			result: false,
-			actual: value,
-			expected: canaryValue,
-			message: `${ kind } "${ name }": compute kernel failed to build (canary mismatch -- got ${ value }, expected ${ canaryValue }).`
-		} );
+		assert.fail( `${ kind } "${ name }": compute kernel failed to build (canary mismatch -- got ${ value }, expected ${ canaryValue }).` );
 
 	}
 

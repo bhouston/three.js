@@ -1,44 +1,29 @@
 # Three.js end-to-end testing
 
-### Motivation
-Simplify code reviews with quick pixel testing inside CI. The same screenshots are used for thumbnails.
+Playwright loads each example in an isolated browser context and compares its screenshot with the existing JPEG thumbnail. Deterministic clock and random injection also applies to worker imports; animation and video hooks apply in the page. Tests retain the existing 800 × 500 viewport, downsampled 400 × 250 thumbnails, JPEG quality and pixel thresholds.
 
-### Local usage
-If you get an error in e2e test after PR and you sure that all is correct,
-just make a new screenshot to example. As a last resort increase timeouts or add it to exception list.
+```sh
+# Check examples, optionally with their .html extension.
+npm run test-e2e -- webgl_geometry_cube
 
-```shell
-# generate new screenshots for exact examples
-npm run make-screenshot <example1_name> ... <exampleN_name>
-
-# check exact examples
-npm run test-e2e <example1_name> ... <exampleN_name>
-
-# check all examples
+# Check all examples, or only WebGPU examples.
 npm run test-e2e
+npm run test-e2e-webgpu
+
+# Deliberately update thumbnails after reviewing a rendering change.
+npm run make-screenshot -- webgl_geometry_cube
+
+# Native Playwright selection, workers and sharding are available.
+npm run test-e2e -- --list
+npm run test-e2e -- --shard=1/5 --workers=1
 ```
 
-Merge only those commits that pass the tests, otherwise all next commits will also fail.
+Run `npm run build` before example tests. Install the browser with `npx playwright install chromium`, or set `THREE_BROWSER_CHANNEL=chrome` to use an installed Google Chrome. `VISIBLE=1` opens a visible browser. Windows uses ANGLE's hardware D3D11 backend. Browser and driver differences can affect pixel comparisons; review mismatch artifacts before updating a thumbnail.
 
-### How it works
-- ci configs with parallelism
-- deterministic random and clocks in pages and workers
-- deterministic page rAF and video for screenshots
-- ignores browser input while preserving scripted DOM clicks
-- freezes video playback, preserves explicit seeks, and waits for decoded frames
-- increased robustness with hided text, datgui, different flags and timeouts.
-- pipeline: turn off rAF -> 'networkidle0' -> video readiness -> networkTax -> turn on rAF -> render promise
-- added 3 progressive attempts for robustness
+A physical WebGL2 renderer is required. WebGPU examples additionally require a physical adapter and successful device creation. Software renderers fail the check. If the bundled Chromium cannot create a WebGPU device on Windows, try an installed Chrome channel. No software fallback is configured.
 
-### Development progress
+One worker runs by default to avoid GPU contention. Playwright handles retries and replaces a failed worker's browser. Each example has its own context, console error checks and trace on failure. Increase workers explicitly when the hardware has enough capacity. CI uses Playwright's native sharding, independent of the `CI` environment variable.
 
-|           Travis                        |               Attempts               |
-|-----------------------------------------|--------------------------------------|
-| 61 from 362 failed, time=21:14          | networkidle0 timeout                 |
-| 26 from 362 failed, time=16:22          | with rAF hook                        |
-| 13=1+1+7+4 failed, time=4:26            | with render promise and parallelism  |
-| 4=0+0+2+2 failed, time=5:13             | with network tax and other settings  |
-| 4=0+0+2+2 failed, time=3:26             | with progressive attempts            |
+Failures retain `<example>-actual.jpg`, `-expected.jpg` and `-diff.jpg` in `test/e2e/output-screenshots` for the existing CI screenshot report. Playwright attaches the GPU identity, browser console and images to its test result. Traces are in `test/e2e/results`; inspect one with `npx playwright show-trace <trace.zip>`.
 
-### Status
-97% examples are covered with tests. Check exception list for more information.
+The exception list is in `exceptions.js`. An explicit example name overrides that list, preserving the screenshot maintenance workflow. An unmatched selection fails through Playwright’s standard no-tests check. `test-e2e-cov` checks that examples, screenshot thumbnails and `examples/files.json` have matching entries; it does not require a browser.

@@ -1,6 +1,8 @@
 import { defineConfig } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 
+const angleBackend = { win32: 'd3d11', darwin: 'metal' }[ process.platform ];
+
 export default defineConfig( {
 
 	testDir: '.',
@@ -19,7 +21,7 @@ export default defineConfig( {
 		viewport: { width: 800, height: 500 },
 		baseURL: 'http://localhost:1234',
 		launchOptions: {
-			args: [ '--hide-scrollbars', '--enable-unsafe-webgpu', ...( process.platform === 'win32' ? [ '--use-angle=d3d11' ] : [] ) ]
+			args: [ '--hide-scrollbars', '--enable-unsafe-webgpu', ...( angleBackend ? [ `--use-angle=${ angleBackend }` ] : [] ) ]
 		},
 		trace: 'retain-on-failure'
 	},

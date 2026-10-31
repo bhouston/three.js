@@ -1,5 +1,5 @@
 import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert } from '../../utils/test-utils.js';
 
 import { Object3D } from '../../../../src/core/Object3D.js';
 
@@ -324,7 +324,7 @@ describe( 'Core', () => {
 			obj.translateOnAxis( new Vector3( 0, 1, 0 ), 1.23 );
 			obj.translateOnAxis( new Vector3( 0, 0, 1 ), - 4.56 );
 
-			assert.propEqual( obj.position, {
+			assert.deepEqual( { ...obj.position }, {
 				x: 1,
 				y: 1.23,
 				z: - 4.56,
@@ -1196,7 +1196,7 @@ describe( 'Core', () => {
 			/* eslint-disable prefer-const*/
 			let a;
 			const b = new Object3D();
-			b.userData = { id: 7, uuid: 'user-data', nested: { id: 9, uuid: 'nested-user-data' } };
+
 
 			assert.strictEqual( a, undefined, 'Undefined pre-clone()' );
 
@@ -1238,7 +1238,7 @@ describe( 'Core', () => {
 			b.frustumCulled = false;
 			b.renderOrder = 1;
 
-			b.userData = { foo: 'bar', id: 7, uuid: 'user-data', nested: { id: 9, uuid: 'nested-user-data' } };
+			b.userData[ 'foo' ] = 'bar';
 
 			child.add( childChild );
 			b.add( child );

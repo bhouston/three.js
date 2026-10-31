@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { BufferAttribute } from '../../../../src/core/BufferAttribute.js';
 import { Triangle } from '../../../../src/math/Triangle.js';
@@ -143,7 +142,7 @@ describe( 'Maths', () => {
 			assert.notOk( isNaN( plane.distanceToPoint( a.a ) ), 'Passed!' );
 			assert.notOk( isNaN( plane.distanceToPoint( a.b ) ), 'Passed!' );
 			assert.notOk( isNaN( plane.distanceToPoint( a.c ) ), 'Passed!' );
-			assert.notPropEqual( plane.normal, {
+			assert.notDeepEqual( { ...plane.normal }, {
 				x: NaN,
 				y: NaN,
 				z: NaN

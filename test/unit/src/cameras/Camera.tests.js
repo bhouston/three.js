@@ -1,5 +1,5 @@
 import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert } from '../../utils/test-utils.js';
 
 import { Camera } from '../../../../src/cameras/Camera.js';
 

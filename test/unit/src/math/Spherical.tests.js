@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { Spherical } from '../../../../src/math/Spherical.js';
 import { Vector3 } from '../../../../src/math/Vector3.js';
@@ -53,10 +52,10 @@ describe( 'Maths', () => {
 			const a = new Spherical( radius, phi, theta );
 			const b = a.clone();
 
-			assert.propEqual( a, b, 'Check a and b are equal after clone()' );
+			assert.deepEqual( a, b, 'Check a and b are equal after clone()' );
 
 			a.radius = 2.0;
-			assert.notPropEqual( a, b, 'Check a and b are not equal after modification' );
+			assert.notDeepEqual( a, b, 'Check a and b are not equal after modification' );
 
 		} );
 
@@ -68,10 +67,10 @@ describe( 'Maths', () => {
 			const a = new Spherical( radius, phi, theta );
 			const b = new Spherical().copy( a );
 
-			assert.propEqual( a, b, 'Check a and b are equal after copy()' );
+			assert.deepEqual( a, b, 'Check a and b are equal after copy()' );
 
 			a.radius = 2.0;
-			assert.notPropEqual( a, b, 'Check a and b are not equal after modification' );
+			assert.notDeepEqual( a, b, 'Check a and b are not equal after modification' );
 
 		} );
 

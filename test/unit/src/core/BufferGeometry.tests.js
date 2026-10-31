@@ -546,7 +546,7 @@ describe( 'Core', () => {
 			const attribute1 = new BufferAttribute( new Uint16Array( [ 1, 3, 5, 7 ] ), 1 );
 			attribute1.name = 'attribute1';
 			const a = new BufferGeometry();
-			a.name = 'JSONtest';
+			a.name = 'JSONQUnit.test';
 			// a.parameters = { "placeholder": 0 };
 			a.setAttribute( 'attribute1', attribute1 );
 			a.setIndex( index );
@@ -561,7 +561,7 @@ describe( 'Core', () => {
 				},
 				'uuid': a.uuid,
 				'type': 'BufferGeometry',
-				'name': 'JSONtest',
+				'name': 'JSONQUnit.test',
 				'data': {
 					'attributes': {
 						'attribute1': {

@@ -1,10 +1,9 @@
 import { beforeEach, describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, runStdLightTests } from '../../utils/test-utils.js';
 
 import { RectAreaLight } from '../../../../src/lights/RectAreaLight.js';
 
 import { Light } from '../../../../src/lights/Light.js';
-import { runStdLightTests } from '../../utils/test-utils.js';
 
 describe( 'Lights', () => {
 
@@ -96,7 +95,7 @@ describe( 'Lights', () => {
 		// OTHERS
 		test( 'Standard light tests', () => {
 
-			runStdLightTests( lights );
+			runStdLightTests( assert, lights );
 
 		} );
 

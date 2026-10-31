@@ -238,7 +238,7 @@ const BACKEND_OPTIONS = {
 	webgl: { forceWebGL: true }
 };
 
-// Each native Vitest project owns one backend and one renderer per test file.
+// Each native Vitest project owns one backend and one renderer per suite.
 const sharedRenderers = {};
 
 afterAll( async () => {

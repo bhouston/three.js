@@ -52,7 +52,7 @@ export default defineConfig( {
 					browser: {
 						enabled: true,
 						headless: true,
-						provider: playwright( { launchOptions: { args: process.platform === 'win32' ? [ '--use-angle=d3d11' ] : [] } } ),
+						provider: playwright( { launchOptions: { args: process.platform === 'win32' ? [ '--use-angle=d3d11' ] : process.platform === 'darwin' ? [ '--use-angle=metal' ] : [] } } ),
 						instances: [ { browser: 'chromium' } ]
 					}
 				}

@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { Texture } from '../../../../src/textures/Texture.js';
 
@@ -41,7 +41,6 @@ describe( 'Textures', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new Texture();
 			object.dispose();

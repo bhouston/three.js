@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { PointLightHelper } from '../../../../src/helpers/PointLightHelper.js';
 
@@ -53,7 +53,6 @@ describe( 'Helpers', () => {
 		// PUBLIC
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const light = new PointLight( parameters.color );
 			const object = new PointLightHelper( light, parameters.sphereSize, parameters.color );

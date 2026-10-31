@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { BufferGeometry } from '../../../../src/core/BufferGeometry.js';
 
@@ -679,7 +679,6 @@ describe( 'Core', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new BufferGeometry();
 			object.dispose();

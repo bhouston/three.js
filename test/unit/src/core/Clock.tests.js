@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, test, vi } from 'vitest';
 import { assert } from '../../utils/assertions.js';
 
 import { Clock } from '../../../../src/core/Clock.js';
@@ -48,7 +48,6 @@ describe( 'Core', () => {
 
 			if ( typeof performance === 'undefined' ) {
 
-				expect.assertions( 0 );
 				return;
 
 			}

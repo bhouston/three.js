@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { HemisphereLightHelper } from '../../../../src/helpers/HemisphereLightHelper.js';
 
@@ -53,7 +53,6 @@ describe( 'Helpers', () => {
 		// PUBLIC
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const light = new HemisphereLight( parameters.skyColor );
 			const object = new HemisphereLightHelper( light, parameters.size, parameters.color );

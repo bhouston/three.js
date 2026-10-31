@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { DirectionalLightHelper } from '../../../../src/helpers/DirectionalLightHelper.js';
 
@@ -51,7 +51,6 @@ describe( 'Helpers', () => {
 		// PUBLIC
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const light = new DirectionalLight( parameters.color );
 			const object = new DirectionalLightHelper( light, parameters.size, parameters.color );

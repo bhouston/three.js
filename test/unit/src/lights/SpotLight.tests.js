@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, test } from 'vitest';
 import { assert } from '../../utils/assertions.js';
 
 import { SpotLight } from '../../../../src/lights/SpotLight.js';
@@ -91,7 +91,6 @@ describe( 'Lights', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new SpotLight();
 			object.dispose();

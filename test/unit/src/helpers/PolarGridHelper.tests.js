@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { PolarGridHelper } from '../../../../src/helpers/PolarGridHelper.js';
 
@@ -41,7 +41,6 @@ describe( 'Helpers', () => {
 		// PUBLIC
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new PolarGridHelper();
 			object.dispose();

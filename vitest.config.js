@@ -28,7 +28,7 @@ export default defineConfig( {
 					name: 'unit',
 					environment: 'node',
 					maxWorkers: 4,
-					include: [ 'test/unit/src/**/*.tests.js', 'test/unit/tsl/*.tests.js' ],
+					include: [ 'test/unit/src/**/*.tests.js', 'test/unit/tsl/*.tests.js', 'test/unit/utils/*.tests.js' ],
 					exclude: [ ...browserTests, 'test/unit/src/nodes/tsl/!(TSLCore).tests.js', 'test/unit/src/nodes/lighting/EnvironmentNode.tests.js' ],
 					setupFiles
 				}

@@ -71,7 +71,8 @@
     "make-screenshot": "node test/e2e/playwright.js --make",
     "make-tsl-reference": "node test/unit/tsl/make.js",
     "test-unit-browser": "vitest run --project browser",
-    "test-unit-gpu": "vitest run --config test/gpu/vitest.config.js"
+    "test-unit-gpu": "vitest run --config test/gpu/vitest.config.js",
+    "test-unit-watch": "vitest --watch --project unit --project addons"
   },
   "keywords": [
     "three",

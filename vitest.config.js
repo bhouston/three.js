@@ -38,6 +38,7 @@ export default defineConfig( {
 				test: {
 					name: 'addons',
 					environment: 'node',
+					maxWorkers: 4,
 					include: [ 'test/unit/addons/**/*.tests.js' ],
 					exclude: browserTests,
 					setupFiles

@@ -26,4 +26,4 @@ One worker runs by default to avoid GPU contention. Playwright handles retries a
 
 Failures retain `<example>-actual.jpg`, `-expected.jpg` and `-diff.jpg` in `test/e2e/output-screenshots` for the existing CI screenshot report. Playwright attaches the GPU identity, browser console and images to its test result. Traces are in `test/e2e/results`; inspect one with `npx playwright show-trace <trace.zip>`.
 
-The exception list is in `exceptions.js`. An explicit example name overrides that list, preserving the screenshot maintenance workflow. Unknown example names fail rather than silently testing nothing. `test-e2e-cov` checks that examples, screenshot thumbnails and `examples/files.json` have matching entries; it does not require a browser.
+The exception list is in `exceptions.js`. An explicit example name overrides that list, preserving the screenshot maintenance workflow. An unmatched selection fails through Playwright’s standard no-tests check. `test-e2e-cov` checks that examples, screenshot thumbnails and `examples/files.json` have matching entries; it does not require a browser.

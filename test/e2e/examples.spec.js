@@ -8,12 +8,6 @@ const files = ( await fs.readdir( 'examples' ) )
 	.filter( file => file.endsWith( '.html' ) && file !== 'index.html' )
 	.map( file => file.slice( 0, - 5 ) );
 
-for ( const name of exact ) {
-
-	if ( ! files.includes( name ) ) throw new Error( `Unrecognised example name: ${ name }` );
-
-}
-
 const injection = await fs.readFile( 'test/e2e/deterministic-injection.js', 'utf8' );
 const cleanPage = await fs.readFile( 'test/e2e/clean-page.js', 'utf8' );
 
@@ -28,8 +22,6 @@ test.beforeAll( async () => {
 		builds.set( name, injection + '\n' + code.replace( /Math\.random\(\) \* 0xffffffff/g, 'Math._random() * 0xffffffff' ) );
 
 	}
-
-	await fs.mkdir( 'test/e2e/output-screenshots', { recursive: true } );
 
 } );
 

@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { viewportTexture } from '../../../../../src/nodes/display/ViewportTextureNode.js';
 import { FramebufferTexture } from '../../../../../src/textures/FramebufferTexture.js';

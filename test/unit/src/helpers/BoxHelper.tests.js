@@ -1,5 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, beforeEach, describe, expect, test } from 'vitest';
 
 import { BoxHelper } from '../../../../src/helpers/BoxHelper.js';
 
@@ -77,7 +76,7 @@ describe( 'Helpers', () => {
 		// OTHERS
 		test( 'Standard geometry tests', () => {
 
-			runStdGeometryTests( assert, geometries );
+			runStdGeometryTests( geometries );
 
 		} );
 

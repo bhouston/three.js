@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { DataTexture, FloatType, RGBAFormat } from 'three';
 import { EXRExporter, NO_COMPRESSION, RLE_COMPRESSION, ZIPS_COMPRESSION, ZIP_COMPRESSION, PIZ_COMPRESSION } from '../../../../examples/jsm/exporters/EXRExporter.js';

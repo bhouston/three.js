@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { NearestFilter } from '../../../../src/constants.js';
 import { RenderTarget } from '../../../../src/core/RenderTarget.js';

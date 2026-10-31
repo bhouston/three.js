@@ -1,5 +1,4 @@
-import { beforeEach, describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, beforeEach, describe, test } from 'vitest';
 
 import { ShapeGeometry } from '../../../../src/geometries/ShapeGeometry.js';
 

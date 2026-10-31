@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { ArrayCamera } from '../../../../../src/cameras/ArrayCamera.js';
 import { PerspectiveCamera } from '../../../../../src/cameras/PerspectiveCamera.js';

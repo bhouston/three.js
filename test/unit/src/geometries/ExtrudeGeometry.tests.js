@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { ExtrudeGeometry } from '../../../../src/geometries/ExtrudeGeometry.js';
 

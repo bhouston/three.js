@@ -1,5 +1,4 @@
-import { beforeEach, describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, beforeEach, describe, test } from 'vitest';
 
 import { LatheGeometry } from '../../../../src/geometries/LatheGeometry.js';
 
@@ -60,7 +59,7 @@ describe( 'Geometries', () => {
 		// OTHERS
 		test( 'Standard geometry tests', () => {
 
-			runStdGeometryTests( assert, geometries );
+			runStdGeometryTests( geometries );
 
 		} );
 

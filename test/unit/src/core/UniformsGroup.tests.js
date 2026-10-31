@@ -1,5 +1,4 @@
-import { describe, expect, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, expect, test } from 'vitest';
 
 import { UniformsGroup } from '../../../../src/core/UniformsGroup.js';
 

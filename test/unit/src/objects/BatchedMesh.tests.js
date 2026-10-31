@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { BatchedMesh } from '../../../../src/objects/BatchedMesh.js';
 import { BoxGeometry } from '../../../../src/geometries/BoxGeometry.js';

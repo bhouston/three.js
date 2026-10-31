@@ -1,5 +1,4 @@
-import { describe, expect, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, expect, test } from 'vitest';
 
 import { ArrowHelper } from '../../../../src/helpers/ArrowHelper.js';
 

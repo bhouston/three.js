@@ -1,5 +1,4 @@
-import { afterEach, describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { afterEach, assert, describe, test } from 'vitest';
 
 import { Color, ColorManagement } from 'three';
 import * as ColorUtils from '../../../../examples/jsm/utils/ColorUtils.js';

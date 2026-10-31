@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { Plane } from '../../../../src/math/Plane.js';
 import { Vector3 } from '../../../../src/math/Vector3.js';

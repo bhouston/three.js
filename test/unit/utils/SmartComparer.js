@@ -9,11 +9,17 @@ function SmartComparer() {
 
 	// Diagnostic message, when comparison fails.
 	let message;
-	const compared = new WeakMap();
+	let compared;
 
 	return {
 
-		areEqual: areEqual,
+		areEqual: function ( actual, expected ) {
+
+			message = undefined;
+			compared = new WeakMap();
+			return areEqual( actual, expected );
+
+		},
 
 		getDiagnostic: function () {
 
@@ -63,8 +69,9 @@ function SmartComparer() {
 		// Object graphs may contain parent references.
 		if ( isObject( val1 ) && isObject( val2 ) ) {
 
-			if ( compared.get( val1 ) === val2 ) return true;
-			compared.set( val1, val2 );
+			if ( compared.get( val1 )?.has( val2 ) ) return true;
+			if ( ! compared.has( val1 ) ) compared.set( val1, new WeakSet() );
+			compared.get( val1 ).add( val2 );
 
 		}
 

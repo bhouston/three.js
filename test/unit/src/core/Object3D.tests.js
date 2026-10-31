@@ -1196,6 +1196,7 @@ describe( 'Core', () => {
 			/* eslint-disable prefer-const*/
 			let a;
 			const b = new Object3D();
+			b.userData = { id: 7, uuid: 'user-data', nested: { id: 9, uuid: 'nested-user-data' } };
 
 			assert.strictEqual( a, undefined, 'Undefined pre-clone()' );
 
@@ -1203,7 +1204,7 @@ describe( 'Core', () => {
 			assert.notStrictEqual( a, b, 'Defined but separate instances post-clone()' );
 
 			a.uuid = b.uuid;
-			assert.smartEqual( a, b, 'But identical properties' );
+			assert.equalProperties( a, b, 'But identical properties' );
 
 		} );
 
@@ -1237,7 +1238,7 @@ describe( 'Core', () => {
 			b.frustumCulled = false;
 			b.renderOrder = 1;
 
-			b.userData[ 'foo' ] = 'bar';
+			b.userData = { foo: 'bar', id: 7, uuid: 'user-data', nested: { id: 9, uuid: 'nested-user-data' } };
 
 			child.add( childChild );
 			b.add( child );
@@ -1258,7 +1259,7 @@ describe( 'Core', () => {
 			a.children[ 0 ].uuid = b.children[ 0 ].uuid;
 			a.children[ 0 ].children[ 0 ].uuid = b.children[ 0 ].children[ 0 ].uuid;
 
-			assert.smartEqual( a, b, 'Objects are equal post-copy()' );
+			assert.equalProperties( a, b, 'Objects are equal post-copy()' );
 
 		} );
 

@@ -1,10 +1,36 @@
-import { assert as vitestAssert } from 'vitest';
+import { assert as vitestAssert, expect } from 'vitest';
 import { SmartComparer } from './SmartComparer.js';
+
+// Object copies retain their enumerable data and instance methods. Signed zero
+// and separately created functions with identical source represent the same data.
+expect.extend( {
+
+	toEqualProperties( actual, expected ) {
+
+		const pass = this.equals( actual, expected, [ ( a, b ) => {
+
+			if ( a === 0 && b === 0 ) return true;
+			if ( typeof a === 'function' && typeof b === 'function' ) return a.toString() === b.toString();
+			if ( a !== null && b !== null && typeof a === 'object' && typeof b === 'object' && a.constructor !== b.constructor ) return false;
+
+		} ], true );
+
+		return { pass, actual, expected, message: () => 'Expected objects to have equal enumerable properties' };
+
+	}
+
+} );
 
 // Keep the domain comparisons used by the geometry and math tests together.
 const assert = {
 
 	...vitestAssert,
+
+	equalProperties( actual, expected, message ) {
+
+		expect( actual, message ).toEqualProperties( expected );
+
+	},
 
 	numEqual( actual, expected, message ) {
 

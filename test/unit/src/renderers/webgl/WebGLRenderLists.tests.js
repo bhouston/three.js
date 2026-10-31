@@ -21,8 +21,8 @@ describe( 'Renderers', () => {
 				const listA = renderLists.get( sceneA );
 				const listB = renderLists.get( sceneB );
 
-				assert.smartEqual( listA, new WebGLRenderList(), 'listA is type of WebGLRenderList.' );
-				assert.smartEqual( listB, new WebGLRenderList(), 'listB is type of WebGLRenderList.' );
+				assert.equalProperties( listA, new WebGLRenderList(), 'listA is type of WebGLRenderList.' );
+				assert.equalProperties( listB, new WebGLRenderList(), 'listB is type of WebGLRenderList.' );
 				assert.ok( listA !== listB, 'Render lists are different.' );
 
 			} );

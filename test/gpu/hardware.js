@@ -26,4 +26,3 @@ export function assertHardwareRenderer( renderer, backend ) {
 	}
 
 }
-

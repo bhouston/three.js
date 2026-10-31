@@ -62,4 +62,3 @@ export function diffComponents( actual, expected, tolerance, kind ) {
 	return diffs;
 
 }
-

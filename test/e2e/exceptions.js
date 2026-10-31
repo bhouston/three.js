@@ -4,7 +4,7 @@ export const exceptionList = [
 	'webgpu_cubemap_mix', 				// 2 min
 	'webgl_loader_texture_ultrahdr', 	// 1 min
 	'webgl_marchingcubes', 				// 1 min
- 	'webgl_materials_cubemap_dynamic', 	// 1 min
+	'webgl_materials_cubemap_dynamic', 	// 1 min
 	'webgl_materials_displacementmap', 	// 1 min
 	'webgl_materials_envmaps_hdr', 		// 1 min
 	'webgpu_water', 					// 1 min
@@ -79,4 +79,3 @@ export const exceptionList = [
 	'webgl_morphtargets_webcam'
 
 ];
-

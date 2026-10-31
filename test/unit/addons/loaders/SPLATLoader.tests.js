@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { BufferGeometry } from 'three';
 import { SPLATLoader } from '../../../../examples/jsm/loaders/SPLATLoader.js';
 
@@ -29,13 +32,13 @@ function createSplatBuffer() {
 
 }
 
-export default QUnit.module( 'Addons', () => {
+describe( 'Addons', () => {
 
-	QUnit.module( 'Loaders', () => {
+	describe( 'Loaders', () => {
 
-		QUnit.module( 'SPLATLoader', () => {
+		describe( 'SPLATLoader', () => {
 
-			QUnit.test( 'parses fixed-width .splat data', ( assert ) => {
+			test( 'parses fixed-width .splat data', () => {
 
 				const loader = new SPLATLoader();
 				const data = loader.parse( createSplatBuffer() );

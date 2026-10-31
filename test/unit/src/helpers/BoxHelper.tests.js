@@ -1,9 +1,9 @@
-import { assert, beforeEach, describe, test } from 'vitest';
+import { beforeEach, describe, test } from 'vitest';
 
 import { BoxHelper } from '../../../../src/helpers/BoxHelper.js';
 
 import { LineSegments } from '../../../../src/objects/LineSegments.js';
-import { runStdGeometryTests } from '../../utils/test-utils.js';
+import { assert, runStdGeometryTests } from '../../utils/test-utils.js';
 import { BoxGeometry } from '../../../../src/geometries/BoxGeometry.js';
 import { SphereGeometry } from '../../../../src/geometries/SphereGeometry.js';
 import { Mesh } from '../../../../src/objects/Mesh.js';
@@ -75,7 +75,7 @@ describe( 'Helpers', () => {
 		// OTHERS
 		test( 'Standard geometry tests', () => {
 
-			runStdGeometryTests( geometries );
+			runStdGeometryTests( assert, geometries );
 
 		} );
 

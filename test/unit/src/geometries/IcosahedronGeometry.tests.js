@@ -1,9 +1,9 @@
-import { assert, beforeEach, describe, test } from 'vitest';
+import { beforeEach, describe, test } from 'vitest';
 
 import { IcosahedronGeometry } from '../../../../src/geometries/IcosahedronGeometry.js';
 
 import { PolyhedronGeometry } from '../../../../src/geometries/PolyhedronGeometry.js';
-import { runStdGeometryTests } from '../../utils/test-utils.js';
+import { assert, runStdGeometryTests } from '../../utils/test-utils.js';
 
 describe( 'Geometries', () => {
 
@@ -58,7 +58,7 @@ describe( 'Geometries', () => {
 		// OTHERS
 		test( 'Standard geometry tests', () => {
 
-			runStdGeometryTests( geometries );
+			runStdGeometryTests( assert, geometries );
 
 		} );
 

@@ -1,5 +1,57 @@
-import { assert } from './assertions.js';
+import { assert as vitestAssert, expect } from 'vitest';
+import { SmartComparer } from './SmartComparer.js';
 import { ObjectLoader } from '../../../src/loaders/ObjectLoader.js';
+
+// Compare copy data without distinguishing signed zero or identical instance methods.
+expect.extend( {
+
+	toEqualProperties( actual, expected ) {
+
+		const pass = this.equals( actual, expected, [ ( a, b ) => {
+
+			if ( a === 0 && b === 0 ) return true;
+			if ( typeof a === 'function' && typeof b === 'function' ) return a.toString() === b.toString();
+			if ( a !== null && b !== null && typeof a === 'object' && typeof b === 'object' && a.constructor !== b.constructor ) return false;
+
+		} ], true );
+
+		return { pass, actual, expected, message: () => 'Expected objects to have equal enumerable properties' };
+
+	}
+
+} );
+
+const assert = {
+
+	...vitestAssert,
+
+	equalProperties( actual, expected, message ) {
+
+		expect( actual, message ).toEqualProperties( expected );
+
+	},
+
+	numEqual( actual, expected, message ) {
+
+		vitestAssert.isBelow( Math.abs( actual - expected ), 0.1, message );
+
+	},
+
+	equalKey( actual, expected, key ) {
+
+		vitestAssert.equal( actual[ key ], expected[ key ], `Property "${ key }"` );
+
+	},
+
+	smartEqual( actual, expected, message ) {
+
+		const comparer = new SmartComparer();
+		const equal = comparer.areEqual( actual, expected );
+		vitestAssert.isTrue( equal, comparer.getDiagnostic() || message );
+
+	}
+
+};
 
 function checkGeometryClone( geom ) {
 
@@ -112,7 +164,7 @@ function checkGeometryJsonRoundtrip( geom ) {
 
 
 // Run common geometry tests.
-function runStdGeometryTests( geometries ) {
+function runStdGeometryTests( assert, geometries ) {
 
 	for ( let i = 0, l = geometries.length; i < l; i ++ ) {
 
@@ -133,7 +185,7 @@ function runStdGeometryTests( geometries ) {
 //
 
 // Run common light tests.
-function runStdLightTests( lights ) {
+function runStdLightTests( assert, lights ) {
 
 	for ( let i = 0, l = lights.length; i < l; i ++ ) {
 
@@ -223,4 +275,4 @@ function checkLightJsonRoundtrip( light ) {
 
 }
 
-export { runStdLightTests, runStdGeometryTests };
+export { assert, runStdLightTests, runStdGeometryTests };

@@ -1,9 +1,9 @@
-import { assert, beforeEach, describe, test } from 'vitest';
+import { beforeEach, describe, test } from 'vitest';
 
 import { DirectionalLight } from '../../../../src/lights/DirectionalLight.js';
 
 import { Light } from '../../../../src/lights/Light.js';
-import { runStdLightTests } from '../../utils/test-utils.js';
+import { assert, runStdLightTests } from '../../utils/test-utils.js';
 
 describe( 'Lights', () => {
 
@@ -79,7 +79,7 @@ describe( 'Lights', () => {
 		// OTHERS
 		test( 'Standard light tests', () => {
 
-			runStdLightTests( lights );
+			runStdLightTests( assert, lights );
 
 		} );
 

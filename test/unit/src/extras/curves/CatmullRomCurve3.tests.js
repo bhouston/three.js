@@ -1,5 +1,5 @@
 import { describe, test } from 'vitest';
-import { assert } from '../../../utils/assertions.js';
+import { assert } from '../../../utils/test-utils.js';
 
 import { CatmullRomCurve3 } from '../../../../../src/extras/curves/CatmullRomCurve3.js';
 

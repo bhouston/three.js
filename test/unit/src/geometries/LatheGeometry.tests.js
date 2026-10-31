@@ -1,10 +1,10 @@
-import { assert, beforeEach, describe, test } from 'vitest';
+import { beforeEach, describe, test } from 'vitest';
 
 import { LatheGeometry } from '../../../../src/geometries/LatheGeometry.js';
 
 import { BufferGeometry } from '../../../../src/core/BufferGeometry.js';
 import { Vector3 } from '../../../../src/math/Vector3.js';
-import { runStdGeometryTests } from '../../utils/test-utils.js';
+import { assert, runStdGeometryTests } from '../../utils/test-utils.js';
 
 describe( 'Geometries', () => {
 
@@ -59,7 +59,7 @@ describe( 'Geometries', () => {
 		// OTHERS
 		test( 'Standard geometry tests', () => {
 
-			runStdGeometryTests( geometries );
+			runStdGeometryTests( assert, geometries );
 
 		} );
 

@@ -1,5 +1,5 @@
 import { beforeAll, describe, test } from 'vitest';
-import { assert } from '../../../utils/assertions.js';
+import { assert } from '../../../utils/test-utils.js';
 
 import { CubicBezierCurve } from '../../../../../src/extras/curves/CubicBezierCurve.js';
 

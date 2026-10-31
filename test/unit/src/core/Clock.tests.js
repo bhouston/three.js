@@ -1,5 +1,5 @@
 import { afterEach, describe, test, vi } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert } from '../../utils/test-utils.js';
 
 import { Clock } from '../../../../src/core/Clock.js';
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert } from '../../utils/test-utils.js';
 
 import { Color } from '../../../../src/math/Color.js';
 import { ColorManagement } from '../../../../src/math/ColorManagement.js';

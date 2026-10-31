@@ -1,12 +1,12 @@
 # Unit tests
 
-Install dependencies with `npm ci`. Tests import current source files. No build or manually started server is required.
+Use Node 24 and install dependencies with `npm ci`. Tests import current source files. No build or manually started server is required.
 
 | Command | Environment |
 | --- | --- |
 | `npm run test-unit` | CPU core and TSL code-generation tests in Node |
 | `npm run test-unit-addons` | CPU addon tests in Node |
-| `npm run test-unit-browser` | Browser-dependent image and loader tests in Chromium |
+| `npm run test-unit-browser` | Image, loader and WebGL postprocessing tests in Chromium |
 | `npm run test-unit-gpu` | Native hardware WebGL and WebGPU tests using vitest-gpu |
 | `npm test` | Core lint, CPU units and browser units |
 
@@ -14,9 +14,9 @@ Install Chromium once with `npx playwright install chromium` for browser tests. 
 
 Tests use native Vitest `describe`, `test`, hooks and assertions. Existing numerical and geometry comparisons remain in `utils/test-utils.js`. An unfinished behavior can use `test.fails` when it should execute and report an unexpected pass; use `test.skip` for an explicitly unsupported case.
 
-GPU tests use the WebGL and WebGPU Node environments from [vitest-gpu](https://github.com/bhouston/vitest-gpu). They test real shader results and renderer pixels through completed GPU readbacks. Missing contexts or software adapters fail hardware verification. WebGL skips tests requiring WebGPU-only workgroups, barriers or atomics; unsupported optional adapter features are reported as skips. The native GPU command is separate so CPU work can run on machines without a GPU; CI runs both backends on macOS using Metal and checks the actual adapter identity. Node 22 or later is required by the native environments.
+GPU tests use the WebGL and WebGPU Node environments from [vitest-gpu](https://github.com/bhouston/vitest-gpu). They test real shader results and renderer pixels through completed GPU readbacks. Missing contexts or software adapters fail hardware verification. WebGL skips tests requiring WebGPU-only workgroups, barriers or atomics; unsupported optional adapter features are reported as skips. The native GPU command is separate so CPU work can run on machines without a GPU; CI runs both backends on macOS using Metal and checks the actual adapter identity. Node 24 satisfies Vitest and the native environments.
 
-Browser tests are reserved for APIs such as DOMParser, image decoding and HTTP loader integration. Browser examples and screenshot maintenance are documented in [../e2e/README.md](../e2e/README.md). Use `debugger` with Vitest's browser UI or Playwright traces to inspect a failure.
+Browser tests cover APIs such as DOMParser, image decoding, HTTP loader integration and WebGL postprocessing. Browser examples and screenshot maintenance are documented in [../e2e/README.md](../e2e/README.md). Use `debugger` with Vitest's browser UI or Playwright traces to inspect a failure.
 
 ## Development workflow
 

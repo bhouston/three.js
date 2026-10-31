@@ -1,6 +1,6 @@
 # Three.js end-to-end testing
 
-Playwright loads each example in an isolated browser context and compares its screenshot with the existing JPEG thumbnail. The deterministic clock, random source, animation and video hooks also apply to worker imports. Tests retain the existing 800 × 500 viewport, downsampled 400 × 250 thumbnails, JPEG quality and pixel thresholds.
+Playwright loads each example in an isolated browser context and compares its screenshot with the existing JPEG thumbnail. Deterministic clock and random injection also applies to worker imports; animation and video hooks apply in the page. Tests retain the existing 800 × 500 viewport, downsampled 400 × 250 thumbnails, JPEG quality and pixel thresholds.
 
 ```sh
 # Check examples, optionally with their .html extension.

@@ -59,7 +59,7 @@ jobs:
 
   e2e:
     name: Example screenshots
-    needs: [test, gpu, browser]
+    needs: [test]
     runs-on: macos-latest
     timeout-minutes: 60
     strategy:

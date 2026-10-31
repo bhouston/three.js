@@ -22,6 +22,8 @@ Browser tests cover APIs such as DOMParser, image decoding, HTTP loader integrat
 
 `npm run test-unit-watch` runs core and addon files in parallel (up to four workers) and reruns affected tests as source changes. Select a file with `npm run test-unit-watch -- test/unit/src/math/Vector3.tests.js`. Tests within a file remain sequential, preserving existing shared-state assumptions. GPU files are limited to one worker per backend; example tests default to one worker and CI uses five Playwright shards.
 
+CI screenshot shards wait for CPU checks and run independently of native GPU and browser unit jobs.
+
 The [official Vitest VS Code extension](https://github.com/vitest-dev/vscode) provides Test Explorer discovery, individual test runs and debugging using the Vitest configurations. No repository-specific editor integration is needed. Browser and native GPU projects still require their documented browser/hardware prerequisites.
 
 The migration removes the custom QUnit HTML/import manifests and Puppeteer test lifecycle. Vitest supplies file discovery, filtering, watch mode, assertion diffs, source locations and per-test results. Playwright supplies browser lifecycle, retries, sharding and traces. CPU tests run without starting a browser or server. These remove setup work; an overall speedup has not been established by a controlled comparison with the old complete suite.

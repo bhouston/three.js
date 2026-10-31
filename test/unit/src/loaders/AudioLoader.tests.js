@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { AudioLoader } from '../../../../src/loaders/AudioLoader.js';
 
 import { Loader } from '../../../../src/loaders/Loader.js';
 
-export default QUnit.module( 'Loaders', () => {
+describe( 'Loaders', () => {
 
-	QUnit.module( 'AudioLoader', () => {
+	describe( 'AudioLoader', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new AudioLoader();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Loaders', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new AudioLoader();
 			assert.ok( object, 'Can instantiate an AudioLoader.' );

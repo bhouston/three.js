@@ -1,11 +1,14 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Cache } from '../../../../src/loaders/Cache.js';
 
-export default QUnit.module( 'Loaders', () => {
+describe( 'Loaders', () => {
 
-	QUnit.module( 'Cache', () => {
+	describe( 'Cache', () => {
 
 		// PROPERTIES
-		QUnit.test( 'enabled', ( assert ) => {
+		test( 'enabled', () => {
 
 			const actual = Cache.enabled;
 			const expected = false;
@@ -13,7 +16,7 @@ export default QUnit.module( 'Loaders', () => {
 
 		} );
 
-		QUnit.test( 'files', ( assert ) => {
+		test( 'files', () => {
 
 			const actual = Cache.files;
 			const expected = {};

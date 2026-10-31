@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { SpriteMaterial } from '../../../../src/materials/SpriteMaterial.js';
 
 import { Material } from '../../../../src/materials/Material.js';
 
-export default QUnit.module( 'Materials', () => {
+describe( 'Materials', () => {
 
-	QUnit.module( 'SpriteMaterial', () => {
+	describe( 'SpriteMaterial', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new SpriteMaterial();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Materials', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new SpriteMaterial();
 			assert.ok( object, 'Can instantiate a SpriteMaterial.' );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Materials', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new SpriteMaterial();
 			assert.ok(
@@ -37,7 +40,7 @@ export default QUnit.module( 'Materials', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isSpriteMaterial', ( assert ) => {
+		test( 'isSpriteMaterial', () => {
 
 			const object = new SpriteMaterial();
 			assert.ok(

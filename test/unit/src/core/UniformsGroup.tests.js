@@ -1,13 +1,16 @@
+import { describe, expect, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { UniformsGroup } from '../../../../src/core/UniformsGroup.js';
 
 import { EventDispatcher } from '../../../../src/core/EventDispatcher.js';
 
-export default QUnit.module( 'Core', () => {
+describe( 'Core', () => {
 
-	QUnit.module( 'UniformsGroup', () => {
+	describe( 'UniformsGroup', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new UniformsGroup();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Core', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new UniformsGroup();
 			assert.ok( object, 'Can instantiate a UniformsGroup.' );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Core', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isUniformsGroup', ( assert ) => {
+		test( 'isUniformsGroup', () => {
 
 			const object = new UniformsGroup();
 			assert.ok(
@@ -36,9 +39,9 @@ export default QUnit.module( 'Core', () => {
 
 		} );
 
-		QUnit.test( 'dispose', ( assert ) => {
+		test( 'dispose', () => {
 
-			assert.expect( 0 );
+			expect.assertions( 0 );
 
 			const object = new UniformsGroup();
 			object.dispose();

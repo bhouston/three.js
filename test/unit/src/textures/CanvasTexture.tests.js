@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { CanvasTexture } from '../../../../src/textures/CanvasTexture.js';
 
 import { Texture } from '../../../../src/textures/Texture.js';
 
-export default QUnit.module( 'Textures', () => {
+describe( 'Textures', () => {
 
-	QUnit.module( 'CanvasTexture', () => {
+	describe( 'CanvasTexture', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new CanvasTexture();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Textures', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new CanvasTexture();
 			assert.ok( object, 'Can instantiate a CanvasTexture.' );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Textures', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isCanvasTexture', ( assert ) => {
+		test( 'isCanvasTexture', () => {
 
 			const object = new CanvasTexture();
 			assert.ok(

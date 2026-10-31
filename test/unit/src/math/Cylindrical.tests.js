@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Cylindrical } from '../../../../src/math/Cylindrical.js';
 import { Vector3 } from '../../../../src/math/Vector3.js';
 import { eps } from '../../utils/math-constants.js';
 
-export default QUnit.module( 'Maths', () => {
+describe( 'Maths', () => {
 
-	QUnit.module( 'Cylindrical', () => {
+	describe( 'Cylindrical', () => {
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			let a = new Cylindrical();
 			const radius = 10.0;
@@ -26,7 +29,7 @@ export default QUnit.module( 'Maths', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'set', ( assert ) => {
+		test( 'set', () => {
 
 			const a = new Cylindrical();
 			const radius = 10.0;
@@ -40,7 +43,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'clone', ( assert ) => {
+		test( 'clone', () => {
 
 			const radius = 10.0;
 			const theta = Math.PI;
@@ -55,7 +58,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'copy', ( assert ) => {
+		test( 'copy', () => {
 
 			const radius = 10.0;
 			const theta = Math.PI;
@@ -70,7 +73,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'setFromVector3', ( assert ) => {
+		test( 'setFromVector3', () => {
 
 			const a = new Cylindrical( 1, 1, 1 );
 			const b = new Vector3( 0, 0, 0 );

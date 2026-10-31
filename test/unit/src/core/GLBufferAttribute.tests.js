@@ -1,11 +1,14 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { GLBufferAttribute } from '../../../../src/core/GLBufferAttribute.js';
 
-export default QUnit.module( 'Core', () => {
+describe( 'Core', () => {
 
-	QUnit.module( 'GLBufferAttribute', () => {
+	describe( 'GLBufferAttribute', () => {
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new GLBufferAttribute();
 			assert.ok( object, 'Can instantiate a GLBufferAttribute.' );
@@ -13,7 +16,7 @@ export default QUnit.module( 'Core', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isGLBufferAttribute', ( assert ) => {
+		test( 'isGLBufferAttribute', () => {
 
 			const object = new GLBufferAttribute();
 			assert.ok(

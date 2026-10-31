@@ -1,12 +1,15 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { ImageLoader } from '../../../../src/loaders/ImageLoader.js';
 
 import { Loader } from '../../../../src/loaders/Loader.js';
 
-export default QUnit.module( 'Loaders', () => {
+describe( 'Loaders', () => {
 
-	QUnit.module( 'ImageLoader', () => {
+	describe( 'ImageLoader', () => {
 
-		QUnit.test( 'image request priority', async ( assert ) => {
+		test( 'image request priority', async () => {
 
 			const image = await new ImageLoader().setPriority( 'high' ).loadAsync( '/examples/textures/uv_grid_opengl.jpg' );
 			assert.strictEqual( image.fetchPriority, 'high' );
@@ -14,7 +17,7 @@ export default QUnit.module( 'Loaders', () => {
 		} );
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new ImageLoader();
 			assert.strictEqual(
@@ -25,7 +28,7 @@ export default QUnit.module( 'Loaders', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new ImageLoader();
 			assert.ok( object, 'Can instantiate an ImageLoader.' );

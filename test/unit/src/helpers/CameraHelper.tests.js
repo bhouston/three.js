@@ -1,14 +1,17 @@
+import { describe, expect, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { CameraHelper } from '../../../../src/helpers/CameraHelper.js';
 
 import { LineSegments } from '../../../../src/objects/LineSegments.js';
 import { PerspectiveCamera } from '../../../../src/cameras/PerspectiveCamera.js';
 
-export default QUnit.module( 'Helpers', () => {
+describe( 'Helpers', () => {
 
-	QUnit.module( 'CameraHelper', () => {
+	describe( 'CameraHelper', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const camera = new PerspectiveCamera();
 			const object = new CameraHelper( camera );
@@ -20,7 +23,7 @@ export default QUnit.module( 'Helpers', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const camera = new PerspectiveCamera();
 			const object = new CameraHelper( camera );
@@ -29,7 +32,7 @@ export default QUnit.module( 'Helpers', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const camera = new PerspectiveCamera();
 			const object = new CameraHelper( camera );
@@ -42,9 +45,9 @@ export default QUnit.module( 'Helpers', () => {
 
 		// PUBLIC
 
-		QUnit.test( 'dispose', ( assert ) => {
+		test( 'dispose', () => {
 
-			assert.expect( 0 );
+			expect.assertions( 0 );
 
 			const camera = new PerspectiveCamera();
 			const object = new CameraHelper( camera );

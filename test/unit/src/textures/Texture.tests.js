@@ -1,13 +1,16 @@
+import { describe, expect, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Texture } from '../../../../src/textures/Texture.js';
 
 import { EventDispatcher } from '../../../../src/core/EventDispatcher.js';
 
-export default QUnit.module( 'Textures', () => {
+describe( 'Textures', () => {
 
-	QUnit.module( 'Texture', () => {
+	describe( 'Texture', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new Texture();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Textures', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			// no params
 			const object = new Texture();
@@ -27,7 +30,7 @@ export default QUnit.module( 'Textures', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isTexture', ( assert ) => {
+		test( 'isTexture', () => {
 
 			const object = new Texture();
 			assert.ok(
@@ -37,9 +40,9 @@ export default QUnit.module( 'Textures', () => {
 
 		} );
 
-		QUnit.test( 'dispose', ( assert ) => {
+		test( 'dispose', () => {
 
-			assert.expect( 0 );
+			expect.assertions( 0 );
 
 			const object = new Texture();
 			object.dispose();

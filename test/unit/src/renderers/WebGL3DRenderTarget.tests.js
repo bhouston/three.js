@@ -1,14 +1,17 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { NearestFilter } from '../../../../src/constants.js';
 import { WebGL3DRenderTarget } from '../../../../src/renderers/WebGL3DRenderTarget.js';
 
 import { WebGLRenderTarget } from '../../../../src/renderers/WebGLRenderTarget.js';
 
-export default QUnit.module( 'Renderers', () => {
+describe( 'Renderers', () => {
 
-	QUnit.module( 'WebGL3DRenderTarget', () => {
+	describe( 'WebGL3DRenderTarget', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new WebGL3DRenderTarget();
 			assert.strictEqual(
@@ -22,7 +25,7 @@ export default QUnit.module( 'Renderers', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new WebGL3DRenderTarget();
 			assert.ok( object, 'Can instantiate a WebGL3DRenderTarget.' );

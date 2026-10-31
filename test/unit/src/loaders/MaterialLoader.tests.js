@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { MaterialLoader } from '../../../../src/loaders/MaterialLoader.js';
 
 import { Loader } from '../../../../src/loaders/Loader.js';
 
-export default QUnit.module( 'Loaders', () => {
+describe( 'Loaders', () => {
 
-	QUnit.module( 'MaterialLoader', () => {
+	describe( 'MaterialLoader', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new MaterialLoader();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Loaders', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'textures', ( assert ) => {
+		test( 'textures', () => {
 
 			const actual = new MaterialLoader().textures;
 			const expected = {};
@@ -27,7 +30,7 @@ export default QUnit.module( 'Loaders', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new MaterialLoader();
 			assert.ok( object, 'Can instantiate a MaterialLoader.' );

@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Matrix3 } from '../../../../src/math/Matrix3.js';
 import { Matrix4 } from '../../../../src/math/Matrix4.js';
 import { Vector2 } from '../../../../src/math/Vector2.js';
@@ -45,12 +48,12 @@ function toMatrix4( m3 ) {
 
 }
 
-export default QUnit.module( 'Maths', () => {
+describe( 'Maths', () => {
 
-	QUnit.module( 'Matrix3', () => {
+	describe( 'Matrix3', () => {
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const a = new Matrix3();
 			assert.ok( a.determinant() == 1, 'Passed!' );
@@ -84,7 +87,7 @@ export default QUnit.module( 'Maths', () => {
 		} );
 
 		// PUBLIC STUFF
-		QUnit.test( 'isMatrix3', ( assert ) => {
+		test( 'isMatrix3', () => {
 
 			const a = new Matrix3();
 			assert.ok( a.isMatrix3 === true, 'Passed!' );
@@ -94,7 +97,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'set', ( assert ) => {
+		test( 'set', () => {
 
 			const b = new Matrix3();
 			assert.ok( b.determinant() == 1, 'Passed!' );
@@ -112,7 +115,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'identity', ( assert ) => {
+		test( 'identity', () => {
 
 			const b = new Matrix3().set( 0, 1, 2, 3, 4, 5, 6, 7, 8 );
 			assert.ok( b.elements[ 0 ] == 0 );
@@ -133,7 +136,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'clone', ( assert ) => {
+		test( 'clone', () => {
 
 			const a = new Matrix3().set( 0, 1, 2, 3, 4, 5, 6, 7, 8 );
 			const b = a.clone();
@@ -146,7 +149,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'copy', ( assert ) => {
+		test( 'copy', () => {
 
 			const a = new Matrix3().set( 0, 1, 2, 3, 4, 5, 6, 7, 8 );
 			const b = new Matrix3().copy( a );
@@ -159,7 +162,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'setFromMatrix4', ( assert ) => {
+		test( 'setFromMatrix4', () => {
 
 			const a = new Matrix4().set( 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 );
 			const b = new Matrix3();
@@ -169,7 +172,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'multiply/premultiply', ( assert ) => {
+		test( 'multiply/premultiply', () => {
 
 			// both simply just wrap multiplyMatrices
 			const a = new Matrix3().set( 2, 3, 5, 7, 11, 13, 17, 19, 23 );
@@ -186,7 +189,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'multiplyMatrices', ( assert ) => {
+		test( 'multiplyMatrices', () => {
 
 			// Reference:
 			//
@@ -221,7 +224,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'multiplyScalar', ( assert ) => {
+		test( 'multiplyScalar', () => {
 
 			const b = new Matrix3().set( 0, 1, 2, 3, 4, 5, 6, 7, 8 );
 			assert.ok( b.elements[ 0 ] == 0 );
@@ -247,7 +250,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'determinant', ( assert ) => {
+		test( 'determinant', () => {
 
 			const a = new Matrix3();
 			assert.ok( a.determinant() == 1, 'Passed!' );
@@ -264,7 +267,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'invert', ( assert ) => {
+		test( 'invert', () => {
 
 			const zero = new Matrix3().set( 0, 0, 0, 0, 0, 0, 0, 0, 0 );
 			const identity4 = new Matrix4();
@@ -306,7 +309,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'transpose', ( assert ) => {
+		test( 'transpose', () => {
 
 			const a = new Matrix3();
 			let b = a.clone().transpose();
@@ -320,7 +323,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'getNormalMatrix', ( assert ) => {
+		test( 'getNormalMatrix', () => {
 
 			const a = new Matrix3();
 			const b = new Matrix4().set(
@@ -340,7 +343,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'transposeIntoArray', ( assert ) => {
+		test( 'transposeIntoArray', () => {
 
 			const a = new Matrix3().set( 0, 1, 2, 3, 4, 5, 6, 7, 8 );
 			const b = [];
@@ -359,7 +362,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'setUvTransform', ( assert ) => {
+		test( 'setUvTransform', () => {
 
 			const a = new Matrix3().set(
 				0.1767766952966369, 0.17677669529663687, 0.32322330470336313,
@@ -392,7 +395,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'makeTranslation', ( assert ) => {
+		test( 'makeTranslation', () => {
 
 			const a = new Matrix3();
 			const b = new Vector2( 1, 2 );
@@ -406,7 +409,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'equals', ( assert ) => {
+		test( 'equals', () => {
 
 			const a = new Matrix3().set( 0, 1, 2, 3, 4, 5, 6, 7, 8 );
 			const b = new Matrix3().set( 0, - 1, 2, 3, 4, 5, 6, 7, 8 );
@@ -420,7 +423,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'fromArray', ( assert ) => {
+		test( 'fromArray', () => {
 
 			let b = new Matrix3();
 			b.fromArray( [ 0, 1, 2, 3, 4, 5, 6, 7, 8 ] );
@@ -450,7 +453,7 @@ export default QUnit.module( 'Maths', () => {
 
 		} );
 
-		QUnit.test( 'toArray', ( assert ) => {
+		test( 'toArray', () => {
 
 			const a = new Matrix3().set( 1, 2, 3, 4, 5, 6, 7, 8, 9 );
 			const noOffset = [ 1, 4, 7, 2, 5, 8, 3, 6, 9 ];

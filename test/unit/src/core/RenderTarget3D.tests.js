@@ -1,14 +1,17 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { RenderTarget3D } from '../../../../src/core/RenderTarget3D.js';
 
 import { EventDispatcher } from '../../../../src/core/EventDispatcher.js';
 import { NearestFilter, RepeatWrapping } from '../../../../src/constants.js';
 
-export default QUnit.module( 'Core', () => {
+describe( 'Core', () => {
 
-	QUnit.module( 'RenderTarget3D', () => {
+	describe( 'RenderTarget3D', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new RenderTarget3D();
 			assert.strictEqual(

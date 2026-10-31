@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { AnimationMixer } from '../../../../src/animation/AnimationMixer.js';
 
 import { EventDispatcher } from '../../../../src/core/EventDispatcher.js';
@@ -20,12 +23,12 @@ function getClips( pos1, pos2, scale1, scale2, dur ) {
 
 }
 
-export default QUnit.module( 'Animation', () => {
+describe( 'Animation', () => {
 
-	QUnit.module( 'AnimationMixer', () => {
+	describe( 'AnimationMixer', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new AnimationMixer();
 			assert.strictEqual(
@@ -36,7 +39,7 @@ export default QUnit.module( 'Animation', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new AnimationMixer();
 			assert.ok( object, 'Can instantiate a AnimationMixer.' );
@@ -45,7 +48,7 @@ export default QUnit.module( 'Animation', () => {
 
 		// PUBLIC
 
-		QUnit.test( 'stopAllAction', ( assert ) => {
+		test( 'stopAllAction', () => {
 
 			const obj = new Object3D();
 			const animMixer = new AnimationMixer( obj );
@@ -77,7 +80,7 @@ export default QUnit.module( 'Animation', () => {
 
 		} );
 
-		QUnit.test( 'getRoot', ( assert ) => {
+		test( 'getRoot', () => {
 
 			const obj = new Object3D();
 			const animMixer = new AnimationMixer( obj );

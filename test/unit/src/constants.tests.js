@@ -1,8 +1,11 @@
+import { describe, test } from 'vitest';
+import { assert } from '../utils/assertions.js';
+
 import * as Constants from '../../../src/constants.js';
 
-export default QUnit.module( 'Constants', () => {
+describe( 'Constants', () => {
 
-	QUnit.test( 'default values', ( assert ) => {
+	test( 'default values', () => {
 
 		assert.propEqual( Constants.MOUSE, { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATE: 0, DOLLY: 1, PAN: 2 }, 'MOUSE equal { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATE: 0, DOLLY: 1, PAN: 2 }' );
 		assert.propEqual( Constants.TOUCH, { ROTATE: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATE: 3 }, 'TOUCH equal { ROTATE: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATE: 3 }' );

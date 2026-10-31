@@ -1,14 +1,17 @@
+import { beforeEach, describe, expect, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Light } from '../../../../src/lights/Light.js';
 
 import { Object3D } from '../../../../src/core/Object3D.js';
-import { runStdLightTests } from '../../utils/qunit-utils.js';
+import { runStdLightTests } from '../../utils/test-utils.js';
 
-export default QUnit.module( 'Lights', () => {
+describe( 'Lights', () => {
 
-	QUnit.module( 'Light', ( hooks ) => {
+	describe( 'Light', () => {
 
 		let lights = undefined;
-		hooks.beforeEach( function () {
+		beforeEach( function () {
 
 			const parameters = {
 				color: 0xaaaaaa,
@@ -24,7 +27,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new Light();
 			assert.strictEqual(
@@ -35,7 +38,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new Light();
 			assert.ok( object, 'Can instantiate a Light.' );
@@ -43,7 +46,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new Light();
 			assert.ok(
@@ -54,7 +57,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isLight', ( assert ) => {
+		test( 'isLight', () => {
 
 			const object = new Light();
 			assert.ok(
@@ -64,9 +67,9 @@ export default QUnit.module( 'Lights', () => {
 
 		} );
 
-		QUnit.test( 'dispose', ( assert ) => {
+		test( 'dispose', () => {
 
-			assert.expect( 0 );
+			expect.assertions( 0 );
 
 			// empty, test exists
 			const object = new Light();
@@ -75,7 +78,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// OTHERS
-		QUnit.test( 'Standard light tests', ( assert ) => {
+		test( 'Standard light tests', () => {
 
 			runStdLightTests( assert, lights );
 

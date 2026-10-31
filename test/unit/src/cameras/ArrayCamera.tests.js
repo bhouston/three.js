@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { ArrayCamera } from '../../../../src/cameras/ArrayCamera.js';
 
 import { PerspectiveCamera } from '../../../../src/cameras/PerspectiveCamera.js';
 
-export default QUnit.module( 'Cameras', () => {
+describe( 'Cameras', () => {
 
-	QUnit.module( 'ArrayCamera', () => {
+	describe( 'ArrayCamera', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new ArrayCamera();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Cameras', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new ArrayCamera();
 			assert.ok( object, 'Can instantiate an ArrayCamera.' );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Cameras', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isArrayCamera', ( assert ) => {
+		test( 'isArrayCamera', () => {
 
 			const object = new ArrayCamera();
 			assert.ok(

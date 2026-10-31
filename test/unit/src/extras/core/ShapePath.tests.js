@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../../utils/assertions.js';
+
 import { ShapePath } from '../../../../../src/extras/core/ShapePath.js';
 
-export default QUnit.module( 'Extras', () => {
+describe( 'Extras', () => {
 
-	QUnit.module( 'Core', () => {
+	describe( 'Core', () => {
 
-		QUnit.module( 'ShapePath', () => {
+		describe( 'ShapePath', () => {
 
 			// INSTANCING
-			QUnit.test( 'Instancing', ( assert ) => {
+			test( 'Instancing', () => {
 
 				const object = new ShapePath();
 				assert.ok( object, 'Can instantiate a ShapePath.' );
@@ -15,7 +18,7 @@ export default QUnit.module( 'Extras', () => {
 			} );
 
 			// PROPERTIES
-			QUnit.test( 'type', ( assert ) => {
+			test( 'type', () => {
 
 				const object = new ShapePath();
 				assert.ok(

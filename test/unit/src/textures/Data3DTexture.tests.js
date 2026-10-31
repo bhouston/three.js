@@ -1,13 +1,16 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Data3DTexture } from '../../../../src/textures/Data3DTexture.js';
 
 import { Texture } from '../../../../src/textures/Texture.js';
 
-export default QUnit.module( 'Textures', () => {
+describe( 'Textures', () => {
 
-	QUnit.module( 'Data3DTexture', () => {
+	describe( 'Data3DTexture', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new Data3DTexture();
 			assert.strictEqual(
@@ -18,7 +21,7 @@ export default QUnit.module( 'Textures', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new Data3DTexture();
 			assert.ok( object, 'Can instantiate a Data3DTexture.' );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Textures', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isData3DTexture', ( assert ) => {
+		test( 'isData3DTexture', () => {
 
 			const object = new Data3DTexture();
 			assert.ok(

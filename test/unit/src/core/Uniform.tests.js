@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Uniform } from '../../../../src/core/Uniform.js';
 import { Vector3 } from '../../../../src/math/Vector3.js';
 import {
@@ -6,12 +9,12 @@ import {
 	z
 } from '../../utils/math-constants.js';
 
-export default QUnit.module( 'Core', () => {
+describe( 'Core', () => {
 
-	QUnit.module( 'Uniform', () => {
+	describe( 'Uniform', () => {
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			let a;
 			const b = new Vector3( x, y, z );
@@ -25,7 +28,7 @@ export default QUnit.module( 'Core', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'clone', ( assert ) => {
+		test( 'clone', () => {
 
 			let a = new Uniform( 23 );
 			let b = a.clone();

@@ -1,14 +1,17 @@
+import { beforeEach, describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { RectAreaLight } from '../../../../src/lights/RectAreaLight.js';
 
 import { Light } from '../../../../src/lights/Light.js';
-import { runStdLightTests } from '../../utils/qunit-utils.js';
+import { runStdLightTests } from '../../utils/test-utils.js';
 
-export default QUnit.module( 'Lights', () => {
+describe( 'Lights', () => {
 
-	QUnit.module( 'RectAreaLight', ( hooks ) => {
+	describe( 'RectAreaLight', () => {
 
 		let lights = undefined;
-		hooks.beforeEach( function () {
+		beforeEach( function () {
 
 			const parameters = {
 				color: 0xaaaaaa,
@@ -27,7 +30,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new RectAreaLight();
 			assert.strictEqual(
@@ -38,7 +41,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new RectAreaLight();
 			assert.ok( object, 'Can instantiate a RectAreaLight.' );
@@ -46,7 +49,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new RectAreaLight();
 			assert.ok(
@@ -56,7 +59,7 @@ export default QUnit.module( 'Lights', () => {
 
 		} );
 
-		QUnit.test( 'power', ( assert ) => {
+		test( 'power', () => {
 
 			const a = new RectAreaLight( 0xaaaaaa, 1, 10, 10 );
 			let actual = undefined;
@@ -80,7 +83,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isRectAreaLight', ( assert ) => {
+		test( 'isRectAreaLight', () => {
 
 			const object = new RectAreaLight();
 			assert.ok(
@@ -91,7 +94,7 @@ export default QUnit.module( 'Lights', () => {
 		} );
 
 		// OTHERS
-		QUnit.test( 'Standard light tests', ( assert ) => {
+		test( 'Standard light tests', () => {
 
 			runStdLightTests( assert, lights );
 

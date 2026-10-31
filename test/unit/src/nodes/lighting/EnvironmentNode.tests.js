@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../../utils/assertions.js';
+
 import {
 	DataTexture, EquirectangularReflectionMapping, LinearSRGBColorSpace,
 	Mesh, MeshStandardMaterial, MeshPhysicalMaterial, OrthographicCamera,
@@ -28,17 +31,17 @@ function createEnvironment( red, blue, width ) {
 
 }
 
-export default QUnit.module( 'Nodes', () => {
+describe( 'Nodes', () => {
 
-	QUnit.module( 'Lighting', () => {
+	describe( 'Lighting', () => {
 
-		QUnit.module( 'EnvironmentNode', () => {
+		describe( 'EnvironmentNode', () => {
 
 			for ( const backend of [ 'webgpu', 'webgl' ] ) {
 
 				for ( const Material of [ MeshStandardMaterial, MeshPhysicalMaterial ] ) {
 
-					QUnit.test( `${ Material.name } follows each material's envMap (${ backend })`, async ( assert ) => {
+					test( `${ Material.name } follows each material's envMap (${ backend })`, async () => {
 
 						const renderer = await getSharedRenderer( backend );
 
@@ -79,7 +82,7 @@ export default QUnit.module( 'Nodes', () => {
 
 								const pixel = await renderer.readRenderTargetPixelsAsync( target, 16 + i * 32, 16, 1, 1 );
 								const channel = channels[ i ];
-								assert.true( pixel[ channel ] > 50 && pixel[ 2 - channel ] < 5, `Sphere ${ i } reflects ${ channel === 0 ? 'red' : 'blue' }: ${ Array.from( pixel ) }` );
+								assert.isTrue( pixel[ channel ] > 50 && pixel[ 2 - channel ] < 5, `Sphere ${ i } reflects ${ channel === 0 ? 'red' : 'blue' }: ${ Array.from( pixel ) }` );
 
 							}
 
@@ -118,7 +121,7 @@ export default QUnit.module( 'Nodes', () => {
 
 				}
 
-				QUnit.test( `Follows changes of an environment texture node (${ backend })`, async ( assert ) => {
+				test( `Follows changes of an environment texture node (${ backend })`, async () => {
 
 					const renderer = await getSharedRenderer( backend );
 
@@ -152,7 +155,7 @@ export default QUnit.module( 'Nodes', () => {
 						renderer.render( scene, camera );
 
 						const pixel = await renderer.readRenderTargetPixelsAsync( target, 16, 16, 1, 1 );
-						assert.true( pixel[ channel ] > 50 && pixel[ 2 - channel ] < 5, `Sphere reflects ${ channel === 0 ? 'red' : 'blue' }: ${ Array.from( pixel ) }` );
+						assert.isTrue( pixel[ channel ] > 50 && pixel[ 2 - channel ] < 5, `Sphere reflects ${ channel === 0 ? 'red' : 'blue' }: ${ Array.from( pixel ) }` );
 
 					}
 

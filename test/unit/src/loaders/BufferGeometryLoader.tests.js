@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { BufferGeometryLoader } from '../../../../src/loaders/BufferGeometryLoader.js';
 
 import { BufferAttribute } from '../../../../src/core/BufferAttribute.js';
@@ -7,12 +10,12 @@ import { InterleavedBufferAttribute } from '../../../../src/core/InterleavedBuff
 import { DynamicDrawUsage } from '../../../../src/constants.js';
 import { Loader } from '../../../../src/loaders/Loader.js';
 
-export default QUnit.module( 'Loaders', () => {
+describe( 'Loaders', () => {
 
-	QUnit.module( 'BufferGeometryLoader', () => {
+	describe( 'BufferGeometryLoader', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const object = new BufferGeometryLoader();
 			assert.strictEqual(
@@ -23,7 +26,7 @@ export default QUnit.module( 'Loaders', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new BufferGeometryLoader();
 			assert.ok( object, 'Can instantiate a BufferGeometryLoader.' );
@@ -31,7 +34,7 @@ export default QUnit.module( 'Loaders', () => {
 		} );
 
 		// OTHERS
-		QUnit.test( 'parser - attributes - circlable', ( assert ) => {
+		test( 'parser - attributes - circlable', () => {
 
 			const loader = new BufferGeometryLoader();
 			const geometry = new BufferGeometry();
@@ -54,7 +57,7 @@ export default QUnit.module( 'Loaders', () => {
 
 		} );
 
-		QUnit.test( 'parser - interleaved attributes - views into a shared array buffer', ( assert ) => {
+		test( 'parser - interleaved attributes - views into a shared array buffer', () => {
 
 			// e.g. GLTFLoader creates interleaved buffers as views at different offsets into one array buffer
 

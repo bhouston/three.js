@@ -1,12 +1,15 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { Object3D } from '../../../../src/core/Object3D.js';
 import { Sprite } from '../../../../src/objects/Sprite.js';
 
-export default QUnit.module( 'Objects', () => {
+describe( 'Objects', () => {
 
-	QUnit.module( 'Sprite', () => {
+	describe( 'Sprite', () => {
 
 		// INHERITANCE
-		QUnit.test( 'Extending', ( assert ) => {
+		test( 'Extending', () => {
 
 			const sprite = new Sprite();
 			assert.strictEqual(
@@ -17,7 +20,7 @@ export default QUnit.module( 'Objects', () => {
 		} );
 
 		// INSTANCING
-		QUnit.test( 'Instancing', ( assert ) => {
+		test( 'Instancing', () => {
 
 			const object = new Sprite();
 			assert.ok( object, 'Can instantiate a Sprite.' );
@@ -25,7 +28,7 @@ export default QUnit.module( 'Objects', () => {
 		} );
 
 		// PROPERTIES
-		QUnit.test( 'type', ( assert ) => {
+		test( 'type', () => {
 
 			const object = new Sprite();
 			assert.ok(
@@ -36,7 +39,7 @@ export default QUnit.module( 'Objects', () => {
 		} );
 
 		// PUBLIC
-		QUnit.test( 'isSprite', ( assert ) => {
+		test( 'isSprite', () => {
 
 			const object = new Sprite();
 			assert.ok(

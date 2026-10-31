@@ -36,20 +36,13 @@ describe( 'Nodes', () => {
 
 		describe( 'EnvironmentNode', () => {
 
-			for ( const backend of [ 'webgpu', 'webgl' ] ) {
+			for ( const backend of [ process.env.THREE_GPU_BACKEND ] ) {
 
 				for ( const Material of [ MeshStandardMaterial, MeshPhysicalMaterial ] ) {
 
 					test( `${ Material.name } follows each material's envMap (${ backend })`, async () => {
 
 						const renderer = await getSharedRenderer( backend );
-
-						if ( renderer === null ) {
-
-							assert.ok( true, `SKIPPED: "${ backend }" backend is not available in this environment.` );
-							return;
-
-						}
 
 						const red = createEnvironment( 255, 0, 32 );
 						const blue = createEnvironment( 0, 255, 64 );
@@ -123,13 +116,6 @@ describe( 'Nodes', () => {
 				test( `Follows changes of an environment texture node (${ backend })`, async () => {
 
 					const renderer = await getSharedRenderer( backend );
-
-					if ( renderer === null ) {
-
-						assert.ok( true, `SKIPPED: "${ backend }" backend is not available in this environment.` );
-						return;
-
-					}
 
 					const red = createEnvironment( 255, 0, 32 );
 					const blue = createEnvironment( 0, 255, 64 );

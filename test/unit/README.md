@@ -26,7 +26,7 @@ CI screenshot shards wait for CPU checks and run independently of native GPU and
 
 The [official Vitest VS Code extension](https://github.com/vitest-dev/vscode) provides Test Explorer discovery, individual test runs and debugging using the Vitest configurations. No repository-specific editor integration is needed. Browser and native GPU projects still require their documented browser/hardware prerequisites.
 
-The migration removes the custom QUnit HTML/import manifests and Puppeteer test lifecycle. Vitest supplies file discovery, filtering, watch mode, assertion diffs, source locations and per-test results. Playwright supplies browser lifecycle, retries, sharding and traces. CPU tests run without starting a browser or server. These remove setup work; an overall speedup has not been established by a controlled comparison with the old complete suite.
+The migration removes the custom QUnit HTML/import manifests and Puppeteer test lifecycle. Vitest supplies file discovery, filtering, watch mode, assertion diffs, source locations and per-test results. Playwright supplies browser lifecycle, retries, sharding and traces. CPU tests run without starting a browser or server. Full-suite wall time can increase because isolated GPU files repeat imports and renderer setup.
 
 ## Async failures and diagnostics
 

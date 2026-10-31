@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { WebGLRenderTarget } from '../../../../src/renderers/WebGLRenderTarget.js';
 
@@ -35,7 +35,6 @@ describe( 'Renderers', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new WebGLRenderTarget();
 			object.dispose();

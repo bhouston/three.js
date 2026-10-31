@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { Material } from '../../../../src/materials/Material.js';
 
@@ -52,7 +52,6 @@ describe( 'Materials', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new Material();
 			object.dispose();

@@ -1,4 +1,4 @@
-import { assert, beforeEach, describe, expect, test } from 'vitest';
+import { assert, beforeEach, describe, test } from 'vitest';
 
 import { Light } from '../../../../src/lights/Light.js';
 
@@ -68,7 +68,6 @@ describe( 'Lights', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			// empty, test exists
 			const object = new Light();

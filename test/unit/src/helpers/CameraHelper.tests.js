@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { CameraHelper } from '../../../../src/helpers/CameraHelper.js';
 
@@ -46,7 +46,6 @@ describe( 'Helpers', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const camera = new PerspectiveCamera();
 			const object = new CameraHelper( camera );

@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { ArrowHelper } from '../../../../src/helpers/ArrowHelper.js';
 
@@ -42,7 +42,6 @@ describe( 'Helpers', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new ArrowHelper();
 			object.dispose();

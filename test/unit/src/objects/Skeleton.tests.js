@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { Skeleton } from '../../../../src/objects/Skeleton.js';
 
@@ -18,7 +18,6 @@ describe( 'Objects', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new Skeleton();
 			object.dispose();

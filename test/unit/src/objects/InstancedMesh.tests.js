@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { InstancedMesh } from '../../../../src/objects/InstancedMesh.js';
 import { Mesh } from '../../../../src/objects/Mesh.js';
@@ -39,7 +39,6 @@ describe( 'Objects', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new InstancedMesh();
 			object.dispose();

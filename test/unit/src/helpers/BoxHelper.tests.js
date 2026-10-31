@@ -1,4 +1,4 @@
-import { assert, beforeEach, describe, expect, test } from 'vitest';
+import { assert, beforeEach, describe, test } from 'vitest';
 
 import { BoxHelper } from '../../../../src/helpers/BoxHelper.js';
 
@@ -66,7 +66,6 @@ describe( 'Helpers', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new BoxHelper();
 			object.dispose();

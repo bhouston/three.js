@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, test } from 'vitest';
 import { assert } from '../../utils/assertions.js';
 
 import { LightShadow } from '../../../../src/lights/LightShadow.js';
@@ -22,7 +22,6 @@ describe( 'Lights', () => {
 
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const object = new LightShadow();
 			object.dispose();

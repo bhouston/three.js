@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from 'vitest';
+import { assert, describe, test } from 'vitest';
 
 import { SpotLightHelper } from '../../../../src/helpers/SpotLightHelper.js';
 
@@ -54,7 +54,6 @@ describe( 'Helpers', () => {
 		// PUBLIC
 		test( 'dispose', () => {
 
-			expect.assertions( 0 );
 
 			const light = new SpotLight( parameters.color );
 			const object = new SpotLightHelper( light, parameters.color );

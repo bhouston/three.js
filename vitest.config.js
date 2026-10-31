@@ -27,6 +27,7 @@ export default defineConfig( {
 				test: {
 					name: 'unit',
 					environment: 'node',
+					isolate: false,
 					maxWorkers: 4,
 					include: [ 'test/unit/src/**/*.tests.js', 'test/unit/tsl/*.tests.js' ],
 					exclude: [ ...browserTests, 'test/unit/src/nodes/tsl/!(TSLCore).tests.js', 'test/unit/src/nodes/lighting/EnvironmentNode.tests.js' ],
@@ -38,6 +39,7 @@ export default defineConfig( {
 				test: {
 					name: 'addons',
 					environment: 'node',
+					isolate: false,
 					maxWorkers: 4,
 					include: [ 'test/unit/addons/**/*.tests.js' ],
 					exclude: browserTests,

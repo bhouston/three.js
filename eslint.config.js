@@ -11,6 +11,8 @@ export default [
 		name: 'files to ignore',
 		ignores: [
 			'**/node_modules/**',
+			'test/e2e/results/**',
+			'.vitest/**',
 			'**/build/**',
 			'examples/jsm/libs/**',
 			'test/treeshake/*.bundle.js',

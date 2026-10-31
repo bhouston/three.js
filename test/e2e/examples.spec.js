@@ -41,7 +41,7 @@ for ( const file of files ) {
 	test( file, async ( { page, context }, testInfo ) => {
 
 		// A screenshot from a software renderer cannot verify hardware rendering.
-		await page.goto( '/' );
+		await page.goto( '/test/e2e/gpu-probe.html' );
 		const renderer = await page.evaluate( async ( webgpu ) => {
 
 			const canvas = document.createElement( 'canvas' );
@@ -91,7 +91,7 @@ for ( const file of files ) {
 		page.on( 'pageerror', error => pageError = error.message );
 		page.on( 'console', message => {
 
-			messages.push( `${ message.type() }: ${ message.text() }` );
+			messages.push( `${ message.type() }: ${ message.text() } (${ message.location().url })` );
 			if ( message.type() === 'error' ) pageError = message.text();
 
 		} );
@@ -99,6 +99,7 @@ for ( const file of files ) {
 
 			try {
 
+				if ( response.status() >= 400 ) messages.push( `HTTP ${ response.status() }: ${ response.url() }` );
 				if ( response.status() === 200 ) pageSize += ( await response.body() ).length;
 
 			} catch { /* A navigation may discard a response. */ }

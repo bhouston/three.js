@@ -12,69 +12,69 @@ permissions:
 
 jobs:
   test:
-    name: Lint, Unit, Unit addons, Circular dependencies & Examples testing
+    name: Lint, CPU units and example inventory
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - name: Git checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Install Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-          cache: 'npm'
-      - name: Install dependencies
-        run: npm ci
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run lint-test
+      - run: npm run test-unit
+      - run: npm run test-unit-addons
+      - run: npm run test-e2e-cov
+      - run: npm run test-treeshake
 
-      - name: === Lint testing ===
-        run: npm run lint
+  gpu:
+    name: Native WebGL and WebGPU units
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test-unit-gpu
 
-      - name: === Unit testing ===
-        run: npm run test-unit
-
-      - name: === Unit addons testing ===
-        run: npm run test-unit-addons
-
-      - name: === Examples ready for release ===
-        run: npm run test-e2e-cov
+  browser:
+    name: Browser units
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm run test-unit-browser
 
   e2e:
-    name: E2E testing
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    permissions:
-      contents: read
+    name: Example screenshots
+    runs-on: macos-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest ]
-        CI: [ 0, 1, 2, 3, 4 ]
-    env:
-      CI: ${{ matrix.CI }}
+        shard: [1, 2, 3, 4, 5]
     steps:
-      - name: Git checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Install Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-          cache: 'npm'
-      - name: Install Vulkan drivers and xvfb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers xvfb
-      - name: Install dependencies
-        run: npm ci
-      - name: Build
-        run: npm run build
-
-      - name: === E2E testing ===
-        run: xvfb-run -a npm run test-e2e
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm run build
+      - run: npm run test-e2e -- --shard=${{ matrix.shard }}/5
       - name: Upload output screenshots
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
-          name: Output screenshots-${{ matrix.os }}-${{ matrix.CI }}
+          name: Output screenshots-macos-${{ matrix.shard }}
           path: test/e2e/output-screenshots
           if-no-files-found: ignore

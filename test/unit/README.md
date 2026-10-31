@@ -1,33 +1,19 @@
-## Setup
+# Unit tests
 
-- Execute `npm install` from the root folder
+Install dependencies with `npm ci`. Tests import current source files; unit tests do not require a build or an HTTP server.
 
-## Run
+| Command | Environment |
+| --- | --- |
+| `npm run test-unit` | CPU core and TSL code-generation tests in Node |
+| `npm run test-unit-addons` | CPU addon tests in Node |
+| `npm run test-unit-browser` | Browser-dependent image and loader tests in Chromium |
+| `npm run test-unit-gpu` | Native hardware WebGL and WebGPU tests using vitest-gpu |
+| `npm test` | Core lint, CPU units and browser units |
 
-You can run the unit tests in two ways:
+Install Chromium once with `npx playwright install chromium` for browser tests. `npm run test-unit-headful` starts interactive browser tests. Vitest discovers `*.tests.js` automatically; no import manifest is needed. Use `npx vitest run --project unit test/unit/src/math/Vector3.tests.js` to select a CPU file. Use `npm run test-unit-gpu -- --project webgpu` to select a GPU backend.
 
-- Headless: Execute `npm run test-unit`, `npm run test-unit-addons` from the root folder.  
-  In headless mode the tests will run in a headless browser.
-- Headful: Execute `npm run test-unit-headful`, `npm run test-unit-addons-headful` from the root folder.  
-  In headful mode, a browser window will open, and you can see the tests running.  
-  While the headful mode is running you can also use any browser to navigate to http://localhost:8080/test/unit/UnitTests.html or http://localhost:8080/test/unit/UnitTestsAddons.html to run the tests in that browser.  
-  Further changes to the library will not be reflected until the page is refreshed.
+Tests use native Vitest `describe`, `test`, hooks and assertions. Existing numerical and geometry comparisons live in `utils/assertions.js` and `utils/test-utils.js`. An unfinished behavior can use `test.fails` when it should execute and report an unexpected pass; use `test.skip` for an explicitly unsupported case.
 
-See [Installation](https://threejs.org/docs/#manual/introduction/Installation) for more information.
+GPU tests use the WebGL and WebGPU Node environments from [vitest-gpu](https://github.com/bhouston/vitest-gpu). They test real shader results and renderer pixels through completed GPU readbacks. Missing contexts or software adapters fail hardware verification. WebGL skips tests requiring WebGPU-only workgroups, barriers or atomics; unsupported optional adapter features are reported as skips. The native GPU command is separate so CPU work can run on machines without a GPU; CI runs both backends on macOS using Metal and checks the actual adapter identity. Node 22 or later is required by the native environments.
 
-## Notes
-
-A small number of tests can only be run in a browser environment.
-
-For browser tests, further changes to the library will not be reflected until the page is refreshed.
-
-## Troubleshooting
-
-When adding or updating tests, the most common cause of test failure is forgetting to change `QUnit.todo` to `QUnit.test` when the test is ready.
-
-An error that indicates "no tests were found" means that an import statement could not be resolved. This is usually caused by a typo in the import path.
-
-## Debugging
-
-To debug a test, add `debugger;` to the test code. Then, run the test in a browser and open the developer tools. The test will stop at the `debugger` statement and you can inspect the code.
-
+Browser tests are reserved for APIs such as DOMParser, image decoding and HTTP loader integration. Browser examples and screenshot maintenance are documented in [../e2e/README.md](../e2e/README.md). Use `debugger` with Vitest's browser UI or Playwright traces to inspect a failure.

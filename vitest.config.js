@@ -18,6 +18,18 @@ const alias = {
 	three: source( 'Three.js' )
 };
 const setupFiles = [ './test/unit/utils/console-wrapper.js' ];
+const gpuProjects = [ 'webgl', 'webgpu' ].map( backend => ( {
+	resolve: { alias },
+	test: {
+		name: backend,
+		include: [ 'test/gpu/suite.tests.js' ],
+		environment: `${ backend }-node`,
+		env: { THREE_GPU_BACKEND: backend },
+		maxWorkers: 4,
+		testTimeout: 30000,
+		hookTimeout: 30000
+	}
+} ) );
 
 export default defineConfig( {
 	test: {
@@ -50,6 +62,7 @@ export default defineConfig( {
 				resolve: { alias },
 				test: {
 					name: 'browser',
+					maxWorkers: 4,
 					include: browserTests,
 					setupFiles,
 					browser: {
@@ -59,7 +72,8 @@ export default defineConfig( {
 						instances: [ { browser: 'chromium' } ]
 					}
 				}
-			}
+			},
+			...gpuProjects
 		]
 	}
 } );

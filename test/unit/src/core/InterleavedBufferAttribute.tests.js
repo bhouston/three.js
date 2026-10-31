@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { InterleavedBufferAttribute } from '../../../../src/core/InterleavedBufferAttribute.js';
 

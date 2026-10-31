@@ -1,5 +1,4 @@
-import { beforeAll, describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, beforeAll, describe, test } from 'vitest';
 
 import { NURBSCurve } from '../../../../examples/jsm/curves/NURBSCurve.js';
 import { MathUtils, Vector4 } from 'three';

@@ -1,5 +1,4 @@
-import { afterAll, beforeAll, describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { afterAll, assert, beforeAll, describe, test } from 'vitest';
 
 import { AudioListener } from '../../../../src/audio/AudioListener.js';
 

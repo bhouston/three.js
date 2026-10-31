@@ -96,7 +96,7 @@ describe( 'Lights', () => {
 		// OTHERS
 		test( 'Standard light tests', () => {
 
-			runStdLightTests( assert, lights );
+			runStdLightTests( lights );
 
 		} );
 

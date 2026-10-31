@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { Mesh, Ray, SphereGeometry, Vector3 } from 'three';
 import { Octree } from '../../../../examples/jsm/math/Octree.js';

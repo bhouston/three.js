@@ -1,5 +1,4 @@
-import { describe, expect, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, expect, test } from 'vitest';
 
 import { InstancedMesh } from '../../../../src/objects/InstancedMesh.js';
 import { Mesh } from '../../../../src/objects/Mesh.js';

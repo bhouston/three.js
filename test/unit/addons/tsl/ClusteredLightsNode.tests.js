@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { DirectionalLight, PointLight } from 'three/webgpu';
 import ClusteredLightsNode from '../../../../examples/jsm/tsl/lighting/ClusteredLightsNode.js';

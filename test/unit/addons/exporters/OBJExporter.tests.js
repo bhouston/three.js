@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { BufferGeometry, Float32BufferAttribute, Line, LineSegments } from 'three';
 import { OBJExporter } from '../../../../examples/jsm/exporters/OBJExporter.js';

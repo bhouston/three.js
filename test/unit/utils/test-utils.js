@@ -112,7 +112,7 @@ function checkGeometryJsonRoundtrip( geom ) {
 
 
 // Run common geometry tests.
-function runStdGeometryTests( assert, geometries ) {
+function runStdGeometryTests( geometries ) {
 
 	for ( let i = 0, l = geometries.length; i < l; i ++ ) {
 
@@ -133,21 +133,21 @@ function runStdGeometryTests( assert, geometries ) {
 //
 
 // Run common light tests.
-function runStdLightTests( assert, lights ) {
+function runStdLightTests( lights ) {
 
 	for ( let i = 0, l = lights.length; i < l; i ++ ) {
 
 		const light = lights[ i ];
 
 		// copy and clone
-		checkLightCopyClone( assert, light );
+		checkLightCopyClone( light );
 
 		// THREE.Light doesn't get parsed by ObjectLoader as it's only
 		// used as an abstract base class - so we skip the JSON tests
 		if ( light.type !== 'Light' ) {
 
 			// json round trip
-			checkLightJsonRoundtrip( assert, light );
+			checkLightJsonRoundtrip( light );
 
 		}
 
@@ -155,7 +155,7 @@ function runStdLightTests( assert, lights ) {
 
 }
 
-function checkLightCopyClone( assert, light ) {
+function checkLightCopyClone( light ) {
 
 	// copy
 	const newLight = new light.constructor( 0xc0ffee );
@@ -186,14 +186,14 @@ function checkLightCopyClone( assert, light ) {
 	if ( light.type !== 'Light' ) {
 
 		// json round trip with clone
-		checkLightJsonRoundtrip( assert, clone );
+		checkLightJsonRoundtrip( clone );
 
 	}
 
 }
 
 // Compare json file with its source Light.
-function checkLightJsonWriting( assert, light, json ) {
+function checkLightJsonWriting( light, json ) {
 
 	assert.equal( json.metadata.version, '4.7', 'check metadata version' );
 
@@ -205,7 +205,7 @@ function checkLightJsonWriting( assert, light, json ) {
 }
 
 // Check parsing and reconstruction of json Light
-function checkLightJsonReading( assert, json, light ) {
+function checkLightJsonReading( json, light ) {
 
 	const loader = new ObjectLoader();
 	const outputLight = loader.parse( json );
@@ -215,11 +215,11 @@ function checkLightJsonReading( assert, json, light ) {
 }
 
 // Verify light -> json -> light
-function checkLightJsonRoundtrip( assert, light ) {
+function checkLightJsonRoundtrip( light ) {
 
 	const json = light.toJSON();
-	checkLightJsonWriting( assert, light, json );
-	checkLightJsonReading( assert, json, light );
+	checkLightJsonWriting( light, json );
+	checkLightJsonReading( json, light );
 
 }
 

@@ -1,5 +1,4 @@
-import { beforeEach, describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, beforeEach, describe, test } from 'vitest';
 
 import { HemisphereLight } from '../../../../src/lights/HemisphereLight.js';
 
@@ -72,7 +71,7 @@ describe( 'Lights', () => {
 		// OTHERS
 		test( 'Standard light tests', () => {
 
-			runStdLightTests( assert, lights );
+			runStdLightTests( lights );
 
 		} );
 

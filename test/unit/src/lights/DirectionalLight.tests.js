@@ -1,5 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, beforeEach, describe, expect, test } from 'vitest';
 
 import { DirectionalLight } from '../../../../src/lights/DirectionalLight.js';
 
@@ -81,7 +80,7 @@ describe( 'Lights', () => {
 		// OTHERS
 		test( 'Standard light tests', () => {
 
-			runStdLightTests( assert, lights );
+			runStdLightTests( lights );
 
 		} );
 

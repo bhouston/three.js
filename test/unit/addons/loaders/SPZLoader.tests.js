@@ -1,5 +1,4 @@
-import { describe, expect, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, expect, test } from 'vitest';
 
 import { BufferGeometry } from 'three';
 import { gzipSync } from '../../../../examples/jsm/libs/fflate.module.js';

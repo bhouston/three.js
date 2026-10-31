@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { float, int, nodeObject, nodeObjectAssignable } from '../../../../../src/Three.TSL.js';
 

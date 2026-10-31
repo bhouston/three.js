@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { viewportDepthTexture } from '../../../../../src/nodes/display/ViewportDepthTextureNode.js';
 import { DepthTexture } from '../../../../../src/textures/DepthTexture.js';

@@ -1,5 +1,4 @@
-import { describe, test } from 'vitest';
-import { assert } from '../../utils/assertions.js';
+import { assert, describe, test } from 'vitest';
 
 import { InstancedBufferGeometry } from '../../../../src/core/InstancedBufferGeometry.js';
 

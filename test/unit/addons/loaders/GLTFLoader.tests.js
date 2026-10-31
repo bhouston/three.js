@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
 import { GLTFGaussianSplatLoaderExtension } from '../../../../examples/jsm/loaders/GLTFGaussianSplatLoaderExtension.js';
 import { makeClipAdditive } from '../../../../src/animation/AnimationUtils.js';
@@ -135,13 +138,13 @@ function createGaussianSplatGLTF( { sphericalHarmonicsDegree = 0 } = {} ) {
 
 }
 
-export default QUnit.module( 'Addons', () => {
+describe( 'Addons', () => {
 
-	QUnit.module( 'Loaders', () => {
+	describe( 'Loaders', () => {
 
-		QUnit.module( 'GLTFLoader', () => {
+		describe( 'GLTFLoader', () => {
 
-			QUnit.test( 'child credentials', async ( assert ) => {
+			test( 'child credentials', async () => {
 
 				const loader = new GLTFLoader().setWithCredentials( true );
 				const { parser } = await loader.parseAsync( { asset: { version: '2.0' } }, '' );
@@ -150,7 +153,7 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'CUBICSPLINE animations can be made additive at an interpolated frame', async ( assert ) => {
+			test( 'CUBICSPLINE animations can be made additive at an interpolated frame', async () => {
 
 				const buffer = new Float32Array( [
 					0, 1,
@@ -185,7 +188,7 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'loads KHR_gaussian_splatting primitives as GaussianSplat', async ( assert ) => {
+			test( 'loads KHR_gaussian_splatting primitives as GaussianSplat', async () => {
 
 				const loader = new GLTFLoader();
 				loader.register( function ( parser ) {
@@ -207,7 +210,7 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'loads KHR_gaussian_splatting spherical harmonics attributes', async ( assert ) => {
+			test( 'loads KHR_gaussian_splatting spherical harmonics attributes', async () => {
 
 				const loader = new GLTFLoader();
 				loader.register( function ( parser ) {

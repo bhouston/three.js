@@ -1,3 +1,6 @@
+import { describe, test } from 'vitest';
+import { assert } from '../../utils/assertions.js';
+
 import { BufferGeometry, Float32BufferAttribute, Line, LineSegments } from 'three';
 import { OBJExporter } from '../../../../examples/jsm/exporters/OBJExporter.js';
 
@@ -11,13 +14,13 @@ function createSquare( index ) {
 
 }
 
-export default QUnit.module( 'Addons', () => {
+describe( 'Addons', () => {
 
-	QUnit.module( 'Exporters', () => {
+	describe( 'Exporters', () => {
 
-		QUnit.module( 'OBJExporter', () => {
+		describe( 'OBJExporter', () => {
 
-			QUnit.test( 'indexed line segments', ( assert ) => {
+			test( 'indexed line segments', () => {
 
 				const object = new LineSegments( createSquare( [ 0, 1, 1, 2, 2, 3, 3, 0 ] ) );
 				const result = new OBJExporter().parse( object );
@@ -26,7 +29,7 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
-			QUnit.test( 'indexed line', ( assert ) => {
+			test( 'indexed line', () => {
 
 				const object = new Line( createSquare( [ 0, 1, 2, 3, 0 ] ) );
 				const result = new OBJExporter().parse( object );

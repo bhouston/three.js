@@ -5,6 +5,7 @@ export default defineConfig( {
 
 	testDir: '.',
 	testMatch: 'examples.spec.js',
+	globalSetup: './setup.js',
 	fullyParallel: true,
 	workers: 1,
 	retries: 2,

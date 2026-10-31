@@ -7,12 +7,25 @@ const examples = [];
 const args = [];
 const env = { ...process.env };
 
-for ( const arg of process.argv.slice( 2 ) ) {
+const cli = process.argv.slice( 2 );
+
+for ( let i = 0; i < cli.length; i ++ ) {
+
+	const arg = cli[ i ];
 
 	if ( arg === '--make' ) env.THREE_SCREENSHOTS = '1';
 	else if ( arg === '--webgpu' ) env.THREE_WEBGPU = '1';
-	else if ( arg.startsWith( '-' ) ) args.push( arg );
-	else examples.push( arg.replace( /\.html$/, '' ) );
+	else if ( arg.startsWith( '-' ) ) {
+
+		args.push( arg );
+		if ( [ '--workers', '-j', '--shard', '--retries', '--timeout', '--grep', '-g', '--grep-invert', '--reporter', '--project', '--repeat-each' ].includes( arg ) ) {
+
+			if ( cli[ i + 1 ] === undefined ) throw new Error( `Missing value for ${ arg }` );
+			args.push( cli[ ++ i ] );
+
+		}
+
+	} else examples.push( arg.replace( /\.html$/, '' ) );
 
 }
 

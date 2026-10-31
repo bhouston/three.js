@@ -155,6 +155,8 @@ for ( const file of files ) {
 		}
 
 		expect( different, 'Percentage of differing pixels' ).toBeLessThan( 0.1 );
+		// A successful retry must not leave failure images for the CI report.
+		await Promise.all( [ 'actual', 'expected', 'diff' ].map( kind => fs.rm( `${ prefix }-${ kind }.jpg`, { force: true } ) ) );
 
 	} );
 

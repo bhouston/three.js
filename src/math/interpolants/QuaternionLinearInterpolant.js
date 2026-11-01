@@ -32,7 +32,7 @@ class QuaternionLinearInterpolant extends Interpolant {
 
 		let offset = i1 * stride;
 
-		for ( let end = offset + stride; offset !== end; offset += 4 ) {
+		for ( const end = offset + stride; offset !== end; offset += 4 ) {
 
 			Quaternion.slerpFlat( result, 0, values, offset - stride, values, offset, alpha );
 

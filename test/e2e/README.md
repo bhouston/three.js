@@ -1,44 +1,40 @@
 # Three.js end-to-end testing
 
-### Motivation
-Simplify code reviews with quick pixel testing inside CI. The same screenshots are used for thumbnails.
+Playwright loads each example in an isolated browser context and compares its screenshot with the existing JPEG thumbnail. Deterministic clock and random injection also applies to worker imports; animation and video hooks apply in the page. Tests retain the existing 800 × 500 viewport, downsampled 400 × 250 thumbnails, JPEG quality and pixel thresholds.
 
-### Local usage
-If you get an error in e2e test after PR and you sure that all is correct,
-just make a new screenshot to example. As a last resort increase timeouts or add it to exception list.
+```sh
+# Check examples, optionally with their .html extension.
+npm run test-e2e -- webgl_geometry_cube
 
-```shell
-# generate new screenshots for exact examples
-npm run make-screenshot <example1_name> ... <exampleN_name>
-
-# check exact examples
-npm run test-e2e <example1_name> ... <exampleN_name>
-
-# check all examples
+# Check all examples, or only WebGPU examples.
 npm run test-e2e
+npm run test-e2e-webgpu
+
+# Deliberately update thumbnails after reviewing a rendering change.
+npm run make-screenshot -- webgl_geometry_cube
+
+# Native Playwright selection, workers and sharding are available.
+npm run test-e2e -- --list
+npm run test-e2e -- --shard=1/5 --workers=1
+
+# Check runner option parsing and readiness without a browser.
+node --test test/e2e/*.tests.js
 ```
 
-Merge only those commits that pass the tests, otherwise all next commits will also fail.
+Run `npm run build` before example tests. Install the browser with `npx playwright install chromium`, or set `THREE_BROWSER_CHANNEL=chrome` to use an installed Google Chrome. `VISIBLE=1` opens a visible browser. Windows uses ANGLE's hardware D3D11 backend. Browser and driver differences can affect pixel comparisons; review mismatch artifacts before updating a thumbnail.
 
-### How it works
-- ci configs with parallelism
-- deterministic random and clocks in pages and workers
-- deterministic page rAF and video for screenshots
-- ignores browser input while preserving scripted DOM clicks
-- freezes video playback, preserves explicit seeks, and waits for decoded frames
-- increased robustness with hided text, datgui, different flags and timeouts.
-- pipeline: turn off rAF -> 'networkidle0' -> video readiness -> networkTax -> turn on rAF -> render promise
-- added 3 progressive attempts for robustness
+The runner records the WebGL renderer and, for WebGPU examples, adapter identity and successful device creation. GitHub Actions retains the legacy Ubuntu Mesa configuration under xvfb to match its screenshot baselines. Use a physical GPU when verifying rendering quality locally. If the bundled Chromium cannot create a WebGPU device on Windows, try an installed Chrome channel.
 
-### Development progress
+One worker runs by default to avoid GPU contention. Playwright handles retries and replaces a failed worker's browser. Each example has its own context, console error checks and trace on failure. Increase workers explicitly when the hardware has enough capacity. CI uses Playwright's native sharding, independent of the `CI` environment variable.
 
-|           Travis                        |               Attempts               |
-|-----------------------------------------|--------------------------------------|
-| 61 from 362 failed, time=21:14          | networkidle0 timeout                 |
-| 26 from 362 failed, time=16:22          | with rAF hook                        |
-| 13=1+1+7+4 failed, time=4:26            | with render promise and parallelism  |
-| 4=0+0+2+2 failed, time=5:13             | with network tax and other settings  |
-| 4=0+0+2+2 failed, time=3:26             | with progressive attempts            |
+Screenshot comparisons normally use Playwright's native `networkidle` navigation, deterministic video/render readiness, and `expect.poll` to recapture until the existing JPEG comparison passes (at most five seconds). This avoids an additional two-second quiet period on successful comparisons. JPEG baselines and comparison thresholds are unchanged; permanent mismatches still fail and retain the final actual/expected/diff images.
 
-### Status
-97% examples are covered with tests. Check exception list for more information.
+The `slowList` in `exceptions.js` adds a two-second wait before opening the render gate for examples with delayed loading, shader compilation or real-time timers. These examples are still tested and use the same navigation, video/render readiness, screenshot polling and comparison as other examples. Only the extra wait differs.
+
+`make-screenshot` retains the original navigation and two-second network-quiet waits because a new thumbnail has no expected image against which to poll.
+
+Playwright's DOM actionability checks do not establish GPU/asset readiness. Native network idle remains a heuristic, and screenshot polling cannot rerun an animation callback missed by the one-shot render gate. A scene captured before a timer or asynchronous setup finishes can remain wrong even while screenshots are retried; add such examples to `slowList` after comparing with the original method.
+
+Failures retain `<example>-actual.jpg`, `-expected.jpg` and `-diff.jpg` in `test/e2e/output-screenshots` for the existing CI screenshot report. Playwright attaches the GPU identity, browser console and images to its test result. Traces are in `test/e2e/results`; inspect one with `npx playwright show-trace <trace.zip>`.
+
+The exclusion list (`exceptionList`) and extra-wait list (`slowList`) are in `exceptions.js`. An explicit example name overrides that list, preserving the screenshot maintenance workflow. An unmatched selection fails through Playwright’s standard no-tests check. `test-e2e-cov` checks that examples, screenshot thumbnails and `examples/files.json` have matching entries; it does not require a browser.

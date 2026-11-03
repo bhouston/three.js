@@ -142,13 +142,42 @@ export default QUnit.module( 'Addons', () => {
 
 			QUnit.test( 'preserves quadrant, bilateral and wraparound angular maps', ( assert ) => {
 
-				for ( const horizontal of [[ 0, 90 ], [ 90, 270 ], [ 0, 120, 240, 345 ], [ 0, 180, 360 ]] ) {
+				const cases = [
+					{
+						horizontal: [ 0, 90 ],
+						intensities: [ 100, 50 ],
+						samples: [[ 0, 1 ], [ 45, 0.75 ], [ 90, 0.5 ], [ 135, 0.75 ], [ 180, 1 ], [ 225, 0.75 ], [ 270, 0.5 ], [ 315, 0.75 ], [ 359, 1 - 1 / 180 ]]
+					},
+					{
+						horizontal: [ 90, 270 ],
+						intensities: [ 100, 50 ],
+						samples: [[ 0, 1 ], [ 90, 0.75 ], [ 180, 0.5 ], [ 270, 0.75 ], [ 359, 1 - 1 / 360 ]]
+					},
+					{
+						horizontal: [ 0, 120, 240, 345 ],
+						intensities: [ 100, 50, 100 / 3, 25 ],
+						samples: [[ 0, 1 ], [ 60, 0.75 ], [ 120, 0.5 ], [ 180, 5 / 12 ], [ 240, 1 / 3 ], [ 345, 0.25 ], [ 350, 0.5 ], [ 355, 0.75 ], [ 359, 0.95 ]]
+					},
+					{
+						horizontal: [ 0, 180, 360 ],
+						intensities: [ 100, 50, 100 ],
+						samples: [[ 0, 1 ], [ 90, 0.75 ], [ 180, 0.5 ], [ 270, 0.75 ], [ 359, 1 - 1 / 360 ]]
+					}
+				];
 
-					const values = horizontal.flatMap( ( _, i ) => [ 100 / ( i + 1 ), 50 / ( i + 1 ), 0 ] );
-					const texture = parse( document( { horizontal, values } ) );
+				for ( const { horizontal, intensities, samples } of cases ) {
+
+					const values = intensities.flatMap( value => [ value, 0 ] );
+					const texture = parse( document( { horizontal, vertical: [ 0, 180 ], values } ) );
+					assert.strictEqual( texture.image.width, 180 );
 					assert.strictEqual( texture.image.height, 360 );
-					assert.strictEqual( texture.image.data.length, texture.image.width * texture.image.height );
-					assert.ok( Array.from( texture.image.data ).every( value => Number.isFinite( value ) && value >= 0 && value <= 1 ) );
+
+					for ( const [ angle, expected ] of samples ) {
+
+						const actual = texture.image.data[ angle * texture.image.width ];
+						assert.ok( Math.abs( actual - expected ) < 1e-7, `${ horizontal }: intensity at ${ angle } degrees` );
+
+					}
 
 				}
 

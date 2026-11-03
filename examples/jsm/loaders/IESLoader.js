@@ -13,7 +13,9 @@ import {
 } from 'three';
 
 /**
- * A loader for the IES format.
+ * A loader for Type C photometry in the IES format.
+ * Type A/B photometry and external TILT files are not supported.
+ * Embedded TILT data is read, but lamp tilt correction is not applied.
  *
  * The loaded texture should be assigned to {@link IESSpotLight#map}.
  *
@@ -58,6 +60,8 @@ class IESLoader extends Loader {
 		const data = new Array( size );
 
 		function interpolateCandelaValues( phi, theta ) {
+
+			if ( phi < iesLamp.verAngles[ 0 ] || phi > iesLamp.verAngles[ iesLamp.numVerAngles - 1 ] ) return 0;
 
 			let phiIndex = 0, thetaIndex = 0;
 			let startTheta = 0, endTheta = 0, startPhi = 0, endPhi = 0;
@@ -209,7 +213,7 @@ function IESLamp( text ) {
 
 	const _self = this;
 
-	const textArray = text.split( '\n' );
+	const textArray = text.split( /\r\n?|\n/ );
 
 	let lineNumber = 0;
 	let line;
@@ -237,19 +241,9 @@ function IESLamp( text ) {
 
 	function readArray( count, array ) {
 
-		while ( true ) {
+		for ( let i = 0; i < count; ++ i ) {
 
-			const line = textArray[ lineNumber ++ ];
-			const lineData = textToArray( line );
-
-			for ( let i = 0; i < lineData.length; ++ i ) {
-
-				array.push( Number( lineData[ i ] ) );
-
-			}
-
-			if ( array.length === count )
-				break;
+			array.push( Number( data[ dataIndex ++ ] ) );
 
 		}
 
@@ -257,15 +251,11 @@ function IESLamp( text ) {
 
 	function readTilt() {
 
-		let line = textArray[ lineNumber ++ ];
-		let lineData = textToArray( line );
+		const values = [ ];
+		readArray( 2, values );
 
-		_self.tiltData.lampToLumGeometry = Number( lineData[ 0 ] );
-
-		line = textArray[ lineNumber ++ ];
-		lineData = textToArray( line );
-
-		_self.tiltData.numAngles = Number( lineData[ 0 ] );
+		_self.tiltData.lampToLumGeometry = Number( values[ 0 ] );
+		_self.tiltData.numAngles = Number( values[ 1 ] );
 
 		readArray( _self.tiltData.numAngles, _self.tiltData.angles );
 		readArray( _self.tiltData.numAngles, _self.tiltData.mulFactors );
@@ -296,7 +286,11 @@ function IESLamp( text ) {
 		readArray( 3, values );
 
 		_self.ballFactor = Number( values[ 0 ] );
-		_self.blpFactor = Number( values[ 1 ] );
+		const version = /LM-63-(\d{4})/i.exec( textArray[ 0 ] );
+
+		// Only legacy formats use the second field as a multiplier.
+
+		_self.blpFactor = version && Number( version[ 1 ] ) >= 1995 ? 1 : Number( values[ 1 ] );
 		_self.inputWatts = Number( values[ 2 ] );
 
 	}
@@ -312,6 +306,11 @@ function IESLamp( text ) {
 		}
 
 	}
+
+	// Numeric tables can wrap across logical array boundaries.
+
+	const data = textToArray( textArray.slice( lineNumber ).join( ' ' ) );
+	let dataIndex = 0;
 
 	if ( ! line.includes( 'NONE' ) ) {
 

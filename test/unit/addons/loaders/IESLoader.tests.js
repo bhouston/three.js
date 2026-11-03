@@ -1,4 +1,4 @@
-import { DataUtils, FileLoader, FloatType, HalfFloatType, LoadingManager, UnsignedByteType } from 'three';
+import { DataUtils, FloatType, HalfFloatType, UnsignedByteType } from 'three';
 import { IESLoader } from '../../../../examples/jsm/loaders/IESLoader.js';
 
 function document( options = {} ) {
@@ -158,81 +158,6 @@ export default QUnit.module( 'Addons', () => {
 
 				const tilted = document( { tilt: 'TILT=INCLUDE\n1 2 0 90 1 0.5' } );
 				assert.deepEqual( parse( tilted ).image.data, parse( document() ).image.data );
-
-			} );
-
-			QUnit.test( 'explicitly rejects unsupported photometric coordinates and external TILT', ( assert ) => {
-
-				for ( const type of [ 2, 3, 0, 1.5 ] ) assert.throws( () => parse( document( { type } ) ), /Only Type C/ );
-				assert.throws( () => parse( document( { tilt: 'TILT=lamp.tlt' } ) ), /External TILT/ );
-				assert.throws( () => parse( document( { header: 'IES:LM-63-2099' } ) ), /Unsupported LM-63 version/ );
-
-			} );
-
-			QUnit.test( 'reports missing, truncated, nonnumeric and nonfinite input', ( assert ) => {
-
-				assert.throws( () => parse( '' ), /Missing TILT/ );
-				assert.throws( () => parse( 'TILT=NONE\n' ), /Unexpected end/ );
-				assert.throws( () => parse( 'TILT=INCLUDE\n1 2 0' ), /Unexpected end/ );
-				assert.throws( () => parse( document().slice( 0, - 2 ) ), /Unexpected end/ );
-				assert.throws( () => parse( document( { values: [ 100, 'bad', 0 ] } ) ), /Invalid number/ );
-				assert.throws( () => parse( document( { values: [ 100, '1e999', 0 ] } ) ), /Non-finite/ );
-				assert.throws( () => parse( document( { multiplier: 1e308 } ) ), /Non-finite scaled/ );
-				assert.throws( () => parse( document() + '\n1' ), /trailing/ );
-
-			} );
-
-			QUnit.test( 'validates counts before allocating tables', ( assert ) => {
-
-				for ( const count of [ '0', '-1', '2.5', '9007199254740992' ] ) {
-
-					assert.throws( () => parse( document().replace( '1 -1 1 3 1', `1 -1 1 ${ count } 1` ) ), /Invalid vertical angle count/ );
-
-				}
-
-				assert.throws( () => parse( document().replace( '1 -1 1 3 1', '1 -1 1 1000000000 1000000000' ) ), /Unexpected end/ );
-
-			} );
-
-			QUnit.test( 'rejects non-increasing angles, invalid coverage and negative intensities', ( assert ) => {
-
-				assert.throws( () => parse( document( { vertical: [ 0, 0, 180 ] } ) ), /strictly increasing/ );
-				assert.throws( () => parse( document( { vertical: [ - 90, 0, 90 ] } ) ), /strictly increasing/ );
-				assert.throws( () => parse( document( { horizontal: [ 0, 45 ] } ) ), /horizontal coverage/ );
-				assert.throws( () => parse( document( { values: [ 100, - 1, 0 ] } ) ), /Negative candela/ );
-
-			} );
-
-			QUnit.test( 'delivers parse failures through load onError', ( assert ) => {
-
-				let errors = 0, itemErrors = 0;
-				const manager = new LoadingManager();
-				const originalItemError = manager.itemError;
-				const originalLoad = FileLoader.prototype.load;
-				manager.itemError = url => {
-
-					assert.strictEqual( url, 'invalid.ies' ); itemErrors ++;
-
-				};
-
-				FileLoader.prototype.load = ( url, onLoad ) => onLoad( 'TILT=NONE' );
-				try {
-
-					new IESLoader( manager ).load( 'invalid.ies', () => assert.ok( false, 'onLoad must not be called' ), undefined, error => {
-
-						assert.ok( /Unexpected end/.test( error.message ) );
-						errors ++;
-
-					} );
-					assert.strictEqual( errors, 1 );
-					assert.strictEqual( itemErrors, 1 );
-
-				} finally {
-
-					FileLoader.prototype.load = originalLoad;
-					manager.itemError = originalItemError;
-
-				}
 
 			} );
 

@@ -61,7 +61,8 @@ class IESLoader extends Loader {
 
 		function interpolateCandelaValues( phi, theta ) {
 
-			// A missing hemisphere has no measured light; do not extrapolate its edge.
+			// Zero samples outside the measured vertical range.
+
 			if ( phi < iesLamp.verAngles[ 0 ] || phi > iesLamp.verAngles[ iesLamp.numVerAngles - 1 ] ) return 0;
 
 			let phiIndex = 0, thetaIndex = 0;
@@ -176,25 +177,7 @@ class IESLoader extends Loader {
 
 		loader.load( url, text => {
 
-			try {
-
-				onLoad( this.parse( text ) );
-
-			} catch ( error ) {
-
-				if ( onError ) {
-
-					onError( error );
-
-				} else {
-
-					console.error( error );
-
-				}
-
-				this.manager.itemError( url );
-
-			}
+			onLoad( this.parse( text ) );
 
 		}, onProgress, onError );
 
@@ -242,133 +225,69 @@ function IESLamp( text ) {
 
 		version = Number( header.slice( - 4 ) );
 
-	} else if ( /^IES(?:NA)?[:\d]/i.test( header ) ) {
-
-		throw new Error( 'IESLoader: Unsupported LM-63 version.' );
-
 	}
 
 	const tiltIndex = lines.findIndex( line => /^\s*TILT\s*=/i.test( line ) );
-	if ( tiltIndex === - 1 ) throw new Error( 'IESLoader: Missing TILT declaration.' );
-
 	const tiltMode = lines[ tiltIndex ].split( '=' )[ 1 ].trim().toUpperCase();
-	if ( tiltMode !== 'NONE' && tiltMode !== 'INCLUDE' ) throw new Error( 'IESLoader: External TILT files are not supported.' );
 
 	// Numeric tables can wrap anywhere, including across logical array boundaries.
 	const tokens = lines.slice( tiltIndex + 1 ).join( ' ' ).match( /[^\s,]+/g ) || [];
 	let cursor = 0;
 
-	function readNumber( label ) {
+	function readNumber() {
 
-		if ( cursor >= tokens.length ) throw new Error( `IESLoader: Unexpected end of data while reading ${ label }.` );
-
-		const token = tokens[ cursor ++ ];
-		if ( ! /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test( token ) ) throw new Error( `IESLoader: Invalid number for ${ label }.` );
-
-		const value = Number( token );
-		if ( ! Number.isFinite( value ) ) throw new Error( `IESLoader: Non-finite number for ${ label }.` );
-
-		return value;
+		return Number( tokens[ cursor ++ ] );
 
 	}
 
-	function readCount( label, minimum = 1 ) {
+	function readArray( count ) {
 
-		const value = readNumber( label );
-		if ( ! Number.isSafeInteger( value ) || value < minimum ) throw new Error( `IESLoader: Invalid ${ label }.` );
-
-		return value;
-
-	}
-
-	function readArray( count, label ) {
-
-		if ( count > tokens.length - cursor ) throw new Error( `IESLoader: Unexpected end of data while reading ${ label }.` );
-
-		const values = [];
-		for ( let i = 0; i < count; i ++ ) values.push( readNumber( label ) );
+		const values = tokens.slice( cursor, cursor + count ).map( Number );
+		cursor += count;
 		return values;
-
-	}
-
-	function validateAngles( values, minimum, maximum, label ) {
-
-		for ( let i = 0; i < values.length; i ++ ) {
-
-			if ( values[ i ] < minimum || values[ i ] > maximum || ( i > 0 && values[ i ] <= values[ i - 1 ] ) ) {
-
-				throw new Error( `IESLoader: ${ label } must be strictly increasing in [${ minimum }, ${ maximum }].` );
-
-			}
-
-		}
 
 	}
 
 	this.tiltData = { angles: [], mulFactors: [] };
 	if ( tiltMode === 'INCLUDE' ) {
 
-		this.tiltData.lampToLumGeometry = readCount( 'tilt geometry' );
-		if ( this.tiltData.lampToLumGeometry > 3 ) throw new Error( 'IESLoader: Invalid tilt geometry.' );
-		this.tiltData.numAngles = readCount( 'tilt angle count' );
-		this.tiltData.angles = readArray( this.tiltData.numAngles, 'tilt angles' );
-		this.tiltData.mulFactors = readArray( this.tiltData.numAngles, 'tilt factors' );
-		validateAngles( this.tiltData.angles, 0, 180, 'Tilt angles' );
-		if ( this.tiltData.mulFactors.some( value => value < 0 ) ) throw new Error( 'IESLoader: Negative tilt factor.' );
+		this.tiltData.lampToLumGeometry = readNumber();
+		this.tiltData.numAngles = readNumber();
+		this.tiltData.angles = readArray( this.tiltData.numAngles );
+		this.tiltData.mulFactors = readArray( this.tiltData.numAngles );
 
 	}
 
-	this.count = readCount( 'lamp count' );
-	this.lumens = readNumber( 'lumens per lamp' );
-	this.multiplier = readNumber( 'candela multiplier' );
-	this.numVerAngles = readCount( 'vertical angle count', 2 );
-	this.numHorAngles = readCount( 'horizontal angle count' );
-	this.gonioType = readNumber( 'photometric type' );
-	if ( this.gonioType !== 1 ) throw new Error( 'IESLoader: Only Type C photometry (type 1) is supported.' );
+	this.count = readNumber();
+	this.lumens = readNumber();
+	this.multiplier = readNumber();
+	this.numVerAngles = readNumber();
+	this.numHorAngles = readNumber();
+	this.gonioType = readNumber();
+	this.units = readNumber();
+	this.width = readNumber();
+	this.length = readNumber();
+	this.height = readNumber();
+	this.ballFactor = readNumber();
 
-	this.units = readNumber( 'units' );
-	if ( this.units !== 1 && this.units !== 2 ) throw new Error( 'IESLoader: Invalid units.' );
-	this.width = readNumber( 'width' );
-	this.length = readNumber( 'length' );
-	this.height = readNumber( 'height' );
-	this.ballFactor = readNumber( 'ballast factor' );
+	const secondFactor = readNumber();
 
-	const secondFactor = readNumber( 'second factor' );
-	// LM-63-1995/2002 reserve this field. In 2019 it is a file generation type,
-	// not a multiplier (its decimal digits describe how the file was generated).
+	// Only legacy formats use the second field as a multiplier.
+
 	this.blpFactor = version < 1995 ? secondFactor : 1;
-	this.inputWatts = readNumber( 'input watts' );
-	if ( this.multiplier < 0 || this.ballFactor < 0 || secondFactor < 0 || this.inputWatts < 0 ) throw new Error( 'IESLoader: Negative photometric factor or input watts.' );
+	this.inputWatts = readNumber();
 
-	const sampleCount = this.numVerAngles * this.numHorAngles;
-	if ( ! Number.isSafeInteger( sampleCount ) || sampleCount + this.numVerAngles + this.numHorAngles > tokens.length - cursor ) {
-
-		throw new Error( 'IESLoader: Unexpected end of photometric table.' );
-
-	}
-
-	this.verAngles = readArray( this.numVerAngles, 'vertical angles' );
-	this.horAngles = readArray( this.numHorAngles, 'horizontal angles' );
-	validateAngles( this.verAngles, 0, 180, 'Vertical angles' );
-	validateAngles( this.horAngles, 0, 360, 'Horizontal angles' );
-
-	const span = this.horAngles[ this.numHorAngles - 1 ] - this.horAngles[ 0 ];
-	if ( this.numHorAngles === 1 ? this.horAngles[ 0 ] !== 0 : span !== 90 && span !== 180 && ! ( span > 180 && span <= 360 ) ) {
-
-		throw new Error( 'IESLoader: Unsupported Type C horizontal coverage.' );
-
-	}
+	this.verAngles = readArray( this.numVerAngles );
+	this.horAngles = readArray( this.numHorAngles );
 
 	this.candelaValues = [];
 	let maxVal = 0;
 	for ( let h = 0; h < this.numHorAngles; h ++ ) {
 
-		const values = readArray( this.numVerAngles, 'candela values' );
+		const values = readArray( this.numVerAngles );
 		for ( let v = 0; v < values.length; v ++ ) {
 
-			if ( values[ v ] < 0 ) throw new Error( 'IESLoader: Negative candela value.' );
 			values[ v ] *= this.multiplier * this.ballFactor * this.blpFactor;
-			if ( ! Number.isFinite( values[ v ] ) ) throw new Error( 'IESLoader: Non-finite scaled candela value.' );
 			maxVal = Math.max( maxVal, values[ v ] );
 
 		}
@@ -377,12 +296,11 @@ function IESLamp( text ) {
 
 	}
 
-	if ( cursor !== tokens.length ) throw new Error( 'IESLoader: Unexpected trailing photometric data.' );
-
 	const baseAngle = this.horAngles[ 0 ];
 	for ( let h = 0; h < this.numHorAngles; h ++ ) this.horAngles[ h ] -= baseAngle;
 
 	// A full asymmetric cycle may omit the duplicate closing plane.
+
 	const endAngle = this.horAngles[ this.numHorAngles - 1 ];
 	if ( endAngle > 180 && endAngle < 360 ) {
 

@@ -81,3 +81,14 @@ export const exceptionList = [
 	'webgl_morphtargets_webcam'
 
 ];
+
+// Wait two extra seconds before rendering these examples; they are still tested.
+export const slowList = [
+	'misc_exporter_usdz', // Async model decoding.
+	'physics_rapier_basic', // Real-time physics and body creation.
+	'webgl_buffergeometry_glbufferattribute', // Swaps buffers every two seconds.
+	'webgl_loader_gltf_progressive_lod', // Progressive loading.
+	'webgl_loader_imagebitmap', // Schedules loading up to 1.9 seconds after startup.
+	'webgpu_meshlets_instanced', // Async preparation and shader compilation.
+	'webgpu_meshlets_meshes' // Async preparation and shader compilation.
+];

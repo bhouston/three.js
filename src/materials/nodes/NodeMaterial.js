@@ -991,7 +991,7 @@ class NodeMaterial extends Material {
 
 		if ( builder.material.lightMap ) {
 
-			node = new IrradianceNode( materialLightMap );
+			node = new IrradianceNode( materialLightMap, true );
 
 		}
 

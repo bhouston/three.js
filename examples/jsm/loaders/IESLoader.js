@@ -13,8 +13,8 @@ import {
 } from 'three';
 
 /**
- * A loader for Type C photometry in the IES LM-63-1986, 1991, 1995, 2002
- * and 2019 formats. Type A/B photometry and external TILT files are not supported.
+ * A loader for Type C photometry in the IES format.
+ * Type A/B photometry and external TILT files are not supported.
  * Embedded TILT data is read, but lamp tilt correction is not applied.
  *
  * The loaded texture should be assigned to {@link IESSpotLight#map}.
@@ -60,8 +60,6 @@ class IESLoader extends Loader {
 		const data = new Array( size );
 
 		function interpolateCandelaValues( phi, theta ) {
-
-			// Zero samples outside the measured vertical range.
 
 			if ( phi < iesLamp.verAngles[ 0 ] || phi > iesLamp.verAngles[ iesLamp.numVerAngles - 1 ] ) return 0;
 
@@ -213,108 +211,196 @@ class IESLoader extends Loader {
 
 function IESLamp( text ) {
 
-	const lines = text.replace( /^\uFEFF/, '' ).trim().split( /\r\n?|\n/ );
-	const header = lines[ 0 ].trim();
-	let version = 1986;
+	const _self = this;
 
-	if ( /^IESNA91$/i.test( header ) ) {
+	const textArray = text.split( /\r\n?|\n/ );
 
-		version = 1991;
+	let lineNumber = 0;
+	let line;
 
-	} else if ( /^IES(?:NA)?:LM-63-(1991|1995|2002|2019)$/i.test( header ) ) {
+	_self.verAngles = [ ];
+	_self.horAngles = [ ];
 
-		version = Number( header.slice( - 4 ) );
+	_self.candelaValues = [ ];
 
-	}
+	_self.tiltData = { };
+	_self.tiltData.angles = [ ];
+	_self.tiltData.mulFactors = [ ];
 
-	const tiltIndex = lines.findIndex( line => /^\s*TILT\s*=/i.test( line ) );
-	const tiltMode = lines[ tiltIndex ].split( '=' )[ 1 ].trim().toUpperCase();
+	function textToArray( text ) {
 
-	// Numeric tables can wrap anywhere, including across logical array boundaries.
-	const tokens = lines.slice( tiltIndex + 1 ).join( ' ' ).match( /[^\s,]+/g ) || [];
-	let cursor = 0;
+		text = text.replace( /^\s+|\s+$/g, '' ); // remove leading or trailing spaces
+		text = text.replace( /,/g, ' ' ); // replace commas with spaces
+		text = text.replace( /\s\s+/g, ' ' ); // replace white space/tabs etc by single whitespace
 
-	function readNumber() {
+		const array = text.split( ' ' );
 
-		return Number( tokens[ cursor ++ ] );
-
-	}
-
-	function readArray( count ) {
-
-		const values = tokens.slice( cursor, cursor + count ).map( Number );
-		cursor += count;
-		return values;
+		return array;
 
 	}
 
-	this.tiltData = { angles: [], mulFactors: [] };
-	if ( tiltMode === 'INCLUDE' ) {
+	function readArray( count, array ) {
 
-		this.tiltData.lampToLumGeometry = readNumber();
-		this.tiltData.numAngles = readNumber();
-		this.tiltData.angles = readArray( this.tiltData.numAngles );
-		this.tiltData.mulFactors = readArray( this.tiltData.numAngles );
+		for ( let i = 0; i < count; ++ i ) {
 
-	}
-
-	this.count = readNumber();
-	this.lumens = readNumber();
-	this.multiplier = readNumber();
-	this.numVerAngles = readNumber();
-	this.numHorAngles = readNumber();
-	this.gonioType = readNumber();
-	this.units = readNumber();
-	this.width = readNumber();
-	this.length = readNumber();
-	this.height = readNumber();
-	this.ballFactor = readNumber();
-
-	const secondFactor = readNumber();
-
-	// Only legacy formats use the second field as a multiplier.
-
-	this.blpFactor = version < 1995 ? secondFactor : 1;
-	this.inputWatts = readNumber();
-
-	this.verAngles = readArray( this.numVerAngles );
-	this.horAngles = readArray( this.numHorAngles );
-
-	this.candelaValues = [];
-	let maxVal = 0;
-	for ( let h = 0; h < this.numHorAngles; h ++ ) {
-
-		const values = readArray( this.numVerAngles );
-		for ( let v = 0; v < values.length; v ++ ) {
-
-			values[ v ] *= this.multiplier * this.ballFactor * this.blpFactor;
-			maxVal = Math.max( maxVal, values[ v ] );
+			array.push( Number( data[ dataIndex ++ ] ) );
 
 		}
 
-		this.candelaValues.push( values );
+	}
+
+	function readTilt() {
+
+		const values = [ ];
+		readArray( 2, values );
+
+		_self.tiltData.lampToLumGeometry = Number( values[ 0 ] );
+		_self.tiltData.numAngles = Number( values[ 1 ] );
+
+		readArray( _self.tiltData.numAngles, _self.tiltData.angles );
+		readArray( _self.tiltData.numAngles, _self.tiltData.mulFactors );
 
 	}
 
-	const baseAngle = this.horAngles[ 0 ];
-	for ( let h = 0; h < this.numHorAngles; h ++ ) this.horAngles[ h ] -= baseAngle;
+	function readLampValues() {
 
-	// A full asymmetric cycle may omit the duplicate closing plane.
+		const values = [ ];
+		readArray( 10, values );
 
-	const endAngle = this.horAngles[ this.numHorAngles - 1 ];
+		_self.count = Number( values[ 0 ] );
+		_self.lumens = Number( values[ 1 ] );
+		_self.multiplier = Number( values[ 2 ] );
+		_self.numVerAngles = Number( values[ 3 ] );
+		_self.numHorAngles = Number( values[ 4 ] );
+		_self.gonioType = Number( values[ 5 ] );
+		_self.units = Number( values[ 6 ] );
+		_self.width = Number( values[ 7 ] );
+		_self.length = Number( values[ 8 ] );
+		_self.height = Number( values[ 9 ] );
+
+	}
+
+	function readLampFactors() {
+
+		const values = [ ];
+		readArray( 3, values );
+
+		_self.ballFactor = Number( values[ 0 ] );
+		const version = /LM-63-(\d{4})/i.exec( textArray[ 0 ] );
+
+		// Only legacy formats use the second field as a multiplier.
+
+		_self.blpFactor = version && Number( version[ 1 ] ) >= 1995 ? 1 : Number( values[ 1 ] );
+		_self.inputWatts = Number( values[ 2 ] );
+
+	}
+
+	while ( true ) {
+
+		line = textArray[ lineNumber ++ ];
+
+		if ( line.includes( 'TILT' ) ) {
+
+			break;
+
+		}
+
+	}
+
+	// Numeric tables can wrap across logical array boundaries.
+
+	const data = textToArray( textArray.slice( lineNumber ).join( ' ' ) );
+	let dataIndex = 0;
+
+	if ( ! line.includes( 'NONE' ) ) {
+
+		if ( line.includes( 'INCLUDE' ) ) {
+
+			readTilt();
+
+		} else {
+
+			// TODO:: Read tilt data from a file
+
+		}
+
+	}
+
+	readLampValues();
+
+	readLampFactors();
+
+	// Initialize candela value array
+	for ( let i = 0; i < _self.numHorAngles; ++ i ) {
+
+		_self.candelaValues.push( [ ] );
+
+	}
+
+	// Parse Angles
+	readArray( _self.numVerAngles, _self.verAngles );
+	readArray( _self.numHorAngles, _self.horAngles );
+
+	// Parse Candela values
+	for ( let i = 0; i < _self.numHorAngles; ++ i ) {
+
+		readArray( _self.numVerAngles, _self.candelaValues[ i ] );
+
+	}
+
+	// Calculate actual candela values, and normalize.
+	for ( let i = 0; i < _self.numHorAngles; ++ i ) {
+
+		for ( let j = 0; j < _self.numVerAngles; ++ j ) {
+
+			_self.candelaValues[ i ][ j ] *= _self.multiplier * _self.ballFactor * _self.blpFactor;
+
+		}
+
+	}
+
+	const baseAngle = _self.horAngles[ 0 ];
+
+	let maxVal = - 1;
+	for ( let i = 0; i < _self.numHorAngles; ++ i ) {
+
+		// Shift the measured range to start at 0 so it can be mirrored across the full
+		// cycle when sampling.
+		_self.horAngles[ i ] -= baseAngle;
+
+		for ( let j = 0; j < _self.numVerAngles; ++ j ) {
+
+			const value = _self.candelaValues[ i ][ j ];
+			maxVal = maxVal < value ? value : maxVal;
+
+		}
+
+	}
+
+	// A range wider than a half cycle is asymmetric, so it wraps back around to the
+	// first angle. Contrary to the standard some files skip that final 360 entry
+	// because it repeats the first one, which Blender's Cycles works around the same way
+	// https://github.com/blender/blender/blob/main/intern/cycles/util/ies.cpp
+	const endAngle = _self.horAngles[ _self.numHorAngles - 1 ];
 	if ( endAngle > 180 && endAngle < 360 ) {
 
-		this.horAngles.push( 360 );
-		this.candelaValues.push( this.candelaValues[ 0 ].slice() );
-		this.numHorAngles = this.horAngles.length;
+		_self.horAngles.push( 360 );
+		_self.candelaValues.push( _self.candelaValues[ 0 ].slice() );
+
+		_self.numHorAngles = _self.horAngles.length;
 
 	}
 
-	if ( maxVal > 0 ) {
+	const bNormalize = true;
+	if ( bNormalize && maxVal > 0 ) {
 
-		for ( const values of this.candelaValues ) {
+		for ( let i = 0; i < _self.numHorAngles; ++ i ) {
 
-			for ( let v = 0; v < values.length; v ++ ) values[ v ] /= maxVal;
+			for ( let j = 0; j < _self.numVerAngles; ++ j ) {
+
+				_self.candelaValues[ i ][ j ] /= maxVal;
+
+			}
 
 		}
 

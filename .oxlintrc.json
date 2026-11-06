@@ -1,0 +1,228 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"options": {
+		"reportUnusedDisableDirectives": "warn"
+	},
+	"plugins": [ "jsdoc" ],
+	"jsPlugins": [
+		"./utils/lint/eslint-core-rules.js",
+		"eslint-plugin-compat",
+		{ "name": "jsdoc-js", "specifier": "eslint-plugin-jsdoc" }
+	],
+	"categories": {
+		"correctness": "off"
+	},
+	"env": {
+		"builtin": true,
+		"browser": true,
+		"node": true,
+		"es2022": true
+	},
+	"globals": {
+		"THREE": "readonly",
+		"console": "writable",
+		"__THREE_DEVTOOLS__": "readonly",
+		"potpack": "readonly",
+		"fflate": "readonly",
+		"Stats": "readonly",
+		"XRWebGLBinding": "readonly",
+		"XRWebGLLayer": "readonly",
+		"GPUShaderStage": "readonly",
+		"GPUBufferUsage": "readonly",
+		"GPUTextureUsage": "readonly",
+		"GPUTexture": "readonly",
+		"GPUMapMode": "readonly",
+		"QUnit": "readonly",
+		"Ammo": "readonly",
+		"XRRigidTransform": "readonly",
+		"XRMediaBinding": "readonly",
+		"CodeMirror": "readonly",
+		"esprima": "readonly",
+		"jsonlint": "readonly",
+		"VideoFrame": "readonly",
+		"VideoDecoder": "readonly",
+		"Float16Array": "readonly",
+		"BigInt": "readonly",
+		"BigUint64Array": "readonly"
+	},
+	"settings": {
+		"polyfills": [
+			"WebGL2RenderingContext"
+		],
+		"jsdoc": {
+			"preferredTypes": {
+				"Any": "any",
+				"Boolean": "boolean",
+				"Number": "number",
+				"object": "Object",
+				"String": "string"
+			},
+			"tagNamePreference": {
+				"returns": "return",
+				"extends": "augments"
+			}
+		}
+	},
+	"ignorePatterns": [
+		"**/node_modules/**",
+		"**/build/**",
+		"examples/jsm/libs/**",
+		"test/treeshake/*.bundle.js",
+		"test/treeshake/*.bundle.min.js",
+		"editor/js/libs/acorn/**",
+		"editor/js/libs/codemirror/**",
+		"editor/js/libs/tern-threejs/**",
+		"editor/js/libs/ternjs/**",
+		"editor/js/libs/esprima.js",
+		"editor/js/libs/jsonlint.js",
+		"editor/js/libs/signals.min.js",
+		"**/ifc/**",
+		"**/prettify.js",
+		"**/prettify/**",
+		"**/3rdparty/**",
+		"**/shapefile.js",
+		"**/vendor/**",
+		"**/fuse/**",
+		"**/template/static/**"
+	],
+	"rules": {
+		"constructor-super": "error",
+		"for-direction": "error",
+		"no-class-assign": "error",
+		"no-compare-neg-zero": "error",
+		"no-const-assign": "error",
+		"no-constant-binary-expression": "error",
+		"no-constant-condition": [ "error", { "checkLoops": "allExceptWhileTrue" } ],
+		"no-control-regex": "error",
+		"no-debugger": "error",
+		"no-delete-var": "error",
+		"no-dupe-class-members": "error",
+		"no-dupe-else-if": "error",
+		"no-dupe-keys": "error",
+		"no-duplicate-case": "error",
+		"no-empty-character-class": "error",
+		"no-empty-pattern": "error",
+		"no-empty-static-block": "error",
+		"no-ex-assign": "error",
+		"no-extra-boolean-cast": "error",
+		"no-func-assign": "error",
+		"no-global-assign": "error",
+		"no-import-assign": "error",
+		"no-invalid-regexp": "error",
+		"no-irregular-whitespace": "error",
+		"no-misleading-character-class": "error",
+		"no-new-native-nonconstructor": "error",
+		"no-nonoctal-decimal-escape": "error",
+		"no-obj-calls": "error",
+		"no-redeclare": [ "error", { "builtinGlobals": true } ],
+		"no-regex-spaces": "error",
+		"no-self-assign": [ "error", { "props": true } ],
+		"no-setter-return": "error",
+		"no-shadow-restricted-names": [ "error", { "reportGlobalThis": true } ],
+		"no-sparse-arrays": "error",
+		"no-this-before-super": "error",
+		"no-undef": "warn",
+		"no-unexpected-multiline": "error",
+		"no-unreachable": "error",
+		"no-unsafe-finally": "error",
+		"no-unsafe-negation": "error",
+		"no-unsafe-optional-chaining": "error",
+		"no-unused-labels": "error",
+		"no-unused-private-class-members": "error",
+		"no-unused-vars": [ "error", { "caughtErrors": "none" } ],
+		"no-useless-backreference": "error",
+		"no-useless-catch": "error",
+		"no-with": "error",
+		"require-yield": "error",
+		"use-isnan": "error",
+		"valid-typeof": "error",
+		"no-throw-literal": "error",
+		"prefer-const": [ "error", { "destructuring": "any", "ignoreReadBeforeAssign": false } ],
+		"no-duplicate-imports": "error",
+		"prefer-spread": "error",
+
+		"compat/compat": "error",
+
+		"jsdoc/require-param-type": "error",
+		"jsdoc/require-returns-type": "error",
+		"jsdoc-js/check-types": "error",
+
+		// mdcs code style, using ESLint's own rule implementations so results and fixes match ESLint exactly
+
+		"eslint-core/array-bracket-spacing": [ "error", "always", { "singleValue": true, "arraysInArrays": false } ],
+		"eslint-core/block-spacing": [ "error", "always" ],
+		"eslint-core/brace-style": [ "error", "1tbs", { "allowSingleLine": true } ],
+		"eslint-core/comma-spacing": [ "error", { "before": false, "after": true } ],
+		"eslint-core/comma-style": [ "error", "last" ],
+		"eslint-core/computed-property-spacing": [ "error", "always" ],
+		"eslint-core/eol-last": [ "error", "always" ],
+		"eslint-core/func-call-spacing": [ "error", "never" ],
+		"eslint-core/indent": [ "error", "tab", { "SwitchCase": 1 } ],
+		"eslint-core/key-spacing": [ "error", { "beforeColon": false } ],
+		"eslint-core/new-parens": "error",
+		"eslint-core/no-trailing-spaces": [ "error", { "skipBlankLines": false } ],
+		"eslint-core/no-whitespace-before-property": "error",
+		"eslint-core/object-curly-spacing": [ "error", "always" ],
+		"eslint-core/padded-blocks": [ "error", { "blocks": "always", "switches": "always", "classes": "always" } ],
+		"eslint-core/semi": [ "error", "always", { "omitLastInOneLineBlock": true } ],
+		"eslint-core/semi-spacing": [ "error", { "before": false, "after": true } ],
+		"eslint-core/space-before-blocks": [ "error", { "functions": "always", "keywords": "always", "classes": "always" } ],
+		"eslint-core/space-before-function-paren": [ "error", { "anonymous": "always", "named": "never", "asyncArrow": "ignore" } ],
+		"eslint-core/space-in-parens": [ "error", "always" ],
+		"eslint-core/space-infix-ops": "error",
+		"eslint-core/space-unary-ops": [ "error", { "words": true, "nonwords": true, "overrides": {} } ],
+		"eslint-core/keyword-spacing": [ "error", { "before": true, "after": true } ],
+		"eslint-core/padding-line-between-statements": [ "error", { "blankLine": "always", "prev": "block-like", "next": "*" } ],
+		"eslint-core/no-multi-spaces": "error",
+		"eslint-core/no-extra-semi": "warn",
+		"eslint-core/quotes": [ "error", "single" ]
+	},
+	"overrides": [
+		{
+			"files": [ "test/unit/**/*.js" ],
+			"rules": {
+				"no-restricted-imports": [ "error", {
+					"patterns": [ {
+						"group": [ "**/build/*" ],
+						"message": "Tests must import from /src, not /build as build is not guaranteed to be fresh."
+					} ]
+				} ]
+			}
+		},
+		{
+			// ESLint only applies the base rules to *.js, so *.mjs keeps the recommended defaults
+			"files": [ "**/*.mjs" ],
+			"rules": {
+				"no-unused-vars": "error"
+			}
+		},
+		{
+			// oxlint does not suppress these reports with a bare "eslint-disable-line"
+			"files": [
+				"manual/examples/resources/editor.js",
+				"manual/examples/resources/lessons-helper.js",
+				"manual/examples/resources/webgl-debug-helper.js"
+			],
+			"rules": {
+				"eslint-core/padded-blocks": "off"
+			}
+		},
+		{
+			// oxlint does not support "/* global */" comments
+			"files": [
+				"manual/examples/resources/*.js",
+				"manual/resources/*.js",
+				"manual/resources/tools/geo-picking/*.js",
+				"examples/jsm/exporters/DRACOExporter.js"
+			],
+			"globals": {
+				"define": "readonly",
+				"monaco": "readonly",
+				"lessonEditorSettings": "readonly",
+				"parseGeom": "readonly",
+				"shapefile": "readonly",
+				"DracoEncoderModule": "readonly"
+			}
+		}
+	]
+}

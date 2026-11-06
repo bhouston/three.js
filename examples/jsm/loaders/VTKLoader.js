@@ -752,9 +752,9 @@ class VTKLoader extends Loader {
 				const l = placeHolders > 0 ? len - 4 : len;
 
 				let L = 0;
-				let i, j;
+				let i;
 
-				for ( i = 0, j = 0; i < l; i += 4, j += 3 ) {
+				for ( i = 0; i < l; i += 4 ) {
 
 					const tmp = ( revLookup[ b64.charCodeAt( i ) ] << 18 ) | ( revLookup[ b64.charCodeAt( i + 1 ) ] << 12 ) | ( revLookup[ b64.charCodeAt( i + 2 ) ] << 6 ) | revLookup[ b64.charCodeAt( i + 3 ) ];
 					arr[ L ++ ] = ( tmp & 0xFF0000 ) >> 16;

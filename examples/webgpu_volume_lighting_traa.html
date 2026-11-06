@@ -37,9 +37,10 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { vec2, vec3, Fn, texture3D, screenUV, uniform, screenCoordinate, pass, depthPass, mrt, output, velocity, fract, interleavedGradientNoise } from 'three/tsl';
+			import { vec3, Fn, texture3D, screenUV, uniform, screenCoordinate, pass, depthPass, mrt, output, velocity, frameId } from 'three/tsl';
 
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { animatedInterleavedGradientNoise } from 'three/addons/tsl/utils/IGN.js';
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
@@ -47,35 +48,10 @@
 			import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
 			import { TeapotGeometry } from 'three/addons/geometries/TeapotGeometry.js';
 
-			// Halton sequence for temporal offset - matches TRAA's 32-sample Halton jitter
-			// This creates optimal low-discrepancy distribution that accumulates well with TRAA
-			function halton( index, base ) {
-
-				let result = 0;
-				let f = 1;
-
-				while ( index > 0 ) {
-
-					f /= base;
-					result += f * ( index % base );
-					index = Math.floor( index / base );
-
-				}
-
-				return result;
-
-			}
-
-			// Generate 32 Halton offsets (base 2, 3) - same length as TRAA
-			const _haltonOffsets = Array.from(
-				{ length: 32 },
-				( _, i ) => [ halton( i + 1, 2 ), halton( i + 1, 3 ) ]
-			);
-
 			let renderer, scene, camera;
 			let volumetricMesh, teapot, pointLight, spotLight;
 			let renderPipeline;
-			let temporalOffset, temporalRotation, shaderTime;
+			let shaderTime;
 			let params;
 
 			init();
@@ -159,13 +135,10 @@
 				volumetricMaterial.transparent = true;
 				volumetricMaterial.blending = THREE.AdditiveBlending;
 
-				// Temporal dithering using Interleaved Gradient Noise (IGN) + Halton sequence
-				temporalOffset = uniform( 0 );
-				temporalRotation = uniform( 0 );
 				shaderTime = uniform( 0 );
 
-				const temporalJitter2D = vec2( temporalOffset, temporalRotation );
-				volumetricMaterial.offsetNode = fract( interleavedGradientNoise( screenCoordinate.add( temporalJitter2D.mul( 100 ) ) ).add( temporalOffset ) );
+				// temporal dithering with animated interleaved gradient noise over TRAA's 32 frame jitter cycle
+				volumetricMaterial.offsetNode = animatedInterleavedGradientNoise( screenCoordinate, frameId.mod( 32 ) );
 				volumetricMaterial.scatteringNode = Fn( ( { positionRay } ) => {
 
 					const timeScaled = vec3( shaderTime, 0, shaderTime.mul( .3 ) );
@@ -297,7 +270,6 @@
 
 			}
 
-			let frameCount = 0;
 			let animationTime = 0;
 			let lastTime = performance.now();
 
@@ -306,12 +278,6 @@
 				const currentTime = performance.now();
 				const delta = ( currentTime - lastTime ) * 0.001;
 				lastTime = currentTime;
-
-				// Update temporal uniforms - synced with TRAA's Halton sequence for optimal accumulation
-				const haltonIndex = frameCount % 32;
-				temporalOffset.value = _haltonOffsets[ haltonIndex ][ 0 ];
-				temporalRotation.value = _haltonOffsets[ haltonIndex ][ 1 ];
-				frameCount ++;
 
 				if ( params.animated ) {
 

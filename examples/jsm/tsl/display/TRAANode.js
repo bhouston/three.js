@@ -122,6 +122,15 @@ class TRAANode extends Node {
 		this.useSubpixelCorrection = true;
 
 		/**
+		 * The approximate number of frames the history accumulates. The current frame
+		 * receives at least `1 / historyLength` of the blend weight, so `1` disables the history.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 20
+		 */
+		this.historyLength = uniform( 20 );
+
+		/**
 		 * The jitter index selects the current camera offset value.
 		 *
 		 * @private
@@ -577,7 +586,7 @@ class TRAANode extends Node {
 			// increase the weight towards the current frame under motion
 
 			const motionFactor = uvNode.sub( historyUV ).mul( textureSize ).length().div( this.maxVelocityLength ).saturate();
-			const currentWeight = float( 0.05 ).toVar(); // A minimum weight
+			const currentWeight = this.historyLength.reciprocal().toVar(); // A minimum weight
 
 			if ( this.useSubpixelCorrection ) {
 
@@ -590,7 +599,8 @@ class TRAANode extends Node {
 
 			// Perform neighborhood clipping/clamping. We use variance clipping here.
 
-			const varianceGamma = mix( 0.5, 1, motionFactor.oneMinus().pow2() ); // Reasonable gamma range is [0.75, 2]
+			// a 1σ box at rest clips converged sub-pixel detail, so longer histories lost accuracy
+			const varianceGamma = mix( 0.5, 2, motionFactor.oneMinus().pow2() );
 			const clippedHistoryColor = varianceClipping( positionTexel, currentColor, historyColor, varianceGamma );
 
 			// flicker reduction based on luminance weighing

@@ -102,8 +102,7 @@ export async function init() {
 
 	// Load environment map and model
 	const texture = await new HDRLoader()
-		.setPath( '../examples/textures/equirectangular/' )
-		.loadAsync( 'ferndale_studio_04_1k.hdr' );
+		.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/ferndale-studio-04-1k@1.0.0.hdr?original=true' );
 
 	texture.mapping = THREE.EquirectangularReflectionMapping;
 	scene.environment = texture;
@@ -114,7 +113,7 @@ export async function init() {
 	scene.backgroundBlurriness = 0.65;
 	scene.backgroundIntensity = 0.15;
 
-	prefab = ( await new GLTFLoader().loadAsync( '../examples/models/gltf/ShaderBall.glb' ) ).scene;
+	prefab = ( await new GLTFLoader().loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/shaderball@1.0.0.glb?original=true' ) ).scene;
 	prefab.traverse( ( child ) => {
 
 		if ( child.isMesh ) {

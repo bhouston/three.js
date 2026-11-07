@@ -19,7 +19,7 @@ import {
  *
  * ```js
  * const loader = new IESLoader();
- * const texture = await loader.loadAsync( 'ies/007cfb11e343e2f42e3b476be4ab684e.ies' );
+ * const texture = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/ies-007cfb11e343e2f42e3b476be4@1.0.0.ies?original=true' );
  *
  * const spotLight = new THREE.IESSpotLight( 0xff0000, 500 );
  * spotLight.iesMap = texture;

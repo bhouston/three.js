@@ -85,8 +85,7 @@
 				controls.update();
 
 				new HDRLoader()
-					.setPath( 'textures/equirectangular/' )
-					.load( 'quarry_01_1k.hdr', function ( texture ) {
+					.load( 'https://api.landofassets.com/media/BenHouston3D/three/quarry-01-1k@1.0.0.hdr?original=true', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 
@@ -104,7 +103,7 @@
 
 				useNeedleProgressive( loader, renderer );
 
-				loader.load( 'https://cloud.needle.tools/-/assets/Z23hmXBZ2sPRdk-world/file', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/mobile-home-02@1.0.0.glb?original=true', function ( gltf ) {
 
 					const model = gltf.scene;
 
@@ -125,7 +124,7 @@
 			
 				} );
 
-				loader.load( 'https://cloud.needle.tools/-/assets/Z23hmXBZnlceI-ZnlceI-world/file', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/peachy-balloon-gift@1.0.0.glb?original=true', function ( gltf ) {
 
 					const model = gltf.scene;
 			
@@ -153,7 +152,7 @@
 
 				} );
 
-				loader.load( 'https://cloud.needle.tools/-/assets/Z23hmXBZ21QnG-Z21QnG-product/file', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/the-forgotten-knight@1.0.0.glb?original=true', function ( gltf ) {
 
 					const model = gltf.scene;
 			

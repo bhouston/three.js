@@ -64,7 +64,7 @@
 				//
 
 				const loader = new GLTFLoader();
-				const gltf = await loader.loadAsync( 'models/gltf/DragonAttenuation.glb' );
+				const gltf = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/dragonattenuation@1.0.0.glb?original=true' );
 				const model = gltf.scene.children[ 1 ];
 				model.material = new THREE.MeshStandardNodeMaterial();
 

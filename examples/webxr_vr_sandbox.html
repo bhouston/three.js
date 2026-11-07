@@ -56,8 +56,7 @@
 				scene = new THREE.Scene();
 
 				new HDRLoader()
-					.setPath( 'textures/equirectangular/' )
-					.load( 'moonless_golf_1k.hdr', function ( texture ) {
+					.load( 'https://api.landofassets.com/media/BenHouston3D/three/moonless-golf-1k@1.0.0.hdr?original=true', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 

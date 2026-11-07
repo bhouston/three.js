@@ -63,14 +63,13 @@
 				controls.target.set( 0, 0.2, 0 );
 				controls.update();
 
-				const hdrLoader = new HDRLoader()
-					.setPath( 'textures/equirectangular/' );
+				const hdrLoader = new HDRLoader();
 
-				const gltfLoader = new GLTFLoader().setPath( 'models/gltf/' );
+				const gltfLoader = new GLTFLoader();
 
 				const [ texture, gltf ] = await Promise.all( [
-					hdrLoader.loadAsync( 'venice_sunset_1k.hdr' ),
-					gltfLoader.loadAsync( 'IridescenceLamp.glb' ),
+					hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/venice-sunset-1k@1.0.0.hdr?original=true' ),
+					gltfLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/iridescencelamp@1.0.0.glb?original=true' ),
 				] );
 
 				// environment

@@ -87,7 +87,7 @@
 				const loader = new GLTFLoader();
 				loader.setKTX2Loader( ktx2Loader );
 				loader.setMeshoptDecoder( MeshoptDecoder );
-				loader.load( 'models/gltf/coffeemat.glb', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/coffeemat@1.0.0.glb?original=true', function ( gltf ) {
 
 					const gltfScene = gltf.scene;
 					gltfScene.position.y = - .8;

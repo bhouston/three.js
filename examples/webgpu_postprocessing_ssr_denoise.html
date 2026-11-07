@@ -169,7 +169,7 @@
 			scene = new THREE.Scene();
 
 			const loader = new GLTFLoader();
-			loader.load( 'models/gltf/dungeon_warkarma.glb', function ( gltf ) {
+			loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/dungeon-warkarma@1.0.0.glb?original=true', function ( gltf ) {
 
 				gltf.scene.scale.multiplyScalar( 0.1 );
 
@@ -197,8 +197,8 @@
 			renderer.shadowMap.enabled = true;
 			document.body.appendChild( renderer.domElement );
 
-			const hdrLoader = new HDRLoader().setPath( 'textures/equirectangular/' );
-			const hdrTexture = await hdrLoader.loadAsync( 'quarry_01_1k.hdr' );
+			const hdrLoader = new HDRLoader();
+			const hdrTexture = await hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/quarry-01-1k@1.0.0.hdr?original=true' );
 			hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
 			scene.background = hdrTexture;
 			scene.environment = hdrTexture;

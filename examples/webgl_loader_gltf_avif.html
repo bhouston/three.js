@@ -64,8 +64,7 @@
 
 				const loader = new GLTFLoader();
 				loader.setDRACOLoader( dracoLoader );
-				loader.setPath( 'models/gltf/AVIFTest/' );
-				loader.load( 'forest_house.glb', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/forest-house@1.0.0.glb?original=true', function ( gltf ) {
 
 					scene.add( gltf.scene );
 

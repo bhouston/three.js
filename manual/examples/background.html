@@ -125,7 +125,7 @@ function main() {
 
 	}
 
-	loader.load( 'resources/models/flamingo/Flamingo.glb', ( gltf ) => {
+	loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/flamingo-flamingo@1.0.0.glb?original=true', ( gltf ) => {
 
 		const orig = gltf.scene.children[ 0 ];
 		orig.castShadow = true;

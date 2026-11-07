@@ -77,7 +77,7 @@
 
 			const loader = new GLTFLoader();
 
-			loader.load( './models/gltf/Flower/Flower.glb', function ( gltf ) {
+			loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/flower@1.0.0.glb?original=true', function ( gltf ) {
 
 				const _stemMesh = gltf.scene.getObjectByName( 'Stem' );
 				const _blossomMesh = gltf.scene.getObjectByName( 'Blossom' );

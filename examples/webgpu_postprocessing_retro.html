@@ -146,8 +146,8 @@
 				// Model
 
 				const models = {
-					'Coffee Mug': 'models/gltf/coffeeMug.glb',
-					'Damaged Helmet': 'models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf',
+					'Coffee Mug': 'https://api.landofassets.com/media/BenHouston3D/three/coffeemug@1.0.0.glb?original=true',
+					'Damaged Helmet': 'https://api.landofassets.com/media/BenHouston3D/three/damagedhelmet@1.0.0.glb?original=true',
 				};
 
 				function loadModel( name ) {
@@ -157,8 +157,7 @@
 						if ( environment ) return;
 
 						environment = new HDRLoader()
-							.setPath( 'textures/equirectangular/' )
-							.load( 'venice_sunset_1k.hdr', ( texture ) => {
+							.load( 'https://api.landofassets.com/media/BenHouston3D/three/venice-sunset-1k@1.0.0.hdr?original=true', ( texture ) => {
 
 								texture.mapping = THREE.EquirectangularReflectionMapping;
 								scene.environment = texture;

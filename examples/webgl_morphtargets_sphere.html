@@ -65,7 +65,7 @@
 				scene.add( new THREE.AmbientLight( 0x111111 ) );
 
 				const loader = new GLTFLoader();
-				loader.load( 'models/gltf/AnimatedMorphSphere/glTF/AnimatedMorphSphere.gltf', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/animatedmorphsphere@1.0.0.glb?original=true', function ( gltf ) {
 
 					mesh = gltf.scene.getObjectByName( 'AnimatedMorphSphere' );
 					mesh.rotation.z = Math.PI / 2;

@@ -190,7 +190,6 @@
 				const dracoLoader = new DRACOLoader();
 				const loader = new GLTFLoader();
 				loader.setDRACOLoader( dracoLoader );
-				loader.setPath( 'models/gltf/' );
 
 				// wall-mounted spotlights
 
@@ -504,7 +503,7 @@
 
 				// bust GLB
 
-				const gltf = await loader.loadAsync( 'tennyson-bust.glb' );
+				const gltf = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/tennyson-bust@1.0.0.glb?original=true' );
 				const bust = gltf.scene;
 				bust.rotation.y = Math.PI;
 

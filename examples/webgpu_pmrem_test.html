@@ -133,8 +133,7 @@
 				let radianceMap = null;
 				new HDRLoader()
 					// .setDataType( THREE.FloatType )
-					.setPath( 'textures/equirectangular/' )
-					.load( 'spot1Lux.hdr', function ( texture ) {
+					.load( 'https://api.landofassets.com/media/BenHouston3D/three/spot1lux@1.0.0.hdr?original=true', function ( texture ) {
 
 						radianceMap = pmremGenerator.fromEquirectangular( texture ).texture;
 						pmremGenerator.dispose();

@@ -66,7 +66,7 @@
 
 				renderTarget = new THREE.WebGLRenderTarget( 1024, 512, { type: THREE.HalfFloatType } );
 
-				hdrLoader.load( 'textures/equirectangular/san_giuseppe_bridge_2k.hdr', function ( texture ) {
+				hdrLoader.load( 'https://api.landofassets.com/media/BenHouston3D/three/san-giuseppe-bridge-2k@1.0.0.hdr?original=true', function ( texture ) {
 
 					texture.mapping = THREE.EquirectangularReflectionMapping;
 

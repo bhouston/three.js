@@ -56,11 +56,11 @@
 			// "rotation" turns the model about Y, "lift" raises it off the floor by a fraction of its
 			// height, "distance" scales how far back the camera starts
 			const MODELS = {
-				'Steampunk Camera': { url: 'models/gltf/steampunk_camera.glb' },
-				'Iridescent Dish With Olives': { url: 'models/gltf/IridescentDishWithOlives.glb', rotation: Math.PI / 3, distance: 0.7 },
-				'Anisotropy Barn Lamp': { url: 'models/gltf/AnisotropyBarnLamp.glb', lift: 0.05 },
-				'Venice Mask': { url: 'models/gltf/venice_mask.glb' },
-				'Damaged Helmet': { url: 'models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf' },
+				'Steampunk Camera': { url: 'https://api.landofassets.com/media/BenHouston3D/three/steampunk-camera@1.0.0.glb?original=true' },
+				'Iridescent Dish With Olives': { url: 'https://api.landofassets.com/media/BenHouston3D/three/iridescentdishwitholives@1.0.0.glb?original=true', rotation: Math.PI / 3, distance: 0.7 },
+				'Anisotropy Barn Lamp': { url: 'https://api.landofassets.com/media/BenHouston3D/three/anisotropybarnlamp@1.0.0.glb?original=true', lift: 0.05 },
+				'Venice Mask': { url: 'https://api.landofassets.com/media/BenHouston3D/three/venice-mask@1.0.0.glb?original=true' },
+				'Damaged Helmet': { url: 'https://api.landofassets.com/media/BenHouston3D/three/damagedhelmet@1.0.0.glb?original=true' },
 			};
 
 			let camera, scene, renderer, controls, gui;
@@ -135,7 +135,7 @@
 
 				createGUI();
 
-				const envMap = await new HDRLoader().setPath( 'textures/equirectangular/' ).loadAsync( 'blouberg_sunrise_2_1k.hdr' );
+				const envMap = await new HDRLoader().loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/blouberg-sunrise-2-1k@1.0.0.hdr?original=true' );
 				envMap.mapping = THREE.EquirectangularReflectionMapping;
 				scene.environment = envMap;
 

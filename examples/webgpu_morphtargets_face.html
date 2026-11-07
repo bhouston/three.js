@@ -82,7 +82,7 @@
 				new GLTFLoader()
 					.setKTX2Loader( ktx2Loader )
 					.setMeshoptDecoder( MeshoptDecoder )
-					.load( 'models/gltf/facecap.glb', ( gltf ) => {
+					.load( 'https://api.landofassets.com/media/BenHouston3D/three/facecap@1.0.0.glb?original=true', ( gltf ) => {
 
 						const mesh = gltf.scene.children[ 0 ];
 

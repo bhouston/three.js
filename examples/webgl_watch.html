@@ -89,8 +89,7 @@
 				bloomPass.radius = setting.radius;
 
 				new HDRLoader()
-					.setPath( 'textures/equirectangular/' )
-					.load( 'lobe.hdr', function ( texture ) {
+					.load( 'https://api.landofassets.com/media/BenHouston3D/three/lobe@1.0.0.hdr?original=true', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 						scene.background = texture;
@@ -101,9 +100,9 @@
 
 						// model
 
-						const loader = new GLTFLoader().setPath( 'models/gltf/' );
+						const loader = new GLTFLoader();
 						loader.setDRACOLoader( new DRACOLoader().setDecoderPath( DRACO_GLTF_CONFIG ) );
-						loader.load( 'rolex.glb', function ( gltf ) {
+						loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/rolex@1.0.0.glb?original=true', function ( gltf ) {
 
 							gltf.scene.rotation.x = Math.PI * 0.25;
 

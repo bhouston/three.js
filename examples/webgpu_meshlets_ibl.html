@@ -107,8 +107,8 @@
 
 				// Load assets
 				const [ gltf, envTexture ] = await Promise.all( [
-					new GLTFLoader().loadAsync( 'models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf' ),
-					new UltraHDRLoader().loadAsync( 'textures/equirectangular/royal_esplanade_2k.hdr.jpg' )
+					new GLTFLoader().loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/damagedhelmet@1.0.0.glb?original=true' ),
+					new UltraHDRLoader().loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/royal-esplanade-2k-hdr@1.0.0.jpg?original=true' )
 				] );
 
 				envTexture.mapping = THREE.EquirectangularReflectionMapping;

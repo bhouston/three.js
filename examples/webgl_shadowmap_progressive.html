@@ -161,7 +161,7 @@
 
 				const manager = new THREE.LoadingManager( loadModel );
 				const loader = new GLTFLoader( manager );
-				loader.load( 'models/gltf/ShadowmappableMesh.glb', function ( obj ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/shadowmappablemesh@1.0.0.glb?original=true', function ( obj ) {
 
 					object = obj.scene.children[ 0 ];
 

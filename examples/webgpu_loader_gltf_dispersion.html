@@ -66,7 +66,7 @@
 				renderer.toneMappingExposure = 1;
 				container.appendChild( renderer.domElement );
 
-				const hdrTexture = await new HDRLoader().setPath( 'textures/equirectangular/' ).loadAsync( 'pedestrian_overpass_1k.hdr' );
+				const hdrTexture = await new HDRLoader().loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/pedestrian-overpass-1k@1.0.0.hdr?original=true' );
 				hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
 
 				scene = new THREE.Scene();
@@ -75,7 +75,7 @@
 				scene.background = hdrTexture;
 
 				const loader = new GLTFLoader();
-				const gltf = await loader.loadAsync( 'models/gltf/DispersionTest.glb' );
+				const gltf = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/dispersiontest@1.0.0.glb?original=true' );
 
 				scene.add( gltf.scene );
 

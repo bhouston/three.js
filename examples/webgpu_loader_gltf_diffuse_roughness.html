@@ -76,8 +76,7 @@
 				controls.enableDamping = true;
 			
 				const gltf = await new GLTFLoader()
-					.setPath( 'models/gltf/' )
-					.loadAsync( 'DiffuseRoughnessParameterSweep.glb' );
+					.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/diffuseroughnessparametersweep@1.0.0.glb?original=true' );
 				const model = gltf.scene;
 
 				// The draft sample asset currently uses clockwise triangle winding.

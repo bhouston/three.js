@@ -82,7 +82,7 @@
 				camera.add( pointLight );
 
 				const loader = new GLTFLoader();
-				const gltf = await loader.loadAsync( 'models/gltf/PrimaryIonDrive.glb' );
+				const gltf = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/primaryiondrive@1.0.0.glb?original=true' );
 
 				const model = gltf.scene;
 				scene.add( model );

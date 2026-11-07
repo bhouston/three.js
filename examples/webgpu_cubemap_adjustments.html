@@ -68,14 +68,14 @@
 				// HDR textures
 
 				const hdr1Texture = await new HDRLoader()
-					.loadAsync( './textures/equirectangular/pedestrian_overpass_1k.hdr' );
+					.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/pedestrian-overpass-1k@1.0.0.hdr?original=true' );
 
 				hdr1Texture.mapping = THREE.EquirectangularReflectionMapping;
 				hdr1Texture.generateMipmaps = true;
 				hdr1Texture.minFilter = THREE.LinearMipmapLinearFilter;
 
 				const hdr2Texture = await new HDRLoader()
-					.loadAsync( './textures/equirectangular/752-hdri-skies-com_1k.hdr' );
+					.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/env-752-hdri-skies-com-1k@1.0.0.hdr?original=true' );
 
 				hdr2Texture.mapping = THREE.EquirectangularReflectionMapping;
 				hdr2Texture.generateMipmaps = true;
@@ -124,8 +124,8 @@
 
 				// scene objects
 
-				const loader = new GLTFLoader().setPath( 'models/gltf/DamagedHelmet/glTF/' );
-				const gltf = await loader.loadAsync( 'DamagedHelmet.gltf' );
+				const loader = new GLTFLoader();
+				const gltf = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/damagedhelmet@1.0.0.glb?original=true' );
 
 				scene.add( gltf.scene );
 

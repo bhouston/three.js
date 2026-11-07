@@ -81,11 +81,16 @@
 				loader = new UltraHDRLoader();
 				loader.setDataType( THREE.FloatType );
 
+				const environmentURLs = {
+					'2k': 'https://api.landofassets.com/media/BenHouston3D/three/spruit-sunrise-2k-hdr@1.0.0.jpg?original=true',
+					'4k': 'https://api.landofassets.com/media/BenHouston3D/three/spruit-sunrise-4k-hdr@1.0.0.jpg?original=true',
+				};
+
 				const loadEnvironment = function ( resolution = '2k', type = 'HalfFloatType' ) {
 
 					loader.setDataType( THREE[ type ] );
 
-					loader.load( `textures/equirectangular/spruit_sunrise_${resolution}.hdr.jpg`, function ( texture ) {
+					loader.load( environmentURLs[ resolution ], function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 						texture.needsUpdate = true;

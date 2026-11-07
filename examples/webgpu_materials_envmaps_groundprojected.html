@@ -71,7 +71,7 @@
 				scene = new THREE.Scene();
 
 				const hdrLoader = new HDRLoader();
-				const envMap = await hdrLoader.loadAsync( 'textures/equirectangular/blouberg_sunrise_2_1k.hdr' );
+				const envMap = await hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/blouberg-sunrise-2-1k@1.0.0.hdr?original=true' );
 				envMap.mapping = THREE.EquirectangularReflectionMapping;
 
 				scene.environment = envMap;
@@ -84,7 +84,7 @@
 
 				const shadow = new THREE.TextureLoader().load( 'models/gltf/ferrari_ao.png' );
 
-				loader.load( 'models/gltf/ferrari.glb', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/ferrari@1.0.0.glb?original=true', function ( gltf ) {
 
 					const bodyMaterial = new THREE.MeshPhysicalMaterial( {
 						color: 0x000000, metalness: 1.0, roughness: 0.8,

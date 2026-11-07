@@ -100,9 +100,9 @@
 				controls.maxPolarAngle = Math.PI * 0.35;
 				controls.touches = { TWO: THREE.TOUCH.DOLLY_ROTATE };
 
-				const hdrLoader = new UltraHDRLoader().setPath( 'textures/equirectangular/' );
+				const hdrLoader = new UltraHDRLoader();
 
-				const hdrTexture = await hdrLoader.loadAsync( 'royal_esplanade_2k.hdr.jpg' );
+				const hdrTexture = await hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/royal-esplanade-2k-hdr@1.0.0.jpg?original=true' );
 				hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
 				scene.background = hdrTexture;
 				scene.backgroundBlurriness = 0.5;

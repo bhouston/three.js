@@ -201,8 +201,7 @@
 				scene.add( plane );
 
 				await new HDRLoader()
-					.setPath( 'textures/equirectangular/' )
-					.loadAsync( 'san_giuseppe_bridge_2k.hdr' ).then( ( texture ) => {
+					.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/san-giuseppe-bridge-2k@1.0.0.hdr?original=true' ).then( ( texture ) => {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 

@@ -37,10 +37,10 @@
 			const backgroundPriority = new URLSearchParams( location.search ).get( 'background' ) === 'auto' ? 'auto' : 'low';
 
 			const models = [
-				'BoomBox.glb', 'coffeeMug.glb', 'Stork.glb', 'Flamingo.glb',
-				'Parrot.glb', 'RobotExpressive/RobotExpressive.glb',
-				'DiffuseRoughnessParameterSweep.glb', 'godrays_demo.glb', 'collision-world.glb',
-				'ShadowmappableMesh.glb', 'ShaderBall.glb', 'DispersionTest.glb'
+				'https://api.landofassets.com/media/BenHouston3D/three/boombox@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/coffeemug@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/stork@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/gltf-flamingo@1.0.0.glb?original=true',
+				'https://api.landofassets.com/media/BenHouston3D/three/parrot@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/robotexpressive@1.0.0.glb?original=true',
+				'https://api.landofassets.com/media/BenHouston3D/three/diffuseroughnessparametersweep@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/godrays-demo@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/collision-world@1.0.0.glb?original=true',
+				'https://api.landofassets.com/media/BenHouston3D/three/shadowmappablemesh@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/shaderball@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/dispersiontest@1.0.0.glb?original=true'
 			];
 
 			init();
@@ -77,12 +77,12 @@
 
 				for ( const model of models ) {
 
-					background.load( 'models/gltf/' + model, onBackgroundLoad, undefined, onError );
+					background.load( model, onBackgroundLoad, undefined, onError );
 
 				}
 
 				const hero = new GLTFLoader().setCache( 'reload' );
-				hero.load( 'models/gltf/Horse.glb', onHeroLoad, undefined, onError );
+				hero.load( 'https://api.landofassets.com/media/BenHouston3D/three/horse@1.0.0.glb?original=true', onHeroLoad, undefined, onError );
 
 				updateStatus();
 				render();

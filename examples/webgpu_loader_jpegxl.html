@@ -80,7 +80,7 @@
 			gui.add( renderer, 'toneMappingExposure', 0, 2, 0.01 ).name( 'Exposure' );
 
 			await Promise.all( [
-				addImage( new HDRLoader(), 'Radiance HDR (source)', 'textures/equirectangular/venice_sunset_1k.hdr', - 1.55 ),
+				addImage( new HDRLoader(), 'Radiance HDR (source)', 'https://api.landofassets.com/media/BenHouston3D/three/venice-sunset-1k@1.0.0.hdr?original=true', - 1.55 ),
 				addImage( new JXLLoader(), 'JPEG XL', 'textures/hdr-native/venice_sunset_512.jxl', 1.55 )
 			] );
 			window.addEventListener( 'resize', onWindowResize );

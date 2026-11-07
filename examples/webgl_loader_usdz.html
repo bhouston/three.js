@@ -52,14 +52,13 @@
 
 				scene = new THREE.Scene();
 
-				const hdrLoader = new HDRLoader()
-					.setPath( 'textures/equirectangular/' );
+				const hdrLoader = new HDRLoader();
 
 				const usdzLoader = new USDLoader()
 					.setPath( 'models/usdz/' );
 
 				const [ texture, model ] = await Promise.all( [
-					hdrLoader.loadAsync( 'venice_sunset_1k.hdr' ),
+					hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/venice-sunset-1k@1.0.0.hdr?original=true' ),
 					usdzLoader.loadAsync( 'saeukkang.usdz' ),
 				] );
 

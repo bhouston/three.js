@@ -82,7 +82,7 @@
 			
 				const loader = new GLTFLoader();
 				loader.setDRACOLoader( dracoLoader );
-				const gltf = await loader.loadAsync( 'models/gltf/bath_day.glb' );
+				const gltf = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/bath-day@1.0.0.glb?original=true' );
 
 				model = gltf.scene;
 				scene.add( model );
@@ -94,7 +94,7 @@
 				//
 
 				const hdrLoader = new UltraHDRLoader();
-				const envMap = await hdrLoader.loadAsync( 'textures/equirectangular/spruit_sunrise_2k.hdr.jpg' );
+				const envMap = await hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/spruit-sunrise-2k-hdr@1.0.0.jpg?original=true' );
 				envMap.mapping = THREE.EquirectangularReflectionMapping;
 				scene.environmentRotation.y = Math.PI * - 0.5;
 				scene.environment = envMap;

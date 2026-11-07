@@ -167,7 +167,7 @@
 			new GLTFLoader()
 				.setKTX2Loader( ktx2Loader )
 				.setMeshoptDecoder( MeshoptDecoder )
-				.load( 'models/gltf/facecap.glb', ( gltf ) => {
+				.load( 'https://api.landofassets.com/media/BenHouston3D/three/facecap@1.0.0.glb?original=true', ( gltf ) => {
 
 					// Reparent the head/eyes/teeth and drop the model's own scale rig.
 					const group = gltf.scene.getObjectByName( 'grp_transform' );

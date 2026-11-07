@@ -107,19 +107,17 @@
 				controls.target.set( 0, 0.03, 0 );
 				controls.update();
 
-				const hdrLoader = new HDRLoader()
-					.setPath( 'textures/equirectangular/' );
+				const hdrLoader = new HDRLoader();
 
 				const dracoLoader = new DRACOLoader();
 				dracoLoader.setDecoderPath( DRACO_GLTF_CONFIG );
 
 				const gltfLoader = new GLTFLoader();
 				gltfLoader.setDRACOLoader( dracoLoader );
-				gltfLoader.setPath( 'models/gltf/' );
 
 				const [ texture, gltf ] = await Promise.all( [
-					hdrLoader.loadAsync( 'venice_sunset_1k.hdr' ),
-					gltfLoader.loadAsync( 'venice_mask.glb' ),
+					hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/venice-sunset-1k@1.0.0.hdr?original=true' ),
+					gltfLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/venice-mask@1.0.0.glb?original=true' ),
 				] );
 
 				// environment

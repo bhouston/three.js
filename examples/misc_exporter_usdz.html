@@ -96,8 +96,7 @@
 			
 				gltfLoader.setDRACOLoader( dracoLoader );
 				gltfLoader.setKTX2Loader( ktx2loader );
-				gltfLoader.setPath( 'models/gltf/' );
-				gltfLoader.load( 'CarbonFrameBike.glb', async function ( gltf ) {
+				gltfLoader.load( 'https://api.landofassets.com/media/BenHouston3D/three/carbonframebike@1.0.0.glb?original=true', async function ( gltf ) {
 
 					scene.add( gltf.scene );
 

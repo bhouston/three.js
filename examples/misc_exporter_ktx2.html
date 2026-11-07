@@ -65,7 +65,7 @@
 
 				renderTarget = new THREE.WebGLRenderTarget( 1024, 512, { type: THREE.HalfFloatType } );
 
-				hdrLoader.load( 'textures/equirectangular/venice_sunset_1k.hdr', function ( texture ) {
+				hdrLoader.load( 'https://api.landofassets.com/media/BenHouston3D/three/venice-sunset-1k@1.0.0.hdr?original=true', function ( texture ) {
 
 					texture.mapping = THREE.EquirectangularReflectionMapping;
 

@@ -94,14 +94,12 @@
 			let mesh, material;
 
 			const hdrEquirect = new UltraHDRLoader()
-				.setPath( 'textures/equirectangular/' )
-				.load( 'royal_esplanade_2k.hdr.jpg', function () {
+				.load( 'https://api.landofassets.com/media/BenHouston3D/three/royal-esplanade-2k-hdr@1.0.0.jpg?original=true', function () {
 
 					hdrEquirect.mapping = THREE.EquirectangularReflectionMapping;
 
 					new GLTFLoader()
-						.setPath( 'models/gltf/' )
-						.load( 'DragonAttenuation.glb', function ( gltf ) {
+						.load( 'https://api.landofassets.com/media/BenHouston3D/three/dragonattenuation@1.0.0.glb?original=true', function ( gltf ) {
 
 							gltf.scene.traverse( function ( child ) {
 

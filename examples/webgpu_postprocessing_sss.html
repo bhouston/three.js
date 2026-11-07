@@ -99,7 +99,7 @@
 
 				const loader = new GLTFLoader();
 				loader.setDRACOLoader( dracoLoader );
-				loader.load( 'models/gltf/nemetona.glb', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/nemetona@1.0.0.glb?original=true', function ( gltf ) {
 
 					const model = gltf.scene;
 					model.rotation.y = Math.PI;

@@ -418,9 +418,9 @@
 
 			}
 
-			const loader = new GLTFLoader().setPath( './models/gltf/' );
+			const loader = new GLTFLoader();
 
-			loader.load( 'collision-world.glb', ( gltf ) => {
+			loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/collision-world@1.0.0.glb?original=true', ( gltf ) => {
 
 				scene.add( gltf.scene );
 

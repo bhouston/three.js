@@ -68,7 +68,7 @@
 
 				scene = new THREE.Scene();
 
-				const envMap = await new UltraHDRLoader().loadAsync( 'textures/equirectangular/ice_planet_close.jpg' );
+				const envMap = await new UltraHDRLoader().loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/ice-planet-close@1.0.0.jpg?original=true' );
 
 				envMap.mapping = THREE.EquirectangularReflectionMapping;
 
@@ -81,7 +81,7 @@
 				// model
 
 				const loader = new GLTFLoader();
-				const gltf = await loader.loadAsync( 'models/gltf/space_ship_hallway.glb' );
+				const gltf = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/space-ship-hallway@1.0.0.glb?original=true' );
 
 				const object = gltf.scene;
 

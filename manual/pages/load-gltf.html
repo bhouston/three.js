@@ -99,7 +99,7 @@ mtlLoader.loadMtl('resources/models/windmill/windmill-fixed.mtl', (mtl) =&gt; {
 <p>The new .GLTF code is</p>
 <pre class="prettyprint showlinemods notranslate lang-js" translate="no">{
   const gltfLoader = new GLTFLoader();
-  const url = 'resources/models/cartoon_lowpoly_small_city_free_pack/scene.gltf';
+  const url = 'https://api.landofassets.com/media/BenHouston3D/three/cartoon-lowpoly-small-aea7748f@1.0.0.glb?original=true';
   gltfLoader.load(url, (gltf) =&gt; {
     const root = gltf.scene;
     scene.add(root);
@@ -141,7 +141,7 @@ console</a>.</p>
 </pre>
 <p>And I just called it right after loading the scene.</p>
 <pre class="prettyprint showlinemods notranslate lang-js" translate="no">const gltfLoader = new GLTFLoader();
-gltfLoader.load('resources/models/cartoon_lowpoly_small_city_free_pack/scene.gltf', (gltf) =&gt; {
+gltfLoader.load('https://api.landofassets.com/media/BenHouston3D/three/cartoon-lowpoly-small-aea7748f@1.0.0.glb?original=true', (gltf) =&gt; {
   const root = gltf.scene;
   scene.add(root);
   console.log(dumpObject(root).join('\n'));
@@ -203,7 +203,7 @@ and saved the result.</p>
 <pre class="prettyprint showlinemods notranslate lang-js" translate="no">+let cars;
 {
   const gltfLoader = new GLTFLoader();
-  gltfLoader.load('resources/models/cartoon_lowpoly_small_city_free_pack/scene.gltf', (gltf) =&gt; {
+  gltfLoader.load('https://api.landofassets.com/media/BenHouston3D/three/cartoon-lowpoly-small-aea7748f@1.0.0.glb?original=true', (gltf) =&gt; {
     const root = gltf.scene;
     scene.add(root);
 +    cars = root.getObjectByName('Cars');
@@ -260,7 +260,7 @@ the new <a href="/docs/#api/en/core/Object3D"><code class="notranslate" translat
 +const cars = [];
 {
   const gltfLoader = new GLTFLoader();
-  gltfLoader.load('resources/models/cartoon_lowpoly_small_city_free_pack/scene.gltf', (gltf) =&gt; {
+  gltfLoader.load('https://api.landofassets.com/media/BenHouston3D/three/cartoon-lowpoly-small-aea7748f@1.0.0.glb?original=true', (gltf) =&gt; {
     const root = gltf.scene;
     scene.add(root);
 
@@ -620,7 +620,7 @@ into our latest code.</p>
 <p>Then, after loading, we need to turn on shadows on all the objects.</p>
 <pre class="prettyprint showlinemods notranslate lang-js" translate="no">{
   const gltfLoader = new GLTFLoader();
-  gltfLoader.load('resources/models/cartoon_lowpoly_small_city_free_pack/scene.gltf', (gltf) =&gt; {
+  gltfLoader.load('https://api.landofassets.com/media/BenHouston3D/three/cartoon-lowpoly-small-aea7748f@1.0.0.glb?original=true', (gltf) =&gt; {
     const root = gltf.scene;
     scene.add(root);
 

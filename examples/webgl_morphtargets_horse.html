@@ -77,7 +77,7 @@
 				scene.add( light2 );
 
 				const loader = new GLTFLoader();
-				loader.load( 'models/gltf/Horse.glb', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/horse@1.0.0.glb?original=true', function ( gltf ) {
 
 					mesh = gltf.scene.children[ 0 ];
 					mesh.scale.set( 1.5, 1.5, 1.5 );

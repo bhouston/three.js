@@ -12,7 +12,7 @@ import {
  *
  * ```js
  * const loader = new HDRLoader();
- * const envMap = await loader.loadAsync( 'textures/equirectangular/blouberg_sunrise_2_1k.hdr' );
+ * const envMap = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/blouberg-sunrise-2-1k@1.0.0.hdr?original=true' );
  * envMap.mapping = THREE.EquirectangularReflectionMapping;
  *
  * scene.environment = envMap;

@@ -174,7 +174,7 @@
 
 				const characterColors = { 'Beta_Joints': '#2a2d33', 'Beta_Surface': '#ff5a1f' };
 
-				new GLTFLoader().load( 'models/gltf/Xbot.glb', ( gltf ) => {
+				new GLTFLoader().load( 'https://api.landofassets.com/media/BenHouston3D/three/xbot@1.0.0.glb?original=true', ( gltf ) => {
 
 					model = gltf.scene;
 					model.traverse( ( child ) => {

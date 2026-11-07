@@ -55,7 +55,7 @@
 				// asset
 
 				const loader = new GLTFLoader();
-				const gltf = await loader.loadAsync( 'models/gltf/godrays_demo.glb' );
+				const gltf = await loader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/godrays-demo@1.0.0.glb?original=true' );
 				scene.add( gltf.scene );
 
 				const pillars = gltf.scene.getObjectByName( 'concrete' );

@@ -75,10 +75,10 @@
 				const ktx2Loader = new KTX2Loader()
 					.detectSupport( renderer );
 
-				const loader = new GLTFLoader().setPath( 'models/gltf/' );
+				const loader = new GLTFLoader();
 				loader.setKTX2Loader( ktx2Loader );
 				loader.setMeshoptDecoder( MeshoptDecoder );
-				loader.load( 'coffeemat.glb', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/coffeemat@1.0.0.glb?original=true', function ( gltf ) {
 
 					// coffeemat.glb was produced from the source scene using gltfpack:
 					// gltfpack -i coffeemat/scene.gltf -o coffeemat.glb -cc -tc

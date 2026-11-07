@@ -6,6 +6,18 @@ import { createMaterialXCompileRegistry } from '../../../../examples/jsm/loaders
 import registryData from '../../../../examples/jsm/loaders/materialx/MaterialXNodeInterfaceRegistry.js';
 import { getNodeDefNames } from '../../../../examples/jsm/loaders/materialx/MaterialXNodeDefs.js';
 import { createStrictInterfaceValidator } from '../../../../examples/jsm/loaders/materialx/MaterialXInterfaceValidation.js';
+import { zipSync } from '../../../../examples/jsm/libs/fflate.module.js';
+
+const PNG_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+function createMaterialArchive( filename, bytes ) {
+
+	return zipSync( {
+		'material.mtlx': new TextEncoder().encode( MATERIAL_X.replace( 'texture.test', filename ) ),
+		[ filename ]: bytes,
+	} );
+
+}
 
 const MATERIAL_X = `<?xml version="1.0"?>
 <materialx version="1.39">
@@ -173,7 +185,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( document.textureLoader.crossOrigin, loader.crossOrigin );
 				assert.strictEqual( document.textureLoader.withCredentials, true );
 				assert.strictEqual( document.textureLoader.requestHeader, loader.requestHeader );
-				assert.strictEqual( document.textureLoader.path, 'textures/' );
+				assert.strictEqual( document.path, 'textures/' );
 
 			} );
 
@@ -772,6 +784,110 @@ export default QUnit.module( 'Addons', () => {
 
 				const zero = new MaterialXLoader().parse( MATERIAL_X_DISPLACEMENT.replace( 'value="0.25"', 'value="0"' ) );
 				assert.strictEqual( zero.materials.test_material.positionNode, null, 'Zero displacement leaves the position untouched.' );
+
+			} );
+
+			QUnit.test( 'resolves loose and packaged PNG textures against a remote document URL', async ( assert ) => {
+
+				const png = Uint8Array.from( atob( PNG_DATA_URI.split( ',' )[ 1 ] ), ( character ) => character.charCodeAt( 0 ) );
+
+				for ( const packaged of [ false, true ] ) {
+
+					const requests = [];
+					const manager = new LoadingManager().setURLModifier( ( url ) => {
+
+						requests.push( url );
+						// Keep the loose resource local, including when an incorrect URL is generated.
+						return url.startsWith( 'blob:' ) ? url : PNG_DATA_URI;
+
+					} );
+					const loader = new MaterialXLoader( manager );
+					const input = packaged ? createMaterialArchive( 'texture.png', png ) : MATERIAL_X.replace( 'texture.test', 'texture.png' );
+					const documentURL = `https://example.com/materials/material.mtlx${ packaged ? '.zip' : '' }`;
+					const { document, log } = loader._parseBuffer( input, documentURL );
+
+					await document.waitForResources();
+
+					assert.strictEqual( requests.length, 1, 'The image is requested once.' );
+					if ( packaged ) {
+
+						assert.true( requests[ 0 ].startsWith( 'blob:' ), 'Archive blob URLs are not prefixed with the remote document path.' );
+
+					} else {
+
+						assert.strictEqual( requests[ 0 ], 'https://example.com/materials/texture.png', 'Loose textures retain the document resource path.' );
+
+					}
+
+					assert.strictEqual( log.warnings.length, 0, 'The PNG image decodes successfully.' );
+					const image = document.textureCache.values().next().value.value.image;
+					assert.ok( image instanceof ImageBitmap, 'The PNG is decoded by ImageBitmapLoader.' );
+					assert.strictEqual( image.width, 1, 'The bundled PNG dimensions are retained.' );
+					image.close();
+					loader.dispose();
+
+				}
+
+			} );
+
+			QUnit.test( 'selects packaged HDR, EXR and TIFF handlers using the original filenames', async ( assert ) => {
+
+				for ( const extension of [ 'hdr', 'exr', 'tif', 'tiff' ] ) {
+
+					const manager = new LoadingManager();
+					const textureLoader = new ControlledTextureLoader( manager );
+					manager.addHandler( new RegExp( `\\.${ extension }$`, 'i' ), textureLoader );
+					const loader = new MaterialXLoader( manager );
+					const bytes = new Uint8Array( [ 1, 2, 3, 4 ] );
+					const { document, log, result } = loader._parseBuffer( createMaterialArchive( `texture.${ extension }`, bytes ), 'https://example.com/materials/material.mtlx.zip' );
+
+					assert.strictEqual( textureLoader.pending.length, 1, `The .${ extension } handler receives the archive texture.` );
+					if ( textureLoader.pending.length === 0 ) {
+
+						loader.dispose();
+						continue;
+
+					}
+
+					const url = textureLoader.pending[ 0 ].url;
+					assert.true( url.startsWith( 'blob:' ), 'The handler receives the unprefixed archive blob URL.' );
+					const response = await fetch( url );
+					assert.deepEqual( new Uint8Array( await response.arrayBuffer() ), bytes, 'The handler URL contains the original archived bytes.' );
+
+					const image = { width: 1, height: 1 };
+					textureLoader.succeed( image );
+					await document.waitForResources();
+					assert.ok( findTexture( result.materials.test_material, image ), 'The handler result is assigned to the material.' );
+					assert.strictEqual( log.warnings.length, 0, 'No fallback image decoder is used.' );
+					loader.dispose();
+
+				}
+
+			} );
+
+			QUnit.test( 'selects the SVG image loader before resolving an archive blob URL', async ( assert ) => {
+
+				const loader = new MaterialXLoader();
+				const { document } = loader._parse( '<materialx version="1.39"/>', {
+					path: 'https://example.com/materials/',
+					archiveResolver: () => 'blob:packaged-svg',
+				} );
+				const imageLoader = new ControlledTextureLoader( document.manager );
+				document.imageLoader = imageLoader;
+				const result = document.parse( MATERIAL_X.replace( 'texture.test', 'texture.svg' ) );
+
+				assert.strictEqual( imageLoader.pending.length, 1, 'SVG filenames select ImageLoader even when their resolved URL has no extension.' );
+				if ( imageLoader.pending.length === 1 ) {
+
+					assert.strictEqual( imageLoader.pending[ 0 ].url, 'blob:packaged-svg', 'The SVG blob URL is not prefixed with the document path.' );
+					const image = { width: 1, height: 1 };
+					imageLoader.succeed( image );
+					await document.waitForResources();
+					assert.ok( findTexture( result.materials.test_material, image ), 'The SVG loader result is used by the material.' );
+
+				}
+
+				loader.dispose();
 
 			} );
 

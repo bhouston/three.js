@@ -41,7 +41,7 @@
 			import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
-			const params = { output: 'Split', split: 0.5, animate: true, orbit: false, roughness: 0.18, quality: 0.5, denoise: true, frames: 1, traa: false, traaFrames: 20, reset: resetHistory };
+			const params = { output: 'Split', split: 0.5, animate: true, orbit: false, roughness: 0.18, quality: 0.5, denoise: true, frames: 20, traa: false, traaFrames: 20, reset: resetHistory };
 			const scene = new THREE.Scene();
 			scene.background = new THREE.Color( 0x18212c );
 			const camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 60 );

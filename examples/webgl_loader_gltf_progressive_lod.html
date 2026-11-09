@@ -85,8 +85,7 @@
 				controls.update();
 
 				new HDRLoader()
-					.setPath( 'textures/equirectangular/' )
-					.load( 'quarry_01_1k.hdr', function ( texture ) {
+					.load( 'https://api.landofassets.com/media/BenHouston3D/three/quarry-01-1k@1.0.0.hdr?original=true', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 

@@ -74,6 +74,27 @@
 				referenceDensity: 0
 			};
 
+			const modelURLs = {
+				'DamagedHelmet/glTF/DamagedHelmet.gltf': 'https://api.landofassets.com/media/BenHouston3D/three/damagedhelmet@1.0.0.glb?original=true',
+				'Flamingo.glb': 'https://api.landofassets.com/media/BenHouston3D/three/gltf-flamingo@1.0.0.glb?original=true',
+				'Horse.glb': 'https://api.landofassets.com/media/BenHouston3D/three/horse@1.0.0.glb?original=true',
+				'LeePerrySmith/LeePerrySmith.glb': 'https://api.landofassets.com/media/BenHouston3D/three/leeperrysmith@1.0.0.glb?original=true',
+				'LittlestTokyo.glb': 'https://api.landofassets.com/media/BenHouston3D/three/littlesttokyo@1.0.0.glb?original=true',
+				'Nefertiti/Nefertiti.glb': 'https://api.landofassets.com/media/BenHouston3D/three/nefertiti@1.0.0.glb?original=true',
+				'Parrot.glb': 'https://api.landofassets.com/media/BenHouston3D/three/parrot@1.0.0.glb?original=true',
+				'RobotExpressive/RobotExpressive.glb': 'https://api.landofassets.com/media/BenHouston3D/three/robotexpressive@1.0.0.glb?original=true',
+				'SheenChair.glb': 'https://api.landofassets.com/media/BenHouston3D/three/sheenchair@1.0.0.glb?original=true',
+				'Soldier.glb': 'https://api.landofassets.com/media/BenHouston3D/three/soldier@1.0.0.glb?original=true',
+				'Xbot.glb': 'https://api.landofassets.com/media/BenHouston3D/three/xbot@1.0.0.glb?original=true',
+				'duck.glb': 'https://api.landofassets.com/media/BenHouston3D/three/duck@1.0.0.glb?original=true',
+				'ferrari.glb': 'https://api.landofassets.com/media/BenHouston3D/three/ferrari@1.0.0.glb?original=true',
+				'rolex.glb': 'https://api.landofassets.com/media/BenHouston3D/three/rolex@1.0.0.glb?original=true',
+				'space_ship_hallway.glb': 'https://api.landofassets.com/media/BenHouston3D/three/space-ship-hallway@1.0.0.glb?original=true',
+				'steampunk_camera.glb': 'https://api.landofassets.com/media/BenHouston3D/three/steampunk-camera@1.0.0.glb?original=true',
+				'tennyson-bust.glb': 'https://api.landofassets.com/media/BenHouston3D/three/tennyson-bust@1.0.0.glb?original=true',
+				'venice_mask.glb': 'https://api.landofassets.com/media/BenHouston3D/three/venice-mask@1.0.0.glb?original=true',
+			};
+
 			init().catch( reportError );
 
 			async function init() {
@@ -343,7 +364,7 @@
 
 					try {
 
-						loaded = name.endsWith( '.obj' ) ? await objLoader.loadAsync( `models/gltf/${ name }` ) : ( await loader.loadAsync( `models/gltf/${ name }` ) ).scene;
+						loaded = name.endsWith( '.obj' ) ? await objLoader.loadAsync( `models/gltf/${ name }` ) : ( await loader.loadAsync( modelURLs[ name ] ) ).scene;
 
 					} catch ( error ) {
 

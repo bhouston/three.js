@@ -135,8 +135,7 @@
 				// DEMO
 
 				new HDRLoader()
-					.setPath( 'textures/equirectangular/' )
-					.load( 'lobe.hdr', function ( texture ) {
+					.load( 'https://api.landofassets.com/media/BenHouston3D/three/lobe@1.0.0.hdr?original=true', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 						scene.environment = texture;
@@ -192,7 +191,7 @@
 			function loadModel() {
 
 				const loader = new GLTFLoader();
-				loader.load( 'models/gltf/Soldier.glb', function ( gltf ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/soldier@1.0.0.glb?original=true', function ( gltf ) {
 
 
 					model = gltf.scene;

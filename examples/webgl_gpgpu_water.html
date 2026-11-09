@@ -240,11 +240,11 @@
 				window.addEventListener( 'resize', onWindowResize );
 
 
-				const hdrLoader = new HDRLoader().setPath( './textures/equirectangular/' );
-				const glbloader = new GLTFLoader().setPath( 'models/gltf/' );
+				const hdrLoader = new HDRLoader();
+				const glbloader = new GLTFLoader();
 				glbloader.setDRACOLoader( new DRACOLoader().setDecoderPath( DRACO_GLTF_CONFIG ) );
 
-				const [ env, model ] = await Promise.all( [ hdrLoader.loadAsync( 'blouberg_sunrise_2_1k.hdr' ), glbloader.loadAsync( 'duck.glb' ) ] );
+				const [ env, model ] = await Promise.all( [ hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/blouberg-sunrise-2-1k@1.0.0.hdr?original=true' ), glbloader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/duck@1.0.0.glb?original=true' ) ] );
 				env.mapping = THREE.EquirectangularReflectionMapping;
 				scene.environment = env;
 				scene.background = env;

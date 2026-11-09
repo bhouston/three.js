@@ -483,7 +483,7 @@ class MaterialXNode {
 		const filePrefix = valueInput.getRecursiveAttribute( 'fileprefix' ) || '';
 		const sourceURI = filePrefix + valueInput.value;
 		const resolvedURI = this.materialX.resolveTextureURI( sourceURI );
-		const svgTexture = isSvgUri( resolvedURI );
+		const svgTexture = isSvgUri( sourceURI );
 		const textureSourceNode = this.parent && typeof this.parent.getTextureAddressModes === 'function' ? this.parent : this;
 		const addressModes = textureSourceNode.getTextureAddressModes();
 		const textureCacheKey = `${resolvedURI}|${addressModes.u}|${addressModes.v}`;
@@ -495,15 +495,14 @@ class MaterialXNode {
 		}
 
 		let loader = svgTexture ? this.materialX.imageLoader : this.materialX.textureLoader;
-		let textureURL = resolvedURI;
+		const textureURL = LoaderUtils.resolveURL( resolvedURI, this.materialX.path );
 		if ( resolvedURI && ! svgTexture ) {
 
-			const handler = this.materialX.manager.getHandler( resolvedURI );
+			// Archive blob URLs do not retain the original image extension.
+			const handler = this.materialX.manager.getHandler( sourceURI );
 			if ( handler !== null ) {
 
-				// The built-in loaders carry the document path; handlers do not.
 				loader = handler;
-				textureURL = LoaderUtils.resolveURL( resolvedURI, this.materialX.path );
 
 			}
 
@@ -997,10 +996,8 @@ class MaterialXDocument {
 
 		this.nodesXLib = new Map();
 		this.imageLoader = new ImageLoader( manager );
-		this.imageLoader.setPath( path );
 		this.textureLoader = new ImageBitmapLoader( manager );
 		this.textureLoader.setOptions( { imageOrientation: 'none' } );
-		this.textureLoader.setPath( path );
 		this.textureCache = new Map();
 		this.pendingResources = [];
 		this.nodeResolver = null;

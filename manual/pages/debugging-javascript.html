@@ -95,7 +95,7 @@ way the browser will always get the newest versions of your files.</p>
 the root scene object from <a href="load-gltf.html">the gLTF article</a></p>
 <pre class="prettyprint showlinemods notranslate lang-js" translate="no">  {
     const gltfLoader = new GLTFLoader();
-    gltfLoader.load('resources/models/cartoon_lowpoly_small_city_free_pack/scene.gltf', (gltf) =&gt; {
+    gltfLoader.load('https://api.landofassets.com/media/BenHouston3D/three/cartoon-lowpoly-small-aea7748f@1.0.0.glb?original=true', (gltf) =&gt; {
       const root = gltf.scene;
       scene.add(root);
 +      console.log(root);

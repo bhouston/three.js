@@ -71,12 +71,12 @@
 				controls.maxDistance = 2;
 				controls.update();
 
-				const hdrLoader = new UltraHDRLoader().setPath( 'textures/equirectangular/' );
-				const gltfLoader = new GLTFLoader().setPath( 'models/gltf/' );
+				const hdrLoader = new UltraHDRLoader();
+				const gltfLoader = new GLTFLoader();
 
 				const [ texture, gltf ] = await Promise.all( [
-					hdrLoader.loadAsync( 'royal_esplanade_2k.hdr.jpg' ),
-					gltfLoader.loadAsync( 'AnisotropyBarnLamp.glb' ),
+					hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/royal-esplanade-2k-hdr@1.0.0.jpg?original=true' ),
+					gltfLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/anisotropybarnlamp@1.0.0.glb?original=true' ),
 				] );
 
 				// environment

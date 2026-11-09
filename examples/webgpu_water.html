@@ -71,7 +71,7 @@
 				scene = new THREE.Scene();
 
 				const loader = new UltraHDRLoader();
-				loader.load( 'textures/equirectangular/moonless_golf_2k.hdr.jpg', function ( texture ) {
+				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/moonless-golf-2k-hdr@1.0.0.jpg?original=true', function ( texture ) {
 
 					texture.mapping = THREE.EquirectangularReflectionMapping;
 					texture.needsUpdate = true;
@@ -97,7 +97,7 @@
 				const textureLoader = new THREE.TextureLoader();
 
 				const [ gltf, normalMap0, normalMap1 ] = await Promise.all( [
-					gltfLoader.loadAsync( 'models/gltf/pool.glb' ),
+					gltfLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/pool@1.0.0.glb?original=true' ),
 					textureLoader.loadAsync( 'textures/water/Water_1_M_Normal.jpg' ),
 					textureLoader.loadAsync( 'textures/water/Water_2_M_Normal.jpg' )
 				] );

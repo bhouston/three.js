@@ -287,7 +287,7 @@
 				}
 
 				const gltfLoader = new GLTFLoader();
-				gltfLoader.load( 'models/gltf/Horse.glb', function ( gltf ) {
+				gltfLoader.load( 'https://api.landofassets.com/media/BenHouston3D/three/horse@1.0.0.glb?original=true', function ( gltf ) {
 
 					const mesh = gltf.scene.children[ 0 ];
 					const clip = gltf.animations[ 0 ];

@@ -61,62 +61,60 @@
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
-			const SAMPLE_PATH = 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/';
-			const LOCAL_SAMPLE_PATH = 'materialx/';
-			const samples = [
-				'standard_surface_brass_tiled.mtlx',
-				'standard_surface_brick_procedural.mtlx',
-				'standard_surface_carpaint.mtlx',
+			const samples = {
+				'standard_surface_brass_tiled.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_brass_tiled.mtlx',
+				'standard_surface_brick_procedural.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_brick_procedural.mtlx',
+				'standard_surface_carpaint.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_carpaint.mtlx',
 				//'standard_surface_chess_set.mtlx',
-				'standard_surface_chrome.mtlx',
-				'standard_surface_copper.mtlx',
+				'standard_surface_chrome.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_chrome.mtlx',
+				'standard_surface_copper.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_copper.mtlx',
 				//'standard_surface_default.mtlx',
 				//'standard_surface_glass.mtlx',
 				//'standard_surface_glass_tinted.mtlx',
-				'standard_surface_gold.mtlx',
+				'standard_surface_gold.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_gold.mtlx',
 				//'standard_surface_greysphere.mtlx',
 				//'standard_surface_greysphere_calibration.mtlx',
-				'standard_surface_jade.mtlx',
+				'standard_surface_jade.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_jade.mtlx',
 				//'standard_surface_look_brass_tiled.mtlx',
 				//'standard_surface_look_wood_tiled.mtlx',
-				'standard_surface_marble_solid.mtlx',
-				'standard_surface_metal_brushed.mtlx',
-				'standard_surface_plastic.mtlx',
+				'standard_surface_marble_solid.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_marble_solid.mtlx',
+				'standard_surface_metal_brushed.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_metal_brushed.mtlx',
+				'standard_surface_plastic.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_plastic.mtlx',
 				//'standard_surface_thin_film.mtlx',
-				'standard_surface_velvet.mtlx',
-				'standard_surface_wood_tiled.mtlx'
-			];
+				'standard_surface_velvet.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_velvet.mtlx',
+				'standard_surface_wood_tiled.mtlx': 'https://raw.githubusercontent.com/materialx/MaterialX/main/resources/Materials/Examples/StandardSurface/standard_surface_wood_tiled.mtlx',
+			};
 
-			const localSamples = [
-				'standard_surface_heightnormal.mtlx',
-				'standard_surface_conditional_if_float.mtlx',
-				'standard_surface_image_transform.mtlx',
-				'standard_surface_color3_vec3_cm_test.mtlx',
-				'standard_surface_rotate2d_test.mtlx',
-				'standard_surface_rotate3d_test.mtlx',
-				'standard_surface_heighttonormal_normal_input.mtlx',
-				'standard_surface_roughness_test.mtlx',
-				'standard_surface_opacity_test.mtlx',
-				'standard_surface_opacity_only_test.mtlx',
-				'standard_surface_specular_test.mtlx',
-				'standard_surface_ior_test.mtlx',
-				'standard_surface_combined_test.mtlx',
-				'standard_surface_texture_opacity_test.mtlx',
-				'standard_surface_image_exr_test.mtlx',
-				'standard_surface_image_tiff_test.mtlx',
-				'standard_surface_image_hdr_emission_test.mtlx',
-				'standard_surface_transmission_test.mtlx',
-				'standard_surface_transmission_only_test.mtlx',
-				'standard_surface_transmission_rough.mtlx',
-				'standard_surface_thin_film_rainbow_test.mtlx',
-				'standard_surface_thin_film_ior_clamp_test.mtlx',
-				'standard_surface_sheen_test.mtlx',
-				'gltf_pbr_glass_dispersion.mtlx',
-				'open_pbr_surface_velvet.mtlx',
-				'open_pbr_surface_pearl.mtlx',
-				'open_pbr_surface_honey.mtlx',
-				'displacement.mtlx',
-			];
+			const localSamples = {
+				'standard_surface_heightnormal.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-heightnormal@1.0.0.mtlx.zip?original=true',
+				'standard_surface_conditional_if_float.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-condit-47b932@1.0.0.mtlx.zip?original=true',
+				'standard_surface_image_transform.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-image-dc18b0@1.0.0.mtlx.zip?original=true',
+				'standard_surface_color3_vec3_cm_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-color3-627496@1.0.0.mtlx.zip?original=true',
+				'standard_surface_rotate2d_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-rotate2d-test@1.0.0.mtlx.zip?original=true',
+				'standard_surface_rotate3d_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-rotate3d-test@1.0.0.mtlx.zip?original=true',
+				'standard_surface_heighttonormal_normal_input.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-height-19fbce@1.0.0.mtlx.zip?original=true',
+				'standard_surface_roughness_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-roughn-8a218c@1.0.0.mtlx.zip?original=true',
+				'standard_surface_opacity_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-opacity-test@1.0.0.mtlx.zip?original=true',
+				'standard_surface_opacity_only_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-opacit-8ab8e8@1.0.0.mtlx.zip?original=true',
+				'standard_surface_specular_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-specular-test@1.0.0.mtlx.zip?original=true',
+				'standard_surface_ior_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-ior-test@1.0.0.mtlx.zip?original=true',
+				'standard_surface_combined_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-combined-test@1.0.0.mtlx.zip?original=true',
+				'standard_surface_texture_opacity_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-textur-bcc9ec@1.0.0.mtlx.zip?original=true',
+				'standard_surface_image_exr_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-image-0d5fef@1.0.0.mtlx.zip?original=true',
+				'standard_surface_image_tiff_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-image-320d61@1.0.0.mtlx.zip?original=true',
+				'standard_surface_image_hdr_emission_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-image-126c51@1.0.0.mtlx.zip?original=true',
+				'standard_surface_transmission_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-transm-745a45@1.0.0.mtlx.zip?original=true',
+				'standard_surface_transmission_only_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-transm-2d160d@1.0.0.mtlx.zip?original=true',
+				'standard_surface_transmission_rough.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-transm-7e5f7c@1.0.0.mtlx.zip?original=true',
+				'standard_surface_thin_film_rainbow_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-thin-f-e161a0@1.0.0.mtlx.zip?original=true',
+				'standard_surface_thin_film_ior_clamp_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-thin-f-eb4dda@1.0.0.mtlx.zip?original=true',
+				'standard_surface_sheen_test.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/standard-surface-sheen-test@1.0.0.mtlx.zip?original=true',
+				'gltf_pbr_glass_dispersion.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/gltf-pbr-glass-dispersion@1.0.0.mtlx.zip?original=true',
+				'open_pbr_surface_velvet.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/open-pbr-surface-velvet@1.0.0.mtlx.zip?original=true',
+				'open_pbr_surface_pearl.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/open-pbr-surface-pearl@1.0.0.mtlx.zip?original=true',
+				'open_pbr_surface_honey.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/open-pbr-surface-honey@1.0.0.mtlx.zip?original=true',
+				'displacement.mtlx': 'https://api.landofassets.com/media/BenHouston3D/three/displacement@1.0.0.mtlx.zip?original=true',
+			};
 
 			let camera, scene, renderer;
 			let controls, prefab;
@@ -203,25 +201,24 @@
 				//
 
 				new HDRLoader()
-					.setPath( 'textures/equirectangular/' )
-					.load( 'san_giuseppe_bridge_2k.hdr', async ( texture ) => {
+					.load( 'https://api.landofassets.com/media/BenHouston3D/three/san-giuseppe-bridge-2k@1.0.0.hdr?original=true', async ( texture ) => {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 
 						scene.environment = texture;
 
-						prefab = ( await new GLTFLoader().loadAsync( './models/gltf/ShaderBall.glb' ) ).scene;
+						prefab = ( await new GLTFLoader().loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/shaderball@1.0.0.glb?original=true' ) ).scene;
 						computePrefabTangents();
 
-						for ( const sample of samples ) {
+						for ( const [ sample, url ] of Object.entries( samples ) ) {
 
-							await addSample( sample, SAMPLE_PATH );
+							await addSample( sample, url );
 
 						}
 
-						for ( const sample of localSamples ) {
+						for ( const [ sample, url ] of Object.entries( localSamples ) ) {
 
-							await addSample( sample, LOCAL_SAMPLE_PATH );
+							await addSample( sample, url );
 
 						}
 
@@ -298,7 +295,7 @@
 
 			}
 
-			async function addSample( sample, path ) {
+			async function addSample( sample, url ) {
 
 				const model = prefab.clone();
 
@@ -317,8 +314,7 @@
 				//
 
 				const { materials, log } = await new MaterialXLoader()
-					.setPath( path )
-					.loadAsync( sample, {
+					.loadAsync( url, {
 						uvSpace: 'top-left',
 						interfaceValidator: strictInterfaceValidator,
 						throwOnErrors: false,

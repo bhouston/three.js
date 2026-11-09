@@ -154,8 +154,7 @@
 						render();
 
 						new HDRLoader()
-							.setPath( 'textures/equirectangular/' )
-							.load( 'venice_sunset_1k.hdr', function ( hdrEquirect ) {
+							.load( 'https://api.landofassets.com/media/BenHouston3D/three/venice-sunset-1k@1.0.0.hdr?original=true', function ( hdrEquirect ) {
 
 								hdrEquirect.mapping = THREE.EquirectangularReflectionMapping;
 

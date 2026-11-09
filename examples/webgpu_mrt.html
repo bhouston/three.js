@@ -65,8 +65,7 @@
 				scene = new THREE.Scene();
 
 				new UltraHDRLoader()
-					.setPath( 'textures/equirectangular/' )
-					.load( 'royal_esplanade_2k.hdr.jpg', function ( texture ) {
+					.load( 'https://api.landofassets.com/media/BenHouston3D/three/royal-esplanade-2k-hdr@1.0.0.jpg?original=true', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 
@@ -75,8 +74,8 @@
 
 						// model
 
-						const loader = new GLTFLoader().setPath( 'models/gltf/DamagedHelmet/glTF/' );
-						loader.load( 'DamagedHelmet.gltf', function ( gltf ) {
+						const loader = new GLTFLoader();
+						loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/damagedhelmet@1.0.0.glb?original=true', function ( gltf ) {
 
 							scene.add( gltf.scene );
 

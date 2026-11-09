@@ -186,8 +186,8 @@ class MeshStandardMaterial extends Material {
 		/**
 		 * The texture to create a bump map. The black and white values map to the
 		 * perceived depth in relation to the lights. Bump doesn't actually affect
-		 * the geometry of the object, only the lighting. If a normal map is defined
-		 * this will be ignored.
+		 * the geometry of the object, only the lighting. If a normal map is defined,
+		 * the bump map perturbs the normal produced by the normal map.
 		 *
 		 * `bumpMap` represents non-color data. Any texture assigned must have
 		 * `texture.colorSpace = NoColorSpace` (default).

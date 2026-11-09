@@ -41,7 +41,7 @@
 			import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
-			const params = { output: 'Split', split: 0.5, animate: true, orbit: false, roughness: 0.18, quality: 0.5, denoise: true, frames: 20, traa: false, traaFrames: 20, reset: resetHistory };
+			const params = { output: 'Beauty', traceSource: 'Split', split: 0.5, animate: true, orbit: false, roughness: 0.18, quality: 0.5, denoise: true, frames: 20, traa: false, traaFrames: 20, binaryRefine: true, maxDistance: 20, intensity: 1, thickness: 0.12, luminancePhi: 3 };
 			const scene = new THREE.Scene();
 			scene.background = new THREE.Color( 0x18212c );
 			const camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 60 );
@@ -152,46 +152,58 @@
 			const timer = new THREE.Timer();
 			let time = 0;
 
-			const gui = renderer.inspector.createParameters( 'Reprojection experiment' );
-			gui.add( params, 'output', [ 'Split', 'Current', 'Reprojected', 'Source diff ×10', 'History support', 'SSR Raw', 'SSR Denoised', 'SSR Coverage Raw', 'SSR Coverage Denoised' ] ).name( 'Output' ).onChange( updateOutput );
-			gui.add( params, 'split', 0, 1, 0.01 ).name( 'Split position' ).onChange( value => compareSplit.value = value );
-			gui.add( params, 'animate' ).name( 'Animation' ).onChange( resetHistory );
-			gui.add( params, 'orbit' ).name( 'Orbit camera' ).onChange( resetHistory );
-			gui.add( params, 'roughness', 0.02, 0.8, 0.01 ).name( 'Roughness' ).onChange( value => {
-
-				floor.material.roughness = value;
-				for ( const sphere of spheres ) sphere.material.roughness = value;
-				resetHistory();
-
-			} );
-			gui.add( params, 'quality', 0.1, 1, 0.05 ).name( 'SSR quality' ).onChange( value => {
-
-				for ( const reflection of reflections ) reflection.quality.value = value;
-
-			} );
-			gui.add( params, 'denoise' ).name( 'Denoise' ).onChange( resetHistory );
-			gui.add( params, 'frames', 1, 32, 1 ).name( 'SSR history frames' ).onChange( resetHistory );
-			gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
-			gui.add( params, 'traaFrames', 1, 64, 1 ).name( 'TRAA history frames' ).onChange( () => {
+			const displayGui = renderer.inspector.createParameters( 'Display' );
+			displayGui.add( params, 'output', [ 'Beauty', 'SSR Raw', 'SSR Denoised', 'SSR Coverage Raw', 'SSR Coverage Denoised', 'Source diff ×10', 'History support' ] ).name( 'Output' ).onChange( updateOutput );
+			displayGui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
+			displayGui.add( params, 'traaFrames', 1, 64, 1 ).name( 'TRAA history frames' ).onChange( () => {
 
 				for ( const temporal of temporalPasses ) temporal.maxFrames.value = params.traaFrames;
 
 			} );
-			gui.add( params, 'reset' ).name( 'Reset history' );
+
+			const ssrGui = renderer.inspector.createParameters( 'SSR' );
+			ssrGui.add( params, 'traceSource', [ 'Current frame', 'Previous frame', 'Split' ] ).name( 'Trace source' ).onChange( updateOutput );
+			ssrGui.add( params, 'quality', 0.1, 1, 0.05 ).name( 'Quality' ).onChange( updateParameters );
+			ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
+			ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );
+			ssrGui.add( params, 'intensity', 0, 4, 0.01 ).name( 'Intensity' ).onChange( updateParameters );
+			ssrGui.add( params, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( updateParameters );
+
+			const denoiseGui = renderer.inspector.createParameters( 'Denoising' );
+			denoiseGui.add( params, 'denoise' ).name( 'Enabled' ).onChange( updateParameters );
+			denoiseGui.add( params, 'frames', 1, 32, 1 ).name( 'SSR history frames' ).onChange( updateParameters );
+			denoiseGui.add( params, 'luminancePhi', 0, 10 ).name( 'Luminance phi' ).onChange( updateParameters );
+
+			const sceneGui = renderer.inspector.createParameters( 'Scene' );
+			sceneGui.add( params, 'roughness', 0, 1 ).name( 'Roughness' ).onChange( value => {
+
+				floor.material.roughness = value;
+				for ( const sphere of spheres ) sphere.material.roughness = value;
+
+			} );
+			sceneGui.add( params, 'animate' ).name( 'Animation' );
+			sceneGui.add( params, 'orbit' ).name( 'Orbit camera' );
+			sceneGui.add( params, 'split', 0, 1, 0.01 ).name( 'Split position' ).onChange( value => compareSplit.value = value );
 
 			function updateOutput() {
 
-				for ( const temporal of temporalPasses ) temporal.dispose();
-				temporalPasses.length = 0;
-				const images = results.map( result => {
+				const images = results.map( ( result, index ) => {
 
-					if ( ! params.traa || params.output.startsWith( 'SSR ' ) ) return result;
-					const temporal = traa( result, depth, motion, camera );
+					if ( ! params.traa || params.output !== 'Beauty' ) return result;
+					// Switching the displayed source keeps each source's history.
+					let temporal = temporalPasses[ index ];
+					if ( temporal === undefined ) {
+
+						temporal = traa( result, depth, motion, camera );
+						temporalPasses[ index ] = temporal;
+
+					}
+
 					temporal.maxFrames.value = params.traaFrames;
-					temporalPasses.push( temporal );
 					return temporal;
 
 				} );
+				const weight = params.traceSource === 'Split' ? step( compareSplit, screenUV.x ) : float( params.traceSource === 'Previous frame' ? 1 : 0 );
 				let view;
 				const diagnostic = params.output.startsWith( 'SSR ' );
 				const coverage = params.output.includes( 'Coverage' );
@@ -203,7 +215,7 @@
 						return vec4( coverage ? value.aaa : value.rgb, 1 );
 
 					} );
-					view = mix( values[ 0 ], values[ 1 ], step( compareSplit, screenUV.x ) );
+					view = mix( values[ 0 ], values[ 1 ], weight );
 
 				} else if ( params.output === 'History support' ) {
 
@@ -216,9 +228,8 @@
 
 				} else {
 
-					const weight = params.output === 'Split' ? step( compareSplit, screenUV.x ) : float( params.output === 'Reprojected' ? 1 : 0 );
 					view = mix( images[ 0 ], images[ 1 ], weight );
-					if ( params.output === 'Split' ) {
+					if ( params.traceSource === 'Split' ) {
 
 						const line = step( screenSize.x.reciprocal(), abs( screenUV.x.sub( compareSplit ) ) ).oneMinus();
 						view = mix( view, vec4( 1 ), line );
@@ -236,22 +247,29 @@
 				} )();
 				pipeline.outputColorTransform = ! coverage && params.output !== 'History support';
 				pipeline.needsUpdate = true;
-				document.getElementById( 'view-label' ).textContent = params.output === 'Split' || diagnostic ? `${ params.output } · Left: current frame · Right: previous frame` : params.output;
+				document.getElementById( 'view-label' ).textContent = params.traceSource === 'Split' && ( params.output === 'Beauty' || diagnostic ) ? `${ params.output } · Left: current frame · Right: previous frame` : params.output;
 
 			}
 
-			function resetHistory() {
+			function updateParameters() {
 
-				history.reset();
 				denoiseEnabled.value = Number( params.denoise );
-				for ( const filter of filters ) {
+				for ( const reflection of reflections ) {
 
-					filter.maxFrames.value = params.frames;
-					filter.reset();
+					reflection.quality.value = params.quality;
+					reflection.binaryRefine = params.binaryRefine;
+					reflection.maxDistance.value = params.maxDistance;
+					reflection.intensity.value = params.intensity;
+					reflection.thickness.value = params.thickness;
 
 				}
 
-				updateOutput();
+				for ( const filter of filters ) {
+
+					filter.maxFrames.value = params.frames;
+					filter.luminancePhi.value = params.luminancePhi;
+
+				}
 
 			}
 
@@ -260,10 +278,12 @@
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				resetHistory();
+				history.reset();
+				for ( const filter of filters ) filter.reset();
 
 			} );
-			resetHistory();
+			updateParameters();
+			updateOutput();
 			renderer.setAnimationLoop( animate );
 
 			function animate() {

@@ -1185,7 +1185,8 @@ class SSRNode extends Node {
 			const canRefine = bool( false ).toVar();
 
 			// March from d0 toward d1, looking for an intersection with the depth buffer.
-			Loop( { start: int( 1 ), end: totalStep }, ( { i } ) => {
+			// Include the last stochastic step so a one-step budget still traces the ray.
+			Loop( { start: int( 1 ), end: totalStep, condition: this.stochastic ? '<=' : '<' }, ( { i } ) => {
 
 				// Exponentially-distributed ray parameter, shared by the sample position and ray depth.
 				const s = sampleFraction( float( i ) ).toVar();

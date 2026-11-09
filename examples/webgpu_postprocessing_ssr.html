@@ -62,8 +62,8 @@
 			output: 'Beauty',
 			traa: true,
 			traaFrames: 20,
-			quality: 0.5,
-			traceSource: 'Current frame',
+			steps: 32,
+			traceSource: 'Previous frame',
 			maxFrames: 20,
 			denoise: true,
 			luminancePhi: 3,
@@ -237,7 +237,7 @@
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params, 'traceSource', [ 'Current frame', 'Previous frame' ] ).name( 'Trace source' ).onChange( updateTraceSource );
-			ssrGui.add( params, 'quality', 0.1, 1, 0.05 ).name( 'Ray march quality' ).info( 'One GGX ray per SSR pixel per frame. Sets the march step budget: quality × 64; rays can stop early. Binary refinement adds up to 8 refinement steps.' ).onChange( updateParameters );
+			ssrGui.add( params, 'steps', 1, 64, 1 ).name( 'Steps' ).info( 'Maximum ray-march steps for one GGX ray per SSR pixel per frame. Rays can stop early; binary refinement adds up to 8 refinement steps.' ).onChange( updateParameters );
 			ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 			ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );
 			ssrGui.add( params, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( updateParameters );
@@ -264,7 +264,7 @@
 
 		function updateParameters() {
 
-			ssrPass.quality.value = params.quality;
+			ssrPass.quality.value = params.steps / 64;
 			ssrDenoise.maxFrames.value = params.maxFrames;
 			ssrDenoise.luminancePhi.value = params.luminancePhi;
 			ssrPass.maxDistance.value = params.maxDistance;

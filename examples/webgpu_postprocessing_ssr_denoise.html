@@ -109,9 +109,9 @@
 			roughness: 0.3,
 
 			ssr: {
-				traceSource: 'Current frame',
+				traceSource: 'Previous frame',
 				resolutionScale: 1,
-				quality: 0.25,
+				steps: 16,
 				mirrorBias: 0,
 				maxDistance: 0.4,
 				thickness: 0.1,
@@ -310,7 +310,7 @@
 				updateOutputNode();
 
 			} );
-			ssrGui.add( params.ssr, 'quality', 0.1, 1, 0.05 ).name( 'Ray march quality' ).info( 'One GGX ray per SSR pixel per frame. Sets the march step budget: quality × 64; rays can stop early. Binary refinement adds up to 8 refinement steps.' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'steps', 1, 64, 1 ).name( 'Steps' ).info( 'Maximum ray-march steps for one GGX ray per SSR pixel per frame. Rays can stop early; binary refinement adds up to 8 refinement steps.' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( applyParams );
@@ -356,7 +356,7 @@
 			if ( ! ssrNode ) return;
 
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
-			ssrNode.quality.value = params.ssr.quality;
+			ssrNode.quality.value = params.ssr.steps / 64;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
 			// stepExponent / screenEdgeFadeBlack / binaryRefine are build-time constants: assigning
 			// them recompiles the SSR material (the setters no-op when the value is unchanged).

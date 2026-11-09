@@ -41,7 +41,7 @@
 			import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
-			const params = { output: 'Beauty', traceSource: 'Split', split: 0.5, animate: true, orbit: false, roughness: 0.18, quality: 0.5, denoise: true, frames: 20, traa: false, traaFrames: 20, binaryRefine: true, maxDistance: 20, thickness: 0.12, luminancePhi: 3 };
+			const params = { output: 'Beauty', traceSource: 'Previous frame', split: 0.5, animate: true, orbit: false, roughness: 0.18, steps: 32, denoise: true, frames: 20, traa: false, traaFrames: 20, binaryRefine: true, maxDistance: 20, thickness: 0.12, luminancePhi: 3 };
 			const scene = new THREE.Scene();
 			scene.background = new THREE.Color( 0x18212c );
 			const camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 60 );
@@ -129,7 +129,7 @@
 			const results = [ current, previous ].map( ( source, index ) => {
 
 				const reflection = ssr( source, depth, normal, { camera, stochastic: true, outputCoverage: true, binaryRefine: true, roughnessNode: roughness } );
-				reflection.quality.value = params.quality;
+				reflection.quality.value = params.steps / 64;
 				reflection.maxDistance.value = 20;
 				reflection.thickness.value = 0.12;
 				const texture = reflection.getTextureNode();
@@ -163,7 +163,7 @@
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params, 'traceSource', [ 'Current frame', 'Previous frame', 'Split' ] ).name( 'Trace source' ).onChange( updateOutput );
-			ssrGui.add( params, 'quality', 0.1, 1, 0.05 ).name( 'Ray march quality' ).info( 'One GGX ray per SSR pixel per frame. Sets the march step budget: quality × 64; rays can stop early. Binary refinement adds up to 8 refinement steps.' ).onChange( updateParameters );
+			ssrGui.add( params, 'steps', 1, 64, 1 ).name( 'Steps' ).info( 'Maximum ray-march steps for one GGX ray per SSR pixel per frame. Rays can stop early; binary refinement adds up to 8 refinement steps.' ).onChange( updateParameters );
 			ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 			ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );
 			ssrGui.add( params, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( updateParameters );
@@ -255,7 +255,7 @@
 				denoiseEnabled.value = Number( params.denoise );
 				for ( const reflection of reflections ) {
 
-					reflection.quality.value = params.quality;
+					reflection.quality.value = params.steps / 64;
 					reflection.binaryRefine = params.binaryRefine;
 					reflection.maxDistance.value = params.maxDistance;
 					reflection.thickness.value = params.thickness;

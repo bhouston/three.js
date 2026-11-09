@@ -157,7 +157,6 @@ import './src/loaders/TextureLoader.tests.js';
 
 
 //src/materials
-import './src/materials/BumpMap.tests.js';
 import './src/materials/LineBasicMaterial.tests.js';
 import './src/materials/LineDashedMaterial.tests.js';
 import './src/materials/Material.tests.js';
@@ -167,6 +166,7 @@ import './src/materials/MeshDistanceMaterial.tests.js';
 import './src/materials/MeshLambertMaterial.tests.js';
 import './src/materials/MeshMatcapMaterial.tests.js';
 import './src/materials/MeshNormalMaterial.tests.js';
+import './src/materials/NormalBumpMap.tests.js';
 import './src/materials/MeshPhongMaterial.tests.js';
 import './src/materials/MeshPhysicalMaterial.tests.js';
 import './src/materials/MeshStandardMaterial.tests.js';

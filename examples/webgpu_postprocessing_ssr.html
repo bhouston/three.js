@@ -44,8 +44,12 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, colorSpaceToWorking } from 'three/tsl';
+		import { pass, mrt, output, normalView, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec4, uniform, mix, Fn, context, indirectSpecular, environmentSpecular, pmremTexture, velocity } from 'three/tsl';
+		import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
+		import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
+		import { resolveSSRHitDistance } from 'three/addons/tsl/utils/SpecularHelpers.js';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -55,18 +59,22 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
-			quality: 0.5,
-			blurQuality: 1,
+			output: 'Beauty',
+			traa: true,
+			traaFrames: 20,
+			steps: 32,
+			traceSource: 'Previous frame',
+			maxFrames: 20,
+			denoise: true,
+			luminancePhi: 3,
 			maxDistance: 1,
-			intensity: 1,
 			thickness: 0.03,
-			binaryRefine: false,
-			roughness: 1,
-			enabled: true
+			binaryRefine: true,
+			roughness: 1
 		};
 
 		let camera, scene, model, renderer, renderPipeline, ssrPass;
-		let controls;
+		let controls, radianceHistory, ssrDenoise;
 
 		init();
 
@@ -144,52 +152,73 @@
 
 			renderPipeline = new THREE.RenderPipeline( renderer );
 
-			const scenePass = pass( scene, camera );
-			scenePass.setMRT( mrt( {
-				output: output,
-				normal: packNormalToRGB( normalView ),
-				metalrough: vec2( metalness, roughness ) // pack metalness and roughness into a single attachment
+			const geometryPass = pass( scene, camera );
+			geometryPass.name = 'SSR G-buffer';
+			geometryPass.contextNode = context( { indirectSpecularNode: indirectSpecular( [] ) } );
+			geometryPass.setMRT( mrt( {
+				output: vec4( packNormalToRGB( normalView ), roughness ),
+				velocity
 			} ) );
-
-			const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
-			const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal', ( node ) => {
-
-				return colorSpaceToWorking( node, THREE.SRGBColorSpace );
-
-			} );
-			const scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
-
-				return scenePass.getLinearDepthNode();
-
-			} );
-			const scenePassMetalRough = scenePass.getTextureNode( 'metalrough' ).toInspector( 'Metalness-Roughness' );
-
-			// optional: optimize bandwidth by reducing the texture precision for normals and metal/roughness
-
-			const normalTexture = scenePass.getTexture( 'normal' );
-			normalTexture.type = THREE.UnsignedByteType;
-
-			const metalRoughTexture = scenePass.getTexture( 'metalrough' );
-			metalRoughTexture.type = THREE.UnsignedByteType;
-
-			const sceneNormal = sample( ( uv ) => {
-
-				return unpackRGBToNormal( scenePassNormal.sample( uv ) );
-
-			} );
-
-			//
-
-			ssrPass = ssr( scenePassColor, scenePassDepth, sceneNormal, {
-				metalnessNode: scenePassMetalRough.r,
-				roughnessNode: scenePassMetalRough.g
+			geometryPass.getTexture().type = THREE.UnsignedByteType;
+			const depth = geometryPass.getTextureNode( 'depth' );
+			const packedNormal = geometryPass.getTextureNode();
+			const sceneNormal = sample( coordinate => unpackRGBToNormal( packedNormal.sample( coordinate ).rgb ).normalize() );
+			const surfaceRoughness = sample( coordinate => packedNormal.sample( coordinate ).a );
+			const motion = geometryPass.getTextureNode( 'velocity' );
+			const fallback = environmentSpecular( pmremTexture( scene.environment ) );
+			const scenePass = pass( scene, camera );
+			scenePass.name = 'SSR current lighting';
+			scenePass.contextNode = context( { indirectSpecularNode: indirectSpecular( [ fallback ] ) } );
+			scenePass.setMRT( mrt( { output: vec4( output.rgb, 1 ) } ) );
+			const beautyPass = pass( scene, camera );
+			beautyPass.name = 'SSR resolved beauty';
+			radianceHistory = reprojectedRadiance( beautyPass, depth, sceneNormal, camera );
+			const previousSource = sample( coordinate => radianceHistory.sample( coordinate ) );
+			ssrPass = ssr( scenePass.getTextureNode(), depth, sceneNormal, {
+				camera, stochastic: true, outputCoverage: true, binaryRefine: params.binaryRefine, roughnessNode: surfaceRoughness
 			} ).toInspector( 'SSR' );
+			ssrDenoise = temporalDenoise( ssrPass.getTextureNode(), {
+				camera, depth, normal: sceneNormal, roughness: surfaceRoughness, velocity: motion, coverage: true,
+				hitDistance: sample( coordinate => resolveSSRHitDistance( ssrPass.getHitNode().sample( coordinate ).r, ssrPass.getTextureNode().sample( coordinate ).a ) )
+			} );
+			const filtered = ssrDenoise.getTextureNode();
+			const denoiseEnabled = uniform( 1 );
+			const signal = sample( coordinate => mix( ssrPass.getTextureNode().sample( coordinate ), filtered.sample( coordinate ), denoiseEnabled ) );
+			// Coverage resolves the traced base specular lobe; other lobes use the environment.
+			const screenReflection = query => query.lobe === 'specular' ? signal.sample( screenUV ) : vec4( 0 );
+			const spatialAA = smaa( beautyPass );
+			// Reuse the temporal pass when switching outputs to preserve history.
+			const temporalAA = traa( beautyPass, depth, motion, camera );
+			temporalAA.maxFrames.value = params.traaFrames;
 
-			// blend SSR over beauty (SSR outputs premultiplied color, so use additive blending)
+			function updateTraceSource() {
 
-			const outputNode = smaa( scenePassColor.add( ssrPass.rgb ) );
+				const previous = params.traceSource === 'Previous frame';
+				ssrPass.setColorNode( previous ? previousSource : scenePass.getTextureNode() );
+				beautyPass.contextNode = context( { indirectSpecularNode: indirectSpecular( [ screenReflection, fallback ] ) } );
+				updateOutput();
 
-			renderPipeline.outputNode = outputNode;
+			}
+
+			function updateOutput() {
+
+				const outputNode = params.traa ? temporalAA : spatialAA;
+				const coverage = params.output.includes( 'Coverage' );
+				const value = params.output.endsWith( 'Denoised' ) ? filtered : ssrPass.getTextureNode();
+				const view = params.output === 'Beauty' ? outputNode : vec4( coverage ? value.aaa : value.rgb, 1 );
+				renderPipeline.outputColorTransform = ! coverage;
+				renderPipeline.outputNode = Fn( ( _, builder ) => {
+
+					radianceHistory.build( builder );
+					beautyPass.build( builder );
+					return view;
+
+				} )();
+				renderPipeline.needsUpdate = true;
+
+			}
+
+			updateTraceSource();
 
 			//
 
@@ -201,39 +230,29 @@
 
 			// GUI
 
-			const gui = renderer.inspector.createParameters( 'Settings' );
-			const ssrFolder = gui.addFolder( 'SSR' );
-			ssrFolder.add( params, 'quality', 0, 1 ).onChange( updateParameters );
-			ssrFolder.add( params, 'blurQuality', 1, 3, 1 ).onChange( updateParameters );
-			ssrFolder.add( params, 'maxDistance', 0, 1 ).onChange( updateParameters );
-			ssrFolder.add( params, 'intensity', 0, 1 ).onChange( updateParameters );
-			ssrFolder.add( params, 'thickness', 0, 0.05 ).onChange( updateParameters );
-			ssrFolder.add( params, 'binaryRefine' ).name( 'binary refine' ).onChange( updateParameters );
-			ssrFolder.add( params, 'enabled' ).onChange( () => {
+			const displayGui = renderer.inspector.createParameters( 'Display' );
+			displayGui.add( params, 'output', [ 'Beauty', 'SSR Raw', 'SSR Denoised', 'SSR Coverage Raw', 'SSR Coverage Denoised' ] ).name( 'Output' ).onChange( updateOutput );
+			displayGui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
+			displayGui.add( params, 'traaFrames', 1, 64, 1 ).name( 'TRAA history frames' ).onChange( value => temporalAA.maxFrames.value = value );
 
-				if ( params.enabled === true ) {
+			const ssrGui = renderer.inspector.createParameters( 'SSR' );
+			ssrGui.add( params, 'traceSource', [ 'Current frame', 'Previous frame' ] ).name( 'Trace source' ).onChange( updateTraceSource );
+			ssrGui.add( params, 'steps', 1, 64, 1 ).name( 'Steps' ).info( 'Maximum ray-march steps for one GGX ray per SSR pixel per frame. Rays can stop early; binary refinement adds up to 8 refinement steps.' ).onChange( updateParameters );
+			ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
+			ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );
+			ssrGui.add( params, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( updateParameters );
 
-					renderPipeline.outputNode = outputNode;
+			const denoiseGui = renderer.inspector.createParameters( 'Denoising' );
+			denoiseGui.add( params, 'denoise' ).name( 'Enabled' ).onChange( value => denoiseEnabled.value = Number( value ) );
+			denoiseGui.add( params, 'maxFrames', 1, 32, 1 ).name( 'SSR history frames' ).onChange( updateParameters );
+			denoiseGui.add( params, 'luminancePhi', 0, 10 ).name( 'Luminance phi' ).onChange( updateParameters );
 
-				} else {
+			const sceneGui = renderer.inspector.createParameters( 'Scene' );
+			sceneGui.add( params, 'roughness', 0, 1 ).name( 'Roughness' ).onChange( value => {
 
-					renderPipeline.outputNode = scenePass;
+				model.traverse( object => {
 
-				}
-
-				renderPipeline.needsUpdate = true;
-
-			} );
-			const modelFolder = gui.addFolder( 'Model' );
-			modelFolder.add( params, 'roughness', 0, 1 ).onChange( ( value ) => {
-
-				model.traverse( function ( object ) {
-
-					if ( object.material ) {
-
-						object.material.roughness = value;
-
-					}
+					if ( object.material ) object.material.roughness = value;
 
 				} );
 
@@ -245,12 +264,10 @@
 
 		function updateParameters() {
 
-			ssrPass.quality.value = params.quality;
-			// blurQuality is a build-time constant: assigning it recompiles the blur material
-			// (the setter no-ops when the value is unchanged).
-			ssrPass.blurQuality = params.blurQuality;
+			ssrPass.quality.value = params.steps / 64;
+			ssrDenoise.maxFrames.value = params.maxFrames;
+			ssrDenoise.luminancePhi.value = params.luminancePhi;
 			ssrPass.maxDistance.value = params.maxDistance;
-			ssrPass.intensity.value = params.intensity;
 			ssrPass.thickness.value = params.thickness;
 			// build-time constant: assigning it recompiles the SSR material (setter no-ops if unchanged)
 			ssrPass.binaryRefine = params.binaryRefine;
@@ -258,6 +275,9 @@
 		}
 
 		function onWindowResize() {
+
+			radianceHistory.reset();
+			ssrDenoise.reset();
 
 			camera.aspect = window.innerWidth / window.innerHeight;
 			camera.updateProjectionMatrix();

@@ -41,7 +41,7 @@
 			import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
-			const params = { output: 'Split', split: 0.5, animate: true, orbit: false, roughness: 0.18, quality: 0.5, denoise: true, frames: 1, traa: false, reset: resetHistory };
+			const params = { output: 'Split', split: 0.5, animate: true, orbit: false, roughness: 0.18, quality: 0.5, denoise: true, frames: 1, traa: false, traaFrames: 20, reset: resetHistory };
 			const scene = new THREE.Scene();
 			scene.background = new THREE.Color( 0x18212c );
 			const camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 60 );
@@ -141,16 +141,8 @@
 				reflections.push( reflection );
 				filters.push( filter );
 				const signal = sample( coordinate => mix( texture.sample( coordinate ), filter.getTextureNode().sample( coordinate ), denoiseEnabled ) );
-				const screenReflection = query => Fn( () => {
-
-					const n = normal.sample( screenUV ).transformDirection( uniform( camera.matrixWorld ) );
-					const r = roughness.sample( screenUV );
-					const direction = r.pow4().mix( query.viewDirection.negate().reflect( n ), n ).normalize();
-					const matches = query.roughness.sub( r ).abs().lessThan( 0.01 ).and( query.normal.dot( n ).greaterThan( 0.999 ) ).and( query.direction.dot( direction ).greaterThan( 0.999 ) );
-					const value = signal.sample( screenUV );
-					return vec4( value.rgb, value.a.mul( matches ) );
-
-				} )();
+				// Coverage resolves the traced base specular lobe; other lobes use the environment.
+				const screenReflection = query => query.lobe === 'specular' ? signal.sample( screenUV ) : vec4( 0 );
 				beauties[ index ].contextNode = context( { indirectSpecularNode: indirectSpecular( [ screenReflection, fallback ] ) } );
 				return beauties[ index ].getTextureNode();
 
@@ -161,7 +153,7 @@
 			let time = 0;
 
 			const gui = renderer.inspector.createParameters( 'Reprojection experiment' );
-			gui.add( params, 'output', [ 'Split', 'Current', 'Reprojected', 'Source diff ×10', 'History support' ] ).name( 'Output' ).onChange( updateOutput );
+			gui.add( params, 'output', [ 'Split', 'Current', 'Reprojected', 'Source diff ×10', 'History support', 'SSR Raw', 'SSR Denoised', 'SSR Coverage Raw', 'SSR Coverage Denoised' ] ).name( 'Output' ).onChange( updateOutput );
 			gui.add( params, 'split', 0, 1, 0.01 ).name( 'Split position' ).onChange( value => compareSplit.value = value );
 			gui.add( params, 'animate' ).name( 'Animation' ).onChange( resetHistory );
 			gui.add( params, 'orbit' ).name( 'Orbit camera' ).onChange( resetHistory );
@@ -175,12 +167,16 @@
 			gui.add( params, 'quality', 0.1, 1, 0.05 ).name( 'SSR quality' ).onChange( value => {
 
 				for ( const reflection of reflections ) reflection.quality.value = value;
-				resetHistory();
 
 			} );
 			gui.add( params, 'denoise' ).name( 'Denoise' ).onChange( resetHistory );
-			gui.add( params, 'frames', 1, 32, 1 ).name( 'History frames' ).onChange( resetHistory );
-			gui.add( params, 'traa' ).name( 'TRAA' ).onChange( resetHistory );
+			gui.add( params, 'frames', 1, 32, 1 ).name( 'SSR history frames' ).onChange( resetHistory );
+			gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
+			gui.add( params, 'traaFrames', 1, 64, 1 ).name( 'TRAA history frames' ).onChange( () => {
+
+				for ( const temporal of temporalPasses ) temporal.maxFrames.value = params.traaFrames;
+
+			} );
 			gui.add( params, 'reset' ).name( 'Reset history' );
 
 			function updateOutput() {
@@ -189,14 +185,27 @@
 				temporalPasses.length = 0;
 				const images = results.map( result => {
 
-					if ( ! params.traa ) return result;
+					if ( ! params.traa || params.output.startsWith( 'SSR ' ) ) return result;
 					const temporal = traa( result, depth, motion, camera );
+					temporal.maxFrames.value = params.traaFrames;
 					temporalPasses.push( temporal );
 					return temporal;
 
 				} );
 				let view;
-				if ( params.output === 'History support' ) {
+				const diagnostic = params.output.startsWith( 'SSR ' );
+				const coverage = params.output.includes( 'Coverage' );
+				if ( diagnostic ) {
+
+					const values = ( params.output.endsWith( 'Denoised' ) ? filters : reflections ).map( node => {
+
+						const value = node.getTextureNode();
+						return vec4( coverage ? value.aaa : value.rgb, 1 );
+
+					} );
+					view = mix( values[ 0 ], values[ 1 ], step( compareSplit, screenUV.x ) );
+
+				} else if ( params.output === 'History support' ) {
 
 					view = vec4( vec3( history.sample( screenUV ).a ), 1 );
 
@@ -225,9 +234,9 @@
 					return view;
 
 				} )();
-				pipeline.outputColorTransform = params.output !== 'History support';
+				pipeline.outputColorTransform = ! coverage && params.output !== 'History support';
 				pipeline.needsUpdate = true;
-				document.getElementById( 'view-label' ).textContent = params.output === 'Split' ? 'Left: current radiance · Right: reprojected radiance' : params.output;
+				document.getElementById( 'view-label' ).textContent = params.output === 'Split' || diagnostic ? `${ params.output } · Left: current frame · Right: previous frame` : params.output;
 
 			}
 

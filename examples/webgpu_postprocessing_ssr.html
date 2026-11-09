@@ -44,11 +44,12 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec4, uniform, Fn, context, indirectSpecular, environmentSpecular, pmremTexture, velocity } from 'three/tsl';
+		import { pass, mrt, output, normalView, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec4, Fn, context, indirectSpecular, environmentSpecular, pmremTexture, velocity } from 'three/tsl';
 		import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
 		import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 		import { resolveSSRHitDistance } from 'three/addons/tsl/utils/SpecularHelpers.js';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -58,6 +59,9 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
+			output: 'Beauty',
+			traa: true,
+			traaFrames: 20,
 			quality: 0.5,
 			traceSource: 'Current frame',
 			maxFrames: 8,
@@ -178,17 +182,10 @@
 				hitDistance: sample( coordinate => resolveSSRHitDistance( ssrPass.getHitNode().sample( coordinate ).r, ssrPass.getTextureNode().sample( coordinate ).a ) )
 			} );
 			const filtered = ssrDenoise.getTextureNode();
-			const screenReflection = query => Fn( () => {
-
-				const n = sceneNormal.sample( screenUV ).transformDirection( uniform( camera.matrixWorld ) );
-				const r = surfaceRoughness.sample( screenUV );
-				const direction = r.pow4().mix( query.viewDirection.negate().reflect( n ), n ).normalize();
-				const matches = query.roughness.sub( r ).abs().lessThan( 0.01 ).and( query.normal.dot( n ).greaterThan( 0.999 ) ).and( query.direction.dot( direction ).greaterThan( 0.999 ) );
-				const value = filtered.sample( screenUV );
-				return vec4( value.rgb, value.a.mul( matches ) );
-
-			} )();
-			const outputNode = smaa( beautyPass );
+			// Coverage resolves the traced base specular lobe; other lobes use the environment.
+			const screenReflection = query => query.lobe === 'specular' ? filtered.sample( screenUV ) : vec4( 0 );
+			const spatialAA = smaa( beautyPass );
+			let temporalAA;
 
 			function updateTraceSource() {
 
@@ -197,10 +194,31 @@
 				beautyPass.contextNode = context( { indirectSpecularNode: indirectSpecular( params.enabled ? [ screenReflection, fallback ] : [ fallback ] ) } );
 				radianceHistory.reset();
 				ssrDenoise.reset();
+				updateOutput();
+
+			}
+
+			function updateOutput() {
+
+				temporalAA?.dispose();
+				temporalAA = null;
+				if ( params.traa && params.output === 'Beauty' ) {
+
+					temporalAA = traa( beautyPass, depth, motion, camera );
+					temporalAA.maxFrames.value = params.traaFrames;
+
+				}
+
+				const outputNode = temporalAA || spatialAA;
+				const coverage = params.output.includes( 'Coverage' );
+				const value = params.output.endsWith( 'Denoised' ) ? filtered : ssrPass.getTextureNode();
+				const view = params.output === 'Beauty' ? outputNode : vec4( coverage ? value.aaa : value.rgb, 1 );
+				renderPipeline.outputColorTransform = ! coverage;
 				renderPipeline.outputNode = Fn( ( _, builder ) => {
 
-					if ( previous && params.enabled ) radianceHistory.build( builder );
-					return outputNode;
+					if ( params.traceSource === 'Previous frame' ) radianceHistory.build( builder );
+					beautyPass.build( builder );
+					return view;
 
 				} )();
 				renderPipeline.needsUpdate = true;
@@ -220,10 +238,17 @@
 			// GUI
 
 			const gui = renderer.inspector.createParameters( 'Settings' );
+			gui.add( params, 'output', [ 'Beauty', 'SSR Raw', 'SSR Denoised', 'SSR Coverage Raw', 'SSR Coverage Denoised' ] ).name( 'Output' ).onChange( updateOutput );
+			gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
+			gui.add( params, 'traaFrames', 1, 64, 1 ).name( 'TRAA history frames' ).onChange( () => {
+
+				if ( temporalAA ) temporalAA.maxFrames.value = params.traaFrames;
+
+			} );
 			const ssrFolder = gui.addFolder( 'SSR' );
-			ssrFolder.add( params, 'quality', 0, 1 ).onChange( updateParameters );
+			ssrFolder.add( params, 'quality', 0, 1 ).onChange( value => ssrPass.quality.value = value );
 			ssrFolder.add( params, 'traceSource', [ 'Current frame', 'Previous frame' ] ).name( 'Trace source' ).onChange( updateTraceSource );
-			ssrFolder.add( params, 'maxFrames', 1, 32, 1 ).name( 'History frames' ).onChange( updateParameters );
+			ssrFolder.add( params, 'maxFrames', 1, 32, 1 ).name( 'SSR history frames' ).onChange( updateParameters );
 			ssrFolder.add( params, 'maxDistance', 0, 1 ).onChange( updateParameters );
 			ssrFolder.add( params, 'intensity', 0, 1 ).onChange( updateParameters );
 			ssrFolder.add( params, 'thickness', 0, 0.05 ).onChange( updateParameters );

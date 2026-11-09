@@ -39,11 +39,12 @@ class IndirectSpecularNode extends Node {
 	 * Evaluates the chain for a world-space query.
 	 *
 	 * @param {Object} [query] - The lighting query.
+	 * @param {string} [query.lobe="specular"] - The requested lighting lobe.
 	 * @return {Node<vec4>} Coverage-weighted radiance in RGB and resolved coverage in A.
 	 */
-	sample( { position = positionWorld, normal = normalWorld, viewDirection = cameraPosition.sub( position ).normalize(), direction = viewDirection.negate().reflect( normal ), roughness: roughnessNode = roughness, sampleIndex = float( 0 ) } = {} ) {
+	sample( { position = positionWorld, normal = normalWorld, viewDirection = cameraPosition.sub( position ).normalize(), direction = viewDirection.negate().reflect( normal ), roughness: roughnessNode = roughness, sampleIndex = float( 0 ), lobe = 'specular' } = {} ) {
 
-		const query = { position, normal, viewDirection, direction, roughness: roughnessNode, sampleIndex };
+		const query = { position, normal, viewDirection, direction, roughness: roughnessNode, sampleIndex, lobe };
 
 		return Fn( () => {
 

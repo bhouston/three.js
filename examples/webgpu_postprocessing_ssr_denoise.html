@@ -132,6 +132,7 @@
 
 			post: {
 				traa: true,
+				traaFrames: 20,
 				grading: { toneMapping: 'AgX', exposure: 1.57, gamma: 0.89, contrast: 1.31, saturation: 1 },
 			},
 		};
@@ -246,16 +247,8 @@
 			} );
 			const signal = sample( coordinate => mix( ssrTexture.sample( coordinate ), denoiseNode.getTextureNode().sample( coordinate ), denoiseEnabled ) );
 			denoised = signal.sample( screenUV ).rgb;
-			const screenReflection = query => Fn( () => {
-
-				const n = sceneNormal.sample( screenUV ).transformDirection( uniform( camera.matrixWorld ) );
-				const r = surfaceRoughness.sample( screenUV );
-				const direction = r.pow4().mix( query.viewDirection.negate().reflect( n ), n ).normalize();
-				const matches = query.roughness.sub( r ).abs().lessThan( 0.01 ).and( query.normal.dot( n ).greaterThan( 0.999 ) ).and( query.direction.dot( direction ).greaterThan( 0.999 ) );
-				const value = signal.sample( screenUV );
-				return vec4( value.rgb, value.a.mul( matches ) );
-
-			} )();
+			// Coverage resolves the traced base specular lobe; other lobes use the environment.
+			const screenReflection = query => query.lobe === 'specular' ? signal.sample( screenUV ) : vec4( 0 );
 			beautyPass.contextNode = context( { indirectSpecularNode: indirectSpecular( [ screenReflection, fallback ] ) } );
 			setTraceSource = () => {
 
@@ -293,10 +286,12 @@
 
 			const outputTypes = {
 				Combined: 0,
-				'Denoised SSR': 4,
+				'SSR Raw': 1,
+				'SSR Denoised': 4,
+				'SSR Coverage Raw': 10,
+				'SSR Coverage Denoised': 11,
 				'Compare (Denoise)': OUTPUT_COMPARE_DENOISE,
 				'Compare (Reflections)': OUTPUT_COMPARE_SSR,
-				'SSR (Raw)': 1,
 				'Ray Length': 7
 			};
 
@@ -308,7 +303,7 @@
 
 			} );
 			ssrGui.add( params, 'output', outputTypes ).onChange( updateOutputNode );
-			ssrGui.add( params.ssr, 'quality', 0, 1 ).name( 'quality' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'quality', 0, 1 ).name( 'quality' ).onChange( value => ssrNode.quality.value = value );
 			ssrGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'mirror bias' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'stepExponent', 1, 4, 0.5 ).name( 'step exponent' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'binaryRefine' ).name( 'binary refine' ).onChange( applyParams );
@@ -329,8 +324,13 @@
 			const denoiseGui = renderer.inspector.createParameters( 'Denoise settings' );
 			denoiseGui.add( params.denoise, 'enabled' ).name( 'enabled' ).onChange( applyParams );
 			denoiseGui.add( params.denoise, 'luminancePhi', 0, 10 ).name( 'luminance phi' ).onChange( applyParams );
-			denoiseGui.add( params.denoise, 'maxFrames', 1, 32, 1 ).name( 'History frames' ).onChange( applyParams );
+			denoiseGui.add( params.denoise, 'maxFrames', 1, 32, 1 ).name( 'SSR history frames' ).onChange( applyParams );
 			denoiseGui.add( params.post, 'traa' ).name( 'TRAA' ).onChange( updateOutputNode );
+			denoiseGui.add( params.post, 'traaFrames', 1, 64, 1 ).name( 'TRAA history frames' ).onChange( () => {
+
+				for ( const temporal of temporalPasses ) temporal.maxFrames.value = params.post.traaFrames;
+
+			} );
 
 			// Concise UI for Directional Light controls
 			const lightGui = renderer.inspector.createParameters( 'Light' ).close();
@@ -397,6 +397,7 @@
 			const graded = applyGrading( source );
 			if ( ! params.post.traa ) return graded;
 			const temporal = traa( graded, scenePassDepth, scenePassVelocity, camera );
+			temporal.maxFrames.value = params.post.traaFrames;
 			temporalPasses.push( temporal );
 			return sharpen( temporal, 0 );
 
@@ -426,8 +427,10 @@
 			switch ( params.output ) {
 
 				case 0: node = applyPostProcessing( combinedOutputNode ); break; // Combined
-				case 1: node = applyPostProcessing( vec4( ssrNode.rgb, 1 ) ); break; // SSR (Raw)
-				case 4: node = applyPostProcessing( vec4( denoised, 1 ) ); break; // Denoised SSR
+				case 1: node = applyGrading( vec4( ssrNode.rgb, 1 ) ); break; // SSR (Raw)
+				case 4: node = applyGrading( vec4( denoiseNode.getTextureNode().rgb, 1 ) ); break; // Denoised SSR
+				case 10: node = vec4( ssrNode.getTextureNode().aaa, 1 ); break; // Raw coverage
+				case 11: node = vec4( denoiseNode.getTextureNode().aaa, 1 ); break; // Denoised coverage
 				case 7: node = vec4( ssrNode.getHitNode().rrr, 1 ); break; // Ray Length (Raw)
 				case OUTPUT_COMPARE_DENOISE: { // Compare (denoised | noisy)
 
@@ -451,10 +454,11 @@
 
 			updateCompareHint( params.output );
 
-			postProcessing.outputColorTransform = ! GRADED_OUTPUTS.has( params.output );
+			postProcessing.outputColorTransform = ! GRADED_OUTPUTS.has( params.output ) && params.output !== 10 && params.output !== 11;
 			postProcessing.outputNode = Fn( ( _, builder ) => {
 
 				if ( params.ssr.traceSource === 'Previous frame' ) radianceHistory.build( builder );
+				combinedOutputNode.build( builder );
 				return node;
 
 			} )();

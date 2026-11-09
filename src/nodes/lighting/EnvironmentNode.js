@@ -89,15 +89,15 @@ class EnvironmentNode extends LightingNode {
 		const radianceNormalView = useAnisotropy ? bentNormalView : normalView;
 
 		const specular = builder.context.indirectSpecularNode;
-		const sampleSpecular = ( samplingContext, normal = normalWorld ) => specular
-			? specular.sample( { direction: samplingContext.getUV(), normal, viewDirection: positionViewDirection.transformDirection( cameraWorldMatrix ), roughness: samplingContext.getTextureLevel() } ).rgb
+		const sampleSpecular = ( samplingContext, normal = normalWorld, lobe = 'specular' ) => specular
+			? specular.sample( { direction: samplingContext.getUV(), normal, viewDirection: positionViewDirection.transformDirection( cameraWorldMatrix ), roughness: samplingContext.getTextureLevel(), lobe } ).rgb
 			: envNode.context( samplingContext ).mul( materialEnvIntensity );
 
-		let radiance = isolate( sampleSpecular( createRadianceContext( roughness, radianceNormalView ), radianceNormalView.transformDirection( cameraWorldMatrix ) ) );
+		let radiance = isolate( sampleSpecular( createRadianceContext( roughness, radianceNormalView ), radianceNormalView.transformDirection( cameraWorldMatrix ), useAnisotropy ? 'anisotropy' : 'specular' ) );
 
 		if ( material.useRetroreflection === true || material.retroreflectivity > 0 ) {
 
-			const retroRadiance = isolate( sampleSpecular( createRetroRadianceContext( roughness, radianceNormalView ), radianceNormalView.transformDirection( cameraWorldMatrix ) ) );
+			const retroRadiance = isolate( sampleSpecular( createRetroRadianceContext( roughness, radianceNormalView ), radianceNormalView.transformDirection( cameraWorldMatrix ), 'retroreflection' ) );
 
 			radiance = retroreflectivity.clamp().mix( radiance, retroRadiance );
 
@@ -105,7 +105,7 @@ class EnvironmentNode extends LightingNode {
 
 		// diffuse lighting keeps the environment irradiance, multiple scattering uses the specular chain
 
-		const irradiance = sampleSpecular( createIrradianceContext( normalWorld ) ).mul( Math.PI );
+		const irradiance = sampleSpecular( createIrradianceContext( normalWorld ), normalWorld, 'irradiance' ).mul( Math.PI );
 		const isolateIrradiance = isolate( irradiance );
 
 		let diffuseIrradiance = isolateIrradiance;
@@ -129,7 +129,7 @@ class EnvironmentNode extends LightingNode {
 
 		if ( clearcoatRadiance ) {
 
-			const clearcoatRadianceContext = sampleSpecular( createRadianceContext( clearcoatRoughness, clearcoatNormalView ), clearcoatNormalView.transformDirection( cameraWorldMatrix ) );
+			const clearcoatRadianceContext = sampleSpecular( createRadianceContext( clearcoatRoughness, clearcoatNormalView ), clearcoatNormalView.transformDirection( cameraWorldMatrix ), 'clearcoat' );
 			const isolateClearcoatRadiance = isolate( clearcoatRadianceContext );
 
 			clearcoatRadiance.addAssign( isolateClearcoatRadiance );

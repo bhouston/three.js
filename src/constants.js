@@ -1282,6 +1282,22 @@ export const TangentSpaceNormalMap = 0;
  */
 export const ObjectSpaceNormalMap = 1;
 
+/**
+ * Bump heights are measured in object space.
+ *
+ * @type {number}
+ * @constant
+ */
+export const ObjectSpaceBumpMap = 0;
+
+/**
+ * Bump heights are measured in world space.
+ *
+ * @type {number}
+ * @constant
+ */
+export const WorldSpaceBumpMap = 1;
+
 // Color space string identifiers, matching CSS Color Module Level 4 and WebGPU names where available.
 
 /**

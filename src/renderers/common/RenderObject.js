@@ -3,7 +3,7 @@ import { hashArray, hashString } from '../../nodes/core/NodeUtils.js';
 let _id = 0;
 const _protoKeysCache = new WeakMap();
 const _cacheKeyValues = [ 0, 0, 0, 0, 0 ];
-const _enumProperties = [ 'side', 'blending', 'combine', 'normalMapType' ];
+const _enumProperties = [ 'side', 'blending', 'combine', 'normalMapType', 'bumpMapType' ];
 
 function getKeys( obj ) {
 

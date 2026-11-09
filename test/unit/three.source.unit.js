@@ -157,6 +157,7 @@ import './src/loaders/TextureLoader.tests.js';
 
 
 //src/materials
+import './src/materials/BumpMap.tests.js';
 import './src/materials/LineBasicMaterial.tests.js';
 import './src/materials/LineDashedMaterial.tests.js';
 import './src/materials/Material.tests.js';

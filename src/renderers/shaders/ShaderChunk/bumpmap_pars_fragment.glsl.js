@@ -14,8 +14,7 @@ export default /* glsl */`
 		vec2 dSTdx = dFdx( vBumpMapUv );
 		vec2 dSTdy = dFdy( vBumpMapUv );
 
-		// bumpScale is a height in local units, so it follows the object's scale along the normal
-		float scale = bumpScale * vBumpScale;
+		float scale = bumpScale;
 
 		float Hll = scale * texture2D( bumpMap, vBumpMapUv ).x;
 		float dBx = scale * texture2D( bumpMap, vBumpMapUv + dSTdx ).x - Hll;
@@ -33,13 +32,30 @@ export default /* glsl */`
 		vec3 vSigmaY = dFdy( surf_pos.xyz );
 		vec3 vN = surf_norm; // normalized
 
+		#ifdef USE_BUMPMAP_OBJECTSPACE
+
+			mat3 viewToObject = inverse( vBumpMatrix );
+			vSigmaX = viewToObject * vSigmaX;
+			vSigmaY = viewToObject * vSigmaY;
+			vN = normalize( transpose( vBumpMatrix ) * surf_norm );
+
+		#endif
+
 		vec3 R1 = cross( vSigmaY, vN );
 		vec3 R2 = cross( vN, vSigmaX );
 
 		float fDet = dot( vSigmaX, R1 ) * faceDirection;
 
 		vec3 vGrad = sign( fDet ) * ( dHdxy.x * R1 + dHdxy.y * R2 );
-		return normalize( abs( fDet ) * surf_norm - vGrad );
+		vec3 perturbedNormal = abs( fDet ) * vN - vGrad;
+
+		#ifdef USE_BUMPMAP_OBJECTSPACE
+
+			perturbedNormal = transpose( viewToObject ) * perturbedNormal;
+
+		#endif
+
+		return normalize( perturbedNormal );
 
 	}
 

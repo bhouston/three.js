@@ -1,10 +1,11 @@
 import Node from '../core/Node.js';
 import { uv } from '../accessors/UV.js';
-import { normalLocal, normalView } from '../accessors/Normal.js';
+import { normalView } from '../accessors/Normal.js';
 import { positionView } from '../accessors/Position.js';
-import { modelNormalMatrix } from '../accessors/ModelNode.js';
+import { modelViewMatrix } from '../accessors/ModelNode.js';
+import { ObjectSpaceBumpMap } from '../../constants.js';
 import { faceDirection } from './FrontFacingNode.js';
-import { Fn, nodeProxy, float, vec2 } from '../tsl/TSLBase.js';
+import { Fn, nodeProxy, float, vec2, mat3 } from '../tsl/TSLBase.js';
 
 // Bump Mapping Unparametrized Surfaces on the GPU by Morten S. Mikkelsen
 // https://mmikk.github.io/papers3d/mm_sfgrad_bump.pdf
@@ -90,6 +91,14 @@ class BumpMapNode extends Node {
 		this.scaleNode = scaleNode;
 
 		/**
+		 * The space in which bump heights are measured.
+		 *
+		 * @type {(ObjectSpaceBumpMap|WorldSpaceBumpMap)}
+		 * @default ObjectSpaceBumpMap
+		 */
+		this.bumpMapType = ObjectSpaceBumpMap;
+
+		/**
 		 * The view-space normal to perturb.
 		 *
 		 * @type {Node<vec3>}
@@ -106,11 +115,44 @@ class BumpMapNode extends Node {
 
 		if ( builder.material.wireframe === true ) return this.normalNode;
 
-		// the scale is a height in local units, so it's divided by the object's scale along the normal. The
-		// attribute normal is unit length, and the batch, instance and model transforms stretch it from there
-		const normalScale = float( 1 ).div( modelNormalMatrix.mul( normalLocal ).length() ).toVarying( 'v_bumpScale' );
-		const bumpScale = normalScale.mul( this.scaleNode !== null ? this.scaleNode : 1 );
+		const bumpScale = this.scaleNode !== null ? this.scaleNode : 1;
 		const dHdxy = dHdxy_fwd( { textureNode: this.textureNode, bumpScale } );
+
+		if ( this.bumpMapType === ObjectSpaceBumpMap ) {
+
+			let objectToView = mat3( modelViewMatrix );
+			const transforms = builder.context.geometryTransforms || {};
+
+			if ( transforms.instanceMatrix ) {
+
+				objectToView = objectToView.mul( mat3( transforms.instanceMatrix ) );
+
+			}
+
+			if ( transforms.batchingMatrix ) {
+
+				objectToView = objectToView.mul( mat3( transforms.batchingMatrix ) );
+
+			}
+
+			// Inter-stage matrices must be carried as separate columns in WGSL.
+			objectToView = mat3(
+				objectToView[ 0 ].toVarying(),
+				objectToView[ 1 ].toVarying(),
+				objectToView[ 2 ].toVarying()
+			);
+
+			const viewToObject = objectToView.inverse().toVar();
+			const objectNormal = objectToView.transpose().mul( this.normalNode ).normalize();
+			const perturbedNormal = perturbNormalArb( {
+				surf_pos: viewToObject.mul( positionView ),
+				surf_norm: objectNormal,
+				dHdxy
+			} );
+
+			return viewToObject.transpose().mul( perturbedNormal ).normalize();
+
+		}
 
 		return perturbNormalArb( {
 			surf_pos: positionView,

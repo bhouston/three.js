@@ -792,6 +792,7 @@ class Material extends EventDispatcher {
 
 			data.bumpMap = this.bumpMap.toJSON( meta ).uuid;
 			data.bumpScale = this.bumpScale;
+			data.bumpMapType = this.bumpMapType;
 
 		}
 
@@ -1049,6 +1050,7 @@ class Material extends EventDispatcher {
 
 		if ( json.bumpMap !== undefined ) this.bumpMap = textures[ json.bumpMap ] || null;
 		if ( json.bumpScale !== undefined ) this.bumpScale = json.bumpScale;
+		if ( json.bumpMapType !== undefined ) this.bumpMapType = json.bumpMapType;
 
 		if ( json.normalMap !== undefined ) this.normalMap = textures[ json.normalMap ] || null;
 		if ( json.normalMapType !== undefined ) this.normalMapType = json.normalMapType;

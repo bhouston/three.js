@@ -59,7 +59,8 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, Fn } from 'three/tsl';
+		import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
@@ -91,6 +92,10 @@
 
 		const OUTPUT_COMPARE_DENOISE = 8;
 		const OUTPUT_COMPARE_SSR = 9;
+
+		let radianceHistory;
+		const useReprojectedRadiance = uniform( 0 );
+		const historyParams = { enabled: false };
 
 		const GRADED_OUTPUTS = new Set( [ 0, 1, 3, 4, OUTPUT_COMPARE_DENOISE, OUTPUT_COMPARE_SSR ] );
 
@@ -258,7 +263,16 @@
 
 			const sceneNormal = sample( ( uv ) => unpackRGBToNormal( scenePassNormal.sample( uv ).rgb ) );
 
-			ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
+			radianceHistory = reprojectedRadiance( scenePass, scenePassDepth, sceneNormal, camera );
+			const traceSource = sample( coordinate => {
+
+				const history = radianceHistory.sample( coordinate );
+				return mix( scenePassColor.sample( coordinate ), vec4( history.rgb, 1 ), history.a.mul( useReprojectedRadiance ) );
+
+			} );
+
+			ssrNode = ssr( traceSource, scenePassDepth, sceneNormal, {
+				camera,
 				stochastic: true,
 				diffuseNode: scenePassDiffuseColor,
 				metalnessNode: scenePassDiffuseColor.a,
@@ -293,7 +307,12 @@
 
 			const litColor = scenePassColor.rgb.add( denoisePassBlend.rgb );
 
-			const outputNode = vec4( litColor, 1 );
+			const outputNode = Fn( ( _, builder ) => {
+
+				radianceHistory.build( builder );
+				return vec4( litColor, 1 );
+
+			} )();
 			outputNode.toInspector( 'Combined SSR' );
 			combinedOutputNode = outputNode;
 
@@ -325,6 +344,13 @@
 			};
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR settings' );
+			ssrGui.add( historyParams, 'enabled' ).name( 'Reprojection' ).onChange( value => {
+
+				useReprojectedRadiance.value = Number( value );
+				radianceHistory.reset();
+				denoiseNode.reset();
+
+			} );
 			ssrGui.add( params, 'output', outputTypes ).onChange( updateOutputNode );
 			ssrGui.add( params.ssr, 'quality', 0, 1 ).name( 'quality' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'mirror bias' ).onChange( applyParams );
@@ -335,6 +361,9 @@
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'thickness' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'environmentIntensity', 0, 10 ).name( 'env intensity' ).onChange( applyParams );
 			ssrGui.add( params, 'roughness', 0, 1 ).onChange( ( value ) => {
+
+				radianceHistory.reset();
+				denoiseNode.reset();
 
 				scene.traverse( ( object ) => {
 
@@ -365,6 +394,8 @@
 		}
 
 		function applyParams() {
+
+			radianceHistory?.reset();
 
 			if ( ! ssrNode ) return;
 
@@ -459,12 +490,19 @@
 			updateCompareHint( params.output );
 
 			postProcessing.outputColorTransform = ! GRADED_OUTPUTS.has( params.output );
-			postProcessing.outputNode = node;
+			postProcessing.outputNode = Fn( ( _, builder ) => {
+
+				radianceHistory.build( builder );
+				return node;
+
+			} )();
 			postProcessing.needsUpdate = true;
 
 		}
 
 		function onWindowResize() {
+
+			radianceHistory?.reset();
 
 			camera.aspect = window.innerWidth / window.innerHeight;
 			camera.updateProjectionMatrix();

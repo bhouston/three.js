@@ -31,11 +31,12 @@
 		</script>
 		<script type="module">
 			import * as THREE from 'three/webgpu';
-			import { Fn, abs, color, diffuseColor, float, materialMetalness, materialRoughness, mix, mrt, normalView, output, packNormalToRGB, pass, positionLocal, sample, screenSize, screenUV, step, uniform, unpackRGBToNormal, vec3, vec4, velocity } from 'three/tsl';
+			import { Fn, abs, color, context, indirectSpecular, environmentSpecular, pmremTexture, float, roughness as materialRoughness, mix, mrt, normalView, output, packNormalToRGB, pass, positionLocal, sample, screenSize, screenUV, step, uniform, unpackRGBToNormal, vec3, vec4, velocity } from 'three/tsl';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
+			import { resolveSSRHitDistance } from 'three/addons/tsl/utils/SpecularHelpers.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -47,7 +48,6 @@
 			camera.position.set( 7, 4.8, 9 );
 			const renderer = new THREE.WebGPURenderer();
 			renderer.inspector = new Inspector();
-			renderer.setPixelRatio( Math.min( window.devicePixelRatio, 1.5 ) );
 			renderer.setSize( window.innerWidth, window.innerHeight );
 			renderer.toneMapping = THREE.AgXToneMapping;
 			renderer.toneMappingExposure = 1.2;
@@ -99,48 +99,63 @@
 			controls.autoRotateSpeed = 0.8;
 			controls.update();
 
-			const scenePass = pass( scene, camera );
-			scenePass.setMRT( mrt( {
-				output,
-				normal: vec4( packNormalToRGB( normalView ), materialRoughness ),
-				albedo: vec4( diffuseColor.rgb, materialMetalness ),
-				velocity
-			} ) );
-			scenePass.getTexture( 'normal' ).type = THREE.UnsignedByteType;
-			scenePass.getTexture( 'albedo' ).type = THREE.UnsignedByteType;
-			const current = scenePass.getTextureNode();
-			const depth = scenePass.getTextureNode( 'depth' );
-			const packedNormal = scenePass.getTextureNode( 'normal' );
-			const motion = scenePass.getTextureNode( 'velocity' );
-			const albedo = scenePass.getTextureNode( 'albedo' );
+			const geometryPass = pass( scene, camera );
+			geometryPass.name = 'SSR G-buffer';
+			geometryPass.contextNode = context( { indirectSpecularNode: indirectSpecular( [] ) } );
+			geometryPass.setMRT( mrt( { output: vec4( packNormalToRGB( normalView ), materialRoughness ), velocity } ) );
+			geometryPass.getTexture().type = THREE.UnsignedByteType;
+			const depth = geometryPass.getTextureNode( 'depth' );
+			const packedNormal = geometryPass.getTextureNode();
+			const motion = geometryPass.getTextureNode( 'velocity' );
 			const normal = sample( coordinate => unpackRGBToNormal( packedNormal.sample( coordinate ).rgb ).normalize() );
 			const roughness = sample( coordinate => packedNormal.sample( coordinate ).a );
-			const history = reprojectedRadiance( scenePass, depth, normal, camera );
-			const previous = sample( coordinate => {
+			const fallback = environmentSpecular( pmremTexture( scene.environment ) );
+			const scenePass = pass( scene, camera );
+			scenePass.name = 'SSR current lighting';
+			scenePass.contextNode = context( { indirectSpecularNode: indirectSpecular( [ fallback ] ) } );
+			scenePass.setMRT( mrt( { output: vec4( output.rgb, 1 ) } ) );
+			const current = scenePass.getTextureNode();
+			const beauties = [ pass( scene, camera ), pass( scene, camera ) ];
+			beauties[ 0 ].name = 'Current-source beauty';
+			beauties[ 1 ].name = 'Previous-source beauty';
+			const history = reprojectedRadiance( beauties[ 1 ], depth, normal, camera );
+			const previous = sample( coordinate => history.sample( coordinate ) );
 
-				const value = history.sample( coordinate );
-				return mix( current.sample( coordinate ), vec4( value.rgb, 1 ), value.a );
-
-			} );
 			const denoiseEnabled = uniform( 1 );
 			const compareSplit = uniform( params.split );
 			const reflections = [];
 			const filters = [];
 			const temporalPasses = [];
-			const results = [ current, previous ].map( source => {
+			const results = [ current, previous ].map( ( source, index ) => {
 
-				const reflection = ssr( source, depth, normal, { camera, stochastic: true, binaryRefine: true, metalnessNode: albedo.a, diffuseNode: albedo, roughnessNode: roughness } );
+				const reflection = ssr( source, depth, normal, { camera, stochastic: true, outputCoverage: true, binaryRefine: true, roughnessNode: roughness } );
 				reflection.quality.value = params.quality;
 				reflection.maxDistance.value = 20;
 				reflection.thickness.value = 0.12;
 				const texture = reflection.getTextureNode();
-				const filter = temporalDenoise( texture, { camera, depth, normal, velocity: motion, roughness, hitDistance: sample( coordinate => texture.sample( coordinate ).a ) } );
+				const filter = temporalDenoise( texture, {
+					camera, depth, normal, velocity: motion, roughness, coverage: true,
+					hitDistance: sample( coordinate => resolveSSRHitDistance( reflection.getHitNode().sample( coordinate ).r, texture.sample( coordinate ).a ) )
+				} );
 				filter.maxFrames.value = params.frames;
 				reflections.push( reflection );
 				filters.push( filter );
-				return vec4( current.rgb.add( mix( texture.rgb, filter.getTextureNode().rgb, denoiseEnabled ) ), 1 );
+				const signal = sample( coordinate => mix( texture.sample( coordinate ), filter.getTextureNode().sample( coordinate ), denoiseEnabled ) );
+				const screenReflection = query => Fn( () => {
+
+					const n = normal.sample( screenUV ).transformDirection( uniform( camera.matrixWorld ) );
+					const r = roughness.sample( screenUV );
+					const direction = r.pow4().mix( query.viewDirection.negate().reflect( n ), n ).normalize();
+					const matches = query.roughness.sub( r ).abs().lessThan( 0.01 ).and( query.normal.dot( n ).greaterThan( 0.999 ) ).and( query.direction.dot( direction ).greaterThan( 0.999 ) );
+					const value = signal.sample( screenUV );
+					return vec4( value.rgb, value.a.mul( matches ) );
+
+				} )();
+				beauties[ index ].contextNode = context( { indirectSpecularNode: indirectSpecular( [ screenReflection, fallback ] ) } );
+				return beauties[ index ].getTextureNode();
 
 			} );
+
 			const pipeline = new THREE.RenderPipeline( renderer );
 			const timer = new THREE.Timer();
 			let time = 0;
@@ -187,7 +202,8 @@
 
 				} else if ( params.output === 'Source diff ×10' ) {
 
-					view = vec4( abs( previous.sample( screenUV ).rgb.sub( current.rgb ) ).mul( 10 ), 1 );
+					const value = previous.sample( screenUV );
+					view = vec4( abs( value.rgb.sub( current.rgb ) ).mul( value.a ).mul( 10 ), 1 );
 
 				} else {
 
@@ -205,6 +221,7 @@
 				pipeline.outputNode = Fn( ( _, builder ) => {
 
 					history.build( builder );
+					for ( const beauty of beauties ) beauty.build( builder );
 					return view;
 
 				} )();

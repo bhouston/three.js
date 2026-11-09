@@ -59,7 +59,9 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
+		import { pass, mrt, output, normalView, roughness as materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, velocity, vec4, uniform, mix, step, abs, float, renderOutput, saturation, Fn, context, indirectSpecular, environmentSpecular, pmremTexture } from 'three/tsl';
+		import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
+		import { resolveSSRHitDistance } from 'three/addons/tsl/utils/SpecularHelpers.js';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
@@ -69,25 +71,6 @@
 		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-
-		// Disable env map specular (radiance and clearcoat radiance) for every PBR material
-		// in this scene, since SSR provides the specular reflections instead. Diffuse env
-		// (irradiance) is left untouched. Equivalent to zeroing EnvironmentNode contributions,
-		// but scoped to this example rather than modifying the core library.
-		const _indirectSpecular = THREE.PhysicalLightingModel.prototype.indirectSpecular;
-		THREE.PhysicalLightingModel.prototype.indirectSpecular = function ( builder ) {
-
-			builder.context.radiance = vec3( 0 );
-
-			if ( this.clearcoatRadiance ) {
-
-				this.clearcoatRadiance.assign( vec3( 0 ) );
-
-			}
-
-			_indirectSpecular.call( this, builder );
-
-		};
 
 		const OUTPUT_COMPARE_DENOISE = 8;
 		const OUTPUT_COMPARE_SSR = 9;
@@ -126,6 +109,7 @@
 			roughness: 0.3,
 
 			ssr: {
+				traceSource: 'Current frame',
 				resolutionScale: 1,
 				quality: 0.25,
 				mirrorBias: 0,
@@ -135,10 +119,9 @@
 				maxLuminance: 35,
 				binaryRefine: false,
 				stepExponent: 3,
-				envImportanceSampling: false,
 				screenEdgeFade: 0.2,
 				screenEdgeFadeBlack: false, // for indoor scenes, set to true
-				environmentIntensity: 3.14, // not too sure why exactly, but multiplying by ~PI makes the env map reflections match Blender more
+				environmentIntensity: 1,
 			},
 
 			denoise: {
@@ -148,15 +131,18 @@
 			},
 
 			post: {
+				traa: true,
 				grading: { toneMapping: 'AgX', exposure: 1.57, gamma: 0.89, contrast: 1.31, saturation: 1 },
 			},
 		};
 
 		let camera, scene, model, renderer, postProcessing, ssrNode, denoiseNode, denoised;
-		let controls;
+		let controls, radianceHistory, setTraceSource;
+		const environmentIntensity = uniform( params.ssr.environmentIntensity );
 		let scenePassNode, combinedOutputNode, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 		const denoiseEnabled = uniform( 1 );
+		const temporalPasses = [];
 
 		init();
 
@@ -227,75 +213,65 @@
 
 			postProcessing = new THREE.RenderPipeline( renderer );
 
-			const scenePass = pass( scene, camera );
-			scenePassNode = scenePass;
-			scenePass.setMRT( mrt( {
-				output: output,
-				// Store base color (albedo) in RGB + metalness in alpha. The albedo is needed for
-				// metal Fresnel f0; do NOT bake in the (1-metalness) diffuse attenuation here, as
-				// that zeroes metals and destroys their specular tint (f0 would become 0 → black).
-				diffuseColor: vec4( diffuseColor.rgb, materialMetalness ),
-				// Pack roughness into normal alpha channel to save MRT bandwidth
-				normal: vec4( packNormalToRGB( normalView ).rgb, materialRoughness ),
-				velocity: velocity
+			const geometryPass = pass( scene, camera );
+			geometryPass.name = 'SSR G-buffer';
+			geometryPass.contextNode = context( { indirectSpecularNode: indirectSpecular( [] ) } );
+			geometryPass.setMRT( mrt( {
+				output: vec4( packNormalToRGB( normalView ), materialRoughness ),
+				velocity
 			} ) );
-
-			const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
-			const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal' );
-			scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
-
-				return scenePass.getLinearDepthNode();
-
-			} );
-			scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
-			const scenePassDiffuseColor = scenePass.getTextureNode( 'diffuseColor' ).toInspector( 'Diffuse Color' );
-
-			const normalTexture = scenePass.getTexture( 'normal' );
-			normalTexture.type = THREE.UnsignedByteType;
-
-			const diffuseTexture = scenePass.getTexture( 'diffuseColor' );
-			diffuseTexture.type = THREE.UnsignedByteType;
-
-			const sceneNormal = sample( ( uv ) => unpackRGBToNormal( scenePassNormal.sample( uv ).rgb ) );
-
-			ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
-				stochastic: true,
-				diffuseNode: scenePassDiffuseColor,
-				metalnessNode: scenePassDiffuseColor.a,
-				roughnessNode: scenePassNormal.a,
-				environmentNode: hdrTexture,
-				envImportanceSampling: params.ssr.envImportanceSampling,
-				binaryRefine: params.ssr.binaryRefine
+			geometryPass.getTexture().type = THREE.UnsignedByteType;
+			const scenePassNormal = geometryPass.getTextureNode();
+			scenePassDepth = geometryPass.getTextureNode( 'depth' );
+			scenePassVelocity = geometryPass.getTextureNode( 'velocity' );
+			const sceneNormal = sample( coordinate => unpackRGBToNormal( scenePassNormal.sample( coordinate ).rgb ).normalize() );
+			const surfaceRoughness = sample( coordinate => scenePassNormal.sample( coordinate ).a );
+			const fallback = environmentSpecular( pmremTexture( scene.environment ), environmentIntensity );
+			const scenePass = pass( scene, camera );
+			scenePass.name = 'SSR current lighting';
+			scenePass.contextNode = context( { indirectSpecularNode: indirectSpecular( [ fallback ] ) } );
+			scenePass.setMRT( mrt( { output: vec4( output.rgb, 1 ) } ) );
+			scenePassNode = scenePass;
+			const beautyPass = pass( scene, camera );
+			beautyPass.name = 'SSR resolved beauty';
+			radianceHistory = reprojectedRadiance( beautyPass, scenePassDepth, sceneNormal, camera );
+			const previousSource = sample( coordinate => radianceHistory.sample( coordinate ) );
+			ssrNode = ssr( scenePass.getTextureNode(), scenePassDepth, sceneNormal, {
+				camera, stochastic: true, outputCoverage: true, roughnessNode: surfaceRoughness, binaryRefine: params.ssr.binaryRefine
 			} ).toInspector( 'SSR' );
-
-			// the reflections are accumulated in time and filtered within the footprint of their reflection lobe,
-			// with the roughness of the scene and the ray length of each pixel ( SSR alpha channel )
-
 			const ssrTexture = ssrNode.getTextureNode();
-
 			denoiseNode = temporalDenoise( ssrTexture, {
-				depth: scenePassDepth,
-				normal: sceneNormal,
-				camera,
-				velocity: scenePassVelocity,
-				roughness: sample( ( uv ) => scenePassNormal.sample( uv ).a ),
-				hitDistance: sample( ( uv ) => ssrTexture.sample( uv ).a )
+				depth: scenePassDepth, normal: sceneNormal, camera, velocity: scenePassVelocity, roughness: surfaceRoughness, coverage: true,
+				hitDistance: sample( coordinate => resolveSSRHitDistance( ssrNode.getHitNode().sample( coordinate ).r, ssrTexture.sample( coordinate ).a ) )
 			} );
-			denoised = mix( ssrNode.rgb, denoiseNode.getTextureNode().rgb, denoiseEnabled ).toInspector( 'Denoise' );
-			// feed the denoised result + velocity back into SSR for multi-bounce reflections
-			ssrNode.setHistory( denoiseNode.getTexture(), scenePassVelocity );
+			const signal = sample( coordinate => mix( ssrTexture.sample( coordinate ), denoiseNode.getTextureNode().sample( coordinate ), denoiseEnabled ) );
+			denoised = signal.sample( screenUV ).rgb;
+			const screenReflection = query => Fn( () => {
 
-			const denoisePassBlend = vec4( denoised, ssrNode.a.greaterThan( 0 ).toVar() );
+				const n = sceneNormal.sample( screenUV ).transformDirection( uniform( camera.matrixWorld ) );
+				const r = surfaceRoughness.sample( screenUV );
+				const direction = r.pow4().mix( query.viewDirection.negate().reflect( n ), n ).normalize();
+				const matches = query.roughness.sub( r ).abs().lessThan( 0.01 ).and( query.normal.dot( n ).greaterThan( 0.999 ) ).and( query.direction.dot( direction ).greaterThan( 0.999 ) );
+				const value = signal.sample( screenUV );
+				return vec4( value.rgb, value.a.mul( matches ) );
+
+			} )();
+			beautyPass.contextNode = context( { indirectSpecularNode: indirectSpecular( [ screenReflection, fallback ] ) } );
+			setTraceSource = () => {
+
+				ssrNode.setColorNode( params.ssr.traceSource === 'Previous frame' ? previousSource : scenePass.getTextureNode() );
+				radianceHistory.reset();
+				denoiseNode.reset();
+
+			};
+
+			setTraceSource();
 
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );
 			saturationUniform = uniform( params.post.grading.saturation );
 
-			const litColor = scenePassColor.rgb.add( denoisePassBlend.rgb );
-
-			const outputNode = vec4( litColor, 1 );
-			outputNode.toInspector( 'Combined SSR' );
-			combinedOutputNode = outputNode;
+			combinedOutputNode = beautyPass.getTextureNode().toInspector( 'Combined SSR' );
 
 			postProcessing.outputNode = applyPostProcessing( combinedOutputNode );
 			postProcessing.outputColorTransform = false;
@@ -325,6 +301,12 @@
 			};
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR settings' );
+			ssrGui.add( params.ssr, 'traceSource', [ 'Current frame', 'Previous frame' ] ).name( 'Trace source' ).onChange( () => {
+
+				setTraceSource();
+				updateOutputNode();
+
+			} );
 			ssrGui.add( params, 'output', outputTypes ).onChange( updateOutputNode );
 			ssrGui.add( params.ssr, 'quality', 0, 1 ).name( 'quality' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'mirror bias' ).onChange( applyParams );
@@ -347,7 +329,8 @@
 			const denoiseGui = renderer.inspector.createParameters( 'Denoise settings' );
 			denoiseGui.add( params.denoise, 'enabled' ).name( 'enabled' ).onChange( applyParams );
 			denoiseGui.add( params.denoise, 'luminancePhi', 0, 10 ).name( 'luminance phi' ).onChange( applyParams );
-			denoiseGui.add( params.denoise, 'maxFrames', 1, 32, 1 ).name( 'max frames' ).onChange( applyParams );
+			denoiseGui.add( params.denoise, 'maxFrames', 1, 32, 1 ).name( 'History frames' ).onChange( applyParams );
+			denoiseGui.add( params.post, 'traa' ).name( 'TRAA' ).onChange( updateOutputNode );
 
 			// Concise UI for Directional Light controls
 			const lightGui = renderer.inspector.createParameters( 'Light' ).close();
@@ -366,6 +349,9 @@
 
 		function applyParams() {
 
+			radianceHistory?.reset();
+			denoiseNode?.reset();
+
 			if ( ! ssrNode ) return;
 
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
@@ -381,7 +367,7 @@
 			ssrNode.maxLuminance.value = params.ssr.maxLuminance;
 			ssrNode.screenEdgeFade.value = params.ssr.screenEdgeFade;
 			ssrNode.screenEdgeFadeBlack = params.ssr.screenEdgeFadeBlack;
-			ssrNode.environmentIntensity.value = params.ssr.environmentIntensity;
+			environmentIntensity.value = params.ssr.environmentIntensity;
 
 			if ( denoiseNode ) {
 
@@ -408,7 +394,11 @@
 
 		function applyPostProcessing( source ) {
 
-			return sharpen( traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera ), 0 );
+			const graded = applyGrading( source );
+			if ( ! params.post.traa ) return graded;
+			const temporal = traa( graded, scenePassDepth, scenePassVelocity, camera );
+			temporalPasses.push( temporal );
+			return sharpen( temporal, 0 );
 
 		}
 
@@ -428,6 +418,9 @@
 
 			if ( ! postProcessing ) return;
 
+			for ( const temporal of temporalPasses ) temporal.dispose();
+			temporalPasses.length = 0;
+
 			let node;
 
 			switch ( params.output ) {
@@ -435,7 +428,7 @@
 				case 0: node = applyPostProcessing( combinedOutputNode ); break; // Combined
 				case 1: node = applyPostProcessing( vec4( ssrNode.rgb, 1 ) ); break; // SSR (Raw)
 				case 4: node = applyPostProcessing( vec4( denoised, 1 ) ); break; // Denoised SSR
-				case 7: node = vec4( ssrNode.aaa, 1 ); break; // Ray Length (Raw)
+				case 7: node = vec4( ssrNode.getHitNode().rrr, 1 ); break; // Ray Length (Raw)
 				case OUTPUT_COMPARE_DENOISE: { // Compare (denoised | noisy)
 
 					const noisySSR = applyPostProcessing( vec4( ssrNode.rgb, 1 ) );
@@ -459,12 +452,20 @@
 			updateCompareHint( params.output );
 
 			postProcessing.outputColorTransform = ! GRADED_OUTPUTS.has( params.output );
-			postProcessing.outputNode = node;
+			postProcessing.outputNode = Fn( ( _, builder ) => {
+
+				if ( params.ssr.traceSource === 'Previous frame' ) radianceHistory.build( builder );
+				return node;
+
+			} )();
 			postProcessing.needsUpdate = true;
 
 		}
 
 		function onWindowResize() {
+
+			radianceHistory.reset();
+			denoiseNode.reset();
 
 			camera.aspect = window.innerWidth / window.innerHeight;
 			camera.updateProjectionMatrix();

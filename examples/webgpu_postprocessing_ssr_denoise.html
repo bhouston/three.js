@@ -114,7 +114,6 @@
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
-				intensity: 1,
 				thickness: 0.1,
 				maxLuminance: 35,
 				binaryRefine: true,
@@ -311,10 +310,9 @@
 				updateOutputNode();
 
 			} );
-			ssrGui.add( params.ssr, 'quality', 0.1, 1, 0.05 ).name( 'Quality' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'quality', 0.1, 1, 0.05 ).name( 'Ray march quality' ).info( 'One GGX ray per SSR pixel per frame. Sets the march step budget: quality × 64; rays can stop early. Binary refinement adds up to 8 refinement steps.' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'intensity', 0, 4, 0.01 ).name( 'Intensity' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( applyParams );
 
 			const denoiseGui = renderer.inspector.createParameters( 'Denoising' );
@@ -365,7 +363,6 @@
 			ssrNode.stepExponent = params.ssr.stepExponent;
 			ssrNode.binaryRefine = params.ssr.binaryRefine;
 			ssrNode.maxDistance.value = params.ssr.maxDistance;
-			ssrNode.intensity.value = params.ssr.intensity;
 			ssrNode.thickness.value = params.ssr.thickness;
 			ssrNode.maxLuminance.value = params.ssr.maxLuminance;
 			ssrNode.screenEdgeFade.value = params.ssr.screenEdgeFade;

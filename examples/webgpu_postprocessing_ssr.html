@@ -68,11 +68,9 @@
 			denoise: true,
 			luminancePhi: 3,
 			maxDistance: 1,
-			intensity: 1,
 			thickness: 0.03,
 			binaryRefine: true,
-			roughness: 1,
-			enabled: true
+			roughness: 1
 		};
 
 		let camera, scene, model, renderer, renderPipeline, ssrPass;
@@ -197,7 +195,7 @@
 
 				const previous = params.traceSource === 'Previous frame';
 				ssrPass.setColorNode( previous ? previousSource : scenePass.getTextureNode() );
-				beautyPass.contextNode = context( { indirectSpecularNode: indirectSpecular( params.enabled ? [ screenReflection, fallback ] : [ fallback ] ) } );
+				beautyPass.contextNode = context( { indirectSpecularNode: indirectSpecular( [ screenReflection, fallback ] ) } );
 				updateOutput();
 
 			}
@@ -239,12 +237,10 @@
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params, 'traceSource', [ 'Current frame', 'Previous frame' ] ).name( 'Trace source' ).onChange( updateTraceSource );
-			ssrGui.add( params, 'quality', 0.1, 1, 0.05 ).name( 'Quality' ).onChange( updateParameters );
+			ssrGui.add( params, 'quality', 0.1, 1, 0.05 ).name( 'Ray march quality' ).info( 'One GGX ray per SSR pixel per frame. Sets the march step budget: quality × 64; rays can stop early. Binary refinement adds up to 8 refinement steps.' ).onChange( updateParameters );
 			ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 			ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );
-			ssrGui.add( params, 'intensity', 0, 4, 0.01 ).name( 'Intensity' ).onChange( updateParameters );
 			ssrGui.add( params, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( updateParameters );
-			ssrGui.add( params, 'enabled' ).name( 'Enabled' ).onChange( updateTraceSource );
 
 			const denoiseGui = renderer.inspector.createParameters( 'Denoising' );
 			denoiseGui.add( params, 'denoise' ).name( 'Enabled' ).onChange( value => denoiseEnabled.value = Number( value ) );
@@ -272,7 +268,6 @@
 			ssrDenoise.maxFrames.value = params.maxFrames;
 			ssrDenoise.luminancePhi.value = params.luminancePhi;
 			ssrPass.maxDistance.value = params.maxDistance;
-			ssrPass.intensity.value = params.intensity;
 			ssrPass.thickness.value = params.thickness;
 			// build-time constant: assigning it recompiles the SSR material (setter no-ops if unchanged)
 			ssrPass.binaryRefine = params.binaryRefine;

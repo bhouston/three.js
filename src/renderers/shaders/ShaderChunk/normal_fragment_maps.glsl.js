@@ -24,7 +24,7 @@ export default /* glsl */`
 
 	#if defined( USE_PACKED_NORMALMAP )
 
-		mapN = vec3( mapN.xy, sqrt( saturate( 1.0 - dot( mapN.xy, mapN.xy ) ) ) );
+		mapN = vec3( mapN.xy, sqrt( clamp( 1.0 - dot( mapN.xy, mapN.xy ), 0.0, 1.0 ) ) );
 
 	#endif
 
@@ -32,7 +32,11 @@ export default /* glsl */`
 
 	normal = normalize( tbn * mapN );
 
-#elif defined( USE_BUMPMAP )
+#endif
+
+#ifdef USE_BUMPMAP
+
+	// Apply the height perturbation to the normal, including any normal map.
 
 	normal = perturbNormalArb( - vViewPosition, normal, dHdxy_fwd(), faceDirection );
 

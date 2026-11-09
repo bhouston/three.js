@@ -262,13 +262,15 @@ class MaterialNode extends Node {
 
 				}
 
-			} else if ( material.bumpMap ) {
-
-				node = bumpMap( this.getTexture( 'bump' ).r, this.getFloat( 'bumpScale' ) );
-
 			} else {
 
 				node = normalView;
+
+			}
+
+			if ( material.bumpMap ) {
+
+				node = bumpMap( this.getTexture( 'bump' ).r, this.getFloat( 'bumpScale' ), node );
 
 			}
 

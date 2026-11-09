@@ -1,5 +1,4 @@
 import Node from '../core/Node.js';
-import { uv } from '../accessors/UV.js';
 import { normalView } from '../accessors/Normal.js';
 import { positionView } from '../accessors/Position.js';
 import { faceDirection } from './FrontFacingNode.js';
@@ -11,7 +10,7 @@ import { Fn, nodeProxy, float, vec2 } from '../tsl/TSLBase.js';
 const dHdxy_fwd = /*@__PURE__*/ Fn( ( { textureNode, bumpScale } ) => {
 
 	// It's used to preserve the same TextureNode instance
-	const sampleTexture = ( callback ) => textureNode.isolate().context( { getUV: ( texNode ) => callback( texNode.uvNode || uv() ), forceUVContext: true } );
+	const sampleTexture = ( callback ) => textureNode.isolate().context( { getUV: ( texNode ) => callback( texNode.uvNode || texNode.getDefaultUV() ), forceUVContext: true } );
 
 	const Hll = float( sampleTexture( ( uvNode ) => uvNode ) );
 

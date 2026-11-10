@@ -1,0 +1,34 @@
+{
+  "pr": 35447,
+  "commit": "e8a1eac621e3da11f7b45f0f2c53529b9cb73a0e",
+  "motion": "Roll",
+  "speed": 1,
+  "frames": 400,
+  "historyLength": 20,
+  "resolution": [
+    962,
+    722
+  ],
+  "referenceScale": 4,
+  "referenceMSAA": 4,
+  "referenceFilter": "Box",
+  "cropXYWH": [
+    0,
+    300,
+    180,
+    220
+  ],
+  "magnification": 3,
+  "interpolation": "nearest",
+  "gpu": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "singleFramePSNRdB": {
+    "linear": 20.283580163665018,
+    "catmullRom": 21.746828279921186
+  },
+  "capture": "The original example was instrumented temporarily for deterministic manual stepping, with one render per animation frame. Each implementation started at phase 0 and spinner rotation 0; GPU queue completion was awaited before capture. Inspector and info overlays were hidden. The reference was rendered at the same final scene pose. Repository code was not modified."
+}

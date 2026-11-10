@@ -1,4 +1,4 @@
-import { ObjectSpaceBumpMap, BackSide, DoubleSide, ObjectSpaceNormalMap, TangentSpaceNormalMap, NoToneMapping, NormalBlending, SRGBTransfer, RGFormat, RG11_EAC_Format, RED_GREEN_RGTC2_Format } from '../../constants.js';
+import { BackSide, DoubleSide, ObjectSpaceNormalMap, TangentSpaceNormalMap, NoToneMapping, NormalBlending, SRGBTransfer, RGFormat, RG11_EAC_Format, RED_GREEN_RGTC2_Format } from '../../constants.js';
 import { Layers } from '../../core/Layers.js';
 import { WebGLProgram } from './WebGLProgram.js';
 import { WebGLShaderCache } from './WebGLShaderCache.js';
@@ -227,7 +227,6 @@ function WebGLPrograms( renderer, environments, extensions, capabilities, bindin
 			aoMap: HAS_AOMAP,
 			lightMap: HAS_LIGHTMAP,
 			bumpMap: HAS_BUMPMAP,
-			bumpMapObjectSpace: HAS_BUMPMAP && material.bumpMapType === ObjectSpaceBumpMap,
 			normalMap: HAS_NORMALMAP,
 			displacementMap: HAS_DISPLACEMENTMAP,
 			emissiveMap: HAS_EMISSIVEMAP,
@@ -462,7 +461,6 @@ function WebGLPrograms( renderer, environments, extensions, capabilities, bindin
 		array.push( parameters.lightMapUv );
 		array.push( parameters.aoMapUv );
 		array.push( parameters.bumpMapUv );
-		array.push( parameters.bumpMapObjectSpace );
 		array.push( parameters.normalMapUv );
 		array.push( parameters.displacementMapUv );
 		array.push( parameters.emissiveMapUv );

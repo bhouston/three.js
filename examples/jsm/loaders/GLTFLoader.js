@@ -42,7 +42,6 @@ import {
 	NearestMipmapNearestFilter,
 	NumberKeyframeTrack,
 	Object3D,
-	ObjectSpaceBumpMap,
 	OrthographicCamera,
 	PerspectiveCamera,
 	PointLight,
@@ -63,7 +62,6 @@ import {
 	Vector2,
 	Vector3,
 	VectorKeyframeTrack,
-	WorldSpaceBumpMap,
 	SRGBColorSpace,
 	InstancedBufferAttribute
 } from 'three';
@@ -1426,7 +1424,6 @@ class GLTFMaterialsBumpExtension {
 		const pending = [];
 
 		materialParams.bumpScale = extension.bumpFactor !== undefined ? extension.bumpFactor : 1.0;
-		materialParams.bumpMapType = extension.heightSpace === 'world' ? WorldSpaceBumpMap : ObjectSpaceBumpMap;
 
 		if ( extension.bumpTexture !== undefined ) {
 

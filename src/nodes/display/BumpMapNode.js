@@ -3,7 +3,6 @@ import { uv } from '../accessors/UV.js';
 import { normalView } from '../accessors/Normal.js';
 import { positionView } from '../accessors/Position.js';
 import { modelViewMatrix } from '../accessors/ModelNode.js';
-import { ObjectSpaceBumpMap } from '../../constants.js';
 import { faceDirection } from './FrontFacingNode.js';
 import { Fn, nodeProxy, float, vec2, mat3 } from '../tsl/TSLBase.js';
 
@@ -28,13 +27,18 @@ const dHdxy_fwd = /*@__PURE__*/ Fn( ( { textureNode, bumpScale } ) => {
 
 const perturbNormalArb = /*@__PURE__*/ Fn( ( inputs ) => {
 
-	const { surf_pos, surf_norm, dHdxy } = inputs;
+	const { surf_pos, surf_norm, objectToView, dHdxy } = inputs;
 
 	// the surface derivatives are not normalized so the bump height keeps its units and the
 	// slope stays the same at any view distance
 	const vSigmaX = surf_pos.dFdx();
 	const vSigmaY = surf_pos.dFdy();
-	const vN = surf_norm; // normalized
+
+	// the scale is a height in local units, so the surface is displaced along the local
+	// normal carried to view space as a direction, which matches the displacement map
+	const objectNormal = objectToView.transpose().mul( surf_norm ).toVar();
+	const invLength = objectNormal.dot( objectNormal ).inverseSqrt().toVar();
+	const vN = objectToView.mul( objectNormal ).mul( invLength ).toVar();
 
 	const R1 = vSigmaY.cross( vN );
 	const R2 = vN.cross( vSigmaX );
@@ -43,7 +47,7 @@ const perturbNormalArb = /*@__PURE__*/ Fn( ( inputs ) => {
 
 	const vGrad = fDet.sign().mul( dHdxy.x.mul( R1 ).add( dHdxy.y.mul( R2 ) ) );
 
-	return fDet.abs().mul( surf_norm ).sub( vGrad ).normalize();
+	return fDet.abs().mul( invLength ).mul( surf_norm ).sub( vGrad ).normalize();
 
 } );
 
@@ -91,14 +95,6 @@ class BumpMapNode extends Node {
 		this.scaleNode = scaleNode;
 
 		/**
-		 * The space in which bump heights are measured.
-		 *
-		 * @type {(ObjectSpaceBumpMap|WorldSpaceBumpMap)}
-		 * @default ObjectSpaceBumpMap
-		 */
-		this.bumpMapType = ObjectSpaceBumpMap;
-
-		/**
 		 * The view-space normal to perturb.
 		 *
 		 * @type {Node<vec3>}
@@ -118,45 +114,21 @@ class BumpMapNode extends Node {
 		const bumpScale = this.scaleNode !== null ? this.scaleNode : 1;
 		const dHdxy = dHdxy_fwd( { textureNode: this.textureNode, bumpScale } );
 
-		if ( this.bumpMapType === ObjectSpaceBumpMap ) {
+		// the complete local to view transform, including the instance and batch matrices
+		let objectToView = mat3( modelViewMatrix );
 
-			let objectToView = mat3( modelViewMatrix );
-			const transforms = builder.context.geometryTransforms || {};
+		const { instanceMatrix, batchingMatrix } = builder.context.geometryTransforms || {};
 
-			if ( transforms.instanceMatrix ) {
+		if ( instanceMatrix ) objectToView = objectToView.mul( mat3( instanceMatrix ) );
+		if ( batchingMatrix ) objectToView = objectToView.mul( mat3( batchingMatrix ) );
 
-				objectToView = objectToView.mul( mat3( transforms.instanceMatrix ) );
-
-			}
-
-			if ( transforms.batchingMatrix ) {
-
-				objectToView = objectToView.mul( mat3( transforms.batchingMatrix ) );
-
-			}
-
-			// Inter-stage matrices must be carried as separate columns in WGSL.
-			objectToView = mat3(
-				objectToView[ 0 ].toVarying(),
-				objectToView[ 1 ].toVarying(),
-				objectToView[ 2 ].toVarying()
-			);
-
-			const viewToObject = objectToView.inverse().toVar();
-			const objectNormal = objectToView.transpose().mul( this.normalNode ).normalize();
-			const perturbedNormal = perturbNormalArb( {
-				surf_pos: viewToObject.mul( positionView ),
-				surf_norm: objectNormal,
-				dHdxy
-			} );
-
-			return viewToObject.transpose().mul( perturbedNormal ).normalize();
-
-		}
+		// matrices can't be varyings in WGSL, so the columns are passed on their own
+		objectToView = mat3( objectToView[ 0 ].toVarying(), objectToView[ 1 ].toVarying(), objectToView[ 2 ].toVarying() );
 
 		return perturbNormalArb( {
 			surf_pos: positionView,
 			surf_norm: this.normalNode,
+			objectToView,
 			dHdxy
 		} );
 

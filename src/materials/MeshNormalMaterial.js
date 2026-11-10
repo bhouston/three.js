@@ -1,4 +1,4 @@
-import { TangentSpaceNormalMap, ObjectSpaceBumpMap } from '../constants.js';
+import { TangentSpaceNormalMap } from '../constants.js';
 import { Material } from './Material.js';
 import { Vector2 } from '../math/Vector2.js';
 
@@ -49,23 +49,12 @@ class MeshNormalMaterial extends Material {
 		this.bumpMap = null;
 
 		/**
-		 * The height per unit of the bump texture value, measured in the space
-		 * selected by {@link MeshNormalMaterial#bumpMapType}.
+		 * How much the bump map affects the material. Typical range is `[0,1]`.
 		 *
 		 * @type {number}
 		 * @default 1
 		 */
 		this.bumpScale = 1;
-
-		/**
-		 * The space in which bump heights are measured. Object-space heights grow
-		 * with the mesh, matching displacement. World-space heights keep their length.
-		 * Changing this property requires setting `needsUpdate` to `true`.
-		 *
-		 * @type {(ObjectSpaceBumpMap|WorldSpaceBumpMap)}
-		 * @default ObjectSpaceBumpMap
-		 */
-		this.bumpMapType = ObjectSpaceBumpMap;
 
 		/**
 		 * The texture to create a normal map. The RGB values affect the surface
@@ -171,7 +160,6 @@ class MeshNormalMaterial extends Material {
 
 		this.bumpMap = source.bumpMap;
 		this.bumpScale = source.bumpScale;
-		this.bumpMapType = source.bumpMapType;
 
 		this.normalMap = source.normalMap;
 		this.normalMapType = source.normalMapType;

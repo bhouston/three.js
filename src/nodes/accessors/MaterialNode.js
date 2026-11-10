@@ -265,7 +265,6 @@ class MaterialNode extends Node {
 			} else if ( material.bumpMap ) {
 
 				node = bumpMap( this.getTexture( 'bump' ).r, this.getFloat( 'bumpScale' ) );
-				node.bumpMapType = material.bumpMapType;
 
 			} else {
 

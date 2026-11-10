@@ -18,7 +18,7 @@ export default /* glsl */`
 
 #endif
 
-#ifdef USE_BUMPMAP_OBJECTSPACE
+#ifdef USE_BUMPMAP
 
 	// Keep the full linear transform so the perturbation can be evaluated in
 	// object space, including non-uniform model, batch and instance scales.

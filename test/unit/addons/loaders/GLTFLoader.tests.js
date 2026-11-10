@@ -1,4 +1,3 @@
-import { ObjectSpaceBumpMap, WorldSpaceBumpMap, NoColorSpace } from '../../../../src/constants.js';
 import { GLTFLoader } from '../../../../examples/jsm/loaders/GLTFLoader.js';
 import { GLTFGaussianSplatLoaderExtension } from '../../../../examples/jsm/loaders/GLTFGaussianSplatLoaderExtension.js';
 import { makeClipAdditive } from '../../../../src/animation/AnimationUtils.js';
@@ -141,33 +140,6 @@ export default QUnit.module( 'Addons', () => {
 	QUnit.module( 'Loaders', () => {
 
 		QUnit.module( 'GLTFLoader', () => {
-
-			QUnit.test( 'EXT_materials_bump height spaces', async assert => {
-
-				const canvas = document.createElement( 'canvas' );
-				canvas.width = canvas.height = 1;
-				const json = {
-					asset: { version: '2.0' },
-					extensionsUsed: [ 'EXT_materials_bump' ],
-					images: [ { uri: canvas.toDataURL() } ],
-					textures: [ { source: 0 } ],
-					materials: [ {}, { heightSpace: 'object', bumpFactor: - 0.005 }, { heightSpace: 'world', bumpFactor: 0.002 } ].map( parameters => ( {
-						extensions: { EXT_materials_bump: { bumpTexture: { index: 0 }, ...parameters } }
-					} ) )
-				};
-				const gltf = await new GLTFLoader().parseAsync( JSON.stringify( json ), '' );
-				const materials = await Promise.all( [ 0, 1, 2 ].map( i => gltf.parser.getDependency( 'material', i ) ) );
-				assert.strictEqual( materials[ 0 ].bumpScale, 1, 'Omitted bumpFactor defaults to one' );
-				assert.strictEqual( materials[ 0 ].bumpMapType, ObjectSpaceBumpMap, 'Omitted heightSpace defaults to object space' );
-				assert.strictEqual( materials[ 1 ].bumpScale, - 0.005, 'Signed height is preserved' );
-				assert.strictEqual( materials[ 1 ].bumpMapType, ObjectSpaceBumpMap, 'Explicit object space is mapped' );
-				assert.strictEqual( materials[ 2 ].bumpScale, 0.002, 'World height is preserved' );
-				assert.strictEqual( materials[ 2 ].bumpMapType, WorldSpaceBumpMap, 'Explicit world space is mapped' );
-				assert.strictEqual( materials[ 2 ].bumpMap.colorSpace, NoColorSpace, 'Height samples are linear data' );
-				for ( const material of materials ) material.dispose();
-				materials[ 0 ].bumpMap.dispose();
-
-			} );
 
 			QUnit.test( 'child credentials', async ( assert ) => {
 

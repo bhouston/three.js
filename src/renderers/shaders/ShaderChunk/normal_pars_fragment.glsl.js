@@ -12,7 +12,7 @@ export default /* glsl */`
 
 #endif
 
-#ifdef USE_BUMPMAP_OBJECTSPACE
+#ifdef USE_BUMPMAP
 
 	varying mat3 vBumpMatrix;
 

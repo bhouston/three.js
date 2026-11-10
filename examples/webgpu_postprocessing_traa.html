@@ -97,7 +97,12 @@
 				const scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
 				const traaNode = traa( scenePassColor, scenePassDepth, scenePassVelocity, camera );
+				traaNode.useHistoryRampUp = new URLSearchParams( window.location.search ).get( 'historyRampUp' ) === '1';
 			
+				const traaGui = renderer.inspector.createParameters( 'TRAA settings' );
+				traaGui.add( traaNode, 'useHistoryRampUp' ).name( 'history ramp-up' ).onChange( () => traaNode.reset() );
+				traaGui.add( { resetHistory: () => traaNode.reset() }, 'resetHistory' ).name( 'reset history' );
+
 				renderPipeline.outputNode = traaNode;
 
 				//

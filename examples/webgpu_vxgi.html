@@ -124,6 +124,7 @@
 				// traa ( resolves the temporal noise of the cone tracing )
 
 				const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
+				traaPass.useHistoryRampUp = new URLSearchParams( window.location.search ).get( 'historyRampUp' ) === '1';
 				renderPipeline.outputNode = traaPass;
 
 				// Cornell Box inspired scene
@@ -239,6 +240,10 @@
 				gui.add( giPass, 'bounces', 0, 2, 1 ).name( 'bounces' );
 				gui.add( giPass, 'directionalRadiance' ).name( 'directional radiance' );
 				gui.add( giPass, 'useTemporalFiltering' ).name( 'temporal filtering' ).onChange( updatePostprocessing );
+
+				const traaGui = renderer.inspector.createParameters( 'TRAA settings' );
+				traaGui.add( traaPass, 'useHistoryRampUp' ).name( 'history ramp-up' ).onChange( () => traaPass.reset() );
+				traaGui.add( { resetHistory: () => traaPass.reset() }, 'resetHistory' ).name( 'reset history' );
 
 				function updatePostprocessing() {
 

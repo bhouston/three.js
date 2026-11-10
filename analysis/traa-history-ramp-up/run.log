@@ -1,0 +1,540 @@
+ssr old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr reference complete 8467.90000000596
+ssr old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr_old_0 quality complete 4289.4000000059605 errors 0
+ssr new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr_new_0 quality complete 4559.100000023842 errors 0
+ssr old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr_old_1 quality complete 4271.300000011921 errors 0
+ssr new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr_new_1 quality complete 4433.0999999940395 errors 0
+ssr old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr_old_2 quality complete 4313 errors 0
+ssr new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr_new_2 quality complete 4732 errors 0
+ssr old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr old motion complete
+ssr new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr new motion complete
+ssr original {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr original 0 258.52267060332747 fps
+ssr old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr old 0 264.979946923252 fps
+ssr new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr new 0 275.6747038491294 fps
+ssr original {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr original 1 268.6925229908037 fps
+ssr old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr old 1 275.48209366358407 fps
+ssr new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr new 1 268.1671255829848 fps
+ssr original {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr original 2 250.20484022581692 fps
+ssr old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr old 2 311.30889425512476 fps
+ssr new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+ssr new 2 246.55894673847996 fps
+vxgi old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi reference complete 8456.5
+vxgi old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi_old_0 quality complete 3136.2000000178814 errors 0
+vxgi new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi_new_0 quality complete 3360.5 errors 0
+vxgi old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi_old_1 quality complete 3690.2999999821186 errors 0
+vxgi new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi_new_1 quality complete 3677 errors 0
+vxgi old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi_old_2 quality complete 3194.4000000059605 errors 0
+vxgi new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi_new_2 quality complete 3144.899999976158 errors 0
+vxgi old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi old motion complete
+vxgi new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi new motion complete
+vxgi original {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi original 0 356.1020400007495 fps
+vxgi old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi old 0 356.4150717221152 fps
+vxgi new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi new 0 354.6325878594249 fps
+vxgi original {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi original 1 355.35325707255157 fps
+vxgi old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi old 1 352.72945410917816 fps
+vxgi new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi new 1 347.5273627878514 fps
+vxgi original {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi original 2 351.8944316704988 fps
+vxgi old {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi old 2 349.4532296439661 fps
+vxgi new {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false,
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36'
+} {
+  vendor: 'apple',
+  architecture: 'metal-3',
+  device: '',
+  description: '',
+  isFallbackAdapter: false
+}
+vxgi new 2 351.3815684387101 fps

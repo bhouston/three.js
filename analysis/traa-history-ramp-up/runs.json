@@ -1,0 +1,1242 @@
+[
+  {
+    "effect": "ssr",
+    "kind": "reference",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "reference": {
+      "name": "reference",
+      "width": 640,
+      "height": 480,
+      "warmup": 512,
+      "frames": 512,
+      "temporalVariance": 0.000012269945026730973,
+      "flickerMSE": 0.000009286310886565173,
+      "nonFinite": 0,
+      "ms": 8467.90000000596,
+      "frameId": 1024,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "old",
+    "repeat": 0,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "ssr_old_0_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.000012155534895015446,
+      "flickerMSE": 0.000009277475572815686,
+      "nonFinite": 0,
+      "ms": 4289.4000000059605,
+      "frameId": 832,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "new",
+    "repeat": 0,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "ssr_new_0_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.000012172323281903246,
+      "flickerMSE": 0.00000936762969529458,
+      "nonFinite": 0,
+      "ms": 4559.100000023842,
+      "frameId": 832,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "old",
+    "repeat": 1,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "ssr_old_1_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.000012158497967944062,
+      "flickerMSE": 0.000009313639371183876,
+      "nonFinite": 0,
+      "ms": 4271.300000011921,
+      "frameId": 869,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "new",
+    "repeat": 1,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "ssr_new_1_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.000012173190876078437,
+      "flickerMSE": 0.000009401211138085045,
+      "nonFinite": 0,
+      "ms": 4433.0999999940395,
+      "frameId": 869,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "old",
+    "repeat": 2,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "ssr_old_2_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.000012150878925880572,
+      "flickerMSE": 0.000009315629966506218,
+      "nonFinite": 0,
+      "ms": 4313,
+      "frameId": 906,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "new",
+    "repeat": 2,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "ssr_new_2_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.000012165740663692095,
+      "flickerMSE": 0.000009400982712342665,
+      "nonFinite": 0,
+      "ms": 4732,
+      "frameId": 906,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "old",
+    "kind": "motion",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "motion": {
+      "frames": 128,
+      "radiansPerFrame": 0.001
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "new",
+    "kind": "motion",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "motion": {
+      "frames": 128,
+      "radiansPerFrame": 0.001
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "original",
+    "repeat": 0,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1296,
+      "seconds": 5.013099999994039,
+      "fps": 258.52267060332747,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "old",
+    "repeat": 0,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1328,
+      "seconds": 5.011600000023842,
+      "fps": 264.979946923252,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "new",
+    "repeat": 0,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1380,
+      "seconds": 5.00590000000596,
+      "fps": 275.6747038491294,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "original",
+    "repeat": 1,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1344,
+      "seconds": 5.002,
+      "fps": 268.6925229908037,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "old",
+    "repeat": 1,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1380,
+      "seconds": 5.009400000005961,
+      "fps": 275.48209366358407,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "new",
+    "repeat": 1,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1344,
+      "seconds": 5.011800000011921,
+      "fps": 268.1671255829848,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "original",
+    "repeat": 2,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1252,
+      "seconds": 5.003899999976158,
+      "fps": 250.20484022581692,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "old",
+    "repeat": 2,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1560,
+      "seconds": 5.011099999994039,
+      "fps": 311.30889425512476,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "ssr",
+    "variant": "new",
+    "repeat": 2,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1236,
+      "seconds": 5.013,
+      "fps": 246.55894673847996,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "kind": "reference",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "reference": {
+      "name": "reference",
+      "width": 640,
+      "height": 480,
+      "warmup": 512,
+      "frames": 512,
+      "temporalVariance": 0.00003918165855901755,
+      "flickerMSE": 0.000013452634487354562,
+      "nonFinite": 0,
+      "ms": 8456.5,
+      "frameId": 1024,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "old",
+    "repeat": 0,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "vxgi_old_0_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.00003918143080701247,
+      "flickerMSE": 0.000013451102650615046,
+      "nonFinite": 0,
+      "ms": 3136.2000000178814,
+      "frameId": 832,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "new",
+    "repeat": 0,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "vxgi_new_0_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.0000391820083765253,
+      "flickerMSE": 0.000013451173183821254,
+      "nonFinite": 0,
+      "ms": 3360.5,
+      "frameId": 832,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "old",
+    "repeat": 1,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "vxgi_old_1_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.0000391820575600737,
+      "flickerMSE": 0.000013455685866067129,
+      "nonFinite": 0,
+      "ms": 3690.2999999821186,
+      "frameId": 869,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "new",
+    "repeat": 1,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "vxgi_new_1_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.00003918186014613498,
+      "flickerMSE": 0.000013455596038283236,
+      "nonFinite": 0,
+      "ms": 3677,
+      "frameId": 869,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "old",
+    "repeat": 2,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "vxgi_old_2_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.000039181881417897155,
+      "flickerMSE": 0.000013458967505693917,
+      "nonFinite": 0,
+      "ms": 3194.4000000059605,
+      "frameId": 906,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "new",
+    "repeat": 2,
+    "kind": "quality",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "convergence": [
+      {
+        "frame": 1,
+        "nonFinite": 0
+      },
+      {
+        "frame": 2,
+        "nonFinite": 0
+      },
+      {
+        "frame": 4,
+        "nonFinite": 0
+      },
+      {
+        "frame": 8,
+        "nonFinite": 0
+      },
+      {
+        "frame": 16,
+        "nonFinite": 0
+      },
+      {
+        "frame": 32,
+        "nonFinite": 0
+      },
+      {
+        "frame": 64,
+        "nonFinite": 0
+      }
+    ],
+    "steady": {
+      "name": "vxgi_new_2_steady",
+      "width": 640,
+      "height": 480,
+      "warmup": 256,
+      "frames": 256,
+      "temporalVariance": 0.000039181686028845104,
+      "flickerMSE": 0.00001345900114854723,
+      "nonFinite": 0,
+      "ms": 3144.899999976158,
+      "frameId": 906,
+      "noise": "default",
+      "fastLoadMs": null,
+      "vcGenerateMs": null,
+      "vcTextureBytes": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "old",
+    "kind": "motion",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "motion": {
+      "frames": 128,
+      "radiansPerFrame": 0.001
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "new",
+    "kind": "motion",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "motion": {
+      "frames": 128,
+      "radiansPerFrame": 0.001
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "original",
+    "repeat": 0,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1784,
+      "seconds": 5.0098000000119205,
+      "fps": 356.1020400007495,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "old",
+    "repeat": 0,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1784,
+      "seconds": 5.00540000000596,
+      "fps": 356.4150717221152,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "new",
+    "repeat": 0,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1776,
+      "seconds": 5.008,
+      "fps": 354.6325878594249,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "original",
+    "repeat": 1,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1780,
+      "seconds": 5.0090999999940395,
+      "fps": 355.35325707255157,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "old",
+    "repeat": 1,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1764,
+      "seconds": 5.001,
+      "fps": 352.72945410917816,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "new",
+    "repeat": 1,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1740,
+      "seconds": 5.006699999988079,
+      "fps": 347.5273627878514,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "original",
+    "repeat": 2,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1760,
+      "seconds": 5.0015,
+      "fps": 351.8944316704988,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "old",
+    "repeat": 2,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1748,
+      "seconds": 5.00209999999404,
+      "fps": 349.4532296439661,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  },
+  {
+    "effect": "vxgi",
+    "variant": "new",
+    "repeat": 2,
+    "kind": "throughput",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+    },
+    "throughput": {
+      "frames": 1760,
+      "seconds": 5.008800000011921,
+      "fps": 351.3815684387101,
+      "vcGenerateMs": null
+    },
+    "errors": []
+  }
+]

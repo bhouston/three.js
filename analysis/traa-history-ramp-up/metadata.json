@@ -1,0 +1,14 @@
+{
+  "hardware": "Apple M3, 10 GPU cores",
+  "OS": "macOS 27.2 (26B123)",
+  "puppeteer": "25.16.0",
+  "adapter": "apple / metal-3 / isFallbackAdapter false",
+  "resolution": [
+    640,
+    480
+  ],
+  "runs": 36,
+  "nonFinite": 0,
+  "firstResetFrameIdenticalAcrossVariants": true,
+  "frameClock": "Manual tick; automatic renderer animation disabled for deterministic sample phases"
+}

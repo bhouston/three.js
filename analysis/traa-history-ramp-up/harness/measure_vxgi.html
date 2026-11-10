@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>measure vxgi</title></head>
+<body style="margin:0">
+<script type="importmap">{ "imports": { "three": "../src/Three.WebGPU.js", "three/webgpu": "../src/Three.WebGPU.js", "three/tsl": "../src/Three.TSL.js", "three/addons/": "./jsm/" } }</script>
+<script type="module">
+
+	// Scene, camera and pipeline copied from examples/webgpu_vxgi.html (identical at PR base and head).
+	import { THREE, WIDTH, HEIGHT, adapterInfo, capture, throughput } from './measure_common.js';
+	import { pass, mrt, normalView, velocity, packNormalToRGB, unpackRGBToNormal, sample, screenUV, builtinGIContext } from 'three/tsl';
+	const { vxgi } = await import( 'three/addons/lighting/vxgi/VXGINode.js' );
+	const { traa } = await import( new URLSearchParams( location.search ).get( 'variant' ) === 'original' ? 'three/addons/tsl/display/MeasureOriginalTRAANode.js' : 'three/addons/tsl/display/TRAANode.js' );
+
+	const camera = new THREE.PerspectiveCamera( 40, WIDTH / HEIGHT, 0.1, 100 );
+	camera.position.set( 0, 10, 30 );
+	camera.lookAt( 0, 7, 0 );
+	camera.updateMatrixWorld();
+
+	const scene = new THREE.Scene();
+	scene.background = new THREE.Color( 0xaaaaaa );
+
+	const renderer = new THREE.WebGPURenderer( { forceWebGL: new URLSearchParams( location.search ).has( 'webgl' ) } );
+	renderer.setPixelRatio( 1 );
+	renderer.setSize( WIDTH, HEIGHT );
+	renderer.shadowMap.enabled = true;
+	document.body.appendChild( renderer.domElement );
+	await renderer.init();
+
+	const renderPipeline = new THREE.RenderPipeline( renderer );
+	renderPipeline.outputColorTransform = false; // linear working space, no tone mapping
+
+	const prePass = pass( scene, camera );
+	prePass.transparent = false;
+	prePass.setMRT( mrt( { output: packNormalToRGB( normalView ), velocity: velocity } ) );
+	const prePassNormal = sample( ( uv ) => unpackRGBToNormal( prePass.getTextureNode().sample( uv ) ) );
+	const prePassDepth = prePass.getTextureNode( 'depth' );
+	const prePassVelocity = prePass.getTextureNode( 'velocity' );
+	prePass.getTexture( 'output' ).type = THREE.UnsignedByteType;
+
+	const giPass = vxgi( prePassDepth, prePassNormal, scene, camera, 64 );
+	const ao = giPass.getAONode();
+	const gi = giPass.getGINode();
+
+	const scenePass = pass( scene, camera );
+	scenePass.contextNode = builtinGIContext( ao.sample( screenUV ).r, gi.sample( screenUV ).rgb );
+
+	const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
+	// raw=1: unfiltered (pre-TRAA) output; TRAA stays in the graph so the camera jitter is unchanged
+	renderPipeline.outputNode = new URLSearchParams( location.search ).get( 'raw' ) === '1' ? scenePass.add( traaPass.mul( 0 ) ) : traaPass;
+
+	const wallGeometry = new THREE.PlaneGeometry( 1, 1 );
+	const add = ( mesh, f ) => { f( mesh ); mesh.receiveShadow = true; scene.add( mesh ); return mesh; };
+	add( new THREE.Mesh( wallGeometry, new THREE.MeshPhysicalMaterial( { color: '#ff0000' } ) ), m => { m.scale.set( 20, 15, 1 ); m.rotation.y = Math.PI * 0.5; m.position.set( - 10, 7.5, 0 ); } );
+	add( new THREE.Mesh( wallGeometry, new THREE.MeshPhysicalMaterial( { color: '#00ff00' } ) ), m => { m.scale.set( 20, 15, 1 ); m.rotation.y = Math.PI * - 0.5; m.position.set( 9.999, 7.5, 0 ); } );
+	const whiteMaterial = new THREE.MeshPhysicalMaterial( { color: '#fff' } );
+	add( new THREE.Mesh( wallGeometry, whiteMaterial ), m => { m.scale.set( 20, 20, 1 ); m.rotation.x = Math.PI * - .5; } );
+	add( new THREE.Mesh( wallGeometry, whiteMaterial ), m => { m.scale.set( 15, 20, 1 ); m.rotation.z = Math.PI * - 0.5; m.position.set( 0, 7.5, - 10 ); } );
+	add( new THREE.Mesh( wallGeometry, whiteMaterial ), m => { m.scale.set( 20, 20, 1 ); m.rotation.x = Math.PI * 0.5; m.position.set( 0, 14.999, 0 ); } );
+	add( new THREE.Mesh( new THREE.BoxGeometry( 5, 7, 5 ), whiteMaterial ), m => { m.rotation.y = Math.PI * 0.25; m.position.set( - 3, 3.5, - 2 ); m.castShadow = true; } );
+	add( new THREE.Mesh( new THREE.BoxGeometry( 4, 4, 4 ), whiteMaterial ), m => { m.rotation.y = Math.PI * - 0.1; m.position.set( 4, 2, 4 ); m.castShadow = true; } );
+
+	const lightSource = new THREE.Mesh( new THREE.CylinderGeometry( 2.5, 2.5, 1, 64 ), new THREE.MeshBasicMaterial() );
+	lightSource.position.y = 15;
+	scene.add( lightSource );
+
+	const pointLight = new THREE.PointLight( '#ffffff', 100 );
+	pointLight.position.set( 0, 13, 0 );
+	pointLight.distance = 100;
+	pointLight.castShadow = true;
+	pointLight.shadow.mapSize.width = 1024;
+	pointLight.shadow.mapSize.height = 1024;
+	scene.add( pointLight );
+	scene.add( new THREE.AmbientLight( '#0c0c0c' ) );
+
+	const target = new THREE.RenderTarget( WIDTH, HEIGHT, { type: THREE.FloatType, depthBuffer: false } );
+	const renderFrame = () => { renderer.setRenderTarget( target ); renderPipeline.render(); renderer.setRenderTarget( null ); };
+
+	window.__adapter = await adapterInfo();
+	window.__capture = ( options ) => capture( renderer, target, renderFrame, options );
+	window.__throughput = ( seconds ) => throughput( renderer, renderFrame, seconds );
+	const query = new URLSearchParams( location.search );
+	traaPass.useHistoryRampUp = query.get( 'variant' ) === 'new';
+	window.__test = { renderer, target, renderFrame, traa: traaPass, camera, denoise: null, lookAt: [ 0, 7, 0 ] };
+	window.__ready = true;
+
+</script>
+</body></html>

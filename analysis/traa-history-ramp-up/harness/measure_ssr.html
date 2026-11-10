@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>measure ssr</title></head>
+<body style="margin:0">
+<script type="importmap">{ "imports": { "three": "../src/Three.WebGPU.js", "three/webgpu": "../src/Three.WebGPU.js", "three/tsl": "../src/Three.TSL.js", "three/addons/": "./jsm/" } }</script>
+<script type="module">
+
+	// Scene, camera, SSR and denoiser settings copied from examples/webgpu_postprocessing_ssr_denoise.html
+	// (identical at PR base and head). Difference: TRAA runs on the linear combined output (no AgX grading),
+	// so the readback is linear.
+	import { THREE, WIDTH, HEIGHT, adapterInfo, capture, throughput } from './measure_common.js';
+	import { pass, mrt, output, normalView, materialMetalness, materialRoughness, sample, packNormalToRGB, unpackRGBToNormal, velocity, diffuseColor, vec3, vec4 } from 'three/tsl';
+	const { ssr } = await import( 'three/addons/tsl/display/SSRNode.js' );
+	const { temporalDenoise } = await import( 'three/addons/tsl/display/DenoiseNode.js' );
+	const { traa } = await import( new URLSearchParams( location.search ).get( 'variant' ) === 'original' ? 'three/addons/tsl/display/MeasureOriginalTRAANode.js' : 'three/addons/tsl/display/TRAANode.js' );
+	const { GLTFLoader } = await import( 'three/addons/loaders/GLTFLoader.js' );
+	const { HDRLoader } = await import( 'three/addons/loaders/HDRLoader.js' );
+
+	const _indirectSpecular = THREE.PhysicalLightingModel.prototype.indirectSpecular;
+	THREE.PhysicalLightingModel.prototype.indirectSpecular = function ( builder ) {
+
+		builder.context.radiance = vec3( 0 );
+		if ( this.clearcoatRadiance ) this.clearcoatRadiance.assign( vec3( 0 ) );
+		_indirectSpecular.call( this, builder );
+
+	};
+
+	const params = { resolutionScale: 1, quality: 0.25, mirrorBias: 0, maxDistance: 0.4, intensity: 1, thickness: 0.1, maxLuminance: 35, binaryRefine: false, stepExponent: 3, envImportanceSampling: false, screenEdgeFade: 0.2, screenEdgeFadeBlack: false, environmentIntensity: 3.14 };
+
+	const camera = new THREE.PerspectiveCamera( 35, WIDTH / HEIGHT, 0.1, 8 );
+	camera.position.set( 1.259878548682251, 0.5391287340899181, - 0.27217301481427114 );
+	camera.lookAt( 1.0258536154689288, 0.2746440590977971, - 1.0815876858987743 );
+	camera.updateMatrixWorld();
+
+	const scene = new THREE.Scene();
+
+	const gltf = await new GLTFLoader().loadAsync( 'models/gltf/dungeon_warkarma.glb' );
+	gltf.scene.scale.multiplyScalar( 0.1 );
+	gltf.scene.traverse( ( object ) => {
+
+		if ( ! object.material ) return;
+		object.castShadow = true;
+		object.receiveShadow = true;
+		object.material.roughness = 0.3;
+		object.material.normalMap = null;
+
+	} );
+	scene.add( gltf.scene );
+
+	const renderer = new THREE.WebGPURenderer( { forceWebGL: new URLSearchParams( location.search ).has( 'webgl' ) } );
+	renderer.setPixelRatio( 1 );
+	renderer.setSize( WIDTH, HEIGHT );
+	renderer.shadowMap.enabled = true;
+	document.body.appendChild( renderer.domElement );
+
+	const hdrTexture = await new HDRLoader().setPath( 'textures/equirectangular/' ).loadAsync( 'quarry_01_1k.hdr' );
+	hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
+	scene.background = hdrTexture;
+	scene.environment = hdrTexture;
+	hdrTexture.generateMipmaps = true;
+	hdrTexture.needsUpdate = true;
+
+	const directionalLight = new THREE.DirectionalLight( '#ffffff', 20 );
+	directionalLight.position.set( - 10.9, 2.2, 10.75 );
+	directionalLight.castShadow = true;
+	directionalLight.shadow.autoUpdate = false;
+	directionalLight.shadow.needsUpdate = true;
+	directionalLight.shadow.mapSize.width = 4096;
+	directionalLight.shadow.mapSize.height = 4096;
+	directionalLight.shadow.camera.left = - 1.75;
+	directionalLight.shadow.camera.right = 1.75;
+	directionalLight.shadow.camera.top = 1.75;
+	directionalLight.shadow.camera.bottom = - 1.75;
+	directionalLight.shadow.camera.near = 0.1;
+	directionalLight.shadow.camera.far = 50;
+	directionalLight.shadow.bias = - 0.0005;
+	scene.add( directionalLight );
+
+	await renderer.init();
+
+	const postProcessing = new THREE.RenderPipeline( renderer );
+	postProcessing.outputColorTransform = false;
+
+	const scenePass = pass( scene, camera );
+	scenePass.setMRT( mrt( {
+		output: output,
+		diffuseColor: vec4( diffuseColor.rgb, materialMetalness ),
+		normal: vec4( packNormalToRGB( normalView ).rgb, materialRoughness ),
+		velocity: velocity
+	} ) );
+
+	const scenePassColor = scenePass.getTextureNode( 'output' );
+	const scenePassNormal = scenePass.getTextureNode( 'normal' );
+	const scenePassDepth = scenePass.getTextureNode( 'depth' );
+	const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
+	const scenePassDiffuseColor = scenePass.getTextureNode( 'diffuseColor' );
+	scenePass.getTexture( 'normal' ).type = THREE.UnsignedByteType;
+	scenePass.getTexture( 'diffuseColor' ).type = THREE.UnsignedByteType;
+
+	const sceneNormal = sample( ( uv ) => unpackRGBToNormal( scenePassNormal.sample( uv ).rgb ) );
+
+	const ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
+		stochastic: true,
+		diffuseNode: scenePassDiffuseColor,
+		metalnessNode: scenePassDiffuseColor.a,
+		roughnessNode: scenePassNormal.a,
+		environmentNode: hdrTexture,
+		envImportanceSampling: params.envImportanceSampling,
+		binaryRefine: params.binaryRefine
+	} );
+
+	const ssrTexture = ssrNode.getTextureNode();
+
+	const denoiseNode = temporalDenoise( ssrTexture, {
+		depth: scenePassDepth,
+		normal: sceneNormal,
+		camera,
+		velocity: scenePassVelocity,
+		roughness: sample( ( uv ) => scenePassNormal.sample( uv ).a ),
+		hitDistance: sample( ( uv ) => ssrTexture.sample( uv ).a )
+	} );
+	ssrNode.setHistory( denoiseNode.getTexture(), scenePassVelocity );
+
+	ssrNode.resolutionScale = params.resolutionScale;
+	ssrNode.quality.value = params.quality;
+	ssrNode.mirrorBias.value = params.mirrorBias;
+	ssrNode.stepExponent = params.stepExponent;
+	ssrNode.binaryRefine = params.binaryRefine;
+	ssrNode.maxDistance.value = params.maxDistance;
+	ssrNode.intensity.value = params.intensity;
+	ssrNode.thickness.value = params.thickness;
+	ssrNode.maxLuminance.value = params.maxLuminance;
+	ssrNode.screenEdgeFade.value = params.screenEdgeFade;
+	ssrNode.screenEdgeFadeBlack = params.screenEdgeFadeBlack;
+	ssrNode.environmentIntensity.value = params.environmentIntensity;
+	denoiseNode.luminancePhi.value = 3;
+	denoiseNode.maxFrames.value = 8;
+
+	// output=combined (default): scene color + denoised SSR; output=ssr: denoised SSR only
+	const reflections = denoiseNode.getTextureNode().rgb;
+	const combined = new URLSearchParams( location.search ).get( 'output' ) === 'ssr' ? vec4( reflections, 1 ) : vec4( scenePassColor.rgb.add( reflections ), 1 );
+	// raw=1: pre-TRAA output (the SSR denoiser still runs); TRAA stays in the graph so the camera jitter is unchanged
+	const resolved = traa( combined, scenePassDepth, scenePassVelocity, camera );
+	postProcessing.outputNode = new URLSearchParams( location.search ).get( 'raw' ) === '1' ? combined.add( resolved.mul( 0 ) ) : resolved;
+
+	const target = new THREE.RenderTarget( WIDTH, HEIGHT, { type: THREE.FloatType, depthBuffer: false } );
+	const renderFrame = () => { renderer.setRenderTarget( target ); postProcessing.render(); renderer.setRenderTarget( null ); };
+
+	window.__adapter = await adapterInfo();
+	window.__capture = ( options ) => capture( renderer, target, renderFrame, options );
+	window.__throughput = ( seconds ) => throughput( renderer, renderFrame, seconds );
+	const query = new URLSearchParams( location.search );
+	resolved.useHistoryRampUp = query.get( 'variant' ) === 'new';
+	window.__test = { renderer, target, renderFrame, traa: resolved, camera, denoise: denoiseNode, lookAt: [ 1.0258536154689288, 0.2746440590977971, - 1.0815876858987743 ] };
+	window.__ready = true;
+
+</script>
+</body></html>

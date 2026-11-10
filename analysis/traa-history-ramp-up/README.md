@@ -39,3 +39,11 @@ Install Puppeteer 25.16 and Sharp 0.35 in the directory containing these scripts
    Run verification only after the performance measurements, to avoid concurrent GPU work.
 
 Raw RGB float readbacks are retained locally under `raw/` and omitted from this evidence branch due to their size. `runs.json` includes adapter information, per-run statistics, and all completed-frame counts and durations. `metrics.json` includes all repeat measurements and summary tables. `verification.json` records reset, resize, count cap, runtime-switch, output-alpha and hardware-backend checks.
+
+## Enlarged review figures and example controls
+
+`zoom-crops.mjs` generates the new reset and motion close-ups directly from the same linear readbacks: identical 112 × 80-pixel regions per effect/sequence, enlarged 3× with nearest-neighbor interpolation, two columns (old / ramp-up) and one row per captured frame. Width 684 pixels avoids GitHub's aggressive downscaling of the previous four-column scene overviews. Display mapping and measurement data are unchanged. `crop-regions.json` records the source coordinates.
+
+`examples-controls.mjs` checks all seven inspector demos on hardware WebGPU: enabled query, toggle off/on, reset invocation, rendering, and asset/console failures. These extra examples were not given additional convergence benchmarks.
+
+For the Sponza UI check, direct browser requests to the sample-assets host stalled during this session. The exact same model index, glTF, buffer and 69 images were fetched with the CLI and served to the original URLs using Puppeteer request interception (`SPONZA_CACHE=1`). No scene, geometry, material, shader or sampling was substituted. `sponza-assets.json` records the 72 cached files' byte lengths and SHA-256 hashes; the 52 MB cache is omitted from this evidence branch. The public example keeps its existing network asset loader.

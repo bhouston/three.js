@@ -1,0 +1,100 @@
+[
+  {
+    "name": "postprocessing_ssr_denoise",
+    "result": {
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "isFallbackAdapter": false
+      },
+      "offObserved": true,
+      "resetCalls": 2
+    },
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "vxgi",
+    "result": {
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "isFallbackAdapter": false
+      },
+      "offObserved": true,
+      "resetCalls": 2
+    },
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "postprocessing_ssgi",
+    "result": {
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "isFallbackAdapter": false
+      },
+      "offObserved": true,
+      "resetCalls": 2
+    },
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "postprocessing_ao",
+    "result": {
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "isFallbackAdapter": false
+      },
+      "offObserved": true,
+      "resetCalls": 2
+    },
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "volume_lighting_traa",
+    "result": {
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "isFallbackAdapter": false
+      },
+      "offObserved": true,
+      "resetCalls": 2
+    },
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "postprocessing_traa",
+    "result": {
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "isFallbackAdapter": false
+      },
+      "offObserved": true,
+      "resetCalls": 2
+    },
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "vxgi_sponza",
+    "result": {
+      "hardware": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "isFallbackAdapter": false
+      },
+      "offObserved": true,
+      "resetCalls": 2
+    },
+    "errors": [],
+    "failed": []
+  }
+]

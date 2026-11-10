@@ -1,0 +1,35 @@
+{
+  "source": [
+    640,
+    480
+  ],
+  "crop": [
+    112,
+    80
+  ],
+  "scale": 3,
+  "kernel": "nearest",
+  "displayWidth": 684,
+  "definitions": {
+    "ssr": {
+      "reset": {
+        "left": 280,
+        "top": 300
+      },
+      "motion": {
+        "left": 330,
+        "top": 215
+      }
+    },
+    "vxgi": {
+      "reset": {
+        "left": 345,
+        "top": 200
+      },
+      "motion": {
+        "left": 280,
+        "top": 265
+      }
+    }
+  }
+}

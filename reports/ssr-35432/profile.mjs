@@ -9,7 +9,9 @@ const head = 'c85daef49196e28a687bf40c48a397defaf304be';
 const root = process.cwd();
 const out = resolve(process.env.SWARM_ARTIFACTS || '../.swarm/artifacts');
 await mkdir(out, { recursive: true });
-const source = (rev, file) => execFileSync('cmd.exe', ['/d', '/s', '/c', `git-dedup.cmd show ${rev}:examples/${file}`], { encoding: 'utf8', maxBuffer: 4e6 });
+const source = (rev, file) => process.platform === 'win32'
+ ? execFileSync('cmd.exe', ['/d', '/s', '/c', `git-dedup.cmd show ${rev}:examples/${file}`], { encoding: 'utf8', maxBuffer: 4e6 })
+ : execFileSync('git-dedup', ['show', `${rev}:examples/${file}`], { encoding: 'utf8', maxBuffer: 4e6 });
 const oldMirror = source(base, 'webgpu_postprocessing_ssr.html');
 const newMirror = source(head, 'webgpu_postprocessing_ssr_mirror.html');
 const oldDungeon = source(base, 'webgpu_postprocessing_ssr_denoise.html');
@@ -62,7 +64,7 @@ await new Promise(r => server.listen(0, '127.0.0.1', r));
 let browser;
 const results = [];
 try {
- browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true,
+ browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH || (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : puppeteer.executablePath()), headless: true,
   args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--disable-frame-rate-limit', '--disable-gpu-vsync', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
  const probe = await browser.newPage();
  await probe.goto(`http://127.0.0.1:${server.address().port}/examples/benchmark.html`).catch(() => {});
@@ -72,7 +74,7 @@ try {
  await probe.close();
  const selected = variants.filter(v => !process.env.ONLY || `${v[0]}/${v[1]}`.includes(process.env.ONLY));
  for (const [example, step, html, pipeline] of selected) {
-  current = html.replaceAll('renderer.setAnimationLoop( animate );', '').replace('</script>\n</body>', '</script>\n</body>');
+  current = html.replaceAll('renderer.setAnimationLoop( animate );', '');
   const end = current.lastIndexOf('</script>');
   current = current.slice(0, end) + `\n window.__bench = { ready: () => !!( model && ${pipeline} && controls ), renderer: () => renderer, frame: animate };\n` + current.slice(end);
   const page = await browser.newPage();

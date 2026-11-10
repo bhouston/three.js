@@ -1,0 +1,707 @@
+{
+  "base": "29c99f4e170d01c2ecc47e44c48b29a6c57379dd",
+  "head": "c85daef49196e28a687bf40c48a397defaf304be",
+  "browser": "Chrome/157.0.8103.39",
+  "viewport": [
+    1280,
+    720
+  ],
+  "batchSize": 8,
+  "warmupSeconds": 3,
+  "trialSeconds": 5,
+  "results": [
+    {
+      "example": "mirror",
+      "step": "0-before",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 656,
+          "seconds": 5.0565,
+          "fps": 129.73400573519234
+        },
+        {
+          "frames": 648,
+          "seconds": 5.002699999809265,
+          "fps": 129.5300537759022
+        },
+        {
+          "frames": 656,
+          "seconds": 5.052900000095367,
+          "fps": 129.82643630145438
+        }
+      ],
+      "medianFPS": 129.73400573519234,
+      "render": {
+        "calls": 27414,
+        "triangles": 22876
+      }
+    },
+    {
+      "example": "mirror",
+      "step": "1-binary-refine",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 520,
+          "seconds": 5.063599999904633,
+          "fps": 102.69373568405751
+        },
+        {
+          "frames": 512,
+          "seconds": 5.001,
+          "fps": 102.37952409518097
+        },
+        {
+          "frames": 512,
+          "seconds": 5.00539999961853,
+          "fps": 102.2895273183003
+        }
+      ],
+      "medianFPS": 102.37952409518097,
+      "render": {
+        "calls": 22038,
+        "triangles": 22876
+      }
+    },
+    {
+      "example": "mirror",
+      "step": "2-repack-material-buffers",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 512,
+          "seconds": 5.014699999809265,
+          "fps": 102.09982651394381
+        },
+        {
+          "frames": 512,
+          "seconds": 5.022699999809265,
+          "fps": 101.93720509276743
+        },
+        {
+          "frames": 512,
+          "seconds": 5.014900000095367,
+          "fps": 102.09575464919807
+        }
+      ],
+      "medianFPS": 102.09575464919807,
+      "render": {
+        "calls": 21750,
+        "triangles": 22876
+      }
+    },
+    {
+      "example": "mirror",
+      "step": "3-albedo-input",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 512,
+          "seconds": 5.026299999713897,
+          "fps": 101.86419434358147
+        },
+        {
+          "frames": 512,
+          "seconds": 5.023,
+          "fps": 101.93111686243282
+        },
+        {
+          "frames": 512,
+          "seconds": 5.021799999713898,
+          "fps": 101.9554741385897
+        }
+      ],
+      "medianFPS": 101.93111686243282,
+      "render": {
+        "calls": 22134,
+        "triangles": 22876
+      }
+    },
+    {
+      "example": "mirror",
+      "step": "4-output-composition",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 512,
+          "seconds": 5.0335,
+          "fps": 101.71848614284295
+        },
+        {
+          "frames": 512,
+          "seconds": 5.03360000038147,
+          "fps": 101.71646534512044
+        },
+        {
+          "frames": 512,
+          "seconds": 5.036099999904633,
+          "fps": 101.66597168636358
+        }
+      ],
+      "medianFPS": 101.71646534512044,
+      "render": {
+        "calls": 22038,
+        "triangles": 22876
+      }
+    },
+    {
+      "example": "mirror",
+      "step": "5-final",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 512,
+          "seconds": 5.044799999713898,
+          "fps": 101.49064383702758
+        },
+        {
+          "frames": 512,
+          "seconds": 5.04610000038147,
+          "fps": 101.4644973269048
+        },
+        {
+          "frames": 512,
+          "seconds": 5.044099999904633,
+          "fps": 101.50472829834465
+        }
+      ],
+      "medianFPS": 101.49064383702758,
+      "render": {
+        "calls": 22038,
+        "triangles": 22876
+      }
+    },
+    {
+      "example": "dungeon",
+      "step": "0-before",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 464,
+          "seconds": 5.0240999999046325,
+          "fps": 92.3548496265615
+        },
+        {
+          "frames": 464,
+          "seconds": 5.021199999809265,
+          "fps": 92.40818928097376
+        },
+        {
+          "frames": 464,
+          "seconds": 5.023100000381469,
+          "fps": 92.37323564427592
+        }
+      ],
+      "medianFPS": 92.37323564427592,
+      "render": {
+        "calls": 15489,
+        "triangles": 21672
+      }
+    },
+    {
+      "example": "dungeon",
+      "step": "1-binary-refine",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 368,
+          "seconds": 5.049199999809265,
+          "fps": 72.88283292678074
+        },
+        {
+          "frames": 368,
+          "seconds": 5.041599999904633,
+          "fps": 72.99270073130775
+        },
+        {
+          "frames": 368,
+          "seconds": 5.0375,
+          "fps": 73.05210918114143
+        }
+      ],
+      "medianFPS": 72.99270073130775,
+      "render": {
+        "calls": 12849,
+        "triangles": 21672
+      }
+    },
+    {
+      "example": "dungeon",
+      "step": "2-final",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 368,
+          "seconds": 5.039799999713898,
+          "fps": 73.01877059027954
+        },
+        {
+          "frames": 368,
+          "seconds": 5.0475,
+          "fps": 72.90737989103516
+        },
+        {
+          "frames": 368,
+          "seconds": 5.0319000000953675,
+          "fps": 73.1334088501412
+        }
+      ],
+      "medianFPS": 73.01877059027954,
+      "render": {
+        "calls": 13009,
+        "triangles": 21672
+      }
+    },
+    {
+      "example": "dungeon-raw-SSR",
+      "step": "0-before",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 792,
+          "seconds": 5.050400000095367,
+          "fps": 156.81926183768505
+        },
+        {
+          "frames": 784,
+          "seconds": 5.002800000190735,
+          "fps": 156.71224113898407
+        },
+        {
+          "frames": 792,
+          "seconds": 5.049400000095368,
+          "fps": 156.8503188468019
+        }
+      ],
+      "medianFPS": 156.81926183768505,
+      "render": {
+        "calls": 19369,
+        "triangles": 21669
+      }
+    },
+    {
+      "example": "dungeon-raw-SSR",
+      "step": "1-binary-refine",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 544,
+          "seconds": 5.032300000190735,
+          "fps": 108.10166325127302
+        },
+        {
+          "frames": 544,
+          "seconds": 5.016400000095367,
+          "fps": 108.44430268512438
+        },
+        {
+          "frames": 544,
+          "seconds": 5.01,
+          "fps": 108.58283433133732
+        }
+      ],
+      "medianFPS": 108.44430268512438,
+      "render": {
+        "calls": 13377,
+        "triangles": 21669
+      }
+    },
+    {
+      "example": "dungeon-raw-SSR",
+      "step": "2-final",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 616,
+          "seconds": 5.05189999961853,
+          "fps": 121.9343217495426
+        },
+        {
+          "frames": 616,
+          "seconds": 5.0477000002861026,
+          "fps": 122.03577866455718
+        },
+        {
+          "frames": 616,
+          "seconds": 5.055799999713898,
+          "fps": 121.84026267551303
+        }
+      ],
+      "medianFPS": 121.9343217495426,
+      "render": {
+        "calls": 6505,
+        "triangles": 21665
+      }
+    },
+    {
+      "example": "dungeon-denoised-SSR",
+      "step": "0-before",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 464,
+          "seconds": 5.033599999904633,
+          "fps": 92.18054672774774
+        },
+        {
+          "frames": 464,
+          "seconds": 5.033300000190735,
+          "fps": 92.18604096366538
+        },
+        {
+          "frames": 464,
+          "seconds": 5.032900000095368,
+          "fps": 92.19336763917578
+        }
+      ],
+      "medianFPS": 92.18604096366538,
+      "render": {
+        "calls": 16369,
+        "triangles": 21672
+      }
+    },
+    {
+      "example": "dungeon-denoised-SSR",
+      "step": "1-binary-refine",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 368,
+          "seconds": 5.044300000190735,
+          "fps": 72.95363082808025
+        },
+        {
+          "frames": 368,
+          "seconds": 5.049300000190735,
+          "fps": 72.88138949678152
+        },
+        {
+          "frames": 368,
+          "seconds": 5.036400000095368,
+          "fps": 73.0680644891255
+        }
+      ],
+      "medianFPS": 72.95363082808025,
+      "render": {
+        "calls": 13009,
+        "triangles": 21672
+      }
+    },
+    {
+      "example": "dungeon-denoised-SSR",
+      "step": "2-final",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 392,
+          "seconds": 5.0075,
+          "fps": 78.2825761357963
+        },
+        {
+          "frames": 392,
+          "seconds": 5.000400000095367,
+          "fps": 78.39372850022474
+        },
+        {
+          "frames": 400,
+          "seconds": 5.098400000095367,
+          "fps": 78.45598619027888
+        }
+      ],
+      "medianFPS": 78.39372850022474,
+      "render": {
+        "calls": 8404,
+        "triangles": 21668
+      }
+    },
+    {
+      "example": "dungeon-compare-denoise",
+      "step": "0-before",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 416,
+          "seconds": 5.000900000095368,
+          "fps": 83.18502669360852
+        },
+        {
+          "frames": 416,
+          "seconds": 5.009400000095368,
+          "fps": 83.04387750869971
+        },
+        {
+          "frames": 416,
+          "seconds": 5.000200000286102,
+          "fps": 83.19667212835431
+        }
+      ],
+      "medianFPS": 83.18502669360852,
+      "render": {
+        "calls": 20433,
+        "triangles": 21676
+      }
+    },
+    {
+      "example": "dungeon-compare-denoise",
+      "step": "1-binary-refine",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 336,
+          "seconds": 5.004599999904633,
+          "fps": 67.13823282707965
+        },
+        {
+          "frames": 336,
+          "seconds": 5.0144000000953675,
+          "fps": 67.0070197817505
+        },
+        {
+          "frames": 344,
+          "seconds": 5.113599999904633,
+          "fps": 67.27158948811318
+        }
+      ],
+      "medianFPS": 67.13823282707965,
+      "render": {
+        "calls": 16625,
+        "triangles": 21676
+      }
+    },
+    {
+      "example": "dungeon-compare-denoise",
+      "step": "2-final",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 392,
+          "seconds": 5.069400000095367,
+          "fps": 77.32670532856463
+        },
+        {
+          "frames": 392,
+          "seconds": 5.0616999998092655,
+          "fps": 77.4443368857837
+        },
+        {
+          "frames": 392,
+          "seconds": 5.059699999809265,
+          "fps": 77.47494911057517
+        }
+      ],
+      "medianFPS": 77.4443368857837,
+      "render": {
+        "calls": 8260,
+        "triangles": 21668
+      }
+    },
+    {
+      "example": "dungeon-compare-reflections",
+      "step": "0-before",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 424,
+          "seconds": 5.0746999998092654,
+          "fps": 83.55173705163581
+        },
+        {
+          "frames": 424,
+          "seconds": 5.075400000095367,
+          "fps": 83.54021357765555
+        },
+        {
+          "frames": 424,
+          "seconds": 5.074599999904633,
+          "fps": 83.55338351948296
+        }
+      ],
+      "medianFPS": 83.55173705163581,
+      "render": {
+        "calls": 20881,
+        "triangles": 21676
+      }
+    },
+    {
+      "example": "dungeon-compare-reflections",
+      "step": "1-binary-refine",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 344,
+          "seconds": 5.098400000095367,
+          "fps": 67.47214812363984
+        },
+        {
+          "frames": 344,
+          "seconds": 5.096299999713898,
+          "fps": 67.49995094859248
+        },
+        {
+          "frames": 344,
+          "seconds": 5.088199999809265,
+          "fps": 67.60740537182011
+        }
+      ],
+      "medianFPS": 67.49995094859248,
+      "render": {
+        "calls": 16961,
+        "triangles": 21676
+      }
+    },
+    {
+      "example": "dungeon-compare-reflections",
+      "step": "2-final",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "trials": [
+        {
+          "frames": 344,
+          "seconds": 5.099300000190735,
+          "fps": 67.46023963821172
+        },
+        {
+          "frames": 344,
+          "seconds": 5.090800000190735,
+          "fps": 67.57287655910888
+        },
+        {
+          "frames": 344,
+          "seconds": 5.090900000095368,
+          "fps": 67.57154923364354
+        }
+      ],
+      "medianFPS": 67.57154923364354,
+      "render": {
+        "calls": 17073,
+        "triangles": 21676
+      }
+    }
+  ]
+}

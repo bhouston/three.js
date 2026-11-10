@@ -123,6 +123,7 @@
 
 		const params = {
 			output: 0,
+			useHistoryRampUp: new URLSearchParams( window.location.search ).get( 'historyRampUp' ) === '1',
 			roughness: 0.3,
 
 			ssr: {
@@ -157,6 +158,7 @@
 		let scenePassNode, combinedOutputNode, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 		const denoiseEnabled = uniform( 1 );
+		const traaNodes = [];
 
 		init();
 
@@ -344,6 +346,27 @@
 
 			} );
 
+			const traaGui = renderer.inspector.createParameters( 'TRAA settings' );
+			traaGui.add( params, 'useHistoryRampUp' ).name( 'history ramp-up' ).onChange( ( value ) => {
+
+				denoiseNode.reset();
+
+				for ( const node of traaNodes ) {
+
+					node.useHistoryRampUp = value;
+					node.reset();
+
+				}
+
+			} );
+			traaGui.add( { resetHistory: () => {
+
+				denoiseNode.reset();
+
+				for ( const node of traaNodes ) node.reset();
+
+			} }, 'resetHistory' ).name( 'reset history' );
+
 			const denoiseGui = renderer.inspector.createParameters( 'Denoise settings' );
 			denoiseGui.add( params.denoise, 'enabled' ).name( 'enabled' ).onChange( applyParams );
 			denoiseGui.add( params.denoise, 'luminancePhi', 0, 10 ).name( 'luminance phi' ).onChange( applyParams );
@@ -408,7 +431,10 @@
 
 		function applyPostProcessing( source ) {
 
-			return sharpen( traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera ), 0 );
+			const node = traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera );
+			node.useHistoryRampUp = params.useHistoryRampUp;
+			traaNodes.push( node );
+			return sharpen( node, 0 );
 
 		}
 
@@ -427,6 +453,8 @@
 		function updateOutputNode() {
 
 			if ( ! postProcessing ) return;
+
+			traaNodes.length = 0;
 
 			let node;
 

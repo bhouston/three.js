@@ -1,5 +1,5 @@
-import { HalfFloatType, Vector2, RenderTarget, RendererUtils, QuadMesh, NodeMaterial, Node, NodeUpdateType, Matrix4, DepthTexture } from 'three/webgpu';
-import { float, Fn, max, texture, uniform, uv, vec2, convertToTexture, passTexture, velocity, ivec2, mix, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
+import { HalfFloatType, RedFormat, Vector2, RenderTarget, RendererUtils, QuadMesh, NodeMaterial, Node, NodeUpdateType, Matrix4, DepthTexture } from 'three/webgpu';
+import { float, Fn, max, texture, uniform, uv, vec2, convertToTexture, passTexture, velocity, ivec2, mix, context, OnBeforeRenderPipeline, OnAfterRenderPipeline, outputStruct, property, output } from 'three/tsl';
 import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCurrentDepth, samplePreviousDepth } from '../utils/TAAUtils.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
@@ -122,6 +122,30 @@ class TRAANode extends Node {
 		this.useSubpixelCorrection = true;
 
 		/**
+		 * Whether to use a running mean for short histories before exponential accumulation.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.useHistoryRampUp = false;
+
+		/**
+		 * Whether the previous frame can be reprojected.
+		 *
+		 * @private
+		 * @type {UniformNode<bool>}
+		 */
+		this._historyValid = uniform( false );
+
+		/**
+		 * A uniform for the runtime ramp-up switch.
+		 *
+		 * @private
+		 * @type {UniformNode<bool>}
+		 */
+		this._useHistoryRampUp = uniform( false );
+
+		/**
 		 * The jitter index selects the current camera offset value.
 		 *
 		 * @private
@@ -144,8 +168,10 @@ class TRAANode extends Node {
 		 * @private
 		 * @type {?RenderTarget}
 		 */
-		this._historyRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
+		this._historyRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 2 } );
 		this._historyRenderTarget.texture.name = 'TRAANode.history';
+		this._historyRenderTarget.textures[ 1 ].format = RedFormat;
+		this._historyRenderTarget.textures[ 1 ].name = 'TRAANode.historyLength';
 
 		/**
 		 * The render target for the resolve.
@@ -153,8 +179,10 @@ class TRAANode extends Node {
 		 * @private
 		 * @type {?RenderTarget}
 		 */
-		this._resolveRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
+		this._resolveRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 2 } );
 		this._resolveRenderTarget.texture.name = 'TRAANode.resolve';
+		this._resolveRenderTarget.textures[ 1 ].format = RedFormat;
+		this._resolveRenderTarget.textures[ 1 ].name = 'TRAANode.resolveLength';
 
 		/**
 		 * The render target that holds the depth of the previous frame.
@@ -256,6 +284,14 @@ class TRAANode extends Node {
 		this._historyTextureNode = texture( this._historyRenderTarget.texture );
 
 		/**
+		 * A texture node for the history length, separate from the color to preserve alpha.
+		 *
+		 * @private
+		 * @type {TextureNode}
+		 */
+		this._historyLengthNode = texture( this._historyRenderTarget.textures[ 1 ] );
+
+		/**
 		 * A texture node for the previous depth buffer.
 		 *
 		 * @private
@@ -285,12 +321,23 @@ class TRAANode extends Node {
 	}
 
 	/**
+	 * Forgets the history, e.g. after a camera cut.
+	 */
+	reset() {
+
+		this._historyValid.value = false;
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
 	 * @param {number} height - The height of the effect.
 	 */
 	setSize( width, height ) {
+
+		if ( this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height ) this.reset();
 
 		this._historyRenderTarget.setSize( width, height );
 		this._resolveRenderTarget.setSize( width, height );
@@ -397,6 +444,8 @@ class TRAANode extends Node {
 		const needsRestart = this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
 		this.setSize( width, height );
 
+		this._useHistoryRampUp.value = this.useHistoryRampUp;
+
 		// swap history and resolve
 
 		const historyRenderTarget = this._historyRenderTarget;
@@ -404,6 +453,7 @@ class TRAANode extends Node {
 		this._resolveRenderTarget = historyRenderTarget;
 
 		this._historyTextureNode.value = this._historyRenderTarget.texture;
+		this._historyLengthNode.value = this._historyRenderTarget.textures[ 1 ];
 		this._textureNode.value = this._resolveRenderTarget.texture;
 
 		// every time when the dimensions change we need fresh history data
@@ -423,6 +473,7 @@ class TRAANode extends Node {
 		_quadMesh.material = this._resolveMaterial;
 		_quadMesh.name = 'TRAA';
 		_quadMesh.render( renderer );
+		this._historyValid.value = true;
 		renderer.setRenderTarget( null );
 
 		// Copy current depth to previous depth buffer
@@ -539,6 +590,7 @@ class TRAANode extends Node {
 		}, { velocityUV: 'vec2', textureSize: 'ivec2', return: 'float' } );
 
 		const historyNode = this._historyTextureNode;
+		const lengthOutput = property( 'float' );
 
 		const resolve = Fn( () => {
 
@@ -567,17 +619,24 @@ class TRAANode extends Node {
 			const isValidUV = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() );
 			const isEdge = farthestDepth.sub( closestDepth ).greaterThan( this.edgeDepthDiff );
 			const isDisocclusion = closestDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
-			const hasValidHistory = isValidUV.and( isEdge.or( isDisocclusion.not() ) );
+			const hasValidHistory = isValidUV.and( isEdge.or( isDisocclusion.not() ) ).and( this._historyValid );
 
 			// sample the current and previous colors
 
 			const currentColor = this.beautyNode.sample( uvNode );
 			const historyColor = historyNode.sample( historyUV );
 
+			// Bilinear filtering follows the color reprojection. Cap at 20 frames, where 1 / n
+			// reaches the minimum weight. Invalid history (including resets) starts at one.
+
+			const previousLength = this._historyLengthNode.sample( historyUV ).r;
+			const historyLength = hasValidHistory.select( previousLength.add( 1 ).clamp( 1, 20 ), 1 );
+
 			// increase the weight towards the current frame under motion
 
 			const motionFactor = uvNode.sub( historyUV ).mul( textureSize ).length().div( this.maxVelocityLength ).saturate();
-			const currentWeight = float( 0.05 ).toVar(); // A minimum weight
+			const minimumWeight = float( 0.05 );
+			const currentWeight = this._useHistoryRampUp.select( max( historyLength.reciprocal(), minimumWeight ), minimumWeight ).toVar();
 
 			if ( this.useSubpixelCorrection ) {
 
@@ -597,6 +656,8 @@ class TRAANode extends Node {
 
 			const output = flickerReduction( currentColor, clippedHistoryColor, currentWeight );
 
+			lengthOutput.assign( historyLength );
+
 			return output;
 
 		} );
@@ -605,6 +666,7 @@ class TRAANode extends Node {
 
 		this._resolveMaterial.contextNode = context( builder.getSharedContext() );
 		this._resolveMaterial.colorNode = resolve();
+		this._resolveMaterial.outputNode = outputStruct( output, lengthOutput );
 
 		return this._textureNode;
 

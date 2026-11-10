@@ -127,6 +127,7 @@
 				// traa
 
 				const traaPass = traa( compositePass, scenePassDepth, scenePassVelocity, camera );
+				traaPass.useHistoryRampUp = new URLSearchParams( window.location.search ).get( 'historyRampUp' ) === '1';
 				renderPipeline.outputNode = traaPass;
 
 				// Cornell Box inspired scene
@@ -238,6 +239,10 @@
 				gui.add( giPass.useLinearThickness, 'value' ).name( 'use linear thickness' );
 				gui.add( giPass.useScreenSpaceSampling, 'value' ).name( 'screen-space sampling' );
 				gui.add( giPass, 'useTemporalFiltering' ).name( 'temporal filtering' ).onChange( updatePostprocessing );
+
+				const traaGui = renderer.inspector.createParameters( 'TRAA settings' );
+				traaGui.add( traaPass, 'useHistoryRampUp' ).name( 'history ramp-up' ).onChange( () => traaPass.reset() );
+				traaGui.add( { resetHistory: () => traaPass.reset() }, 'resetHistory' ).name( 'reset history' );
 
 				function updatePostprocessing( value ) {
 

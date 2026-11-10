@@ -253,6 +253,7 @@
 				// TRAA with scene pass depth/velocity (includes volumetric)
 
 				const traaPass = traa( scenePassColor, prePassDepth, scenePassVelocity, camera );
+				traaPass.useHistoryRampUp = new URLSearchParams( window.location.search ).get( 'historyRampUp' ) === '1';
 
 				renderPipeline.outputNode = traaPass;
 
@@ -267,6 +268,10 @@
 
 				gui.add( params, 'animated' );
 				gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updatePostProcessing );
+
+				const traaGui = renderer.inspector.createParameters( 'TRAA settings' );
+				traaGui.add( traaPass, 'useHistoryRampUp' ).name( 'history ramp-up' ).onChange( () => traaPass.reset() );
+				traaGui.add( { resetHistory: () => traaPass.reset() }, 'resetHistory' ).name( 'reset history' );
 
 				const rayMarching = gui.addFolder( 'Ray Marching' );
 				rayMarching.add( volumetricMaterial, 'steps', 2, 16, 1 ).name( 'step count' );

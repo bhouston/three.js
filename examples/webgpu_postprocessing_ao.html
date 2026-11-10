@@ -146,6 +146,7 @@
 				// traa ( resolves the temporal noise of GTAO )
 
 				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
+				traaPass.useHistoryRampUp = new URLSearchParams( window.location.search ).get( 'historyRampUp' ) === '1';
 				traaPass.useSubpixelCorrection = false;
 
 				// ao: the AO node feeds the scene's ambient term via `builtinAOContext`, and
@@ -525,6 +526,10 @@
 				window.addEventListener( 'resize', onWindowResize );
 
 				// GUI
+
+				const traaGui = renderer.inspector.createParameters( 'TRAA settings' );
+				traaGui.add( traaPass, 'useHistoryRampUp' ).name( 'history ramp-up' ).onChange( () => traaPass.reset() );
+				traaGui.add( { resetHistory: () => traaPass.reset() }, 'resetHistory' ).name( 'reset history' );
 
 				const gui = renderer.inspector.createParameters( 'Settings' );
 				gui.add( params, 'aoType', [ 'GTAO', 'SSAO' ] ).name( 'AO type' ).onChange( () => {

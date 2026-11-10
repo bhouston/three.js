@@ -1,0 +1,46 @@
+{
+  "metricSpace": "8-bit display-encoded RGB, normalized to 0..1 for MSE and PSNR",
+  "residual": "mean(abs(image-reference), RGB) * 4, clipped to 0..255",
+  "signedDelta": "MAE(linear,reference) - MAE(catmullRom,reference), green positive, magenta negative, clipped to +/-32 code values",
+  "regions": {
+    "Full frame": {
+      "xywh": [
+        0,
+        0,
+        962,
+        722
+      ],
+      "linearPSNRdB": 20.283580163665018,
+      "catmullRomPSNRdB": 21.746828279921186,
+      "mseReductionPercent": 28.60378505227129,
+      "linearMAE8bit": 8.793445000508713,
+      "catmullRomMAE8bit": 7.197267638403373
+    },
+    "A: Siemens star": {
+      "xywh": [
+        0,
+        300,
+        180,
+        220
+      ],
+      "linearPSNRdB": 20.3233690766279,
+      "catmullRomPSNRdB": 22.762864884799924,
+      "mseReductionPercent": 42.976953096422235,
+      "linearMAE8bit": 10.364848484848485,
+      "catmullRomMAE8bit": 6.865050505050505
+    },
+    "B: Checkerboard": {
+      "xywh": [
+        370,
+        640,
+        180,
+        80
+      ],
+      "linearPSNRdB": 18.83070064425338,
+      "catmullRomPSNRdB": 20.898509332938538,
+      "mseReductionPercent": 37.88176160289214,
+      "linearMAE8bit": 9.594699074074073,
+      "catmullRomMAE8bit": 6.9504166666666665
+    }
+  }
+}

@@ -45,13 +45,13 @@
 
 			<small>
 				Deferred mirror reflections reconstructed from depth + a 32-bit normal G-buffer by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br />
-				Left: RGB8 (packNormalToRGB). Right: <a href="https://jcgt.org/published/0003/02/01/" target="_blank" rel="noopener">octahedral</a> RG16F. Drag the handle to compare.
+				Left: RGB8 (packNormalToRGB). Right: <a href="https://jcgt.org/published/0003/02/01/" target="_blank" rel="noopener">octahedral</a> RG16 snorm or RG16F. Drag the handle to compare.
 			</small>
 		</div>
 
 		<div class="slider"></div>
 		<div class="lbl" style="left: 16px">RGB8 · packNormalToRGB · 32 bpp</div>
-		<div class="lbl" style="right: 16px">Octahedral · packNormalToOctahedral · RG16F · 32 bpp</div>
+		<div class="lbl" id="octLabel" style="right: 16px"></div>
 
 		<script type="importmap">
 			{
@@ -85,6 +85,7 @@
 
 			const params = {
 				view: 'Reflection',
+				format: 'RG16 snorm', // octahedral normal buffer format, RG16F when snorm is unsupported
 				environment: 'HDRI',
 				errorScale: 0.25, // degrees mapped to full heatmap intensity
 				animate: true
@@ -109,7 +110,7 @@
 				timer = new THREE.Timer();
 				timer.connect( document );
 
-				renderer = new THREE.WebGPURenderer();
+				renderer = new THREE.WebGPURenderer( { outputBufferType: THREE.FloatType } ); // float32 reference normals
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.setAnimationLoop( animate );
@@ -169,17 +170,12 @@
 					normalOct: packNormalToOctahedral( normalView )
 				} ) );
 
-				const referenceTexture = scenePass.getTexture( 'output' );
-				referenceTexture.type = THREE.FloatType;
-
 				// WebGPU has no RGB8 render attachment, alpha is padding
 
-				const normalRGBTexture = scenePass.getTexture( 'normalRGB' );
-				normalRGBTexture.type = THREE.UnsignedByteType;
+				scenePass.getTexture( 'normalRGB' ).type = THREE.UnsignedByteType;
 
 				const normalOctTexture = scenePass.getTexture( 'normalOct' );
 				normalOctTexture.format = THREE.RGFormat;
-				normalOctTexture.type = THREE.HalfFloatType; // rg16float
 
 				for ( const gBufferTexture of scenePass.renderTarget.textures ) {
 
@@ -187,6 +183,11 @@
 					gBufferTexture.magFilter = THREE.NearestFilter;
 
 				}
+
+				// rg16snorm is the most precise but needs texture-formats-tier1, rg16float is always renderable
+
+				const hasSnorm = renderer.hasFeature( 'texture-formats-tier1' );
+				if ( hasSnorm === false ) params.format = 'RG16F';
 
 				// deferred shading: reconstruct position + normal, reflect the view ray and look up the environment
 
@@ -250,7 +251,28 @@
 				// post-processing
 
 				renderPipeline = new THREE.RenderPipeline( renderer );
-				renderPipeline.outputNode = views[ params.view ];
+
+				function updateOutput() {
+
+					const type = params.format === 'RG16 snorm' ? THREE.ShortType : THREE.HalfFloatType;
+
+					if ( normalOctTexture.type !== type ) {
+
+						normalOctTexture.type = type;
+						normalOctTexture.normalized = type === THREE.ShortType;
+						scenePass.renderTarget.dispose(); // reallocate the G-buffer with the new format
+
+					}
+
+					renderPipeline.outputNode = views[ params.view ];
+					renderPipeline.outputColorTransform = params.view === 'Reflection';
+					renderPipeline.needsUpdate = true;
+
+					document.getElementById( 'octLabel' ).textContent = `Octahedral · packNormalToOctahedral · ${ params.format } · 32 bpp`;
+
+				}
+
+				updateOutput();
 
 				// events
 
@@ -262,13 +284,9 @@
 
 				const gui = renderer.inspector.createParameters( 'Settings' );
 
-				gui.add( params, 'view', Object.keys( views ) ).onChange( ( value ) => {
+				gui.add( params, 'view', Object.keys( views ) ).onChange( updateOutput );
 
-					renderPipeline.outputNode = views[ value ];
-					renderPipeline.outputColorTransform = value === 'Reflection';
-					renderPipeline.needsUpdate = true;
-
-				} );
+				if ( hasSnorm ) gui.add( params, 'format', [ 'RG16 snorm', 'RG16F' ] ).name( 'octahedral format' ).onChange( updateOutput );
 
 				gui.add( params, 'environment', [ 'HDRI', 'Checker' ] ).onChange( ( value ) => {
 

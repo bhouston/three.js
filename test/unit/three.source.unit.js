@@ -298,6 +298,7 @@ import './src/nodes/tsl/TSLBitOps.tests.js';
 import './src/nodes/tsl/TSLNoise.tests.js';
 import './src/nodes/tsl/TSLMath.tests.js';
 import './src/nodes/tsl/TSLPacking.tests.js';
+import './src/nodes/tsl/TSLOctahedral.tests.js';
 import './src/nodes/tsl/TSLPacked4x8Integer.tests.js';
 import './src/nodes/tsl/TSLConversion.tests.js';
 import './src/nodes/tsl/TSLVectorMatrix.tests.js';

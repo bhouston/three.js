@@ -45,13 +45,13 @@
 
 			<small>
 				Deferred mirror reflections reconstructed from depth + a 32-bit normal G-buffer by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br />
-				Left: RGB8 (packNormalToRGB). Right: <a href="https://jcgt.org/published/0003/02/01/" target="_blank" rel="noopener">octahedral</a> RG16 snorm. Drag the handle to compare.
+				Left: RGB8 (packNormalToRGB). Right: <a href="https://jcgt.org/published/0003/02/01/" target="_blank" rel="noopener">octahedral</a> RG16F. Drag the handle to compare.
 			</small>
 		</div>
 
 		<div class="slider"></div>
 		<div class="lbl" style="left: 16px">RGB8 · packNormalToRGB · 32 bpp</div>
-		<div class="lbl" id="rightLabel" style="right: 16px">Octahedral · packNormalToOctahedral · RG16 snorm · 32 bpp</div>
+		<div class="lbl" style="right: 16px">Octahedral · packNormalToOctahedral · RG16F · 32 bpp</div>
 
 		<script type="importmap">
 			{
@@ -179,18 +179,7 @@
 
 				const normalOctTexture = scenePass.getTexture( 'normalOct' );
 				normalOctTexture.format = THREE.RGFormat;
-
-				if ( renderer.hasFeature( 'texture-formats-tier1' ) ) {
-
-					normalOctTexture.type = THREE.ShortType;
-					normalOctTexture.normalized = true; // rg16snorm
-
-				} else {
-
-					normalOctTexture.type = THREE.HalfFloatType;
-					document.getElementById( 'rightLabel' ).textContent = 'Octahedral · packNormalToOctahedral · RG16F (no snorm support) · 32 bpp';
-
-				}
+				normalOctTexture.type = THREE.HalfFloatType; // rg16float
 
 				for ( const gBufferTexture of scenePass.renderTarget.textures ) {
 

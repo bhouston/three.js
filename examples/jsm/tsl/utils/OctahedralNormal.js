@@ -8,7 +8,7 @@ import { Fn, float, vec2, vec3 } from 'three/tsl';
 /**
  * Encodes a nonzero direction as signed octahedral coordinates in `[-1, 1]`
  * (Cigolle et al., {@link https://jcgt.org/published/0003/02/01/ A Survey of Efficient Representations for Independent Unit Vectors}, 2014).
- * Store the result in a two-channel signed normalized texture (e.g. RG16Snorm). The input does not need to be normalized.
+ * Store the result in a two-channel texture such as RG16F, or RG16Snorm for higher precision. The input does not need to be normalized.
  *
  * @tsl
  * @function

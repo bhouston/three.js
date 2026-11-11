@@ -34,6 +34,7 @@ export const packNormalToOctahedral = /*@__PURE__*/ Fn( ( [ normal ] ) => {
  */
 export const unpackOctahedralToNormal = /*@__PURE__*/ Fn( ( [ encoded ] ) => {
 
+	// using Rune Stubbe's optimized decoder: https://x.com/Stubbesaurus/status/937994790553227264
 	const normal = vec3( encoded, float( 1 ).sub( encoded.x.abs() ).sub( encoded.y.abs() ) ).toVar();
 	const t = normal.z.negate().max( 0 ).toVar();
 	normal.x.addAssign( normal.x.greaterThanEqual( 0 ).select( t.negate(), t ) );

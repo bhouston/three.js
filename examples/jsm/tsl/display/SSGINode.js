@@ -63,9 +63,18 @@ class SSGINode extends Node {
 		/**
 		 * A texture node that represents the beauty or scene pass.
 		 *
+		 * @private
 		 * @type {TextureNode}
 		 */
-		this.beautyNode = beautyNode;
+		this._beautyNode = beautyNode;
+
+		/**
+		 * Builds the material of the effect. Defined in {@link SSGINode#setup}.
+		 *
+		 * @private
+		 * @type {?Function}
+		 */
+		this._buildMaterial = null;
 
 		/**
 		 * A node that represents the scene's depth.
@@ -372,6 +381,30 @@ class SSGINode extends Node {
 	}
 
 	/**
+	 * A texture node that represents the beauty or scene pass. Any node with a `sample( uv )`
+	 * method can be used. Assigning a new node recompiles the SSGI material.
+	 *
+	 * @type {TextureNode}
+	 */
+	get beautyNode() {
+
+		return this._beautyNode;
+
+	}
+
+	set beautyNode( value ) {
+
+		if ( value !== this._beautyNode ) {
+
+			this._beautyNode = value;
+
+			if ( this._buildMaterial !== null ) this._buildMaterial();
+
+		}
+
+	}
+
+	/**
 	 * This method is used to render the effect once per frame.
 	 *
 	 * @param {NodeFrame} frame - The current node frame.
@@ -666,11 +699,19 @@ class SSGINode extends Node {
 
 		} );
 
-		const result = gi().toConst();
+		const sharedContext = builder.getSharedContext();
 
-		this._material.contextNode = context( builder.getSharedContext() );
-		this._material.fragmentNode = outputStruct( result.w, result.xyz );
-		this._material.needsUpdate = true;
+		this._buildMaterial = () => {
+
+			const result = gi().toConst();
+
+			this._material.contextNode = context( sharedContext );
+			this._material.fragmentNode = outputStruct( result.w, result.xyz );
+			this._material.needsUpdate = true;
+
+		};
+
+		this._buildMaterial();
 
 		//
 

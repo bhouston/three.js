@@ -43,7 +43,6 @@
 			import * as THREE from 'three/webgpu';
 			import { pass, mrt, output, normalView, diffuseColor, velocity, add, vec4, packNormalToRGB, unpackRGBToNormal, sample } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
-			import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadianceNode.js';
 			import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
@@ -160,21 +159,6 @@
 				const giPass = ssgi( scenePassColor, scenePassDepth, sceneNormal, camera );
 				giPass.sliceCount.value = 2;
 				giPass.stepCount.value = 8;
-
-				// beauty source
-
-				const beautySources = {
-					'Current frame': scenePassColor,
-					'Previous · camera reprojection': reprojectedRadiance( scenePass, { mode: 'camera' } ),
-					'Previous · velocity reprojection': reprojectedRadiance( scenePass, { mode: 'velocity' } ),
-					'Previous · reprojected buffer': reprojectedRadiance( scenePass, { mode: 'buffer' } )
-				};
-
-				const params = { beautySource: 'Current frame' };
-
-				const gui = renderer.inspector.createParameters( 'SSGI settings' );
-				gui.add( params, 'beautySource', Object.keys( beautySources ) ).name( 'Beauty source' ).onChange( ( value ) => giPass.beautyNode = beautySources[ value ] );
-				gui.add( beautySources[ 'Previous · reprojected buffer' ], 'resolutionScale', 0.25, 1 ).name( 'Buffer resolution scale' );
 
 				// denoise: GI in rgb and AO in alpha, accumulated in time
 

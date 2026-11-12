@@ -39,8 +39,9 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity } from 'three/tsl';
+			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity, ivec2, positionPrevious, textureSize } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+			import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadiance.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -51,7 +52,7 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const params = {
-				output: 'Beauty', traa: true,
+				output: 'Beauty', traa: true, traceSource: 'Current',
 				quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
@@ -183,12 +184,19 @@
 				renderPipeline = new THREE.RenderPipeline( renderer );
 
 				const scenePass = pass( scene, camera );
-				scenePass.setMRT( mrt( {
+				const sceneOutputs = {
 					output: output,
 					diffuseColor: vec4( diffuseColor.rgb, materialMetalness ),
 					normal: vec4( packNormalToRGB( normalView ), materialRoughness ),
 					velocity: velocity
-				} ) );
+				};
+				const currentMRT = mrt( sceneOutputs );
+				const previousMRT = mrt( {
+					...sceneOutputs,
+					// Previous view depth follows both camera and object motion.
+					velocity: vec4( velocity, velocity.previousCameraViewMatrix.mul( velocity.previousModelWorldMatrix ).mul( vec4( positionPrevious, 1 ) ).z.toVarying(), 0 )
+				} );
+				scenePass.setMRT( currentMRT );
 
 				scenePass.getTexture( 'normal' ).type = THREE.UnsignedByteType;
 				scenePass.getTexture( 'diffuseColor' ).type = THREE.UnsignedByteType;
@@ -209,55 +217,91 @@
 					scenePassNormal.sample( uv ).a
 				) );
 
-				// ssr
+				// Supply previous view depth for validation of moving geometry.
 
-				const ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
-					stochastic: true,
-					diffuseNode: scenePassDiffuseColor,
-					metalnessNode: scenePassDiffuseColor.a,
-					roughnessNode: sceneRoughness,
-					binaryRefine: params.binaryRefine
-				} ).toInspector( 'SSR' );
+				const previousViewDepthNode = sample( uv => {
 
-				const ssrTexture = ssrNode.getTextureNode();
+					const size = ivec2( textureSize( scenePassVelocity ) );
+					const texel = ivec2( uv.mul( vec2( size ) ) ).clamp( ivec2( 0 ), size.sub( 1 ) );
+					return scenePassVelocity.load( texel ).z;
 
-				// denoise
-
-				const temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
-					mode: 'specular',
-					accumulate: false
 				} );
-				temporalReprojectNode.maxFrames.value = 16;
-				temporalReprojectNode.clampIntensity.value = 0.25;
 
-				const denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
-					depth: scenePassDepth,
-					normal: scenePassNormal,
-					raw: ssrNode,
-					metalRoughness: sceneMetalRough,
-					mode: 'specular',
-					accumulate: true
-				} );
-				denoiseNode.depthPhi.value = 20;
-				denoiseNode.normalPhi.value = 0.3;
-				denoiseNode.radius.value = 1.5;
-				denoiseNode.alphaPhi.value = 5;
-				denoiseNode.strength.value = 0.725;
-				denoiseNode.adaptiveTrust.value = 1;
+				const traceSources = {
+					'Current': scenePassColor,
+					'Previous (Buffer)': reprojectedRadiance( scenePass, { mode: 'buffer', previousViewDepthNode } ),
+					'Previous (Velocity)': reprojectedRadiance( scenePass, { mode: 'velocity', previousViewDepthNode } ),
+					'Previous (Camera)': reprojectedRadiance( scenePass, { mode: 'camera' } )
+				};
 
-				// feed the denoised result + velocity back into SSR for multi-bounce reflections
-
-				ssrNode.setHistory( denoiseNode, scenePassVelocity );
-				temporalReprojectNode.setHistoryTexture( denoiseNode );
-
-				// composite
-
+				let ssrNode, ssrTexture, temporalReprojectNode, denoiseNode, temporalAA, spatialAA;
 				const denoiseEnabled = uniform( 1 );
 
-				const combined = scenePassColor.rgb.add( mix( ssrTexture.rgb, denoiseNode.rgb, denoiseEnabled ) );
+				function updateTraceSource() {
 
-				const temporalAA = traa( vec4( combined, 1 ), scenePassDepth, scenePassVelocity, camera );
-				const spatialAA = smaa( vec4( combined, 1 ) );
+					// Replace the effect graph so changing its input stays local to this example.
+					for ( const effect of [ ssrNode, temporalReprojectNode, denoiseNode, temporalAA, spatialAA ] ) {
+
+						if ( effect !== undefined ) effect.dispose();
+
+					}
+
+					const useVelocity = params.traceSource === 'Previous (Velocity)' || params.traceSource === 'Previous (Buffer)';
+					scenePass.setMRT( useVelocity ? previousMRT : currentMRT );
+
+					// ssr
+
+					ssrNode = ssr( traceSources[ params.traceSource ], scenePassDepth, sceneNormal, {
+						camera,
+						stochastic: true,
+						diffuseNode: scenePassDiffuseColor,
+						metalnessNode: scenePassDiffuseColor.a,
+						roughnessNode: sceneRoughness,
+						binaryRefine: params.binaryRefine
+					} ).toInspector( 'SSR' );
+
+					ssrTexture = ssrNode.getTextureNode();
+
+					// denoise
+
+					temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
+						mode: 'specular',
+						accumulate: false
+					} );
+					temporalReprojectNode.maxFrames.value = 16;
+					temporalReprojectNode.clampIntensity.value = 0.25;
+
+					denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
+						depth: scenePassDepth,
+						normal: scenePassNormal,
+						raw: ssrNode,
+						metalRoughness: sceneMetalRough,
+						mode: 'specular',
+						accumulate: true
+					} );
+					denoiseNode.depthPhi.value = 20;
+					denoiseNode.normalPhi.value = 0.3;
+					denoiseNode.radius.value = 1.5;
+					denoiseNode.alphaPhi.value = 5;
+					denoiseNode.strength.value = 0.725;
+					denoiseNode.adaptiveTrust.value = 1;
+
+					// feed the denoised result + velocity back into SSR for multi-bounce reflections
+
+					ssrNode.setHistory( denoiseNode, scenePassVelocity );
+					temporalReprojectNode.setHistoryTexture( denoiseNode );
+
+					// composite
+
+					const combined = scenePassColor.rgb.add( mix( ssrTexture.rgb, denoiseNode.rgb, denoiseEnabled ) );
+
+					temporalAA = traa( vec4( combined, 1 ), scenePassDepth, scenePassVelocity, camera );
+					spatialAA = smaa( vec4( combined, 1 ) );
+
+					updateParameters();
+					updateOutput();
+
+				}
 
 				function updateOutput() {
 
@@ -295,6 +339,7 @@
 				displayGui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
 
 				const ssrGui = renderer.inspector.createParameters( 'SSR' );
+				ssrGui.add( params, 'traceSource', Object.keys( traceSources ) ).name( 'Trace source' ).onChange( updateTraceSource );
 				ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 				ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 				ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );
@@ -319,8 +364,7 @@
 				sceneGui.add( params, 'animate' ).name( 'Animation' );
 				sceneGui.add( params, 'orbit' ).name( 'Orbit camera' );
 
-				updateParameters();
-				updateOutput();
+				updateTraceSource();
 
 				//
 

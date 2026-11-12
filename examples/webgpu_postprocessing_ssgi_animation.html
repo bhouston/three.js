@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - SSGI animation</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - SSGI animation">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_postprocessing_ssgi_animation.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_postprocessing_ssgi_animation.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>SSGI Animation</span>
+			</div>
+
+			<small>
+				Animated Screen Space Global Illumination by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br />
+				Colorful dielectric spheres, a pulsing emissive sphere and a moving emissive torus near a diffuse floor.
+			</small>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import { pass, mrt, output, normalView, diffuseColor, velocity, add, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample, color, positionLocal, mix, vec2, ivec2, positionPrevious, textureSize } from 'three/tsl';
+			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
+			import { reprojectedRadiance } from 'three/addons/tsl/display/ReprojectedRadiance.js';
+			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+			const params = {
+				output: 'Combined', traceSource: 'Current', temporalFiltering: true,
+				roughness: 0.65, animate: true, orbit: false
+			};
+
+			let camera, scene, renderer, renderPipeline;
+			let controls, timer, floor, torus, emissiveSphere;
+
+			const spheres = [];
+			let time = 0;
+
+			init();
+
+			async function init() {
+
+				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 60 );
+				camera.position.set( 7, 4.8, 9 );
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x202c38 );
+
+				timer = new THREE.Timer();
+
+				// lights
+
+				const hemiLight = new THREE.HemisphereLight( 0xddeeff, 0x3b2620, 0.45 );
+				scene.add( hemiLight );
+
+				const dirLight = new THREE.DirectionalLight( 0xffffff, 1.6 );
+				dirLight.position.set( 4, 8, 4 );
+				scene.add( dirLight );
+
+				// floor
+
+				const floorGeometry = new THREE.PlaneGeometry( 18, 18 );
+				const floorMaterial = new THREE.MeshStandardNodeMaterial( {
+					color: 0x30343b,
+					metalness: 0,
+					roughness: params.roughness
+				} );
+
+				floor = new THREE.Mesh( floorGeometry, floorMaterial );
+				floor.rotation.x = - Math.PI / 2;
+				scene.add( floor );
+
+				// walls
+
+				const wallGeometry = new THREE.BoxGeometry( 1, 5, 0.25 );
+
+				for ( let i = 0; i < 11; i ++ ) {
+
+					const wallMaterial = new THREE.MeshStandardNodeMaterial( {
+						color: i % 2 ? 0xe5ddd0 : 0x28535a,
+						roughness: 0.8
+					} );
+
+					const wall = new THREE.Mesh( wallGeometry, wallMaterial );
+					wall.position.set( i - 5, 2.5, - 4 );
+					scene.add( wall );
+
+				}
+
+				// spheres
+
+				const sphereGeometry = new THREE.SphereGeometry( 0.9, 64, 32 );
+				const tints = [ 0xf26b5b, 0x32c6b0, 0x9270df ];
+
+				for ( let i = 0; i < tints.length; i ++ ) {
+
+					const stripe = positionLocal.y.mul( 12 ).add( positionLocal.x.mul( 8 ) ).sin().smoothstep( - 0.1, 0.1 );
+
+					const sphereMaterial = new THREE.MeshStandardNodeMaterial( {
+						metalness: 0,
+						roughness: params.roughness
+					} );
+					sphereMaterial.colorNode = mix( color( tints[ i ] ), color( 0xffffff ), stripe.mul( 0.35 ) );
+
+					const sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+					sphere.position.set( ( i - 1 ) * 2.5, 0.96, 0 );
+					scene.add( sphere );
+
+					spheres.push( sphere );
+
+				}
+
+				// pulsing amber sphere and constantly emissive turquoise torus
+
+				emissiveSphere = new THREE.Mesh(
+					new THREE.SphereGeometry( 0.6, 64, 32 ),
+					new THREE.MeshStandardNodeMaterial( {
+						color: 0xffc45c,
+						emissive: 0xffb33b,
+						emissiveIntensity: 15,
+						metalness: 0,
+						roughness: 0.65
+					} )
+				);
+				emissiveSphere.position.set( 0, 0.62, 3 );
+				scene.add( emissiveSphere );
+
+				torus = new THREE.Mesh(
+					new THREE.TorusGeometry( 0.45, 0.15, 24, 96 ),
+					new THREE.MeshStandardNodeMaterial( {
+						color: 0x58e0ce,
+						emissive: 0x32c6b0,
+						emissiveIntensity: 20,
+						metalness: 0,
+						roughness: 0.65
+					} )
+				);
+				scene.add( torus );
+
+				//
+
+				renderer = new THREE.WebGPURenderer();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.AgXToneMapping;
+				renderer.toneMappingExposure = 1.2;
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+
+				await renderer.init();
+
+				const environment = new RoomEnvironment();
+				const pmremGenerator = new THREE.PMREMGenerator( renderer );
+
+				scene.environment = pmremGenerator.fromScene( environment ).texture;
+				scene.environmentIntensity = 0.25;
+
+				environment.dispose();
+				pmremGenerator.dispose();
+
+				//
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 1, 0 );
+				controls.enableDamping = true;
+				controls.autoRotateSpeed = 0.8;
+				controls.update();
+
+				// post processing
+
+				renderPipeline = new THREE.RenderPipeline( renderer );
+
+				const scenePass = pass( scene, camera );
+				const sceneOutputs = {
+					output: output,
+					diffuseColor: diffuseColor,
+					normal: packNormalToRGB( normalView ),
+					velocity: velocity
+				};
+				const currentMRT = mrt( sceneOutputs );
+				const previousMRT = mrt( {
+					...sceneOutputs,
+					velocity: vec4( velocity, velocity.previousCameraViewMatrix.mul( velocity.previousModelWorldMatrix ).mul( vec4( positionPrevious, 1 ) ).z.toVarying(), 0 )
+				} );
+				scenePass.setMRT( currentMRT );
+
+				const scenePassColor = scenePass.getTextureNode( 'output' );
+				const scenePassDiffuse = scenePass.getTextureNode( 'diffuseColor' ).toInspector( 'Diffuse Color' );
+				const scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
+
+					return scenePass.getLinearDepthNode();
+
+				} );
+
+				const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal' );
+				const scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
+
+				// bandwidth optimization
+
+				const diffuseTexture = scenePass.getTexture( 'diffuseColor' );
+				diffuseTexture.type = THREE.UnsignedByteType;
+
+				const normalTexture = scenePass.getTexture( 'normal' );
+				normalTexture.type = THREE.UnsignedByteType;
+
+				const sceneNormal = sample( ( uv ) => {
+
+					return unpackRGBToNormal( scenePassNormal.sample( uv ) );
+
+				} );
+
+				// gi
+
+				let giPass = ssgi( scenePassColor, scenePassDepth, sceneNormal, camera );
+				giPass.sliceCount.value = 2;
+				giPass.stepCount.value = 16;
+				giPass.giIntensity.value = 1;
+				giPass.useLinearThickness.value = false;
+				giPass.useScreenSpaceSampling.value = false;
+
+				// Supply previous view depth for validation of moving geometry.
+
+				const previousViewDepthNode = sample( uv => {
+
+					const size = ivec2( textureSize( scenePassVelocity ) );
+					const texel = ivec2( uv.mul( vec2( size ) ) ).clamp( ivec2( 0 ), size.sub( 1 ) );
+					return scenePassVelocity.load( texel ).z;
+
+				} );
+
+				const traceSources = {
+					'Current': scenePassColor,
+					'Previous (Buffer)': reprojectedRadiance( scenePass, { mode: 'buffer', previousViewDepthNode } ),
+					'Previous (Velocity)': reprojectedRadiance( scenePass, { mode: 'velocity', previousViewDepthNode } ),
+					'Previous (Camera)': reprojectedRadiance( scenePass, { mode: 'camera' } )
+				};
+
+				// Rebuild the effect when its source changes, keeping the scene and uniforms.
+
+				let ao, gi, compositePass, traaPass;
+
+				function updateTraceSource() {
+
+					const useVelocity = params.traceSource === 'Previous (Velocity)' || params.traceSource === 'Previous (Buffer)';
+					scenePass.setMRT( useVelocity ? previousMRT : currentMRT );
+
+					const nextPass = ssgi( traceSources[ params.traceSource ], scenePassDepth, sceneNormal, camera );
+
+					for ( const property of [ 'sliceCount', 'stepCount', 'radius', 'expFactor', 'thickness', 'backfaceLighting', 'aoIntensity', 'giIntensity', 'useLinearThickness', 'useScreenSpaceSampling' ] ) {
+
+						nextPass[ property ] = giPass[ property ];
+
+					}
+
+					giPass.dispose();
+					giPass = nextPass;
+					giPass.useTemporalFiltering = params.temporalFiltering;
+
+					if ( traaPass !== undefined ) traaPass.dispose();
+
+					ao = giPass.getAONode().toInspector( 'SSGI.AO' );
+					gi = giPass.getGINode().toInspector( 'SSGI.GI' );
+					compositePass = vec4( add( scenePassColor.rgb.mul( ao ), scenePassDiffuse.rgb.mul( gi.rgb ) ), scenePassColor.a );
+					traaPass = traa( compositePass, scenePassDepth, scenePassVelocity, camera );
+
+					updateOutput();
+
+				}
+
+				function updateOutput() {
+
+					switch ( params.output ) {
+
+						case 'Direct': renderPipeline.outputNode = scenePassColor; break;
+						case 'AO': renderPipeline.outputNode = vec4( vec3( ao ), 1 ); break;
+						case 'GI': renderPipeline.outputNode = vec4( gi, 1 ); break;
+						default: renderPipeline.outputNode = giPass.useTemporalFiltering ? traaPass : compositePass;
+
+					}
+
+					renderPipeline.needsUpdate = true;
+
+				}
+
+				updateTraceSource();
+
+				// GUI
+
+				const displayGui = renderer.inspector.createParameters( 'Display' );
+				displayGui.add( params, 'output', [ 'Combined', 'Direct', 'AO', 'GI' ] ).name( 'Output' ).onChange( updateOutput );
+
+				const gui = renderer.inspector.createParameters( 'SSGI settings' );
+				gui.add( params, 'traceSource', Object.keys( traceSources ) ).name( 'Trace source' ).onChange( updateTraceSource );
+				gui.add( giPass.sliceCount, 'value', 1, 4, 1 ).name( 'slice count' );
+				gui.add( giPass.stepCount, 'value', 1, 32, 1 ).name( 'step count' );
+				gui.add( giPass.radius, 'value', 1, 25 ).name( 'radius' );
+				gui.add( giPass.expFactor, 'value', 1, 3 ).name( 'exp factor' );
+				gui.add( giPass.thickness, 'value', 0.01, 10 ).name( 'thickness' );
+				gui.add( giPass.backfaceLighting, 'value', 0, 1 ).name( 'backface lighting' );
+				gui.add( giPass.aoIntensity, 'value', 0, 4 ).name( 'AO intensity' );
+				gui.add( giPass.giIntensity, 'value', 0, 100 ).name( 'GI intensity' );
+				gui.add( giPass.useLinearThickness, 'value' ).name( 'use linear thickness' );
+				gui.add( giPass.useScreenSpaceSampling, 'value' ).name( 'screen-space sampling' );
+				gui.add( params, 'temporalFiltering' ).name( 'temporal filtering' ).onChange( updateTraceSource );
+
+				const sceneGui = renderer.inspector.createParameters( 'Scene' );
+				sceneGui.add( params, 'roughness', 0, 1 ).name( 'Roughness' ).onChange( ( value ) => {
+
+					floor.material.roughness = value;
+
+					for ( const sphere of spheres ) {
+
+						sphere.material.roughness = value;
+
+					}
+
+				} );
+				sceneGui.add( params, 'animate' ).name( 'Animation' );
+				sceneGui.add( params, 'orbit' ).name( 'Orbit camera' );
+
+				updateOutput();
+
+				//
+
+				window.addEventListener( 'resize', onWindowResize );
+
+				renderer.setAnimationLoop( animate );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function animate() {
+
+				timer.update();
+
+				const delta = Math.min( timer.getDelta(), 0.05 );
+
+				if ( params.animate ) time += delta;
+
+				for ( let i = 0; i < spheres.length; i ++ ) {
+
+					const sphere = spheres[ i ];
+					sphere.rotation.set( time * 0.35, time * ( 0.7 + i * 0.2 ), 0.25 );
+					sphere.position.y = 0.96 + Math.sin( time * 1.4 + i ) * 0.04;
+
+				}
+
+				emissiveSphere.material.emissiveIntensity = 15 + Math.sin( time * 1.6 ) * 10;
+
+				torus.position.set( Math.sin( time ) * 3.5, 0.68, 1.6 );
+				torus.rotation.set( time * 0.5, time, 0 );
+
+				controls.autoRotate = params.orbit;
+				controls.update( delta );
+
+				renderPipeline.render();
+
+			}
+
+		</script>
+
+	</body>
+</html>

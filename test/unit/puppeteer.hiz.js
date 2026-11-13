@@ -25,6 +25,7 @@ try {
 	page.on( 'console', message => {
 
 		if ( message.type() === 'warn' || message.type() === 'error' ) console.error( message.text() );
+		if ( /THREE\.TSL:.*(?:Error|error)|GPUValidationError/.test( message.text() ) ) pageErrors.push( message.text() );
 
 	} );
 
@@ -74,7 +75,7 @@ try {
 
 	}
 
-	await page.goto( `${ url }/test/unit/UnitTestsAddons.html?filter=HiZNode` );
+	await page.goto( `${ url }/test/unit/UnitTestsAddons.html?filter=${ encodeURIComponent( '/HiZNode|SSR.*Trace/' ) }` );
 	await page.waitForFunction( () => window._QUnitStats !== undefined, { timeout: 180000 } );
 	const results = await page.evaluate( () => ( { ...window._HiZResults, stats: window._QUnitStats } ) );
 	console.log( 'Hi-Z tests:', results.stats );

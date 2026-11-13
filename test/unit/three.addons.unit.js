@@ -24,4 +24,6 @@ import './addons/exporters/USDZExporter.tests.js';
 import './addons/tsl/WebGLNodesHandler.tests.js';
 import './addons/tsl/ClusteredLightsNode.tests.js';
 import './addons/tsl/HiZNode.tests.js';
+import './addons/tsl/SSRTrace.tests.js';
+import './addons/tsl/SSRLinearTrace.tests.js';
 import './addons/postprocessing/GTAOPass.tests.js';

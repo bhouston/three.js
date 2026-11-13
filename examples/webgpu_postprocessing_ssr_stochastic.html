@@ -116,7 +116,7 @@
 
 			ssr: {
 				resolutionScale: 1,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, glossyMinLevel: 0,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: true, glossyMinLevel: 0,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -344,6 +344,7 @@
 				'Compare (Denoise)': OUTPUT_COMPARE_DENOISE,
 				'Compare (Reflections)': OUTPUT_COMPARE_SSR,
 				'Ray Length': 7,
+				'SSR Iterations': 8,
 				'Accumulation Speed (Alpha)': 6
 			};
 
@@ -360,6 +361,7 @@
 				for ( const controller of traceControllers ) controller.disable( params.ssr.adaptive );
 				adaptiveStepsController.disable( ! params.ssr.adaptive );
 				candidatesController.disable( ! params.ssr.adaptive );
+				occlusionController.disable( ! params.ssr.adaptive );
 				glossyMinLevelController.disable( ! params.ssr.adaptive );
 
 			};
@@ -367,6 +369,7 @@
 			ssrGui.add( params.ssr, 'adaptive' ).name( 'Hi-Z / adaptive SSR' ).onChange( updateTracing ).disable( ! renderer.backend.isWebGPUBackend );
 			const candidatesController = ssrGui.add( params.ssr, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( applyParams );
 			const adaptiveStepsController = ssrGui.add( params.ssr, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( applyParams );
+			const occlusionController = ssrGui.add( params.ssr, 'occlusionSkipping' ).name( 'Occlusion skipping' ).onChange( applyParams );
 			const glossyMinLevelController = ssrGui.add( params.ssr, 'glossyMinLevel', 0, 3, 1 ).name( 'Rough-ray min mip' ).onChange( applyParams );
 			traceControllers.push( ssrGui.add( params.ssr, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( applyParams ) );
 			traceControllers.push( ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams ) );
@@ -429,6 +432,7 @@
 			ssrNode.maxCandidates = params.ssr.maxCandidates;
 			ssrNode.glossyMinLevel = params.ssr.glossyMinLevel;
 			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
+			ssrNode.occlusionSkipping = params.ssr.occlusionSkipping;
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
@@ -524,6 +528,7 @@
 				case 4: node = applyGrading( vec4( denoiseNode.rgb, 1 ) ); break; // SSR DN
 				case 6: node = vec4( denoiseNode.aaa, 1 ); break; // Accumulation Speed (Alpha)
 				case 7: node = vec4( ssrNode.aaa, 1 ); break; // Ray Length
+				case 8: node = vec4( ssrNode.rgb, 1 ); break; // Iteration heat map
 				case OUTPUT_COMPARE_DENOISE:
 					node = buildCompareNode(
 						applyGrading( vec4( denoiseNode.rgb, 1 ) ),
@@ -539,7 +544,8 @@
 			compareHint.hidden = ! isCompareMode();
 			releaseCompareControls();
 
-			renderPipeline.outputColorTransform = params.output === 6 || params.output === 7;
+			ssrNode.showIterations = params.output === 8;
+			renderPipeline.outputColorTransform = params.output === 6 || params.output === 7 || params.output === 8;
 			renderPipeline.outputNode = node;
 			renderPipeline.needsUpdate = true;
 

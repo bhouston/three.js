@@ -163,7 +163,9 @@ try {
 			];
 			for ( const maxCandidates of settings.candidates ) {
 
-				configurations.push( { name: `Adaptive SSR (${ maxCandidates } candidate${ maxCandidates > 1 ? 's' : '' })`, adaptive: true, maxCandidates } );
+				const budget = `${ maxCandidates } candidate${ maxCandidates > 1 ? 's' : '' }`;
+				configurations.push( { name: `Adaptive SSR (${ budget })`, adaptive: true, maxCandidates, occlusionSkipping: false } );
+				configurations.push( { name: `Adaptive SSR + occlusion skipping (${ budget })`, adaptive: true, maxCandidates, occlusionSkipping: true } );
 
 			}
 
@@ -199,6 +201,7 @@ try {
 				Object.assign( params, config.exampleDefaults ? exampleDefaults : comparable );
 				params.adaptive = config.adaptive;
 				params.maxCandidates = config.maxCandidates;
+				node.occlusionSkipping = params.occlusionSkipping = config.occlusionSkipping === true;
 				apply();
 				const measurement = { ...config, ...await measure( config.name, drawTrace ) };
 				const image = await readTrace();

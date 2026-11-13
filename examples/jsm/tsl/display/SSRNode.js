@@ -35,6 +35,7 @@ const HIZ_MAX_LEVEL = 6;
  * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode uses a nearest-depth hierarchy and exact mip-zero candidates. Requires WebGPU.
  * @property {number} [maxCandidates=1] - Adaptive mode only: maximum candidate surfaces to validate.
  * @property {number} [glossyMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it. Use with `maxCandidates > 1`.
+ * @property {boolean} [occlusionSkipping=true] - Adaptive mode only: lets rays pass behind occluders by skipping Hi-Z cells they are entirely hidden behind, as linear tracing does sample by sample. Recovers reflections of surfaces seen past an occluder at the cost of longer rays.
  * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
@@ -125,6 +126,8 @@ class SSRNode extends Node {
 		this._maxCandidates = options.maxCandidates ?? 1;
 		if ( ! Number.isInteger( this._maxCandidates ) || this._maxCandidates < 1 || this._maxCandidates > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
 		this._glossyMinLevel = options.glossyMinLevel ?? 0;
+		this._occlusionSkipping = options.occlusionSkipping ?? true;
+		this._showIterations = false;
 		this.hiZ = options.hiZ ?? null;
 		this._ownsHiZ = false;
 		if ( this._tracing === 'adaptive' && this.hiZ === null ) {
@@ -576,6 +579,41 @@ class SSRNode extends Node {
 		if ( ! Number.isInteger( value ) || value < 1 || value > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
 		if ( value === this._maxCandidates ) return;
 		this._maxCandidates = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/** Whether adaptive rays pass behind occluders. Changing it recompiles adaptive tracing. @type {boolean} */
+	get occlusionSkipping() {
+
+		return this._occlusionSkipping;
+
+	}
+
+	set occlusionSkipping( value ) {
+
+		if ( value === this._occlusionSkipping ) return;
+		this._occlusionSkipping = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Debug view: replaces the reflection with a heat map of trace iterations as a
+	 * fraction of the budget (blue, green, red; white where the budget ran out).
+	 * Changing it recompiles the SSR material.
+	 * @type {boolean}
+	 */
+	get showIterations() {
+
+		return this._showIterations;
+
+	}
+
+	set showIterations( value ) {
+
+		if ( value === this._showIterations ) return;
+		this._showIterations = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1213,6 +1251,14 @@ class SSRNode extends Node {
 
 			};
 
+			const iterationHeat = ( fraction, exhausted ) => {
+
+				const cool = mix( vec3( 0, 0, 1 ), vec3( 0, 1, 0 ), fraction.mul( 2 ).clamp() );
+				const warm = mix( cool, vec3( 1, 0, 0 ), fraction.mul( 2 ).sub( 1 ).clamp() );
+				return vec4( bool( exhausted ).select( vec3( 1 ), warm ), 1 );
+
+			};
+
 			const validateCandidate = ( hitUV, raw ) => {
 
 				const valid = bool( false ).toVar();
@@ -1248,10 +1294,11 @@ class SSRNode extends Node {
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
 						// The cell's farthest surface fails the thickness test where the ray
 						// enters and leaves, so every nearer surface in between fails it too.
-						isHidden: ( uvIn, uvOut, raw ) => nearRay( surfacePoint( uvIn, raw ).toVar() ).not().and( nearRay( surfacePoint( uvOut, raw ).toVar() ).not() ),
+						isHidden: this.occlusionSkipping === false ? null : ( uvIn, uvOut, raw ) => nearRay( surfacePoint( uvIn, raw ).toVar() ).not().and( nearRay( surfacePoint( uvOut, raw ).toVar() ).not() ),
 						acceptHit: ( uv, s, raw ) => validateCandidate( uv, raw )
 					} );
 				if ( this._traceDebug === true ) return vec4( float( result.iterations ), float( result.candidates ), float( result.hit ), float( result.exhausted ) );
+				if ( this.showIterations ) return iterationHeat( float( result.iterations ).div( float( this.adaptiveMaxSteps ) ), result.exhausted );
 				foundHit.assign( result.hit );
 				hitUvS.assign( result.uv );
 				hitD.assign( projectionDepth( result.depth, this._cameraNear, this._cameraFar ) );
@@ -1302,6 +1349,7 @@ class SSRNode extends Node {
 
 					}
 				} );
+				if ( this.showIterations ) return iterationHeat( float( result.iterations ).div( float( totalStep ) ), false );
 				foundHit.assign( result.hit );
 				hitUvS.assign( result.uv );
 				hitD.assign( result.depth );

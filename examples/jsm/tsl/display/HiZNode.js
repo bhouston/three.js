@@ -1,5 +1,5 @@
-import { FloatType, NearestFilter, Node, NodeUpdateType, RedFormat, StorageTexture, Vector4 } from 'three/webgpu';
-import { Fn, Loop, float, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uniformArray, uv, vec2, vec4, storageTexture, invocationLocalIndex, workgroupId, workgroupArray, workgroupBarrier, If } from 'three/tsl';
+import { FloatType, NearestFilter, Node, NodeUpdateType, RedFormat, StorageTexture, Vector2 } from 'three/webgpu';
+import { Fn, Loop, float, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uv, uvec2, vec2, vec4, storageTexture, invocationLocalIndex, workgroupId, workgroupArray, workgroupBarrier, If } from 'three/tsl';
 
 const WORKGROUP_SIZE = 64;
 const MAX_LEVELS = 16;
@@ -68,7 +68,7 @@ class HiZNode extends Node {
 
 		/** @type {Array<{width:number,height:number}>} */
 		this.levels = [];
-		this._layout = uniformArray( Array.from( { length: MAX_LEVELS }, () => new Vector4( 1, 1, 0, 1 ) ) );
+		this._size = uniform( new Vector2( 1, 1 ) );
 		this._lastLevel = uniform( 0, 'uint' );
 		this._textureNode = passTexture( this, this.texture );
 		this._computeNode = null;
@@ -88,13 +88,34 @@ class HiZNode extends Node {
 	 */
 	getTextureNode( level = this.level, uvNode = uv() ) {
 
-		const mip = uint( level ).min( this._lastLevel );
-		const layout = this._layout.element( mip );
-		// Keep lookup coordinates consistent with the reduction's enlarged
-		// trailing cells at odd sizes, rather than scaling UVs by the mip size.
-		const size = this._layout.element( uint( 0 ) ).xy;
-		const coord = ivec2( uvNode.mul( size ).div( layout.w ).floor().clamp( 0, layout.xy.sub( 1 ) ) );
-		return textureLoad( this._textureNode, coord, mip ).r;
+		return this.getCellNode( level, uvNode ).depth;
+
+	}
+
+	/**
+	 * One hierarchy cell: its integer coordinate, raw nearest depth and exact
+	 * normalized bounds. Floor-halved levels are size >> level, so the cell and
+	 * its footprint (including the enlarged trailing cell at odd sizes) are
+	 * integer shifts rather than scaled UVs.
+	 *
+	 * @param {Node<uint>|number} level - Hierarchy level. Out-of-range levels clamp to the last.
+	 * @param {Node<vec2>} uvNode - Original-image normalized coordinates.
+	 * @return {{cell: Node<uvec2>, depth: Node<float>, bounds: Node<vec4>}} Cell coordinate, depth and rectangle.
+	 */
+	getCellNode( level, uvNode ) {
+
+		const mip = uint( level ).min( this._lastLevel ).toConst();
+		const shift = uvec2( mip );
+		const size = uvec2( this._size ).toConst();
+		const last = size.shiftRight( shift ).max( uvec2( 1 ) ).sub( uvec2( 1 ) ).toConst();
+		const cell = uvec2( uvNode.mul( this._size ).max( 0 ) ).shiftRight( shift ).min( last ).toConst();
+		const begin = cell.shiftLeft( shift ).toConst();
+		const end = cell.equal( last ).select( size, begin.add( uvec2( 1 ).shiftLeft( shift ) ) );
+		return {
+			cell,
+			depth: textureLoad( this._textureNode, ivec2( cell ), mip ).r,
+			bounds: vec4( vec2( begin ), vec2( end ) ).div( this._size.xyxy )
+		};
 
 	}
 
@@ -113,15 +134,7 @@ class HiZNode extends Node {
 	 */
 	getCellBoundsNode( level, uvNode ) {
 
-		const layout = this._layout.element( uint( level ).min( this._lastLevel ) );
-		const size = this._layout.element( uint( 0 ) ).xy;
-		const cell = uvNode.mul( size ).div( layout.w ).floor().clamp( 0, layout.xy.sub( 1 ) );
-		const begin = cell.mul( layout.w );
-		const end = vec2(
-			cell.x.equal( layout.x.sub( 1 ) ).select( size.x, begin.x.add( layout.w ) ),
-			cell.y.equal( layout.y.sub( 1 ) ).select( size.y, begin.y.add( layout.w ) )
-		);
-		return vec4( begin.div( size ), end.div( size ) );
+		return this.getCellNode( level, uvNode ).bounds;
 
 	}
 
@@ -159,13 +172,7 @@ class HiZNode extends Node {
 		this._height = height;
 		this.levels = levels;
 
-		for ( let i = 0; i < MAX_LEVELS; i ++ ) {
-
-			const entry = this.levels[ Math.min( i, this.levels.length - 1 ) ];
-			this._layout.array[ i ].set( entry.width, entry.height, 0, 2 ** Math.min( i, this.levels.length - 1 ) );
-
-		}
-
+		this._size.value.set( width, height );
 		this._lastLevel.value = this.levels.length - 1;
 		// Explicit mip descriptors allocate the chain without automatic filtering.
 		this.texture.mipmaps = this.levels.map( ( { width, height } ) => ( { width, height } ) );

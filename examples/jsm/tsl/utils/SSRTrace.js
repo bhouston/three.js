@@ -88,14 +88,15 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		} );
 
-		const bounds = hierarchy.getCellBoundsNode( uint( mip ), position.xy ).toVar();
+		const { depth: cellDepth, bounds: cellBounds } = hierarchy.getCellNode( uint( mip ), position.xy );
+		const bounds = cellBounds.toVar();
 		// Zero XY components use a large positive exit distance: the origin
 		// remains inside that axis's half-open cell. No per-axis branch needed.
 		const edge = delta.xy.greaterThanEqual( vec2( 0 ) ).select( bounds.zw, bounds.xy );
 		const exits = edge.sub( origin.xy ).mul( inverseXY );
 		const exit = min( min( exits.x, exits.y ), 1 ).toVar();
 
-		const raw = hierarchy.getTextureNode( uint( mip ), position.xy ).toVar();
+		const raw = cellDepth.toVar();
 		const depth = projectDepth( raw ).toVar();
 		const plane = depth.sub( origin.z ).mul( inverseZ ).toVar();
 		const conservativeDepth = depth.add( reversedDepth ? depthTolerance : float( depthTolerance ).negate() );

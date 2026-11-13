@@ -26,24 +26,26 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  * @param {Node<float>|number} [options.depthTolerance=0] - Conservative projected-depth rounding tolerance.
  * @param {number} [options.maxCandidates=1] - Maximum candidate surfaces to validate (compile-time integer).
  * @param {Node<int>|number} [options.minLevel=0] - Finest level later descents may reach (experimental; FidelityFX's most_detailed_mip). Coarse leaves do less work but, with a yes/no validator, their false candidates use up the budget: pair with maxCandidates > 1.
+ * @param {boolean} [options.leafSample=false] - Approximate hits: traversal starts at minLevel, and a leaf above level zero tests only the pixel under the ray, as one linear march step does. Surfaces elsewhere in the cell are stepped over.
  * @param {Function} [options.isHidden] - TSL predicate (entry UV, exit UV, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones, without spending candidates.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, leafSample = false, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
 
 	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRTrace: maxCandidates must be an integer from 1 to 4096.' );
 
 	const delta = end.sub( origin ).toConst();
 	const s = float( start ).toVar();
-	// Traversal always starts at mip zero: the cells next to the origin hold its
-	// own surface, which only full resolution separates from the ray.
-	const mip = int( 0 ).toVar();
 	const coarse = minLevel !== 0;
-	const minMip = int( minLevel ).toConst();
+	const minMip = int( minLevel ).min( int( hierarchy.getLastLevelNode() ) ).toConst();
+	// Traversal starts at mip zero: the cells next to the origin hold its own
+	// surface, which only full resolution separates from the ray. Leaf sampling
+	// tests the ray's own pixel at every leaf, so it can start at the leaf level.
+	const mip = ( leafSample ? minMip : int( 0 ) ).toVar();
 	// A coarse leaf holds its cell's nearest depth. Candidates are validated
 	// against the full-resolution depth at their own UV instead.
-	const leafDepth = ( uv, raw ) => coarse ? hierarchy.getTextureNode( 0, uv ) : raw;
+	const leafDepth = ( uv, raw ) => coarse && ! leafSample ? hierarchy.getTextureNode( 0, uv ) : raw;
 	const lastMip = int( hierarchy.getLastLevelNode() ).toConst();
 	const hit = bool( false ).toVar();
 	const hitUV = vec2( 0 ).toVar();
@@ -160,6 +162,31 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		} );
 
+		if ( leafSample ) {
+
+			// Approximate leaf: like one linear march step, test only the pixel
+			// under the ray. Surfaces elsewhere in the cell are stepped over.
+			If( mip.greaterThan( 0 ), () => {
+
+				const fine = hierarchy.getPixelCellNode( 0, pixel ).depth.toVar();
+				If( nearer( z, projectDepth( fine ) ).or( reversedDepth ? fine.lessThanEqual( 0 ) : fine.greaterThanEqual( 1 ) ), () => {
+
+					s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
+					const leavesParent = cell.bitAnd( uvec2( 1 ) ).equal( exitParity );
+					If( exits.x.lessThanEqual( exits.y ).select( leavesParent.x, leavesParent.y ), () => {
+
+						mip.assign( mip.add( 1 ).min( lastMip ) );
+
+					} );
+					Continue();
+
+				} );
+				raw.assign( fine );
+
+			} );
+
+		}
+
 		candidates.addAssign( 1 );
 		if ( maxCandidates === 1 ) {
 
@@ -215,7 +242,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		If( hit, () => {
 
-			if ( coarse ) hitDepth.assign( leafDepth( hitUV ) );
+			if ( coarse && ! leafSample ) hitDepth.assign( leafDepth( hitUV ) );
 			hit.assign( acceptHit( hitUV, hitS, hitDepth ) );
 
 		} );

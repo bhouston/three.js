@@ -52,7 +52,7 @@
 
 			const params = {
 				output: 'Beauty', traa: true,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, approximateSteps: 0, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
 			};
@@ -288,7 +288,9 @@
 					adaptiveStepsController.disable( ! params.adaptive );
 					candidatesController.disable( ! params.adaptive );
 					occlusionController.disable( ! params.adaptive );
+					approximateController.disable( ! params.adaptive );
 					ssrNode.occlusionSkipping = params.occlusionSkipping;
+					ssrNode.approximateSteps = params.approximateSteps;
 					ssrNode.quality.value = params.quality;
 					ssrNode.binaryRefine = params.binaryRefine;
 					ssrNode.maxDistance.value = params.maxDistance;
@@ -309,6 +311,7 @@
 				const candidatesController = ssrGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( updateParameters );
 				const adaptiveStepsController = ssrGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( updateParameters );
 				const occlusionController = ssrGui.add( params, 'occlusionSkipping' ).name( 'Occlusion skipping' ).onChange( updateParameters );
+				const approximateController = ssrGui.add( params, 'approximateSteps', 0, 64, 4 ).name( 'Approximate steps' ).info( 'Adaptive only. 0 traces exactly. Otherwise each ray crosses about this many coarse cells and tests one pixel in each, like a linear march step: pair it with a small iteration budget.' ).onChange( updateParameters );
 				const qualityController = ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 				const refineController = ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 				ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );

@@ -368,6 +368,33 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			traceTest( 'leaf sampling hits within one coarse cell of the exact trace', async ( { assert, renderer } ) => {
+
+				const data = new Float32Array( 128 ).fill( 1 );
+				data.fill( 0.5, 48, 80 );
+				const fixture = createTraceFixture( 128, 1, data );
+				const rays = [[[ 0.001, 0.5, 0.2 ], [ 0.999, 0.5, 0.8 ]], [[ 0.999, 0.5, 0.2 ], [ 0.001, 0.5, 0.8 ]]];
+				try {
+
+					const exact = await traceRays( renderer, fixture, rays, { thickness: 0.05 } );
+					const approximate = await traceRays( renderer, fixture, rays, { thickness: 0.05, minLevel: 3, leafSample: true } );
+					for ( let i = 0; i < rays.length; i ++ ) {
+
+						assert.strictEqual( exact.output[ i * 4 + 3 ], 1, 'exact trace hits the wall' );
+						assert.strictEqual( approximate.output[ i * 4 + 3 ], 1, 'approximate trace hits the wall' );
+						assert.ok( Math.abs( approximate.output[ i * 4 + 2 ] - exact.output[ i * 4 + 2 ] ) <= 8 / 128, 'within one level-3 cell' );
+						assert.ok( approximate.metadata[ i * 4 ] <= exact.metadata[ i * 4 ], 'takes no more iterations' );
+
+					}
+
+				} finally {
+
+					fixture.dispose();
+
+				}
+
+			} );
+
 			traceTest( 'budget exhaustion is distinct from a completed miss', async ( { assert, renderer } ) => {
 
 				const fixture = createTraceFixture( 128, 1, new Float32Array( 128 ).fill( 1 ) );

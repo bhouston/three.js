@@ -116,7 +116,7 @@
 
 			ssr: {
 				resolutionScale: 1,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, glossyMinLevel: 0,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, approximateSteps: 0, glossyMinLevel: 0,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -362,6 +362,7 @@
 				adaptiveStepsController.disable( ! params.ssr.adaptive );
 				candidatesController.disable( ! params.ssr.adaptive );
 				occlusionController.disable( ! params.ssr.adaptive );
+				approximateController.disable( ! params.ssr.adaptive );
 				glossyMinLevelController.disable( ! params.ssr.adaptive );
 
 			};
@@ -370,6 +371,7 @@
 			const candidatesController = ssrGui.add( params.ssr, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( applyParams );
 			const adaptiveStepsController = ssrGui.add( params.ssr, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( applyParams );
 			const occlusionController = ssrGui.add( params.ssr, 'occlusionSkipping' ).name( 'Occlusion skipping' ).onChange( applyParams );
+			const approximateController = ssrGui.add( params.ssr, 'approximateSteps', 0, 64, 4 ).name( 'Approximate steps' ).info( 'Adaptive only. 0 traces exactly. Otherwise each ray crosses about this many coarse cells and tests one pixel in each, like a linear march step: pair it with a small iteration budget.' ).onChange( applyParams );
 			const glossyMinLevelController = ssrGui.add( params.ssr, 'glossyMinLevel', 0, 3, 1 ).name( 'Rough-ray min mip' ).onChange( applyParams );
 			traceControllers.push( ssrGui.add( params.ssr, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( applyParams ) );
 			traceControllers.push( ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams ) );
@@ -433,6 +435,7 @@
 			ssrNode.glossyMinLevel = params.ssr.glossyMinLevel;
 			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
 			ssrNode.occlusionSkipping = params.ssr.occlusionSkipping;
+			ssrNode.approximateSteps = params.ssr.approximateSteps;
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;

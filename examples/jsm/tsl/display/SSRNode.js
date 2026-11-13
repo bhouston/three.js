@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
+import { Break, Continue, Fn, If, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth, log2 } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -35,6 +35,7 @@ const HIZ_MAX_LEVEL = 6;
  * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode uses a nearest-depth hierarchy and exact mip-zero candidates. Requires WebGPU.
  * @property {number} [maxCandidates=1] - Adaptive mode only: maximum candidate surfaces to validate.
  * @property {number} [glossyMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it. Use with `maxCandidates > 1`.
+ * @property {number} [approximateSteps=0] - Adaptive mode only: `0` traces exactly. When greater, each ray stops descending at the Hi-Z level where it crosses about this many cells and tests only the pixel under the ray there, as a linear march step does. Cheaper with a small iteration budget, but steps over features thinner than a cell.
  * @property {boolean} [occlusionSkipping=false] - Adaptive mode only: lets rays pass behind occluders by skipping Hi-Z cells they are entirely hidden behind, as linear tracing does sample by sample. Recovers reflections of surfaces seen past an occluder at the cost of longer rays.
  * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
@@ -126,6 +127,7 @@ class SSRNode extends Node {
 		this._maxCandidates = options.maxCandidates ?? 1;
 		if ( ! Number.isInteger( this._maxCandidates ) || this._maxCandidates < 1 || this._maxCandidates > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
 		this._glossyMinLevel = options.glossyMinLevel ?? 0;
+		this._approximateSteps = options.approximateSteps ?? 0;
 		this._occlusionSkipping = options.occlusionSkipping ?? false;
 		this._showIterations = false;
 		this.hiZ = options.hiZ ?? null;
@@ -614,6 +616,21 @@ class SSRNode extends Node {
 
 		if ( value === this._showIterations ) return;
 		this._showIterations = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/** Approximate leaf cells per ray; `0` traces exactly. Changing it recompiles adaptive tracing. @type {number} */
+	get approximateSteps() {
+
+		return this._approximateSteps;
+
+	}
+
+	set approximateSteps( value ) {
+
+		if ( value === this._approximateSteps ) return;
+		this._approximateSteps = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1289,7 +1306,8 @@ class SSRNode extends Node {
 						start: rayLen.reciprocal(),
 						maxSteps: this.adaptiveMaxSteps,
 						maxCandidates: this.maxCandidates,
-						minLevel: this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
+						minLevel: this.approximateSteps > 0 ? int( log2( rayLen.div( this.approximateSteps ).max( 1 ) ) ) : this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
+						leafSample: this.approximateSteps > 0,
 						depthTolerance: 2e-7,
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
 						// The cell's farthest surface fails the thickness test where the ray

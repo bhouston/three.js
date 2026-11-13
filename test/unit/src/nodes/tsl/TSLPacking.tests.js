@@ -6,10 +6,11 @@ import {
 	packSnorm4x8, unpackSnorm4x8,
 	packUnorm4x8, unpackUnorm4x8,
 	packNormalToRGB, unpackRGBToNormal, unpackNormal,
-	length
+	length, uniform, texture, packNormalToOctahedral, unpackOctahedralToNormal
 } from 'three/tsl';
 import { toHalfFloat } from '../../../../../src/extras/DataUtils.js';
-import { gpuTest, gpuFuzzTest } from './gpu-test-utils.js';
+import { FloatType, HalfFloatType, NearestFilter, NodeMaterial, QuadMesh, RenderTarget, RGFormat, Vector3 } from 'three/webgpu';
+import { getSharedRenderer, gpuTest, gpuFuzzTest } from './gpu-test-utils.js';
 
 // Packing/unpacking coverage: every round-trip test checks a value that was
 // packed and then unpacked against the *original* input (an independent,
@@ -95,6 +96,67 @@ export default QUnit.module( 'Nodes', () => {
 				assert.closeAbs( unpackRGBToNormal( packNormalToRGB( n ) ), n, 1e-5, 'round trip recovers the original direction' );
 
 			} );
+
+			for ( const backend of [ 'webgpu', 'webgl' ] ) {
+
+				for ( const samples of [ 0, 4 ] ) {
+
+					QUnit.test( `octahedral normals survive RG16F storage and resolve [${ backend }, samples=${ samples }]`, async ( assert ) => {
+
+						const renderer = await getSharedRenderer( backend );
+						if ( renderer === null ) {
+
+							assert.ok( true, `SKIPPED: ${ backend } is not available.` );
+							return;
+
+						}
+
+						const encodedTarget = new RenderTarget( 1, 1, { format: RGFormat, type: HalfFloatType, samples, depthBuffer: false, minFilter: NearestFilter, magFilter: NearestFilter } );
+						const decodedTarget = new RenderTarget( 1, 1, { type: FloatType, depthBuffer: false } );
+						const direction = uniform( new Vector3() );
+						const encodeMaterial = new NodeMaterial();
+						encodeMaterial.fragmentNode = packNormalToOctahedral( direction );
+						const decodeMaterial = new NodeMaterial();
+						decodeMaterial.fragmentNode = vec4( unpackOctahedralToNormal( texture( encodedTarget.texture ).rg ), 1 );
+						const quad = new QuadMesh();
+						const previousTarget = renderer.getRenderTarget();
+
+						try {
+
+							// Include both poles, a fold edge, and a general lower-hemisphere direction.
+							for ( const value of [[ 0, 0, 1 ], [ 0, 0, - 1 ], [ 0, 3, - 4 ], [ - 1, 2, - 3 ]] ) {
+
+								direction.value.fromArray( value ).normalize();
+								quad.material = encodeMaterial;
+								renderer.setRenderTarget( encodedTarget );
+								quad.render( renderer );
+
+								quad.material = decodeMaterial;
+								renderer.setRenderTarget( decodedTarget );
+								quad.render( renderer );
+
+								const pixels = await renderer.readRenderTargetPixelsAsync( decodedTarget, 0, 0, 1, 1 );
+								const expected = direction.value.toArray();
+								const error = Math.hypot( ...expected.map( ( component, i ) => pixels[ i ] - component ) );
+								assert.ok( error < 0.001, `${ value }: decoded direction error ${ error } is below 0.001` );
+
+							}
+
+						} finally {
+
+							renderer.setRenderTarget( previousTarget );
+							encodedTarget.dispose();
+							decodedTarget.dispose();
+							encodeMaterial.dispose();
+							decodeMaterial.dispose();
+
+						}
+
+					} );
+
+				}
+
+			}
 
 			gpuTest( 'unpackNormal reconstructs Z on the unit hemisphere', ( { assert } ) => {
 

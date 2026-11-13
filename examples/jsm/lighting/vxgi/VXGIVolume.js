@@ -1,5 +1,5 @@
 import { Box3, Vector3, Vector4, Matrix4, Layers, Storage3DTexture, StorageBufferAttribute, StorageTexture3DNode, RendererUtils, HalfFloatType, UnsignedByteType, RGBAFormat, LinearFilter, LinearMipmapLinearFilter, ClampToEdgeWrapping, MathUtils } from 'three/webgpu';
-import { Fn, If, Loop, uniform, uniformArray, storage, instanceIndex, textureStore, texture3D, texture, cubeTexture, float, int, uint, vec2, vec3, vec4, ivec3, uvec3, max, min, abs, dot, cross, normalize, floor, sign, select, countOneBits, atomicOr, atomicMax, smoothstep, hash, length, PI, getDistanceAttenuation, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth } from 'three/tsl';
+import { Fn, If, Loop, uniform, uniformArray, storage, instanceIndex, textureStore, texture3D, texture, cubeTexture, float, int, uint, vec2, vec3, vec4, ivec3, uvec3, max, min, abs, dot, cross, normalize, floor, sign, select, countOneBits, atomicOr, atomicMax, smoothstep, hash, length, PI, getDistanceAttenuation, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, packNormalToOctahedral, unpackOctahedralToNormal } from 'three/tsl';
 
 import { collectSceneTriangles, computeSceneBounds, computeSolidVoxels, TRIANGLE_STRIDE } from './VXGISceneCollector.js';
 import { createConeTracer, gather } from './VXGIConeTracer.js';
@@ -517,7 +517,8 @@ class VXGIVolume {
 
 			this.directionalTexture = this._createTexture( 'VXGI.Directional', HalfFloatType, true, 6 * hx, hy, hz );
 			this._pingPongDirectionalTexture = this._createTexture( 'VXGI.DirectionalPingPong', HalfFloatType, true, 6 * hx, hy, hz );
-			this._normalTexture = this._createTexture( 'VXGI.Normal', UnsignedByteType, false, x, y, z );
+			// RGBA16F supports storage writes without texture-formats-tier1; normals occupy RG.
+			this._normalTexture = this._createTexture( 'VXGI.Normal', HalfFloatType, false, x, y, z );
 			this.directionalWidthNode.value = hx;
 
 		} else {
@@ -1146,7 +1147,7 @@ class VXGIVolume {
 
 					if ( level === 1 ) {
 
-						childNormal.push( normals.load( base.add( offset( i ) ) ).xyz.mul( 2 ).sub( 1 ).toConst() );
+						childNormal.push( unpackOctahedralToNormal( normals.load( base.add( offset( i ) ) ).rg ).toConst() );
 						childRadiance.push( radiance.load( base.add( offset( i ) ) ).toConst() );
 
 					}
@@ -1255,7 +1256,7 @@ class VXGIVolume {
 					const surface = this._surface( coords, triangleIds.element( instanceIndex ) );
 					const { position, normal, albedo, side, emissive } = surface;
 
-					if ( encodedNormal !== null ) encodedNormal.assign( vec4( normal.mul( 0.5 ).add( 0.5 ), 1 ) );
+					if ( encodedNormal !== null ) encodedNormal.assign( vec4( packNormalToOctahedral( normal ), 0, 1 ) );
 
 					const irradiance = vec3( 0 ).toVar();
 

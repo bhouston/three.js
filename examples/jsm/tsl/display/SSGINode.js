@@ -1,5 +1,5 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
-import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth, min, projectionDepth, textureSize, depthToViewZ } from 'three/tsl';
+import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, property, outputStruct, context, isBackgroundDepth, min, projectionDepth, textureSize, depthToViewZ, unpackOctahedralToNormal } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -53,7 +53,7 @@ class SSGINode extends Node {
 	 *
 	 * @param {TextureNode} beautyNode - A texture node that represents the beauty or scene pass.
 	 * @param {TextureNode} depthNode - A texture node that represents the scene's depth.
-	 * @param {TextureNode} normalNode - A texture node that represents the scene's normals.
+	 * @param {TextureNode} normalNode - A texture node that represents the scene's octahedral view-space normals.
 	 * @param {PerspectiveCamera} camera - The camera the scene is rendered with.
 	 */
 	constructor( beautyNode, depthNode, normalNode, camera ) {
@@ -75,7 +75,7 @@ class SSGINode extends Node {
 		this.depthNode = depthNode;
 
 		/**
-		 * A node that represents the scene's normals. If no normals are passed to the
+		 * A node that represents the scene's octahedral view-space normals. If no normals are passed to the
 		 * constructor (because MRT is not available), normals can be automatically
 		 * reconstructed from depth values in the shader.
 		 *
@@ -444,7 +444,7 @@ class SSGINode extends Node {
 		const globalOccludedBitfield = uint( 0 );
 
 		const sampleDepth = ( uv ) => projectionDepth( this.depthNode.sample( uv ).r, this._cameraNear, this._cameraFar );
-		const sampleNormal = ( uv ) => ( this.normalNode !== null ) ? this.normalNode.sample( uv ).rgb.normalize() : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
+		const sampleNormal = ( uv ) => ( this.normalNode !== null ) ? unpackOctahedralToNormal( this.normalNode.sample( uv ).rg ) : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
 		const sampleBeauty = ( uv ) => this.beautyNode.sample( uv );
 
 		// From Activision GTAO paper: https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
@@ -710,7 +710,7 @@ export default SSGINode;
  * @function
  * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
  * @param {TextureNode} depthNode - A texture node that represents the scene's depth.
- * @param {TextureNode} normalNode - A texture node that represents the scene's normals.
+ * @param {TextureNode} normalNode - A texture node that represents the scene's octahedral view-space normals.
  * @param {Camera} camera - The camera the scene is rendered with.
  * @returns {SSGINode}
  */

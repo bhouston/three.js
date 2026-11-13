@@ -1,5 +1,5 @@
 import { FloatType, HalfFloatType, Matrix4, Node, NodeMaterial, NodeUpdateType, QuadMesh, RendererUtils, RenderTarget, RGFormat, Vector2 } from 'three/webgpu';
-import { Fn, If, Loop, abs, atan, convertToTexture, dot, exp, float, floor, getNormalFromDepth, getViewPosition, isBackgroundDepth, ivec2, length, luminance, max, min, mix, nodeObject, outputStruct, passTexture, pow, property, screenCoordinate, sqrt, texture, textureSize, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { Fn, If, Loop, abs, atan, convertToTexture, dot, exp, float, floor, getNormalFromDepth, getViewPosition, isBackgroundDepth, ivec2, length, luminance, max, min, mix, nodeObject, outputStruct, passTexture, pow, property, screenCoordinate, sqrt, texture, textureSize, uniform, vec2, vec3, vec4, packNormalToOctahedral, unpackOctahedralToNormal } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 
@@ -75,7 +75,7 @@ class DenoiseNode extends Node {
 	 * @param {TextureNode} inputNode - The noisy input.
 	 * @param {Object} [options={}] - The guides and options.
 	 * @param {?TextureNode} [options.depth=null] - Screen space: the depth of the scene.
-	 * @param {?Node<vec3>} [options.normal=null] - Screen space: the view-space normals of the scene, a node with `sample( uv )`, else they are reconstructed from the depth. Texture space: the world-space normal of each texel.
+	 * @param {?Node<vec2>} [options.normal=null] - Screen space: the octahedral view-space normals of the scene, a node with `sample( uv )`, else they are reconstructed from the depth. Texture space: the octahedral world-space normal of each texel.
 	 * @param {?Camera} [options.camera=null] - Screen space: the camera the scene is rendered with.
 	 * @param {?TextureNode} [options.position=null] - Texture space: the world-space position of each texel, with the id of its surface in alpha, 0 without a surface.
 	 * @param {?TextureNode} [options.variance=null] - Texture space: the variance of the luminance of each texel in red, negative without data.
@@ -126,9 +126,9 @@ class DenoiseNode extends Node {
 		this.depthNode = depth;
 
 		/**
-		 * The view-space normals of the scene in screen space, the world-space normal of each texel in texture space.
+		 * Octahedral view-space normals in screen space, octahedral world-space normals in texture space.
 		 *
-		 * @type {?Node<vec3>}
+		 * @type {?Node<vec2>}
 		 */
 		this.normalNode = normal;
 
@@ -717,7 +717,7 @@ class DenoiseNode extends Node {
 		const { guideCoord, guideUV } = this._guideUV( coord );
 		const depth = this.depthNode.load( guideCoord ).r.toVar();
 		const position = getViewPosition( guideUV, depth, this._cameraProjectionMatrixInverse );
-		const normal = this.normalNode !== null ? this.normalNode.sample( guideUV ).xyz : getNormalFromDepth( guideUV, this.depthNode.value, this._cameraProjectionMatrixInverse );
+		const normal = this.normalNode !== null ? unpackOctahedralToNormal( this.normalNode.sample( guideUV ).rg ) : getNormalFromDepth( guideUV, this.depthNode.value, this._cameraProjectionMatrixInverse );
 		const roughness = this.roughnessNode !== null ? float( this.roughnessNode.sample( guideUV ) ) : float( 1 );
 
 		return { position: vec4( position, isBackgroundDepth( depth ).select( 0, 1 ) ), normal: vec4( normal, roughness ), uv: guideUV };
@@ -737,7 +737,7 @@ class DenoiseNode extends Node {
 
 		const id = guides.position.w;
 
-		return [ vec4( id.greaterThan( 0 ).select( guides.position.z, 0 ), id.mul( 256 ).add( historyLength ), 0, 0 ), vec4( octEncode( guides.normal.xyz ), guides.normal.w, hitFactor ) ];
+		return [ vec4( id.greaterThan( 0 ).select( guides.position.z, 0 ), id.mul( 256 ).add( historyLength ), 0, 0 ), vec4( packNormalToOctahedral( guides.normal.xyz ), guides.normal.w, hitFactor ) ];
 
 	}
 
@@ -800,7 +800,7 @@ class DenoiseNode extends Node {
 	 */
 	_texelAt( q, rays ) {
 
-		if ( this.positionNode !== null ) return { surface: this.positionNode.load( q ), normal: () => vec4( this.normalNode.load( q ).xyz, 1 ) };
+		if ( this.positionNode !== null ) return { surface: this.positionNode.load( q ), normal: () => vec4( unpackOctahedralToNormal( this.normalNode.load( q ).rg ), 1 ) };
 
 		const g = this._guideDepth.load( q ).xy.toVar();
 
@@ -809,7 +809,7 @@ class DenoiseNode extends Node {
 			normal: () => {
 
 				const n = this._guideNormal.load( q );
-				return vec4( octDecode( n.xy ), this.roughnessNode !== null ? n.z : 1 );
+				return vec4( unpackOctahedralToNormal( n.xy ), this.roughnessNode !== null ? n.z : 1 );
 
 			}
 		};
@@ -946,8 +946,8 @@ class DenoiseNode extends Node {
 							const tapId = floor( g.y.div( 256 ) );
 							const tap = this._viewPosition( q, g.x, this._previousProjectionMatrixInverse );
 							const tapNormal = this._historyNormal.load( q ).toVar();
-							const plane = abs( dot( octDecode( tapNormal.xy ), tap.sub( previous ) ) );
-							const valid = tapId.equal( surface.w ).and( plane.lessThan( tolerance ) ).and( dot( octDecode( tapNormal.xy ), previousNormal ).greaterThan( 0.9 ) );
+							const plane = abs( dot( unpackOctahedralToNormal( tapNormal.xy ), tap.sub( previous ) ) );
+							const valid = tapId.equal( surface.w ).and( plane.lessThan( tolerance ) ).and( dot( unpackOctahedralToNormal( tapNormal.xy ), previousNormal ).greaterThan( 0.9 ) );
 
 							If( valid, () => {
 
@@ -1544,27 +1544,6 @@ function createTarget( layout ) {
 	return target;
 
 }
-
-// the octahedral encoding of unit normals
-
-const signNotZero = ( v ) => vec2( v.x.greaterThanEqual( 0 ).select( 1, - 1 ), v.y.greaterThanEqual( 0 ).select( 1, - 1 ) );
-
-const octEncode = ( n ) => {
-
-	const p = n.xy.div( abs( n.x ).add( abs( n.y ) ).add( abs( n.z ) ) );
-	return n.z.lessThan( 0 ).select( float( 1 ).sub( abs( p.yx ) ).mul( signNotZero( p ) ), p );
-
-};
-
-const octDecode = ( e ) => {
-
-	const n = vec3( e.xy, float( 1 ).sub( abs( e.x ) ).sub( abs( e.y ) ) ).toVar();
-	const t = max( n.z.negate(), 0 );
-	n.x.addAssign( n.x.greaterThanEqual( 0 ).select( t.negate(), t ) );
-	n.y.addAssign( n.y.greaterThanEqual( 0 ).select( t.negate(), t ) );
-	return n.normalize();
-
-};
 
 // the material of a full-screen pass, whose body returns a vec4, or an array of them for multiple render targets
 

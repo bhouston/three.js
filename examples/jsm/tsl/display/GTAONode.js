@@ -1,5 +1,5 @@
 import { DataTexture, RenderTarget, RepeatWrapping, Vector2, Vector3, Node, QuadMesh, NodeMaterial, RendererUtils, RedFormat } from 'three/webgpu';
-import { reference, getNormalFromDepth, getViewPosition, getScreenPositionFromClip, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec2, vec3, vec4, int, dot, max, min, pow, abs, If, textureSize, sin, cos, PI, texture, passTexture, mat3, normalize, cross, mix, acos, clamp, interleavedGradientNoise, screenCoordinate, rand, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
+import { reference, getNormalFromDepth, getViewPosition, getScreenPositionFromClip, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec2, vec3, vec4, int, dot, max, min, pow, abs, If, textureSize, sin, cos, PI, texture, passTexture, mat3, normalize, cross, mix, acos, clamp, interleavedGradientNoise, screenCoordinate, rand, context, isBackgroundDepth, projectionDepth, depthToViewZ, unpackOctahedralToNormal } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -58,7 +58,7 @@ class GTAONode extends Node {
 	 * Constructs a new GTAO node.
 	 *
 	 * @param {Node<float>} depthNode - A node that represents the scene's depth.
-	 * @param {?Node<vec3>} normalNode - A node that represents the scene's normals.
+	 * @param {?Node<vec2>} normalNode - A node that represents the scene's octahedral view-space normals.
 	 * @param {Camera} camera - The camera the scene is rendered with.
 	 */
 	constructor( depthNode, normalNode, camera ) {
@@ -73,11 +73,11 @@ class GTAONode extends Node {
 		this.depthNode = depthNode;
 
 		/**
-		 * A node that represents the scene's normals. If no normals are passed to the
+		 * A node that represents the scene's octahedral view-space normals. If no normals are passed to the
 		 * constructor (because MRT is not available), normals can be automatically
 		 * reconstructed from depth values in the shader.
 		 *
-		 * @type {?Node<vec3>}
+		 * @type {?Node<vec2>}
 		 */
 		this.normalNode = normalNode;
 
@@ -407,7 +407,7 @@ class GTAONode extends Node {
 
 		const sampleDepth = ( uv ) => projectionDepth( this.depthNode.sample( uv ).r, this._cameraNear, this._cameraFar );
 		const sampleNoise = ( uv ) => this._noiseNode.sample( uv );
-		const sampleNormal = ( uv ) => ( this.normalNode !== null ) ? this.normalNode.sample( uv ).rgb.normalize() : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
+		const sampleNormal = ( uv ) => ( this.normalNode !== null ) ? unpackOctahedralToNormal( this.normalNode.sample( uv ).rg ) : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
 
 		const isValidSample = Fn( ( [ uv, centerTexel, size ] ) => {
 
@@ -739,7 +739,7 @@ function generateMagicSquare( size ) {
  * @tsl
  * @function
  * @param {Node<float>} depthNode - A node that represents the scene's depth.
- * @param {?Node<vec3>} normalNode - A node that represents the scene's normals.
+ * @param {?Node<vec2>} normalNode - A node that represents the scene's octahedral view-space normals.
  * @param {Camera} camera - The camera the scene is rendered with.
  * @returns {GTAONode}
  */

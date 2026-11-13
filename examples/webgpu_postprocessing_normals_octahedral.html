@@ -45,7 +45,7 @@
 
 			<small>
 				Deferred mirror reflections reconstructed from depth + a 32-bit normal G-buffer by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br />
-				Left: RGB8 (packNormalToRGB). Right: <a href="https://jcgt.org/published/0003/02/01/" target="_blank" rel="noopener">octahedral</a> RG16 snorm or RG16F. Drag the handle to compare.
+				Left: RGB8 (packNormalToRGB). Right: <a href="https://jcgt.org/published/0003/02/01/" target="_blank" rel="noopener">octahedral</a> RG16F. Drag the handle to compare.
 			</small>
 		</div>
 
@@ -67,8 +67,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, mrt, normalView, pass, packNormalToRGB, unpackRGBToNormal, uniform, screenUV, screenSize, getViewPosition, isBackgroundDepth, reflect, vec2, vec3, vec4, texture, equirectUV, select, abs, floor, fract, mix } from 'three/tsl';
-			import { packNormalToOctahedral, unpackOctahedralToNormal } from 'three/addons/tsl/utils/OctahedralNormal.js';
+			import { Fn, mrt, normalView, pass, packNormalToRGB, unpackRGBToNormal, uniform, screenUV, screenSize, getViewPosition, isBackgroundDepth, reflect, vec2, vec3, vec4, texture, equirectUV, select, abs, floor, fract, mix, packNormalToOctahedral, unpackOctahedralToNormal } from 'three/tsl';
 
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
@@ -85,7 +84,6 @@
 
 			const params = {
 				view: 'Reflection',
-				format: 'RG16 snorm', // octahedral normal buffer format, RG16F when snorm is unsupported
 				environment: 'HDRI',
 				errorScale: 0.25, // degrees mapped to full heatmap intensity
 				animate: true
@@ -176,6 +174,7 @@
 
 				const normalOctTexture = scenePass.getTexture( 'normalOct' );
 				normalOctTexture.format = THREE.RGFormat;
+				normalOctTexture.type = THREE.HalfFloatType;
 
 				for ( const gBufferTexture of scenePass.renderTarget.textures ) {
 
@@ -183,11 +182,6 @@
 					gBufferTexture.magFilter = THREE.NearestFilter;
 
 				}
-
-				// rg16snorm is the most precise but needs texture-formats-tier1, rg16float is always renderable
-
-				const hasSnorm = renderer.hasFeature( 'texture-formats-tier1' );
-				if ( hasSnorm === false ) params.format = 'RG16F';
 
 				// deferred shading: reconstruct position + normal, reflect the view ray and look up the environment
 
@@ -254,21 +248,11 @@
 
 				function updateOutput() {
 
-					const type = params.format === 'RG16 snorm' ? THREE.ShortType : THREE.HalfFloatType;
-
-					if ( normalOctTexture.type !== type ) {
-
-						normalOctTexture.type = type;
-						normalOctTexture.normalized = type === THREE.ShortType;
-						scenePass.renderTarget.dispose(); // reallocate the G-buffer with the new format
-
-					}
-
 					renderPipeline.outputNode = views[ params.view ];
 					renderPipeline.outputColorTransform = params.view === 'Reflection';
 					renderPipeline.needsUpdate = true;
 
-					document.getElementById( 'octLabel' ).textContent = `Octahedral · packNormalToOctahedral · ${ params.format } · 32 bpp`;
+					document.getElementById( 'octLabel' ).textContent = 'Octahedral · packNormalToOctahedral · RG16F · 32 bpp';
 
 				}
 
@@ -285,8 +269,6 @@
 				const gui = renderer.inspector.createParameters( 'Settings' );
 
 				gui.add( params, 'view', Object.keys( views ) ).onChange( updateOutput );
-
-				if ( hasSnorm ) gui.add( params, 'format', [ 'RG16 snorm', 'RG16F' ] ).name( 'octahedral format' ).onChange( updateOutput );
 
 				gui.add( params, 'environment', [ 'HDRI', 'Checker' ] ).onChange( ( value ) => {
 

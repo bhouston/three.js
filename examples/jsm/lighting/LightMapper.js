@@ -1,5 +1,5 @@
 import { BackSide, BufferAttribute, BufferGeometry, CustomBlending, DoubleSide, FloatType, HalfFloatType, Mesh, MeshLambertNodeMaterial, NearestFilter, NoBlending, NodeMaterial, OneFactor, OrthographicCamera, QuadMesh, RedFormat, RGFormat, RendererUtils, RenderTarget, Scene, Vector2, warnOnce } from 'three/webgpu';
-import { Fn, If, Loop, attribute, ivec2, lights, luminance, modelViewMatrix, mrt, normalViewGeometry, normalWorldGeometry, output, positionLocal, positionWorld, round, screenCoordinate, texture, textureLoad, uniform, uv, vec2, vec4 } from 'three/tsl';
+import { Fn, If, Loop, attribute, ivec2, lights, luminance, modelViewMatrix, mrt, normalViewGeometry, normalWorldGeometry, packNormalToOctahedral, output, positionLocal, positionWorld, round, screenCoordinate, texture, textureLoad, uniform, uv, vec2, vec4 } from 'three/tsl';
 
 // half float sums keep their rounding error small up to this many samples, and their weights are scaled
 // down so a sum of this many samples of an irradiance of up to about 4000 stays below the largest half float
@@ -153,6 +153,7 @@ class LightMapper {
 			this._guides.textures[ 0 ].name = 'position';
 			this._guides.textures[ 1 ].name = 'normal';
 			this._guides.textures[ 1 ].type = HalfFloatType;
+			this._guides.textures[ 1 ].format = RGFormat;
 
 		}
 
@@ -167,7 +168,7 @@ class LightMapper {
 		this.positionTexture = guides ? this._guides.textures[ 0 ] : null;
 
 		/**
-		 * The world-space normal of the surface of each texel. Only with the `guides` option, else `null`.
+		 * The octahedral world-space normal of the surface of each texel. Only with the `guides` option, else `null`.
 		 *
 		 * @type {?Texture}
 		 * @readonly
@@ -581,7 +582,7 @@ class LightMapper {
 		const normal = flipNormal ? normalWorldGeometry.negate() : normalWorldGeometry;
 		const chart = round( attribute( 'lightMapChart', 'float' ) ).add( 1 );
 
-		material.fragmentNode = mrt( { position: vec4( positionWorld, chart ), normal: vec4( normal.normalize(), 1 ) } );
+		material.fragmentNode = mrt( { position: vec4( positionWorld, chart ), normal: packNormalToOctahedral( normal ) } );
 
 		return material;
 

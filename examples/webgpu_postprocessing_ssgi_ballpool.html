@@ -41,7 +41,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, diffuseColor, velocity, add, vec4, packNormalToRGB, unpackRGBToNormal, sample } from 'three/tsl';
+			import { pass, mrt, output, normalView, diffuseColor, velocity, add, vec4, packNormalToOctahedral } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -130,7 +130,7 @@
 				scenePass.setMRT( mrt( {
 					output: output,
 					diffuseColor: diffuseColor,
-					normal: packNormalToRGB( normalView ),
+					normal: packNormalToOctahedral( normalView ),
 					velocity: velocity
 				} ) );
 
@@ -146,13 +146,11 @@
 				diffuseTexture.type = THREE.UnsignedByteType;
 
 				const normalTexture = scenePass.getTexture( 'normal' );
-				normalTexture.type = THREE.UnsignedByteType;
+				normalTexture.type = THREE.HalfFloatType;
+				normalTexture.format = THREE.RGFormat;
+				normalTexture.minFilter = normalTexture.magFilter = THREE.NearestFilter;
 
-				const sceneNormal = sample( ( uv ) => {
-
-					return unpackRGBToNormal( scenePassNormal.sample( uv ) );
-
-				} );
+				const sceneNormal = scenePassNormal;
 
 				// gi
 

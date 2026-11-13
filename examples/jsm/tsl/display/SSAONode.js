@@ -1,5 +1,5 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, RedFormat } from 'three/webgpu';
-import { reference, getViewPosition, getScreenPositionFromClip, vogelDiskSample, interleavedGradientNoise, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec4, int, dot, max, clamp, length, screenCoordinate, PI2, texture, passTexture, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { reference, getViewPosition, getScreenPositionFromClip, vogelDiskSample, interleavedGradientNoise, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec4, int, dot, max, clamp, length, screenCoordinate, PI2, texture, passTexture, context, isBackgroundDepth, projectionDepth, unpackOctahedralToNormal } from 'three/tsl';
 import { depthAwareBlur } from './depthAwareBlur.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
@@ -16,7 +16,8 @@ let _rendererState;
  * temporal accumulation.
  * ```js
  * const scenePass = pass( scene, camera );
- * scenePass.setMRT( mrt( { output, normal: normalView } ) );
+ * scenePass.setMRT( mrt( { output, normal: packNormalToOctahedral( normalView ) } ) );
+ * scenePass.getTexture( 'normal' ).format = RGFormat;
  * const scenePassColor = scenePass.getTextureNode( 'output' );
  * const scenePassDepth = scenePass.getTextureNode( 'depth' );
  * const scenePassNormal = scenePass.getTextureNode( 'normal' );
@@ -41,7 +42,7 @@ class SSAONode extends Node {
 	 * Constructs a new SSAO node.
 	 *
 	 * @param {Node<float>} depthNode - A node that represents the scene's depth.
-	 * @param {Node<vec3>} normalNode - A node that represents the scene's normals.
+	 * @param {Node<vec2>} normalNode - A node that represents the scene's octahedral view-space normals.
 	 * @param {Camera} camera - The camera the scene is rendered with.
 	 */
 	constructor( depthNode, normalNode, camera ) {
@@ -56,9 +57,9 @@ class SSAONode extends Node {
 		this.depthNode = depthNode;
 
 		/**
-		 * A node that represents the scene's normals.
+		 * A node that represents the scene's octahedral view-space normals.
 		 *
-		 * @type {Node<vec3>}
+		 * @type {Node<vec2>}
 		 */
 		this.normalNode = normalNode;
 
@@ -331,7 +332,7 @@ class SSAONode extends Node {
 			isBackgroundDepth( depth ).discard();
 
 			const viewPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar();
-			const viewNormal = this.normalNode.sample( uvNode ).rgb.normalize().toVar();
+			const viewNormal = unpackOctahedralToNormal( this.normalNode.sample( uvNode ).rg ).toVar();
 
 			// a low-discrepancy Vogel disk rotated per-pixel decorrelates the samples spatially,
 			// so a small blur is enough to hide the sampling pattern
@@ -415,7 +416,7 @@ export default SSAONode;
  * @tsl
  * @function
  * @param {Node<float>} depthNode - A node that represents the scene's depth.
- * @param {Node<vec3>} normalNode - A node that represents the scene's normals.
+ * @param {Node<vec2>} normalNode - A node that represents the scene's octahedral view-space normals.
  * @param {Camera} camera - The camera the scene is rendered with.
  * @returns {SSAONode}
  */

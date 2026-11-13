@@ -1,8 +1,7 @@
-import { float, vec2, vec3, hash, length, normalize } from 'three/tsl';
-import { packNormalToOctahedral, unpackOctahedralToNormal } from '../../../../../examples/jsm/tsl/utils/OctahedralNormal.js';
-import { gpuTest, gpuFuzzTest } from '../../../src/nodes/tsl/gpu-test-utils.js';
+import { float, vec2, vec3, hash, length, normalize, packNormalToOctahedral, unpackOctahedralToNormal } from 'three/tsl';
+import { gpuTest, gpuFuzzTest } from './gpu-test-utils.js';
 
-export default QUnit.module( 'Addons', () => {
+export default QUnit.module( 'Nodes', () => {
 
 	QUnit.module( 'TSL', () => {
 

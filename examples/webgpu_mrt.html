@@ -38,7 +38,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { output, normalView, pass, step, diffuseColor, emissive, packNormalToRGB, screenUV, mix, mrt, Fn } from 'three/tsl';
+			import { output, normalView, pass, step, diffuseColor, emissive, screenUV, mix, mrt, Fn, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal } from 'three/tsl';
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
@@ -99,7 +99,7 @@
 				const scenePass = pass( scene, camera, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter } );
 				scenePass.setMRT( mrt( {
 					output: output,
-					normal: packNormalToRGB( normalView ),
+					normal: packNormalToOctahedral( normalView ),
 					diffuse: diffuseColor,
 					emissive: emissive
 				} ) );
@@ -110,7 +110,9 @@
 				const diffuseTexture = scenePass.getTexture( 'diffuse' );
 				const emissiveTexture = scenePass.getTexture( 'emissive' );
 
-				normalTexture.type = diffuseTexture.type = emissiveTexture.type = THREE.UnsignedByteType;
+				normalTexture.type = THREE.HalfFloatType;
+				normalTexture.format = THREE.RGFormat;
+				diffuseTexture.type = emissiveTexture.type = THREE.UnsignedByteType;
 
 				// post processing - mrt
 
@@ -119,7 +121,7 @@
 				renderPipeline.outputNode = Fn( () => {
 
 					const output = scenePass.getTextureNode( 'output' ); // output name is optional here
-					const normal = scenePass.getTextureNode( 'normal' );
+					const normal = packNormalToRGB( unpackOctahedralToNormal( scenePass.getTextureNode( 'normal' ).rg ) );
 					const diffuse = scenePass.getTextureNode( 'diffuse' );
 					const emissive = scenePass.getTextureNode( 'emissive' );
 

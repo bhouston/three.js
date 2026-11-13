@@ -1,5 +1,5 @@
-import { NearestFilter, PassNode } from 'three/webgpu';
-import { nodeObject, Fn, float, uv, vec2, vec3, clamp, floor, dot, smoothstep, If, sign, step, mrt, output, normalView, property, vec4, textureSize } from 'three/tsl';
+import { HalfFloatType, NearestFilter, PassNode, RGFormat } from 'three/webgpu';
+import { nodeObject, Fn, float, uv, vec2, vec3, clamp, floor, dot, smoothstep, If, sign, step, mrt, output, normalView, property, vec4, textureSize, packNormalToOctahedral, unpackOctahedralToNormal } from 'three/tsl';
 
 /**
  * A special render pass node that renders the scene with a pixelation effect,
@@ -67,8 +67,12 @@ class PixelationPassNode extends PassNode {
 
 		this._mrt = mrt( {
 			output: output,
-			normal: normalView
+			normal: packNormalToOctahedral( normalView )
 		} );
+
+		const normalTexture = this.getTexture( 'normal' );
+		normalTexture.format = RGFormat;
+		normalTexture.type = HalfFloatType;
 
 	}
 
@@ -108,7 +112,7 @@ class PixelationPassNode extends PassNode {
 
 		const sampleTexture = () => textureNode.sample( uvNodeTexture );
 		const sampleDepth = ( uv ) => depthNode.sample( uv ).r;
-		const sampleNormal = ( uv ) => normalNode.sample( uv ).rgb.normalize();
+		const sampleNormal = ( uv ) => unpackOctahedralToNormal( normalNode.sample( uv ).rg );
 
 		const depthEdgeIndicator = ( depth, depthE, depthW, depthN, depthS ) => {
 

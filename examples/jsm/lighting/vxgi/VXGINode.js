@@ -1,5 +1,5 @@
 import { RenderTarget, Vector2, Vector3, Node, QuadMesh, NodeMaterial, RendererUtils, HalfFloatType, RGBAFormat, RedFormat, UnsignedByteType } from 'three/webgpu';
-import { Fn, NodeUpdateType, uniform, reference, vec2, vec4, float, uv, mix, passTexture, getViewPosition, getNormalFromDepth, screenCoordinate, interleavedGradientNoise, normalize, floor, exp2, pow, PI, Loop, If, Break, property, outputStruct, context, projectionDepth } from 'three/tsl';
+import { Fn, NodeUpdateType, uniform, reference, vec2, vec4, float, uv, mix, passTexture, getViewPosition, getNormalFromDepth, screenCoordinate, interleavedGradientNoise, normalize, floor, exp2, pow, PI, Loop, If, Break, property, outputStruct, context, projectionDepth, unpackOctahedralToNormal } from 'three/tsl';
 
 import { VXGIVolume } from './VXGIVolume.js';
 import { createConeTracer, gather, intersectVolume, sampleDirectional } from './VXGIConeTracer.js';
@@ -55,7 +55,7 @@ class VXGINode extends Node {
 	 * Constructs a new voxel GI node.
 	 *
 	 * @param {TextureNode} depthNode - A texture node that represents the scene's depth.
-	 * @param {?TextureNode} normalNode - A texture node that represents the scene's view space normals.
+	 * @param {?TextureNode} normalNode - A texture node that represents the scene's octahedral view-space normals.
 	 * @param {Scene} scene - The scene to voxelize.
 	 * @param {Camera} camera - The camera the scene is rendered with.
 	 * @param {number} [resolution=128] - Number of voxels along the longest axis of the volume. Should not exceed `256`, higher values exceed the maximum storage buffer size of the voxelizer.
@@ -72,7 +72,7 @@ class VXGINode extends Node {
 		this.depthNode = depthNode;
 
 		/**
-		 * A node that represents the scene's normals. If `null`, normals are reconstructed from depth.
+		 * A node that represents the scene's octahedral view-space normals. If `null`, normals are reconstructed from depth.
 		 *
 		 * @type {?TextureNode}
 		 */
@@ -444,7 +444,7 @@ class VXGINode extends Node {
 
 		const sampleDepth = ( uv ) => projectionDepth( this.depthNode.sample( uv ).r, this._cameraNear, this._cameraFar );
 
-		const sampleNormal = ( uv ) => ( this.normalNode !== null ) ? this.normalNode.sample( uv ).rgb.normalize() : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
+		const sampleNormal = ( uv ) => ( this.normalNode !== null ) ? unpackOctahedralToNormal( this.normalNode.sample( uv ).rg ) : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
 
 		const voxelSize = volume.voxelSizeNode;
 		const projectionMatrixInverse = this._cameraProjectionMatrixInverse;
@@ -608,7 +608,7 @@ export default VXGINode;
  * @tsl
  * @function
  * @param {TextureNode} depthNode - A texture node that represents the scene's depth.
- * @param {?TextureNode} normalNode - A texture node that represents the scene's view space normals.
+ * @param {?TextureNode} normalNode - A texture node that represents the scene's octahedral view-space normals.
  * @param {Scene} scene - The scene to voxelize.
  * @param {Camera} camera - The camera the scene is rendered with.
  * @param {number} [resolution=128] - Number of voxels along the longest axis of the volume. Should not exceed `256`, higher values exceed the maximum storage buffer size of the voxelizer.

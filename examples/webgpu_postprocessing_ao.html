@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { sample, pass, mrt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext } from 'three/tsl';
+			import { pass, mrt, screenUV, normalView, velocity, vec3, vec4, colorSpaceToWorking, builtinAOContext, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { ssao } from 'three/addons/tsl/display/SSAONode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -116,20 +116,16 @@
 
 				// pre-pass
 
-				const prePass = pass( scene, camera ).toInspector( 'Normal', ( inspectNode ) => colorSpaceToWorking( inspectNode, THREE.SRGBColorSpace ) );
+				const prePass = pass( scene, camera, { type: THREE.HalfFloatType } ).toInspector( 'Normal', ( inspectNode ) => colorSpaceToWorking( packNormalToRGB( unpackOctahedralToNormal( inspectNode.rg ) ), THREE.SRGBColorSpace ) );
 				prePass.name = 'Pre-Pass';
 				prePass.transparent = false;
 
 				prePass.setMRT( mrt( {
-					output: packNormalToRGB( normalView ),
+					output: packNormalToOctahedral( normalView ),
 					velocity: velocity
 				} ) );
 
-				const prePassNormal = sample( ( uv ) => {
-
-					return unpackRGBToNormal( prePass.getTextureNode().sample( uv ) );
-
-				} );
+				const prePassNormal = prePass.getTextureNode();
 
 				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );
 				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
@@ -137,7 +133,9 @@
 				// pre-pass - bandwidth optimization
 
 				const normalTexture = prePass.getTexture( 'output' );
-				normalTexture.type = THREE.UnsignedByteType;
+				normalTexture.type = THREE.HalfFloatType;
+				normalTexture.format = THREE.RGFormat;
+				normalTexture.minFilter = normalTexture.magFilter = THREE.NearestFilter;
 
 				// scene pass
 

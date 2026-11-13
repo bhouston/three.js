@@ -1,0 +1,248 @@
+[
+  {
+    "example": "mirror",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false
+    },
+    "width": 1920,
+    "height": 1080,
+    "maxDistance": 50,
+    "exampleDefaults": {
+      "quality": 0.5,
+      "binaryRefine": false,
+      "maxDistance": 1
+    },
+    "linearSteps": 64,
+    "binaryRefine": true,
+    "adaptiveSteps": 64,
+    "levels": 7,
+    "creation": {
+      "name": "Hi-Z creation",
+      "completed": 13792,
+      "seconds": 5.000099999994039,
+      "fps": 2758.344833106626,
+      "impliedMs": 0.36253625289979985
+    },
+    "modes": [
+      {
+        "name": "Non-adaptive SSR",
+        "adaptive": false,
+        "maxCandidates": 1,
+        "completed": 176,
+        "seconds": 5.0934000000059605,
+        "fps": 34.55452153763577,
+        "impliedMs": 28.939772727306593
+      },
+      {
+        "name": "Non-adaptive SSR (example defaults)",
+        "adaptive": false,
+        "maxCandidates": 1,
+        "exampleDefaults": true,
+        "completed": 592,
+        "seconds": 5.043799999997019,
+        "fps": 117.37182283206111,
+        "impliedMs": 8.519932432427398,
+        "comparison": {
+          "baselineHits": 337166,
+          "adaptiveHits": 316890,
+          "lostHits": 20663,
+          "extraHits": 387,
+          "disagreements": 21050,
+          "nonFinite": 0
+        }
+      },
+      {
+        "name": "Adaptive SSR (1 candidate)",
+        "adaptive": true,
+        "maxCandidates": 1,
+        "completed": 1856,
+        "seconds": 5.019899999991059,
+        "fps": 369.72848064768334,
+        "impliedMs": 2.704687499995183,
+        "comparison": {
+          "baselineHits": 337166,
+          "adaptiveHits": 281808,
+          "lostHits": 56957,
+          "extraHits": 1599,
+          "disagreements": 58556,
+          "nonFinite": 0
+        },
+        "diagnostics": {
+          "tracedRays": 855283,
+          "averageIterations": 23.932099667595406,
+          "averageCandidates": 0.6040877697791257,
+          "exhaustedRays": 3409
+        }
+      }
+    ],
+    "speedup": 10.69985820075633
+  },
+  {
+    "example": "stochastic",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false
+    },
+    "width": 1920,
+    "height": 1080,
+    "maxDistance": 50,
+    "exampleDefaults": {
+      "quality": 0.25,
+      "binaryRefine": false,
+      "maxDistance": 0.4
+    },
+    "linearSteps": 64,
+    "binaryRefine": true,
+    "adaptiveSteps": 64,
+    "levels": 7,
+    "creation": {
+      "name": "Hi-Z creation",
+      "completed": 13232,
+      "seconds": 5.00240000000596,
+      "fps": 2645.130337434878,
+      "impliedMs": 0.3780532043535339
+    },
+    "modes": [
+      {
+        "name": "Non-adaptive SSR",
+        "adaptive": false,
+        "maxCandidates": 1,
+        "completed": 368,
+        "seconds": 5.0915,
+        "fps": 72.27732495335363,
+        "impliedMs": 13.835597826086957
+      },
+      {
+        "name": "Non-adaptive SSR (example defaults)",
+        "adaptive": false,
+        "maxCandidates": 1,
+        "exampleDefaults": true,
+        "completed": 1120,
+        "seconds": 5.038599999994039,
+        "fps": 222.28396776908764,
+        "impliedMs": 4.498749999994678,
+        "comparison": {
+          "baselineHits": 1081210,
+          "adaptiveHits": 844203,
+          "lostHits": 238372,
+          "extraHits": 1365,
+          "disagreements": 239737,
+          "nonFinite": 0
+        }
+      },
+      {
+        "name": "Adaptive SSR (1 candidate)",
+        "adaptive": true,
+        "maxCandidates": 1,
+        "completed": 544,
+        "seconds": 5.10379999999702,
+        "fps": 106.58724871670474,
+        "impliedMs": 9.38198529411217,
+        "comparison": {
+          "baselineHits": 1081210,
+          "adaptiveHits": 916543,
+          "lostHits": 195959,
+          "extraHits": 31292,
+          "disagreements": 227251,
+          "nonFinite": 0
+        },
+        "diagnostics": {
+          "tracedRays": 2010507,
+          "averageIterations": 22.849971176424653,
+          "averageCandidates": 0.7027913854565042,
+          "exhaustedRays": 18064
+        }
+      }
+    ],
+    "speedup": 1.4746983066334298
+  },
+  {
+    "example": "animation",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false
+    },
+    "width": 1920,
+    "height": 1080,
+    "maxDistance": 50,
+    "exampleDefaults": {
+      "quality": 0.5,
+      "binaryRefine": false,
+      "maxDistance": 20
+    },
+    "linearSteps": 64,
+    "binaryRefine": true,
+    "adaptiveSteps": 64,
+    "levels": 7,
+    "creation": {
+      "name": "Hi-Z creation",
+      "completed": 13824,
+      "seconds": 5.005099999994039,
+      "fps": 2761.982777570171,
+      "impliedMs": 0.36205873842549474
+    },
+    "modes": [
+      {
+        "name": "Non-adaptive SSR",
+        "adaptive": false,
+        "maxCandidates": 1,
+        "completed": 608,
+        "seconds": 5.02,
+        "fps": 121.11553784860558,
+        "impliedMs": 8.256578947368421
+      },
+      {
+        "name": "Non-adaptive SSR (example defaults)",
+        "adaptive": false,
+        "maxCandidates": 1,
+        "exampleDefaults": true,
+        "completed": 1168,
+        "seconds": 5.015,
+        "fps": 232.90129611166503,
+        "impliedMs": 4.2936643835616435,
+        "comparison": {
+          "baselineHits": 317218,
+          "adaptiveHits": 157648,
+          "lostHits": 164883,
+          "extraHits": 5313,
+          "disagreements": 170196,
+          "nonFinite": 0
+        }
+      },
+      {
+        "name": "Adaptive SSR (1 candidate)",
+        "adaptive": true,
+        "maxCandidates": 1,
+        "completed": 976,
+        "seconds": 5.07779999999702,
+        "fps": 192.20922446740178,
+        "impliedMs": 5.202663934423176,
+        "comparison": {
+          "baselineHits": 317218,
+          "adaptiveHits": 275955,
+          "lostHits": 60126,
+          "extraHits": 18863,
+          "disagreements": 78989,
+          "nonFinite": 0
+        },
+        "diagnostics": {
+          "tracedRays": 1405668,
+          "averageIterations": 22.939308570729363,
+          "averageCandidates": 0.3088410634659109,
+          "exhaustedRays": 10395
+        }
+      }
+    ],
+    "speedup": 1.5869906362275608
+  }
+]

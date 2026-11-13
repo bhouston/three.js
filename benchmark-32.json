@@ -1,0 +1,182 @@
+[
+  {
+    "example": "mirror",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false
+    },
+    "width": 1280,
+    "height": 720,
+    "maxDistance": 50,
+    "linearSteps": 64,
+    "adaptiveSteps": 32,
+    "creation": {
+      "name": "Hi-Z creation",
+      "completed": 27056,
+      "seconds": 5.001900000005961,
+      "fps": 5409.1445250740235,
+      "impliedMs": 0.1848721170906993
+    },
+    "modes": [
+      {
+        "name": "Non-adaptive SSR",
+        "adaptive": false,
+        "strategy": "amd",
+        "maxCandidates": 1,
+        "completed": 560,
+        "seconds": 5.143600000008941,
+        "fps": 108.8731627651891,
+        "impliedMs": 9.185000000015965
+      },
+      {
+        "name": "AMD-style SSR (1 candidate, three validator)",
+        "adaptive": true,
+        "strategy": "amd",
+        "maxCandidates": 1,
+        "validator": "three",
+        "completed": 4384,
+        "seconds": 5.01379999999702,
+        "fps": 874.3866927285902,
+        "impliedMs": 1.1436587591234078,
+        "comparison": {
+          "baselineHits": 148902,
+          "adaptiveHits": 95012,
+          "lostHits": 54665,
+          "extraHits": 775,
+          "disagreements": 55440,
+          "nonFinite": 0
+        },
+        "diagnostics": {
+          "tracedRays": 380520,
+          "averageIterations": 21.114051823820034,
+          "averageCandidates": 0.45334542205403133,
+          "exhaustedRays": 74154
+        }
+      }
+    ],
+    "speedup": 8.03124177272606
+  },
+  {
+    "example": "stochastic",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false
+    },
+    "width": 1280,
+    "height": 720,
+    "maxDistance": 50,
+    "linearSteps": 64,
+    "adaptiveSteps": 32,
+    "creation": {
+      "name": "Hi-Z creation",
+      "completed": 26704,
+      "seconds": 5.0010999999940395,
+      "fps": 5339.625282444227,
+      "impliedMs": 0.18727905931673308
+    },
+    "modes": [
+      {
+        "name": "Non-adaptive SSR",
+        "adaptive": false,
+        "strategy": "amd",
+        "maxCandidates": 1,
+        "completed": 896,
+        "seconds": 5.056099999994039,
+        "fps": 177.2116848956817,
+        "impliedMs": 5.642968749993347
+      },
+      {
+        "name": "AMD-style SSR (1 candidate, three validator)",
+        "adaptive": true,
+        "strategy": "amd",
+        "maxCandidates": 1,
+        "validator": "three",
+        "completed": 1696,
+        "seconds": 5.04279999999702,
+        "fps": 336.32109145732574,
+        "impliedMs": 2.9733490566020166,
+        "comparison": {
+          "baselineHits": 480190,
+          "adaptiveHits": 299130,
+          "lostHits": 186845,
+          "extraHits": 5785,
+          "disagreements": 192630,
+          "nonFinite": 0
+        },
+        "diagnostics": {
+          "tracedRays": 893227,
+          "averageIterations": 19.505272455937853,
+          "averageCandidates": 0.5041506806220591,
+          "exhaustedRays": 196695
+        }
+      }
+    ],
+    "speedup": 1.8978494090573437
+  },
+  {
+    "example": "animation",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": false
+    },
+    "width": 1280,
+    "height": 720,
+    "maxDistance": 50,
+    "linearSteps": 64,
+    "adaptiveSteps": 32,
+    "creation": {
+      "name": "Hi-Z creation",
+      "completed": 26560,
+      "seconds": 5.0025,
+      "fps": 5309.345327336331,
+      "impliedMs": 0.1883471385542169
+    },
+    "modes": [
+      {
+        "name": "Non-adaptive SSR",
+        "adaptive": false,
+        "strategy": "amd",
+        "maxCandidates": 1,
+        "completed": 1520,
+        "seconds": 5.00170000000298,
+        "fps": 303.89667513027456,
+        "impliedMs": 3.2905921052651186
+      },
+      {
+        "name": "AMD-style SSR (1 candidate, three validator)",
+        "adaptive": true,
+        "strategy": "amd",
+        "maxCandidates": 1,
+        "validator": "three",
+        "completed": 2608,
+        "seconds": 5.029,
+        "fps": 518.5921654404455,
+        "impliedMs": 1.9282975460122698,
+        "comparison": {
+          "baselineHits": 141103,
+          "adaptiveHits": 91164,
+          "lostHits": 54197,
+          "extraHits": 4258,
+          "disagreements": 58455,
+          "nonFinite": 0
+        },
+        "diagnostics": {
+          "tracedRays": 624736,
+          "averageIterations": 18.50539908057163,
+          "averageCandidates": 0.2407496926701839,
+          "exhaustedRays": 62261
+        }
+      }
+    ],
+    "speedup": 1.7064752854506722
+  }
+]

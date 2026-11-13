@@ -261,6 +261,64 @@ export default QUnit.module( 'Addons', () => {
 
 			}
 
+			for ( const swapAxes of [ false, true ] ) {
+
+				for ( const mirror of [ false, true ] ) {
+
+					for ( const reversed of [ false, true ] ) {
+
+						traceTest( `near-axis grid crossing makes spatial progress: swap=${ swapAxes }, mirror=${ mirror }, reversed=${ reversed }`, async ( { assert, renderer } ) => {
+
+							// A coarse cell sees an off-ray foreground object; its finer
+							// child is empty. With the old ray-parameter-only epsilon,
+							// float32 X remained on the same wall while mips oscillated.
+							const sourceWidth = 1488, sourceHeight = 128;
+							const width = swapAxes ? sourceHeight : sourceWidth;
+							const height = swapAxes ? sourceWidth : sourceHeight;
+							const data = new Float32Array( width * height ).fill( reversed ? 0.3 : 0.7 );
+							for ( let y = 88; y < 96; y ++ ) {
+
+								for ( let x = 712; x < 720; x ++ ) {
+
+									const xx = mirror ? sourceWidth - 1 - x : x;
+									data[ swapAxes ? xx * width + y : y * width + xx ] = reversed ? 0.9 : 0.1;
+
+								}
+
+							}
+
+							const origin = [ mirror ? 1 - 704.5 / sourceWidth : 704.5 / sourceWidth, 0.8, reversed ? 0.8 : 0.2 ];
+							const end = [ mirror ? 1 - 699.125 / sourceWidth : 699.125 / sourceWidth, 0.05, reversed ? 0.2 : 0.8 ];
+							if ( swapAxes ) {
+
+								[ origin[ 0 ], origin[ 1 ] ] = [ origin[ 1 ], origin[ 0 ] ];
+								[ end[ 0 ], end[ 1 ] ] = [ end[ 1 ], end[ 0 ] ];
+
+							}
+
+							const fixture = createTraceFixture( width, height, data, reversed );
+							try {
+
+								const result = await traceRays( renderer, fixture, [[ origin, end ]], { maxSteps: 64, maxCandidates: 1 } );
+								assert.strictEqual( result.output[ 3 ], 1, 'reaches the real surface after crossing the coarse wall' );
+								assert.strictEqual( result.metadata[ 1 ], 0, 'does not exhaust its traversal budget' );
+								assert.ok( result.metadata[ 0 ] < 32, `no coarse/fine oscillation: ${ result.metadata[ 0 ] } iterations` );
+								assert.ok( Math.abs( result.output[ 2 ] - 5 / 6 ) < 1e-5, 'matches the analytic depth-plane intersection' );
+
+							} finally {
+
+								fixture.dispose();
+
+							}
+
+						} );
+
+					}
+
+				}
+
+			}
+
 			traceTest( 'candidate budgets stop after exactly 1, 2, 3 or 4 surfaces', async ( { assert, renderer } ) => {
 
 				const data = new Float32Array( 128 ).fill( 1 );

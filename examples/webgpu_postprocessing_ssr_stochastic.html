@@ -116,7 +116,7 @@
 
 			ssr: {
 				resolutionScale: 1,
-				adaptive: false, maxCandidates: 1, adaptiveStrategy: 'amd', validator: 'three', adaptiveThickness: 0.1, adaptiveSteps: 128,
+				adaptive: false, maxCandidates: 1, adaptiveStrategy: 'amd', validator: 'three', adaptiveThickness: 0.1, adaptiveSteps: 32,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -369,8 +369,8 @@
 			ssrGui.add( params.ssr, 'validator', { 'Three.js': 'three', 'AMD-style': 'amd', 'Unity-style slab': 'unity' } ).name( 'Candidate validator' ).onChange( updateTracing );
 			const strategyController = ssrGui.add( params.ssr, 'adaptiveStrategy', { 'AMD-style': 'amd', 'Unity-style slab': 'unity' } ).name( 'Hi-Z strategy' ).onChange( updateTracing );
 			const slabController = ssrGui.add( params.ssr, 'adaptiveThickness', 0, 1, 0.01 ).name( 'Relative slab thickness' ).onChange( applyParams );
-			const candidatesController = ssrGui.add( params.ssr, 'maxCandidates', 1, 16, 1 ).name( 'Candidate budget' ).onChange( applyParams );
-			const adaptiveStepsController = ssrGui.add( params.ssr, 'adaptiveSteps', 16, 1024, 16 ).name( 'Adaptive iterations' ).onChange( applyParams );
+			const candidatesController = ssrGui.add( params.ssr, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( applyParams );
+			const adaptiveStepsController = ssrGui.add( params.ssr, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( applyParams );
 			traceControllers.push( ssrGui.add( params.ssr, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( applyParams ) );
 			traceControllers.push( ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams ) );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );

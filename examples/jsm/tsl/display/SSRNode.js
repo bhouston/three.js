@@ -136,7 +136,7 @@ class SSRNode extends Node {
 		}
 
 		/** Adaptive cell-iteration budget, independent of quality. @type {UniformNode<int>} */
-		this.adaptiveMaxSteps = uniform( 128, 'int' );
+		this.adaptiveMaxSteps = uniform( 32, 'int' );
 		/** Maximum linear stochastic march steps, scaled by quality. @type {UniformNode<int>} */
 		this.maxSteps = uniform( MAX_STEPS, 'int' );
 

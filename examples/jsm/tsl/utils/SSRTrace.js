@@ -21,7 +21,7 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, vec2, text
  * @param {Object} options - Traversal configuration.
  * @param {boolean} [options.reversedDepth=false] - Projected depth convention.
  * @param {Node<float>|number} [options.start=0] - Initial ray parameter (self-hit exclusion).
- * @param {Node<int>|number} [options.maxSteps=128] - Work budget, independent of legacy SSR quality.
+ * @param {Node<int>|number} [options.maxSteps=32] - Work budget, independent of legacy SSR quality.
  * @param {Function} [options.projectDepth] - Converts raw hierarchy depth to projected depth (log-depth inputs).
  * @param {Node<float>|number} [options.depthTolerance=0] - Conservative projected-depth rounding tolerance.
  * @param {'amd'|'unity'} [options.strategy='amd'] - Surface-candidate or thickness-slab traversal.
@@ -30,7 +30,7 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, vec2, text
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 128, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, strategy = 'amd', slabDepth = null, acceptHit = () => bool( true ) } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, strategy = 'amd', slabDepth = null, acceptHit = () => bool( true ) } = {} ) {
 
 	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRTrace: maxCandidates must be an integer from 1 to 4096.' );
 
@@ -50,6 +50,8 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	const belowPreviousLeaf = strategy === 'unity' ? bool( false ).toVar() : null;
 	const size = vec2( textureSize( hierarchy.depthNode ) );
 	const pixels = delta.xy.abs().mul( size );
+	const edgeBias = size.mul( 2 ** - 22 ).max( 0.0005 ).toConst();
+	const directionXY = delta.xy.sign().toConst();
 	// Offset only XY exits, never depth-plane intersections. The offset is a
 	// hundred-thousandth of a source texel, with a float32 progress floor in ray space.
 	const epsilon = float( 0.00001 ).div( max( pixels.x, pixels.y ).max( 1 ) ).max( 1e-7 ).toConst();
@@ -67,6 +69,16 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 		} );
 		iterations.assign( i.add( 1 ) );
 		const position = origin.add( delta.mul( s ) ).toVar();
+		// Ray-space progress can be smaller than one UV ULP on the nearly
+		// stationary axis. Resolve pixel-edge ties in ray direction before BOTH
+		// hierarchy lookup and boundary calculation, without jumping along the
+		// other axis. Otherwise coarse/fine mips can oscillate at the same wall.
+		const pixel = position.xy.mul( size );
+		const rounded = pixel.round();
+		const atEdge = pixel.sub( rounded ).abs().lessThanEqual( edgeBias );
+		const corrected = rounded.add( directionXY.mul( edgeBias ) ).div( size );
+		const movingCorrection = delta.xy.notEqual( vec2( 0 ) ).select( corrected, position.xy );
+		position.xy.assign( atEdge.select( movingCorrection, position.xy ) );
 		If( position.xy.lessThan( vec2( 0 ) ).any().or( position.xy.greaterThanEqual( vec2( 1 ) ).any() ), () => {
 
 			s.assign( 1 );

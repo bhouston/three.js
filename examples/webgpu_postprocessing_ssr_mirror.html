@@ -55,7 +55,7 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
-			output: 'Beauty', enabled: true, adaptive: false, maxCandidates: 1, adaptiveStrategy: 'amd', validator: 'three', adaptiveThickness: 0.1, adaptiveSteps: 128, quality: 0.5, intensity: 1,
+			output: 'Beauty', enabled: true, adaptive: false, maxCandidates: 1, adaptiveStrategy: 'amd', validator: 'three', adaptiveThickness: 0.1, adaptiveSteps: 32, quality: 0.5, intensity: 1,
 			maxDistance: 1, thickness: 0.03, binaryRefine: false,
 			roughness: 1, blur: true, blurQuality: 1
 		};
@@ -223,8 +223,8 @@
 			ssrGui.add( params, 'validator', { 'Three.js': 'three', 'AMD-style': 'amd', 'Unity-style slab': 'unity' } ).name( 'Candidate validator' ).onChange( updateParameters );
 			const strategyController = ssrGui.add( params, 'adaptiveStrategy', { 'AMD-style': 'amd', 'Unity-style slab': 'unity' } ).name( 'Hi-Z strategy' ).onChange( updateParameters );
 			const slabController = ssrGui.add( params, 'adaptiveThickness', 0, 1, 0.01 ).name( 'Relative slab thickness' ).onChange( updateParameters );
-			const candidatesController = ssrGui.add( params, 'maxCandidates', 1, 16, 1 ).name( 'Candidate budget' ).onChange( updateParameters );
-			const adaptiveStepsController = ssrGui.add( params, 'adaptiveSteps', 16, 1024, 16 ).name( 'Adaptive iterations' ).onChange( updateParameters );
+			const candidatesController = ssrGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( updateParameters );
+			const adaptiveStepsController = ssrGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( updateParameters );
 			const qualityController = ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 			const refineController = ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 			ssrGui.add( params, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( updateParameters );

@@ -4,6 +4,7 @@
 // Options: --example=mirror|stochastic|animation --width=1280 --height=720
 //          --seconds=5 --adaptive-steps=512 --linear-steps=64 --max-distance=20
 //          --candidates=1,2,3,4 --binary-refine=true --max-level=6 --glossy-min-level=1
+//          --roughness-threshold=1 (default 1 traces every surface, keeping runs comparable)
 // A fairer linear reference (one step per pixel, same thickness rule as adaptive):
 //          --binary-refine=false --linear-steps=1024
 // Vsync/frame caps are disabled. Each completed GPU batch is counted only after
@@ -75,6 +76,7 @@ try {
 			device.pushErrorScope( 'validation' );
 			// The stochastic example re-applies its own params; the others have none.
 			node.glossyMinLevel = params.glossyMinLevel = settings.glossyMinLevel;
+			node.roughnessThreshold.value = params.roughnessThreshold = settings.roughnessThreshold;
 			params.quality = 1;
 			params.binaryRefine = settings.binaryRefine;
 			params.adaptiveSteps = settings.adaptiveSteps;
@@ -232,7 +234,7 @@ try {
 			if ( validationError ) throw new Error( validationError.message );
 			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: params.maxDistance, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, levels: hierarchy.levels.length, creation, modes, speedup: modes[ 1 ].fps / modes[ 0 ].fps };
 
-		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, glossyMinLevel: Number( option( 'glossy-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
+		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, roughnessThreshold: Number( option( 'roughness-threshold', 1 ) ), glossyMinLevel: Number( option( 'glossy-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );
 		results.push( { example, ...result } );
 		console.log( JSON.stringify( results.at( - 1 ), null, 2 ) );

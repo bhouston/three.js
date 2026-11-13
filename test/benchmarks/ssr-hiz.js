@@ -4,6 +4,7 @@
 // Options: --example=mirror|stochastic|animation --width=1280 --height=720
 //          --seconds=5 --adaptive-steps=512 --linear-steps=64 --max-distance=20
 //          --candidates=1,2,3,4 --binary-refine=true --max-level=6 --glossy-min-level=1
+//          --roughness=1 (sets scene roughness as each example's own slider does)
 // A fairer linear reference (one step per pixel, same thickness rule as adaptive):
 //          --binary-refine=false --linear-steps=1024
 // Vsync/frame caps are disabled. Each completed GPU batch is counted only after
@@ -51,7 +52,11 @@ try {
 		const node = example === 'mirror' ? 'reflection' : 'ssrNode';
 		const params = example === 'stochastic' ? 'params.ssr' : 'params';
 		const apply = example === 'stochastic' ? 'updateTracing' : 'updateParameters';
-		const expose = `window.__ssrBenchmark = { renderer, node: ${ node }, params: ${ params }, apply: ${ apply }, render: () => renderPipeline.render() };`;
+		// Mirrors each example's own Scene > Roughness slider.
+		const setRoughness = example === 'animation'
+			? 'value => { floor.material.roughness = value; for ( const sphere of spheres ) sphere.material.roughness = value; }'
+			: 'value => scene.traverse( object => { if ( object.material ) object.material.roughness = value; } )';
+		const expose = `window.__ssrBenchmark = { renderer, node: ${ node }, params: ${ params }, apply: ${ apply }, setRoughness: ${ setRoughness }, render: () => renderPipeline.render() };`;
 		if ( example === 'stochastic' ) html = html.replace( 'updateOutputNode();\n', `updateOutputNode();\n${ expose }\n` );
 		else html = html.replace( 'updateOutput();\n', `updateOutput();\n${ expose }\n` );
 		await page.setRequestInterception( true );
@@ -66,13 +71,14 @@ try {
 		await page.waitForNetworkIdle( { idleTime: 500, timeout: 120000 } );
 		const result = await page.evaluate( async ( settings ) => {
 
-			const { renderer, node, params, apply, render } = window.__ssrBenchmark;
+			const { renderer, node, params, apply, setRoughness, render } = window.__ssrBenchmark;
 			if ( renderer.backend.isWebGPUBackend !== true ) throw new Error( 'Hardware WebGPU is required.' );
 			const device = renderer.backend.device;
 			const info = device.adapterInfo;
 			const adapter = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description, isFallbackAdapter: info.isFallbackAdapter };
 			if ( adapter.isFallbackAdapter || /swiftshader|llvmpipe|lavapipe|software/i.test( JSON.stringify( adapter ) ) ) throw new Error( 'Software adapters are not allowed.' );
 			device.pushErrorScope( 'validation' );
+			if ( settings.roughness !== null ) setRoughness( settings.roughness );
 			// The stochastic example re-applies its own params; the others have none.
 			node.glossyMinLevel = params.glossyMinLevel = settings.glossyMinLevel;
 			// Linear SSR is measured twice: as each example configures it on load
@@ -239,9 +245,9 @@ try {
 
 			const validationError = await device.popErrorScope();
 			if ( validationError ) throw new Error( validationError.message );
-			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: comparable.maxDistance, exampleDefaults, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, levels: hierarchy.levels.length, creation, modes, speedup: modes.find( mode => mode.adaptive ).fps / modes[ 0 ].fps };
+			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: comparable.maxDistance, roughness: settings.roughness, exampleDefaults, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, levels: hierarchy.levels.length, creation, modes, speedup: modes.find( mode => mode.adaptive ).fps / modes[ 0 ].fps };
 
-		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, glossyMinLevel: Number( option( 'glossy-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
+		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, roughness: option( 'roughness', null ) === null ? null : Number( option( 'roughness' ) ), glossyMinLevel: Number( option( 'glossy-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );
 		results.push( { example, ...result } );
 		console.log( JSON.stringify( results.at( - 1 ), null, 2 ) );

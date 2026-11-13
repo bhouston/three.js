@@ -116,7 +116,7 @@
 
 			ssr: {
 				resolutionScale: 1,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, glossyMinLevel: 0, roughnessThreshold: 0.5,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, glossyMinLevel: 0,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -370,7 +370,6 @@
 			const glossyMinLevelController = ssrGui.add( params.ssr, 'glossyMinLevel', 0, 3, 1 ).name( 'Rough-ray min mip' ).onChange( applyParams );
 			traceControllers.push( ssrGui.add( params.ssr, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( applyParams ) );
 			traceControllers.push( ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams ) );
-			ssrGui.add( params.ssr, 'roughnessThreshold', 0, 1, 0.01 ).name( 'Roughness threshold' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
 
@@ -430,7 +429,6 @@
 			ssrNode.maxCandidates = params.ssr.maxCandidates;
 			ssrNode.glossyMinLevel = params.ssr.glossyMinLevel;
 			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
-			ssrNode.roughnessThreshold.value = params.ssr.roughnessThreshold;
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;

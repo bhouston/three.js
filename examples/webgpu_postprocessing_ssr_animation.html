@@ -52,7 +52,7 @@
 
 			const params = {
 				output: 'Beauty', traa: true,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, roughnessThreshold: 0.5, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
 			};
@@ -282,7 +282,6 @@
 					ssrNode.tracing = params.adaptive ? 'adaptive' : 'linear';
 					ssrNode.maxCandidates = params.maxCandidates;
 					ssrNode.adaptiveMaxSteps.value = params.adaptiveSteps;
-					ssrNode.roughnessThreshold.value = params.roughnessThreshold;
 					qualityController.disable( params.adaptive );
 					refineController.disable( params.adaptive );
 					adaptiveStepsController.disable( ! params.adaptive );
@@ -306,7 +305,6 @@
 				ssrGui.add( params, 'adaptive' ).name( 'Hi-Z / adaptive SSR' ).onChange( updateParameters ).disable( ! renderer.backend.isWebGPUBackend );
 				const candidatesController = ssrGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( updateParameters );
 				const adaptiveStepsController = ssrGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( updateParameters );
-				ssrGui.add( params, 'roughnessThreshold', 0, 1, 0.01 ).name( 'Roughness threshold' ).onChange( updateParameters );
 				const qualityController = ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 				const refineController = ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 				ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );

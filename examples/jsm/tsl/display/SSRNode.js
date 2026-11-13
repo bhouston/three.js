@@ -229,16 +229,6 @@ class SSRNode extends Node {
 		this.thickness = uniform( 0.1 );
 
 		/**
-		 * Stochastic mode only: surfaces at or above this roughness are not traced and
-		 * take the environment fallback, as in FidelityFX SSSR. Rough lobes gain little
-		 * from screen-space hits and cost a full ray each. `1` traces everything.
-		 *
-		 * @type {UniformNode<float>}
-		 * @default 0.5
-		 */
-		this.roughnessThreshold = uniform( 0.5 );
-
-		/**
 		 * A multiplier for the overall reflection intensity. `1` leaves the
 		 * reflections unchanged, lower values dim them and higher values boost them.
 		 *
@@ -1214,7 +1204,6 @@ class SSRNode extends Node {
 			const hitUvS = vec2( 0 ).toVar();
 			const hitD = float( 0 ).toVar();
 			const validatedPosition = vec3( 0 ).toVar();
-			const traceDebug = this._traceDebug === true ? vec4( 0 ).toVar() : null;
 			const adaptiveRay = d1viewPosition.sub( viewPosition ).toConst();
 			const validateCandidate = ( hitUV, raw ) => {
 
@@ -1236,88 +1225,80 @@ class SSRNode extends Node {
 
 			};
 
-			const trace = () => {
+			if ( adaptive ) {
 
-				if ( adaptive ) {
-
-					const reversed = builder.renderer.reversedDepthBuffer === true && builder.renderer.logarithmicDepthBuffer !== true;
-					const toDepth = this.camera.isPerspectiveCamera
-						? reversed ? viewZToReversedPerspectiveDepth : viewZToPerspectiveDepth
-						: reversed ? viewZToReversedOrthographicDepth : viewZToOrthographicDepth;
-					const result = traceHiZ( this.hiZ,
-						vec3( uvPos, toDepth( viewPosition.z, this._cameraNear, this._cameraFar ) ),
-						vec3( d1.mul( invResolution ), toDepth( d1viewPosition.z, this._cameraNear, this._cameraFar ) ), {
-							reversedDepth: reversed,
-							start: rayLen.reciprocal(),
-							maxSteps: this.adaptiveMaxSteps,
-							maxCandidates: this.maxCandidates,
-							minLevel: this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
-							depthTolerance: 2e-7,
-							projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
-							acceptHit: ( uv, s, raw ) => validateCandidate( uv, raw )
-						} );
-					if ( this._traceDebug === true ) traceDebug.assign( vec4( float( result.iterations ), float( result.candidates ), float( result.hit ), float( result.exhausted ) ) );
-					foundHit.assign( result.hit );
-					hitUvS.assign( result.uv );
-					hitD.assign( projectionDepth( result.depth, this._cameraNear, this._cameraFar ) );
-
-				} else {
-
-					const result = traceLinearSSR( {
-						totalStep,
-						sampleFraction,
-						uvAt: s => screenPosAt( s ).mul( invResolution ),
-						sampleDepth: uv => this.depthNode.sample( uv ).r,
+				const reversed = builder.renderer.reversedDepthBuffer === true && builder.renderer.logarithmicDepthBuffer !== true;
+				const toDepth = this.camera.isPerspectiveCamera
+					? reversed ? viewZToReversedPerspectiveDepth : viewZToPerspectiveDepth
+					: reversed ? viewZToReversedOrthographicDepth : viewZToOrthographicDepth;
+				const result = traceHiZ( this.hiZ,
+					vec3( uvPos, toDepth( viewPosition.z, this._cameraNear, this._cameraFar ) ),
+					vec3( d1.mul( invResolution ), toDepth( d1viewPosition.z, this._cameraNear, this._cameraFar ) ), {
+						reversedDepth: reversed,
+						start: rayLen.reciprocal(),
+						maxSteps: this.adaptiveMaxSteps,
+						maxCandidates: this.maxCandidates,
+						minLevel: this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
+						depthTolerance: 2e-7,
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
-						sceneZ: raw => depthToViewZ( raw, this._cameraNear, this._cameraFar, this.camera ),
-						rayZAt: reflectRayZAt,
-						isBackground: isBackgroundDepth,
-						binaryRefine: this.binaryRefine,
-						frontFacing: uv => dot( viewReflectDir, this.normalNode.sample( uv ).rgb ).lessThan( 0 ),
-						acceptHit: ( uvS, s, lastS, d ) => {
+						acceptHit: ( uv, s, raw ) => validateCandidate( uv, raw )
+					} );
+				if ( this._traceDebug === true ) return vec4( float( result.iterations ), float( result.candidates ), float( result.hit ), float( result.exhausted ) );
+				foundHit.assign( result.hit );
+				hitUvS.assign( result.uv );
+				hitD.assign( projectionDepth( result.depth, this._cameraNear, this._cameraFar ) );
 
-							const valid = bool( false ).toVar();
-							const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse ).toVar();
-							const away = pointToLineDistance( vP, viewPosition, d1viewPosition ).toVar();
-							const neighbor = getViewPosition( uvS.add( uvPixelStepX ), d, this._cameraProjectionMatrixInverse );
-							const minThickness = neighbor.x.sub( vP.x ).mul( 3 );
-							const stepLength = distance( rayPointAt( lastS ), rayPointAt( s ) );
-							const tk = this.binaryRefine ? max( max( minThickness, this.thickness ), stepLength ) : max( minThickness, this.thickness );
-							If( away.lessThanEqual( tk ), () => {
+			} else {
 
-								If( dot( viewReflectDir, this.normalNode.sample( uvS ).rgb ).greaterThanEqual( 0 ), () => {
+				const result = traceLinearSSR( {
+					totalStep,
+					sampleFraction,
+					uvAt: s => screenPosAt( s ).mul( invResolution ),
+					sampleDepth: uv => this.depthNode.sample( uv ).r,
+					projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
+					sceneZ: raw => depthToViewZ( raw, this._cameraNear, this._cameraFar, this.camera ),
+					rayZAt: reflectRayZAt,
+					isBackground: isBackgroundDepth,
+					binaryRefine: this.binaryRefine,
+					frontFacing: uv => dot( viewReflectDir, this.normalNode.sample( uv ).rgb ).lessThan( 0 ),
+					acceptHit: ( uvS, s, lastS, d ) => {
 
-									Continue();
+						const valid = bool( false ).toVar();
+						const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse ).toVar();
+						const away = pointToLineDistance( vP, viewPosition, d1viewPosition ).toVar();
+						const neighbor = getViewPosition( uvS.add( uvPixelStepX ), d, this._cameraProjectionMatrixInverse );
+						const minThickness = neighbor.x.sub( vP.x ).mul( 3 );
+						const stepLength = distance( rayPointAt( lastS ), rayPointAt( s ) );
+						const tk = this.binaryRefine ? max( max( minThickness, this.thickness ), stepLength ) : max( minThickness, this.thickness );
+						If( away.lessThanEqual( tk ), () => {
 
-								} );
-								if ( this.stochastic === false ) {
+							If( dot( viewReflectDir, this.normalNode.sample( uvS ).rgb ).greaterThanEqual( 0 ), () => {
 
-									If( pointPlaneDistance( vP, viewPosition, viewNormal ).greaterThan( this.maxDistance ), () => {
-
-										Break();
-
-									} );
-
-								}
-
-								valid.assign( true );
+								Continue();
 
 							} );
-							return valid;
+							if ( this.stochastic === false ) {
 
-						}
-					} );
-					foundHit.assign( result.hit );
-					hitUvS.assign( result.uv );
-					hitD.assign( result.depth );
+								If( pointPlaneDistance( vP, viewPosition, viewNormal ).greaterThan( this.maxDistance ), () => {
 
-				}
+									Break();
 
-			};
+								} );
 
-			if ( this.stochastic === true ) If( roughness.lessThan( this.roughnessThreshold ), trace );
-			else trace();
-			if ( this._traceDebug === true && adaptive ) return traceDebug;
+							}
+
+							valid.assign( true );
+
+						} );
+						return valid;
+
+					}
+				} );
+				foundHit.assign( result.hit );
+				hitUvS.assign( result.uv );
+				hitD.assign( result.depth );
+
+			}
 
 			If( foundHit, () => {
 

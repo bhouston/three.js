@@ -35,7 +35,7 @@ const HIZ_MAX_LEVEL = 6;
  * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode uses a nearest-depth hierarchy and exact mip-zero candidates. Requires WebGPU.
  * @property {number} [maxCandidates=1] - Adaptive mode only: maximum candidate surfaces to validate.
  * @property {number} [glossyMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it. Use with `maxCandidates > 1`.
- * @property {number} [approximateSteps=0] - Adaptive mode only: `0` traces exactly. When greater, each ray stops descending at the Hi-Z level where it crosses about this many cells and tests only the pixel under the ray there, as a linear march step does. Cheaper with a small iteration budget, but steps over features thinner than a cell.
+ * @property {number} [approximateSteps=0] - Adaptive mode only: `0` traces exactly. When greater, each ray stops descending at the Hi-Z level where it crosses about this many cells and tests only the pixel under the ray there, as a linear march step does; a hit found that way is then refined by bisection. Cheaper with a small iteration budget, but steps over features thinner than a cell. Not meant to be combined with `occlusionSkipping`, which leaves hits unrefined.
  * @property {boolean} [occlusionSkipping=false] - Adaptive mode only: lets rays pass behind occluders by skipping Hi-Z cells they are entirely hidden behind, as linear tracing does sample by sample. Recovers reflections of surfaces seen past an occluder at the cost of longer rays.
  * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
@@ -1268,6 +1268,21 @@ class SSRNode extends Node {
 
 			};
 
+			// nearRay() for the surface under the ray at parameter s, as scalars. That
+			// surface lies on the ray point's own view ray, so its distance to the ray
+			// line is its depth offset from the ray scaled by a per-ray constant.
+			const lineOffset = cross( this.camera.isPerspectiveCamera ? viewPosition : vec3( 0, 0, 1 ), adaptiveRay ).toConst();
+			const lineOffsetSq = dot( lineOffset, lineOffset ).toConst();
+			const adaptiveRaySq = dot( adaptiveRay, adaptiveRay ).toConst();
+			const farFromRay = ( s, z ) => {
+
+				const rayZ = reflectRayZAt( s );
+				const offset = this.camera.isPerspectiveCamera ? z.div( rayZ ).sub( 1 ) : z.sub( rayZ );
+				const limit = max( getSSRPixelWidth( this._cameraProjectionMatrixInverse, z, invResolution.x, this.camera.isPerspectiveCamera ).mul( 3 ), this.thickness );
+				return offset.mul( offset ).mul( lineOffsetSq ).greaterThan( limit.mul( limit ).mul( adaptiveRaySq ) );
+
+			};
+
 			const iterationHeat = ( fraction, exhausted ) => {
 
 				const cool = mix( vec3( 0, 0, 1 ), vec3( 0, 1, 0 ), fraction.mul( 2 ).clamp() );
@@ -1308,11 +1323,17 @@ class SSRNode extends Node {
 						maxCandidates: this.maxCandidates,
 						minLevel: this.approximateSteps > 0 ? int( log2( rayLen.div( this.approximateSteps ).max( 1 ) ) ) : this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
 						leafSample: this.approximateSteps > 0,
+						refineSteps: 4, // more did not find more hits
 						depthTolerance: 2e-7,
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
 						// The cell's farthest surface fails the thickness test where the ray
 						// enters and leaves, so every nearer surface in between fails it too.
-						isHidden: this.occlusionSkipping === false ? null : ( uvIn, uvOut, raw ) => nearRay( surfacePoint( uvIn, raw ).toVar() ).not().and( nearRay( surfacePoint( uvOut, raw ).toVar() ).not() ),
+						isHidden: this.occlusionSkipping === false ? null : ( sIn, sOut, raw ) => {
+
+							const z = depthToViewZ( raw, this._cameraNear, this._cameraFar, this.camera ).toVar();
+							return farFromRay( sIn, z ).and( farFromRay( sOut, z ) );
+
+						},
 						acceptHit: ( uv, s, raw ) => validateCandidate( uv, raw )
 					} );
 				if ( this._traceDebug === true ) return vec4( float( result.iterations ), float( result.candidates ), float( result.hit ), float( result.exhausted ) );

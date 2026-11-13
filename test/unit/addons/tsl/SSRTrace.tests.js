@@ -371,19 +371,25 @@ export default QUnit.module( 'Addons', () => {
 			traceTest( 'leaf sampling hits within one coarse cell of the exact trace', async ( { assert, renderer } ) => {
 
 				const data = new Float32Array( 128 ).fill( 1 );
-				data.fill( 0.5, 48, 80 );
+				data.fill( 0.5, 52, 84 ); // edges fall inside level-3 cells
 				const fixture = createTraceFixture( 128, 1, data );
-				const rays = [[[ 0.001, 0.5, 0.2 ], [ 0.999, 0.5, 0.8 ]], [[ 0.999, 0.5, 0.2 ], [ 0.001, 0.5, 0.8 ]]];
+				// The last two rays are behind the wall when they reach it, so a coarse
+				// leaf first sees them up to a cell past its edge.
+				const rays = [[[ 0.001, 0.5, 0.2 ], [ 0.999, 0.5, 0.8 ]], [[ 0.999, 0.5, 0.2 ], [ 0.001, 0.5, 0.8 ]], [[ 0.001, 0.5, 0.52 ], [ 0.999, 0.5, 0.52 ]], [[ 0.999, 0.5, 0.52 ], [ 0.001, 0.5, 0.52 ]]];
 				try {
 
 					const exact = await traceRays( renderer, fixture, rays, { thickness: 0.05 } );
 					const approximate = await traceRays( renderer, fixture, rays, { thickness: 0.05, minLevel: 3, leafSample: true } );
+					const refined = await traceRays( renderer, fixture, rays, { thickness: 0.05, minLevel: 3, leafSample: true, refineSteps: 4, maxCandidates: 1 } );
 					for ( let i = 0; i < rays.length; i ++ ) {
 
 						assert.strictEqual( exact.output[ i * 4 + 3 ], 1, 'exact trace hits the wall' );
 						assert.strictEqual( approximate.output[ i * 4 + 3 ], 1, 'approximate trace hits the wall' );
 						assert.ok( Math.abs( approximate.output[ i * 4 + 2 ] - exact.output[ i * 4 + 2 ] ) <= 8 / 128, 'within one level-3 cell' );
 						assert.ok( approximate.metadata[ i * 4 ] <= exact.metadata[ i * 4 ], 'takes no more iterations' );
+						assert.strictEqual( refined.output[ i * 4 + 3 ], 1, 'refined trace hits the wall' );
+						assert.ok( Math.abs( refined.output[ i * 4 + 2 ] - exact.output[ i * 4 + 2 ] ) <= 1.5 / 128, 'bisection lands within a pixel and a half' );
+						if ( i >= 2 ) assert.ok( Math.abs( approximate.output[ i * 4 + 2 ] - exact.output[ i * 4 + 2 ] ) > 1.5 / 128, 'the unrefined hit is late' );
 
 					}
 

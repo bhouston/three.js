@@ -189,7 +189,7 @@ try {
 
 			const compare = ( a, b ) => {
 
-				let baselineHits = 0, adaptiveHits = 0, lostHits = 0, extraHits = 0, nonFinite = 0;
+				let baselineHits = 0, adaptiveHits = 0, lostHits = 0, extraHits = 0, nonFinite = 0, sharedHits = 0, distanceError = 0;
 				for ( let i = 0; i < a.length; i += 4 ) {
 
 					const ah = a[ i + 3 ] > 0 && a[ i + 3 ] < 1000;
@@ -198,11 +198,18 @@ try {
 					if ( bh ) adaptiveHits ++;
 					if ( ah && ! bh ) lostHits ++;
 					if ( bh && ! ah ) extraHits ++;
+					if ( ah && bh ) {
+
+						sharedHits ++;
+						distanceError += Math.abs( a[ i + 3 ] - b[ i + 3 ] );
+
+					}
+
 					for ( let c = 0; c < 4; c ++ ) if ( ! Number.isFinite( a[ i + c ] ) || ! Number.isFinite( b[ i + c ] ) ) nonFinite ++;
 
 				}
 
-				return { baselineHits, adaptiveHits, lostHits, extraHits, disagreements: lostHits + extraHits, nonFinite };
+				return { baselineHits, adaptiveHits, lostHits, extraHits, disagreements: lostHits + extraHits, meanHitDistanceError: distanceError / Math.max( sharedHits, 1 ), nonFinite };
 
 			};
 

@@ -27,11 +27,12 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  * @param {number} [options.maxCandidates=1] - Maximum candidate surfaces to validate (compile-time integer).
  * @param {Node<int>|number} [options.minLevel=0] - Finest level later descents may reach (experimental; FidelityFX's most_detailed_mip). Coarse leaves do less work but, with a yes/no validator, their false candidates use up the budget: pair with maxCandidates > 1.
  * @param {boolean} [options.leafSample=false] - Approximate hits: traversal starts at minLevel, and a leaf above level zero tests only the pixel under the ray, as one linear march step does. Surfaces elsewhere in the cell are stepped over.
- * @param {Function} [options.isHidden] - TSL predicate (entry UV, exit UV, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones, without spending candidates.
+ * @param {number} [options.refineSteps=0] - With leafSample and one candidate: bisection steps, at full resolution, between the last sample in front of the scene and the coarse hit (compile-time integer).
+ * @param {Function} [options.isHidden] - TSL predicate (entry parameter, exit parameter, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones, without spending candidates.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, leafSample = false, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, leafSample = false, refineSteps = 0, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
 
 	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRTrace: maxCandidates must be an integer from 1 to 4096.' );
 
@@ -47,6 +48,11 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	// against the full-resolution depth at their own UV instead.
 	const leafDepth = ( uv, raw ) => coarse && ! leafSample ? hierarchy.getTextureNode( 0, uv ) : raw;
 	const lastMip = int( hierarchy.getLastLevelNode() ).toConst();
+	// Leaf sampling: the last parameter at which the ray was seen in front of the
+	// scene, bracketing a coarse hit for refinement.
+	const refine = leafSample && refineSteps > 0 && maxCandidates === 1;
+	const frontS = float( start ).toVar();
+	const frontValid = bool( true ).toVar();
 	const hit = bool( false ).toVar();
 	const hitUV = vec2( 0 ).toVar();
 	const hitDepth = float( 0 ).toVar();
@@ -115,7 +121,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			const far = projectDepth( farRaw ).add( reversedDepth ? float( depthTolerance ).negate() : depthTolerance );
 			If( inFront.not().and( background.not() ).and( farther( z, far ) ).and( farther( origin.z.add( delta.z.mul( exit ) ), far ) ), () => {
 
-				hidden.assign( isHidden( pixel.div( size ), origin.xy.add( delta.xy.mul( exit ) ), farRaw ) );
+				hidden.assign( isHidden( s, exit, farRaw ) );
 
 			} );
 
@@ -141,6 +147,13 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			} ).Else( () => {
 
 				s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
+				if ( refine ) {
+
+					frontS.assign( s );
+					frontValid.assign( hidden.not() );
+
+				}
+
 				// Ascend only when leaving the parent cell. Inside the same parent
 				// the coarser test would repeat and cost a second read to descend.
 				const leavesParent = cell.bitAnd( uvec2( 1 ) ).equal( exitParity );
@@ -170,6 +183,13 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 				const fine = hierarchy.getPixelCellNode( 0, pixel ).depth.toVar();
 				If( nearer( z, projectDepth( fine ) ).or( reversedDepth ? fine.lessThanEqual( 0 ) : fine.greaterThanEqual( 1 ) ), () => {
+
+					if ( refine ) {
+
+						frontS.assign( s );
+						frontValid.assign( true );
+
+					}
 
 					s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
 					const leavesParent = cell.bitAnd( uvec2( 1 ) ).equal( exitParity );
@@ -239,6 +259,36 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	const candidate = candidates.greaterThan( 0 );
 	const exhausted = hit.not().and( s.lessThan( 1 ) ).toVar();
 	if ( maxCandidates === 1 ) {
+
+		if ( refine ) {
+
+			// The ray went from in front of the scene to behind it between two
+			// samples. Bisect that interval at full resolution, after the traversal
+			// loop as linear SSR does, so every ray pays the same fixed cost.
+			If( hit.and( frontValid ), () => {
+
+				Loop( { start: int( 0 ), end: int( refineSteps ), type: 'int', condition: '<' }, () => {
+
+					const mid = frontS.add( hitS ).mul( 0.5 ).toVar();
+					const midPixel = lookupOrigin.add( deltaPixel.mul( mid ) ).toVar();
+					const fine = hierarchy.getPixelCellNode( 0, midPixel ).depth.toVar();
+					If( nearer( origin.z.add( delta.z.mul( mid ) ), projectDepth( fine ) ).or( reversedDepth ? fine.lessThanEqual( 0 ) : fine.greaterThanEqual( 1 ) ), () => {
+
+						frontS.assign( mid );
+
+					} ).Else( () => {
+
+						hitS.assign( mid );
+						hitUV.assign( midPixel.div( size ) );
+						hitDepth.assign( fine );
+
+					} );
+
+				} );
+
+			} );
+
+		}
 
 		If( hit, () => {
 

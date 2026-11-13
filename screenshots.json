@@ -1,7 +1,7 @@
 [
   {
     "example": "mirror",
-    "url": "https://rawcdn.githack.com/bhouston/three.js/c1b44ef2ad65d4c70b37ef019601bd68a5144917/examples/webgpu_postprocessing_ssr_mirror.html?adaptive",
+    "url": "https://rawcdn.githack.com/bhouston/three.js/4974bcbba47cafc90a8fad764d1cb446833611de/examples/webgpu_postprocessing_ssr_mirror.html?adaptive",
     "gpu": {
       "vendor": "apple",
       "architecture": "metal-3",
@@ -19,18 +19,14 @@
       },
       {
         "name": "Adaptive iterations",
-        "value": "32"
-      },
-      {
-        "name": "Candidate validator",
-        "value": "Three.js"
+        "value": "64"
       }
     ],
     "errors": []
   },
   {
     "example": "stochastic",
-    "url": "https://rawcdn.githack.com/bhouston/three.js/c1b44ef2ad65d4c70b37ef019601bd68a5144917/examples/webgpu_postprocessing_ssr_stochastic.html?adaptive",
+    "url": "https://rawcdn.githack.com/bhouston/three.js/4974bcbba47cafc90a8fad764d1cb446833611de/examples/webgpu_postprocessing_ssr_stochastic.html?adaptive",
     "gpu": {
       "vendor": "apple",
       "architecture": "metal-3",
@@ -48,18 +44,14 @@
       },
       {
         "name": "Adaptive iterations",
-        "value": "32"
-      },
-      {
-        "name": "Candidate validator",
-        "value": "Three.js"
+        "value": "64"
       }
     ],
     "errors": []
   },
   {
     "example": "animation",
-    "url": "https://rawcdn.githack.com/bhouston/three.js/c1b44ef2ad65d4c70b37ef019601bd68a5144917/examples/webgpu_postprocessing_ssr_animation.html?adaptive",
+    "url": "https://rawcdn.githack.com/bhouston/three.js/4974bcbba47cafc90a8fad764d1cb446833611de/examples/webgpu_postprocessing_ssr_animation.html?adaptive",
     "gpu": {
       "vendor": "apple",
       "architecture": "metal-3",
@@ -77,11 +69,7 @@
       },
       {
         "name": "Adaptive iterations",
-        "value": "32"
-      },
-      {
-        "name": "Candidate validator",
-        "value": "Three.js"
+        "value": "64"
       }
     ],
     "errors": []

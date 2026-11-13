@@ -77,10 +77,12 @@ try {
 			// The stochastic example re-applies its own params; the others have none.
 			node.glossyMinLevel = params.glossyMinLevel = settings.glossyMinLevel;
 			node.roughnessThreshold.value = params.roughnessThreshold = settings.roughnessThreshold;
-			params.quality = 1;
-			params.binaryRefine = settings.binaryRefine;
+			// Linear SSR is measured twice: as each example configures it on load
+			// (approximate quality), and raised to quality comparable with adaptive.
+			const exampleDefaults = { quality: params.quality, binaryRefine: params.binaryRefine, maxDistance: params.maxDistance };
+			const comparable = { quality: 1, binaryRefine: settings.binaryRefine, maxDistance: settings.maxDistance !== null ? Number( settings.maxDistance ) : params.maxDistance };
+			Object.assign( params, comparable );
 			params.adaptiveSteps = settings.adaptiveSteps;
-			if ( settings.maxDistance !== null ) params.maxDistance = Number( settings.maxDistance );
 			node.maxSteps.value = settings.linearSteps;
 			const { DataUtils, NodeUpdateType, QuadMesh } = await import( '/src/Three.WebGPU.js' );
 			const sourcePass = node.depthNode.passNode;
@@ -157,7 +159,10 @@ try {
 
 			} );
 			hierarchy.enabled = false;
-			const configurations = [ { name: 'Non-adaptive SSR', adaptive: false, maxCandidates: 1 } ];
+			const configurations = [
+				{ name: 'Non-adaptive SSR', adaptive: false, maxCandidates: 1 },
+				{ name: 'Non-adaptive SSR (example defaults)', adaptive: false, maxCandidates: 1, exampleDefaults: true }
+			];
 			for ( const maxCandidates of settings.candidates ) {
 
 				configurations.push( { name: `Adaptive SSR (${ maxCandidates } candidate${ maxCandidates > 1 ? 's' : '' })`, adaptive: true, maxCandidates } );
@@ -193,6 +198,7 @@ try {
 			for ( const config of configurations ) {
 
 				await device.queue.onSubmittedWorkDone();
+				Object.assign( params, config.exampleDefaults ? exampleDefaults : comparable );
 				params.adaptive = config.adaptive;
 				params.maxCandidates = config.maxCandidates;
 				apply();
@@ -232,7 +238,7 @@ try {
 
 			const validationError = await device.popErrorScope();
 			if ( validationError ) throw new Error( validationError.message );
-			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: params.maxDistance, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, levels: hierarchy.levels.length, creation, modes, speedup: modes[ 1 ].fps / modes[ 0 ].fps };
+			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: comparable.maxDistance, exampleDefaults, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, levels: hierarchy.levels.length, creation, modes, speedup: modes.find( mode => mode.adaptive ).fps / modes[ 0 ].fps };
 
 		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, roughnessThreshold: Number( option( 'roughness-threshold', 1 ) ), glossyMinLevel: Number( option( 'glossy-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );

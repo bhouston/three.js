@@ -1,4 +1,4 @@
-import { DataTexture, DepthTexture, FloatType, Mesh, MeshBasicNodeMaterial, NearestFilter, NodeMaterial, OrthographicCamera, PlaneGeometry, QuadMesh, RedFormat, RenderTarget, Scene, StorageTexture, Vector2 } from 'three/webgpu';
+import { DataTexture, DepthTexture, FloatType, Mesh, MeshBasicNodeMaterial, NearestFilter, NodeMaterial, OrthographicCamera, PlaneGeometry, QuadMesh, RedFormat, RenderTarget, RGFormat, Scene, StorageTexture, Vector2 } from 'three/webgpu';
 import { Fn, instanceIndex, instancedArray, ivec2, pass, texture, textureLoad, uint, vec2, vec4 } from 'three/tsl';
 import HiZNode, { hiZ } from '../../../../examples/jsm/tsl/display/HiZNode.js';
 import { rawComputeTest } from '../../src/nodes/tsl/gpu-raw-test-utils.js';
@@ -164,7 +164,7 @@ export default QUnit.module( 'Addons', () => {
 				pyramid.setSize( 5, 3 );
 				assert.ok( pyramid instanceof HiZNode );
 				assert.ok( pyramid.texture instanceof StorageTexture );
-				assert.strictEqual( pyramid.texture.format, RedFormat );
+				assert.strictEqual( pyramid.texture.format, RGFormat );
 				assert.strictEqual( pyramid.texture.type, FloatType );
 				assert.strictEqual( pyramid.texture.generateMipmaps, false, 'no averaging of depth extrema' );
 				assert.strictEqual( pyramid.texture.mipmapsAutoUpdate, false, 'sampling must not overwrite the computed mips' );

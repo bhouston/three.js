@@ -1205,18 +1205,23 @@ class SSRNode extends Node {
 			const hitD = float( 0 ).toVar();
 			const validatedPosition = vec3( 0 ).toVar();
 			const adaptiveRay = d1viewPosition.sub( viewPosition ).toConst();
+			const surfacePoint = ( uv, raw ) => getViewPosition( uv, projectionDepth( raw, this._cameraNear, this._cameraFar ), this._cameraProjectionMatrixInverse );
+			const nearRay = ( point ) => {
+
+				const pixelWidth = getSSRPixelWidth( this._cameraProjectionMatrixInverse, point.z, invResolution.x, this.camera.isPerspectiveCamera );
+				return validateSSRRayDistance( point, viewPosition, adaptiveRay, max( pixelWidth.mul( 3 ), this.thickness ) );
+
+			};
+
 			const validateCandidate = ( hitUV, raw ) => {
 
 				const valid = bool( false ).toVar();
 				const allowed = dot( viewReflectDir, this.normalNode.sample( hitUV ).rgb ).lessThan( 0 );
 				If( allowed, () => {
 
-					const d = projectionDepth( raw, this._cameraNear, this._cameraFar );
-					const point = getViewPosition( hitUV, d, this._cameraProjectionMatrixInverse ).toVar();
+					const point = surfacePoint( hitUV, raw ).toVar();
 					validatedPosition.assign( point );
-					const pixelWidth = getSSRPixelWidth( this._cameraProjectionMatrixInverse, point.z, invResolution.x, this.camera.isPerspectiveCamera );
-					const thickness = max( pixelWidth.mul( 3 ), this.thickness );
-					valid.assign( validateSSRRayDistance( point, viewPosition, adaptiveRay, thickness ) );
+					valid.assign( nearRay( point ) );
 
 					if ( this.stochastic === false ) valid.assign( valid.and( pointPlaneDistance( point, viewPosition, viewNormal ).lessThanEqual( this.maxDistance ) ) );
 
@@ -1241,6 +1246,9 @@ class SSRNode extends Node {
 						minLevel: this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
 						depthTolerance: 2e-7,
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
+						// The cell's farthest surface fails the thickness test where the ray
+						// enters and leaves, so every nearer surface in between fails it too.
+						isHidden: ( uvIn, uvOut, raw ) => nearRay( surfacePoint( uvIn, raw ).toVar() ).not().and( nearRay( surfacePoint( uvOut, raw ).toVar() ).not() ),
 						acceptHit: ( uv, s, raw ) => validateCandidate( uv, raw )
 					} );
 				if ( this._traceDebug === true ) return vec4( float( result.iterations ), float( result.candidates ), float( result.hit ), float( result.exhausted ) );

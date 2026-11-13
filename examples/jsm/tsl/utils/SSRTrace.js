@@ -26,10 +26,11 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  * @param {Node<float>|number} [options.depthTolerance=0] - Conservative projected-depth rounding tolerance.
  * @param {number} [options.maxCandidates=1] - Maximum candidate surfaces to validate (compile-time integer).
  * @param {Node<int>|number} [options.minLevel=0] - Finest level later descents may reach (experimental; FidelityFX's most_detailed_mip). Coarse leaves do less work but, with a yes/no validator, their false candidates use up the budget: pair with maxCandidates > 1.
+ * @param {Function} [options.isHidden] - TSL predicate (entry UV, exit UV, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones, without spending candidates.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, acceptHit = () => bool( true ) } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
 
 	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRTrace: maxCandidates must be an integer from 1 to 4096.' );
 
@@ -89,7 +90,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		} );
 
-		const { cell, depth: cellDepth, bounds: cellBounds } = hierarchy.getCellNode( uint( mip ), position.xy );
+		const { cell, depth: cellDepth, farthest: cellFarthest, bounds: cellBounds } = hierarchy.getCellNode( uint( mip ), position.xy );
 		const bounds = cellBounds.toVar();
 		// Zero XY components use a large positive exit distance: the origin
 		// remains inside that axis's half-open cell. No per-axis branch needed.
@@ -106,7 +107,22 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 		).toVar();
 		const background = reversedDepth ? raw.lessThanEqual( 0 ) : raw.greaterThanEqual( 1 );
 
-		If( inFront.or( background ), () => {
+		// Behind every surface in the cell from entry to exit: the ray is hidden
+		// by an occluder here and cannot be accepted, so skip it as if empty.
+		const hidden = bool( false ).toVar();
+		if ( isHidden !== null ) {
+
+			const farRaw = cellFarthest.toVar();
+			const far = projectDepth( farRaw ).add( reversedDepth ? float( depthTolerance ).negate() : depthTolerance );
+			If( inFront.not().and( background.not() ).and( farther( position.z, far ) ).and( farther( origin.z.add( delta.z.mul( exit ) ), far ) ), () => {
+
+				hidden.assign( isHidden( position.xy, origin.xy.add( delta.xy.mul( exit ) ), farRaw ) );
+
+			} );
+
+		}
+
+		If( inFront.or( background ).or( hidden ), () => {
 
 			// An away-going ray may enter geometry before leaving this cell.
 			If( background.not().and( farther( end.z, origin.z ) ).and( plane.greaterThanEqual( s ) ).and( plane.lessThan( exit ) ), () => {

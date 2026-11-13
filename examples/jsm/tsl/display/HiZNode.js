@@ -1,15 +1,17 @@
-import { FloatType, NearestFilter, Node, NodeUpdateType, RedFormat, StorageTexture, Vector2 } from 'three/webgpu';
-import { Fn, Loop, float, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uv, uvec2, vec2, vec4, storageTexture, invocationLocalIndex, workgroupId, workgroupArray, workgroupBarrier, If } from 'three/tsl';
+import { FloatType, NearestFilter, Node, NodeUpdateType, RGFormat, StorageTexture, Vector2 } from 'three/webgpu';
+import { Fn, Loop, ivec2, max, min, nodeObject, passTexture, textureLoad, textureStore, uint, uniform, uv, uvec2, vec2, vec4, storageTexture, invocationLocalIndex, workgroupId, workgroupArray, workgroupBarrier, If } from 'three/tsl';
 
 const WORKGROUP_SIZE = 64;
 const MAX_LEVELS = 16;
 
 /**
- * Builds a nearest-depth hierarchy with successive WebGPU reductions.
+ * Builds a nearest/farthest-depth hierarchy with successive WebGPU reductions.
  *
- * Levels are stored in a native R32F mip chain, with floor-halved dimensions.
+ * Levels are stored in a native RG32F mip chain, with floor-halved dimensions.
+ * Red holds each cell's nearest depth, for skipping empty space; green holds
+ * its farthest, for skipping cells a ray is entirely hidden behind.
  * The last cell includes the odd trailing row/column (a 3x2, 2x3 or 3x3
- * reduction). Standard depth uses min; reversed depth uses max. Values remain
+ * reduction). Nearest is min for standard depth and max for reversed. Values remain
  * raw device depth, not linearized depth.
  *
  * Each dispatch reduces up to three levels using workgroup memory. Dispatch
@@ -60,7 +62,7 @@ class HiZNode extends Node {
 		this.texture = new StorageTexture();
 		this.texture.name = 'HiZNode.Pyramid';
 		this.texture.type = FloatType;
-		this.texture.format = RedFormat;
+		this.texture.format = RGFormat;
 		this.texture.minFilter = NearestFilter;
 		this.texture.magFilter = NearestFilter;
 		this.texture.generateMipmaps = false;
@@ -93,14 +95,14 @@ class HiZNode extends Node {
 	}
 
 	/**
-	 * One hierarchy cell: its integer coordinate, raw nearest depth and exact
-	 * normalized bounds. Floor-halved levels are size >> level, so the cell and
+	 * One hierarchy cell: its integer coordinate, raw nearest and farthest depth
+	 * and exact normalized bounds. Floor-halved levels are size >> level, so the cell and
 	 * its footprint (including the enlarged trailing cell at odd sizes) are
 	 * integer shifts rather than scaled UVs.
 	 *
 	 * @param {Node<uint>|number} level - Hierarchy level. Out-of-range levels clamp to the last.
 	 * @param {Node<vec2>} uvNode - Original-image normalized coordinates.
-	 * @return {{cell: Node<uvec2>, depth: Node<float>, bounds: Node<vec4>}} Cell coordinate, depth and rectangle.
+	 * @return {{cell: Node<uvec2>, depth: Node<float>, farthest: Node<float>, bounds: Node<vec4>}} Cell coordinate, nearest and farthest depth, and rectangle.
 	 */
 	getCellNode( level, uvNode ) {
 
@@ -111,9 +113,11 @@ class HiZNode extends Node {
 		const cell = uvec2( uvNode.mul( this._size ).max( 0 ) ).shiftRight( shift ).min( last ).toConst();
 		const begin = cell.shiftLeft( shift ).toConst();
 		const end = cell.equal( last ).select( size, begin.add( uvec2( 1 ).shiftLeft( shift ) ) );
+		const texel = textureLoad( this._textureNode, ivec2( cell ), mip ).toConst();
 		return {
 			cell,
-			depth: textureLoad( this._textureNode, ivec2( cell ), mip ).r,
+			depth: texel.r,
+			farthest: texel.g,
 			bounds: vec4( vec2( begin ), vec2( end ) ).div( this._size.xyxy )
 		};
 
@@ -194,6 +198,7 @@ class HiZNode extends Node {
 
 		const reversed = this._reversed;
 		const reduce = reversed ? max : min;
+		const reduceFar = reversed ? min : max;
 		this._computeNode = [];
 
 		// Three local reductions share workgroup memory. Dispatch boundaries
@@ -204,8 +209,8 @@ class HiZNode extends Node {
 
 			this._computeNode.push( Fn( () => {
 
-				const depth = textureLoad( source, ivec2( 0 ) ).r;
-				textureStore( this.texture, ivec2( 0 ), vec4( depth, 0, 0, 1 ) ).toWriteOnly();
+				const depth = textureLoad( source, ivec2( 0 ) ).r.toVar();
+				textureStore( this.texture, ivec2( 0 ), vec4( depth, depth, 0, 1 ) ).toWriteOnly();
 
 			} )().compute( 1, [ WORKGROUP_SIZE ] ).setName( 'Hi-Z [ 1x1 ]' ) );
 			return;
@@ -217,7 +222,7 @@ class HiZNode extends Node {
 			const last = Math.min( first + 2, this.levels.length - 1 );
 			const parent = this.levels[ last ];
 			const input = first === 1 ? source : null;
-			const shared = Array.from( { length: last - first + 1 }, ( _, i ) => workgroupArray( 'float', ( 8 >> i ) ** 2 ) );
+			const shared = Array.from( { length: last - first + 1 }, ( _, i ) => workgroupArray( 'vec2', ( 8 >> i ) ** 2 ) );
 
 			const compute = Fn( () => {
 
@@ -237,7 +242,7 @@ class HiZNode extends Node {
 					const endY = groupY.equal( parent.height - 1 ).select( uint( entry.height ), uint( base.y ).add( span ) );
 					If( invocationLocalIndex.lessThan( pitch * pitch ).and( x.lessThan( endX ) ).and( y.lessThan( endY ) ), () => {
 
-						const value = float( reversed ? 0 : 1 ).toVar();
+						const value = vec2( reversed ? 0 : 1, reversed ? 1 : 0 ).toVar(); // nearest, farthest
 						const sampleEndX = x.equal( entry.width - 1 ).select( uint( previous.width ), x.mul( 2 ).add( 2 ) );
 						const sampleEndY = y.equal( entry.height - 1 ).select( uint( previous.height ), y.mul( 2 ).add( 2 ) );
 						Loop( { start: y.mul( 2 ), end: sampleEndY, type: 'uint', name: 'sy' + stage }, ( indices ) => {
@@ -251,31 +256,31 @@ class HiZNode extends Node {
 
 									if ( level === 1 ) {
 
-										depth = textureLoad( input, ivec2( sx, sy ) ).r;
-										textureStore( this.texture, ivec2( sx, sy ), vec4( depth, 0, 0, 1 ) ).setMipLevel( 0 ).toWriteOnly();
+										depth = textureLoad( input, ivec2( sx, sy ) ).rr.toVar();
+										textureStore( this.texture, ivec2( sx, sy ), vec4( depth, 0, 1 ) ).setMipLevel( 0 ).toWriteOnly();
 
 									} else {
 
 										const previousMip = storageTexture( this.texture, ivec2( sx, sy ) ).setMipLevel( first - 1 ).setSampler( false ).toReadOnly();
 										previousMip.mergeable = false;
-										depth = previousMip.r;
+										depth = previousMip.rg.toVar();
 
 									}
 
 								} else {
 
 									const local = ivec2( sx, sy ).sub( base.mul( 2 ) );
-									depth = shared[ stage - 1 ].element( local.y.mul( pitch * 2 ).add( local.x ) );
+									depth = shared[ stage - 1 ].element( local.y.mul( pitch * 2 ).add( local.x ) ).toVar();
 
 								}
 
-								value.assign( reduce( value, depth ) );
+								value.assign( vec2( reduce( value.x, depth.x ), reduceFar( value.y, depth.y ) ) );
 
 							} );
 
 						} );
 						shared[ stage ].element( invocationLocalIndex ).assign( value );
-						const output = textureStore( this.texture, ivec2( x, y ), vec4( value, 0, 0, 1 ) ).setMipLevel( level ).toWriteOnly();
+						const output = textureStore( this.texture, ivec2( x, y ), vec4( value, 0, 1 ) ).setMipLevel( level ).toWriteOnly();
 						output.mergeable = false;
 
 					} );

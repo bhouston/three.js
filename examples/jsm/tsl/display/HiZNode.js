@@ -106,20 +106,29 @@ class HiZNode extends Node {
 	 */
 	getCellNode( level, uvNode ) {
 
+		const { cell, depth, farthest, begin, end } = this.getPixelCellNode( level, uvNode.mul( this._size ) );
+		return { cell, depth, farthest, bounds: vec4( begin, end ).div( this._size.xyxy ) };
+
+	}
+
+	/**
+	 * As {@link HiZNode#getCellNode}, addressed and bounded in level-zero pixels.
+	 *
+	 * @param {Node<uint>|number} level - Hierarchy level. Out-of-range levels clamp to the last.
+	 * @param {Node<vec2>} pixelNode - Level-zero pixel coordinates.
+	 * @return {{cell: Node<uvec2>, depth: Node<float>, farthest: Node<float>, begin: Node<vec2>, end: Node<vec2>}} Cell coordinate, depths and pixel rectangle.
+	 */
+	getPixelCellNode( level, pixelNode ) {
+
 		const mip = uint( level ).min( this._lastLevel ).toConst();
 		const shift = uvec2( mip );
 		const size = uvec2( this._size ).toConst();
 		const last = size.shiftRight( shift ).max( uvec2( 1 ) ).sub( uvec2( 1 ) ).toConst();
-		const cell = uvec2( uvNode.mul( this._size ).max( 0 ) ).shiftRight( shift ).min( last ).toConst();
+		const cell = uvec2( pixelNode.max( 0 ) ).shiftRight( shift ).min( last ).toConst();
 		const begin = cell.shiftLeft( shift ).toConst();
 		const end = cell.equal( last ).select( size, begin.add( uvec2( 1 ).shiftLeft( shift ) ) );
 		const texel = textureLoad( this._textureNode, ivec2( cell ), mip ).toConst();
-		return {
-			cell,
-			depth: texel.r,
-			farthest: texel.g,
-			bounds: vec4( vec2( begin ), vec2( end ) ).div( this._size.xyxy )
-		};
+		return { cell, depth: texel.r, farthest: texel.g, begin: vec2( begin ), end: vec2( end ) };
 
 	}
 

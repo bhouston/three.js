@@ -51,15 +51,22 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	const hitS = float( 0 ).toVar();
 	const iterations = int( 0 ).toVar();
 	const candidates = int( 0 ).toVar();
-	const size = vec2( textureSize( hierarchy.depthNode ) );
-	const pixels = delta.xy.abs().mul( size );
+	const size = vec2( textureSize( hierarchy.depthNode ) ).toConst();
+	// Traversal runs in level-zero pixels: cells are integer shifts of them.
+	const originPixel = origin.xy.mul( size ).toConst();
+	const deltaPixel = delta.xy.mul( size ).toConst();
+	const pixels = deltaPixel.abs();
 	const exitParity = delta.xy.greaterThanEqual( vec2( 0 ) ).select( uvec2( 1 ), uvec2( 0 ) ).toConst();
-	const edgeBias = size.mul( 2 ** - 22 ).max( 0.0005 ).toConst();
-	const directionXY = delta.xy.sign().toConst();
+	// Ray-space progress can be smaller than one pixel ULP on the nearly
+	// stationary axis. Every lookup is taken a fraction of a pixel ahead of the
+	// ray, so a point on a cell edge resolves to the cell being entered at every
+	// level alike and coarse/fine mips cannot oscillate at the same wall.
+	const edgeBias = size.mul( 2 ** - 22 ).max( 0.0005 );
+	const lookupOrigin = originPixel.add( delta.xy.sign().mul( edgeBias ) ).toConst();
 	// Offset only XY exits, never depth-plane intersections. The offset is a
 	// hundred-thousandth of a source texel, with a float32 progress floor in ray space.
 	const epsilon = float( 0.00001 ).div( max( pixels.x, pixels.y ).max( 1 ) ).max( 1e-7 ).toConst();
-	const inverseXY = delta.xy.greaterThanEqual( vec2( 0 ) ).select( vec2( 1 ), vec2( - 1 ) ).div( delta.xy.abs().max( 1e-20 ) ).toConst();
+	const inverseXY = delta.xy.greaterThanEqual( vec2( 0 ) ).select( vec2( 1 ), vec2( - 1 ) ).div( pixels.max( 1e-20 ) ).toConst();
 	const inverseZ = delta.z.greaterThanEqual( 0 ).select( 1, - 1 ).div( delta.z.abs().max( 1e-20 ) ).toConst();
 	const farther = reversedDepth ? ( a, b ) => a.lessThan( b ) : ( a, b ) => a.greaterThan( b );
 	const nearer = reversedDepth ? ( a, b ) => a.greaterThan( b ) : ( a, b ) => a.lessThan( b );
@@ -72,37 +79,27 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		} );
 		iterations.assign( i.add( 1 ) );
-		const position = origin.add( delta.mul( s ) ).toVar();
-		// Ray-space progress can be smaller than one UV ULP on the nearly
-		// stationary axis. Resolve pixel-edge ties in ray direction before BOTH
-		// hierarchy lookup and boundary calculation, without jumping along the
-		// other axis. Otherwise coarse/fine mips can oscillate at the same wall.
-		const pixel = position.xy.mul( size );
-		const rounded = pixel.round();
-		const atEdge = pixel.sub( rounded ).abs().lessThanEqual( edgeBias );
-		const corrected = rounded.add( directionXY.mul( edgeBias ) ).div( size );
-		const movingCorrection = delta.xy.notEqual( vec2( 0 ) ).select( corrected, position.xy );
-		position.xy.assign( atEdge.select( movingCorrection, position.xy ) );
-		If( position.xy.lessThan( vec2( 0 ) ).any().or( position.xy.greaterThanEqual( vec2( 1 ) ).any() ), () => {
+		const pixel = lookupOrigin.add( deltaPixel.mul( s ) ).toVar();
+		const z = origin.z.add( delta.z.mul( s ) ).toVar();
+		If( pixel.lessThan( vec2( 0 ) ).any().or( pixel.greaterThanEqual( size ).any() ), () => {
 
 			s.assign( 1 );
 			Break();
 
 		} );
 
-		const { cell, depth: cellDepth, farthest: cellFarthest, bounds: cellBounds } = hierarchy.getCellNode( uint( mip ), position.xy );
-		const bounds = cellBounds.toVar();
+		const { cell, depth: cellDepth, farthest: cellFarthest, begin, end: cellEnd } = hierarchy.getPixelCellNode( uint( mip ), pixel );
 		// Zero XY components use a large positive exit distance: the origin
 		// remains inside that axis's half-open cell. No per-axis branch needed.
-		const edge = delta.xy.greaterThanEqual( vec2( 0 ) ).select( bounds.zw, bounds.xy );
-		const exits = edge.sub( origin.xy ).mul( inverseXY );
+		const edge = delta.xy.greaterThanEqual( vec2( 0 ) ).select( cellEnd, begin );
+		const exits = edge.sub( originPixel ).mul( inverseXY );
 		const exit = min( min( exits.x, exits.y ), 1 ).toVar();
 
 		const raw = cellDepth.toVar();
 		const depth = projectDepth( raw ).toVar();
 		const plane = depth.sub( origin.z ).mul( inverseZ ).toVar();
 		const conservativeDepth = depth.add( reversedDepth ? depthTolerance : float( depthTolerance ).negate() );
-		const inFront = nearer( position.z, conservativeDepth ).and(
+		const inFront = nearer( z, conservativeDepth ).and(
 			farther( end.z, origin.z ).not().or( plane.greaterThan( s.add( 1e-7 ) ) )
 		).toVar();
 		const background = reversedDepth ? raw.lessThanEqual( 0 ) : raw.greaterThanEqual( 1 );
@@ -114,9 +111,9 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 			const farRaw = cellFarthest.toVar();
 			const far = projectDepth( farRaw ).add( reversedDepth ? float( depthTolerance ).negate() : depthTolerance );
-			If( inFront.not().and( background.not() ).and( farther( position.z, far ) ).and( farther( origin.z.add( delta.z.mul( exit ) ), far ) ), () => {
+			If( inFront.not().and( background.not() ).and( farther( z, far ) ).and( farther( origin.z.add( delta.z.mul( exit ) ), far ) ), () => {
 
-				hidden.assign( isHidden( position.xy, origin.xy.add( delta.xy.mul( exit ) ), farRaw ) );
+				hidden.assign( isHidden( pixel.div( size ), origin.xy.add( delta.xy.mul( exit ) ), farRaw ) );
 
 			} );
 
@@ -136,7 +133,8 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 				} );
 				// At a leaf we already have the plane and depth. Validate
 				// it in this iteration, without re-reading the same leaf.
-				position.assign( origin.add( delta.mul( s ) ) );
+				pixel.assign( lookupOrigin.add( deltaPixel.mul( s ) ) );
+				z.assign( origin.z.add( delta.z.mul( s ) ) );
 
 			} ).Else( () => {
 
@@ -168,7 +166,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			// AMD-style termination: return the first geometric candidate, then
 			// validate it once outside the traversal loop.
 			hit.assign( true );
-			hitUV.assign( position.xy );
+			hitUV.assign( pixel.div( size ) );
 			hitDepth.assign( raw );
 			hitS.assign( s );
 			Break();
@@ -178,7 +176,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			// At a leaf, test entry first. If it is too far behind the surface,
 			// a camera-facing ray can still reach its depth plane inside this cell.
 			const candidate = s.toVar();
-			const candidateUV = position.xy.toVar();
+			const candidateUV = pixel.div( size ).toVar();
 			const candidateDepth = float( leafDepth( candidateUV, raw ) ).toVar();
 			const accepted = bool( acceptHit( candidateUV, candidate, candidateDepth ) ).toVar();
 			If( accepted.not().and( nearer( end.z, origin.z ) ).and( plane.greaterThan( s ) ).and( plane.lessThan( exit ) ), () => {

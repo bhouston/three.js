@@ -22,20 +22,20 @@
     "levels": 7,
     "creation": {
       "name": "Hi-Z creation",
-      "completed": 14048,
-      "seconds": 5.003600000008941,
-      "fps": 2807.5785434437003,
-      "impliedMs": 0.3561788154903859
+      "completed": 13536,
+      "seconds": 5.00590000000596,
+      "fps": 2704.009269059287,
+      "impliedMs": 0.3698212174945301
     },
     "modes": [
       {
         "name": "Non-adaptive SSR",
         "adaptive": false,
         "maxCandidates": 1,
-        "completed": 192,
-        "seconds": 5.405600000008941,
-        "fps": 35.518721325973516,
-        "impliedMs": 28.154166666713234
+        "completed": 176,
+        "seconds": 5.306899999991059,
+        "fps": 33.16437091339511,
+        "impliedMs": 30.15284090904011
       },
       {
         "name": "Non-adaptive SSR (example defaults)",
@@ -43,9 +43,9 @@
         "maxCandidates": 1,
         "exampleDefaults": true,
         "completed": 608,
-        "seconds": 5.10589999999106,
-        "fps": 119.07792945436937,
-        "impliedMs": 8.39786184209056,
+        "seconds": 5.08440000000596,
+        "fps": 119.58146487280452,
+        "impliedMs": 8.362500000009803,
         "comparison": {
           "baselineHits": 337166,
           "adaptiveHits": 316890,
@@ -59,10 +59,10 @@
         "name": "Adaptive SSR (1 candidate)",
         "adaptive": true,
         "maxCandidates": 1,
-        "completed": 1888,
-        "seconds": 5.025600000008941,
-        "fps": 375.6765361343205,
-        "impliedMs": 2.661864406784397,
+        "completed": 1872,
+        "seconds": 5.01540000000596,
+        "fps": 373.25038880204477,
+        "impliedMs": 2.6791666666698504,
         "comparison": {
           "baselineHits": 337166,
           "adaptiveHits": 281808,
@@ -79,7 +79,7 @@
         }
       }
     ],
-    "speedup": 10.576859811099174
+    "speedup": 11.254559592785421
   },
   {
     "example": "stochastic",
@@ -105,9 +105,9 @@
     "creation": {
       "name": "Hi-Z creation",
       "completed": 13728,
-      "seconds": 5.0002999999970195,
-      "fps": 2745.4352738852035,
-      "impliedMs": 0.36424096736575023
+      "seconds": 5.000099999994039,
+      "fps": 2745.545089101491,
+      "impliedMs": 0.3642263986009644
     },
     "modes": [
       {
@@ -115,19 +115,19 @@
         "adaptive": false,
         "maxCandidates": 1,
         "completed": 368,
-        "seconds": 5.068,
-        "fps": 72.61247040252566,
-        "impliedMs": 13.771739130434781
+        "seconds": 5.0485,
+        "fps": 72.89293849658314,
+        "impliedMs": 13.71875
       },
       {
         "name": "Non-adaptive SSR (example defaults)",
         "adaptive": false,
         "maxCandidates": 1,
         "exampleDefaults": true,
-        "completed": 1120,
-        "seconds": 5.05870000000298,
-        "fps": 221.400755134588,
-        "impliedMs": 4.516696428574089,
+        "completed": 1136,
+        "seconds": 5.01939999999106,
+        "fps": 226.32187114038,
+        "impliedMs": 4.418485915485087,
         "comparison": {
           "baselineHits": 1081210,
           "adaptiveHits": 844203,
@@ -142,9 +142,9 @@
         "adaptive": true,
         "maxCandidates": 1,
         "completed": 560,
-        "seconds": 5.1457000000029804,
-        "fps": 108.82873078486419,
-        "impliedMs": 9.188750000005323,
+        "seconds": 5.05679999999702,
+        "fps": 110.74197120715274,
+        "impliedMs": 9.02999999999468,
         "comparison": {
           "baselineHits": 1081210,
           "adaptiveHits": 916543,
@@ -161,7 +161,7 @@
         }
       }
     ],
-    "speedup": 1.4987608902654665
+    "speedup": 1.5192414174981268
   },
   {
     "example": "animation",
@@ -186,36 +186,36 @@
     "levels": 7,
     "creation": {
       "name": "Hi-Z creation",
-      "completed": 13760,
-      "seconds": 5.002700000002981,
-      "fps": 2750.514722048454,
-      "impliedMs": 0.363568313953705
+      "completed": 13440,
+      "seconds": 5.003199999988079,
+      "fps": 2686.2807803070077,
+      "impliedMs": 0.37226190476101784
     },
     "modes": [
       {
         "name": "Non-adaptive SSR",
         "adaptive": false,
         "maxCandidates": 1,
-        "completed": 1152,
-        "seconds": 5.01159999999404,
-        "fps": 229.86670923484917,
-        "impliedMs": 4.3503472222170485
+        "completed": 624,
+        "seconds": 5.100900000005961,
+        "fps": 122.33135329045282,
+        "impliedMs": 8.174519230778783
       },
       {
         "name": "Non-adaptive SSR (example defaults)",
         "adaptive": false,
         "maxCandidates": 1,
         "exampleDefaults": true,
-        "completed": 2048,
-        "seconds": 5.012100000008941,
-        "fps": 408.6111609896743,
-        "impliedMs": 2.4473144531293656,
+        "completed": 1168,
+        "seconds": 5.04670000000298,
+        "fps": 231.4383656645551,
+        "impliedMs": 4.3208047945231,
         "comparison": {
-          "baselineHits": 252599,
-          "adaptiveHits": 127692,
-          "lostHits": 126761,
-          "extraHits": 1854,
-          "disagreements": 128615,
+          "baselineHits": 317218,
+          "adaptiveHits": 157648,
+          "lostHits": 164883,
+          "extraHits": 5313,
+          "disagreements": 170196,
           "nonFinite": 0
         }
       },
@@ -223,26 +223,26 @@
         "name": "Adaptive SSR (1 candidate)",
         "adaptive": true,
         "maxCandidates": 1,
-        "completed": 1472,
-        "seconds": 5.05379999999702,
-        "fps": 291.26597807607504,
-        "impliedMs": 3.433288043476236,
+        "completed": 976,
+        "seconds": 5.076599999994039,
+        "fps": 192.25465863001733,
+        "impliedMs": 5.2014344262234005,
         "comparison": {
-          "baselineHits": 252599,
-          "adaptiveHits": 228633,
-          "lostHits": 31859,
-          "extraHits": 7893,
-          "disagreements": 39752,
+          "baselineHits": 317218,
+          "adaptiveHits": 275955,
+          "lostHits": 60126,
+          "extraHits": 18863,
+          "disagreements": 78989,
           "nonFinite": 0
         },
         "diagnostics": {
-          "tracedRays": 1069301,
-          "averageIterations": 22.583010770587514,
-          "averageCandidates": 0.2583856182683828,
-          "exhaustedRays": 5483
+          "tracedRays": 1405668,
+          "averageIterations": 22.939308570729363,
+          "averageCandidates": 0.3088410634659109,
+          "exhaustedRays": 10395
         }
       }
     ],
-    "speedup": 1.2671081386495848
+    "speedup": 1.5715894041778868
   }
 ]

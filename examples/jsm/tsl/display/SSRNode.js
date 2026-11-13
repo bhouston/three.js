@@ -34,6 +34,7 @@ const HIZ_MAX_LEVEL = 6;
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
  * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode uses a nearest-depth hierarchy and exact mip-zero candidates. Requires WebGPU.
  * @property {number} [maxCandidates=1] - Adaptive mode only: maximum candidate surfaces to validate.
+ * @property {number} [glossyMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it. Use with `maxCandidates > 1`.
  * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
@@ -123,6 +124,7 @@ class SSRNode extends Node {
 		if ( ! [ 'linear', 'adaptive' ].includes( this._tracing ) ) throw new Error( 'SSRNode: Invalid tracing mode.' );
 		this._maxCandidates = options.maxCandidates ?? 1;
 		if ( ! Number.isInteger( this._maxCandidates ) || this._maxCandidates < 1 || this._maxCandidates > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
+		this._glossyMinLevel = options.glossyMinLevel ?? 0;
 		this.hiZ = options.hiZ ?? null;
 		this._ownsHiZ = false;
 		if ( this._tracing === 'adaptive' && this.hiZ === null ) {
@@ -574,6 +576,21 @@ class SSRNode extends Node {
 		if ( ! Number.isInteger( value ) || value < 1 || value > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
 		if ( value === this._maxCandidates ) return;
 		this._maxCandidates = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/** Coarsest-leaf level for rough stochastic rays; `0` is off. Changing it recompiles adaptive tracing. @type {number} */
+	get glossyMinLevel() {
+
+		return this._glossyMinLevel;
+
+	}
+
+	set glossyMinLevel( value ) {
+
+		if ( value === this._glossyMinLevel ) return;
+		this._glossyMinLevel = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1221,6 +1238,7 @@ class SSRNode extends Node {
 						start: rayLen.reciprocal(),
 						maxSteps: this.adaptiveMaxSteps,
 						maxCandidates: this.maxCandidates,
+						minLevel: this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
 						depthTolerance: 2e-7,
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
 						acceptHit: ( uv, s, raw ) => validateCandidate( uv, raw )

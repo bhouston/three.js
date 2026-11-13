@@ -82,7 +82,7 @@ export function referenceTrace( fixture, origin, end, { thickness = 0.000001, re
 
 }
 
-export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 0.000001, rejectedDepth = - 1, maxCandidates = 4096 } = {} ) {
+export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 0.000001, rejectedDepth = - 1, maxCandidates = 4096, minLevel = 0 } = {} ) {
 
 	// vec4 inputs avoid storage-buffer vec3 alignment differences.
 	const origins = instancedArray( new Float32Array( rays.flatMap( ray => [ ...ray[ 0 ], 0 ] ) ), 'vec4' );
@@ -94,7 +94,7 @@ export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 
 		const origin = origins.element( instanceIndex ).xyz.toConst();
 		const end = ends.element( instanceIndex ).xyz.toConst();
 		const result = traceHiZ( fixture.hierarchy, origin, end, {
-			reversedDepth: fixture.reversed, maxSteps, maxCandidates,
+			reversedDepth: fixture.reversed, maxSteps, maxCandidates, minLevel,
 			acceptHit: ( uv, s, raw ) => {
 
 				const z = origin.z.add( end.z.sub( origin.z ).mul( s ) );

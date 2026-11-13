@@ -25,16 +25,24 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, vec2, text
  * @param {Function} [options.projectDepth] - Converts raw hierarchy depth to projected depth (log-depth inputs).
  * @param {Node<float>|number} [options.depthTolerance=0] - Conservative projected-depth rounding tolerance.
  * @param {number} [options.maxCandidates=1] - Maximum candidate surfaces to validate (compile-time integer).
+ * @param {Node<int>|number} [options.minLevel=0] - Finest level later descents may reach (experimental; FidelityFX's most_detailed_mip). Coarse leaves do less work but, with a yes/no validator, their false candidates use up the budget: pair with maxCandidates > 1.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, acceptHit = () => bool( true ) } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, acceptHit = () => bool( true ) } = {} ) {
 
 	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRTrace: maxCandidates must be an integer from 1 to 4096.' );
 
 	const delta = end.sub( origin ).toConst();
 	const s = float( start ).toVar();
+	// Traversal always starts at mip zero: the cells next to the origin hold its
+	// own surface, which only full resolution separates from the ray.
 	const mip = int( 0 ).toVar();
+	const coarse = minLevel !== 0;
+	const minMip = int( minLevel ).toConst();
+	// A coarse leaf holds its cell's nearest depth. Candidates are validated
+	// against the full-resolution depth at their own UV instead.
+	const leafDepth = ( uv, raw ) => coarse ? hierarchy.getTextureNode( 0, uv ) : raw;
 	const lastMip = int( hierarchy.getLastLevelNode() ).toConst();
 	const hit = bool( false ).toVar();
 	const hitUV = vec2( 0 ).toVar();
@@ -102,13 +110,13 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			If( background.not().and( farther( end.z, origin.z ) ).and( plane.greaterThanEqual( s ) ).and( plane.lessThan( exit ) ), () => {
 
 				s.assign( plane );
-				If( mip.greaterThan( 0 ), () => {
+				If( mip.greaterThan( minMip ), () => {
 
 					mip.subAssign( 1 );
 					Continue();
 
 				} );
-				// At mip zero we already have the exact plane and depth. Validate
+				// At a leaf we already have the plane and depth. Validate
 				// it in this iteration, without re-reading the same leaf.
 				position.assign( origin.add( delta.mul( s ) ) );
 
@@ -122,7 +130,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		} );
 
-		If( mip.greaterThan( 0 ), () => {
+		If( mip.greaterThan( minMip ), () => {
 
 			mip.subAssign( 1 );
 			Continue();
@@ -146,19 +154,21 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			// a camera-facing ray can still reach its depth plane inside this cell.
 			const candidate = s.toVar();
 			const candidateUV = position.xy.toVar();
-			const accepted = bool( acceptHit( candidateUV, candidate, raw ) ).toVar();
+			const candidateDepth = float( leafDepth( candidateUV, raw ) ).toVar();
+			const accepted = bool( acceptHit( candidateUV, candidate, candidateDepth ) ).toVar();
 			If( accepted.not().and( nearer( end.z, origin.z ) ).and( plane.greaterThan( s ) ).and( plane.lessThan( exit ) ), () => {
 
 				candidate.assign( plane );
 				candidateUV.assign( origin.xy.add( delta.xy.mul( plane ) ) );
-				accepted.assign( acceptHit( candidateUV, candidate, raw ) );
+				candidateDepth.assign( leafDepth( candidateUV, raw ) );
+				accepted.assign( acceptHit( candidateUV, candidate, candidateDepth ) );
 
 			} );
 			If( accepted, () => {
 
 				hit.assign( true );
 				hitUV.assign( candidateUV );
-				hitDepth.assign( raw );
+				hitDepth.assign( candidateDepth );
 				hitS.assign( candidate );
 				Break();
 
@@ -182,6 +192,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		If( hit, () => {
 
+			if ( coarse ) hitDepth.assign( leafDepth( hitUV ) );
 			hit.assign( acceptHit( hitUV, hitS, hitDepth ) );
 
 		} );

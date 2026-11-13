@@ -88,6 +88,30 @@ export default QUnit.module( 'Addons', () => {
 
 				}
 
+				// Depth is constant over each 2x2 block, so mip-1 leaves lose nothing
+				// and the full-resolution oracle still applies.
+				traceTest( `coarse leaves (minLevel=1) across 32x32 blocks, reversed=${ reversed }`, async ( { assert, renderer } ) => {
+
+					const data = Float32Array.from( { length: 32 * 32 }, ( _, i ) => {
+
+						const block = ( ( i >> 6 ) << 4 ) + ( ( i & 31 ) >> 1 );
+						const depth = block % 7 === 0 ? 1 : 0.2 + ( ( block * 73 ) % 101 ) / 160;
+						return reversed ? 1 - depth : depth;
+
+					} );
+					const fixture = createTraceFixture( 32, 32, data, reversed );
+					try {
+
+						await compareRays( assert, renderer, fixture, randomRays( 1024 ), { minLevel: 1 } );
+
+					} finally {
+
+						fixture.dispose();
+
+					}
+
+				} );
+
 				for ( const [ width, height ] of [[ 1, 1 ], [ 3, 5 ], [ 19, 11 ], [ 32, 32 ], [ 129, 127 ]] ) {
 
 					traceTest( `seeded rays across ${ width }x${ height }, reversed=${ reversed }`, async ( { assert, renderer } ) => {

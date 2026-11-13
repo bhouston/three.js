@@ -8,56 +8,55 @@
       "description": "",
       "isFallbackAdapter": false
     },
-    "width": 1280,
-    "height": 720,
+    "width": 1920,
+    "height": 1080,
     "maxDistance": 50,
     "linearSteps": 64,
+    "binaryRefine": true,
     "adaptiveSteps": 256,
+    "levels": 7,
     "creation": {
       "name": "Hi-Z creation",
-      "completed": 27248,
-      "seconds": 5.000899999991059,
-      "fps": 5448.619248545005,
-      "impliedMs": 0.18353273634729372
+      "completed": 13840,
+      "seconds": 5.004599999994039,
+      "fps": 2765.4557806850667,
+      "impliedMs": 0.3616040462423439
     },
     "modes": [
       {
         "name": "Non-adaptive SSR",
         "adaptive": false,
-        "strategy": "amd",
         "maxCandidates": 1,
-        "completed": 560,
-        "seconds": 5.07920000000298,
-        "fps": 110.25358324139066,
-        "impliedMs": 9.070000000005322
+        "completed": 192,
+        "seconds": 5.42090000000596,
+        "fps": 35.418472947257634,
+        "impliedMs": 28.233854166697707
       },
       {
-        "name": "AMD-style SSR (1 candidate, three validator)",
+        "name": "Adaptive SSR (1 candidate)",
         "adaptive": true,
-        "strategy": "amd",
         "maxCandidates": 1,
-        "validator": "three",
-        "completed": 3632,
-        "seconds": 5.01509999999404,
-        "fps": 724.2128771119851,
-        "impliedMs": 1.3808094713639978,
+        "completed": 1824,
+        "seconds": 5.0076000000089405,
+        "fps": 364.2463455541064,
+        "impliedMs": 2.745394736847007,
         "comparison": {
-          "baselineHits": 148902,
-          "adaptiveHits": 124991,
-          "lostHits": 24882,
-          "extraHits": 971,
-          "disagreements": 25853,
+          "baselineHits": 337166,
+          "adaptiveHits": 282575,
+          "lostHits": 56199,
+          "extraHits": 1608,
+          "disagreements": 57807,
           "nonFinite": 0
         },
         "diagnostics": {
-          "tracedRays": 380520,
-          "averageIterations": 23.05752391464312,
-          "averageCandidates": 0.6063150425733207,
+          "tracedRays": 855283,
+          "averageIterations": 23.98216379841526,
+          "averageCandidates": 0.6063162719240298,
           "exhaustedRays": 0
         }
       }
     ],
-    "speedup": 6.568610795409559
+    "speedup": 10.28407820112722
   },
   {
     "example": "stochastic",
@@ -68,56 +67,55 @@
       "description": "",
       "isFallbackAdapter": false
     },
-    "width": 1280,
-    "height": 720,
+    "width": 1920,
+    "height": 1080,
     "maxDistance": 50,
     "linearSteps": 64,
+    "binaryRefine": true,
     "adaptiveSteps": 256,
+    "levels": 7,
     "creation": {
       "name": "Hi-Z creation",
-      "completed": 26112,
-      "seconds": 5.00189999999106,
-      "fps": 5220.416241837436,
-      "impliedMs": 0.19155560661730467
+      "completed": 13536,
+      "seconds": 5.004,
+      "fps": 2705.035971223022,
+      "impliedMs": 0.36968085106382975
     },
     "modes": [
       {
         "name": "Non-adaptive SSR",
         "adaptive": false,
-        "strategy": "amd",
         "maxCandidates": 1,
-        "completed": 912,
-        "seconds": 5.06979999999702,
-        "fps": 179.88875300811395,
-        "impliedMs": 5.558991228066907
+        "completed": 368,
+        "seconds": 5.1712000000029805,
+        "fps": 71.16336633659265,
+        "impliedMs": 14.052173913051577
       },
       {
-        "name": "AMD-style SSR (1 candidate, three validator)",
+        "name": "Adaptive SSR (1 candidate)",
         "adaptive": true,
-        "strategy": "amd",
         "maxCandidates": 1,
-        "validator": "three",
-        "completed": 1056,
-        "seconds": 5.0065,
-        "fps": 210.92579646459603,
-        "impliedMs": 4.741003787878788,
+        "completed": 528,
+        "seconds": 5.12090000000596,
+        "fps": 103.10687574437803,
+        "impliedMs": 9.698674242435532,
         "comparison": {
-          "baselineHits": 480190,
-          "adaptiveHits": 410227,
-          "lostHits": 84065,
-          "extraHits": 14102,
-          "disagreements": 98167,
+          "baselineHits": 1081210,
+          "adaptiveHits": 924827,
+          "lostHits": 188676,
+          "extraHits": 32293,
+          "disagreements": 220969,
           "nonFinite": 0
         },
         "diagnostics": {
-          "tracedRays": 893227,
-          "averageIterations": 22.202188245541166,
-          "averageCandidates": 0.7107980390203162,
-          "exhaustedRays": 22
+          "tracedRays": 2010507,
+          "averageIterations": 23.01691812065315,
+          "averageCandidates": 0.7103173478132631,
+          "exhaustedRays": 35
         }
       }
     ],
-    "speedup": 1.1725346523197153
+    "speedup": 1.4488757495913995
   },
   {
     "example": "animation",
@@ -128,55 +126,54 @@
       "description": "",
       "isFallbackAdapter": false
     },
-    "width": 1280,
-    "height": 720,
+    "width": 1920,
+    "height": 1080,
     "maxDistance": 50,
     "linearSteps": 64,
+    "binaryRefine": true,
     "adaptiveSteps": 256,
+    "levels": 7,
     "creation": {
       "name": "Hi-Z creation",
-      "completed": 26640,
-      "seconds": 5.00170000000298,
-      "fps": 5326.189095704286,
-      "impliedMs": 0.18775150150161338
+      "completed": 13792,
+      "seconds": 5.0015,
+      "fps": 2757.5727281815457,
+      "impliedMs": 0.36263776102088163
     },
     "modes": [
       {
         "name": "Non-adaptive SSR",
         "adaptive": false,
-        "strategy": "amd",
         "maxCandidates": 1,
-        "completed": 1584,
-        "seconds": 5.043400000005961,
-        "fps": 314.0738390764421,
-        "impliedMs": 3.1839646464684095
+        "completed": 640,
+        "seconds": 5.11109999999404,
+        "fps": 125.21766351680584,
+        "impliedMs": 7.986093749990687
       },
       {
-        "name": "AMD-style SSR (1 candidate, three validator)",
+        "name": "Adaptive SSR (1 candidate)",
         "adaptive": true,
-        "strategy": "amd",
         "maxCandidates": 1,
-        "validator": "three",
-        "completed": 1856,
-        "seconds": 5.0082999999970195,
-        "fps": 370.58482918377587,
-        "impliedMs": 2.698437499998394,
+        "completed": 912,
+        "seconds": 5.0885,
+        "fps": 179.2276702368085,
+        "impliedMs": 5.579495614035087,
         "comparison": {
-          "baselineHits": 141103,
-          "adaptiveHits": 124352,
-          "lostHits": 25198,
-          "extraHits": 8447,
-          "disagreements": 33645,
+          "baselineHits": 317218,
+          "adaptiveHits": 280253,
+          "lostHits": 56284,
+          "extraHits": 19319,
+          "disagreements": 75603,
           "nonFinite": 0
         },
         "diagnostics": {
-          "tracedRays": 624736,
-          "averageIterations": 19.996148773241817,
-          "averageCandidates": 0.31321710290426674,
-          "exhaustedRays": 62
+          "tracedRays": 1405668,
+          "averageIterations": 23.13737667784996,
+          "averageCandidates": 0.31333216662825075,
+          "exhaustedRays": 122
         }
       }
     ],
-    "speedup": 1.1799289946386768
+    "speedup": 1.4313289771035682
   }
 ]

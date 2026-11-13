@@ -55,7 +55,7 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
-			output: 'Beauty', enabled: true, quality: 0.5, intensity: 1,
+			output: 'Beauty', enabled: true, adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, approximateSteps: 0, quality: 0.5, intensity: 1,
 			maxDistance: 1, thickness: 0.03, binaryRefine: false,
 			roughness: 1, blur: true, blurQuality: 1
 		};
@@ -194,11 +194,12 @@
 				switch ( params.output ) {
 
 					case 'Beauty': view = spatialAA; break;
-					case 'SSR': view = vec4( raw.rgb, 1 ); break;
+					case 'SSR': case 'SSR iterations': view = vec4( raw.rgb, 1 ); break;
 					case 'SSR DN': view = vec4( blurred.rgb, 1 ); break;
 
 				}
 
+				reflection.showIterations = params.output === 'SSR iterations';
 				renderPipeline.outputNode = params.enabled ? view : scenePass;
 				renderPipeline.outputColorTransform = true;
 				renderPipeline.needsUpdate = true;
@@ -214,14 +215,19 @@
 			// GUI
 
 			const displayGui = renderer.inspector.createParameters( 'Display' );
-			displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN' ] ).name( 'Output' ).info( 'DN means denoise; this mirror example uses spatial blur rather than stochastic denoising.' ).onChange( updateOutput );
+			displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN', 'SSR iterations' ] ).name( 'Output' ).info( 'DN means denoise; this mirror example uses spatial blur rather than stochastic denoising. Iterations is a heat map of trace steps against the budget: blue, green, red, and white where it ran out.' ).onChange( updateOutput );
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params, 'enabled' ).name( 'Enabled' ).onChange( updateOutput );
 			ssrGui.add( params, 'intensity', 0, 1 ).name( 'Intensity' ).onChange( updateParameters );
-			ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
-			ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
-			ssrGui.add( params, 'maxDistance', 0, 1 ).name( 'Max distance' ).onChange( updateParameters );
+			ssrGui.add( params, 'adaptive' ).name( 'Hi-Z / adaptive SSR' ).onChange( updateParameters ).disable( ! renderer.backend.isWebGPUBackend );
+			const candidatesController = ssrGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( updateParameters );
+			const adaptiveStepsController = ssrGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( updateParameters );
+			const occlusionController = ssrGui.add( params, 'occlusionSkipping' ).name( 'Occlusion skipping' ).onChange( updateParameters );
+			const approximateController = ssrGui.add( params, 'approximateSteps', 0, 64, 4 ).name( 'Approximate steps' ).info( 'Adaptive only. 0 traces exactly. Otherwise each ray crosses about this many coarse cells and tests one pixel in each, like a linear march step: pair it with a small iteration budget.' ).onChange( updateParameters );
+			const qualityController = ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
+			const refineController = ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
+			ssrGui.add( params, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( updateParameters );
 			ssrGui.add( params, 'thickness', 0, 0.05 ).name( 'Thickness' ).onChange( updateParameters );
 
 			const blurGui = renderer.inspector.createParameters( 'Blur' );
@@ -244,6 +250,17 @@
 
 			function updateParameters() {
 
+				reflection.tracing = params.adaptive ? 'adaptive' : 'linear';
+				reflection.maxCandidates = params.maxCandidates;
+				reflection.adaptiveMaxSteps.value = params.adaptiveSteps;
+				qualityController.disable( params.adaptive );
+				refineController.disable( params.adaptive );
+				adaptiveStepsController.disable( ! params.adaptive );
+				candidatesController.disable( ! params.adaptive );
+				occlusionController.disable( ! params.adaptive );
+				approximateController.disable( ! params.adaptive );
+				reflection.occlusionSkipping = params.occlusionSkipping;
+				reflection.approximateSteps = params.approximateSteps;
 				reflection.quality.value = params.quality;
 				reflection.intensity.value = params.intensity;
 				reflection.binaryRefine = params.binaryRefine;

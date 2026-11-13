@@ -1,4 +1,4 @@
-import { Break, Continue, If, Loop, bool, float, int, max, min, uint, vec2, textureSize } from 'three/tsl';
+import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec2, textureSize } from 'three/tsl';
 
 /**
  * Builds hierarchical screen-space traversal inside the calling TSL function.
@@ -52,6 +52,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	const candidates = int( 0 ).toVar();
 	const size = vec2( textureSize( hierarchy.depthNode ) );
 	const pixels = delta.xy.abs().mul( size );
+	const exitParity = delta.xy.greaterThanEqual( vec2( 0 ) ).select( uvec2( 1 ), uvec2( 0 ) ).toConst();
 	const edgeBias = size.mul( 2 ** - 22 ).max( 0.0005 ).toConst();
 	const directionXY = delta.xy.sign().toConst();
 	// Offset only XY exits, never depth-plane intersections. The offset is a
@@ -88,7 +89,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		} );
 
-		const { depth: cellDepth, bounds: cellBounds } = hierarchy.getCellNode( uint( mip ), position.xy );
+		const { cell, depth: cellDepth, bounds: cellBounds } = hierarchy.getCellNode( uint( mip ), position.xy );
 		const bounds = cellBounds.toVar();
 		// Zero XY components use a large positive exit distance: the origin
 		// remains inside that axis's half-open cell. No per-axis branch needed.
@@ -124,7 +125,14 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			} ).Else( () => {
 
 				s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
-				mip.assign( mip.add( 1 ).min( lastMip ) );
+				// Ascend only when leaving the parent cell. Inside the same parent
+				// the coarser test would repeat and cost a second read to descend.
+				const leavesParent = cell.bitAnd( uvec2( 1 ) ).equal( exitParity );
+				If( exits.x.lessThanEqual( exits.y ).select( leavesParent.x, leavesParent.y ), () => {
+
+					mip.assign( mip.add( 1 ).min( lastMip ) );
+
+				} );
 				Continue();
 
 			} );

@@ -3,7 +3,9 @@
 // PUPPETEER_EXECUTABLE_PATH=/path/to/Chrome node test/benchmarks/ssr-hiz.js
 // Options: --example=mirror|stochastic|animation --width=1280 --height=720
 //          --seconds=5 --adaptive-steps=512 --linear-steps=64 --max-distance=20
-//          --candidates=1,2,3,4
+//          --candidates=1,2,3,4 --binary-refine=true
+// A fairer linear reference (one step per pixel, same thickness rule as adaptive):
+//          --binary-refine=false --linear-steps=1024
 // Vsync/frame caps are disabled. Each completed GPU batch is counted only after
 // queue.onSubmittedWorkDone(). There are no per-frame timing queries.
 import puppeteer from 'puppeteer';
@@ -20,6 +22,7 @@ const seconds = Number( option( 'seconds', 5 ) );
 const adaptiveSteps = Number( option( 'adaptive-steps', 512 ) );
 const linearSteps = Number( option( 'linear-steps', 64 ) );
 const maxDistance = option( 'max-distance', null );
+const binaryRefine = option( 'binary-refine', 'true' ) === 'true';
 const candidates = option( 'candidates', '1,2,3,4' ).split( ',' ).map( Number );
 const server = createServer( { root } );
 await new Promise( resolve => server.listen( 0, '127.0.0.1', resolve ) );
@@ -70,7 +73,7 @@ try {
 			if ( adapter.isFallbackAdapter || /swiftshader|llvmpipe|lavapipe|software/i.test( JSON.stringify( adapter ) ) ) throw new Error( 'Software adapters are not allowed.' );
 			device.pushErrorScope( 'validation' );
 			params.quality = 1;
-			params.binaryRefine = true;
+			params.binaryRefine = settings.binaryRefine;
 			params.adaptiveSteps = settings.adaptiveSteps;
 			if ( settings.maxDistance !== null ) params.maxDistance = Number( settings.maxDistance );
 			node.maxSteps.value = settings.linearSteps;
@@ -223,9 +226,9 @@ try {
 
 			const validationError = await device.popErrorScope();
 			if ( validationError ) throw new Error( validationError.message );
-			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: params.maxDistance, linearSteps: settings.linearSteps, adaptiveSteps: settings.adaptiveSteps, creation, modes, speedup: modes[ 1 ].fps / modes[ 0 ].fps };
+			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: params.maxDistance, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, creation, modes, speedup: modes[ 1 ].fps / modes[ 0 ].fps };
 
-		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates } );
+		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );
 		results.push( { example, ...result } );
 		console.log( JSON.stringify( results.at( - 1 ), null, 2 ) );

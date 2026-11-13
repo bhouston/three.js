@@ -29,12 +29,12 @@ import { Color } from '../../math/Color.js';
 import { Vector2 } from '../../math/Vector2.js';
 import { Vector3 } from '../../math/Vector3.js';
 import { Vector4 } from '../../math/Vector4.js';
-import { Float16BufferAttribute } from '../../core/BufferAttribute.js';
 import { warn, error } from '../../utils.js';
 
 let _id = 0;
 
 const _functionNodeCache = new WeakMap();
+const _functionShaderNodes = new WeakMap();
 const _layoutDefaultsCache = new WeakMap();
 
 // Inputs of a layout function call. They can be destructured as an array or as an object.
@@ -1910,7 +1910,7 @@ class NodeBuilder {
 
 		let arrayType;
 
-		if ( ! ( attribute instanceof Float16BufferAttribute ) && normalized !== true ) {
+		if ( normalized !== true ) {
 
 			arrayType = this.getTypeFromArray( array );
 
@@ -2760,16 +2760,20 @@ class NodeBuilder {
 	 */
 	buildFunctionNode( shaderNode ) {
 
+		// the code is shared by all builders of a backend, per shader stage since it can differ between stages
+
 		const backend = this.renderer.backend;
 
-		let cache = _functionNodeCache.get( backend );
+		let stages = _functionNodeCache.get( backend );
 
-		if ( cache === undefined ) {
+		if ( stages === undefined ) {
 
-			cache = new WeakMap();
-			_functionNodeCache.set( backend, cache );
+			stages = {};
+			_functionNodeCache.set( backend, stages );
 
 		}
+
+		const cache = stages[ this.shaderStage ] || ( stages[ this.shaderStage ] = new WeakMap() );
 
 		let fn = cache.get( shaderNode );
 
@@ -2786,10 +2790,26 @@ class NodeBuilder {
 			this.currentFunctionNode = previous;
 
 			cache.set( shaderNode, fn );
+			_functionShaderNodes.set( fn, shaderNode );
 
 		}
 
 		return fn;
+
+	}
+
+	/**
+	 * Returns the function node to call in the current shader stage. A call of a TSL function
+	 * can be set up in another stage, and the code of TSL functions is built per stage.
+	 *
+	 * @param {FunctionNode} functionNode - The function node of the call.
+	 * @return {FunctionNode} The function node of the current stage.
+	 */
+	getFunctionNode( functionNode ) {
+
+		const shaderNode = _functionShaderNodes.get( functionNode );
+
+		return shaderNode !== undefined ? this.buildFunctionNode( shaderNode ) : functionNode;
 
 	}
 

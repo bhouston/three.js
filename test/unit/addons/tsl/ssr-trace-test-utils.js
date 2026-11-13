@@ -82,7 +82,7 @@ export function referenceTrace( fixture, origin, end, { thickness = 0.000001, re
 
 }
 
-export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 0.000001, rejectedDepth = - 1 } = {} ) {
+export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 0.000001, rejectedDepth = - 1, maxCandidates = 4096, strategy = 'amd', slabThickness = 0.05 } = {} ) {
 
 	// vec4 inputs avoid storage-buffer vec3 alignment differences.
 	const origins = instancedArray( new Float32Array( rays.flatMap( ray => [ ...ray[ 0 ], 0 ] ) ), 'vec4' );
@@ -94,7 +94,8 @@ export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 
 		const origin = origins.element( instanceIndex ).xyz.toConst();
 		const end = ends.element( instanceIndex ).xyz.toConst();
 		const result = traceHiZ( fixture.hierarchy, origin, end, {
-			reversedDepth: fixture.reversed, maxSteps,
+			reversedDepth: fixture.reversed, maxSteps, maxCandidates, strategy,
+			slabDepth: raw => fixture.reversed ? raw.sub( slabThickness ) : raw.add( slabThickness ),
 			acceptHit: ( uv, s, raw ) => {
 
 				const z = origin.z.add( end.z.sub( origin.z ).mul( s ) );
@@ -103,7 +104,7 @@ export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 
 			}
 		} );
 		output.element( instanceIndex ).assign( vec4( result.uv, result.parameter, float( result.hit ) ) );
-		metadata.element( instanceIndex ).assign( vec4( float( result.iterations ), float( result.exhausted ), result.depth, 0 ) );
+		metadata.element( instanceIndex ).assign( vec4( float( result.iterations ), float( result.exhausted ), result.depth, float( result.candidates ) ) );
 
 	} )().compute( rays.length );
 	return { kernel, output, metadata, origins, ends };

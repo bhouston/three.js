@@ -125,6 +125,9 @@ export default QUnit.module( 'Addons', () => {
 
 					const result = await compareRays( assert, renderer, fixture, [[[ 0.001, 0.5, 0.5005 ], [ 0.999, 0.5, 0.5005 ]]], { rejectedDepth: 0.5, thickness: 0.001 } );
 					assert.ok( result.output[ 0 ] > 0.7, 'skips rejected surface and reaches second surface' );
+					const stopped = await traceRays( renderer, fixture, [[[ 0.001, 0.5, 0.5005 ], [ 0.999, 0.5, 0.5005 ]]], { rejectedDepth: 0.5, thickness: 0.001, maxCandidates: 1 } );
+					assert.strictEqual( stopped.output[ 3 ], 0, 'first-candidate mode rejects the first surface and stops' );
+					assert.strictEqual( stopped.metadata[ 1 ], 0, 'rejected first candidate is a completed miss, not budget exhaustion' );
 
 				} finally {
 
@@ -168,7 +171,7 @@ export default QUnit.module( 'Addons', () => {
 
 						const nodes = [ 'linear', 'adaptive' ].map( tracing => {
 
-							const node = ssr( texture( color ), texture( depth ), texture( normal ), { camera, stochastic, metalnessNode: float( 1 ), roughnessNode: float( 0 ), tracing, binaryRefine: true } );
+							const node = ssr( texture( color ), texture( depth ), texture( normal ), { camera, stochastic, maxCandidates: 4096, metalnessNode: float( 1 ), roughnessNode: float( 0 ), tracing, binaryRefine: true } );
 							node.quality.value = 1;
 							node.maxSteps.value = 4096;
 							node.adaptiveMaxSteps.value = 2048;
@@ -253,6 +256,98 @@ export default QUnit.module( 'Addons', () => {
 
 					} );
 
+
+				}
+
+			}
+
+			traceTest( 'candidate budgets stop after exactly 1, 2, 3 or 4 surfaces', async ( { assert, renderer } ) => {
+
+				const data = new Float32Array( 128 ).fill( 1 );
+				for ( let i = 0; i < 4; i ++ ) data[ 16 + i * 32 ] = 0.5001 + i * 0.0001;
+				const fixture = createTraceFixture( 128, 1, data );
+				const rays = [[[ 0.001, 0.5, data[ 112 ] ], [ 0.999, 0.5, data[ 112 ] ]]];
+				try {
+
+					for ( const maxCandidates of [ 1, 2, 3, 4 ] ) {
+
+						const result = await traceRays( renderer, fixture, rays, { maxCandidates } );
+						assert.strictEqual( result.metadata[ 3 ], maxCandidates, `visits ${ maxCandidates } candidates` );
+						assert.strictEqual( result.metadata[ 1 ], 0, 'candidate limit is not iteration exhaustion' );
+						assert.strictEqual( result.output[ 3 ], maxCandidates === 4 ? 1 : 0, 'only budget four reaches the valid surface' );
+
+					}
+
+				} finally {
+
+					fixture.dispose();
+
+				}
+
+			} );
+
+			for ( const reversed of [ false, true ] ) {
+
+				traceTest( `Unity slab intersections in both depth directions, reversed=${ reversed }`, async ( { assert, renderer } ) => {
+
+					const fixture = createTraceFixture( 1, 1, [ 0.5 ], reversed );
+					const ray = z => [ 0.5, 0.5, reversed ? 1 - z : z ];
+					const cases = [
+						{ a: 0.2, b: 0.8, hit: true, parameter: 0.5 },
+						{ a: 0.8, b: 0.2, hit: true, parameter: 0.5 },
+						{ a: 0.2, b: 0.3, hit: false },
+						{ a: 0.8, b: 0.9, hit: false },
+						{ a: 0.52, b: 0.9, hit: true, parameter: 0 },
+						{ a: 0.5, b: 0.5, hit: true, parameter: 0 }
+					];
+					try {
+
+						const result = await traceRays( renderer, fixture, cases.map( c => [ ray( c.a ), ray( c.b ) ] ), { strategy: 'unity', maxCandidates: 1, thickness: 0.1, slabThickness: 0.05 } );
+						for ( let i = 0; i < cases.length; i ++ ) {
+
+							assert.strictEqual( result.output[ i * 4 + 3 ], cases[ i ].hit ? 1 : 0, `case ${ i } hit` );
+							assert.strictEqual( result.metadata[ i * 4 + 1 ], 0, `case ${ i } completes` );
+							if ( cases[ i ].hit ) assert.ok( Math.abs( result.output[ i * 4 + 2 ] - cases[ i ].parameter ) < 1e-5, `case ${ i } exact plane/slab entry` );
+
+						}
+
+					} finally {
+
+						fixture.dispose();
+
+					}
+
+				} );
+
+				for ( const length of [ 4, 5 ] ) {
+
+					for ( const vertical of [ false, true ] ) {
+
+						traceTest( `Unity rejects re-entry behind an occluder: length=${ length }, vertical=${ vertical }, reversed=${ reversed }`, async ( { assert, renderer } ) => {
+
+							const data = new Float32Array( length ).fill( reversed ? 0 : 1 );
+							data[ 0 ] = reversed ? 0.8 : 0.2;
+							data[ 1 ] = reversed ? 0.52 : 0.48;
+							const fixture = createTraceFixture( vertical ? 1 : length, vertical ? length : 1, data, reversed );
+							const point = p => vertical ? [ 0.5, p, 0.5 ] : [ p, 0.5, 0.5 ];
+							const rays = [[ point( 0.5 / length ), point( 0.999 ) ]];
+							try {
+
+								const unity = await traceRays( renderer, fixture, rays, { strategy: 'unity', maxCandidates: 4, thickness: 0.1, slabThickness: 0.05 } );
+								assert.strictEqual( unity.output[ 3 ], 0, 'slab re-entry is occluded' );
+								assert.strictEqual( unity.metadata[ 1 ], 0, 'occlusion is a completed miss' );
+								const amd = await traceRays( renderer, fixture, rays, { strategy: 'amd', maxCandidates: 4, thickness: 0.1 } );
+								assert.strictEqual( amd.output[ 3 ], 1, 'continued surface search can reach that later surface' );
+
+							} finally {
+
+								fixture.dispose();
+
+							}
+
+						} );
+
+					}
 
 				}
 

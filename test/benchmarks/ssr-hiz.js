@@ -3,6 +3,7 @@
 // PUPPETEER_EXECUTABLE_PATH=/path/to/Chrome node test/benchmarks/ssr-hiz.js
 // Options: --example=mirror|stochastic|animation --width=1280 --height=720
 //          --seconds=5 --adaptive-steps=512 --linear-steps=64 --max-distance=20
+//          --candidates=1,2,3,4 --strategies=amd,unity
 // Vsync/frame caps are disabled. Each completed GPU batch is counted only after
 // queue.onSubmittedWorkDone(). There are no per-frame timing queries.
 import puppeteer from 'puppeteer';
@@ -19,6 +20,9 @@ const seconds = Number( option( 'seconds', 5 ) );
 const adaptiveSteps = Number( option( 'adaptive-steps', 512 ) );
 const linearSteps = Number( option( 'linear-steps', 64 ) );
 const maxDistance = option( 'max-distance', null );
+const candidates = option( 'candidates', '1,2,3,4' ).split( ',' ).map( Number );
+const strategies = option( 'strategies', 'amd,unity' ).split( ',' );
+const validators = option( 'validators', 'three' ).split( ',' );
 const server = createServer( { root } );
 await new Promise( resolve => server.listen( 0, '127.0.0.1', resolve ) );
 let browser;
@@ -69,6 +73,7 @@ try {
 			device.pushErrorScope( 'validation' );
 			params.quality = 1;
 			params.binaryRefine = true;
+			params.validator = settings.validators[ 0 ];
 			params.adaptiveSteps = settings.adaptiveSteps;
 			if ( settings.maxDistance !== null ) params.maxDistance = Number( settings.maxDistance );
 			node.maxSteps.value = settings.linearSteps;
@@ -146,35 +151,94 @@ try {
 
 			} );
 			hierarchy.enabled = false;
-			for ( const adaptive of [ false, true ] ) {
+			const configurations = [ { name: 'Non-adaptive SSR', adaptive: false, strategy: 'amd', maxCandidates: 1 } ];
+			for ( const validator of settings.validators ) {
+
+				for ( const strategy of settings.strategies ) {
+
+					for ( const maxCandidates of strategy === 'amd' ? settings.candidates : [ 1 ] ) {
+
+						configurations.push( { name: `${ strategy === 'amd' ? 'AMD-style' : 'Unity-style' } SSR (${ maxCandidates } candidate${ maxCandidates > 1 ? 's' : '' }, ${ validator } validator)`, adaptive: true, strategy, maxCandidates, validator } );
+
+					}
+
+				}
+
+			}
+
+			const readTrace = async () => {
+
+				const pixels = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), 0, 0, renderer.domElement.width, renderer.domElement.height );
+				return pixels instanceof Uint16Array ? Float32Array.from( pixels, value => DataUtils.fromHalfFloat( value ) ) : pixels;
+
+			};
+
+			const compare = ( a, b ) => {
+
+				let baselineHits = 0, adaptiveHits = 0, lostHits = 0, extraHits = 0, nonFinite = 0;
+				for ( let i = 0; i < a.length; i += 4 ) {
+
+					const ah = a[ i + 3 ] > 0 && a[ i + 3 ] < 1000;
+					const bh = b[ i + 3 ] > 0 && b[ i + 3 ] < 1000;
+					if ( ah ) baselineHits ++;
+					if ( bh ) adaptiveHits ++;
+					if ( ah && ! bh ) lostHits ++;
+					if ( bh && ! ah ) extraHits ++;
+					for ( let c = 0; c < 4; c ++ ) if ( ! Number.isFinite( a[ i + c ] ) || ! Number.isFinite( b[ i + c ] ) ) nonFinite ++;
+
+				}
+
+				return { baselineHits, adaptiveHits, lostHits, extraHits, disagreements: lostHits + extraHits, nonFinite };
+
+			};
+
+			for ( const config of configurations ) {
 
 				await device.queue.onSubmittedWorkDone();
-				params.adaptive = adaptive;
+				params.validator = config.validator ?? settings.validators[ 0 ];
+				params.adaptive = config.adaptive;
+				params.adaptiveStrategy = config.strategy;
+				params.maxCandidates = config.maxCandidates;
 				apply();
-				modes.push( await measure( adaptive ? 'Adaptive SSR trace' : 'Non-adaptive SSR trace', drawTrace ) );
-				const pixels = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), 0, 0, renderer.domElement.width, renderer.domElement.height );
-				images.push( pixels instanceof Uint16Array ? Float32Array.from( pixels, value => DataUtils.fromHalfFloat( value ) ) : pixels );
+				const measurement = { ...config, ...await measure( config.name, drawTrace ) };
+				const image = await readTrace();
+				if ( images.length === 0 ) images.push( image );
+				else measurement.comparison = compare( images[ 0 ], image );
+				if ( config.adaptive ) {
+
+					// Diagnostic draws are outside the measured interval.
+					node._traceDebug = true;
+					node._buildSSRMaterial();
+					drawTrace();
+					const diagnostic = await readTrace();
+					let tracedRays = 0, iterations = 0, candidateCount = 0, exhausted = 0;
+					for ( let i = 0; i < diagnostic.length; i += 4 ) {
+
+						if ( diagnostic[ i ] === 0 ) continue;
+						tracedRays ++;
+						iterations += diagnostic[ i ];
+						candidateCount += diagnostic[ i + 1 ];
+						if ( diagnostic[ i + 3 ] > 0 ) exhausted ++;
+
+					}
+
+					measurement.diagnostics = { tracedRays, averageIterations: iterations / tracedRays, averageCandidates: candidateCount / tracedRays, exhaustedRays: exhausted };
+					node._traceDebug = false;
+					node._buildSSRMaterial();
+
+				}
+
+				modes.push( measurement );
 
 			}
 
 			sourcePass.updateBeforeType = oldUpdateType;
 
-			let linearHits = 0, adaptiveHits = 0, disagreements = 0, nonFinite = 0;
-			for ( let i = 0; i < images[ 0 ].length; i += 4 ) {
-
-				const a = images[ 0 ][ i + 3 ] > 0 && images[ 0 ][ i + 3 ] < 1000, b = images[ 1 ][ i + 3 ] > 0 && images[ 1 ][ i + 3 ] < 1000;
-				if ( a ) linearHits ++;
-				if ( b ) adaptiveHits ++;
-				if ( a !== b ) disagreements ++;
-				for ( let c = 0; c < 4; c ++ ) if ( ! Number.isFinite( images[ 0 ][ i + c ] ) || ! Number.isFinite( images[ 1 ][ i + c ] ) ) nonFinite ++;
-
-			}
-
 			const validationError = await device.popErrorScope();
 			if ( validationError ) throw new Error( validationError.message );
-			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: params.maxDistance, linearSteps: settings.linearSteps, adaptiveSteps: settings.adaptiveSteps, creation, modes, speedup: modes[ 1 ].fps / modes[ 0 ].fps, comparison: { linearHits, adaptiveHits, disagreements, nonFinite } };
+			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: params.maxDistance, linearSteps: settings.linearSteps, adaptiveSteps: settings.adaptiveSteps, creation, modes, speedup: modes[ 1 ].fps / modes[ 0 ].fps };
 
-		}, { seconds, adaptiveSteps, linearSteps, maxDistance } );
+		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, strategies, validators } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );
 		results.push( { example, ...result } );
 		console.log( JSON.stringify( results.at( - 1 ), null, 2 ) );

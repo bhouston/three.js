@@ -75,7 +75,7 @@ try {
 
 	}
 
-	await page.goto( `${ url }/test/unit/UnitTestsAddons.html?filter=${ encodeURIComponent( '/HiZNode|SSR.*Trace/' ) }` );
+	await page.goto( `${ url }/test/unit/UnitTestsAddons.html?filter=${ encodeURIComponent( '/HiZNode|SSR.*Trace|SSRValidation/' ) }` );
 	await page.waitForFunction( () => window._QUnitStats !== undefined, { timeout: 180000 } );
 	const results = await page.evaluate( () => ( { ...window._HiZResults, stats: window._QUnitStats } ) );
 	console.log( 'Hi-Z tests:', results.stats );

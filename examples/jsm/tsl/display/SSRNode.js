@@ -6,6 +6,7 @@ import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
 import { hiZ } from './HiZNode.js';
 import { traceHiZ } from '../utils/SSRTrace.js';
+import { getSSRPixelWidth, validateSSRRayDistance, validateSSRViewDistance, validateSSRDepthSlab } from '../utils/SSRValidation.js';
 import { traceLinearSSR } from '../utils/SSRLinearTrace.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
@@ -28,6 +29,9 @@ const MAX_STEPS = 64;
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
  * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode uses a nearest-depth hierarchy and exact mip-zero candidates. Requires WebGPU.
+ * @property {'three'|'amd'|'unity'} [validator='three'] - Candidate acceptance metric, independent of traversal.
+ * @property {'amd'|'unity'} [adaptiveStrategy='amd'] - Adaptive surface or thickness-slab strategy.
+ * @property {number} [maxCandidates=1] - Adaptive mode only: maximum candidate surfaces to validate.
  * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
@@ -115,6 +119,13 @@ class SSRNode extends Node {
 		this.depthNode = depthNode;
 		this._tracing = options.tracing ?? 'linear';
 		if ( ! [ 'linear', 'adaptive' ].includes( this._tracing ) ) throw new Error( 'SSRNode: Invalid tracing mode.' );
+		this._maxCandidates = options.maxCandidates ?? 1;
+		if ( ! Number.isInteger( this._maxCandidates ) || this._maxCandidates < 1 || this._maxCandidates > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
+		this._adaptiveStrategy = options.adaptiveStrategy ?? 'amd';
+		if ( ! [ 'amd', 'unity' ].includes( this._adaptiveStrategy ) ) throw new Error( 'SSRNode: Invalid adaptive strategy.' );
+		this.adaptiveThickness = uniform( 0.1 );
+		this._validator = options.validator ?? 'three';
+		if ( ! [ 'three', 'amd', 'unity' ].includes( this._validator ) ) throw new Error( 'SSRNode: Invalid candidate validator.' );
 		this.hiZ = options.hiZ ?? null;
 		this._ownsHiZ = false;
 		if ( this._tracing === 'adaptive' && this.hiZ === null ) {
@@ -550,6 +561,54 @@ class SSRNode extends Node {
 		}
 
 		this._tracing = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/** Candidate validator. Changing it recompiles tracing. @type {'three'|'amd'|'unity'} */
+	get validator() {
+
+		return this._validator;
+
+	}
+
+	set validator( value ) {
+
+		if ( ! [ 'three', 'amd', 'unity' ].includes( value ) ) throw new Error( 'SSRNode: Invalid candidate validator.' );
+		if ( value === this._validator ) return;
+		this._validator = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/** Adaptive traversal strategy. Changing it recompiles tracing. @type {'amd'|'unity'} */
+	get adaptiveStrategy() {
+
+		return this._adaptiveStrategy;
+
+	}
+
+	set adaptiveStrategy( value ) {
+
+		if ( ! [ 'amd', 'unity' ].includes( value ) ) throw new Error( 'SSRNode: Invalid adaptive strategy.' );
+		if ( value === this._adaptiveStrategy ) return;
+		this._adaptiveStrategy = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/** Candidate-surface budget. Changing it recompiles adaptive tracing. @type {number} */
+	get maxCandidates() {
+
+		return this._maxCandidates;
+
+	}
+
+	set maxCandidates( value ) {
+
+		if ( ! Number.isInteger( value ) || value < 1 || value > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
+		if ( value === this._maxCandidates ) return;
+		this._maxCandidates = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1162,6 +1221,46 @@ class SSRNode extends Node {
 			const foundHit = bool( false ).toVar();
 			const hitUvS = vec2( 0 ).toVar();
 			const hitD = float( 0 ).toVar();
+			const hitParameter = float( 0 ).toVar();
+			const validatedPosition = vec3( 0 ).toVar();
+			const adaptiveRay = d1viewPosition.sub( viewPosition ).toConst();
+			const validateCandidate = ( hitUV, s, raw ) => {
+
+				const valid = bool( false ).toVar();
+				let allowed = bool( true );
+				if ( this.validator !== 'unity' ) allowed = dot( viewReflectDir, this.normalNode.sample( hitUV ).rgb ).lessThan( 0 );
+				if ( this.validator === 'amd' ) allowed = allowed.and( hitUV.sub( uvPos ).abs().greaterThanEqual( invResolution.mul( 2 ) ).any() );
+				If( allowed, () => {
+
+					const d = projectionDepth( raw, this._cameraNear, this._cameraFar );
+					const point = getViewPosition( hitUV, d, this._cameraProjectionMatrixInverse ).toVar();
+					validatedPosition.assign( point );
+					if ( this.validator === 'three' ) {
+
+						const pixelWidth = getSSRPixelWidth( this._cameraProjectionMatrixInverse, point.z, invResolution.x, this.camera.isPerspectiveCamera );
+						const thickness = max( pixelWidth.mul( 3 ), this.thickness );
+						valid.assign( validateSSRRayDistance( point, viewPosition, adaptiveRay, thickness ) );
+
+					} else if ( this.validator === 'amd' ) {
+
+						// The two positions share a viewing ray. Reusing the surface
+						// avoids a second inverse-projection matrix multiplication.
+						const rayZ = reflectRayZAt( s );
+						const rayPoint = this.camera.isPerspectiveCamera ? point.mul( rayZ.div( point.z ) ) : vec3( point.xy, rayZ );
+						valid.assign( validateSSRViewDistance( point, rayPoint, this.thickness ) );
+
+					} else {
+
+						valid.assign( validateSSRDepthSlab( reflectRayZAt( s ), point.z, this.adaptiveThickness.clamp( 0, 1 ) ) );
+
+					}
+
+					if ( this.stochastic === false ) valid.assign( valid.and( pointPlaneDistance( point, viewPosition, viewNormal ).lessThanEqual( this.maxDistance ) ) );
+
+				} );
+				return valid;
+
+			};
 
 			if ( adaptive ) {
 
@@ -1175,29 +1274,18 @@ class SSRNode extends Node {
 						reversedDepth: reversed,
 						start: rayLen.reciprocal(),
 						maxSteps: this.adaptiveMaxSteps,
+						maxCandidates: this.maxCandidates,
+						strategy: this.adaptiveStrategy,
+						slabDepth: raw => toDepth( depthToViewZ( raw, this._cameraNear, this._cameraFar, this.camera ).mul( this.adaptiveThickness.clamp( 0, 1 ).add( 1 ) ), this._cameraNear, this._cameraFar ),
 						depthTolerance: 2e-7,
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
-						acceptHit: ( hitUV, s, raw ) => {
-
-							const valid = bool( false ).toVar();
-							// Reject backfaces before reconstructing positions and thickness.
-							If( dot( viewReflectDir, this.normalNode.sample( hitUV ).rgb.normalize() ).lessThan( 0 ), () => {
-
-								const d = projectionDepth( raw, this._cameraNear, this._cameraFar );
-								const point = getViewPosition( hitUV, d, this._cameraProjectionMatrixInverse ).toVar();
-								const neighbor = getViewPosition( hitUV.add( uvPixelStepX ), d, this._cameraProjectionMatrixInverse );
-								const thickness = max( neighbor.x.sub( point.x ).mul( 3 ), this.thickness );
-								valid.assign( pointToLineDistance( point, viewPosition, d1viewPosition ).lessThanEqual( thickness ) );
-								if ( this.stochastic === false ) valid.assign( valid.and( pointPlaneDistance( point, viewPosition, viewNormal ).lessThanEqual( this.maxDistance ) ) );
-
-							} );
-							return valid;
-
-						}
+						acceptHit: validateCandidate
 					} );
+				if ( this._traceDebug === true ) return vec4( float( result.iterations ), float( result.candidates ), float( result.hit ), float( result.exhausted ) );
 				foundHit.assign( result.hit );
 				hitUvS.assign( result.uv );
 				hitD.assign( projectionDepth( result.depth, this._cameraNear, this._cameraFar ) );
+				hitParameter.assign( result.parameter );
 
 			} else {
 
@@ -1211,9 +1299,10 @@ class SSRNode extends Node {
 					rayZAt: reflectRayZAt,
 					isBackground: isBackgroundDepth,
 					binaryRefine: this.binaryRefine,
-					frontFacing: uv => dot( viewReflectDir, this.normalNode.sample( uv ).rgb.normalize() ).lessThan( 0 ),
+					frontFacing: uv => this.validator === 'unity' ? bool( true ) : dot( viewReflectDir, this.normalNode.sample( uv ).rgb ).lessThan( 0 ),
 					acceptHit: ( uvS, s, lastS, d ) => {
 
+						if ( this.binaryRefine === false && this.validator !== 'three' ) return validateCandidate( uvS, s, this.depthNode.sample( uvS ).r );
 						const valid = bool( false ).toVar();
 						const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse ).toVar();
 						const away = pointToLineDistance( vP, viewPosition, d1viewPosition ).toVar();
@@ -1223,7 +1312,7 @@ class SSRNode extends Node {
 						const tk = this.binaryRefine ? max( max( minThickness, this.thickness ), stepLength ) : max( minThickness, this.thickness );
 						If( away.lessThanEqual( tk ), () => {
 
-							If( dot( viewReflectDir, this.normalNode.sample( uvS ).rgb.normalize() ).greaterThanEqual( 0 ), () => {
+							If( this.validator === 'unity' ? bool( false ) : dot( viewReflectDir, this.normalNode.sample( uvS ).rgb ).greaterThanEqual( 0 ), () => {
 
 								Continue();
 
@@ -1248,6 +1337,7 @@ class SSRNode extends Node {
 				foundHit.assign( result.hit );
 				hitUvS.assign( result.uv );
 				hitD.assign( result.depth );
+				hitParameter.assign( result.parameter );
 
 			}
 
@@ -1255,14 +1345,14 @@ class SSRNode extends Node {
 
 				// Shade the hit, reusing the depth fetched during the march (or refinement).
 				const uvS = hitUvS;
-				const vP = getViewPosition( uvS, hitD, this._cameraProjectionMatrixInverse ).toVar();
+				const vP = ( adaptive ? validatedPosition : getViewPosition( uvS, hitD, this._cameraProjectionMatrixInverse ) ).toVar();
 
 				// In blur mode the ratio² falloff re-grows past maxDistance, so over-range hits fall back
 				// to env. The scatter path bounds reach via ray length, so every hit shades.
 				const distancePointPlane = this.stochastic === false ? pointPlaneDistance( vP, viewPosition, viewNormal ).toVar() : float( 0 );
 				const withinRange = distancePointPlane.lessThanEqual( this.maxDistance ).toVar();
 
-				if ( this.binaryRefine && ! adaptive ) {
+				if ( this.binaryRefine && ! adaptive && this.validator === 'three' ) {
 
 					// bisection can land on a depth discontinuity, so validate the refined hit
 
@@ -1274,6 +1364,8 @@ class SSRNode extends Node {
 					withinRange.assign( withinRange.and( dot( viewReflectDir, this.normalNode.sample( uvS ).rgb.normalize() ).lessThan( 0 ) ) );
 
 				}
+
+				if ( ! adaptive && this.validator !== 'three' ) withinRange.assign( withinRange.and( validateCandidate( uvS, hitParameter, this.depthNode.sample( uvS ).r ) ) );
 
 				If( withinRange, () => {
 

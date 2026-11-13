@@ -9,7 +9,8 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, vec2, text
  * Potential intersections descend to mip zero. Both depth directions are solved,
  * including a ray approaching a surface from behind while moving toward the camera.
  * A caller-supplied predicate performs full-resolution normal/thickness validation;
- * rejecting a candidate continues traversal rather than terminating the ray.
+ * The candidate budget controls how many rejected surfaces may be searched.
+ * A budget of one validates once after traversal, outside its loop.
  *
  * Derived from the adaptive traversal in three.js PR #35228. Kept separate from
  * ray generation and shading so deterministic GPU tests exercise the production code.
@@ -23,10 +24,18 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, vec2, text
  * @param {Node<int>|number} [options.maxSteps=128] - Work budget, independent of legacy SSR quality.
  * @param {Function} [options.projectDepth] - Converts raw hierarchy depth to projected depth (log-depth inputs).
  * @param {Node<float>|number} [options.depthTolerance=0] - Conservative projected-depth rounding tolerance.
+ * @param {'amd'|'unity'} [options.strategy='amd'] - Surface-candidate or thickness-slab traversal.
+ * @param {Function} [options.slabDepth] - Converts raw scene depth to the projected back of its thickness slab.
+ * @param {number} [options.maxCandidates=1] - Maximum candidate surfaces to validate (compile-time integer).
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 128, projectDepth = value => value, depthTolerance = 0, acceptHit = () => bool( true ) } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 128, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, strategy = 'amd', slabDepth = null, acceptHit = () => bool( true ) } = {} ) {
+
+	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRTrace: maxCandidates must be an integer from 1 to 4096.' );
+
+	if ( ! [ 'amd', 'unity' ].includes( strategy ) ) throw new Error( 'SSRTrace: Invalid adaptive strategy.' );
+	if ( strategy === 'unity' && slabDepth === null ) throw new Error( 'SSRTrace: Unity strategy requires a slab-depth function.' );
 
 	const delta = end.sub( origin ).toConst();
 	const s = float( start ).toVar();
@@ -37,6 +46,8 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	const hitDepth = float( 0 ).toVar();
 	const hitS = float( 0 ).toVar();
 	const iterations = int( 0 ).toVar();
+	const candidates = int( 0 ).toVar();
+	const belowPreviousLeaf = strategy === 'unity' ? bool( false ).toVar() : null;
 	const size = vec2( textureSize( hierarchy.depthNode ) );
 	const pixels = delta.xy.abs().mul( size );
 	// Offset only XY exits, never depth-plane intersections. The offset is a
@@ -79,65 +90,147 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 		).toVar();
 		const background = reversedDepth ? raw.lessThanEqual( 0 ) : raw.greaterThanEqual( 1 );
 
-		If( inFront.or( background ), () => {
+		if ( strategy === 'unity' ) {
 
-			// An away-going ray may enter geometry before leaving this cell.
-			If( background.not().and( farther( end.z, origin.z ) ).and( plane.greaterThanEqual( s ) ).and( plane.lessThan( exit ) ), () => {
+			// Independently implemented thickness-slab strategy, following the
+			// geometric model described by Unity HDRP: a nearest-depth surface
+			// and a deeper base, plus state recording travel behind a leaf.
+			const base = slabDepth( raw ).toVar();
+			const below = inFront.not().and( background.not() ).toVar();
+			const pastBase = farther( position.z, base ).toVar();
+			const inside = below.and( pastBase.not() ).toVar();
+			const floorCrossing = delta.z.abs().greaterThan( 1e-20 ).and( plane.greaterThanEqual( s ) ).and( plane.lessThan( exit ) ).and( background.not() ).toVar();
+			If( belowPreviousLeaf.and( inside ), () => {
+
+				// Re-entering a slab from behind an earlier surface is occluded.
+				s.assign( 1 );
+				Break();
+
+			} );
+			const leafCandidate = mip.equal( 0 ).and( floorCrossing.or( inside ) ).toVar();
+			belowPreviousLeaf.assign( mip.equal( 0 ).and( below ) );
+			If( leafCandidate.not(), () => {
+
+				If( floorCrossing, () => {
+
+					s.assign( plane );
+
+				} ).ElseIf( mip.equal( 0 ).or( below.not() ), () => {
+
+					s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
+
+				} );
+				const towardsEye = nearer( end.z, origin.z );
+				mip.assign( floorCrossing.or( below ).or( towardsEye ).select( mip.sub( 1 ).max( 0 ), mip.add( 1 ).min( lastMip ) ) );
+				Continue();
+
+			} );
+			If( floorCrossing, () => {
 
 				s.assign( plane );
-				If( mip.greaterThan( 0 ), () => {
+				position.assign( origin.add( delta.mul( s ) ) );
 
-					mip.subAssign( 1 );
+			} );
+
+		} else {
+
+			If( inFront.or( background ), () => {
+
+				// An away-going ray may enter geometry before leaving this cell.
+				If( background.not().and( farther( end.z, origin.z ) ).and( plane.greaterThanEqual( s ) ).and( plane.lessThan( exit ) ), () => {
+
+					s.assign( plane );
+					If( mip.greaterThan( 0 ), () => {
+
+						mip.subAssign( 1 );
+						Continue();
+
+					} );
+					// At mip zero we already have the exact plane and depth. Validate
+					// it in this iteration, without re-reading the same leaf.
+					position.assign( origin.add( delta.mul( s ) ) );
+
+				} ).Else( () => {
+
+					s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
+					mip.assign( mip.add( 1 ).min( lastMip ) );
 					Continue();
 
 				} );
-				// At mip zero we already have the exact plane and depth. Validate
-				// it in this iteration, without re-reading the same leaf.
-				position.assign( origin.add( delta.mul( s ) ) );
 
-			} ).Else( () => {
+			} );
 
-				s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
-				mip.assign( mip.add( 1 ).min( lastMip ) );
+			If( mip.greaterThan( 0 ), () => {
+
+				mip.subAssign( 1 );
 				Continue();
 
 			} );
 
-		} );
 
-		If( mip.greaterThan( 0 ), () => {
+		}
 
-			mip.subAssign( 1 );
-			Continue();
+		if ( strategy === 'unity' ) position.xy.assign( position.xy.mul( size ).floor().add( 0.5 ).div( size ) );
+		candidates.addAssign( 1 );
+		if ( maxCandidates === 1 ) {
 
-		} );
-
-		// At a leaf, test entry first. If it is too far behind the surface,
-		// a camera-facing ray can still reach its depth plane inside this cell.
-		const candidate = s.toVar();
-		const candidateUV = position.xy.toVar();
-		const accepted = bool( acceptHit( candidateUV, candidate, raw ) ).toVar();
-		If( accepted.not().and( nearer( end.z, origin.z ) ).and( plane.greaterThan( s ) ).and( plane.lessThan( exit ) ), () => {
-
-			candidate.assign( plane );
-			candidateUV.assign( origin.xy.add( delta.xy.mul( plane ) ) );
-			accepted.assign( acceptHit( candidateUV, candidate, raw ) );
-
-		} );
-		If( accepted, () => {
-
+			// AMD-style termination: return the first geometric candidate, then
+			// validate it once outside the traversal loop.
 			hit.assign( true );
-			hitUV.assign( candidateUV );
+			hitUV.assign( position.xy );
 			hitDepth.assign( raw );
-			hitS.assign( candidate );
+			hitS.assign( s );
 			Break();
 
-		} );
-		s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
-		// Stay at the leaf after rejection; ascend once a cell is proven empty.
+		} else {
+
+			// At a leaf, test entry first. If it is too far behind the surface,
+			// a camera-facing ray can still reach its depth plane inside this cell.
+			const candidate = s.toVar();
+			const candidateUV = position.xy.toVar();
+			const accepted = bool( acceptHit( candidateUV, candidate, raw ) ).toVar();
+			If( accepted.not().and( nearer( end.z, origin.z ) ).and( plane.greaterThan( s ) ).and( plane.lessThan( exit ) ), () => {
+
+				candidate.assign( plane );
+				candidateUV.assign( origin.xy.add( delta.xy.mul( plane ) ) );
+				accepted.assign( acceptHit( candidateUV, candidate, raw ) );
+
+			} );
+			If( accepted, () => {
+
+				hit.assign( true );
+				hitUV.assign( candidateUV );
+				hitDepth.assign( raw );
+				hitS.assign( candidate );
+				Break();
+
+			} );
+			If( candidates.greaterThanEqual( maxCandidates ), () => {
+
+				s.assign( 1 );
+				Break();
+
+			} );
+			s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
+			// Stay at the leaf after rejection; ascend once a cell is proven empty.
+
+
+		}
 
 	} );
 
-	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS, iterations, exhausted: hit.not().and( s.lessThan( 1 ) ) };
+	const candidate = candidates.greaterThan( 0 );
+	const exhausted = hit.not().and( s.lessThan( 1 ) ).toVar();
+	if ( maxCandidates === 1 ) {
+
+		If( hit, () => {
+
+			hit.assign( acceptHit( hitUV, hitS, hitDepth ) );
+
+		} );
+
+	}
+
+	return { candidates, candidate, hit, uv: hitUV, depth: hitDepth, parameter: hitS, iterations, exhausted };
 
 }

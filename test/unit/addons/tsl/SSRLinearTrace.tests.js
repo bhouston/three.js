@@ -105,7 +105,7 @@ async function traceGeometricRays( renderer, fixture, rays ) {
 		} );
 		const linearValid = linear.hit.and( away( linear.uv, linear.depth ).lessThanEqual( thickness ) );
 		const adaptive = traceHiZ( fixture.hierarchy, origin, end, {
-			reversedDepth: fixture.reversed,
+			reversedDepth: fixture.reversed, maxCandidates: 4096,
 			start: rayLen.reciprocal(),
 			maxSteps: 2048,
 			acceptHit: ( uv, s, raw ) => away( uv, raw ).lessThanEqual( thickness )

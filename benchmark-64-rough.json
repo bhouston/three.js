@@ -24,20 +24,20 @@
     "levels": 7,
     "creation": {
       "name": "Hi-Z creation",
-      "completed": 12400,
-      "seconds": 5.005099999994039,
-      "fps": 2477.4729775658366,
-      "impliedMs": 0.4036370967737128
+      "completed": 12464,
+      "seconds": 5.00409999999404,
+      "fps": 2490.7575787883625,
+      "impliedMs": 0.40148427471069
     },
     "modes": [
       {
         "name": "Non-adaptive SSR",
         "adaptive": false,
         "maxCandidates": 1,
-        "completed": 256,
-        "seconds": 5.06609999999404,
-        "fps": 50.531967391149244,
-        "impliedMs": 19.789453124976717
+        "completed": 272,
+        "seconds": 5.3075,
+        "fps": 51.24823363165332,
+        "impliedMs": 19.512867647058822
       },
       {
         "name": "Non-adaptive SSR (example defaults)",
@@ -45,15 +45,16 @@
         "maxCandidates": 1,
         "exampleDefaults": true,
         "completed": 784,
-        "seconds": 5.030599999994039,
-        "fps": 155.84622112688922,
-        "impliedMs": 6.4165816326454586,
+        "seconds": 5.062,
+        "fps": 154.8794942710391,
+        "impliedMs": 6.456632653061225,
         "comparison": {
           "baselineHits": 37159,
           "adaptiveHits": 29187,
           "lostHits": 8176,
           "extraHits": 204,
           "disagreements": 8380,
+          "meanHitDistanceError": 0.0015857173238848445,
           "nonFinite": 0
         }
       },
@@ -63,15 +64,16 @@
         "maxCandidates": 1,
         "occlusionSkipping": false,
         "completed": 480,
-        "seconds": 5.132199999988079,
-        "fps": 93.52714235632183,
-        "impliedMs": 10.6920833333085,
+        "seconds": 5.15109999999404,
+        "fps": 93.18398012085872,
+        "impliedMs": 10.731458333320917,
         "comparison": {
           "baselineHits": 37159,
           "adaptiveHits": 27498,
           "lostHits": 11006,
           "extraHits": 1345,
           "disagreements": 12351,
+          "meanHitDistanceError": 0.0005125437134543746,
           "nonFinite": 0
         },
         "diagnostics": {
@@ -86,22 +88,23 @@
         "adaptive": true,
         "maxCandidates": 1,
         "occlusionSkipping": true,
-        "completed": 368,
-        "seconds": 5.18289999999106,
-        "fps": 71.00272048479322,
-        "impliedMs": 14.083967391280055,
+        "completed": 384,
+        "seconds": 5.015300000011921,
+        "fps": 76.56570893049015,
+        "impliedMs": 13.060677083364379,
         "comparison": {
           "baselineHits": 37159,
           "adaptiveHits": 27856,
           "lostHits": 10695,
           "extraHits": 1392,
           "disagreements": 12087,
+          "meanHitDistanceError": 0.0005196475073641128,
           "nonFinite": 0
         },
         "diagnostics": {
           "tracedRays": 2010635,
-          "averageIterations": 25.541059913907795,
-          "averageCandidates": 0.4801637293690799,
+          "averageIterations": 25.541053945644038,
+          "averageCandidates": 0.480164226724393,
           "exhaustedRays": 135773
         }
       },
@@ -113,16 +116,17 @@
         "exampleDefaults": true,
         "adaptiveSteps": 24,
         "approximateSteps": 16,
-        "completed": 624,
-        "seconds": 5.04970000000298,
-        "fps": 123.57169732848124,
-        "impliedMs": 8.092467948722724,
+        "completed": 608,
+        "seconds": 5.05110000000894,
+        "fps": 120.36982043493968,
+        "impliedMs": 8.3077302631726,
         "comparison": {
           "baselineHits": 37159,
-          "adaptiveHits": 23960,
-          "lostHits": 13490,
-          "extraHits": 291,
-          "disagreements": 13781,
+          "adaptiveHits": 26598,
+          "lostHits": 11160,
+          "extraHits": 599,
+          "disagreements": 11759,
+          "meanHitDistanceError": 0.0010200716806442042,
           "nonFinite": 0
         },
         "diagnostics": {
@@ -133,7 +137,7 @@
         }
       }
     ],
-    "speedup": 1.8508509995734554
+    "speedup": 1.8182866709244767
   },
   {
     "example": "animation",
@@ -160,10 +164,10 @@
     "levels": 7,
     "creation": {
       "name": "Hi-Z creation",
-      "completed": 11856,
-      "seconds": 5.00170000000298,
-      "fps": 2370.3940660161416,
-      "impliedMs": 0.42187078272629724
+      "completed": 13008,
+      "seconds": 5.00370000000298,
+      "fps": 2599.6762395811606,
+      "impliedMs": 0.3846632841330704
     },
     "modes": [
       {
@@ -171,9 +175,9 @@
         "adaptive": false,
         "maxCandidates": 1,
         "completed": 336,
-        "seconds": 5.22279999999702,
-        "fps": 64.33330780427964,
-        "impliedMs": 15.54404761903875
+        "seconds": 5.1196000000089406,
+        "fps": 65.6301273535849,
+        "impliedMs": 15.23690476193137
       },
       {
         "name": "Non-adaptive SSR (example defaults)",
@@ -181,15 +185,16 @@
         "maxCandidates": 1,
         "exampleDefaults": true,
         "completed": 656,
-        "seconds": 5.082600000008941,
-        "fps": 129.06779994468306,
-        "impliedMs": 7.747865853672165,
+        "seconds": 5.0607000000029805,
+        "fps": 129.6263362775137,
+        "impliedMs": 7.714481707321617,
         "comparison": {
           "baselineHits": 67112,
           "adaptiveHits": 31923,
           "lostHits": 38668,
           "extraHits": 3479,
           "disagreements": 42147,
+          "meanHitDistanceError": 0.11159217145570034,
           "nonFinite": 0
         }
       },
@@ -199,15 +204,16 @@
         "maxCandidates": 1,
         "occlusionSkipping": false,
         "completed": 720,
-        "seconds": 5.04170000000298,
-        "fps": 142.80897316372938,
-        "impliedMs": 7.00236111111525,
+        "seconds": 5.01110000000894,
+        "fps": 143.68102811732263,
+        "impliedMs": 6.959861111123528,
         "comparison": {
           "baselineHits": 67112,
           "adaptiveHits": 49372,
           "lostHits": 28789,
           "extraHits": 11049,
           "disagreements": 39838,
+          "meanHitDistanceError": 0.03467766828882642,
           "nonFinite": 0
         },
         "diagnostics": {
@@ -222,21 +228,22 @@
         "adaptive": true,
         "maxCandidates": 1,
         "occlusionSkipping": true,
-        "completed": 560,
-        "seconds": 5.0955,
-        "fps": 109.90089294475517,
-        "impliedMs": 9.099107142857143,
+        "completed": 608,
+        "seconds": 5.131,
+        "fps": 118.49541999610211,
+        "impliedMs": 8.439144736842106,
         "comparison": {
           "baselineHits": 67112,
           "adaptiveHits": 52990,
           "lostHits": 26478,
           "extraHits": 12356,
           "disagreements": 38834,
+          "meanHitDistanceError": 0.03711159684183138,
           "nonFinite": 0
         },
         "diagnostics": {
           "tracedRays": 1405034,
-          "averageIterations": 25.828946488127688,
+          "averageIterations": 25.828950046760433,
           "averageCandidates": 0.2750623828320169,
           "exhaustedRays": 76302
         }
@@ -249,16 +256,17 @@
         "exampleDefaults": true,
         "adaptiveSteps": 24,
         "approximateSteps": 16,
-        "completed": 1040,
-        "seconds": 5.01079999999702,
-        "fps": 207.5516883532806,
-        "impliedMs": 4.818076923074058,
+        "completed": 960,
+        "seconds": 5.02979999999702,
+        "fps": 190.86245974006297,
+        "impliedMs": 5.239374999996896,
         "comparison": {
           "baselineHits": 67112,
-          "adaptiveHits": 18009,
-          "lostHits": 51761,
-          "extraHits": 2658,
-          "disagreements": 54419,
+          "adaptiveHits": 49049,
+          "lostHits": 29980,
+          "extraHits": 11917,
+          "disagreements": 41897,
+          "meanHitDistanceError": 0.03180632921086038,
           "nonFinite": 0
         },
         "diagnostics": {
@@ -269,6 +277,6 @@
         }
       }
     ],
-    "speedup": 2.219829479283036
+    "speedup": 2.189254141520028
   }
 ]

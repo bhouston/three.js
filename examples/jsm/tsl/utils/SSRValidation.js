@@ -1,7 +1,6 @@
-import { cross, dot, max } from 'three/tsl';
+import { cross, dot } from 'three/tsl';
 
-// These predicates intentionally describe different acceptance volumes.
-// Keep their geometry separate from traversal and lighting/denoising.
+// Keep the original SSR acceptance geometry separate from traversal and shading.
 
 export function getSSRPixelWidth( inverseProjection, viewZ, inverseWidth, perspective ) {
 
@@ -16,20 +15,5 @@ export function validateSSRRayDistance( point, origin, direction, thickness ) {
 	// or division. The direction need not be normalized.
 	const perpendicular = cross( point.sub( origin ), direction ).toVar();
 	return dot( perpendicular, perpendicular ).lessThanEqual( thickness.mul( thickness ).mul( dot( direction, direction ) ) );
-
-}
-
-export function validateSSRViewDistance( surface, rayPoint, thickness ) {
-
-	const difference = surface.sub( rayPoint ).toVar();
-	return dot( difference, difference ).lessThanEqual( thickness.mul( thickness ) );
-
-}
-
-export function validateSSRDepthSlab( rayZ, surfaceZ, relativeThickness ) {
-
-	// View-space Z is negative. Include the surface and the back of the slab.
-	const tolerance = surfaceZ.abs().max( 1 ).mul( 1e-6 );
-	return rayZ.lessThanEqual( surfaceZ.add( tolerance ) ).and( rayZ.greaterThanEqual( surfaceZ.mul( max( relativeThickness, 0 ).add( 1 ) ).sub( tolerance ) ) );
 
 }

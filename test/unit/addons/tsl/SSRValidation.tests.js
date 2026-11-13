@@ -1,6 +1,6 @@
 import { OrthographicCamera, PerspectiveCamera, WebGPUCoordinateSystem } from 'three/webgpu';
 import { Fn, float, getViewPosition, instanceIndex, instancedArray, uniform, vec2, vec4 } from 'three/tsl';
-import { getSSRPixelWidth, validateSSRRayDistance, validateSSRViewDistance, validateSSRDepthSlab } from '../../../../examples/jsm/tsl/utils/SSRValidation.js';
+import { getSSRPixelWidth, validateSSRRayDistance } from '../../../../examples/jsm/tsl/utils/SSRValidation.js';
 import { rawComputeTest } from '../../src/nodes/tsl/gpu-raw-test-utils.js';
 import { randomRays } from './ssr-trace-test-utils.js';
 
@@ -10,7 +10,7 @@ export default QUnit.module( 'Addons', () => {
 
 		QUnit.module( 'SSRValidation', () => {
 
-			rawComputeTest( 'three geometric validators match independent CPU predicates', {}, async ( { assert, renderer } ) => {
+			rawComputeTest( 'ray-distance acceptance matches independent CPU geometry', {}, async ( { assert, renderer } ) => {
 
 				const rays = randomRays( 1024 );
 				const samples = randomRays( 1024, 54321 );
@@ -24,9 +24,7 @@ export default QUnit.module( 'Addons', () => {
 					const b = ends.element( instanceIndex );
 					const p = points.element( instanceIndex );
 					output.element( instanceIndex ).assign( vec4(
-						float( validateSSRRayDistance( p.xyz, a.xyz, b.xyz.sub( a.xyz ), a.w ) ),
-						float( validateSSRViewDistance( p.xyz, b.xyz, a.w ) ),
-						float( validateSSRDepthSlab( a.z.mul( - 10 ), b.z.mul( - 10 ), float( 0.1 ) ) ), 0
+						float( validateSSRRayDistance( p.xyz, a.xyz, b.xyz.sub( a.xyz ), a.w ) ), 0, 0, 0
 					) );
 
 				} )().compute( rays.length );
@@ -44,19 +42,12 @@ export default QUnit.module( 'Addons', () => {
 						const u = p.map( ( v, c ) => v - a[ c ] ), v = p.map( ( v, c ) => v - b[ c ] );
 						const cross = [ u[ 1 ] * v[ 2 ] - u[ 2 ] * v[ 1 ], u[ 2 ] * v[ 0 ] - u[ 0 ] * v[ 2 ], u[ 0 ] * v[ 1 ] - u[ 1 ] * v[ 0 ] ];
 						const distanceToLine = Math.hypot( ...cross ) / Math.hypot( ...b.map( ( v, c ) => v - a[ c ] ) );
-						const separation = Math.hypot( ...p.map( ( v, c ) => v - b[ c ] ) );
-						const rayZ = - a[ 2 ] * 10, surfaceZ = - b[ 2 ] * 10;
-						const tolerance = Math.max( Math.abs( surfaceZ ), 1 ) * 1e-6;
-						const expected = [ distanceToLine <= a[ 3 ], separation <= a[ 3 ], rayZ <= surfaceZ + tolerance && rayZ >= surfaceZ * 1.1 - tolerance ];
-						for ( let c = 0; c < 3; c ++ ) {
-
-							if ( actual[ i * 4 + c ] !== Number( expected[ c ] ) && mismatches.length < 8 ) mismatches.push( { i, validator: c, expected: expected[ c ], actual: actual[ i * 4 + c ] } );
-
-						}
+						const expected = distanceToLine <= a[ 3 ];
+						if ( actual[ i * 4 ] !== Number( expected ) && mismatches.length < 8 ) mismatches.push( { i, expected, actual: actual[ i * 4 ] } );
 
 					}
 
-					assert.deepEqual( mismatches, [], '3072 candidate decisions match independent CPU geometry' );
+					assert.deepEqual( mismatches, [], '1024 candidate decisions match independent CPU geometry' );
 
 				} finally {
 

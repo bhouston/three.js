@@ -3,7 +3,7 @@
 // PUPPETEER_EXECUTABLE_PATH=/path/to/Chrome node test/benchmarks/ssr-hiz.js
 // Options: --example=mirror|stochastic|animation --width=1280 --height=720
 //          --seconds=5 --adaptive-steps=512 --linear-steps=64 --max-distance=20
-//          --candidates=1,2,3,4 --strategies=amd,unity
+//          --candidates=1,2,3,4
 // Vsync/frame caps are disabled. Each completed GPU batch is counted only after
 // queue.onSubmittedWorkDone(). There are no per-frame timing queries.
 import puppeteer from 'puppeteer';
@@ -21,8 +21,6 @@ const adaptiveSteps = Number( option( 'adaptive-steps', 512 ) );
 const linearSteps = Number( option( 'linear-steps', 64 ) );
 const maxDistance = option( 'max-distance', null );
 const candidates = option( 'candidates', '1,2,3,4' ).split( ',' ).map( Number );
-const strategies = option( 'strategies', 'amd,unity' ).split( ',' );
-const validators = option( 'validators', 'three' ).split( ',' );
 const server = createServer( { root } );
 await new Promise( resolve => server.listen( 0, '127.0.0.1', resolve ) );
 let browser;
@@ -73,7 +71,6 @@ try {
 			device.pushErrorScope( 'validation' );
 			params.quality = 1;
 			params.binaryRefine = true;
-			params.validator = settings.validators[ 0 ];
 			params.adaptiveSteps = settings.adaptiveSteps;
 			if ( settings.maxDistance !== null ) params.maxDistance = Number( settings.maxDistance );
 			node.maxSteps.value = settings.linearSteps;
@@ -151,18 +148,10 @@ try {
 
 			} );
 			hierarchy.enabled = false;
-			const configurations = [ { name: 'Non-adaptive SSR', adaptive: false, strategy: 'amd', maxCandidates: 1 } ];
-			for ( const validator of settings.validators ) {
+			const configurations = [ { name: 'Non-adaptive SSR', adaptive: false, maxCandidates: 1 } ];
+			for ( const maxCandidates of settings.candidates ) {
 
-				for ( const strategy of settings.strategies ) {
-
-					for ( const maxCandidates of strategy === 'amd' ? settings.candidates : [ 1 ] ) {
-
-						configurations.push( { name: `${ strategy === 'amd' ? 'AMD-style' : 'Unity-style' } SSR (${ maxCandidates } candidate${ maxCandidates > 1 ? 's' : '' }, ${ validator } validator)`, adaptive: true, strategy, maxCandidates, validator } );
-
-					}
-
-				}
+				configurations.push( { name: `Adaptive SSR (${ maxCandidates } candidate${ maxCandidates > 1 ? 's' : '' })`, adaptive: true, maxCandidates } );
 
 			}
 
@@ -195,9 +184,7 @@ try {
 			for ( const config of configurations ) {
 
 				await device.queue.onSubmittedWorkDone();
-				params.validator = config.validator ?? settings.validators[ 0 ];
 				params.adaptive = config.adaptive;
-				params.adaptiveStrategy = config.strategy;
 				params.maxCandidates = config.maxCandidates;
 				apply();
 				const measurement = { ...config, ...await measure( config.name, drawTrace ) };
@@ -238,7 +225,7 @@ try {
 			if ( validationError ) throw new Error( validationError.message );
 			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: params.maxDistance, linearSteps: settings.linearSteps, adaptiveSteps: settings.adaptiveSteps, creation, modes, speedup: modes[ 1 ].fps / modes[ 0 ].fps };
 
-		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, strategies, validators } );
+		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );
 		results.push( { example, ...result } );
 		console.log( JSON.stringify( results.at( - 1 ), null, 2 ) );

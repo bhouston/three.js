@@ -3,7 +3,7 @@
 // PUPPETEER_EXECUTABLE_PATH=/path/to/Chrome node test/benchmarks/ssr-hiz.js
 // Options: --example=mirror|stochastic|animation --width=1280 --height=720
 //          --seconds=5 --adaptive-steps=512 --linear-steps=64 --max-distance=20
-//          --candidates=1,2,3,4 --binary-refine=true
+//          --candidates=1,2,3,4 --binary-refine=true --max-level=6
 // A fairer linear reference (one step per pixel, same thickness rule as adaptive):
 //          --binary-refine=false --linear-steps=1024
 // Vsync/frame caps are disabled. Each completed GPU batch is counted only after
@@ -23,6 +23,7 @@ const adaptiveSteps = Number( option( 'adaptive-steps', 512 ) );
 const linearSteps = Number( option( 'linear-steps', 64 ) );
 const maxDistance = option( 'max-distance', null );
 const binaryRefine = option( 'binary-refine', 'true' ) === 'true';
+const maxLevel = Number( option( 'max-level', Infinity ) );
 const candidates = option( 'candidates', '1,2,3,4' ).split( ',' ).map( Number );
 const server = createServer( { root } );
 await new Promise( resolve => server.listen( 0, '127.0.0.1', resolve ) );
@@ -93,6 +94,7 @@ try {
 			// below draws only SSR's reflection material, excluding blur/denoisers.
 			params.adaptive = true;
 			apply();
+			if ( settings.maxLevel !== null ) node.hiZ.maxLevel = settings.maxLevel;
 			advance();
 			render();
 			await device.queue.onSubmittedWorkDone();
@@ -226,9 +228,9 @@ try {
 
 			const validationError = await device.popErrorScope();
 			if ( validationError ) throw new Error( validationError.message );
-			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: params.maxDistance, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, creation, modes, speedup: modes[ 1 ].fps / modes[ 0 ].fps };
+			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: params.maxDistance, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, levels: hierarchy.levels.length, creation, modes, speedup: modes[ 1 ].fps / modes[ 0 ].fps };
 
-		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine } );
+		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );
 		results.push( { example, ...result } );
 		console.log( JSON.stringify( results.at( - 1 ), null, 2 ) );

@@ -176,6 +176,18 @@ export default QUnit.module( 'Addons', () => {
 
 			} );
 
+			QUnit.test( 'maxLevel caps the hierarchy', assert => {
+
+				const depth = new DepthTexture( 9, 5 );
+				const pyramid = hiZ( texture( depth ), { maxLevel: 1 } );
+				pyramid.setSize( 9, 5 );
+				assert.deepEqual( pyramid.levels, [ { width: 9, height: 5 }, { width: 4, height: 2 } ] );
+				assert.strictEqual( pyramid.getLastLevelNode().value, 1 );
+				pyramid.dispose();
+				depth.dispose();
+
+			} );
+
 			QUnit.test( 'invalid inputs and unsupported backend fail explicitly', assert => {
 
 				assert.throws( () => new HiZNode( {} ), /raw depth TextureNode/ );

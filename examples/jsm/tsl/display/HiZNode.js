@@ -40,8 +40,9 @@ class HiZNode extends Node {
 	 * @param {TextureNode} depthNode - A full-resolution, raw depth texture node.
 	 * @param {Object} [options] - Options.
 	 * @param {boolean} [options.reversedDepth] - Override the renderer's depth convention (useful for synthetic depth textures).
+	 * @param {number} [options.maxLevel=Infinity] - Coarsest level to build. Traversal rarely skips cells wider than 64 pixels, so a cap of 6 saves dispatches and wasted ascents. Fixed at construction.
 	 */
-	constructor( depthNode, { reversedDepth } = {} ) {
+	constructor( depthNode, { reversedDepth, maxLevel = Infinity } = {} ) {
 
 		super( 'float' );
 
@@ -49,6 +50,7 @@ class HiZNode extends Node {
 
 		this.depthNode = depthNode;
 		this.reversedDepth = reversedDepth;
+		this.maxLevel = maxLevel;
 		/** Whether to rebuild the pyramid each frame. Disabling retains its last contents. @type {boolean} */
 		this.enabled = true;
 		/** Selected debug level. Clamped to the available hierarchy. @type {UniformNode<uint>} */
@@ -146,7 +148,7 @@ class HiZNode extends Node {
 		while ( true ) {
 
 			levels.push( { width: levelWidth, height: levelHeight } );
-			if ( levelWidth === 1 && levelHeight === 1 ) break;
+			if ( ( levelWidth === 1 && levelHeight === 1 ) || levels.length > this.maxLevel ) break;
 			levelWidth = Math.max( 1, Math.floor( levelWidth / 2 ) );
 			levelHeight = Math.max( 1, Math.floor( levelHeight / 2 ) );
 

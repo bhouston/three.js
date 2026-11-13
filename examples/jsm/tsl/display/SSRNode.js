@@ -16,6 +16,10 @@ let _rendererState;
 // Maximum ray-march step count; `quality` (0..1) scales it to a fixed per-ray count.
 const MAX_STEPS = 64;
 
+// Coarsest Hi-Z level for adaptive tracing (64-pixel cells, as in FidelityFX SSSR).
+// Measured at 720p: levels above this cost iterations without skipping more.
+const HIZ_MAX_LEVEL = 6;
+
 /**
  * @typedef {Object} SSRNodeOptions
  * @property {boolean} [stochastic=false] - When `false`, traces a single mirror reflection and softens roughness with a blur pass (first-generation SSR). When `true`, varies the reflection direction per pixel with stochastic GGX rays (second-generation SSR); higher quality on rough/glossy surfaces but noisier, so it expects a temporal/spatial denoiser downstream.
@@ -123,7 +127,7 @@ class SSRNode extends Node {
 		this._ownsHiZ = false;
 		if ( this._tracing === 'adaptive' && this.hiZ === null ) {
 
-			this.hiZ = hiZ( depthNode );
+			this.hiZ = hiZ( depthNode, { maxLevel: HIZ_MAX_LEVEL } );
 			this._ownsHiZ = true;
 
 		}
@@ -548,7 +552,7 @@ class SSRNode extends Node {
 		if ( value === this._tracing ) return;
 		if ( value === 'adaptive' && this.hiZ === null ) {
 
-			this.hiZ = hiZ( this.depthNode );
+			this.hiZ = hiZ( this.depthNode, { maxLevel: HIZ_MAX_LEVEL } );
 			this._ownsHiZ = true;
 
 		}

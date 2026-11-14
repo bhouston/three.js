@@ -117,6 +117,7 @@
 			ssr: {
 				resolutionScale: 1,
 				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, glossyMinLevel: 0,
+				coneMaxLevel: 5, coneSamples: 4,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -246,6 +247,11 @@
 				velocity: velocity
 			} ) );
 
+			// mip chain of the beauty pass for the SSR cone footprint lookup
+			const beautyTexture = scenePass.getTexture( 'output' );
+			beautyTexture.generateMipmaps = true;
+			beautyTexture.minFilter = THREE.LinearMipmapLinearFilter;
+
 			scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
 			const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal' );
 			scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
@@ -373,6 +379,8 @@
 			const glossyMinLevelController = ssrGui.add( params.ssr, 'glossyMinLevel', 0, 3, 1 ).name( 'Rough-ray min mip' ).onChange( applyParams );
 			traceControllers.push( ssrGui.add( params.ssr, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( applyParams ) );
 			traceControllers.push( ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams ) );
+			ssrGui.add( params.ssr, 'coneMaxLevel', 0, 8, 1 ).name( 'Cone max mip' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Cone samples' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
 
@@ -436,6 +444,8 @@
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
+			ssrNode.coneMaxLevel.value = params.ssr.coneMaxLevel;
+			ssrNode.coneSamples.value = params.ssr.coneSamples;
 			// stepExponent / screenEdgeFadeBlack / binaryRefine are build-time constants: assigning
 			// them recompiles the SSR material (the setters no-op when the value is unchanged).
 			ssrNode.stepExponent = params.ssr.stepExponent;

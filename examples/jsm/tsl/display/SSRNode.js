@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
+import { Break, Continue, Fn, If, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, log2, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -294,6 +294,27 @@ class SSRNode extends Node {
 		 * @default 0
 		 */
 		this.mirrorBias = uniform( 0 );
+
+		/**
+		 * Stochastic mode only: coarsest mip of the beauty pass a ray may read at its hit. Each ray
+		 * reads the mip matching the footprint of the cone it stands for, which grows with roughness
+		 * and hit distance, trading noise for some blur. `0` disables it. The texture behind
+		 * `colorNode` must have mipmaps (`generateMipmaps` and a trilinear `minFilter`).
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 0
+		 */
+		this.coneMaxLevel = uniform( 0 );
+
+		/**
+		 * Number of rays the GGX lobe is assumed to be shared between (spatial and temporal reuse
+		 * downstream). Each ray's cone covers `1 / ( coneSamples * pdf )` steradians, so lower
+		 * values read coarser mips: less noise, more blur.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 4
+		 */
+		this.coneSamples = uniform( 4 );
 
 		/**
 		 * The quality of the blur. Must be an integer in the range `[1,3]`.
@@ -1040,6 +1061,7 @@ class SSRNode extends Node {
 
 			let viewReflectDir, finalSampleWeight, specDominantFactor;
 			let sampleEnvReflection = null;
+			let samplePdf = null;
 
 			if ( this.stochastic === false ) {
 
@@ -1065,6 +1087,7 @@ class SSRNode extends Node {
 				} );
 
 				viewReflectDir = ggxSample.get( 'reflectDir' ).toVar();
+				samplePdf = ggxSample.get( 'pdf' );
 				finalSampleWeight = ggxSample.get( 'sampleWeight' ).toVar();
 				specDominantFactor = getSpecularDominantFactor( ggxSample.get( 'NdotV' ), roughness ).toVar();
 
@@ -1385,7 +1408,21 @@ class SSRNode extends Node {
 					const hitWorldPosition = this._cameraWorldMatrix.mul( vec4( vP, 1.0 ) ).xyz.toVar();
 					const worldDistance = distance( worldPosition, hitWorldPosition ).mul( specDominantFactor ).toVar();
 
-					const reflectColor = this.colorNode.sample( uvS ).toVar();
+					let reflectSample = this.colorNode.sample( uvS );
+
+					if ( this.stochastic === true ) {
+
+						// Cone footprint (filtered importance sampling): the ray stands for
+						// 1 / ( coneSamples * pdf ) steradians, a disc of that solid angle at the hit.
+						// ponytail: isotropic footprint, ignores the hit surface's tilt and depth edges;
+						// a depth-aware Gaussian pyramid is the upgrade if leaking shows.
+						const radius = distance( viewPosition, vP ).mul( samplePdf.mul( this.coneSamples ).mul( Math.PI ).max( 1e-6 ).inverseSqrt() );
+						const pixelSize = getViewPosition( uvS.add( uvPixelStepX ), hitD, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).abs().max( 1e-6 );
+						reflectSample = reflectSample.level( log2( radius.mul( 2 ).div( pixelSize ) ).clamp( 0, this.coneMaxLevel ) );
+
+					}
+
+					const reflectColor = reflectSample.toVar();
 
 					// Multi-bounce: add the reprojected previous-frame reflection at the hit point.
 					reflectColor.rgb.assign( reprojectHitPointHistory( uvS, reflectColor.rgb ) );

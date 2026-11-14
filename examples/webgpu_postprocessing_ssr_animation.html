@@ -52,7 +52,7 @@
 
 			const params = {
 				output: 'Beauty', traa: true,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, coneMaxLevel: 5, coneSamples: 4, coneTracing: false, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
 			};
@@ -193,6 +193,11 @@
 				scenePass.getTexture( 'normal' ).type = THREE.UnsignedByteType;
 				scenePass.getTexture( 'diffuseColor' ).type = THREE.UnsignedByteType;
 
+				// mip chain of the beauty pass for the SSR cone footprint lookup
+				const beautyTexture = scenePass.getTexture( 'output' );
+				beautyTexture.generateMipmaps = true;
+				beautyTexture.minFilter = THREE.LinearMipmapLinearFilter;
+
 				const scenePassColor = scenePass.getTextureNode( 'output' );
 				const scenePassDepth = scenePass.getTextureNode( 'depth' );
 				const scenePassNormal = scenePass.getTextureNode( 'normal' );
@@ -288,7 +293,11 @@
 					adaptiveStepsController.disable( ! params.adaptive );
 					candidatesController.disable( ! params.adaptive );
 					occlusionController.disable( ! params.adaptive );
+					coneTracingController.disable( ! params.adaptive );
 					ssrNode.occlusionSkipping = params.occlusionSkipping;
+					ssrNode.coneMaxLevel.value = params.coneMaxLevel;
+					ssrNode.coneSamples.value = params.coneSamples;
+					ssrNode.coneTracing = params.coneTracing;
 					ssrNode.quality.value = params.quality;
 					ssrNode.binaryRefine = params.binaryRefine;
 					ssrNode.maxDistance.value = params.maxDistance;
@@ -309,6 +318,9 @@
 				const candidatesController = ssrGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( updateParameters );
 				const adaptiveStepsController = ssrGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( updateParameters );
 				const occlusionController = ssrGui.add( params, 'occlusionSkipping' ).name( 'Occlusion skipping' ).onChange( updateParameters );
+				ssrGui.add( params, 'coneMaxLevel', 0, 8, 1 ).name( 'Cone max mip' ).onChange( updateParameters );
+				ssrGui.add( params, 'coneSamples', 1, 32, 1 ).name( 'Cone samples' ).onChange( updateParameters );
+				const coneTracingController = ssrGui.add( params, 'coneTracing' ).name( 'Cone-sized Hi-Z stop' ).onChange( updateParameters );
 				const qualityController = ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 				const refineController = ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 				ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );

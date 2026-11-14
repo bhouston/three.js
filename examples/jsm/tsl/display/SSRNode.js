@@ -1442,8 +1442,7 @@ class SSRNode extends Node {
 					if ( this.stochastic === true ) {
 
 						// Read the beauty mip covering the cone's disc at the hit.
-						// ponytail: isotropic footprint, ignores the hit surface's tilt and depth edges;
-						// a depth-aware Gaussian pyramid is the upgrade if leaking shows.
+						// ponytail: isotropic, not depth-aware; use a depth-aware Gaussian pyramid if it leaks.
 						const radius = distance( viewPosition, vP ).mul( coneTangent );
 						const pixelSize = getViewPosition( uvS.add( uvPixelStepX ), hitD, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).abs().max( 1e-6 );
 						reflectSample = reflectSample.level( log2( radius.mul( 2 ).div( pixelSize ) ).clamp( 0, this.coneMaxLevel ) );

@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, float, getViewPosition, mrt, normalView, output, pass, rtt, sample, screenUV, textureSize, uniform, vec2, vec4, velocity } from 'three/tsl';
+			import { Fn, float, getViewPosition, mrt, normalView, output, pass, renderOutput, rtt, sample, screenUV, textureSize, uniform, vec2, vec4, velocity } from 'three/tsl';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { depthAwareBlur } from 'three/addons/tsl/display/depthAwareBlur.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
@@ -57,12 +57,16 @@
 			const params = {
 				upscaleFactor: 3,
 				upsampler: 'joint-bilateral',
+				output: 'Beauty',
 				rotate: true
 			};
 
 			// only used by the bilateral upsampler
 			const spatialSigma = uniform( 1.2 );
 			const depthSensitivity = uniform( 30 );
+
+			// only used by the error output
+			const errorScale = uniform( 4 );
 
 			init();
 
@@ -170,7 +174,17 @@
 					'joint-bilateral': rtt( jointBilateralUpsample( lowColor, lowDepth, lowNormal, depth, normal, camera ).sample( screenUV ) )
 				};
 
+				// full resolution beauty, only rendered as the reference of the error output
+
+				const reference = pass( scene, camera ).getTextureNode();
+
+				// tone mapping and color space conversion are applied here, since the error is measured on the displayed colors
+
+				const display = ( color ) => renderOutput( color, THREE.NeutralToneMapping, THREE.SRGBColorSpace );
+				const errors = {};
+
 				renderPipeline = new THREE.RenderPipeline( renderer );
+				renderPipeline.outputColorTransform = false;
 
 				// GUI
 
@@ -186,14 +200,36 @@
 					gui.add( spatialSigma, 'value', 0.5, 3 ).name( 'spatial sigma' ),
 					gui.add( depthSensitivity, 'value', 1, 100 ).name( 'depth sensitivity' )
 				];
+				gui.add( params, 'output', [ 'Beauty', 'Error' ] ).onChange( updateUpsampler );
+				const errorScaleControl = gui.add( errorScale, 'value', 1, 16 ).name( 'error scale' );
 				gui.add( params, 'rotate' );
+
+				let traaNode = null;
 
 				function updateUpsampler() {
 
-					if ( renderPipeline.outputNode.isTRAANode ) renderPipeline.outputNode.dispose();
+					if ( traaNode !== null ) traaNode.dispose();
 
-					renderPipeline.outputNode = traa( upsamplers[ params.upsampler ], depth, guideVelocity, camera );
+					const upscaled = upsamplers[ params.upsampler ];
+
+					if ( params.output === 'Error' ) {
+
+						// absolute difference to the full resolution render, with the same camera jitter
+						const error = errors[ params.upsampler ] ??= rtt( vec4( display( upscaled ).rgb.sub( display( reference ).rgb ).abs().mul( errorScale ), 1 ) );
+
+						traaNode = traa( error, depth, guideVelocity, camera );
+						renderPipeline.outputNode = traaNode;
+
+					} else {
+
+						traaNode = traa( upscaled, depth, guideVelocity, camera );
+						renderPipeline.outputNode = display( traaNode );
+
+					}
+
 					renderPipeline.needsUpdate = true;
+
+					params.output === 'Error' ? errorScaleControl.show() : errorScaleControl.hide();
 
 					bilateralControls.forEach( ( control ) => params.upsampler === 'bilateral' ? control.show() : control.hide() );
 

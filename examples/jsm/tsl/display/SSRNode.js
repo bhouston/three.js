@@ -649,7 +649,7 @@ class SSRNode extends Node {
 	 * behind or beside geometry hit it. Changing it recompiles adaptive tracing.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @default false
 	 */
 	get coneValidate() {
 

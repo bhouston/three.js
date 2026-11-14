@@ -1,5 +1,5 @@
 import { DataTexture, FloatType, NearestFilter, NodeMaterial, OrthographicCamera, PerspectiveCamera, QuadMesh, RedFormat, RGBAFormat, RenderTarget, Vector2, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
-import { float, texture } from 'three/tsl';
+import { float, int, log2, texture } from 'three/tsl';
 import { ENV_RAY_LENGTH_THRESHOLD } from '../../../../examples/jsm/tsl/utils/SpecularHelpers.js';
 import { ssr } from '../../../../examples/jsm/tsl/display/SSRNode.js';
 import { rawComputeTest } from '../../src/nodes/tsl/gpu-raw-test-utils.js';
@@ -87,6 +87,29 @@ export default QUnit.module( 'Addons', () => {
 					} );
 
 				}
+
+				// Per-pixel depth: a coarse leaf that fails validation must be resolved
+				// exactly, so a tolerance growing along the ray loses no hit.
+				traceTest( `footprint-sized leaves (minLevel function) keep every hit, reversed=${ reversed }`, async ( { assert, renderer } ) => {
+
+					const data = Float32Array.from( { length: 32 * 32 }, ( _, i ) => {
+
+						const depth = i % 7 === 0 ? 1 : 0.2 + ( ( i * 73 ) % 101 ) / 160;
+						return reversed ? 1 - depth : depth;
+
+					} );
+					const fixture = createTraceFixture( 32, 32, data, reversed );
+					try {
+
+						await compareRays( assert, renderer, fixture, randomRays( 1024 ), { minLevel: travelled => int( log2( travelled.mul( 0.5 ).max( 1 ) ) ) } );
+
+					} finally {
+
+						fixture.dispose();
+
+					}
+
+				} );
 
 				// Depth is constant over each 2x2 block, so mip-1 leaves lose nothing
 				// and the full-resolution oracle still applies.

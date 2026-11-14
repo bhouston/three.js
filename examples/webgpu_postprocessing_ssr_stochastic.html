@@ -117,7 +117,7 @@
 			ssr: {
 				resolutionScale: 1,
 				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, glossyMinLevel: 0,
-				coneMaxLevel: 5, coneSamples: 4,
+				coneMaxLevel: 5, coneSamples: 4, coneTracing: false,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -369,6 +369,7 @@
 				candidatesController.disable( ! params.ssr.adaptive );
 				occlusionController.disable( ! params.ssr.adaptive );
 				glossyMinLevelController.disable( ! params.ssr.adaptive );
+				coneTracingController.disable( ! params.ssr.adaptive );
 
 			};
 
@@ -381,6 +382,7 @@
 			traceControllers.push( ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams ) );
 			ssrGui.add( params.ssr, 'coneMaxLevel', 0, 8, 1 ).name( 'Cone max mip' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Cone samples' ).onChange( applyParams );
+			const coneTracingController = ssrGui.add( params.ssr, 'coneTracing' ).name( 'Cone-sized Hi-Z stop' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
 
@@ -439,6 +441,7 @@
 			ssrNode.tracing = params.ssr.adaptive ? 'adaptive' : 'linear';
 			ssrNode.maxCandidates = params.ssr.maxCandidates;
 			ssrNode.glossyMinLevel = params.ssr.glossyMinLevel;
+			ssrNode.coneTracing = params.ssr.coneTracing;
 			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
 			ssrNode.occlusionSkipping = params.ssr.occlusionSkipping;
 			ssrNode.resolutionScale = params.ssr.resolutionScale;

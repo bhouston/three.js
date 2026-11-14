@@ -126,6 +126,7 @@ class SSRNode extends Node {
 		this._maxCandidates = options.maxCandidates ?? 1;
 		if ( ! Number.isInteger( this._maxCandidates ) || this._maxCandidates < 1 || this._maxCandidates > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
 		this._glossyMinLevel = options.glossyMinLevel ?? 0;
+		this._coneTracing = options.coneTracing ?? false;
 		this._occlusionSkipping = options.occlusionSkipping ?? false;
 		this._showIterations = false;
 		this.hiZ = options.hiZ ?? null;
@@ -639,6 +640,29 @@ class SSRNode extends Node {
 
 	}
 
+	/**
+	 * Adaptive stochastic mode only: rays test for a hit at the Hi-Z level whose cells fit inside
+	 * their cone footprint (see {@link SSRNode#coneMaxLevel}) and descend further only when that
+	 * test fails, so hits are unchanged. Takes precedence over `glossyMinLevel`. Changing it
+	 * recompiles adaptive tracing.
+	 *
+	 * @type {boolean}
+	 * @default false
+	 */
+	get coneTracing() {
+
+		return this._coneTracing;
+
+	}
+
+	set coneTracing( value ) {
+
+		if ( value === this._coneTracing ) return;
+		this._coneTracing = value;
+		this._buildSSRMaterial();
+
+	}
+
 	/** Coarsest-leaf level for rough stochastic rays; `0` is off. Changing it recompiles adaptive tracing. @type {number} */
 	get glossyMinLevel() {
 
@@ -1061,7 +1085,7 @@ class SSRNode extends Node {
 
 			let viewReflectDir, finalSampleWeight, specDominantFactor;
 			let sampleEnvReflection = null;
-			let samplePdf = null;
+			let coneTangent = null;
 
 			if ( this.stochastic === false ) {
 
@@ -1087,7 +1111,9 @@ class SSRNode extends Node {
 				} );
 
 				viewReflectDir = ggxSample.get( 'reflectDir' ).toVar();
-				samplePdf = ggxSample.get( 'pdf' );
+				// Cone footprint (filtered importance sampling): the ray stands for
+				// 1 / ( coneSamples * pdf ) steradians of the lobe.
+				coneTangent = ggxSample.get( 'pdf' ).mul( this.coneSamples ).mul( Math.PI ).max( 1e-6 ).inverseSqrt().toVar();
 				finalSampleWeight = ggxSample.get( 'sampleWeight' ).toVar();
 				specDominantFactor = getSpecularDominantFactor( ggxSample.get( 'NdotV' ), roughness ).toVar();
 
@@ -1312,7 +1338,10 @@ class SSRNode extends Node {
 						start: rayLen.reciprocal(),
 						maxSteps: this.adaptiveMaxSteps,
 						maxCandidates: this.maxCandidates,
-						minLevel: this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
+						// Cone tracing: cells no larger than the footprint radius, taking pixels travelled
+						// on screen as the distance (exact for rays parallel to the screen).
+						minLevel: this.stochastic && this.coneTracing ? travelled => int( log2( travelled.mul( coneTangent ).max( 1 ) ).min( this.coneMaxLevel ) )
+							: this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
 						depthTolerance: 2e-7,
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
 						// The cell's farthest surface fails the thickness test where the ray
@@ -1412,11 +1441,10 @@ class SSRNode extends Node {
 
 					if ( this.stochastic === true ) {
 
-						// Cone footprint (filtered importance sampling): the ray stands for
-						// 1 / ( coneSamples * pdf ) steradians, a disc of that solid angle at the hit.
+						// Read the beauty mip covering the cone's disc at the hit.
 						// ponytail: isotropic footprint, ignores the hit surface's tilt and depth edges;
 						// a depth-aware Gaussian pyramid is the upgrade if leaking shows.
-						const radius = distance( viewPosition, vP ).mul( samplePdf.mul( this.coneSamples ).mul( Math.PI ).max( 1e-6 ).inverseSqrt() );
+						const radius = distance( viewPosition, vP ).mul( coneTangent );
 						const pixelSize = getViewPosition( uvS.add( uvPixelStepX ), hitD, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).abs().max( 1e-6 );
 						reflectSample = reflectSample.level( log2( radius.mul( 2 ).div( pixelSize ) ).clamp( 0, this.coneMaxLevel ) );
 

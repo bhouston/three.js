@@ -36,6 +36,11 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 		const z = viewZ( depthNode.sample( coordinate ).r ).toConst();
 		const n = normalNode.sample( coordinate ).toConst();
 		const tolerance = z.abs().mul( 0.02 ).max( 0.001 );
+
+		// the four low resolution depths in one fetch, ordered like textureGather()
+		const gathered = lowDepthNode.gather().sample( base.add( 1 ).div( size ) ).toConst();
+		const tapDepths = [ gathered.w, gathered.z, gathered.x, gathered.y ];
+
 		const sum = vec4( 0 ).toVar();
 		const total = float( 0 ).toVar();
 
@@ -44,7 +49,7 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 			for ( let x = 0; x <= 1; x ++ ) {
 
 				const tapUV = base.add( vec2( x, y ) ).add( 0.5 ).div( size ).toConst();
-				const depthWeight = viewZ( lowDepthNode.sample( tapUV ).r ).sub( z ).div( tolerance ).pow2().negate().exp();
+				const depthWeight = viewZ( tapDepths[ y * 2 + x ] ).sub( z ).div( tolerance ).pow2().negate().exp();
 				const normalWeight = lowNormalNode.sample( tapUV ).dot( n ).max( 0 ).pow( 8 );
 				const wx = x === 0 ? fraction.x.oneMinus() : fraction.x;
 				const wy = y === 0 ? fraction.y.oneMinus() : fraction.y;

@@ -35,7 +35,7 @@ const HIZ_MAX_LEVEL = 6;
  * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode uses a nearest-depth hierarchy and exact mip-zero candidates. Requires WebGPU.
  * @property {number} [maxCandidates=1] - Adaptive mode only: maximum candidate surfaces to validate.
  * @property {number} [roughMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it. Use with `maxCandidates > 1`.
- * @property {boolean} [occlusionSkipping=false] - Adaptive mode only: lets rays pass behind occluders by skipping Hi-Z cells they are entirely hidden behind, as linear tracing does sample by sample. Recovers reflections of surfaces seen past an occluder at the cost of longer rays.
+ * @property {boolean} [occlusionSkipping=true] - Adaptive mode only: lets rays pass behind occluders by skipping Hi-Z cells they are entirely hidden behind, as linear tracing does sample by sample. Recovers reflections of surfaces seen past an occluder at the cost of longer rays.
  * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
@@ -129,7 +129,7 @@ class SSRNode extends Node {
 		this._coneTracing = options.coneTracing ?? false;
 		this._coneValidate = false;
 		this._cameraRays = false;
-		this._occlusionSkipping = options.occlusionSkipping ?? false;
+		this._occlusionSkipping = options.occlusionSkipping ?? true;
 		this._showIterations = false;
 		this._showConeMip = false;
 		this.hiZ = options.hiZ ?? null;

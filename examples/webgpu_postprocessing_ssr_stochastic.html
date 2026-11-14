@@ -116,7 +116,7 @@
 
 			ssr: {
 				resolutionScale: 1,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, glossyMinLevel: 0,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, roughMinLevel: 0,
 				coneMaxLevel: 5, coneSamples: 4, coneTracing: false, coneValidate: false, cameraRays: false,
 				quality: 0.25,
 				mirrorBias: 0,
@@ -377,12 +377,12 @@
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
 
 			const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
-			adaptiveGui.add( params.ssr, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( applyParams );
-			adaptiveGui.add( params.ssr, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( applyParams );
-			adaptiveGui.add( params.ssr, 'occlusionSkipping' ).name( 'Occlusion skipping' ).onChange( applyParams );
-			adaptiveGui.add( params.ssr, 'glossyMinLevel', 0, 3, 1 ).name( 'Rough-ray min mip' ).onChange( applyParams );
-			adaptiveGui.add( params.ssr, 'coneTracing' ).name( 'Cone-sized Hi-Z stop' ).onChange( applyParams );
-			adaptiveGui.add( params.ssr, 'coneValidate' ).name( 'Cone hit validation' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'maxCandidates', 1, 64, 1 ).name( 'Candidates' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'adaptiveSteps', 16, 256, 16 ).name( 'Max steps' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'occlusionSkipping' ).name( 'Skip occluded' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'roughMinLevel', 0, 3, 1 ).name( 'Rough min mip' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'coneTracing' ).name( 'Cone tracing' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'coneValidate' ).name( 'Cone validate' ).onChange( applyParams );
 			adaptiveGui.add( params.ssr, 'cameraRays' ).name( 'Camera rays' ).onChange( applyParams );
 
 			const linearGui = renderer.inspector.createParameters( 'Linear Tracing' );
@@ -443,7 +443,7 @@
 
 			ssrNode.tracing = params.ssr.adaptive ? 'adaptive' : 'linear';
 			ssrNode.maxCandidates = params.ssr.maxCandidates;
-			ssrNode.glossyMinLevel = params.ssr.glossyMinLevel;
+			ssrNode.roughMinLevel = params.ssr.roughMinLevel;
 			ssrNode.coneTracing = params.ssr.coneTracing;
 			ssrNode.coneValidate = params.ssr.coneValidate;
 			ssrNode.cameraRays = params.ssr.cameraRays;

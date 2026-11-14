@@ -34,7 +34,7 @@ const HIZ_MAX_LEVEL = 6;
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
  * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode uses a nearest-depth hierarchy and exact mip-zero candidates. Requires WebGPU.
  * @property {number} [maxCandidates=1] - Adaptive mode only: maximum candidate surfaces to validate.
- * @property {number} [glossyMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it. Use with `maxCandidates > 1`.
+ * @property {number} [roughMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it. Use with `maxCandidates > 1`.
  * @property {boolean} [occlusionSkipping=false] - Adaptive mode only: lets rays pass behind occluders by skipping Hi-Z cells they are entirely hidden behind, as linear tracing does sample by sample. Recovers reflections of surfaces seen past an occluder at the cost of longer rays.
  * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
@@ -125,7 +125,7 @@ class SSRNode extends Node {
 		if ( ! [ 'linear', 'adaptive' ].includes( this._tracing ) ) throw new Error( 'SSRNode: Invalid tracing mode.' );
 		this._maxCandidates = options.maxCandidates ?? 1;
 		if ( ! Number.isInteger( this._maxCandidates ) || this._maxCandidates < 1 || this._maxCandidates > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
-		this._glossyMinLevel = options.glossyMinLevel ?? 0;
+		this._roughMinLevel = options.roughMinLevel ?? 0;
 		this._coneTracing = options.coneTracing ?? false;
 		this._coneValidate = false;
 		this._cameraRays = false;
@@ -712,7 +712,7 @@ class SSRNode extends Node {
 	 * Adaptive stochastic mode only: rays test for a hit at the Hi-Z level whose cells fit inside
 	 * their cone footprint (see {@link SSRNode#coneMaxLevel}), once per cell and with a thickness
 	 * widened to the cell, as Hi-Z cone tracing does. Cheaper, but surfaces narrower than the
-	 * footprint are hit only in proportion to their coverage. Takes precedence over `glossyMinLevel`. Changing it recompiles adaptive tracing.
+	 * footprint are hit only in proportion to their coverage. Takes precedence over `roughMinLevel`. Changing it recompiles adaptive tracing.
 	 *
 	 * @type {boolean}
 	 * @default false
@@ -732,16 +732,16 @@ class SSRNode extends Node {
 	}
 
 	/** Coarsest-leaf level for rough stochastic rays; `0` is off. Changing it recompiles adaptive tracing. @type {number} */
-	get glossyMinLevel() {
+	get roughMinLevel() {
 
-		return this._glossyMinLevel;
+		return this._roughMinLevel;
 
 	}
 
-	set glossyMinLevel( value ) {
+	set roughMinLevel( value ) {
 
-		if ( value === this._glossyMinLevel ) return;
-		this._glossyMinLevel = value;
+		if ( value === this._roughMinLevel ) return;
+		this._roughMinLevel = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1413,7 +1413,7 @@ class SSRNode extends Node {
 						// Cone tracing: cells no larger than the footprint radius, taking pixels travelled
 						// on screen as the distance (exact for rays parallel to the screen).
 						minLevel: this.stochastic && this.coneTracing ? travelled => int( log2( travelled.mul( coneTangent ).max( 1 ) ).min( this.coneMaxLevel ) )
-							: this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
+							: this.stochastic && this.roughMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.roughMinLevel ), int( 0 ) ) : 0,
 						coarseHits: this.stochastic && this.coneTracing,
 						depthTolerance: 2e-7,
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),

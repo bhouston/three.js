@@ -3,7 +3,7 @@
 // PUPPETEER_EXECUTABLE_PATH=/path/to/Chrome node test/benchmarks/ssr-hiz.js
 // Options: --example=mirror|stochastic|animation --width=1280 --height=720
 //          --seconds=5 --adaptive-steps=512 --linear-steps=64 --max-distance=20
-//          --candidates=1,2,3,4 --binary-refine=true --max-level=6 --glossy-min-level=1
+//          --candidates=1,2,3,4 --binary-refine=true --max-level=6 --rough-min-level=1
 //          --roughness=1 (sets scene roughness as each example's own slider does)
 // A fairer linear reference (one step per pixel, same thickness rule as adaptive):
 //          --binary-refine=false --linear-steps=1024
@@ -80,7 +80,7 @@ try {
 			device.pushErrorScope( 'validation' );
 			if ( settings.roughness !== null ) setRoughness( settings.roughness );
 			// The stochastic example re-applies its own params; the others have none.
-			node.glossyMinLevel = params.glossyMinLevel = settings.glossyMinLevel;
+			node.roughMinLevel = params.roughMinLevel = settings.roughMinLevel;
 			// Linear SSR is measured twice: as each example configures it on load
 			// (approximate quality), and raised to quality comparable with adaptive.
 			const exampleDefaults = { quality: params.quality, binaryRefine: params.binaryRefine, maxDistance: params.maxDistance };
@@ -247,7 +247,7 @@ try {
 			if ( validationError ) throw new Error( validationError.message );
 			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: comparable.maxDistance, roughness: settings.roughness, exampleDefaults, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, levels: hierarchy.levels.length, creation, modes, speedup: modes.find( mode => mode.adaptive ).fps / modes[ 0 ].fps };
 
-		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, roughness: option( 'roughness', null ) === null ? null : Number( option( 'roughness' ) ), glossyMinLevel: Number( option( 'glossy-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
+		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, roughness: option( 'roughness', null ) === null ? null : Number( option( 'roughness' ) ), roughMinLevel: Number( option( 'rough-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );
 		results.push( { example, ...result } );
 		console.log( JSON.stringify( results.at( - 1 ), null, 2 ) );

@@ -52,7 +52,7 @@
 
 			const params = {
 				output: 'Beauty', traa: true,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: false, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: true, coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
 			};
@@ -288,16 +288,16 @@
 					ssrNode.tracing = params.adaptive ? 'adaptive' : 'linear';
 					ssrNode.maxCandidates = params.maxCandidates;
 					ssrNode.adaptiveMaxSteps.value = params.adaptiveSteps;
-					qualityController.disable( params.adaptive );
-					refineController.disable( params.adaptive );
-					adaptiveStepsController.disable( ! params.adaptive );
-					candidatesController.disable( ! params.adaptive );
-					occlusionController.disable( ! params.adaptive );
-					coneTracingController.disable( ! params.adaptive );
+					// Only the active tracer's group is shown.
+					adaptiveGui[ params.adaptive ? 'show' : 'hide' ]();
+					linearGui[ params.adaptive ? 'hide' : 'show' ]();
+					for ( const controller of coneControllers ) controller.disable( ! params.coneEnabled );
 					ssrNode.occlusionSkipping = params.occlusionSkipping;
-					ssrNode.coneMaxLevel.value = params.coneMaxLevel;
+					ssrNode.coneMaxLevel.value = params.coneEnabled ? params.coneMaxLevel : 0;
 					ssrNode.coneSamples.value = params.coneSamples;
 					ssrNode.coneTracing = params.coneTracing;
+					ssrNode.coneValidate = params.coneValidate;
+					ssrNode.cameraRays = params.cameraRays;
 					ssrNode.quality.value = params.quality;
 					ssrNode.binaryRefine = params.binaryRefine;
 					ssrNode.maxDistance.value = params.maxDistance;
@@ -315,16 +315,28 @@
 
 				const ssrGui = renderer.inspector.createParameters( 'SSR' );
 				ssrGui.add( params, 'adaptive' ).name( 'Hi-Z / adaptive SSR' ).onChange( updateParameters ).disable( ! renderer.backend.isWebGPUBackend );
-				const candidatesController = ssrGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( updateParameters );
-				const adaptiveStepsController = ssrGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( updateParameters );
-				const occlusionController = ssrGui.add( params, 'occlusionSkipping' ).name( 'Occlusion skipping' ).onChange( updateParameters );
-				ssrGui.add( params, 'coneMaxLevel', 0, 8, 1 ).name( 'Cone max mip' ).onChange( updateParameters );
-				ssrGui.add( params, 'coneSamples', 1, 32, 1 ).name( 'Cone samples' ).onChange( updateParameters );
-				const coneTracingController = ssrGui.add( params, 'coneTracing' ).name( 'Cone-sized Hi-Z stop' ).onChange( updateParameters );
-				const qualityController = ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
-				const refineController = ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 				ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );
 				ssrGui.add( params, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( updateParameters );
+
+				// Each ray reads the beauty mip matching its cone footprint; off reads full resolution.
+				const coneGui = renderer.inspector.createParameters( 'SSR Cone Samples' );
+				coneGui.add( params, 'coneEnabled' ).name( 'Enabled' ).onChange( updateParameters );
+				const coneControllers = [
+					coneGui.add( params, 'coneMaxLevel', 1, 8, 1 ).name( 'Max mip' ).onChange( updateParameters ),
+					coneGui.add( params, 'coneSamples', 1, 32, 1 ).name( 'Samples' ).onChange( updateParameters )
+				];
+
+				const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
+				adaptiveGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidates' ).onChange( updateParameters );
+				adaptiveGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Max steps' ).onChange( updateParameters );
+				adaptiveGui.add( params, 'occlusionSkipping' ).name( 'Skip occluded' ).onChange( updateParameters );
+				adaptiveGui.add( params, 'coneTracing' ).name( 'Cone tracing' ).onChange( updateParameters );
+				adaptiveGui.add( params, 'coneValidate' ).name( 'Cone validate' ).onChange( updateParameters );
+				adaptiveGui.add( params, 'cameraRays' ).name( 'Camera rays' ).onChange( updateParameters );
+
+				const linearGui = renderer.inspector.createParameters( 'Linear Tracing' );
+				linearGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
+				linearGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 
 				const denoiseGui = renderer.inspector.createParameters( 'Denoising' );
 				denoiseGui.add( params, 'denoise' ).name( 'Enabled' ).onChange( ( value ) => denoiseEnabled.value = Number( value ) );

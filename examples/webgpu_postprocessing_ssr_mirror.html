@@ -221,13 +221,17 @@
 			ssrGui.add( params, 'enabled' ).name( 'Enabled' ).onChange( updateOutput );
 			ssrGui.add( params, 'intensity', 0, 1 ).name( 'Intensity' ).onChange( updateParameters );
 			ssrGui.add( params, 'adaptive' ).name( 'Hi-Z / adaptive SSR' ).onChange( updateParameters ).disable( ! renderer.backend.isWebGPUBackend );
-			const candidatesController = ssrGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidate budget' ).onChange( updateParameters );
-			const adaptiveStepsController = ssrGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Adaptive iterations' ).onChange( updateParameters );
-			const occlusionController = ssrGui.add( params, 'occlusionSkipping' ).name( 'Occlusion skipping' ).onChange( updateParameters );
-			const qualityController = ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
-			const refineController = ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 			ssrGui.add( params, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( updateParameters );
 			ssrGui.add( params, 'thickness', 0, 0.05 ).name( 'Thickness' ).onChange( updateParameters );
+
+			const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
+			adaptiveGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidates' ).onChange( updateParameters );
+			adaptiveGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Max steps' ).onChange( updateParameters );
+			adaptiveGui.add( params, 'occlusionSkipping' ).name( 'Skip occluded' ).onChange( updateParameters );
+
+			const linearGui = renderer.inspector.createParameters( 'Linear Tracing' );
+			linearGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
+			linearGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 
 			const blurGui = renderer.inspector.createParameters( 'Blur' );
 			blurGui.add( params, 'blur' ).name( 'Enabled' ).onChange( value => blurEnabled.value = Number( value ) );
@@ -252,11 +256,9 @@
 				reflection.tracing = params.adaptive ? 'adaptive' : 'linear';
 				reflection.maxCandidates = params.maxCandidates;
 				reflection.adaptiveMaxSteps.value = params.adaptiveSteps;
-				qualityController.disable( params.adaptive );
-				refineController.disable( params.adaptive );
-				adaptiveStepsController.disable( ! params.adaptive );
-				candidatesController.disable( ! params.adaptive );
-				occlusionController.disable( ! params.adaptive );
+				// Only the active tracer's group is shown.
+				adaptiveGui[ params.adaptive ? 'show' : 'hide' ]();
+				linearGui[ params.adaptive ? 'hide' : 'show' ]();
 				reflection.occlusionSkipping = params.occlusionSkipping;
 				reflection.quality.value = params.quality;
 				reflection.intensity.value = params.intensity;

@@ -1,4 +1,5 @@
-import { Fn, float, getViewPosition, sample, textureSize, uniform, vec2, vec4 } from 'three/tsl';
+import { WebGPUCoordinateSystem } from 'three/webgpu';
+import { Fn, float, sample, textureSize, uniform, vec2, vec4 } from 'three/tsl';
 
 /**
  * Upsamples a reduced resolution effect to full resolution with a joint bilateral
@@ -26,20 +27,30 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 
 	const projectionInverse = uniform( camera.projectionMatrixInverse );
 
-	return sample( coordinate => Fn( () => {
+	return sample( coordinate => Fn( ( builder ) => {
 
 		const size = vec2( textureSize( lowDepthNode ) );
 		const pixel = coordinate.mul( size ).sub( 0.5 );
 		const base = pixel.floor();
 		const fraction = pixel.fract();
-		const viewZ = depth => getViewPosition( coordinate, depth, projectionInverse ).z;
+
+		// view z depends on depth alone, so only the z and w rows of the inverse projection are needed
+		const zRow = vec2( projectionInverse.element( 2 ).z, projectionInverse.element( 3 ).z ).toConst();
+		const wRow = vec2( projectionInverse.element( 2 ).w, projectionInverse.element( 3 ).w ).toConst();
+		const viewZ = depth => {
+
+			if ( builder.renderer.coordinateSystem !== WebGPUCoordinateSystem && builder.renderer.reversedDepthBuffer !== true ) depth = depth.mul( 2 ).sub( 1 );
+			return depth.mul( zRow.x ).add( zRow.y ).div( depth.mul( wRow.x ).add( wRow.y ) );
+
+		};
+
 		const z = viewZ( depthNode.sample( coordinate ).r ).toConst();
 		const n = normalNode.sample( coordinate ).toConst();
 		const tolerance = z.abs().mul( 0.02 ).max( 0.001 );
 
-		// the four low resolution depths in one fetch, ordered like textureGather()
-		const gathered = lowDepthNode.gather().sample( base.add( 1 ).div( size ) ).toConst();
-		const tapDepths = [ gathered.w, gathered.z, gathered.x, gathered.y ];
+		// the four low resolution view depths from one fetch, ordered like textureGather()
+		const gathered = viewZ( lowDepthNode.gather().sample( base.add( 1 ).div( size ) ) ).toConst();
+		const tapZ = [ gathered.w, gathered.z, gathered.x, gathered.y ];
 
 		const sum = vec4( 0 ).toVar();
 		const total = float( 0 ).toVar();
@@ -49,7 +60,7 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 			for ( let x = 0; x <= 1; x ++ ) {
 
 				const tapUV = base.add( vec2( x, y ) ).add( 0.5 ).div( size ).toConst();
-				const depthWeight = viewZ( tapDepths[ y * 2 + x ] ).sub( z ).div( tolerance ).pow2().negate().exp();
+				const depthWeight = tapZ[ y * 2 + x ].sub( z ).div( tolerance ).pow2().negate().exp();
 				const normalWeight = lowNormalNode.sample( tapUV ).dot( n ).max( 0 ).pow( 8 );
 				const wx = x === 0 ? fraction.x.oneMinus() : fraction.x;
 				const wy = y === 0 ? fraction.y.oneMinus() : fraction.y;

@@ -41,6 +41,7 @@
 			import * as THREE from 'three/webgpu';
 			import { Fn, float, getViewPosition, mrt, normalView, output, pass, rtt, sample, screenUV, textureSize, uniform, vec2, vec4, velocity } from 'three/tsl';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { depthAwareBlur } from 'three/addons/tsl/display/depthAwareBlur.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 
 			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
@@ -152,6 +153,12 @@
 
 				} );
 
+				// naive upsampling: bilinear interpolation followed by a separable depth-aware blur,
+				// which filters one channel at a time
+
+				const blurPass = ( source, direction ) => rtt( vec4( ...[ 'rrrr', 'gggg', 'bbbb' ].map( ( channel ) => depthAwareBlur( sample( ( uv ) => source.sample( uv )[ channel ] ), depth, direction, camera, 2, 0.1 ) ), 1 ) );
+				const blurStep = lowSize.reciprocal().mul( 0.5 ); // half a low resolution texel
+
 				// each upsampler writes a full resolution linear half float target, which is then
 				// temporally antialiased (this also jitters the camera) and tone mapped
 
@@ -159,6 +166,7 @@
 					'none': rtt( lowColor.sample( screenUV.mul( lowSize ).floor().add( 0.5 ).div( lowSize ) ) ),
 					'bilinear': rtt( lowColor.sample( screenUV ) ),
 					'bilateral': rtt( bilateralUpsample() ),
+					'depth-aware-blur': blurPass( blurPass( lowColor, vec2( blurStep.x, 0 ) ), vec2( 0, blurStep.y ) ),
 					'joint-bilateral': rtt( jointBilateralUpsample( lowColor, lowDepth, lowNormal, depth, normal, camera ).sample( screenUV ) )
 				};
 

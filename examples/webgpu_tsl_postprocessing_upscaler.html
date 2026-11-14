@@ -159,7 +159,7 @@
 					'none': rtt( lowColor.sample( screenUV.mul( lowSize ).floor().add( 0.5 ).div( lowSize ) ) ),
 					'bilinear': rtt( lowColor.sample( screenUV ) ),
 					'bilateral': rtt( bilateralUpsample() ),
-					'joint-bilateral': rtt( jointBilateralUpsample( sample( ( uv ) => vec4( lowColor.sample( uv ).rgb, 1 ) ), lowDepth, lowNormal, depth, normal, camera ).sample( screenUV ) )
+					'joint-bilateral': rtt( jointBilateralUpsample( lowColor, lowDepth, lowNormal, depth, normal, camera ).sample( screenUV ) )
 				};
 
 				renderPipeline = new THREE.RenderPipeline( renderer );

@@ -7,15 +7,18 @@ import { Fn, float, sample, textureSize, uniform, vec2, vec4 } from 'three/tsl';
  * rejected by view depth and normal differences against the full resolution guides,
  * so the result does not bleed across silhouettes.
  *
- * The input is expected to store a signal in RGB and its coverage in alpha. RGB is
- * averaged weighted by coverage, alpha by the filter weights alone. A small floor on
- * the weights fades the result to plain bilinear interpolation when no texel matches.
+ * A small floor on the weights fades the result to plain bilinear interpolation when
+ * no texel matches.
+ *
+ * All four channels are filtered alike by default. With the `coverage` option the
+ * input is expected to store a signal in RGB and its coverage in alpha: RGB is then
+ * averaged weighted by coverage, alpha by the filter weights alone.
  *
  * Reference: {@link https://johanneskopf.de/publications/jbu/}
  *
  * @tsl
  * @function
- * @param {Node<vec4>} inputNode - The low resolution texture to upsample (RGB signal, alpha coverage).
+ * @param {Node<vec4>} inputNode - The low resolution texture to upsample.
  * @param {TextureNode} lowDepthNode - Depth at the input's resolution, in the red channel. Its size defines the texel grid.
  * @param {Node<vec3>} lowNormalNode - Normalized view-space normals at the input's resolution.
  * @param {Node<float>} depthNode - Full resolution depth, in the red channel.
@@ -24,11 +27,12 @@ import { Fn, float, sample, textureSize, uniform, vec2, vec4 } from 'three/tsl';
  * @param {Object} [options={}] - The filter options.
  * @param {Node<float>|number} [options.depthTolerance=0.02] - The view depth difference, relative to the view depth, at which a texel is rejected.
  * @param {number} [options.normalPower=8] - How strongly a normal difference rejects a texel. Must be a power of two.
+ * @param {boolean} [options.coverage=false] - Whether the input's alpha is the coverage of its RGB signal.
  * @returns {SampleNode} The upsampled result, samplable at any coordinate.
  */
 export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, depthNode, normalNode, camera, options = {} ) => {
 
-	const { depthTolerance = 0.02, normalPower = 8 } = options;
+	const { depthTolerance = 0.02, normalPower = 8, coverage = false } = options;
 
 	const projectionInverse = uniform( camera.projectionMatrixInverse );
 
@@ -72,14 +76,14 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 				const wy = y === 0 ? fraction.y.oneMinus() : fraction.y;
 				const weight = wx.mul( wy ).mul( depthWeight.mul( normalWeight ).add( 1e-4 ) ).toConst();
 				const value = inputNode.sample( tapUV );
-				sum.addAssign( vec4( value.rgb.mul( value.a ), value.a ).mul( weight ) );
+				sum.addAssign( ( coverage ? vec4( value.rgb.mul( value.a ), value.a ) : value ).mul( weight ) );
 				total.addAssign( weight );
 
 			}
 
 		}
 
-		return vec4( sum.rgb.div( sum.a.max( 1e-6 ) ), sum.a.div( total ) );
+		return coverage ? vec4( sum.rgb.div( sum.a.max( 1e-6 ) ), sum.a.div( total ) ) : sum.div( total );
 
 	} )() );
 

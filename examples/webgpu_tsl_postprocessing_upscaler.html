@@ -189,20 +189,20 @@
 				// GUI
 
 				const gui = renderer.inspector.createParameters( 'Upscaler' );
-				gui.add( params, 'upscaleFactor', 1, 8, 0.25 ).name( 'upscale factor' ).onChange( ( value ) => {
+				gui.add( params, 'output', [ 'Beauty', 'Error' ] ).name( 'Output' ).onChange( updateUpsampler );
+				const errorScaleControl = gui.add( errorScale, 'value', 1, 16 ).name( 'Error scale' );
+				gui.add( params, 'upscaleFactor', 1, 8, 0.25 ).name( 'Upscale factor' ).onChange( ( value ) => {
 
 					scenePass.setResolutionScale( 1 / value );
 					updateResolution();
 
 				} );
-				gui.add( params, 'upsampler', Object.keys( upsamplers ) ).onChange( updateUpsampler );
+				gui.add( params, 'upsampler', Object.keys( upsamplers ) ).name( 'Upsampler' ).onChange( updateUpsampler );
 				const bilateralControls = [
-					gui.add( spatialSigma, 'value', 0.5, 3 ).name( 'spatial sigma' ),
-					gui.add( depthSensitivity, 'value', 1, 100 ).name( 'depth sensitivity' )
+					gui.add( spatialSigma, 'value', 0.5, 3 ).name( 'Spatial sigma' ),
+					gui.add( depthSensitivity, 'value', 1, 100 ).name( 'Depth sensitivity' )
 				];
-				gui.add( params, 'output', [ 'Beauty', 'Error' ] ).onChange( updateUpsampler );
-				const errorScaleControl = gui.add( errorScale, 'value', 1, 16 ).name( 'error scale' );
-				gui.add( params, 'rotate' );
+				gui.add( params, 'rotate' ).name( 'Rotate' );
 
 				let traaNode = null;
 

@@ -61,7 +61,7 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 
 				const tapUV = base.add( vec2( x, y ) ).add( 0.5 ).div( size ).toConst();
 				const depthWeight = tapZ[ y * 2 + x ].sub( z ).div( tolerance ).pow2().negate().exp();
-				const normalWeight = lowNormalNode.sample( tapUV ).dot( n ).max( 0 ).pow( 8 );
+				const normalWeight = lowNormalNode.sample( tapUV ).dot( n ).max( 0 ).toConst().pow2().toConst().pow2().toConst().pow2(); // power of 8
 				const wx = x === 0 ? fraction.x.oneMinus() : fraction.x;
 				const wy = y === 0 ? fraction.y.oneMinus() : fraction.y;
 				const weight = wx.mul( wy ).mul( depthWeight.mul( normalWeight ).add( 1e-4 ) ).toConst();

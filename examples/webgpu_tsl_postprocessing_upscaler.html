@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - upscaler</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - upscaler">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_tsl_postprocessing_upscaler.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_tsl_postprocessing_upscaler.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Upscaler</span>
+			</div>
+
+			<small>
+				Renders the scene at a reduced resolution and upscales it with a selectable filter, by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br />
+				<span id="resolution"></span>
+			</small>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import { Fn, float, getViewPosition, mrt, normalView, output, pass, rtt, sample, screenUV, textureSize, uniform, vec2, vec4, velocity } from 'three/tsl';
+			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
+
+			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+			let camera, scene, renderer, renderPipeline, controls, model;
+
+			const timer = new THREE.Timer();
+
+			const params = {
+				upscaleFactor: 3,
+				upsampler: 'joint-bilateral',
+				rotate: true
+			};
+
+			// only used by the bilateral upsampler
+			const spatialSigma = uniform( 1.2 );
+			const depthSensitivity = uniform( 30 );
+
+			init();
+
+			async function init() {
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.25, 20 );
+				camera.position.set( - 1.8, 0.6, 2.7 );
+
+				scene = new THREE.Scene();
+
+				renderer = new THREE.WebGPURenderer();
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.NeutralToneMapping;
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+
+				await renderer.init();
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.enableDamping = true;
+				controls.minDistance = 1;
+				controls.maxDistance = 10;
+
+				const [ environment, gltf ] = await Promise.all( [
+					new UltraHDRLoader().loadAsync( 'textures/equirectangular/royal_esplanade_2k.hdr.jpg' ),
+					new GLTFLoader().loadAsync( 'models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf' )
+				] );
+
+				environment.mapping = THREE.EquirectangularReflectionMapping;
+				scene.background = environment;
+				scene.environment = environment;
+
+				model = gltf.scene;
+				scene.add( model );
+
+				// full resolution depth, normal and velocity guides
+
+				const guidePass = pass( scene, camera );
+				guidePass.setMRT( mrt( { output: normalView, velocity } ) );
+
+				const depth = guidePass.getTextureNode( 'depth' );
+				const guideVelocity = guidePass.getTextureNode( 'velocity' );
+				const normal = sample( ( uv ) => guidePass.getTextureNode( 'output' ).sample( uv ).rgb.normalize() );
+
+				// reduced resolution beauty in linear half float, with depth and normal on the same texel grid
+
+				const scenePass = pass( scene, camera );
+				scenePass.setMRT( mrt( { output, normal: normalView } ) );
+				scenePass.setResolutionScale( 1 / params.upscaleFactor );
+
+				const lowColor = scenePass.getTextureNode( 'output' );
+				const lowDepth = scenePass.getTextureNode( 'depth' );
+				const lowNormal = sample( ( uv ) => scenePass.getTextureNode( 'normal' ).sample( uv ).rgb.normalize() );
+				const lowSize = vec2( textureSize( lowDepth ) );
+
+				// depth-only bilateral upsampling over a 5x5 low resolution footprint, from webgpu_postprocessing_fog
+
+				const projectionInverse = uniform( camera.projectionMatrixInverse );
+
+				const bilateralUpsample = Fn( () => {
+
+					const viewDepth = ( uv ) => getViewPosition( uv, depth.sample( uv ).r, projectionInverse ).z.negate().max( 0.001 );
+
+					const centerDepth = viewDepth( screenUV ).toConst();
+					const spatialFactor = float( - 0.5 ).div( spatialSigma.mul( spatialSigma ).max( 0.01 ) );
+					const depthFactor = depthSensitivity.mul( depthSensitivity ).mul( - 0.5 );
+
+					const sum = vec4( 0 ).toVar();
+					const total = float( 0 ).toVar();
+
+					for ( let y = - 2; y <= 2; y ++ ) {
+
+						for ( let x = - 2; x <= 2; x ++ ) {
+
+							const tapUV = screenUV.add( vec2( x, y ).div( lowSize ) ).toConst();
+							const depthDifference = viewDepth( tapUV ).sub( centerDepth ).div( centerDepth.max( 0.1 ) );
+							const weight = spatialFactor.mul( x * x + y * y ).exp().mul( depthDifference.mul( depthDifference ).mul( depthFactor ).exp() );
+
+							sum.addAssign( lowColor.sample( tapUV ).mul( weight ) );
+							total.addAssign( weight );
+
+						}
+
+					}
+
+					return sum.div( total.max( 0.0001 ) );
+
+				} );
+
+				// each upsampler writes a full resolution linear half float target, which is then
+				// temporally antialiased (this also jitters the camera) and tone mapped
+
+				const upsamplers = {
+					'none': rtt( lowColor.sample( screenUV.mul( lowSize ).floor().add( 0.5 ).div( lowSize ) ) ),
+					'bilinear': rtt( lowColor.sample( screenUV ) ),
+					'bilateral': rtt( bilateralUpsample() ),
+					'joint-bilateral': rtt( jointBilateralUpsample( sample( ( uv ) => vec4( lowColor.sample( uv ).rgb, 1 ) ), lowDepth, lowNormal, depth, normal, camera ).sample( screenUV ) )
+				};
+
+				renderPipeline = new THREE.RenderPipeline( renderer );
+
+				// GUI
+
+				const gui = renderer.inspector.createParameters( 'Upscaler' );
+				gui.add( params, 'upscaleFactor', 1, 8, 0.25 ).name( 'upscale factor' ).onChange( ( value ) => {
+
+					scenePass.setResolutionScale( 1 / value );
+					updateResolution();
+
+				} );
+				gui.add( params, 'upsampler', Object.keys( upsamplers ) ).onChange( updateUpsampler );
+				const bilateralControls = [
+					gui.add( spatialSigma, 'value', 0.5, 3 ).name( 'spatial sigma' ),
+					gui.add( depthSensitivity, 'value', 1, 100 ).name( 'depth sensitivity' )
+				];
+				gui.add( params, 'rotate' );
+
+				function updateUpsampler() {
+
+					if ( renderPipeline.outputNode.isTRAANode ) renderPipeline.outputNode.dispose();
+
+					renderPipeline.outputNode = traa( upsamplers[ params.upsampler ], depth, guideVelocity, camera );
+					renderPipeline.needsUpdate = true;
+
+					bilateralControls.forEach( ( control ) => params.upsampler === 'bilateral' ? control.show() : control.hide() );
+
+				}
+
+				updateUpsampler();
+				updateResolution();
+
+				window.addEventListener( 'resize', onWindowResize );
+
+				renderer.setAnimationLoop( render );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				updateResolution();
+
+			}
+
+			function updateResolution() {
+
+				// matches the pass, which floors its scaled size
+				const { width, height } = renderer.getDrawingBufferSize( new THREE.Vector2() );
+				const lowWidth = Math.floor( width / params.upscaleFactor );
+				const lowHeight = Math.floor( height / params.upscaleFactor );
+				const describe = ( w, h ) => `${ w } x ${ h } (${ ( w * h ).toLocaleString() } pixels)`;
+
+				document.getElementById( 'resolution' ).textContent = `Beauty render at ${ describe( lowWidth, lowHeight ) } upscaled to ${ describe( width, height ) }.`;
+
+			}
+
+			function render() {
+
+				timer.update();
+
+				if ( params.rotate ) model.rotation.y += timer.getDelta() * 0.2;
+
+				controls.update();
+
+				renderPipeline.render();
+
+			}
+
+		</script>
+
+	</body>
+</html>

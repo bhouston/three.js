@@ -1,4 +1,4 @@
-import { Fn, If, float, getViewPosition, sample, textureSize, uniform, vec2, vec4 } from 'three/tsl';
+import { Fn, float, getViewPosition, sample, textureSize, uniform, vec2, vec4 } from 'three/tsl';
 
 /**
  * Upsamples a reduced resolution effect to full resolution with a joint bilateral
@@ -7,8 +7,8 @@ import { Fn, If, float, getViewPosition, sample, textureSize, uniform, vec2, vec
  * so the result does not bleed across silhouettes.
  *
  * The input is expected to store a signal in RGB and its coverage in alpha. RGB is
- * averaged weighted by coverage, alpha by the filter weights alone. When no texel
- * matches, plain bilinear interpolation is used.
+ * averaged weighted by coverage, alpha by the filter weights alone. A small floor on
+ * the weights fades the result to plain bilinear interpolation when no texel matches.
  *
  * Reference: {@link https://johanneskopf.de/publications/jbu/}
  *
@@ -48,7 +48,7 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 				const normalWeight = lowNormalNode.sample( tapUV ).dot( n ).max( 0 ).pow( 8 );
 				const wx = x === 0 ? fraction.x.oneMinus() : fraction.x;
 				const wy = y === 0 ? fraction.y.oneMinus() : fraction.y;
-				const weight = wx.mul( wy ).mul( depthWeight ).mul( normalWeight ).toConst();
+				const weight = wx.mul( wy ).mul( depthWeight.mul( normalWeight ).add( 1e-4 ) ).toConst();
 				const value = inputNode.sample( tapUV );
 				sum.addAssign( vec4( value.rgb.mul( value.a ), value.a ).mul( weight ) );
 				total.addAssign( weight );
@@ -57,14 +57,7 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 
 		}
 
-		// no matching texel, use plain interpolation
-		const result = inputNode.sample( coordinate ).toVar();
-		If( total.greaterThan( 1e-4 ), () => {
-
-			result.assign( vec4( sum.rgb.div( sum.a.max( 1e-6 ) ), sum.a.div( total ) ) );
-
-		} );
-		return result;
+		return vec4( sum.rgb.div( sum.a.max( 1e-6 ) ), sum.a.div( total ) );
 
 	} )() );
 

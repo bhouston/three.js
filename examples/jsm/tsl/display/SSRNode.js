@@ -127,7 +127,7 @@ class SSRNode extends Node {
 		if ( ! Number.isInteger( this._maxCandidates ) || this._maxCandidates < 1 || this._maxCandidates > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
 		this._glossyMinLevel = options.glossyMinLevel ?? 0;
 		this._coneTracing = options.coneTracing ?? false;
-		this._coneValidate = true;
+		this._coneValidate = false;
 		this._skipCameraRays = false;
 		this._occlusionSkipping = options.occlusionSkipping ?? false;
 		this._showIterations = false;

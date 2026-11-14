@@ -116,6 +116,8 @@
 
 			ssr: {
 				resolutionScale: 1,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: true, roughMinLevel: 0,
+				coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -185,7 +187,7 @@
 
 					object.castShadow = true;
 					object.receiveShadow = true;
-					object.material.roughness = 0.3;
+					object.material.roughness = params.roughness;
 					object.material.normalMap = null;
 
 				} );
@@ -244,6 +246,11 @@
 				normal: vec4( packNormalToRGB( normalView ).rgb, materialRoughness ),
 				velocity: velocity
 			} ) );
+
+			// mip chain of the beauty pass for the SSR cone footprint lookup
+			const beautyTexture = scenePass.getTexture( 'output' );
+			beautyTexture.generateMipmaps = true;
+			beautyTexture.minFilter = THREE.LinearMipmapLinearFilter;
 
 			scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
 			const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal' );
@@ -343,6 +350,8 @@
 				'Compare (Denoise)': OUTPUT_COMPARE_DENOISE,
 				'Compare (Reflections)': OUTPUT_COMPARE_SSR,
 				'Ray Length': 7,
+				'SSR Iterations': 8,
+				'SSR Cone Mip': 9,
 				'Accumulation Speed (Alpha)': 6
 			};
 
@@ -352,10 +361,49 @@
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params.ssr, 'intensity', 0, 4 ).name( 'Intensity' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'maxDistance', 0, 5 ).name( 'Max distance' ).onChange( applyParams );
+			// Only the active tracer's group is shown.
+			const updateTracing = () => {
+
+				applyParams();
+				adaptiveGui[ params.ssr.adaptive ? 'show' : 'hide' ]();
+				linearGui[ params.ssr.adaptive ? 'hide' : 'show' ]();
+
+			};
+
+			ssrGui.add( params.ssr, 'adaptive' ).name( 'Hi-Z / adaptive SSR' ).onChange( updateTracing ).disable( ! renderer.backend.isWebGPUBackend );
+			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
+
+			// Each ray reads the beauty mip matching its cone footprint; off reads full resolution.
+			const coneGui = renderer.inspector.createParameters( 'SSR Cone Samples' );
+			const updateCone = () => {
+
+				applyParams();
+				for ( const controller of coneControllers ) controller.disable( ! params.ssr.coneEnabled );
+
+			};
+
+			coneGui.add( params.ssr, 'coneEnabled' ).name( 'Enabled' ).onChange( updateCone );
+			const coneControllers = [
+				coneGui.add( params.ssr, 'coneMaxLevel', 1, 8, 1 ).name( 'Max mip' ).onChange( applyParams ),
+				coneGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Samples' ).onChange( applyParams )
+			];
+			updateCone();
+
+			const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
+			adaptiveGui.add( params.ssr, 'maxCandidates', 1, 64, 1 ).name( 'Candidates' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'adaptiveSteps', 16, 256, 16 ).name( 'Max steps' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'occlusionSkipping' ).name( 'Skip occluded' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'roughMinLevel', 0, 3, 1 ).name( 'Rough min mip' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'coneTracing' ).name( 'Cone tracing' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'coneValidate' ).name( 'Cone validate' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'cameraRays' ).name( 'Camera rays' ).onChange( applyParams );
+
+			const linearGui = renderer.inspector.createParameters( 'Linear Tracing' );
+			linearGui.add( params.ssr, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( applyParams );
+			linearGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams );
+			linearGui.add( params.ssr, 'stepExponent', 1, 4, 0.5 ).name( 'Step exponent' ).onChange( applyParams );
+			updateTracing();
 
 			const denoiseGui = renderer.inspector.createParameters( 'Denoising' );
 			denoiseGui.add( params.denoise, 'enabled' ).name( 'Enabled' ).onChange( applyParams );
@@ -387,7 +435,6 @@
 
 			const advancedGui = renderer.inspector.createParameters( 'SSR advanced' ).close();
 			advancedGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'Mirror bias' ).onChange( applyParams );
-			advancedGui.add( params.ssr, 'stepExponent', 1, 4, 0.5 ).name( 'Step exponent' ).onChange( applyParams );
 
 			// Concise UI for Directional Light controls
 			const lightGui = renderer.inspector.createParameters( 'Light' ).close();
@@ -408,9 +455,19 @@
 
 			if ( ! ssrNode ) return;
 
+			ssrNode.tracing = params.ssr.adaptive ? 'adaptive' : 'linear';
+			ssrNode.maxCandidates = params.ssr.maxCandidates;
+			ssrNode.roughMinLevel = params.ssr.roughMinLevel;
+			ssrNode.coneTracing = params.ssr.coneTracing;
+			ssrNode.coneValidate = params.ssr.coneValidate;
+			ssrNode.cameraRays = params.ssr.cameraRays;
+			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
+			ssrNode.occlusionSkipping = params.ssr.occlusionSkipping;
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
+			ssrNode.coneMaxLevel.value = params.ssr.coneEnabled ? params.ssr.coneMaxLevel : 0;
+			ssrNode.coneSamples.value = params.ssr.coneSamples;
 			// stepExponent / screenEdgeFadeBlack / binaryRefine are build-time constants: assigning
 			// them recompiles the SSR material (the setters no-op when the value is unchanged).
 			ssrNode.stepExponent = params.ssr.stepExponent;
@@ -503,6 +560,8 @@
 				case 4: node = applyGrading( vec4( denoiseNode.rgb, 1 ) ); break; // SSR DN
 				case 6: node = vec4( denoiseNode.aaa, 1 ); break; // Accumulation Speed (Alpha)
 				case 7: node = vec4( ssrNode.aaa, 1 ); break; // Ray Length
+				case 8: // Iteration heat map
+				case 9: node = vec4( ssrNode.rgb, 1 ); break; // Cone mip heat map
 				case OUTPUT_COMPARE_DENOISE:
 					node = buildCompareNode(
 						applyGrading( vec4( denoiseNode.rgb, 1 ) ),
@@ -518,7 +577,9 @@
 			compareHint.hidden = ! isCompareMode();
 			releaseCompareControls();
 
-			renderPipeline.outputColorTransform = params.output === 6 || params.output === 7;
+			ssrNode.showIterations = params.output === 8;
+			ssrNode.showConeMip = params.output === 9;
+			renderPipeline.outputColorTransform = params.output >= 6 && params.output <= 9;
 			renderPipeline.outputNode = node;
 			renderPipeline.needsUpdate = true;
 

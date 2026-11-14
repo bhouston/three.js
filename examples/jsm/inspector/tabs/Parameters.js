@@ -125,6 +125,19 @@ class ParametersGroup {
 
 		this._addInfo( editor, subItem.data[ 0 ] );
 
+		editor.disable = ( disabled = true ) => {
+
+			// Disable the whole row, including checkbox row-click and slider drag
+			// handlers, while retaining its value for re-enabling the parameter.
+			subItem.itemRow.inert = disabled;
+			subItem.itemRow.style.opacity = disabled ? '0.4' : '';
+			for ( const input of editor.domElement.querySelectorAll( 'input, button, select' ) ) input.disabled = disabled;
+			return editor;
+
+		};
+
+		editor.enable = () => editor.disable( false );
+
 		editor.listen = () => {
 
 			const update = () => {

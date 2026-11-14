@@ -21,9 +21,14 @@ import { Fn, float, sample, textureSize, uniform, vec2, vec4 } from 'three/tsl';
  * @param {Node<float>} depthNode - Full resolution depth, in the red channel.
  * @param {Node<vec3>} normalNode - Normalized full resolution view-space normals.
  * @param {Camera} camera - The camera the scene is rendered with.
+ * @param {Object} [options={}] - The filter options.
+ * @param {Node<float>|number} [options.depthTolerance=0.02] - The view depth difference, relative to the view depth, at which a texel is rejected.
+ * @param {number} [options.normalPower=8] - How strongly a normal difference rejects a texel. Must be a power of two.
  * @returns {SampleNode} The upsampled result, samplable at any coordinate.
  */
-export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, depthNode, normalNode, camera ) => {
+export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, depthNode, normalNode, camera, options = {} ) => {
+
+	const { depthTolerance = 0.02, normalPower = 8 } = options;
 
 	const projectionInverse = uniform( camera.projectionMatrixInverse );
 
@@ -46,7 +51,7 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 
 		const z = viewZ( depthNode.sample( coordinate ).r ).toConst();
 		const n = normalNode.sample( coordinate ).toConst();
-		const tolerance = z.abs().mul( 0.02 ).max( 0.001 );
+		const tolerance = z.abs().mul( depthTolerance ).max( 0.001 );
 
 		// the four low resolution view depths from one fetch, ordered like textureGather()
 		const gathered = viewZ( lowDepthNode.gather().sample( base.add( 1 ).div( size ) ) ).toConst();
@@ -61,7 +66,8 @@ export const jointBilateralUpsample = ( inputNode, lowDepthNode, lowNormalNode, 
 
 				const tapUV = base.add( vec2( x, y ) ).add( 0.5 ).div( size ).toConst();
 				const depthWeight = tapZ[ y * 2 + x ].sub( z ).div( tolerance ).pow2().negate().exp();
-				const normalWeight = lowNormalNode.sample( tapUV ).dot( n ).max( 0 ).toConst().pow2().toConst().pow2().toConst().pow2(); // power of 8
+				let normalWeight = lowNormalNode.sample( tapUV ).dot( n ).max( 0 );
+				for ( let power = 1; power < normalPower; power *= 2 ) normalWeight = normalWeight.toConst().pow2();
 				const wx = x === 0 ? fraction.x.oneMinus() : fraction.x;
 				const wy = y === 0 ? fraction.y.oneMinus() : fraction.y;
 				const weight = wx.mul( wy ).mul( depthWeight.mul( normalWeight ).add( 1e-4 ) ).toConst();

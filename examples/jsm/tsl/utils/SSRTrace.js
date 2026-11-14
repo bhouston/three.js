@@ -26,11 +26,12 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  * @param {Node<float>|number} [options.depthTolerance=0] - Conservative projected-depth rounding tolerance.
  * @param {number} [options.maxCandidates=1] - Maximum candidate surfaces to validate (compile-time integer).
  * @param {Node<int>|number|Function} [options.minLevel=0] - Finest level later descents need to reach (FidelityFX's most_detailed_mip), or a function of the level-zero pixels travelled so far returning it, for a tolerance that grows along the ray. A coarse leaf is accepted only when the full-resolution pixel under the ray is itself the hit; otherwise that cell is resolved exactly, so hits match `minLevel = 0`.
+ * @param {boolean} [options.coarseHits=false] - Cone-tracing approximation: a coarse leaf is tested once, with its nearest depth at the ray's UV, and stepped over when `acceptHit` rejects that. `acceptHit` receives the cell size in pixels as a fourth argument to widen its tolerance.
  * @param {Function} [options.isHidden] - TSL predicate (entry UV, exit UV, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones, without spending candidates.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, coarseHits = false, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
 
 	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRTrace: maxCandidates must be an integer from 1 to 4096.' );
 
@@ -112,6 +113,21 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 		const exits = edge.sub( originPixel ).mul( inverseXY );
 		const exit = min( min( exits.x, exits.y ), 1 ).toVar();
 
+		const leaveCell = () => {
+
+			s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
+			// Ascend only when leaving the parent cell. Inside the same parent
+			// the coarser test would repeat and cost a second read to descend.
+			const leavesParent = cell.bitAnd( uvec2( 1 ) ).equal( exitParity );
+			If( exits.x.lessThanEqual( exits.y ).select( leavesParent.x, leavesParent.y ), () => {
+
+				mip.assign( mip.add( 1 ).min( lastMip ) );
+
+			} );
+			Continue();
+
+		};
+
 		const raw = cellDepth.toVar();
 		const depth = projectDepth( raw ).toVar();
 		const plane = depth.sub( origin.z ).mul( inverseZ ).toVar();
@@ -155,16 +171,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 			} ).Else( () => {
 
-				s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
-				// Ascend only when leaving the parent cell. Inside the same parent
-				// the coarser test would repeat and cost a second read to descend.
-				const leavesParent = cell.bitAnd( uvec2( 1 ) ).equal( exitParity );
-				If( exits.x.lessThanEqual( exits.y ).select( leavesParent.x, leavesParent.y ), () => {
-
-					mip.assign( mip.add( 1 ).min( lastMip ) );
-
-				} );
-				Continue();
+				leaveCell();
 
 			} );
 
@@ -179,7 +186,24 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		if ( coarse ) {
 
-			If( mip.greaterThan( 0 ), () => {
+			if ( coarseHits ) If( mip.greaterThan( 0 ), () => {
+
+				// Validated against the cell's nearest depth: no full-resolution depth read.
+				const leafUV = pixel.div( size ).toVar();
+				If( acceptHit( leafUV, s, raw, float( int( 1 ).shiftLeft( mip ) ) ), () => {
+
+					hit.assign( true );
+					validated.assign( true );
+					hitUV.assign( leafUV );
+					hitDepth.assign( raw );
+					hitS.assign( s );
+					Break();
+
+				} );
+				leaveCell();
+
+			} );
+			else If( mip.greaterThan( 0 ), () => {
 
 				const leafUV = pixel.div( size ).toVar();
 				const leaf = float( leafDepth( leafUV ) ).toVar();

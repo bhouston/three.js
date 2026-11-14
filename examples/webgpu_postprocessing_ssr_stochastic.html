@@ -117,7 +117,7 @@
 			ssr: {
 				resolutionScale: 1,
 				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, glossyMinLevel: 0,
-				coneMaxLevel: 5, coneSamples: 4, coneTracing: false,
+				coneMaxLevel: 5, coneSamples: 4, coneTracing: false, coneValidate: true, skipCameraRays: false,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -351,6 +351,7 @@
 				'Compare (Reflections)': OUTPUT_COMPARE_SSR,
 				'Ray Length': 7,
 				'SSR Iterations': 8,
+				'SSR Cone Mip': 9,
 				'Accumulation Speed (Alpha)': 6
 			};
 
@@ -383,6 +384,8 @@
 			ssrGui.add( params.ssr, 'coneMaxLevel', 0, 8, 1 ).name( 'Cone max mip' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Cone samples' ).onChange( applyParams );
 			const coneTracingController = ssrGui.add( params.ssr, 'coneTracing' ).name( 'Cone-sized Hi-Z stop' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'coneValidate' ).name( 'Cone hit validation' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'skipCameraRays' ).name( 'Skip rays toward camera' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
 
@@ -442,6 +445,8 @@
 			ssrNode.maxCandidates = params.ssr.maxCandidates;
 			ssrNode.glossyMinLevel = params.ssr.glossyMinLevel;
 			ssrNode.coneTracing = params.ssr.coneTracing;
+			ssrNode.coneValidate = params.ssr.coneValidate;
+			ssrNode.skipCameraRays = params.ssr.skipCameraRays;
 			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
 			ssrNode.occlusionSkipping = params.ssr.occlusionSkipping;
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
@@ -541,7 +546,8 @@
 				case 4: node = applyGrading( vec4( denoiseNode.rgb, 1 ) ); break; // SSR DN
 				case 6: node = vec4( denoiseNode.aaa, 1 ); break; // Accumulation Speed (Alpha)
 				case 7: node = vec4( ssrNode.aaa, 1 ); break; // Ray Length
-				case 8: node = vec4( ssrNode.rgb, 1 ); break; // Iteration heat map
+				case 8: // Iteration heat map
+				case 9: node = vec4( ssrNode.rgb, 1 ); break; // Cone mip heat map
 				case OUTPUT_COMPARE_DENOISE:
 					node = buildCompareNode(
 						applyGrading( vec4( denoiseNode.rgb, 1 ) ),
@@ -558,7 +564,8 @@
 			releaseCompareControls();
 
 			ssrNode.showIterations = params.output === 8;
-			renderPipeline.outputColorTransform = params.output === 6 || params.output === 7 || params.output === 8;
+			ssrNode.showConeMip = params.output === 9;
+			renderPipeline.outputColorTransform = params.output >= 6 && params.output <= 9;
 			renderPipeline.outputNode = node;
 			renderPipeline.needsUpdate = true;
 

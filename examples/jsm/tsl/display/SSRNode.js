@@ -127,8 +127,11 @@ class SSRNode extends Node {
 		if ( ! Number.isInteger( this._maxCandidates ) || this._maxCandidates < 1 || this._maxCandidates > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
 		this._glossyMinLevel = options.glossyMinLevel ?? 0;
 		this._coneTracing = options.coneTracing ?? false;
+		this._coneValidate = true;
+		this._skipCameraRays = false;
 		this._occlusionSkipping = options.occlusionSkipping ?? false;
 		this._showIterations = false;
+		this._showConeMip = false;
 		this.hiZ = options.hiZ ?? null;
 		this._ownsHiZ = false;
 		if ( this._tracing === 'adaptive' && this.hiZ === null ) {
@@ -641,10 +644,75 @@ class SSRNode extends Node {
 	}
 
 	/**
+	 * With `coneTracing`: `false` takes a footprint-sized Hi-Z cell as the hit without the
+	 * normal and thickness tests, as the GPU Pro 5 tracer does. Fastest, but rays passing
+	 * behind or beside geometry hit it. Changing it recompiles adaptive tracing.
+	 *
+	 * @type {boolean}
+	 * @default true
+	 */
+	get coneValidate() {
+
+		return this._coneValidate;
+
+	}
+
+	set coneValidate( value ) {
+
+		if ( value === this._coneValidate ) return;
+		this._coneValidate = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Adaptive stochastic mode only: rays heading back toward the camera are not traced and
+	 * hits fade to the environment as the ray turns toward it, as in GPU Pro 5.
+	 * Changing it recompiles the SSR material.
+	 *
+	 * @type {boolean}
+	 * @default false
+	 */
+	get skipCameraRays() {
+
+		return this._skipCameraRays;
+
+	}
+
+	set skipCameraRays( value ) {
+
+		if ( value === this._skipCameraRays ) return;
+		this._skipCameraRays = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Stochastic mode only: outputs the beauty mip each hit read as a heat map (blue = 0,
+	 * red = `coneMaxLevel`, black = miss). Changing it recompiles the SSR material.
+	 *
+	 * @type {boolean}
+	 * @default false
+	 */
+	get showConeMip() {
+
+		return this._showConeMip;
+
+	}
+
+	set showConeMip( value ) {
+
+		if ( value === this._showConeMip ) return;
+		this._showConeMip = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
 	 * Adaptive stochastic mode only: rays test for a hit at the Hi-Z level whose cells fit inside
-	 * their cone footprint (see {@link SSRNode#coneMaxLevel}) and descend further only when that
-	 * test fails, so hits are unchanged. Takes precedence over `glossyMinLevel`. Changing it
-	 * recompiles adaptive tracing.
+	 * their cone footprint (see {@link SSRNode#coneMaxLevel}), once per cell and with a thickness
+	 * widened to the cell, as Hi-Z cone tracing does. Cheaper, but surfaces narrower than the
+	 * footprint are hit only in proportion to their coverage. Takes precedence over `glossyMinLevel`. Changing it recompiles adaptive tracing.
 	 *
 	 * @type {boolean}
 	 * @default false
@@ -1197,6 +1265,9 @@ class SSRNode extends Node {
 
 			};
 
+			// Positive when the ray heads away from the camera along the view direction.
+			const cameraFacing = this.stochastic && this.skipCameraRays ? dot( viewReflectDir, V ).negate().toVar() : null;
+
 			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ).max( 1e-4 ) ).toVar();
 
 			const d1viewPosition = viewPosition.add( viewReflectDir.mul( maxReflectRayLen ) ).toVar();
@@ -1293,10 +1364,11 @@ class SSRNode extends Node {
 			const validatedPosition = vec3( 0 ).toVar();
 			const adaptiveRay = d1viewPosition.sub( viewPosition ).toConst();
 			const surfacePoint = ( uv, raw ) => getViewPosition( uv, projectionDepth( raw, this._cameraNear, this._cameraFar ), this._cameraProjectionMatrixInverse );
-			const nearRay = ( point ) => {
+			// `cell` widens the tolerance to a coarse Hi-Z cell's size in pixels (cone tracing).
+			const nearRay = ( point, cell = 0 ) => {
 
 				const pixelWidth = getSSRPixelWidth( this._cameraProjectionMatrixInverse, point.z, invResolution.x, this.camera.isPerspectiveCamera );
-				return validateSSRRayDistance( point, viewPosition, adaptiveRay, max( pixelWidth.mul( 3 ), this.thickness ) );
+				return validateSSRRayDistance( point, viewPosition, adaptiveRay, max( pixelWidth.mul( float( cell ).add( 3 ) ), this.thickness ) );
 
 			};
 
@@ -1308,7 +1380,7 @@ class SSRNode extends Node {
 
 			};
 
-			const validateCandidate = ( hitUV, raw ) => {
+			const validateCandidate = ( hitUV, raw, cell ) => {
 
 				const valid = bool( false ).toVar();
 				const allowed = dot( viewReflectDir, this.normalNode.sample( hitUV ).rgb ).lessThan( 0 );
@@ -1316,7 +1388,7 @@ class SSRNode extends Node {
 
 					const point = surfacePoint( hitUV, raw ).toVar();
 					validatedPosition.assign( point );
-					valid.assign( nearRay( point ) );
+					valid.assign( nearRay( point, cell ) );
 
 					if ( this.stochastic === false ) valid.assign( valid.and( pointPlaneDistance( point, viewPosition, viewNormal ).lessThanEqual( this.maxDistance ) ) );
 
@@ -1335,19 +1407,27 @@ class SSRNode extends Node {
 					vec3( uvPos, toDepth( viewPosition.z, this._cameraNear, this._cameraFar ) ),
 					vec3( d1.mul( invResolution ), toDepth( d1viewPosition.z, this._cameraNear, this._cameraFar ) ), {
 						reversedDepth: reversed,
-						start: rayLen.reciprocal(),
+						start: cameraFacing !== null ? cameraFacing.lessThanEqual( 0 ).select( 1, rayLen.reciprocal() ) : rayLen.reciprocal(),
 						maxSteps: this.adaptiveMaxSteps,
 						maxCandidates: this.maxCandidates,
 						// Cone tracing: cells no larger than the footprint radius, taking pixels travelled
 						// on screen as the distance (exact for rays parallel to the screen).
 						minLevel: this.stochastic && this.coneTracing ? travelled => int( log2( travelled.mul( coneTangent ).max( 1 ) ).min( this.coneMaxLevel ) )
 							: this.stochastic && this.glossyMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.glossyMinLevel ), int( 0 ) ) : 0,
+						coarseHits: this.stochastic && this.coneTracing,
 						depthTolerance: 2e-7,
 						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
 						// The cell's farthest surface fails the thickness test where the ray
 						// enters and leaves, so every nearer surface in between fails it too.
 						isHidden: this.occlusionSkipping === false ? null : ( uvIn, uvOut, raw ) => nearRay( surfacePoint( uvIn, raw ).toVar() ).not().and( nearRay( surfacePoint( uvOut, raw ).toVar() ).not() ),
-						acceptHit: ( uv, s, raw ) => validateCandidate( uv, raw )
+						acceptHit: ( uv, s, raw, cell ) => {
+
+							if ( cell === undefined || this.coneValidate ) return validateCandidate( uv, raw, cell );
+							// Unvalidated coarse hit: shade it at the ray's own point.
+							validatedPosition.assign( rayPointAt( s ) );
+							return bool( true );
+
+						}
 					} );
 				if ( this._traceDebug === true ) return vec4( float( result.iterations ), float( result.candidates ), float( result.hit ), float( result.exhausted ) );
 				if ( this.showIterations ) return iterationHeat( float( result.iterations ).div( float( this.adaptiveMaxSteps ) ), result.exhausted );
@@ -1408,6 +1488,8 @@ class SSRNode extends Node {
 
 			}
 
+			const coneLod = float( 0 ).toVar();
+
 			If( foundHit, () => {
 
 				// Shade the hit, reusing the depth fetched during the march (or refinement).
@@ -1445,7 +1527,8 @@ class SSRNode extends Node {
 						// ponytail: isotropic, not depth-aware; use a depth-aware Gaussian pyramid if it leaks.
 						const radius = distance( viewPosition, vP ).mul( coneTangent );
 						const pixelSize = getViewPosition( uvS.add( uvPixelStepX ), hitD, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).abs().max( 1e-6 );
-						reflectSample = reflectSample.level( log2( radius.mul( 2 ).div( pixelSize ) ).clamp( 0, this.coneMaxLevel ) );
+						coneLod.assign( log2( radius.mul( 2 ).div( pixelSize ) ).clamp( 0, this.coneMaxLevel ) );
+						reflectSample = reflectSample.level( coneLod );
 
 					}
 
@@ -1455,6 +1538,17 @@ class SSRNode extends Node {
 					reflectColor.rgb.assign( reprojectHitPointHistory( uvS, reflectColor.rgb ) );
 
 					if ( this.stochastic === true ) applyHitEdgeFade( reflectColor, uvS, hitBorderWidth );
+
+					if ( cameraFacing !== null ) {
+
+						const fade = cameraFacing.mul( 4 ).clamp();
+						If( fade.lessThan( 1 ), () => {
+
+							reflectColor.rgb.assign( mix( sampleEnvReflection().mul( this.environmentIntensity ), reflectColor.rgb, fade ) );
+
+						} );
+
+					}
 
 					// The scatter (GGX) path bakes distance/grazing response into finalSampleWeight.
 					// The mirror/blur path is a plain reflection, so reapply upstream's squared
@@ -1494,6 +1588,8 @@ class SSRNode extends Node {
 				}
 
 			} );
+
+			if ( this.stochastic && this.showConeMip ) return iterationHeat( coneLod.div( this.coneMaxLevel.max( 1 ) ), false ).mul( hit );
 
 			const lum = luminance( output.rgb ).max( 1e-4 ).toVar();
 			output.rgb.mulAssign( this.maxLuminance.div( lum ).min( 1 ) );

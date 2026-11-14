@@ -905,16 +905,22 @@ class PhysicalLightingModel extends LightingModel {
 
 		const { ambientOcclusion, reflectedLight } = builder.context;
 
-		const dotNV = normalView.dot( positionViewDirection ).clamp(); // @ TODO: Move to core dotNV
+		const computeSpecularOcclusion = ( normal, roughness ) => {
 
-		const aoNV = dotNV.add( ambientOcclusion );
-		const aoExp = roughness.mul( - 16.0 ).oneMinus().negate().exp2();
+			const dotNV = normal.dot( positionViewDirection ).clamp(); // @ TODO: Move to core dotNV
 
-		const aoNode = ambientOcclusion.sub( aoNV.pow( aoExp ).oneMinus() ).clamp();
+			const aoNV = dotNV.add( ambientOcclusion );
+			const aoExp = roughness.mul( - 16.0 ).oneMinus().negate().exp2();
+
+			return ambientOcclusion.sub( aoNV.pow( aoExp ).oneMinus() ).clamp();
+
+		};
+
+		const aoNode = computeSpecularOcclusion( normalView, roughness );
 
 		if ( this.clearcoat === true ) {
 
-			this.clearcoatSpecularIndirect.mulAssign( ambientOcclusion );
+			this.clearcoatSpecularIndirect.mulAssign( computeSpecularOcclusion( clearcoatNormalView, clearcoatRoughness ) );
 
 		}
 

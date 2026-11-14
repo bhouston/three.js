@@ -117,7 +117,7 @@
 			ssr: {
 				resolutionScale: 1,
 				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, glossyMinLevel: 0,
-				coneMaxLevel: 5, coneSamples: 4, coneTracing: false, coneValidate: false, skipCameraRays: true,
+				coneMaxLevel: 5, coneSamples: 4, coneTracing: false, coneValidate: false, cameraRays: false,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -385,7 +385,7 @@
 			ssrGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Cone samples' ).onChange( applyParams );
 			const coneTracingController = ssrGui.add( params.ssr, 'coneTracing' ).name( 'Cone-sized Hi-Z stop' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'coneValidate' ).name( 'Cone hit validation' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'skipCameraRays' ).name( 'Skip rays toward camera' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'cameraRays' ).name( 'Camera rays' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
 
@@ -446,7 +446,7 @@
 			ssrNode.glossyMinLevel = params.ssr.glossyMinLevel;
 			ssrNode.coneTracing = params.ssr.coneTracing;
 			ssrNode.coneValidate = params.ssr.coneValidate;
-			ssrNode.skipCameraRays = params.ssr.skipCameraRays;
+			ssrNode.cameraRays = params.ssr.cameraRays;
 			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
 			ssrNode.occlusionSkipping = params.ssr.occlusionSkipping;
 			ssrNode.resolutionScale = params.ssr.resolutionScale;

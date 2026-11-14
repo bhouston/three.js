@@ -128,7 +128,7 @@ class SSRNode extends Node {
 		this._glossyMinLevel = options.glossyMinLevel ?? 0;
 		this._coneTracing = options.coneTracing ?? false;
 		this._coneValidate = false;
-		this._skipCameraRays = false;
+		this._cameraRays = false;
 		this._occlusionSkipping = options.occlusionSkipping ?? false;
 		this._showIterations = false;
 		this._showConeMip = false;
@@ -666,23 +666,23 @@ class SSRNode extends Node {
 	}
 
 	/**
-	 * Adaptive stochastic mode only: rays heading back toward the camera are not traced and
-	 * hits fade to the environment as the ray turns toward it, as in GPU Pro 5.
+	 * Adaptive stochastic mode only: `true` traces rays heading back toward the camera. `false`
+	 * skips them and fades hits to the environment as the ray turns toward it, as in GPU Pro 5.
 	 * Changing it recompiles the SSR material.
 	 *
 	 * @type {boolean}
 	 * @default false
 	 */
-	get skipCameraRays() {
+	get cameraRays() {
 
-		return this._skipCameraRays;
+		return this._cameraRays;
 
 	}
 
-	set skipCameraRays( value ) {
+	set cameraRays( value ) {
 
-		if ( value === this._skipCameraRays ) return;
-		this._skipCameraRays = value;
+		if ( value === this._cameraRays ) return;
+		this._cameraRays = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1266,7 +1266,7 @@ class SSRNode extends Node {
 			};
 
 			// Positive when the ray heads away from the camera along the view direction.
-			const cameraFacing = this.stochastic && this.skipCameraRays ? dot( viewReflectDir, V ).negate().toVar() : null;
+			const cameraFacing = this.stochastic && ! this.cameraRays ? dot( viewReflectDir, V ).negate().toVar() : null;
 
 			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ).max( 1e-4 ) ).toVar();
 

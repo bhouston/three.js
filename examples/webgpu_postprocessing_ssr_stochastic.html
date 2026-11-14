@@ -117,7 +117,7 @@
 			ssr: {
 				resolutionScale: 1,
 				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: false, roughMinLevel: 0,
-				coneMaxLevel: 5, coneSamples: 4, coneTracing: false, coneValidate: false, cameraRays: false,
+				coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: false, coneValidate: false, cameraRays: false,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -371,10 +371,24 @@
 			};
 
 			ssrGui.add( params.ssr, 'adaptive' ).name( 'Hi-Z / adaptive SSR' ).onChange( updateTracing ).disable( ! renderer.backend.isWebGPUBackend );
-			ssrGui.add( params.ssr, 'coneMaxLevel', 0, 8, 1 ).name( 'Cone max mip' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Cone samples' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
+
+			// Each ray reads the beauty mip matching its cone footprint; off reads full resolution.
+			const coneGui = renderer.inspector.createParameters( 'SSR Cone Samples' );
+			const updateCone = () => {
+
+				applyParams();
+				for ( const controller of coneControllers ) controller.disable( ! params.ssr.coneEnabled );
+
+			};
+
+			coneGui.add( params.ssr, 'coneEnabled' ).name( 'Enabled' ).onChange( updateCone );
+			const coneControllers = [
+				coneGui.add( params.ssr, 'coneMaxLevel', 1, 8, 1 ).name( 'Max mip' ).onChange( applyParams ),
+				coneGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Samples' ).onChange( applyParams )
+			];
+			updateCone();
 
 			const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
 			adaptiveGui.add( params.ssr, 'maxCandidates', 1, 64, 1 ).name( 'Candidates' ).onChange( applyParams );
@@ -452,7 +466,7 @@
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
-			ssrNode.coneMaxLevel.value = params.ssr.coneMaxLevel;
+			ssrNode.coneMaxLevel.value = params.ssr.coneEnabled ? params.ssr.coneMaxLevel : 0;
 			ssrNode.coneSamples.value = params.ssr.coneSamples;
 			// stepExponent / screenEdgeFadeBlack / binaryRefine are build-time constants: assigning
 			// them recompiles the SSR material (the setters no-op when the value is unchanged).

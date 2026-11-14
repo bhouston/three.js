@@ -5,6 +5,7 @@
 //          --seconds=5 --adaptive-steps=512 --linear-steps=64 --max-distance=20
 //          --candidates=1,2,3,4 --binary-refine=true --max-level=6 --rough-min-level=1
 //          --roughness=1 (sets scene roughness as each example's own slider does)
+//          --approximate=24/16 (approximate adaptive: iterations/steps, at each example's own maxDistance)
 // A fairer linear reference (one step per pixel, same thickness rule as adaptive):
 //          --binary-refine=false --linear-steps=1024
 // Vsync/frame caps are disabled. Each completed GPU batch is counted only after
@@ -175,6 +176,10 @@ try {
 
 			}
 
+			// Approximate adaptive answers the example defaults, so it traces their distance.
+			const [ approximateIterations, approximateSteps ] = settings.approximate.split( '/' ).map( Number );
+			configurations.push( { name: 'Adaptive SSR, approximate (example defaults)', adaptive: true, maxCandidates: 1, occlusionSkipping: false, exampleDefaults: true, adaptiveSteps: approximateIterations, approximateSteps } );
+
 			const readTrace = async () => {
 
 				const pixels = await renderer.readRenderTargetPixelsAsync( node.getRenderTarget(), 0, 0, renderer.domElement.width, renderer.domElement.height );
@@ -184,7 +189,7 @@ try {
 
 			const compare = ( a, b ) => {
 
-				let baselineHits = 0, adaptiveHits = 0, lostHits = 0, extraHits = 0, nonFinite = 0;
+				let baselineHits = 0, adaptiveHits = 0, lostHits = 0, extraHits = 0, nonFinite = 0, sharedHits = 0, distanceError = 0;
 				for ( let i = 0; i < a.length; i += 4 ) {
 
 					const ah = a[ i + 3 ] > 0 && a[ i + 3 ] < 1000;
@@ -193,11 +198,18 @@ try {
 					if ( bh ) adaptiveHits ++;
 					if ( ah && ! bh ) lostHits ++;
 					if ( bh && ! ah ) extraHits ++;
+					if ( ah && bh ) {
+
+						sharedHits ++;
+						distanceError += Math.abs( a[ i + 3 ] - b[ i + 3 ] );
+
+					}
+
 					for ( let c = 0; c < 4; c ++ ) if ( ! Number.isFinite( a[ i + c ] ) || ! Number.isFinite( b[ i + c ] ) ) nonFinite ++;
 
 				}
 
-				return { baselineHits, adaptiveHits, lostHits, extraHits, disagreements: lostHits + extraHits, nonFinite };
+				return { baselineHits, adaptiveHits, lostHits, extraHits, disagreements: lostHits + extraHits, meanHitDistanceError: distanceError / Math.max( sharedHits, 1 ), nonFinite };
 
 			};
 
@@ -206,6 +218,8 @@ try {
 				await device.queue.onSubmittedWorkDone();
 				Object.assign( params, config.exampleDefaults ? exampleDefaults : comparable );
 				params.adaptive = config.adaptive;
+				params.adaptiveSteps = config.adaptiveSteps ?? settings.adaptiveSteps;
+				params.approximateSteps = config.approximateSteps ?? 0;
 				params.maxCandidates = config.maxCandidates;
 				node.occlusionSkipping = params.occlusionSkipping = config.occlusionSkipping === true;
 				apply();
@@ -245,9 +259,9 @@ try {
 
 			const validationError = await device.popErrorScope();
 			if ( validationError ) throw new Error( validationError.message );
-			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: comparable.maxDistance, roughness: settings.roughness, exampleDefaults, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, levels: hierarchy.levels.length, creation, modes, speedup: modes.find( mode => mode.adaptive ).fps / modes[ 0 ].fps };
+			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: comparable.maxDistance, roughness: settings.roughness, exampleDefaults, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, approximate: settings.approximate, levels: hierarchy.levels.length, creation, modes, speedup: modes.find( mode => mode.adaptive ).fps / modes[ 0 ].fps };
 
-		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, roughness: option( 'roughness', null ) === null ? null : Number( option( 'roughness' ) ), roughMinLevel: Number( option( 'rough-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
+		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, roughness: option( 'roughness', null ) === null ? null : Number( option( 'roughness' ) ), roughMinLevel: Number( option( 'rough-min-level', 0 ) ), approximate: option( 'approximate', '24/16' ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );
 		results.push( { example, ...result } );
 		console.log( JSON.stringify( results.at( - 1 ), null, 2 ) );

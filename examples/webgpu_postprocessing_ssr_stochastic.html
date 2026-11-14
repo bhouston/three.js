@@ -116,7 +116,7 @@
 
 			ssr: {
 				resolutionScale: 1,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: true, roughMinLevel: 0,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, approximateSteps: 16, occlusionSkipping: true, roughMinLevel: 0,
 				coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false,
 				quality: 0.25,
 				mirrorBias: 0,
@@ -393,6 +393,7 @@
 			const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
 			adaptiveGui.add( params.ssr, 'maxCandidates', 1, 64, 1 ).name( 'Candidates' ).onChange( applyParams );
 			adaptiveGui.add( params.ssr, 'adaptiveSteps', 16, 256, 16 ).name( 'Max steps' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'approximateSteps', 0, 64, 4 ).name( 'Approx steps' ).info( 'Adaptive only. 0 traces exactly. Otherwise each ray crosses about this many coarse cells and tests one pixel in each, like a linear march step, then refines the hit.' ).onChange( applyParams );
 			adaptiveGui.add( params.ssr, 'occlusionSkipping' ).name( 'Skip occluded' ).onChange( applyParams );
 			adaptiveGui.add( params.ssr, 'roughMinLevel', 0, 3, 1 ).name( 'Rough min mip' ).onChange( applyParams );
 			adaptiveGui.add( params.ssr, 'coneTracing' ).name( 'Cone tracing' ).onChange( applyParams );
@@ -457,6 +458,7 @@
 
 			ssrNode.tracing = params.ssr.adaptive ? 'adaptive' : 'linear';
 			ssrNode.maxCandidates = params.ssr.maxCandidates;
+			ssrNode.approximateSteps = params.ssr.approximateSteps;
 			ssrNode.roughMinLevel = params.ssr.roughMinLevel;
 			ssrNode.coneTracing = params.ssr.coneTracing;
 			ssrNode.coneValidate = params.ssr.coneValidate;

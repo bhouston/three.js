@@ -52,7 +52,7 @@
 
 			const params = {
 				output: 'Beauty', traa: true,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: true, coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
+				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, approximateSteps: 64, occlusionSkipping: true, coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
 			};
@@ -287,6 +287,7 @@
 
 					ssrNode.tracing = params.adaptive ? 'adaptive' : 'linear';
 					ssrNode.maxCandidates = params.maxCandidates;
+					ssrNode.approximateSteps = params.approximateSteps;
 					ssrNode.adaptiveMaxSteps.value = params.adaptiveSteps;
 					// Only the active tracer's group is shown.
 					adaptiveGui[ params.adaptive ? 'show' : 'hide' ]();
@@ -329,6 +330,7 @@
 				const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
 				adaptiveGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidates' ).onChange( updateParameters );
 				adaptiveGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Max steps' ).onChange( updateParameters );
+				adaptiveGui.add( params, 'approximateSteps', 0, 64, 4 ).name( 'Approx steps' ).info( 'Adaptive only. 0 traces exactly. Otherwise each ray crosses about this many coarse cells and tests one pixel in each, like a linear march step, then refines the hit.' ).onChange( updateParameters );
 				adaptiveGui.add( params, 'occlusionSkipping' ).name( 'Skip occluded' ).onChange( updateParameters );
 				adaptiveGui.add( params, 'coneTracing' ).name( 'Cone tracing' ).onChange( updateParameters );
 				adaptiveGui.add( params, 'coneValidate' ).name( 'Cone validate' ).onChange( updateParameters );

@@ -55,7 +55,7 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
-			output: 'Beauty', enabled: true, adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: true, quality: 0.5, intensity: 1,
+			output: 'Beauty', enabled: true, adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, approximateSteps: 16, occlusionSkipping: true, quality: 0.5, intensity: 1,
 			maxDistance: 1, thickness: 0.03, binaryRefine: false,
 			roughness: 1, blur: true, blurQuality: 1
 		};
@@ -227,6 +227,7 @@
 			const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
 			adaptiveGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidates' ).onChange( updateParameters );
 			adaptiveGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Max steps' ).onChange( updateParameters );
+			adaptiveGui.add( params, 'approximateSteps', 0, 64, 4 ).name( 'Approx steps' ).info( 'Adaptive only. 0 traces exactly. Otherwise each ray crosses about this many coarse cells and tests one pixel in each, like a linear march step, then refines the hit.' ).onChange( updateParameters );
 			adaptiveGui.add( params, 'occlusionSkipping' ).name( 'Skip occluded' ).onChange( updateParameters );
 
 			const linearGui = renderer.inspector.createParameters( 'Linear Tracing' );
@@ -255,6 +256,7 @@
 
 				reflection.tracing = params.adaptive ? 'adaptive' : 'linear';
 				reflection.maxCandidates = params.maxCandidates;
+				reflection.approximateSteps = params.approximateSteps;
 				reflection.adaptiveMaxSteps.value = params.adaptiveSteps;
 				// Only the active tracer's group is shown.
 				adaptiveGui[ params.adaptive ? 'show' : 'hide' ]();

@@ -26,21 +26,32 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  * @param {Node<float>|number} [options.depthTolerance=0] - Conservative projected-depth rounding tolerance.
  * @param {number} [options.maxCandidates=1] - Maximum candidate surfaces to validate (compile-time integer).
  * @param {Node<int>|number|Function} [options.minLevel=0] - Finest level later descents need to reach (FidelityFX's most_detailed_mip), or a function of the level-zero pixels travelled so far returning it, for a tolerance that grows along the ray. A coarse leaf is accepted only when the full-resolution pixel under the ray is itself the hit; otherwise that cell is resolved exactly, so hits match `minLevel = 0`.
- * @param {boolean} [options.coarseHits=false] - Cone-tracing approximation: a coarse leaf is tested once, with its nearest depth at the ray's UV, and stepped over when `acceptHit` rejects that. `acceptHit` receives the cell size in pixels as a fourth argument to widen its tolerance.
- * @param {Function} [options.isHidden] - TSL predicate (entry UV, exit UV, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones, without spending candidates.
+ * @param {boolean|Function} [options.coarseHits=false] - Cone-tracing approximation: a coarse leaf is tested once, with its nearest depth at the ray's UV, and stepped over when `acceptHit` rejects that. `acceptHit` receives the cell size in pixels as a fourth argument to widen its tolerance.
+ * @param {boolean} [options.leafSample=false] - Approximate hits: traversal starts at minLevel, and a leaf above level zero tests only the pixel under the ray, as one linear march step does. Surfaces elsewhere in the cell are stepped over. With `coarseHits` given as a function of the pixels travelled returning the cone's level, leaves up to that level are coarse hits and only larger ones are sampled; `minLevel` is then the sampling level.
+ * @param {number} [options.refineSteps=0] - With leafSample and one candidate: bisection steps, at full resolution, between the last sample in front of the scene and the sampled hit (compile-time integer).
+ * @param {Function} [options.isHidden] - TSL predicate (entry parameter, exit parameter, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones, without spending candidates.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, coarseHits = false, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, coarseHits = false, leafSample = false, refineSteps = 0, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
 
 	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRTrace: maxCandidates must be an integer from 1 to 4096.' );
 
 	const delta = end.sub( origin ).toConst();
 	const s = float( start ).toVar();
-	// Traversal always starts at mip zero: the cells next to the origin hold its
-	// own surface, which only full resolution separates from the ray.
-	const mip = int( 0 ).toVar();
 	const coarse = minLevel !== 0;
+	const lastMip = int( hierarchy.getLastLevelNode() ).toConst();
+	// Traversal starts at mip zero: the cells next to the origin hold its own
+	// surface, which only full resolution separates from the ray. Leaf sampling
+	// tests the ray's own pixel at every leaf, so it can start at the leaf level.
+	const mip = ( leafSample ? int( typeof minLevel === 'function' ? minLevel( float( 0 ) ) : minLevel ).min( lastMip ) : int( 0 ) ).toVar();
+	// Cone and leaf sampling together: leaves up to the cone's level are coarse hits.
+	const coneLevel = leafSample && typeof coarseHits === 'function' ? int( 0 ).toVar() : null;
+	// Leaf sampling: the last parameter at which the ray was seen in front of the
+	// scene, bracketing a sampled hit for refinement.
+	const refine = leafSample && refineSteps > 0 && maxCandidates === 1;
+	const frontS = float( start ).toVar();
+	const frontValid = bool( true ).toVar();
 	const minMip = coarse ? int( 0 ).toVar() : int( 0 );
 	// Set when a coarse leaf failed validation: descend to mip zero until the
 	// traversal climbs back to the wanted level.
@@ -48,8 +59,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	const validated = bool( false ).toVar();
 	// A coarse leaf holds its cell's nearest depth. Candidates are validated
 	// against the full-resolution depth at their own UV instead.
-	const leafDepth = ( uv, raw ) => coarse ? hierarchy.getTextureNode( 0, uv ) : raw;
-	const lastMip = int( hierarchy.getLastLevelNode() ).toConst();
+	const leafDepth = ( uv, raw ) => coarse && ! leafSample ? hierarchy.getTextureNode( 0, uv ) : raw;
 	const hit = bool( false ).toVar();
 	const hitUV = vec2( 0 ).toVar();
 	const hitDepth = float( 0 ).toVar();
@@ -87,7 +97,15 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 		iterations.assign( i.add( 1 ) );
 		if ( coarse ) {
 
-			const wanted = int( typeof minLevel === 'function' ? minLevel( rayPixels.mul( s.sub( start ) ) ) : minLevel ).toVar();
+			const travelled = rayPixels.mul( s.sub( start ) );
+			const wanted = int( typeof minLevel === 'function' ? minLevel( travelled ) : minLevel ).toVar();
+			if ( coneLevel !== null ) {
+
+				coneLevel.assign( int( coarseHits( travelled ) ) );
+				wanted.assign( wanted.max( coneLevel ) );
+
+			}
+
 			If( mip.greaterThanEqual( wanted ), () => {
 
 				exact.assign( false );
@@ -113,9 +131,16 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 		const exits = edge.sub( originPixel ).mul( inverseXY );
 		const exit = min( min( exits.x, exits.y ), 1 ).toVar();
 
-		const leaveCell = () => {
+		const leaveCell = ( front = null ) => {
 
 			s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
+			if ( refine && front !== null ) {
+
+				frontS.assign( s );
+				frontValid.assign( front );
+
+			}
+
 			// Ascend only when leaving the parent cell. Inside the same parent
 			// the coarser test would repeat and cost a second read to descend.
 			const leavesParent = cell.bitAnd( uvec2( 1 ) ).equal( exitParity );
@@ -146,7 +171,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			const far = projectDepth( farRaw ).add( reversedDepth ? float( depthTolerance ).negate() : depthTolerance );
 			If( inFront.not().and( background.not() ).and( farther( z, far ) ).and( farther( origin.z.add( delta.z.mul( exit ) ), far ) ), () => {
 
-				hidden.assign( isHidden( pixel.div( size ), origin.xy.add( delta.xy.mul( exit ) ), farRaw ) );
+				hidden.assign( isHidden( s, exit, farRaw ) );
 
 			} );
 
@@ -171,7 +196,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 			} ).Else( () => {
 
-				leaveCell();
+				leaveCell( hidden.not() );
 
 			} );
 
@@ -186,7 +211,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		if ( coarse ) {
 
-			if ( coarseHits ) If( mip.greaterThan( 0 ), () => {
+			const coneLeaf = () => {
 
 				// Validated against the cell's nearest depth: no full-resolution depth read.
 				const leafUV = pixel.div( size ).toVar();
@@ -202,8 +227,30 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 				} );
 				leaveCell();
 
-			} );
-			else If( mip.greaterThan( 0 ), () => {
+			};
+
+			const sampleLeaf = () => {
+
+				// Approximate leaf: like one linear march step, test only the pixel
+				// under the ray. Surfaces elsewhere in the cell are stepped over.
+				const fine = hierarchy.getPixelCellNode( 0, pixel ).depth.toVar();
+				If( nearer( z, projectDepth( fine ) ).or( reversedDepth ? fine.lessThanEqual( 0 ) : fine.greaterThanEqual( 1 ) ), () => {
+
+					if ( refine ) {
+
+						frontS.assign( s );
+						frontValid.assign( true );
+
+					}
+
+					leaveCell();
+
+				} );
+				raw.assign( fine );
+
+			};
+
+			const exactLeaf = () => {
 
 				const leafUV = pixel.div( size ).toVar();
 				const leaf = float( leafDepth( leafUV ) ).toVar();
@@ -223,6 +270,15 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 				exact.assign( true );
 				mip.subAssign( 1 );
 				Continue();
+
+			};
+
+			If( mip.greaterThan( 0 ), () => {
+
+				if ( coneLevel !== null ) If( mip.lessThanEqual( coneLevel ), coneLeaf ).Else( sampleLeaf );
+				else if ( coarseHits ) coneLeaf();
+				else if ( leafSample ) sampleLeaf();
+				else exactLeaf();
 
 			} );
 
@@ -280,6 +336,36 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	const candidate = candidates.greaterThan( 0 );
 	const exhausted = hit.not().and( s.lessThan( 1 ) ).toVar();
 	if ( maxCandidates === 1 ) {
+
+		if ( refine ) {
+
+			// The ray went from in front of the scene to behind it between two
+			// samples. Bisect that interval at full resolution, after the traversal
+			// loop as linear SSR does, so every ray pays the same fixed cost.
+			If( hit.and( validated.not() ).and( frontValid ), () => {
+
+				Loop( { start: int( 0 ), end: int( refineSteps ), type: 'int', condition: '<' }, () => {
+
+					const mid = frontS.add( hitS ).mul( 0.5 ).toVar();
+					const midPixel = lookupOrigin.add( deltaPixel.mul( mid ) ).toVar();
+					const fine = hierarchy.getPixelCellNode( 0, midPixel ).depth.toVar();
+					If( nearer( origin.z.add( delta.z.mul( mid ) ), projectDepth( fine ) ).or( reversedDepth ? fine.lessThanEqual( 0 ) : fine.greaterThanEqual( 1 ) ), () => {
+
+						frontS.assign( mid );
+
+					} ).Else( () => {
+
+						hitS.assign( mid );
+						hitUV.assign( midPixel.div( size ) );
+						hitDepth.assign( fine );
+
+					} );
+
+				} );
+
+			} );
+
+		}
 
 		If( hit.and( validated.not() ), () => {
 

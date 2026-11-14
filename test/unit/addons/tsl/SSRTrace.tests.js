@@ -224,6 +224,7 @@ export default QUnit.module( 'Addons', () => {
 							node.adaptiveMaxSteps.value = 2048;
 							node.maxDistance.value = 20;
 							node.thickness.value = 0.0001;
+							node.cameraRays = true; // compare the tracers on every ray, including those heading back toward the camera
 							return node;
 
 						} );

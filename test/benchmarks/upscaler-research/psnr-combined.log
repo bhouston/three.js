@@ -1,0 +1,9 @@
+PSNR in dB on displayed sRGB: vs native full/helmet | vs supersampled full/helmet
+native 1x: - / - | 36.28 / 30.95
+joint-bilateral-depth @3x: 29.30 / 24.02 | 29.11 / 23.81
+joint-bilateral-rational @3x: 30.15 / 24.88 | 29.49 / 24.20
+joint-bilateral-sharp @3x: 30.13 / 24.90 | 29.48 / 24.23
+taau-mip-distance @3x: 30.99 / 25.77 | 31.41 / 26.19
+taau-mip-fast @3x: 30.63 / 25.45 | 31.01 / 25.83
+taau-mip-detail @3x: 30.81 / 25.59 | 31.42 / 26.20
+taau-mip-registered @3x: 30.98 / 25.77 | 31.41 / 26.19

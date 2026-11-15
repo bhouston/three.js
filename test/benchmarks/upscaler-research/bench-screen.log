@@ -1,0 +1,36 @@
+round 0 native: 0.981 ms (apple metal-3)
+round 0 bilinear: 0.607 ms (apple metal-3)
+round 0 joint-bilateral: 1.128 ms (apple metal-3)
+round 0 joint-bilateral-depth: 1.049 ms (apple metal-3)
+round 0 joint-bilateral-rational: 1.158 ms (apple metal-3)
+round 0 joint-bilateral-wide: 1.714 ms (apple metal-3)
+round 0 joint-bilateral-sharp: 1.142 ms (apple metal-3)
+round 0 joint-bilateral-mip: 1.308 ms (apple metal-3)
+round 0 joint-bilateral-mip-sharp: 1.338 ms (apple metal-3)
+round 0 taau: 1.728 ms (apple metal-3)
+round 0 taau-pingpong: 1.696 ms (apple metal-3)
+round 0 taau-cross: 1.529 ms (apple metal-3)
+round 0 taau-catmull: 1.885 ms (apple metal-3)
+round 0 taau-distance: 1.715 ms (apple metal-3)
+round 0 taau-mip-distance: 1.959 ms (apple metal-3)
+round 0 taau-mip-fast: 1.717 ms (apple metal-3)
+round 0 joint-bilateral-traa: 2.242 ms (apple metal-3)
+round 0 joint-bilateral-wide-jitter: 2.208 ms (apple metal-3)
+native: mean 0.98 ms  [0.98]
+bilinear: mean 0.61 ms  [0.61]
+joint-bilateral: mean 1.13 ms  [1.13]
+joint-bilateral-depth: mean 1.05 ms  [1.05]
+joint-bilateral-rational: mean 1.16 ms  [1.16]
+joint-bilateral-wide: mean 1.71 ms  [1.71]
+joint-bilateral-sharp: mean 1.14 ms  [1.14]
+joint-bilateral-mip: mean 1.31 ms  [1.31]
+joint-bilateral-mip-sharp: mean 1.34 ms  [1.34]
+taau: mean 1.73 ms  [1.73]
+taau-pingpong: mean 1.70 ms  [1.70]
+taau-cross: mean 1.53 ms  [1.53]
+taau-catmull: mean 1.89 ms  [1.89]
+taau-distance: mean 1.72 ms  [1.72]
+taau-mip-distance: mean 1.96 ms  [1.96]
+taau-mip-fast: mean 1.72 ms  [1.72]
+joint-bilateral-traa: mean 2.24 ms  [2.24]
+joint-bilateral-wide-jitter: mean 2.21 ms  [2.21]

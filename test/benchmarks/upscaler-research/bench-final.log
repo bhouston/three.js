@@ -1,0 +1,21 @@
+round 0 native: 0.974 ms (5395 GPU-completed frames; apple metal-3)
+round 0 joint-bilateral: 1.158 ms (4592 GPU-completed frames; apple metal-3)
+round 0 joint-bilateral-fused: 0.969 ms (5476 GPU-completed frames; apple metal-3)
+round 0 joint-bilateral-mip-fused: 1.120 ms (4776 GPU-completed frames; apple metal-3)
+round 0 taau: 1.723 ms (3119 GPU-completed frames; apple metal-3)
+round 0 taau-mip-fast-fused: 1.405 ms (3821 GPU-completed frames; apple metal-3)
+round 0 taau-mip-fused: 1.648 ms (3313 GPU-completed frames; apple metal-3)
+round 1 native: 1.039 ms (5125 GPU-completed frames; apple metal-3)
+round 1 joint-bilateral: 1.229 ms (4344 GPU-completed frames; apple metal-3)
+round 1 joint-bilateral-fused: 1.029 ms (5171 GPU-completed frames; apple metal-3)
+round 1 joint-bilateral-mip-fused: 1.188 ms (4492 GPU-completed frames; apple metal-3)
+round 1 taau: 1.865 ms (2892 GPU-completed frames; apple metal-3)
+round 1 taau-mip-fast-fused: 1.404 ms (3859 GPU-completed frames; apple metal-3)
+round 1 taau-mip-fused: 1.590 ms (3407 GPU-completed frames; apple metal-3)
+native: mean 1.01 ms  [0.97, 1.04]
+joint-bilateral: mean 1.19 ms  [1.16, 1.23]
+joint-bilateral-fused: mean 1.00 ms  [0.97, 1.03]
+joint-bilateral-mip-fused: mean 1.15 ms  [1.12, 1.19]
+taau: mean 1.79 ms  [1.72, 1.86]
+taau-mip-fast-fused: mean 1.40 ms  [1.41, 1.40]
+taau-mip-fused: mean 1.62 ms  [1.65, 1.59]

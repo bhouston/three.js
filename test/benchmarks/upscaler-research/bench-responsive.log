@@ -1,0 +1,12 @@
+round 0 native: 1.012 ms (5257 GPU-completed frames; apple metal-3)
+round 0 taau: 1.843 ms (2926 GPU-completed frames; apple metal-3)
+round 0 taau-mip-fast-responsive: 1.382 ms (3909 GPU-completed frames; apple metal-3)
+round 0 taau-mip-responsive: 1.618 ms (3349 GPU-completed frames; apple metal-3)
+round 1 native: 1.025 ms (5167 GPU-completed frames; apple metal-3)
+round 1 taau: 1.848 ms (2920 GPU-completed frames; apple metal-3)
+round 1 taau-mip-fast-responsive: 1.427 ms (3801 GPU-completed frames; apple metal-3)
+round 1 taau-mip-responsive: 1.621 ms (3374 GPU-completed frames; apple metal-3)
+native: mean 1.02 ms  [1.01, 1.02]
+taau: mean 1.85 ms  [1.84, 1.85]
+taau-mip-fast-responsive: mean 1.40 ms  [1.38, 1.43]
+taau-mip-responsive: mean 1.62 ms  [1.62, 1.62]

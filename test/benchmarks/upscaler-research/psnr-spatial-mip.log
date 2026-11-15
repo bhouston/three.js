@@ -1,0 +1,4 @@
+PSNR in dB on displayed sRGB: vs native full/helmet | vs supersampled full/helmet
+native 1x: - / - | 36.28 / 30.95
+joint-bilateral-mip @3x: 30.87 / 25.62 | 30.27 / 25.00
+joint-bilateral-mip-sharp @3x: 30.82 / 25.62 | 30.26 / 25.03

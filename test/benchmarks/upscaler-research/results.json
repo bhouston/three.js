@@ -1,0 +1,319 @@
+{
+  "static": {
+    "bilinear@3": {
+      "native_helmet": 23.57,
+      "ssaa_helmet": 23.59,
+      "log": "psnr-spatial.log"
+    },
+    "joint-bilateral@3": {
+      "native_helmet": 24.89,
+      "ssaa_helmet": 24.2,
+      "log": "psnr-final.log"
+    },
+    "joint-bilateral-depth@3": {
+      "native_helmet": 24.02,
+      "ssaa_helmet": 23.81,
+      "log": "psnr-combined.log"
+    },
+    "joint-bilateral-rational@3": {
+      "native_helmet": 24.88,
+      "ssaa_helmet": 24.2,
+      "log": "psnr-combined.log"
+    },
+    "joint-bilateral-wide@3": {
+      "native_helmet": 24.72,
+      "ssaa_helmet": 24.05,
+      "log": "psnr-spatial.log"
+    },
+    "joint-bilateral-sharp@3": {
+      "native_helmet": 24.9,
+      "ssaa_helmet": 24.23,
+      "log": "psnr-combined.log"
+    },
+    "taau@3": {
+      "native_helmet": 23.82,
+      "ssaa_helmet": 23.95,
+      "log": "psnr-final.log"
+    },
+    "taau-pingpong@3": {
+      "native_helmet": 23.83,
+      "ssaa_helmet": 23.96,
+      "log": "psnr-temporal.log"
+    },
+    "taau-cross@3": {
+      "native_helmet": 24.03,
+      "ssaa_helmet": 24.16,
+      "log": "psnr-temporal.log"
+    },
+    "taau-catmull@3": {
+      "native_helmet": 23.83,
+      "ssaa_helmet": 23.96,
+      "log": "psnr-temporal.log"
+    },
+    "taau-distance@3": {
+      "native_helmet": 24.64,
+      "ssaa_helmet": 24.75,
+      "log": "psnr-temporal.log"
+    },
+    "taau-mip@3": {
+      "native_helmet": 24.6,
+      "ssaa_helmet": 24.93,
+      "log": "psnr-temporal.log"
+    },
+    "taau-mip-fine@3": {
+      "native_helmet": 24.49,
+      "ssaa_helmet": 24.92,
+      "log": "psnr-temporal.log"
+    },
+    "taau-mip-catmull@3": {
+      "native_helmet": 24.6,
+      "ssaa_helmet": 24.93,
+      "log": "psnr-temporal.log"
+    },
+    "joint-bilateral-wide-jitter@3": {
+      "native_helmet": 24.52,
+      "ssaa_helmet": 24.53,
+      "log": "psnr-temporal.log"
+    },
+    "taau-mip-distance@3": {
+      "native_helmet": 25.77,
+      "ssaa_helmet": 26.19,
+      "log": "psnr-combined.log"
+    },
+    "taau-mip-fast@3": {
+      "native_helmet": 25.45,
+      "ssaa_helmet": 25.83,
+      "log": "psnr-combined.log"
+    },
+    "taau-mip-detail@3": {
+      "native_helmet": 25.59,
+      "ssaa_helmet": 26.2,
+      "log": "psnr-combined.log"
+    },
+    "taau-mip-registered@3": {
+      "native_helmet": 25.77,
+      "ssaa_helmet": 26.19,
+      "log": "psnr-combined.log"
+    },
+    "joint-bilateral-mip@3": {
+      "native_helmet": 25.62,
+      "ssaa_helmet": 25.0,
+      "log": "psnr-spatial-mip.log"
+    },
+    "joint-bilateral-mip-sharp@3": {
+      "native_helmet": 25.62,
+      "ssaa_helmet": 25.03,
+      "log": "psnr-spatial-mip.log"
+    },
+    "joint-bilateral@2": {
+      "native_helmet": 27.15,
+      "ssaa_helmet": 26.18,
+      "log": "psnr-final.log"
+    },
+    "joint-bilateral-fused@2": {
+      "native_helmet": 27.15,
+      "ssaa_helmet": 26.17,
+      "log": "psnr-final.log"
+    },
+    "joint-bilateral-mip-fused@2": {
+      "native_helmet": 27.89,
+      "ssaa_helmet": 27.15,
+      "log": "psnr-final.log"
+    },
+    "taau@2": {
+      "native_helmet": 26.11,
+      "ssaa_helmet": 26.42,
+      "log": "psnr-final.log"
+    },
+    "taau-mip-fused@2": {
+      "native_helmet": 28.28,
+      "ssaa_helmet": 29.24,
+      "log": "psnr-final.log"
+    },
+    "taau-mip-fast-fused@2": {
+      "native_helmet": 27.96,
+      "ssaa_helmet": 28.82,
+      "log": "psnr-final.log"
+    },
+    "joint-bilateral-fused@3": {
+      "native_helmet": 24.88,
+      "ssaa_helmet": 24.2,
+      "log": "psnr-final.log"
+    },
+    "joint-bilateral-mip-fused@3": {
+      "native_helmet": 25.62,
+      "ssaa_helmet": 25.0,
+      "log": "psnr-final.log"
+    },
+    "taau-mip-fused@3": {
+      "native_helmet": 25.79,
+      "ssaa_helmet": 26.22,
+      "log": "psnr-final.log"
+    },
+    "taau-mip-fast-fused@3": {
+      "native_helmet": 25.48,
+      "ssaa_helmet": 25.86,
+      "log": "psnr-final.log"
+    },
+    "taau-narrow@3": {
+      "native_helmet": 24.46,
+      "ssaa_helmet": 24.58,
+      "log": "psnr-ablation.log"
+    },
+    "taau-distance-weight@3": {
+      "native_helmet": 23.97,
+      "ssaa_helmet": 24.09,
+      "log": "psnr-ablation.log"
+    },
+    "joint-bilateral-wide-jitter-mip@3": {
+      "native_helmet": 25.45,
+      "ssaa_helmet": 25.67,
+      "log": "psnr-ablation.log"
+    },
+    "taau-mip-responsive@3": {
+      "native_helmet": 26.0,
+      "ssaa_helmet": 26.47,
+      "log": "psnr-responsive.log"
+    },
+    "taau-mip-fast-responsive@3": {
+      "native_helmet": 25.88,
+      "ssaa_helmet": 26.32,
+      "log": "psnr-responsive.log"
+    },
+    "taau-mip-responsive@2": {
+      "native_helmet": 28.37,
+      "ssaa_helmet": 29.37,
+      "log": "psnr-responsive-2x.log"
+    },
+    "taau-mip-fast-responsive@2": {
+      "native_helmet": 28.26,
+      "ssaa_helmet": 29.23,
+      "log": "psnr-responsive-2x.log"
+    }
+  },
+  "bench": {
+    "bench-screen.log": {
+      "native": [
+        0.981
+      ],
+      "bilinear": [
+        0.607
+      ],
+      "joint-bilateral": [
+        1.128
+      ],
+      "joint-bilateral-depth": [
+        1.049
+      ],
+      "joint-bilateral-rational": [
+        1.158
+      ],
+      "joint-bilateral-wide": [
+        1.714
+      ],
+      "joint-bilateral-sharp": [
+        1.142
+      ],
+      "joint-bilateral-mip": [
+        1.308
+      ],
+      "joint-bilateral-mip-sharp": [
+        1.338
+      ],
+      "taau": [
+        1.728
+      ],
+      "taau-pingpong": [
+        1.696
+      ],
+      "taau-cross": [
+        1.529
+      ],
+      "taau-catmull": [
+        1.885
+      ],
+      "taau-distance": [
+        1.715
+      ],
+      "taau-mip-distance": [
+        1.959
+      ],
+      "taau-mip-fast": [
+        1.717
+      ],
+      "joint-bilateral-traa": [
+        2.242
+      ],
+      "joint-bilateral-wide-jitter": [
+        2.208
+      ]
+    },
+    "bench-final.log": {
+      "native": [
+        0.974,
+        1.039
+      ],
+      "joint-bilateral": [
+        1.158,
+        1.229
+      ],
+      "joint-bilateral-fused": [
+        0.969,
+        1.029
+      ],
+      "joint-bilateral-mip-fused": [
+        1.12,
+        1.188
+      ],
+      "taau": [
+        1.723,
+        1.865
+      ],
+      "taau-mip-fast-fused": [
+        1.405,
+        1.404
+      ],
+      "taau-mip-fused": [
+        1.648,
+        1.59
+      ]
+    },
+    "bench-responsive.log": {
+      "native": [
+        1.012,
+        1.025
+      ],
+      "taau": [
+        1.843,
+        1.848
+      ],
+      "taau-mip-fast-responsive": [
+        1.382,
+        1.427
+      ],
+      "taau-mip-responsive": [
+        1.618,
+        1.621
+      ]
+    }
+  },
+  "motion": {
+    "bilinear": 9.029,
+    "joint-bilateral": 7.836,
+    "joint-bilateral-mip-fused": 6.772,
+    "joint-bilateral-sharp": 8.492,
+    "joint-bilateral-traa": 9.246,
+    "joint-bilateral-wide-jitter": 9.113,
+    "joint-bilateral-wide-jitter-mip": 8.069,
+    "taau": 12.717,
+    "taau-pingpong": 12.755,
+    "taau-cross": 11.757,
+    "taau-catmull": 12.103,
+    "taau-distance": 13.221,
+    "taau-mip-registered": 12.733,
+    "taau-mip-fused": 12.677,
+    "taau-mip-fast-fused": 11.331,
+    "taau-mip-responsive": 9.53,
+    "taau-mip-fast-responsive": 9.049
+  }
+}

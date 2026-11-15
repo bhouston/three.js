@@ -1,0 +1,10 @@
+PSNR in dB on displayed sRGB: vs native full/helmet | vs supersampled full/helmet
+native 1x: - / - | 36.28 / 30.95
+taau-pingpong @3x: 29.07 / 23.83 | 29.21 / 23.96
+taau-cross @3x: 29.25 / 24.03 | 29.38 / 24.16
+taau-catmull @3x: 29.07 / 23.83 | 29.21 / 23.96
+taau-distance @3x: 29.89 / 24.64 | 30.01 / 24.75
+taau-mip @3x: 29.82 / 24.60 | 30.15 / 24.93
+taau-mip-fine @3x: 29.71 / 24.49 | 30.14 / 24.92
+taau-mip-catmull @3x: 29.82 / 24.60 | 30.15 / 24.93
+joint-bilateral-wide-jitter @3x: 29.80 / 24.52 | 29.82 / 24.53

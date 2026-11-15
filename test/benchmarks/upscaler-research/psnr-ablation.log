@@ -1,0 +1,5 @@
+PSNR in dB on displayed sRGB: vs native full/helmet | vs supersampled full/helmet
+native 1x: - / - | 36.28 / 30.95
+taau-narrow @3x: 29.70 / 24.46 | 29.83 / 24.58
+taau-distance-weight @3x: 29.21 / 23.97 | 29.34 / 24.09
+joint-bilateral-wide-jitter-mip @3x: 30.71 / 25.45 | 30.94 / 25.67

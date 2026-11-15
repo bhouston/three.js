@@ -1,0 +1,12 @@
+PSNR in dB on displayed sRGB: vs native full/helmet | vs supersampled full/helmet
+native 1x: - / - | 36.28 / 30.95
+bilinear @3x: 28.86 / 23.57 | 28.88 / 23.59
+joint-bilateral @3x: 30.15 / 24.89 | 29.49 / 24.20
+{"upsampler":"joint-bilateral-depth","upscaleFactor":3} ERRORS: THREE.WebGPURenderer: Uncaptured WebGPU GPUValidationError: Error while parsing WGSL: :77:53 error: unresolved value 'nodeUniform1_sampler'
+joint-bilateral-depth @3x: 6.26 / 7.76 | 6.27 / 7.79
+{"upsampler":"joint-bilateral-rational","upscaleFactor":3} ERRORS: THREE.WebGPURenderer: Uncaptured WebGPU GPUValidationError: Error while parsing WGSL: :83:53 error: unresolved value 'nodeUniform1_sampler'
+joint-bilateral-rational @3x: 6.26 / 7.76 | 6.27 / 7.79
+joint-bilateral-wide @3x: 29.97 / 24.72 | 29.32 / 24.05
+{"upsampler":"joint-bilateral-sharp","upscaleFactor":3} ERRORS: THREE.WebGPURenderer: Uncaptured WebGPU GPUValidationError: Error while parsing WGSL: :83:53 error: unresolved value 'nodeUniform1_sampler'
+joint-bilateral-sharp @3x: 6.26 / 7.76 | 6.27 / 7.79
+taau @3x: 29.06 / 23.82 | 29.20 / 23.95

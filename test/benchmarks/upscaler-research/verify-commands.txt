@@ -1,0 +1,21 @@
+# from worktree
+ln -s /Users/bhouston/Coding/OpenSource/three.js/node_modules node_modules
+node utils/build/dev.js
+node utils/server.js -p 8312
+
+# from this benchmark folder (one command at a time; never run in parallel)
+python3 mkpage.py /Users/bhouston/Coding/.worktrees/three.js-upscaler-research
+REF_CACHE=1 UPSAMPLERS='joint-bilateral joint-bilateral-fused joint-bilateral-mip-fused taau taau-mip-fused taau-mip-fast-fused' FACTORS='2 3' node compare.mjs psnr
+UPSAMPLERS='joint-bilateral joint-bilateral-mip-fused taau taau-mip-responsive taau-mip-fast-responsive' node compare.mjs motion 3
+ROUNDS=2 COOL_MS=15000 UPSAMPLERS='joint-bilateral joint-bilateral-fused joint-bilateral-mip-fused taau taau-mip-fast-fused taau-mip-fused' node compare.mjs bench 3
+node verify-gui.mjs
+python3 summarize.py
+node montage.mjs
+
+# after stopping the server and removing _cmp.html, discard only generated builds
+# git-dedup restore -- build/
+
+# Final response-tuning comparison (two rounds):
+REF_CACHE=1 UPSAMPLERS='taau-mip-responsive taau-mip-fast-responsive' FACTORS='2 3' node compare.mjs psnr
+UPSAMPLERS='taau-mip-responsive taau-mip-fast-responsive' node compare.mjs motion 3
+ROUNDS=2 COOL_MS=15000 UPSAMPLERS='taau taau-mip-fast-responsive taau-mip-responsive' node compare.mjs bench 3

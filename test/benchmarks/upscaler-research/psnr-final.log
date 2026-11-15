@@ -1,0 +1,14 @@
+PSNR in dB on displayed sRGB: vs native full/helmet | vs supersampled full/helmet
+native 1x: - / - | 36.28 / 30.95
+joint-bilateral @2x: 32.44 / 27.15 | 31.49 / 26.18
+joint-bilateral-fused @2x: 32.44 / 27.15 | 31.49 / 26.17
+joint-bilateral-mip-fused @2x: 33.18 / 27.89 | 32.46 / 27.15
+taau @2x: 31.36 / 26.11 | 31.67 / 26.42
+taau-mip-fused @2x: 33.48 / 28.28 | 34.42 / 29.24
+taau-mip-fast-fused @2x: 33.07 / 27.96 | 33.90 / 28.82
+joint-bilateral @3x: 30.15 / 24.89 | 29.49 / 24.20
+joint-bilateral-fused @3x: 30.15 / 24.88 | 29.49 / 24.20
+joint-bilateral-mip-fused @3x: 30.87 / 25.62 | 30.27 / 25.00
+taau @3x: 29.05 / 23.82 | 29.19 / 23.95
+taau-mip-fused @3x: 31.01 / 25.79 | 31.43 / 26.22
+taau-mip-fast-fused @3x: 30.66 / 25.48 | 31.04 / 25.86

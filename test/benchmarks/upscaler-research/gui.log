@@ -1,0 +1,36 @@
+GUI modes 33
+switch none ok
+switch bilinear ok
+switch joint-bilateral ok
+switch joint-bilateral-fused ok
+switch joint-bilateral-mip-fused ok
+switch joint-bilateral-mip ok
+switch joint-bilateral-mip-sharp ok
+switch joint-bilateral-depth ok
+switch joint-bilateral-rational ok
+switch joint-bilateral-wide ok
+switch joint-bilateral-sharp ok
+switch joint-bilateral-traa ok
+switch fsr1 ok
+switch taau ok
+switch joint-bilateral-wide-jitter ok
+switch joint-bilateral-wide-jitter-mip ok
+switch taau-pingpong ok
+switch taau-mip ok
+switch taau-mip-fine ok
+switch taau-mip-catmull ok
+switch taau-mip-distance ok
+switch taau-mip-fast ok
+switch taau-mip-responsive ok
+switch taau-mip-fast-responsive ok
+switch taau-mip-fused ok
+switch taau-mip-fast-fused ok
+switch taau-mip-registered ok
+switch taau-mip-detail ok
+switch taau-cross ok
+switch taau-catmull ok
+switch taau-narrow ok
+switch taau-distance-weight ok
+switch taau-distance ok
+factor 1/2/3/3.5 changes ok
+reactivation, resize and material changes ok

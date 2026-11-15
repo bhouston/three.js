@@ -1,0 +1,4 @@
+PSNR in dB on displayed sRGB: vs native full/helmet | vs supersampled full/helmet
+native 1x: - / - | 36.28 / 30.95
+taau-mip-responsive @3x: 31.24 / 26.00 | 31.71 / 26.47
+taau-mip-fast-responsive @3x: 31.08 / 25.88 | 31.52 / 26.32

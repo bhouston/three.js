@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, sample, pass, mrt, reference, rtt, screenUV, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext } from 'three/tsl';
+			import { sample, pass, mrt, reference, rtt, screenUV, textureSize, normalView, velocity, vec2, vec3, vec4, packNormalToRGB, unpackRGBToNormal, colorSpaceToWorking, builtinAOContext } from 'three/tsl';
 			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { ssao } from 'three/addons/tsl/display/SSAONode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -55,7 +55,7 @@
 
 			let camera, scene, renderer, renderPipeline, controls;
 
-			let aoPass, aoNode, lowResGuides, traaPass, transparentMesh;
+			let aoPass, aoNode, traaPass, transparentMesh;
 
 			const params = {
 				aoType: 'GTAO',
@@ -141,17 +141,16 @@
 				const normalTexture = prePass.getTexture( 'output' );
 				normalTexture.type = THREE.UnsignedByteType;
 
-				// depth and normal guides on the AO texel grid for joint bilateral upsampling
+				// depth of the AO texels for joint bilateral upsampling, sourced from the pre-pass
 
-				lowResGuides = rtt( Fn( () => {
+				const lowResDepth = sample( ( uv ) => {
 
 					// reduced resolution AO uses the nearest of the four depth samples
-					const g = prePassDepth.gather().sample( screenUV );
-					const depth = reference( 'resolutionScale', 'float', params ).lessThan( 1 ).select( g.x.min( g.y ).min( g.z ).min( g.w ), prePassDepth.sample( screenUV ).r );
-					return vec4( depth, prePassNormal.sample( screenUV ) );
+					const halfTexel = vec2( 0.5 ).div( vec2( textureSize( prePassDepth ) ) );
+					const depths = [[ - 1, - 1 ], [ 1, - 1 ], [ - 1, 1 ], [ 1, 1 ]].map( ( offset ) => prePassDepth.sample( uv.add( halfTexel.mul( vec2( ...offset ) ) ) ).r );
+					return reference( 'resolutionScale', 'float', params ).lessThan( 1 ).select( depths.reduce( ( a, b ) => a.min( b ) ), prePassDepth.sample( uv ).r );
 
-				} )(), 1, 1, { type: THREE.FloatType } );
-				const lowResNormal = sample( ( uv ) => lowResGuides.sample( uv ).gba );
+				} );
 
 				// scene pass
 
@@ -199,7 +198,7 @@
 
 					// rtt renders the upsampled AO before the scene pass samples it
 					aoNode = params.jointBilateralUpsample
-						? rtt( jointBilateralUpsample( lowResAO, lowResGuides, lowResNormal, prePassDepth, prePassNormal, camera ).sample( screenUV ) ).sample( screenUV ).r
+						? rtt( jointBilateralUpsample( lowResAO, lowResDepth, prePassNormal, prePassDepth, prePassNormal, camera, { size: textureSize( aoPass.getTextureNode() ) } ).sample( screenUV ) ).sample( screenUV ).r
 						: aoPass.getTextureNode().sample( screenUV ).r;
 
 					scenePass.contextNode = builtinAOContext( aoNode );
@@ -616,7 +615,6 @@
 				aoPass.samples.value = params.samples;
 				aoPass.radius.value = params.radius;
 				aoPass.resolutionScale = params.resolutionScale;
-				updateGuideSize();
 
 				if ( params.aoType === 'SSAO' ) {
 
@@ -644,15 +642,6 @@
 				camera.updateProjectionMatrix();
 
 				renderer.setSize( width, height );
-				updateGuideSize();
-
-			}
-
-			function updateGuideSize() {
-
-				// match the AO pass, which rounds its scaled size
-				const size = renderer.getDrawingBufferSize( new THREE.Vector2() );
-				lowResGuides.setSize( Math.max( 1, Math.round( size.width * params.resolutionScale ) ), Math.max( 1, Math.round( size.height * params.resolutionScale ) ) );
 
 			}
 

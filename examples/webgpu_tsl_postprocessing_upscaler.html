@@ -57,6 +57,7 @@
 				upscaleFactor: 3,
 				upsampler: 'joint-bilateral',
 				output: 'Beauty',
+				material: 'Default',
 				rotate: true
 			};
 
@@ -151,7 +152,27 @@
 
 				} );
 				gui.add( params, 'upsampler', Object.keys( upsamplers ) ).name( 'Upsampler' ).onChange( updateUpsampler );
+				gui.add( params, 'material', [ 'Default', 'Metallic' ] ).name( 'Material' ).onChange( updateMaterial );
 				gui.add( params, 'rotate' ).name( 'Rotate' );
+
+				// a mirror like material makes the reflections dominate, similar to upscaling screen space reflections
+
+				const metallicMaterial = new THREE.MeshStandardMaterial( { metalness: 1, roughness: 0 } );
+				const defaultMaterials = new Map();
+
+				function updateMaterial() {
+
+					model.traverse( ( object ) => {
+
+						if ( object.isMesh !== true ) return;
+
+						if ( defaultMaterials.has( object ) === false ) defaultMaterials.set( object, object.material );
+
+						object.material = params.material === 'Metallic' ? metallicMaterial : defaultMaterials.get( object );
+
+					} );
+
+				}
 
 				let traaNode = null;
 

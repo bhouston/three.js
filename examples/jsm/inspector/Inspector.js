@@ -414,18 +414,11 @@ class Inspector extends RendererInspector {
 	}
 
 	/**
-	 * Creates a parameter group. On load, URL query parameters with keys of the form
-	 * `inspector.Group.Folder.property` override registered controls. Folder names
-	 * are optional; group, folder and property names are case sensitive. A control's
-	 * display name (set with `name()`) takes precedence over its property name.
-	 * Encode names and values with `URLSearchParams`, for example:
-	 * `?inspector.Parameters.alpha=0.4&inspector.Parameters.alphaHash=false`.
-	 *
-	 * Overrides are applied after the current call stack, including controls added
-	 * asynchronously, and trigger the usual debounced `onChange()` callback.
-	 * Numbers are clamped to the control's bounds, booleans use `true` or `false`,
-	 * selects use their option values, and colors use six hex digits (optionally
-	 * prefixed with `#` or `0x`). Invalid values and action buttons are ignored.
+	 * Creates a parameter group. URL query parameters override controls by display
+	 * name or property, e.g. `?alpha=0.4&alphaHash=false`, after registration.
+	 * Values must be numbers, `true`/`false`, select option values, strings or
+	 * six hex digits (optionally prefixed with `#` or `0x`) for colors.
+	 * Use `URLSearchParams` to encode names and values. Overrides trigger `onChange()`.
 	 *
 	 * @param {string} name - The group name.
 	 * @return {ParametersGroup} The parameter group.

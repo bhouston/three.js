@@ -8,10 +8,10 @@ export default QUnit.module( 'Inspector', () => {
 		QUnit.test( 'URL overrides update controls and call callbacks after all values are applied', async ( assert ) => {
 
 			const parameters = new Parameters( { urlParameters: new URLSearchParams( {
-				'inspector.Settings.amount': '0.75',
-				'inspector.Settings.enabled': 'false',
-				'inspector.Settings.text': 'a & b = ✓',
-				'inspector.Settings.empty': ''
+				'amount': '0.75',
+				'enabled': 'false',
+				'text': 'a & b = ✓',
+				'empty': ''
 			} ) } );
 			const group = parameters.createGroup( 'Settings' );
 			const object = { amount: 0, enabled: true, text: 'default', empty: 'default' };
@@ -31,41 +31,32 @@ export default QUnit.module( 'Inspector', () => {
 
 		} );
 
-		QUnit.test( 'group, folder and display names disambiguate uniform values', async ( assert ) => {
+		QUnit.test( 'display names distinguish uniforms in groups and folders', async ( assert ) => {
 
 			const parameters = new Parameters( { urlParameters: new URLSearchParams( {
-				'inspector.Settings.Surface.Roughness': '0.8',
-				'inspector.Settings.Surface.value': '0.2',
-				'inspector.Settings.Other.value': '0.4',
-				'inspector.Lighting.value': '0.6'
+				'Roughness': '0.8',
+				'value': '0.2'
 			} ) } );
-			const group = parameters.createGroup( 'Initial' ).name( 'Settings' );
-			const surface = group.addFolder( 'Initial' ).name( 'Surface' );
+			const group = parameters.createGroup( 'Settings' );
 			const roughness = { value: 0 };
 			const metalness = { value: 0 };
-			const other = { value: 0 };
-			const lighting = { value: 0 };
-			surface.add( roughness, 'value', 0, 1 ).name( 'Roughness' );
-			surface.add( metalness, 'value', 0, 1 ).name( 'Metalness' );
-			group.addFolder( 'Other' ).add( other, 'value' );
-			parameters.createGroup( 'Lighting' ).add( lighting, 'value' );
+			group.addFolder( 'Surface' ).add( roughness, 'value', 0, 1 ).name( 'Roughness' );
+			group.add( metalness, 'value', 0, 1 ).name( 'Metalness' );
 
 			await Promise.resolve();
 
 			assert.strictEqual( roughness.value, 0.8, 'Display name takes precedence' );
 			assert.strictEqual( metalness.value, 0.2, 'Property name is a fallback' );
-			assert.strictEqual( other.value, 0.4, 'Folder is part of the path' );
-			assert.strictEqual( lighting.value, 0.6, 'Group is part of the path' );
 
 		} );
 
 		QUnit.test( 'numbers respect bounds and slider steps', async ( assert ) => {
 
 			const parameters = new Parameters( { urlParameters: new URLSearchParams( {
-				'inspector.Test.high': '100',
-				'inspector.Test.low': '-100',
-				'inspector.Test.slider': '0.66',
-				'inspector.Test.unbounded': '-2.5e3'
+				'high': '100',
+				'low': '-100',
+				'slider': '0.66',
+				'unbounded': '-2.5e3'
 			} ) } );
 			const group = parameters.createGroup( 'Test' );
 			const object = { high: 0, low: 0, slider: 0, unbounded: 0 };
@@ -84,11 +75,11 @@ export default QUnit.module( 'Inspector', () => {
 		QUnit.test( 'selects preserve option types and colors preserve Color identity', async ( assert ) => {
 
 			const parameters = new Parameters( { urlParameters: new URLSearchParams( {
-				'inspector.Test.array': '2',
-				'inspector.Test.mapping': '20',
-				'inspector.Test.boolean': 'false',
-				'inspector.Test.color': '#ff8800',
-				'inspector.Test.hex': '0x112233'
+				'array': '2',
+				'mapping': '20',
+				'boolean': 'false',
+				'color': '#ff8800',
+				'hex': '0x112233'
 			} ) } );
 			const group = parameters.createGroup( 'Test' );
 			const color = new Color();
@@ -111,41 +102,29 @@ export default QUnit.module( 'Inspector', () => {
 
 		} );
 
-		QUnit.test( 'invalid values, unknown parameters and buttons are ignored', async ( assert ) => {
+		QUnit.test( 'unknown parameters and buttons are ignored', async ( assert ) => {
 
-			for ( const invalid of [ '', ' ', 'NaN', 'Infinity', '-Infinity', '1bad' ] ) {
+			const parameters = new Parameters( { urlParameters: new URLSearchParams( {
+				'action': 'true',
+				'unknown': '10'
+			} ) } );
+			const group = parameters.createGroup( 'Test' );
+			let calls = 0;
+			const object = { number: 1, action: () => calls ++ };
+			group.add( object, 'number' ).onChange( () => calls ++ );
+			group.add( object, 'action' );
 
-				const parameters = new Parameters( { urlParameters: new URLSearchParams( {
-					'inspector.Test.number': invalid,
-					'inspector.Test.boolean': 'yes',
-					'inspector.Test.select': 'missing',
-					'inspector.Test.color': '#bad',
-					'inspector.Test.action': 'true',
-					'inspector.Test.unknown': '10',
-					'number': '99'
-				} ) } );
-				const group = parameters.createGroup( 'Test' );
-				let calls = 0;
-				const object = { number: 1, boolean: true, select: 'a', color: 0xffffff, action: () => calls ++ };
-				const expected = { ...object };
-				group.add( object, 'number' ).onChange( () => calls ++ );
-				group.add( object, 'boolean' );
-				group.add( object, 'select', [ 'a', 'b' ] );
-				group.addColor( object, 'color' );
-				group.add( object, 'action' );
+			await new Promise( resolve => setTimeout( resolve, 20 ) );
 
-				await new Promise( resolve => setTimeout( resolve, 20 ) );
-
-				assert.deepEqual( object, expected, `Invalid number: ${invalid}` );
-				assert.strictEqual( calls, 0, 'No callbacks or actions triggered' );
-
-			}
+			assert.strictEqual( object.number, 1 );
+			assert.notOk( Object.hasOwn( object, 'unknown' ) );
+			assert.strictEqual( calls, 0 );
 
 		} );
 
 		QUnit.test( 'controls added asynchronously also apply overrides once', async ( assert ) => {
 
-			const parameters = new Parameters( { urlParameters: new URLSearchParams( { 'inspector.Test.value': '2' } ) } );
+			const parameters = new Parameters( { urlParameters: new URLSearchParams( { 'value': '2' } ) } );
 			const group = parameters.createGroup( 'Test' );
 			await Promise.resolve();
 
@@ -167,7 +146,7 @@ export default QUnit.module( 'Inspector', () => {
 			parameters.createGroup( 'Test' ).add( object, 'value' );
 			await Promise.resolve();
 
-			assert.strictEqual( parameters.urlParameters, null );
+			assert.strictEqual( parameters._urlParameters, null );
 			assert.strictEqual( object.value, 1 );
 
 		} );

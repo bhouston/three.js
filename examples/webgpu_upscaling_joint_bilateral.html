@@ -21,7 +21,8 @@
 
 			<small>
 				Joint bilateral upscaler uses depth and normal channels to preserve details by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br />
-				Compare it with FSR 1, TAAU and a TRAA resolve of the jittered joint bilateral result.<br />
+				Compare spatial and temporal upscalers, including experimental quality and cost variants.<br />
+				<span id="method"></span><br />
 				<span id="resolution"></span>
 			</small>
 		</div>
@@ -41,10 +42,15 @@
 
 			import * as THREE from 'three/webgpu';
 			import { mrt, normalView, output, pass, renderOutput, rtt, sample, screenUV, textureSize, uniform, vec2, vec4, velocity } from 'three/tsl';
+			import { researchJointBilateralUpsample } from 'three/addons/tsl/display/ResearchJointBilateralUpsample.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 			import { fsr1 } from 'three/addons/tsl/display/FSR1Node.js';
+			import { researchSharpen } from 'three/addons/tsl/display/ResearchSharpen.js';
 			import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
+			import { researchTAAU } from 'three/addons/tsl/display/ResearchTAAUNode.js';
 			import { taau } from 'three/addons/tsl/display/TAAUNode.js';
+			import { upscalerMipBias } from 'three/addons/tsl/utils/UpscalerMipBias.js';
+			import { researchTRAA } from 'three/addons/tsl/display/ResearchTRAANode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
 			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
@@ -114,6 +120,7 @@
 				// The beauty is rendered at a reduced resolution in linear half float.
 
 				const lowPasses = [];
+				const mipBias = uniform( - Math.log2( params.upscaleFactor ) );
 
 				const scenePass = ( channels, reduced = true ) => {
 
@@ -138,14 +145,18 @@
 
 				const normalOf = ( node ) => sample( ( uv ) => node.sample( uv ).rgb.normalize() );
 
-				const jointBilateral = ( guidePass ) => {
+				const jointBilateral = ( guidePass, options = null ) => {
 
-					const lowPass = scenePass( { output, normal: normalView } );
+					const depthOnly = options?.guidance === 'depth-only';
+					const lowPass = scenePass( depthOnly ? undefined : { output, normal: normalView } );
+					if ( options?.mipBias ) lowPass.contextNode = upscalerMipBias( mipBias );
+					const upsample = options === null ? jointBilateralUpsample : researchJointBilateralUpsample;
 
-					return rtt( jointBilateralUpsample(
-						lowPass.getTextureNode( 'output' ), lowPass.getTextureNode( 'depth' ), normalOf( lowPass.getTextureNode( 'normal' ) ),
-						guidePass.getTextureNode( 'depth' ), normalOf( guidePass.getTextureNode( 'output' ) ), camera
-					).sample( screenUV ) );
+					const reconstructed = upsample(
+						lowPass.getTextureNode( 'output' ), lowPass.getTextureNode( 'depth' ), depthOnly ? null : normalOf( lowPass.getTextureNode( 'normal' ) ),
+						guidePass.getTextureNode( 'depth' ), normalOf( guidePass.getTextureNode( 'output' ) ), camera, options || {}
+					).sample( screenUV );
+					return options?.fused ? reconstructed : rtt( reconstructed );
 
 				};
 
@@ -165,15 +176,99 @@
 
 				const taauNode = taau( velocityPass.getTextureNode( 'output' ), velocityPass.getTextureNode( 'depth' ), velocityPass.getTextureNode( 'velocity' ), camera );
 
+				// Experimental temporal resolves share the same low resolution input layout.
+				const temporalNodes = [];
+				const temporal = ( options = {}, inputPass = velocityPass ) => {
+
+					const node = researchTAAU( inputPass.getTextureNode( 'output' ), inputPass.getTextureNode( 'depth' ), inputPass.getTextureNode( 'velocity' ), camera, options );
+					if ( options.responsive ) {
+
+						node.currentFrameWeight = 0.1;
+						node.maxVelocityLength = 16;
+
+					}
+
+					temporalNodes.push( node );
+					const sharpened = researchSharpen( node.getTextureNode(), 0.2 );
+					return display( vec4( ( options.fused ? sharpened : rtt( sharpened ) ).rgb, 1 ) );
+
+				};
+
+				const mipPass = scenePass( { output, velocity } );
+				mipPass.contextNode = upscalerMipBias( mipBias );
+				const mipFinePass = scenePass( { output, velocity } );
+				mipFinePass.contextNode = upscalerMipBias( mipBias.sub( 1 ) );
+
+				const wideJitter = researchTRAA( jointBilateral( jitteredGuidePass ), jitteredGuidePass.getTextureNode( 'depth' ), jitteredGuidePass.getTextureNode( 'velocity' ), camera, () => params.upscaleFactor );
+
+				const wideJitterMip = researchTRAA( jointBilateral( jitteredGuidePass, { mipBias: true } ), jitteredGuidePass.getTextureNode( 'depth' ), jitteredGuidePass.getTextureNode( 'velocity' ), camera, () => params.upscaleFactor );
+
 				// each upsampler outputs the displayed colors at full resolution
 
 				const upsamplers = {
 					'none': display( rtt( lowColor.sample( screenUV.mul( lowSize ).floor().add( 0.5 ).div( lowSize ) ) ) ),
 					'bilinear': display( rtt( lowColor.sample( screenUV ) ) ),
 					'joint-bilateral': display( jointBilateral( scenePass( { output: normalView }, false ) ) ),
+					'joint-bilateral-fused': display( jointBilateral( scenePass( { output: normalView }, false ), { fused: true } ) ),
+					'joint-bilateral-mip-fused': display( jointBilateral( scenePass( { output: normalView }, false ), { fused: true, mipBias: true } ) ),
+					'joint-bilateral-mip': display( jointBilateral( scenePass( { output: normalView }, false ), { mipBias: true } ) ),
+					'joint-bilateral-mip-sharp': display( jointBilateral( scenePass( { output: normalView }, false ), { mipBias: true, reconstruction: 'sharp' } ) ),
+					'joint-bilateral-depth': display( jointBilateral( scenePass( { output: normalView }, false ), { guidance: 'depth-only' } ) ),
+					'joint-bilateral-rational': display( jointBilateral( scenePass( { output: normalView }, false ), { depthKernel: 'rational' } ) ),
+					'joint-bilateral-wide': display( jointBilateral( scenePass( { output: normalView }, false ), { reconstruction: 'gaussian' } ) ),
+					'joint-bilateral-sharp': display( jointBilateral( scenePass( { output: normalView }, false ), { reconstruction: 'sharp' } ) ),
 					'joint-bilateral-traa': display( jointBilateralTRAA.getTextureNode() ),
 					'fsr1': fsr1( lowDisplay ).getTextureNode(),
-					'taau': display( sharpen( taauNode.getTextureNode(), 0.2 ) )
+					'taau': display( sharpen( taauNode.getTextureNode(), 0.2 ) ),
+					'joint-bilateral-wide-jitter': display( wideJitter.getTextureNode() ),
+					'joint-bilateral-wide-jitter-mip': display( wideJitterMip.getTextureNode() ),
+					'taau-pingpong': temporal(),
+					'taau-mip': temporal( {}, mipPass ),
+					'taau-mip-fine': temporal( {}, mipFinePass ),
+					'taau-mip-catmull': temporal( { historyFilter: 'catmull-rom' }, mipPass ),
+					'taau-mip-distance': temporal( { reconstructionSharpness: 4, sampleDistanceWeight: true }, mipPass ),
+					'taau-mip-fast': temporal( { cross: true, reconstructionSharpness: 4, sampleDistanceWeight: true }, mipPass ),
+					'taau-mip-responsive': temporal( { fused: true, responsive: true, reconstructionSharpness: 4, sampleDistanceWeight: true, registerPreviousDepth: true }, mipPass ),
+					'taau-mip-fast-responsive': temporal( { fused: true, responsive: true, cross: true, reconstructionSharpness: 4, sampleDistanceWeight: true, registerPreviousDepth: true }, mipPass ),
+					'taau-mip-fused': temporal( { fused: true, reconstructionSharpness: 4, sampleDistanceWeight: true, registerPreviousDepth: true }, mipPass ),
+					'taau-mip-fast-fused': temporal( { fused: true, cross: true, reconstructionSharpness: 4, sampleDistanceWeight: true, registerPreviousDepth: true }, mipPass ),
+					'taau-mip-registered': temporal( { reconstructionSharpness: 4, sampleDistanceWeight: true, registerPreviousDepth: true }, mipPass ),
+					'taau-mip-detail': temporal( { reconstructionSharpness: 4, sampleDistanceWeight: true }, mipFinePass ),
+					'taau-cross': temporal( { cross: true } ),
+					'taau-catmull': temporal( { historyFilter: 'catmull-rom' } ),
+					'taau-narrow': temporal( { reconstructionSharpness: 4 } ),
+					'taau-distance-weight': temporal( { sampleDistanceWeight: true } ),
+					'taau-distance': temporal( { reconstructionSharpness: 4, sampleDistanceWeight: true } )
+				};
+
+				const descriptions = {
+					'joint-bilateral-fused': 'Joint bilateral with reconstruction and display in one pass.',
+					'joint-bilateral-mip': 'Joint bilateral with textures sampled for the display resolution.',
+					'joint-bilateral-mip-fused': 'Display-resolution texture sampling and fused reconstruction.',
+					'joint-bilateral-mip-sharp': 'Display-resolution texture sampling and a narrower spatial filter.',
+					'joint-bilateral-depth': 'Depth-only low-resolution guidance: fewer normal reads, lower edge quality.',
+					'joint-bilateral-rational': 'Polynomial approximation of the depth weights.',
+					'joint-bilateral-wide': 'Nine-tap spatial reconstruction: wider support.',
+					'joint-bilateral-sharp': 'Narrower four-tap spatial reconstruction.',
+					'joint-bilateral-wide-jitter': 'Temporal bilateral reconstruction with jitter across a low-resolution pixel.',
+					'joint-bilateral-wide-jitter-mip': 'Wide-jitter temporal bilateral with display-resolution texture sampling.',
+					'taau-pingpong': 'Temporal resolve with alternating history buffers and a persistent feature lock.',
+					'taau-cross': 'Five-tap temporal reconstruction and depth dilation.',
+					'taau-catmull': 'Sharper five-tap history filtering.',
+					'taau-narrow': 'Narrower current-frame reconstruction filter.',
+					'taau-distance-weight': 'Accumulation weighted by the distance to a jittered sample.',
+					'taau-distance': 'Narrower reconstruction with sample-distance weighting.',
+					'taau-mip': 'Temporal reconstruction with display-resolution texture sampling.',
+					'taau-mip-fine': 'Temporal reconstruction with an additional mip level of texture detail.',
+					'taau-mip-catmull': 'Display-resolution texture sampling with sharper history filtering.',
+					'taau-mip-distance': 'Display-resolution texture sampling with narrower, distance-weighted reconstruction.',
+					'taau-mip-fast': 'Five-tap version of the mip-corrected, distance-weighted reconstruction.',
+					'taau-mip-detail': 'Distance-weighted reconstruction with an additional mip level of texture detail.',
+					'taau-mip-registered': 'Mip-corrected reconstruction with previous-depth jitter registration.',
+					'taau-mip-responsive': 'Faster history response for moving details, with less temporal smoothing.',
+					'taau-mip-fast-responsive': 'Five-tap version with faster history response.',
+					'taau-mip-fused': 'Mip-corrected, distance-weighted reconstruction with sharpening fused into display.',
+					'taau-mip-fast-fused': 'Five-tap version with sharpening fused into display.'
 				};
 
 				// full resolution beauty, only rendered as the reference of the error output
@@ -192,11 +287,18 @@
 
 					lowPasses.forEach( ( node ) => node.setResolutionScale( 1 / value ) );
 					lowDisplay.setResolutionScale( 1 / value );
+					mipBias.value = - Math.log2( value );
+					updateUpsampler();
 					updateResolution();
 
 				} );
 				gui.add( params, 'upsampler', Object.keys( upsamplers ) ).name( 'Upsampler' ).onChange( updateUpsampler );
-				gui.add( params, 'material', [ 'Default', 'Metallic' ] ).name( 'Material' ).onChange( updateMaterial );
+				gui.add( params, 'material', [ 'Default', 'Metallic' ] ).name( 'Material' ).onChange( () => {
+
+					updateMaterial();
+					updateUpsampler();
+
+				} );
 				gui.add( params, 'rotate' ).name( 'Rotate' );
 
 				// a fully metallic material that keeps the original roughness makes the reflections
@@ -229,7 +331,12 @@
 
 				function updateUpsampler() {
 
+					temporalNodes.forEach( node => node.reset() );
+					wideJitter.reset();
+					wideJitterMip.reset();
+
 					const upscaled = upsamplers[ params.upsampler ];
+					document.getElementById( 'method' ).textContent = descriptions[ params.upsampler ] || '';
 
 					// the error is the absolute difference to the full resolution render
 					renderPipeline.outputNode = params.output === 'Error'
@@ -245,7 +352,12 @@
 				updateUpsampler();
 				updateResolution();
 
-				window.addEventListener( 'resize', onWindowResize );
+				window.addEventListener( 'resize', () => {
+
+					onWindowResize();
+					updateUpsampler();
+
+				} );
 
 				renderer.setAnimationLoop( render );
 

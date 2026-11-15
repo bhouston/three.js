@@ -19,7 +19,7 @@ let _rendererState;
  * Note: MSAA must be disabled when TRAA is in use.
  *
  * @augments Node
- * @three_import import { traa } from 'three/addons/tsl/display/ResearchTRAANode.js';
+ * @three_import import { researchTRAA } from 'three/addons/tsl/display/ResearchTRAANode.js';
  */
 class ResearchTRAANode extends Node {
 

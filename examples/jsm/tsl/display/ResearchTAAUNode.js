@@ -34,7 +34,7 @@ let _rendererState;
  * Note: MSAA must be disabled when TAAU is in use.
  *
  * @augments Node
- * @three_import import { taau } from 'three/addons/tsl/display/ResearchTAAUNode.js';
+ * @three_import import { researchTAAU } from 'three/addons/tsl/display/ResearchTAAUNode.js';
  */
 class ResearchTAAUNode extends Node {
 

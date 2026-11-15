@@ -39,6 +39,7 @@ class Inspector extends RendererInspector {
 		} );
 		parameters.hide();
 		profiler.addTab( parameters );
+		parameters._createShareButton();
 
 		const viewer = new Viewer();
 		viewer.hide();

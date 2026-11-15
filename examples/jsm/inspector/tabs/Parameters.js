@@ -152,9 +152,12 @@ class ParametersGroup {
 
 		this._registerParameter( object, property, editor, subItem );
 
-		if ( this.parameters._urlParameters !== null ) {
+		this.parameters._urlBindings.push( {
+			group: this, object, property, editor,
+			defaultValue: this._getURLParameterValue( object, property, editor )
+		} );
 
-			this.parameters._urlBindings.push( { group: this, object, property } );
+		if ( this.parameters._urlParameters !== null ) {
 
 			// Wait for chained control configuration.
 
@@ -167,6 +170,13 @@ class ParametersGroup {
 	_getURLParameterName( object, property ) {
 
 		return property === 'value' && object.isUniformNode && object.name ? object.name : property;
+
+	}
+
+	_getURLParameterValue( object, property, editor ) {
+
+		const value = object[ property ];
+		return editor instanceof ValueColor ? editor._getColorHex( value ).toLowerCase() : String( value );
 
 	}
 
@@ -503,6 +513,88 @@ class Parameters extends Tab {
 		this.groups = [];
 		this._urlParameters = options.urlParameters || null;
 		this._urlBindings = [];
+
+	}
+
+	_createShareButton() {
+
+		const button = document.createElement( 'button' );
+		button.className = 'parameters-share-btn';
+		button.title = 'Copy parameter URL';
+		button.setAttribute( 'aria-label', button.title );
+		button.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>';
+
+		button.onclick = async ( event ) => {
+
+			event.stopPropagation();
+
+			const url = this._getShareURL();
+
+			if ( url === null ) {
+
+				window.alert( 'Some changed parameters have the same URL path. Give their groups or uniforms unique names to share these settings.' );
+				return;
+
+			}
+
+			try {
+
+				await navigator.clipboard.writeText( url );
+				button.title = 'URL copied';
+				button.classList.add( 'copied' );
+				setTimeout( () => {
+
+					button.title = 'Copy parameter URL';
+					button.classList.remove( 'copied' );
+
+				}, 1000 );
+
+			} catch {
+
+				window.prompt( 'Copy parameter URL', url );
+
+			}
+
+		};
+
+		this.builtinButton.classList.add( 'parameters-toggle' );
+		this.builtinButton.after( button );
+
+	}
+
+	_getShareURL( url = new URL( window.location.href ) ) {
+
+		for ( const { group, object, property } of this._urlBindings ) {
+
+			const name = group._getURLParameterName( object, property );
+			url.searchParams.delete( name );
+			url.searchParams.delete( group._urlPath + '.' + name );
+
+		}
+
+		for ( const { group, object, property, editor, defaultValue } of this._urlBindings ) {
+
+			const value = group._getURLParameterValue( object, property, editor );
+
+			if ( value !== defaultValue ) {
+
+				const name = group._getURLParameterName( object, property );
+				const path = group._urlPath + '.' + name;
+				const matches = this._urlBindings.filter( ( binding ) => {
+
+					return binding.group._urlPath + '.' + binding.group._getURLParameterName( binding.object, binding.property ) === path;
+
+				} );
+
+				if ( matches.length !== 1 ) return null;
+
+				url.searchParams.set( path, value );
+
+			}
+
+		}
+
+		return url.href;
 
 	}
 

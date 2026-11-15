@@ -207,6 +207,86 @@ export default QUnit.module( 'Inspector', () => {
 
 		} );
 
+		QUnit.test( 'share URLs use qualified keys and omit defaults', async ( assert ) => {
+
+			const parameters = new Parameters( { urlParameters: new URLSearchParams( { amount: '0.75' } ) } );
+			const object = { amount: 0.25, enabled: true, text: '', untouched: 10 };
+			const group = parameters.createGroup( 'settings' ).name( 'Settings' );
+			const amount = group.add( object, 'amount', 0, 1 ).name( 'Amount' );
+			group.add( object, 'enabled' );
+			group.add( object, 'text' );
+			group.add( object, 'untouched' );
+			await Promise.resolve();
+
+			object.enabled = false;
+			object.text = 'a & b = ✓';
+			const base = 'https://example.com/demo?amount=0.75&settings.untouched=99&mode=webgpu#view';
+			const url = new URL( parameters._getShareURL( new URL( base ) ) );
+
+			assert.strictEqual( url.searchParams.get( 'settings.amount' ), '0.75', 'URL override differs from the original default' );
+			assert.strictEqual( url.searchParams.get( 'settings.enabled' ), 'false' );
+			assert.strictEqual( url.searchParams.get( 'settings.text' ), object.text );
+			assert.notOk( url.searchParams.has( 'settings.untouched' ), 'Default removes a stale override' );
+			assert.notOk( url.searchParams.has( 'amount' ), 'Unqualified aliases are replaced' );
+			assert.strictEqual( url.searchParams.get( 'mode' ), 'webgpu' );
+			assert.strictEqual( url.hash, '#view' );
+
+			const restored = new Parameters( { urlParameters: url.searchParams } );
+			const restoredObject = { amount: 0.25, enabled: true, text: '', untouched: 10 };
+			const restoredGroup = restored.createGroup( 'settings' );
+			for ( const property of Object.keys( restoredObject ) ) restoredGroup.add( restoredObject, property );
+			await Promise.resolve();
+			assert.deepEqual( restoredObject, object, 'Shared URL restores the same parameter values' );
+
+			amount.setValue( 0.25 );
+			assert.notOk( new URL( parameters._getShareURL( new URL( base ) ) ).searchParams.has( 'settings.amount' ), 'Reset values are omitted' );
+
+		} );
+
+		QUnit.test( 'share URLs snapshot colors and use uniform names in nested groups', async ( assert ) => {
+
+			const parameters = new Parameters();
+			const group = parameters.createGroup( 'water' ).addFolder( 'waves' );
+			const height = uniform( 0.1 ).setName( 'waveHeight' );
+			const object = { color: new Color( 0xffffff ), hex: '#FFFFFF' };
+			group.add( height, 'value', 0, 1 );
+			group.addColor( object, 'color' );
+			group.addColor( object, 'hex' );
+			height.value = 0.5;
+			object.color.setHex( 0xff8800 );
+			object.hex = 0xffffff;
+
+			const url = new URL( parameters._getShareURL( new URL( 'https://example.com/demo' ) ) );
+
+			assert.strictEqual( url.searchParams.get( 'water.waves.waveHeight' ), '0.5' );
+			assert.strictEqual( url.searchParams.get( 'water.waves.color' ), '#ff8800' );
+			assert.notOk( url.searchParams.has( 'water.waves.hex' ), 'Equivalent color representations use the same default' );
+
+			object.color.setHex( 0xffffff );
+			assert.notOk( new URL( parameters._getShareURL( new URL( 'https://example.com/demo' ) ) ).searchParams.has( 'water.waves.color' ) );
+
+		} );
+
+		QUnit.test( 'sharing cannot silently lose changed controls with ambiguous paths', ( assert ) => {
+
+			const parameters = new Parameters();
+			const group = parameters.createGroup( 'water' );
+			const height = uniform( 0.1 );
+			const speed = uniform( 0.2 );
+			group.add( height, 'value', 0, 1 );
+			group.add( speed, 'value', 0, 1 );
+			height.value = 0.5;
+
+			assert.strictEqual( parameters._getShareURL( new URL( 'https://example.com/demo' ) ), null );
+
+			height.setName( 'waveHeight' );
+			speed.setName( 'waveSpeed' );
+			const url = new URL( parameters._getShareURL( new URL( 'https://example.com/demo' ) ) );
+			assert.strictEqual( url.searchParams.get( 'water.waveHeight' ), '0.5' );
+			assert.notOk( url.searchParams.has( 'water.waveSpeed' ) );
+
+		} );
+
 		QUnit.test( 'URL overrides are disabled for other parameter tabs by default', async ( assert ) => {
 
 			const parameters = new Parameters();

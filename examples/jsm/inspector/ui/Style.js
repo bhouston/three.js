@@ -199,7 +199,7 @@ export class Style {
 		order: -1;
 	}
 
-	.builtin-tab-btn {
+	.builtin-tab-btn, .parameters-share-btn {
 		background: transparent;
 		border: none;
 		color: var(--text-secondary);
@@ -216,18 +216,18 @@ export class Style {
 		position: relative;
 	}
 
-	.builtin-tab-btn svg {
+	.builtin-tab-btn svg, .parameters-share-btn svg {
 		width: 20px;
 		height: 20px;
 		stroke: currentColor;
 	}
 
-	.builtin-tab-btn:hover {
+	.builtin-tab-btn:hover, .parameters-share-btn:hover {
 		background-color: rgba(255, 255, 255, 0.08);
 		color: var(--color-accent);
 	}
 
-	.builtin-tab-btn:active {
+	.builtin-tab-btn:active, .parameters-share-btn:active {
 		background-color: rgba(255, 255, 255, 0.12);
 	}
 
@@ -238,6 +238,18 @@ export class Style {
 
 	.builtin-tab-btn.active:hover {
 		background-color: rgba(0, 170, 255, 0.3);
+	}
+
+	.parameters-share-btn {
+		display: none;
+	}
+
+	.parameters-toggle.active + .parameters-share-btn {
+		display: flex;
+	}
+
+	.parameters-share-btn.copied {
+		color: var(--color-green);
 	}
 
 	.profiler-mini-panel {

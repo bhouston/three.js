@@ -155,10 +155,10 @@
 				gui.add( params, 'material', [ 'Default', 'Metallic' ] ).name( 'Material' ).onChange( updateMaterial );
 				gui.add( params, 'rotate' ).name( 'Rotate' );
 
-				// a mirror like material makes the reflections dominate, similar to upscaling screen space reflections
+				// a fully metallic material that keeps the original roughness makes the reflections
+				// dominate, similar to upscaling screen space reflections
 
-				const metallicMaterial = new THREE.MeshStandardMaterial( { metalness: 1, roughness: 0 } );
-				const defaultMaterials = new Map();
+				const materials = new Map();
 
 				function updateMaterial() {
 
@@ -166,9 +166,18 @@
 
 						if ( object.isMesh !== true ) return;
 
-						if ( defaultMaterials.has( object ) === false ) defaultMaterials.set( object, object.material );
+						if ( materials.has( object ) === false ) {
 
-						object.material = params.material === 'Metallic' ? metallicMaterial : defaultMaterials.get( object );
+							const { roughness, roughnessMap } = object.material;
+
+							materials.set( object, {
+								Default: object.material,
+								Metallic: new THREE.MeshStandardMaterial( { metalness: 1, roughness, roughnessMap } )
+							} );
+
+						}
+
+						object.material = materials.get( object )[ params.material ];
 
 					} );
 

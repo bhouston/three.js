@@ -58,6 +58,7 @@
 				upsampler: 'joint-bilateral',
 				output: 'Beauty',
 				material: 'Default',
+				traa: true,
 				rotate: true
 			};
 
@@ -153,6 +154,7 @@
 				} );
 				gui.add( params, 'upsampler', Object.keys( upsamplers ) ).name( 'Upsampler' ).onChange( updateUpsampler );
 				gui.add( params, 'material', [ 'Default', 'Metallic' ] ).name( 'Material' ).onChange( updateMaterial );
+				gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateUpsampler );
 				gui.add( params, 'rotate' ).name( 'Rotate' );
 
 				// a fully metallic material that keeps the original roughness makes the reflections
@@ -190,21 +192,16 @@
 					if ( traaNode !== null ) traaNode.dispose();
 
 					const upscaled = upsamplers[ params.upsampler ];
+					const isError = params.output === 'Error';
 
-					if ( params.output === 'Error' ) {
+					// the error is the absolute difference to the full resolution render, with the same camera jitter
+					const source = isError ? ( errors[ params.upsampler ] ??= rtt( vec4( display( upscaled ).rgb.sub( display( reference ).rgb ).abs().mul( errorScale ), 1 ) ) ) : upscaled;
 
-						// absolute difference to the full resolution render, with the same camera jitter
-						const error = errors[ params.upsampler ] ??= rtt( vec4( display( upscaled ).rgb.sub( display( reference ).rgb ).abs().mul( errorScale ), 1 ) );
+					// the camera is only jittered while TRAA is part of the pipeline
+					traaNode = params.traa ? traa( source, depth, guideVelocity, camera ) : null;
 
-						traaNode = traa( error, depth, guideVelocity, camera );
-						renderPipeline.outputNode = traaNode;
-
-					} else {
-
-						traaNode = traa( upscaled, depth, guideVelocity, camera );
-						renderPipeline.outputNode = display( traaNode );
-
-					}
+					const resolved = traaNode || source;
+					renderPipeline.outputNode = isError ? resolved : display( resolved );
 
 					renderPipeline.needsUpdate = true;
 

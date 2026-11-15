@@ -6,9 +6,11 @@ import { ValueString, ValueNumber, ValueSlider, ValueSelect, ValueCheckbox, Valu
 
 class ParametersGroup {
 
-	constructor( parameters, name ) {
+	constructor( parameters, name, parent = null ) {
 
 		this.parameters = parameters;
+		this.parent = parent;
+		this._name = name;
 
 		this.paramList = new Item( name );
 		this.paramList.setCollapsible( true );
@@ -27,6 +29,7 @@ class ParametersGroup {
 
 	name( name ) {
 
+		this._name = name;
 		this.paramList.setValue( 0, name );
 
 		return this;
@@ -151,6 +154,77 @@ class ParametersGroup {
 
 		this._registerParameter( object, property, editor, subItem );
 
+		if ( this.parameters.urlParameters !== null ) {
+
+			// Wait for chained name(), step() and onChange() calls before applying overrides.
+
+			queueMicrotask( () => this._applyURLParameter( property, editor, subItem ) );
+
+		}
+
+	}
+
+	_applyURLParameter( property, editor, subItem ) {
+
+		const path = [];
+
+		for ( let group = this; group !== null; group = group.parent ) {
+
+			path.unshift( group._name );
+
+		}
+
+		const prefix = 'inspector.' + path.join( '.' ) + '.';
+		const parameters = this.parameters.urlParameters;
+		const label = subItem.data[ 0 ].title;
+		let value = parameters.get( prefix + label ) ?? parameters.get( prefix + property );
+
+		if ( value === null ) return;
+
+		if ( editor instanceof ValueSelect ) {
+
+			const options = Object.values( editor.options );
+			const option = options.find( option => String( option ) === value );
+
+			if ( option === undefined ) return;
+
+			value = option;
+
+		} else if ( editor instanceof ValueColor ) {
+
+			if ( ! /^(?:#|0x)?[0-9a-f]{6}$/i.test( value ) ) return;
+
+			value = parseInt( value.replace( /^(#|0x)/i, '' ), 16 );
+
+		} else if ( editor instanceof ValueCheckbox ) {
+
+			if ( value !== 'true' && value !== 'false' ) return;
+
+			value = value === 'true';
+
+		} else if ( editor instanceof ValueNumber || editor instanceof ValueSlider ) {
+
+			if ( value.trim() === '' || ! Number.isFinite( Number( value ) ) ) return;
+
+			const input = editor instanceof ValueSlider ? editor.slider : editor.input;
+			const min = Number( input.min );
+			const max = Number( input.max );
+
+			value = Math.max( min, Math.min( max, Number( value ) ) );
+
+			if ( editor instanceof ValueSlider ) {
+
+				// Let the range input normalize the step, then keep both inputs in sync.
+
+				input.value = value;
+				value = Number( input.value );
+
+			}
+
+		}
+
+		editor.setValue( value );
+
 	}
 
 	_registerParameter( object, property, editor, subItem ) {
@@ -192,7 +266,7 @@ class ParametersGroup {
 
 	addFolder( name ) {
 
-		const group = new ParametersGroup( this.parameters, name );
+		const group = new ParametersGroup( this.parameters, name, this );
 
 		this.paramList.add( group.paramList );
 
@@ -425,6 +499,7 @@ class Parameters extends Tab {
 		this.paramList = paramList;
 
 		this.groups = [];
+		this.urlParameters = options.urlParameters || null;
 
 	}
 

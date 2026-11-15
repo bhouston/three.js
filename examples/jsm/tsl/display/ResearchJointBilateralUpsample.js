@@ -36,7 +36,10 @@ export const researchJointBilateralUpsample = ( inputNode, lowDepthNode, lowNorm
 
 		const size = vec2( gridSize !== null ? gridSize : textureSize( lowDepthNode ) );
 		const pixel = coordinate.mul( size ).sub( 0.5 );
-		const base = ( wide ? pixel.round() : pixel.floor() ).toConst();
+		// Keep this expression inline: materializing it before gather() builds
+		// textureSize(lowDepthNode) first, binding the shared depth texture
+		// without the sampler required by WebGPU textureGather().
+		const base = wide ? pixel.round() : pixel.floor();
 		const fraction = pixel.fract();
 		const position = getViewPosition( coordinate, depthNode.sample( coordinate ).r, projectionInverse ).toConst();
 		const n = normalNode.sample( coordinate ).toConst();

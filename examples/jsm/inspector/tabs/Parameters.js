@@ -152,16 +152,17 @@ class ParametersGroup {
 
 		this._registerParameter( object, property, editor, subItem );
 
-		this.parameters._urlBindings.push( {
+		const binding = {
 			group: this, object, property, editor,
 			defaultValue: this._getURLParameterValue( object, property, editor )
-		} );
+		};
+		this.parameters._urlBindings.push( binding );
 
 		if ( this.parameters._urlParameters !== null ) {
 
 			// Wait for chained control configuration.
 
-			queueMicrotask( () => this._applyURLParameter( object, property, editor ) );
+			queueMicrotask( () => this._applyURLParameter( binding ) );
 
 		}
 
@@ -180,24 +181,30 @@ class ParametersGroup {
 
 	}
 
-	_applyURLParameter( object, property, editor ) {
+	_applyURLParameter( binding ) {
 
+		const { object, property, editor } = binding;
 		const parameters = this.parameters._urlParameters;
-		const name = this._getURLParameterName( object, property );
-		const path = this._urlPath + '.' + name;
-		const qualified = parameters.has( path );
-		const key = qualified ? path : name;
 
-		if ( ! parameters.has( key ) ) return;
+		if ( parameters.size === 0 ) return;
 
-		const matches = this.parameters._urlBindings.filter( ( binding ) => {
+		const indexedKey = this.parameters._getURLParameterKey( binding, true );
+		let key = parameters.has( indexedKey ) ? indexedKey : this.parameters._getURLParameterKey( binding );
 
-			const name = binding.group._getURLParameterName( binding.object, binding.property );
-			return ( qualified ? binding.group._urlPath + '.' + name : name ) === key;
+		if ( ! parameters.has( key ) ) {
 
-		} );
+			const name = this._getURLParameterName( object, property );
+			const matches = this.parameters._urlBindings.filter( ( binding ) => {
 
-		if ( matches.length !== 1 ) return;
+				return binding.group._getURLParameterName( binding.object, binding.property ) === name;
+
+			} );
+
+			if ( matches.length !== 1 || ! parameters.has( name ) ) return;
+
+			key = name;
+
+		}
 
 		let value = parameters.get( key );
 		parameters.delete( key );
@@ -530,13 +537,6 @@ class Parameters extends Tab {
 
 			const url = this._getShareURL();
 
-			if ( url === null ) {
-
-				window.alert( 'Some changed parameters have the same URL path. Give their groups or uniforms unique names to share these settings.' );
-				return;
-
-			}
-
 			try {
 
 				await navigator.clipboard.writeText( url );
@@ -562,33 +562,40 @@ class Parameters extends Tab {
 
 	}
 
+	_getURLParameterKey( binding, indexed = false ) {
+
+		const { group, object, property } = binding;
+		const path = group._urlPath + '.' + group._getURLParameterName( object, property );
+		const matches = this._urlBindings.filter( ( binding ) => {
+
+			return binding.group._urlPath + '.' + binding.group._getURLParameterName( binding.object, binding.property ) === path;
+
+		} );
+
+		return indexed || matches.length > 1 ? path + '[' + matches.indexOf( binding ) + ']' : path;
+
+	}
+
 	_getShareURL( url = new URL( window.location.href ) ) {
 
-		for ( const { group, object, property } of this._urlBindings ) {
+		for ( const binding of this._urlBindings ) {
 
+			const { group, object, property } = binding;
 			const name = group._getURLParameterName( object, property );
 			url.searchParams.delete( name );
 			url.searchParams.delete( group._urlPath + '.' + name );
+			url.searchParams.delete( this._getURLParameterKey( binding, true ) );
 
 		}
 
-		for ( const { group, object, property, editor, defaultValue } of this._urlBindings ) {
+		for ( const binding of this._urlBindings ) {
 
+			const { group, object, property, editor, defaultValue } = binding;
 			const value = group._getURLParameterValue( object, property, editor );
 
 			if ( value !== defaultValue ) {
 
-				const name = group._getURLParameterName( object, property );
-				const path = group._urlPath + '.' + name;
-				const matches = this._urlBindings.filter( ( binding ) => {
-
-					return binding.group._urlPath + '.' + binding.group._getURLParameterName( binding.object, binding.property ) === path;
-
-				} );
-
-				if ( matches.length !== 1 ) return null;
-
-				url.searchParams.set( path, value );
+				url.searchParams.set( this._getURLParameterKey( binding ), value );
 
 			}
 

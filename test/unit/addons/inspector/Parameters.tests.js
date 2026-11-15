@@ -267,7 +267,7 @@ export default QUnit.module( 'Inspector', () => {
 
 		} );
 
-		QUnit.test( 'sharing cannot silently lose changed controls with ambiguous paths', ( assert ) => {
+		QUnit.test( 'share URLs index repeated paths and restore controls independently', async ( assert ) => {
 
 			const parameters = new Parameters();
 			const group = parameters.createGroup( 'water' );
@@ -276,14 +276,63 @@ export default QUnit.module( 'Inspector', () => {
 			group.add( height, 'value', 0, 1 );
 			group.add( speed, 'value', 0, 1 );
 			height.value = 0.5;
+			speed.value = 0.8;
 
-			assert.strictEqual( parameters._getShareURL( new URL( 'https://example.com/demo' ) ), null );
+			const base = 'https://example.com/demo?water.value=99&water.value[0]=99&mode=test';
+			const url = new URL( parameters._getShareURL( new URL( base ) ) );
+			assert.strictEqual( url.searchParams.get( 'water.value[0]' ), '0.5' );
+			assert.strictEqual( url.searchParams.get( 'water.value[1]' ), '0.8' );
+			assert.notOk( url.searchParams.has( 'water.value' ), 'Unindexed aliases are removed' );
+			assert.strictEqual( url.searchParams.get( 'mode' ), 'test' );
 
-			height.setName( 'waveHeight' );
-			speed.setName( 'waveSpeed' );
-			const url = new URL( parameters._getShareURL( new URL( 'https://example.com/demo' ) ) );
-			assert.strictEqual( url.searchParams.get( 'water.waveHeight' ), '0.5' );
-			assert.notOk( url.searchParams.has( 'water.waveSpeed' ) );
+			const restored = new Parameters( { urlParameters: url.searchParams } );
+			const restoredGroup = restored.createGroup( 'water' );
+			const restoredHeight = uniform( 0.1 );
+			const restoredSpeed = uniform( 0.2 );
+			restoredGroup.add( restoredHeight, 'value', 0, 1 );
+			restoredGroup.add( restoredSpeed, 'value', 0, 1 );
+			await Promise.resolve();
+
+			assert.strictEqual( restoredHeight.value, 0.5 );
+			assert.strictEqual( restoredSpeed.value, 0.8 );
+
+			height.value = 0.1;
+			const reset = new URL( parameters._getShareURL( new URL( base ) ) );
+			assert.notOk( reset.searchParams.has( 'water.value[0]' ), 'Default controls are omitted without renumbering' );
+			assert.strictEqual( reset.searchParams.get( 'water.value[1]' ), '0.8' );
+
+			const sparse = new Parameters( { urlParameters: reset.searchParams } );
+			const sparseGroup = sparse.createGroup( 'water' );
+			const sparseHeight = uniform( 0.1 );
+			const sparseSpeed = uniform( 0.2 );
+			sparseGroup.add( sparseHeight, 'value', 0, 1 );
+			sparseGroup.add( sparseSpeed, 'value', 0, 1 );
+			await Promise.resolve();
+			assert.strictEqual( sparseHeight.value, 0.1 );
+			assert.strictEqual( sparseSpeed.value, 0.8, 'Sparse indices restore the intended control' );
+
+		} );
+
+		QUnit.test( 'indexed keys work across asynchronous registration', async ( assert ) => {
+
+			const parameters = new Parameters( { urlParameters: new URLSearchParams( {
+				'water.value[0]': '0.5',
+				'water.value[1]': '0.8',
+				'other.value[0]': '0.9'
+			} ) } );
+			const group = parameters.createGroup( 'water' );
+			const height = uniform( 0.1 );
+			const speed = uniform( 0.2 );
+			const other = uniform( 0.3 );
+			group.add( height, 'value', 0, 1 );
+			await Promise.resolve();
+			group.add( speed, 'value', 0, 1 );
+			parameters.createGroup( 'other' ).add( other, 'value', 0, 1 );
+			await Promise.resolve();
+
+			assert.strictEqual( height.value, 0.5 );
+			assert.strictEqual( speed.value, 0.8 );
+			assert.strictEqual( other.value, 0.9, 'Indices are local to the matching path' );
 
 		} );
 

@@ -419,8 +419,9 @@ class Inspector extends RendererInspector {
 	 * e.g. `?alphaHash=false`. A group path such as `?Parameters.SSAA.sampleLevel=1`
 	 * takes precedence. Paths use the original group and folder names, unaffected
 	 * by display names set with `name()`. Named uniforms use their uniform name
-	 * instead of `value`. Each URL key applies once to a unique control; ambiguous
-	 * keys are ignored. Overrides apply after registration.
+	 * instead of `value`. Repeated paths use zero-based registration indices,
+	 * e.g. `?water.value[0]=0.5`. Unindexed ambiguous keys are ignored.
+	 * Overrides apply after registration.
 	 * Values must be numbers, `true`/`false`, select option values, strings or
 	 * six hex digits (optionally prefixed with `#` or `0x`) for colors.
 	 * Use `URLSearchParams` to encode names and values. Overrides trigger `onChange()`.

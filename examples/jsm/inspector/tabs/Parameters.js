@@ -154,6 +154,8 @@ class ParametersGroup {
 
 		if ( this.parameters._urlParameters !== null ) {
 
+			this.parameters._urlBindings.push( { group: this, object, property } );
+
 			// Wait for chained control configuration.
 
 			queueMicrotask( () => this._applyURLParameter( object, property, editor ) );
@@ -162,14 +164,33 @@ class ParametersGroup {
 
 	}
 
+	_getURLParameterName( object, property ) {
+
+		return property === 'value' && object.isUniformNode && object.name ? object.name : property;
+
+	}
+
 	_applyURLParameter( object, property, editor ) {
 
-		if ( property === 'value' && object.isUniformNode && object.name ) property = object.name;
-
 		const parameters = this.parameters._urlParameters;
-		let value = parameters.get( this._urlPath + '.' + property ) ?? parameters.get( property );
+		const name = this._getURLParameterName( object, property );
+		const path = this._urlPath + '.' + name;
+		const qualified = parameters.has( path );
+		const key = qualified ? path : name;
 
-		if ( value === null ) return;
+		if ( ! parameters.has( key ) ) return;
+
+		const matches = this.parameters._urlBindings.filter( ( binding ) => {
+
+			const name = binding.group._getURLParameterName( binding.object, binding.property );
+			return ( qualified ? binding.group._urlPath + '.' + name : name ) === key;
+
+		} );
+
+		if ( matches.length !== 1 ) return;
+
+		let value = parameters.get( key );
+		parameters.delete( key );
 
 		if ( editor instanceof ValueSelect ) {
 
@@ -481,6 +502,7 @@ class Parameters extends Tab {
 
 		this.groups = [];
 		this._urlParameters = options.urlParameters || null;
+		this._urlBindings = [];
 
 	}
 

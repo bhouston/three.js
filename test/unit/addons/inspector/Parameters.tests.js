@@ -56,7 +56,7 @@ export default QUnit.module( 'Inspector', () => {
 
 			assert.strictEqual( object.roughness, 0.4, 'Group path takes precedence' );
 			assert.strictEqual( nested.roughness, 0.8, 'Folder path uses original names' );
-			assert.strictEqual( other.roughness, 0.2, 'Unqualified property is a fallback' );
+			assert.strictEqual( other.roughness, 0, 'Ambiguous unqualified property is ignored' );
 			assert.strictEqual( object.metalness, 0, 'Display names are ignored' );
 
 		} );
@@ -84,6 +84,37 @@ export default QUnit.module( 'Inspector', () => {
 			assert.strictEqual( height.value, 0.5, 'Group path takes precedence' );
 			assert.strictEqual( speed.value, 0.8, 'Named uniforms are independent' );
 			assert.strictEqual( unnamed.value, 0.3, 'Unnamed uniforms use the property' );
+
+		} );
+
+		QUnit.test( 'ambiguous qualified names do not override multiple controls', async ( assert ) => {
+
+			const parameters = new Parameters( { urlParameters: new URLSearchParams( { 'water.value': '0.5' } ) } );
+			const group = parameters.createGroup( 'water' );
+			const height = uniform( 0.1 );
+			const speed = uniform( 0.2 );
+			group.add( height, 'value', 0, 1 );
+			group.add( speed, 'value', 0, 1 );
+
+			await Promise.resolve();
+
+			assert.strictEqual( height.value, 0.1 );
+			assert.strictEqual( speed.value, 0.2 );
+
+		} );
+
+		QUnit.test( 'a URL key cannot be reused by a control registered later', async ( assert ) => {
+
+			const parameters = new Parameters( { urlParameters: new URLSearchParams( { amount: '0.5' } ) } );
+			const first = { amount: 0.1 };
+			const second = { amount: 0.2 };
+			parameters.createGroup( 'first' ).add( first, 'amount' );
+			await Promise.resolve();
+			parameters.createGroup( 'second' ).add( second, 'amount' );
+			await Promise.resolve();
+
+			assert.strictEqual( first.amount, 0.5 );
+			assert.strictEqual( second.amount, 0.2 );
 
 		} );
 

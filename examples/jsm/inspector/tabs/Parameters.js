@@ -9,6 +9,7 @@ class ParametersGroup {
 	constructor( parameters, name ) {
 
 		this.parameters = parameters;
+		this._urlPath = name;
 
 		this.paramList = new Item( name );
 		this.paramList.setCollapsible( true );
@@ -151,6 +152,97 @@ class ParametersGroup {
 
 		this._registerParameter( object, property, editor, subItem );
 
+		const binding = {
+			group: this, object, property, editor,
+			defaultValue: this._getURLParameterValue( object, property, editor )
+		};
+		this.parameters._urlBindings.push( binding );
+
+		if ( this.parameters._urlParameters !== null ) {
+
+			// Wait for chained control configuration.
+
+			queueMicrotask( () => this._applyURLParameter( binding ) );
+
+		}
+
+	}
+
+	_getURLParameterName( object, property ) {
+
+		return property === 'value' && object.isUniformNode && object.name ? object.name : property;
+
+	}
+
+	_getURLParameterValue( object, property, editor ) {
+
+		const value = object[ property ];
+		return editor instanceof ValueColor ? editor._getColorHex( value ).toLowerCase() : String( value );
+
+	}
+
+	_applyURLParameter( binding ) {
+
+		const { object, property, editor } = binding;
+		const parameters = this.parameters._urlParameters;
+
+		if ( parameters.size === 0 ) return;
+
+		const indexedKey = this.parameters._getURLParameterKey( binding, true );
+		let key = parameters.has( indexedKey ) ? indexedKey : this.parameters._getURLParameterKey( binding );
+
+		if ( ! parameters.has( key ) ) {
+
+			const name = this._getURLParameterName( object, property );
+			const matches = this.parameters._urlBindings.filter( ( binding ) => {
+
+				return binding.group._getURLParameterName( binding.object, binding.property ) === name;
+
+			} );
+
+			if ( matches.length !== 1 || ! parameters.has( name ) ) return;
+
+			key = name;
+
+		}
+
+		let value = parameters.get( key );
+		parameters.delete( key );
+
+		if ( editor instanceof ValueSelect ) {
+
+			const options = Object.values( editor.options );
+			value = options.find( option => String( option ) === value );
+
+		} else if ( editor instanceof ValueColor ) {
+
+			value = parseInt( value.replace( /^(#|0x)/i, '' ), 16 );
+
+		} else if ( editor instanceof ValueCheckbox ) {
+
+			value = value === 'true';
+
+		} else if ( editor instanceof ValueNumber || editor instanceof ValueSlider ) {
+
+			const input = editor instanceof ValueSlider ? editor.slider : editor.input;
+			const min = Number( input.min );
+			const max = Number( input.max );
+
+			value = Math.max( min, Math.min( max, Number( value ) ) );
+
+			if ( editor instanceof ValueSlider ) {
+
+				// Normalize slider steps.
+
+				input.value = value;
+				value = Number( input.value );
+
+			}
+
+		}
+
+		editor.setValue( value );
+
 	}
 
 	_registerParameter( object, property, editor, subItem ) {
@@ -193,6 +285,7 @@ class ParametersGroup {
 	addFolder( name ) {
 
 		const group = new ParametersGroup( this.parameters, name );
+		group._urlPath = this._urlPath + '.' + name;
 
 		this.paramList.add( group.paramList );
 
@@ -425,6 +518,90 @@ class Parameters extends Tab {
 		this.paramList = paramList;
 
 		this.groups = [];
+		this._urlParameters = options.urlParameters || null;
+		this._urlBindings = [];
+
+	}
+
+	_createShareButton() {
+
+		const button = document.createElement( 'button' );
+		button.className = 'parameters-share-btn';
+		button.title = 'Copy parameter URL';
+		button.setAttribute( 'aria-label', button.title );
+		button.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>';
+
+		button.onclick = async ( event ) => {
+
+			event.stopPropagation();
+
+			const url = this._getShareURL();
+
+			try {
+
+				await navigator.clipboard.writeText( url );
+				button.title = 'URL copied';
+				button.classList.add( 'copied' );
+				setTimeout( () => {
+
+					button.title = 'Copy parameter URL';
+					button.classList.remove( 'copied' );
+
+				}, 1000 );
+
+			} catch {
+
+				window.prompt( 'Copy parameter URL', url );
+
+			}
+
+		};
+
+		this.builtinButton.classList.add( 'parameters-toggle' );
+		this.builtinButton.after( button );
+
+	}
+
+	_getURLParameterKey( binding, indexed = false ) {
+
+		const { group, object, property } = binding;
+		const path = group._urlPath + '.' + group._getURLParameterName( object, property );
+		const matches = this._urlBindings.filter( ( binding ) => {
+
+			return binding.group._urlPath + '.' + binding.group._getURLParameterName( binding.object, binding.property ) === path;
+
+		} );
+
+		return indexed || matches.length > 1 ? path + '[' + matches.indexOf( binding ) + ']' : path;
+
+	}
+
+	_getShareURL( url = new URL( window.location.href ) ) {
+
+		for ( const binding of this._urlBindings ) {
+
+			const { group, object, property } = binding;
+			const name = group._getURLParameterName( object, property );
+			url.searchParams.delete( name );
+			url.searchParams.delete( group._urlPath + '.' + name );
+			url.searchParams.delete( this._getURLParameterKey( binding, true ) );
+
+		}
+
+		for ( const binding of this._urlBindings ) {
+
+			const { group, object, property, editor, defaultValue } = binding;
+			const value = group._getURLParameterValue( object, property, editor );
+
+			if ( value !== defaultValue ) {
+
+				url.searchParams.set( this._getURLParameterKey( binding ), value );
+
+			}
+
+		}
+
+		return url.href;
 
 	}
 

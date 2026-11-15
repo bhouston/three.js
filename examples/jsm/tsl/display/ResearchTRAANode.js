@@ -46,6 +46,8 @@ class ResearchTRAANode extends Node {
 		this._jitterUV = uniform( new Vector2() );
 		this._previousJitterUV = uniform( new Vector2() );
 		this._lastJitterUV = new Vector2();
+		this._historyValid = uniform( 0 );
+		this._needsRestart = true;
 
 		/**
 		 * This flag can be used for type testing.
@@ -265,6 +267,16 @@ class ResearchTRAANode extends Node {
 	}
 
 	/**
+	 * Discards history after switching inputs or resuming a previously inactive variant.
+	 */
+	reset() {
+
+		this._historyValid.value = 0;
+		this._needsRestart = true;
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
@@ -378,12 +390,14 @@ class ResearchTRAANode extends Node {
 
 		//
 
-		const needsRestart = this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
+		const needsRestart = this._needsRestart || this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
 		this.setSize( width, height );
 
 		// every time when the dimensions change we need fresh history data
 
 		if ( needsRestart === true ) {
+
+			this._historyValid.value = 0;
 
 			// make sure to reset the history with the contents of the beauty buffer otherwise subsequent frames after the
 			// resize will fade from a darker color to the correct one because the history was cleared with black.
@@ -419,6 +433,11 @@ class ResearchTRAANode extends Node {
 			renderer.copyTextureToTexture( currentDepth, this._historyRenderTarget.depthTexture );
 
 		}
+
+		// The resolve has consumed the old validity value; the copied data is
+		// available to the next frame. Keep history invalid while resizing skips depth.
+		this._historyValid.value = this._historyRenderTarget.height === size.height && this._historyRenderTarget.width === size.width ? 1 : 0;
+		this._needsRestart = false;
 
 		// restore
 
@@ -549,7 +568,7 @@ class ResearchTRAANode extends Node {
 			const isValidUV = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() );
 			const isEdge = farthestDepth.sub( closestDepth ).greaterThan( this.edgeDepthDiff );
 			const isDisocclusion = closestDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
-			const hasValidHistory = isValidUV.and( isEdge.or( isDisocclusion.not() ) );
+			const hasValidHistory = this._historyValid.greaterThan( 0.5 ).and( isValidUV ).and( isEdge.or( isDisocclusion.not() ) );
 
 			// sample the current and previous colors
 

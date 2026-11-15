@@ -57,7 +57,7 @@ class ResearchTAAUNode extends Node {
 		super( 'vec4' );
 
 		// Experimental opaque-color resolve: alpha stores the reprojected lock.
-		this.options = { cross: false, historyFilter: 'bilinear', reconstructionSharpness: 2.29, sampleDistanceWeight: false, ...options };
+		this.options = { cross: false, historyFilter: 'bilinear', reconstructionSharpness: 2.29, sampleDistanceWeight: false, registerPreviousDepth: false, ...options };
 
 		/**
 		 * This flag can be used for type testing.
@@ -159,6 +159,8 @@ class ResearchTAAUNode extends Node {
 		 * @type {UniformNode<vec2>}
 		 */
 		this._jitterOffset = uniform( new Vector2() );
+		this._jitterUV = new Vector2();
+		this._previousJitterUV = uniform( new Vector2() );
 
 		/**
 		 * The render target that represents the history of frame data.
@@ -339,6 +341,11 @@ class ResearchTAAUNode extends Node {
 		const jitterX = ( haltonOffset[ 0 ] - 0.5 );
 		const jitterY = ( haltonOffset[ 1 ] - 0.5 );
 
+		// Texture UVs grow downward on the WebGPU backend, as does setViewOffset Y.
+		// A positive view offset renders the sample at uv + jitterUV; registration
+		// therefore samples the previous jittered depth at historyUV - jitterUV.
+		this._previousJitterUV.value.copy( this._jitterUV );
+		this._jitterUV.set( jitterX / inputWidth, jitterY / inputHeight );
 		this._jitterOffset.value.set( jitterX, jitterY );
 
 		this.camera.setViewOffset(
@@ -553,7 +560,8 @@ class ResearchTAAUNode extends Node {
 
 			const offsetUV = this.velocityNode.load( closestPositionTexel ).xy.mul( vec2( 0.5, - 0.5 ) );
 			const historyUV = uvNode.sub( offsetUV );
-			const previousDepth = samplePreviousDepth( this._previousDepthNode, historyUV, this._previousCameraProjectionMatrixInverse, this._previousCameraWorldMatrix, this._cameraWorldMatrixInverse, this._cameraNearFar, this.camera );
+			const previousDepthUV = this.options.registerPreviousDepth ? historyUV.sub( this._previousJitterUV ) : historyUV;
+			const previousDepth = samplePreviousDepth( this._previousDepthNode, previousDepthUV, this._previousCameraProjectionMatrixInverse, this._previousCameraWorldMatrix, this._cameraWorldMatrixInverse, this._cameraNearFar, this.camera );
 
 			// history validity
 

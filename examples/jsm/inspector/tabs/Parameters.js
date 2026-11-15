@@ -9,6 +9,7 @@ class ParametersGroup {
 	constructor( parameters, name ) {
 
 		this.parameters = parameters;
+		this._urlPath = name;
 
 		this.paramList = new Item( name );
 		this.paramList.setCollapsible( true );
@@ -155,17 +156,18 @@ class ParametersGroup {
 
 			// Wait for chained control configuration.
 
-			queueMicrotask( () => this._applyURLParameter( property, editor, subItem ) );
+			queueMicrotask( () => this._applyURLParameter( object, property, editor ) );
 
 		}
 
 	}
 
-	_applyURLParameter( property, editor, subItem ) {
+	_applyURLParameter( object, property, editor ) {
+
+		if ( property === 'value' && object.isUniformNode && object.name ) property = object.name;
 
 		const parameters = this.parameters._urlParameters;
-		const label = subItem.data[ 0 ].title;
-		let value = parameters.get( label ) ?? parameters.get( property );
+		let value = parameters.get( this._urlPath + '.' + property ) ?? parameters.get( property );
 
 		if ( value === null ) return;
 
@@ -245,6 +247,7 @@ class ParametersGroup {
 	addFolder( name ) {
 
 		const group = new ParametersGroup( this.parameters, name );
+		group._urlPath = this._urlPath + '.' + name;
 
 		this.paramList.add( group.paramList );
 

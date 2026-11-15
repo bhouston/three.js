@@ -1,4 +1,5 @@
 import { Color } from 'three';
+import { uniform } from 'three/tsl';
 import { Parameters } from '../../../../examples/jsm/inspector/tabs/Parameters.js';
 
 export default QUnit.module( 'Inspector', () => {
@@ -31,22 +32,58 @@ export default QUnit.module( 'Inspector', () => {
 
 		} );
 
-		QUnit.test( 'display names distinguish uniforms in groups and folders', async ( assert ) => {
+		QUnit.test( 'group paths use original names and properties, ignoring display names', async ( assert ) => {
 
 			const parameters = new Parameters( { urlParameters: new URLSearchParams( {
-				'Roughness': '0.8',
-				'value': '0.2'
+				roughness: '0.2',
+				'material.roughness': '0.4',
+				'material.surface.roughness': '0.8',
+				'Material.Surface.roughness': '0.9',
+				Roughness: '0.1',
+				Metalness: '0.9'
 			} ) } );
-			const group = parameters.createGroup( 'Settings' );
-			const roughness = { value: 0 };
-			const metalness = { value: 0 };
-			group.addFolder( 'Surface' ).add( roughness, 'value', 0, 1 ).name( 'Roughness' );
-			group.add( metalness, 'value', 0, 1 ).name( 'Metalness' );
+			const group = parameters.createGroup( 'material' ).name( 'Material' );
+			const surface = group.addFolder( 'surface' ).name( 'Surface' );
+			const object = { roughness: 0, metalness: 0 };
+			const nested = { roughness: 0 };
+			const other = { roughness: 0 };
+			group.add( object, 'roughness', 0, 1 ).name( 'Roughness' );
+			group.add( object, 'metalness', 0, 1 ).name( 'Metalness' );
+			surface.add( nested, 'roughness', 0, 1 ).name( 'Roughness' );
+			parameters.createGroup( 'other' ).add( other, 'roughness', 0, 1 ).name( 'Roughness' );
 
 			await Promise.resolve();
 
-			assert.strictEqual( roughness.value, 0.8, 'Display name takes precedence' );
-			assert.strictEqual( metalness.value, 0.2, 'Property name is a fallback' );
+			assert.strictEqual( object.roughness, 0.4, 'Group path takes precedence' );
+			assert.strictEqual( nested.roughness, 0.8, 'Folder path uses original names' );
+			assert.strictEqual( other.roughness, 0.2, 'Unqualified property is a fallback' );
+			assert.strictEqual( object.metalness, 0, 'Display names are ignored' );
+
+		} );
+
+		QUnit.test( 'uniform values use explicit uniform names', async ( assert ) => {
+
+			const parameters = new Parameters( { urlParameters: new URLSearchParams( {
+				'water.waveHeight': '0.5',
+				waveHeight: '0.2',
+				waveSpeed: '0.8',
+				value: '0.3',
+				'Wave Height': '0.9'
+			} ) } );
+			const group = parameters.createGroup( 'water' );
+			const height = uniform( 0 );
+			const speed = uniform( 0 ).setName( 'waveSpeed' );
+			const unnamed = uniform( 0 );
+			group.add( height, 'value', 0, 1 ).name( 'Wave Height' );
+			group.add( speed, 'value', 0, 1 ).name( 'Wave Speed' );
+			group.add( unnamed, 'value', 0, 1 );
+			height.setName( 'waveHeight' );
+
+			await Promise.resolve();
+
+			assert.strictEqual( height.value, 0.5, 'Group path takes precedence' );
+			assert.strictEqual( speed.value, 0.8, 'Named uniforms are independent' );
+			assert.strictEqual( unnamed.value, 0.3, 'Unnamed uniforms use the property' );
 
 		} );
 

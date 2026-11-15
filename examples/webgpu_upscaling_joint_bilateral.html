@@ -21,6 +21,7 @@
 
 			<small>
 				Joint bilateral upscaler uses depth and normal channels to preserve details by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br />
+				Compare it with FSR 1, TAAU and a TRAA resolve of the jittered joint bilateral result.<br />
 				<span id="resolution"></span>
 			</small>
 		</div>
@@ -39,8 +40,12 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { mrt, normalView, output, pass, renderOutput, rtt, sample, screenUV, textureSize, uniform, vec2, vec4 } from 'three/tsl';
+			import { mrt, normalView, output, pass, renderOutput, rtt, sample, screenUV, textureSize, uniform, vec2, vec4, velocity } from 'three/tsl';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
+			import { fsr1 } from 'three/addons/tsl/display/FSR1Node.js';
+			import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
+			import { taau } from 'three/addons/tsl/display/TAAUNode.js';
+			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
 			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -48,7 +53,7 @@
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
-			let camera, scene, renderer, renderPipeline, controls, model;
+			let camera, referenceCamera, scene, renderer, renderPipeline, controls, model;
 
 			const timer = new THREE.Timer();
 
@@ -69,6 +74,9 @@
 
 				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.25, 20 );
 				camera.position.set( - 1.8, 0.6, 2.7 );
+
+				// TAAU and TRAA jitter the main camera, the reference of the error output must not be jittered
+				referenceCamera = camera.clone();
 
 				scene = new THREE.Scene();
 
@@ -98,40 +106,79 @@
 				model = gltf.scene;
 				scene.add( model );
 
-				// full resolution depth and normal guides
+				// tone mapping and color space conversion are applied here, since the error is measured on the displayed colors
 
-				const guidePass = pass( scene, camera );
-				guidePass.setMRT( mrt( { output: normalView } ) );
+				const display = ( color ) => renderOutput( color, THREE.NeutralToneMapping, THREE.SRGBColorSpace );
 
-				const depth = guidePass.getTextureNode( 'depth' );
-				const normal = sample( ( uv ) => guidePass.getTextureNode( 'output' ).sample( uv ).rgb.normalize() );
+				// There is one pass per set of channels, so that each upsampler only pays for what it uses.
+				// The beauty is rendered at a reduced resolution in linear half float.
 
-				// reduced resolution beauty in linear half float, with depth and normal on the same texel grid
+				const lowPasses = [];
 
-				const scenePass = pass( scene, camera );
-				scenePass.setMRT( mrt( { output, normal: normalView } ) );
-				scenePass.setResolutionScale( 1 / params.upscaleFactor );
+				const scenePass = ( channels, reduced = true ) => {
 
-				const lowColor = scenePass.getTextureNode( 'output' );
-				const lowDepth = scenePass.getTextureNode( 'depth' );
-				const lowNormal = sample( ( uv ) => scenePass.getTextureNode( 'normal' ).sample( uv ).rgb.normalize() );
-				const lowSize = vec2( textureSize( lowDepth ) );
+					const node = pass( scene, camera );
+					if ( channels !== undefined ) node.setMRT( mrt( channels ) );
 
-				// each upsampler writes a full resolution linear half float target, which is then tone mapped
+					if ( reduced ) {
+
+						node.setResolutionScale( 1 / params.upscaleFactor );
+						lowPasses.push( node );
+
+					}
+
+					return node;
+
+				};
+
+				const lowColor = scenePass().getTextureNode();
+				const lowSize = vec2( textureSize( lowColor ) );
+
+				// joint bilateral: the low resolution depth and normal are compared against full resolution guides
+
+				const normalOf = ( node ) => sample( ( uv ) => node.sample( uv ).rgb.normalize() );
+
+				const jointBilateral = ( guidePass ) => {
+
+					const lowPass = scenePass( { output, normal: normalView } );
+
+					return rtt( jointBilateralUpsample(
+						lowPass.getTextureNode( 'output' ), lowPass.getTextureNode( 'depth' ), normalOf( lowPass.getTextureNode( 'normal' ) ),
+						guidePass.getTextureNode( 'depth' ), normalOf( guidePass.getTextureNode( 'output' ) ), camera
+					).sample( screenUV ) );
+
+				};
+
+				// joint bilateral with TRAA: the jitter of TRAA moves the guides and the low resolution samples, which are then accumulated
+
+				const jitteredGuidePass = scenePass( { output: normalView, velocity }, false );
+
+				const jointBilateralTRAA = traa( jointBilateral( jitteredGuidePass ), jitteredGuidePass.getTextureNode( 'depth' ), jitteredGuidePass.getTextureNode( 'velocity' ), camera );
+
+				// FSR 1 expects tone mapped colors in a perceptual color space
+
+				const lowDisplay = rtt( display( lowColor ), null, null, { resolutionScale: 1 / params.upscaleFactor } );
+
+				// TAAU with the sharpening of the webgpu_upscaling_taau example
+
+				const velocityPass = scenePass( { output, velocity } );
+
+				const taauNode = taau( velocityPass.getTextureNode( 'output' ), velocityPass.getTextureNode( 'depth' ), velocityPass.getTextureNode( 'velocity' ), camera );
+
+				// each upsampler outputs the displayed colors at full resolution
 
 				const upsamplers = {
-					'none': rtt( lowColor.sample( screenUV.mul( lowSize ).floor().add( 0.5 ).div( lowSize ) ) ),
-					'bilinear': rtt( lowColor.sample( screenUV ) ),
-					'joint-bilateral': rtt( jointBilateralUpsample( lowColor, lowDepth, lowNormal, depth, normal, camera ).sample( screenUV ) )
+					'none': display( rtt( lowColor.sample( screenUV.mul( lowSize ).floor().add( 0.5 ).div( lowSize ) ) ) ),
+					'bilinear': display( rtt( lowColor.sample( screenUV ) ) ),
+					'joint-bilateral': display( jointBilateral( scenePass( { output: normalView }, false ) ) ),
+					'joint-bilateral-traa': display( jointBilateralTRAA.getTextureNode() ),
+					'fsr1': fsr1( lowDisplay ).getTextureNode(),
+					'taau': display( sharpen( taauNode.getTextureNode(), 0.2 ) )
 				};
 
 				// full resolution beauty, only rendered as the reference of the error output
 
-				const reference = pass( scene, camera ).getTextureNode();
-
-				// tone mapping and color space conversion are applied here, since the error is measured on the displayed colors
-
-				const display = ( color ) => renderOutput( color, THREE.NeutralToneMapping, THREE.SRGBColorSpace );
+				const reference = display( pass( scene, referenceCamera ).getTextureNode() );
 
 				renderPipeline = new THREE.RenderPipeline( renderer );
 				renderPipeline.outputColorTransform = false;
@@ -143,7 +190,8 @@
 				const errorScaleControl = gui.add( errorScale, 'value', 1, 16 ).name( 'Error scale' );
 				gui.add( params, 'upscaleFactor', 1, 8, 0.25 ).name( 'Upscale factor' ).onChange( ( value ) => {
 
-					scenePass.setResolutionScale( 1 / value );
+					lowPasses.forEach( ( node ) => node.setResolutionScale( 1 / value ) );
+					lowDisplay.setResolutionScale( 1 / value );
 					updateResolution();
 
 				} );
@@ -185,8 +233,8 @@
 
 					// the error is the absolute difference to the full resolution render
 					renderPipeline.outputNode = params.output === 'Error'
-						? vec4( display( upscaled ).rgb.sub( display( reference ).rgb ).abs().mul( errorScale ), 1 )
-						: display( upscaled );
+						? vec4( upscaled.rgb.sub( reference.rgb ).abs().mul( errorScale ), 1 )
+						: upscaled;
 
 					renderPipeline.needsUpdate = true;
 
@@ -232,6 +280,8 @@
 				if ( params.rotate ) model.rotation.y += timer.getDelta() * 0.2;
 
 				controls.update();
+
+				referenceCamera.copy( camera );
 
 				renderPipeline.render();
 

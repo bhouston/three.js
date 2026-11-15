@@ -161,6 +161,8 @@ class ResearchTAAUNode extends Node {
 		this._jitterOffset = uniform( new Vector2() );
 		this._jitterUV = new Vector2();
 		this._previousJitterUV = uniform( new Vector2() );
+		this._historyValid = uniform( false );
+		this._needsRestart = true;
 
 		/**
 		 * The render target that represents the history of frame data.
@@ -305,6 +307,16 @@ class ResearchTAAUNode extends Node {
 	}
 
 	/**
+	 * Discards accumulated history after a camera cut, input change or reactivation.
+	 */
+	reset() {
+
+		this._historyValid.value = false;
+		this._needsRestart = true;
+
+	}
+
+	/**
 	 * Sets the output size of the effect (history and resolve targets). The
 	 * previous-depth texture is sized independently in `updateBefore()` to
 	 * track the scene's current depth texture.
@@ -409,7 +421,7 @@ class ResearchTAAUNode extends Node {
 
 		//
 
-		const needsRestart =
+		const needsRestart = this._needsRestart ||
 			this._historyRenderTarget.width !== outputWidth ||
 			this._historyRenderTarget.height !== outputHeight;
 
@@ -418,6 +430,8 @@ class ResearchTAAUNode extends Node {
 		// every time the dimensions change we need fresh history data
 
 		if ( needsRestart === true ) {
+
+			this._historyValid.value = false;
 
 			// Seed the history with a bilinear upscale of the current beauty
 			// buffer. Without this the first frames after a resize fade in
@@ -450,6 +464,11 @@ class ResearchTAAUNode extends Node {
 		const previous = this._historyRenderTarget;
 		this._historyRenderTarget = this._resolveRenderTarget;
 		this._resolveRenderTarget = previous;
+
+		// The resolve above used the old validity value; expose the new history
+		// to the next frame only after its output and lock have been written.
+		this._historyValid.value = true;
+		this._needsRestart = false;
 
 		// Copy the current scene depth into the previous-depth texture. We
 		// keep the destination size locked to the source's actual dimensions
@@ -568,7 +587,7 @@ class ResearchTAAUNode extends Node {
 			const isValidUV = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() );
 			const isEdge = farthestDepth.sub( closestDepth ).greaterThan( this.edgeDepthDiff );
 			const isDisocclusion = closestDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
-			const hasValidHistory = isValidUV.and( isEdge.or( isDisocclusion.not() ) );
+			const hasValidHistory = this._historyValid.and( isValidUV ).and( isEdge.or( isDisocclusion.not() ) );
 
 			// 9-tap Blackman-Harris (Gaussian approximation) reconstruction
 			// of the current frame color, plus moment accumulation for the
@@ -634,7 +653,7 @@ class ResearchTAAUNode extends Node {
 			// the scene moves farther), but new geometry appearing
 			// closer also makes the history stale.
 			const isDepthChanged = closestDepth.sub( previousDepth ).abs().greaterThan( this.depthThreshold );
-			const canLock = isValidUV.and( isDepthChanged.not() );
+			const canLock = this._historyValid.and( isValidUV ).and( isDepthChanged.not() );
 			const gatedThinFeature = canLock.select( thinFeature, float( 0 ) );
 
 			const decay = isDisocclusion.select( 0, 0.5 );

@@ -39,8 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { mrt, normalView, output, pass, renderOutput, rtt, sample, screenUV, textureSize, uniform, vec2, vec4, velocity } from 'three/tsl';
-			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { mrt, normalView, output, pass, renderOutput, rtt, sample, screenUV, textureSize, uniform, vec2, vec4 } from 'three/tsl';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 
 			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
@@ -58,7 +57,6 @@
 				upsampler: 'joint-bilateral',
 				output: 'Beauty',
 				material: 'Default',
-				traa: true,
 				rotate: true
 			};
 
@@ -100,13 +98,12 @@
 				model = gltf.scene;
 				scene.add( model );
 
-				// full resolution depth, normal and velocity guides
+				// full resolution depth and normal guides
 
 				const guidePass = pass( scene, camera );
-				guidePass.setMRT( mrt( { output: normalView, velocity } ) );
+				guidePass.setMRT( mrt( { output: normalView } ) );
 
 				const depth = guidePass.getTextureNode( 'depth' );
-				const guideVelocity = guidePass.getTextureNode( 'velocity' );
 				const normal = sample( ( uv ) => guidePass.getTextureNode( 'output' ).sample( uv ).rgb.normalize() );
 
 				// reduced resolution beauty in linear half float, with depth and normal on the same texel grid
@@ -120,8 +117,7 @@
 				const lowNormal = sample( ( uv ) => scenePass.getTextureNode( 'normal' ).sample( uv ).rgb.normalize() );
 				const lowSize = vec2( textureSize( lowDepth ) );
 
-				// each upsampler writes a full resolution linear half float target, which is then
-				// temporally antialiased (this also jitters the camera) and tone mapped
+				// each upsampler writes a full resolution linear half float target, which is then tone mapped
 
 				const upsamplers = {
 					'none': rtt( lowColor.sample( screenUV.mul( lowSize ).floor().add( 0.5 ).div( lowSize ) ) ),
@@ -136,7 +132,6 @@
 				// tone mapping and color space conversion are applied here, since the error is measured on the displayed colors
 
 				const display = ( color ) => renderOutput( color, THREE.NeutralToneMapping, THREE.SRGBColorSpace );
-				const errors = {};
 
 				renderPipeline = new THREE.RenderPipeline( renderer );
 				renderPipeline.outputColorTransform = false;
@@ -154,7 +149,6 @@
 				} );
 				gui.add( params, 'upsampler', Object.keys( upsamplers ) ).name( 'Upsampler' ).onChange( updateUpsampler );
 				gui.add( params, 'material', [ 'Default', 'Metallic' ] ).name( 'Material' ).onChange( updateMaterial );
-				gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateUpsampler );
 				gui.add( params, 'rotate' ).name( 'Rotate' );
 
 				// a fully metallic material that keeps the original roughness makes the reflections
@@ -185,23 +179,14 @@
 
 				}
 
-				let traaNode = null;
-
 				function updateUpsampler() {
 
-					if ( traaNode !== null ) traaNode.dispose();
-
 					const upscaled = upsamplers[ params.upsampler ];
-					const isError = params.output === 'Error';
 
-					// the error is the absolute difference to the full resolution render, with the same camera jitter
-					const source = isError ? ( errors[ params.upsampler ] ??= rtt( vec4( display( upscaled ).rgb.sub( display( reference ).rgb ).abs().mul( errorScale ), 1 ) ) ) : upscaled;
-
-					// the camera is only jittered while TRAA is part of the pipeline
-					traaNode = params.traa ? traa( source, depth, guideVelocity, camera ) : null;
-
-					const resolved = traaNode || source;
-					renderPipeline.outputNode = isError ? resolved : display( resolved );
+					// the error is the absolute difference to the full resolution render
+					renderPipeline.outputNode = params.output === 'Error'
+						? vec4( display( upscaled ).rgb.sub( display( reference ).rgb ).abs().mul( errorScale ), 1 )
+						: display( upscaled );
 
 					renderPipeline.needsUpdate = true;
 

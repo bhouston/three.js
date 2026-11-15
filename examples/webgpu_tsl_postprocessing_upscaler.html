@@ -39,9 +39,8 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, float, getViewPosition, mrt, normalView, output, pass, renderOutput, rtt, sample, screenUV, textureSize, uniform, vec2, vec4, velocity } from 'three/tsl';
+			import { mrt, normalView, output, pass, renderOutput, rtt, sample, screenUV, textureSize, uniform, vec2, vec4, velocity } from 'three/tsl';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
-			import { depthAwareBlur } from 'three/addons/tsl/display/depthAwareBlur.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 
 			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
@@ -60,10 +59,6 @@
 				output: 'Beauty',
 				rotate: true
 			};
-
-			// only used by the bilateral upsampler
-			const spatialSigma = uniform( 1.2 );
-			const depthSensitivity = uniform( 30 );
 
 			// only used by the error output
 			const errorScale = uniform( 4 );
@@ -123,54 +118,12 @@
 				const lowNormal = sample( ( uv ) => scenePass.getTextureNode( 'normal' ).sample( uv ).rgb.normalize() );
 				const lowSize = vec2( textureSize( lowDepth ) );
 
-				// depth-only bilateral upsampling over a 5x5 low resolution footprint, from webgpu_postprocessing_fog
-
-				const projectionInverse = uniform( camera.projectionMatrixInverse );
-
-				const bilateralUpsample = Fn( () => {
-
-					const viewDepth = ( uv ) => getViewPosition( uv, depth.sample( uv ).r, projectionInverse ).z.negate().max( 0.001 );
-
-					const centerDepth = viewDepth( screenUV ).toConst();
-					const spatialFactor = float( - 0.5 ).div( spatialSigma.mul( spatialSigma ).max( 0.01 ) );
-					const depthFactor = depthSensitivity.mul( depthSensitivity ).mul( - 0.5 );
-
-					const sum = vec4( 0 ).toVar();
-					const total = float( 0 ).toVar();
-
-					for ( let y = - 2; y <= 2; y ++ ) {
-
-						for ( let x = - 2; x <= 2; x ++ ) {
-
-							const tapUV = screenUV.add( vec2( x, y ).div( lowSize ) ).toConst();
-							const depthDifference = viewDepth( tapUV ).sub( centerDepth ).div( centerDepth.max( 0.1 ) );
-							const weight = spatialFactor.mul( x * x + y * y ).exp().mul( depthDifference.mul( depthDifference ).mul( depthFactor ).exp() );
-
-							sum.addAssign( lowColor.sample( tapUV ).mul( weight ) );
-							total.addAssign( weight );
-
-						}
-
-					}
-
-					return sum.div( total.max( 0.0001 ) );
-
-				} );
-
-				// naive upsampling: bilinear interpolation followed by a separable depth-aware blur,
-				// which filters one channel at a time
-
-				const blurPass = ( source, direction ) => rtt( vec4( ...[ 'rrrr', 'gggg', 'bbbb' ].map( ( channel ) => depthAwareBlur( sample( ( uv ) => source.sample( uv )[ channel ] ), depth, direction, camera, 2, 0.1 ) ), 1 ) );
-				const blurStep = lowSize.reciprocal().mul( 0.5 ); // half a low resolution texel
-
 				// each upsampler writes a full resolution linear half float target, which is then
 				// temporally antialiased (this also jitters the camera) and tone mapped
 
 				const upsamplers = {
 					'none': rtt( lowColor.sample( screenUV.mul( lowSize ).floor().add( 0.5 ).div( lowSize ) ) ),
 					'bilinear': rtt( lowColor.sample( screenUV ) ),
-					'bilateral': rtt( bilateralUpsample() ),
-					'depth-aware-blur': blurPass( blurPass( lowColor, vec2( blurStep.x, 0 ) ), vec2( 0, blurStep.y ) ),
 					'joint-bilateral': rtt( jointBilateralUpsample( lowColor, lowDepth, lowNormal, depth, normal, camera ).sample( screenUV ) )
 				};
 
@@ -198,10 +151,6 @@
 
 				} );
 				gui.add( params, 'upsampler', Object.keys( upsamplers ) ).name( 'Upsampler' ).onChange( updateUpsampler );
-				const bilateralControls = [
-					gui.add( spatialSigma, 'value', 0.5, 3 ).name( 'Spatial sigma' ),
-					gui.add( depthSensitivity, 'value', 1, 100 ).name( 'Depth sensitivity' )
-				];
 				gui.add( params, 'rotate' ).name( 'Rotate' );
 
 				let traaNode = null;
@@ -230,8 +179,6 @@
 					renderPipeline.needsUpdate = true;
 
 					params.output === 'Error' ? errorScaleControl.show() : errorScaleControl.hide();
-
-					bilateralControls.forEach( ( control ) => params.upsampler === 'bilateral' ? control.show() : control.hide() );
 
 				}
 

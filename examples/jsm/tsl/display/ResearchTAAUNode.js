@@ -727,21 +727,21 @@ const sampleCrossDepth = Fn( ( [ depthNode, positionTexel, cameraNearFar ], buil
 // Renormalization preserves constants. Reference: Filmic SMAA, SIGGRAPH 2016.
 const sampleHistoryCatmullRom = ( history, coordinate ) => {
 
-	const size = vec2( history.size() );
-	const position = coordinate.mul( size ).sub( 0.5 );
-	const base = position.floor();
-	const f = position.fract();
-	const f2 = f.mul( f );
-	const f3 = f2.mul( f );
-	const w0 = f.mul( - 0.5 ).add( f2 ).sub( f3.mul( 0.5 ) );
-	const w1 = vec2( 1 ).sub( f2.mul( 2.5 ) ).add( f3.mul( 1.5 ) );
-	const w2 = f.mul( 0.5 ).add( f2.mul( 2 ) ).sub( f3.mul( 1.5 ) );
-	const w3 = f3.mul( 0.5 ).sub( f2.mul( 0.5 ) );
-	const w12 = w1.add( w2 );
-	const middle = base.add( 0.5 ).add( w2.div( w12 ) );
-	const left = base.sub( 0.5 );
-	const right = base.add( 2.5 );
-	const centerWeight = w12.x.mul( w12.y );
+	const size = vec2( history.size() ).toConst();
+	const position = coordinate.mul( size ).sub( 0.5 ).toConst();
+	const base = position.floor().toConst();
+	const f = position.fract().toConst();
+	const f2 = f.mul( f ).toConst();
+	const f3 = f2.mul( f ).toConst();
+	const w0 = f.mul( - 0.5 ).add( f2 ).sub( f3.mul( 0.5 ) ).toConst();
+	const w1 = vec2( 1 ).sub( f2.mul( 2.5 ) ).add( f3.mul( 1.5 ) ).toConst();
+	const w2 = f.mul( 0.5 ).add( f2.mul( 2 ) ).sub( f3.mul( 1.5 ) ).toConst();
+	const w3 = f3.mul( 0.5 ).sub( f2.mul( 0.5 ) ).toConst();
+	const w12 = w1.add( w2 ).toConst();
+	const middle = base.add( 0.5 ).add( w2.div( w12 ) ).toConst();
+	const left = base.sub( 0.5 ).toConst();
+	const right = base.add( 2.5 ).toConst();
+	const centerWeight = w12.x.mul( w12.y ).toConst();
 	const weights = [ centerWeight, w0.x.mul( w12.y ), w3.x.mul( w12.y ), w12.x.mul( w0.y ), w12.x.mul( w3.y ) ];
 	const positions = [ middle, vec2( left.x, middle.y ), vec2( right.x, middle.y ), vec2( middle.x, left.y ), vec2( middle.x, right.y ) ];
 	let color = vec4( 0 );

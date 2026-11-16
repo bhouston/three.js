@@ -57,8 +57,9 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec4, uniform, mix, step, abs, float, renderOutput, saturation, builtinIndirectContext } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { coverageIndirect } from 'three/addons/tsl/lighting/CoverageLightingNode.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
@@ -68,25 +69,6 @@
 		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-
-		// Disable env map specular (radiance and clearcoat radiance) for every PBR material
-		// in this scene, since SSR provides the specular reflections instead. Diffuse env
-		// (irradiance) is left untouched. Equivalent to zeroing EnvironmentNode contributions,
-		// but scoped to this example rather than modifying the core library.
-		const _indirectSpecular = THREE.PhysicalLightingModel.prototype.indirectSpecular;
-		THREE.PhysicalLightingModel.prototype.indirectSpecular = function ( builder ) {
-
-			builder.context.radiance = vec3( 0 );
-
-			if ( this.clearcoatRadiance ) {
-
-				this.clearcoatRadiance.assign( vec3( 0 ) );
-
-			}
-
-			_indirectSpecular.call( this, builder );
-
-		};
 
 		const OUTPUT_COMPARE_DENOISE = 8;
 		const OUTPUT_COMPARE_SSR = 9;
@@ -122,12 +104,9 @@
 				intensity: 1,
 				thickness: 0.1,
 				maxLuminance: 35,
-				binaryRefine: false,
+				binaryRefine: true,
 				stepExponent: 3,
-				envImportanceSampling: false,
 				screenEdgeFade: 0.2,
-				screenEdgeFadeBlack: false, // for indoor scenes, set to true
-				environmentIntensity: 3.14, // not too sure why exactly, but multiplying by ~PI makes the env map reflections match Blender more
 			},
 
 			temporalReproject: {
@@ -271,16 +250,16 @@
 
 			ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
 				stochastic: true,
-				diffuseNode: scenePassDiffuseColor,
 				metalnessNode: scenePassDiffuseColor.a,
 				roughnessNode: scenePassNormal.a,
-				environmentNode: hdrTexture,
-				envImportanceSampling: params.ssr.envImportanceSampling,
 				binaryRefine: params.ssr.binaryRefine
 			} ).toInspector( 'SSR' );
 
+			const ssrHitDistance = ssrNode.getHitDistanceNode();
+
 			temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 				mode: 'specular',
+				hitDistance: ssrHitDistance,
 				accumulate: false
 			} );
 			temporalReprojectNode.toInspector( 'Temporal Reproject' );
@@ -289,26 +268,27 @@
 				depth: scenePassDepth,
 				normal: scenePassNormal,
 				raw: ssrNode,
+				hitDistance: ssrHitDistance,
+				frameCount: temporalReprojectNode.getFrameCountNode(),
 				metalRoughness: scenePassMetalRough,
 				mode: 'specular',
 				accumulate: true,
 			} );
-			denoiseNode.alphaSource = 'raylength'; // SSR alpha channel contains ray length
 			denoiseNode.toInspector( 'Denoise' );
-			// feed the denoised result + velocity back into SSR for multi-bounce reflections
-			ssrNode.setHistory( denoiseNode, scenePassVelocity );
 			temporalReprojectNode.setHistoryTexture( denoiseNode );
 
-			const denoisePassBlend = vec4( denoiseNode.rgb, ssrNode.a.greaterThan( 0 ).toVar() );
+			// the materials take the reflections into their specular BRDF, in front of the environment
+
+			const beautyPass = pass( scene, camera );
+			beautyPass.contextNode = builtinIndirectContext( coverageIndirect( {
+				specular: [ ssrNode.getSpecularSource( denoiseNode.getTextureNode().sample( screenUV ) ) ]
+			} ) );
 
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );
 			saturationUniform = uniform( params.post.grading.saturation );
 
-			const litColor = scenePassColor.rgb.add( denoisePassBlend.rgb );
-
-			const outputNode = vec4( litColor, 1 );
-			outputNode.toInspector( 'Combined SSR' );
+			const outputNode = beautyPass.getTextureNode().toInspector( 'Combined SSR' );
 			combinedOutputNode = outputNode;
 
 			renderPipeline.outputNode = applyPostProcessing( combinedOutputNode );
@@ -343,7 +323,7 @@
 				'Compare (Denoise)': OUTPUT_COMPARE_DENOISE,
 				'Compare (Reflections)': OUTPUT_COMPARE_SSR,
 				'Ray Length': 7,
-				'Accumulation Speed (Alpha)': 6
+				'Coverage': 6
 			};
 
 			const displayGui = renderer.inspector.createParameters( 'Display' );
@@ -383,7 +363,6 @@
 				} );
 
 			} );
-			sceneGui.add( params.ssr, 'environmentIntensity', 0, 10 ).name( 'Environment intensity' ).onChange( applyParams );
 
 			const advancedGui = renderer.inspector.createParameters( 'SSR advanced' ).close();
 			advancedGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'Mirror bias' ).onChange( applyParams );
@@ -411,7 +390,7 @@
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
-			// stepExponent / screenEdgeFadeBlack / binaryRefine are build-time constants: assigning
+			// stepExponent / binaryRefine are build-time constants: assigning
 			// them recompiles the SSR material (the setters no-op when the value is unchanged).
 			ssrNode.stepExponent = params.ssr.stepExponent;
 			ssrNode.binaryRefine = params.ssr.binaryRefine;
@@ -420,8 +399,6 @@
 			ssrNode.thickness.value = params.ssr.thickness;
 			ssrNode.maxLuminance.value = params.ssr.maxLuminance;
 			ssrNode.screenEdgeFade.value = params.ssr.screenEdgeFade;
-			ssrNode.screenEdgeFadeBlack = params.ssr.screenEdgeFadeBlack;
-			ssrNode.environmentIntensity.value = params.ssr.environmentIntensity;
 
 			if ( temporalReprojectNode ) {
 
@@ -501,8 +478,8 @@
 				case 0: node = applyPostProcessing( combinedOutputNode ); break; // Beauty
 				case 1: node = applyGrading( vec4( ssrNode.rgb, 1 ) ); break; // SSR
 				case 4: node = applyGrading( vec4( denoiseNode.rgb, 1 ) ); break; // SSR DN
-				case 6: node = vec4( denoiseNode.aaa, 1 ); break; // Accumulation Speed (Alpha)
-				case 7: node = vec4( ssrNode.aaa, 1 ); break; // Ray Length
+				case 6: node = vec4( denoiseNode.aaa, 1 ); break; // Coverage
+				case 7: node = vec4( ssrNode.getHitDistanceNode().rrr, 1 ); break; // Ray Length
 				case OUTPUT_COMPARE_DENOISE:
 					node = buildCompareNode(
 						applyGrading( vec4( denoiseNode.rgb, 1 ) ),

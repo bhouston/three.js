@@ -39,8 +39,9 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity } from 'three/tsl';
+			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity, screenUV, builtinIndirectContext } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+			import { coverageIndirect } from 'three/addons/tsl/lighting/CoverageLightingNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -52,7 +53,7 @@
 
 			const params = {
 				output: 'Beauty', traa: true,
-				quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
+				quality: 0.5, binaryRefine: true, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
 			};
@@ -185,27 +186,27 @@
 				const scenePass = pass( scene, camera );
 				scenePass.setMRT( mrt( {
 					output: output,
-					diffuseColor: vec4( diffuseColor.rgb, materialMetalness ),
 					normal: vec4( packNormalToRGB( normalView ), materialRoughness ),
+					metalness: materialMetalness,
 					velocity: velocity
 				} ) );
 
 				scenePass.getTexture( 'normal' ).type = THREE.UnsignedByteType;
-				scenePass.getTexture( 'diffuseColor' ).type = THREE.UnsignedByteType;
+				scenePass.getTexture( 'metalness' ).type = THREE.UnsignedByteType;
 
 				const scenePassColor = scenePass.getTextureNode( 'output' );
 				const scenePassDepth = scenePass.getTextureNode( 'depth' );
 				const scenePassNormal = scenePass.getTextureNode( 'normal' );
 				const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
-				const scenePassDiffuseColor = scenePass.getTextureNode( 'diffuseColor' );
+				const scenePassMetalness = scenePass.getTextureNode( 'metalness' );
 
 				const sceneNormal = sample( ( uv ) => unpackRGBToNormal( scenePassNormal.sample( uv ).rgb ) );
 				const sceneRoughness = sample( ( uv ) => scenePassNormal.sample( uv ).a );
 
-				// metalness in diffuseColor.a, roughness in normal.a
+				// roughness in normal.a
 
 				const sceneMetalRough = sample( ( uv ) => vec2(
-					scenePassDiffuseColor.sample( uv ).a,
+					scenePassMetalness.sample( uv ).r,
 					scenePassNormal.sample( uv ).a
 				) );
 
@@ -213,18 +214,19 @@
 
 				const ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
 					stochastic: true,
-					diffuseNode: scenePassDiffuseColor,
-					metalnessNode: scenePassDiffuseColor.a,
+					metalnessNode: scenePassMetalness.r,
 					roughnessNode: sceneRoughness,
 					binaryRefine: params.binaryRefine
 				} ).toInspector( 'SSR' );
 
 				const ssrTexture = ssrNode.getTextureNode();
+				const ssrHitDistance = ssrNode.getHitDistanceNode();
 
 				// denoise
 
 				const temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 					mode: 'specular',
+					hitDistance: ssrHitDistance,
 					accumulate: false
 				} );
 				temporalReprojectNode.maxFrames.value = 16;
@@ -234,6 +236,8 @@
 					depth: scenePassDepth,
 					normal: scenePassNormal,
 					raw: ssrNode,
+					hitDistance: ssrHitDistance,
+					frameCount: temporalReprojectNode.getFrameCountNode(),
 					metalRoughness: sceneMetalRough,
 					mode: 'specular',
 					accumulate: true
@@ -245,19 +249,18 @@
 				denoiseNode.strength.value = 0.725;
 				denoiseNode.adaptiveTrust.value = 1;
 
-				// feed the denoised result + velocity back into SSR for multi-bounce reflections
-
-				ssrNode.setHistory( denoiseNode, scenePassVelocity );
 				temporalReprojectNode.setHistoryTexture( denoiseNode );
 
-				// composite
+				// the materials take the reflections into their specular BRDF, in front of the environment
 
 				const denoiseEnabled = uniform( 1 );
+				const reflection = mix( ssrTexture.sample( screenUV ), denoiseNode.getTextureNode().sample( screenUV ), denoiseEnabled );
 
-				const combined = scenePassColor.rgb.add( mix( ssrTexture.rgb, denoiseNode.rgb, denoiseEnabled ) );
+				const beautyPass = pass( scene, camera );
+				beautyPass.contextNode = builtinIndirectContext( coverageIndirect( { specular: [ ssrNode.getSpecularSource( reflection ) ] } ) );
 
-				const temporalAA = traa( vec4( combined, 1 ), scenePassDepth, scenePassVelocity, camera );
-				const spatialAA = smaa( vec4( combined, 1 ) );
+				const temporalAA = traa( beautyPass, scenePassDepth, scenePassVelocity, camera );
+				const spatialAA = smaa( beautyPass );
 
 				function updateOutput() {
 

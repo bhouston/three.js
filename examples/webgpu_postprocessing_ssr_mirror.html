@@ -44,8 +44,9 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking } from 'three/tsl';
+		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking, builtinIndirectContext } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { coverageIndirect } from 'three/addons/tsl/lighting/CoverageLightingNode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -178,14 +179,23 @@
 			const reflection = ssr( scenePassColor, scenePassDepth, sceneNormal, {
 				metalnessNode: scenePassMetalRough.r,
 				roughnessNode: scenePassMetalRough.g,
-				binaryRefine: params.binaryRefine
+				binaryRefine: params.binaryRefine,
+				applyBRDF: false
 			} ).toInspector( 'SSR' );
 
 			const raw = passTexture( reflection, reflection.getRenderTarget().texture );
 			const blurred = reflection.getTextureNode();
 			const blurEnabled = uniform( 1 );
-			const combined = scenePassColor.rgb.add( mix( raw.rgb, blurred.rgb, blurEnabled ) );
-			const spatialAA = smaa( vec4( combined, 1 ) );
+
+			// the materials take the reflections into their specular BRDF, in front of the environment
+
+			const rawSource = raw.sample( screenUV );
+			const source = mix( vec4( rawSource.rgb.div( rawSource.a.max( 1e-4 ) ), rawSource.a ), reflection.getSpecularSource(), blurEnabled );
+
+			const beautyPass = pass( scene, camera );
+			beautyPass.contextNode = builtinIndirectContext( coverageIndirect( { specular: [ source ] } ) );
+
+			const spatialAA = smaa( beautyPass );
 
 			function updateOutput() {
 

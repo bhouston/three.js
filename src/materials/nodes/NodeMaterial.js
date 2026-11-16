@@ -1056,6 +1056,12 @@ class NodeMaterial extends Material {
 
 		}
 
+		if ( builder.context.getIndirect ) {
+
+			return builder.context.getIndirect( materialLightsNode, builder );
+
+		}
+
 		return materialLightsNode;
 
 	}

@@ -315,6 +315,23 @@ export function builtinGIContext( aoNode, giNode, node = null ) {
 }
 
 /**
+ * TSL function for defining a built-in indirect lighting context for a given node. The callback
+ * replaces the lighting nodes a material uses for indirect light: the environment, the light map,
+ * the ambient occlusion and the global illumination.
+ *
+ * @tsl
+ * @function
+ * @param {function(Array<LightingNode>, NodeBuilder): Array<LightingNode>} callback - Receives the default lighting nodes of a material and returns the ones to use.
+ * @param {Node} [node=null] - The node whose context should be modified.
+ * @returns {ContextNode}
+ */
+export function builtinIndirectContext( callback, node = null ) {
+
+	return context( node, { getIndirect: callback } );
+
+}
+
+/**
  * TSL function for defining a label context value for a given node.
  *
  * @tsl
@@ -339,3 +356,4 @@ addMethodChaining( 'setName', setName );
 addMethodChaining( 'builtinShadowContext', ( node, shadowNode, light ) => builtinShadowContext( shadowNode, light, node ) );
 addMethodChaining( 'builtinAOContext', ( node, aoValue ) => builtinAOContext( aoValue, node ) );
 addMethodChaining( 'builtinGIContext', ( node, aoValue, giValue ) => builtinGIContext( aoValue, giValue, node ) );
+addMethodChaining( 'builtinIndirectContext', ( node, callback ) => builtinIndirectContext( callback, node ) );

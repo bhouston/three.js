@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, roughness as surfaceRoughness, screenUV, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -25,6 +25,7 @@ const MAX_STEPS = 64;
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
+ * @property {boolean} [applyBRDF=true] - When `false`, the output is the reflected radiance premultiplied by its coverage in alpha, for materials to apply their own BRDF. See {@link SSRNode#getSpecularSource}. Build-time only.
  */
 
 /**
@@ -65,7 +66,8 @@ class SSRNode extends Node {
 			environmentNode = null,
 			envImportanceSampling = false,
 			diffuseNode = null,
-			binaryRefine = false
+			binaryRefine = false,
+			applyBRDF = true
 		} = options;
 
 		let camera = options.camera ?? null;
@@ -78,6 +80,14 @@ class SSRNode extends Node {
 		 * @type {boolean}
 		 */
 		this.stochastic = stochastic;
+
+		/**
+		 * When `false`, the output is the reflected radiance premultiplied by its coverage in alpha.
+		 * Fixed at construction time.
+		 *
+		 * @type {boolean}
+		 */
+		this.applyBRDF = applyBRDF;
 
 		/**
 		 * When `true`, env-luminance CDF tables are built and MIS is used for environment misses.
@@ -667,6 +677,28 @@ class SSRNode extends Node {
 	}
 
 	/**
+	 * Returns the reflected radiance in RGB and its coverage in alpha at the surface being shaded,
+	 * e.g. as a specular source of `coverageIndirect()`. Requires `applyBRDF: false`.
+	 *
+	 * @return {Node<vec4>} The radiance and coverage.
+	 */
+	getSpecularSource() {
+
+		let reflection = passTexture( this, this._ssrRenderTarget.texture ).sample( screenUV );
+
+		if ( this.stochastic === false && this.roughnessNode !== null ) {
+
+			const mips = this._blurRenderTarget.texture.mipmaps.length - 1;
+
+			reflection = passTexture( this, this._blurRenderTarget.texture ).sample( screenUV ).level( surfaceRoughness.pow2().mul( mips ) );
+
+		}
+
+		return vec4( reflection.rgb.div( reflection.a.max( 1e-4 ) ), reflection.a );
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
@@ -895,7 +927,7 @@ class SSRNode extends Node {
 			// so no explicit sample() is needed here.
 			const metalness = float( this.metalnessNode );
 
-			if ( this.stochastic === false && this._reflectNonMetals === false ) {
+			if ( this.stochastic === false && this._reflectNonMetals === false && this.applyBRDF === true ) {
 
 				metalness.lessThanEqual( 0.0 ).discard();
 
@@ -1287,7 +1319,7 @@ class SSRNode extends Node {
 					// Multi-bounce: add the reprojected previous-frame reflection at the hit point.
 					reflectColor.rgb.assign( reprojectHitPointHistory( uvS, reflectColor.rgb ) );
 
-					if ( this.stochastic === true ) applyHitEdgeFade( reflectColor, uvS, hitBorderWidth );
+					if ( this.stochastic === true && this.applyBRDF === true ) applyHitEdgeFade( reflectColor, uvS, hitBorderWidth );
 
 					// The scatter (GGX) path bakes distance/grazing response into finalSampleWeight.
 					// The mirror/blur path is a plain reflection, so reapply upstream's squared
@@ -1304,7 +1336,22 @@ class SSRNode extends Node {
 					}
 
 					hit.assign( 1 );
-					output.assign( vec4( weightedColor, worldDistance ) );
+
+					if ( this.applyBRDF === true ) {
+
+						output.assign( vec4( weightedColor, worldDistance ) );
+
+					} else {
+
+						// the coverage fades out at the screen borders and, for the mirror path, over the distance
+
+						let coverage = computeScreenBorderFactor( uvS, this.screenEdgeFade );
+
+						if ( this.stochastic === false ) coverage = coverage.mul( distancePointPlane.div( this.maxDistance ).oneMinus().pow2() );
+
+						output.assign( vec4( reflectColor.rgb, 1 ).mul( coverage ) );
+
+					}
 
 				} );
 
@@ -1313,7 +1360,7 @@ class SSRNode extends Node {
 			// Screen-space ray missed: environment fallback (MIS when CDF env is set up).
 			If( hit.equal( 0 ), () => {
 
-				if ( this.stochastic === true ) {
+				if ( this.stochastic === true && this.applyBRDF === true ) {
 
 					output.assign( vec4( sampleEnvReflection().mul( this.environmentIntensity ), float( ENV_RAY_LENGTH ) ) );
 

@@ -1361,7 +1361,7 @@ class SSRNode extends Node {
 
 			};
 
-			const validateCandidate = ( hitUV, raw, cell ) => {
+			const validateHit = ( hitUV, raw, cell ) => {
 
 				const valid = bool( false ).toVar();
 				const allowed = dot( viewReflectDir, this.normalNode.sample( hitUV ).rgb ).lessThan( 0 );
@@ -1402,7 +1402,7 @@ class SSRNode extends Node {
 						isHidden: this.occlusionSkipping === false ? null : ( uvIn, uvOut, raw ) => nearRay( surfacePoint( uvIn, raw ).toVar() ).not().and( nearRay( surfacePoint( uvOut, raw ).toVar() ).not() ),
 						acceptHit: ( uv, s, raw, cell ) => {
 
-							if ( cell === undefined || this.coneValidate ) return validateCandidate( uv, raw, cell );
+							if ( cell === undefined || this.coneValidate ) return validateHit( uv, raw, cell );
 							// Unvalidated coarse hit: shade it at the ray's own point.
 							validatedPosition.assign( rayPointAt( s ) );
 							return bool( true );

@@ -47,7 +47,7 @@ export default QUnit.module( 'Addons', () => {
 
 					}
 
-					assert.deepEqual( mismatches, [], '1024 candidate decisions match independent CPU geometry' );
+					assert.deepEqual( mismatches, [], '1024 hit decisions match independent CPU geometry' );
 
 				} finally {
 

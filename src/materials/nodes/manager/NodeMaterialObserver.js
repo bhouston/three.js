@@ -398,7 +398,7 @@ class NodeMaterialObserver {
 
 		// context
 
-		if ( builder.context.modelViewMatrix || builder.context.modelNormalViewMatrix || builder.context.getAO || builder.context.getShadow || builder.context.getGI || builder.context.getIndirect )
+		if ( builder.context.modelViewMatrix || builder.context.modelNormalViewMatrix || builder.context.getAO || builder.context.getShadow || builder.context.getGI || builder.context.indirectSpecular || builder.context.indirectDiffuse )
 			return true;
 
 		return false;

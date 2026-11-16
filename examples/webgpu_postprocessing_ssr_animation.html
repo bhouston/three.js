@@ -41,7 +41,6 @@
 			import * as THREE from 'three/webgpu';
 			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity, screenUV, builtinIndirectContext } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
-			import { coverageIndirect } from 'three/addons/tsl/lighting/CoverageLightingNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -257,7 +256,7 @@
 				const reflection = mix( ssrTexture.sample( screenUV ), denoiseNode.getTextureNode().sample( screenUV ), denoiseEnabled );
 
 				const beautyPass = pass( scene, camera );
-				beautyPass.contextNode = builtinIndirectContext( coverageIndirect( { specular: [ ssrNode.getSpecularSource( reflection ) ] } ) );
+				beautyPass.contextNode = builtinIndirectContext( { specular: [ ssrNode.getSpecularSource( reflection ) ] } );
 
 				const temporalAA = traa( beautyPass, scenePassDepth, scenePassVelocity, camera );
 				const spatialAA = smaa( beautyPass );

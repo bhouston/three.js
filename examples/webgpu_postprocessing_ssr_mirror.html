@@ -46,7 +46,6 @@
 		import * as THREE from 'three/webgpu';
 		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking, builtinIndirectContext } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
-		import { coverageIndirect } from 'three/addons/tsl/lighting/CoverageLightingNode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -191,7 +190,7 @@
 			const source = mix( reflection.getSpecularSource( raw.sample( screenUV ) ), reflection.getSpecularSource(), blurEnabled );
 
 			const beautyPass = pass( scene, camera );
-			beautyPass.contextNode = builtinIndirectContext( coverageIndirect( { specular: [ source ] } ) );
+			beautyPass.contextNode = builtinIndirectContext( { specular: [ source ] } );
 
 			const spatialAA = smaa( beautyPass );
 

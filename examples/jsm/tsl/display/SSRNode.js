@@ -569,7 +569,7 @@ class SSRNode extends Node {
 
 		}
 
-		return vec4( reflection.rgb.div( reflection.a.max( 1e-4 ) ), reflection.a );
+		return vec4( reflection );
 
 	}
 

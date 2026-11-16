@@ -5,7 +5,8 @@ import { materialRoughness, materialMetalness } from '../../nodes/accessors/Mate
 import getRoughness from '../../nodes/functions/material/getRoughness.js';
 import PhysicalLightingModel from '../../nodes/functions/PhysicalLightingModel.js';
 import EnvironmentNode from '../../nodes/lighting/EnvironmentNode.js';
-import { float, vec3 } from '../../nodes/tsl/TSLBase.js';
+import IndirectLightingNode from '../../nodes/lighting/IndirectLightingNode.js';
+import { float, vec3, vec4 } from '../../nodes/tsl/TSLBase.js';
 
 import { MeshStandardMaterial } from '../MeshStandardMaterial.js';
 
@@ -114,6 +115,46 @@ class MeshStandardNodeMaterial extends NodeMaterial {
 		}
 
 		return envNode ? new EnvironmentNode( envNode ) : null;
+
+	}
+
+	/**
+	 * Overwritten since this type of material resolves its indirect specular and indirect
+	 * diffuse light from ordered lists of sources, with the environment as the last one.
+	 * The lists of the context, see {@link builtinIndirectContext}, are asked first.
+	 *
+	 * @param {NodeBuilder} builder - The current node builder.
+	 * @return {Array<LightingNode>} The lighting nodes.
+	 */
+	setupIndirectLightings( builder ) {
+
+		const { context } = builder;
+		const usesContext = this.transparent !== true;
+
+		const specular = ( usesContext && context.indirectSpecular ) || [];
+		let diffuse = ( usesContext && context.indirectDiffuse ) || null;
+
+		if ( diffuse === null ) {
+
+			// the light map and the GI of the context have a coverage of zero: they add to the environment
+
+			diffuse = [];
+
+			const lightMapNode = this.setupLightMap( builder );
+
+			if ( lightMapNode !== null ) diffuse.push( vec4( lightMapNode.node, 0 ) );
+
+			const giNode = context.getGI ? context.getGI( null, builder ) : null;
+
+			if ( giNode !== null ) diffuse.push( vec4( giNode, 0 ) );
+
+		}
+
+		const environmentNode = this.setupEnvironment( builder );
+
+		if ( environmentNode === null && specular.length === 0 && diffuse.length === 0 ) return [];
+
+		return [ new IndirectLightingNode( specular, diffuse, environmentNode ) ];
 
 	}
 

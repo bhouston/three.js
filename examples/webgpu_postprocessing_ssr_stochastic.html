@@ -59,7 +59,6 @@
 		import * as THREE from 'three/webgpu';
 		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec4, uniform, mix, step, abs, float, renderOutput, saturation, builtinIndirectContext } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
-		import { coverageIndirect } from 'three/addons/tsl/lighting/CoverageLightingNode.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
@@ -280,9 +279,9 @@
 			// the materials take the reflections into their specular BRDF, in front of the environment
 
 			const beautyPass = pass( scene, camera );
-			beautyPass.contextNode = builtinIndirectContext( coverageIndirect( {
+			beautyPass.contextNode = builtinIndirectContext( {
 				specular: [ ssrNode.getSpecularSource( denoiseNode.getTextureNode().sample( screenUV ) ) ]
-			} ) );
+			} );
 
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );

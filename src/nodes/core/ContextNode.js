@@ -315,19 +315,28 @@ export function builtinGIContext( aoNode, giNode, node = null ) {
 }
 
 /**
- * TSL function for defining a built-in indirect lighting context for a given node. The callback
- * replaces the lighting nodes a material uses for indirect light: the environment, the light map,
- * the ambient occlusion and the global illumination.
+ * TSL function for defining the sources of indirect light of the materials of a given node,
+ * e.g. of a pass. The sources are asked in order, in front of the environment.
+ *
+ * Without `diffuse`, materials keep their light map and the GI of {@link builtinGIContext}.
+ * Transparent materials keep their default indirect lighting.
  *
  * @tsl
  * @function
- * @param {function(Array<LightingNode>, NodeBuilder): Array<LightingNode>} callback - Receives the default lighting nodes of a material and returns the ones to use.
+ * @param {Object} sources - The source lists.
+ * @param {Array<IndirectLightSource>} [sources.specular] - The indirect specular sources, in order.
+ * @param {Array<IndirectLightSource>} [sources.diffuse] - The indirect diffuse sources, in order.
  * @param {Node} [node=null] - The node whose context should be modified.
  * @returns {ContextNode}
  */
-export function builtinIndirectContext( callback, node = null ) {
+export function builtinIndirectContext( { specular, diffuse }, node = null ) {
 
-	return context( node, { getIndirect: callback } );
+	const value = {};
+
+	if ( specular !== undefined ) value.indirectSpecular = specular;
+	if ( diffuse !== undefined ) value.indirectDiffuse = diffuse;
+
+	return context( node, value );
 
 }
 
@@ -356,4 +365,4 @@ addMethodChaining( 'setName', setName );
 addMethodChaining( 'builtinShadowContext', ( node, shadowNode, light ) => builtinShadowContext( shadowNode, light, node ) );
 addMethodChaining( 'builtinAOContext', ( node, aoValue ) => builtinAOContext( aoValue, node ) );
 addMethodChaining( 'builtinGIContext', ( node, aoValue, giValue ) => builtinGIContext( aoValue, giValue, node ) );
-addMethodChaining( 'builtinIndirectContext', ( node, callback ) => builtinIndirectContext( callback, node ) );
+addMethodChaining( 'builtinIndirectContext', ( node, sources ) => builtinIndirectContext( sources, node ) );

@@ -1020,6 +1020,27 @@ class NodeMaterial extends Material {
 	 */
 	setupMaterialLightings( builder ) {
 
+		const materialLightsNode = this.setupIndirectLightings( builder );
+
+		if ( builder.context.ambientOcclusion ) {
+
+			materialLightsNode.push( new AONode( builder.context.ambientOcclusion ) );
+
+		}
+
+		return materialLightsNode;
+
+	}
+
+	/**
+	 * Setups the lighting nodes that supply the indirect light of the material: its
+	 * environment, its light map and the GI of the context.
+	 *
+	 * @param {NodeBuilder} builder - The current node builder.
+	 * @return {Array<LightingNode>} The lighting nodes.
+	 */
+	setupIndirectLightings( builder ) {
+
 		const materialLightsNode = [];
 
 		const envNode = this.setupEnvironment( builder );
@@ -1038,12 +1059,6 @@ class NodeMaterial extends Material {
 
 		}
 
-		if ( builder.context.ambientOcclusion ) {
-
-			materialLightsNode.push( new AONode( builder.context.ambientOcclusion ) );
-
-		}
-
 		if ( builder.context.getGI ) {
 
 			const giNode = builder.context.getGI( null, builder );
@@ -1053,12 +1068,6 @@ class NodeMaterial extends Material {
 				materialLightsNode.push( new IrradianceNode( giNode ) );
 
 			}
-
-		}
-
-		if ( builder.context.getIndirect ) {
-
-			return builder.context.getIndirect( materialLightsNode, builder );
 
 		}
 

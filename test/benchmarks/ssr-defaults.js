@@ -97,7 +97,14 @@ try {
 				device.pushErrorScope( 'validation' );
 				const batch = async () => {
 
-					for ( let i = 0; i < 8; i ++ ) animate(); await device.queue.onSubmittedWorkDone();
+					for ( let i = 0; i < 8; i ++ ) {
+
+						// Advance FRAME nodes even outside the renderer's animation loop.
+						renderer._nodes.nodeFrame.update();
+						animate();
+
+					}
+					await device.queue.onSubmittedWorkDone();
 
 				};
 

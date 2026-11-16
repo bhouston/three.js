@@ -32,9 +32,8 @@ const HIZ_MAX_LEVEL = 6;
  * @property {boolean} [envImportanceSampling=false] - When `true`, precomputes env-luminance CDF tables and uses MIS for environment misses. Build-time only.
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
- * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode uses a nearest-depth hierarchy and exact mip-zero candidates. Requires WebGPU.
- * @property {number} [maxCandidates=1] - Adaptive mode only: maximum candidate surfaces to validate.
- * @property {number} [roughMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it. Use with `maxCandidates > 1`.
+ * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode traces a nearest-depth hierarchy and stops at the first surface a ray reaches. Requires WebGPU.
+ * @property {number} [roughMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it.
  * @property {number} [approximateSteps=0] - Adaptive mode only: `0` traces exactly. When greater, each ray stops descending at the Hi-Z level where it crosses about this many cells and tests only the pixel under the ray there, as a linear march step does; a hit found that way is then refined by bisection. Cheaper with a small iteration budget, but steps over features thinner than a cell. With `coneTracing`, cells no larger than the cone's footprint are still taken as cone hits.
  * @property {boolean} [occlusionSkipping=true] - Adaptive mode only: lets rays pass behind occluders by skipping Hi-Z cells they are entirely hidden behind, as linear tracing does sample by sample. Recovers reflections of surfaces seen past an occluder at the cost of longer rays.
  * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
@@ -124,8 +123,6 @@ class SSRNode extends Node {
 		this.depthNode = depthNode;
 		this._tracing = options.tracing ?? 'linear';
 		if ( ! [ 'linear', 'adaptive' ].includes( this._tracing ) ) throw new Error( 'SSRNode: Invalid tracing mode.' );
-		this._maxCandidates = options.maxCandidates ?? 1;
-		if ( ! Number.isInteger( this._maxCandidates ) || this._maxCandidates < 1 || this._maxCandidates > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
 		this._roughMinLevel = options.roughMinLevel ?? 0;
 		this._coneTracing = options.coneTracing ?? false;
 		this._coneValidate = false;
@@ -590,22 +587,6 @@ class SSRNode extends Node {
 		}
 
 		this._tracing = value;
-		this._buildSSRMaterial();
-
-	}
-
-	/** Candidate-surface budget. Changing it recompiles adaptive tracing. @type {number} */
-	get maxCandidates() {
-
-		return this._maxCandidates;
-
-	}
-
-	set maxCandidates( value ) {
-
-		if ( ! Number.isInteger( value ) || value < 1 || value > 4096 ) throw new Error( 'SSRNode: maxCandidates must be an integer from 1 to 4096.' );
-		if ( value === this._maxCandidates ) return;
-		this._maxCandidates = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1446,7 +1427,6 @@ class SSRNode extends Node {
 						reversedDepth: reversed,
 						start: cameraFacing !== null ? cameraFacing.lessThanEqual( 0 ).select( 1, rayLen.reciprocal() ) : rayLen.reciprocal(),
 						maxSteps: this.adaptiveMaxSteps,
-						maxCandidates: this.maxCandidates,
 						minLevel: approximateLevel !== null ? approximateLevel
 							: coneLevel !== null ? coneLevel
 								: this.stochastic && this.roughMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.roughMinLevel ), int( 0 ) ) : 0,
@@ -1473,7 +1453,7 @@ class SSRNode extends Node {
 
 						}
 					} );
-				if ( this._traceDebug === true ) return vec4( float( result.iterations ), float( result.candidates ), float( result.hit ), float( result.exhausted ) );
+				if ( this._traceDebug === true ) return vec4( float( result.iterations ), 0, float( result.hit ), float( result.exhausted ) );
 				if ( this.showIterations ) return iterationHeat( float( result.iterations ).div( float( this.adaptiveMaxSteps ) ), result.exhausted );
 				foundHit.assign( result.hit );
 				hitUvS.assign( result.uv );

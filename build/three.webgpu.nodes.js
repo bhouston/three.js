@@ -17687,6 +17687,47 @@ const packNormalToRGB = ( node ) => nodeObject( node ).mul( 0.5 ).add( 0.5 );
 const unpackRGBToNormal = ( node ) => nodeObject( node ).mul( 2.0 ).sub( 1 );
 
 /**
+ * Encodes a nonzero direction as signed octahedral coordinates in `[-1, 1]`
+ * (Cigolle et al., {@link https://jcgt.org/published/0003/02/01/ A Survey of Efficient Representations for Independent Unit Vectors}, 2014).
+ * Store the result in a signed two-channel format such as RG16F or RG16 snorm. The input does not need to be normalized.
+ *
+ * @tsl
+ * @function
+ * @param {Node<vec3>} normal - The nonzero direction to encode.
+ * @return {Node<vec2>} The signed octahedral coordinates.
+ */
+const packNormalToOctahedral = /*@__PURE__*/ Fn( ( [ normal ] ) => {
+
+	const p = normal.xy.div( normal.x.abs().add( normal.y.abs() ).add( normal.z.abs() ) ).toVar();
+
+	// zero counts as positive, otherwise the negative Z pole collapses onto the positive one
+
+	const signNotZero = vec2( p.x.greaterThanEqual( 0 ).select( 1, -1 ), p.y.greaterThanEqual( 0 ).select( 1, -1 ) );
+	return normal.z.lessThan( 0 ).select( p.yx.abs().oneMinus().mul( signNotZero ), p );
+
+}, { normal: 'vec3', return: 'vec2' } );
+
+/**
+ * Decodes signed octahedral coordinates into a unit direction.
+ *
+ * @tsl
+ * @function
+ * @param {Node<vec2>} encoded - The signed octahedral coordinates in `[-1, 1]`.
+ * @return {Node<vec3>} The normalized direction.
+ */
+const unpackOctahedralToNormal = /*@__PURE__*/ Fn( ( [ encoded ] ) => {
+
+	// Rune Stubbe's decoder, see https://x.com/Stubbesaurus/status/937994790553227264
+
+	const normal = vec3( encoded, float( 1 ).sub( encoded.x.abs() ).sub( encoded.y.abs() ) ).toVar();
+	const t = normal.z.negate().max( 0 ).toVar();
+	normal.x.addAssign( normal.x.greaterThanEqual( 0 ).select( t.negate(), t ) );
+	normal.y.addAssign( normal.y.greaterThanEqual( 0 ).select( t.negate(), t ) );
+	return normal.normalize();
+
+}, { encoded: 'vec2', return: 'vec3' } );
+
+/**
  * Unpacks a tangent space normal, reconstructing the Z component by projecting the X,Y coordinates onto the hemisphere.
  * The X,Y coordinates are expected to be in the [-1, 1] range.
  *
@@ -95541,6 +95582,7 @@ var Three_TSL = /*#__PURE__*/Object.freeze({
 	pack4xU8: pack4xU8,
 	pack4xU8Clamp: pack4xU8Clamp,
 	packHalf2x16: packHalf2x16,
+	packNormalToOctahedral: packNormalToOctahedral,
 	packNormalToRGB: packNormalToRGB,
 	packSnorm2x16: packSnorm2x16,
 	packSnorm4x8: packSnorm4x8,
@@ -95724,6 +95766,7 @@ var Three_TSL = /*#__PURE__*/Object.freeze({
 	unpack4xU8: unpack4xU8,
 	unpackHalf2x16: unpackHalf2x16,
 	unpackNormal: unpackNormal,
+	unpackOctahedralToNormal: unpackOctahedralToNormal,
 	unpackRGBToNormal: unpackRGBToNormal,
 	unpackSnorm2x16: unpackSnorm2x16,
 	unpackSnorm4x8: unpackSnorm4x8,

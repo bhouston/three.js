@@ -18,7 +18,8 @@ export function createTraceFixture( width, height, data, reversed = false ) {
 }
 
 // Exhaustive CPU oracle: intersect every original texel rectangle independently,
-// then choose the earliest valid intersection. No hierarchy or marching schedule.
+// take the earliest surface the ray reaches, then validate it. No hierarchy or
+// marching schedule.
 export function referenceTrace( fixture, origin, end, { thickness = 0.000001, rejectedDepth = - 1 } = {} ) {
 
 	const { width, height, data, reversed } = fixture;
@@ -27,7 +28,7 @@ export function referenceTrace( fixture, origin, end, { thickness = 0.000001, re
 	const direction = finish.map( ( value, i ) => value - start[ i ] );
 	const z0 = reversed ? 1 - start[ 2 ] : start[ 2 ];
 	const dz = reversed ? - direction[ 2 ] : direction[ 2 ];
-	let first = Infinity;
+	let first = Infinity, firstDepth = 0, firstRaw = 0;
 
 	for ( let y = 0; y < height; y ++ ) {
 
@@ -35,7 +36,7 @@ export function referenceTrace( fixture, origin, end, { thickness = 0.000001, re
 
 			const raw = data[ y * width + x ];
 			const depth = reversed ? 1 - raw : raw;
-			if ( depth === 1 || raw === rejectedDepth ) continue;
+			if ( depth === 1 ) continue;
 			let entry = 0, exit = 1;
 			for ( let axis = 0; axis < 2; axis ++ ) {
 
@@ -62,15 +63,18 @@ export function referenceTrace( fixture, origin, end, { thickness = 0.000001, re
 			}
 
 			if ( entry >= exit || entry >= first ) continue;
-			const entryDepth = z0 + dz * entry;
-			if ( entryDepth >= depth && entryDepth <= depth + thickness ) {
+			// Behind the surface on entry, or reaching its depth plane inside the texel.
+			let reached = entry;
+			if ( z0 + dz * entry < depth ) {
 
-				first = entry;
+				reached = dz > 0 ? ( depth - z0 ) / dz : Infinity;
+				if ( reached < entry || reached >= exit ) continue;
 
-			} else if ( dz !== 0 ) {
+			}
 
-				const plane = ( depth - z0 ) / dz;
-				if ( plane >= entry && plane < exit && plane < first ) first = plane;
+			if ( reached < first ) {
+
+				first = reached; firstDepth = depth; firstRaw = raw;
 
 			}
 
@@ -78,11 +82,12 @@ export function referenceTrace( fixture, origin, end, { thickness = 0.000001, re
 
 	}
 
-	return Number.isFinite( first ) ? { hit: true, parameter: first } : { hit: false, parameter: 0 };
+	const accepted = Number.isFinite( first ) && Math.abs( z0 + dz * first - firstDepth ) <= thickness && firstRaw !== rejectedDepth;
+	return accepted ? { hit: true, parameter: first } : { hit: false, parameter: 0 };
 
 }
 
-export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 0.000001, rejectedDepth = - 1, maxCandidates = 4096, minLevel = 0 } = {} ) {
+export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 0.000001, rejectedDepth = - 1, minLevel = 0 } = {} ) {
 
 	// vec4 inputs avoid storage-buffer vec3 alignment differences.
 	const origins = instancedArray( new Float32Array( rays.flatMap( ray => [ ...ray[ 0 ], 0 ] ) ), 'vec4' );
@@ -94,7 +99,7 @@ export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 
 		const origin = origins.element( instanceIndex ).xyz.toConst();
 		const end = ends.element( instanceIndex ).xyz.toConst();
 		const result = traceHiZ( fixture.hierarchy, origin, end, {
-			reversedDepth: fixture.reversed, maxSteps, maxCandidates, minLevel,
+			reversedDepth: fixture.reversed, maxSteps, minLevel,
 			acceptHit: ( uv, s, raw ) => {
 
 				const z = origin.z.add( end.z.sub( origin.z ).mul( s ) );
@@ -103,7 +108,7 @@ export function buildTraceKernel( fixture, rays, { maxSteps = 2048, thickness = 
 			}
 		} );
 		output.element( instanceIndex ).assign( vec4( result.uv, result.parameter, float( result.hit ) ) );
-		metadata.element( instanceIndex ).assign( vec4( float( result.iterations ), float( result.exhausted ), result.depth, float( result.candidates ) ) );
+		metadata.element( instanceIndex ).assign( vec4( float( result.iterations ), float( result.exhausted ), result.depth, 0 ) );
 
 	} )().compute( rays.length );
 	return { kernel, output, metadata, origins, ends };

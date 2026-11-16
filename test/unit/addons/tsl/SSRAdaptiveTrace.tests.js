@@ -162,7 +162,7 @@ export default QUnit.module( 'Addons', () => {
 
 			}
 
-			traceTest( 'rejected first leaf continues to a later valid surface', async ( { assert, renderer } ) => {
+			traceTest( 'a rejected first surface ends the ray', async ( { assert, renderer } ) => {
 
 				const data = new Float32Array( 128 ).fill( 1 );
 				data[ 31 ] = 0.5;
@@ -170,11 +170,9 @@ export default QUnit.module( 'Addons', () => {
 				const fixture = createTraceFixture( 128, 1, data );
 				try {
 
-					const result = await compareRays( assert, renderer, fixture, [[[ 0.001, 0.5, 0.5005 ], [ 0.999, 0.5, 0.5005 ]]], { rejectedDepth: 0.5, thickness: 0.001 } );
-					assert.ok( result.output[ 0 ] > 0.7, 'skips rejected surface and reaches second surface' );
-					const stopped = await traceRays( renderer, fixture, [[[ 0.001, 0.5, 0.5005 ], [ 0.999, 0.5, 0.5005 ]]], { rejectedDepth: 0.5, thickness: 0.001, maxCandidates: 1 } );
-					assert.strictEqual( stopped.output[ 3 ], 0, 'first-candidate mode rejects the first surface and stops' );
-					assert.strictEqual( stopped.metadata[ 1 ], 0, 'rejected first candidate is a completed miss, not budget exhaustion' );
+					const stopped = await compareRays( assert, renderer, fixture, [[[ 0.001, 0.5, 0.5005 ], [ 0.999, 0.5, 0.5005 ]]], { rejectedDepth: 0.5, thickness: 0.001 } );
+					assert.strictEqual( stopped.output[ 3 ], 0, 'does not continue to the valid surface behind the rejected one' );
+					assert.strictEqual( stopped.metadata[ 1 ], 0, 'a rejected surface is a completed miss, not budget exhaustion' );
 
 				} finally {
 
@@ -195,14 +193,21 @@ export default QUnit.module( 'Addons', () => {
 						camera.coordinateSystem = WebGPUCoordinateSystem;
 						camera.updateProjectionMatrix();
 						camera.updateMatrixWorld();
-						const depth = new DataTexture( new Float32Array( width ).fill( 0.5 ), width, height, RedFormat, FloatType );
+						// A floor at depth 0.5 reflects every ray slightly toward the camera and
+						// into a 45 degree wall, so the first surface a ray reaches is its hit.
+						const floorZ = new Vector3( 0, 0, 0.5 ).applyMatrix4( camera.projectionMatrixInverse ).z;
+						const pixelWidth = ( perspective ? - floorZ * Math.tan( Math.PI * 25 / 180 ) : 1 ) * 2 / width;
+						const depthData = new Float32Array( width ).fill( 0.5 );
+						for ( let x = 96; x < width; x ++ ) depthData[ x ] = new Vector3( 0, 0, floorZ + ( x - 95 ) * pixelWidth ).applyMatrix4( camera.projectionMatrix ).z;
+						const depth = new DataTexture( depthData, width, height, RedFormat, FloatType );
+						const reflected = new Vector3( 1, 0, 0.05 ).normalize();
 						const normalData = new Float32Array( width * 4 );
 						const colors = new Float32Array( width * 4 );
 						for ( let x = 0; x < width; x ++ ) {
 
 							const incident = perspective ? new Vector3( ( x + 0.5 ) / width * 2 - 1, 0, 0.5 ).applyMatrix4( camera.projectionMatrixInverse ).normalize() : new Vector3( 0, 0, - 1 );
-							const receiverNormal = new Vector3( 1, 0, 0 ).sub( incident ).normalize();
-							normalData.set( x < 96 ? [ receiverNormal.x, receiverNormal.y, receiverNormal.z, 1 ] : [ - 1, 0, 0, 1 ], x * 4 );
+							const receiverNormal = reflected.clone().sub( incident ).normalize();
+							normalData.set( x < 96 ? [ receiverNormal.x, receiverNormal.y, receiverNormal.z, 1 ] : [ - Math.SQRT1_2, 0, Math.SQRT1_2, 1 ], x * 4 );
 							colors.set( [ 0.8, 0.2, 0.1, 1 ], x * 4 );
 
 						}
@@ -218,7 +223,7 @@ export default QUnit.module( 'Addons', () => {
 
 						const nodes = [ 'linear', 'adaptive' ].map( tracing => {
 
-							const node = ssr( texture( color ), texture( depth ), texture( normal ), { camera, stochastic, maxCandidates: 4096, metalnessNode: float( 1 ), roughnessNode: float( 0 ), tracing, binaryRefine: true } );
+							const node = ssr( texture( color ), texture( depth ), texture( normal ), { camera, stochastic, metalnessNode: float( 1 ), roughnessNode: float( 0 ), tracing, binaryRefine: true } );
 							node.quality.value = 1;
 							node.maxSteps.value = 4096;
 							node.adaptiveMaxSteps.value = 2048;
@@ -264,28 +269,7 @@ export default QUnit.module( 'Addons', () => {
 
 							}
 
-							if ( perspective && ! stochastic ) {
-
-								// Nominally coplanar rays expose legacy projection rounding misses.
-								// Accept additional adaptive hits only after checking their distance
-								// against the analytic intersection with the x=96 texel boundary.
-								const invalid = [];
-								const boundary = new Vector3( 96 / width * 2 - 1, 0, 0.5 ).applyMatrix4( camera.projectionMatrixInverse );
-								for ( const mismatch of mismatches ) {
-
-									const start = new Vector3( ( mismatch.x + 0.5 ) / width * 2 - 1, 0, 0.5 ).applyMatrix4( camera.projectionMatrixInverse );
-									const pixelStep = new Vector3( ( mismatch.x + 1.5 ) / width * 2 - 1, 0, 0.5 ).applyMatrix4( camera.projectionMatrixInverse ).distanceTo( start );
-									if ( mismatch.linear > 0 || mismatch.x >= 96 || Math.abs( mismatch.adaptive - start.distanceTo( boundary ) ) > pixelStep ) invalid.push( mismatch );
-
-								}
-
-								assert.deepEqual( invalid, [], `${ mismatches.length } extra adaptive hits agree with analytic surface geometry` );
-
-							} else {
-
-								assert.deepEqual( mismatches, [], 'identical hit masks' );
-
-							}
+							assert.deepEqual( mismatches, [], 'identical hit masks' );
 
 							assert.ok( hits > ( stochastic ? 32 : 80 ) && hits < 100, `${ hits } nontrivial matching receiver rays` );
 							assert.ok( maxDistanceError < 0.02, `hit distance differs by less than one source pixel: ${ maxDistanceError }` );
@@ -347,7 +331,7 @@ export default QUnit.module( 'Addons', () => {
 							const fixture = createTraceFixture( width, height, data, reversed );
 							try {
 
-								const result = await traceRays( renderer, fixture, [[ origin, end ]], { maxSteps: 64, maxCandidates: 1 } );
+								const result = await traceRays( renderer, fixture, [[ origin, end ]], { maxSteps: 64 } );
 								assert.strictEqual( result.output[ 3 ], 1, 'reaches the real surface after crossing the coarse wall' );
 								assert.strictEqual( result.metadata[ 1 ], 0, 'does not exhaust its traversal budget' );
 								assert.ok( result.metadata[ 0 ] < 32, `no coarse/fine oscillation: ${ result.metadata[ 0 ] } iterations` );
@@ -366,31 +350,6 @@ export default QUnit.module( 'Addons', () => {
 				}
 
 			}
-
-			traceTest( 'candidate budgets stop after exactly 1, 2, 3 or 4 surfaces', async ( { assert, renderer } ) => {
-
-				const data = new Float32Array( 128 ).fill( 1 );
-				for ( let i = 0; i < 4; i ++ ) data[ 16 + i * 32 ] = 0.5001 + i * 0.0001;
-				const fixture = createTraceFixture( 128, 1, data );
-				const rays = [[[ 0.001, 0.5, data[ 112 ] ], [ 0.999, 0.5, data[ 112 ] ]]];
-				try {
-
-					for ( const maxCandidates of [ 1, 2, 3, 4 ] ) {
-
-						const result = await traceRays( renderer, fixture, rays, { maxCandidates } );
-						assert.strictEqual( result.metadata[ 3 ], maxCandidates, `visits ${ maxCandidates } candidates` );
-						assert.strictEqual( result.metadata[ 1 ], 0, 'candidate limit is not iteration exhaustion' );
-						assert.strictEqual( result.output[ 3 ], maxCandidates === 4 ? 1 : 0, 'only budget four reaches the valid surface' );
-
-					}
-
-				} finally {
-
-					fixture.dispose();
-
-				}
-
-			} );
 
 			traceTest( 'budget exhaustion is distinct from a completed miss', async ( { assert, renderer } ) => {
 

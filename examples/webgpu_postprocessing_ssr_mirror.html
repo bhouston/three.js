@@ -55,7 +55,7 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
-			output: 'Beauty', enabled: true, adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), maxCandidates: 1, adaptiveSteps: 64, occlusionSkipping: true, quality: 0.5, intensity: 1,
+			output: 'Beauty', enabled: true, adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), adaptiveSteps: 64, occlusionSkipping: true, quality: 0.5, intensity: 1,
 			maxDistance: 1, thickness: 0.03, binaryRefine: false,
 			roughness: 1, blur: true, blurQuality: 1
 		};
@@ -225,7 +225,6 @@
 			ssrGui.add( params, 'thickness', 0, 0.05 ).name( 'Thickness' ).onChange( updateParameters );
 
 			const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
-			adaptiveGui.add( params, 'maxCandidates', 1, 64, 1 ).name( 'Candidates' ).onChange( updateParameters );
 			adaptiveGui.add( params, 'adaptiveSteps', 16, 256, 16 ).name( 'Max steps' ).onChange( updateParameters );
 			adaptiveGui.add( params, 'occlusionSkipping' ).name( 'Skip occluded' ).onChange( updateParameters );
 
@@ -254,7 +253,6 @@
 			function updateParameters() {
 
 				reflection.tracing = params.adaptive ? 'adaptive' : 'linear';
-				reflection.maxCandidates = params.maxCandidates;
 				reflection.adaptiveMaxSteps.value = params.adaptiveSteps;
 				// Only the active tracer's group is shown.
 				adaptiveGui[ params.adaptive ? 'show' : 'hide' ]();

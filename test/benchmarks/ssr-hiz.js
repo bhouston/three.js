@@ -3,7 +3,7 @@
 // PUPPETEER_EXECUTABLE_PATH=/path/to/Chrome node test/benchmarks/ssr-hiz.js
 // Options: --example=mirror|stochastic|animation --width=1280 --height=720
 //          --seconds=5 --adaptive-steps=512 --linear-steps=64 --max-distance=20
-//          --candidates=1,2,3,4 --binary-refine=true --max-level=6 --rough-min-level=1
+//          --binary-refine=true --max-level=6 --rough-min-level=1
 //          --roughness=1 (sets scene roughness as each example's own slider does)
 // A fairer linear reference (one step per pixel, same thickness rule as adaptive):
 //          --binary-refine=false --linear-steps=1024
@@ -25,7 +25,6 @@ const linearSteps = Number( option( 'linear-steps', 64 ) );
 const maxDistance = option( 'max-distance', null );
 const binaryRefine = option( 'binary-refine', 'true' ) === 'true';
 const maxLevel = Number( option( 'max-level', Infinity ) );
-const candidates = option( 'candidates', '1,2,3,4' ).split( ',' ).map( Number );
 const server = createServer( { root } );
 await new Promise( resolve => server.listen( 0, '127.0.0.1', resolve ) );
 let browser;
@@ -164,16 +163,11 @@ try {
 			} );
 			hierarchy.enabled = false;
 			const configurations = [
-				{ name: 'Non-adaptive SSR', adaptive: false, maxCandidates: 1 },
-				{ name: 'Non-adaptive SSR (example defaults)', adaptive: false, maxCandidates: 1, exampleDefaults: true }
+				{ name: 'Non-adaptive SSR', adaptive: false },
+				{ name: 'Non-adaptive SSR (example defaults)', adaptive: false, exampleDefaults: true },
+				{ name: 'Adaptive SSR', adaptive: true, occlusionSkipping: false },
+				{ name: 'Adaptive SSR + occlusion skipping', adaptive: true, occlusionSkipping: true }
 			];
-			for ( const maxCandidates of settings.candidates ) {
-
-				const budget = `${ maxCandidates } candidate${ maxCandidates > 1 ? 's' : '' }`;
-				configurations.push( { name: `Adaptive SSR (${ budget })`, adaptive: true, maxCandidates, occlusionSkipping: false } );
-				configurations.push( { name: `Adaptive SSR + occlusion skipping (${ budget })`, adaptive: true, maxCandidates, occlusionSkipping: true } );
-
-			}
 
 			const readTrace = async () => {
 
@@ -206,7 +200,6 @@ try {
 				await device.queue.onSubmittedWorkDone();
 				Object.assign( params, config.exampleDefaults ? exampleDefaults : comparable );
 				params.adaptive = config.adaptive;
-				params.maxCandidates = config.maxCandidates;
 				node.occlusionSkipping = params.occlusionSkipping = config.occlusionSkipping === true;
 				apply();
 				const measurement = { ...config, ...await measure( config.name, drawTrace ) };
@@ -220,18 +213,17 @@ try {
 					node._buildSSRMaterial();
 					drawTrace();
 					const diagnostic = await readTrace();
-					let tracedRays = 0, iterations = 0, candidateCount = 0, exhausted = 0;
+					let tracedRays = 0, iterations = 0, exhausted = 0;
 					for ( let i = 0; i < diagnostic.length; i += 4 ) {
 
 						if ( diagnostic[ i ] === 0 ) continue;
 						tracedRays ++;
 						iterations += diagnostic[ i ];
-						candidateCount += diagnostic[ i + 1 ];
 						if ( diagnostic[ i + 3 ] > 0 ) exhausted ++;
 
 					}
 
-					measurement.diagnostics = { tracedRays, averageIterations: iterations / tracedRays, averageCandidates: candidateCount / tracedRays, exhaustedRays: exhausted };
+					measurement.diagnostics = { tracedRays, averageIterations: iterations / tracedRays, exhaustedRays: exhausted };
 					node._traceDebug = false;
 					node._buildSSRMaterial();
 
@@ -247,7 +239,7 @@ try {
 			if ( validationError ) throw new Error( validationError.message );
 			return { adapter, width: renderer.domElement.width, height: renderer.domElement.height, maxDistance: comparable.maxDistance, roughness: settings.roughness, exampleDefaults, linearSteps: settings.linearSteps, binaryRefine: settings.binaryRefine, adaptiveSteps: settings.adaptiveSteps, levels: hierarchy.levels.length, creation, modes, speedup: modes.find( mode => mode.adaptive ).fps / modes[ 0 ].fps };
 
-		}, { seconds, adaptiveSteps, linearSteps, maxDistance, candidates, binaryRefine, roughness: option( 'roughness', null ) === null ? null : Number( option( 'roughness' ) ), roughMinLevel: Number( option( 'rough-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
+		}, { seconds, adaptiveSteps, linearSteps, maxDistance, binaryRefine, roughness: option( 'roughness', null ) === null ? null : Number( option( 'roughness' ) ), roughMinLevel: Number( option( 'rough-min-level', 0 ) ), maxLevel: Number.isFinite( maxLevel ) ? maxLevel : null } );
 		if ( errors.length > 0 ) throw new Error( errors.join( '\n' ) );
 		results.push( { example, ...result } );
 		console.log( JSON.stringify( results.at( - 1 ), null, 2 ) );

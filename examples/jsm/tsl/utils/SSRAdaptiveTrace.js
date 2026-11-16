@@ -8,9 +8,8 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  * Cells are skipped only while the ray is in front of their nearest surface.
  * Potential intersections descend to mip zero. Both depth directions are solved,
  * including a ray approaching a surface from behind while moving toward the camera.
- * A caller-supplied predicate performs full-resolution normal/thickness validation;
- * The candidate budget controls how many rejected surfaces may be searched.
- * A budget of one validates once after traversal, outside its loop.
+ * The ray stops at the first surface it reaches. A caller-supplied predicate then
+ * performs full-resolution normal/thickness validation once, outside the loop.
  *
  * Derived from the adaptive traversal in three.js PR #35228. Kept separate from
  * ray generation and shading so deterministic GPU tests exercise the production code.
@@ -24,16 +23,13 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  * @param {Node<int>|number} [options.maxSteps=32] - Work budget, independent of legacy SSR quality.
  * @param {Function} [options.projectDepth] - Converts raw hierarchy depth to projected depth (log-depth inputs).
  * @param {Node<float>|number} [options.depthTolerance=0] - Conservative projected-depth rounding tolerance.
- * @param {number} [options.maxCandidates=1] - Maximum candidate surfaces to validate (compile-time integer).
  * @param {Node<int>|number|Function} [options.minLevel=0] - Finest level later descents need to reach (FidelityFX's most_detailed_mip), or a function of the level-zero pixels travelled so far returning it, for a tolerance that grows along the ray. A coarse leaf is accepted only when the full-resolution pixel under the ray is itself the hit; otherwise that cell is resolved exactly, so hits match `minLevel = 0`.
  * @param {boolean} [options.coarseHits=false] - Cone-tracing approximation: a coarse leaf is tested once, with its nearest depth at the ray's UV, and stepped over when `acceptHit` rejects that. `acceptHit` receives the cell size in pixels as a fourth argument to widen its tolerance.
- * @param {Function} [options.isHidden] - TSL predicate (entry UV, exit UV, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones, without spending candidates.
+ * @param {Function} [options.isHidden] - TSL predicate (entry UV, exit UV, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, coarseHits = false, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
-
-	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRAdaptiveTrace: maxCandidates must be an integer from 1 to 4096.' );
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, minLevel = 0, coarseHits = false, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
 
 	const delta = end.sub( origin ).toConst();
 	const s = float( start ).toVar();
@@ -46,16 +42,12 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	// traversal climbs back to the wanted level.
 	const exact = bool( false ).toVar();
 	const validated = bool( false ).toVar();
-	// A coarse leaf holds its cell's nearest depth. Candidates are validated
-	// against the full-resolution depth at their own UV instead.
-	const leafDepth = ( uv, raw ) => coarse ? hierarchy.getTextureNode( 0, uv ) : raw;
 	const lastMip = int( hierarchy.getLastLevelNode() ).toConst();
 	const hit = bool( false ).toVar();
 	const hitUV = vec2( 0 ).toVar();
 	const hitDepth = float( 0 ).toVar();
 	const hitS = float( 0 ).toVar();
 	const iterations = int( 0 ).toVar();
-	const candidates = int( 0 ).toVar();
 	const size = vec2( textureSize( hierarchy.depthNode ) ).toConst();
 	// Traversal runs in level-zero pixels: cells are integer shifts of them.
 	const originPixel = origin.xy.mul( size ).toConst();
@@ -206,7 +198,8 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			else If( mip.greaterThan( 0 ), () => {
 
 				const leafUV = pixel.div( size ).toVar();
-				const leaf = float( leafDepth( leafUV ) ).toVar();
+				// A coarse leaf holds its cell's nearest depth; test the full-resolution depth under the ray.
+				const leaf = float( hierarchy.getTextureNode( 0, leafUV ) ).toVar();
 				// The same test a mip-zero leaf makes at this pixel, so the result is
 				// the exact one: only the descents in between are saved.
 				const leafProjected = projectDepth( leaf ).add( reversedDepth ? depthTolerance : float( depthTolerance ).negate() );
@@ -228,67 +221,23 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 
 		}
 
-		candidates.addAssign( 1 );
-		if ( maxCandidates === 1 ) {
-
-			// AMD-style termination: return the first geometric candidate, then
-			// validate it once outside the traversal loop.
-			hit.assign( true );
-			hitUV.assign( pixel.div( size ) );
-			hitDepth.assign( raw );
-			hitS.assign( s );
-			Break();
-
-		} else {
-
-			// At a leaf, test entry first. If it is too far behind the surface,
-			// a camera-facing ray can still reach its depth plane inside this cell.
-			const candidate = s.toVar();
-			const candidateUV = pixel.div( size ).toVar();
-			const candidateDepth = float( leafDepth( candidateUV, raw ) ).toVar();
-			const accepted = bool( acceptHit( candidateUV, candidate, candidateDepth ) ).toVar();
-			If( accepted.not().and( nearer( end.z, origin.z ) ).and( plane.greaterThan( s ) ).and( plane.lessThan( exit ) ), () => {
-
-				candidate.assign( plane );
-				candidateUV.assign( origin.xy.add( delta.xy.mul( plane ) ) );
-				candidateDepth.assign( leafDepth( candidateUV, raw ) );
-				accepted.assign( acceptHit( candidateUV, candidate, candidateDepth ) );
-
-			} );
-			If( accepted, () => {
-
-				hit.assign( true );
-				hitUV.assign( candidateUV );
-				hitDepth.assign( candidateDepth );
-				hitS.assign( candidate );
-				Break();
-
-			} );
-			If( candidates.greaterThanEqual( maxCandidates ), () => {
-
-				s.assign( 1 );
-				Break();
-
-			} );
-			s.assign( max( exit.add( epsilon ), s.add( epsilon ) ) );
-			// Stay at the leaf after rejection; ascend once a cell is proven empty.
-
-		}
+		// AMD-style termination: return the first surface the ray reaches, then
+		// validate it once outside the traversal loop.
+		hit.assign( true );
+		hitUV.assign( pixel.div( size ) );
+		hitDepth.assign( raw );
+		hitS.assign( s );
+		Break();
 
 	} );
 
-	const candidate = candidates.greaterThan( 0 );
 	const exhausted = hit.not().and( s.lessThan( 1 ) ).toVar();
-	if ( maxCandidates === 1 ) {
+	If( hit.and( validated.not() ), () => {
 
-		If( hit.and( validated.not() ), () => {
+		hit.assign( acceptHit( hitUV, hitS, hitDepth ) );
 
-			hit.assign( acceptHit( hitUV, hitS, hitDepth ) );
+	} );
 
-		} );
-
-	}
-
-	return { candidates, candidate, hit, uv: hitUV, depth: hitDepth, parameter: hitS, iterations, exhausted };
+	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS, iterations, exhausted };
 
 }

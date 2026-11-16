@@ -1,0 +1,600 @@
+{
+  "chrome": "Chrome/157.0.8103.52",
+  "width": 1920,
+  "height": 1080,
+  "results": [
+    {
+      "example": "mirror",
+      "mode": "original",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "output": "Beauty",
+        "enabled": true,
+        "quality": 0.5,
+        "intensity": 1,
+        "maxDistance": 1,
+        "thickness": 0.03,
+        "binaryRefine": false,
+        "roughness": 1,
+        "blur": true,
+        "blurQuality": 1
+      },
+      "trials": [
+        {
+          "completed": 232,
+          "elapsedMs": 5057.199999988079
+        },
+        {
+          "completed": 232,
+          "elapsedMs": 5090.700000047684
+        },
+        {
+          "completed": 232,
+          "elapsedMs": 5068.699999988079
+        }
+      ],
+      "averageMs": 21.862931034517015
+    },
+    {
+      "example": "mirror",
+      "mode": "adaptive",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "output": "Beauty",
+        "enabled": true,
+        "adaptive": true,
+        "adaptiveSteps": 64,
+        "occlusionSkipping": true,
+        "quality": 0.5,
+        "intensity": 1,
+        "maxDistance": 1,
+        "thickness": 0.03,
+        "binaryRefine": false,
+        "roughness": 1,
+        "blur": true,
+        "blurQuality": 1
+      },
+      "trials": [
+        {
+          "completed": 416,
+          "elapsedMs": 5036.099999964237
+        },
+        {
+          "completed": 416,
+          "elapsedMs": 5037
+        },
+        {
+          "completed": 416,
+          "elapsedMs": 5034.600000023842
+        }
+      ],
+      "averageMs": 12.105528846144294
+    },
+    {
+      "example": "mirror",
+      "mode": "linear",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "output": "Beauty",
+        "enabled": true,
+        "adaptive": false,
+        "adaptiveSteps": 64,
+        "occlusionSkipping": true,
+        "quality": 0.5,
+        "intensity": 1,
+        "maxDistance": 1,
+        "thickness": 0.03,
+        "binaryRefine": false,
+        "roughness": 1,
+        "blur": true,
+        "blurQuality": 1
+      },
+      "trials": [
+        {
+          "completed": 240,
+          "elapsedMs": 5080.399999976158
+        },
+        {
+          "completed": 240,
+          "elapsedMs": 5083.5
+        },
+        {
+          "completed": 240,
+          "elapsedMs": 5080.399999976158
+        }
+      ],
+      "averageMs": 21.17263888882266
+    },
+    {
+      "example": "mirror",
+      "mode": "quality",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "output": "Beauty",
+        "enabled": true,
+        "adaptive": false,
+        "adaptiveSteps": 64,
+        "occlusionSkipping": true,
+        "quality": 1,
+        "intensity": 1,
+        "maxDistance": 50,
+        "thickness": 0.03,
+        "binaryRefine": true,
+        "roughness": 1,
+        "blur": true,
+        "blurQuality": 1
+      },
+      "trials": [
+        {
+          "completed": 72,
+          "elapsedMs": 5018.5
+        },
+        {
+          "completed": 72,
+          "elapsedMs": 5012.200000047684
+        },
+        {
+          "completed": 72,
+          "elapsedMs": 5007
+        }
+      ],
+      "averageMs": 69.61898148170224
+    },
+    {
+      "example": "stochastic",
+      "mode": "original",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "resolutionScale": 1,
+        "quality": 0.25,
+        "mirrorBias": 0,
+        "maxDistance": 0.4,
+        "intensity": 1,
+        "thickness": 0.1,
+        "maxLuminance": 35,
+        "binaryRefine": false,
+        "stepExponent": 3,
+        "envImportanceSampling": false,
+        "screenEdgeFade": 0.2,
+        "screenEdgeFadeBlack": false,
+        "environmentIntensity": 3.14
+      },
+      "trials": [
+        {
+          "completed": 208,
+          "elapsedMs": 5063.400000035763
+        },
+        {
+          "completed": 208,
+          "elapsedMs": 5062.5
+        },
+        {
+          "completed": 208,
+          "elapsedMs": 5055.600000023842
+        }
+      ],
+      "averageMs": 24.32932692317244
+    },
+    {
+      "example": "stochastic",
+      "mode": "adaptive",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "resolutionScale": 1,
+        "adaptive": true,
+        "adaptiveSteps": 64,
+        "occlusionSkipping": true,
+        "roughMinLevel": 0,
+        "coneEnabled": true,
+        "coneMaxLevel": 5,
+        "coneSamples": 4,
+        "coneTracing": true,
+        "coneValidate": false,
+        "cameraRays": false,
+        "quality": 0.25,
+        "mirrorBias": 0,
+        "maxDistance": 0.4,
+        "intensity": 1,
+        "thickness": 0.1,
+        "maxLuminance": 35,
+        "binaryRefine": false,
+        "stepExponent": 3,
+        "envImportanceSampling": false,
+        "screenEdgeFade": 0.2,
+        "screenEdgeFadeBlack": false,
+        "environmentIntensity": 3.14
+      },
+      "trials": [
+        {
+          "completed": 160,
+          "elapsedMs": 5146.199999988079
+        },
+        {
+          "completed": 160,
+          "elapsedMs": 5148.600000023842
+        },
+        {
+          "completed": 160,
+          "elapsedMs": 5150.099999964237
+        }
+      ],
+      "averageMs": 32.17687499995033
+    },
+    {
+      "example": "stochastic",
+      "mode": "linear",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "resolutionScale": 1,
+        "adaptive": false,
+        "adaptiveSteps": 64,
+        "occlusionSkipping": true,
+        "roughMinLevel": 0,
+        "coneEnabled": true,
+        "coneMaxLevel": 5,
+        "coneSamples": 4,
+        "coneTracing": true,
+        "coneValidate": false,
+        "cameraRays": false,
+        "quality": 0.25,
+        "mirrorBias": 0,
+        "maxDistance": 0.4,
+        "intensity": 1,
+        "thickness": 0.1,
+        "maxLuminance": 35,
+        "binaryRefine": false,
+        "stepExponent": 3,
+        "envImportanceSampling": false,
+        "screenEdgeFade": 0.2,
+        "screenEdgeFadeBlack": false,
+        "environmentIntensity": 3.14
+      },
+      "trials": [
+        {
+          "completed": 200,
+          "elapsedMs": 5018.800000011921
+        },
+        {
+          "completed": 200,
+          "elapsedMs": 5017.300000011921
+        },
+        {
+          "completed": 200,
+          "elapsedMs": 5031.899999976158
+        }
+      ],
+      "averageMs": 25.113333333333333
+    },
+    {
+      "example": "stochastic",
+      "mode": "quality",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "resolutionScale": 1,
+        "adaptive": false,
+        "adaptiveSteps": 64,
+        "occlusionSkipping": true,
+        "roughMinLevel": 0,
+        "coneEnabled": true,
+        "coneMaxLevel": 5,
+        "coneSamples": 4,
+        "coneTracing": true,
+        "coneValidate": false,
+        "cameraRays": false,
+        "quality": 1,
+        "mirrorBias": 0,
+        "maxDistance": 50,
+        "intensity": 1,
+        "thickness": 0.1,
+        "maxLuminance": 35,
+        "binaryRefine": true,
+        "stepExponent": 3,
+        "envImportanceSampling": false,
+        "screenEdgeFade": 0.2,
+        "screenEdgeFadeBlack": false,
+        "environmentIntensity": 3.14
+      },
+      "trials": [
+        {
+          "completed": 96,
+          "elapsedMs": 5202.199999988079
+        },
+        {
+          "completed": 96,
+          "elapsedMs": 5198.199999988079
+        },
+        {
+          "completed": 96,
+          "elapsedMs": 5204.100000023842
+        }
+      ],
+      "averageMs": 54.182291666666664
+    },
+    {
+      "example": "animation",
+      "mode": "original",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "output": "Beauty",
+        "traa": true,
+        "quality": 0.5,
+        "binaryRefine": false,
+        "maxDistance": 20,
+        "thickness": 0.12,
+        "denoise": true,
+        "lumaPhi": 0.75,
+        "roughness": 0.18,
+        "animate": true,
+        "orbit": false
+      },
+      "trials": [
+        {
+          "completed": 272,
+          "elapsedMs": 5090.399999976158
+        },
+        {
+          "completed": 272,
+          "elapsedMs": 5088.399999976158
+        },
+        {
+          "completed": 272,
+          "elapsedMs": 5102.699999988079
+        }
+      ],
+      "averageMs": 18.727328431299505
+    },
+    {
+      "example": "animation",
+      "mode": "adaptive",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "output": "Beauty",
+        "traa": true,
+        "adaptive": true,
+        "adaptiveSteps": 64,
+        "occlusionSkipping": true,
+        "coneEnabled": true,
+        "coneMaxLevel": 5,
+        "coneSamples": 4,
+        "coneTracing": true,
+        "coneValidate": false,
+        "cameraRays": false,
+        "quality": 0.5,
+        "binaryRefine": false,
+        "maxDistance": 20,
+        "thickness": 0.12,
+        "denoise": true,
+        "lumaPhi": 0.75,
+        "roughness": 0.18,
+        "animate": true,
+        "orbit": false
+      },
+      "trials": [
+        {
+          "completed": 240,
+          "elapsedMs": 5015.799999952316
+        },
+        {
+          "completed": 240,
+          "elapsedMs": 5018
+        },
+        {
+          "completed": 240,
+          "elapsedMs": 5011.5
+        }
+      ],
+      "averageMs": 20.896249999933772
+    },
+    {
+      "example": "animation",
+      "mode": "linear",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "output": "Beauty",
+        "traa": true,
+        "adaptive": false,
+        "adaptiveSteps": 64,
+        "occlusionSkipping": true,
+        "coneEnabled": true,
+        "coneMaxLevel": 5,
+        "coneSamples": 4,
+        "coneTracing": true,
+        "coneValidate": false,
+        "cameraRays": false,
+        "quality": 0.5,
+        "binaryRefine": false,
+        "maxDistance": 20,
+        "thickness": 0.12,
+        "denoise": true,
+        "lumaPhi": 0.75,
+        "roughness": 0.18,
+        "animate": true,
+        "orbit": false
+      },
+      "trials": [
+        {
+          "completed": 256,
+          "elapsedMs": 5041
+        },
+        {
+          "completed": 256,
+          "elapsedMs": 5043.900000035763
+        },
+        {
+          "completed": 256,
+          "elapsedMs": 5046.899999976158
+        }
+      ],
+      "averageMs": 19.702864583348855
+    },
+    {
+      "example": "animation",
+      "mode": "quality",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "pascal",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "verifiedUpdatesPerBatch": [
+        8,
+        8
+      ],
+      "settings": {
+        "output": "Beauty",
+        "traa": true,
+        "adaptive": false,
+        "adaptiveSteps": 64,
+        "occlusionSkipping": true,
+        "coneEnabled": true,
+        "coneMaxLevel": 5,
+        "coneSamples": 4,
+        "coneTracing": true,
+        "coneValidate": false,
+        "cameraRays": false,
+        "quality": 1,
+        "binaryRefine": true,
+        "maxDistance": 50,
+        "thickness": 0.12,
+        "denoise": true,
+        "lumaPhi": 0.75,
+        "roughness": 0.18,
+        "animate": true,
+        "orbit": false
+      },
+      "trials": [
+        {
+          "completed": 176,
+          "elapsedMs": 5214.5
+        },
+        {
+          "completed": 176,
+          "elapsedMs": 5226.699999988079
+        },
+        {
+          "completed": 176,
+          "elapsedMs": 5216.699999988079
+        }
+      ],
+      "averageMs": 29.655113636318482
+    }
+  ],
+  "machine": "Build001",
+  "gpu": "NVIDIA GeForce GTX 1050",
+  "driver": "32.0.15.6094",
+  "date": "2026-11-16",
+  "originalCommit": "acf77e4c7ea413a0a9638baacef3d78e254b2cac",
+  "prHeadCommit": "3c3e0006e2e20a1e51fb8d28ae7fed55fe530185",
+  "method": "1920x1080 DPR1, hardware WebGPU, vsync and frame limits disabled. Each counted frame advances nodeFrame and calls complete animate(). 2s warmup and three >=5s trials per mode, sequential. Eight frames per batch; count only after queue.onSubmittedWorkDone. Average is sum(elapsedMs)/sum(completed). An excluded verification batch asserts eight scene and eight SSR updates. Animation repeats eight poses at t=0,.75,...,5.25 seconds, with temporal history retained. All other scene/display defaults retained; no roughness override."
+}

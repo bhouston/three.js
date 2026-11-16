@@ -1,5 +1,5 @@
 import { Fn, bool, cross, distance, float, instanceIndex, instancedArray, int, max, texture, vec2, vec3, vec4 } from 'three/tsl';
-import { traceHiZ } from '../../../../examples/jsm/tsl/utils/SSRTrace.js';
+import { traceHiZ } from '../../../../examples/jsm/tsl/utils/SSRAdaptiveTrace.js';
 import { traceLinearSSR } from '../../../../examples/jsm/tsl/utils/SSRLinearTrace.js';
 import { rawComputeTest } from '../../src/nodes/tsl/gpu-raw-test-utils.js';
 import { createTraceFixture, randomRays, referenceTrace, traceRays } from './ssr-trace-test-utils.js';

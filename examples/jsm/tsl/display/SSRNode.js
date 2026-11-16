@@ -5,7 +5,7 @@ import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '
 import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
 import { hiZ } from './HiZNode.js';
-import { traceHiZ } from '../utils/SSRTrace.js';
+import { traceHiZ } from '../utils/SSRAdaptiveTrace.js';
 import { getSSRPixelWidth, validateSSRRayDistance } from '../utils/SSRValidation.js';
 import { traceLinearSSR } from '../utils/SSRLinearTrace.js';
 

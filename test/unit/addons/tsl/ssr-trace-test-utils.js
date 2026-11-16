@@ -1,7 +1,7 @@
 import { DataTexture, FloatType, NearestFilter, RedFormat } from 'three/webgpu';
 import { Fn, float, instanceIndex, instancedArray, texture, vec4 } from 'three/tsl';
 import { hiZ } from '../../../../examples/jsm/tsl/display/HiZNode.js';
-import { traceHiZ } from '../../../../examples/jsm/tsl/utils/SSRTrace.js';
+import { traceHiZ } from '../../../../examples/jsm/tsl/utils/SSRAdaptiveTrace.js';
 
 export function createTraceFixture( width, height, data, reversed = false ) {
 

@@ -35,7 +35,7 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  */
 export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, maxCandidates = 1, minLevel = 0, coarseHits = false, leafSample = false, refineSteps = 0, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
 
-	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRTrace: maxCandidates must be an integer from 1 to 4096.' );
+	if ( ! Number.isInteger( maxCandidates ) || maxCandidates < 1 || maxCandidates > 4096 ) throw new Error( 'SSRAdaptiveTrace: maxCandidates must be an integer from 1 to 4096.' );
 
 	const delta = end.sub( origin ).toConst();
 	const s = float( start ).toVar();

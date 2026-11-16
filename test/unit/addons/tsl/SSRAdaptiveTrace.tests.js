@@ -53,7 +53,7 @@ export default QUnit.module( 'Addons', () => {
 
 	QUnit.module( 'TSL', () => {
 
-		QUnit.module( 'SSRTrace', () => {
+		QUnit.module( 'SSRAdaptiveTrace', () => {
 
 			for ( const reversed of [ false, true ] ) {
 

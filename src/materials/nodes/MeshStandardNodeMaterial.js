@@ -136,17 +136,13 @@ class MeshStandardNodeMaterial extends NodeMaterial {
 
 		if ( diffuse === null ) {
 
-			// the light map and the GI of the context have a coverage of zero: they add to the environment
+			// the light map has a coverage of zero: it adds to the environment
 
 			diffuse = [];
 
 			const lightMapNode = this.setupLightMap( builder );
 
 			if ( lightMapNode !== null ) diffuse.push( vec4( lightMapNode.node, 0 ) );
-
-			const giNode = context.getGI ? context.getGI( null, builder ) : null;
-
-			if ( giNode !== null ) diffuse.push( vec4( giNode, 0 ) );
 
 		}
 

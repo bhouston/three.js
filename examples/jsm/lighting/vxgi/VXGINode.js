@@ -1,5 +1,5 @@
 import { RenderTarget, Vector2, Vector3, Node, QuadMesh, NodeMaterial, RendererUtils, HalfFloatType, RGBAFormat, RedFormat, UnsignedByteType } from 'three/webgpu';
-import { Fn, NodeUpdateType, uniform, reference, vec2, vec4, float, uv, mix, passTexture, getViewPosition, getNormalFromDepth, screenCoordinate, interleavedGradientNoise, normalize, floor, exp2, pow, PI, Loop, If, Break, outputStruct, context, projectionDepth } from 'three/tsl';
+import { Fn, NodeUpdateType, uniform, reference, vec2, vec4, float, uv, mix, passTexture, getViewPosition, getNormalFromDepth, screenCoordinate, interleavedGradientNoise, normalize, floor, exp2, pow, PI, Loop, If, Break, outputStruct, context, projectionDepth, screenUV } from 'three/tsl';
 
 import { VXGIVolume } from './VXGIVolume.js';
 import { createConeTracer, gather, intersectVolume, sampleDirectional } from './VXGIConeTracer.js';
@@ -325,13 +325,35 @@ class VXGINode extends Node {
 
 	/**
 	 * Returns the GI result of the effect as a texture node. The texture holds the indirect
-	 * diffuse irradiance, ready to be added to the lighting via `builtinGIContext()`.
+	 * diffuse irradiance. Use {@link VXGINode#getDiffuseSource} to light materials with it.
 	 *
 	 * @return {PassTextureNode} A texture node that represents the GI result of the effect.
 	 */
 	getGINode() {
 
 		return this._giNode;
+
+	}
+
+	/**
+	 * Returns the GI as an indirect diffuse source for `builtinIndirectContext()`. It adds to the
+	 * sources behind it, and is meant to be combined with the AO of the effect, kept above zero
+	 * like the AO this source divides by:
+	 *
+	 * ```js
+	 * scenePass.contextNode = builtinAOContext( giPass.getAONode().sample( screenUV ).r.max( 1e-3 ), builtinIndirectContext( { diffuse: [ giPass.getDiffuseSource() ] } ) );
+	 * ```
+	 *
+	 * @return {Node<vec4>} The irradiance, with a coverage of zero.
+	 */
+	getDiffuseSource() {
+
+		// ponytail: the lighting models multiply the whole indirect diffuse light by the AO, which would occlude the GI
+		// a second time, so the GI is divided by the AO. Return the GI with its coverage once occlusion is applied per source.
+
+		const ao = this._aoNode.sample( screenUV ).r.max( 1e-3 );
+
+		return vec4( this._giNode.sample( screenUV ).rgb.div( ao ), 0 );
 
 	}
 

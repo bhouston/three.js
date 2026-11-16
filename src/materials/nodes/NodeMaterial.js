@@ -16,6 +16,7 @@ import { float, vec3, vec4, bool } from '../../nodes/tsl/TSLBase.js';
 import AONode from '../../nodes/lighting/AONode.js';
 import { lightingContext } from '../../nodes/lighting/LightingContextNode.js';
 import IrradianceNode from '../../nodes/lighting/IrradianceNode.js';
+import IndirectLightingNode from '../../nodes/lighting/IndirectLightingNode.js';
 import { depth, viewZToLogarithmicDepth, viewZToOrthographicDepth } from '../../nodes/display/ViewportDepthNode.js';
 import { cameraFar, cameraNear, cameraProjectionMatrix } from '../../nodes/accessors/Camera.js';
 import { clipping, clippingAlpha, hardwareClipping } from '../../nodes/accessors/ClippingNode.js';
@@ -1034,7 +1035,8 @@ class NodeMaterial extends Material {
 
 	/**
 	 * Setups the lighting nodes that supply the indirect light of the material: its
-	 * environment, its light map and the GI of the context.
+	 * environment and its light map, or in place of the light map the indirect diffuse
+	 * sources of the context, see {@link builtinIndirectContext}.
 	 *
 	 * @param {NodeBuilder} builder - The current node builder.
 	 * @return {Array<LightingNode>} The lighting nodes.
@@ -1051,21 +1053,19 @@ class NodeMaterial extends Material {
 
 		}
 
-		const lightMapNode = this.setupLightMap( builder );
+		const diffuse = this.transparent !== true ? builder.context.indirectDiffuse : undefined;
 
-		if ( lightMapNode && lightMapNode.isLightingNode ) {
+		if ( diffuse !== undefined ) {
 
-			materialLightsNode.push( lightMapNode );
+			materialLightsNode.push( new IndirectLightingNode( [], diffuse ) );
 
-		}
+		} else {
 
-		if ( builder.context.getGI ) {
+			const lightMapNode = this.setupLightMap( builder );
 
-			const giNode = builder.context.getGI( null, builder );
+			if ( lightMapNode && lightMapNode.isLightingNode ) {
 
-			if ( giNode !== null ) {
-
-				materialLightsNode.push( new IrradianceNode( giNode ) );
+				materialLightsNode.push( lightMapNode );
 
 			}
 

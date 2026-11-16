@@ -71,7 +71,8 @@ try {
 			const marker = example === 'stochastic' ? 'updateOutputNode();' : 'updateOutput();';
 			if ( ! html.includes( marker ) ) throw new Error( 'Missing initialization marker.' );
 			const ready = example === 'animation' ? 'true' : 'model !== undefined';
-			html = html.replace( marker, `${ marker }\nwindow.__benchmarkFrame = 0; window.__bench = { renderer, params: ${ params }, apply: ${ apply }, animate, ready: () => ${ ready } };` );
+			const node = example === 'mirror' ? 'reflection' : 'ssrNode';
+			html = html.replace( marker, `${ marker }\nwindow.__benchmarkFrame = 0; window.__bench = { renderer, node: ${ node }, params: ${ params }, apply: ${ apply }, animate, ready: () => ${ ready } };` );
 			await page.setRequestInterception( true );
 			page.on( 'request', request => {
 
@@ -85,7 +86,7 @@ try {
 			if ( errors.length ) throw new Error( errors.join( '\n' ) );
 			const result = await page.evaluate( async mode => {
 
-				const { renderer, params, apply, animate } = window.__bench;
+				const { renderer, node, params, apply, animate } = window.__bench;
 				if ( ! renderer.backend.isWebGPUBackend ) throw new Error( 'Hardware WebGPU required.' );
 				const device = renderer.backend.device;
 				const info = device.adapterInfo;
@@ -104,6 +105,7 @@ try {
 						animate();
 
 					}
+
 					await device.queue.onSubmittedWorkDone();
 
 				};
@@ -114,6 +116,29 @@ try {
 					await batch();
 
 				} while ( performance.now() - warmStart < 2000 );
+
+				// Verify a whole batch executes scene and SSR eight times, rather
+				// than reusing FRAME-cached textures. Wrappers are removed before timing.
+				const passNodes = [ node.depthNode.passNode, node ];
+				const updates = [ 0, 0 ];
+				const originalUpdates = passNodes.map( pass => pass.updateBefore );
+				passNodes.forEach( ( pass, index ) => {
+
+					pass.updateBefore = function ( frame ) {
+
+						updates[ index ] ++;
+						return originalUpdates[ index ].call( this, frame );
+
+					};
+
+				} );
+				await batch();
+				passNodes.forEach( ( pass, index ) => {
+
+					pass.updateBefore = originalUpdates[ index ];
+
+				} );
+				if ( updates.some( count => count !== 8 ) ) throw new Error( `Cached frame detected: scene/SSR updates=${ updates }` );
 
 				const trials = [];
 				for ( let trial = 0; trial < 3; trial ++ ) {
@@ -133,7 +158,7 @@ try {
 
 				const validation = await device.popErrorScope();
 				if ( validation ) throw new Error( validation.message );
-				return { adapter, settings: JSON.parse( JSON.stringify( params ) ), trials, averageMs: trials.reduce( ( sum, trial ) => sum + trial.elapsedMs, 0 ) / trials.reduce( ( sum, trial ) => sum + trial.completed, 0 ) };
+				return { adapter, verifiedUpdatesPerBatch: updates, settings: JSON.parse( JSON.stringify( params ) ), trials, averageMs: trials.reduce( ( sum, trial ) => sum + trial.elapsedMs, 0 ) / trials.reduce( ( sum, trial ) => sum + trial.completed, 0 ) };
 
 			}, mode );
 			if ( errors.length ) throw new Error( errors.join( '\n' ) );

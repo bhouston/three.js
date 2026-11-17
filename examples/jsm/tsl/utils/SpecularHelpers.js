@@ -251,6 +251,7 @@ export const ggxReflectionSample = ( N, V, roughness, metalness, albedo, Xi, f0 
 
 /**
  * Equirectangular direction / UV / PDF helpers and MIS weighting shared by environment sampling code.
+ * Env-miss MIS integration lives in {@link ImportanceSampledEnvironment}.
  *
  * Equirectangular parameterization helpers used with CDF importance sampling are adapted from
  * [three-gpu-pathtracer](https://github.com/gkjohnson/three-gpu-pathtracer).

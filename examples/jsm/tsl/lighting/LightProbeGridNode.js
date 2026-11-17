@@ -162,4 +162,4 @@ class LightProbeGridNode extends AnalyticLightNode {
 
 }
 
-export { LightProbeGridNode, getGridIrradiance };
+export { LightProbeGridNode };

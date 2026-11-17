@@ -1,5 +1,4 @@
 export * from './Three.Core.js';
-export { CubeArrayTexture } from './textures/CubeArrayTexture.js';
 
 export * from './materials/nodes/NodeMaterials.js';
 export { default as WebGPURenderer } from './renderers/webgpu/WebGPURenderer.js';

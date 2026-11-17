@@ -39,11 +39,10 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity, Fn, positionPrevious, screenUV, builtinIndirectContext } from 'three/tsl';
+			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToOctahedral, unpackOctahedralToNormal, vec4, uniform, mix, velocity, Fn, positionPrevious, screenUV, rtt, builtinIndirectContext } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { ssrHistory } from 'three/addons/tsl/display/SSRHistory.js';
-			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
-			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
+			import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
@@ -54,7 +53,7 @@
 			const params = {
 				output: 'Beauty', traa: true, lighting: 'Indirect BRDF',
 				quality: 0.5, binaryRefine: true, maxDistance: 20, thickness: 0.12,
-				denoise: true, lumaPhi: 0.75,
+				denoise: true, normalPhi: 64,
 				roughness: 0.18, animate: true, orbit: false
 			};
 
@@ -213,22 +212,16 @@
 				const sceneNormal = sample( ( uv ) => unpackOctahedralToNormal( scenePassNormal.sample( uv ).rg ) );
 				const sceneRoughness = sample( ( uv ) => scenePassVelocity.sample( uv ).w );
 
-				// roughness in velocity.w; velocity.z holds previous view depth
-
-				const sceneMetalRough = sample( ( uv ) => vec2(
-					scenePassMetalness.sample( uv ).r,
-					scenePassVelocity.sample( uv ).w
-				) );
 
 				reflectionHistory = ssrHistory( camera, scenePass, scenePassVelocity );
 
-				let ssrNode, ssrTexture, temporalReprojectNode, denoiseNode, temporalAA, spatialAA;
+				let ssrNode, ssrTexture, conditionalRadiance, denoiseNode, filteredReflection, temporalAA, spatialAA;
 				const denoiseEnabled = uniform( 1 );
 
 				function updateLighting() {
 
 					// Replace the effect graph so changing its input stays local to this example.
-					for ( const effect of [ ssrNode, temporalReprojectNode, denoiseNode, beautyPass, temporalAA, spatialAA ] ) {
+					for ( const effect of [ ssrNode, conditionalRadiance, denoiseNode, beautyPass, temporalAA, spatialAA ] ) {
 
 						if ( effect !== undefined ) effect.dispose();
 
@@ -243,52 +236,40 @@
 					ssrNode = ssr( indirectBRDF ? reflectionHistory.source : scenePassColor, scenePassDepth, sceneNormal, {
 						camera,
 						stochastic: true,
+						outputRadiance: true,
 						metalnessNode: scenePassMetalness.r,
 						roughnessNode: sceneRoughness,
 						binaryRefine: params.binaryRefine
 					} ).toInspector( 'SSR' );
 
 					ssrTexture = ssrNode.getTextureNode();
-					const ssrHitDistance = ssrNode.getHitDistanceNode();
+					// The existing denoiser accepts conditional radiance and coverage. The
+					// lighting sources use premultiplied radiance, so convert at its boundaries.
+					conditionalRadiance = rtt( Fn( () => {
 
-					// denoise
+						const value = ssrTexture.sample( screenUV ).toConst();
+						return vec4( value.rgb.div( value.a.max( 1e-6 ) ), value.a );
 
-					temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
-						mode: 'specular',
-						normalDecode: value => unpackOctahedralToNormal( value.rg ),
-						hitDistance: ssrHitDistance,
-						accumulate: false
+					} )() );
+					denoiseNode = temporalDenoise( conditionalRadiance, {
+						camera, depth: scenePassDepth, normal: sceneNormal, velocity: scenePassVelocity,
+						roughness: sceneRoughness, hitDistance: ssrNode.getHitDistanceNode(), coverage: true
 					} );
-					temporalReprojectNode.maxFrames.value = 16;
-					temporalReprojectNode.clampIntensity.value = 0.25;
+					denoiseNode.maxFrames.value = 16;
+					filteredReflection = sample( uv => Fn( () => {
 
-					denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
-						depth: scenePassDepth,
-						normal: sceneNormal,
-						raw: ssrNode,
-						hitDistance: ssrHitDistance,
-						frameCount: temporalReprojectNode.getFrameCountNode(),
-						metalRoughness: sceneMetalRough,
-						mode: 'specular',
-						accumulate: true
-					} );
-					denoiseNode.depthPhi.value = 20;
-					denoiseNode.normalPhi.value = 0.3;
-					denoiseNode.radius.value = 1.5;
-					denoiseNode.alphaPhi.value = 5;
-					denoiseNode.strength.value = 0.725;
-					denoiseNode.adaptiveTrust.value = 1;
+						const value = denoiseNode.getTextureNode().sample( uv ).toConst();
+						return vec4( value.rgb.mul( value.a ), value.a );
 
-					temporalReprojectNode.setHistoryTexture( denoiseNode );
-
-					const reflection = mix( ssrTexture.sample( screenUV ), denoiseNode.getTextureNode().sample( screenUV ), denoiseEnabled );
+					} )() );
+					const reflection = mix( ssrTexture.sample( screenUV ), filteredReflection.sample( screenUV ), denoiseEnabled );
 					let combined;
 
 					if ( indirectBRDF ) {
 
 						// Materials apply their BRDF and replace the environment by SSR coverage.
 						beautyPass = pass( scene, camera );
-						beautyPass.contextNode = builtinIndirectContext( { specular: [ ssrNode.getSpecularSource( reflection ) ] } );
+						beautyPass.contextNode = builtinIndirectContext( { specular: [ reflection ] } );
 						combined = beautyPass;
 
 					} else {
@@ -315,8 +296,8 @@
 
 						case 'Beauty': outputNode = params.traa ? temporalAA : spatialAA; break;
 						case 'SSR': outputNode = vec4( ssrTexture.rgb, 1 ); break;
-						case 'SSR DN': outputNode = vec4( denoiseNode.rgb, 1 ); break;
-						case 'Coverage': outputNode = vec4( mix( ssrTexture.aaa, denoiseNode.aaa, denoiseEnabled ), 1 ); break;
+						case 'SSR DN': outputNode = vec4( filteredReflection.sample( screenUV ).rgb, 1 ); break;
+						case 'Coverage': outputNode = vec4( mix( ssrTexture.aaa, filteredReflection.sample( screenUV ).aaa, denoiseEnabled ), 1 ); break;
 
 					}
 
@@ -345,7 +326,7 @@
 					ssrNode.maxDistance.value = params.maxDistance;
 					ssrNode.thickness.value = params.thickness;
 
-					denoiseNode.lumaPhi.value = params.lumaPhi;
+					denoiseNode.normalPhi.value = params.normalPhi;
 
 				}
 
@@ -365,7 +346,7 @@
 
 				const denoiseGui = renderer.inspector.createParameters( 'Denoising' );
 				denoiseGui.add( params, 'denoise' ).name( 'Enabled' ).onChange( ( value ) => denoiseEnabled.value = Number( value ) );
-				denoiseGui.add( params, 'lumaPhi', 0, 3 ).name( 'Luma phi' ).onChange( updateParameters );
+				denoiseGui.add( params, 'normalPhi', 1, 128 ).name( 'Normal phi' ).onChange( updateParameters );
 
 				const sceneGui = renderer.inspector.createParameters( 'Scene' );
 				sceneGui.add( params, 'roughness', 0, 1 ).name( 'Roughness' ).onChange( ( value ) => {

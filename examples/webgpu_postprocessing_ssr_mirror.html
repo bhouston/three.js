@@ -33,9 +33,9 @@
 	<script type="importmap">
 		{
 			"imports": {
-				"three": "../src/Three.WebGPU.js",
-				"three/webgpu": "../src/Three.WebGPU.js",
-				"three/tsl": "../src/Three.TSL.js",
+				"three": "../build/three.webgpu.js",
+				"three/webgpu": "../build/three.webgpu.js",
+				"three/tsl": "../build/three.tsl.js",
 				"three/addons/": "./jsm/"
 			}
 		}
@@ -44,9 +44,8 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking, builtinIndirectContext, Fn, positionPrevious, velocity } from 'three/tsl';
+		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
-		import { ssrHistory } from 'three/addons/tsl/display/SSRHistory.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -56,13 +55,13 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
-			output: 'Beauty', lighting: 'Indirect BRDF', enabled: true, quality: 0.5, intensity: 1,
+			output: 'Beauty', enabled: true, quality: 0.5, intensity: 1,
 			maxDistance: 1, thickness: 0.03, binaryRefine: false,
 			roughness: 1, blur: true, blurQuality: 1
 		};
 
 		let camera, scene, model, renderer, renderPipeline;
-		let controls, reflectionHistory, beautyPass;
+		let controls;
 
 		init();
 
@@ -122,6 +121,7 @@
 			renderer = new THREE.WebGPURenderer();
 			// renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.setAnimationLoop( animate );
 			renderer.toneMapping = THREE.ACESFilmicToneMapping;
 			renderer.inspector = new Inspector();
 			document.body.appendChild( renderer.domElement );
@@ -143,8 +143,7 @@
 			scenePass.setMRT( mrt( {
 				output: output,
 				normal: packNormalToOctahedral( normalView ),
-				metalrough: vec2( metalness, roughness ), // pack metalness and roughness into a single attachment
-				velocity: vec4( velocity, velocity.previousCameraViewMatrix.mul( velocity.previousModelWorldMatrix ).mul( vec4( positionPrevious, 1 ) ).z.toVarying(), 0 )
+				metalrough: vec2( metalness, roughness ) // pack metalness and roughness into a single attachment
 			} ) );
 
 			const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
@@ -160,11 +159,13 @@
 			} );
 			const scenePassMetalRough = scenePass.getTextureNode( 'metalrough' ).toInspector( 'Metalness-Roughness' );
 
-			// optional: optimize bandwidth by reducing the texture precision for normals and metal/roughness
+			// octahedral normals can't be filtered across their folds
 
 			const normalTexture = scenePass.getTexture( 'normal' );
 			normalTexture.format = THREE.RGFormat;
 			normalTexture.minFilter = normalTexture.magFilter = THREE.NearestFilter;
+
+			// optional: optimize bandwidth by reducing the texture precision for metal/roughness
 
 			const metalRoughTexture = scenePass.getTexture( 'metalrough' );
 			metalRoughTexture.type = THREE.UnsignedByteType;
@@ -177,64 +178,27 @@
 
 			//
 
-			const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
-			reflectionHistory = ssrHistory( camera, scenePass, scenePassVelocity );
-			let reflection, raw, blurred, spatialAA;
+			const reflection = ssr( scenePassColor, scenePassDepth, sceneNormal, {
+				metalnessNode: scenePassMetalRough.r,
+				roughnessNode: scenePassMetalRough.g,
+				binaryRefine: params.binaryRefine
+			} ).toInspector( 'SSR' );
+
+			const raw = passTexture( reflection, reflection.getRenderTarget().texture );
+			const blurred = reflection.getTextureNode();
 			const blurEnabled = uniform( 1 );
-
-			function updateLighting() {
-
-				for ( const effect of [ reflection, beautyPass, spatialAA ] ) {
-
-					if ( effect !== undefined ) effect.dispose();
-
-				}
-
-				reflectionHistory.invalidate();
-
-				reflection = ssr( params.lighting === 'Indirect BRDF' ? reflectionHistory.source : scenePassColor, scenePassDepth, sceneNormal, {
-					camera,
-					metalnessNode: scenePassMetalRough.r,
-					roughnessNode: scenePassMetalRough.g,
-					binaryRefine: params.binaryRefine
-				} ).toInspector( 'SSR' );
-
-				raw = passTexture( reflection, reflection.getRenderTarget().texture );
-				blurred = reflection.getTextureNode();
-				// the materials take the reflections into their specular BRDF, in front of the environment
-
-				const source = mix( reflection.getSpecularSource( raw.sample( screenUV ) ), reflection.getSpecularSource(), blurEnabled );
-
-				beautyPass = pass( scene, camera );
-				beautyPass.contextNode = builtinIndirectContext( { specular: [ source ] } );
-
-				spatialAA = smaa( params.lighting === 'Indirect BRDF' ? beautyPass : vec4( scenePassColor.rgb.add( source.rgb ), 1 ) );
-
-				updateParameters();
-				updateOutput();
-
-			}
+			const combined = scenePassColor.rgb.add( mix( raw.rgb, blurred.rgb, blurEnabled ) );
+			const spatialAA = smaa( vec4( combined, 1 ) );
 
 			function updateOutput() {
 
 				let view;
-
+		
 				switch ( params.output ) {
 
 					case 'Beauty': view = spatialAA; break;
 					case 'SSR': view = vec4( raw.rgb, 1 ); break;
 					case 'SSR DN': view = vec4( blurred.rgb, 1 ); break;
-
-				}
-
-				if ( params.enabled && params.lighting === 'Indirect BRDF' && params.output !== 'Beauty' ) {
-
-					const beautyColor = beautyPass.getTextureNode();
-					view = view.bypass( Fn( () => {
-
-						beautyColor.toVar();
-
-					} )() );
 
 				}
 
@@ -254,8 +218,6 @@
 
 			const displayGui = renderer.inspector.createParameters( 'Display' );
 			displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN' ] ).name( 'Output' ).info( 'DN means denoise; this mirror example uses spatial blur rather than stochastic denoising.' ).onChange( updateOutput );
-
-			displayGui.add( params, 'lighting', [ 'Indirect BRDF', 'Layered' ] ).name( 'Lighting' ).onChange( updateLighting );
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params, 'enabled' ).name( 'Enabled' ).onChange( updateOutput );
@@ -280,8 +242,8 @@
 
 			} );
 
-			updateLighting();
-			renderer.setAnimationLoop( animate );
+			updateParameters();
+			updateOutput();
 
 			function updateParameters() {
 
@@ -309,18 +271,7 @@
 
 			controls.update();
 
-			reflectionHistory.prepare( renderer );
 			renderPipeline.render();
-
-			if ( params.enabled && params.lighting === 'Indirect BRDF' ) {
-
-				reflectionHistory.capture( renderer, beautyPass.getTexture( 'output' ) );
-
-			} else {
-
-				reflectionHistory.invalidate();
-
-			}
 
 		}
 

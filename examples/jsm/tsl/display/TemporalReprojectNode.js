@@ -1,4 +1,4 @@
-import { EPSILON, Fn, If, abs, clamp, convertToTexture, dFdx, dFdy, dot, exp, float, floor, fwidth, getViewPosition, ivec2, luminance, max, min, mix, nodeObject, normalize, outputStruct, passTexture, property, screenCoordinate, select, smoothstep, sqrt, struct, texture, textureLoad, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4, velocity, context, OnBeforeRenderPipeline, OnAfterRenderPipeline, isBackgroundDepth } from 'three/tsl';
+import { EPSILON, Fn, If, abs, convertToTexture, dFdx, dFdy, dot, exp, float, floor, fwidth, getViewPosition, ivec2, luminance, max, min, mix, nodeObject, normalize, passTexture, screenCoordinate, select, smoothstep, sqrt, struct, texture, textureLoad, uniform, unpackRGBToNormal, uv, vec2, vec3, vec4, velocity, context, OnBeforeRenderPipeline, OnAfterRenderPipeline, isBackgroundDepth } from 'three/tsl';
 import { DepthTexture, HalfFloatType, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { ENV_RAY_LENGTH, ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpers.js';
 
@@ -101,23 +101,22 @@ const clipToAABB = Fn( ( [ history, boxMin, boxMax ] ) => {
 const neighborhoodStruct = struct( {
 	mean: 'vec3',
 	stdColor: 'vec3',
-	meanAlpha: 'float',
-	stdAlpha: 'float',
 	rayLength: 'float',
 	envProbability: 'float',
 	stdDevRayLength: 'float'
 } );
 
 /**
- * Single 3×3 neighbourhood pass over the beauty buffer. Feeds the YCoCg variance-clipping box (colour),
- * the clipping range of the alpha and, with a hit distance texture, the SSR ray-length statistics.
+ * Single 3×3 neighbourhood pass over the beauty buffer. One textureLoad per tap feeds both the
+ * YCoCg variance-clipping box (colour) and the SSR ray-length statistics (alpha), which previously
+ * required two separate 3×3 fetches of the same texture.
  *
  * Sampling is done on the beauty-texel grid (`beautyTexel + offset`), so the taps are distinct
  * source texels even when the beauty buffer is lower resolution than the resolve pass (upscaling).
  *
  * @tsl
  */
-const collectNeighborhood = ( beautyTexture, beautyTexel, inputColor, flickerSuppression, hitDistanceTexture ) => {
+const collectNeighborhood = Fn( ( [ beautyTexture, beautyTexel, inputColor, flickerSuppression ] ) => {
 
 	const offsets = [
 		[ - 1, - 1 ],
@@ -134,8 +133,6 @@ const collectNeighborhood = ( beautyTexture, beautyTexel, inputColor, flickerSup
 	const center = rgbToYCoCg( dampenForVarianceClip( inputColor.rgb, flickerSuppression ) );
 	const moment1 = center.toVar();
 	const moment2 = center.pow2().toVar();
-	const alpha1 = inputColor.a.toVar();
-	const alpha2 = inputColor.a.pow2().toVar();
 
 	// Ray-length statistics (Welford) over screen-space hits only.
 	const rayLengthSum = float( 0 ).toVar();
@@ -143,11 +140,7 @@ const collectNeighborhood = ( beautyTexture, beautyTexel, inputColor, flickerSup
 	const meanRayLength = float( 0 ).toVar();
 	const m2RayLength = float( 0 ).toVar();
 
-	const accumulateRayLength = ( texel ) => {
-
-		if ( hitDistanceTexture === null ) return;
-
-		const alpha = textureLoad( hitDistanceTexture, texel ).r.toVar();
+	const accumulateRayLength = ( alpha ) => {
 
 		If( alpha.lessThan( ENV_RAY_LENGTH_THRESHOLD ), () => {
 
@@ -162,7 +155,7 @@ const collectNeighborhood = ( beautyTexture, beautyTexel, inputColor, flickerSup
 
 	};
 
-	accumulateRayLength( beautyTexel );
+	accumulateRayLength( inputColor.a );
 
 	for ( const [ x, y ] of offsets ) {
 
@@ -171,18 +164,14 @@ const collectNeighborhood = ( beautyTexture, beautyTexel, inputColor, flickerSup
 		const c = rgbToYCoCg( dampenForVarianceClip( neighbor.rgb, flickerSuppression ) );
 		moment1.addAssign( c );
 		moment2.addAssign( c.pow2() );
-		alpha1.addAssign( neighbor.a );
-		alpha2.addAssign( neighbor.a.pow2() );
 
-		accumulateRayLength( beautyTexel.add( ivec2( x, y ) ) );
+		accumulateRayLength( neighbor.a );
 
 	}
 
 	const N = float( offsets.length + 1 );
 	const mean = moment1.div( N );
 	const stdColor = moment2.div( N ).sub( mean.pow2() ).max( 0 ).sqrt();
-	const meanAlpha = alpha1.div( N );
-	const stdAlpha = alpha2.div( N ).sub( meanAlpha.pow2() ).max( 0 ).sqrt();
 
 	// Continuous environment probability: fraction of the 3×3 neighbourhood that missed in screen space
 	// and fell back to env (0 = all hits, 1 = all env), for smooth reflection/environment transitions.
@@ -190,9 +179,9 @@ const collectNeighborhood = ( beautyTexture, beautyTexel, inputColor, flickerSup
 	const rayLength = rayLengthCount.lessThan( 0.5 ).select( float( ENV_RAY_LENGTH ), rayLengthSum.div( max( rayLengthCount, float( 1e-4 ) ) ) );
 	const stdDevRayLength = sqrt( m2RayLength.div( max( rayLengthCount, float( 1.0 ) ) ) ).max( 1e-3 );
 
-	return neighborhoodStruct( mean, stdColor, meanAlpha, stdAlpha, rayLength, envProbability, stdDevRayLength ).toVar();
+	return neighborhoodStruct( mean, stdColor, rayLength, envProbability, stdDevRayLength );
 
-};
+} );
 
 /**
  * Variance clipping in YCoCg space (Salvi, GDC 2016). Uses the colour moments gathered by
@@ -335,7 +324,7 @@ const createSampleHistory4Tap = ( normalDecode ) => Fn( ( [
 	const minConf = min( min( tap00.get( 'confidence' ), tap10.get( 'confidence' ) ), min( tap01.get( 'confidence' ), tap11.get( 'confidence' ) ) );
 
 	return historyResultStruct(
-		select( weightSum.greaterThan( 0.01 ), colorSum.div( weightSum ), inputColor ),
+		select( weightSum.greaterThan( 0.01 ), colorSum.div( weightSum ), vec4( inputColor.rgb, float( 1 ) ) ),
 		maxConf,
 		minConf
 	);
@@ -487,7 +476,6 @@ const VARIANCE_GAMMA_MAX = 1;
  * @typedef {Object} TemporalReprojectNodeOptions
  * @property {TemporalReprojectMode} [mode='diffuse'] - `diffuse` for SSGI/scene colour; `specular` for SSR reflections.
  * @property {boolean} [hitPointReprojection] - Parallax hit-point reprojection (specular mode only). Defaults to `true` in specular mode.
- * @property {TextureNode} [hitDistance=null] - Specular mode only: the hit distance of the beauty input, e.g. `ssrNode.getHitDistanceNode()`.
  * @property {boolean} [accumulate=false] - When `true`, history is stored in this pass (classic temporal resolve). When `false`,
  * use {@link TemporalReprojectNode#setHistoryTexture} to read history from another pass (e.g. denoise output).
  * @property {Function} [normalDecode] - Decodes a sample of the normal texture into a unit view-space normal. Defaults to {@link unpackRGBToNormal}.
@@ -500,9 +488,6 @@ const VARIANCE_GAMMA_MAX = 1;
  * Surface velocity reprojection is always sampled first. Specular mode then blends in
  * hit-point parallax history on top of that surface result.
  * Diffuse mode applies velocity-field divergence to detect surface stretching.
- *
- * The alpha of the input is filtered like its colour, e.g. the coverage of SSR. The accumulated
- * frame count is a second output, see {@link TemporalReprojectNode#getFrameCountNode}.
  *
  * Unlike jitter-based TAA/TAAU, this node does not apply camera sub-pixel jitter — it only
  * reprojects and accumulates history using motion vectors.
@@ -537,7 +522,6 @@ class TemporalReprojectNode extends Node {
 		const {
 			mode = 'diffuse',
 			hitPointReprojection = mode === 'specular',
-			hitDistance = null,
 			accumulate = false,
 			normalDecode = ( value ) => unpackRGBToNormal( value.rgb )
 		} = options;
@@ -556,7 +540,6 @@ class TemporalReprojectNode extends Node {
 		this.normalNode = normalNode;
 		this.normalDecode = normalDecode;
 		this.velocityNode = velocityNode;
-		this.hitDistanceNode = hitDistance;
 		this.camera = camera;
 
 		/**
@@ -583,15 +566,12 @@ class TemporalReprojectNode extends Node {
 		this.clampIntensity = uniform( 1 );
 		this.flickerSuppression = uniform( 1 );
 
-		this._historyRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, depthTexture: new DepthTexture(), count: 2 } );
-		this._historyRenderTarget.textures[ 0 ].name = 'TemporalReprojectNode.history';
-		this._historyRenderTarget.textures[ 1 ].name = 'TemporalReprojectNode.historyFrameCount';
-		this._historyTextureNode = texture( this._historyRenderTarget.textures[ 0 ] );
-		this._historyFrameCountNode = texture( this._historyRenderTarget.textures[ 1 ] );
+		this._historyRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, depthTexture: new DepthTexture() } );
+		this._historyRenderTarget.texture.name = 'TemporalReprojectNode.history';
+		this._historyTextureNode = texture( this._historyRenderTarget.texture );
 
-		this._resolveRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 2 } );
-		this._resolveRenderTarget.textures[ 0 ].name = 'TemporalReprojectNode.resolve';
-		this._resolveRenderTarget.textures[ 1 ].name = 'TemporalReprojectNode.frameCount';
+		this._resolveRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
+		this._resolveRenderTarget.texture.name = 'TemporalReprojectNode.resolve';
 
 		this._resolveMaterial = new NodeMaterial();
 		this._resolveMaterial.name = 'TemporalReproject.resolve';
@@ -599,8 +579,7 @@ class TemporalReprojectNode extends Node {
 		this._seedMaterial = new NodeMaterial();
 		this._seedMaterial.name = 'TemporalReproject.seed';
 
-		this._textureNode = passTexture( this, this._resolveRenderTarget.textures[ 0 ] );
-		this._frameCountNode = passTexture( this, this._resolveRenderTarget.textures[ 1 ] );
+		this._textureNode = passTexture( this, this._resolveRenderTarget.texture );
 
 		this._originalProjectionMatrix = new Matrix4();
 
@@ -611,7 +590,6 @@ class TemporalReprojectNode extends Node {
 
 		this._needsPostProcessingSync = false;
 		this._externalHistoryTexture = null;
-		this._externalHistoryFrameCountTexture = null;
 
 		this._syncHistoryTextureBinding();
 
@@ -620,17 +598,6 @@ class TemporalReprojectNode extends Node {
 	getTextureNode() {
 
 		return this._textureNode;
-
-	}
-
-	/**
-	 * Returns the reciprocal of the accumulated frame count as a texture node.
-	 *
-	 * @returns {PassTextureNode}
-	 */
-	getFrameCountNode() {
-
-		return this._frameCountNode;
 
 	}
 
@@ -708,8 +675,7 @@ class TemporalReprojectNode extends Node {
 			// freshly seeded internal history for this frame instead.
 			if ( this.accumulate === false && this._externalHistoryTexture !== null ) {
 
-				this._historyTextureNode.value = this._historyRenderTarget.textures[ 0 ];
-				this._historyFrameCountNode.value = this._historyRenderTarget.textures[ 1 ];
+				this._historyTextureNode.value = this._historyRenderTarget.texture;
 				historySwappedForRestart = true;
 
 			}
@@ -735,8 +701,7 @@ class TemporalReprojectNode extends Node {
 
 		} else if ( this.accumulate === true ) {
 
-			renderer.copyTextureToTexture( this._resolveRenderTarget.textures[ 0 ], this._historyRenderTarget.textures[ 0 ] );
-			renderer.copyTextureToTexture( this._resolveRenderTarget.textures[ 1 ], this._historyRenderTarget.textures[ 1 ] );
+			renderer.copyTextureToTexture( this._resolveRenderTarget.texture, this._historyRenderTarget.texture );
 
 		}
 
@@ -785,9 +750,7 @@ class TemporalReprojectNode extends Node {
 		}
 
 		this._resolveMaterial.contextNode = sharedContext;
-		const frameCount = property( 'float' );
-
-		this._resolveMaterial.fragmentNode = outputStruct( this._buildResolve( frameCount ), vec4( frameCount ) );
+		this._resolveMaterial.fragmentNode = this._buildResolve();
 		this._resolveMaterial.needsUpdate = true;
 
 		this._buildSeed( sharedContext );
@@ -809,12 +772,12 @@ class TemporalReprojectNode extends Node {
 		} );
 
 		this._seedMaterial.contextNode = sharedContext;
-		this._seedMaterial.fragmentNode = outputStruct( seed(), vec4( 1 ) );
+		this._seedMaterial.fragmentNode = seed();
 		this._seedMaterial.needsUpdate = true;
 
 	}
 
-	_buildResolve( frameCount ) {
+	_buildResolve() {
 
 		const isSpecular = this.mode === 'specular';
 		const cameraUniforms = this._cameraUniforms;
@@ -835,7 +798,7 @@ class TemporalReprojectNode extends Node {
 			const viewNormal = this.normalDecode( textureLoad( this.normalNode, screenTexel ) ).toVar();
 
 			// Shared 3×3 beauty fetch: feeds both the variance-clip box and the SSR ray-length stats.
-			const neighborhood = collectNeighborhood( this.beautyNode, beautyTexel, inputColor, this.flickerSuppression, isSpecular ? this.hitDistanceNode : null );
+			const neighborhood = collectNeighborhood( this.beautyNode, beautyTexel, inputColor, this.flickerSuppression );
 			const worldNormal = viewNormal.transformNormalByInverseViewMatrix( cameraUniforms.viewMatrix ).toVar();
 
 			const viewPosition = getViewPosition( uvNode, depth, cameraUniforms.projectionMatrixInverse ).toVar();
@@ -852,7 +815,7 @@ class TemporalReprojectNode extends Node {
 				reprojUV,
 				worldPosition,
 				worldNormal,
-				inputColor
+				inputColor.rgb
 			);
 
 			// Surface-velocity reprojection — the base history for both modes. `historyUV` is
@@ -888,8 +851,8 @@ class TemporalReprojectNode extends Node {
 
 				const hit = sampleHistory( historyUV_hit );
 
-				const hcHit = hit.get( 'color' ).max( 0 );
-				const hcSurf = surf.get( 'color' ).max( 0 );
+				const hcHit = hit.get( 'color' ).rgb.max( 0 );
+				const hcSurf = surf.get( 'color' ).rgb.max( 0 );
 
 				const confHit = hitValid.select( hit.get( 'tapConfidence' ), float( 0 ) );
 				const confSurf = surfValid.select( surf.get( 'tapConfidence' ), float( 0 ) );
@@ -911,13 +874,16 @@ class TemporalReprojectNode extends Node {
 				const wSurf = wHit.oneMinus().mul( confSurf );
 				const wSum = max( wHit.add( wSurf ), float( EPSILON ) );
 
-				const color = hcHit.mul( wHit ).add( hcSurf.mul( wSurf ) ).div( wSum ).toVar();
+				const color = vec4(
+					hcHit.mul( wHit ).add( hcSurf.mul( wSurf ) ).div( wSum ),
+					surf.get( 'color' ).a
+				).toVar();
 				const confidence = confHit.mul( wHit ).add( confSurf.mul( wSurf ) ).div( wSum );
 
 				// Near-black blend means neither tap was usable — fall back to the current frame.
 				If( color.rgb.length().lessThan( EPSILON ), () => {
 
-					color.assign( inputColor );
+					color.assign( vec4( inputColor.rgb, 1 ) );
 
 				} );
 
@@ -934,8 +900,7 @@ class TemporalReprojectNode extends Node {
 
 			}
 
-			// history without a valid tap starts over
-			const a = surf.get( 'tapConfidence' ).greaterThan( 0 ).select( this._historyFrameCountNode.sample( historyUV ).r, 1 ).max( EPSILON ).toVar();
+			const a = historyColor.a.max( EPSILON );
 
 			// Universal stretch guard: reduce confidence where a "small area" is projected over a "large area".
 			const stretchConfidence = reprojectionStretchConfidence( historyUV, this._resolution );
@@ -957,16 +922,12 @@ class TemporalReprojectNode extends Node {
 			const originalHistoryColor = vec3( historyColor.rgb );
 			historyColor.rgb.assign( mix( historyColor.rgb, clippedRGB, clampIntensity ) );
 
-			const alphaRange = neighborhood.get( 'stdAlpha' ).mul( varianceGamma );
-			const clippedAlpha = clamp( historyColor.a, neighborhood.get( 'meanAlpha' ).sub( alphaRange ), neighborhood.get( 'meanAlpha' ).add( alphaRange ) );
-			historyColor.a.assign( mix( historyColor.a, clippedAlpha, clampIntensity.saturate() ) );
-
 			totalConfidence.mulAssign( exp( originalHistoryColor.sub( clippedRGB ).length().mul( clampIntensity ).mul( 30 ).negate() ) );
 			totalConfidence.mulAssign( mix( float( 1 ), historyTrust.mul( 0.05 ).add( 0.95 ), motionFactor.mul( 100 ).clamp() ) );
 
 			If( totalConfidence.lessThan( EPSILON ), () => {
 
-				historyColor.assign( inputColor );
+				historyColor.assign( vec4( inputColor.rgb, 1 ) );
 
 			} );
 
@@ -984,9 +945,7 @@ class TemporalReprojectNode extends Node {
 
 			}
 
-			frameCount.assign( float( 1 ).div( currentFrameCount ) );
-
-			return historyColor;
+			return vec4( historyColor.rgb, float( 1 ).div( currentFrameCount ) );
 
 		} );
 
@@ -998,13 +957,11 @@ class TemporalReprojectNode extends Node {
 
 		if ( this.accumulate === true || this._externalHistoryTexture === null ) {
 
-			this._historyTextureNode.value = this._historyRenderTarget.textures[ 0 ];
-			this._historyFrameCountNode.value = this._historyRenderTarget.textures[ 1 ];
+			this._historyTextureNode.value = this._historyRenderTarget.texture;
 
 		} else {
 
 			this._historyTextureNode.value = this._externalHistoryTexture;
-			this._historyFrameCountNode.value = this._externalHistoryFrameCountTexture;
 
 		}
 
@@ -1015,14 +972,12 @@ class TemporalReprojectNode extends Node {
 	 * texture). Only used when {@link TemporalReprojectNode#accumulate} is `false`.
 	 *
 	 * @param {?(Object|Texture)} source
-	 * @param {?Texture} [frameCount=null] - The frame count of a history given as a texture.
 	 */
-	setHistoryTexture( source, frameCount = null ) {
+	setHistoryTexture( source ) {
 
-		const renderTarget = ( source && typeof source.getRenderTarget === 'function' ) ? source.getRenderTarget() : null;
-
-		this._externalHistoryTexture = renderTarget !== null ? renderTarget.textures[ 0 ] : source;
-		this._externalHistoryFrameCountTexture = renderTarget !== null ? renderTarget.textures[ 1 ] : frameCount;
+		this._externalHistoryTexture = ( source && typeof source.getRenderTarget === 'function' )
+			? source.getRenderTarget().texture
+			: source;
 		this._syncHistoryTextureBinding();
 
 	}

@@ -44,7 +44,7 @@ class SSRNode extends Node {
 	/**
 	 * Constructs a new SSR node.
 	 *
-	 * @param {Node<vec4>} colorNode - The node that represents the beauty pass.
+	 * @param {Node<vec4>} colorNode - The beauty radiance in RGB, with valid sample coverage in alpha.
 	 * @param {Node<float>} depthNode - A node that represents the beauty pass's depth.
 	 * @param {Node<vec3>} normalNode - A node that represents the beauty pass's normals.
 	 * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.
@@ -73,7 +73,7 @@ class SSRNode extends Node {
 		this.stochastic = stochastic;
 
 		/**
-		 * The node that represents the beauty pass.
+		 * The beauty radiance in RGB, with valid sample coverage in alpha.
 		 *
 		 * @type {Node<vec4>}
 		 */
@@ -1045,7 +1045,7 @@ class SSRNode extends Node {
 					const reflectColor = this.colorNode.sample( uvS ).toVar();
 					// the coverage fades out at the screen borders and, for the mirror path, over the distance
 
-					let coverage = computeScreenBorderFactor( uvS, this.stochastic === true ? hitBorderWidth : this.screenEdgeFade );
+					let coverage = reflectColor.a.mul( computeScreenBorderFactor( uvS, this.stochastic === true ? hitBorderWidth : this.screenEdgeFade ) );
 
 					if ( this.stochastic === false ) coverage = coverage.mul( distancePointPlane.div( this.maxDistance ).oneMinus().pow2() );
 
@@ -1120,7 +1120,7 @@ export default SSRNode;
  *
  * @tsl
  * @function
- * @param {Node<vec4>} colorNode - The node that represents the beauty pass.
+ * @param {Node<vec4>} colorNode - The beauty radiance in RGB, with valid sample coverage in alpha.
  * @param {Node<float>} depthNode - A node that represents the beauty pass's depth.
  * @param {Node<vec3>} normalNode - A node that represents the beauty pass's normals.
  * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.

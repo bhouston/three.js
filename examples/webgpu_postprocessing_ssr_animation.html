@@ -21,7 +21,7 @@
 
 			<small>
 				Animated Screen Space Reflections by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>.<br />
-				Rotating metallic spheres and a moving emissive object above a reflective floor.
+				Compare Indirect BRDF lighting with Layered reflections on moving objects.
 			</small>
 		</div>
 
@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity, screenUV, builtinIndirectContext } from 'three/tsl';
+			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity, float, vec3, ivec2, Fn, positionPrevious, textureSize, getViewPosition, isBackgroundDepth, texture, screenUV, builtinIndirectContext } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
@@ -51,17 +51,34 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const params = {
-				output: 'Beauty', traa: true,
+				output: 'Beauty', traa: true, lighting: 'Indirect BRDF',
 				quality: 0.5, binaryRefine: true, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
 			};
 
 			let camera, scene, renderer, renderPipeline;
-			let controls, timer, floor, torusKnot;
+			let controls, timer, floor, torusKnot, beautyPass, beautyHistory;
 
 			const spheres = [];
 			let time = 0;
+
+			const previousJitter = new THREE.Vector2();
+			const currentJitter = new THREE.Vector2();
+			const currentProjectionInverse = new THREE.Matrix4();
+			const previousProjectionInverse = uniform( new THREE.Matrix4() );
+			const historySize = uniform( new THREE.Vector2() );
+			const jitterDelta = uniform( new THREE.Vector2() );
+			const historyValid = uniform( false ).onRenderUpdate( () => {
+
+				// Capture the camera while TRAA jitter is applied, in whichever pass reprojects history.
+				const e = camera.projectionMatrix.elements;
+				currentJitter.set( - e[ 8 ] * 0.5, e[ 9 ] * 0.5 );
+				currentProjectionInverse.copy( camera.projectionMatrixInverse );
+				jitterDelta.value.copy( previousJitter ).sub( currentJitter );
+				return historyValid.value;
+
+			} );
 
 			init();
 
@@ -183,12 +200,19 @@
 				renderPipeline = new THREE.RenderPipeline( renderer );
 
 				const scenePass = pass( scene, camera );
-				scenePass.setMRT( mrt( {
+				const sceneOutputs = {
 					output: output,
-					normal: vec4( packNormalToRGB( normalView ), materialRoughness ),
 					metalness: materialMetalness,
+					normal: vec4( packNormalToRGB( normalView ), materialRoughness ),
 					velocity: velocity
-				} ) );
+				};
+				const currentMRT = mrt( sceneOutputs );
+				const previousMRT = mrt( {
+					...sceneOutputs,
+					// Previous view depth follows both camera and object motion.
+					velocity: vec4( velocity, velocity.previousCameraViewMatrix.mul( velocity.previousModelWorldMatrix ).mul( vec4( positionPrevious, 1 ) ).z.toVarying(), 0 )
+				} );
+				scenePass.setMRT( currentMRT );
 
 				scenePass.getTexture( 'normal' ).type = THREE.UnsignedByteType;
 				scenePass.getTexture( 'metalness' ).type = THREE.UnsignedByteType;
@@ -209,57 +233,148 @@
 					scenePassNormal.sample( uv ).a
 				) );
 
-				// ssr
+				// Keep the previous beauty separate from the pass graph: sampling it must not
+				// render the beauty pass that is currently asking for the reflection.
 
-				const ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
-					stochastic: true,
-					metalnessNode: scenePassMetalness.r,
-					roughnessNode: sceneRoughness,
-					binaryRefine: params.binaryRefine
-				} ).toInspector( 'SSR' );
+				beautyHistory = new THREE.RenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
+				const previousColor = texture( beautyHistory.texture );
+				const previousDepth = scenePass.getPreviousTextureNode( 'depth' );
 
-				const ssrTexture = ssrNode.getTextureNode();
-				const ssrHitDistance = ssrNode.getHitDistanceNode();
+				const previousTraceSource = sample( uv => Fn( () => {
 
-				// denoise
+					// Reproject both camera and object motion. Read motion and previous view
+					// depth from the same texel to keep silhouettes from mixing surfaces.
+					const motionSize = ivec2( textureSize( scenePassVelocity ) );
+					const motionTexel = ivec2( uv.mul( vec2( motionSize ) ) ).clamp( ivec2( 0 ), motionSize.sub( 1 ) );
+					const motion = scenePassVelocity.load( motionTexel ).toConst();
+					const historyUV = uv.sub( motion.xy.mul( vec2( 0.5, - 0.5 ) ) ).add( jitterDelta ).toConst();
+					const expectedZ = motion.z;
 
-				const temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
-					mode: 'specular',
-					hitDistance: ssrHitDistance,
-					accumulate: false
-				} );
-				temporalReprojectNode.maxFrames.value = 16;
-				temporalReprojectNode.clampIntensity.value = 0.25;
+					const size = vec2( textureSize( previousDepth ) );
+					const pixel = historyUV.mul( size ).sub( 0.5 );
+					const base = pixel.floor();
+					const fraction = pixel.fract();
+					const inBounds = p => p.greaterThanEqual( 0 ).all().and( p.lessThanEqual( 1 ).all() );
+					const valid = historyValid.and( inBounds( historyUV ) )
+						.and( size.equal( historySize ).all() )
+						.and( vec2( textureSize( scenePassDepth ) ).equal( historySize ).all() )
+						.and( isBackgroundDepth( scenePassDepth.sample( uv ).r ).not() )
+						.and( expectedZ.lessThan( camera.near * - 1 ) );
 
-				const denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
-					depth: scenePassDepth,
-					normal: scenePassNormal,
-					raw: ssrNode,
-					hitDistance: ssrHitDistance,
-					frameCount: temporalReprojectNode.getFrameCountNode(),
-					metalRoughness: sceneMetalRough,
-					mode: 'specular',
-					accumulate: true
-				} );
-				denoiseNode.depthPhi.value = 20;
-				denoiseNode.normalPhi.value = 0.3;
-				denoiseNode.radius.value = 1.5;
-				denoiseNode.alphaPhi.value = 5;
-				denoiseNode.strength.value = 0.725;
-				denoiseNode.adaptiveTrust.value = 1;
+					// Allow a small pixel footprint for depth variation on sloping surfaces, plus half-float rounding.
+					const pixelDepth = previousProjectionInverse.element( 1 ).y.abs().mul( expectedZ.abs() ).mul( 3 ).div( size.y );
+					const tolerance = pixelDepth.max( expectedZ.abs().mul( 0.002 ) ).max( 0.001 );
+					const radiance = vec3( 0 ).toVar();
+					const support = float( 0 ).toVar();
 
-				temporalReprojectNode.setHistoryTexture( denoiseNode );
+					// Validate each bilinear tap so interpolation cannot pull color across an occlusion edge.
+					for ( let y = 0; y <= 1; y ++ ) {
 
-				// the materials take the reflections into their specular BRDF, in front of the environment
+						for ( let x = 0; x <= 1; x ++ ) {
 
+							const tapUV = base.add( vec2( x, y ) ).add( 0.5 ).div( size ).toConst();
+							const depth = previousDepth.sample( tapUV ).r;
+							const viewZ = getViewPosition( tapUV, depth, previousProjectionInverse ).z;
+							const accepted = valid.and( inBounds( tapUV ) ).and( isBackgroundDepth( depth ).not() )
+								.and( viewZ.sub( expectedZ ).abs().lessThanEqual( tolerance ) );
+							const weightX = x === 0 ? fraction.x.oneMinus() : fraction.x;
+							const weightY = y === 0 ? fraction.y.oneMinus() : fraction.y;
+							const weight = weightX.mul( weightY ).mul( accepted ).toConst();
+							radiance.addAssign( previousColor.sample( tapUV ).rgb.mul( weight ) );
+							support.addAssign( weight );
+
+						}
+
+					}
+
+					// Missing history contributes no radiance; alpha records valid bilinear support.
+					return vec4( radiance.div( support.max( 1e-6 ) ), support );
+
+				} )() );
+
+				let ssrNode, ssrTexture, temporalReprojectNode, denoiseNode, temporalAA, spatialAA;
 				const denoiseEnabled = uniform( 1 );
-				const reflection = mix( ssrTexture.sample( screenUV ), denoiseNode.getTextureNode().sample( screenUV ), denoiseEnabled );
 
-				const beautyPass = pass( scene, camera );
-				beautyPass.contextNode = builtinIndirectContext( { specular: [ ssrNode.getSpecularSource( reflection ) ] } );
+				function updateLighting() {
 
-				const temporalAA = traa( beautyPass, scenePassDepth, scenePassVelocity, camera );
-				const spatialAA = smaa( beautyPass );
+					// Replace the effect graph so changing its input stays local to this example.
+					for ( const effect of [ ssrNode, temporalReprojectNode, denoiseNode, beautyPass, temporalAA, spatialAA ] ) {
+
+						if ( effect !== undefined ) effect.dispose();
+
+					}
+
+					const indirectBRDF = params.lighting === 'Indirect BRDF';
+					scenePass.setMRT( indirectBRDF ? previousMRT : currentMRT );
+					historyValid.value = false;
+
+					// ssr
+
+					ssrNode = ssr( indirectBRDF ? previousTraceSource : scenePassColor, scenePassDepth, sceneNormal, {
+						camera,
+						stochastic: true,
+						metalnessNode: scenePassMetalness.r,
+						roughnessNode: sceneRoughness,
+						binaryRefine: params.binaryRefine
+					} ).toInspector( 'SSR' );
+
+					ssrTexture = ssrNode.getTextureNode();
+					const ssrHitDistance = ssrNode.getHitDistanceNode();
+
+					// denoise
+
+					temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
+						mode: 'specular',
+						hitDistance: ssrHitDistance,
+						accumulate: false
+					} );
+					temporalReprojectNode.maxFrames.value = 16;
+					temporalReprojectNode.clampIntensity.value = 0.25;
+
+					denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
+						depth: scenePassDepth,
+						normal: scenePassNormal,
+						raw: ssrNode,
+						hitDistance: ssrHitDistance,
+						frameCount: temporalReprojectNode.getFrameCountNode(),
+						metalRoughness: sceneMetalRough,
+						mode: 'specular',
+						accumulate: true
+					} );
+					denoiseNode.depthPhi.value = 20;
+					denoiseNode.normalPhi.value = 0.3;
+					denoiseNode.radius.value = 1.5;
+					denoiseNode.alphaPhi.value = 5;
+					denoiseNode.strength.value = 0.725;
+					denoiseNode.adaptiveTrust.value = 1;
+
+					temporalReprojectNode.setHistoryTexture( denoiseNode );
+
+					const reflection = mix( ssrTexture.sample( screenUV ), denoiseNode.getTextureNode().sample( screenUV ), denoiseEnabled );
+					let combined;
+
+					if ( indirectBRDF ) {
+
+						// Materials apply their BRDF and replace the environment by SSR coverage.
+						beautyPass = pass( scene, camera );
+						beautyPass.contextNode = builtinIndirectContext( { specular: [ ssrNode.getSpecularSource( reflection ) ] } );
+						combined = beautyPass;
+
+					} else {
+
+						// Deliberately incorrect comparison: add unshaded SSR over the lit image.
+						beautyPass = undefined;
+						combined = vec4( scenePassColor.rgb.add( reflection.rgb ), 1 );
+
+					}
+
+					temporalAA = traa( combined, scenePassDepth, scenePassVelocity, camera );
+					spatialAA = smaa( combined );
+
+					updateParameters();
+					updateOutput();
+
+				}
 
 				function updateOutput() {
 
@@ -270,6 +385,19 @@
 						case 'Beauty': outputNode = params.traa ? temporalAA : spatialAA; break;
 						case 'SSR': outputNode = vec4( ssrTexture.rgb, 1 ); break;
 						case 'SSR DN': outputNode = vec4( denoiseNode.rgb, 1 ); break;
+						case 'Coverage': outputNode = vec4( mix( ssrTexture.aaa, denoiseNode.aaa, denoiseEnabled ), 1 ); break;
+
+					}
+
+					// Keep the beauty history advancing while inspecting intermediate buffers.
+					if ( beautyPass !== undefined && params.output !== 'Beauty' ) {
+
+						const beautyColor = beautyPass.getTextureNode();
+						outputNode = outputNode.bypass( Fn( () => {
+
+							beautyColor.toVar();
+
+						} )() );
 
 					}
 
@@ -293,8 +421,10 @@
 				// GUI
 
 				const displayGui = renderer.inspector.createParameters( 'Display' );
-				displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN' ] ).name( 'Output' ).onChange( updateOutput );
+				displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN', 'Coverage' ] ).name( 'Output' ).onChange( updateOutput );
 				displayGui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
+
+				displayGui.add( params, 'lighting', [ 'Indirect BRDF', 'Layered' ] ).name( 'Lighting' ).onChange( updateLighting );
 
 				const ssrGui = renderer.inspector.createParameters( 'SSR' );
 				ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
@@ -321,8 +451,7 @@
 				sceneGui.add( params, 'animate' ).name( 'Animation' );
 				sceneGui.add( params, 'orbit' ).name( 'Orbit camera' );
 
-				updateParameters();
-				updateOutput();
+				updateLighting();
 
 				//
 
@@ -338,6 +467,7 @@
 				camera.updateProjectionMatrix();
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				historyValid.value = false;
 
 			}
 
@@ -363,7 +493,33 @@
 				controls.autoRotate = params.orbit;
 				controls.update( delta );
 
+				// Resize history before rendering so an old-sized texture is never read as valid.
+				const { width, height } = renderer.domElement;
+
+				if ( beautyHistory.width !== width || beautyHistory.height !== height ) {
+
+					beautyHistory.setSize( width, height );
+					historyValid.value = false;
+
+				}
+
+				renderer.initRenderTarget( beautyHistory );
 				renderPipeline.render();
+
+				if ( params.lighting === 'Indirect BRDF' ) {
+
+					renderer.copyTextureToTexture( beautyPass.getTexture( 'output' ), beautyHistory.texture );
+
+					previousJitter.copy( currentJitter );
+					previousProjectionInverse.value.copy( currentProjectionInverse );
+					historySize.value.set( width, height );
+					historyValid.value = true;
+
+				} else {
+
+					historyValid.value = false;
+
+				}
 
 			}
 

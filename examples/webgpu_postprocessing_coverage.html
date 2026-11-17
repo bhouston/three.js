@@ -276,7 +276,7 @@
 					mode: 'specular', hitDistance: ssrPass.getHitDistanceNode(), accumulate: false
 				} );
 				ssrDenoise = recurrentDenoise( temporal, camera, {
-					depth, normal: normalRoughness, raw: ssrPass,
+					depth, normal: normals, raw: ssrPass,
 					hitDistance: ssrPass.getHitDistanceNode(), frameCount: temporal.getFrameCountNode(),
 					metalRoughness: sample( coordinate => vec2( metalness.sample( coordinate ).r, roughness.sample( coordinate ) ) ),
 					mode: 'specular', accumulate: true

@@ -1191,12 +1191,13 @@ class VRMLLoader extends Loader {
 						break;
 
 					case 'texture':
-						const textureNode = fieldValues[ 0 ];
-						if ( textureNode !== null ) {
+						if ( fieldValues[ 0 ] !== null ) {
 
-							if ( textureNode.name === 'ImageTexture' || textureNode.name === 'PixelTexture' ) {
+							const texture = getNode( fieldValues[ 0 ] );
 
-								material.map = getNode( textureNode );
+							if ( texture !== undefined ) {
+
+								material.map = texture;
 
 							} else {
 
@@ -1525,8 +1526,8 @@ class VRMLLoader extends Loader {
 
 			const transformData = {
 				center: new Vector2(),
-				rotation: new Vector2(),
-				scale: new Vector2(),
+				rotation: 0,
+				scale: new Vector2( 1, 1 ),
 				translation: new Vector2()
 			};
 
@@ -2848,7 +2849,7 @@ class VRMLLoader extends Loader {
 			// materials can be influenced by the geometry (e.g. vertex normals). cloning is necessary to avoid
 			// any side effects
 
-			return ( build.isObject3D || build.isMaterial ) ? build.clone() : build;
+			return ( build !== undefined && ( build.isObject3D || build.isMaterial || build.isTexture ) ) ? build.clone() : build;
 
 		}
 

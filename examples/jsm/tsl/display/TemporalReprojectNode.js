@@ -225,7 +225,7 @@ const historyResultStruct = struct( { color: 'vec4', tapConfidence: 'float', min
  *
  * @tsl
  */
-const sampleBilinearTap = Fn( ( [
+const createSampleBilinearTap = ( normalDecode ) => Fn( ( [
 	historyTexture,
 	previousDepthNode,
 	previousNormalNode,
@@ -243,7 +243,7 @@ const sampleBilinearTap = Fn( ( [
 	const reprojDepth = textureLoad( previousDepthNode, tapCoord ).r;
 	const reprojViewPos = getViewPosition( vec2( tapCoord ).add( 0.5 ).div( resolution ), reprojDepth, previousProjectionMatrixInverse );
 	const reprojWorldPos = previousCameraWorldMatrix.mul( vec4( reprojViewPos, 1.0 ) ).xyz;
-	const reprojWorldNorm = unpackRGBToNormal( textureLoad( previousNormalNode, tapCoord ).rgb ).transformNormalByInverseViewMatrix( previousCameraViewMatrix );
+	const reprojWorldNorm = normalDecode( textureLoad( previousNormalNode, tapCoord ) ).transformNormalByInverseViewMatrix( previousCameraViewMatrix );
 
 	const planeDiff = abs( dot( reprojWorldPos.sub( worldPosition ), worldNormal ) ).toVar();
 	planeDiff.divAssign( abs( reprojViewPos.z ) );
@@ -262,7 +262,7 @@ const sampleBilinearTap = Fn( ( [
  */
 function bilinearHistoryTap( ctx, tapOffset, bilinearWeight ) {
 
-	return sampleBilinearTap(
+	return ctx.sampleBilinearTap(
 		ctx.historyTexture,
 		ctx.previousDepthNode,
 		ctx.previousNormalNode,
@@ -283,7 +283,7 @@ function bilinearHistoryTap( ctx, tapOffset, bilinearWeight ) {
  *
  * @tsl
  */
-const sampleHistory4Tap = Fn( ( [
+const createSampleHistory4Tap = ( normalDecode ) => Fn( ( [
 	historyTexture,
 	previousDepthNode,
 	previousNormalNode,
@@ -297,6 +297,8 @@ const sampleHistory4Tap = Fn( ( [
 	inputColor
 ] ) => {
 
+	const sampleBilinearTap = createSampleBilinearTap( normalDecode );
+
 	const reprojPixelCoord = reprojUV.mul( resolution ).sub( 0.5 ).toVar();
 	const reprojICoord = ivec2( floor( reprojPixelCoord ) );
 	const fCoord = reprojPixelCoord.fract();
@@ -309,6 +311,7 @@ const sampleHistory4Tap = Fn( ( [
 	const f11 = fx.mul( fy );
 
 	const tapCtx = {
+		sampleBilinearTap,
 		historyTexture,
 		previousDepthNode,
 		previousNormalNode,
@@ -487,6 +490,7 @@ const VARIANCE_GAMMA_MAX = 1;
  * @property {TextureNode} [hitDistance=null] - Specular mode only: the hit distance of the beauty input, e.g. `ssrNode.getHitDistanceNode()`.
  * @property {boolean} [accumulate=false] - When `true`, history is stored in this pass (classic temporal resolve). When `false`,
  * use {@link TemporalReprojectNode#setHistoryTexture} to read history from another pass (e.g. denoise output).
+ * @property {Function} [normalDecode] - Decodes a sample of the normal texture into a unit view-space normal. Defaults to {@link unpackRGBToNormal}.
  */
 
 /**
@@ -534,7 +538,8 @@ class TemporalReprojectNode extends Node {
 			mode = 'diffuse',
 			hitPointReprojection = mode === 'specular',
 			hitDistance = null,
-			accumulate = false
+			accumulate = false,
+			normalDecode = ( value ) => unpackRGBToNormal( value.rgb )
 		} = options;
 
 		if ( mode !== 'specular' && mode !== 'diffuse' ) {
@@ -549,6 +554,7 @@ class TemporalReprojectNode extends Node {
 		this.beautyNode = beautyNode;
 		this.depthNode = depthNode;
 		this.normalNode = normalNode;
+		this.normalDecode = normalDecode;
 		this.velocityNode = velocityNode;
 		this.hitDistanceNode = hitDistance;
 		this.camera = camera;
@@ -812,6 +818,7 @@ class TemporalReprojectNode extends Node {
 
 		const isSpecular = this.mode === 'specular';
 		const cameraUniforms = this._cameraUniforms;
+		const sampleHistory4Tap = createSampleHistory4Tap( this.normalDecode );
 
 		const resolve = Fn( () => {
 
@@ -825,7 +832,7 @@ class TemporalReprojectNode extends Node {
 			const beautyTexel = beautyTexelFromScreen( screenTexel, beautySize, this._resolution );
 
 			const inputColor = textureLoad( this.beautyNode, beautyTexel ).max( 0 ).toVar();
-			const viewNormal = unpackRGBToNormal( textureLoad( this.normalNode, screenTexel ).rgb ).toVar();
+			const viewNormal = this.normalDecode( textureLoad( this.normalNode, screenTexel ) ).toVar();
 
 			// Shared 3×3 beauty fetch: feeds both the variance-clip box and the SSR ray-length stats.
 			const neighborhood = collectNeighborhood( this.beautyNode, beautyTexel, inputColor, this.flickerSuppression, isSpecular ? this.hitDistanceNode : null );

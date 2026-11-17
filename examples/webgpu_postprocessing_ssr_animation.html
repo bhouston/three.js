@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity, Fn, positionPrevious, screenUV, builtinIndirectContext } from 'three/tsl';
+			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity, Fn, positionPrevious, screenUV, builtinIndirectContext } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { ssrHistory } from 'three/addons/tsl/display/SSRHistory.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
@@ -188,18 +188,20 @@
 				const sceneOutputs = {
 					output: output,
 					metalness: materialMetalness,
-					normal: vec4( packNormalToRGB( normalView ), materialRoughness ),
-					velocity: velocity
+					normal: packNormalToOctahedral( normalView ),
+					velocity: vec4( velocity, 0, materialRoughness )
 				};
 				const currentMRT = mrt( sceneOutputs );
 				const previousMRT = mrt( {
 					...sceneOutputs,
 					// Previous view depth follows both camera and object motion.
-					velocity: vec4( velocity, velocity.previousCameraViewMatrix.mul( velocity.previousModelWorldMatrix ).mul( vec4( positionPrevious, 1 ) ).z.toVarying(), 0 )
+					velocity: vec4( velocity, velocity.previousCameraViewMatrix.mul( velocity.previousModelWorldMatrix ).mul( vec4( positionPrevious, 1 ) ).z.toVarying(), materialRoughness )
 				} );
 				scenePass.setMRT( currentMRT );
 
-				scenePass.getTexture( 'normal' ).type = THREE.UnsignedByteType;
+				const normalTexture = scenePass.getTexture( 'normal' );
+				normalTexture.format = THREE.RGFormat;
+				normalTexture.minFilter = normalTexture.magFilter = THREE.NearestFilter;
 				scenePass.getTexture( 'metalness' ).type = THREE.UnsignedByteType;
 
 				const scenePassColor = scenePass.getTextureNode( 'output' );
@@ -208,14 +210,14 @@
 				const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
 				const scenePassMetalness = scenePass.getTextureNode( 'metalness' );
 
-				const sceneNormal = sample( ( uv ) => unpackRGBToNormal( scenePassNormal.sample( uv ).rgb ) );
-				const sceneRoughness = sample( ( uv ) => scenePassNormal.sample( uv ).a );
+				const sceneNormal = sample( ( uv ) => unpackOctahedralToNormal( scenePassNormal.sample( uv ).rg ) );
+				const sceneRoughness = sample( ( uv ) => scenePassVelocity.sample( uv ).w );
 
-				// roughness in normal.a
+				// roughness in velocity.w; velocity.z holds previous view depth
 
 				const sceneMetalRough = sample( ( uv ) => vec2(
 					scenePassMetalness.sample( uv ).r,
-					scenePassNormal.sample( uv ).a
+					scenePassVelocity.sample( uv ).w
 				) );
 
 				reflectionHistory = ssrHistory( camera, scenePass, scenePassVelocity );
@@ -253,6 +255,7 @@
 
 					temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 						mode: 'specular',
+						normalDecode: value => unpackOctahedralToNormal( value.rg ),
 						hitDistance: ssrHitDistance,
 						accumulate: false
 					} );
@@ -261,7 +264,7 @@
 
 					denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
 						depth: scenePassDepth,
-						normal: scenePassNormal,
+						normal: sceneNormal,
 						raw: ssrNode,
 						hitDistance: ssrHitDistance,
 						frameCount: temporalReprojectNode.getFrameCountNode(),

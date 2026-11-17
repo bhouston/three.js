@@ -40,9 +40,6 @@
 			import { LightProbeGridWebGL } from 'three/addons/lighting/LightProbeGridWebGL.js';
 			import { LightProbeGridHelperWebGL } from 'three/addons/helpers/LightProbeGridHelperWebGL.js';
 
-			const MODEL_INDEX_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/model-index.json';
-			const SAMPLE_ASSETS_BASE_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/';
-
 			let camera, scene, renderer, controls, timer;
 			let probes = null, probesHelper = null;
 			let probeFar, bakeIndex = 0, bakePass = 0;
@@ -124,8 +121,7 @@
 				};
 
 				const loader = new GLTFLoader( manager );
-				const modelURL = await getSponzaModelURL();
-				const gltf = await loader.loadAsync( modelURL );
+				const gltf = await loader.loadAsync( '/assets/KhronosGroup/glTF-Sample-Assets/sponza.glb' );
 				const model = gltf.scene;
 				const embeddedLights = [];
 
@@ -325,32 +321,6 @@
 					bakePass ++;
 
 				}
-
-			}
-
-			async function getSponzaModelURL() {
-
-				const response = await fetch( MODEL_INDEX_URL );
-				const models = await response.json();
-				const sponzaInfo = models.find( ( model ) => model.name === 'Sponza' );
-
-				if ( ! sponzaInfo ) {
-
-					throw new Error( 'Sponza entry was not found in the glTF sample model index.' );
-
-				}
-
-				const variants = sponzaInfo.variants || {};
-				const variantName = variants[ 'glTF-Binary' ] || variants[ 'glTF' ] || variants[ 'glTF-Embedded' ] || Object.values( variants )[ 0 ];
-
-				if ( ! variantName ) {
-
-					throw new Error( 'Sponza has no supported glTF variant in the model index.' );
-
-				}
-
-				const variantFolder = variantName.endsWith( '.glb' ) ? 'glTF-Binary' : 'glTF';
-				return `${ SAMPLE_ASSETS_BASE_URL }${ sponzaInfo.name }/${ variantFolder }/${ variantName }`;
 
 			}
 

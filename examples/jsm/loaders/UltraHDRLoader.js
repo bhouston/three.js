@@ -58,7 +58,7 @@ for ( let i = 0; i < 1024; i ++ ) {
  *
  * ```js
  * const loader = new UltraHDRLoader();
- * const texture = await loader.loadAsync( '/assets/BenHouston3D/three/ice-planet-close.jpg' );
+ * const texture = await loader.loadAsync( '/assets/mrdoob/three/ice-planet-close.jpg' );
  * texture.mapping = THREE.EquirectangularReflectionMapping;
  *
  * scene.background = texture;

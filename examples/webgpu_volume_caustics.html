@@ -86,7 +86,7 @@
 
 				const dracoLoader = new DRACOLoader();
 
-				gltf = ( await new GLTFLoader().setDRACOLoader( dracoLoader ).loadAsync( '/assets/BenHouston3D/three/duck.glb' ) ).scene;
+				gltf = ( await new GLTFLoader().setDRACOLoader( dracoLoader ).loadAsync( '/assets/mrdoob/three/duck.glb' ) ).scene;
 				gltf.scale.setScalar( .5 );
 				scene.add( gltf );
 

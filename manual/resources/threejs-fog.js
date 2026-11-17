@@ -38,7 +38,7 @@ import { threejsLessonUtils } from './threejs-lesson-utils.js';
 			roughness: 1,
 			metalness: 0,
 		};
-		loader.load( '/assets/BenHouston3D/three/simple-house-scene-scene.glb', ( gltf ) => {
+		loader.load( '/assets/mrdoob/three/simple-house-scene-scene.glb', ( gltf ) => {
 
 			const hackGeometry = new THREE.CircleGeometry( 0.5, 32 );
 			const box = new THREE.Box3();

@@ -37,10 +37,10 @@
 			const backgroundPriority = new URLSearchParams( location.search ).get( 'background' ) === 'auto' ? 'auto' : 'low';
 
 			const models = [
-				'/assets/BenHouston3D/three/boombox.glb', '/assets/BenHouston3D/three/coffeemug.glb', '/assets/BenHouston3D/three/stork.glb', '/assets/BenHouston3D/three/gltf-flamingo.glb',
-				'/assets/BenHouston3D/three/parrot.glb', '/assets/BenHouston3D/three/robotexpressive.glb',
-				'/assets/BenHouston3D/three/diffuseroughnessparametersweep.glb', '/assets/BenHouston3D/three/godrays-demo.glb', '/assets/BenHouston3D/three/collision-world.glb',
-				'/assets/BenHouston3D/three/shadowmappablemesh.glb', '/assets/BenHouston3D/three/shaderball.glb', '/assets/BenHouston3D/three/dispersiontest.glb'
+				'/assets/mrdoob/three/boombox.glb', '/assets/mrdoob/three/coffeemug.glb', '/assets/mrdoob/three/stork.glb', '/assets/mrdoob/three/gltf-flamingo.glb',
+				'/assets/mrdoob/three/parrot.glb', '/assets/mrdoob/three/robotexpressive.glb',
+				'/assets/mrdoob/three/diffuseroughnessparametersweep.glb', '/assets/mrdoob/three/godrays-demo.glb', '/assets/mrdoob/three/collision-world.glb',
+				'/assets/mrdoob/three/shadowmappablemesh.glb', '/assets/mrdoob/three/shaderball.glb', '/assets/mrdoob/three/dispersiontest.glb'
 			];
 
 			init();
@@ -82,7 +82,7 @@
 				}
 
 				const hero = new GLTFLoader().setCache( 'reload' );
-				hero.load( '/assets/BenHouston3D/three/horse.glb', onHeroLoad, undefined, onError );
+				hero.load( '/assets/mrdoob/three/horse.glb', onHeroLoad, undefined, onError );
 
 				updateStatus();
 				render();

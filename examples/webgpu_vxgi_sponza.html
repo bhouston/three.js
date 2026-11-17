@@ -48,9 +48,6 @@
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 
-			const MODEL_INDEX_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/model-index.json';
-			const SAMPLE_ASSETS_BASE_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/';
-
 			let camera, scene, renderer, renderPipeline, controls, timer;
 			let dirLight = null, sky = null;
 
@@ -120,8 +117,7 @@
 				};
 
 				const loader = new GLTFLoader( manager );
-				const modelURL = await getSponzaModelURL();
-				const gltf = await loader.loadAsync( modelURL );
+				const gltf = await loader.loadAsync( '/assets/KhronosGroup/glTF-Sample-Assets/sponza.glb' );
 				const model = gltf.scene;
 				const embeddedLights = [];
 
@@ -173,7 +169,6 @@
 
 				const ambientLight = new THREE.AmbientLight( 0xffffff, 0.5 );
 				scene.add( ambientLight );
-
 
 				// post processing
 
@@ -317,32 +312,6 @@
 				}
 
 				window.addEventListener( 'resize', onWindowResize );
-
-			}
-
-			async function getSponzaModelURL() {
-
-				const response = await fetch( MODEL_INDEX_URL );
-				const models = await response.json();
-				const sponzaInfo = models.find( ( model ) => model.name === 'Sponza' );
-
-				if ( ! sponzaInfo ) {
-
-					throw new Error( 'Sponza entry was not found in the glTF sample model index.' );
-
-				}
-
-				const variants = sponzaInfo.variants || {};
-				const variantName = variants[ 'glTF-Binary' ] || variants[ 'glTF' ] || variants[ 'glTF-Embedded' ] || Object.values( variants )[ 0 ];
-
-				if ( ! variantName ) {
-
-					throw new Error( 'Sponza has no supported glTF variant in the model index.' );
-
-				}
-
-				const variantFolder = variantName.endsWith( '.glb' ) ? 'glTF-Binary' : 'glTF';
-				return `${ SAMPLE_ASSETS_BASE_URL }${ sponzaInfo.name }/${ variantFolder }/${ variantName }`;
 
 			}
 

@@ -155,7 +155,7 @@
 
 				//
 
-				const environment = await new HDRLoader().loadAsync( '/assets/BenHouston3D/three/monochrome-studio-02-1k.hdr' );
+				const environment = await new HDRLoader().loadAsync( '/assets/mrdoob/three/monochrome-studio-02-1k.hdr' );
 				environment.mapping = THREE.EquirectangularReflectionMapping;
 
 				const light = new THREE.DirectionalLight( 0xffffff, 1 );
@@ -164,7 +164,7 @@
 
 				scene.environment = environment;
 
-				prefab = ( await new GLTFLoader().loadAsync( '/assets/BenHouston3D/three/shaderball.glb' ) ).scene;
+				prefab = ( await new GLTFLoader().loadAsync( '/assets/mrdoob/three/shaderball.glb' ) ).scene;
 
 				await initTSLGraph();
 

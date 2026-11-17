@@ -95,7 +95,7 @@
 
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0x333333 );
-				scene.environment = new HDRLoader().load( '/assets/BenHouston3D/three/venice-sunset-1k.hdr' );
+				scene.environment = new HDRLoader().load( '/assets/mrdoob/three/venice-sunset-1k.hdr' );
 				scene.environment.mapping = THREE.EquirectangularReflectionMapping;
 				scene.fog = new THREE.Fog( 0x333333, 10, 15 );
 
@@ -150,7 +150,7 @@
 				const loader = new GLTFLoader();
 				loader.setDRACOLoader( dracoLoader );
 
-				loader.load( '/assets/BenHouston3D/three/ferrari.glb', function ( gltf ) {
+				loader.load( '/assets/mrdoob/three/ferrari.glb', function ( gltf ) {
 
 					const carModel = gltf.scene.children[ 0 ];
 

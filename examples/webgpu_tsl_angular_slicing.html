@@ -61,7 +61,7 @@
 				// environment
 
 				const hdrLoader = new UltraHDRLoader();
-				hdrLoader.load( '/assets/BenHouston3D/three/royal-esplanade-2k-hdr.jpg', ( environmentMap ) => {
+				hdrLoader.load( '/assets/mrdoob/three/royal-esplanade-2k-hdr.jpg', ( environmentMap ) => {
 
 					environmentMap.mapping = THREE.EquirectangularReflectionMapping;
 
@@ -148,7 +148,7 @@
 				const gltfLoader = new GLTFLoader();
 				gltfLoader.setDRACOLoader( dracoLoader );
 
-				gltfLoader.load( '/assets/BenHouston3D/three/gears.glb', ( gltf ) => {
+				gltfLoader.load( '/assets/mrdoob/three/gears.glb', ( gltf ) => {
 
 					const model = gltf.scene;
 

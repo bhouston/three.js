@@ -56,7 +56,7 @@
 				scene = new THREE.Scene();
 
 				new HDRLoader()
-					.load( '/assets/BenHouston3D/three/quarry-01-1k.hdr', function ( texture ) {
+					.load( '/assets/mrdoob/three/quarry-01-1k.hdr', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 
@@ -68,7 +68,7 @@
 						// model
 
 						const loader = new GLTFLoader();
-						loader.load( '/assets/BenHouston3D/three/materialsvariantsshoe.glb', function ( gltf ) {
+						loader.load( '/assets/mrdoob/three/materialsvariantsshoe.glb', function ( gltf ) {
 
 							gltf.scene.scale.set( 10.0, 10.0, 10.0 );
 

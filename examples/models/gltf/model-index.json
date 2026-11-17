@@ -1,0 +1,606 @@
+[
+  {
+    "name": "ABeautifulGame",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/ABeautifulGame.glb"
+  },
+  {
+    "name": "AlphaBlendModeTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AlphaBlendModeTest.glb"
+  },
+  {
+    "name": "AnimatedColorsCube",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AnimatedColorsCube.glb"
+  },
+  {
+    "name": "AnimatedCube",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/AnimatedCube/glTF/AnimatedCube.gltf"
+  },
+  {
+    "name": "AnimatedMorphCube",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AnimatedMorphCube.glb"
+  },
+  {
+    "name": "AnimatedTriangle",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/AnimatedTriangle/glTF/AnimatedTriangle.gltf"
+  },
+  {
+    "name": "AnimationPointerUVs",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AnimationPointerUVs.glb"
+  },
+  {
+    "name": "AnisotropyBarnLamp",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AnisotropyBarnLamp.glb"
+  },
+  {
+    "name": "AnisotropyDiscTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AnisotropyDiscTest.glb"
+  },
+  {
+    "name": "AnisotropyRotationTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AnisotropyRotationTest.glb"
+  },
+  {
+    "name": "AnisotropyStrengthTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AnisotropyStrengthTest.glb"
+  },
+  {
+    "name": "AntiqueCamera",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AntiqueCamera.glb"
+  },
+  {
+    "name": "AttenuationTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/AttenuationTest.glb"
+  },
+  {
+    "name": "Avocado",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/Avocado.glb"
+  },
+  {
+    "name": "BarramundiFish",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/BarramundiFish.glb"
+  },
+  {
+    "name": "BoomBox",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/BoomBox.glb"
+  },
+  {
+    "name": "BoomBoxWithAxes",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/BoomBoxWithAxes/glTF/BoomBoxWithAxes.gltf"
+  },
+  {
+    "name": "Box",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/Box.glb"
+  },
+  {
+    "name": "Box With Spaces",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/Box With Spaces/glTF/Box With Spaces.gltf"
+  },
+  {
+    "name": "BoxAnimated",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/BoxAnimated.glb"
+  },
+  {
+    "name": "BoxInterleaved",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/BoxInterleaved.glb"
+  },
+  {
+    "name": "BoxTextured",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/BoxTextured.glb"
+  },
+  {
+    "name": "BoxTexturedNonPowerOfTwo",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/BoxTexturedNonPowerOfTwo.glb"
+  },
+  {
+    "name": "BoxVertexColors",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/BoxVertexColors.glb"
+  },
+  {
+    "name": "BrainStem",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/BrainStem.glb"
+  },
+  {
+    "name": "Cameras",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/Cameras/glTF/Cameras.gltf"
+  },
+  {
+    "name": "CarConcept",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CarConcept.glb"
+  },
+  {
+    "name": "CarbonFibre",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CarbonFibre.glb"
+  },
+  {
+    "name": "CesiumMan",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CesiumMan.glb"
+  },
+  {
+    "name": "CesiumMilkTruck",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CesiumMilkTruck.glb"
+  },
+  {
+    "name": "ChairDamaskPurplegold",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/ChairDamaskPurplegold.glb"
+  },
+  {
+    "name": "ChronographWatch",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/ChronographWatch.glb"
+  },
+  {
+    "name": "ClearCoatCarPaint",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/ClearCoatCarPaint.glb"
+  },
+  {
+    "name": "ClearCoatTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/ClearCoatTest.glb"
+  },
+  {
+    "name": "ClearcoatWicker",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/ClearcoatWicker.glb"
+  },
+  {
+    "name": "CommercialRefrigerator",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CommercialRefrigerator.glb"
+  },
+  {
+    "name": "CompareAlphaCoverage",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareAlphaCoverage.glb"
+  },
+  {
+    "name": "CompareAmbientOcclusion",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareAmbientOcclusion.glb"
+  },
+  {
+    "name": "CompareAnisotropy",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareAnisotropy.glb"
+  },
+  {
+    "name": "CompareBaseColor",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareBaseColor.glb"
+  },
+  {
+    "name": "CompareClearcoat",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareClearcoat.glb"
+  },
+  {
+    "name": "CompareDispersion",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareDispersion.glb"
+  },
+  {
+    "name": "CompareEmissiveStrength",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareEmissiveStrength.glb"
+  },
+  {
+    "name": "CompareIor",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareIor.glb"
+  },
+  {
+    "name": "CompareIridescence",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareIridescence.glb"
+  },
+  {
+    "name": "CompareMetallic",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareMetallic.glb"
+  },
+  {
+    "name": "CompareNormal",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareNormal.glb"
+  },
+  {
+    "name": "CompareRoughness",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareRoughness.glb"
+  },
+  {
+    "name": "CompareSheen",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareSheen.glb"
+  },
+  {
+    "name": "CompareSpecular",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareSpecular.glb"
+  },
+  {
+    "name": "CompareTransmission",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareTransmission.glb"
+  },
+  {
+    "name": "CompareVolume",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/CompareVolume.glb"
+  },
+  {
+    "name": "Corset",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/Corset.glb"
+  },
+  {
+    "name": "Cube",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/Cube/glTF/Cube.gltf"
+  },
+  {
+    "name": "CubeVisibility",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/CubeVisibility/glTF-Binary/CubeVisibility.glb"
+  },
+  {
+    "name": "DamagedHelmet",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/DamagedHelmet.glb"
+  },
+  {
+    "name": "DiffuseTransmissionPlant",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/DiffuseTransmissionPlant.glb"
+  },
+  {
+    "name": "DiffuseTransmissionTeacup",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/DiffuseTransmissionTeacup.glb"
+  },
+  {
+    "name": "DiffuseTransmissionTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/DiffuseTransmissionTest.glb"
+  },
+  {
+    "name": "DirectionalLight",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/DirectionalLight.glb"
+  },
+  {
+    "name": "DispersionTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/DispersionTest.glb"
+  },
+  {
+    "name": "DragonAttenuation",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/DragonAttenuation.glb"
+  },
+  {
+    "name": "DragonDispersion",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/DragonDispersion.glb"
+  },
+  {
+    "name": "Duck",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/Duck.glb"
+  },
+  {
+    "name": "EmissiveStrengthTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/EmissiveStrengthTest.glb"
+  },
+  {
+    "name": "EnvironmentTest",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/EnvironmentTest/glTF/EnvironmentTest.gltf"
+  },
+  {
+    "name": "FlightHelmet",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/FlightHelmet/glTF/FlightHelmet.gltf"
+  },
+  {
+    "name": "Fox",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/Fox.glb"
+  },
+  {
+    "name": "GlamVelvetSofa",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/GlamVelvetSofa.glb"
+  },
+  {
+    "name": "GlassBrokenWindow",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/GlassBrokenWindow.glb"
+  },
+  {
+    "name": "GlassHurricaneCandleHolder",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/GlassHurricaneCandleHolder.glb"
+  },
+  {
+    "name": "GlassVaseFlowers",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/GlassVaseFlowers.glb"
+  },
+  {
+    "name": "IORTestGrid",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/IORTestGrid.glb"
+  },
+  {
+    "name": "InterpolationTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/InterpolationTest.glb"
+  },
+  {
+    "name": "IridescenceAbalone",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/IridescenceAbalone.glb"
+  },
+  {
+    "name": "IridescenceDielectricSpheres",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/IridescenceDielectricSpheres/glTF/IridescenceDielectricSpheres.gltf"
+  },
+  {
+    "name": "IridescenceLamp",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/IridescenceLamp.glb"
+  },
+  {
+    "name": "IridescenceMetallicSpheres",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/IridescenceMetallicSpheres/glTF/IridescenceMetallicSpheres.gltf"
+  },
+  {
+    "name": "IridescenceSuzanne",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/IridescenceSuzanne.glb"
+  },
+  {
+    "name": "IridescentDishWithOlives",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/IridescentDishWithOlives.glb"
+  },
+  {
+    "name": "Lantern",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/Lantern.glb"
+  },
+  {
+    "name": "LightVisibility",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/LightVisibility/glTF-Binary/LightVisibility.glb"
+  },
+  {
+    "name": "LightsPunctualLamp",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/LightsPunctualLamp.glb"
+  },
+  {
+    "name": "MandarinOrange",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/MandarinOrange/glTF/MandarinOrange.gltf"
+  },
+  {
+    "name": "MaterialsVariantsShoe",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/MaterialsVariantsShoe.glb"
+  },
+  {
+    "name": "MeshPrimitiveModes",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/MeshPrimitiveModes/glTF/MeshPrimitiveModes.gltf"
+  },
+  {
+    "name": "MeshoptCubeTest",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/MeshoptCubeTest/glTF/MeshoptCubeTest.gltf"
+  },
+  {
+    "name": "MetalRoughSpheres",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/MetalRoughSpheres.glb"
+  },
+  {
+    "name": "MetalRoughSpheresNoTextures",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/MetalRoughSpheresNoTextures.glb"
+  },
+  {
+    "name": "MorphPrimitivesTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/MorphPrimitivesTest.glb"
+  },
+  {
+    "name": "MorphStressTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/MorphStressTest.glb"
+  },
+  {
+    "name": "MosquitoInAmber",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/MosquitoInAmber.glb"
+  },
+  {
+    "name": "MultiUVTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/MultiUVTest.glb"
+  },
+  {
+    "name": "MultipleScenes",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/MultipleScenes/glTF/MultipleScenes.gltf"
+  },
+  {
+    "name": "NegativeScaleTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/NegativeScaleTest.glb"
+  },
+  {
+    "name": "NodePerformanceTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/NodePerformanceTest.glb"
+  },
+  {
+    "name": "NodeVisibilityTest",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/NodeVisibilityTest/glTF-Binary/NodeVisibilityTest.glb"
+  },
+  {
+    "name": "NormalTangentMirrorTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/NormalTangentMirrorTest.glb"
+  },
+  {
+    "name": "NormalTangentTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/NormalTangentTest.glb"
+  },
+  {
+    "name": "OrientationTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/OrientationTest.glb"
+  },
+  {
+    "name": "PlaysetLightTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/PlaysetLightTest.glb"
+  },
+  {
+    "name": "PointLightIntensityTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/PointLightIntensityTest.glb"
+  },
+  {
+    "name": "PotOfCoals",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/PotOfCoals.glb"
+  },
+  {
+    "name": "PotOfCoalsAnimationPointer",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/PotOfCoalsAnimationPointer.glb"
+  },
+  {
+    "name": "PrimitiveModeNormalsTest",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/PrimitiveModeNormalsTest/glTF/PrimitiveModeNormalsTest.gltf"
+  },
+  {
+    "name": "RecursiveSkeletons",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/RecursiveSkeletons.glb"
+  },
+  {
+    "name": "RiggedFigure",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/RiggedFigure.glb"
+  },
+  {
+    "name": "RiggedSimple",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/RiggedSimple.glb"
+  },
+  {
+    "name": "ScatterPlant",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/ScatterPlant/glTF-Binary/ScatterPlant.glb"
+  },
+  {
+    "name": "ScatteringSkull",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/ScatteringSkull.glb"
+  },
+  {
+    "name": "SciFiHelmet",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/SciFiHelmet/glTF/SciFiHelmet.gltf"
+  },
+  {
+    "name": "SheenChair",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/SheenChair.glb"
+  },
+  {
+    "name": "SheenCloth",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/SheenCloth/glTF/SheenCloth.gltf"
+  },
+  {
+    "name": "SheenTestGrid",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/SheenTestGrid.glb"
+  },
+  {
+    "name": "SheenWoodLeatherSofa",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/SheenWoodLeatherSofa.glb"
+  },
+  {
+    "name": "SimpleInstancing",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/SimpleInstancing.glb"
+  },
+  {
+    "name": "SimpleMaterial",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/SimpleMaterial/glTF/SimpleMaterial.gltf"
+  },
+  {
+    "name": "SimpleMeshes",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/SimpleMeshes/glTF/SimpleMeshes.gltf"
+  },
+  {
+    "name": "SimpleMorph",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/SimpleMorph/glTF/SimpleMorph.gltf"
+  },
+  {
+    "name": "SimpleSkin",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/SimpleSkin/glTF/SimpleSkin.gltf"
+  },
+  {
+    "name": "SimpleSparseAccessor",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/SimpleSparseAccessor/glTF/SimpleSparseAccessor.gltf"
+  },
+  {
+    "name": "SimpleTexture",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/SimpleTexture/glTF/SimpleTexture.gltf"
+  },
+  {
+    "name": "SpecGlossVsMetalRough",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/SpecGlossVsMetalRough.glb"
+  },
+  {
+    "name": "SpecularSilkPouf",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/SpecularSilkPouf.glb"
+  },
+  {
+    "name": "SpecularTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/SpecularTest.glb"
+  },
+  {
+    "name": "Sponza",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/sponza.glb"
+  },
+  {
+    "name": "StainedGlassLamp",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/StainedGlassLamp/glTF/StainedGlassLamp.gltf"
+  },
+  {
+    "name": "SunglassesKhronos",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/SunglassesKhronos.glb"
+  },
+  {
+    "name": "Suzanne",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/Suzanne/glTF/Suzanne.gltf"
+  },
+  {
+    "name": "TextureCoordinateTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/TextureCoordinateTest.glb"
+  },
+  {
+    "name": "TextureEncodingTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/TextureEncodingTest.glb"
+  },
+  {
+    "name": "TextureLinearInterpolationTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/TextureLinearInterpolationTest.glb"
+  },
+  {
+    "name": "TextureSettingsTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/TextureSettingsTest.glb"
+  },
+  {
+    "name": "TextureTransformMultiTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/TextureTransformMultiTest.glb"
+  },
+  {
+    "name": "TextureTransformTest",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/TextureTransformTest/glTF/TextureTransformTest.gltf"
+  },
+  {
+    "name": "ToyCar",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/ToyCar.glb"
+  },
+  {
+    "name": "TrafficCone",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/TrafficCone/glTF-Binary/TrafficCone.glb"
+  },
+  {
+    "name": "TransmissionOrderTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/TransmissionOrderTest.glb"
+  },
+  {
+    "name": "TransmissionRoughnessTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/TransmissionRoughnessTest.glb"
+  },
+  {
+    "name": "TransmissionTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/TransmissionTest.glb"
+  },
+  {
+    "name": "TransmissionThinwallTestGrid",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/TransmissionThinwallTestGrid.glb"
+  },
+  {
+    "name": "Triangle",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/Triangle/glTF/Triangle.gltf"
+  },
+  {
+    "name": "TriangleWithoutIndices",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/TriangleWithoutIndices/glTF/TriangleWithoutIndices.gltf"
+  },
+  {
+    "name": "TwoSidedPlane",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/TwoSidedPlane/glTF/TwoSidedPlane.gltf"
+  },
+  {
+    "name": "USDShaderBallForGltf",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/USDShaderBallForGltf/glTF-Binary/USDShaderBallForGltf.glb"
+  },
+  {
+    "name": "Unicode❤♻Test",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/Unicode❤♻Test/glTF-Binary/Unicode❤♻Test.glb"
+  },
+  {
+    "name": "UnlitTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/UnlitTest.glb"
+  },
+  {
+    "name": "VertexColorTest",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/VertexColorTest.glb"
+  },
+  {
+    "name": "VirtualCity",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/VirtualCity.glb"
+  },
+  {
+    "name": "WaterBottle",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/WaterBottle.glb"
+  },
+  {
+    "name": "XmpMetadataRoundedCube",
+    "url": "/assets/KhronosGroup/glTF-Sample-Assets/XmpMetadataRoundedCube.glb"
+  }
+]

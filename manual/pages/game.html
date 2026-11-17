@@ -82,14 +82,14 @@ the code related to framing the scene and added this code to load all models.</p
 <pre class="prettyprint showlinemods notranslate lang-js" translate="no">const manager = new THREE.LoadingManager();
 manager.onLoad = init;
 const models = {
-  pig:    { url: '/assets/BenHouston3D/three/pig.glb' },
-  cow:    { url: '/assets/BenHouston3D/three/cow.glb' },
-  llama:  { url: '/assets/BenHouston3D/three/llama.glb' },
-  pug:    { url: '/assets/BenHouston3D/three/pug.glb' },
-  sheep:  { url: '/assets/BenHouston3D/three/sheep.glb' },
-  zebra:  { url: '/assets/BenHouston3D/three/zebra.glb' },
-  horse:  { url: '/assets/BenHouston3D/three/horse-a4d6f9e2.glb' },
-  knight: { url: '/assets/BenHouston3D/three/knightcharacter.glb' },
+  pig:    { url: '/assets/mrdoob/three/pig.glb' },
+  cow:    { url: '/assets/mrdoob/three/cow.glb' },
+  llama:  { url: '/assets/mrdoob/three/llama.glb' },
+  pug:    { url: '/assets/mrdoob/three/pug.glb' },
+  sheep:  { url: '/assets/mrdoob/three/sheep.glb' },
+  zebra:  { url: '/assets/mrdoob/three/zebra.glb' },
+  horse:  { url: '/assets/mrdoob/three/horse-a4d6f9e2.glb' },
+  knight: { url: '/assets/mrdoob/three/knightcharacter.glb' },
 };
 {
   const gltfLoader = new GLTFLoader(manager);

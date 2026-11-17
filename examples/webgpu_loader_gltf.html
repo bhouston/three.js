@@ -65,7 +65,7 @@
 				scene = new THREE.Scene();
 
 				new UltraHDRLoader()
-					.load( '/assets/BenHouston3D/three/royal-esplanade-2k-hdr.jpg', function ( texture ) {
+					.load( '/assets/mrdoob/three/royal-esplanade-2k-hdr.jpg', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 						//texture.minFilter = THREE.LinearMipmapLinearFilter;
@@ -76,7 +76,7 @@
 
 						// model
 
-						fetch( 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/model-index.json' )
+						fetch( 'models/gltf/model-index.json' )
 							.then( response => response.json() )
 							.then( models => {
 
@@ -129,9 +129,7 @@
 
 			function loadModel( modelInfo ) {
 
-				const variants = modelInfo.variants;
-				const variant = variants[ 'glTF-Binary' ] || variants[ 'glTF' ];
-				const url = `https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/${ modelInfo.name }/${ variant.endsWith( '.glb' ) ? 'glTF-Binary' : 'glTF' }/${ variant }`;
+				const url = modelInfo.url;
 
 				if ( currentModel ) {
 

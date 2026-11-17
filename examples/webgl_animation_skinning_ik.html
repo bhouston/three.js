@@ -78,7 +78,7 @@
 			const gltfLoader = new GLTFLoader();
 			gltfLoader.setDRACOLoader( dracoLoader );
 
-			const gltf = await gltfLoader.loadAsync( '/assets/BenHouston3D/three/kira.glb' );
+			const gltf = await gltfLoader.loadAsync( '/assets/mrdoob/three/kira.glb' );
 			gltf.scene.traverse( n => {
 
 				if ( n.name === 'head' ) OOI.head = n;

@@ -102,7 +102,7 @@ export async function init() {
 
 	// Load environment map
 	const texture = await new HDRLoader()
-		.loadAsync( '/assets/BenHouston3D/three/ferndale-studio-04-1k.hdr' );
+		.loadAsync( '/assets/mrdoob/three/ferndale-studio-04-1k.hdr' );
 
 	texture.mapping = THREE.EquirectangularReflectionMapping;
 	scene.environment = texture;

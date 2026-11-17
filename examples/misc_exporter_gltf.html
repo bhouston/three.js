@@ -430,7 +430,7 @@
 				// Model requiring KHR_mesh_quantization
 				// ---------------------------------------------------------------------
 				const loader = new GLTFLoader();
-				loader.load( '/assets/BenHouston3D/three/shaderball.glb', function ( gltf ) {
+				loader.load( '/assets/mrdoob/three/shaderball.glb', function ( gltf ) {
 
 					model = gltf.scene;
 					model.scale.setScalar( 50 );
@@ -494,7 +494,7 @@
 				const gltfLoader = new GLTFLoader();
 				gltfLoader.setKTX2Loader( ktx2Loader );
 				gltfLoader.setMeshoptDecoder( MeshoptDecoder );
-				gltfLoader.load( '/assets/BenHouston3D/three/coffeemat.glb', function ( gltf ) {
+				gltfLoader.load( '/assets/mrdoob/three/coffeemat.glb', function ( gltf ) {
 
 					gltf.scene.position.x = 400;
 					gltf.scene.position.z = - 200;

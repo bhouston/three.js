@@ -57,7 +57,7 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, mx_hsvtorgb } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
@@ -275,7 +275,9 @@
 			const sceneNormal = sample( ( uv ) => normalDecode( scenePassNormal.sample( uv ) ) );
 
 			normalOutputNode = vec4( packNormalToRGB( sceneNormal.sample( screenUV ) ), 1 );
-			depthOutputNode = vec4( vec3( scenePass.getLinearDepthNode() ), 1 );
+			// Repeat the full hue wheel 16 times over normalized linear depth.
+			const depthHue = scenePass.getLinearDepthNode().mul( 16 ).fract();
+			depthOutputNode = vec4( mx_hsvtorgb( vec3( depthHue, 1, 1 ) ), 1 );
 
 			// metalness in diffuseColor.a, roughness in velocity.z (no separate metalrough MRT)
 			const scenePassMetalRough = sample( ( uv ) => vec2(

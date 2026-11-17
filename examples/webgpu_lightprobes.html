@@ -36,6 +36,8 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
+			import { builtinIndirectContext, context } from 'three/tsl';
+			import { lightProbeGridDiffuse } from 'three/addons/tsl/lighting/LightProbeGridDiffuse.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
@@ -166,6 +168,26 @@
 
 				async function bake( resolution ) {
 
+					// Captures use the baker's bounce grids, not the display's diffuse sources.
+					const currentContext = renderer.contextNode;
+					renderer.contextNode = context();
+
+					try {
+
+						await bakeProbes( resolution );
+
+					} finally {
+
+						renderer.contextNode = currentContext;
+
+					}
+
+					renderer.contextNode = builtinIndirectContext( { diffuse: [ lightProbeGridDiffuse( probes ) ] } );
+
+				}
+
+				async function bakeProbes( resolution ) {
+
 					light.intensity = params.lightIntensity;
 
 					if ( probes ) {
@@ -184,7 +206,6 @@
 					// Each bounce pass captures the light of the previous pass.
 					probes.bake( renderer, scene, { cubemapSize: 32, near: 0.05, far: 20, bounces: params.bounces } );
 					probes.visible = params.enabled;
-					scene.add( probes );
 
 					// Update debug visualization
 

@@ -44,8 +44,9 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking, builtinIndirectContext } from 'three/tsl';
+		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking, builtinIndirectContext, Fn, positionPrevious, velocity } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { ssrHistory } from 'three/addons/tsl/display/SSRHistory.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -55,13 +56,13 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
-			output: 'Beauty', enabled: true, quality: 0.5, intensity: 1,
+			output: 'Beauty', lighting: 'Indirect BRDF', enabled: true, quality: 0.5, intensity: 1,
 			maxDistance: 1, thickness: 0.03, binaryRefine: false,
 			roughness: 1, blur: true, blurQuality: 1
 		};
 
 		let camera, scene, model, renderer, renderPipeline;
-		let controls;
+		let controls, reflectionHistory, beautyPass;
 
 		init();
 
@@ -121,7 +122,6 @@
 			renderer = new THREE.WebGPURenderer();
 			// renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
-			renderer.setAnimationLoop( animate );
 			renderer.toneMapping = THREE.ACESFilmicToneMapping;
 			renderer.inspector = new Inspector();
 			document.body.appendChild( renderer.domElement );
@@ -143,7 +143,8 @@
 			scenePass.setMRT( mrt( {
 				output: output,
 				normal: packNormalToRGB( normalView ),
-				metalrough: vec2( metalness, roughness ) // pack metalness and roughness into a single attachment
+				metalrough: vec2( metalness, roughness ), // pack metalness and roughness into a single attachment
+				velocity: vec4( velocity, velocity.previousCameraViewMatrix.mul( velocity.previousModelWorldMatrix ).mul( vec4( positionPrevious, 1 ) ).z.toVarying(), 0 )
 			} ) );
 
 			const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
@@ -175,34 +176,64 @@
 
 			//
 
-			const reflection = ssr( scenePassColor, scenePassDepth, sceneNormal, {
-				metalnessNode: scenePassMetalRough.r,
-				roughnessNode: scenePassMetalRough.g,
-				binaryRefine: params.binaryRefine
-			} ).toInspector( 'SSR' );
-
-			const raw = passTexture( reflection, reflection.getRenderTarget().texture );
-			const blurred = reflection.getTextureNode();
+			const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
+			reflectionHistory = ssrHistory( camera, scenePass, scenePassVelocity );
+			let reflection, raw, blurred, spatialAA;
 			const blurEnabled = uniform( 1 );
 
-			// the materials take the reflections into their specular BRDF, in front of the environment
+			function updateLighting() {
 
-			const source = mix( reflection.getSpecularSource( raw.sample( screenUV ) ), reflection.getSpecularSource(), blurEnabled );
+				for ( const effect of [ reflection, beautyPass, spatialAA ] ) {
 
-			const beautyPass = pass( scene, camera );
-			beautyPass.contextNode = builtinIndirectContext( { specular: [ source ] } );
+					if ( effect !== undefined ) effect.dispose();
 
-			const spatialAA = smaa( beautyPass );
+				}
+
+				reflectionHistory.invalidate();
+
+				reflection = ssr( params.lighting === 'Indirect BRDF' ? reflectionHistory.source : scenePassColor, scenePassDepth, sceneNormal, {
+					camera,
+					metalnessNode: scenePassMetalRough.r,
+					roughnessNode: scenePassMetalRough.g,
+					binaryRefine: params.binaryRefine
+				} ).toInspector( 'SSR' );
+
+				raw = passTexture( reflection, reflection.getRenderTarget().texture );
+				blurred = reflection.getTextureNode();
+				// the materials take the reflections into their specular BRDF, in front of the environment
+
+				const source = mix( reflection.getSpecularSource( raw.sample( screenUV ) ), reflection.getSpecularSource(), blurEnabled );
+
+				beautyPass = pass( scene, camera );
+				beautyPass.contextNode = builtinIndirectContext( { specular: [ source ] } );
+
+				spatialAA = smaa( params.lighting === 'Indirect BRDF' ? beautyPass : vec4( scenePassColor.rgb.add( source.rgb ), 1 ) );
+
+				updateParameters();
+				updateOutput();
+
+			}
 
 			function updateOutput() {
 
 				let view;
-		
+
 				switch ( params.output ) {
 
 					case 'Beauty': view = spatialAA; break;
 					case 'SSR': view = vec4( raw.rgb, 1 ); break;
 					case 'SSR DN': view = vec4( blurred.rgb, 1 ); break;
+
+				}
+
+				if ( params.enabled && params.lighting === 'Indirect BRDF' && params.output !== 'Beauty' ) {
+
+					const beautyColor = beautyPass.getTextureNode();
+					view = view.bypass( Fn( () => {
+
+						beautyColor.toVar();
+
+					} )() );
 
 				}
 
@@ -222,6 +253,8 @@
 
 			const displayGui = renderer.inspector.createParameters( 'Display' );
 			displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN' ] ).name( 'Output' ).info( 'DN means denoise; this mirror example uses spatial blur rather than stochastic denoising.' ).onChange( updateOutput );
+
+			displayGui.add( params, 'lighting', [ 'Indirect BRDF', 'Layered' ] ).name( 'Lighting' ).onChange( updateLighting );
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params, 'enabled' ).name( 'Enabled' ).onChange( updateOutput );
@@ -246,8 +279,8 @@
 
 			} );
 
-			updateParameters();
-			updateOutput();
+			updateLighting();
+			renderer.setAnimationLoop( animate );
 
 			function updateParameters() {
 
@@ -275,7 +308,18 @@
 
 			controls.update();
 
+			reflectionHistory.prepare( renderer );
 			renderPipeline.render();
+
+			if ( params.enabled && params.lighting === 'Indirect BRDF' ) {
+
+				reflectionHistory.capture( renderer, beautyPass.getTexture( 'output' ) );
+
+			} else {
+
+				reflectionHistory.invalidate();
+
+			}
 
 		}
 

@@ -166,7 +166,7 @@
 
 				// Bake light probe volume
 
-				async function bake( resolution ) {
+				function bake( resolution ) {
 
 					// Captures use the baker's bounce grids, not the display's diffuse sources.
 					const currentContext = renderer.contextNode;
@@ -174,7 +174,7 @@
 
 					try {
 
-						await bakeProbes( resolution );
+						bakeProbes( resolution );
 
 					} finally {
 
@@ -186,7 +186,7 @@
 
 				}
 
-				async function bakeProbes( resolution ) {
+				function bakeProbes( resolution ) {
 
 					light.intensity = params.lightIntensity;
 

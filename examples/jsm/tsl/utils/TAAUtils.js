@@ -84,7 +84,8 @@ export const sampleCurrentDepth = Fn( ( [ depthNode, positionTexel, cameraNearFa
 
 		for ( let y = - 1; y <= 1; ++ y ) {
 
-			const neighbor = positionTexel.add( vec2( x, y ) ).toConst();
+			// Integer texture loads can read outside the image at viewport edges.
+			const neighbor = positionTexel.add( vec2( x, y ) ).clamp( vec2( 0 ), vec2( depthNode.size() ).sub( 1 ) ).toConst();
 			let depth = depthNode.load( neighbor ).r;
 			if ( builder.renderer.reversedDepthBuffer ) depth = depth.oneMinus();
 			depth = projectionDepth( depth, cameraNearFar.x, cameraNearFar.y ).toConst();

@@ -72,11 +72,11 @@ class IndirectLightingNode extends LightingNode {
 
 		if ( environmentNode !== null ) {
 
-			// the environment keeps its own slot since it also lights the multiple scattering of the specular lobes
+			// the environment is the last indirect diffuse source
 
 			const irradiance = environmentNode.getIndirectDiffuse( { normal: normalWorld } );
 
-			context.iblIrradiance.addAssign( diffuse.remaining !== null ? irradiance.mul( diffuse.remaining ) : irradiance );
+			context.irradiance.addAssign( diffuse.remaining !== null ? irradiance.mul( diffuse.remaining ) : irradiance );
 
 		}
 

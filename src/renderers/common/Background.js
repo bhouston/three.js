@@ -2,6 +2,7 @@ import DataMap from './DataMap.js';
 import Color4 from './Color4.js';
 import { vec4, normalWorldGeometry, backgroundBlurriness, backgroundIntensity, backgroundRotation, positionLocal, cameraProjectionMatrix, modelViewMatrix, div } from '../../nodes/TSL.js';
 import NodeMaterial from '../../materials/nodes/NodeMaterial.js';
+import OutputStructNode from '../../nodes/core/OutputStructNode.js';
 
 import { Mesh } from '../../objects/Mesh.js';
 import { SphereGeometry } from '../../geometries/SphereGeometry.js';
@@ -9,6 +10,51 @@ import { BackSide } from '../../constants.js';
 import { error } from '../../utils.js';
 
 const _clearColor = /*@__PURE__*/ new Color4();
+
+// Backgrounds have no surface data. Match the auxiliary attachments' clear values
+// instead of evaluating the scene's MRT nodes on the sky sphere.
+class BackgroundNode extends OutputStructNode {
+
+	constructor( colorNode ) {
+
+		super();
+
+		this.colorNode = colorNode;
+
+	}
+
+	setup( builder ) {
+
+		const renderer = builder.renderer;
+		const renderTarget = renderer.getRenderTarget();
+
+		let colorNode = this.colorNode.max( 0 );
+
+		if ( builder.context.getOutput ) colorNode = builder.context.getOutput( colorNode, builder );
+
+		this.members = [ colorNode ];
+
+		if ( renderTarget !== null ) {
+
+			const rendererMRT = renderer.getMRT();
+
+			for ( let i = 1; i < renderTarget.textures.length; i ++ ) {
+
+				const name = renderTarget.textures[ i ].name;
+				const clearColor = rendererMRT !== null ? rendererMRT.getClearColor( name ) : null;
+				const value = clearColor !== null ? vec4( clearColor.r, clearColor.g, clearColor.b, clearColor.a ) : vec4( 0, 0, 0, 1 );
+
+				this.members.push( value.convert( builder.getOutputType( i ) ) );
+
+			}
+
+		}
+
+		return super.setup( builder );
+
+	}
+
+}
 
 /**
  * This renderer module manages the background.
@@ -125,7 +171,7 @@ class Background extends DataMap {
 				nodeMaterial.fog = false;
 				nodeMaterial.lights = false;
 				nodeMaterial.vertexNode = viewProj;
-				nodeMaterial.colorNode = backgroundMeshNode;
+				nodeMaterial.fragmentNode = new BackgroundNode( backgroundMeshNode );
 
 				sceneData.backgroundMeshNode = backgroundMeshNode;
 				sceneData.backgroundMesh = backgroundMesh = new Mesh( new SphereGeometry( 1, 32, 32 ), nodeMaterial );

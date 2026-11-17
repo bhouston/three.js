@@ -21,7 +21,7 @@
 			</div>
 
 			<small>
-				Light probes and environment lighting.
+				Diffuse lighting from a light probe, specular reflections from the environment.
 			</small>
 		</div>
 
@@ -39,6 +39,8 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
+			import { builtinIndirectContext } from 'three/tsl';
+			import { lightProbeDiffuse } from 'three/addons/tsl/lighting/LightProbeDiffuse.js';
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
@@ -92,7 +94,8 @@
 
 				// probe
 				lightProbe = new THREE.LightProbe();
-				scene.add( lightProbe );
+				// The source replaces environment diffuse; do not also add the probe as a light.
+				renderer.contextNode = builtinIndirectContext( { diffuse: [ lightProbeDiffuse( lightProbe ) ] } );
 
 				// light
 				directionalLight = new THREE.DirectionalLight( 0xffffff, API.directionalLightIntensity );

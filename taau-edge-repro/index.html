@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>TAAU viewport-edge regression</title>
+<style>
+body { margin: 0; padding: 24px; background: #17212b; color: #eef3f8; font: 16px system-ui; }
+h1 { margin: 0 0 8px; font-size: 24px; } p { margin: 0 0 24px; color: #bbc9d8; }
+main { display: flex; gap: 24px; } h2 { font-size: 18px; }
+canvas { width: 512px; height: 384px; image-rendering: pixelated; border: 1px solid #64748b; }
+</style>
+<h1>TAAU: viewport-edge flashing</h1>
+<p>Static two-color input at half resolution; standard TAAU jitter. Four-times zoom makes the border visible.</p>
+<main><section id="before"><h2>Before: border colors change</h2></section><section id="after"><h2>After: stable borders</h2></section></main>
+<script type="importmap">
+{"imports":{"three":"../src/Three.WebGPU.js","three/webgpu":"../src/Three.WebGPU.js","three/tsl":"../src/Three.TSL.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three/webgpu';
+import { pass, mrt, output, velocity, rtt, vec4, vec3, uv } from 'three/tsl';
+import { taau as before } from './before/display/TAAUNode.js';
+import { taau as after } from '../examples/jsm/tsl/display/TAAUNode.js';
+const panels = [];
+for ( const [ name, taau ] of [ [ 'before', before ], [ 'after', after ] ] ) {
+ const renderer = new THREE.WebGPURenderer();
+ renderer.setSize( 128, 96, false );
+ document.getElementById( name ).appendChild( renderer.domElement );
+ await renderer.init();
+ const scene = new THREE.Scene();
+ scene.background = new THREE.Color( .8, .4, .2 );
+ const camera = new THREE.PerspectiveCamera( 50, 128 / 96, .1, 50 );
+ const scenePass = pass( scene, camera );
+ scenePass.setMRT( mrt( { output, velocity } ) );
+ scenePass.setResolutionScale( .5 );
+ const source = rtt( vec4( uv().y.greaterThan( .5 ).select( vec3( .8, .4, .2 ), vec3( .1, .2, .8 ) ), 1 ), null, null, { resolutionScale: .5 } );
+ const taa = taau( source, scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'velocity' ), camera );
+ const pipeline = new THREE.RenderPipeline( renderer, taa );
+ pipeline.outputColorTransform = false;
+ renderer.setAnimationLoop( () => pipeline.render() );
+ panels.push( { renderer, taa, pipeline } );
+}
+window.panels = panels;
+</script>
+</html>

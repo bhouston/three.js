@@ -1334,7 +1334,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "ABeautifulGame",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/ABeautifulGame@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/ABeautifulGame.glb",
       "sha256": "bd7133b4b322aae97c589b8839dae8155ad2546acb35ae32a127e722a959d007",
       "bytes": 42977928,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1349,7 +1348,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AlphaBlendModeTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AlphaBlendModeTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AlphaBlendModeTest.glb",
       "sha256": "37c3577d143071b42dd46e9d942b157837eb25c6340112171d7faecaa987b14e",
       "bytes": 2978812,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1364,7 +1362,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AnimatedColorsCube",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AnimatedColorsCube@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AnimatedColorsCube.glb",
       "sha256": "995bb9db5bd011b64bc9fc2235c60e5455e2931e509db5e715b4d20afc5ba71e",
       "bytes": 15184,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1379,7 +1376,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AnimatedMorphCube",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AnimatedMorphCube@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AnimatedMorphCube.glb",
       "sha256": "214ee56160a50dbf22543a1d66dbf860986e87f0efac3d89feac1359d0e6aeab",
       "bytes": 6752,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1394,7 +1390,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AnimationPointerUVs",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AnimationPointerUVs@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AnimationPointerUVs.glb",
       "sha256": "a4a25ab261e62bd298f5601813a099bc329513047b47b912a515db0b740b4534",
       "bytes": 7980492,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1409,7 +1404,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AnisotropyBarnLamp",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AnisotropyBarnLamp@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AnisotropyBarnLamp.glb",
       "sha256": "0e728826c30bd6f3a18a0911db9f5f9ddc2dafa8e20bf9c3312c9625d1e32a24",
       "bytes": 7833440,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1424,7 +1418,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AnisotropyDiscTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AnisotropyDiscTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AnisotropyDiscTest.glb",
       "sha256": "649b47c896f078fa56070f0ddaf07c57d6a7d109324acdd7d9f2d6748d9842ec",
       "bytes": 242128,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1439,7 +1432,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AnisotropyRotationTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AnisotropyRotationTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AnisotropyRotationTest.glb",
       "sha256": "8f6a45e69b1304cde2eb55edfd700cb3e73692be38d6f0ae146c41029a907e90",
       "bytes": 832340,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1454,7 +1446,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AnisotropyStrengthTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AnisotropyStrengthTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AnisotropyStrengthTest.glb",
       "sha256": "306321ff8214727b145188ceb56d96d2882b393d0b596fa089fd20b07e959834",
       "bytes": 94444,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1469,7 +1460,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AntiqueCamera",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AntiqueCamera@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AntiqueCamera.glb",
       "sha256": "ae89695479ad997f09ebea8060a5ad01312ad8fe7ffb92f73b4e895109feecd2",
       "bytes": 17540348,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1484,7 +1474,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "AttenuationTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/AttenuationTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/AttenuationTest.glb",
       "sha256": "7ca161b7f8a9e4b2ac1f7f75816b5848bb31f3b4c226c4cb731b487c8809b756",
       "bytes": 57532,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1499,7 +1488,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "Avocado",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/Avocado@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/Avocado.glb",
       "sha256": "ccc9c3ce56423720b09399c2351537207cd5a65f859f9e6e2f30922762f3abd4",
       "bytes": 8110040,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1514,7 +1502,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "BarramundiFish",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/BarramundiFish@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/BarramundiFish.glb",
       "sha256": "ecc3bafb6b00f2c8b810863c388e3768a7b7ea0d0335e8cb8c574c266e571f4a",
       "bytes": 12488144,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1529,7 +1516,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "BoomBox",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/BoomBox@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/BoomBox.glb",
       "sha256": "f8b918445ebdd006768232205a62f5182d2208ca57f84c6ccc084943c0bc8f15",
       "bytes": 10614184,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1544,7 +1530,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "Box",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/Box@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/Box.glb",
       "sha256": "ed52f7192b8311d700ac0ce80644e3852cd01537e4d62241b9acba023da3d54e",
       "bytes": 1664,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1559,7 +1544,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "BoxAnimated",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/BoxAnimated@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/BoxAnimated.glb",
       "sha256": "ad0d18d9a21df0d7c2bd3890e60ce69d60d39a55d9b82bacea7e77ac9e583839",
       "bytes": 11944,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1574,7 +1558,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "BoxInterleaved",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/BoxInterleaved@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/BoxInterleaved.glb",
       "sha256": "b2ae631f118f1d13f829cdf9d9dc0fe7cb582de20b8c51d17f81f77a1cbf290c",
       "bytes": 1632,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1589,7 +1572,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "BoxTextured",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/BoxTextured@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/BoxTextured.glb",
       "sha256": "b510eca2e2ef33f62f9ed57d6e7ce2d10ebb2bdebc4a8e59d347719ba81abdf4",
       "bytes": 5956,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1604,7 +1586,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "BoxTexturedNonPowerOfTwo",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/BoxTexturedNonPowerOfTwo@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/BoxTexturedNonPowerOfTwo.glb",
       "sha256": "624621d7885bb418ac64e99c994b45634a32c87caeefae67b06c5c0531c57115",
       "bytes": 4696,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1619,7 +1600,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "BoxVertexColors",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/BoxVertexColors@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/BoxVertexColors.glb",
       "sha256": "9c48227f33b0ba2fbcf23b98ebf60d1c8ae0c6e6c5281e0aa3cc58affee10382",
       "bytes": 1924,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1634,7 +1614,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "BrainStem",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/BrainStem@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/BrainStem.glb",
       "sha256": "ddda3a53b5c9771f992463034a430340ba2bac571e5869c723f7cba4976e9174",
       "bytes": 3194848,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1649,7 +1628,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CarConcept",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CarConcept@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CarConcept.glb",
       "sha256": "659c592e20aba7afa920db7d14ad767874741384c215ee1df23a5e1c5e1c411c",
       "bytes": 10267996,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1664,7 +1642,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CarbonFibre",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CarbonFibre@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CarbonFibre.glb",
       "sha256": "2def0763e86c723bccdf6ad234f4f858c678f2f2c3beee7fd1f003a1881c656e",
       "bytes": 429880,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1679,7 +1656,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CesiumMan",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CesiumMan@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CesiumMan.glb",
       "sha256": "b7001eaeea8254bd44773bcd247e78696d94169388fbb2a1800fc69434e777d9",
       "bytes": 438044,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1694,7 +1670,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CesiumMilkTruck",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CesiumMilkTruck@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CesiumMilkTruck.glb",
       "sha256": "09371b34608116de5842d23abe260bf11acf3e1554daf334a647eb566eee5c49",
       "bytes": 369980,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1709,7 +1684,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "ChairDamaskPurplegold",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/ChairDamaskPurplegold@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/ChairDamaskPurplegold.glb",
       "sha256": "9862ff753f25ca6738bf5924afbfde01b794fae73db3f94bcd8cdc7cc570d9bb",
       "bytes": 2028924,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1724,7 +1698,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "ChronographWatch",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/ChronographWatch@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/ChronographWatch.glb",
       "sha256": "8e875fcd83efb433afed9ef1c18b2c2b2e075e2bf48371cadfd2a3cf529f1aef",
       "bytes": 7446368,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1739,7 +1712,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "ClearCoatCarPaint",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/ClearCoatCarPaint@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/ClearCoatCarPaint.glb",
       "sha256": "4d4b32f2ef6d341191f6b6d6834f2b192762c878cd25d44e6b4b14514cd4be93",
       "bytes": 116948,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1754,7 +1726,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "ClearCoatTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/ClearCoatTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/ClearCoatTest.glb",
       "sha256": "c3a1cbe318cd043b937130af4eb83ec2ea0b03613387b1b7d769dfab4ac15948",
       "bytes": 258048,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1769,7 +1740,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "ClearcoatWicker",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/ClearcoatWicker@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/ClearcoatWicker.glb",
       "sha256": "f162b0cd7f8e6b7cef211eec57762165a78039676b8592ce1f965e2ddb34e843",
       "bytes": 1299752,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1784,7 +1754,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CommercialRefrigerator",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CommercialRefrigerator@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CommercialRefrigerator.glb",
       "sha256": "ef8da8b144e650c277ac953e6d9e50ac1689ff1ee88c2c5bd9551ae8bccb6065",
       "bytes": 10131180,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1799,7 +1768,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareAlphaCoverage",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareAlphaCoverage@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareAlphaCoverage.glb",
       "sha256": "c61a2aa562b4dae987c246202d1a1d20a36a8cc92d38e10c2dc89adc403b0e6c",
       "bytes": 3872604,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1814,7 +1782,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareAmbientOcclusion",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareAmbientOcclusion@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareAmbientOcclusion.glb",
       "sha256": "abdbb1427ccfa0bb12308d0e796a4d82640d8a4898e0ab8599cd379ef255df45",
       "bytes": 4828680,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1829,7 +1796,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareAnisotropy",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareAnisotropy@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareAnisotropy.glb",
       "sha256": "5b4d9c7e99f85054983697112bab468c344b8984feb7299702ea6c93ddab292e",
       "bytes": 1085084,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1844,7 +1810,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareBaseColor",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareBaseColor@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareBaseColor.glb",
       "sha256": "1fd21e793652874eaa20e9c3723c508c4f1039bf8d84c09e4d0998b97691f77b",
       "bytes": 1507816,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1859,7 +1824,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareClearcoat",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareClearcoat@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareClearcoat.glb",
       "sha256": "9dc6879f797c7dd9dd1322dc6a392ff66952855f329ac5239b9c58a68f804a88",
       "bytes": 193920,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1874,7 +1838,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareDispersion",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareDispersion@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareDispersion.glb",
       "sha256": "1c3eff819615d7e6d06e605f728907006eb6c36ef2ead53cc328e65d38a215c4",
       "bytes": 60432,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1889,7 +1852,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareEmissiveStrength",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareEmissiveStrength@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareEmissiveStrength.glb",
       "sha256": "e40d8e1d98345ae16211814bab097307c8710f1ae4f9399fe14e01049f3e7bd8",
       "bytes": 111796,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1904,7 +1866,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareIor",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareIor@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareIor.glb",
       "sha256": "3588b4b522d2a756809b337353c017a412b9e38793b60355fdc6eb162b360019",
       "bytes": 213104,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1919,7 +1880,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareIridescence",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareIridescence@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareIridescence.glb",
       "sha256": "abda6e8bcb13ad04534c90bc4ce9b21e80f2d8b74ac4d911800269f0009ff073",
       "bytes": 214756,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1934,7 +1894,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareMetallic",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareMetallic@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareMetallic.glb",
       "sha256": "5b57f1358c886fa33736c07adad0a76e693a6cf1d7f1bae4b70533b5de119b78",
       "bytes": 172180,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1949,7 +1908,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareNormal",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareNormal@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareNormal.glb",
       "sha256": "076ab65c1ed62ad3097766c0dc74e41783e5f44a0711f9b2755bde892ec5075f",
       "bytes": 220900,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1964,7 +1922,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareRoughness",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareRoughness@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareRoughness.glb",
       "sha256": "6b47b85d117f2e1951546e9a46bffa6cb91c8436441a1ec913feaac0f646f5b3",
       "bytes": 155660,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1979,7 +1936,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareSheen",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareSheen@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareSheen.glb",
       "sha256": "70b6ab5ba8006aa71079b567783a81cfe778a11cca8abc44c45e5e0b1f4252cc",
       "bytes": 883968,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -1994,7 +1950,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareSpecular",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareSpecular@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareSpecular.glb",
       "sha256": "57ea169e0b9b4a4ea1cb27980226974d0da25897445c9f29c3c817698dd923d8",
       "bytes": 1408364,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2009,7 +1964,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareTransmission",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareTransmission@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareTransmission.glb",
       "sha256": "012a3ace61050f4aef77b416c56b3f8f313e1fa68c9040ce3d5037f67eea484f",
       "bytes": 357024,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2024,7 +1978,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "CompareVolume",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/CompareVolume@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/CompareVolume.glb",
       "sha256": "cb88f5dd70c1c2700e2a28caa5b612f4b6e8c34183d6261c681727d8bafdf7d2",
       "bytes": 399760,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2039,24 +1992,8 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "Corset",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/Corset@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/Corset.glb",
       "sha256": "9582c0dc0dee813be77f60e6ddf7213987c7e11497bf3cc66fd7b18957ae0d26",
       "bytes": 13491364,
-      "packaging": "Existing Land of Assets upload; bytes reused unchanged"
-    },
-    {
-      "organization": "KhronosGroup",
-      "project": "glTF-Sample-Assets",
-      "asset": "DamagedHelmet",
-      "type": "MODEL",
-      "version": "1.0.0",
-      "filename": "DamagedHelmet.glb",
-      "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
-      "catalogModel": "DamagedHelmet",
-      "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/DamagedHelmet@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/DamagedHelmet.glb",
-      "sha256": "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8",
-      "bytes": 3773916,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
     },
     {
@@ -2069,7 +2006,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "DiffuseTransmissionPlant",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/DiffuseTransmissionPlant@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/DiffuseTransmissionPlant.glb",
       "sha256": "1748be8847e24bdd5cb6c5ac2bfd0afe8f11efc4f85091148550555e47c7ee83",
       "bytes": 5759100,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2084,7 +2020,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "DiffuseTransmissionTeacup",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/DiffuseTransmissionTeacup@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/DiffuseTransmissionTeacup.glb",
       "sha256": "d4f567186fea262819aac6664cb9d7cef7f4600406038046771a69e10363935b",
       "bytes": 4795028,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2099,7 +2034,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "DiffuseTransmissionTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/DiffuseTransmissionTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/DiffuseTransmissionTest.glb",
       "sha256": "cac9152a1215177c479f33cc0f5d1b64f92010311d2316dc42dde87fa505e282",
       "bytes": 238336,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2114,7 +2048,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "DirectionalLight",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/DirectionalLight@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/DirectionalLight.glb",
       "sha256": "82e50feb151203f431a3b43985e9f4b2a54131b61a7a8677954922630d90f3de",
       "bytes": 453520,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2129,7 +2062,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "DispersionTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/DispersionTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/DispersionTest.glb",
       "sha256": "bbac38386632b5a7a27289737963314c2f92095074dfdf0e8c0c1c25270b3e37",
       "bytes": 2310944,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2144,7 +2076,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "DragonAttenuation",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/DragonAttenuation@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/DragonAttenuation.glb",
       "sha256": "ec97df715d4207c0e39b60c329db43032872794df60e1279b7652314cf0a999e",
       "bytes": 6401616,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2159,7 +2090,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "DragonDispersion",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/DragonDispersion@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/DragonDispersion.glb",
       "sha256": "4656f3c0fd3fe3f2b69831dfbf1a33b66ca8ce51d5e46efd277f96b37de0b706",
       "bytes": 6401724,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2174,7 +2104,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "Duck",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/Duck@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/Duck.glb",
       "sha256": "65bf938f54d6073e619e76e007820bbf980cdc3dc0daec0d94830ffc4ae54ab5",
       "bytes": 120484,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2189,7 +2118,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "EmissiveStrengthTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/EmissiveStrengthTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/EmissiveStrengthTest.glb",
       "sha256": "074898ec4c3636230faffe0cacac7403c3f6135db61f943da28ffaa88ca2a39f",
       "bytes": 10668,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2204,7 +2132,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "Fox",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/Fox@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/Fox.glb",
       "sha256": "d97044e701822bac5a62696459b27d7b375aada5de8574ed4362edbba94771f7",
       "bytes": 162852,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2219,7 +2146,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "GlamVelvetSofa",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/GlamVelvetSofa@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/GlamVelvetSofa.glb",
       "sha256": "67202c74a1a33377771f162dc7fad612a6c9bd51ee15124c488e9851d9ac5266",
       "bytes": 3149844,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2234,7 +2160,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "GlassBrokenWindow",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/GlassBrokenWindow@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/GlassBrokenWindow.glb",
       "sha256": "66c4261fc0f5fe77f11a4f457b61774e5c7f43f9a382b49720cef0e128738416",
       "bytes": 1076624,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2249,7 +2174,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "GlassHurricaneCandleHolder",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/GlassHurricaneCandleHolder@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/GlassHurricaneCandleHolder.glb",
       "sha256": "add23791ee6f5f550b94a21232a323720c92c20d280f4f7d19cf954234f0b7b8",
       "bytes": 2705400,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2264,7 +2188,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "GlassVaseFlowers",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/GlassVaseFlowers@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/GlassVaseFlowers.glb",
       "sha256": "430c9937664cfc74299205dcc388e4269bb688817f3d3866ef35aab71e93b852",
       "bytes": 1819824,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2279,7 +2202,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "IORTestGrid",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/IORTestGrid@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/IORTestGrid.glb",
       "sha256": "863cf24d0e48892ec830a7c712e4eb8bf5c0fd6cc2ae2f34d213b216f0bd6c12",
       "bytes": 2628524,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2294,7 +2216,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "InterpolationTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/InterpolationTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/InterpolationTest.glb",
       "sha256": "a86eb331b4a083715e75fe19a1f747eac5692d5b9ff120f1eaa457c23ba72bca",
       "bytes": 7952,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2309,7 +2230,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "IridescenceAbalone",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/IridescenceAbalone@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/IridescenceAbalone.glb",
       "sha256": "d15ab000d3b04f177e101b2a36aacbf1c99490fc9bfe3868d481d75736946bab",
       "bytes": 9300744,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2324,7 +2244,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "IridescenceLamp",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/IridescenceLamp@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/IridescenceLamp.glb",
       "sha256": "17cfdc79ec9e38fadb28db159734c5f9592ca423977b546e5057e350ba29ff13",
       "bytes": 4083912,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2339,7 +2258,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "IridescenceSuzanne",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/IridescenceSuzanne@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/IridescenceSuzanne.glb",
       "sha256": "866762602d60a0942b7608bfabf4e8686a29033636224f4b55c5e56abe8abf8f",
       "bytes": 507608,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2354,7 +2272,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "IridescentDishWithOlives",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/IridescentDishWithOlives@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/IridescentDishWithOlives.glb",
       "sha256": "1540b4a36b790a907f4824cfe848ba481b3da3cc8070172b7b3ba178f78a7ed1",
       "bytes": 5742828,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2369,7 +2286,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "Lantern",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/Lantern@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/Lantern.glb",
       "sha256": "a79458c4b02d695187a952f23a63b8bf278e7bc3d316a3c2a314f2d6974181f1",
       "bytes": 9564264,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2384,7 +2300,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "LightsPunctualLamp",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/LightsPunctualLamp@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/LightsPunctualLamp.glb",
       "sha256": "b9a95cd0e17dea5284117e54807b49b746960038457a31a0011b9344acc11104",
       "bytes": 4341320,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2399,7 +2314,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "MaterialsVariantsShoe",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/MaterialsVariantsShoe@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/MaterialsVariantsShoe.glb",
       "sha256": "e1d7cb190382111e5a5b37b51e9a7f007f7eb2ab1b6185e0188e8d0a0d1265a7",
       "bytes": 7833592,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2414,7 +2328,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "MetalRoughSpheres",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/MetalRoughSpheres@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/MetalRoughSpheres.glb",
       "sha256": "450c05557b0823a10835e32c05caf77a7b175eba94516555c1c9bb084f563f01",
       "bytes": 11221356,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2429,7 +2342,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "MetalRoughSpheresNoTextures",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/MetalRoughSpheresNoTextures@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/MetalRoughSpheresNoTextures.glb",
       "sha256": "5e677f260ec0f366967a6e9545de2f3dab2a160e307b9bcb9d050cd2028f63f8",
       "bytes": 291316,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2444,7 +2356,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "MorphPrimitivesTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/MorphPrimitivesTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/MorphPrimitivesTest.glb",
       "sha256": "2a5ed6470aca41edc813ef5b7eecf2af53264d8e0ab9e6f32156d54245ca18cf",
       "bytes": 53656,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2459,7 +2370,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "MorphStressTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/MorphStressTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/MorphStressTest.glb",
       "sha256": "005f1d9dd938c553a506d6bf3d21830fc3f2ec3a199d9332e9a625baf7342bef",
       "bytes": 575900,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2474,7 +2384,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "MosquitoInAmber",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/MosquitoInAmber@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/MosquitoInAmber.glb",
       "sha256": "1c0b49000650e8a8c00d69bc8d64e46d33527871a47d74e4f2278887325cc35f",
       "bytes": 24229904,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2489,7 +2398,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "MultiUVTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/MultiUVTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/MultiUVTest.glb",
       "sha256": "f5352cced402b595ab7f1e4971852fbf33cef8d22351e45caafb072e31d5008a",
       "bytes": 43004,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2504,7 +2412,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "NegativeScaleTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/NegativeScaleTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/NegativeScaleTest.glb",
       "sha256": "ea8c41fd0630f03adcf7a5c06bf86d7b850fa510b6f07cc51eb1fccc205a50f2",
       "bytes": 62568,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2519,7 +2426,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "NodePerformanceTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/NodePerformanceTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/NodePerformanceTest.glb",
       "sha256": "badaa10cbae713e6ea93e57c0e952e4413b244e9a8e2278b61415422819f291d",
       "bytes": 38613212,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2534,7 +2440,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "NormalTangentMirrorTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/NormalTangentMirrorTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/NormalTangentMirrorTest.glb",
       "sha256": "31ce5f3c873fc55531a17ccacf001e3d1d482a508695aa826fa79cc196e0ce78",
       "bytes": 1567084,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2549,7 +2454,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "NormalTangentTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/NormalTangentTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/NormalTangentTest.glb",
       "sha256": "5ac0932355ae1ea05a7485eeddcc3f1fbe56c678e00b519075feced80e9e9d6a",
       "bytes": 1796996,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2564,7 +2468,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "OrientationTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/OrientationTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/OrientationTest.glb",
       "sha256": "a91cf448f37de06ab61bc615e123692dd29ac185e6c69e1fdbf1cf53e41045b2",
       "bytes": 38920,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2579,7 +2482,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "PlaysetLightTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/PlaysetLightTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/PlaysetLightTest.glb",
       "sha256": "8e0f4f8607a25306a24baa23df358f3af7421d6d749835795d9726e82c464cd8",
       "bytes": 16959252,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2594,7 +2496,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "PointLightIntensityTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/PointLightIntensityTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/PointLightIntensityTest.glb",
       "sha256": "025ea8e44840a88ded75fe0665f693a14558d345c2955b054aec4edbaa23a341",
       "bytes": 30148,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2609,7 +2510,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "PotOfCoals",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/PotOfCoals@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/PotOfCoals.glb",
       "sha256": "fac3323e77309413e96285e3ee86dd92ef5e797325e173aa180ba6472aba58ed",
       "bytes": 4696240,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2624,7 +2524,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "PotOfCoalsAnimationPointer",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/PotOfCoalsAnimationPointer@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/PotOfCoalsAnimationPointer.glb",
       "sha256": "eb370d1aa20e997cdd67f3be5590b80ab0d2292dda7fa01bd10b6414a182ad5f",
       "bytes": 6326684,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2639,7 +2538,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "RecursiveSkeletons",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/RecursiveSkeletons@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/RecursiveSkeletons.glb",
       "sha256": "15fb11ee4d3b31735efe7dc776a31e8fa67568ea148a3315442970303675b641",
       "bytes": 561620,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2654,7 +2552,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "RiggedFigure",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/RiggedFigure@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/RiggedFigure.glb",
       "sha256": "d6be85417d3e256861ee733eea6916093a7af7c79c16366181fd8abcaeb38cf5",
       "bytes": 50116,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2669,7 +2566,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "RiggedSimple",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/RiggedSimple@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/RiggedSimple.glb",
       "sha256": "3a79dabb67bb0cd598a18d08b954d9d357c27c30672f82ef5d3f4e7fe6ca3401",
       "bytes": 15104,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2684,7 +2580,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "ScatteringSkull",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/ScatteringSkull@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/ScatteringSkull.glb",
       "sha256": "4d85d629358e7295aee70544de3f76e53b2aec1647ba7ff4d6a4f70f1b5c3aca",
       "bytes": 8959040,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2699,7 +2594,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "SheenChair",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/SheenChair@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/SheenChair.glb",
       "sha256": "f0af2a2b102d28d540236306ae19f8fb36842df76bd38cf76f063f9bd2853399",
       "bytes": 4125648,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2714,7 +2608,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "SheenTestGrid",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/SheenTestGrid@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/SheenTestGrid.glb",
       "sha256": "b3d82dde0ae6b93bef1a8085ec05540b21139f9917bfe771135c5aed9ba1c101",
       "bytes": 1841064,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2729,7 +2622,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "SheenWoodLeatherSofa",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/SheenWoodLeatherSofa@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/SheenWoodLeatherSofa.glb",
       "sha256": "5349e042ad41e695e89f1110230c4ee0c75b2bc62ef830c7016be6ecf665bfb6",
       "bytes": 10107912,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2744,7 +2636,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "SimpleInstancing",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/SimpleInstancing@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/SimpleInstancing.glb",
       "sha256": "1c9425627481346a8c226118f7000db7cd7f80198e9f54331f8b664d16726f3f",
       "bytes": 7356,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2759,7 +2650,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "SpecGlossVsMetalRough",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/SpecGlossVsMetalRough@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/SpecGlossVsMetalRough.glb",
       "sha256": "0152bf46e1239e3f0e5ab63651b219d9b78c4d1f3d21b25a53f918da2f3d21a6",
       "bytes": 9984544,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2774,7 +2664,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "SpecularSilkPouf",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/SpecularSilkPouf@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/SpecularSilkPouf.glb",
       "sha256": "a028bc6a7ac8981044fba414c1de633ac775b53602ad386f8ece74aec81d1006",
       "bytes": 4632512,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2789,7 +2678,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "SpecularTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/SpecularTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/SpecularTest.glb",
       "sha256": "cf789c68c3ab4b74877da3c5992c612c213f9c901ed4fafbf9be362f434e48d9",
       "bytes": 223376,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2804,7 +2692,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "SunglassesKhronos",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/SunglassesKhronos@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/SunglassesKhronos.glb",
       "sha256": "25d72dd0869c99f94a3c0d6dfe0707714eca056e531f6ff77e7545719c86ab8c",
       "bytes": 371188,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2819,7 +2706,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "TextureCoordinateTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/TextureCoordinateTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/TextureCoordinateTest.glb",
       "sha256": "fe75a63a0423c9a682bf46c3045b6328ae9c55abefc9a50adf3ec1d6dc6ea3b9",
       "bytes": 14232,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2834,7 +2720,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "TextureEncodingTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/TextureEncodingTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/TextureEncodingTest.glb",
       "sha256": "c2f654bdf918e3cce93db3f8d8c1b008b90d3089e756c9b38149e9306b1338f4",
       "bytes": 21612,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2849,7 +2734,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "TextureLinearInterpolationTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/TextureLinearInterpolationTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/TextureLinearInterpolationTest.glb",
       "sha256": "5a7d79bb138f9f732002a988298b5ba44f614064330e94f6ea8c17e38b998440",
       "bytes": 13468,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2864,7 +2748,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "TextureSettingsTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/TextureSettingsTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/TextureSettingsTest.glb",
       "sha256": "44013a0602cbbdcaf703905ed47cc6b6fb49f067d7de0e1a0a568a5bbfa9d769",
       "bytes": 42840,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2879,7 +2762,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "TextureTransformMultiTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/TextureTransformMultiTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/TextureTransformMultiTest.glb",
       "sha256": "569aedb53822d5721e7e06af5983348683d4b2ffb1d469338ad4f02bf6a74911",
       "bytes": 388264,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2894,7 +2776,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "ToyCar",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/ToyCar@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/ToyCar.glb",
       "sha256": "01a60862de55cd4b9f3acfab0b0def86451800f9c42467fcd61052c16cb9838c",
       "bytes": 5422412,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2909,7 +2790,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "TransmissionOrderTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/TransmissionOrderTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/TransmissionOrderTest.glb",
       "sha256": "d904b6cd6c83792fd4a4d9ad4f0366bde76a63e347541c465f2ad4c5baf22a21",
       "bytes": 2312512,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2924,7 +2804,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "TransmissionRoughnessTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/TransmissionRoughnessTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/TransmissionRoughnessTest.glb",
       "sha256": "43ace8f8dfe0b6148dc4668e6a768c8853ba37cf1f0fe7de76eaf0ea8e94bb73",
       "bytes": 393808,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2939,7 +2818,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "TransmissionTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/TransmissionTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/TransmissionTest.glb",
       "sha256": "dd9732dae5517f8605ad4324d78b077b969c3e8357c056280d0a4e4b67797d15",
       "bytes": 1473792,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2954,7 +2832,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "TransmissionThinwallTestGrid",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/TransmissionThinwallTestGrid@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/TransmissionThinwallTestGrid.glb",
       "sha256": "e4ee8e5a28f81f75ef40b264ad22725e9065470b8ee02f9a4c6fa96b669cbcc7",
       "bytes": 1188724,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2969,7 +2846,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "UnlitTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/UnlitTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/UnlitTest.glb",
       "sha256": "e07b68c6fd9fbf73d372c610a681b89d6b013bdd1a506e46a411df82210a2481",
       "bytes": 3992,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2984,7 +2860,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "VertexColorTest",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/VertexColorTest@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/VertexColorTest.glb",
       "sha256": "58006bdcff8084339da0f6e24400160890638c16dbcb83c362ccaf150e8c6e10",
       "bytes": 26220,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -2999,7 +2874,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "VirtualCity",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/VirtualCity@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/VirtualCity.glb",
       "sha256": "de6666bd842a44cba92fb25a5da9080459a36e045fbc0fd1fd85b830124561fe",
       "bytes": 3085416,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -3014,7 +2888,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "WaterBottle",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/WaterBottle@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/WaterBottle.glb",
       "sha256": "b337e526fd6a162013c2984aeec163f5fbb4f717252724dfc3f3458bd51df94b",
       "bytes": 8966700,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -3029,7 +2902,6 @@
       "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
       "catalogModel": "XmpMetadataRoundedCube",
       "url": "https://api.landofassets.com/media/KhronosGroup/glTF-Sample-Assets/XmpMetadataRoundedCube@1.0.0.glb?original=true",
-      "localUrl": "/assets/KhronosGroup/glTF-Sample-Assets/XmpMetadataRoundedCube.glb",
       "sha256": "92a22170651513274577f81a3af1cf548c2049e31cfede85a5e96170c583e451",
       "bytes": 105936,
       "packaging": "Existing Land of Assets upload; bytes reused unchanged"
@@ -3039,7 +2911,7 @@
     "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/blob/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/model-index.json",
     "revision": "f0920f5b32d172a30efe3f9257e965918831e6ea",
     "path": "examples/models/gltf/model-index.json",
-    "localModels": 115,
+    "localModels": 2,
     "upstreamModels": [
       "AnimatedCube",
       "AnimatedTriangle",
@@ -3077,6 +2949,7 @@
       "TwoSidedPlane",
       "USDShaderBallForGltf",
       "Unicode❤♻Test"
-    ]
+    ],
+    "remoteModels": 113
   }
 }

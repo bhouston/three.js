@@ -1,6 +1,6 @@
 # Example assets on Land of Assets
 
-The examples use the public `mrdoob/three` project with explicit `1.0.0` versions. `manifest.json` records all 113 repository uploads, their original sources and filenames, delivery URLs, and SHA256 hashes of the delivered files. Repository assets come from the upstream `dev` revision recorded in the manifest. The WebGL and WebGPU glTF catalogs also install 115 models from `KhronosGroup/glTF-Sample-Assets`, including Sponza. The 36 unmatched catalog models, plus other external Needle and MaterialX samples, retain their upstream URLs.
+The examples use the public `mrdoob/three` project with explicit `1.0.0` versions. `manifest.json` records all 113 repository uploads, their original sources and filenames, delivery URLs, and SHA256 hashes of the delivered files. Repository assets come from the upstream `dev` revision recorded in the manifest. Sponza is additionally installed from `KhronosGroup/glTF-Sample-Assets`. The WebGL and WebGPU glTF catalogs reuse the installed Damaged Helmet and Sponza models, and load 113 other available models directly from production Land of Assets URLs on selection. The 36 unmatched catalog models, plus other external Needle and MaterialX samples, retain their upstream URLs.
 
 The uploads comprise 63 repository models, 4 IES profiles, 18 environment maps, 28 MaterialX packages. The 113 uploaded repository source assets and 37 orphaned buffers and textures have been removed from this branch. Shared textures, attribution, and license files remain in the repository.
 
@@ -20,13 +20,13 @@ Commit `assets.json` and `assets-lock.json`, and leave generated `assets/` out o
 
 Run installation before serving examples or taking screenshots. Native bytes are verified and reused from the shared global cache; each installed native path links directly to its read-only global cache object, with independent copies as fallback when symlinks are unavailable. Aliases never point to another local asset. There is no additional project-local versioned store. Every `loa install`, `loa pull`, and `loa remove` prunes unreferenced local output while keeping cached objects intact. Copy `assets/` into deployments and dereference symlinks if your packaging tool does not follow them. Root-relative URLs assume the checkout is served at the origin root.
 
-`manifest.json` retains the original hosted URLs as provenance and records each asset's `localUrl` for verification. The `externalAssets` section records the separately packaged Sponza asset. Other external Khronos, Needle, and MaterialX URLs remain external.
+`manifest.json` retains the original hosted URLs as provenance and records each asset's `localUrl` for verification. The `externalAssets` section records the separately packaged Sponza asset and the remotely delivered Khronos GLBs. Only installed assets have a `localUrl`; catalog-only models are absent from `assets.json`.
 
 ## Khronos model catalogs
 
-The WebGL and WebGPU glTF loader examples share `examples/models/gltf/model-index.json`, pinned to the Khronos source revision recorded in `manifest.json.catalog`. Its 115 matching Land of Assets uploads use stable local URLs and exact manifest versions. Existing uploaded GLBs are reused without conversion or re-upload. The 36 unmatched entries retain pinned upstream URLs, preserving the full selector; those entries still need internet access. The model index itself is served locally.
+The WebGL and WebGPU glTF loader examples share `examples/models/gltf/model-index.json`, pinned to the Khronos source revision recorded in `manifest.json.catalog`. Damaged Helmet, the default selection, reuses `/assets/mrdoob/three/damagedhelmet.glb`; Sponza also uses its installed local URL. The other 113 matching Land of Assets uploads use direct versioned production URLs with `?original=true` and load only when selected. They are not installed by `loa install`. Existing uploaded GLBs are reused without conversion or re-upload. The 36 unmatched entries retain pinned upstream URLs, preserving the full selector; those entries still need internet access. The model index itself is served locally.
 
-`manifest.json.externalAssets` records every selected Khronos asset and its existing uploaded SHA256. Sponza is the only new upload in this update.
+`manifest.json.externalAssets` records Sponza and the remotely delivered Khronos assets with their uploaded SHA256 hashes. Sponza is the only new upload in this update.
 
 ## Sponza
 
@@ -34,7 +34,7 @@ All three Sponza examples load `/assets/KhronosGroup/glTF-Sample-Assets/sponza.g
 
 The 52.6 MB GLB packages the [Khronos source at revision `f0920f5b32d172a30efe3f9257e965918831e6ea`](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/f0920f5b32d172a30efe3f9257e965918831e6ea/Models/Sponza). `gltf-transform copy Sponza.gltf sponza.glb` embeds the geometry buffer and all 69 images, without optimization or texture re-encoding. Verification compares all 405 decoded accessors, all image payloads, the node graph, primitive bindings, and material settings. Embedded asset metadata preserves source attribution and the original Crytek license link.
 
-Sponza retains the [Cryengine Limited License Agreement](https://github.com/KhronosGroup/glTF-Sample-Assets/blob/f0920f5b32d172a30efe3f9257e965918831e6ea/LICENSES/LicenseRef-CRYENGINE-Agreement.txt), credited to Crytek, Frank Meinl, Alexandre Pestana, and Morgan McGuire. The service share-license setting is `NONE`; no replacement license is assigned. Its source revision, package hash, and resource counts are recorded under `externalAssets` in `manifest.json`. There are 228 installed assets in total: 113 transferred repository assets and 115 Khronos catalog models, including Sponza.
+Sponza retains the [Cryengine Limited License Agreement](https://github.com/KhronosGroup/glTF-Sample-Assets/blob/f0920f5b32d172a30efe3f9257e965918831e6ea/LICENSES/LicenseRef-CRYENGINE-Agreement.txt), credited to Crytek, Frank Meinl, Alexandre Pestana, and Morgan McGuire. The service share-license setting is `NONE`; no replacement license is assigned. Its source revision, package hash, and resource counts are recorded under `externalAssets` in `manifest.json`. There are 114 installed assets in total: 113 transferred repository assets and Sponza. Switching to a remote catalog model requires internet access.
 
 ## Packaging and delivery
 

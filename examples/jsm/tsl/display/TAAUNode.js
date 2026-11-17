@@ -592,7 +592,9 @@ class TAAUNode extends Node {
 				const w = exp( d2.mul( - 2.29 ) );
 
 				// Use max() to prevent NaN values from propagating.
-				const c = this.beautyNode.load( tap ).max( 0 );
+				// Clamp the read while retaining the tap's original position for
+				// reconstruction weights, extending the edge color outside the image.
+				const c = this.beautyNode.load( tap.clamp( ivec2( 0 ), inputSize.sub( 1 ) ) ).max( 0 );
 
 				sumColor.addAssign( c.mul( w ) );
 				sumWeight.addAssign( w );

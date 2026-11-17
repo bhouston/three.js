@@ -3866,7 +3866,7 @@ class ShaderCallNodeInternal extends Node {
 
 			//
 
-			const inputs = getLayoutParameters( layoutInputs );
+			const inputs = builder._getLayoutCallParameters( shaderNode.layout, getLayoutParameters( layoutInputs ) );
 
 			result = functionNode.call( inputs );
 
@@ -9241,6 +9241,7 @@ class VaryingNode extends Node {
 
 			properties.varying = varying = builder.getVaryingFromNode( this, name, type, interpolationType, interpolationSampling );
 			properties.node = subBuild( this.node, 'VERTEX' );
+			properties.vertexAnalyzed = false;
 
 		}
 
@@ -9277,11 +9278,20 @@ class VaryingNode extends Node {
 
 		// TODO: Node.build() could pass through the output node of setup() directly, so overrides of analyze() and generate() don't need to handle it twice
 
-		if ( builder.getNodeProperties( this ).outputNode ) return super.analyze( builder );
+		const properties = builder.getNodeProperties( this );
+
+		if ( properties.outputNode ) return super.analyze( builder );
 
 		this.setupVarying( builder );
 
-		builder.flowNodeFromShaderStage( NodeShaderStage.VERTEX, this.node );
+		// The vertex value is generated once, so it is analyzed once, however many times the varying is read.
+		if ( properties.vertexAnalyzed === false ) {
+
+			properties.vertexAnalyzed = true;
+
+			builder.flowNodeFromShaderStage( NodeShaderStage.VERTEX, this.node );
+
+		}
 
 	}
 
@@ -12456,6 +12466,12 @@ class ParameterNode extends PropertyNode {
 	getHash() {
 
 		return String( this.id );
+
+	}
+
+	getInputType( builder ) {
+
+		return this.getNodeType( builder );
 
 	}
 
@@ -18782,35 +18798,50 @@ class TextureNode extends UniformNode {
 
 		if ( builder.isFlipY() ) {
 
-			const baseNode = this.getBase();
-
-			if ( baseNode._flipYUniform === null ) {
-
-				baseNode._flipYUniform = uniform( false ).onObjectUpdate( () => {
-
-					const texture = baseNode.value;
-
-					return ( texture.image instanceof ImageBitmap && texture.flipY === true ) || texture.isRenderTargetTexture === true || texture.isFramebufferTexture === true || texture.isDepthTexture === true;
-
-				} );
-
-			}
+			const flipYUniform = this._getFlipYUniform();
 
 			uvNode = uvNode.toVar();
 
 			if ( this.sampler ) {
 
-				uvNode = baseNode._flipYUniform.select( uvNode.flipY(), uvNode );
+				uvNode = flipYUniform.select( uvNode.flipY(), uvNode );
 
 			} else {
 
-				uvNode = baseNode._flipYUniform.select( uvNode.setY( int( textureSize( this, this.levelNode ).y ).sub( int( uvNode.y ) ).sub( 1 ) ), uvNode );
+				uvNode = flipYUniform.select( uvNode.setY( int( textureSize( this, this.levelNode ).y ).sub( int( uvNode.y ) ).sub( 1 ) ), uvNode );
 
 			}
 
 		}
 
 		return uvNode;
+
+	}
+
+	/**
+	 * Returns the uniform that defines whether the texture is flipped on the y-axis.
+	 * Only required for WebGL, see {@link NodeBuilder#isFlipY}.
+	 *
+	 * @private
+	 * @return {UniformNode<bool>} The y-flip uniform.
+	 */
+	_getFlipYUniform() {
+
+		const baseNode = this.getBase();
+
+		if ( baseNode._flipYUniform === null ) {
+
+			baseNode._flipYUniform = uniform( false ).onObjectUpdate( () => {
+
+				const texture = baseNode.value;
+
+				return ( texture.image instanceof ImageBitmap && texture.flipY === true ) || texture.isRenderTargetTexture === true || texture.isFramebufferTexture === true || texture.isDepthTexture === true;
+
+			} );
+
+		}
+
+		return baseNode._flipYUniform;
 
 	}
 
@@ -19662,6 +19693,11 @@ class ViewportTextureNode extends TextureNode {
 	updateBefore( frame ) {
 
 		const renderer = frame.renderer;
+
+		// do not copy during precompilation
+
+		if ( renderer._precompilationState !== null ) return false;
+
 		const renderTarget = renderer.getRenderTarget();
 		const canvasTarget = renderer.getCanvasTarget();
 
@@ -19920,17 +19956,9 @@ class ViewportDepthNode extends Node {
 
 			if ( value !== null ) {
 
-				if ( camera.isOrthographicCamera !== true ) {
+				const viewZ = depthToViewZ( value, cameraNear, cameraFar, camera );
 
-					const viewZ = perspectiveDepthToViewZ( value, cameraNear, cameraFar );
-
-					node = viewZToOrthographicDepth( viewZ, cameraNear, cameraFar );
-
-				} else {
-
-					node = value;
-
-				}
+				node = viewZToOrthographicDepth( viewZ, cameraNear, cameraFar );
 
 			} else {
 
@@ -20323,6 +20351,233 @@ const triplanarTextures = /*@__PURE__*/ Fn( ( [ textureXNode, textureYNode = nul
  */
 const triplanarTexture = ( ...params ) => triplanarTextures( ...params );
 
+/**
+ * Saves the state of the given renderer and stores it into the given state object.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function saveRendererState( renderer, state = {} ) {
+
+	state.toneMapping = renderer.toneMapping;
+	state.toneMappingExposure = renderer.toneMappingExposure;
+	state.outputColorSpace = renderer.outputColorSpace;
+	state.renderTarget = renderer.getRenderTarget();
+	state.activeCubeFace = renderer.getActiveCubeFace();
+	state.activeMipmapLevel = renderer.getActiveMipmapLevel();
+	state.renderObjectFunction = renderer.getRenderObjectFunction();
+	state.pixelRatio = renderer.getPixelRatio();
+	state.mrt = renderer.getMRT();
+	state.clearColor = renderer.getClearColor( state.clearColor || new Color() );
+	state.clearAlpha = renderer.getClearAlpha();
+	state.autoClear = renderer.autoClear;
+	state.autoClearColor = renderer.autoClearColor;
+	state.autoClearDepth = renderer.autoClearDepth;
+	state.autoClearStencil = renderer.autoClearStencil;
+	state.opaque = renderer.opaque;
+	state.transparent = renderer.transparent;
+	state.scissorTest = renderer.getScissorTest();
+
+	return state;
+
+}
+
+/**
+ * Saves the state of the given renderer and stores it into the given state object.
+ * Besides, the function also resets the state of the renderer to its default values.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function resetRendererState( renderer, state ) {
+
+	state = saveRendererState( renderer, state );
+
+	renderer.setMRT( null );
+	renderer.setRenderObjectFunction( null );
+	renderer.setClearColor( 0x000000, 1 );
+	renderer.autoClear = true;
+	renderer.autoClearColor = true;
+	renderer.autoClearDepth = true;
+	renderer.autoClearStencil = true;
+	renderer.opaque = true;
+	renderer.transparent = true;
+
+	return state;
+
+}
+
+/**
+ * Restores the state of the given renderer from the given state object.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Object} state - The state to restore.
+ */
+function restoreRendererState( renderer, state ) {
+
+	renderer.toneMapping = state.toneMapping;
+	renderer.toneMappingExposure = state.toneMappingExposure;
+	renderer.outputColorSpace = state.outputColorSpace;
+	renderer.setRenderTarget( state.renderTarget, state.activeCubeFace, state.activeMipmapLevel );
+	renderer.setRenderObjectFunction( state.renderObjectFunction );
+	renderer.setPixelRatio( state.pixelRatio );
+	renderer.setMRT( state.mrt );
+	renderer.setClearColor( state.clearColor, state.clearAlpha );
+	renderer.autoClear = state.autoClear;
+	renderer.autoClearColor = state.autoClearColor;
+	renderer.autoClearDepth = state.autoClearDepth;
+	renderer.autoClearStencil = state.autoClearStencil;
+	renderer.opaque = state.opaque;
+	renderer.transparent = state.transparent;
+	renderer.setScissorTest( state.scissorTest );
+
+}
+
+/**
+ * Saves the state of the given scene and stores it into the given state object.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Scene} scene - The scene.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function saveSceneState( scene, state = {} ) {
+
+	state.background = scene.background;
+	state.backgroundNode = scene.backgroundNode;
+	state.overrideMaterial = scene.overrideMaterial;
+
+	return state;
+
+}
+
+/**
+ * Saves the state of the given scene and stores it into the given state object.
+ * Besides, the function also resets the state of the scene to its default values.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Scene} scene - The scene.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function resetSceneState( scene, state ) {
+
+	state = saveSceneState( scene, state );
+
+	scene.background = null;
+	scene.backgroundNode = null;
+	scene.overrideMaterial = null;
+
+	return state;
+
+}
+
+/**
+ * Restores the state of the given scene from the given state object.
+ *
+ * @private
+ * @function
+ * @param {Scene} scene - The scene.
+ * @param {Object} state - The state to restore.
+ */
+function restoreSceneState( scene, state ) {
+
+	scene.background = state.background;
+	scene.backgroundNode = state.backgroundNode;
+	scene.overrideMaterial = state.overrideMaterial;
+
+}
+
+/**
+ * Saves the state of the given renderer and scene and stores it into the given state object.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Scene} scene - The scene.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function saveRendererAndSceneState( renderer, scene, state = {} ) {
+
+	state = saveRendererState( renderer, state );
+	state = saveSceneState( scene, state );
+
+	return state;
+
+}
+
+/**
+ * Saves the state of the given renderer and scene and stores it into the given state object.
+ * Besides, the function also resets the state of the renderer and scene to its default values.
+ *
+ * If not state object is provided, the function creates one.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Scene} scene - The scene.
+ * @param {Object} [state={}] - The state.
+ * @return {Object} The state.
+ */
+function resetRendererAndSceneState( renderer, scene, state ) {
+
+	state = resetRendererState( renderer, state );
+	state = resetSceneState( scene, state );
+
+	return state;
+
+}
+
+/**
+ * Restores the state of the given renderer and scene from the given state object.
+ *
+ * @private
+ * @function
+ * @param {Renderer} renderer - The renderer.
+ * @param {Scene} scene - The scene.
+ * @param {Object} state - The state to restore.
+ */
+function restoreRendererAndSceneState( renderer, scene, state ) {
+
+	restoreRendererState( renderer, state );
+	restoreSceneState( scene, state );
+
+}
+
+var RendererUtils = /*#__PURE__*/Object.freeze({
+	__proto__: null,
+	resetRendererAndSceneState: resetRendererAndSceneState,
+	resetRendererState: resetRendererState,
+	resetSceneState: resetSceneState,
+	restoreRendererAndSceneState: restoreRendererAndSceneState,
+	restoreRendererState: restoreRendererState,
+	restoreSceneState: restoreSceneState,
+	saveRendererAndSceneState: saveRendererAndSceneState,
+	saveRendererState: saveRendererState,
+	saveSceneState: saveSceneState
+});
+
 const _reflectorPlane = new Plane();
 const _normal = new Vector3();
 const _reflectorWorldPosition = new Vector3();
@@ -20643,6 +20898,14 @@ class ReflectorBaseNode extends Node {
 		 */
 		this.hasOutput = false;
 
+		/**
+		 * The renderer state saved and restored around the reflector render.
+		 *
+		 * @private
+		 * @type {Object}
+		 */
+		this._rendererState = {};
+
 	}
 
 	isCacheable( /*builder*/ ) {
@@ -20880,13 +21143,11 @@ class ReflectorBaseNode extends Node {
 
 		material.visible = false;
 
-		const currentRenderTarget = renderer.getRenderTarget();
-		const currentMRT = renderer.getMRT();
-		const currentAutoClear = renderer.autoClear;
+		resetRendererState( renderer, this._rendererState );
 
-		renderer.setMRT( null );
+		renderer.setClearColor( this._rendererState.clearColor, this._rendererState.clearAlpha );
+
 		renderer.setRenderTarget( renderTarget );
-		renderer.autoClear = true;
 
 		const previousName = scene.name;
 
@@ -20908,9 +21169,7 @@ class ReflectorBaseNode extends Node {
 
 		scene.name = previousName;
 
-		renderer.setMRT( currentMRT );
-		renderer.setRenderTarget( currentRenderTarget );
-		renderer.autoClear = currentAutoClear;
+		restoreRendererState( renderer, this._rendererState );
 
 		material.visible = true;
 
@@ -21437,11 +21696,11 @@ class ReferenceNode extends Node {
 
 		} else if ( uniformType === 'texture' ) {
 
-			node = texture( null );
+			node = uniformTexture( null );
 
 		} else if ( uniformType === 'cubeTexture' ) {
 
-			node = cubeTexture( null );
+			node = uniformCubeTexture( null );
 
 		} else {
 
@@ -27608,7 +27867,7 @@ class NodeMaterial extends Material {
 
 			const samples = builder.renderer.currentSamples;
 
-			if ( this.alphaToCoverage && samples > 1 ) {
+			if ( this.alphaToCoverage && samples > 0 ) {
 
 				// to be added to flow when the color/alpha value has been determined
 				result = clippingAlpha();
@@ -28500,233 +28759,6 @@ class QuadMesh extends Mesh {
 	}
 
 }
-
-/**
- * Saves the state of the given renderer and stores it into the given state object.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function saveRendererState( renderer, state = {} ) {
-
-	state.toneMapping = renderer.toneMapping;
-	state.toneMappingExposure = renderer.toneMappingExposure;
-	state.outputColorSpace = renderer.outputColorSpace;
-	state.renderTarget = renderer.getRenderTarget();
-	state.activeCubeFace = renderer.getActiveCubeFace();
-	state.activeMipmapLevel = renderer.getActiveMipmapLevel();
-	state.renderObjectFunction = renderer.getRenderObjectFunction();
-	state.pixelRatio = renderer.getPixelRatio();
-	state.mrt = renderer.getMRT();
-	state.clearColor = renderer.getClearColor( state.clearColor || new Color() );
-	state.clearAlpha = renderer.getClearAlpha();
-	state.autoClear = renderer.autoClear;
-	state.autoClearColor = renderer.autoClearColor;
-	state.autoClearDepth = renderer.autoClearDepth;
-	state.autoClearStencil = renderer.autoClearStencil;
-	state.opaque = renderer.opaque;
-	state.transparent = renderer.transparent;
-	state.scissorTest = renderer.getScissorTest();
-
-	return state;
-
-}
-
-/**
- * Saves the state of the given renderer and stores it into the given state object.
- * Besides, the function also resets the state of the renderer to its default values.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function resetRendererState( renderer, state ) {
-
-	state = saveRendererState( renderer, state );
-
-	renderer.setMRT( null );
-	renderer.setRenderObjectFunction( null );
-	renderer.setClearColor( 0x000000, 1 );
-	renderer.autoClear = true;
-	renderer.autoClearColor = true;
-	renderer.autoClearDepth = true;
-	renderer.autoClearStencil = true;
-	renderer.opaque = true;
-	renderer.transparent = true;
-
-	return state;
-
-}
-
-/**
- * Restores the state of the given renderer from the given state object.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Object} state - The state to restore.
- */
-function restoreRendererState( renderer, state ) {
-
-	renderer.toneMapping = state.toneMapping;
-	renderer.toneMappingExposure = state.toneMappingExposure;
-	renderer.outputColorSpace = state.outputColorSpace;
-	renderer.setRenderTarget( state.renderTarget, state.activeCubeFace, state.activeMipmapLevel );
-	renderer.setRenderObjectFunction( state.renderObjectFunction );
-	renderer.setPixelRatio( state.pixelRatio );
-	renderer.setMRT( state.mrt );
-	renderer.setClearColor( state.clearColor, state.clearAlpha );
-	renderer.autoClear = state.autoClear;
-	renderer.autoClearColor = state.autoClearColor;
-	renderer.autoClearDepth = state.autoClearDepth;
-	renderer.autoClearStencil = state.autoClearStencil;
-	renderer.opaque = state.opaque;
-	renderer.transparent = state.transparent;
-	renderer.setScissorTest( state.scissorTest );
-
-}
-
-/**
- * Saves the state of the given scene and stores it into the given state object.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Scene} scene - The scene.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function saveSceneState( scene, state = {} ) {
-
-	state.background = scene.background;
-	state.backgroundNode = scene.backgroundNode;
-	state.overrideMaterial = scene.overrideMaterial;
-
-	return state;
-
-}
-
-/**
- * Saves the state of the given scene and stores it into the given state object.
- * Besides, the function also resets the state of the scene to its default values.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Scene} scene - The scene.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function resetSceneState( scene, state ) {
-
-	state = saveSceneState( scene, state );
-
-	scene.background = null;
-	scene.backgroundNode = null;
-	scene.overrideMaterial = null;
-
-	return state;
-
-}
-
-/**
- * Restores the state of the given scene from the given state object.
- *
- * @private
- * @function
- * @param {Scene} scene - The scene.
- * @param {Object} state - The state to restore.
- */
-function restoreSceneState( scene, state ) {
-
-	scene.background = state.background;
-	scene.backgroundNode = state.backgroundNode;
-	scene.overrideMaterial = state.overrideMaterial;
-
-}
-
-/**
- * Saves the state of the given renderer and scene and stores it into the given state object.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Scene} scene - The scene.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function saveRendererAndSceneState( renderer, scene, state = {} ) {
-
-	state = saveRendererState( renderer, state );
-	state = saveSceneState( scene, state );
-
-	return state;
-
-}
-
-/**
- * Saves the state of the given renderer and scene and stores it into the given state object.
- * Besides, the function also resets the state of the renderer and scene to its default values.
- *
- * If not state object is provided, the function creates one.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Scene} scene - The scene.
- * @param {Object} [state={}] - The state.
- * @return {Object} The state.
- */
-function resetRendererAndSceneState( renderer, scene, state ) {
-
-	state = resetRendererState( renderer, state );
-	state = resetSceneState( scene, state );
-
-	return state;
-
-}
-
-/**
- * Restores the state of the given renderer and scene from the given state object.
- *
- * @private
- * @function
- * @param {Renderer} renderer - The renderer.
- * @param {Scene} scene - The scene.
- * @param {Object} state - The state to restore.
- */
-function restoreRendererAndSceneState( renderer, scene, state ) {
-
-	restoreRendererState( renderer, state );
-	restoreSceneState( scene, state );
-
-}
-
-var RendererUtils = /*#__PURE__*/Object.freeze({
-	__proto__: null,
-	resetRendererAndSceneState: resetRendererAndSceneState,
-	resetRendererState: resetRendererState,
-	resetSceneState: resetSceneState,
-	restoreRendererAndSceneState: restoreRendererAndSceneState,
-	restoreRendererState: restoreRendererState,
-	restoreSceneState: restoreSceneState,
-	saveRendererAndSceneState: saveRendererAndSceneState,
-	saveRendererState: saveRendererState,
-	saveSceneState: saveSceneState
-});
 
 const _size$1 = /*@__PURE__*/ new Vector2();
 
@@ -30199,9 +30231,9 @@ const normal = /*@__PURE__*/ Fn( ( { texture, uv } ) => {
 
 		const step = 0.01;
 
-		const x = texture.sample( uv.add( vec3( - step, 0.0, 0.0 ) ) ).r.sub( texture.sample( uv.add( vec3( step, 0.0, 0.0 ) ) ).r );
-		const y = texture.sample( uv.add( vec3( 0.0, - step, 0.0 ) ) ).r.sub( texture.sample( uv.add( vec3( 0.0, step, 0.0 ) ) ).r );
-		const z = texture.sample( uv.add( vec3( 0.0, 0.0, - step ) ) ).r.sub( texture.sample( uv.add( vec3( 0.0, 0.0, step ) ) ).r );
+		const x = texture.sample( uv.add( vec3( - step, 0.0, 0.0 ) ) ).level( 0 ).r.sub( texture.sample( uv.add( vec3( step, 0.0, 0.0 ) ) ).level( 0 ).r );
+		const y = texture.sample( uv.add( vec3( 0.0, - step, 0.0 ) ) ).level( 0 ).r.sub( texture.sample( uv.add( vec3( 0.0, step, 0.0 ) ) ).level( 0 ).r );
+		const z = texture.sample( uv.add( vec3( 0.0, 0.0, - step ) ) ).level( 0 ).r.sub( texture.sample( uv.add( vec3( 0.0, 0.0, step ) ) ).level( 0 ).r );
 
 		ret.assign( vec3( x, y, z ) );
 
@@ -31770,7 +31802,7 @@ class PassNode extends Node {
 
 		// the render target is configured like in setup() and updateBefore(), so the pipelines match the ones of the render
 
-		this.renderTarget.samples = this.options.samples === undefined ? renderer.samples : this.options.samples;
+		this.renderTarget.samples = this.options.samples !== undefined ? this.options.samples : renderer.samples;
 
 		renderer.getDrawingBufferSize( _size );
 		this.setSize( _size.width, _size.height );
@@ -31792,9 +31824,8 @@ class PassNode extends Node {
 
 	setup( { renderer } ) {
 
-		this.renderTarget.samples = this.options.samples === undefined ? renderer.samples : this.options.samples;
-
-		this.renderTarget.texture.type = renderer.getOutputBufferType();
+		this.renderTarget.samples = this.options.samples !== undefined ? this.options.samples : renderer.samples;
+		this.renderTarget.texture.type = this.options.type !== undefined ? this.options.type : renderer.getOutputBufferType();
 
 		if ( renderer.reversedDepthBuffer === true && this.renderTarget.depthTexture !== null ) {
 
@@ -33828,7 +33859,7 @@ class AtomicFunctionNode extends Node {
 	 *
 	 * @param {string} method - The signature of the atomic function to construct.
 	 * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
-	 * @param {Node} valueNode - The value that mutates the atomic variable.
+	 * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
 	 */
 	constructor( method, pointerNode, valueNode ) {
 
@@ -34001,6 +34032,12 @@ class AtomicFunctionNode extends Node {
 
 	}
 
+	static get ATOMIC_EXCHANGE() {
+
+		return 'atomicExchange';
+
+	}
+
 }
 
 /**
@@ -34010,7 +34047,7 @@ class AtomicFunctionNode extends Node {
  * @function
  * @param {string} method - The signature of the atomic function to construct.
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicNode = /*@__PURE__*/ nodeProxy( AtomicFunctionNode );
@@ -34022,7 +34059,7 @@ const atomicNode = /*@__PURE__*/ nodeProxy( AtomicFunctionNode );
  * @function
  * @param {string} method - The signature of the atomic function to construct.
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicFunc = ( method, pointerNode, valueNode ) => {
@@ -34047,87 +34084,106 @@ const atomicLoad = ( pointerNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_LOAD
  * @tsl
  * @function
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicStore = ( pointerNode, valueNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_STORE, pointerNode, valueNode );
 
 /**
- * Increments the value stored in the atomic variable.
+ * Increments the value stored in the atomic variable
+ * and returns the value stored in the atomic variable before the operation.
  *
  * @tsl
  * @function
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicAdd = ( pointerNode, valueNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_ADD, pointerNode, valueNode );
 
 /**
- * Decrements the value stored in the atomic variable.
+ * Decrements the value stored in the atomic variable
+ * and returns the value stored in the atomic variable before the operation.
  *
  * @tsl
  * @function
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicSub = ( pointerNode, valueNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_SUB, pointerNode, valueNode );
 
 /**
- * Stores in an atomic variable the maximum between its current value and a parameter.
+ * Stores, in an atomic variable, the maximum between its current value and a parameter
+ * and returns the value stored in the atomic variable before the operation.
  *
  * @tsl
  * @function
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicMax = ( pointerNode, valueNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_MAX, pointerNode, valueNode );
 
 /**
- * Stores in an atomic variable the minimum between its current value and a parameter.
+ * Stores, in an atomic variable, the minimum between its current value and a parameter
+ * and returns the value stored in the atomic variable before the operation.
  *
  * @tsl
  * @function
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicMin = ( pointerNode, valueNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_MIN, pointerNode, valueNode );
 
 /**
- * Stores in an atomic variable the bitwise AND of its value with a parameter.
+ * Stores, in an atomic variable, the bitwise AND of its value with a parameter
+ * and returns the value stored in the atomic variable before the operation.
  *
  * @tsl
  * @function
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicAnd = ( pointerNode, valueNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_AND, pointerNode, valueNode );
 
 /**
- * Stores in an atomic variable the bitwise OR of its value with a parameter.
+ * Stores, in an atomic variable, the bitwise OR of its value with a parameter
+ * and returns the value stored in the atomic variable before the operation.
  *
  * @tsl
  * @function
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicOr = ( pointerNode, valueNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_OR, pointerNode, valueNode );
 
 /**
- * Stores in an atomic variable the bitwise XOR of its value with a parameter.
+ * Stores, in an atomic variable, the bitwise XOR of its value with a parameter
+ * and returns the value stored in the atomic variable before the operation.
  *
  * @tsl
  * @function
  * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
- * @param {Node} valueNode - The value that mutates the atomic variable.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
  * @returns {AtomicFunctionNode}
  */
 const atomicXor = ( pointerNode, valueNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_XOR, pointerNode, valueNode );
+
+/**
+ * Stores a value in the atomic variable and returns the original
+ * value stored in the atomic variable before the operation.
+ *
+ * @tsl
+ * @function
+ * @param {Node} pointerNode - An atomic variable or element of an atomic buffer.
+ * @param {Node<uint|int>} valueNode - The value that mutates the atomic variable.
+ * @returns {AtomicFunctionNode}
+ */
+const atomicExchange = ( pointerNode, valueNode ) => atomicFunc( AtomicFunctionNode.ATOMIC_EXCHANGE, pointerNode, valueNode );
 
 /**
  * This class represents a set of built in WGSL shader functions that sync
@@ -35800,7 +35856,7 @@ const PCFShadowFilter = /*@__PURE__*/ Fn( ( { depthTexture, shadowCoord, shadow,
  */
 const VSMShadowFilter = /*@__PURE__*/ Fn( ( { depthTexture, shadowCoord, depthLayer }, builder ) => {
 
-	let distribution = texture( depthTexture ).sample( shadowCoord.xy );
+	let distribution = texture( depthTexture ).sample( shadowCoord.xy ).level( 0 );
 
 	if ( depthTexture.isArrayTexture ) {
 
@@ -35859,7 +35915,7 @@ const VSMPassVertical = /*@__PURE__*/ Fn( ( { samples, radius, size, shadowPass,
 
 		const uvOffset = uvStart.add( float( i ).mul( uvStride ) );
 
-		let depth = shadowPass.sample( add( screenCoordinate.xy, vec2( 0, uvOffset ).mul( radius ) ).div( size ) );
+		let depth = shadowPass.sample( add( screenCoordinate.xy, vec2( 0, uvOffset ).mul( radius ) ).div( size ) ).level( 0 );
 
 		if ( shadowPass.value.isArrayTexture ) {
 
@@ -35906,7 +35962,7 @@ const VSMPassHorizontal = /*@__PURE__*/ Fn( ( { samples, radius, size, shadowPas
 
 		const uvOffset = uvStart.add( float( i ).mul( uvStride ) );
 
-		let distribution = shadowPass.sample( add( screenCoordinate.xy, vec2( uvOffset, 0 ).mul( radius ) ).div( size ) );
+		let distribution = shadowPass.sample( add( screenCoordinate.xy, vec2( uvOffset, 0 ).mul( radius ) ).div( size ) ).level( 0 );
 
 		if ( shadowPass.value.isArrayTexture ) {
 
@@ -36625,7 +36681,7 @@ class ShadowNode extends ShadowBaseNode {
 
 		// do not render shadow maps during precompilation
 
-		if ( frame.renderer._precompilationState !== null ) return;
+		if ( frame.renderer._precompilationState !== null ) return false;
 
 		const { shadow } = this;
 
@@ -38366,7 +38422,7 @@ function _getCubemapMaterial() {
 		envMap: cubeTexture()
 	};
 
-	return _getMaterial( 'cubemap', uniforms, uniforms.envMap.sample( positionWorldDirection ) );
+	return _getMaterial( 'cubemap', uniforms, uniforms.envMap.sample( positionWorldDirection ).level( 0 ) );
 
 }
 
@@ -40871,7 +40927,7 @@ const DFGLUT = /*@__PURE__*/ Fn( ( { roughness, dotNV } ) => {
 
 	const uv = vec2( roughness, dotNV );
 
-	return texture( lut, uv ).rg;
+	return texture( lut, uv ).level( 0 ).rg;
 
 } );
 
@@ -41205,6 +41261,7 @@ var Three_TSL = /*#__PURE__*/Object.freeze({
 	atanh: atanh,
 	atomicAdd: atomicAdd,
 	atomicAnd: atomicAnd,
+	atomicExchange: atomicExchange,
 	atomicFunc: atomicFunc,
 	atomicLoad: atomicLoad,
 	atomicMax: atomicMax,
@@ -41818,4 +41875,4 @@ var Three_TSL = /*#__PURE__*/Object.freeze({
 	xor: xor
 });
 
-export { AONode, AnalyticLightNode, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BRDF_EON, BRDF_GGX, BRDF_Lambert, BRDF_Sheen, BarrierNode, BasicPointShadowFilter, BasicShadowFilter, BitcastNode, BitcountNode, BlendMode, Break, BufferAttributeNode, BufferNode, BuiltinNode, BumpMapNode, BypassNode, ChainMap, ClippingNode, CodeNode, Color4, ColorSpaceNode, ComputeBuiltinNode, ComputeNode, ConditionalNode, Const, ConstNode, ContextNode, Continue, ConvertNode, CubeRenderTarget, CubeTextureNode, DFGLUT, D_GGX, D_GGX_Anisotropic, DebugNode, Discard, EON_DirectionalAlbedo, EPSILON, EnvironmentBRDF, EventNode, ExpressionNode, F_Schlick, FlipNode, Fn, FrontFacingNode, FunctionCallNode, FunctionNode, FunctionOverloadingNode, HALF_PI, INFINITY, If, IndexNode, InputNode, InspectorBase, InspectorNode, IrradianceNode, IsolateNode, JoinNode, LTC_Evaluate, LTC_Evaluate_Volume, LTC_Uv, LightingContextNode, LightingNode, LightsNode, Loop, LoopNode, MRTNode, MaterialNode, MaterialReferenceNode, MathNode, MaxMipLevelNode, MemberNode, ModelNode, Node, NodeAccess, NodeError, NodeMaterial, NodeMaterialObserver, NodeShaderStage, NodeType, NodeUpdateType, NodeUtils, NormalMapNode, Object3DNode, OnAfterObjectUpdate, OnAfterRenderPipeline, OnBeforeFrameUpdate, OnBeforeMaterialUpdate, OnBeforeObjectUpdate, OnBeforeRenderPipeline, OnFrameUpdate, OnMaterialUpdate, OnObjectUpdate, OperatorNode, OutputStructNode, OverrideContextNode, PCFShadowFilter, PI, PI2, PMREMGenerator, PMREMNode, PackFloatNode, Packed4x8IntegerNode, ParameterNode, PassNode, PointLightNode, PointShadowFilter, PointShadowNode, PointUVNode, PropertyNode, QuadMesh, RTTNode, RangeNode, ReferenceAttributeNode, ReferenceBaseNode, ReferenceElementNode, ReferenceNode, ReflectorNode, RenderOutputNode, RendererReferenceNode, RendererUtils, Return, RotateNode, SampleNode, Schlick_to_F0, SetNode, ShaderNode, ShadowBaseNode, ShadowNode, SplitNode, Stack, StackNode, StackTrace, StorageArrayElementNode, StorageBufferAttribute, StorageBufferNode, StorageInstancedBufferAttribute, StorageStructNode, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, Switch, TBNViewMatrix, TWO_PI, Texture3DNode, TextureNode, TextureSizeNode, Three_TSL, ToneMappingNode, ToonOutlinePassNode, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UserDataNode, VSMShadowFilter, V_GGX_SmithCorrelated, V_GGX_SmithCorrelated_Anisotropic, Var, VarNode, VaryingNode, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, WorkgroupInfoNode, abs, acesFilmicToneMapping, acos, acosh, add, addMethodChaining, addNodeElement, agxToneMapping, all, alphaT, ambientOcclusion, and, anisotropy, anisotropyB, anisotropyT, any, array, asin, asinh, assign, atan, atanh, atomicAdd, atomicAnd, atomicFunc, atomicLoad, atomicMax, atomicMin, atomicOr, atomicStore, atomicSub, atomicXor, attenuationColor, attenuationDistance, attribute, attributeArray, backgroundBlurriness, backgroundIntensity, backgroundRotation, batch, batchColor, batchIndirectIndex, bentNormalView, billboarding, bitAnd, bitNot, bitOr, bitXor, bitangentGeometry, bitangentLocal, bitangentView, bitangentViewFrame, bitangentWorld, bitcast, blendBurn, blendColor, blendDodge, blendOverlay, blendScreen, bool, buffer, bufferAttribute, builtin, builtinAOContext, builtinGIContext, builtinShadowContext, bumpMap, bvec2, bvec3, bvec4, bypass, cache, call, cameraFar, cameraIndex, cameraNear, cameraNormalMatrix, cameraPosition, cameraProjectionMatrix, cameraProjectionMatrixInverse, cameraViewMatrix, cameraViewport, cameraWorldMatrix, cbrt, cdl, ceil, checker, cineonToneMapping, clamp, clearcoat, clearcoatNormalView, clearcoatRoughness, clipSpace, clipping, clippingAlpha, code, color, colorSpaceToWorking, colorToDirection, compute, computeKernel, computeSkinning, context, convert, convertColorSpace, convertToTexture, cos, cosh, countLeadingZeros, countOneBits, countTrailingZeros, cross, cubeTexture, cubeTextureBase, dFdx, dFdy, dashSize, debug, decrement, decrementBefore, defaultBuildStages, defaultShaderStages, defined, degrees, deltaTime, densityFogFactor, depth, depthPass, depthToViewZ, determinant, difference, diffuseColor, diffuseContribution, diffuseRoughness, directPointLight, directionToColor, directionToFaceDirection, dispersion, distance, div, dot, dot4I8Packed, dot4U8Packed, drawIndex, dynamicBufferAttribute, element, emissive, equal, equirectDirection, equirectUV, exp, exp2, exponentialHeightFogFactor, expression, faceDirection, faceForward, faceforward, float, floatBitsToInt, floatBitsToUint, floor, fog, fract, frameGroup, frameId, frontFacing, fwidth, gain, gapSize, getConstNodeType, getCurrentStack, getDistanceAttenuation, getGeometryRoughness, getNormalFromDepth, getParallaxCorrectNormal, getRoughness, getScreenPosition, getScreenPositionFromClip, getShIrradianceAt, getTextureType, getTypeFromLength, getViewPosition, globalId, glsl, glslFn, grayscale, greaterThan, greaterThanEqual, hardwareClipping, hash, hashArray, hashString, highpModelNormalViewMatrix, highpModelViewMatrix, hue, increment, incrementBefore, inspect, instance, instanceColor, instanceIndex, instancedArray, instancedBufferAttribute, instancedDynamicBufferAttribute, instancedMesh, int, intBitsToFloat, interleavedGradientNoise, inverse, inverseSqrt, inversesqrt, invocationLocalIndex, invocationSubgroupIndex, ior, iridescence, iridescenceIOR, iridescenceThickness, isArrayAsParameter, isBackgroundDepth, isolate, ivec2, ivec3, ivec4, js, label, length, lengthSq, lessThan, lessThanEqual, lightPosition, lightProjectionUV, lightShadowMatrix, lightTargetDirection, lightTargetPosition, lightViewPosition, lightingContext, lights, linearDepth, linearToneMapping, localId, log, log2, logarithmicDepthToViewZ, luminance, mat2, mat3, mat4, matcapUV, materialAO, materialAlphaTest, materialAnisotropy, materialAnisotropyVector, materialAttenuationColor, materialAttenuationDistance, materialClearcoat, materialClearcoatNormal, materialClearcoatRoughness, materialColor, materialDiffuseRoughness, materialDispersion, materialEmissive, materialEnvIntensity, materialEnvRotation, materialIOR, materialIridescence, materialIridescenceIOR, materialIridescenceThickness, materialLightMap, materialLineDashOffset, materialLineDashSize, materialLineGapSize, materialLineScale, materialLineWidth, materialMetalness, materialNormal, materialOpacity, materialPointSize, materialReference, materialReflectivity, materialRefractionRatio, materialRetroreflectivity, materialRotation, materialRoughness, materialSheen, materialSheenRoughness, materialShininess, materialSpecular, materialSpecularColor, materialSpecularIntensity, materialSpecularStrength, materialThickness, materialTransmission, max, maxMipLevel, mediumpModelViewMatrix, mergeContext, metalness, min, mix, mixElement, mod, modelDirection, modelNormalMatrix, modelPosition, modelRadius, modelScale, modelViewMatrix, modelViewPosition, modelViewProjection, modelWorldMatrix, modelWorldMatrixInverse, morphColor, morphReference, mrt, mul, mx_aastep, mx_add, mx_atan2, mx_cell_noise_float, mx_cell_noise_vec3, mx_contrast, mx_divide, mx_fractal_noise_float, mx_fractal_noise_float_2d, mx_fractal_noise_vec2, mx_fractal_noise_vec3, mx_fractal_noise_vec4, mx_frame, mx_heighttonormal, mx_hsvtorgb, mx_ifequal, mx_ifgreater, mx_ifgreatereq, mx_invert, mx_modulo, mx_multiply, mx_noise_float, mx_noise_vec3, mx_noise_vec4, mx_place2d, mx_power, mx_ramp4, mx_ramplr, mx_ramptb, mx_rgbtohsv, mx_rotate2d, mx_rotate3d, mx_safepower, mx_separate, mx_smoothstep, mx_splitlr, mx_splittb, mx_srgb_texture_to_lin_rec709, mx_subtract, mx_timer, mx_transform_uv, mx_unifiednoise2d, mx_unifiednoise3d, mx_worley_noise_float, mx_worley_noise_float_2d, mx_worley_noise_float_3d, mx_worley_noise_vec2, mx_worley_noise_vec3, mx_worley_noise_vec3_style, negate, negateOnBackSide, neutralToneMapping, nodeArray, nodeImmutable, nodeObject, nodeObjectAssignable, nodeObjects, nodeProxy, nodeProxyAssignable, nodeProxyConstructor, normalFlat, normalGeometry, normalLocal, normalMap, normalView, normalViewGeometry, normalWorld, normalWorldGeometry, normalize, not, notEqual, numWorkgroups, objectDirection, objectGroup, objectPosition, objectRadius, objectScale, objectViewPosition, objectWorldMatrix, oneMinus, or, orthographicDepthToViewZ, oscSawtooth, oscSine, oscSquare, oscTriangle, output, outputStruct, overloadingFn, overrideNode, overrideNodes, pack4xI8, pack4xI8Clamp, pack4xU8, pack4xU8Clamp, packHalf2x16, packNormalToRGB, packSnorm2x16, packSnorm4x8, packUnorm2x16, packUnorm4x8, parabola, parallaxDirection, parallaxUV, parameter, pass, passTexture, pcurve, perspectiveDepthToViewZ, pmremTexture, pointShadow, pointUV, pointWidth, positionGeometry, positionLocal, positionPrevious, positionView, positionViewDirection, positionWorld, positionWorldDirection, posterize, pow, pow2, pow3, pow4, premultiplyAlpha, projectionDepth, property, quadBroadcast, quadSwapDiagonal, quadSwapX, quadSwapY, radians, rand, range, rangeFogFactor, reciprocal, reference, reference$1, referenceAttribute, referenceBuffer, reflect, reflectVector, reflectView, reflector, refract, refractVector, refractView, reinhardToneMapping, remap, remapClamp, renderGroup, renderOutput, rendererReference, replaceDefaultUV, retroreflectivity, rotate, rotateUV, roughness, round, rtt, sRGBTransferEOTF, sRGBTransferOETF, sample, sampler, samplerComparison, saturate, saturation, screenCoordinate, screenDPR, screenSize, screenUV, select, setCurrentStack, setName, shaderStages, shadow, shadowPositionWorld, shapeCircle, sharedUniformGroup, sheen, sheenRoughness, shiftLeft, shiftRight, shininess, sign, sin, sinc, sinh, skinning, smoothstep, smoothstepElement, specularColor, specularColorBlended, specularF90, spherizeUV, split, spritesheetUV, sqrt, stack, step, stepElement, storage, storageBarrier, storageElement, storageStruct, storageTexture, storageTexture3D, struct, sub, subBuild, subgroupAdd, subgroupAll, subgroupAnd, subgroupAny, subgroupBallot, subgroupBroadcast, subgroupBroadcastFirst, subgroupElect, subgroupExclusiveAdd, subgroupExclusiveMul, subgroupInclusiveAdd, subgroupInclusiveMul, subgroupIndex, subgroupMax, subgroupMin, subgroupMul, subgroupOr, subgroupShuffle, subgroupShuffleDown, subgroupShuffleUp, subgroupShuffleXor, subgroupSize, subgroupXor, tan, tangentGeometry, tangentLocal, tangentView, tangentViewFrame, tangentWorld, tanh, texture, texture3D, texture3DLevel, texture3DLoad, textureBarrier, textureBicubic, textureBicubicLevel, textureLevel, textureLoad, textureSize, textureStore, thickness, time, toneMapping, toneMappingExposure, toonOutlinePass, transformDirection, transformNormal, transformNormalByInverseViewMatrix, transformNormalByViewMatrix, transformNormalToView, transmission, transpose, triNoise3D, triplanarTexture, triplanarTextures, trunc, uint, uintBitsToFloat, uniform, uniformArray, uniformCubeTexture, uniformFlow, uniformGroup, uniformTexture, unpack4xI8, unpack4xU8, unpackHalf2x16, unpackNormal, unpackRGBToNormal, unpackSnorm2x16, unpackSnorm4x8, unpackUnorm2x16, unpackUnorm4x8, unpremultiplyAlpha, userData, uv$1 as uv, uvec2, uvec3, uvec4, varying, varyingProperty, vec2, vec3, vec4, vectorComponents, velocity, vertexColor, vertexIndex, vertexStage, vibrance, viewZToLogarithmicDepth, viewZToOrthographicDepth, viewZToPerspectiveDepth, viewZToReversedOrthographicDepth, viewZToReversedPerspectiveDepth, viewport, viewportCoordinate, viewportDepthTexture, viewportLinearDepth, viewportMipTexture, viewportOpaqueMipTexture, viewportSafeUV, viewportSharedTexture, viewportSize, viewportTexture, viewportUV, vogelDiskSample, wgsl, wgslFn, workgroupArray, workgroupBarrier, workgroupId, workingLuminanceCoefficients, workingToColorSpace, xor };
+export { AONode, AnalyticLightNode, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BRDF_EON, BRDF_GGX, BRDF_Lambert, BRDF_Sheen, BarrierNode, BasicPointShadowFilter, BasicShadowFilter, BitcastNode, BitcountNode, BlendMode, Break, BufferAttributeNode, BufferNode, BuiltinNode, BumpMapNode, BypassNode, ChainMap, ClippingNode, CodeNode, Color4, ColorSpaceNode, ComputeBuiltinNode, ComputeNode, ConditionalNode, Const, ConstNode, ContextNode, Continue, ConvertNode, CubeRenderTarget, CubeTextureNode, DFGLUT, D_GGX, D_GGX_Anisotropic, DebugNode, Discard, EON_DirectionalAlbedo, EPSILON, EnvironmentBRDF, EventNode, ExpressionNode, F_Schlick, FlipNode, Fn, FrontFacingNode, FunctionCallNode, FunctionNode, FunctionOverloadingNode, HALF_PI, INFINITY, If, IndexNode, InputNode, InspectorBase, InspectorNode, IrradianceNode, IsolateNode, JoinNode, LTC_Evaluate, LTC_Evaluate_Volume, LTC_Uv, LightingContextNode, LightingNode, LightsNode, Loop, LoopNode, MRTNode, MaterialNode, MaterialReferenceNode, MathNode, MaxMipLevelNode, MemberNode, ModelNode, Node, NodeAccess, NodeError, NodeMaterial, NodeMaterialObserver, NodeShaderStage, NodeType, NodeUpdateType, NodeUtils, NormalMapNode, Object3DNode, OnAfterObjectUpdate, OnAfterRenderPipeline, OnBeforeFrameUpdate, OnBeforeMaterialUpdate, OnBeforeObjectUpdate, OnBeforeRenderPipeline, OnFrameUpdate, OnMaterialUpdate, OnObjectUpdate, OperatorNode, OutputStructNode, OverrideContextNode, PCFShadowFilter, PI, PI2, PMREMGenerator, PMREMNode, PackFloatNode, Packed4x8IntegerNode, ParameterNode, PassNode, PointLightNode, PointShadowFilter, PointShadowNode, PointUVNode, PropertyNode, QuadMesh, RTTNode, RangeNode, ReferenceAttributeNode, ReferenceBaseNode, ReferenceElementNode, ReferenceNode, ReflectorNode, RenderOutputNode, RendererReferenceNode, RendererUtils, Return, RotateNode, SampleNode, Schlick_to_F0, SetNode, ShaderNode, ShadowBaseNode, ShadowNode, SplitNode, Stack, StackNode, StackTrace, StorageArrayElementNode, StorageBufferAttribute, StorageBufferNode, StorageInstancedBufferAttribute, StorageStructNode, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, Switch, TBNViewMatrix, TWO_PI, Texture3DNode, TextureNode, TextureSizeNode, Three_TSL, ToneMappingNode, ToonOutlinePassNode, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UserDataNode, VSMShadowFilter, V_GGX_SmithCorrelated, V_GGX_SmithCorrelated_Anisotropic, Var, VarNode, VaryingNode, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, WorkgroupInfoNode, abs, acesFilmicToneMapping, acos, acosh, add, addMethodChaining, addNodeElement, agxToneMapping, all, alphaT, ambientOcclusion, and, anisotropy, anisotropyB, anisotropyT, any, array, asin, asinh, assign, atan, atanh, atomicAdd, atomicAnd, atomicExchange, atomicFunc, atomicLoad, atomicMax, atomicMin, atomicOr, atomicStore, atomicSub, atomicXor, attenuationColor, attenuationDistance, attribute, attributeArray, backgroundBlurriness, backgroundIntensity, backgroundRotation, batch, batchColor, batchIndirectIndex, bentNormalView, billboarding, bitAnd, bitNot, bitOr, bitXor, bitangentGeometry, bitangentLocal, bitangentView, bitangentViewFrame, bitangentWorld, bitcast, blendBurn, blendColor, blendDodge, blendOverlay, blendScreen, bool, buffer, bufferAttribute, builtin, builtinAOContext, builtinGIContext, builtinShadowContext, bumpMap, bvec2, bvec3, bvec4, bypass, cache, call, cameraFar, cameraIndex, cameraNear, cameraNormalMatrix, cameraPosition, cameraProjectionMatrix, cameraProjectionMatrixInverse, cameraViewMatrix, cameraViewport, cameraWorldMatrix, cbrt, cdl, ceil, checker, cineonToneMapping, clamp, clearcoat, clearcoatNormalView, clearcoatRoughness, clipSpace, clipping, clippingAlpha, code, color, colorSpaceToWorking, colorToDirection, compute, computeKernel, computeSkinning, context, convert, convertColorSpace, convertToTexture, cos, cosh, countLeadingZeros, countOneBits, countTrailingZeros, cross, cubeTexture, cubeTextureBase, dFdx, dFdy, dashSize, debug, decrement, decrementBefore, defaultBuildStages, defaultShaderStages, defined, degrees, deltaTime, densityFogFactor, depth, depthPass, depthToViewZ, determinant, difference, diffuseColor, diffuseContribution, diffuseRoughness, directPointLight, directionToColor, directionToFaceDirection, dispersion, distance, div, dot, dot4I8Packed, dot4U8Packed, drawIndex, dynamicBufferAttribute, element, emissive, equal, equirectDirection, equirectUV, exp, exp2, exponentialHeightFogFactor, expression, faceDirection, faceForward, faceforward, float, floatBitsToInt, floatBitsToUint, floor, fog, fract, frameGroup, frameId, frontFacing, fwidth, gain, gapSize, getConstNodeType, getCurrentStack, getDistanceAttenuation, getGeometryRoughness, getNormalFromDepth, getParallaxCorrectNormal, getRoughness, getScreenPosition, getScreenPositionFromClip, getShIrradianceAt, getTextureType, getTypeFromLength, getViewPosition, globalId, glsl, glslFn, grayscale, greaterThan, greaterThanEqual, hardwareClipping, hash, hashArray, hashString, highpModelNormalViewMatrix, highpModelViewMatrix, hue, increment, incrementBefore, inspect, instance, instanceColor, instanceIndex, instancedArray, instancedBufferAttribute, instancedDynamicBufferAttribute, instancedMesh, int, intBitsToFloat, interleavedGradientNoise, inverse, inverseSqrt, inversesqrt, invocationLocalIndex, invocationSubgroupIndex, ior, iridescence, iridescenceIOR, iridescenceThickness, isArrayAsParameter, isBackgroundDepth, isolate, ivec2, ivec3, ivec4, js, label, length, lengthSq, lessThan, lessThanEqual, lightPosition, lightProjectionUV, lightShadowMatrix, lightTargetDirection, lightTargetPosition, lightViewPosition, lightingContext, lights, linearDepth, linearToneMapping, localId, log, log2, logarithmicDepthToViewZ, luminance, mat2, mat3, mat4, matcapUV, materialAO, materialAlphaTest, materialAnisotropy, materialAnisotropyVector, materialAttenuationColor, materialAttenuationDistance, materialClearcoat, materialClearcoatNormal, materialClearcoatRoughness, materialColor, materialDiffuseRoughness, materialDispersion, materialEmissive, materialEnvIntensity, materialEnvRotation, materialIOR, materialIridescence, materialIridescenceIOR, materialIridescenceThickness, materialLightMap, materialLineDashOffset, materialLineDashSize, materialLineGapSize, materialLineScale, materialLineWidth, materialMetalness, materialNormal, materialOpacity, materialPointSize, materialReference, materialReflectivity, materialRefractionRatio, materialRetroreflectivity, materialRotation, materialRoughness, materialSheen, materialSheenRoughness, materialShininess, materialSpecular, materialSpecularColor, materialSpecularIntensity, materialSpecularStrength, materialThickness, materialTransmission, max, maxMipLevel, mediumpModelViewMatrix, mergeContext, metalness, min, mix, mixElement, mod, modelDirection, modelNormalMatrix, modelPosition, modelRadius, modelScale, modelViewMatrix, modelViewPosition, modelViewProjection, modelWorldMatrix, modelWorldMatrixInverse, morphColor, morphReference, mrt, mul, mx_aastep, mx_add, mx_atan2, mx_cell_noise_float, mx_cell_noise_vec3, mx_contrast, mx_divide, mx_fractal_noise_float, mx_fractal_noise_float_2d, mx_fractal_noise_vec2, mx_fractal_noise_vec3, mx_fractal_noise_vec4, mx_frame, mx_heighttonormal, mx_hsvtorgb, mx_ifequal, mx_ifgreater, mx_ifgreatereq, mx_invert, mx_modulo, mx_multiply, mx_noise_float, mx_noise_vec3, mx_noise_vec4, mx_place2d, mx_power, mx_ramp4, mx_ramplr, mx_ramptb, mx_rgbtohsv, mx_rotate2d, mx_rotate3d, mx_safepower, mx_separate, mx_smoothstep, mx_splitlr, mx_splittb, mx_srgb_texture_to_lin_rec709, mx_subtract, mx_timer, mx_transform_uv, mx_unifiednoise2d, mx_unifiednoise3d, mx_worley_noise_float, mx_worley_noise_float_2d, mx_worley_noise_float_3d, mx_worley_noise_vec2, mx_worley_noise_vec3, mx_worley_noise_vec3_style, negate, negateOnBackSide, neutralToneMapping, nodeArray, nodeImmutable, nodeObject, nodeObjectAssignable, nodeObjects, nodeProxy, nodeProxyAssignable, nodeProxyConstructor, normalFlat, normalGeometry, normalLocal, normalMap, normalView, normalViewGeometry, normalWorld, normalWorldGeometry, normalize, not, notEqual, numWorkgroups, objectDirection, objectGroup, objectPosition, objectRadius, objectScale, objectViewPosition, objectWorldMatrix, oneMinus, or, orthographicDepthToViewZ, oscSawtooth, oscSine, oscSquare, oscTriangle, output, outputStruct, overloadingFn, overrideNode, overrideNodes, pack4xI8, pack4xI8Clamp, pack4xU8, pack4xU8Clamp, packHalf2x16, packNormalToRGB, packSnorm2x16, packSnorm4x8, packUnorm2x16, packUnorm4x8, parabola, parallaxDirection, parallaxUV, parameter, pass, passTexture, pcurve, perspectiveDepthToViewZ, pmremTexture, pointShadow, pointUV, pointWidth, positionGeometry, positionLocal, positionPrevious, positionView, positionViewDirection, positionWorld, positionWorldDirection, posterize, pow, pow2, pow3, pow4, premultiplyAlpha, projectionDepth, property, quadBroadcast, quadSwapDiagonal, quadSwapX, quadSwapY, radians, rand, range, rangeFogFactor, reciprocal, reference, reference$1, referenceAttribute, referenceBuffer, reflect, reflectVector, reflectView, reflector, refract, refractVector, refractView, reinhardToneMapping, remap, remapClamp, renderGroup, renderOutput, rendererReference, replaceDefaultUV, retroreflectivity, rotate, rotateUV, roughness, round, rtt, sRGBTransferEOTF, sRGBTransferOETF, sample, sampler, samplerComparison, saturate, saturation, screenCoordinate, screenDPR, screenSize, screenUV, select, setCurrentStack, setName, shaderStages, shadow, shadowPositionWorld, shapeCircle, sharedUniformGroup, sheen, sheenRoughness, shiftLeft, shiftRight, shininess, sign, sin, sinc, sinh, skinning, smoothstep, smoothstepElement, specularColor, specularColorBlended, specularF90, spherizeUV, split, spritesheetUV, sqrt, stack, step, stepElement, storage, storageBarrier, storageElement, storageStruct, storageTexture, storageTexture3D, struct, sub, subBuild, subgroupAdd, subgroupAll, subgroupAnd, subgroupAny, subgroupBallot, subgroupBroadcast, subgroupBroadcastFirst, subgroupElect, subgroupExclusiveAdd, subgroupExclusiveMul, subgroupInclusiveAdd, subgroupInclusiveMul, subgroupIndex, subgroupMax, subgroupMin, subgroupMul, subgroupOr, subgroupShuffle, subgroupShuffleDown, subgroupShuffleUp, subgroupShuffleXor, subgroupSize, subgroupXor, tan, tangentGeometry, tangentLocal, tangentView, tangentViewFrame, tangentWorld, tanh, texture, texture3D, texture3DLevel, texture3DLoad, textureBarrier, textureBicubic, textureBicubicLevel, textureLevel, textureLoad, textureSize, textureStore, thickness, time, toneMapping, toneMappingExposure, toonOutlinePass, transformDirection, transformNormal, transformNormalByInverseViewMatrix, transformNormalByViewMatrix, transformNormalToView, transmission, transpose, triNoise3D, triplanarTexture, triplanarTextures, trunc, uint, uintBitsToFloat, uniform, uniformArray, uniformCubeTexture, uniformFlow, uniformGroup, uniformTexture, unpack4xI8, unpack4xU8, unpackHalf2x16, unpackNormal, unpackRGBToNormal, unpackSnorm2x16, unpackSnorm4x8, unpackUnorm2x16, unpackUnorm4x8, unpremultiplyAlpha, userData, uv$1 as uv, uvec2, uvec3, uvec4, varying, varyingProperty, vec2, vec3, vec4, vectorComponents, velocity, vertexColor, vertexIndex, vertexStage, vibrance, viewZToLogarithmicDepth, viewZToOrthographicDepth, viewZToPerspectiveDepth, viewZToReversedOrthographicDepth, viewZToReversedPerspectiveDepth, viewport, viewportCoordinate, viewportDepthTexture, viewportLinearDepth, viewportMipTexture, viewportOpaqueMipTexture, viewportSafeUV, viewportSharedTexture, viewportSize, viewportTexture, viewportUV, vogelDiskSample, wgsl, wgslFn, workgroupArray, workgroupBarrier, workgroupId, workingLuminanceCoefficients, workingToColorSpace, xor };

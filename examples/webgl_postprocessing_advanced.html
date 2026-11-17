@@ -95,7 +95,7 @@
 				sceneModel.add( directionalLight );
 
 				const loader = new GLTFLoader();
-				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/leeperrysmith@1.0.0.glb?original=true', function ( gltf ) {
+				loader.load( '/assets/BenHouston3D/three/leeperrysmith.glb', function ( gltf ) {
 
 					createMesh( gltf.scene.children[ 0 ].geometry, sceneModel, 100 );
 

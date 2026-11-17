@@ -135,7 +135,7 @@
 				// DEMO
 
 				new HDRLoader()
-					.load( 'https://api.landofassets.com/media/BenHouston3D/three/lobe@1.0.0.hdr?original=true', function ( texture ) {
+					.load( '/assets/BenHouston3D/three/lobe.hdr', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 						scene.environment = texture;
@@ -191,7 +191,7 @@
 			function loadModel() {
 
 				const loader = new GLTFLoader();
-				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/soldier@1.0.0.glb?original=true', function ( gltf ) {
+				loader.load( '/assets/BenHouston3D/three/soldier.glb', function ( gltf ) {
 
 
 					model = gltf.scene;

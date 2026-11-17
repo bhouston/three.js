@@ -99,7 +99,7 @@
 
 			const loader = new GLTFLoader();
 			loader.setDRACOLoader( dracoLoader );
-			loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/littlesttokyo@1.0.0.glb?original=true', function ( gltf ) {
+			loader.load( '/assets/BenHouston3D/three/littlesttokyo.glb', function ( gltf ) {
 
 				const model = gltf.scene;
 				model.position.set( 1, 1, 0 );

@@ -54,10 +54,10 @@
 				//iesLoader.type = THREE.UnsignedByteType; // LDR
 
 				const [ iesTexture1, iesTexture2, iesTexture3, iesTexture4 ] = await Promise.all( [
-					iesLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/ies-007cfb11e343e2f42e3b476be4@1.0.0.ies?original=true' ),
-					iesLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/ies-06b4cfdc8805709e7-5f6084a2@1.0.0.ies?original=true' ),
-					iesLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/ies-02a7562c650498ebb-f5cf9d5e@1.0.0.ies?original=true' ),
-					iesLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/ies-1a936937a49c63374-8714c72a@1.0.0.ies?original=true' )
+					iesLoader.loadAsync( '/assets/BenHouston3D/three/ies-007cfb11e343e2f42e3b476be4.ies' ),
+					iesLoader.loadAsync( '/assets/BenHouston3D/three/ies-06b4cfdc8805709e7-5f6084a2.ies' ),
+					iesLoader.loadAsync( '/assets/BenHouston3D/three/ies-02a7562c650498ebb-f5cf9d5e.ies' ),
+					iesLoader.loadAsync( '/assets/BenHouston3D/three/ies-1a936937a49c63374-8714c72a.ies' )
 				] );
 
 				//

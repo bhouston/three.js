@@ -231,7 +231,7 @@
 				// a two storey cloister at sunrise, lit by the sky. It has no outer walls, their outside would only
 				// take light map space and bake time
 
-				const sky = await new HDRLoader().loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/blouberg-sunrise-2-1k@1.0.0.hdr?original=true' );
+				const sky = await new HDRLoader().loadAsync( '/assets/BenHouston3D/three/blouberg-sunrise-2-1k.hdr' );
 				sky.mapping = THREE.EquirectangularReflectionMapping;
 
 				const root = new THREE.Group();

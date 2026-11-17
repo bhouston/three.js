@@ -78,8 +78,8 @@
 				const gltfLoader = new GLTFLoader();
 
 				const [ texture, gltf ] = await Promise.all( [
-					hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/venice-sunset-1k@1.0.0.hdr?original=true' ),
-					gltfLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/iridescencelamp@1.0.0.glb?original=true' ),
+					hdrLoader.loadAsync( '/assets/BenHouston3D/three/venice-sunset-1k.hdr' ),
+					gltfLoader.loadAsync( '/assets/BenHouston3D/three/iridescencelamp.glb' ),
 				] );
 
 				// environment

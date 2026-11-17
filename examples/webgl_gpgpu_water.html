@@ -244,7 +244,7 @@
 				const glbloader = new GLTFLoader();
 				glbloader.setDRACOLoader( new DRACOLoader().setDecoderPath( DRACO_GLTF_CONFIG ) );
 
-				const [ env, model ] = await Promise.all( [ hdrLoader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/blouberg-sunrise-2-1k@1.0.0.hdr?original=true' ), glbloader.loadAsync( 'https://api.landofassets.com/media/BenHouston3D/three/duck@1.0.0.glb?original=true' ) ] );
+				const [ env, model ] = await Promise.all( [ hdrLoader.loadAsync( '/assets/BenHouston3D/three/blouberg-sunrise-2-1k.hdr' ), glbloader.loadAsync( '/assets/BenHouston3D/three/duck.glb' ) ] );
 				env.mapping = THREE.EquirectangularReflectionMapping;
 				scene.environment = env;
 				scene.background = env;

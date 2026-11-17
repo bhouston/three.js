@@ -98,7 +98,7 @@
 				const noise = new THREE.TextureLoader().load( 'textures/noise.png' );
 
 				new HDRLoader()
-					.load( 'https://api.landofassets.com/media/BenHouston3D/three/lobe@1.0.0.hdr?original=true', function ( texture ) {
+					.load( '/assets/BenHouston3D/three/lobe.hdr', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 
@@ -114,7 +114,7 @@
 
 						const loader = new GLTFLoader();
 						loader.setDRACOLoader( new DRACOLoader().setDecoderPath( DRACO_GLTF_CONFIG ) );
-						loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/shaderball2@1.0.0.glb?original=true', function ( gltf ) {
+						loader.load( '/assets/BenHouston3D/three/shaderball2.glb', function ( gltf ) {
 
 							const shaderBall = gltf.scene.children[ 0 ];
 

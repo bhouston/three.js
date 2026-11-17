@@ -237,7 +237,7 @@
 
 				const loader = new GLTFLoader();
 
-				loader.load( 'https://api.landofassets.com/media/BenHouston3D/three/leeperrysmith@1.0.0.glb?original=true', function ( gltf ) {
+				loader.load( '/assets/BenHouston3D/three/leeperrysmith.glb', function ( gltf ) {
 
 					mesh = gltf.scene.children[ 0 ];
 					mesh.material = new THREE.MeshPhongMaterial( {

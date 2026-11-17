@@ -69,7 +69,8 @@
     "test-e2e-webgpu": "node test/e2e/puppeteer.js --webgpu",
     "test-treeshake": "rollup -c test/rollup.treeshake.config.js",
     "make-screenshot": "node test/e2e/puppeteer.js --make",
-    "make-tsl-reference": "node test/unit/tsl/make.js"
+    "make-tsl-reference": "node test/unit/tsl/make.js",
+    "assets:install": "loa install --frozen-lockfile"
   },
   "keywords": [
     "three",
@@ -95,6 +96,7 @@
   "homepage": "https://threejs.org/",
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@landofassets/cli": "^5.0.0",
     "@rollup/plugin-node-resolve": "^16.0.0",
     "@rollup/plugin-terser": "^1.0.0",
     "eslint": "^10.8.0",

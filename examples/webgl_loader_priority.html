@@ -37,10 +37,10 @@
 			const backgroundPriority = new URLSearchParams( location.search ).get( 'background' ) === 'auto' ? 'auto' : 'low';
 
 			const models = [
-				'https://api.landofassets.com/media/BenHouston3D/three/boombox@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/coffeemug@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/stork@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/gltf-flamingo@1.0.0.glb?original=true',
-				'https://api.landofassets.com/media/BenHouston3D/three/parrot@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/robotexpressive@1.0.0.glb?original=true',
-				'https://api.landofassets.com/media/BenHouston3D/three/diffuseroughnessparametersweep@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/godrays-demo@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/collision-world@1.0.0.glb?original=true',
-				'https://api.landofassets.com/media/BenHouston3D/three/shadowmappablemesh@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/shaderball@1.0.0.glb?original=true', 'https://api.landofassets.com/media/BenHouston3D/three/dispersiontest@1.0.0.glb?original=true'
+				'/assets/BenHouston3D/three/boombox.glb', '/assets/BenHouston3D/three/coffeemug.glb', '/assets/BenHouston3D/three/stork.glb', '/assets/BenHouston3D/three/gltf-flamingo.glb',
+				'/assets/BenHouston3D/three/parrot.glb', '/assets/BenHouston3D/three/robotexpressive.glb',
+				'/assets/BenHouston3D/three/diffuseroughnessparametersweep.glb', '/assets/BenHouston3D/three/godrays-demo.glb', '/assets/BenHouston3D/three/collision-world.glb',
+				'/assets/BenHouston3D/three/shadowmappablemesh.glb', '/assets/BenHouston3D/three/shaderball.glb', '/assets/BenHouston3D/three/dispersiontest.glb'
 			];
 
 			init();
@@ -82,7 +82,7 @@
 				}
 
 				const hero = new GLTFLoader().setCache( 'reload' );
-				hero.load( 'https://api.landofassets.com/media/BenHouston3D/three/horse@1.0.0.glb?original=true', onHeroLoad, undefined, onError );
+				hero.load( '/assets/BenHouston3D/three/horse.glb', onHeroLoad, undefined, onError );
 
 				updateStatus();
 				render();

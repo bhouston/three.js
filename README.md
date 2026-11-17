@@ -68,6 +68,10 @@ Cloning the repo with all its history results in a ~2 GB download. If you don't 
 git clone --depth=1 https://github.com/mrdoob/three.js.git
 ```
 
+### Running this branch's examples
+
+Install dependencies with `npm install`, then install the public example assets from the repository root with `npm run assets:install` (or `npx loa install --frozen-lockfile`). Run `npm start` to serve the checkout. The gitignored `assets/` directory supplies stable local URLs; no LoA login or runtime adapter is needed. See [example asset setup](utils/landofassets/README.md).
+
 ### Change log
 
 [Releases](https://github.com/mrdoob/three.js/releases)

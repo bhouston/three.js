@@ -820,7 +820,7 @@ class PhysicalLightingModel extends LightingModel {
 	 */
 	indirectSpecular( builder ) {
 
-		const { radiance, irradiance, reflectedLight } = builder.context;
+		const { radiance, reflectedLight } = builder.context;
 
 		if ( this.clearcoat === true ) {
 
@@ -850,11 +850,9 @@ class PhysicalLightingModel extends LightingModel {
 		const singleScattering = mix( singleScatteringDielectric, singleScatteringMetallic, metalness );
 		const multiScattering = mix( multiScatteringDielectric, multiScatteringMetallic, metalness );
 
-		// The multiple scattering is lit by the indirect diffuse irradiance of all sources, see
-		// Fdez-Agüera, "A Multiple-Scattering Microfacet Model for Real-Time Image-based Lighting"
-		const cosineWeightedIrradiance = irradiance.mul( 1 / Math.PI );
-
-		const indirectSpecular = radiance.mul( singleScattering ).add( multiScattering.mul( cosineWeightedIrradiance ) ).toVar();
+		// The multiple scattering lobe has the shape of the single scattering lobe, so it scales the radiance, see
+		// Turquin, "Practical multiple scattering compensation for microfacet models"
+		const indirectSpecular = radiance.mul( singleScattering.add( multiScattering ) ).toVar();
 
 		if ( this.sheen === true ) {
 

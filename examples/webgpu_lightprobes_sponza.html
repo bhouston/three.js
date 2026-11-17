@@ -38,6 +38,8 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
+			import { builtinIndirectContext, context } from 'three/tsl';
+			import { lightProbeGridDiffuse } from 'three/addons/tsl/lighting/LightProbeGridDiffuse.js';
 
 			import { SunLight } from 'three/addons/lights/SunLight.js';
 			import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
@@ -291,7 +293,7 @@
 				);
 				probes.position.set( params.boundsX, params.boundsY, params.boundsZ );
 				probes.visible = params.enabled;
-				scene.add( probes );
+				renderer.contextNode = builtinIndirectContext( { diffuse: [ lightProbeGridDiffuse( probes ) ] } );
 
 				resetProbeBake();
 
@@ -315,6 +317,9 @@
 				// Keep the helper spheres out of the cubemap captures.
 				if ( probesHelper ) probesHelper.visible = false;
 
+				const currentContext = renderer.contextNode;
+				renderer.contextNode = context();
+
 				try {
 
 					// Publish a few probes per frame, finishing each pass before the next bounce.
@@ -328,6 +333,8 @@
 					} );
 
 				} finally {
+
+					renderer.contextNode = currentContext;
 
 					if ( probesHelper ) probesHelper.visible = params.showProbes;
 

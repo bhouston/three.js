@@ -162,7 +162,7 @@
 
 		let camera, scene, model, renderer, renderPipeline, ssrNode, temporalReprojectNode, denoiseNode;
 		let controls;
-		let combinedOutputNode, scenePassColor, scenePassDepth, scenePassVelocity;
+		let combinedOutputNode, normalOutputNode, depthOutputNode, scenePassColor, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 		const temporalOutputs = new Map();
 
@@ -274,6 +274,9 @@
 			const normalDecode = ( value ) => unpackOctahedralToNormal( value.rg );
 			const sceneNormal = sample( ( uv ) => normalDecode( scenePassNormal.sample( uv ) ) );
 
+			normalOutputNode = vec4( packNormalToRGB( sceneNormal.sample( screenUV ) ), 1 );
+			depthOutputNode = vec4( vec3( scenePass.getLinearDepthNode() ), 1 );
+
 			// metalness in diffuseColor.a, roughness in velocity.z (no separate metalrough MRT)
 			const scenePassMetalRough = sample( ( uv ) => vec2(
 				scenePassDiffuseColor.sample( uv ).a,
@@ -351,6 +354,8 @@
 			const outputTypes = {
 				Beauty: 0,
 				SSR: 1,
+				Normal: 2,
+				Depth: 3,
 				'SSR DN': 4,
 				'Compare (Denoise)': OUTPUT_COMPARE_DENOISE,
 				'Compare (Reflections)': OUTPUT_COMPARE_SSR,
@@ -560,6 +565,8 @@
 
 				case 0: node = applyPostProcessing( combinedOutputNode ); break; // Beauty
 				case 1: node = applyGrading( vec4( ssrNode.rgb, 1 ) ); break; // SSR
+				case 2: node = renderOutput( normalOutputNode, THREE.NoToneMapping, THREE.SRGBColorSpace ); break; // Normal
+				case 3: node = renderOutput( depthOutputNode, THREE.NoToneMapping, THREE.SRGBColorSpace ); break; // Linear depth
 				case 4: node = applyGrading( vec4( denoiseNode.rgb, 1 ) ); break; // SSR DN
 				case 6: node = vec4( denoiseNode.aaa, 1 ); break; // Accumulation Speed (Alpha)
 				case 7: node = vec4( ssrNode.aaa, 1 ); break; // Ray Length

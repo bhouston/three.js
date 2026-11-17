@@ -39,7 +39,8 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity } from 'three/tsl';
+			import { rtt, screenUV, pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, color, positionLocal, sample, packNormalToRGB, unpackRGBToNormal, vec2, vec4, uniform, mix, velocity } from 'three/tsl';
+			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
@@ -51,7 +52,7 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const params = {
-				output: 'Beauty', traa: true,
+				output: 'Beauty', downscaleFactor: 2, traa: true,
 				quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
@@ -219,11 +220,12 @@
 					binaryRefine: params.binaryRefine
 				} ).toInspector( 'SSR' );
 
-				const ssrTexture = ssrNode.getTextureNode();
+				// Reconstruct before full-resolution temporal reprojection and denoising.
+				const ssrTexture = rtt( jointBilateralUpsample( ssrNode.getTextureNode(), scenePassDepth, sceneNormal, scenePassDepth, sceneNormal, camera ).sample( screenUV ) );
 
 				// denoise
 
-				const temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
+				const temporalReprojectNode = temporalReproject( ssrTexture, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 					mode: 'specular',
 					accumulate: false
 				} );
@@ -233,7 +235,7 @@
 				const denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
 					depth: scenePassDepth,
 					normal: scenePassNormal,
-					raw: ssrNode,
+					raw: ssrTexture,
 					metalRoughness: sceneMetalRough,
 					mode: 'specular',
 					accumulate: true
@@ -279,6 +281,7 @@
 
 				function updateParameters() {
 
+					ssrNode.resolutionScale = 1 / params.downscaleFactor;
 					ssrNode.quality.value = params.quality;
 					ssrNode.binaryRefine = params.binaryRefine;
 					ssrNode.maxDistance.value = params.maxDistance;
@@ -295,6 +298,7 @@
 				displayGui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
 
 				const ssrGui = renderer.inspector.createParameters( 'SSR' );
+				ssrGui.add( params, 'downscaleFactor', 1, 4, 0.25 ).name( 'Downscale factor' ).onChange( updateParameters );
 				ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 				ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 				ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );

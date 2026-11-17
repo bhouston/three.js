@@ -712,7 +712,7 @@ class WGSLNodeBuilder extends NodeBuilder {
 	generateTextureLod( texture, textureProperty, uvSnippet, depthSnippet, offsetSnippet, levelSnippet = '0u' ) {
 
 		// Cube textures cannot use textureLoad in WGSL, must use textureSampleLevel
-		if ( texture.isCubeTexture === true ) {
+		if ( texture.isCubeTexture === true || texture.isCubeArrayTexture === true ) {
 
 			if ( offsetSnippet ) {
 
@@ -723,7 +723,8 @@ class WGSLNodeBuilder extends NodeBuilder {
 			// Depth textures require integer level, regular textures use float
 			const levelType = texture.isDepthTexture ? 'u32' : 'f32';
 
-			return `textureSampleLevel( ${ textureProperty }, ${ textureProperty }_sampler, ${ uvSnippet }, ${ levelType }( ${ levelSnippet } ) )`;
+			const arrayIndex = texture.isCubeArrayTexture === true ? `${ depthSnippet || '0' }, ` : '';
+			return `textureSampleLevel( ${ textureProperty }, ${ textureProperty }_sampler, ${ uvSnippet }, ${ arrayIndex }${ levelType }( ${ levelSnippet } ) )`;
 
 		}
 
@@ -2386,7 +2387,7 @@ ${ flowData.code }
 
 		const texture = textureNode.value;
 
-		return texture.isCubeTexture === true || ( this.isUnfilterable( texture ) === false && textureNode.isStorageTextureNode !== true ) || textureNode.gatherNode !== null || this.samplerNodes.has( textureNode );
+		return texture.isCubeTexture === true || texture.isCubeArrayTexture === true || ( this.isUnfilterable( texture ) === false && textureNode.isStorageTextureNode !== true ) || textureNode.gatherNode !== null || this.samplerNodes.has( textureNode );
 
 	}
 
@@ -2423,7 +2424,11 @@ ${ flowData.code }
 
 		}
 
-		if ( texture.isCubeTexture === true && texture.isDepthTexture === true ) {
+		if ( texture.isCubeArrayTexture === true ) {
+
+			textureType = 'texture_cube_array<f32>';
+
+		} else if ( texture.isCubeTexture === true && texture.isDepthTexture === true ) {
 
 			textureType = 'texture_depth_cube';
 

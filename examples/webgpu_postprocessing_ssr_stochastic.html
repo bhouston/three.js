@@ -57,8 +57,9 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec4, uniform, mix, step, abs, float, renderOutput, saturation, builtinIndirectContext } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, unpackRGBToNormal, vec2, velocity, diffuseColor, vec4, uniform, mix, step, abs, float, renderOutput, saturation, builtinIndirectContext, Fn, positionPrevious } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { ssrHistory } from 'three/addons/tsl/display/SSRHistory.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
@@ -93,6 +94,7 @@
 
 		const params = {
 			output: 0,
+			lighting: 'Indirect BRDF',
 			roughness: 0.3,
 
 			ssr: {
@@ -137,7 +139,7 @@
 		};
 
 		let camera, scene, model, renderer, renderPipeline, ssrNode, temporalReprojectNode, denoiseNode;
-		let controls;
+		let controls, reflectionHistory, beautyPass;
 		let combinedOutputNode, scenePassColor, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 		const temporalOutputs = new Map();
@@ -220,7 +222,7 @@
 				diffuseColor: vec4( diffuseColor.rgb, materialMetalness ),
 				// Pack roughness into normal alpha channel to save MRT bandwidth
 				normal: vec4( packNormalToRGB( normalView ).rgb, materialRoughness ),
-				velocity: velocity
+				velocity: vec4( velocity, velocity.previousCameraViewMatrix.mul( velocity.previousModelWorldMatrix ).mul( vec4( positionPrevious, 1 ) ).z.toVarying(), 0 )
 			} ) );
 
 			scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
@@ -247,50 +249,68 @@
 				scenePassNormal.sample( uv ).a
 			) ).toInspector( 'Metalness/Roughness' );
 
-			ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
-				stochastic: true,
-				metalnessNode: scenePassDiffuseColor.a,
-				roughnessNode: scenePassNormal.a,
-				binaryRefine: params.ssr.binaryRefine
-			} ).toInspector( 'SSR' );
+			reflectionHistory = ssrHistory( camera, scenePass, scenePassVelocity );
 
-			const ssrHitDistance = ssrNode.getHitDistanceNode();
+			function updateLighting() {
 
-			temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
-				mode: 'specular',
-				hitDistance: ssrHitDistance,
-				accumulate: false
-			} );
-			temporalReprojectNode.toInspector( 'Temporal Reproject' );
+				for ( const effect of [ ssrNode, temporalReprojectNode, denoiseNode, beautyPass, ...temporalOutputs.values() ] ) {
 
-			denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
-				depth: scenePassDepth,
-				normal: scenePassNormal,
-				raw: ssrNode,
-				hitDistance: ssrHitDistance,
-				frameCount: temporalReprojectNode.getFrameCountNode(),
-				metalRoughness: scenePassMetalRough,
-				mode: 'specular',
-				accumulate: true,
-			} );
-			denoiseNode.toInspector( 'Denoise' );
-			temporalReprojectNode.setHistoryTexture( denoiseNode );
+					if ( effect !== undefined ) effect.dispose();
 
-			// the materials take the reflections into their specular BRDF, in front of the environment
+				}
 
-			const beautyPass = pass( scene, camera );
-			beautyPass.contextNode = builtinIndirectContext( {
-				specular: [ ssrNode.getSpecularSource( denoiseNode.getTextureNode().sample( screenUV ) ) ]
-			} );
+				temporalOutputs.clear();
+				reflectionHistory.invalidate();
+
+				ssrNode = ssr( params.lighting === 'Indirect BRDF' ? reflectionHistory.source : scenePassColor, scenePassDepth, sceneNormal, {
+					camera,
+					stochastic: true,
+					metalnessNode: scenePassDiffuseColor.a,
+					roughnessNode: scenePassNormal.a,
+					binaryRefine: params.ssr.binaryRefine
+				} ).toInspector( 'SSR' );
+
+				const ssrHitDistance = ssrNode.getHitDistanceNode();
+
+				temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
+					mode: 'specular',
+					hitDistance: ssrHitDistance,
+					accumulate: false
+				} );
+				temporalReprojectNode.toInspector( 'Temporal Reproject' );
+
+				denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
+					depth: scenePassDepth,
+					normal: scenePassNormal,
+					raw: ssrNode,
+					hitDistance: ssrHitDistance,
+					frameCount: temporalReprojectNode.getFrameCountNode(),
+					metalRoughness: scenePassMetalRough,
+					mode: 'specular',
+					accumulate: true,
+				} );
+				denoiseNode.toInspector( 'Denoise' );
+				temporalReprojectNode.setHistoryTexture( denoiseNode );
+
+				// the materials take the reflections into their specular BRDF, in front of the environment
+
+				beautyPass = pass( scene, camera );
+				beautyPass.contextNode = builtinIndirectContext( {
+					specular: [ ssrNode.getSpecularSource( denoiseNode.getTextureNode().sample( screenUV ) ) ]
+				} );
+
+				const beautyColor = beautyPass.getTextureNode().toInspector( 'Combined SSR' );
+				combinedOutputNode = params.lighting === 'Indirect BRDF' ? beautyColor : vec4( scenePassColor.rgb.add( denoiseNode.rgb ), 1 );
+
+				applyParams();
+				updateOutputNode();
+
+			}
 
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );
 			saturationUniform = uniform( params.post.grading.saturation );
 
-			const outputNode = beautyPass.getTextureNode().toInspector( 'Combined SSR' );
-			combinedOutputNode = outputNode;
-
-			renderPipeline.outputNode = applyPostProcessing( combinedOutputNode );
 			renderPipeline.outputColorTransform = false;
 
 			controls = new OrbitControls( camera, renderer.domElement );
@@ -328,6 +348,8 @@
 			const displayGui = renderer.inspector.createParameters( 'Display' );
 			displayGui.add( params, 'output', outputTypes ).name( 'Output' ).onChange( updateOutputNode );
 			displayGui.add( params.post, 'traa' ).name( 'TRAA' ).onChange( updateOutputNode );
+
+			displayGui.add( params, 'lighting', [ 'Indirect BRDF', 'Layered' ] ).name( 'Lighting' ).onChange( updateLighting );
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params.ssr, 'intensity', 0, 4 ).name( 'Intensity' ).onChange( applyParams );
@@ -377,7 +399,7 @@
 			} );
 			lightGui.add( directionalLight, 'intensity', 0, 50 ).name( 'Intensity' );
 
-			updateOutputNode();
+			updateLighting();
 			renderer.setAnimationLoop( animate );
 
 		}
@@ -495,6 +517,17 @@
 			releaseCompareControls();
 
 			renderPipeline.outputColorTransform = params.output === 6 || params.output === 7;
+			if ( params.lighting === 'Indirect BRDF' && params.output !== 0 ) {
+
+				const beautyColor = beautyPass.getTextureNode();
+				node = node.bypass( Fn( () => {
+
+					beautyColor.toVar();
+
+				} )() );
+
+			}
+
 			renderPipeline.outputNode = node;
 			renderPipeline.needsUpdate = true;
 
@@ -535,7 +568,18 @@
 
 			controls.update();
 
+			reflectionHistory.prepare( renderer );
 			renderPipeline.render();
+
+			if ( params.lighting === 'Indirect BRDF' ) {
+
+				reflectionHistory.capture( renderer, beautyPass.getTexture( 'output' ) );
+
+			} else {
+
+				reflectionHistory.invalidate();
+
+			}
 
 		}
 

@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, ivec2, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, screenUV, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, ivec2, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, roughness, screenUV, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { Reprojection } from '../../utils/Reprojection.js';
@@ -687,15 +687,20 @@ class SSRNode extends Node {
 	}
 
 	/**
-	 * Returns the reflections as a source of indirect specular light for the current
-	 * pixel: the reflection in RGB and its coverage in alpha.
-	 * Only the mirror path (`stochastic` is `false`) outputs coverage.
+	 * Returns the reflections as a source of indirect specular light for the material
+	 * of the current pixel: the reflection in RGB and its coverage in alpha.
+	 * The material's roughness selects the blur. Only the mirror path outputs coverage.
 	 *
 	 * @return {Node<vec4>} The radiance and coverage.
 	 */
 	getSpecularSource() {
 
-		return this.getTextureNode().context( { getUV: () => screenUV } );
+		const blur = this.stochastic === false && this.roughnessNode !== null;
+		const source = passTexture( this, ( blur ? this._blurRenderTarget : this._ssrRenderTarget ).texture ).sample( screenUV );
+
+		if ( blur ) source.levelNode = roughness.mul( roughness ).mul( this._blurRenderTarget.texture.mipmaps.length - 1 );
+
+		return source;
 
 	}
 

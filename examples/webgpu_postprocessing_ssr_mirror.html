@@ -213,7 +213,7 @@
 				} ).toInspector( 'SSR' );
 
 				raw = passTexture( reflection, reflection.getRenderTarget().texture );
-				blurred = reflection.getSpecularSource();
+				blurred = reflection.getTextureNode();
 
 				beauty = vec4( scenePassColor.rgb.add( mix( raw.rgb, blurred.rgb, blurEnabled ) ), 1 );
 

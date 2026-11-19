@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, ivec2, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, ivec2, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, screenUV, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { Reprojection } from '../../utils/Reprojection.js';
@@ -31,6 +31,12 @@ const MAX_STEPS = 64;
 
 /**
  * Post processing node for computing screen space reflections (SSR).
+ *
+ * The mirror path outputs the reflection in RGB and its coverage in alpha. Coverage is the
+ * weight the reflected radiance is multiplied by: the metalness, the distance falloff and
+ * the grazing factor on a hit, and zero on a miss. It tells the consumer how much of the
+ * reflection another source, like the environment, has to fill. The stochastic path
+ * outputs BRDF-weighted reflections in RGB and the hit distance in alpha.
  *
  * Reference: {@link https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.html}
  *
@@ -204,6 +210,7 @@ class SSRNode extends Node {
 		/**
 		 * A multiplier for the overall reflection intensity. `1` leaves the
 		 * reflections unchanged, lower values dim them and higher values boost them.
+		 * The mirror path scales its coverage as well, so its range is `[0,1]`.
 		 *
 		 * @type {UniformNode<float>}
 		 * @default 1
@@ -676,6 +683,19 @@ class SSRNode extends Node {
 	getTextureNode() {
 
 		return ( this.stochastic === false && this.roughnessNode !== null ) ? this._blurredTextureNode : this._textureNode;
+
+	}
+
+	/**
+	 * Returns the reflections as a source of indirect specular light for the current
+	 * pixel: the reflection in RGB and its coverage in alpha.
+	 * Only the mirror path (`stochastic` is `false`) outputs coverage.
+	 *
+	 * @return {Node<vec4>} The radiance and coverage.
+	 */
+	getSpecularSource() {
+
+		return this.getTextureNode().context( { getUV: () => screenUV } );
 
 	}
 
@@ -1335,6 +1355,7 @@ class SSRNode extends Node {
 					// The mirror/blur path is a plain reflection, so reapply upstream's squared
 					// distance attenuation and grazing Fresnel here to match its falloff.
 					let weightedColor = reflectColor.rgb.mul( finalSampleWeight );
+					let alpha = worldDistance;
 
 					if ( this.stochastic === false ) {
 
@@ -1343,10 +1364,14 @@ class SSRNode extends Node {
 						const fresnelCoe = div( dot( viewIncidentDir, viewReflectDir ).add( 1 ), 2 ).toVar();
 						weightedColor = weightedColor.mul( attenuation.mul( fresnelCoe ) );
 
+						// coverage is the weight of the reflected radiance
+
+						alpha = reflectColor.a.mul( metalness ).mul( attenuation ).mul( fresnelCoe );
+
 					}
 
 					hit.assign( 1 );
-					output.assign( vec4( weightedColor, worldDistance ) );
+					output.assign( vec4( weightedColor, alpha ) );
 
 				} );
 
@@ -1373,8 +1398,10 @@ class SSRNode extends Node {
 			const lum = luminance( output.rgb ).max( 1e-4 ).toVar();
 			output.rgb.mulAssign( this.maxLuminance.div( lum ).min( 1 ) );
 
-			// scale the reflection color by the user-controlled intensity
-			output.rgb.mulAssign( this.intensity );
+			// scale the reflection by the user-controlled intensity, the mirror path scales its coverage too
+
+			if ( this.stochastic === false ) output.mulAssign( this.intensity );
+			else output.rgb.mulAssign( this.intensity );
 
 			return output.max( 0 );
 

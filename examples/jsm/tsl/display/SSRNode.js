@@ -1,6 +1,7 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, ivec2, luminance, max, min, mix, mul, nodeObject, normalize, orthographicDepthToViewZ, passTexture, perspectiveDepthToViewZ, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
+import { Reprojection } from '../../utils/Reprojection.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
@@ -25,6 +26,7 @@ const MAX_STEPS = 64;
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
+ * @property {TextureNode} [velocityNode=null] - The scene's velocity. When set, `colorNode` is the previous frame's color and each hit is reprojected into it, so the reflections can be traced before the frame is shaded. Hits the previous frame does not show have no coverage. The validation assumes static geometry.
  */
 
 /**
@@ -46,7 +48,7 @@ class SSRNode extends Node {
 	/**
 	 * Constructs a new SSR node.
 	 *
-	 * @param {Node<vec4>} colorNode - The node that represents the beauty pass.
+	 * @param {Node<vec4>} colorNode - The radiance the reflections read: the beauty pass, or the previous frame's color when the `velocityNode` option is set.
 	 * @param {Node<float>} depthNode - A node that represents the beauty pass's depth.
 	 * @param {Node<vec3>} normalNode - A node that represents the beauty pass's unit view-space normals.
 	 * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.
@@ -65,7 +67,8 @@ class SSRNode extends Node {
 			environmentNode = null,
 			envImportanceSampling = false,
 			diffuseNode = null,
-			binaryRefine = false
+			binaryRefine = false,
+			velocityNode = null
 		} = options;
 
 		let camera = options.camera ?? null;
@@ -88,7 +91,7 @@ class SSRNode extends Node {
 		this.envImportanceSampling = envImportanceSampling;
 
 		/**
-		 * The node that represents the beauty pass.
+		 * The radiance the reflections read, sampled at each hit.
 		 *
 		 * @type {Node<vec4>}
 		 */
@@ -341,6 +344,16 @@ class SSRNode extends Node {
 		 * @type {Camera}
 		 */
 		this.camera = camera;
+
+		/**
+		 * Maps the hits to the previous frame when the color node holds the previous frame's color.
+		 *
+		 * @private
+		 * @type {?Reprojection}
+		 */
+		this._reprojection = velocityNode !== null ? new Reprojection( depthNode, velocityNode, camera ) : null;
+
+		if ( this._reprojection !== null ) this._reprojection.previousDepthNode.value.name = 'SSRNode.previousDepth';
 
 		/**
 		 * The spread of the blur. Automatically set when generating mips.
@@ -814,6 +827,10 @@ class SSRNode extends Node {
 
 		}
 
+		// store the depth and camera matrices for the next frame
+
+		if ( this._reprojection !== null ) this._reprojection.update( renderer );
+
 		// restore
 
 		RendererUtils.restoreRendererState( renderer, _rendererState );
@@ -852,6 +869,31 @@ class SSRNode extends Node {
 		}, { point: 'vec3', planePoint: 'vec3', planeNormal: 'vec3', return: 'float' } );
 
 		const sampleDepth = ( uv ) => projectionDepth( this.depthNode.sample( uv ).r, this._cameraNear, this._cameraFar );
+
+		// the color of a hit, read from the previous frame when the color node holds it
+
+		const sampleColor = ( uv, viewZ ) => {
+
+			const reprojection = this._reprojection;
+
+			if ( reprojection === null ) return this.colorNode.sample( uv );
+
+			const texel = ivec2( uv.mul( textureSize( reprojection.velocityNode ) ) );
+			const historyUV = reprojection.getHistoryUV( uv, texel ).toConst();
+
+			// the previous frame shows the hit when the surface it holds there reprojects to the hit's depth
+
+			const previousDepth = reprojection.getPreviousDepth( historyUV, vec2( this._cameraNear, this._cameraFar ) );
+			const reprojectedZ = this.camera.isOrthographicCamera
+				? orthographicDepthToViewZ( previousDepth, this._cameraNear, this._cameraFar )
+				: perspectiveDepthToViewZ( previousDepth, this._cameraNear, this._cameraFar );
+
+			const valid = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() )
+				.and( reprojectedZ.sub( viewZ ).abs().lessThanEqual( viewZ.abs().mul( 0.01 ).max( 0.001 ) ) );
+
+			return this.colorNode.sample( historyUV ).mul( float( valid ) );
+
+		};
 
 		const sampleMarchNoise = this.stochastic === true ? bindAnalyticNoise( this._resolution, 47 ) : null;
 
@@ -1282,7 +1324,7 @@ class SSRNode extends Node {
 					const hitWorldPosition = this._cameraWorldMatrix.mul( vec4( vP, 1.0 ) ).xyz.toVar();
 					const worldDistance = distance( worldPosition, hitWorldPosition ).mul( specDominantFactor ).toVar();
 
-					const reflectColor = this.colorNode.sample( uvS ).toVar();
+					const reflectColor = sampleColor( uvS, vP.z ).toVar();
 
 					// Multi-bounce: add the reprojected previous-frame reflection at the hit point.
 					reflectColor.rgb.assign( reprojectHitPointHistory( uvS, reflectColor.rgb ) );
@@ -1381,6 +1423,8 @@ class SSRNode extends Node {
 		this._blurMaterial.dispose();
 		this._copyMaterial.dispose();
 
+		if ( this._reprojection !== null ) this._reprojection.dispose();
+
 		if ( this._importanceEnvironment !== null ) {
 
 			this._importanceEnvironment.dispose();
@@ -1399,7 +1443,7 @@ export default SSRNode;
  *
  * @tsl
  * @function
- * @param {Node<vec4>} colorNode - The node that represents the beauty pass.
+ * @param {Node<vec4>} colorNode - The radiance the reflections read: the beauty pass, or the previous frame's color when the `velocityNode` option is set.
  * @param {Node<float>} depthNode - A node that represents the beauty pass's depth.
  * @param {Node<vec3>} normalNode - A node that represents the beauty pass's unit view-space normals.
  * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.

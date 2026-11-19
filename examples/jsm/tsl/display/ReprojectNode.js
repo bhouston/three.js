@@ -1,26 +1,18 @@
-import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, Node, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Vector2 } from 'three/webgpu';
-import { Fn, OnAfterObjectUpdate, convertToTexture, float, getViewPosition, isBackgroundDepth, ivec2, luminance, nodeObject, passTexture, texture, textureSize, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
-
-const _quadMesh = /*@__PURE__*/ new QuadMesh();
-const _size = /*@__PURE__*/ new Vector2();
-
-let _rendererState;
+import { HalfFloatType, Matrix4, Node, RenderTarget } from 'three/webgpu';
+import { Fn, OnAfterObjectUpdate, convertToTexture, float, getViewPosition, isBackgroundDepth, ivec2, luminance, nodeObject, texture, textureSize, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 
 /**
  * @typedef {Object} ReprojectNodeOptions
  * @property {Camera} [camera] - The camera the scene is rendered with. Inferred from the depth pass when omitted.
- * @property {boolean} [cache=true] - When `true`, the frame is reprojected once into a buffer that all lookups share. When `false`, each lookup is reprojected on its own, which is exact at the lookup's UV but costs eight texture reads.
- * @property {number} [resolutionScale=1] - The resolution of the buffer relative to the drawing buffer.
- * @property {boolean} [mipmaps=false] - Whether the buffer has a mip chain, for lookups by rough reflections and diffuse rays.
  */
 
 /**
  * Reprojects the previous frame's linear HDR output into the current frame, so effects
  * that run before the current frame is shaded (SSR, SSGI) can read it as their radiance.
  *
- * Each pixel gathers from the previous frame by its velocity and is validated against the
- * previous depth. The node is a radiance input: `sample( uv, level )` returns the radiance
- * in RGB and its validity in alpha, and invalid history returns zero.
+ * Each lookup gathers from the previous frame by the velocity at its UV and is validated
+ * against the previous depth. The node is a radiance input: `sample( uv )` returns the
+ * radiance in RGB and its validity in alpha, and invalid history returns zero.
  *
  * ```js
  * const history = reproject( velocity, depth, scenePass.getPreviousTextureNode( 'depth' ) );
@@ -53,7 +45,7 @@ class ReprojectNode extends Node {
 
 		super( 'vec4' );
 
-		const { camera = depthNode.passNode.camera, cache = true, resolutionScale = 1, mipmaps = false } = options;
+		const { camera = depthNode.passNode.camera } = options;
 
 		/**
 		 * Consumers sample this node per lookup instead of converting it to a texture.
@@ -93,22 +85,6 @@ class ReprojectNode extends Node {
 		this.camera = camera;
 
 		/**
-		 * Whether the frame is reprojected once into a shared buffer.
-		 *
-		 * @type {boolean}
-		 * @readonly
-		 */
-		this.cache = cache;
-
-		/**
-		 * The resolution of the buffer relative to the drawing buffer.
-		 *
-		 * @type {number}
-		 * @default 1
-		 */
-		this.resolutionScale = resolutionScale;
-
-		/**
 		 * Radiance above this luminance is scaled down, so fireflies do not compound
 		 * as they feed back from frame to frame.
 		 *
@@ -116,14 +92,6 @@ class ReprojectNode extends Node {
 		 * @default 10
 		 */
 		this.maxLuminance = uniform( 10 );
-
-		/**
-		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node renders
-		 * its buffer once per frame in `updateBefore()`.
-		 *
-		 * @type {string}
-		 */
-		this.updateBeforeType = cache ? NodeUpdateType.FRAME : NodeUpdateType.NONE;
 
 		this._cameraWorldMatrix = uniform( camera.matrixWorld );
 		this._cameraProjectionMatrixInverse = uniform( camera.projectionMatrixInverse );
@@ -145,46 +113,6 @@ class ReprojectNode extends Node {
 		 */
 		this._beautyRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
 		this._beautyRenderTarget.texture.name = 'ReprojectNode.beauty';
-
-		/**
-		 * The reprojected buffer. Radiance is stored premultiplied by its validity so
-		 * filtering and mips weight valid texels only.
-		 *
-		 * @private
-		 * @type {RenderTarget}
-		 */
-		this._renderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, generateMipmaps: mipmaps, minFilter: mipmaps ? LinearMipmapLinearFilter : LinearFilter } );
-		this._renderTarget.texture.name = 'ReprojectNode.output';
-
-		this._material = new NodeMaterial();
-		this._material.name = 'Reproject';
-		this._material.fragmentNode = Fn( () => {
-
-			const history = this._reproject( uv() ).toConst();
-
-			return vec4( history.rgb.mul( history.a ), history.a );
-
-		} )();
-
-		this._textureNode = passTexture( this, this._renderTarget.texture );
-
-	}
-
-	/**
-	 * Returns the previous frame's radiance at the given current-frame UV.
-	 *
-	 * @param {Node<vec2>} uv - The screen UV.
-	 * @param {Node<float>|number} [level=0] - The mip level. Only used by the cached buffer.
-	 * @return {Node<vec4>} The radiance in RGB and its validity in alpha.
-	 */
-	sample( uv, level = 0 ) {
-
-		if ( this.cache === false ) return this._reproject( uv );
-
-		const history = this._textureNode.sample( uv );
-		history.levelNode = nodeObject( level );
-
-		return vec4( history.rgb.div( history.a.max( 1e-4 ) ), history.a );
 
 	}
 
@@ -227,29 +155,6 @@ class ReprojectNode extends Node {
 	}
 
 	/**
-	 * This method is used to render the buffer once per frame.
-	 *
-	 * @param {NodeFrame} frame - The current node frame.
-	 */
-	updateBefore( frame ) {
-
-		const { renderer } = frame;
-
-		const size = renderer.getDrawingBufferSize( _size );
-		this._renderTarget.setSize( Math.round( size.width * this.resolutionScale ), Math.round( size.height * this.resolutionScale ) );
-
-		_rendererState = RendererUtils.resetRendererState( renderer, _rendererState );
-
-		renderer.setRenderTarget( this._renderTarget );
-		_quadMesh.material = this._material;
-		_quadMesh.name = 'Reproject';
-		_quadMesh.render( renderer );
-
-		RendererUtils.restoreRendererState( renderer, _rendererState );
-
-	}
-
-	/**
 	 * This method is used to setup the effect's TSL code.
 	 *
 	 * @return {Node<vec4>}
@@ -269,19 +174,16 @@ class ReprojectNode extends Node {
 		super.dispose();
 
 		this._beautyRenderTarget.dispose();
-		this._renderTarget.dispose();
-		this._material.dispose();
 
 	}
 
 	/**
-	 * Gathers the previous frame's radiance for the given current-frame UV.
+	 * Returns the previous frame's radiance at the given current-frame UV.
 	 *
-	 * @private
 	 * @param {Node<vec2>} uv - The screen UV.
 	 * @return {Node<vec4>} The radiance in RGB and its validity in alpha.
 	 */
-	_reproject( uv ) {
+	sample( uv ) {
 
 		const { velocityNode, depthNode, previousDepthNode } = this;
 		const beautyNode = texture( this._beautyRenderTarget.texture );

@@ -182,15 +182,14 @@
 			//
 
 			// the radiance SSR reflects: this frame's color, or the previous frame's output
-			// reprojected once per frame into a buffer or separately for each hit
+			// reprojected at each hit
 
 			const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
 			const scenePassPreviousDepth = scenePass.getPreviousTextureNode( 'depth' );
 
 			const radianceInputs = {
 				'Current frame': scenePassColor,
-				'Previous frame (buffer)': reproject( scenePassVelocity, scenePassDepth, scenePassPreviousDepth ),
-				'Previous frame (per hit)': reproject( scenePassVelocity, scenePassDepth, scenePassPreviousDepth, { cache: false } )
+				'Previous frame': reproject( scenePassVelocity, scenePassDepth, scenePassPreviousDepth )
 			};
 
 			const blurEnabled = uniform( 1 );
@@ -218,7 +217,7 @@
 				raw = passTexture( reflection, reflection.getRenderTarget().texture );
 				blurred = reflection.getTextureNode();
 
-				// the previous frame inputs reflect the scene color this frame keeps for the next one
+				// the previous frame input reflects the scene color this frame keeps for the next one
 
 				const sceneColor = radiance === scenePassColor ? scenePassColor : radiance.capture( scenePassColor );
 

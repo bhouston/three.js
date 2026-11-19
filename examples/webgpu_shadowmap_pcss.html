@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - percentage-closer soft shadows</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+			<div class="title-wrapper"><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Spot light PCSS</span></div>
+			<small>Contact-hardening shadows with temporal filtering.<br>Moving shadows may trail with TRAA. Overlapping blocker depths are approximated by a single plane.</small>
+		</div>
+		<script type="importmap">
+			{ "imports": {
+				"three": "../build/three.webgpu.js",
+				"three/webgpu": "../build/three.webgpu.js",
+				"three/tsl": "../build/three.tsl.js",
+				"three/addons/": "./jsm/"
+			} }
+		</script>
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+			import { mrt, output, pass, velocity } from 'three/tsl';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { spotLightPCSS } from 'three/addons/tsl/lighting/SpotLightPCSS.js';
+
+			const renderer = new THREE.WebGPURenderer( { antialias: false } );
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.shadowMap.enabled = true;
+			renderer.shadowMap.type = THREE.PCFShadowMap; // Linear comparison sampler, including custom filters.
+			renderer.toneMapping = THREE.ACESFilmicToneMapping;
+			renderer.inspector = new Inspector();
+			document.body.appendChild( renderer.domElement );
+
+			const scene = new THREE.Scene();
+			scene.background = new THREE.Color( 0x202630 );
+			const camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 80 );
+			camera.position.set( 11, 10, 15 );
+			const controls = new OrbitControls( camera, renderer.domElement );
+			controls.target.set( 0, 1, 0 );
+			controls.update();
+			scene.add( new THREE.HemisphereLight( 0xc6dfff, 0x65534a, 0.7 ) );
+
+			const light = new THREE.SpotLight( 0xffefd6, 2200, 40, Math.PI / 3.2, 0.25, 2 );
+			light.position.set( - 3, 11, 4 );
+			light.castShadow = true;
+			light.shadow.mapSize.set( 2048, 2048 );
+			light.shadow.camera.near = 2;
+			light.shadow.camera.far = 30;
+			light.shadow.bias = - 0.00002;
+			light.shadow.normalBias = 0.003;
+			scene.add( light, light.target );
+			const pcss = spotLightPCSS( light );
+			light.shadow.filterNode = pcss.filterNode;
+
+			const groundMaterial = new THREE.MeshStandardNodeMaterial( { color: 0xc4c1b7, roughness: 1 } );
+			const blue = new THREE.MeshStandardNodeMaterial( { color: 0x438ca3, roughness: 0.65 } );
+			const orange = new THREE.MeshStandardNodeMaterial( { color: 0xd98c48, roughness: 0.7 } );
+			function addMesh( geometry, material, x, y, z ) {
+
+				const mesh = new THREE.Mesh( geometry, material );
+				mesh.position.set( x, y, z );
+				mesh.castShadow = true;
+				mesh.receiveShadow = true;
+				scene.add( mesh );
+				return mesh;
+
+			}
+
+			const ground = addMesh( new THREE.PlaneGeometry( 24, 24 ), groundMaterial, 0, 0, 0 );
+			ground.rotation.x = - Math.PI / 2;
+			ground.castShadow = false;
+
+			// Intersecting spheres at different heights produce overlapping blocker depths.
+			const spheres = [];
+			for ( let i = 0; i < 3; i ++ ) {
+
+				spheres.push( addMesh( new THREE.SphereGeometry( 0.85, 48, 32 ), blue, - 3, 1.2 + i * 0.65, 1 ) );
+
+			}
+
+			// Fine suspended slats let light through narrow gaps.
+			for ( let i = 0; i < 15; i ++ ) {
+
+				addMesh( new THREE.BoxGeometry( 0.09, 0.15, 3 ), orange, 0.3 + i * 0.22, 2.8, - 2 );
+
+			}
+
+			// Tapered points show hard contacts broadening into soft tips.
+			for ( let i = 0; i < 9; i ++ ) {
+
+				const height = 0.6 + ( i % 3 ) * 0.65;
+				addMesh( new THREE.ConeGeometry( 0.22, height, 24 ), orange, 1 + ( i % 3 ) * 0.85, height / 2, 1 + Math.floor( i / 3 ) * 0.85 );
+
+			}
+
+			const ramp = addMesh( new THREE.BoxGeometry( 3, 0.25, 2 ), groundMaterial, - 2.5, 0.55, - 3 );
+			ramp.rotation.z = 0.3;
+			addMesh( new THREE.SphereGeometry( 0.5, 32, 24 ), blue, - 2.5, 2.2, - 3 );
+
+			const pipeline = new THREE.RenderPipeline( renderer );
+			const scenePass = pass( scene, camera );
+			scenePass.setMRT( mrt( { output, velocity } ) );
+			const color = scenePass.getTextureNode( 'output' );
+			const temporal = traa( color, scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'velocity' ), camera );
+			pipeline.outputNode = temporal;
+
+			const params = { animate: true, temporal: true, resolution: 2048 };
+			const gui = renderer.inspector.createParameters( 'PCSS settings' );
+			gui.add( pcss.lightRadius, 'value', 0, 1, 0.01 ).name( 'Emitter radius (world)' );
+			gui.add( pcss.maxRadius, 'value', 1, 96, 1 ).name( 'Maximum radius (texels)' );
+			gui.add( pcss.blockerSamples, 'value', 1, 64, 1 ).name( 'Blocker samples' ).info( 'More samples reduce missed blockers and stabilize the penumbra estimate.' );
+			gui.add( pcss.filterSamples, 'value', 1, 128, 1 ).name( 'Filter samples' ).info( 'Each tap uses hardware PCF. More taps reduce grain at greater GPU cost.' );
+			gui.add( light.shadow, 'bias', - 0.005, 0.005, 0.00001 ).name( 'Shadow bias' ).info( 'Negative bias reduces acne; too much detaches shadows from their casters.' );
+			gui.add( light.shadow, 'normalBias', 0, 0.1, 0.001 ).name( 'Normal bias' );
+			gui.add( ground.position, 'y', - 2, 3, 0.01 ).name( 'Floor height' ).info( 'Move only the receiver plane to vary blocker-to-receiver distance.' );
+			gui.add( params, 'resolution', [ 512, 1024, 2048, 4096 ] ).name( 'Shadow map size' ).onChange( value => {
+
+				light.shadow.mapSize.set( Number( value ), Number( value ) );
+
+			} );
+			gui.add( params, 'animate' ).name( 'Moving spheres' );
+			gui.add( params, 'temporal' ).name( 'TRAA' ).onChange( () => {
+
+				temporal.clearViewOffset();
+				pipeline.outputNode = params.temporal ? temporal : color;
+				pipeline.needsUpdate = true;
+
+			} );
+
+			window.addEventListener( 'resize', () => {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			} );
+
+			const timer = new THREE.Timer();
+			timer.connect( document );
+			let elapsed = 0;
+			renderer.setAnimationLoop( () => {
+
+				timer.update();
+				if ( params.animate ) elapsed += timer.getDelta();
+				for ( let i = 0; i < spheres.length; i ++ ) {
+
+					spheres[ i ].position.x = - 3 + Math.sin( elapsed * 0.7 + i * 1.5 ) * 0.8;
+					spheres[ i ].position.z = 1 + Math.cos( elapsed * 0.5 + i ) * 0.45;
+
+				}
+
+				// Keep a stable spatial pattern without TRAA; vary it for accumulation.
+				pcss.frame.value = params.temporal ? ( pcss.frame.value + 1 ) % 4096 : 0;
+				pipeline.render();
+
+			} );
+
+		</script>
+	</body>
+</html>

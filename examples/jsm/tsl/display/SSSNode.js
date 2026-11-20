@@ -1,5 +1,6 @@
 import { RedFormat, RenderTarget, Vector2, RendererUtils, QuadMesh, Node, NodeMaterial, NodeUpdateType, UnsignedByteType } from 'three/webgpu';
-import { reference, getScreenPosition, getViewPosition, float, Break, Loop, int, max, abs, If, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, depthToViewZ, vec2, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { reference, getScreenPosition, getViewPosition, float, Break, Loop, int, max, abs, If, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, depthToViewZ, vec2, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth, sample } from 'three/tsl';
+import { gatherNearestDepth } from '../utils/DepthUtils.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -190,6 +191,14 @@ class SSSNode extends Node {
 		this._resolution = uniform( new Vector2() );
 
 		/**
+		 * Resolution scale uniform.
+		 *
+		 * @private
+		 * @type {UniformNode<float>}
+		 */
+		this._resolutionScale = uniform( 0 );
+
+		/**
 		 * Temporal offset added to the initial ray step.
 		 *
 		 * @private
@@ -262,6 +271,17 @@ class SSSNode extends Node {
 	}
 
 	/**
+	 * Returns the depth the effect is computed at, e.g. as the guide depth for upsampling it.
+	 *
+	 * @return {SampleNode} The depth, samplable at the texel centers of the effect.
+	 */
+	getDepthNode() {
+
+		return sample( ( uv ) => Fn( ( builder ) => this._resolutionScale.lessThan( 1 ).select( gatherNearestDepth( this.depthNode, uv, builder ).nearest, this.depthNode.sample( uv ).r ) )() );
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
@@ -271,6 +291,8 @@ class SSSNode extends Node {
 
 		width = Math.round( this.resolutionScale * width );
 		height = Math.round( this.resolutionScale * height );
+
+		this._resolutionScale.value = this.resolutionScale;
 
 		this._resolution.value.set( width, height );
 		this._sssRenderTarget.setSize( width, height );
@@ -343,7 +365,9 @@ class SSSNode extends Node {
 
 		const sss = Fn( () => {
 
-			const depth = sampleDepth( uvNode ).toVar();
+			// at reduced resolution, use the nearest depth texel like the other screen-space effects
+
+			const depth = this._resolutionScale.lessThan( 1 ).select( projectionDepth( gatherNearestDepth( this.depthNode, uvNode, builder ).nearest, this._cameraNear, this._cameraFar ), sampleDepth( uvNode ) ).toVar();
 			isBackgroundDepth( depth ).discard();
 
 			// compute ray position and direction (in view-space)

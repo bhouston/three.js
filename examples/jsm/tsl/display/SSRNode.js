@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sample, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -667,6 +667,27 @@ class SSRNode extends Node {
 	}
 
 	/**
+	 * Returns the depth the effect is computed at, e.g. as the guide depth for upsampling it.
+	 *
+	 * @return {SampleNode} The depth, samplable at the texel centers of the effect.
+	 */
+	getDepthNode() {
+
+		return sample( ( uv ) => this.depthNode.sample( this._getDepthUV( uv ) ).r );
+
+	}
+
+	// returns the center of the depth texel the effect is computed at
+
+	_getDepthUV( uv ) {
+
+		const size = vec2( textureSize( this.depthNode ) );
+
+		return uv.mul( size ).floor().add( 0.5 ).div( size );
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
@@ -877,8 +898,7 @@ class SSRNode extends Node {
 			const noise = this.stochastic === true ? sampleMarchNoise( uvNode, this._noiseIndex ) : null;
 			// reconstruct at the depth texel center
 
-			const depthSize = vec2( textureSize( this.depthNode ) ).toConst();
-			const uvPos = uvNode.mul( depthSize ).floor().add( 0.5 ).div( depthSize ).toVar();
+			const uvPos = this._getDepthUV( uvNode ).toVar();
 
 			const depth = sampleDepth( uvPos ).toVar();
 

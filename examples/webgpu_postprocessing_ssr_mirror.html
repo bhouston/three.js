@@ -45,9 +45,10 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, velocity, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking } from 'three/tsl';
+		import { pass, mrt, output, normalView, metalness, roughness, velocity, screenUV, color, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
+		import { reprojectedBeauty, previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 		import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -56,7 +57,7 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
-			output: 'Beauty', radiance: 'Current frame', enabled: true, quality: 0.5, intensity: 1,
+			output: 'Beauty', radiance: 'Previous frame', enabled: true, quality: 0.5, intensity: 1,
 			maxDistance: 1, thickness: 0.03, binaryRefine: false,
 			roughness: 1, blur: true, blurQuality: 1
 		};
@@ -145,7 +146,7 @@
 				output: output,
 				normal: packNormalToOctahedral( normalView ),
 				metalrough: vec2( metalness, roughness ), // pack metalness and roughness into a single attachment
-				velocity: velocity
+				velocity: vec4( velocity, 0, previousViewZ )
 			} ) );
 
 			const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
@@ -180,13 +181,11 @@
 
 			//
 
-			// the radiance SSR reflects: this frame's color, or the previous frame's color reprojected at each hit
-
-			const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
+			// the radiance SSR reflects: this frame's color, or the previous frame's color reprojected into this frame
 
 			const radianceInputs = {
 				'Current frame': scenePassColor,
-				'Previous frame': scenePass.getPreviousTextureNode( 'output' )
+				'Previous frame': reprojectedBeauty( scenePass )
 			};
 
 			const blurEnabled = uniform( 1 );
@@ -202,11 +201,8 @@
 
 				}
 
-				const radiance = radianceInputs[ params.radiance ];
-
-				reflection = ssr( radiance, scenePassDepth, sceneNormal, {
+				reflection = ssr( radianceInputs[ params.radiance ], scenePassDepth, sceneNormal, {
 					camera,
-					velocityNode: radiance === scenePassColor ? null : scenePassVelocity,
 					metalnessNode: scenePassMetalRough.r,
 					roughnessNode: scenePassMetalRough.g,
 					binaryRefine: params.binaryRefine

@@ -207,8 +207,6 @@
 
 			await renderer.init();
 
-			scene.environmentIntensity = 1;
-
 			renderPipeline = new THREE.RenderPipeline( renderer );
 
 			// the pre-pass renders the opaque geometry SSR traces, without shading it
@@ -367,7 +365,6 @@
 				} );
 
 			} );
-			sceneGui.add( scene, 'environmentIntensity', 0, 10 ).name( 'Environment intensity' );
 
 			const advancedGui = renderer.inspector.createParameters( 'SSR advanced' ).close();
 			advancedGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'Mirror bias' ).onChange( applyParams );

@@ -25,6 +25,9 @@ export const previousViewZ = /*@__PURE__*/ velocity.previousCameraViewMatrix.mul
  * const reflection = ssr( reprojectedBeauty( scenePass ), scenePassDepth, sceneNormal, { camera } );
  * ```
  *
+ * When the effect is resolved while the beauty is shaded, the geometry comes from a pre-pass
+ * and the beauty pass is passed as the second argument.
+ *
  * Note: This node can only be used with `WebGPURenderer`.
  *
  * @augments RTTNode
@@ -43,13 +46,14 @@ class ReprojectedBeautyNode extends RTTNode {
 	 *
 	 * @param {PassNode} scenePass - The scene pass. Its `velocity` MRT attachment must
 	 * hold {@link previousViewZ} in the alpha channel.
+	 * @param {PassNode} [beautyPass=scenePass] - The pass that holds the beauty.
 	 */
-	constructor( scenePass ) {
+	constructor( scenePass, beautyPass = scenePass ) {
 
 		const velocityNode = scenePass.getTextureNode( 'velocity' );
 		const reprojection = new Reprojection( scenePass.getTextureNode( 'depth' ), velocityNode, scenePass.camera );
 
-		const previousColor = scenePass.getPreviousTextureNode( 'output' );
+		const previousColor = beautyPass.getPreviousTextureNode( 'output' );
 		const previousDepth = reprojection.previousDepthNode;
 		const projectionMatrixInverse = reprojection.previousCameraProjectionMatrixInverse;
 
@@ -185,6 +189,7 @@ export default ReprojectedBeautyNode;
  * @function
  * @param {PassNode} scenePass - The scene pass. Its `velocity` MRT attachment must
  * hold {@link previousViewZ} in the alpha channel.
+ * @param {PassNode} [beautyPass=scenePass] - The pass that holds the beauty.
  * @returns {ReprojectedBeautyNode}
  */
-export const reprojectedBeauty = ( scenePass ) => new ReprojectedBeautyNode( scenePass );
+export const reprojectedBeauty = ( scenePass, beautyPass ) => new ReprojectedBeautyNode( scenePass, beautyPass );

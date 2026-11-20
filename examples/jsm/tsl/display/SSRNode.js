@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, roughness, screenUV, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, roughness, screenUV, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -30,10 +30,10 @@ const MAX_STEPS = 64;
 /**
  * Post processing node for computing screen space reflections (SSR).
  *
- * The mirror path outputs the reflection in RGB and its coverage in alpha. Coverage is the
- * weight the reflected radiance is multiplied by: the alpha of the color node, the metalness,
- * the distance falloff and the grazing factor on a hit, and zero on a miss. It tells the consumer how much of the
- * reflection another source, like the environment, has to fill. The stochastic path
+ * The mirror path outputs the reflected radiance premultiplied by its coverage in RGB and
+ * the coverage in alpha, without the material's BRDF. Coverage is one on a hit and zero on
+ * a miss, fades with distance and toward the screen edges, and tells the consumer how much
+ * of the reflection another source, like the environment, has to fill. The stochastic path
  * outputs BRDF-weighted reflections in RGB and the hit distance in alpha.
  *
  * Reference: {@link https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.html}
@@ -52,7 +52,7 @@ class SSRNode extends Node {
 	/**
 	 * Constructs a new SSR node.
 	 *
-	 * @param {Node<vec4>} colorNode - The radiance the reflections read: the beauty pass, or the previous frame's reprojected by `reprojectedBeauty()`. The mirror path weights each hit by its alpha.
+	 * @param {Node<vec4>} colorNode - The radiance the reflections read: the beauty pass, or the previous frame's reprojected by `reprojectedBeauty()`.
 	 * @param {Node<float>} depthNode - A node that represents the beauty pass's depth.
 	 * @param {Node<vec3>} normalNode - A node that represents the beauty pass's unit view-space normals.
 	 * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.
@@ -675,7 +675,7 @@ class SSRNode extends Node {
 
 	/**
 	 * Returns the reflections as a source of indirect specular light for the material
-	 * of the current pixel: the reflection in RGB and its coverage in alpha.
+	 * of the current pixel: radiance premultiplied by coverage in RGB and coverage in alpha.
 	 * The material's roughness selects the blur. Only the mirror path outputs coverage.
 	 *
 	 * @return {Node<vec4>} The radiance and coverage.
@@ -940,7 +940,6 @@ class SSRNode extends Node {
 			if ( this.stochastic === false ) {
 
 				viewReflectDir = reflect( viewIncidentDir, viewNormal ).normalize().toVar();
-				finalSampleWeight = vec3( metalness );
 				specDominantFactor = float( 1 );
 
 			} else {
@@ -1011,7 +1010,7 @@ class SSRNode extends Node {
 
 				if ( ! ( this.historyTexture && this.velocityTexture ) ) return color;
 
-				const velocity = this.velocityTexture.sample( uvHit ).xy.mul( vec2( 0.5, - 0.5 ) ); // NDC to UV offset
+				const velocity = this.velocityTexture.sample( uvHit ).xy;
 				const historyUV = uvHit.sub( velocity );
 				const historyBounce = texture( this.historyTexture, historyUV ).toVar();
 				const sampleDecay = historyBounce.a.oneMinus();
@@ -1314,29 +1313,23 @@ class SSRNode extends Node {
 
 					if ( this.stochastic === true ) applyHitEdgeFade( reflectColor, uvS, hitBorderWidth );
 
-					// The scatter (GGX) path bakes distance/grazing response into finalSampleWeight.
-					// The mirror/blur path is a plain reflection, so reapply upstream's squared
-					// distance attenuation and grazing Fresnel here to match its falloff.
-					let weightedColor = reflectColor.rgb.mul( finalSampleWeight );
-					let alpha = worldDistance;
+					hit.assign( 1 );
 
 					if ( this.stochastic === false ) {
 
-						const ratio = float( 1 ).sub( distancePointPlane.div( this.maxDistance ) ).toVar();
-						const attenuation = ratio.mul( ratio ).toVar();
-						const fresnelCoe = div( dot( viewIncidentDir, viewReflectDir ).add( 1 ), 2 ).toVar();
-						// the alpha of the color node is the part of the hit it holds, less than one where a reprojected previous frame is missing
+						// coverage is the validity of the radiance, faded with distance and toward the screen edges
 
-						weightedColor = weightedColor.mul( attenuation.mul( fresnelCoe ).mul( reflectColor.a ) );
+						const ratio = distancePointPlane.div( this.maxDistance ).oneMinus();
+						const coverage = reflectColor.a.mul( ratio.mul( ratio ) ).mul( computeScreenBorderFactor( uvS, this.screenEdgeFade ) );
 
-						// coverage is the weight of the reflected radiance
+						output.assign( vec4( reflectColor.rgb.mul( coverage ), coverage ) );
 
-						alpha = reflectColor.a.mul( metalness ).mul( attenuation ).mul( fresnelCoe );
+					} else {
+
+						// The scatter (GGX) path bakes distance/grazing response into finalSampleWeight.
+						output.assign( vec4( reflectColor.rgb.mul( finalSampleWeight ), worldDistance ) );
 
 					}
-
-					hit.assign( 1 );
-					output.assign( vec4( weightedColor, alpha ) );
 
 				} );
 
@@ -1433,7 +1426,7 @@ export default SSRNode;
  *
  * @tsl
  * @function
- * @param {Node<vec4>} colorNode - The radiance the reflections read: the beauty pass, or the previous frame's reprojected by `reprojectedBeauty()`. The mirror path weights each hit by its alpha.
+ * @param {Node<vec4>} colorNode - The radiance the reflections read: the beauty pass, or the previous frame's reprojected by `reprojectedBeauty()`.
  * @param {Node<float>} depthNode - A node that represents the beauty pass's depth.
  * @param {Node<vec3>} normalNode - A node that represents the beauty pass's unit view-space normals.
  * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.

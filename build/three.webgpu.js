@@ -5,8 +5,8 @@
  */
 import { Material, LineBasicMaterial, LineDashedMaterial, NoBlending, warnOnce, MeshNormalMaterial, SRGBColorSpace, CubeTexture, EquirectangularReflectionMapping, EquirectangularRefractionMapping, CubeReflectionMapping, CubeRefractionMapping, warn, AddOperation, MixOperation, MultiplyOperation, MeshBasicMaterial, MeshLambertMaterial, MeshPhongMaterial, BackSide, MeshStandardMaterial, MeshPhysicalMaterial, MeshToonMaterial, MeshMatcapMaterial, SpriteMaterial, PointsMaterial, Vector2, ShadowMaterial, DynamicDrawUsage, Uint32BufferAttribute, Uint16BufferAttribute, error, ByteType, UnsignedByteType, ShortType, UnsignedShortType, HalfFloatType, IntType, UnsignedIntType, FloatType, AlphaFormat, RedFormat, RedIntegerFormat, DepthFormat, DepthStencilFormat, RGFormat, RGIntegerFormat, RGBFormat, RGBIntegerFormat, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedInt101111Type, getByteLength, DoubleSide, Vector4, DepthTexture, ColorManagement, SRGBTransfer, Vector3, Mesh, SphereGeometry, Color, Matrix2, Matrix3, Matrix4, NormalBlending, RenderTarget, LinearFilter, LinearMipmapNearestFilter, NearestMipmapLinearFilter, LinearMipmapLinearFilter, REVISION, Data3DTexture, Texture, Plane, EventDispatcher, PerspectiveCamera, ArrayCamera, PlaneGeometry, RGBAFormat, FrontSide, CustomBlending, AddEquation, ZeroFactor, CylinderGeometry, Quaternion, WebXRController, RAD2DEG, FramebufferTexture, Frustum, FrustumArray, NoToneMapping, PCFShadowMap, PCFSoftShadowMap, Scene, RenderObjectRefreshType, VSMShadowMap, yieldToMain, NoColorSpace, DataTexture, RGBAIntegerFormat, createCanvasElement, MaxEquation, MinEquation, ReverseSubtractEquation, SubtractEquation, OneMinusConstantAlphaFactor, ConstantAlphaFactor, OneMinusConstantColorFactor, ConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, DstAlphaFactor, DstColorFactor, SrcAlphaSaturateFactor, SrcAlphaFactor, SrcColorFactor, OneFactor, CullFaceNone, CullFaceBack, CullFaceFront, MaterialBlending, MultiplyBlending, SubtractiveBlending, AdditiveBlending, NotEqualDepth, GreaterDepth, GreaterEqualDepth, EqualDepth, LessEqualDepth, LessDepth, AlwaysDepth, NeverDepth, ReversedDepthFuncs, RGB_S3TC_DXT1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGB_PVRTC_4BPPV1_Format, RGB_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_PVRTC_2BPPV1_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGBA_ETC2_EAC_Format, R11_EAC_Format, SIGNED_R11_EAC_Format, RG11_EAC_Format, SIGNED_RG11_EAC_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_10x10_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_BPTC_Format, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RED_RGTC1_Format, SIGNED_RED_RGTC1_Format, RED_GREEN_RGTC2_Format, SIGNED_RED_GREEN_RGTC2_Format, MirroredRepeatWrapping, ClampToEdgeWrapping, RepeatWrapping, NearestMipmapNearestFilter, NearestFilter, NotEqualCompare, GreaterCompare, GreaterEqualCompare, EqualCompare, LessEqualCompare, LessCompare, AlwaysCompare, NeverCompare, LinearTransfer, WebGLCoordinateSystem, Compatibility, isTypedArray, NotEqualStencilFunc, GreaterStencilFunc, GreaterEqualStencilFunc, EqualStencilFunc, LessEqualStencilFunc, LessStencilFunc, AlwaysStencilFunc, NeverStencilFunc, DecrementWrapStencilOp, IncrementWrapStencilOp, DecrementStencilOp, IncrementStencilOp, InvertStencilOp, ReplaceStencilOp, ZeroStencilOp, KeepStencilOp, WebGPUCoordinateSystem, SpotLight, PointLight, DirectionalLight, RectAreaLight, AmbientLight, HemisphereLight, LinearToneMapping, ReinhardToneMapping, CineonToneMapping, ACESFilmicToneMapping, AgXToneMapping, NeutralToneMapping, Group, Loader, FileLoader, MaterialLoader, ObjectLoader } from './three.core.js';
 export { AdditiveAnimationBlendMode, AnimationAction, AnimationClip, AnimationLoader, AnimationMixer, AnimationObjectGroup, AnimationUtils, ArcCurve, ArrowHelper, AttachedBindMode, Audio, AudioAnalyser, AudioContext, AudioListener, AudioLoader, AxesHelper, BasicDepthPacking, BasicShadowMap, BatchedMesh, BezierInterpolant, Bone, BooleanKeyframeTrack, Box2, Box3, Box3Helper, BoxGeometry, BoxHelper, BufferAttribute, BufferGeometry, BufferGeometryLoader, Cache, Camera, CameraHelper, CanvasTexture, CapsuleGeometry, CatmullRomCurve3, CircleGeometry, Clock, ColorKeyframeTrack, CompressedArrayTexture, CompressedCubeTexture, CompressedTexture, CompressedTextureLoader, ConeGeometry, Controls, CubeCamera, CubeDepthTexture, CubeTextureLoader, CubicBezierCurve, CubicBezierCurve3, CubicInterpolant, CullFaceFrontBack, Curve, CurvePath, CustomToneMapping, Cylindrical, DataArrayTexture, DataTextureLoader, DataUtils, DefaultLoadingManager, DetachedBindMode, DirectionalLightHelper, DiscreteInterpolant, DodecahedronGeometry, DynamicCopyUsage, DynamicReadUsage, EdgesGeometry, EllipseCurve, Euler, ExternalTexture, ExtrudeGeometry, Float16BufferAttribute, Float32BufferAttribute, Fog, FogExp2, GLBufferAttribute, GLSL1, GLSL3, GridHelper, HTMLTexture, HemisphereLightHelper, IcosahedronGeometry, ImageBitmapLoader, ImageLoader, ImageUtils, InstancedBufferAttribute, InstancedBufferGeometry, InstancedInterleavedBuffer, InstancedMesh, Int16BufferAttribute, Int32BufferAttribute, Int8BufferAttribute, InterleavedBuffer, InterleavedBufferAttribute, Interpolant, InterpolateBezier, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, InterpolationSamplingMode, InterpolationSamplingType, KeyframeTrack, LOD, LatheGeometry, Layers, Light, LightProbe, LightShadow, Line, Line3, LineCurve, LineCurve3, LineLoop, LineSegments, LinearInterpolant, LinearMipMapLinearFilter, LinearMipMapNearestFilter, LinearSRGBColorSpace, LoaderUtils, LoadingManager, LoopOnce, LoopPingPong, LoopRepeat, MOUSE, MathUtils, MeshDepthMaterial, MeshDistanceMaterial, NearestMipMapLinearFilter, NearestMipMapNearestFilter, NoNormalPacking, NormalAnimationBlendMode, NormalGAPacking, NormalRGPacking, NumberKeyframeTrack, Object3D, ObjectSpaceNormalMap, OctahedronGeometry, OrthographicCamera, Path, PlaneHelper, PointLightHelper, Points, PolarGridHelper, PolyhedronGeometry, PositionalAudio, PropertyBinding, PropertyMixer, QuadraticBezierCurve, QuadraticBezierCurve3, QuaternionKeyframeTrack, QuaternionLinearInterpolant, RGBADepthPacking, RGBDepthPacking, RGDepthPacking, RawShaderMaterial, Ray, Raycaster, RenderTarget3D, RingGeometry, ShaderMaterial, Shape, ShapeGeometry, ShapePath, ShapeUtils, Skeleton, SkeletonHelper, SkinnedMesh, Source, Sphere, Spherical, SphericalHarmonics3, SplineCurve, SpotLightHelper, Sprite, StaticCopyUsage, StaticDrawUsage, StaticReadUsage, StereoCamera, StreamCopyUsage, StreamDrawUsage, StreamReadUsage, StringKeyframeTrack, TOUCH, TangentSpaceNormalMap, TetrahedronGeometry, TextureLoader, TextureSource, TextureUtils, Timer, TimestampQuery, TorusGeometry, TorusKnotGeometry, Triangle, TriangleFanDrawMode, TriangleStripDrawMode, TrianglesDrawMode, TubeGeometry, UVMapping, Uint8BufferAttribute, Uint8ClampedBufferAttribute, Uniform, UniformsGroup, VectorKeyframeTrack, VideoFrameTexture, VideoTexture, WebGL3DRenderTarget, WebGLArrayRenderTarget, WebGLRenderTarget, WireframeGeometry, WrapAroundEnding, ZeroCurvatureEnding, ZeroSlopeEnding, getConsoleFunction, log, setConsoleFunction } from './three.core.js';
-import { NodeMaterial, float, materialLineDashOffset, materialLineScale, materialLineDashSize, materialLineGapSize, dashSize, gapSize, varying, attribute, varyingProperty, Fn, cameraProjectionMatrix, vec2, vec4, modelViewMatrix, viewport, If, positionGeometry, mix, vec3, materialLineWidth, screenDPR, uv, smoothstep, diffuseColor, viewportOpaqueMipTexture, cameraProjectionMatrixInverse, modelWorldMatrixInverse, cameraWorldMatrix, positionLocal, positionPrevious, materialOpacity, colorSpaceToWorking, packNormalToRGB, normalView, Node, cubeTexture, NodeUpdateType, CubeRenderTarget, nodeProxy, LightingNode, materialEnvRotation, materialSpecularStrength, materialReflectivity, negateOnBackSide, normalViewGeometry, materialLightMap, BRDF_Lambert, positionViewDirection, F_Schlick, specularColor, shininess, materialShininess, materialSpecular, iridescenceThickness, iridescenceIOR, metalness, Schlick_to_F0, cameraPosition, positionWorld, normalWorld, roughness, diffuseContribution, specularColorBlended, specularF90, modelWorldMatrix, cameraViewMatrix, ior, thickness, attenuationColor, attenuationDistance, dispersion, transmission, DFGLUT, EON_DirectionalAlbedo, diffuseRoughness, iridescence, BRDF_Sheen, sheenRoughness, sheen, clearcoatNormalView, BRDF_GGX, clearcoatRoughness, retroreflectivity, BRDF_EON, positionView, LTC_Uv, mat3, LTC_Evaluate, EnvironmentBRDF, clearcoat, pow4, Loop, length, refract, normalize, div, cameraViewport, screenSize, log2, textureBicubicLevel, log, exp, viewportMipTexture, clamp, pmremTexture, isolate, materialEnvIntensity, bentNormalView, materialMetalness, materialRoughness, getRoughness, materialIOR, materialSpecularColor, materialSpecularIntensity, min, pow2, materialDiffuseRoughness, materialClearcoat, materialClearcoatRoughness, materialSheen, materialSheenRoughness, materialRetroreflectivity, materialIridescence, materialIridescenceIOR, materialIridescenceThickness, materialAnisotropy, anisotropy, alphaT, anisotropyT, TBNViewMatrix, anisotropyB, materialTransmission, materialThickness, materialAttenuationDistance, materialAttenuationColor, materialDispersion, materialClearcoatNormal, subBuild, materialReference, matcapUV, reference$1 as reference, materialRotation, rotate, materialPointSize, viewportSize, uniform, renderGroup, property, modelRadius, viewZToOrthographicDepth, cameraFar, cameraNear, linearDepth, LTC_Evaluate_Volume, hashString, hashArray, ChainMap, Color4, backgroundIntensity, backgroundBlurriness, backgroundRotation, normalWorldGeometry, stack, getTextureType, shaderStages, mergeContext, getTypeFromLength, setCurrentStack, FunctionNode, ParameterNode, isArrayAsParameter, defaultBuildStages, getCurrentStack, texture3D, texture, AnalyticLightNode, lightTargetDirection, lightPosition, lightProjectionUV, getDistanceAttenuation, textureSize, remap, atan, lightShadowMatrix, sub, acos, saturate, max, lightViewPosition, StackTrace, screenUV, reference as reference$1, fog, densityFogFactor, rangeFogFactor, builtin, LightsNode, context, renderOutput, InspectorBase, highpModelViewMatrix, highpModelNormalViewMatrix, QuadMesh, CodeNode, TextureNode, vectorComponents, NodeAccess, VarNode, ExpressionNode, PointLightNode, linearToneMapping, reinhardToneMapping, cineonToneMapping, acesFilmicToneMapping, agxToneMapping, neutralToneMapping, output, StorageBufferAttribute } from './three.tsl.js';
-export { AONode, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BarrierNode, BitcastNode, BitcountNode, BlendMode, BufferAttributeNode, BufferNode, BuiltinNode, BumpMapNode, BypassNode, ClippingNode, ColorSpaceNode, ComputeBuiltinNode, ComputeNode, ConditionalNode, ConstNode, ContextNode, ConvertNode, CubeTextureNode, DebugNode, EventNode, FlipNode, FrontFacingNode, FunctionCallNode, FunctionOverloadingNode, IndexNode, InputNode, InspectorNode, IrradianceNode, IsolateNode, JoinNode, LightingContextNode, LoopNode, MRTNode, MaterialNode, MaterialReferenceNode, MathNode, MaxMipLevelNode, MemberNode, ModelNode, NodeError, NodeMaterialObserver, NodeShaderStage, NodeType, NodeUtils, NormalMapNode, Object3DNode, OcclusionAwareIrradianceNode, OperatorNode, OutputStructNode, OverrideContextNode, PMREMGenerator, PMREMNode, PackFloatNode, Packed4x8IntegerNode, PassNode, PointShadowNode, PointUVNode, PropertyNode, RTTNode, RangeNode, ReferenceAttributeNode, ReferenceBaseNode, ReferenceElementNode, ReferenceNode, ReflectorNode, RenderOutputNode, RendererReferenceNode, RendererUtils, RotateNode, SampleNode, SetNode, ShadowBaseNode, ShadowNode, SplitNode, StackNode, StorageArrayElementNode, StorageBufferNode, StorageInstancedBufferAttribute, StorageStructNode, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, Three_TSL as TSL, Texture3DNode, TextureSizeNode, ToneMappingNode, ToonOutlinePassNode, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UserDataNode, VaryingNode, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, WorkgroupInfoNode, defaultShaderStages } from './three.tsl.js';
+import { NodeMaterial, float, materialLineDashOffset, materialLineScale, materialLineDashSize, materialLineGapSize, dashSize, gapSize, varying, attribute, varyingProperty, Fn, cameraProjectionMatrix, vec2, vec4, modelViewMatrix, viewport, If, positionGeometry, mix, vec3, materialLineWidth, screenDPR, uv, smoothstep, diffuseColor, viewportOpaqueMipTexture, cameraProjectionMatrixInverse, modelWorldMatrixInverse, cameraWorldMatrix, positionLocal, positionPrevious, materialOpacity, colorSpaceToWorking, packNormalToRGB, normalView, Node, cubeTexture, NodeUpdateType, CubeRenderTarget, nodeProxy, LightingNode, materialEnvRotation, materialSpecularStrength, materialReflectivity, negateOnBackSide, normalViewGeometry, materialLightMap, BRDF_Lambert, positionViewDirection, F_Schlick, specularColor, shininess, materialShininess, materialSpecular, iridescenceThickness, iridescenceIOR, metalness, Schlick_to_F0, cameraPosition, positionWorld, normalWorld, roughness, diffuseContribution, specularColorBlended, specularF90, modelWorldMatrix, cameraViewMatrix, ior, thickness, attenuationColor, attenuationDistance, dispersion, transmission, DFGLUT, EON_DirectionalAlbedo, diffuseRoughness, iridescence, BRDF_Sheen, sheenRoughness, sheen, clearcoatNormalView, BRDF_GGX, clearcoatRoughness, retroreflectivity, BRDF_EON, positionView, LTC_Uv, mat3, LTC_Evaluate, EnvironmentBRDF, clearcoat, pow4, Loop, length, refract, normalize, div, cameraViewport, screenSize, log2, textureBicubicLevel, log, exp, viewportMipTexture, clamp, pmremTexture, isolate, materialEnvIntensity, IndirectLightingNode, materialMetalness, materialRoughness, getRoughness, materialIOR, materialSpecularColor, materialSpecularIntensity, min, pow2, materialDiffuseRoughness, materialClearcoat, materialClearcoatRoughness, materialSheen, materialSheenRoughness, materialRetroreflectivity, materialIridescence, materialIridescenceIOR, materialIridescenceThickness, materialAnisotropy, anisotropy, alphaT, anisotropyT, TBNViewMatrix, anisotropyB, materialTransmission, materialThickness, materialAttenuationDistance, materialAttenuationColor, materialDispersion, materialClearcoatNormal, subBuild, materialReference, matcapUV, reference$1 as reference, materialRotation, rotate, materialPointSize, viewportSize, uniform, renderGroup, property, modelRadius, viewZToOrthographicDepth, cameraFar, cameraNear, linearDepth, LTC_Evaluate_Volume, hashString, hashArray, ChainMap, Color4, backgroundIntensity, backgroundBlurriness, backgroundRotation, normalWorldGeometry, stack, getTextureType, shaderStages, mergeContext, getTypeFromLength, setCurrentStack, FunctionNode, ParameterNode, isArrayAsParameter, defaultBuildStages, getCurrentStack, texture3D, texture, AnalyticLightNode, lightTargetDirection, lightPosition, lightProjectionUV, getDistanceAttenuation, textureSize, remap, atan, lightShadowMatrix, sub, acos, saturate, max, lightViewPosition, StackTrace, screenUV, reference as reference$1, fog, densityFogFactor, rangeFogFactor, builtin, LightsNode, context, renderOutput, InspectorBase, highpModelViewMatrix, highpModelNormalViewMatrix, QuadMesh, CodeNode, TextureNode, vectorComponents, NodeAccess, VarNode, ExpressionNode, PointLightNode, linearToneMapping, reinhardToneMapping, cineonToneMapping, acesFilmicToneMapping, agxToneMapping, neutralToneMapping, output, StorageBufferAttribute } from './three.tsl.js';
+export { AONode, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BarrierNode, BitcastNode, BitcountNode, BlendMode, BufferAttributeNode, BufferNode, BuiltinNode, BumpMapNode, BypassNode, ClippingNode, ColorSpaceNode, ComputeBuiltinNode, ComputeNode, ConditionalNode, ConstNode, ContextNode, ConvertNode, CubeTextureNode, DebugNode, EventNode, FlipNode, FrontFacingNode, FunctionCallNode, FunctionOverloadingNode, IndexNode, InputNode, InspectorNode, IrradianceNode, IsolateNode, JoinNode, LightingContextNode, LoopNode, MRTNode, MaterialNode, MaterialReferenceNode, MathNode, MaxMipLevelNode, MemberNode, ModelNode, NodeError, NodeMaterialObserver, NodeShaderStage, NodeType, NodeUtils, NormalMapNode, Object3DNode, OperatorNode, OutputStructNode, OverrideContextNode, PMREMGenerator, PMREMNode, PackFloatNode, Packed4x8IntegerNode, PassNode, PointShadowNode, PointUVNode, PropertyNode, RTTNode, RangeNode, ReferenceAttributeNode, ReferenceBaseNode, ReferenceElementNode, ReferenceNode, ReflectorNode, RenderOutputNode, RendererReferenceNode, RendererUtils, RotateNode, SampleNode, SetNode, ShadowBaseNode, ShadowNode, SplitNode, StackNode, StorageArrayElementNode, StorageBufferNode, StorageInstancedBufferAttribute, StorageStructNode, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, Three_TSL as TSL, Texture3DNode, TextureSizeNode, ToneMappingNode, ToonOutlinePassNode, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UserDataNode, VaryingNode, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, WorkgroupInfoNode, defaultShaderStages } from './three.tsl.js';
 
 /**
  * A material instance that reuses the shader of a node material with its own properties.
@@ -14,6 +14,10 @@ export { AONode, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, At
  * configure the node material before creating instances. Instance values are read in
  * the shared node graph with `materialReference( name, type )`. Node properties such as
  * `colorNode` are read-only and always read from the node material.
+ *
+ * Object values such as `color` are shared with the node material (and thus with other
+ * instances) on construction, so assign a new object instead of mutating the existing one,
+ * e.g. `material.color = new Color( 1, 0, 0 )` instead of `material.color.set( 1, 0, 0 )`.
  *
  * ```js
  * const nodeMaterial = new MeshBasicNodeMaterial();
@@ -365,15 +369,19 @@ class LineDashedNodeMaterial extends NodeMaterial {
 const _defaultValues$b = /*@__PURE__*/ new LineDashedMaterial();
 
 /**
- * Varying node representing the world position of the segment start in view space.
+ * Varying node representing the position of the segment start in view space.
  * Used for distance and coordinate calculations across the fragment shader.
+ *
+ * @private
  * @type {VaryingNode<vec3>}
  */
 const worldStart = varyingProperty( 'vec3', 'worldStart' );
 
 /**
- * Varying node representing the world position of the segment end in view space.
+ * Varying node representing the position of the segment end in view space.
  * Used for distance and coordinate calculations across the fragment shader.
+ *
+ * @private
  * @type {VaryingNode<vec3>}
  */
 const worldEnd = varyingProperty( 'vec3', 'worldEnd' );
@@ -381,6 +389,8 @@ const worldEnd = varyingProperty( 'vec3', 'worldEnd' );
 /**
  * Varying node representing the accumulated distance along the line.
  * Crucial for correctly computing dashed line intervals in fragment stage.
+ *
+ * @private
  * @type {VaryingNode<float>}
  */
 const lineDistance = varyingProperty( 'float', 'lineDistance' );
@@ -388,6 +398,8 @@ const lineDistance = varyingProperty( 'float', 'lineDistance' );
 /**
  * Varying node representing the interpolated world/view position of the current fragment.
  * Used for line/ray distance checks under perspective projection.
+ *
+ * @private
  * @type {VaryingNode<vec4>}
  */
 const worldPos = varyingProperty( 'vec4', 'worldPos' );
@@ -396,6 +408,7 @@ const worldPos = varyingProperty( 'vec4', 'worldPos' );
  * Trims the line segment to avoid rendering behind the camera near plane.
  * Computes an interpolation factor (alpha) to clamp the segment's coordinate.
  *
+ * @private
  * @param {Object} inputs
  * @param {Node<vec4>} inputs.start - Segment start position in view space.
  * @param {Node<vec4>} inputs.end - Segment end position in view space.
@@ -419,6 +432,7 @@ const trimSegmentAlpha = Fn( ( { start, end } ) => {
  * Calculates the closest points on two 3D lines.
  * Used for perspective-correct line rendering and coordinates interpolation.
  *
+ * @private
  * @param {Object} inputs
  * @param {Node<vec3>} inputs.p1 - Start of line 1.
  * @param {Node<vec3>} inputs.p2 - End of line 1.
@@ -453,7 +467,7 @@ const closestLineToLine = Fn( ( { p1, p2, p3, p4 } ) => {
  * TSL node acting as a custom Model-View-Projection (MVP) for fat lines,
  * expanding 3D segments into screen/world-facing ribbons of a specified width.
  *
- * @tsl
+ * @private
  * @type {Node<vec4>}
  */
 const mvpLine = Fn( ( { material } ) => {
@@ -647,7 +661,7 @@ const mvpLine = Fn( ( { material } ) => {
  * TSL fragment node that computes the shape/coverage (alpha) of the fat line segment.
  * Handles dash/gap generation, alpha-to-coverage rendering, and round endcaps.
  *
- * @tsl
+ * @private
  * @type {Node<float>}
  */
 const alphaLine = Fn( ( { material, renderer } ) => {
@@ -839,8 +853,9 @@ class Line2NodeMaterial extends NodeMaterial {
 		this.gapSizeNode = null;
 
 		/**
-		 * Blending is set to `NoBlending` since transparency
-		 * is not supported, yet.
+		 * Blending is set to `NoBlending`. When `transparent` is `true`, the line
+		 * is blended in the shader over the opaque scene, so other transparent
+		 * objects are not visible behind it.
 		 *
 		 * @type {number}
 		 * @default 0
@@ -1459,7 +1474,7 @@ class LightingModel {
 	 * @abstract
 	 * @param {NodeBuilder} builder - The current node builder.
 	 */
-	ambientOcclusion( /*input, stack, builder*/ ) { }
+	ambientOcclusion( /*builder*/ ) { }
 
 }
 
@@ -1871,7 +1886,7 @@ class MeshPhongNodeMaterial extends NodeMaterial {
 	}
 
 	/**
-	 * Constructs a new mesh lambert node material.
+	 * Constructs a new mesh phong node material.
 	 *
 	 * @param {Object} [parameters] - The configuration parameter.
 	 */
@@ -2958,6 +2973,9 @@ const _rendererCache = new WeakMap();
  * is defined by an equirectangular or cube texture.
  * `EnvironmentNode` is intended for PBR materials like {@link MeshStandardNodeMaterial}.
  *
+ * It is a source of indirect specular and indirect diffuse light, and the last one
+ * {@link IndirectLightingNode} asks.
+ *
  * @augments LightingNode
  */
 class EnvironmentNode extends LightingNode {
@@ -2995,11 +3013,25 @@ class EnvironmentNode extends LightingNode {
 		 */
 		this._pmremNode = null;
 
+		/**
+		 * The node the queries are evaluated on, which is the PMREM node if there is one.
+		 *
+		 * @private
+		 * @type {?Node}
+		 * @default null
+		 */
+		this._resolvedNode = null;
+
 	}
 
+	/**
+	 * Resolves the environment. A texture is converted to PMREM here. The node contributes
+	 * no light by itself: {@link IndirectLightingNode} queries it as the last source of
+	 * indirect specular and indirect diffuse light.
+	 *
+	 * @param {NodeBuilder} builder - The current node builder.
+	 */
 	setup( builder ) {
-
-		const { material } = builder;
 
 		let envNode = this.envNode;
 
@@ -3024,43 +3056,38 @@ class EnvironmentNode extends LightingNode {
 
 		}
 
-		//
+		this._resolvedNode = envNode;
 
-		const useAnisotropy = material.useAnisotropy === true || material.anisotropy > 0;
-		const radianceNormalView = useAnisotropy ? bentNormalView : normalView;
+	}
 
-		let radiance = isolate( envNode.context( createRadianceContext( roughness, radianceNormalView ) ).mul( materialEnvIntensity ) );
+	/**
+	 * Returns the indirect specular light of the environment: the radiance arriving around
+	 * the given direction, filtered to the given roughness.
+	 *
+	 * @param {Object} query - The query.
+	 * @param {Node<vec3>} query.direction - The direction to look in, in world space.
+	 * @param {Node<float>} query.roughness - The roughness of the specular lobe.
+	 * @return {Node<vec3>} The radiance.
+	 */
+	getIndirectSpecular( { direction, roughness } ) {
 
-		if ( material.useRetroreflection === true || material.retroreflectivity > 0 ) {
+		// an environment is any node that samples textures without coordinates or a level, so the query reaches it through the context
 
-			const retroRadiance = isolate( envNode.context( createRetroRadianceContext( roughness, radianceNormalView ) ).mul( materialEnvIntensity ) );
+		return isolate( this._resolvedNode.context( { getUV: () => direction, getTextureLevel: () => roughness } ).mul( materialEnvIntensity ) );
 
-			radiance = retroreflectivity.clamp().mix( radiance, retroRadiance );
+	}
 
-		}
+	/**
+	 * Returns the indirect diffuse light of the environment: the irradiance arriving on a
+	 * surface with the given normal.
+	 *
+	 * @param {Object} query - The query.
+	 * @param {Node<vec3>} query.normal - The normal of the surface, in world space.
+	 * @return {Node<vec3>} The irradiance.
+	 */
+	getIndirectDiffuse( { normal } ) {
 
-		const irradiance = envNode.context( createIrradianceContext( normalWorld ) ).mul( Math.PI ).mul( materialEnvIntensity );
-
-		const isolateIrradiance = isolate( irradiance );
-
-		//
-
-		builder.context.radiance.addAssign( radiance );
-
-		builder.context.irradiance.addAssign( isolateIrradiance );
-
-		//
-
-		const clearcoatRadiance = builder.context.lightingModel.clearcoatRadiance;
-
-		if ( clearcoatRadiance ) {
-
-			const clearcoatRadianceContext = envNode.context( createRadianceContext( clearcoatRoughness, clearcoatNormalView ) ).mul( materialEnvIntensity );
-			const isolateClearcoatRadiance = isolate( clearcoatRadianceContext );
-
-			clearcoatRadiance.addAssign( isolateClearcoatRadiance );
-
-		}
+		return isolate( this._resolvedNode.context( { getUV: () => normal, getTextureLevel: () => float( 1.0 ) } ).mul( Math.PI ).mul( materialEnvIntensity ) );
 
 	}
 
@@ -3126,81 +3153,6 @@ class EnvironmentNode extends LightingNode {
 	}
 
 }
-
-const createRadianceContext = ( roughnessNode, normalViewNode ) => {
-
-	let reflectVec = null;
-
-	return {
-		getUV: () => {
-
-			if ( reflectVec === null ) {
-
-				reflectVec = positionViewDirection.negate().reflect( normalViewNode );
-
-				// Mixing the reflection with the normal is more accurate and keeps rough objects from gathering light from behind their tangent plane.
-				reflectVec = pow4( roughnessNode ).mix( reflectVec, normalViewNode ).normalize();
-
-				reflectVec = reflectVec.transformDirection( cameraWorldMatrix );
-
-			}
-
-			return reflectVec;
-
-		},
-		getTextureLevel: () => {
-
-			return roughnessNode;
-
-		}
-	};
-
-};
-
-const createRetroRadianceContext = ( roughnessNode, normalViewNode ) => {
-
-	let retroVec = null;
-
-	return {
-		getUV: () => {
-
-			if ( retroVec === null ) {
-
-				// The retroreflective lobe returns light toward its source, so the environment is sampled along the view direction
-				retroVec = pow4( roughnessNode ).mix( positionViewDirection, normalViewNode ).normalize();
-
-				retroVec = retroVec.transformDirection( cameraWorldMatrix );
-
-			}
-
-			return retroVec;
-
-		},
-		getTextureLevel: () => {
-
-			return roughnessNode;
-
-		}
-	};
-
-};
-
-const createIrradianceContext = ( normalWorldNode ) => {
-
-	return {
-		getUV: () => {
-
-			return normalWorldNode;
-
-		},
-		getTextureLevel: () => {
-
-			return float( 1.0 );
-
-		}
-	};
-
-};
 
 const _defaultValues$6 = /*@__PURE__*/ new MeshStandardMaterial();
 
@@ -3307,6 +3259,26 @@ class MeshStandardNodeMaterial extends NodeMaterial {
 		}
 
 		return envNode ? new EnvironmentNode( envNode ) : null;
+
+	}
+
+	/**
+	 * Overwritten since this type of material resolves its indirect specular and indirect
+	 * diffuse light from the sources of the context, see {@link builtinIndirectContext},
+	 * with the environment as the last source of both.
+	 *
+	 * @param {NodeBuilder} builder - The current node builder.
+	 * @return {Array<LightingNode>} The lighting nodes.
+	 */
+	setupIndirectLightings( builder ) {
+
+		const { indirectSpecular = [], indirectDiffuse = [] } = builder.context;
+
+		const environmentNode = this.setupEnvironment( builder );
+
+		if ( environmentNode === null && indirectSpecular.length === 0 && indirectDiffuse.length === 0 ) return [];
+
+		return [ new IndirectLightingNode( indirectSpecular, indirectDiffuse, environmentNode ) ];
 
 	}
 
@@ -3441,7 +3413,8 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 		/**
 		 * The clearcoat normal of physical materials is by default inferred from the `clearcoatNormalMap`
 		 * property. This node property allows to overwrite the default
-		 * and define the clearcoat normal with a node instead.
+		 * and define the clearcoat normal with a node instead. The node must return a normal
+		 * in view space.
 		 *
 		 * If you don't want to overwrite the clearcoat normal but modify the existing
 		 * value instead, use {@link materialClearcoatNormal}.
@@ -3635,13 +3608,15 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 
 		/**
 		 * The anisotropy of physical materials is by default inferred from the
-		 * `anisotropy` property. This node property allows to overwrite the default
-		 * and define the anisotropy with a node instead.
+		 * `anisotropy`, `anisotropyRotation` and `anisotropyMap` properties. This node
+		 * property allows to overwrite the default and define the anisotropy with a
+		 * tangent-space vector instead. Its direction is the anisotropy direction and
+		 * its length is the anisotropy strength in the range `[0,1]`.
 		 *
 		 * If you don't want to overwrite the anisotropy but modify the existing
 		 * value instead, use {@link materialAnisotropy}.
 		 *
-		 * @type {?Node<float>}
+		 * @type {?Node<vec2>}
 		 * @default null
 		 */
 		this.anisotropyNode = null;
@@ -3656,7 +3631,8 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 	 * Whether the lighting model should use clearcoat or not.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @readonly
+	 * @default false
 	 */
 	get useClearcoat() {
 
@@ -3668,6 +3644,7 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 	 * Whether the lighting model should use EON rough diffuse reflection or not.
 	 *
 	 * @type {boolean}
+	 * @readonly
 	 * @default false
 	 */
 	get useDiffuseRoughness() {
@@ -3680,7 +3657,8 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 	 * Whether the lighting model should use iridescence or not.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @readonly
+	 * @default false
 	 */
 	get useIridescence() {
 
@@ -3692,7 +3670,8 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 	 * Whether the lighting model should use sheen or not.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @readonly
+	 * @default false
 	 */
 	get useSheen() {
 
@@ -3704,7 +3683,8 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 	 * Whether the lighting model should use anisotropy or not.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @readonly
+	 * @default false
 	 */
 	get useAnisotropy() {
 
@@ -3716,7 +3696,8 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 	 * Whether the lighting model should use transmission or not.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @readonly
+	 * @default false
 	 */
 	get useTransmission() {
 
@@ -3728,7 +3709,8 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 	 * Whether the lighting model should use dispersion or not.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @readonly
+	 * @default false
 	 */
 	get useDispersion() {
 
@@ -3740,7 +3722,8 @@ class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {
 	 * Whether the lighting model should use retroreflection or not.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @readonly
+	 * @default false
 	 */
 	get useRetroreflection() {
 
@@ -4004,7 +3987,8 @@ class MeshSSSNodeMaterial extends MeshPhysicalNodeMaterial {
 		super( parameters );
 
 		/**
-		 * Represents the thickness color.
+		 * Represents the thickness color. Subsurface scattering is only enabled
+		 * when this node is set.
 		 *
 		 * @type {?Node<vec3>}
 		 * @default null
@@ -4052,7 +4036,8 @@ class MeshSSSNodeMaterial extends MeshPhysicalNodeMaterial {
 	 * Whether the lighting model should use SSS or not.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @readonly
+	 * @default false
 	 */
 	get useSSS() {
 
@@ -4221,7 +4206,7 @@ class MeshMatcapNodeMaterial extends NodeMaterial {
 	}
 
 	/**
-	 * Constructs a new mesh normal node material.
+	 * Constructs a new mesh matcap node material.
 	 *
 	 * @param {Object} [parameters] - The configuration parameter.
 	 */
@@ -4451,11 +4436,12 @@ const _size$1 = /*@__PURE__*/ new Vector2();
  * const pointCloud = new THREE.Points( geometry, new THREE.PointsNodeMaterial() );
  * ```
  *
- * - By rendering point primitives with {@link Sprites}. In this case, size is honored,
- * see {@link PointsNodeMaterial#sizeNode}.
+ * - By rendering instanced quads with {@link Sprite}. In this case, size is honored,
+ * see {@link PointsNodeMaterial#sizeNode}. Set {@link Sprite#count} to the number of points.
  *
  * ```js
  * const instancedPoints = new THREE.Sprite( new THREE.PointsNodeMaterial( { positionNode: instancedBufferAttribute( positionAttribute ) } ) );
+ * instancedPoints.count = positionAttribute.count;
  * ```
  *
  * @augments SpriteNodeMaterial
@@ -4478,11 +4464,12 @@ class PointsNodeMaterial extends SpriteNodeMaterial {
 		super();
 
 		/**
-		 * This node property provides an additional way to set the point size.
+		 * This node property allows to overwrite the point size defined by `size`. The size
+		 * is in pixels, additionally scaled by distance when `sizeAttenuation` is `true`.
 		 *
-		 * Note that WebGPU only supports point primitives with 1 pixel size. Consequently,
-		 * this node has no effect when the material is used with {@link Points} and a WebGPU
-		 * backend. If an application wants to render points with a size larger than 1 pixel,
+		 * Note that `WebGPURenderer` always renders point primitives with a size of 1 pixel (with
+		 * both backends). Consequently, this node has no effect when the material is used with
+		 * {@link Points}. If an application wants to render points with a size larger than 1 pixel,
 		 * the material should be used with {@link Sprite} and instancing.
 		 *
 		 * @type {?Node<vec2>}
@@ -4606,7 +4593,7 @@ class PointsNodeMaterial extends SpriteNodeMaterial {
 	 * Whether alpha to coverage should be used or not.
 	 *
 	 * @type {boolean}
-	 * @default true
+	 * @default false
 	 */
 	get alphaToCoverage() {
 
@@ -4964,7 +4951,12 @@ class VolumetricLightingModel extends LightingModel {
 }
 
 /**
- * Volume node material.
+ * Volume node material. Renders a raymarched volume that is only lit by
+ * point, spot and rect area lights; directional, ambient and environment
+ * lighting are ignored.
+ *
+ * If {@link NodeMaterial#depthNode} is set, it is interpreted as the scene
+ * depth used to occlude the rays.
  *
  * @augments NodeMaterial
  */
@@ -5003,18 +4995,21 @@ class VolumeNodeMaterial extends NodeMaterial {
 		this.steps = 25;
 
 		/**
-		 * Offsets the distance a ray has been traveled through a volume.
-		 * Can be used to implement dithering to reduce banding.
+		 * Offsets the distance a ray has been traveled through a volume, as a
+		 * fraction of one raymarching step. Can be used to implement dithering
+		 * (e.g. per-pixel noise in the range `[0,1)`) to reduce banding.
 		 *
-		 * @type {Node<float>}
+		 * @type {?Node<float>}
 		 * @default null
 		 */
 		this.offsetNode = null;
 
 		/**
-		 * Node used for scattering calculations.
+		 * Function used for scattering calculations. It receives `{ positionRay }`,
+		 * the current ray position in world space, and returns the scattering
+		 * density for that raymarching step.
 		 *
-		 * @type {Function|FunctionNode<vec4>}
+		 * @type {?(Function|FunctionNode)}
 		 * @default null
 		 */
 		this.scatteringNode = null;
@@ -7288,10 +7283,11 @@ class Info {
 	constructor() {
 
 		/**
-		 * Whether frame related metrics should automatically
-		 * be resetted or not. This property should be set to `false`
-		 * by apps which manage their own animation loop. They must
-		 * then call `renderer.info.reset()` once per frame manually.
+		 * Whether frame related metrics should automatically be reset at the
+		 * start of each animation frame or not. The renderer runs its internal
+		 * animation loop once `render()` or `compute()` has been called, even
+		 * when the app manages its own animation loop. When set to `false`, the
+		 * app must call `renderer.info.reset()` manually.
 		 *
 		 * @type {boolean}
 		 * @default true
@@ -7309,7 +7305,7 @@ class Info {
 		this.frame = 0;
 
 		/**
-		 * The number of render calls since the
+		 * The number of render and compute calls since the
 		 * app has been started.
 		 *
 		 * @type {number}
@@ -13608,7 +13604,8 @@ class NodeBuilder {
 		delete context.getOutput;
 		delete context.getTextureLevel;
 		delete context.getAO;
-		delete context.getGI;
+		delete context.indirectSpecular;
+		delete context.indirectDiffuse;
 		delete context.getShadow;
 		delete context.nodeLoop;
 		delete context.nodeBlock;
@@ -21483,8 +21480,6 @@ class CanvasTarget extends EventDispatcher {
 
 		/**
 		 * A reference to the canvas element the renderer is drawing to.
-		 * This value of this property will automatically be created by
-		 * the renderer.
 		 *
 		 * @type {HTMLCanvasElement|OffscreenCanvas}
 		 */
@@ -21690,9 +21685,9 @@ class CanvasTarget extends EventDispatcher {
 	/**
 	 * Defines the scissor rectangle.
 	 *
-	 * @param {number | Vector4} x - The horizontal coordinate for the lower left corner of the box in logical pixel unit.
+	 * @param {number | Vector4} x - The horizontal coordinate for the upper left corner of the box in logical pixel unit.
 	 * Instead of passing four arguments, the method also works with a single four-dimensional vector.
-	 * @param {number} y - The vertical coordinate for the lower left corner of the box in logical pixel unit.
+	 * @param {number} y - The vertical coordinate for the upper left corner of the box in logical pixel unit.
 	 * @param {number} width - The width of the scissor box in logical pixel unit.
 	 * @param {number} height - The height of the scissor box in logical pixel unit.
 	 */
@@ -21749,12 +21744,12 @@ class CanvasTarget extends EventDispatcher {
 	/**
 	 * Defines the viewport.
 	 *
-	 * @param {number | Vector4} x - The horizontal coordinate for the lower left corner of the viewport origin in logical pixel unit.
-	 * @param {number} y - The vertical coordinate for the lower left corner of the viewport origin  in logical pixel unit.
+	 * @param {number | Vector4} x - The horizontal coordinate for the upper left corner of the viewport origin in logical pixel unit.
+	 * @param {number} y - The vertical coordinate for the upper left corner of the viewport origin in logical pixel unit.
 	 * @param {number} width - The width of the viewport in logical pixel unit.
 	 * @param {number} height - The height of the viewport in logical pixel unit.
-	 * @param {number} minDepth - The minimum depth value of the viewport. WebGPU only.
-	 * @param {number} maxDepth - The maximum depth value of the viewport. WebGPU only.
+	 * @param {number} [minDepth=0] - The minimum depth value of the viewport. WebGPU only.
+	 * @param {number} [maxDepth=1] - The maximum depth value of the viewport. WebGPU only.
 	 */
 	setViewport( x, y, width, height, minDepth = 0, maxDepth = 1 ) {
 
@@ -21790,7 +21785,7 @@ class CanvasTarget extends EventDispatcher {
 	 * Frees the GPU-related resources allocated by this instance. Call this
 	 * method whenever this instance is no longer used in your app.
 	 *
-	 * @fires RenderTarget#dispose
+	 * @fires CanvasTarget#dispose
 	 */
 	dispose() {
 
@@ -22237,8 +22232,8 @@ class Renderer {
 	 * @property {boolean} [depth=true] - Whether the default framebuffer should have a depth buffer or not.
 	 * @property {boolean} [stencil=false] - Whether the default framebuffer should have a stencil buffer or not.
 	 * @property {boolean} [antialias=false] - Whether MSAA as the default anti-aliasing should be enabled or not.
-	 * @property {number} [samples=0] - When `antialias` is `true`, `4` samples are used by default. This parameter can set to any other integer value than 0
-	 * to overwrite the default.
+	 * @property {number} [samples=0] - The number of MSAA samples. When `antialias` is `true`, `4` samples are used by default. A value other than `0`
+	 * overwrites the default and enables MSAA even without `antialias`. The WebGPU backend only supports `4` samples.
 	 * @property {?Function} [getFallback=null] - This callback function can be used to provide a fallback backend, if the primary backend can't be targeted.
 	 * @property {number} [outputBufferType=HalfFloatType] - Defines the type of output buffers. The default `HalfFloatType` is recommend for best
 	 * quality. To save memory and bandwidth, `UnsignedByteType` might be used. This will reduce rendering quality though.
@@ -23073,8 +23068,7 @@ class Renderer {
 
 	/**
 	 * A reference to the canvas element the renderer is drawing to.
-	 * This value of this property will automatically be created by
-	 * the renderer.
+	 * If no `canvas` is passed to the constructor, the renderer creates one.
 	 *
 	 * @type {HTMLCanvasElement|OffscreenCanvas}
 	 */
@@ -23111,7 +23105,7 @@ class Renderer {
 	 * @async
 	 * @param {Object3D} scene - The scene or 3D object to precompile.
 	 * @param {Camera} camera - The camera that is used to render the scene.
-	 * @param {?Scene} targetScene - If the first argument is a 3D object, this parameter must represent the scene the 3D object is going to be added.
+	 * @param {?Scene} [targetScene=null] - If the first argument is a 3D object, this parameter must represent the scene the 3D object is going to be added.
 	 * @param {onProgressCallback} [onProgress] - Executed while the compilation is in progress.
 	 * @return {Promise} A Promise that resolves when the compile has been finished.
 	 */
@@ -24442,7 +24436,8 @@ class Renderer {
 	}
 
 	/**
-	 * Returns the maximum available anisotropy for texture filtering.
+	 * Returns the maximum available anisotropy for texture filtering. The renderer
+	 * must be initialized via {@link Renderer#init} before.
 	 *
 	 * @return {number} The maximum available anisotropy.
 	 */
@@ -24508,6 +24503,10 @@ class Renderer {
 	/**
 	 * Can be used to transfer buffer data from a storage buffer attribute
 	 * from the GPU to the CPU in context of compute shaders.
+	 *
+	 * When a {@link ReadbackBuffer} is used, the data is available in its `buffer` property
+	 * until {@link ReadbackBuffer#release} is called. The readback buffer must be released
+	 * before it can be used again.
 	 *
 	 * @async
 	 * @param {BufferAttribute} attribute - The storage buffer attribute to read from.
@@ -24681,7 +24680,8 @@ class Renderer {
 	}
 
 	/**
-	 * Defines the scissor rectangle.
+	 * Defines the scissor rectangle. Only affects rendering to the canvas. When a render
+	 * target is set, its own {@link RenderTarget#scissor} is used.
 	 *
 	 * @param {number | Vector4} x - The horizontal coordinate for the upper left corner of the box in logical pixel unit.
 	 * Instead of passing four arguments, the method also works with a single four-dimensional vector.
@@ -24707,7 +24707,8 @@ class Renderer {
 	}
 
 	/**
-	 * Defines the scissor test.
+	 * Defines the scissor test. For render calls, it only affects rendering to the canvas.
+	 * When a render target is set, its own {@link RenderTarget#scissorTest} is used.
 	 *
 	 * @param {boolean} boolean - Whether the scissor test should be enabled or not.
 	 */
@@ -24750,14 +24751,15 @@ class Renderer {
 	}
 
 	/**
-	 * Defines the viewport.
+	 * Defines the viewport. Only affects rendering to the canvas. When a render
+	 * target is set, its own {@link RenderTarget#viewport} is used.
 	 *
 	 * @param {number | Vector4} x - The horizontal coordinate for the upper left corner of the viewport origin in logical pixel unit.
 	 * @param {number} y - The vertical coordinate for the upper left corner of the viewport origin in logical pixel unit.
 	 * @param {number} width - The width of the viewport in logical pixel unit.
 	 * @param {number} height - The height of the viewport in logical pixel unit.
-	 * @param {number} minDepth - The minimum depth value of the viewport. WebGPU only.
-	 * @param {number} maxDepth - The maximum depth value of the viewport. WebGPU only.
+	 * @param {number} [minDepth=0] - The minimum depth value of the viewport. WebGPU only.
+	 * @param {number} [maxDepth=1] - The maximum depth value of the viewport. WebGPU only.
 	 */
 	setViewport( x, y, width, height, minDepth = 0, maxDepth = 1 ) {
 
@@ -24780,7 +24782,7 @@ class Renderer {
 	/**
 	 * Defines the clear color and optionally the clear alpha.
 	 *
-	 * @param {Color} color - The clear color.
+	 * @param {(number|Color|string)} color - The clear color.
 	 * @param {number} [alpha=1] - The clear alpha.
 	 */
 	setClearColor( color, alpha = 1 ) {
@@ -24813,7 +24815,8 @@ class Renderer {
 	}
 
 	/**
-	 * Returns the clear depth.
+	 * Returns the depth value the depth buffer is cleared with. With a reversed depth
+	 * buffer, this is `1` minus the value defined via {@link Renderer#setClearDepth}.
 	 *
 	 * @return {number} The clear depth.
 	 */
@@ -24824,7 +24827,8 @@ class Renderer {
 	}
 
 	/**
-	 * Defines the clear depth.
+	 * Defines the clear depth in the conventional range where `1` represents the far plane.
+	 * The value is inverted automatically when a reversed depth buffer is in use.
 	 *
 	 * @param {number} depth - The clear depth.
 	 */
@@ -24857,12 +24861,15 @@ class Renderer {
 	}
 
 	/**
-	 * This method performs an occlusion query for the given 3D object.
-	 * It returns `true` if the given 3D object is fully occluded by other
-	 * 3D objects in the scene.
+	 * Returns `true` if the given 3D object was fully occluded by other 3D objects
+	 * in a previous render. The object must have `occlusionTest` set to `true`.
+	 * Occlusion query results are resolved asynchronously so they lag behind by a
+	 * few frames. This method must be called during a render call (e.g. in a node
+	 * update or `onBeforeRender()`), otherwise it returns `null`. It returns `undefined`
+	 * until the first occlusion query results are available.
 	 *
 	 * @param {Object3D} object - The 3D object to test.
-	 * @return {boolean} Whether the 3D object is fully occluded or not.
+	 * @return {(boolean|null|undefined)} Whether the 3D object is fully occluded or not.
 	 */
 	isOccluded( object ) {
 
@@ -25114,6 +25121,9 @@ class Renderer {
 	/**
 	 * Frees all internal resources of the renderer. Call this method if the renderer
 	 * is no longer in use by your app.
+	 *
+	 * @async
+	 * @return {Promise} A Promise that resolves when all resources have been freed.
 	 */
 	async dispose() {
 
@@ -25311,13 +25321,15 @@ class Renderer {
 	 * @param {number|Array<number>|IndirectStorageBufferAttribute} [dispatchSize=null]
 	 * An argument that defines the number of compute invocations executed in a compute call
 	 * and the size of the dispatched workgroup grid in which they are executed.
+	 * It can only be used with compute nodes created via `computeKernel()`. Nodes created
+	 * via `compute()` with a count or dispatch size throw an error.
 	 * Depending on the type of the argument, the dispatch size of a compute call will be determined in different ways.
 	 * - A number will dispatch a workgroup grid sized to fit `dispatchSize` invocations.
 	 * - An array [x, y, z] will directly define the size of the workgroup grid.
-	 *   The compute call will execute x * y * z * workgroupSize invocations.
+	 *   The compute call will execute x * y * z * workgroupSize invocations. WebGPU backend only.
 	 * - A IndirectStorageBufferAttribute will run an indirect compute dispatch.
 	 *   In an indirect dispatch, the [x, y, z] dimensions of the workgroup grid are defined by the first three values
-	 *   stored in the IndirectStorageBufferAttribute.
+	 *   stored in the IndirectStorageBufferAttribute. WebGPU backend only.
 	 * @return {Promise|undefined} A Promise that resolve when the compute has finished. Only returned when the renderer has not been initialized.
 	 */
 	compute( computeNodes, dispatchSize = null ) {
@@ -25442,13 +25454,15 @@ class Renderer {
 	 * @param {number|Array<number>|IndirectStorageBufferAttribute} [dispatchSize=null]
 	 * An argument that defines the number of compute invocations executed in a compute call
 	 * and the size of the dispatched workgroup grid in which they are executed.
+	 * It can only be used with compute nodes created via `computeKernel()`. Nodes created
+	 * via `compute()` with a count or dispatch size throw an error.
 	 * Depending on the type of the argument, the dispatch size of a compute call will be determined in different ways.
 	 * - A number will dispatch a workgroup grid sized to fit `dispatchSize` invocations.
 	 * - An array [x, y, z] will directly define the size of the workgroup grid.
-	 *   The compute call will execute x * y * z * workgroupSize invocations.
+	 *   The compute call will execute x * y * z * workgroupSize invocations. WebGPU backend only.
 	 * - A IndirectStorageBufferAttribute will run an indirect compute dispatch.
 	 *   In an indirect dispatch, the [x, y, z] dimensions of the workgroup grid are defined by the first three values
-	 *   stored in the IndirectStorageBufferAttribute.
+	 *   stored in the IndirectStorageBufferAttribute. WebGPU backend only.
 	 * @return {Promise} A Promise that resolve when the compute has finished.
 	 */
 	async computeAsync( computeNodes, dispatchSize = null ) {
@@ -25491,8 +25505,8 @@ class Renderer {
 	}
 
 	/**
-	 * Checks if the given feature is supported by the selected backend. If the
-	 * renderer has not been initialized, this method always returns `false`.
+	 * Checks if the given feature is supported by the selected backend. The renderer
+	 * must be initialized via {@link Renderer#init} before, otherwise this method throws.
 	 *
 	 * @param {string} name - The feature's name.
 	 * @return {boolean} Whether the feature is supported or not.
@@ -25682,7 +25696,9 @@ class Renderer {
 	 * @async
 	 * @param {RenderTarget} renderTarget - The render target to read from.
 	 * @param {number} x - The `x` coordinate of the copy region's origin.
-	 * @param {number} y - The `y` coordinate of the copy region's origin.
+	 * @param {number} y - The `y` coordinate of the copy region's origin. It is measured from the top
+	 * with the WebGPU backend and from the bottom with the WebGL backend. The row order of the
+	 * returned data follows the same convention.
 	 * @param {number} width - The width of the copy region.
 	 * @param {number} height - The height of the copy region.
 	 * @param {number} [textureIndex=0] - The texture index of a MRT render target.
@@ -26140,7 +26156,8 @@ class Renderer {
 	}
 
 	/**
-	 * Checks if the given compatibility is supported by the selected backend.
+	 * Checks if the given compatibility is supported by the selected backend. The renderer
+	 * must be initialized via {@link Renderer#init} before, otherwise this method throws.
 	 *
 	 * @param {string} name - The compatibility's name.
 	 * @return {boolean} Whether the compatibility is supported or not.
@@ -26303,7 +26320,7 @@ class Renderer {
 	 * @method
 	 * @param {Object3D} scene - The scene or 3D object to precompile.
 	 * @param {Camera} camera - The camera that is used to render the scene.
-	 * @param {Scene} targetScene - If the first argument is a 3D object, this parameter must represent the scene the 3D object is going to be added.
+	 * @param {?Scene} [targetScene=null] - If the first argument is a 3D object, this parameter must represent the scene the 3D object is going to be added.
 	 * @param {onProgressCallback} [onProgress] - Executed while the compilation is in progress.
 	 * @return {function(Object3D, Camera, ?Scene, ?onProgressCallback): Promise|undefined} A Promise that resolves when the compile has been finished.
 	 */
@@ -27842,10 +27859,10 @@ class GLSLNodeBuilder extends NodeBuilder {
 		super( object, renderer, new GLSLNodeParser() );
 
 		/**
-		 * A dictionary holds for each shader stage ('vertex', 'fragment', 'compute')
-		 * another dictionary which manages UBOs per group ('render','frame','object').
+		 * A dictionary that holds the UBO of each uniform group ('render','frame','object')
+		 * by group name. The UBOs are shared by all shader stages.
 		 *
-		 * @type {Object<string,Object<string,NodeUniformsGroup>>}
+		 * @type {Object<string,NodeUniformsGroup>}
 		 */
 		this.uniformGroups = {};
 
@@ -28095,6 +28112,9 @@ ${ flowData.code }
 	 * Setups the Pixel Buffer Object (PBO) for the given storage
 	 * buffer node.
 	 *
+	 * Note: The `array` of the storage buffer attribute is replaced
+	 * with a padded copy that fits the dimensions of the texture.
+	 *
 	 * @param {StorageBufferNode} storageBufferNode - The storage buffer node.
 	 */
 	setupPBO( storageBufferNode ) {
@@ -28197,11 +28217,11 @@ ${ flowData.code }
 	}
 
 	/**
-	 * Setups the Pixel Buffer Object (PBO) for the given storage
-	 * buffer node.
+	 * Generates the code that reads the given storage array element from
+	 * the Pixel Buffer Object (PBO) of its storage buffer.
 	 *
 	 * @param {StorageArrayElementNode} storageArrayElementNode - The storage array element node.
-	 * @return {string} The property name.
+	 * @return {string} The name of the variable holding the element.
 	 */
 	generatePBO( storageArrayElementNode ) {
 
@@ -29101,7 +29121,7 @@ ${ flowData.code }
 	/**
 	 * Returns the draw index builtin.
 	 *
-	 * @return {?string} The drawIndex shader string. Returns `null` if `WEBGL_multi_draw` isn't supported by the device.
+	 * @return {string} The drawIndex shader string. Returns a uniform if `WEBGL_multi_draw` isn't supported by the device.
 	 */
 	getDrawIndex() {
 
@@ -29287,7 +29307,7 @@ ${ flowData.code }
 	/**
 	 * Enables hardware clipping.
 	 *
-	 * @param {string} planeCount - The clipping plane count.
+	 * @param {number} planeCount - The clipping plane count.
 	 */
 	enableHardwareClipping( planeCount ) {
 
@@ -29420,7 +29440,7 @@ void main() {
 	 *
 	 * @private
 	 * @param {Object} shaderData - The shader data.
-	 * @return {string} The vertex shader.
+	 * @return {string} The fragment shader.
 	 */
 	_getGLSLFragmentCode( shaderData ) {
 
@@ -29831,7 +29851,7 @@ class Backend {
 	 * @param {Array<BindGroup>} bindings - The bindings.
 	 * @param {ComputePipeline} computePipeline - The compute pipeline.
 	 */
-	compute( /*computeGroup, computeNode, computeBindings, computePipeline*/ ) { }
+	compute( /*computeGroup, computeNode, bindings, computePipeline*/ ) { }
 
 	// program
 
@@ -32152,7 +32172,7 @@ class WebGLState {
 	 * Configures the WebGL state for the given material.
 	 *
 	 * @param {Material} material - The material to configure the state for.
-	 * @param {number} frontFaceCW - Whether the front faces are counter-clockwise or not.
+	 * @param {boolean} frontFaceCW - Whether the front faces are clockwise (mirrored world matrix) or not.
 	 * @param {number} hardwareClippingPlanes - The number of hardware clipping planes.
 	 */
 	setMaterial( material, frontFaceCW, hardwareClippingPlanes ) {
@@ -33207,11 +33227,12 @@ class WebGLTextureUtils {
 	}
 
 	/**
-	 * Returns the native texture type for the given texture.
+	 * Returns the WebGL internal format for the given format, type and color space.
 	 *
 	 * @param {?string} internalFormatName - The internal format name. When `null`, the internal format is derived from the subsequent parameters.
 	 * @param {GLenum} glFormat - The WebGL format.
 	 * @param {GLenum} glType - The WebGL type.
+	 * @param {boolean} normalized - Whether integer data are normalized or not.
 	 * @param {string} colorSpace - The texture's color space.
 	 * @param {boolean} [forceLinearTransfer=false] - Whether to force a linear transfer or not.
 	 * @return {GLenum} The internal format.
@@ -35141,7 +35162,7 @@ class WebGLBackend extends Backend {
 	 */
 
 	/**
-	 * Constructs a new WebGPU backend.
+	 * Constructs a new WebGL 2 backend.
 	 *
 	 * @param {WebGLBackend~Options} [parameters] - The configuration parameter.
 	 */
@@ -35683,9 +35704,10 @@ class WebGLBackend extends Backend {
 
 	/**
 	 * This method processes the result of occlusion queries and writes it
-	 * into the occlusion data of the render context.
+	 * into the occlusion data of the render context. The results are polled
+	 * once per animation frame until all queries are available, so the method
+	 * does not return a Promise.
 	 *
-	 * @async
 	 * @param {RenderContext} renderContext - The render context.
 	 */
 	resolveOccludedAsync( renderContext ) {
@@ -35979,7 +36001,8 @@ class WebGLBackend extends Backend {
 	 * @param {Node} computeNode - The compute node.
 	 * @param {Array<BindGroup>} bindings - The bindings.
 	 * @param {ComputePipeline} pipeline - The compute pipeline.
-	 * @param {?number} [count=null] - The count of compute invocations. If `null`, the count is determined by the compute node.
+	 * @param {?(number|Array<number>|IndirectStorageBufferAttribute)} [count=null] - The count of compute invocations. If `null`, the count is determined by the compute node.
+	 * Workgroup grids and indirect dispatches are not supported: only the first element of an array is used as the count of invocations.
 	 */
 	compute( computeGroup, computeNode, bindings, pipeline, count = null ) {
 
@@ -41786,7 +41809,7 @@ class WebGPUTextureUtils {
  * Returns the GPU format for the given texture.
  *
  * @param {Texture} texture - The texture.
- * @param {GPUDevice} [device] - The GPU device which is used for feature detection.
+ * @param {GPUDevice} device - The GPU device which is used for feature detection.
  * @return {string} The GPU format.
  */
 function getFormat( texture, device ) {
@@ -42373,7 +42396,7 @@ const parse = ( source ) => {
 };
 
 /**
- * This class represents a WSL node function.
+ * This class represents a WGSL node function.
  *
  * @augments NodeFunction
  */
@@ -42729,10 +42752,10 @@ class WGSLNodeBuilder extends NodeBuilder {
 		super( object, renderer, new WGSLNodeParser() );
 
 		/**
-		 * A dictionary that holds for each shader stage ('vertex', 'fragment', 'compute')
-		 * another dictionary which manages UBOs per group ('render','frame','object').
+		 * A dictionary that holds the UBO of each uniform group ('render','frame','object')
+		 * by group name. The UBOs are shared by all shader stages.
 		 *
-		 * @type {Object<string,Object<string,NodeUniformsGroup>>}
+		 * @type {Object<string,NodeUniformsGroup>}
 		 */
 		this.uniformGroups = {};
 
@@ -44286,7 +44309,7 @@ ${ flowData.code }
 	/**
 	 * Enables hardware clipping.
 	 *
-	 * @param {string} planeCount - The clipping plane count.
+	 * @param {number} planeCount - The clipping plane count.
 	 */
 	enableHardwareClipping( planeCount ) {
 
@@ -44576,6 +44599,7 @@ ${ flowData.code }
 	 * Returns the variables of the given shader stage as a WGSL string.
 	 *
 	 * @param {string} shaderStage - The shader stage.
+	 * @param {boolean} [global=false] - Whether to declare the variables in module scope (`var<private>`) or not.
 	 * @return {string} The WGSL snippet that defines the variables.
 	 */
 	getVars( shaderStage, global = false ) {
@@ -45239,7 +45263,7 @@ fn main( ${shaderData.attributes} ) -> VaryingsStruct {
 	 *
 	 * @private
 	 * @param {Object} shaderData - The shader data.
-	 * @return {string} The vertex shader.
+	 * @return {string} The fragment shader.
 	 */
 	_getWGSLFragmentCode( shaderData ) {
 
@@ -45278,8 +45302,8 @@ fn main( ${shaderData.varyings} ) -> ${shaderData.returnType} {
 	 *
 	 * @private
 	 * @param {Object} shaderData - The shader data.
-	 * @param {string} workgroupSize - The workgroup size.
-	 * @return {string} The vertex shader.
+	 * @param {Array<number>} workgroupSize - The workgroup size.
+	 * @return {string} The compute shader.
 	 */
 	_getWGSLComputeCode( shaderData, workgroupSize ) {
 
@@ -48363,10 +48387,10 @@ class WebGPUBackend extends Backend {
 	 * @property {boolean} [depth=true] - Whether the default framebuffer should have a depth buffer or not.
 	 * @property {boolean} [stencil=false] - Whether the default framebuffer should have a stencil buffer or not.
 	 * @property {boolean} [antialias=false] - Whether MSAA as the default anti-aliasing should be enabled or not.
-	 * @property {number} [samples=0] - When `antialias` is `true`, `4` samples are used by default. Set this parameter to any other integer value than 0 to overwrite the default.
+	 * @property {number} [samples=0] - When `antialias` is `true`, `4` samples are used by default. Only `4` samples are supported (higher values are clamped to `4`).
 	 * @property {boolean} [forceWebGL=false] - If set to `true`, the renderer uses a WebGL 2 backend no matter if WebGPU is supported or not.
 	 * @property {string} [powerPreference=undefined] - The power preference.
-	 * @property {Object} [requiredLimits=undefined] - Specifies the limits that are required by the device request. The request will fail if the adapter cannot provide these limits.
+	 * @property {Object} [requiredLimits={}] - Specifies the limits that are required by the device request. The request will fail if the adapter cannot provide these limits.
 	 * @property {GPUDevice} [device=undefined] - If there is an existing GPU device on app level, it can be passed to the renderer as a parameter.
 	 * @property {number} [outputType=undefined] - Texture type for output to canvas. By default, device's preferred format is used; other formats may incur overhead.
 	 */
@@ -50844,7 +50868,6 @@ class WebGPUBackend extends Backend {
 	 * as a placeholder until the actual texture is ready for usage.
 	 *
 	 * @param {Texture} texture - The texture to create a default texture for.
-	 * @return {boolean} Whether the sampler has been updated or not.
 	 */
 	createDefaultTexture( texture ) {
 
@@ -51694,7 +51717,7 @@ class IESSpotLight extends SpotLight {
 	 * @param {number} [distance=0] - Maximum range of the light. `0` means no limit.
 	 * @param {number} [angle=Math.PI/3] - Maximum angle of light dispersion from its direction whose upper bound is `Math.PI/2`.
 	 * @param {number} [penumbra=0] - Percent of the spotlight cone that is attenuated due to penumbra. Value range is `[0,1]`.
-	 * @param {number} [decay=2] - The amount the light dims along the distance of the light.
+	 * @param {number} [decay=2] - The exponent of the light's distance falloff.
 	 */
 	constructor( color, intensity, distance, angle, penumbra, decay ) {
 
@@ -51738,7 +51761,7 @@ class ProjectorLight extends SpotLight {
 	 * @param {number} [distance=0] - Maximum range of the light. `0` means no limit.
 	 * @param {number} [angle=Math.PI/3] - Maximum angle of light dispersion from its direction whose upper bound is `Math.PI/2`.
 	 * @param {number} [penumbra=0] - Percent of the spotlight cone that is attenuated due to penumbra. Value range is `[0,1]`.
-	 * @param {number} [decay=2] - The amount the light dims along the distance of the light.
+	 * @param {number} [decay=2] - The exponent of the light's distance falloff.
 	 */
 	constructor( color, intensity, distance, angle, penumbra, decay ) {
 
@@ -51836,6 +51859,10 @@ const debugHandler = {
  * to target different backends. By default, the renderer tries to use a WebGPU backend if the
  * browser supports WebGPU. If not, `WebGPURenderer` falls backs to a WebGL 2 backend.
  *
+ * The renderer initializes asynchronously: call `await renderer.init()` before using
+ * `render()`, or define the animation loop with `setAnimationLoop()` which waits for
+ * the initialization.
+ *
  * @augments Renderer
  */
 class WebGPURenderer extends Renderer {
@@ -51845,15 +51872,30 @@ class WebGPURenderer extends Renderer {
 	 *
 	 * @typedef {Object} WebGPURenderer~Options
 	 * @property {boolean} [logarithmicDepthBuffer=false] - Whether logarithmic depth buffer is enabled or not. Ignored when a reversed depth buffer is in use.
-	 * @property {boolean} [reversedDepthBuffer=false] - Whether reversed depth buffer is enabled or not.
+	 * @property {boolean} [reversedDepthBuffer=false] - Whether reversed depth buffer is enabled or not. The WebGL 2 backend requires
+	 * `EXT_clip_control` and otherwise uses a regular depth buffer.
 	 * @property {boolean} [alpha=true] - Whether the default framebuffer (which represents the final contents of the canvas) should be transparent or opaque.
 	 * @property {boolean} [depth=true] - Whether the default framebuffer should have a depth buffer or not.
 	 * @property {boolean} [stencil=false] - Whether the default framebuffer should have a stencil buffer or not.
-	 * @property {boolean} [antialias=false] - Whether MSAA as the default anti-aliasing should be enabled or not.
-	 * @property {number} [samples=0] - When `antialias` is `true`, `4` samples are used by default. Set this parameter to any other integer value than 0 to overwrite the default.
+	 * @property {boolean} [antialias=false] - Whether MSAA as the default anti-aliasing should be enabled or not. MSAA is disabled on devices
+	 * running in WebGPU compatibility mode.
+	 * @property {number} [samples=0] - The number of MSAA samples. When `antialias` is `true`, `4` samples are used by default. A value other than `0`
+	 * overwrites the default and enables MSAA even without `antialias`. The WebGPU backend only supports `4` samples (higher values are
+	 * clamped to `4`).
 	 * @property {boolean} [forceWebGL=false] - If set to `true`, the renderer uses a WebGL 2 backend no matter if WebGPU is supported or not.
-	 * @property {boolean} [multiview=false] - If set to `true`, the renderer will use multiview during WebXR rendering if supported.
-	 * @property {number} [outputType=undefined] - Texture type for output to canvas. By default, device's preferred format is used; other formats may incur overhead.
+	 * @property {boolean} [multiview=false] - If set to `true`, the renderer will use multiview during WebXR rendering if `OVR_multiview2` and WebXR layers are supported.
+	 * WebGL 2 backend only.
+	 * @property {HTMLCanvasElement|OffscreenCanvas} [canvas] - The canvas the renderer draws its output to. If not provided, a new canvas is created.
+	 * @property {GPUCanvasContext|WebGL2RenderingContext} [context] - An existing rendering context of `canvas`. It must match the backend in use:
+	 * a `GPUCanvasContext` for WebGPU or a `WebGL2RenderingContext` for WebGL 2.
+	 * @property {string} [powerPreference] - A hint for the GPU adapter selection, either `'low-power'` or `'high-performance'`. WebGPU backend only.
+	 * @property {Object} [requiredLimits={}] - The device limits to request. If the adapter cannot provide them, the WebGPU initialization fails
+	 * and the renderer falls back to the WebGL 2 backend.
+	 * @property {GPUDevice} [device] - An existing GPU device to use instead of requesting a new one. `powerPreference` and `requiredLimits`
+	 * are ignored in this case, and the device is not destroyed when the renderer is disposed.
+	 * @property {number} [outputType=undefined] - Texture type for output to canvas. Either `UnsignedByteType` or `HalfFloatType` (extended range,
+	 * for HDR displays); other types are not supported. By default, device's preferred format is used; other formats may incur overhead.
+	 * WebGPU backend only.
 	 * @property {number} [outputBufferType=HalfFloatType] - Defines the type of output buffers. The default `HalfFloatType` is recommend for best
 	 * quality. To save memory and bandwidth, `UnsignedByteType` might be used. This will reduce rendering quality though.
 	 */
@@ -51963,12 +52005,16 @@ class BundleGroup extends Group {
 		this.type = 'BundleGroup';
 
 		/**
-		 * Whether the bundle is static or not. When set to `true`, the structure
-		 * is assumed to be static and does not change. E.g. no new objects are
-		 * added to the group.
+		 * Whether the bundle is static or not. When set to `true`, the renderer may
+		 * skip updating the transformation and material properties of the objects in
+		 * the bundle until the `needsUpdate` flag is set to `true`. Set it to `false`
+		 * for bundles with animated objects.
 		 *
-		 * If a change is required, an update can still be forced by setting the
-		 * `needsUpdate` flag to `true`.
+		 * Adding or removing objects always requires setting the `needsUpdate`
+		 * flag to `true`.
+		 *
+		 * Only used by the WebGPU backend. With the WebGL 2 backend, the group is
+		 * rendered like a regular group and all changes are applied immediately.
 		 *
 		 * @type {boolean}
 		 * @default true
@@ -52021,7 +52067,7 @@ class RenderPipeline {
 	 * Constructs a new render pipeline management module.
 	 *
 	 * @param {Renderer} renderer - A reference to the renderer.
-	 * @param {Node<vec4>} outputNode - An optional output node.
+	 * @param {Node<vec4>} [outputNode=vec4(0,0,1,1)] - An optional output node.
 	 */
 	constructor( renderer, outputNode = vec4( 0, 0, 1, 1 ) ) {
 
@@ -52067,13 +52113,16 @@ class RenderPipeline {
 		 * ```
 		 *
 		 * @type {boolean}
+		 * @default true
 		 */
 		this.outputColorTransform = true;
 
 		/**
-		 * Must be set to `true` when the output node changes.
+		 * Must be set to `true` when the output node or
+		 * {@link RenderPipeline#outputColorTransform} changes.
 		 *
-		 * @type {Node<vec4>}
+		 * @type {boolean}
+		 * @default true
 		 */
 		this.needsUpdate = true;
 
@@ -52278,7 +52327,7 @@ class DirectRenderPipeline extends RenderPipeline {
 	 * Constructs a direct render pipeline.
 	 *
 	 * @param {Renderer} renderer - A reference to the renderer.
-	 * @param {Node<vec4>} outputNode - An optional output node.
+	 * @param {Node<vec4>} [outputNode=output] - An optional output node.
 	 */
 	constructor( renderer, outputNode = output ) {
 
@@ -52498,7 +52547,7 @@ class PostProcessing extends RenderPipeline {
 	 * Constructs a new post processing management module.
 	 *
 	 * @param {Renderer} renderer - A reference to the renderer.
-	 * @param {Node<vec4>} outputNode - An optional output node.
+	 * @param {Node<vec4>} [outputNode] - An optional output node.
 	 * @deprecated since r183. Use {@link RenderPipeline} instead.
 	 */
 	constructor( renderer, outputNode ) {
@@ -52887,7 +52936,7 @@ class IndirectStorageBufferAttribute extends StorageBufferAttribute {
 	 * Constructs a new storage buffer attribute.
 	 *
 	 * @param {number|Uint32Array} count - The item count. It is also valid to pass a `Uint32Array` as an argument.
-	 * The subsequent parameter is then obsolete.
+	 * `itemSize` is still required in this case.
 	 * @param {number} itemSize - The item size.
 	 */
 	constructor( count, itemSize ) {
@@ -53113,9 +53162,10 @@ class NodeMaterialLoader extends MaterialLoader {
 		super( manager );
 
 		/**
-		 * Represents a dictionary of node types.
+		 * Represents a dictionary of deserialized node instances, keyed by UUID.
+		 * They are assigned to the node properties of the parsed material.
 		 *
-		 * @type {Object<string,Node.constructor>}
+		 * @type {Object<string,Node>}
 		 */
 		this.nodes = {};
 
@@ -53132,7 +53182,7 @@ class NodeMaterialLoader extends MaterialLoader {
 	 * Parses the node material from the given JSON.
 	 *
 	 * @param {Object} json - The JSON definition
-	 * @return {NodeMaterial}. The parsed material.
+	 * @return {Material} The parsed material.
 	 */
 	parse( json ) {
 
@@ -53154,10 +53204,10 @@ class NodeMaterialLoader extends MaterialLoader {
 	}
 
 	/**
-	 * Defines the dictionary of node types.
+	 * Defines the dictionary of deserialized node instances.
 	 *
-	 * @param {Object<string,Node.constructor>} value - The node library defined as `<classname,class>`.
-	 * @return {NodeLoader} A reference to this loader.
+	 * @param {Object<string,Node>} value - The node instances defined as `<uuid,node>`.
+	 * @return {NodeMaterialLoader} A reference to this loader.
 	 */
 	setNodes( value ) {
 
@@ -53170,7 +53220,7 @@ class NodeMaterialLoader extends MaterialLoader {
 	 * Defines the dictionary of node material types.
 	 *
 	 * @param {Object<string,NodeMaterial.constructor>} value - The node material library defined as `<classname,class>`.
-	 * @return {NodeLoader} A reference to this loader.
+	 * @return {NodeMaterialLoader} A reference to this loader.
 	 */
 	setNodeMaterials( value ) {
 
@@ -53183,7 +53233,7 @@ class NodeMaterialLoader extends MaterialLoader {
 	 * Creates a node material from the given type.
 	 *
 	 * @param {string} type - The node material type.
-	 * @return {Node} The created node material instance.
+	 * @return {Material} The created material instance.
 	 */
 	createMaterialFromType( type ) {
 
@@ -53272,8 +53322,8 @@ class NodeObjectLoader extends ObjectLoader {
 	 * Parses the node objects from the given JSON.
 	 *
 	 * @param {Object} json - The JSON definition
-	 * @param {Function} onLoad - The onLoad callback function.
-	 * @return {Object3D}. The parsed 3D object.
+	 * @param {function(Object3D)} [onLoad] - Executed when all resources (e.g. textures) have been fully loaded.
+	 * @return {Object3D} The parsed 3D object.
 	 */
 	parse( json, onLoad ) {
 
@@ -53310,7 +53360,7 @@ class NodeObjectLoader extends ObjectLoader {
 	 *
 	 * @param {Object[]} json - The JSON definition
 	 * @param {Object<string,Texture>} textures - The texture library.
-	 * @return {Object<string,Node>}. The parsed nodes.
+	 * @return {Object<string,Node>} The parsed nodes.
 	 */
 	parseNodes( json, textures ) {
 
@@ -53333,7 +53383,7 @@ class NodeObjectLoader extends ObjectLoader {
 	 *
 	 * @param {Object} json - The JSON definition
 	 * @param {Object<string,Texture>} textures - The texture library.
-	 * @return {Object<string,NodeMaterial>}. The parsed materials.
+	 * @return {Object<string,NodeMaterial>} The parsed materials.
 	 */
 	parseMaterials( json, textures ) {
 
@@ -53556,4 +53606,4 @@ class ClippingGroup extends Group {
 
 }
 
-export { ACESFilmicToneMapping, AddEquation, AddOperation, AdditiveBlending, AgXToneMapping, AlphaFormat, AlwaysCompare, AlwaysDepth, AlwaysStencilFunc, AmbientLight, AmbientLightNode, AnalyticLightNode, ArrayCamera, BackSide, Backend, BasicEnvironmentNode, BasicLightMapNode, BasicNodeLibrary, BundleGroup, ByteType, CanvasTarget, CineonToneMapping, ClampToEdgeWrapping, ClippingGroup, CodeNode, Color, ColorManagement, Compatibility, ConstantAlphaFactor, ConstantColorFactor, CubeMapNode, CubeReflectionMapping, CubeRefractionMapping, CubeRenderTarget, CubeTexture, CullFaceBack, CullFaceFront, CullFaceNone, CustomBlending, CylinderGeometry, Data3DTexture, DataTexture, DecrementStencilOp, DecrementWrapStencilOp, DepthFormat, DepthStencilFormat, DepthTexture, DirectRenderPipeline, DirectionalLight, DirectionalLightNode, DoubleSide, DstAlphaFactor, DstColorFactor, DynamicDrawUsage, EnvironmentNode, EqualCompare, EqualDepth, EqualStencilFunc, EquirectangularReflectionMapping, EquirectangularRefractionMapping, EventDispatcher, ExpressionNode, FileLoader, FloatType, FramebufferTexture, FrontSide, Frustum, FrustumArray, FunctionNode, GLSLNodeBuilder, GLSLNodeParser, GPUTimer, GreaterCompare, GreaterDepth, GreaterEqualCompare, GreaterEqualDepth, GreaterEqualStencilFunc, GreaterStencilFunc, Group, HalfFloatType, HemisphereLight, HemisphereLightNode, IESSpotLight, IESSpotLightNode, IncrementStencilOp, IncrementWrapStencilOp, IndirectStorageBufferAttribute, InspectorBase, IntType, InvertStencilOp, KeepStencilOp, LessCompare, LessDepth, LessEqualCompare, LessEqualDepth, LessEqualStencilFunc, LessStencilFunc, LightProbeNode, Lighting, LightingModel, LightingNode, LightsNode, Line2NodeMaterial, LineBasicMaterial, LineBasicNodeMaterial, LineDashedMaterial, LineDashedNodeMaterial, LinearFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearToneMapping, LinearTransfer, Loader, Material, MaterialBlending, MaterialLoader, Matrix2, Matrix3, Matrix4, MaxEquation, Mesh, MeshBasicMaterial, MeshBasicNodeMaterial, MeshLambertMaterial, MeshLambertNodeMaterial, MeshMatcapMaterial, MeshMatcapNodeMaterial, MeshNormalMaterial, MeshNormalNodeMaterial, MeshPhongMaterial, MeshPhongNodeMaterial, MeshPhysicalMaterial, MeshPhysicalNodeMaterial, MeshSSSNodeMaterial, MeshStandardMaterial, MeshStandardNodeMaterial, MeshToonMaterial, MeshToonNodeMaterial, MinEquation, MirroredRepeatWrapping, MixOperation, MultiplyBlending, MultiplyOperation, NearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, NeutralToneMapping, NeverCompare, NeverDepth, NeverStencilFunc, NoBlending, NoColorSpace, NoToneMapping, Node, NodeAccess, NodeAttribute, NodeBuilder, NodeCache, NodeCode, NodeFrame, NodeFunctionInput, NodeLoader, NodeMaterial, NodeMaterialInstance, NodeMaterialLoader, NodeObjectLoader, NodeUniform, NodeUpdateType, NodeVar, NodeVarying, NormalBlending, NotEqualCompare, NotEqualDepth, NotEqualStencilFunc, ObjectLoader, OneFactor, OneMinusConstantAlphaFactor, OneMinusConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, PCFShadowMap, PCFSoftShadowMap, ParameterNode, PerspectiveCamera, PhongLightingModel, PhysicalLightingModel, Plane, PlaneGeometry, PointLight, PointLightNode, PointsMaterial, PointsNodeMaterial, PostProcessing, ProjectorLight, ProjectorLightNode, QuadMesh, Quaternion, R11_EAC_Format, RED_GREEN_RGTC2_Format, RED_RGTC1_Format, REVISION, RG11_EAC_Format, RGBAFormat, RGBAIntegerFormat, RGBA_ASTC_10x10_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_BPTC_Format, RGBA_ETC2_EAC_Format, RGBA_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGBFormat, RGBIntegerFormat, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGB_PVRTC_2BPPV1_Format, RGB_PVRTC_4BPPV1_Format, RGB_S3TC_DXT1_Format, RGFormat, RGIntegerFormat, ReadbackBuffer, RectAreaLight, RectAreaLightNode, RedFormat, RedIntegerFormat, ReinhardToneMapping, RenderObjectRefreshType, RenderPipeline, RenderTarget, Renderer, RepeatWrapping, ReplaceStencilOp, ReverseSubtractEquation, SIGNED_R11_EAC_Format, SIGNED_RED_GREEN_RGTC2_Format, SIGNED_RED_RGTC1_Format, SIGNED_RG11_EAC_Format, SRGBColorSpace, SRGBTransfer, Scene, ShadowMaterial, ShadowNodeMaterial, ShortType, SphereGeometry, SpotLight, SpotLightNode, SpriteMaterial, SpriteNodeMaterial, SrcAlphaFactor, SrcAlphaSaturateFactor, SrcColorFactor, StackTrace, StandardDrawingPipeline, StandardNodeLibrary, Storage3DTexture, StorageArrayTexture, StorageBufferAttribute, StorageTexture, SubtractEquation, SubtractiveBlending, TempNode, Texture, TextureNode, Uint16BufferAttribute, Uint32BufferAttribute, UnsignedByteType, UnsignedInt101111Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedIntType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShortType, VSMShadowMap, VarNode, Vector2, Vector3, Vector4, VolumeNodeMaterial, WGSLNodeBuilder, WebGLBackend, WebGLCapabilities, WebGLCoordinateSystem, WebGPUBackend, WebGPUCoordinateSystem, WebGPURenderer, WebXRController, ZeroFactor, ZeroStencilOp, createCanvasElement, defaultBuildStages, error, shaderStages, vectorComponents, warn, warnOnce };
+export { ACESFilmicToneMapping, AddEquation, AddOperation, AdditiveBlending, AgXToneMapping, AlphaFormat, AlwaysCompare, AlwaysDepth, AlwaysStencilFunc, AmbientLight, AmbientLightNode, AnalyticLightNode, ArrayCamera, BackSide, Backend, BasicEnvironmentNode, BasicLightMapNode, BasicNodeLibrary, BundleGroup, ByteType, CanvasTarget, CineonToneMapping, ClampToEdgeWrapping, ClippingGroup, CodeNode, Color, ColorManagement, Compatibility, ConstantAlphaFactor, ConstantColorFactor, CubeMapNode, CubeReflectionMapping, CubeRefractionMapping, CubeRenderTarget, CubeTexture, CullFaceBack, CullFaceFront, CullFaceNone, CustomBlending, CylinderGeometry, Data3DTexture, DataTexture, DecrementStencilOp, DecrementWrapStencilOp, DepthFormat, DepthStencilFormat, DepthTexture, DirectRenderPipeline, DirectionalLight, DirectionalLightNode, DoubleSide, DstAlphaFactor, DstColorFactor, DynamicDrawUsage, EnvironmentNode, EqualCompare, EqualDepth, EqualStencilFunc, EquirectangularReflectionMapping, EquirectangularRefractionMapping, EventDispatcher, ExpressionNode, FileLoader, FloatType, FramebufferTexture, FrontSide, Frustum, FrustumArray, FunctionNode, GLSLNodeBuilder, GLSLNodeParser, GPUTimer, GreaterCompare, GreaterDepth, GreaterEqualCompare, GreaterEqualDepth, GreaterEqualStencilFunc, GreaterStencilFunc, Group, HalfFloatType, HemisphereLight, HemisphereLightNode, IESSpotLight, IESSpotLightNode, IncrementStencilOp, IncrementWrapStencilOp, IndirectLightingNode, IndirectStorageBufferAttribute, InspectorBase, IntType, InvertStencilOp, KeepStencilOp, LessCompare, LessDepth, LessEqualCompare, LessEqualDepth, LessEqualStencilFunc, LessStencilFunc, LightProbeNode, Lighting, LightingModel, LightingNode, LightsNode, Line2NodeMaterial, LineBasicMaterial, LineBasicNodeMaterial, LineDashedMaterial, LineDashedNodeMaterial, LinearFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearToneMapping, LinearTransfer, Loader, Material, MaterialBlending, MaterialLoader, Matrix2, Matrix3, Matrix4, MaxEquation, Mesh, MeshBasicMaterial, MeshBasicNodeMaterial, MeshLambertMaterial, MeshLambertNodeMaterial, MeshMatcapMaterial, MeshMatcapNodeMaterial, MeshNormalMaterial, MeshNormalNodeMaterial, MeshPhongMaterial, MeshPhongNodeMaterial, MeshPhysicalMaterial, MeshPhysicalNodeMaterial, MeshSSSNodeMaterial, MeshStandardMaterial, MeshStandardNodeMaterial, MeshToonMaterial, MeshToonNodeMaterial, MinEquation, MirroredRepeatWrapping, MixOperation, MultiplyBlending, MultiplyOperation, NearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, NeutralToneMapping, NeverCompare, NeverDepth, NeverStencilFunc, NoBlending, NoColorSpace, NoToneMapping, Node, NodeAccess, NodeAttribute, NodeBuilder, NodeCache, NodeCode, NodeFrame, NodeFunctionInput, NodeLoader, NodeMaterial, NodeMaterialInstance, NodeMaterialLoader, NodeObjectLoader, NodeUniform, NodeUpdateType, NodeVar, NodeVarying, NormalBlending, NotEqualCompare, NotEqualDepth, NotEqualStencilFunc, ObjectLoader, OneFactor, OneMinusConstantAlphaFactor, OneMinusConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, PCFShadowMap, PCFSoftShadowMap, ParameterNode, PerspectiveCamera, PhongLightingModel, PhysicalLightingModel, Plane, PlaneGeometry, PointLight, PointLightNode, PointsMaterial, PointsNodeMaterial, PostProcessing, ProjectorLight, ProjectorLightNode, QuadMesh, Quaternion, R11_EAC_Format, RED_GREEN_RGTC2_Format, RED_RGTC1_Format, REVISION, RG11_EAC_Format, RGBAFormat, RGBAIntegerFormat, RGBA_ASTC_10x10_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_BPTC_Format, RGBA_ETC2_EAC_Format, RGBA_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGBFormat, RGBIntegerFormat, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGB_PVRTC_2BPPV1_Format, RGB_PVRTC_4BPPV1_Format, RGB_S3TC_DXT1_Format, RGFormat, RGIntegerFormat, ReadbackBuffer, RectAreaLight, RectAreaLightNode, RedFormat, RedIntegerFormat, ReinhardToneMapping, RenderObjectRefreshType, RenderPipeline, RenderTarget, Renderer, RepeatWrapping, ReplaceStencilOp, ReverseSubtractEquation, SIGNED_R11_EAC_Format, SIGNED_RED_GREEN_RGTC2_Format, SIGNED_RED_RGTC1_Format, SIGNED_RG11_EAC_Format, SRGBColorSpace, SRGBTransfer, Scene, ShadowMaterial, ShadowNodeMaterial, ShortType, SphereGeometry, SpotLight, SpotLightNode, SpriteMaterial, SpriteNodeMaterial, SrcAlphaFactor, SrcAlphaSaturateFactor, SrcColorFactor, StackTrace, StandardDrawingPipeline, StandardNodeLibrary, Storage3DTexture, StorageArrayTexture, StorageBufferAttribute, StorageTexture, SubtractEquation, SubtractiveBlending, TempNode, Texture, TextureNode, Uint16BufferAttribute, Uint32BufferAttribute, UnsignedByteType, UnsignedInt101111Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedIntType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShortType, VSMShadowMap, VarNode, Vector2, Vector3, Vector4, VolumeNodeMaterial, WGSLNodeBuilder, WebGLBackend, WebGLCapabilities, WebGLCoordinateSystem, WebGPUBackend, WebGPUCoordinateSystem, WebGPURenderer, WebXRController, ZeroFactor, ZeroStencilOp, createCanvasElement, defaultBuildStages, error, shaderStages, vectorComponents, warn, warnOnce };

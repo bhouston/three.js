@@ -1,6 +1,7 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, RedFormat } from 'three/webgpu';
-import { reference, getViewPosition, getScreenPositionFromClip, vogelDiskSample, interleavedGradientNoise, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec4, int, dot, max, clamp, length, screenCoordinate, PI2, texture, passTexture, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { reference, getViewPosition, getScreenPositionFromClip, vogelDiskSample, interleavedGradientNoise, nodeObject, Fn, float, NodeUpdateType, uv, uniform, Loop, vec4, int, dot, max, clamp, length, screenCoordinate, PI2, texture, passTexture, context, isBackgroundDepth, projectionDepth, If, sample, depthToViewZ } from 'three/tsl';
 import { depthAwareBlur } from './depthAwareBlur.js';
+import { gatherNearestDepth } from '../utils/DepthUtils.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -152,6 +153,14 @@ class SSAONode extends Node {
 		this._blurRenderTarget.texture.name = 'SSAONode.Blur';
 
 		/**
+		 * Resolution scale uniform.
+		 *
+		 * @private
+		 * @type {UniformNode<float>}
+		 */
+		this._resolutionScale = uniform( 0 );
+
+		/**
 		 * Represents the projection matrix of the scene's camera.
 		 *
 		 * @private
@@ -248,6 +257,17 @@ class SSAONode extends Node {
 	}
 
 	/**
+	 * Returns the depth the effect is computed at, e.g. as the guide depth for upsampling it.
+	 *
+	 * @return {SampleNode} The depth, samplable at the texel centers of the effect.
+	 */
+	getDepthNode() {
+
+		return sample( ( uv ) => Fn( ( builder ) => this._resolutionScale.lessThan( 1 ).select( gatherNearestDepth( this.depthNode, uv, builder ).nearest, this.depthNode.sample( uv ).r ) )() );
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
@@ -257,6 +277,8 @@ class SSAONode extends Node {
 
 		width = Math.max( 1, Math.round( this.resolutionScale * width ) );
 		height = Math.max( 1, Math.round( this.resolutionScale * height ) );
+
+		this._resolutionScale.value = this.resolutionScale;
 
 		this.resolution.set( width, height );
 		this._aoRenderTarget.setSize( width, height );
@@ -326,12 +348,37 @@ class SSAONode extends Node {
 
 		const ao = Fn( () => {
 
-			const depth = sampleDepth( uvNode ).toVar();
+			const depth = float( 0 ).toVar();
+			const normalUV = uvNode.toVar();
+
+			If( this._resolutionScale.lessThan( 1 ), () => {
+
+				// Use the nearest depth texel to avoid banding. At silhouettes (view-space depth difference above 1%), take the
+				// normal from that texel to avoid dark rims. At creases, keep the blended normal to avoid jumpy noise.
+
+				const gathered = gatherNearestDepth( this.depthNode, uvNode, builder );
+
+				depth.assign( projectionDepth( gathered.nearest, this._cameraNear, this._cameraFar ) );
+
+				const nearestViewZ = depthToViewZ( gathered.nearest, this._cameraNear, this._cameraFar, this._camera ).toConst();
+				const farthestViewZ = depthToViewZ( gathered.farthest, this._cameraNear, this._cameraFar, this._camera ).toConst();
+
+				If( nearestViewZ.div( farthestViewZ ).sub( 1 ).abs().greaterThan( 0.01 ), () => {
+
+					normalUV.assign( gathered.uv );
+
+				} );
+
+			} ).Else( () => {
+
+				depth.assign( sampleDepth( uvNode ) );
+
+			} );
 
 			isBackgroundDepth( depth ).discard();
 
 			const viewPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar();
-			const viewNormal = this.normalNode.sample( uvNode ).rgb.normalize().toVar();
+			const viewNormal = this.normalNode.sample( normalUV ).rgb.normalize().toVar();
 
 			// a low-discrepancy Vogel disk rotated per-pixel decorrelates the samples spatially,
 			// so a small blur is enough to hide the sampling pattern
@@ -379,10 +426,10 @@ class SSAONode extends Node {
 		this._aoMaterial.fragmentNode = ao();
 		this._aoMaterial.needsUpdate = true;
 
-		// separable, depth-aware blur ( run horizontally then vertically via `_blurDirection` )
+		// separable, depth-aware blur ( run horizontally then vertically via `_blurDirection` ), guided by the depth the AO is computed at
 
 		this._blurMaterial.contextNode = sharedContext;
-		this._blurMaterial.fragmentNode = depthAwareBlur( this._blurInput, this.depthNode, this._blurDirection, this._camera, this.blurSharpness, this.radius );
+		this._blurMaterial.fragmentNode = depthAwareBlur( this._blurInput, this.getDepthNode(), this._blurDirection, this._camera, this.blurSharpness, this.radius );
 		this._blurMaterial.needsUpdate = true;
 
 		return this._textureNode;

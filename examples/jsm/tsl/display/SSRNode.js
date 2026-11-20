@@ -1,5 +1,6 @@
 import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sample, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
+import { gatherNearestDepth } from '../utils/DepthUtils.js';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
@@ -396,6 +397,14 @@ class SSRNode extends Node {
 		 */
 		this._resolution = uniform( new Vector2() );
 
+		/**
+		 * Resolution scale uniform.
+		 *
+		 * @private
+		 * @type {UniformNode<float>}
+		 */
+		this._resolutionScale = uniform( 0 );
+
 		this._noiseIndex = uniform( 0 );
 
 		/**
@@ -673,17 +682,18 @@ class SSRNode extends Node {
 	 */
 	getDepthNode() {
 
-		return sample( ( uv ) => this.depthNode.sample( this._getDepthUV( uv ) ).r );
+		return sample( ( uv ) => Fn( ( builder ) => this.depthNode.sample( this._getDepthUV( uv, builder ) ).r )() );
 
 	}
 
-	// returns the center of the depth texel the effect is computed at
+	// returns the center of the depth texel the effect is computed at: the nearest of the four
+	// around the uv at reduced resolution, like GTAO and SSGI, otherwise the one below the uv
 
-	_getDepthUV( uv ) {
+	_getDepthUV( uv, builder ) {
 
 		const size = vec2( textureSize( this.depthNode ) );
 
-		return uv.mul( size ).floor().add( 0.5 ).div( size );
+		return this._resolutionScale.lessThan( 1 ).select( gatherNearestDepth( this.depthNode, uv, builder ).uv, uv.mul( size ).floor().add( 0.5 ).div( size ) );
 
 	}
 
@@ -697,6 +707,8 @@ class SSRNode extends Node {
 
 		width = Math.round( this.resolutionScale * width );
 		height = Math.round( this.resolutionScale * height );
+
+		this._resolutionScale.value = this.resolutionScale;
 
 		this._resolution.value.set( width, height );
 		this._ssrRenderTarget.setSize( width, height );
@@ -898,7 +910,7 @@ class SSRNode extends Node {
 			const noise = this.stochastic === true ? sampleMarchNoise( uvNode, this._noiseIndex ) : null;
 			// reconstruct at the depth texel center
 
-			const uvPos = this._getDepthUV( uvNode ).toVar();
+			const uvPos = this._getDepthUV( uvNode, builder ).toVar();
 
 			const depth = sampleDepth( uvPos ).toVar();
 

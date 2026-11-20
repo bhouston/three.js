@@ -64,6 +64,7 @@
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 		import { reprojectedBeauty, previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
+		import { opaqueFragment, opaqueFragmentSource } from 'three/addons/tsl/utils/OpaqueFragment.js';
 
 		import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -209,15 +210,18 @@
 
 			renderPipeline = new THREE.RenderPipeline( renderer );
 
-			// the pre-pass renders the opaque geometry SSR traces, without shading it
+			// the pre-pass renders the opaque fragments SSR traces, without shading them
 
 			const scenePass = pass( scene, camera );
-			scenePass.transparent = false;
 			scenePass.setMRT( mrt( {
-				output: packNormalToOctahedral( normalView ),
+				output: opaqueFragment( packNormalToOctahedral( normalView ) ),
 				metalrough: vec2( materialMetalness, materialRoughness ),
 				velocity: vec4( velocity, 0, previousViewZ )
 			} ) );
+
+			// the attachments hold data, so the blending of transparent materials does not apply
+
+			scenePass.getMRT().setBlendMode( 'output', new THREE.BlendMode( THREE.NoBlending ) );
 
 			const scenePassNormal = scenePass.getTextureNode( 'output' ).toInspector( 'Normal', ( node ) => packNormalToRGB( unpackOctahedralToNormal( node.rg ) ) );
 			scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
@@ -281,7 +285,7 @@
 			// the materials reflect SSR through their BRDF, and the environment where SSR has no coverage
 
 			beautyPass.contextNode = builtinIndirectContext( {
-				specular: [ ssrNode.getSpecularSource( denoiseNode.getTextureNode().sample( screenUV ) ) ]
+				specular: [ opaqueFragmentSource( ssrNode.getSpecularSource( denoiseNode.getTextureNode().sample( screenUV ) ) ) ]
 			} );
 
 			// the same frame lit by the environment alone, for the comparison

@@ -163,6 +163,10 @@
 			} );
 			const scenePassMetalRough = scenePass.getTextureNode( 'metalrough' ).toInspector( 'Metalness-Roughness' );
 
+			// the attachments clone the output texture, so the velocity is created before the output becomes RG
+
+			scenePass.getTexture( 'velocity' );
+
 			// octahedral normals can't be filtered across their folds
 
 			const normalTexture = scenePass.getTexture( 'output' );

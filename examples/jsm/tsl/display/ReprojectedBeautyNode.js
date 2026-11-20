@@ -17,7 +17,7 @@ export const previousViewZ = /*@__PURE__*/ velocity.previousCameraViewMatrix.mul
  * effects like SSR or SSGI can trace it before the current frame is shaded.
  *
  * The history is validated against the previous depth. RGB holds the radiance and
- * alpha the valid bilinear support, both are zero where the history is missing.
+ * alpha is one where the history is valid, both are zero where it is missing.
  *
  * ```js
  * scenePass.setMRT( mrt( { output, velocity: vec4( velocity, 0, previousViewZ ) } ) );
@@ -111,7 +111,7 @@ class ReprojectedBeautyNode extends RTTNode {
 
 			}
 
-			return vec4( radiance.div( support.max( 1e-6 ) ), support );
+			return vec4( radiance.div( support.max( 1e-6 ) ), support.greaterThan( 0 ).select( 1, 0 ) );
 
 		} );
 

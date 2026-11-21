@@ -1389,12 +1389,12 @@ class SSRNode extends Node {
 
 			} );
 
-			// A blocked ray is not free to see the environment: it is black with full coverage, and ray reuse
-			// skips it and fills the pixel from its neighbors.
+			// A blocked ray is not free to see the environment: it returns the beauty at its origin with full
+			// coverage, and ray reuse skips it and fills the pixel from its neighbors.
 
 			If( blocked, () => {
 
-				output.assign( vec4( 0, 0, 0, 1 ) );
+				output.assign( vec4( this.colorNode.sample( uvNode ).level( 0 ).rgb, 1 ) );
 
 				if ( this._reusesRays ) this._hitData.w.assign( 0 );
 
@@ -1522,7 +1522,7 @@ class SSRNode extends Node {
 
 			}
 
-			// without a usable ray the pixel keeps its own result, which is black with full coverage for a blocked ray
+			// without a usable ray the pixel keeps its own result, which is the beauty at its origin with full coverage for a blocked ray
 
 			return total.greaterThan( 0 ).select( sum.div( total.max( 1e-6 ) ), own );
 

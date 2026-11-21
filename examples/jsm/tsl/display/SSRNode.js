@@ -1438,6 +1438,8 @@ class SSRNode extends Node {
 				);
 
 			const foundHit = bool( false ).toVar();
+			// The ray reached a surface it cannot shade, e.g. the back of one next to its origin: it is not free to see the environment.
+			const blocked = bool( false ).toVar();
 			const hitUvS = vec2( 0 ).toVar();
 			const hitD = float( 0 ).toVar();
 			const validatedPosition = vec3( 0 ).toVar();
@@ -1510,6 +1512,7 @@ class SSRNode extends Node {
 				if ( this._traceDebug === true ) return vec4( float( result.iterations ), 0, float( result.hit ), float( result.exhausted ) );
 				if ( this.showIterations ) return iterationHeat( float( result.iterations ).div( float( this.adaptiveMaxSteps ) ), result.exhausted );
 				foundHit.assign( result.hit );
+				blocked.assign( result.rejected );
 				hitUvS.assign( result.uv );
 				hitD.assign( projectionDepth( result.depth, this._cameraNear, this._cameraFar ) );
 
@@ -1656,8 +1659,16 @@ class SSRNode extends Node {
 
 			} );
 
+			// A blocked ray carries no sample: ray reuse skips it and fills the pixel from its neighbors.
+
+			if ( this._reusesRays ) If( blocked, () => {
+
+				this._hitData.w.assign( 0 );
+
+			} );
+
 			// Screen-space ray missed: environment fallback (MIS when CDF env is set up).
-			If( hit.equal( 0 ), () => {
+			If( hit.equal( 0 ).and( blocked.not() ), () => {
 
 				if ( this.stochastic === true ) {
 

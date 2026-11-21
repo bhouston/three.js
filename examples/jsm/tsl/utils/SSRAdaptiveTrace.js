@@ -27,7 +27,8 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  * @param {boolean} [options.coarseHits=false] - Cone-tracing approximation: a coarse leaf is tested once, with its nearest depth at the ray's UV, and stepped over when `acceptHit` rejects that. `acceptHit` receives the cell size in pixels as a fourth argument to widen its tolerance.
  * @param {Function} [options.isHidden] - TSL predicate (entry UV, exit UV, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
- * @return {Object} Hit flag, UV, raw depth, parameter, iterations and exhausted flag.
+ * @return {Object} Hit flag, UV, raw depth, parameter, iterations, exhausted flag and rejected flag: the ray reached a
+ * surface that `acceptHit` refused, so it is blocked rather than free.
  */
 export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, minLevel = 0, coarseHits = false, isHidden = null, acceptHit = () => bool( true ) } = {} ) {
 
@@ -232,12 +233,14 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	} );
 
 	const exhausted = hit.not().and( s.lessThan( 1 ) ).toVar();
+	const rejected = bool( false ).toVar();
 	If( hit.and( validated.not() ), () => {
 
 		hit.assign( acceptHit( hitUV, hitS, hitDepth ) );
+		rejected.assign( hit.not() );
 
 	} );
 
-	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS, iterations, exhausted };
+	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS, iterations, exhausted, rejected };
 
 }

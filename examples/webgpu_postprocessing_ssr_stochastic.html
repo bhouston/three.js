@@ -117,7 +117,7 @@
 			roughness: 0.3,
 
 			ssr: {
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), adaptiveSteps: 64, occlusionSkipping: true, roughMinLevel: 0,
+				adaptive: true, adaptiveSteps: 64, occlusionSkipping: true, roughMinLevel: 0,
 				coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false,
 				quality: 0.25,
 				mirrorBias: 0,
@@ -232,6 +232,10 @@
 
 			await renderer.init();
 
+			// Hi-Z tracing requires WebGPU, the WebGL 2 fallback uses the linear tracer
+
+			params.ssr.adaptive = renderer.backend.isWebGPUBackend === true;
+
 			scene.environmentIntensity = 1;
 
 			renderPipeline = new THREE.RenderPipeline( renderer );
@@ -298,7 +302,7 @@
 
 			// downsample: at a ratio above 1, the reflections are computed and denoised from downsampled inputs and upsampled afterwards
 
-			const downsampleParams = { level: 0, upsampler: 'Joint bilateral' };
+			const downsampleParams = { level: 1, upsampler: 'Joint bilateral' };
 
 			const downsample = depthAwareDownsample( scenePassDepth, { normal: scenePassNormal, diffuseColor: scenePassDiffuseColor, velocity: scenePassVelocity } );
 			const downsampleDepth = downsample.getTextureNode( 'depth' );
@@ -433,7 +437,8 @@
 				updateDownsample();
 
 			} );
-			const upsamplerControl = downsampleGui.add( downsampleParams, 'upsampler', [ 'Bilinear', 'Joint bilateral' ] ).onChange( ( value ) => depthTolerance.value = ( value === 'Bilinear' ) ? 1e6 : 0.005 ).hide();
+			const upsamplerControl = downsampleGui.add( downsampleParams, 'upsampler', [ 'Bilinear', 'Joint bilateral' ] ).onChange( ( value ) => depthTolerance.value = ( value === 'Bilinear' ) ? 1e6 : 0.005 );
+			updateDownsample();
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params.ssr, 'intensity', 0, 4 ).name( 'Intensity' ).onChange( applyParams );
@@ -446,7 +451,6 @@
 
 			};
 
-			ssrGui.add( params.ssr, 'adaptive' ).name( 'Hi-Z / adaptive SSR' ).onChange( updateTracing ).disable( ! renderer.backend.isWebGPUBackend );
 			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
 

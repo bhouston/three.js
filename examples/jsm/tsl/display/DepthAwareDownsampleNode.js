@@ -211,18 +211,20 @@ class DepthAwareDownsampleNode extends Node {
 
 		const reversed = builder.renderer.reversedDepthBuffer;
 
-		// the last cell of a level also covers the remaining row or column of an odd sized source
-
-		const size = uvec2( this._size );
-		const shift = uvec2( this._level );
-		const cell = uvec2( screenCoordinate.xy );
-		const last = size.shiftRight( shift ).max( uvec2( 1 ) ).sub( uvec2( 1 ) );
-		const begin = cell.shiftLeft( shift ).toConst();
-		const end = cell.equal( last ).select( size, begin.add( uvec2( 1 ).shiftLeft( shift ) ) ).toConst();
-
-		// find the nearest depth of the cell and the texel that holds it
+		// find the nearest depth of the cell and the texel that holds it. Everything is declared inside the
+		// function so it stays in this node's material and does not leak into the shader of a node that
+		// reads the result, e.g. a compute shader
 
 		const result = Fn( () => {
+
+			// the last cell of a level also covers the remaining row or column of an odd sized source
+
+			const size = uvec2( this._size );
+			const shift = uvec2( this._level );
+			const cell = uvec2( screenCoordinate.xy );
+			const last = size.shiftRight( shift ).max( uvec2( 1 ) ).sub( uvec2( 1 ) );
+			const begin = cell.shiftLeft( shift ).toConst();
+			const end = cell.equal( last ).select( size, begin.add( uvec2( 1 ).shiftLeft( shift ) ) ).toConst();
 
 			const nearest = float( reversed ? 0 : 1 ).toVar();
 			const coord = ivec2( begin ).toVar();
@@ -246,7 +248,7 @@ class DepthAwareDownsampleNode extends Node {
 
 			return vec3( nearest, vec2( coord ) );
 
-		} )().toConst();
+		} )();
 
 		const coord = ivec2( result.yz );
 

@@ -54,7 +54,7 @@
 
 			const params = {
 				output: 'Beauty', traa: true,
-				adaptive: new URLSearchParams( window.location.search ).has( 'adaptive' ), adaptiveSteps: 64, occlusionSkipping: true, coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
+				adaptive: true, adaptiveSteps: 64, occlusionSkipping: true, coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false, quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
 			};
@@ -163,6 +163,10 @@
 
 				await renderer.init();
 
+				// Hi-Z tracing requires WebGPU, the WebGL 2 fallback uses the linear tracer
+
+				params.adaptive = renderer.backend.isWebGPUBackend === true;
+
 				const environment = new RoomEnvironment();
 				const pmremGenerator = new THREE.PMREMGenerator( renderer );
 
@@ -234,7 +238,7 @@
 
 				// downsample: at a ratio above 1, the reflections are computed and denoised from downsampled inputs and upsampled afterwards
 
-				const downsampleParams = { level: 0, upsampler: 'Joint bilateral' };
+				const downsampleParams = { level: 1, upsampler: 'Joint bilateral' };
 
 				const downsample = depthAwareDownsample( scenePassDepth, { normal: scenePassNormal, diffuseColor: scenePassDiffuseColor, velocity: scenePassVelocity } );
 				const downsampleDepth = downsample.getTextureNode( 'depth' );
@@ -381,10 +385,10 @@
 					updateDownsample();
 
 				} );
-				const upsamplerControl = downsampleGui.add( downsampleParams, 'upsampler', [ 'Bilinear', 'Joint bilateral' ] ).onChange( ( value ) => depthTolerance.value = ( value === 'Bilinear' ) ? 1e6 : 0.005 ).hide();
+				const upsamplerControl = downsampleGui.add( downsampleParams, 'upsampler', [ 'Bilinear', 'Joint bilateral' ] ).onChange( ( value ) => depthTolerance.value = ( value === 'Bilinear' ) ? 1e6 : 0.005 );
+				updateDownsample();
 
 				const ssrGui = renderer.inspector.createParameters( 'SSR' );
-				ssrGui.add( params, 'adaptive' ).name( 'Hi-Z / adaptive SSR' ).onChange( updateParameters ).disable( ! renderer.backend.isWebGPUBackend );
 				ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );
 				ssrGui.add( params, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( updateParameters );
 

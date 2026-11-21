@@ -124,6 +124,7 @@ class SSRNode extends Node {
 		this._roughMinLevel = options.roughMinLevel ?? 0;
 		this._coneTracing = options.coneTracing ?? false;
 		this._coneValidate = false;
+		this._hitValidation = true;
 		this._cameraRays = false;
 		this._occlusionSkipping = options.occlusionSkipping ?? true;
 		this._showIterations = false;
@@ -630,6 +631,28 @@ class SSRNode extends Node {
 
 		if ( value === this._coneValidate ) return;
 		this._coneValidate = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Adaptive tracing only: `false` takes the first depth crossing as the hit without the
+	 * normal, thickness and distance tests, so rays passing behind geometry hit it.
+	 * Changing it recompiles adaptive tracing.
+	 *
+	 * @type {boolean}
+	 * @default true
+	 */
+	get hitValidation() {
+
+		return this._hitValidation;
+
+	}
+
+	set hitValidation( value ) {
+
+		if ( value === this._hitValidation ) return;
+		this._hitValidation = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1396,9 +1419,9 @@ class SSRNode extends Node {
 						isHidden: this.occlusionSkipping === false ? null : ( uvIn, uvOut, raw ) => nearRay( surfacePoint( uvIn, raw ).toVar() ).not().and( nearRay( surfacePoint( uvOut, raw ).toVar() ).not() ),
 						acceptHit: ( uv, s, raw, cell ) => {
 
-							if ( cell === undefined || this.coneValidate ) return validateHit( uv, raw, cell );
-							// Unvalidated coarse hit: shade it at the ray's own point.
-							validatedPosition.assign( rayPointAt( s ) );
+							if ( this.hitValidation && ( cell === undefined || this.coneValidate ) ) return validateHit( uv, raw, cell );
+							// Unvalidated hit: shade a coarse one at the ray's own point.
+							validatedPosition.assign( cell === undefined ? surfacePoint( uv, raw ) : rayPointAt( s ) );
 							return bool( true );
 
 						}

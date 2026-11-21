@@ -24,7 +24,7 @@
 			</div>
 
 			<small>
-				Stochastic screen space reflections on a metallic floor, denoised over time.<br />
+				Stochastic screen space reflections on a metallic floor, accumulated over time.<br />
 				<a href="https://skfb.ly/6tqYD" target="_blank" rel="noopener">Steampunk Camera</a> by
 				<a href="https://sketchfab.com/lumoize" target="_blank" rel="noopener">dylanheyes</a> is licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Creative Commons Attribution</a>.
 			</small>
@@ -44,12 +44,11 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, screenUV, color, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity, colorSpaceToWorking, rtt, Fn } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, screenUV, color, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec4, uniform, velocity, colorSpaceToWorking, rtt, Fn } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 		import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
-		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
@@ -61,8 +60,8 @@
 
 		const params = {
 			output: 'Beauty', traa: true,
-			adaptive: true, adaptiveSteps: 64, occlusionSkipping: true, coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: true, cameraRays: false, quality: 0.5, binaryRefine: false, maxDistance: 3, thickness: 0.1,
-			denoise: true, lumaPhi: 0.75,
+			adaptive: true, adaptiveSteps: 64, occlusionSkipping: true, coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: true, cameraRays: false, rayReuse: true, mirrorBias: 0.7, quality: 0.5, binaryRefine: false, maxDistance: 3, thickness: 0.1,
+			maxFrames: 16,
 			roughness: 0.18, cameraRoughness: 1
 		};
 
@@ -192,13 +191,6 @@
 			const sceneNormal = sample( ( uv ) => normalDecode( scenePassNormal.sample( uv ) ) );
 			const sceneRoughness = sample( ( uv ) => scenePassVelocity.sample( uv ).z );
 
-			// metalness in diffuseColor.a, roughness in velocity.z
-
-			const sceneMetalRough = sample( ( uv ) => vec2(
-				scenePassDiffuseColor.sample( uv ).a,
-				scenePassVelocity.sample( uv ).z
-			) );
-
 			// ssr
 
 			const ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
@@ -209,7 +201,7 @@
 				binaryRefine: params.binaryRefine
 			} ).toInspector( 'SSR' );
 
-			// downsample: at a ratio above 1, the reflections are computed and denoised from downsampled inputs and upsampled afterwards
+			// downsample: at a ratio above 1, the reflections are computed and accumulated from downsampled inputs and upsampled afterwards
 
 			const downsampleParams = { level: 1, upsampler: 'Joint bilateral' };
 
@@ -219,7 +211,6 @@
 			const downsampleVelocity = downsample.getTextureNode( 'velocity' );
 			const downsampleNormal = sample( ( uv ) => normalDecode( downsample.getTextureNode( 'normal' ).sample( uv ) ) );
 			const downsampleRoughness = sample( ( uv ) => downsampleVelocity.sample( uv ).z );
-			const downsampleMetalRough = sample( ( uv ) => vec2( downsampleDiffuseColor.sample( uv ).a, downsampleVelocity.sample( uv ).z ) );
 
 			// without depth rejection, the joint bilateral filter is a bilinear filter
 
@@ -249,10 +240,6 @@
 				temporalReprojectNode.normalNode = reduced ? downsample.getTextureNode( 'normal' ) : scenePassNormal;
 				temporalReprojectNode.velocityNode = reduced ? downsampleVelocity : scenePassVelocity;
 
-				denoiseNode.depthNode = ssrNode.depthNode;
-				denoiseNode.normalNode = ssrNode.normalNode;
-				denoiseNode.roughnessMetalnessNode = reduced ? downsampleMetalRough : sceneMetalRough;
-
 				renderPipeline.needsUpdate = true;
 
 				reduced ? upsamplerControl.show() : upsamplerControl.hide();
@@ -261,44 +248,25 @@
 
 			const ssrTexture = ssrNode.getTextureNode();
 
-			// denoise
+			// temporal accumulation: ray reuse filters over space, so there is no spatial denoiser
 
 			const temporalReprojectNode = temporalReproject( ssrTexture, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 				mode: 'specular',
-				accumulate: false,
+				accumulate: true,
 				normalDecode: normalDecode
 			} );
-			temporalReprojectNode.maxFrames.value = 16;
 			temporalReprojectNode.clampIntensity.value = 0.25;
 
-			const denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
-				depth: scenePassDepth,
-				normal: sceneNormal,
-				raw: ssrTexture,
-				metalRoughness: sceneMetalRough,
-				mode: 'specular',
-				accumulate: true
-			} );
-			denoiseNode.depthPhi.value = 20;
-			denoiseNode.normalPhi.value = 0.3;
-			denoiseNode.radius.value = 1.5;
-			denoiseNode.alphaPhi.value = 5;
-			denoiseNode.strength.value = 0.725;
-			denoiseNode.adaptiveTrust.value = 1;
+			// feed the accumulated result + velocity back into SSR for multi-bounce reflections
 
-			// feed the denoised result + velocity back into SSR for multi-bounce reflections
-
-			ssrNode.setHistory( denoiseNode, scenePassVelocity );
-			temporalReprojectNode.setHistoryTexture( denoiseNode );
+			ssrNode.setHistory( temporalReprojectNode, scenePassVelocity );
 
 			// composite
 
-			const denoiseEnabled = uniform( 1 );
-
 			const ssrUpsampled = upsample( ssrTexture );
-			const denoiseUpsampled = upsample( denoiseNode.getTextureNode() );
+			const accumulatedUpsampled = upsample( temporalReprojectNode.getTextureNode() );
 
-			const combined = scenePassColor.rgb.add( mix( ssrUpsampled.rgb, denoiseUpsampled.rgb, denoiseEnabled ) );
+			const combined = scenePassColor.rgb.add( accumulatedUpsampled.rgb );
 
 			temporalAA = traa( vec4( combined, 1 ), scenePassDepth, scenePassVelocity, camera );
 			const spatialAA = smaa( vec4( combined, 1 ) );
@@ -311,7 +279,7 @@
 
 					case 'Beauty': outputNode = params.traa ? temporalAA : spatialAA; break;
 					case 'SSR': case 'SSR iterations': outputNode = vec4( ssrUpsampled.rgb, 1 ); break;
-					case 'SSR DN': outputNode = vec4( denoiseUpsampled.rgb, 1 ); break;
+					case 'SSR accumulated': outputNode = vec4( accumulatedUpsampled.rgb, 1 ); break;
 
 				}
 
@@ -336,12 +304,14 @@
 				ssrNode.coneTracing = params.coneTracing;
 				ssrNode.coneValidate = params.coneValidate;
 				ssrNode.cameraRays = params.cameraRays;
+				ssrNode.rayReuse = params.rayReuse;
+				ssrNode.mirrorBias.value = params.mirrorBias;
 				ssrNode.quality.value = params.quality;
 				ssrNode.binaryRefine = params.binaryRefine;
 				ssrNode.maxDistance.value = params.maxDistance;
 				ssrNode.thickness.value = params.thickness;
 
-				denoiseNode.lumaPhi.value = params.lumaPhi;
+				temporalReprojectNode.maxFrames.value = params.maxFrames;
 
 			}
 
@@ -354,7 +324,7 @@
 			// GUI
 
 			const displayGui = renderer.inspector.createParameters( 'Display' );
-			displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN', 'SSR iterations' ] ).name( 'Output' ).info( 'DN means denoise. Iterations is a heat map of trace steps against the budget: blue, green, red, and white where it ran out.' ).onChange( updateOutput );
+			displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR accumulated', 'SSR iterations' ] ).name( 'Output' ).info( 'Iterations is a heat map of trace steps against the budget: blue, green, red, and white where it ran out.' ).onChange( updateOutput );
 			displayGui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
 
 			const downsampleGui = renderer.inspector.createParameters( 'Downsample' );
@@ -370,6 +340,8 @@
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( updateParameters );
 			ssrGui.add( params, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( updateParameters );
+			ssrGui.add( params, 'rayReuse' ).name( 'Ray reuse' ).onChange( updateParameters );
+			ssrGui.add( params, 'mirrorBias', 0, 1 ).name( 'Mirror bias' ).onChange( updateParameters );
 
 			// Each ray reads the beauty mip matching its cone footprint; off reads full resolution.
 			const coneGui = renderer.inspector.createParameters( 'SSR Cone Samples' );
@@ -390,9 +362,8 @@
 			linearGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 			linearGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 
-			const denoiseGui = renderer.inspector.createParameters( 'Denoising' );
-			denoiseGui.add( params, 'denoise' ).name( 'Enabled' ).onChange( ( value ) => denoiseEnabled.value = Number( value ) );
-			denoiseGui.add( params, 'lumaPhi', 0, 3 ).name( 'Luma phi' ).onChange( updateParameters );
+			const temporalGui = renderer.inspector.createParameters( 'Temporal accumulation' );
+			temporalGui.add( params, 'maxFrames', 1, 64, 1 ).name( 'History frames' ).onChange( updateParameters );
 
 			const sceneGui = renderer.inspector.createParameters( 'Scene' );
 			sceneGui.add( params, 'roughness', 0, 1 ).name( 'Floor roughness' ).onChange( value => floor.material.roughness = value );

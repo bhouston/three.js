@@ -1,6 +1,6 @@
 import { Break, Continue, EnvironmentBRDF, Fn, If, abs, bool, cos, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, ivec2, luminance, max, min, mix, mul, nodeObject, normalize, outputStruct, passTexture, property, reference, reflect, sin, sqrt, sub, texture, textureLoad, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, log2, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
 import { FloatType, HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NearestFilter, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
-import { bindAnalyticNoise } from '../utils/RNoise.js';
+import { bindHierarchicalHashedWeyl } from '../utils/HierarchicalHashedWeyl.js';
 import { D_GTR, ENV_RAY_LENGTH, F_Schlick, GeometryTerm, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
@@ -1167,7 +1167,7 @@ class SSRNode extends Node {
 
 		const sampleDepth = ( uv ) => projectionDepth( this.depthNode.sample( uv ).r, this._cameraNear, this._cameraFar );
 
-		const sampleMarchNoise = this.stochastic === true ? bindAnalyticNoise( this._resolution, 47 ) : null;
+		const sampleMarchNoise = this.stochastic === true ? bindHierarchicalHashedWeyl( this._resolution, 47 ) : null;
 
 		const computeScreenBorderFactor = Fn( ( [ uvCoord, borderWidth ] ) => {
 
@@ -1272,7 +1272,7 @@ class SSRNode extends Node {
 
 					if ( this.envImportanceSampling ) {
 
-						const Xi2 = bindAnalyticNoise( this._resolution, 59 )( uvNode, this._noiseIndex );
+						const Xi2 = bindHierarchicalHashedWeyl( this._resolution, 59 )( uvNode, this._noiseIndex );
 
 						envColor.assign( this._importanceEnvironment.sampleEnvironmentMIS( {
 							cameraWorldMatrix: this._cameraWorldMatrix,
@@ -1710,7 +1710,7 @@ class SSRNode extends Node {
 			const last = ivec2( this._resolution ).sub( 1 ).toVar();
 			const own = textureLoad( traceColor, coord ).toVar();
 
-			const angle = bindAnalyticNoise( this._resolution, 71 )( uvNode, this._noiseIndex ).x.mul( 2 * Math.PI ).toVar();
+			const angle = bindHierarchicalHashedWeyl( this._resolution, 71 )( uvNode, this._noiseIndex ).x.mul( 2 * Math.PI ).toVar();
 			const rotation = vec2( cos( angle ), sin( angle ) ).toVar();
 
 			// the pdf of the bounded VNDF sampler, see `ggxReflectionSample()`

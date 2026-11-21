@@ -1,4 +1,4 @@
-import { Break, Continue, Fn, If, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, log2, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
+import { Break, Continue, Fn, If, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, log2, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
@@ -57,7 +57,7 @@ class SSRNode extends Node {
 	/**
 	 * Constructs a new SSR node.
 	 *
-	 * @param {Node<vec4>} colorNode - The node that represents the beauty pass.
+	 * @param {TextureNode} colorNode - A texture node that represents the beauty pass.
 	 * @param {TextureNode} depthNode - A texture node that represents the beauty pass's depth.
 	 * @param {Node<vec3>} normalNode - A node that represents the beauty pass's unit view-space normals.
 	 * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.
@@ -99,9 +99,9 @@ class SSRNode extends Node {
 		this.envImportanceSampling = envImportanceSampling;
 
 		/**
-		 * The node that represents the beauty pass.
+		 * A texture node that represents the beauty pass.
 		 *
-		 * @type {Node<vec4>}
+		 * @type {TextureNode}
 		 */
 		this.colorNode = colorNode;
 
@@ -1524,7 +1524,9 @@ class SSRNode extends Node {
 						// ponytail: isotropic, not depth-aware; use a depth-aware Gaussian pyramid if it leaks.
 						const radius = distance( viewPosition, vP ).mul( coneTangent );
 						const pixelSize = getViewPosition( uvS.add( uvPixelStepX ), hitD, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).abs().max( 1e-6 );
-						coneLod.assign( log2( radius.mul( 2 ).div( pixelSize ) ).clamp( 0, this.coneMaxLevel ) );
+						// `pixelSize` is a texel of the pass, the mips are those of the beauty pass
+						const colorScale = float( textureSize( this.colorNode ).x ).div( this._resolution.x );
+						coneLod.assign( log2( radius.mul( 2 ).div( pixelSize ).mul( colorScale ) ).clamp( 0, this.coneMaxLevel ) );
 						reflectSample = reflectSample.level( coneLod );
 
 					}
@@ -1660,7 +1662,7 @@ export default SSRNode;
  *
  * @tsl
  * @function
- * @param {Node<vec4>} colorNode - The node that represents the beauty pass.
+ * @param {TextureNode} colorNode - A texture node that represents the beauty pass.
  * @param {TextureNode} depthNode - A texture node that represents the beauty pass's depth.
  * @param {Node<vec3>} normalNode - A node that represents the beauty pass's unit view-space normals.
  * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.

@@ -118,7 +118,7 @@
 
 			ssr: {
 				adaptive: true, adaptiveSteps: 64, occlusionSkipping: true, roughMinLevel: 0,
-				coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false,
+				coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRays: false, rayReuse: false,
 				quality: 0.25,
 				mirrorBias: 0,
 				maxDistance: 0.4,
@@ -453,6 +453,7 @@
 
 			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'rayReuse' ).name( 'Ray reuse' ).onChange( applyParams );
 
 			// Each ray reads the beauty mip matching its cone footprint; off reads full resolution.
 			const coneGui = renderer.inspector.createParameters( 'SSR Cone Samples' );
@@ -539,6 +540,7 @@
 			ssrNode.coneTracing = params.ssr.coneTracing;
 			ssrNode.coneValidate = params.ssr.coneValidate;
 			ssrNode.cameraRays = params.ssr.cameraRays;
+			ssrNode.rayReuse = params.ssr.rayReuse;
 			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
 			ssrNode.occlusionSkipping = params.ssr.occlusionSkipping;
 			ssrNode.quality.value = params.ssr.quality;

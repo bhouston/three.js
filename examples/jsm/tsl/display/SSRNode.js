@@ -1,7 +1,7 @@
-import { Break, Continue, Fn, If, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, log2, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
-import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
+import { Break, Continue, EnvironmentBRDF, Fn, If, abs, bool, cos, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, ivec2, luminance, max, min, mix, mul, nodeObject, normalize, outputStruct, passTexture, property, reference, reflect, sin, sqrt, sub, texture, textureLoad, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, log2, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
+import { FloatType, HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NearestFilter, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
-import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
+import { D_GTR, ENV_RAY_LENGTH, F_Schlick, GeometryTerm, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
 import { hiZ } from './HiZNode.js';
@@ -10,6 +10,9 @@ import { getSSRPixelWidth, validateSSRRayDistance } from '../utils/SSRValidation
 import { traceLinearSSR } from '../utils/SSRLinearTrace.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
+
+// Texel offsets of the neighbors whose rays a pixel reuses, rotated per pixel and frame.
+const REUSE_OFFSETS = [[ 1.5, 0.5 ], [ - 0.5, 1.5 ], [ - 1.5, - 0.5 ], [ 0.5, - 1.5 ]];
 let _rendererState;
 
 // Maximum ray-march step count; `quality` (0..1) scales it to a fixed per-ray count.
@@ -35,6 +38,7 @@ const HIZ_MAX_LEVEL = 6;
  * @property {number} [roughMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it.
  * @property {boolean} [occlusionSkipping=true] - Adaptive mode only: lets rays pass behind occluders by skipping Hi-Z cells they are entirely hidden behind, as linear tracing does sample by sample. Recovers reflections of surfaces seen past an occluder at the cost of longer rays.
  * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
+ * @property {boolean} [rayReuse=false] - Stochastic mode only: resolves each pixel from its own ray and those of four neighbors.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
 
@@ -125,6 +129,7 @@ class SSRNode extends Node {
 		this._coneTracing = options.coneTracing ?? false;
 		this._coneValidate = false;
 		this._hitValidation = true;
+		this._rayReuse = options.rayReuse ?? false;
 		this._cameraRays = false;
 		this._occlusionSkipping = options.occlusionSkipping ?? true;
 		this._showIterations = false;
@@ -469,6 +474,31 @@ class SSRNode extends Node {
 		this._ssrRenderTarget.texture.name = 'SSRNode.SSR';
 
 		/**
+		 * The render target the rays are traced into when they are reused: the radiance and ray
+		 * length of each ray, and its hit position in view space with its pdf.
+		 *
+		 * @private
+		 * @type {RenderTarget}
+		 */
+		this._traceRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 2, minFilter: NearestFilter, magFilter: NearestFilter } );
+		this._traceRenderTarget.textures[ 0 ].name = 'SSRNode.Trace';
+		this._traceRenderTarget.textures[ 1 ].name = 'SSRNode.Hit';
+		this._traceRenderTarget.textures[ 1 ].type = FloatType; // half floats cannot hold the pdf of a smooth surface
+
+		/**
+		 * The material that resolves the reused rays.
+		 *
+		 * @private
+		 * @type {NodeMaterial}
+		 */
+		this._resolveMaterial = new NodeMaterial();
+		this._resolveMaterial.name = 'SSRNode.Resolve';
+
+		this._resolveFn = null;
+		this._hitData = null;
+		this._reusesRays = false;
+
+		/**
 		 * The render target for the blurred SSR reflections.
 		 *
 		 * @private
@@ -631,6 +661,31 @@ class SSRNode extends Node {
 
 		if ( value === this._coneValidate ) return;
 		this._coneValidate = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Stochastic mode only: resolves each pixel from its own ray and those of four neighbors,
+	 * each weighted by the pixel's BRDF over the pdf the ray was sampled with, as in Stachowiak,
+	 * "Stochastic Screen-Space Reflections" (Frostbite, SIGGRAPH 2015), except that a neighbor's
+	 * ray direction is reused instead of its hit point. Lowers the noise of the
+	 * traced result at the cost of a resolve pass. Environment misses are then sampled along the
+	 * ray without `envImportanceSampling`. Changing it recompiles the SSR material.
+	 *
+	 * @type {boolean}
+	 * @default false
+	 */
+	get rayReuse() {
+
+		return this._rayReuse;
+
+	}
+
+	set rayReuse( value ) {
+
+		if ( value === this._rayReuse ) return;
+		this._rayReuse = value;
 		this._buildSSRMaterial();
 
 	}
@@ -880,9 +935,26 @@ class SSRNode extends Node {
 
 		if ( this._ssrFn === null ) return;
 
+		// the debug views return a single value, so they are traced without reuse
+
+		this._reusesRays = this.stochastic === true && this._rayReuse === true &&
+			this.showIterations === false && this.showConeMip === false && this._traceDebug !== true;
+
+		this._hitData = this._reusesRays ? property( 'vec4' ) : null;
+
+		const traced = this._ssrFn();
+
 		this._ssrMaterial.contextNode = context( this._sharedContext );
-		this._ssrMaterial.fragmentNode = this._ssrFn();
+		this._ssrMaterial.fragmentNode = this._reusesRays ? outputStruct( traced, this._hitData ) : traced;
 		this._ssrMaterial.needsUpdate = true;
+
+		if ( this._reusesRays ) {
+
+			this._resolveMaterial.contextNode = context( this._sharedContext );
+			this._resolveMaterial.fragmentNode = this._resolveFn();
+			this._resolveMaterial.needsUpdate = true;
+
+		}
 
 	}
 
@@ -908,6 +980,7 @@ class SSRNode extends Node {
 		this._resolution.value.set( width, height );
 		this._ssrRenderTarget.setSize( width, height );
 		this._blurRenderTarget.setSize( width, height );
+		if ( this._reusesRays ) this._traceRenderTarget.setSize( width, height );
 
 	}
 
@@ -1019,9 +1092,21 @@ class SSRNode extends Node {
 
 		// ssr
 
-		renderer.setRenderTarget( ssrRenderTarget );
+		renderer.setRenderTarget( this._reusesRays ? this._traceRenderTarget : ssrRenderTarget );
 		_quadMesh.name = 'SSR [ Reflections ]';
 		_quadMesh.render( renderer );
+
+		// resolve the reused rays (optional)
+
+		if ( this._reusesRays ) {
+
+			_quadMesh.material = this._resolveMaterial;
+
+			renderer.setRenderTarget( ssrRenderTarget );
+			_quadMesh.name = 'SSR [ Resolve ]';
+			_quadMesh.render( renderer );
+
+		}
 
 		// blur (optional)
 
@@ -1183,9 +1268,17 @@ class SSRNode extends Node {
 				finalSampleWeight = ggxSample.get( 'sampleWeight' ).toVar();
 				specDominantFactor = getSpecularDominantFactor( ggxSample.get( 'NdotV' ), roughness ).toVar();
 
+				// a miss is stored as a hit far along the ray, so a neighbor sees it in the same direction
+
+				if ( this._reusesRays ) this._hitData.assign( vec4( viewPosition.add( viewReflectDir.mul( ENV_RAY_LENGTH ) ), ggxSample.get( 'pdf' ) ) );
+
 				sampleEnvReflection = () => {
 
 					if ( this._importanceEnvironment === null ) return vec3( 0 );
+
+					// reused rays carry the radiance, the pixel that reuses one applies its own BRDF
+
+					if ( this._reusesRays ) return this._importanceEnvironment.sampleEnvironment( this._cameraWorldMatrix, viewReflectDir );
 
 					const envColor = vec3( 0 ).toVar();
 
@@ -1552,7 +1645,11 @@ class SSRNode extends Node {
 					// The scatter (GGX) path bakes distance/grazing response into finalSampleWeight.
 					// The mirror/blur path is a plain reflection, so reapply upstream's squared
 					// distance attenuation and grazing Fresnel here to match its falloff.
-					let weightedColor = reflectColor.rgb.mul( finalSampleWeight );
+					let weightedColor = this._reusesRays ? reflectColor.rgb : reflectColor.rgb.mul( finalSampleWeight );
+
+					// the point on the ray at the hit distance: the validated surface point of a short ray can lie behind the pixel
+
+					if ( this._reusesRays ) this._hitData.xyz.assign( viewPosition.add( viewReflectDir.mul( distance( viewPosition, vP ) ) ) );
 
 					if ( this.stochastic === false ) {
 
@@ -1600,7 +1697,124 @@ class SSRNode extends Node {
 
 		} );
 
+		// Ray reuse, Stachowiak 2015: each ray is weighted by the BRDF of the pixel that reuses it over the
+		// pdf it was sampled with, and the sum is normalized by the weights (a ratio estimator).
+
+		const resolve = Fn( () => {
+
+			const depth = sampleDepth( uvNode ).toVar();
+
+			isBackgroundDepth( depth ).discard();
+
+			const traceColor = texture( this._traceRenderTarget.textures[ 0 ] );
+			const traceHit = texture( this._traceRenderTarget.textures[ 1 ] );
+
+			const viewPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar();
+			const N = this.normalNode.rgb.toVar();
+			const V = ( this.camera.isPerspectiveCamera ? normalize( viewPosition ).negate() : vec3( 0, 0, 1 ) ).toVar();
+			const NdotV = dot( N, V ).max( 1e-4 ).toVar();
+
+			const roughness = float( this.roughnessNode ).toVar();
+			const alpha = roughness.mul( roughness ).max( 0.001 ).toVar();
+
+			const coord = ivec2( uvNode.mul( this._resolution ) ).toVar();
+			const last = ivec2( this._resolution ).sub( 1 ).toVar();
+			const own = textureLoad( traceColor, coord ).toVar();
+
+			const angle = bindAnalyticNoise( this._resolution, 71 )( uvNode, this._noiseIndex ).x.mul( 2 * Math.PI ).toVar();
+			const rotation = vec2( cos( angle ), sin( angle ) ).toVar();
+
+			// the pdf of the bounded VNDF sampler, see `ggxReflectionSample()`
+
+			const sinV2 = NdotV.mul( NdotV ).oneMinus().max( 0 ).toVar();
+			const s2 = sqrt( sinV2 ).add( 1 ).pow2().toVar();
+			const a2 = alpha.mul( alpha ).toVar();
+			const k = a2.oneMinus().mul( s2 ).div( s2.add( a2.mul( NdotV ).mul( NdotV ) ) );
+			const pdfScale = k.mul( NdotV ).add( sqrt( a2.mul( sinV2 ).add( NdotV.mul( NdotV ) ) ) ).mul( 2 ).toVar();
+
+			const albedo = this.specularNode === null && this.diffuseNode !== null ? this.diffuseNode.sample( uvNode ).rgb : vec3( 1 );
+			const f0 = vec3( this.specularNode ?? mix( vec3( 0.04 ), albedo, float( this.metalnessNode ) ) ).toVar();
+			const f90 = float( this.specularF90Node ?? 1 );
+
+			const pixelWidth = getSSRPixelWidth( this._cameraProjectionMatrixInverse, viewPosition.z, this._resolution.x.reciprocal(), this.camera.isPerspectiveCamera ).toVar();
+
+			const sum = vec3( 0 ).toVar();
+			const total = vec3( 0 ).toVar();
+
+			const accumulate = ( texel, isOwn ) => {
+
+				const hit = textureLoad( traceHit, texel ).toVar();
+
+				// The direction of the ray is reused, not its hit point: aiming at a hit that is as near as
+				// the neighbor itself changes the direction, and with it the weight, by a large amount.
+
+				let origin = viewPosition, sameSurface = null;
+
+				if ( isOwn === false ) {
+
+					const neighborUV = vec2( texel ).add( 0.5 ).div( this._resolution ).toVar();
+
+					origin = getViewPosition( neighborUV, sampleDepth( neighborUV ), this._cameraProjectionMatrixInverse ).toVar();
+
+					// a neighbor on another surface sees other things
+
+					sameSurface = dot( N, this.normalNode.sample( neighborUV ).rgb ).greaterThan( 0.9 )
+						.and( dot( N, origin.sub( viewPosition ) ).abs().lessThan( pixelWidth.mul( 2 ) ) );
+
+				}
+
+				const L = normalize( hit.xyz.sub( origin ) ).toVar();
+				const NdotL = dot( N, L ).toVar();
+
+				// a ray is usable when it was traced and leaves the surface of this pixel
+
+				let usable = hit.w.greaterThan( 0 ).and( NdotL.greaterThan( 0 ) );
+
+				if ( isOwn === false ) usable = usable.and( texel.notEqual( coord ).any() ).and( sameSurface );
+
+				If( usable, () => {
+
+					const geometry = GeometryTerm( NdotL, NdotV, alpha ).div( NdotV.mul( 4 ) );
+
+					// the distribution cancels against the pdf of the pixel's own ray, which keeps a mirror stable
+
+					const H = normalize( V.add( L ) ).toVar();
+
+					const lobe = isOwn
+						? geometry.mul( pdfScale )
+						: D_GTR( alpha, dot( N, H ).max( 0 ), float( 2 ) ).mul( geometry ).div( hit.w );
+
+					// the Fresnel term varies across the lobe of a dielectric, so it is part of the weight
+
+					const weight = F_Schlick( f0, dot( V, H ).max( 0 ), f90 ).mul( lobe ).toVar();
+
+					sum.addAssign( textureLoad( traceColor, texel ).rgb.mul( weight ) );
+					total.addAssign( weight );
+
+				} );
+
+			};
+
+			accumulate( coord, true );
+
+			for ( const [ x, y ] of REUSE_OFFSETS ) {
+
+				const offset = vec2( rotation.x.mul( x ).sub( rotation.y.mul( y ) ), rotation.y.mul( x ).add( rotation.x.mul( y ) ) );
+
+				accumulate( coord.add( ivec2( offset.round() ) ).clamp( ivec2( 0 ), last ).toVar(), false );
+
+			}
+
+			// the normalized radiance is scaled by the directional albedo of the specular lobe
+
+			const reflectance = EnvironmentBRDF( { dotNV: NdotV, specularColor: f0, specularF90: f90, roughness } );
+
+			return vec4( sum.div( total.max( 1e-6 ) ).mul( reflectance ), own.a );
+
+		} );
+
 		this._ssrFn = ssr;
+		this._resolveFn = resolve;
 		this._sharedContext = builder.getSharedContext();
 		this._buildSSRMaterial();
 
@@ -1638,9 +1852,11 @@ class SSRNode extends Node {
 		if ( this._ownsHiZ ) this.hiZ.dispose();
 
 		this._ssrRenderTarget.dispose();
+		this._traceRenderTarget.dispose();
 		this._blurRenderTarget.dispose();
 
 		this._ssrMaterial.dispose();
+		this._resolveMaterial.dispose();
 		this._blurMaterial.dispose();
 		this._copyMaterial.dispose();
 

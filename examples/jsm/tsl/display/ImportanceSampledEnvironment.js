@@ -406,6 +406,21 @@ class ImportanceSampledEnvironment {
 	}
 
 	/**
+	 * The environment radiance along a view-space direction, without any BRDF weight.
+	 *
+	 * @param {UniformNode<Matrix4>} cameraWorldMatrix - The camera's world matrix.
+	 * @param {Node<vec3>} viewDir - The view-space direction.
+	 * @return {Node<vec3>} The radiance.
+	 */
+	sampleEnvironment( cameraWorldMatrix, viewDir ) {
+
+		const direction = cameraWorldMatrix.mul( vec4( viewDir, 0 ) ).xyz.normalize();
+
+		return texture( this._mapNode, equirectUV( direction ) ).level( 0 ).rgb.mul( this.intensity );
+
+	}
+
+	/**
 	 * Environment reflection for a screen-space miss using only the BRDF / reflected-ray direction.
 	 *
 	 * @param {Object} params

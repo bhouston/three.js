@@ -130,7 +130,6 @@ class SSRNode extends Node {
 		this._coneValidate = false;
 		this._hitValidation = true;
 		this._rayReuse = options.rayReuse ?? false;
-		this._cameraRays = false;
 		this._occlusionSkipping = options.occlusionSkipping ?? true;
 		this._showIterations = false;
 		this._showConeMip = false;
@@ -289,6 +288,17 @@ class SSRNode extends Node {
 		 * @default 0
 		 */
 		this.mirrorBias = uniform( 0 );
+
+		/**
+		 * Stochastic mode only: the largest cosine between a ray and the direction to the camera
+		 * that is still traced. Rays turned further toward the camera are skipped, and hits fade
+		 * to the environment as a ray nears the threshold. `0` skips every ray heading back toward
+		 * the camera, as in GPU Pro 5; `1` traces them all. Range `[0,1]`.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 0
+		 */
+		this.cameraRayThreshold = uniform( 0 );
 
 		/**
 		 * Stochastic mode only: coarsest mip of the beauty pass a ray may read at its hit. Each ray
@@ -708,28 +718,6 @@ class SSRNode extends Node {
 
 		if ( value === this._hitValidation ) return;
 		this._hitValidation = value;
-		this._buildSSRMaterial();
-
-	}
-
-	/**
-	 * Adaptive stochastic mode only: `true` traces rays heading back toward the camera. `false`
-	 * skips them and fades hits to the environment as the ray turns toward it, as in GPU Pro 5.
-	 * Changing it recompiles the SSR material.
-	 *
-	 * @type {boolean}
-	 * @default false
-	 */
-	get cameraRays() {
-
-		return this._cameraRays;
-
-	}
-
-	set cameraRays( value ) {
-
-		if ( value === this._cameraRays ) return;
-		this._cameraRays = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1356,8 +1344,8 @@ class SSRNode extends Node {
 
 			};
 
-			// Positive when the ray heads away from the camera along the view direction.
-			const cameraFacing = this.stochastic && ! this.cameraRays ? dot( viewReflectDir, V ).negate().toVar() : null;
+			// The margin of the ray below the camera ray threshold: negative when it turns too far toward the camera.
+			const cameraFacing = this.stochastic ? this.cameraRayThreshold.sub( dot( viewReflectDir, V ) ).toVar() : null;
 
 			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ).max( 1e-4 ) ).toVar();
 
@@ -1498,7 +1486,7 @@ class SSRNode extends Node {
 					vec3( uvNode, toDepth( viewPosition.z, this._cameraNear, this._cameraFar ) ),
 					vec3( d1.mul( invResolution ), toDepth( d1viewPosition.z, this._cameraNear, this._cameraFar ) ), {
 						reversedDepth: reversed,
-						start: cameraFacing !== null ? cameraFacing.lessThanEqual( 0 ).select( 1, rayLen.reciprocal() ) : rayLen.reciprocal(),
+						start: cameraFacing !== null ? cameraFacing.lessThan( 0 ).select( 1, rayLen.reciprocal() ) : rayLen.reciprocal(),
 						maxSteps: this.adaptiveMaxSteps,
 						// Cone tracing: cells no larger than the footprint radius, taking pixels travelled
 						// on screen as the distance (exact for rays parallel to the screen).
@@ -1633,7 +1621,8 @@ class SSRNode extends Node {
 
 					if ( cameraFacing !== null ) {
 
-						const fade = cameraFacing.mul( 4 ).clamp();
+						// a threshold of 1 keeps every ray, so nothing fades
+						const fade = this.cameraRayThreshold.greaterThanEqual( 1 ).select( 1, cameraFacing.mul( 4 ).clamp() );
 						If( fade.lessThan( 1 ), () => {
 
 							reflectColor.rgb.assign( mix( sampleEnvReflection().mul( this.environmentIntensity ), reflectColor.rgb, fade ) );

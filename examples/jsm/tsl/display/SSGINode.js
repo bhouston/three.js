@@ -451,7 +451,9 @@ class SSGINode extends Node {
 
 		const sampleDepth = ( uv ) => projectionDepth( this.depthNode.sample( uv ).r, this._cameraNear, this._cameraFar );
 		const sampleNormal = ( uv ) => ( this.normalNode !== null ) ? this.normalNode.sample( uv ).rgb.normalize() : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
-		const sampleBeauty = ( uv ) => this.beautyNode.sample( uv );
+		// the samples are scattered, so a mipmapped beauty would be read at the coarse level their derivatives select
+
+		const sampleBeauty = ( uv ) => this.beautyNode.sample( uv ).level( 0 );
 
 		// From Activision GTAO paper: https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
 

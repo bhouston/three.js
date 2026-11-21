@@ -41,6 +41,7 @@
 			import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { reprojectedBeauty, previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -84,7 +85,7 @@
 					output: output,
 					diffuseColor: diffuseColor,
 					normal: packNormalToRGB( normalView ),
-					velocity: velocity
+					velocity: vec4( velocity, 0, previousViewZ )
 				} ) );
 
 				const scenePassColor = scenePass.getTextureNode( 'output' );
@@ -114,7 +115,7 @@
 
 				// gi
 
-				const giPass = ssgi( scenePassColor, scenePassDepth, sceneNormal, camera );
+				const giPass = ssgi( reprojectedBeauty( scenePass ), scenePassDepth, sceneNormal, camera );
 				giPass.sliceCount.value = 2;
 				giPass.stepCount.value = 8;
 

@@ -651,7 +651,7 @@ export default SSGINode;
  *
  * @tsl
  * @function
- * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
+ * @param {Node<vec4>} beautyNode - The radiance the rays read: the beauty pass, or the previous frame's reprojected by `reprojectedBeauty()`.
  * @param {TextureNode} depthNode - A texture node that represents the scene's depth.
  * @param {TextureNode} normalNode - A texture node that represents the scene's normals.
  * @param {Camera} camera - The camera the scene is rendered with.

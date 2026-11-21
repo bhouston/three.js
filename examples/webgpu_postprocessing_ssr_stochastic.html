@@ -57,37 +57,20 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, rtt, Fn, mx_hsvtorgb } from 'three/tsl';
+		import { pass, mrt, builtinIndirectContext, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, velocity, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, rtt, Fn, mx_hsvtorgb } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 		import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
+		import { reprojectedBeauty, previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
+		import { opaqueFragment, opaqueFragmentSource } from 'three/addons/tsl/utils/OpaqueFragment.js';
 
 		import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-
-		// Disable env map specular (radiance and clearcoat radiance) for every PBR material
-		// in this scene, since SSR provides the specular reflections instead. Diffuse env
-		// (irradiance) is left untouched. Equivalent to zeroing EnvironmentNode contributions,
-		// but scoped to this example rather than modifying the core library.
-		const _indirectSpecular = THREE.PhysicalLightingModel.prototype.indirectSpecular;
-		THREE.PhysicalLightingModel.prototype.indirectSpecular = function ( builder ) {
-
-			builder.context.radiance = vec3( 0 );
-
-			if ( this.clearcoatRadiance ) {
-
-				this.clearcoatRadiance.assign( vec3( 0 ) );
-
-			}
-
-			_indirectSpecular.call( this, builder );
-
-		};
 
 		const OUTPUT_COMPARE_ACCUMULATION = 8;
 		const OUTPUT_COMPARE_SSR = 9;
@@ -121,15 +104,11 @@
 				quality: 0.25,
 				mirrorBias: 0.7,
 				maxDistance: 5,
-				intensity: 1,
 				thickness: 0,
 				maxLuminance: 35,
 				binaryRefine: false,
 				stepExponent: 3,
-				envImportanceSampling: false,
 				screenEdgeFade: 0.2,
-				screenEdgeFadeBlack: false, // for indoor scenes, set to true
-				environmentIntensity: 3.14, // not too sure why exactly, but multiplying by ~PI makes the env map reflections match Blender more
 			},
 
 			temporalReproject: {
@@ -147,7 +126,7 @@
 
 		let camera, scene, model, renderer, renderPipeline, ssrNode, ssrTexture, ssrUpsampled, temporalReprojectNode, accumulatedUpsampled;
 		let controls;
-		let combinedOutputNode, normalOutputNode, depthOutputNode, scenePassColor, scenePassDepth, scenePassVelocity;
+		let combinedOutputNode, normalOutputNode, depthOutputNode, environmentPass, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 		const temporalOutputs = new Map();
 
@@ -224,41 +203,34 @@
 
 			renderPipeline = new THREE.RenderPipeline( renderer );
 
+			// the pre-pass renders the opaque fragments SSR traces, without shading them
+
 			const scenePass = pass( scene, camera );
 			scenePass.setMRT( mrt( {
-				output: output,
-				// Store base color (albedo) in RGB + metalness in alpha. The albedo is needed for
-				// metal Fresnel f0; do NOT bake in the (1-metalness) diffuse attenuation here, as
-				// that zeroes metals and destroys their specular tint (f0 would become 0 → black).
-				diffuseColor: vec4( diffuseColor.rgb, materialMetalness ),
-				normal: packNormalToOctahedral( normalView ),
-				// Pack roughness into the spare velocity channel to save MRT bandwidth
-				velocity: vec4( velocity, materialRoughness, 0 )
+				output: opaqueFragment( packNormalToOctahedral( normalView ) ),
+				metalrough: vec2( materialMetalness, materialRoughness ),
+				velocity: vec4( velocity, 0, previousViewZ )
 			} ) );
 
-			// mip chain of the beauty pass for the SSR cone footprint lookup
-			const beautyTexture = scenePass.getTexture( 'output' );
-			beautyTexture.generateMipmaps = true;
-			beautyTexture.minFilter = THREE.LinearMipmapLinearFilter;
+			// the attachments hold data, so the blending of transparent materials does not apply
 
-			scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
-			const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal', ( node ) => packNormalToRGB( unpackOctahedralToNormal( node.rg ) ) );
-			scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
+			scenePass.getMRT().setBlendMode( 'output', new THREE.BlendMode( THREE.NoBlending ) );
 
-				return scenePass.getLinearDepthNode();
+			const scenePassNormal = scenePass.getTextureNode( 'output' );
+			scenePassDepth = scenePass.getTextureNode( 'depth' );
+			const scenePassMetalRough = scenePass.getTextureNode( 'metalrough' );
 
-			} );
-			scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
-			const scenePassDiffuseColor = scenePass.getTextureNode( 'diffuseColor' ).toInspector( 'Diffuse Color' );
+			// the attachments clone the output texture, so the velocity is created before the output becomes RG
+
+			scenePassVelocity = scenePass.getTextureNode( 'velocity' );
 
 			// octahedral normals can't be filtered across their folds
 
-			const normalTexture = scenePass.getTexture( 'normal' );
+			const normalTexture = scenePass.getTexture( 'output' );
 			normalTexture.format = THREE.RGFormat;
 			normalTexture.minFilter = normalTexture.magFilter = THREE.NearestFilter;
 
-			const diffuseTexture = scenePass.getTexture( 'diffuseColor' );
-			diffuseTexture.type = THREE.UnsignedByteType;
+			scenePass.getTexture( 'metalrough' ).type = THREE.UnsignedByteType;
 
 			const normalDecode = ( value ) => unpackOctahedralToNormal( value.rg );
 			const sceneNormal = sample( ( uv ) => normalDecode( scenePassNormal.sample( uv ) ) );
@@ -268,13 +240,21 @@
 			const depthHue = scenePass.getLinearDepthNode().mul( 16 ).fract();
 			depthOutputNode = vec4( mx_hsvtorgb( vec3( depthHue, 1, 1 ) ), 1 );
 
-			ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
+			// ssr reflects the previous frame's beauty, so it is ready before this frame is shaded
+
+			const beautyPass = pass( scene, camera );
+			const previousBeauty = reprojectedBeauty( scenePass, beautyPass );
+
+			// mip chain of the reflected radiance for the SSR cone footprint lookup
+
+			previousBeauty.renderTarget.texture.generateMipmaps = true;
+			previousBeauty.renderTarget.texture.minFilter = THREE.LinearMipmapLinearFilter;
+
+			ssrNode = ssr( previousBeauty, scenePassDepth, sceneNormal, {
+				camera,
 				stochastic: true,
-				diffuseNode: scenePassDiffuseColor,
-				metalnessNode: scenePassDiffuseColor.a,
-				roughnessNode: scenePassVelocity.z,
-				environmentNode: hdrTexture,
-				envImportanceSampling: params.ssr.envImportanceSampling,
+				metalnessNode: scenePassMetalRough.r,
+				roughnessNode: scenePassMetalRough.g,
 				binaryRefine: params.ssr.binaryRefine
 			} ).toInspector( 'SSR' );
 
@@ -282,9 +262,9 @@
 
 			const downsampleParams = { level: 1, upsampler: 'Joint bilateral' };
 
-			const downsample = depthAwareDownsample( scenePassDepth, { normal: scenePassNormal, diffuseColor: scenePassDiffuseColor, velocity: scenePassVelocity } );
+			const downsample = depthAwareDownsample( scenePassDepth, { normal: scenePassNormal, metalrough: scenePassMetalRough, velocity: scenePassVelocity } );
 			const downsampleDepth = downsample.getTextureNode( 'depth' );
-			const downsampleDiffuseColor = downsample.getTextureNode( 'diffuseColor' );
+			const downsampleMetalRough = downsample.getTextureNode( 'metalrough' );
 			const downsampleVelocity = downsample.getTextureNode( 'velocity' );
 			const downsampleNormal = sample( ( uv ) => normalDecode( downsample.getTextureNode( 'normal' ).sample( uv ) ) );
 
@@ -296,7 +276,7 @@
 
 				const upsampled = rtt( jointBilateralUpsample( node, downsampleDepth, scenePassDepth, camera, { depthTolerance } ).sample( screenUV ) ).sample( screenUV );
 
-				return Fn( () => ( downsampleParams.level > 0 ) ? upsampled : node )();
+				return Fn( () => ( downsampleParams.level > 0 ) ? upsampled : node.sample( screenUV ) )();
 
 			};
 
@@ -308,9 +288,8 @@
 
 				ssrNode.depthNode = reduced ? downsampleDepth : scenePassDepth;
 				ssrNode.normalNode = reduced ? downsampleNormal : sceneNormal;
-				ssrNode.diffuseNode = reduced ? downsampleDiffuseColor : scenePassDiffuseColor;
-				ssrNode.metalnessNode = reduced ? downsampleDiffuseColor.a : scenePassDiffuseColor.a;
-				ssrNode.roughnessNode = reduced ? downsampleVelocity.z : scenePassVelocity.z;
+				ssrNode.metalnessNode = reduced ? downsampleMetalRough.r : scenePassMetalRough.r;
+				ssrNode.roughnessNode = reduced ? downsampleMetalRough.g : scenePassMetalRough.g;
 
 				temporalReprojectNode.depthNode = ssrNode.depthNode;
 				temporalReprojectNode.normalNode = reduced ? downsample.getTextureNode( 'normal' ) : scenePassNormal;
@@ -328,26 +307,30 @@
 
 			temporalReprojectNode = temporalReproject( ssrTexture, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 				mode: 'specular',
+				hitDistance: ssrNode.getHitDistanceNode(),
 				accumulate: true,
 				normalDecode: normalDecode
 			} );
 			temporalReprojectNode.toInspector( 'Temporal Accumulation' );
 
-			// feed the accumulated result + velocity back into SSR for multi-bounce reflections
-			ssrNode.setHistory( temporalReprojectNode, scenePassVelocity );
-
 			ssrUpsampled = upsample( ssrTexture );
 			accumulatedUpsampled = upsample( temporalReprojectNode.getTextureNode() );
+
+			// the materials reflect SSR through their BRDF, and the environment where SSR has no coverage
+
+			beautyPass.contextNode = builtinIndirectContext( {
+				specular: [ opaqueFragmentSource( ssrNode.getSpecularSource( accumulatedUpsampled ) ) ]
+			} );
+
+			// the same frame lit by the environment alone, for the comparison
+
+			environmentPass = pass( scene, camera );
 
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );
 			saturationUniform = uniform( params.post.grading.saturation );
 
-			const litColor = scenePassColor.rgb.add( accumulatedUpsampled.rgb );
-
-			const outputNode = vec4( litColor, 1 );
-			outputNode.toInspector( 'Combined SSR' );
-			combinedOutputNode = outputNode;
+			combinedOutputNode = beautyPass.getTextureNode().toInspector( 'Combined SSR' );
 
 			renderPipeline.outputNode = applyPostProcessing( combinedOutputNode );
 			renderPipeline.outputColorTransform = false;
@@ -385,7 +368,7 @@
 				'Ray Length': 7,
 				'SSR Iterations': 8,
 				'SSR Cone Mip': 9,
-				'Accumulation Speed (Alpha)': 6
+				Coverage: 6
 			};
 
 			const displayGui = renderer.inspector.createParameters( 'Display' );
@@ -403,7 +386,6 @@
 			updateDownsample();
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
-			ssrGui.add( params.ssr, 'intensity', 0, 4 ).name( 'Intensity' ).onChange( applyParams );
 			// Only the active tracer's group is shown.
 			const updateTracing = () => {
 
@@ -463,7 +445,6 @@
 				} );
 
 			} );
-			sceneGui.add( params.ssr, 'environmentIntensity', 0, 10 ).name( 'Environment intensity' ).onChange( applyParams );
 
 			const advancedGui = renderer.inspector.createParameters( 'SSR advanced' ).close();
 			advancedGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'Mirror bias' ).onChange( applyParams );
@@ -499,17 +480,14 @@
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
 			ssrNode.coneMaxLevel.value = params.ssr.coneEnabled ? params.ssr.coneMaxLevel : 0;
 			ssrNode.coneSamples.value = params.ssr.coneSamples;
-			// stepExponent / screenEdgeFadeBlack / binaryRefine are build-time constants: assigning
+			// stepExponent / binaryRefine are build-time constants: assigning
 			// them recompiles the SSR material (the setters no-op when the value is unchanged).
 			ssrNode.stepExponent = params.ssr.stepExponent;
 			ssrNode.binaryRefine = params.ssr.binaryRefine;
 			ssrNode.maxDistance.value = params.ssr.maxDistance;
-			ssrNode.intensity.value = params.ssr.intensity;
 			ssrNode.thickness.value = params.ssr.thickness;
 			ssrNode.maxLuminance.value = params.ssr.maxLuminance;
 			ssrNode.screenEdgeFade.value = params.ssr.screenEdgeFade;
-			ssrNode.screenEdgeFadeBlack = params.ssr.screenEdgeFadeBlack;
-			ssrNode.environmentIntensity.value = params.ssr.environmentIntensity;
 
 			if ( temporalReprojectNode ) {
 
@@ -573,8 +551,8 @@
 				case 0: node = applyPostProcessing( combinedOutputNode ); break; // Beauty
 				case 1: node = applyGrading( vec4( ssrUpsampled.rgb, 1 ) ); break; // SSR
 				case 4: node = applyGrading( vec4( accumulatedUpsampled.rgb, 1 ) ); break; // SSR accumulated
-				case 6: node = vec4( accumulatedUpsampled.aaa, 1 ); break; // Accumulation Speed (Alpha)
-				case 7: node = vec4( ssrUpsampled.aaa, 1 ); break; // Ray Length
+				case 6: node = vec4( accumulatedUpsampled.aaa, 1 ); break; // Coverage
+				case 7: node = vec4( ssrNode.getHitDistanceNode().sample( screenUV ).rrr, 1 ); break; // Ray Length
 				case 2: node = renderOutput( normalOutputNode, THREE.NoToneMapping, THREE.SRGBColorSpace ); break; // Normal
 				case 3: node = renderOutput( depthOutputNode, THREE.NoToneMapping, THREE.SRGBColorSpace ); break; // Linear depth
 				case 8: // Iteration heat map
@@ -586,7 +564,7 @@
 					);
 					break;
 				case OUTPUT_COMPARE_SSR:
-					node = buildCompareNode( applyPostProcessing( combinedOutputNode ), applyPostProcessing( scenePassColor ) );
+					node = buildCompareNode( applyPostProcessing( combinedOutputNode ), applyPostProcessing( environmentPass ) );
 					break;
 
 			}

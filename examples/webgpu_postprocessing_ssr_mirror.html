@@ -44,10 +44,11 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking, rtt, Fn } from 'three/tsl';
+		import { pass, mrt, output, normalView, metalness, roughness, screenUV, color, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity, passTexture, colorSpaceToWorking, rtt, Fn } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 		import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
+		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 		import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -57,12 +58,12 @@
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 		const params = {
-			output: 'Beauty', adaptive: true, adaptiveSteps: 64, occlusionSkipping: true, hitValidation: true, quality: 0.5, intensity: 1,
+			output: 'Beauty', traa: true, adaptive: true, adaptiveSteps: 64, occlusionSkipping: true, hitValidation: true, quality: 0.5, intensity: 1,
 			maxDistance: 3, thickness: 0.03, binaryRefine: false,
 			roughness: 1, blur: true, blurQuality: 1
 		};
 
-		let camera, scene, model, renderer, renderPipeline;
+		let camera, scene, model, renderer, renderPipeline, temporalAA;
 		let controls;
 
 		init();
@@ -102,6 +103,10 @@
 
 				model.position.y = 0.1;
 				scene.add( model );
+
+				// the model has no velocity when it appears, so restart the TRAA history
+
+				temporalAA?.reset();
 
 			} );
 
@@ -149,7 +154,8 @@
 			scenePass.setMRT( mrt( {
 				output: output,
 				normal: packNormalToOctahedral( normalView ),
-				metalrough: vec2( metalness, roughness ) // pack metalness and roughness into a single attachment
+				metalrough: vec2( metalness, roughness ), // pack metalness and roughness into a single attachment
+				velocity: velocity
 			} ) );
 
 			const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
@@ -164,6 +170,7 @@
 
 			} );
 			const scenePassMetalRough = scenePass.getTextureNode( 'metalrough' ).toInspector( 'Metalness-Roughness' );
+			const scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
 			// octahedral normals can't be filtered across their folds
 
@@ -236,6 +243,8 @@
 			const blurred = upsample( reflection.getTextureNode() );
 			const blurEnabled = uniform( 1 );
 			const combined = scenePassColor.rgb.add( mix( raw.rgb, blurred.rgb, blurEnabled ) );
+			temporalAA = traa( vec4( combined, 1 ), scenePassDepth, scenePassVelocity, camera );
+			temporalAA.clipAtRest = false; // the scene is static, so nothing changes without velocity
 			const spatialAA = smaa( vec4( combined, 1 ) );
 
 			function updateOutput() {
@@ -244,7 +253,7 @@
 		
 				switch ( params.output ) {
 
-					case 'Beauty': view = spatialAA; break;
+					case 'Beauty': view = params.traa ? temporalAA : spatialAA; break;
 					case 'SSR': case 'SSR iterations': view = vec4( raw.rgb, 1 ); break;
 					case 'SSR DN': view = vec4( blurred.rgb, 1 ); break;
 
@@ -267,6 +276,7 @@
 
 			const displayGui = renderer.inspector.createParameters( 'Display' );
 			displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN', 'SSR iterations' ] ).name( 'Output' ).info( 'DN means denoise; this mirror example uses spatial blur rather than stochastic denoising. Iterations is a heat map of trace steps against the budget: blue, green, red, and white where it ran out.' ).onChange( updateOutput );
+			displayGui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
 
 			const downsampleGui = renderer.inspector.createParameters( 'Downsample' );
 			downsampleGui.add( downsampleParams, 'level', { '1': 0, '2': 1, '4': 2 } ).name( 'ratio' ).onChange( ( value ) => {

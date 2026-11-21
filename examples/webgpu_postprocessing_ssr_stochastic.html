@@ -37,7 +37,7 @@
 
 		<small>
 			Integrates multiple samples from a GGX stochastic distribution over space and time.<br />
-			Spatiotemporal Denoising by <a href="https://x.com/0beqz" target="_blank" rel="noopener">0beqz</a>.<br />
+			Temporal reprojection by <a href="https://x.com/0beqz" target="_blank" rel="noopener">0beqz</a>.<br />
 			Dungeon - Low Poly Game Level Challenge by
 			Warkarma.<br />
 		</small>
@@ -57,10 +57,11 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
+		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, rtt, Fn, mx_hsvtorgb } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
+		import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
-		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 		import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -88,7 +89,7 @@
 
 		};
 
-		const OUTPUT_COMPARE_DENOISE = 8;
+		const OUTPUT_COMPARE_ACCUMULATION = 8;
 		const OUTPUT_COMPARE_SSR = 9;
 		const compareHint = document.getElementById( 'compare-hint' );
 		const compareSplit = uniform( 0.5 );
@@ -96,7 +97,7 @@
 
 		function isCompareMode() {
 
-			return params.output === OUTPUT_COMPARE_DENOISE || params.output === OUTPUT_COMPARE_SSR;
+			return params.output === OUTPUT_COMPARE_ACCUMULATION || params.output === OUTPUT_COMPARE_SSR;
 
 		}
 
@@ -115,12 +116,13 @@
 			roughness: 0.3,
 
 			ssr: {
-				resolutionScale: 1,
+				adaptive: true, adaptiveSteps: 64, occlusionSkipping: true, roughMinLevel: 0,
+				coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRayThreshold: 0, rayReuse: true,
 				quality: 0.25,
-				mirrorBias: 0,
-				maxDistance: 0.4,
+				mirrorBias: 0.7,
+				maxDistance: 5,
 				intensity: 1,
-				thickness: 0.1,
+				thickness: 0,
 				maxLuminance: 35,
 				binaryRefine: false,
 				stepExponent: 3,
@@ -137,30 +139,15 @@
 				hitPointReprojection: true,
 			},
 
-			denoise: {
-				enabled: true,
-				lumaPhi: 0.75,
-				depthPhi: 20,
-				normalPhi: 0.3,
-				roughnessPhi: 100,
-				radius: 1.5,
-				alphaPhi: 5,
-				strength: 0.725,
-				adapt: 0.5,
-				smoothDisocclusions: true,
-				flickerSuppression: 1,
-				adaptiveTrust: 1
-			},
-
 			post: {
 				traa: true,
 				grading: { toneMapping: 'AgX', exposure: 1.57, gamma: 0.89, contrast: 1.31, saturation: 1 },
 			},
 		};
 
-		let camera, scene, model, renderer, renderPipeline, ssrNode, temporalReprojectNode, denoiseNode;
+		let camera, scene, model, renderer, renderPipeline, ssrNode, ssrTexture, ssrUpsampled, temporalReprojectNode, accumulatedUpsampled;
 		let controls;
-		let combinedOutputNode, scenePassColor, scenePassDepth, scenePassVelocity;
+		let combinedOutputNode, normalOutputNode, depthOutputNode, scenePassColor, scenePassDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 		const temporalOutputs = new Map();
 
@@ -185,7 +172,7 @@
 
 					object.castShadow = true;
 					object.receiveShadow = true;
-					object.material.roughness = 0.3;
+					object.material.roughness = params.roughness;
 					object.material.normalMap = null;
 
 				} );
@@ -229,6 +216,10 @@
 
 			await renderer.init();
 
+			// Hi-Z tracing requires WebGPU, the WebGL 2 fallback uses the linear tracer
+
+			params.ssr.adaptive = renderer.backend.isWebGPUBackend === true;
+
 			scene.environmentIntensity = 1;
 
 			renderPipeline = new THREE.RenderPipeline( renderer );
@@ -244,6 +235,11 @@
 				// Pack roughness into the spare velocity channel to save MRT bandwidth
 				velocity: vec4( velocity, materialRoughness, 0 )
 			} ) );
+
+			// mip chain of the beauty pass for the SSR cone footprint lookup
+			const beautyTexture = scenePass.getTexture( 'output' );
+			beautyTexture.generateMipmaps = true;
+			beautyTexture.minFilter = THREE.LinearMipmapLinearFilter;
 
 			scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
 			const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal', ( node ) => packNormalToRGB( unpackOctahedralToNormal( node.rg ) ) );
@@ -267,11 +263,10 @@
 			const normalDecode = ( value ) => unpackOctahedralToNormal( value.rg );
 			const sceneNormal = sample( ( uv ) => normalDecode( scenePassNormal.sample( uv ) ) );
 
-			// metalness in diffuseColor.a, roughness in velocity.z (no separate metalrough MRT)
-			const scenePassMetalRough = sample( ( uv ) => vec2(
-				scenePassDiffuseColor.sample( uv ).a,
-				scenePassVelocity.sample( uv ).z
-			) ).toInspector( 'Metalness/Roughness' );
+			normalOutputNode = vec4( packNormalToRGB( sceneNormal.sample( screenUV ) ), 1 );
+			// Repeat the full hue wheel 16 times over normalized linear depth.
+			const depthHue = scenePass.getLinearDepthNode().mul( 16 ).fract();
+			depthOutputNode = vec4( mx_hsvtorgb( vec3( depthHue, 1, 1 ) ), 1 );
 
 			ssrNode = ssr( scenePassColor, scenePassDepth, sceneNormal, {
 				stochastic: true,
@@ -283,34 +278,72 @@
 				binaryRefine: params.ssr.binaryRefine
 			} ).toInspector( 'SSR' );
 
-			temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
-				mode: 'specular',
-				accumulate: false,
-				normalDecode: normalDecode
-			} );
-			temporalReprojectNode.toInspector( 'Temporal Reproject' );
+			// downsample: at a ratio above 1, the reflections are computed and accumulated from downsampled inputs and upsampled afterwards
 
-			denoiseNode = recurrentDenoise( temporalReprojectNode, camera, {
-				depth: scenePassDepth,
-				normal: sceneNormal,
-				raw: ssrNode,
-				metalRoughness: scenePassMetalRough,
+			const downsampleParams = { level: 1, upsampler: 'Joint bilateral' };
+
+			const downsample = depthAwareDownsample( scenePassDepth, { normal: scenePassNormal, diffuseColor: scenePassDiffuseColor, velocity: scenePassVelocity } );
+			const downsampleDepth = downsample.getTextureNode( 'depth' );
+			const downsampleDiffuseColor = downsample.getTextureNode( 'diffuseColor' );
+			const downsampleVelocity = downsample.getTextureNode( 'velocity' );
+			const downsampleNormal = sample( ( uv ) => normalDecode( downsample.getTextureNode( 'normal' ).sample( uv ) ) );
+
+			// without depth rejection, the joint bilateral filter is a bilinear filter
+
+			const depthTolerance = uniform( 0.005 );
+
+			const upsample = ( node ) => {
+
+				const upsampled = rtt( jointBilateralUpsample( node, downsampleDepth, scenePassDepth, camera, { depthTolerance } ).sample( screenUV ) ).sample( screenUV );
+
+				return Fn( () => ( downsampleParams.level > 0 ) ? upsampled : node )();
+
+			};
+
+			function updateDownsample() {
+
+				const reduced = downsampleParams.level > 0;
+
+				if ( reduced ) downsample.level = downsampleParams.level;
+
+				ssrNode.depthNode = reduced ? downsampleDepth : scenePassDepth;
+				ssrNode.normalNode = reduced ? downsampleNormal : sceneNormal;
+				ssrNode.diffuseNode = reduced ? downsampleDiffuseColor : scenePassDiffuseColor;
+				ssrNode.metalnessNode = reduced ? downsampleDiffuseColor.a : scenePassDiffuseColor.a;
+				ssrNode.roughnessNode = reduced ? downsampleVelocity.z : scenePassVelocity.z;
+
+				temporalReprojectNode.depthNode = ssrNode.depthNode;
+				temporalReprojectNode.normalNode = reduced ? downsample.getTextureNode( 'normal' ) : scenePassNormal;
+				temporalReprojectNode.velocityNode = reduced ? downsampleVelocity : scenePassVelocity;
+
+				renderPipeline.needsUpdate = true;
+
+				reduced ? upsamplerControl.show() : upsamplerControl.hide();
+
+			}
+
+			ssrTexture = ssrNode.getTextureNode();
+
+			// temporal accumulation: ray reuse filters over space, so there is no spatial denoiser
+
+			temporalReprojectNode = temporalReproject( ssrTexture, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 				mode: 'specular',
 				accumulate: true,
+				normalDecode: normalDecode
 			} );
-			denoiseNode.alphaSource = 'raylength'; // SSR alpha channel contains ray length
-			denoiseNode.toInspector( 'Denoise' );
-			// feed the denoised result + velocity back into SSR for multi-bounce reflections
-			ssrNode.setHistory( denoiseNode, scenePassVelocity );
-			temporalReprojectNode.setHistoryTexture( denoiseNode );
+			temporalReprojectNode.toInspector( 'Temporal Accumulation' );
 
-			const denoisePassBlend = vec4( denoiseNode.rgb, ssrNode.a.greaterThan( 0 ).toVar() );
+			// feed the accumulated result + velocity back into SSR for multi-bounce reflections
+			ssrNode.setHistory( temporalReprojectNode, scenePassVelocity );
+
+			ssrUpsampled = upsample( ssrTexture );
+			accumulatedUpsampled = upsample( temporalReprojectNode.getTextureNode() );
 
 			gammaUniform = uniform( params.post.grading.gamma );
 			contrastUniform = uniform( params.post.grading.contrast );
 			saturationUniform = uniform( params.post.grading.saturation );
 
-			const litColor = scenePassColor.rgb.add( denoisePassBlend.rgb );
+			const litColor = scenePassColor.rgb.add( accumulatedUpsampled.rgb );
 
 			const outputNode = vec4( litColor, 1 );
 			outputNode.toInspector( 'Combined SSR' );
@@ -344,10 +377,14 @@
 			const outputTypes = {
 				Beauty: 0,
 				SSR: 1,
-				'SSR DN': 4,
-				'Compare (Denoise)': OUTPUT_COMPARE_DENOISE,
+				Normal: 2,
+				Depth: 3,
+				'SSR accumulated': 4,
+				'Compare (Accumulation)': OUTPUT_COMPARE_ACCUMULATION,
 				'Compare (Reflections)': OUTPUT_COMPARE_SSR,
 				'Ray Length': 7,
+				'SSR Iterations': 8,
+				'SSR Cone Mip': 9,
 				'Accumulation Speed (Alpha)': 6
 			};
 
@@ -355,24 +392,62 @@
 			displayGui.add( params, 'output', outputTypes ).name( 'Output' ).onChange( updateOutputNode );
 			displayGui.add( params.post, 'traa' ).name( 'TRAA' ).onChange( updateOutputNode );
 
+			const downsampleGui = renderer.inspector.createParameters( 'Downsample' );
+			downsampleGui.add( downsampleParams, 'level', { '1': 0, '2': 1, '4': 2 } ).name( 'ratio' ).onChange( ( value ) => {
+
+				downsampleParams.level = Number( value );
+				updateDownsample();
+
+			} );
+			const upsamplerControl = downsampleGui.add( downsampleParams, 'upsampler', [ 'Bilinear', 'Joint bilateral' ] ).onChange( ( value ) => depthTolerance.value = ( value === 'Bilinear' ) ? 1e6 : 0.005 );
+			updateDownsample();
+
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params.ssr, 'intensity', 0, 4 ).name( 'Intensity' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams );
-			ssrGui.add( params.ssr, 'maxDistance', 0, 5 ).name( 'Max distance' ).onChange( applyParams );
+			// Only the active tracer's group is shown.
+			const updateTracing = () => {
+
+				applyParams();
+				adaptiveGui[ params.ssr.adaptive ? 'show' : 'hide' ]();
+				linearGui[ params.ssr.adaptive ? 'hide' : 'show' ]();
+
+			};
+
+			ssrGui.add( params.ssr, 'maxDistance', 0, 50 ).name( 'Max distance' ).onChange( applyParams );
 			ssrGui.add( params.ssr, 'thickness', 0, 0.25 ).name( 'Thickness' ).onChange( applyParams );
+			ssrGui.add( params.ssr, 'rayReuse' ).name( 'Ray reuse' ).onChange( applyParams );
 
-			const denoiseGui = renderer.inspector.createParameters( 'Denoising' );
-			denoiseGui.add( params.denoise, 'enabled' ).name( 'Enabled' ).onChange( applyParams );
-			denoiseGui.add( params.denoise, 'lumaPhi', 0, 3 ).name( 'Luma phi' ).onChange( applyParams );
-			denoiseGui.add( params.denoise, 'depthPhi', 0, 50 ).name( 'Depth phi' ).onChange( applyParams );
-			denoiseGui.add( params.denoise, 'normalPhi', 0.01, 1, 0.01 ).name( 'Normal phi' ).onChange( applyParams );
-			denoiseGui.add( params.denoise, 'alphaPhi', 0, 15 ).name( 'Ray length phi' ).onChange( applyParams );
-			denoiseGui.add( params.denoise, 'radius', 0, 3 ).name( 'Radius' ).onChange( applyParams );
-			denoiseGui.add( params.denoise, 'strength', 0.5, 0.95 ).name( 'Strength' ).onChange( applyParams );
-			denoiseGui.add( params.denoise, 'adapt', 0, 1 ).name( 'Adapt' ).onChange( applyParams );
+			// Each ray reads the beauty mip matching its cone footprint; off reads full resolution.
+			const coneGui = renderer.inspector.createParameters( 'SSR Cone Samples' );
+			const updateCone = () => {
 
-			const temporalReprojectGui = renderer.inspector.createParameters( 'Temporal reprojection' ).close();
+				applyParams();
+				for ( const controller of coneControllers ) controller.disable( ! params.ssr.coneEnabled );
+
+			};
+
+			coneGui.add( params.ssr, 'coneEnabled' ).name( 'Enabled' ).onChange( updateCone );
+			const coneControllers = [
+				coneGui.add( params.ssr, 'coneMaxLevel', 1, 8, 1 ).name( 'Max mip' ).onChange( applyParams ),
+				coneGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Samples' ).onChange( applyParams )
+			];
+			updateCone();
+
+			const adaptiveGui = renderer.inspector.createParameters( 'Adaptive/Cone Tracing' );
+			adaptiveGui.add( params.ssr, 'adaptiveSteps', 16, 256, 16 ).name( 'Max steps' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'occlusionSkipping' ).name( 'Skip occluded' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'roughMinLevel', 0, 3, 1 ).name( 'Rough min mip' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'coneTracing' ).name( 'Cone tracing' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'coneValidate' ).name( 'Cone validate' ).onChange( applyParams );
+			adaptiveGui.add( params.ssr, 'cameraRayThreshold', 0, 1 ).name( 'Camera rays' ).onChange( applyParams );
+
+			const linearGui = renderer.inspector.createParameters( 'Linear Tracing' );
+			linearGui.add( params.ssr, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( applyParams );
+			linearGui.add( params.ssr, 'binaryRefine' ).name( 'Binary refine' ).onChange( applyParams );
+			linearGui.add( params.ssr, 'stepExponent', 1, 4, 0.5 ).name( 'Step exponent' ).onChange( applyParams );
+			updateTracing();
+
+			const temporalReprojectGui = renderer.inspector.createParameters( 'Temporal accumulation' );
 			temporalReprojectGui.add( params.temporalReproject, 'maxFrames', 1, 128, 1 ).name( 'History frames' ).onChange( applyParams );
 			temporalReprojectGui.add( params.temporalReproject, 'clampIntensity', 0, 1 ).name( 'Clamp intensity' ).onChange( applyParams );
 			temporalReprojectGui.add( params.temporalReproject, 'flickerSuppression', 0, 1 ).name( 'Flicker suppression' ).onChange( applyParams );
@@ -392,7 +467,6 @@
 
 			const advancedGui = renderer.inspector.createParameters( 'SSR advanced' ).close();
 			advancedGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'Mirror bias' ).onChange( applyParams );
-			advancedGui.add( params.ssr, 'stepExponent', 1, 4, 0.5 ).name( 'Step exponent' ).onChange( applyParams );
 
 			// Concise UI for Directional Light controls
 			const lightGui = renderer.inspector.createParameters( 'Light' ).close();
@@ -413,9 +487,18 @@
 
 			if ( ! ssrNode ) return;
 
-			ssrNode.resolutionScale = params.ssr.resolutionScale;
+			ssrNode.tracing = params.ssr.adaptive ? 'adaptive' : 'linear';
+			ssrNode.roughMinLevel = params.ssr.roughMinLevel;
+			ssrNode.coneTracing = params.ssr.coneTracing;
+			ssrNode.coneValidate = params.ssr.coneValidate;
+			ssrNode.cameraRayThreshold.value = params.ssr.cameraRayThreshold;
+			ssrNode.rayReuse = params.ssr.rayReuse;
+			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
+			ssrNode.occlusionSkipping = params.ssr.occlusionSkipping;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
+			ssrNode.coneMaxLevel.value = params.ssr.coneEnabled ? params.ssr.coneMaxLevel : 0;
+			ssrNode.coneSamples.value = params.ssr.coneSamples;
 			// stepExponent / screenEdgeFadeBlack / binaryRefine are build-time constants: assigning
 			// them recompiles the SSR material (the setters no-op when the value is unchanged).
 			ssrNode.stepExponent = params.ssr.stepExponent;
@@ -434,22 +517,6 @@
 				temporalReprojectNode.clampIntensity.value = params.temporalReproject.clampIntensity;
 				temporalReprojectNode.flickerSuppression.value = params.temporalReproject.flickerSuppression;
 				temporalReprojectNode.hitPointReprojection.value = params.temporalReproject.hitPointReprojection;
-
-			}
-
-			if ( denoiseNode ) {
-
-				denoiseNode.lumaPhi.value = params.denoise.lumaPhi;
-				denoiseNode.depthPhi.value = params.denoise.depthPhi;
-				denoiseNode.normalPhi.value = params.denoise.normalPhi;
-				denoiseNode.roughnessPhi.value = params.denoise.roughnessPhi;
-				denoiseNode.radius.value = params.denoise.enabled ? params.denoise.radius : 0;
-				denoiseNode.alphaPhi.value = params.denoise.alphaPhi;
-				denoiseNode.strength.value = params.denoise.strength;
-				denoiseNode.adapt.value = params.denoise.adapt;
-				denoiseNode.smoothDisocclusions.value = params.denoise.smoothDisocclusions;
-				denoiseNode.flickerSuppression.value = params.denoise.flickerSuppression;
-				denoiseNode.adaptiveTrust.value = params.denoise.adaptiveTrust;
 
 			}
 
@@ -504,14 +571,18 @@
 			switch ( params.output ) {
 
 				case 0: node = applyPostProcessing( combinedOutputNode ); break; // Beauty
-				case 1: node = applyGrading( vec4( ssrNode.rgb, 1 ) ); break; // SSR
-				case 4: node = applyGrading( vec4( denoiseNode.rgb, 1 ) ); break; // SSR DN
-				case 6: node = vec4( denoiseNode.aaa, 1 ); break; // Accumulation Speed (Alpha)
-				case 7: node = vec4( ssrNode.aaa, 1 ); break; // Ray Length
-				case OUTPUT_COMPARE_DENOISE:
+				case 1: node = applyGrading( vec4( ssrUpsampled.rgb, 1 ) ); break; // SSR
+				case 4: node = applyGrading( vec4( accumulatedUpsampled.rgb, 1 ) ); break; // SSR accumulated
+				case 6: node = vec4( accumulatedUpsampled.aaa, 1 ); break; // Accumulation Speed (Alpha)
+				case 7: node = vec4( ssrUpsampled.aaa, 1 ); break; // Ray Length
+				case 2: node = renderOutput( normalOutputNode, THREE.NoToneMapping, THREE.SRGBColorSpace ); break; // Normal
+				case 3: node = renderOutput( depthOutputNode, THREE.NoToneMapping, THREE.SRGBColorSpace ); break; // Linear depth
+				case 8: // Iteration heat map
+				case 9: node = vec4( ssrUpsampled.rgb, 1 ); break; // Cone mip heat map
+				case OUTPUT_COMPARE_ACCUMULATION:
 					node = buildCompareNode(
-						applyGrading( vec4( denoiseNode.rgb, 1 ) ),
-						applyGrading( vec4( ssrNode.rgb, 1 ) )
+						applyGrading( vec4( accumulatedUpsampled.rgb, 1 ) ),
+						applyGrading( vec4( ssrUpsampled.rgb, 1 ) )
 					);
 					break;
 				case OUTPUT_COMPARE_SSR:
@@ -523,7 +594,9 @@
 			compareHint.hidden = ! isCompareMode();
 			releaseCompareControls();
 
-			renderPipeline.outputColorTransform = params.output === 6 || params.output === 7;
+			ssrNode.showIterations = params.output === 8;
+			ssrNode.showConeMip = params.output === 9;
+			renderPipeline.outputColorTransform = params.output >= 6 && params.output <= 9;
 			renderPipeline.outputNode = node;
 			renderPipeline.needsUpdate = true;
 

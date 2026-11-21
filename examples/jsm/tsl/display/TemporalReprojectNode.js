@@ -400,8 +400,9 @@ const VARIANCE_GAMMA_MAX = 1;
  * @typedef {Object} TemporalReprojectNodeOptions
  * @property {TemporalReprojectMode} [mode='diffuse'] - `diffuse` for SSGI/scene colour; `specular` for SSR reflections.
  * @property {boolean} [hitPointReprojection] - Parallax hit-point reprojection (specular mode only). Defaults to `true` in specular mode.
- * @property {boolean} [accumulate=false] - When `true`, history is stored in this pass (classic temporal resolve). When `false`,
- * use {@link TemporalReprojectNode#setHistoryTexture} to read history from another pass (e.g. denoise output).
+ * @property {boolean} [accumulate=false] - When `true`, the current frame is blended into the history, which is stored in this pass
+ * (classic temporal resolve). When `false`, the reprojected history is returned for another pass to blend (e.g. a denoiser) and
+ * {@link TemporalReprojectNode#setHistoryTexture} reads the history from that pass.
  * @property {Function} [normalDecode] - Decodes a sample of the normal texture into a unit view-space normal. Defaults to {@link unpackRGBToNormal}.
  */
 
@@ -472,7 +473,8 @@ class TemporalReprojectNode extends Node {
 		this.mode = mode;
 
 		/**
-		 * When `true`, resolve output is copied into the internal history buffer each frame.
+		 * When `true`, the current frame is blended into the reprojected history and the result is
+		 * copied into the internal history buffer each frame.
 		 * When `false`, history is supplied externally via {@link TemporalReprojectNode#setHistoryTexture}.
 		 *
 		 * @type {boolean}
@@ -521,6 +523,17 @@ class TemporalReprojectNode extends Node {
 	getTextureNode() {
 
 		return this._textureNode;
+
+	}
+
+	/**
+	 * Returns the render target holding the result of the pass.
+	 *
+	 * @return {RenderTarget} The render target.
+	 */
+	getRenderTarget() {
+
+		return this._resolveRenderTarget;
 
 	}
 
@@ -842,7 +855,13 @@ class TemporalReprojectNode extends Node {
 
 			}
 
-			return vec4( historyColor.rgb, float( 1 ).div( currentFrameCount ) );
+			const blend = float( 1 ).div( currentFrameCount );
+
+			// the classic temporal resolve blends the current frame into its own history
+
+			if ( this.accumulate === true ) return vec4( mix( historyColor.rgb, inputColor.rgb, blend ), blend );
+
+			return vec4( historyColor.rgb, blend );
 
 		} );
 

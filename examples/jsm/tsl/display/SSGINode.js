@@ -1,5 +1,5 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
-import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, outputStruct, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, outputStruct, screenUV, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 
@@ -330,6 +330,31 @@ class SSGINode extends Node {
 	getGINode() {
 
 		return this._giNode;
+
+	}
+
+	/**
+	 * Returns the gathered irradiance in RGB and its coverage in alpha at the surface being shaded,
+	 * e.g. as a diffuse source of `builtinIndirectContext()`.
+	 *
+	 * The coverage is the part of the hemisphere the screen occludes, which is the complement of the AO.
+	 * The sources behind this one, usually the environment, only light the part that is left open, so
+	 * the AO must not be applied to them a second time, e.g. with `builtinAOContext()`.
+	 *
+	 * ```js
+	 * beautyPass.contextNode = builtinIndirectContext( { diffuse: [ giPass.getDiffuseSource() ] } );
+	 * ```
+	 *
+	 * @param {?Node<vec3>} [giNode=null] - A filtered version of the GI at the surface to use in its place, e.g. upsampled or denoised.
+	 * @param {?Node<float>} [aoNode=null] - A filtered version of the AO at the surface to use in its place.
+	 * @return {Node<vec4>} The irradiance and coverage.
+	 */
+	getDiffuseSource( giNode = null, aoNode = null ) {
+
+		const gi = giNode || this._giNode.sample( screenUV ).rgb;
+		const ao = aoNode || this._aoNode.sample( screenUV ).r;
+
+		return vec4( gi, float( ao ).oneMinus() );
 
 	}
 

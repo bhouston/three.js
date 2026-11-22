@@ -345,7 +345,9 @@ class SSGINode extends Node {
 		const gi = giNode || this._giNode.sample( screenUV ).rgb;
 		const ao = aoNode || this._aoNode.sample( screenUV ).r;
 
-		return vec4( gi, float( ao ).oneMinus() );
+		// the GI is what a white surface reflects, and the materials divide the irradiance by PI
+
+		return vec4( vec3( gi ).mul( PI ), float( ao ).oneMinus() );
 
 	}
 

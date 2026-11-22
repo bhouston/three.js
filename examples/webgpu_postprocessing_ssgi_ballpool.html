@@ -41,11 +41,12 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, diffuseColor, velocity, add, vec4, packNormalToRGB, unpackRGBToNormal, sample, rtt, screenUV, uniform, vec3, Fn } from 'three/tsl';
+			import { pass, mrt, normalView, velocity, vec4, packNormalToRGB, unpackRGBToNormal, sample, rtt, screenUV, uniform, vec3, Fn, builtinIndirectContext } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+			import { reprojectedBeauty, previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
 
@@ -128,37 +129,37 @@
 
 				renderPipeline = new THREE.RenderPipeline( renderer );
 
-				const scenePass = pass( scene, camera );
-				scenePass.setMRT( mrt( {
-					output: output,
-					diffuseColor: diffuseColor,
-					normal: packNormalToRGB( normalView ),
-					velocity: velocity
+				// the pre-pass renders the geometry SSGI traces, without shading it
+
+				const prePass = pass( scene, camera );
+				prePass.setMRT( mrt( {
+					output: packNormalToRGB( normalView ),
+					velocity: vec4( velocity, 0, previousViewZ )
 				} ) );
 
-				const scenePassColor = scenePass.getTextureNode( 'output' );
-				const scenePassDiffuse = scenePass.getTextureNode( 'diffuseColor' );
-				const scenePassDepth = scenePass.getTextureNode( 'depth' );
-				const scenePassNormal = scenePass.getTextureNode( 'normal' );
-				const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
+				const prePassNormal = prePass.getTextureNode( 'output' );
+				const prePassDepth = prePass.getTextureNode( 'depth' );
+				const prePassVelocity = prePass.getTextureNode( 'velocity' );
 
 				// bandwidth optimization
 
-				const diffuseTexture = scenePass.getTexture( 'diffuseColor' );
-				diffuseTexture.type = THREE.UnsignedByteType;
-
-				const normalTexture = scenePass.getTexture( 'normal' );
+				const normalTexture = prePass.getTexture( 'output' );
 				normalTexture.type = THREE.UnsignedByteType;
+
+				// the beauty pass shades the scene with the GI, which gathers the previous frame's beauty
+
+				const beautyPass = pass( scene, camera );
+				const previousBeauty = reprojectedBeauty( prePass, beautyPass );
 
 				const sceneNormal = sample( ( uv ) => {
 
-					return unpackRGBToNormal( scenePassNormal.sample( uv ) );
+					return unpackRGBToNormal( prePassNormal.sample( uv ) );
 
 				} );
 
 				// gi
 
-				const giPass = ssgi( scenePassColor, scenePassDepth, sceneNormal, camera );
+				const giPass = ssgi( previousBeauty, prePassDepth, sceneNormal, camera );
 				giPass.sliceCount.value = 2;
 				giPass.stepCount.value = 8;
 
@@ -166,7 +167,7 @@
 
 				const downsampleParams = { level: 1, upsampler: 'Joint bilateral' };
 
-				const downsample = depthAwareDownsample( scenePassDepth, { normal: scenePassNormal, velocity: scenePassVelocity } );
+				const downsample = depthAwareDownsample( prePassDepth, { normal: prePassNormal, velocity: prePassVelocity } );
 				const downsampleDepth = downsample.getTextureNode( 'depth' );
 				const downsampleVelocity = downsample.getTextureNode( 'velocity' );
 				const downsampleNormal = sample( ( uv ) => {
@@ -181,9 +182,9 @@
 
 				const upsample = ( node ) => {
 
-					const upsampled = rtt( jointBilateralUpsample( node, downsampleDepth, scenePassDepth, camera, { depthTolerance } ).sample( screenUV ) ).sample( screenUV );
+					const upsampled = rtt( jointBilateralUpsample( node, downsampleDepth, prePassDepth, camera, { depthTolerance } ).sample( screenUV ) ).sample( screenUV );
 
-					return Fn( () => ( downsampleParams.level > 0 ) ? upsampled : node )();
+					return Fn( () => ( downsampleParams.level > 0 ) ? upsampled : node.sample( screenUV ) )();
 
 				};
 
@@ -193,14 +194,14 @@
 
 					if ( reduced ) downsample.level = downsampleParams.level;
 
-					giPass.depthNode = reduced ? downsampleDepth : scenePassDepth;
+					giPass.depthNode = reduced ? downsampleDepth : prePassDepth;
 					giPass.normalNode = reduced ? downsampleNormal : sceneNormal;
 
 					giTexture.setResolutionScale( 1 / ( 1 << downsampleParams.level ) );
 
 					temporalReprojectNode.depthNode = giPass.depthNode;
-					temporalReprojectNode.normalNode = reduced ? downsample.getTextureNode( 'normal' ) : scenePassNormal;
-					temporalReprojectNode.velocityNode = reduced ? downsampleVelocity : scenePassVelocity;
+					temporalReprojectNode.normalNode = reduced ? downsample.getTextureNode( 'normal' ) : prePassNormal;
+					temporalReprojectNode.velocityNode = reduced ? downsampleVelocity : prePassVelocity;
 
 					renderPipeline.needsUpdate = true;
 
@@ -212,22 +213,22 @@
 
 				const giTexture = rtt( vec4( giPass.getGINode().toInspector( 'SSGI.GI' ).rgb, giPass.getAONode().toInspector( 'SSGI.AO' ).r.oneMinus() ) );
 
-				const temporalReprojectNode = temporalReproject( giTexture, scenePassDepth, scenePassNormal, scenePassVelocity, camera, { accumulate: true } );
+				const temporalReprojectNode = temporalReproject( giTexture, prePassDepth, prePassNormal, prePassVelocity, camera, { accumulate: true } );
 				temporalReprojectNode.clampIntensity.value = 0.25;
 
 				const accumulated = upsample( temporalReprojectNode.getTextureNode().toInspector( 'Temporal Accumulation' ) );
 
-				// composite
+				// the materials receive the GI through their BRDF, and it occludes the ambient light and the environment
 
 				const ao = accumulated.a.oneMinus();
 				const gi = accumulated.rgb;
 				const giUnfiltered = upsample( giTexture ).rgb;
 
-				const compositePass = vec4( add( scenePassColor.rgb.mul( ao ), scenePassDiffuse.rgb.mul( gi ) ), scenePassColor.a );
+				beautyPass.contextNode = builtinIndirectContext( { diffuse: [ giPass.getDiffuseSource( gi, ao ) ] } );
 
 				// traa
 
-				const traaPass = traa( compositePass, scenePassDepth, scenePassVelocity, camera );
+				const traaPass = traa( beautyPass, prePassDepth, prePassVelocity, camera );
 				renderPipeline.outputNode = traaPass;
 
 				//
@@ -235,7 +236,7 @@
 				const params = { output: 0 };
 
 				const displayGui = renderer.inspector.createParameters( 'Display' );
-				displayGui.add( params, 'output', { Combined: 0, Direct: 3, AO: 1, GI: 2, 'GI (unfiltered)': 4 } ).onChange( updatePostprocessing );
+				displayGui.add( params, 'output', { Combined: 0, AO: 1, GI: 2, 'GI (unfiltered)': 4 } ).onChange( updatePostprocessing );
 
 				const downsampleGui = renderer.inspector.createParameters( 'Downsample' );
 				downsampleGui.add( downsampleParams, 'level', { '1': 0, '2': 1, '4': 2 } ).name( 'ratio' ).onChange( ( value ) => {
@@ -271,11 +272,10 @@
 					const outputs = {
 						1: vec4( vec3( ao ), 1 ),
 						2: vec4( gi, 1 ),
-						3: scenePassColor,
 						4: vec4( giUnfiltered, 1 )
 					};
 
-					renderPipeline.outputNode = outputs[ params.output ] || ( giPass.useTemporalFiltering ? traaPass : compositePass );
+					renderPipeline.outputNode = outputs[ params.output ] || ( giPass.useTemporalFiltering ? traaPass : beautyPass );
 					renderPipeline.needsUpdate = true;
 
 				}

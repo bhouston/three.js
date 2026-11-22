@@ -1,11 +1,10 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
-import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, outputStruct, screenUV, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, getViewPosition, screenCoordinate, float, dot, vec2, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, outputStruct, screenUV, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { hierarchicalHashedWeyl, R2_STEPS } from '../utils/HierarchicalHashedWeyl.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 
 // From Activision GTAO paper: https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
-const _temporalRotations = [ 60, 300, 180, 240, 120, 0 ];
-const _spatialOffsets = [ 0, 0.5, 0.25, 0.75 ];
 
 let _rendererState;
 
@@ -210,20 +209,12 @@ class SSGINode extends Node {
 		this._halfProjScale = uniform( 1 );
 
 		/**
-		 * Temporal direction that influences the rotation angle for each slice.
+		 * Index of the noise sample, advanced each frame with temporal filtering.
 		 *
 		 * @private
 		 * @type {UniformNode<float>}
 		 */
-		this._temporalDirection = uniform( 0 );
-
-		/**
-		 * Temporal offset added to the initial ray step.
-		 *
-		 * @private
-		 * @type {UniformNode<float>}
-		 */
-		this._temporalOffset = uniform( 0 );
+		this._noiseIndex = uniform( 0 );
 
 		/**
 		 * Represents the projection matrix of the scene's camera.
@@ -391,19 +382,7 @@ class SSGINode extends Node {
 
 		// update temporal uniforms
 
-		if ( this.useTemporalFiltering === true ) {
-
-			const frameId = frame.frameId;
-
-			this._temporalDirection.value = _temporalRotations[ frameId % 6 ] / 360;
-			this._temporalOffset.value = _spatialOffsets[ frameId % 4 ];
-
-		} else {
-
-			this._temporalDirection.value = 1;
-			this._temporalOffset.value = 1;
-
-		}
+		this._noiseIndex.value = this.useTemporalFiltering === true ? ( this._noiseIndex.value + 1 ) % 0x7fffffff : 0;
 
 		//
 
@@ -457,11 +436,6 @@ class SSGINode extends Node {
 
 		// From Activision GTAO paper: https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
 
-		const spatialOffsets = Fn( ( [ position ] ) => {
-
-			return float( 0.25 ).mul( sub( position.y, position.x ).bitAnd( 3 ) );
-
-		}, { position: 'vec2', return: 'float' } );
 
 		const GTAOFastAcos = Fn( ( [ value ] ) => {
 
@@ -571,10 +545,10 @@ class SSGINode extends Node {
 
 			//
 
-			const noiseOffset = spatialOffsets( screenCoordinate );
-			const noiseDirection = interleavedGradientNoise( screenCoordinate );
-			const noiseJitterIdx = this._temporalDirection.mul( 0.02 ); // Port: Add noiseJitterIdx here for slightly better noise convergence with TRAA (see #31890 for more details)
-			const initialRayStep = fract( noiseOffset.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ).mul( 2 ).sub( 1 ) ) );
+			// Hierarchical Hashed Weyl noise: unlike a short cycle of rotations, it keeps converging as frames accumulate
+
+			const noiseDirection = hierarchicalHashedWeyl( screenCoordinate, this._noiseIndex, 1, R2_STEPS[ 0 ] );
+			const initialRayStep = hierarchicalHashedWeyl( screenCoordinate, this._noiseIndex, 2, R2_STEPS[ 1 ] ).add( 0.5 );
 
 			const ao = float( 0 );
 			const color = vec3( 0 );
@@ -604,7 +578,7 @@ class SSGINode extends Node {
 
 			Loop( { start: uint( 0 ), end: ROTATION_COUNT, type: 'uint', condition: '<' }, ( { i } ) => {
 
-				const rotationAngle = mul( float( i ).add( noiseDirection ).add( this._temporalDirection ), PI.div( float( ROTATION_COUNT ) ) ).toConst();
+				const rotationAngle = mul( float( i ).add( noiseDirection ), PI.div( float( ROTATION_COUNT ) ) ).toConst();
 				const sliceDir = vec3( vec2( cos( rotationAngle ), sin( rotationAngle ) ), 0 ).toConst();
 				const slideDirTexelSize = sliceDir.xy.mul( float( 1 ).div( this._resolution ) ).toConst();
 

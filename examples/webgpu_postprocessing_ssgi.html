@@ -40,6 +40,7 @@
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
+			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { reprojectedBeauty, previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
 
@@ -119,12 +120,13 @@
 				giPass.sliceCount.value = 2;
 				giPass.stepCount.value = 8;
 
-				// downsample: at a ratio above 1, the GI is computed from downsampled inputs and upsampled afterwards
+				// downsample: at a ratio above 1, the GI is computed and accumulated from downsampled inputs and upsampled afterwards
 
-				const downsampleParams = { level: 0, upsampler: 'Joint bilateral' };
+				const downsampleParams = { level: 1, upsampler: 'Joint bilateral' };
 
-				const downsample = depthAwareDownsample( scenePassDepth, { normal: scenePassNormal } );
+				const downsample = depthAwareDownsample( scenePassDepth, { normal: scenePassNormal, velocity: scenePassVelocity } );
 				const downsampleDepth = downsample.getTextureNode( 'depth' );
+				const downsampleVelocity = downsample.getTextureNode( 'velocity' );
 				const downsampleNormal = sample( ( uv ) => {
 
 					return unpackRGBToNormal( downsample.getTextureNode( 'normal' ).sample( uv ) );
@@ -152,16 +154,30 @@
 					giPass.depthNode = reduced ? downsampleDepth : scenePassDepth;
 					giPass.normalNode = reduced ? downsampleNormal : sceneNormal;
 
+					giTexture.setResolutionScale( 1 / ( 1 << downsampleParams.level ) );
+
+					temporalReprojectNode.depthNode = giPass.depthNode;
+					temporalReprojectNode.normalNode = reduced ? downsample.getTextureNode( 'normal' ) : scenePassNormal;
+					temporalReprojectNode.velocityNode = reduced ? downsampleVelocity : scenePassVelocity;
+
 					renderPipeline.needsUpdate = true;
 
 					reduced ? upsamplerControl.show() : upsamplerControl.hide();
 
 				}
 
+				// temporal accumulation at the resolution of the GI: the GI in rgb and its coverage, the complement of the AO, in alpha
+
+				const giTexture = rtt( vec4( giPass.getGINode().toInspector( 'SSGI.GI' ).rgb, giPass.getAONode().toInspector( 'SSGI.AO' ).r.oneMinus() ) );
+
+				const temporalReprojectNode = temporalReproject( giTexture, scenePassDepth, scenePassNormal, scenePassVelocity, camera, { accumulate: true } );
+
+				const accumulated = upsample( temporalReprojectNode.getTextureNode().toInspector( 'Temporal Accumulation' ) );
+
 				// composite
 
-				const ao = upsample( giPass.getAONode().toInspector( 'SSGI.AO' ) ).r;
-				const gi = upsample( giPass.getGINode().toInspector( 'SSGI.GI' ) ).rgb;
+				const ao = accumulated.a.oneMinus();
+				const gi = accumulated.rgb;
 
 				const compositePass = vec4( add( scenePassColor.rgb.mul( ao ), ( scenePassDiffuse.rgb.mul( gi.rgb ) ) ), scenePassColor.a );
 				compositePass.name = 'Composite';
@@ -277,7 +293,9 @@
 					updateDownsample();
 
 				} );
-				const upsamplerControl = downsampleGui.add( downsampleParams, 'upsampler', [ 'Bilinear', 'Joint bilateral' ] ).onChange( ( value ) => depthTolerance.value = ( value === 'Bilinear' ) ? 1e6 : 0.005 ).hide();
+				const upsamplerControl = downsampleGui.add( downsampleParams, 'upsampler', [ 'Bilinear', 'Joint bilateral' ] ).onChange( ( value ) => depthTolerance.value = ( value === 'Bilinear' ) ? 1e6 : 0.005 );
+
+				updateDownsample();
 
 				const giGui = renderer.inspector.createParameters( 'SSGI' );
 				giGui.add( giPass.sliceCount, 'value', 1, 4, 1 ).name( 'slice count' );

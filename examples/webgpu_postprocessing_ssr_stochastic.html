@@ -100,9 +100,10 @@
 
 			ssr: {
 				adaptive: true, adaptiveSteps: 64, occlusionSkipping: true, roughMinLevel: 0,
-				coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTracing: true, coneValidate: false, cameraRayThreshold: 0, rayReuse: true,
+				coneEnabled: true, coneMaxLevel: 5, coneSamples: 4, coneTaps: 2, coneTracing: true, coneValidate: false, cameraRayThreshold: 0, rayReuse: true,
 				quality: 0.25,
 				mirrorBias: 0.7,
+				mirrorRoughnessStart: 0.3, mirrorRoughnessEnd: 0.6, mirrorJitter: 0.1,
 				maxDistance: 5,
 				thickness: 0,
 				maxLuminance: 35,
@@ -411,7 +412,8 @@
 			coneGui.add( params.ssr, 'coneEnabled' ).name( 'Enabled' ).onChange( updateCone );
 			const coneControllers = [
 				coneGui.add( params.ssr, 'coneMaxLevel', 1, 8, 1 ).name( 'Max mip' ).onChange( applyParams ),
-				coneGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Samples' ).onChange( applyParams )
+				coneGui.add( params.ssr, 'coneSamples', 1, 32, 1 ).name( 'Samples' ).onChange( applyParams ),
+				coneGui.add( params.ssr, 'coneTaps', 0, 16, 1 ).name( 'Taps' ).onChange( applyParams )
 			];
 			updateCone();
 
@@ -448,6 +450,9 @@
 
 			const advancedGui = renderer.inspector.createParameters( 'SSR advanced' ).close();
 			advancedGui.add( params.ssr, 'mirrorBias', 0, 1 ).name( 'Mirror bias' ).onChange( applyParams );
+			advancedGui.add( params.ssr, 'mirrorRoughnessStart', 0, 1 ).name( 'Mirror rough. start' ).onChange( applyParams );
+			advancedGui.add( params.ssr, 'mirrorRoughnessEnd', 0, 1 ).name( 'Mirror rough. end' ).onChange( applyParams );
+			advancedGui.add( params.ssr, 'mirrorJitter', 0, 1 ).name( 'Mirror jitter' ).onChange( applyParams );
 
 			// Concise UI for Directional Light controls
 			const lightGui = renderer.inspector.createParameters( 'Light' ).close();
@@ -472,12 +477,16 @@
 			ssrNode.roughMinLevel = params.ssr.roughMinLevel;
 			ssrNode.coneTracing = params.ssr.coneTracing;
 			ssrNode.coneValidate = params.ssr.coneValidate;
+			ssrNode.coneTaps = params.ssr.coneTaps;
 			ssrNode.cameraRayThreshold.value = params.ssr.cameraRayThreshold;
 			ssrNode.rayReuse = params.ssr.rayReuse;
 			ssrNode.adaptiveMaxSteps.value = params.ssr.adaptiveSteps;
 			ssrNode.occlusionSkipping = params.ssr.occlusionSkipping;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
+			ssrNode.mirrorRoughnessStart.value = params.ssr.mirrorRoughnessStart;
+			ssrNode.mirrorRoughnessEnd.value = params.ssr.mirrorRoughnessEnd;
+			ssrNode.mirrorJitter.value = params.ssr.mirrorJitter;
 			ssrNode.coneMaxLevel.value = params.ssr.coneEnabled ? params.ssr.coneMaxLevel : 0;
 			ssrNode.coneSamples.value = params.ssr.coneSamples;
 			// stepExponent / binaryRefine are build-time constants: assigning

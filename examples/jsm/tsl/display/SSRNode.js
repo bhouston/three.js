@@ -1,7 +1,7 @@
 import { Break, Continue, Fn, If, abs, bool, cos, cross, distance, dot, float, getScreenPosition, getViewPosition, int, ivec2, luminance, max, min, mix, mul, nodeObject, normalize, outputStruct, passTexture, property, reference, reflect, roughness as surfaceRoughness, screenUV, sin, sqrt, sub, texture, textureLoad, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, log2, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
 import { FloatType, HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NearestFilter, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
-import { D_GTR, ENV_RAY_LENGTH, F_Schlick, GeometryTerm, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
+import { D_GTR, ENV_RAY_LENGTH, F_Schlick, GGXVNDFPdf, GeometryTerm, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
 import { hiZ } from './HiZNode.js';
 import { traceHiZ } from '../utils/SSRAdaptiveTrace.js';
@@ -110,6 +110,7 @@ class SSRNode extends Node {
 		this._occlusionSkipping = options.occlusionSkipping ?? true;
 		this._showIterations = false;
 		this._showConeMip = false;
+		this._coneTaps = options.coneTaps ?? 0;
 		this.hiZ = options.hiZ ?? null;
 		this._ownsHiZ = false;
 		if ( this._tracing === 'adaptive' && this.hiZ === null ) {
@@ -221,6 +222,36 @@ class SSRNode extends Node {
 		 * @default 0
 		 */
 		this.mirrorBias = uniform( 0 );
+
+		/**
+		 * Stochastic mode only: roughness at which the rays start to turn from their GGX sample
+		 * toward the mirror direction. Rough lobes lose most of their rays off screen; a mirror ray
+		 * whose cone stands for the whole lobe (see {@link SSRNode#coneMaxLevel}) fills those pixels
+		 * with an approximate, blurred reflection instead.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 1
+		 */
+		this.mirrorRoughnessStart = uniform( 1 );
+
+		/**
+		 * Stochastic mode only: roughness from which every ray is the mirror ray. The default
+		 * of `1`, together with {@link SSRNode#mirrorRoughnessStart}, disables the transition.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 1
+		 */
+		this.mirrorRoughnessEnd = uniform( 1 );
+
+		/**
+		 * Stochastic mode only: fraction of the GGX spread the rays keep once they have turned
+		 * to the mirror direction. A slight jitter breaks up the blocks of the coarse mips a
+		 * pure mirror ray reads. Range `[0,1]`.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 0.1
+		 */
+		this.mirrorJitter = uniform( 0.1 );
 
 		/**
 		 * Stochastic mode only: the largest cosine between a ray and the direction to the camera
@@ -637,6 +668,29 @@ class SSRNode extends Node {
 
 		if ( value === this._showConeMip ) return;
 		this._showConeMip = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Stochastic mode only: number of beauty taps a hit reads, spread over the disc of its cone
+	 * with Gaussian weights and rotated per pixel. Each tap reads the mip of its share of the
+	 * disc, so more taps read finer mips. `0` reads the disc with a single tap of a coarse mip.
+	 * Changing it recompiles the SSR material.
+	 *
+	 * @type {number}
+	 * @default 0
+	 */
+	get coneTaps() {
+
+		return this._coneTaps;
+
+	}
+
+	set coneTaps( value ) {
+
+		if ( value === this._coneTaps ) return;
+		this._coneTaps = value;
 		this._buildSSRMaterial();
 
 	}
@@ -1060,7 +1114,7 @@ class SSRNode extends Node {
 			const V = viewIncidentDir.negate().normalize().toVar();
 
 			let viewReflectDir, specDominantFactor;
-			let coneTangent = null;
+			let coneTangent = null, traceTangent = null;
 
 			if ( this.stochastic === false ) {
 
@@ -1082,15 +1136,26 @@ class SSRNode extends Node {
 
 				} );
 
-				viewReflectDir = ggxSample.get( 'reflectDir' ).toVar();
+				// Rough lobes turn into the mirror ray, which fills more pixels than rays lost off screen.
+				// ponytail: the mirror direction, not the lobe's dominant direction (which leans to the normal when rough).
+				const mirror = roughness.sub( this.mirrorRoughnessStart ).div( this.mirrorRoughnessEnd.sub( this.mirrorRoughnessStart ).max( 1e-4 ) ).clamp().mul( this.mirrorJitter.oneMinus() ).toVar();
+
+				viewReflectDir = mix( ggxSample.get( 'reflectDir' ), reflect( viewIncidentDir, viewNormal ), mirror ).normalize().toVar();
+
+				// the pdf of the direction that is traced, which ray reuse weights it by
+				const pdf = GGXVNDFPdf( dot( viewNormal, normalize( V.add( viewReflectDir ) ) ).max( 0 ), ggxSample.get( 'NdotV' ), ggxSample.get( 'alpha' ) ).toVar();
+
 				// Cone footprint (filtered importance sampling): the ray stands for
-				// 1 / ( coneSamples * pdf ) steradians of the lobe.
-				coneTangent = ggxSample.get( 'pdf' ).mul( this.coneSamples ).mul( Math.PI ).max( 1e-6 ).inverseSqrt().toVar();
+				// 1 / ( coneSamples * pdf ) steradians of the lobe, and a mirror ray for all of it.
+				coneTangent = pdf.mul( mix( this.coneSamples, 1, mirror ) ).mul( Math.PI ).max( 1e-6 ).inverseSqrt().toVar();
+
+				// A mirror ray is traced as a thin ray: hits quantized to Hi-Z cells of its wide cone show as blocks.
+				traceTangent = coneTangent.mul( mirror.oneMinus() ).toVar();
 				specDominantFactor = getSpecularDominantFactor( ggxSample.get( 'NdotV' ), roughness ).toVar();
 
 				// a miss is stored as a hit far along the ray, so a neighbor sees it in the same direction
 
-				if ( this._reusesRays ) this._hitData.assign( vec4( viewPosition.add( viewReflectDir.mul( ENV_RAY_LENGTH ) ), ggxSample.get( 'pdf' ) ) );
+				if ( this._reusesRays ) this._hitData.assign( vec4( viewPosition.add( viewReflectDir.mul( ENV_RAY_LENGTH ) ), pdf ) );
 
 			}
 
@@ -1243,7 +1308,7 @@ class SSRNode extends Node {
 						maxSteps: this.adaptiveMaxSteps,
 						// Cone tracing: cells no larger than the footprint radius, taking pixels travelled
 						// on screen as the distance (exact for rays parallel to the screen).
-						minLevel: this.stochastic && this.coneTracing ? travelled => int( log2( travelled.mul( coneTangent ).max( 1 ) ).min( this.coneMaxLevel ) )
+						minLevel: this.stochastic && this.coneTracing ? travelled => int( log2( travelled.mul( traceTangent ).max( 1 ) ).min( this.coneMaxLevel ) )
 							: this.stochastic && this.roughMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.roughMinLevel ), int( 0 ) ) : 0,
 						coarseHits: this.stochastic && this.coneTracing,
 						depthTolerance: 2e-7,
@@ -1361,8 +1426,35 @@ class SSRNode extends Node {
 						const pixelSize = getViewPosition( uvS.add( uvPixelStepX ), hitD, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).abs().max( 1e-6 );
 						// `pixelSize` is a texel of the pass, the mips are those of the beauty pass
 						const colorScale = float( textureSize( this.colorNode ).x ).div( this._resolution.x );
-						coneLod.assign( log2( radius.mul( 2 ).div( pixelSize ).mul( colorScale ) ).clamp( 0, this.coneMaxLevel ) );
+						const diameter = radius.mul( 2 ).div( pixelSize ).toVar(); // in pixels of the pass
+						coneLod.assign( log2( diameter.mul( colorScale ) ).clamp( 0, this.coneMaxLevel ) );
 						reflectSample = reflectSample.level( coneLod );
+
+						if ( this.coneTaps > 0 ) {
+
+							// A Gaussian over the disc, as a spiral of taps that each read the mip of their share of it.
+
+							const taps = this.coneTaps;
+							const tapLod = log2( diameter.mul( colorScale ).div( Math.sqrt( taps ) ) ).clamp( 0, this.coneMaxLevel ).toVar();
+							const rotation = noise.w.mul( 2 * Math.PI ).toVar();
+							const sum = vec4( 0 ).toVar();
+							let total = 0;
+
+							for ( let i = 0; i < taps; i ++ ) {
+
+								const r = Math.sqrt( ( i + 0.5 ) / taps );
+								const weight = Math.exp( - 2 * r * r );
+								const angle = rotation.add( i * 2.399963 );
+								const offset = vec2( cos( angle ), sin( angle ) ).mul( diameter.mul( 0.5 * r ) ).div( this._resolution );
+
+								sum.addAssign( this.colorNode.sample( uvS.add( offset ) ).level( tapLod ).mul( weight ) );
+								total += weight;
+
+							}
+
+							reflectSample = sum.div( total );
+
+						}
 
 					}
 

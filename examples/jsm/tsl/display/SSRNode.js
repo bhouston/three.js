@@ -110,7 +110,7 @@ class SSRNode extends Node {
 		this._occlusionSkipping = options.occlusionSkipping ?? true;
 		this._showIterations = false;
 		this._showConeMip = false;
-		this._coneTaps = options.coneTaps ?? 0;
+		this._coneTaps = options.coneTaps ?? 2;
 		this.hiZ = options.hiZ ?? null;
 		this._ownsHiZ = false;
 		if ( this._tracing === 'adaptive' && this.hiZ === null ) {
@@ -679,7 +679,7 @@ class SSRNode extends Node {
 	 * Changing it recompiles the SSR material.
 	 *
 	 * @type {number}
-	 * @default 0
+	 * @default 2
 	 */
 	get coneTaps() {
 

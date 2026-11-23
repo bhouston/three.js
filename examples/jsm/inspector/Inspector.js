@@ -467,6 +467,12 @@ class Inspector extends RendererInspector {
 		data.cpu = this.getAverageDeltaTime( data, 'cpu' );
 		data.gpu = this.getAverageDeltaTime( data, 'gpu' );
 
+		for ( const property of [ 'cpuFrameStart', 'cpuFrameEnd', 'gpuFrameStart', 'gpuFrameEnd' ] ) {
+
+			data[ property ] = this.getAverageDeltaTime( data, property, true );
+
+		}
+
 		// children: the CPU and GPU time of a render or compute call include the calls nested in it
 
 		for ( const child of stats.children ) {
@@ -485,7 +491,7 @@ class Inspector extends RendererInspector {
 
 	}
 
-	getAverageDeltaTime( statsData, property, frames = this.fps ) {
+	getAverageDeltaTime( statsData, property, includeZero = false, frames = this.fps ) {
 
 		const statsArray = statsData.stats;
 
@@ -497,9 +503,9 @@ class Inspector extends RendererInspector {
 			const stats = statsArray[ i ];
 			const value = stats[ property ];
 
-			if ( value > 0 ) {
+			if ( value > 0 || ( includeZero && value === 0 ) ) {
 
-				// ignore invalid values
+				// ignore invalid values, a time of zero is one unless it is a valid result
 
 				sum += value;
 				count ++;
@@ -545,20 +551,19 @@ class Inspector extends RendererInspector {
 		if ( ! previousFrame ) return;
 
 		frame.cpu = 0;
-		frame.gpu = 0;
-		frame.total = 0;
 
 		for ( const stats of frame.children ) {
 
 			this.resolveStats( stats );
 
-			const data = this.getStatsData( stats.cid );
-
-			frame.cpu += data.cpu;
-			frame.gpu += data.gpu;
-			frame.total += data.total;
+			frame.cpu += this.getStatsData( stats.cid ).cpu;
 
 		}
+
+		// the GPU can overlap the calls, so the GPU time of the frame is the time it was busy and not their sum
+
+		frame.gpu = this.getAverageDeltaTime( { stats: this.frames }, 'gpuBusy' );
+		frame.total = frame.cpu + frame.gpu;
 
 		// the time since the last frame which rendered, see RendererInspector.finish()
 

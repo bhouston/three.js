@@ -13,7 +13,13 @@ class ObjectStats {
 		this.timer = null;
 		this.cpu = 0;
 		this.gpu = 0;
+		this.gpuStart = null; // GPU timestamps, only comparable with each other and null in WebGL
+		this.gpuEnd = null;
 		this.gpuNotAvailable = false;
+		this.cpuFrameStart = 0; // since the start of the frame
+		this.cpuFrameEnd = 0;
+		this.gpuFrameStart = null;
+		this.gpuFrameEnd = null;
 		this.fps = 0;
 
 		this.children = [];
@@ -68,6 +74,52 @@ class ComputeStats extends ObjectStats {
 		this.isComputeStats = true;
 
 	}
+
+}
+
+// returns the time the GPU was busy with the given calls: the union of their spans, since the GPU can
+// overlap them, or the sum of their times without timestamps
+
+function getBusyTime( children ) {
+
+	const spans = children.filter( ( stats ) => stats.gpuStart !== null ).sort( ( a, b ) => a.gpuStart - b.gpuStart );
+
+	if ( spans.length === 0 ) return children.reduce( ( sum, stats ) => sum + stats.gpu, 0 );
+
+	let busy = 0;
+	let end = - Infinity;
+
+	for ( const { gpuStart, gpuEnd } of spans ) {
+
+		if ( gpuEnd > end ) {
+
+			busy += gpuEnd - Math.max( gpuStart, end );
+			end = gpuEnd;
+
+		}
+
+	}
+
+	return busy;
+
+}
+
+// sets the times of the call since the start of the frame: the animation loop for the CPU and the first
+// pass for the GPU, since their clocks can't be compared
+
+function resolveFrameTimes( stats, frame ) {
+
+	stats.cpuFrameStart = stats.timestamp - frame.startTime;
+	stats.cpuFrameEnd = stats.cpuFrameStart + stats.cpu;
+
+	if ( stats.gpuStart !== null ) {
+
+		stats.gpuFrameStart = stats.gpuStart - frame.gpuStart;
+		stats.gpuFrameEnd = stats.gpuEnd - frame.gpuStart;
+
+	}
+
+	for ( const child of stats.children ) resolveFrameTimes( child, frame );
 
 }
 
@@ -311,6 +363,8 @@ export class RendererInspector extends InspectorBase {
 			} else {
 
 				stats.gpu = gpu.delta;
+				stats.gpuStart = gpu.start;
+				stats.gpuEnd = gpu.end;
 
 			}
 
@@ -325,6 +379,11 @@ export class RendererInspector extends InspectorBase {
 	_resolveFrameIfComplete( frame ) {
 
 		if ( frame.finished === true && frame.pendingTimers === 0 && this.framesLib[ frame.frameId ] === frame ) {
+
+			frame.gpuBusy = getBusyTime( frame.children );
+			frame.gpuStart = frame.children.reduce( ( start, stats ) => stats.gpuStart !== null ? Math.min( start, stats.gpuStart ) : start, Infinity );
+
+			for ( const stats of frame.children ) resolveFrameTimes( stats, frame );
 
 			this.resolveFrame( frame );
 

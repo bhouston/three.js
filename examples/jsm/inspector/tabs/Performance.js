@@ -1,8 +1,31 @@
 import { Tab } from '../ui/Tab.js';
 import { List } from '../ui/List.js';
 import { Graph } from '../ui/Graph.js';
+import { FrameDiagram } from '../ui/FrameDiagram.js';
 import { Item } from '../ui/Item.js';
 import { createValueSpan, setText } from '../ui/utils.js';
+
+const HUES = 12;
+
+// returns one of a set of hues for the name without what follows a bracket or a dash, so the calls which
+// only differ by that share a hue, and keep it between frames and runs
+
+function getColor( name ) {
+
+	name = name.split( / \[| - / )[ 0 ];
+
+	let hash = 0;
+
+	for ( let i = 0; i < name.length; i ++ ) hash = Math.imul( hash ^ name.charCodeAt( i ), 16777619 );
+
+	// mix the bits, names often differ only by their last character
+
+	hash = Math.imul( hash ^ ( hash >>> 16 ), 0x85ebca6b );
+	hash ^= hash >>> 13;
+
+	return `oklch( 0.7 0.15 ${ ( hash >>> 0 ) % HUES * ( 360 / HUES ) } )`;
+
+}
 
 class Performance extends Tab {
 
@@ -56,6 +79,20 @@ class Performance extends Tab {
 
 		//
 
+		// the calls of the average frame over time, the ones the GPU overlaps are stacked
+
+		const frameDiagram = new FrameDiagram();
+
+		this.averageFrameDuration = createValueSpan();
+		const averageFrame = new Item( 'Average Frame', createValueSpan(), createValueSpan(), this.averageFrameDuration );
+		perfList.add( averageFrame );
+
+		const frameDiagramItem = new Item( frameDiagram.domElement );
+		frameDiagramItem.itemRow.childNodes[ 0 ].style.gridColumn = '1 / -1';
+		averageFrame.add( frameDiagramItem );
+
+		//
+
 		const frameStats = new Item( 'Frame Stats', createValueSpan(), createValueSpan(), createValueSpan() );
 		perfList.add( frameStats );
 
@@ -67,6 +104,7 @@ class Performance extends Tab {
 		//
 
 		this.notInUse = new Map();
+		this.frameDiagram = frameDiagram;
 		this.frameStats = frameStats;
 		this.graphStats = graphStats;
 		this.graph = graph;
@@ -80,7 +118,7 @@ class Performance extends Tab {
 
 	}
 
-	resolveStats( inspector, stats, budget = Infinity ) {
+	resolveStats( inspector, stats ) {
 
 		const data = inspector.getStatsData( stats.cid );
 
@@ -139,15 +177,10 @@ class Performance extends Tab {
 
 		}
 
-		// A row never shows more GPU time than its parent, see updateText()
-
-		const displayGpu = stats.gpuNotAvailable === true ? 0 : Math.min( data.gpu, budget );
-		const displayTotal = data.cpu + displayGpu;
-
 		setText( item.data[ 0 ], name );
 		setText( item.data[ 1 ], data.cpu.toFixed( 2 ) );
-		setText( item.data[ 2 ], stats.gpuNotAvailable === true ? '-' : displayGpu.toFixed( 2 ) );
-		setText( item.data[ 3 ], displayTotal.toFixed( 2 ) );
+		setText( item.data[ 2 ], stats.gpuNotAvailable === true ? '-' : data.gpu.toFixed( 2 ) );
+		setText( item.data[ 3 ], data.total.toFixed( 2 ) );
 
 		//
 
@@ -155,17 +188,45 @@ class Performance extends Tab {
 
 		this.currentItem = item;
 
-		const childBudget = stats.gpuNotAvailable === true ? budget : displayGpu;
-
 		for ( const child of stats.children ) {
 
-			this.resolveStats( inspector, child, childBudget );
+			this.resolveStats( inspector, child );
 
 		}
 
 		this.currentItem = previousItem;
 
 		this.frameItems.set( stats.cid, item );
+
+	}
+
+	updateFrameDiagram( inspector, frame ) {
+
+		const createSpans = ( children, type ) => children.filter( ( stats ) => type === 'cpu' || stats.gpuStart !== null ).map( ( stats ) => {
+
+			const data = inspector.getStatsData( stats.cid );
+
+			return {
+				key: stats.cid,
+				name: stats.name,
+				color: getColor( stats.name ),
+				start: data[ type + 'FrameStart' ],
+				end: data[ type + 'FrameEnd' ],
+				children: createSpans( stats.children, type )
+			};
+
+		} );
+
+		const tracks = { CPU: createSpans( frame.children, 'cpu' ), GPU: createSpans( frame.children, 'gpu' ) };
+
+		// the diagram shows a frame period, or more if the frame takes longer on the GPU
+
+		const period = inspector.fps > 0 ? 1000 / inspector.fps : 0;
+		const duration = Math.max( period, ...tracks.CPU.map( ( span ) => span.end ), ...tracks.GPU.map( ( span ) => span.end ) );
+
+		this.frameDiagram.update( tracks, duration, period );
+
+		setText( this.averageFrameDuration, duration.toFixed( 2 ) + ' ms' );
 
 	}
 
@@ -234,20 +295,17 @@ class Performance extends Tab {
 
 		this.frameItems.clear();
 
-		// GPU timestamps can sum to more than the frame time when the GPU overlaps passes, so cap the display at
-		// the frame time, and cap each row at its parent's value
-
 		const hasTimestamp = inspector.getRenderer().backend.hasTimestamp;
-		const gpuBudget = hasTimestamp ? Math.min( frame.gpu, frame.deltaTime ) : 0;
-		const totalDisplay = frame.cpu + gpuBudget;
 
 		this.currentItem = this.frameStats;
 
 		for ( const child of frame.children ) {
 
-			this.resolveStats( inspector, child, gpuBudget );
+			this.resolveStats( inspector, child );
 
 		}
+
+		this.updateFrameDiagram( inspector, frame );
 
 		// remove unused frame items
 
@@ -278,8 +336,8 @@ class Performance extends Tab {
 		//
 
 		setText( this.frameStats.data[ 1 ], frame.cpu.toFixed( 2 ) );
-		setText( this.frameStats.data[ 2 ], hasTimestamp ? gpuBudget.toFixed( 2 ) : '-' );
-		setText( this.frameStats.data[ 3 ], totalDisplay.toFixed( 2 ) );
+		setText( this.frameStats.data[ 2 ], hasTimestamp ? frame.gpu.toFixed( 2 ) : '-' );
+		setText( this.frameStats.data[ 3 ], frame.total.toFixed( 2 ) );
 
 		//
 

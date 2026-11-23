@@ -104,12 +104,12 @@ function getBusyTime( children ) {
 
 }
 
-// sets the times of the call since the start of the frame: the animation loop for the CPU and the first
-// pass for the GPU, since their clocks can't be compared
+// sets the times of the call since the start of the frame: its first call for the CPU and its first pass
+// for the GPU, since their clocks can't be compared
 
 function resolveFrameTimes( stats, frame ) {
 
-	stats.cpuFrameStart = stats.timestamp - frame.startTime;
+	stats.cpuFrameStart = stats.timestamp - frame.children[ 0 ].timestamp;
 	stats.cpuFrameEnd = stats.cpuFrameStart + stats.cpu;
 
 	if ( stats.gpuStart !== null ) {

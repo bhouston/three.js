@@ -3728,11 +3728,15 @@ class Renderer {
 			const hasCastShadowNode = material.castShadowNode && material.castShadowNode.isNode;
 			const hasMaskNode = ( material.maskShadowNode && material.maskShadowNode.isNode ) || ( material.maskNode && material.maskNode.isNode );
 
+			// the alpha of the map and of the color node only matters when it can discard or blend: for an opaque material
+			// it would compile (and evaluate) the whole color graph into the shadow pass for a value nothing reads
+			const usesAlpha = material.transparent === true || material.alphaTest > 0;
+
 			let positionNode = null;
 			let colorNode = null;
 			let depthNode = null;
 
-			if ( hasMap || hasColorNode || hasCastShadowNode || hasMaskNode ) {
+			if ( ( usesAlpha && ( hasMap || hasColorNode ) ) || hasCastShadowNode || hasMaskNode ) {
 
 				let shadowRGB;
 				let shadowAlpha;
@@ -3755,13 +3759,13 @@ class Renderer {
 
 				}
 
-				if ( hasMap ) {
+				if ( hasMap && usesAlpha ) {
 
 					shadowAlpha = shadowAlpha.mul( reference( 'map', 'texture', material ).a );
 
 				}
 
-				if ( hasColorNode ) {
+				if ( hasColorNode && usesAlpha ) {
 
 					shadowAlpha = shadowAlpha.mul( material.colorNode.a );
 

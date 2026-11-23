@@ -1,6 +1,6 @@
 import { HalfFloatType, Vector2, RenderTarget, RendererUtils, QuadMesh, NodeMaterial, Node, NodeUpdateType, Matrix4 } from 'three/webgpu';
-import { float, Fn, max, texture, uniform, uv, vec4, convertToTexture, passTexture, velocity, ivec2, mix, smoothstep, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
-import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCurrentDepth } from '../utils/TAAUtils.js';
+import { float, Fn, max, texture, uniform, uv, vec2, vec4, convertToTexture, passTexture, velocity, ivec2, mix, smoothstep, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
+import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCatmullRom, sampleCurrentDepth } from '../utils/TAAUtils.js';
 import { Reprojection } from '../../utils/Reprojection.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
@@ -112,6 +112,16 @@ class TRAANode extends Node {
 		 * @default 128
 		 */
 		this.maxVelocityLength = 128;
+
+		/**
+		 * How the reprojected history is sampled. `'linear'` uses a single bilinear fetch which is cheaper
+		 * but blurs the image under motion, since the history is resampled every frame. `'catmull-rom'`
+		 * uses a 5-tap Catmull-Rom filter that keeps the history sharp.
+		 *
+		 * @type {('linear'|'catmull-rom')}
+		 * @default 'catmull-rom'
+		 */
+		this.historySampling = 'catmull-rom';
 
 		/**
 		 * Whether to decrease the weight on the current frame when the velocity is more subpixel.
@@ -559,7 +569,7 @@ class TRAANode extends Node {
 			// sample the current and previous colors
 
 			const currentColor = this.beautyNode.sample( uvNode );
-			const historyColor = historyNode.sample( historyUV );
+			const historyColor = this.historySampling === 'catmull-rom' ? sampleCatmullRom( historyNode, historyUV, vec2( textureSize ) ) : historyNode.sample( historyUV );
 
 			// increase the weight towards the current frame under motion
 

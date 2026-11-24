@@ -19,7 +19,7 @@
 				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Surfel Global Illumination</span>
 			</div>
 
-			<small>Real-time multi-bounce diffuse GI from surfels with precomputed transfer.<br/><span id="status"></span></small>
+			<small>Real-time multi-bounce diffuse GI from surfels with precomputed transfer.<br/><span id="status"></span><br/><span id="selection"></span></small>
 		</div>
 
 		<script type="importmap">
@@ -28,7 +28,8 @@
 					"three": "../build/three.webgpu.js",
 					"three/webgpu": "../build/three.webgpu.js",
 					"three/tsl": "../build/three.tsl.js",
-					"three/addons/": "./jsm/"
+					"three/addons/": "./jsm/",
+					"three-mesh-bvh/webgpu": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.18/src/webgpu/index.js"
 				}
 			}
 		</script>
@@ -36,7 +37,9 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { materialColor, materialEmissive, mrt, normalWorldGeometry, positionWorld, texture, uniform, uv, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, cross, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, positionWorld, select, storage, texture, uint, uniform, uv, uvec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
+
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
@@ -56,15 +59,30 @@
 
 			const SPONZA_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Sponza/glTF/Sponza.gltf';
 
-			let camera, scene, renderer, controls, timer, status;
+			let camera, scene, renderer, controls, timer, status, selection;
 			let sky, sun, cubeCamera, world, rendererState;
 
 			const atlasCamera = new THREE.OrthographicCamera();
+			const raycaster = new THREE.Raycaster();
+			const pointer = new THREE.Vector2(), pointerDown = new THREE.Vector2();
+			const linkMaterial = new THREE.LineBasicNodeMaterial( { vertexColors: true } );
 
 			// the atlas of the light map, and how many of its texels a surfel spans
 
 			const ATLAS_SIZES = [ 1024, 2048, 4096 ];
 			const SURFEL_TEXELS = 4;
+
+			// the transfer bake: rays per surfel (a power of two), links kept per surfel, and surfels traced per
+			// dispatch. A ray ends as a miss, on a back face, on a texel without a surfel, or on surfel j as j + 3
+
+			const RAYS = 256;
+			const LINKS = 64;
+			const BATCH = 8192;
+			const MISS = 0, BACKFACE = 1, UNKNOWN = 2;
+
+			// SH basis of L2 in the order of THREE.SphericalHarmonics3
+
+			const shBasis = ( x, y, z ) => [ 0.282095, 0.488603 * y, 0.488603 * z, 0.488603 * x, 1.092548 * x * y, 1.092548 * y * z, 0.315392 * ( 3 * z * z - 1 ), 1.092548 * x * z, 0.546274 * ( x * x - y * y ) ];
 
 			const params = {
 				scene: 'Cornell Box',
@@ -80,7 +98,7 @@
 
 			if ( location.hash ) Object.assign( params, JSON.parse( decodeURIComponent( location.hash.slice( 1 ) ) ) );
 
-			const views = [ 'Beauty', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
+			const views = [ 'Beauty', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
 
 			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Dungeon': loadDungeon, 'Sponza': loadSponza };
 			const worlds = {};
@@ -117,6 +135,10 @@
 				controls = new OrbitControls( camera, renderer.domElement );
 
 				status = document.getElementById( 'status' );
+				selection = document.getElementById( 'selection' );
+
+				renderer.domElement.addEventListener( 'pointerdown', ( event ) => pointerDown.set( event.clientX, event.clientY ) );
+				renderer.domElement.addEventListener( 'pointerup', onPointerUp );
 
 				// Sky, sun and the environment captured from the sky. The sky is on layer 1 as well, which is all
 				// that the cube camera sees
@@ -229,6 +251,10 @@
 			async function bake() {
 
 				const baked = world;
+				const id = baked.bakeId = ( baked.bakeId ?? 0 ) + 1;
+
+				baked.transfer = undefined;
+				selectSurfel( baked, - 1 );
 				const meshes = [];
 				world.root.traverse( ( object ) => object.isMesh && object !== world.surfelMesh && meshes.push( object ) );
 
@@ -258,7 +284,6 @@
 				baked.atlas = { layout, meshes, target: renderAtlas( meshes, layout.resolution ), views: {} };
 
 				const texelSize = 1 / layout.texelsPerUnit;
-				const atlasTime = performance.now() - start;
 
 				// surfels from the atlas, read back to the CPU
 
@@ -267,15 +292,339 @@
 
 				baked.surfels = placeSurfels( { position, normal, albedo, emissive, size, texelSize }, baked.detailSize );
 
+				// baked again meanwhile
+
+				if ( baked.bakeId !== id ) return;
+
 				createSurfelMesh( baked );
 
-				// another scene was picked meanwhile
+				const summary = `${ ( baked.bounds.radius * 2 ).toFixed( 0 ) } m scene, ${ meshes.length } meshes, ${ layout.charts.length } charts, ${ size }² atlas, ${ texelSize.toFixed( 3 ) } m texels, ${ baked.surfels.count } surfels`;
+				const report = ( text ) => {
 
-				if ( baked !== world ) return;
+					if ( baked === world ) status.textContent = `${ summary }, ${ text }`;
 
-				status.textContent = `${ ( baked.bounds.radius * 2 ).toFixed( 0 ) } m scene, ${ meshes.length } meshes, ${ layout.charts.length } charts, ${ size }² atlas, ${ texelSize.toFixed( 3 ) } m texels, ${ baked.surfels.count } surfels, baked in ${ Math.round( atlasTime ) } + ${ Math.round( performance.now() - start - atlasTime ) } ms`;
+				};
 
-				setView();
+				report( 'tracing…' );
+
+				if ( baked === world ) setView();
+
+				// transfer between the surfels and from the sky
+
+				const transfer = await bakeTransfer( baked, ( done ) => report( `tracing ${ Math.round( done * 100 ) }%` ), () => baked.bakeId !== id );
+
+				if ( transfer === null ) return;
+
+				baked.transfer = transfer;
+
+				report( `${ ( transfer.indices.length / baked.surfels.count ).toFixed( 1 ) } links per surfel, ${ transfer.buried } buried, ${ ( transfer.unknown * 100 ).toFixed( 1 ) }% of hits without a surfel, baked in ${ ( ( performance.now() - start ) / 1000 ).toFixed( 1 ) } s` );
+
+				if ( baked === world ) setView();
+
+			}
+
+			// Transfer bake: cosine-distributed rays from each surfel, traced on the GPU through a BVH of the scene.
+			// The surfel of a hit is the one of its light map texel. The hits are read back and reduced on the CPU
+			// to the links with the largest share of the rays, and the misses to the SH of the visible sky
+
+			async function bakeTransfer( world, onProgress, cancelled ) {
+
+				const { surfels, atlas, detailSize } = world;
+				const { count, texelMap } = surfels;
+				const size = atlas.layout.resolution;
+
+				// world space triangles that are not shared, so each one carries its light map UVs. Mirrored
+				// transforms flip the winding
+
+				const positions = [], uvs = [];
+				const vertex = new THREE.Vector3();
+
+				for ( const mesh of atlas.meshes ) {
+
+					const position = mesh.geometry.getAttribute( 'position' );
+					const uv1 = mesh.geometry.getAttribute( 'uv1' );
+					const index = mesh.geometry.getIndex();
+					const order = mesh.matrixWorld.determinant() < 0 ? [ 0, 2, 1 ] : [ 0, 1, 2 ];
+					const vertices = index !== null ? index.count : position.count;
+
+					for ( let i = 0; i + 2 < vertices; i += 3 ) {
+
+						for ( const o of order ) {
+
+							const v = index !== null ? index.getX( i + o ) : i + o;
+
+							vertex.fromBufferAttribute( position, v ).applyMatrix4( mesh.matrixWorld );
+							positions.push( vertex.x, vertex.y, vertex.z );
+							uvs.push( uv1.getX( v ), uv1.getY( v ) );
+
+						}
+
+					}
+
+				}
+
+				const geometry = new THREE.BufferGeometry();
+				geometry.setAttribute( 'position', new THREE.BufferAttribute( new Float32Array( positions ), 3 ) );
+				geometry.setAttribute( 'uv1', new THREE.BufferAttribute( new Float32Array( uvs ), 2 ) );
+				geometry.setIndex( new THREE.BufferAttribute( new Uint32Array( positions.length / 3 ).map( ( value, i ) => i ), 1 ) );
+
+				const bvh = new BVHComputeData( geometry, { attributes: { position: 'vec4f', uv1: 'vec2f' } } );
+				bvh.update();
+
+				// the closest hit of a ray: its barycentric coordinates and its triangle plus one, negated for back
+				// faces, or zeros if nothing is hit. And the light map UV of a hit
+
+				const { raycastFirstHit, sampleTrianglePoint } = bvh.fns;
+
+				const trace = wgslTagFn/* wgsl */`
+					// fn
+					fn surfelTrace( origin: vec3f, direction: vec3f ) -> vec3f {
+
+						var ray: ${ rayStruct };
+						ray.origin = origin;
+						ray.direction = direction;
+						ray.maxDist = 0.0;
+
+						var hit: ${ rayIntersectionResultStruct };
+						${ raycastFirstHit }( ray, &hit );
+
+						if ( ! hit.didHit ) {
+
+							return vec3f( 0.0 );
+
+						}
+
+						return vec3f( hit.barycoord.yz, hit.side * ( f32( hit.indices.x / 3u ) + 1.0 ) );
+
+					}
+				`;
+
+				const surface = wgslTagFn/* wgsl */`
+					// fn
+					fn surfelSurface( hit: vec3f ) -> vec2f {
+
+						let vertex = ( u32( abs( hit.z ) ) - 1u ) * 3u;
+
+						return ${ sampleTrianglePoint }( vec3f( 1.0 - hit.x - hit.y, hit.xy ), vec3u( vertex, vertex + 1u, vertex + 2u ) ).uv1;
+
+					}
+				`;
+
+				// the rays of all surfels have the same cosine distribution around the normal, a golden angle
+				// spiral, turned by a different angle for each surfel
+
+				const directions = new Float32Array( RAYS * 4 );
+
+				for ( let r = 0; r < RAYS; r ++ ) {
+
+					const radius = Math.sqrt( ( r + 0.5 ) / RAYS ), angle = r * 2.399963;
+
+					directions.set( [ radius * Math.cos( angle ), radius * Math.sin( angle ), Math.sqrt( 1 - radius * radius ) ], r * 4 );
+
+				}
+
+				const origins = new Float32Array( count * 4 ), normals = new Float32Array( count * 4 ), tangents = new Float32Array( count * 4 );
+				const n = new THREE.Vector3(), t = new THREE.Vector3(), b = new THREE.Vector3();
+
+				// the rays start above the surface, by more than the rounding of the positions in the atlas
+
+				const epsilon = detailSize * 0.05 + world.bounds.radius * 0.001;
+
+				for ( let i = 0; i < count; i ++ ) {
+
+					n.fromArray( surfels.normal, i * 3 );
+					t.set( Math.abs( n.x ) < 0.9 ? 1 : 0, Math.abs( n.x ) < 0.9 ? 0 : 1, 0 ).cross( n ).normalize();
+					b.crossVectors( n, t );
+
+					const angle = ( ( i * 2654435761 ) >>> 0 ) / 2 ** 32 * Math.PI * 2;
+
+					t.multiplyScalar( Math.cos( angle ) ).addScaledVector( b, Math.sin( angle ) );
+
+					vertex.fromArray( surfels.position, i * 3 ).addScaledVector( n, epsilon ).toArray( origins, i * 4 );
+					n.toArray( normals, i * 4 );
+					t.toArray( tangents, i * 4 );
+
+				}
+
+				// one buffer of the origins, normals, tangents and ray directions, WebGPU allows 8 storage buffers per
+				// stage by default and the BVH takes some
+
+				const rayData = new Float32Array( ( count * 3 + RAYS ) * 4 );
+				rayData.set( origins );
+				rayData.set( normals, count * 4 );
+				rayData.set( tangents, count * 8 );
+				rayData.set( directions, count * 12 );
+
+				const buffer = ( array, itemSize, type ) => storage( new THREE.StorageBufferAttribute( array, itemSize ), type ).toReadOnly();
+
+				const rayBuffer = buffer( rayData, 4, 'vec4' );
+				const texelBuffer = buffer( texelMap, 1, 'uint' );
+
+				const hitAttribute = new THREE.StorageBufferAttribute( new Uint32Array( BATCH * RAYS ), 1 );
+				const hitBuffer = storage( hitAttribute, 'uint' );
+				const batchStart = uniform( 0, 'uint' );
+
+				const kernel = Fn( () => {
+
+					const i = instanceIndex.shiftRight( uint( Math.log2( RAYS ) ) ).add( batchStart ).min( uint( count - 1 ) );
+					const r = instanceIndex.bitAnd( uint( RAYS - 1 ) );
+
+					const normal = rayBuffer.element( i.add( uint( count ) ) ).xyz;
+					const tangent = rayBuffer.element( i.add( uint( count * 2 ) ) ).xyz;
+					const local = rayBuffer.element( r.add( uint( count * 3 ) ) ).xyz;
+					const direction = tangent.mul( local.x ).add( cross( normal, tangent ).mul( local.y ) ).add( normal.mul( local.z ) );
+
+					const hit = trace( rayBuffer.element( i ).xyz, direction ).toVar();
+					const result = uint( MISS ).toVar();
+
+					If( hit.z.notEqual( 0 ), () => {
+
+						const texel = uvec2( surface( hit ).mul( size ) ).min( uvec2( size - 1 ) ).toVar();
+						const entry = texelBuffer.element( texel.y.mul( uint( size ) ).add( texel.x ) ).toVar();
+						const surfel = entry.bitAnd( uint( 0x3fffffff ) );
+						const side = entry.shiftRight( uint( 30 ) );
+						const back = hit.z.lessThan( 0 );
+
+						result.assign( uint( UNKNOWN ) );
+
+						If( surfel.greaterThan( uint( 0 ) ), () => {
+
+							// the back of a double-sided surface is the next surfel, the back of other surfaces is inside
+
+							If( side.equal( uint( 2 ) ), () => {
+
+								result.assign( surfel.add( uint( 2 ) ).add( select( back, uint( 1 ), uint( 0 ) ) ) );
+
+							} ).ElseIf( side.equal( uint( 1 ) ).and( back ).or( side.equal( uint( 3 ) ).and( back.not() ) ), () => {
+
+								result.assign( uint( BACKFACE ) );
+
+							} ).Else( () => {
+
+								result.assign( surfel.add( uint( 2 ) ) );
+
+							} );
+
+						} );
+
+					} );
+
+					hitBuffer.element( instanceIndex ).assign( result );
+
+				} )().compute( BATCH * RAYS );
+
+				// reduce each batch
+
+				const offsets = new Uint32Array( count + 1 );
+				const indices = new Uint32Array( count * LINKS );
+				const weights = new Float32Array( count * LINKS );
+				const skyTransfer = new Float32Array( count * 9 );
+				const invalid = new Uint8Array( count );
+				const sorted = new Uint32Array( RAYS );
+				const runs = [];
+
+				let links = 0, buried = 0, unknownHits = 0, surfelHits = 0;
+
+				for ( let start = 0; start < count; start += BATCH ) {
+
+					batchStart.value = start;
+					renderer.compute( kernel );
+
+					const hits = new Uint32Array( await renderer.getArrayBufferAsync( hitAttribute ) );
+
+					if ( cancelled() ) break;
+
+					for ( let i = start; i < Math.min( start + BATCH, count ); i ++ ) {
+
+						const rays = hits.subarray( ( i - start ) * RAYS, ( i - start + 1 ) * RAYS );
+
+						// sky transfer: the misses are cosine distributed, so their SH basis only needs the scale
+
+						n.fromArray( normals, i * 4 );
+						t.fromArray( tangents, i * 4 );
+						b.crossVectors( n, t );
+
+						for ( let r = 0; r < RAYS; r ++ ) {
+
+							if ( rays[ r ] !== MISS ) continue;
+
+							vertex.set( 0, 0, 0 ).addScaledVector( t, directions[ r * 4 ] ).addScaledVector( b, directions[ r * 4 + 1 ] ).addScaledVector( n, directions[ r * 4 + 2 ] );
+
+							const basis = shBasis( vertex.x, vertex.y, vertex.z );
+
+							for ( let k = 0; k < 9; k ++ ) skyTransfer[ i * 9 + k ] += basis[ k ] * Math.PI / RAYS;
+
+						}
+
+						// the rays that each surfel received
+
+						sorted.set( rays );
+						sorted.sort();
+						runs.length = 0;
+
+						let backfaces = 0, unknown = 0, hit = 0;
+
+						for ( let r = 0; r < RAYS; ) {
+
+							let end = r + 1;
+
+							while ( end < RAYS && sorted[ end ] === sorted[ r ] ) end ++;
+
+							if ( sorted[ r ] === BACKFACE ) backfaces = end - r;
+							else if ( sorted[ r ] === UNKNOWN ) unknown = end - r;
+							else if ( sorted[ r ] !== MISS ) runs.push( [ sorted[ r ] - 3, end - r ] );
+
+							if ( sorted[ r ] > UNKNOWN ) hit += end - r;
+
+							r = end;
+
+						}
+
+						unknownHits += unknown;
+						surfelHits += hit;
+
+						// a surfel that sees many back faces is inside of geometry
+
+						if ( backfaces > RAYS / 4 ) {
+
+							invalid[ i ] = 1;
+							buried ++;
+							runs.length = 0;
+
+						}
+
+						// keep the largest links, scaled so that they carry the light of all hits
+
+						if ( runs.length > LINKS ) runs.sort( ( a, b ) => b[ 1 ] - a[ 1 ] ).length = LINKS;
+
+						const kept = runs.reduce( ( sum, run ) => sum + run[ 1 ], 0 );
+
+						for ( const [ surfel, rays ] of runs ) {
+
+							indices[ links ] = surfel;
+							weights[ links ] = rays / kept * ( hit + unknown ) / RAYS;
+							links ++;
+
+						}
+
+						offsets[ i + 1 ] = links;
+
+					}
+
+					onProgress( Math.min( start + BATCH, count ) / count );
+
+				}
+
+				bvh.dispose();
+				geometry.dispose();
+
+				for ( const node of [ rayBuffer, texelBuffer, hitBuffer ] ) node.value.dispose();
+
+				kernel.dispose();
+
+				if ( cancelled() ) return null;
+
+				return { offsets, indices: indices.slice( 0, links ), weights: weights.slice( 0, links ), skyTransfer, invalid, buried, unknown: unknownHits / Math.max( surfelHits + unknownHits, 1 ) };
 
 			}
 
@@ -290,7 +639,11 @@
 				const half = THREE.DataUtils.fromHalfFloat;
 
 				const data = { position: [], normal: [], radius: [], albedo: [], emissive: [] };
-				const texels = [], sum = new Float32Array( 12 );
+				const texels = [], group = [], sum = new Float32Array( 12 );
+
+				// the surfel of each texel plus one, with the side of its material in the two high bits
+
+				const texelMap = new Uint32Array( size * size );
 
 				for ( let cy = 0; cy < size; cy += cell ) {
 
@@ -317,11 +670,12 @@
 							const seed = texels[ 0 ];
 							const px = half( atlas.position[ seed ] ), py = half( atlas.position[ seed + 1 ] ), pz = half( atlas.position[ seed + 2 ] );
 							const nx = half( atlas.normal[ seed ] ), ny = half( atlas.normal[ seed + 1 ] ), nz = half( atlas.normal[ seed + 2 ] );
-							const doubleSided = half( atlas.normal[ seed + 3 ] ) > 1.5;
+							const side = Math.round( half( atlas.normal[ seed + 3 ] ) );
 
 							let count = 0;
 
 							sum.fill( 0 );
+							group.length = 0;
 
 							for ( let i = texels.length - 1; i >= 0; i -- ) {
 
@@ -330,6 +684,14 @@
 								const u = half( atlas.normal[ t ] ), v = half( atlas.normal[ t + 1 ] ), w = half( atlas.normal[ t + 2 ] );
 
 								if ( u * nx + v * ny + w * nz < 0.7 || Math.hypot( x - px, y - py, z - pz ) > spacing * 2 ) continue;
+
+								group.push( t );
+								texels[ i ] = texels[ texels.length - 1 ];
+								texels.pop();
+
+								// texels that the charts only touch belong to the group, but lie on the edges of the surfaces
+
+								if ( half( atlas.position[ t + 3 ] ) < 1 ) continue;
 
 								sum[ 0 ] += x; sum[ 1 ] += y; sum[ 2 ] += z;
 								sum[ 3 ] += u; sum[ 4 ] += v; sum[ 5 ] += w;
@@ -342,8 +704,32 @@
 								}
 
 								count ++;
-								texels[ i ] = texels[ texels.length - 1 ];
-								texels.pop();
+
+							}
+
+							// slivers at the borders of the charts make poor surfels. Their texels have none, hits on them
+							// count for the other links
+
+							if ( count <= cell * cell / 4 ) continue;
+
+							// the surfel sits on the texel nearest to the mean, which is on the surface also where it curves
+
+							let nearest = seed, nearestDistance = Infinity;
+
+							for ( const t of group ) {
+
+								texelMap[ t / 4 ] = data.radius.length + 1 + side * 0x40000000;
+
+								if ( half( atlas.position[ t + 3 ] ) < 1 ) continue;
+
+								const distance = Math.hypot( half( atlas.position[ t ] ) - sum[ 0 ] / count, half( atlas.position[ t + 1 ] ) - sum[ 1 ] / count, half( atlas.position[ t + 2 ] ) - sum[ 2 ] / count );
+
+								if ( distance < nearestDistance ) {
+
+									nearest = t;
+									nearestDistance = distance;
+
+								}
 
 							}
 
@@ -352,10 +738,23 @@
 							const length = Math.hypot( sum[ 3 ], sum[ 4 ], sum[ 5 ] );
 							const radius = Math.sqrt( count ) * texelSize * 0.75;
 
-							for ( let side = 1; side >= ( doubleSided ? - 1 : 1 ); side -= 2 ) {
+							// charts start at texel centers, so the texel may lie on the very edge of the surface: move it up
+							// to half a texel towards the mean, along the surface
 
-								data.position.push( sum[ 0 ] / count, sum[ 1 ] / count, sum[ 2 ] / count );
-								data.normal.push( side * sum[ 3 ] / length, side * sum[ 4 ] / length, side * sum[ 5 ] / length );
+							const point = [ 0, 1, 2 ].map( ( c ) => half( atlas.position[ nearest + c ] ) );
+							const toMean = point.map( ( v, c ) => sum[ c ] / count - v );
+							const along = ( toMean[ 0 ] * sum[ 3 ] + toMean[ 1 ] * sum[ 4 ] + toMean[ 2 ] * sum[ 5 ] ) / length;
+
+							for ( let c = 0; c < 3; c ++ ) toMean[ c ] -= along * sum[ 3 + c ] / length;
+
+							const move = Math.min( 1, texelSize * 0.5 / Math.max( Math.hypot( ...toMean ), 1e-9 ) );
+
+							// double-sided surfaces get a second surfel that faces the other way, right after the first
+
+							for ( let sign = 1; sign >= ( side === 2 ? - 1 : 1 ); sign -= 2 ) {
+
+								data.position.push( point[ 0 ] + toMean[ 0 ] * move, point[ 1 ] + toMean[ 1 ] * move, point[ 2 ] + toMean[ 2 ] * move );
+								data.normal.push( sign * sum[ 3 ] / length, sign * sum[ 4 ] / length, sign * sum[ 5 ] / length );
 								data.radius.push( radius );
 								data.albedo.push( sum[ 6 ] / count, sum[ 7 ] / count, sum[ 8 ] / count );
 								data.emissive.push( sum[ 9 ] / count, sum[ 10 ] / count, sum[ 11 ] / count );
@@ -368,9 +767,56 @@
 
 				}
 
+				// the texels left without a surfel, slivers and what the cells split off, adopt the nearest surfel
+				// of the texels around them that faces their way, so that the rays that hit them find it
+
+				const adopted = new Uint32Array( size * size );
+
+				for ( let y = 0; y < size; y ++ ) {
+
+					for ( let x = 0; x < size; x ++ ) {
+
+						const t = ( y * size + x ) * 4;
+
+						if ( texelMap[ t / 4 ] !== 0 || atlas.position[ t + 3 ] === 0 ) continue;
+
+						const px = half( atlas.position[ t ] ), py = half( atlas.position[ t + 1 ] ), pz = half( atlas.position[ t + 2 ] );
+						const nx = half( atlas.normal[ t ] ), ny = half( atlas.normal[ t + 1 ] ), nz = half( atlas.normal[ t + 2 ] );
+
+						let nearestDistance = spacing * 2;
+
+						for ( let v = Math.max( y - cell, 0 ); v <= Math.min( y + cell, size - 1 ); v ++ ) {
+
+							for ( let u = Math.max( x - cell, 0 ); u <= Math.min( x + cell, size - 1 ); u ++ ) {
+
+								const entry = texelMap[ v * size + u ];
+
+								if ( entry === 0 ) continue;
+
+								const s = ( ( entry & 0x3fffffff ) - 1 ) * 3;
+								const distance = Math.hypot( data.position[ s ] - px, data.position[ s + 1 ] - py, data.position[ s + 2 ] - pz );
+
+								if ( distance < nearestDistance && data.normal[ s ] * nx + data.normal[ s + 1 ] * ny + data.normal[ s + 2 ] * nz > 0.5 ) {
+
+									nearestDistance = distance;
+									adopted[ t / 4 ] = entry;
+
+								}
+
+							}
+
+						}
+
+					}
+
+				}
+
+				for ( let i = 0; i < adopted.length; i ++ ) texelMap[ i ] ||= adopted[ i ];
+
 				// ponytail: plain float normals, octahedral 16 bit when the surfels are serialized
 
 				return {
+					texelMap,
 					count: data.radius.length,
 					position: new Float32Array( data.position ),
 					normal: new Float32Array( data.normal ),
@@ -398,6 +844,67 @@
 				world.root.add( mesh );
 
 				updateSurfelMesh( world );
+
+			}
+
+			// Click a surfel in a surfel view to show its links, colored from blue to red by their weight
+
+			function selectSurfel( world, i ) {
+
+				world.links?.removeFromParent();
+				world.links?.geometry.dispose();
+				world.links = undefined;
+
+				if ( i < 0 || world.transfer === undefined ) return;
+
+				const { position, normal } = world.surfels;
+				const { offsets, indices, weights, skyTransfer, invalid } = world.transfer;
+				const start = offsets[ i ], end = offsets[ i + 1 ];
+				const points = [], colors = [], color = new THREE.Color();
+				const lift = world.detailSize * 0.05;
+
+				let largest = 0;
+
+				for ( let l = start; l < end; l ++ ) largest = Math.max( largest, weights[ l ] );
+
+				for ( let l = start; l < end; l ++ ) {
+
+					const j = indices[ l ];
+
+					for ( const s of [ i, j ] ) points.push( position[ s * 3 ] + normal[ s * 3 ] * lift, position[ s * 3 + 1 ] + normal[ s * 3 + 1 ] * lift, position[ s * 3 + 2 ] + normal[ s * 3 + 2 ] * lift );
+
+					color.setHSL( 0.66 * ( 1 - weights[ l ] / largest ), 1, 0.5 );
+					colors.push( color.r, color.g, color.b, color.r, color.g, color.b );
+
+				}
+
+				const geometry = new THREE.BufferGeometry();
+				geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( points, 3 ) );
+				geometry.setAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ) );
+
+				world.links = new THREE.LineSegments( geometry, linkMaterial );
+				world.links.frustumCulled = false;
+				world.root.add( world.links );
+
+				const visibility = skyTransfer[ i * 9 ] / ( Math.PI * 0.282095 );
+
+				selection.textContent = `Surfel ${ i }: ${ end - start } links${ invalid[ i ] ? ', buried' : '' }, receives ${ ( ( 1 - visibility ) * 100 ).toFixed( 0 ) }% from surfels and ${ ( visibility * 100 ).toFixed( 0 ) }% from the sky`;
+
+			}
+
+			function onPointerUp( event ) {
+
+				// a click, not a drag of the camera
+
+				if ( pointerDown.distanceTo( pointer.set( event.clientX, event.clientY ) ) > 4 || ! world?.surfelMesh?.visible ) return;
+
+				pointer.set( event.clientX / window.innerWidth * 2 - 1, 1 - event.clientY / window.innerHeight * 2 );
+				raycaster.setFromCamera( pointer, camera );
+
+				const hit = raycaster.intersectObject( world.surfelMesh )[ 0 ];
+
+				selection.textContent = '';
+				selectSurfel( world, hit !== undefined ? hit.instanceId : - 1 );
 
 			}
 
@@ -438,6 +945,7 @@
 				[ 'position', 'normal', 'albedo', 'emissive' ].forEach( ( name, i ) => target.textures[ i ].name = name );
 
 				const jitter = uniform( new THREE.Vector2() );
+				const coverage = uniform( 1 );
 				const materials = new Map();
 
 				function atlasMaterial( source ) {
@@ -464,11 +972,12 @@
 
 					material.vertexNode = vec4( uv( 1 ).flipY().mul( 2 ).sub( 1 ).add( jitter ), 0, 1 );
 
-					// position.w is the coverage, normal.w is 2 for double-sided surfaces
+					// position.w is the coverage, 1 for texels whose center is covered and less for the texels around
+					// them, normal.w the side of the material: 1 front, 2 double, 3 back
 
 					material.fragmentNode = mrt( {
-						position: vec4( positionWorld, 1 ),
-						normal: vec4( normal.normalize(), source.side === THREE.DoubleSide ? 2 : 1 ),
+						position: vec4( positionWorld, coverage ),
+						normal: vec4( normal.normalize(), source.side === THREE.DoubleSide ? 2 : source.side === THREE.BackSide ? 3 : 1 ),
 						albedo: vec4( source.vertexColors ? albedo.mul( vertexColor().rgb ) : albedo, 1 ),
 						emissive: vec4( emissive, 1 )
 					} );
@@ -507,6 +1016,7 @@
 				for ( let i = 16; i >= 0; i -- ) {
 
 					jitter.value.set( halton( i, 2 ) - 0.5, halton( i, 3 ) - 0.5 ).multiplyScalar( i === 0 ? 0 : 4 / size );
+					coverage.value = i === 0 ? 1 : 0.5;
 					renderer.render( atlasScene, atlasCamera );
 
 				}
@@ -551,14 +1061,35 @@
 				// surfels are colored per instance, over the scene in dark gray so that gaps show
 
 				surfelMesh.visible = surfelView;
+				if ( world.links ) world.links.visible = surfelView;
 
 				if ( surfelView ) {
 
 					const { count, albedo, emissive, normal } = world.surfels;
 					const colors = surfelMesh.instanceColor.array;
+					const transfer = world.transfer;
 
-					if ( params.view === 'Surfels: Normal' ) for ( let i = 0; i < count * 3; i ++ ) colors[ i ] = normal[ i ] * 0.5 + 0.5;
-					else colors.set( params.view === 'Surfels: Albedo' ? albedo : emissive );
+					if ( params.view === 'Surfels: Normal' ) {
+
+						for ( let i = 0; i < count * 3; i ++ ) colors[ i ] = normal[ i ] * 0.5 + 0.5;
+
+					} else if ( params.view === 'Surfels: Sky Visibility' ) {
+
+						// the share of the cosine-weighted hemisphere that sees the sky, buried surfels in red
+
+						for ( let i = 0; i < count; i ++ ) {
+
+							const visibility = transfer !== undefined ? transfer.skyTransfer[ i * 9 ] / ( Math.PI * 0.282095 ) : 0;
+
+							colors.set( transfer?.invalid[ i ] ? [ 1, 0, 0 ] : [ visibility, visibility, visibility ], i * 3 );
+
+						}
+
+					} else {
+
+						colors.set( params.view === 'Surfels: Albedo' ? albedo : emissive );
+
+					}
 
 					surfelMesh.instanceColor.needsUpdate = true;
 

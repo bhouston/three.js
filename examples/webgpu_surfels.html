@@ -37,7 +37,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Loop, builtinIndirectContext, cross, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, uv, uvec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, array, builtinIndirectContext, cross, dot, float, getShIrradianceAt, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, texture3D, textureStore, uint, uniform, uniformArray, uv, uvec2, uvec3, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -47,6 +47,8 @@
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
+			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+			import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 
@@ -61,7 +63,7 @@
 			const SPONZA_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Sponza/glTF/Sponza.gltf';
 
 			let camera, scene, renderer, controls, timer, status, selection;
-			let sky, sun, cubeCamera, world, rendererState;
+			let sky, sun, cubeCamera, mover, world, rendererState;
 			let environmentSHPending = 0;
 
 			const lightPosition = new THREE.Vector3();
@@ -108,6 +110,33 @@
 			const giAmount = uniform( 1 );
 			const lightMapNode = texture( new THREE.Texture(), uv( 1 ) );
 
+			// the light probe grid of the current scene with the SH of the radiance around each probe, the indirect
+			// diffuse light of the other objects, which move. The atlas has the layout of LightProbeGrid: seven
+			// volumes along z with a padding slice at both ends, that pack the nine coefficients
+
+			const probeAmount = uniform( 0 );
+			const probeMin = uniform( new THREE.Vector3() ), probeMax = uniform( new THREE.Vector3() ), probeResolution = uniform( new THREE.Vector3( 1, 1, 1 ) );
+			const probeAtlas = texture3D( new THREE.Data3DTexture( new Uint8Array( 4 ), 1, 1, 1 ) );
+
+			const probeIrradiance = ( normal ) => {
+
+				const range = probeMax.sub( probeMin );
+
+				// half a cell along the normal, away from the surface
+
+				const position = positionWorld.add( normal.mul( range.div( probeResolution ) ).mul( 0.5 ) );
+				const halfTexel = vec3( 0.5 ).div( probeResolution );
+				const uvw = position.sub( probeMin ).div( range ).clamp( halfTexel, halfTexel.oneMinus() );
+
+				const slices = probeResolution.z.add( 2 );
+				const s = [ 0, 1, 2, 3, 4, 5, 6 ].map( ( t ) => probeAtlas.sample( vec3( uvw.xy, uvw.z.mul( probeResolution.z ).add( 1 ).add( slices.mul( t ) ).div( slices.mul( 7 ) ) ) ).level( 0 ) );
+
+				const sh = array( [ s[ 0 ].xyz, vec3( s[ 0 ].w, s[ 1 ].xy ), vec3( s[ 1 ].zw, s[ 2 ].x ), s[ 2 ].yzw, s[ 3 ].xyz, vec3( s[ 3 ].w, s[ 4 ].xy ), vec3( s[ 4 ].zw, s[ 5 ].x ), s[ 5 ].yzw, s[ 6 ].xyz ] );
+
+				return getShIrradianceAt( normal, sh ).max( 0 );
+
+			};
+
 			// SH basis of L2 in the order of THREE.SphericalHarmonics3
 
 			const shBasis = ( x, y, z ) => [ 0.282095, 0.488603 * y, 0.488603 * z, 0.488603 * x, 1.092548 * x * y, 1.092548 * y * z, 0.315392 * ( 3 * z * z - 1 ), 1.092548 * x * z, 0.546274 * ( x * x - y * y ) ];
@@ -118,6 +147,7 @@
 				gi: true,
 				denoise: true,
 				denoiseStrength: 0.3,
+				showProbes: false,
 				detailSize: 0.25,
 				timeOfDay: 10,
 				autoplay: false,
@@ -170,7 +200,7 @@
 				await renderer.init();
 
 				renderer.contextNode = builtinIndirectContext( {
-					diffuse: [ ( query, builder ) => builder.object.userData.giStatic === true ? vec4( lightMapNode.rgb.mul( giAmount ), giAmount ) : null ]
+					diffuse: [ ( query, builder ) => builder.object.userData.giStatic === true ? vec4( lightMapNode.rgb.mul( giAmount ), giAmount ) : vec4( probeIrradiance( query.normal ).mul( probeAmount ), probeAmount ) ]
 				} );
 
 				controls = new OrbitControls( camera, renderer.domElement );
@@ -198,6 +228,12 @@
 				sun.shadow.mapSize.setScalar( 2048 );
 				scene.add( sun, sun.target );
 
+				// an object that moves through the scenes, lit by the probes
+
+				mover = new THREE.Mesh( new THREE.SphereGeometry( 1, 32, 16 ), new THREE.MeshStandardNodeMaterial( { roughness: 0.6 } ) );
+				mover.castShadow = mover.receiveShadow = true;
+				scene.add( mover );
+
 				cubeCamera = new THREE.CubeCamera( 1, 1000, new THREE.CubeRenderTarget( 64, { type: THREE.HalfFloatType } ) );
 				cubeCamera.layers.set( 1 );
 
@@ -207,6 +243,7 @@
 				gui.add( params, 'scene', Object.keys( scenes ) ).name( 'Scene' ).onChange( setScene );
 				gui.add( params, 'view', views ).name( 'View' ).onChange( setView );
 				gui.add( params, 'gi' ).name( 'GI' );
+				gui.add( params, 'showProbes' ).name( 'Show Probes' );
 				gui.add( params, 'detailSize', 0.05, 2, 0.01 ).name( 'Detail Size' ).listen().onChange( ( value ) => {
 
 					world.detailSize = value;
@@ -311,7 +348,8 @@
 
 				baked.transfer?.dispose();
 				baked.lighting?.dispose();
-				baked.transfer = baked.lighting = undefined;
+				baked.probes?.dispose();
+				baked.transfer = baked.lighting = baked.probes = undefined;
 				selectSurfel( baked, - 1 );
 				const meshes = [];
 				world.root.traverse( ( object ) => object.isMesh && object !== world.surfelMesh && meshes.push( object ) );
@@ -379,6 +417,17 @@
 				report( `${ ( transfer.indices.length / baked.surfels.count ).toFixed( 1 ) } links per surfel, ${ transfer.buried } buried, ${ ( transfer.unknown * 100 ).toFixed( 1 ) }% of hits without a surfel, baked in ${ ( ( performance.now() - start ) / 1000 ).toFixed( 1 ) } s` );
 
 				if ( baked === world ) setView();
+
+				// the probes and where the moving object touches the ground
+
+				const probeBake = await bakeProbes( baked, () => baked.bakeId !== id );
+
+				if ( probeBake === null ) return;
+
+				baked.probes = createProbes( baked, probeBake );
+				baked.heights = bakeHeights( baked );
+
+				report( `${ probeBake.grid.resolution.toArray().join( '×' ) } probes, ${ probeBake.inside } inside of geometry, baked in ${ ( ( performance.now() - start ) / 1000 ).toFixed( 1 ) } s` );
 
 			}
 
@@ -521,72 +570,93 @@
 
 				}
 
-				// one buffer of the origins, normals, tangents and ray directions, WebGPU allows 8 storage buffers per
-				// stage by default and the BVH takes some
-
-				const rayData = new Float32Array( ( count * 3 + RAYS ) * 4 );
-				rayData.set( origins );
-				rayData.set( normals, count * 4 );
-				rayData.set( tangents, count * 8 );
-				rayData.set( directions, count * 12 );
-
 				const buffer = ( array, itemSize, type ) => storage( new THREE.StorageBufferAttribute( array, itemSize ), type ).toReadOnly();
 
-				const rayBuffer = buffer( rayData, 4, 'vec4' );
 				const texelBuffer = buffer( texelMap, 1, 'uint' );
-
 				const hitAttribute = new THREE.StorageBufferAttribute( new Uint32Array( BATCH * RAYS ), 1 );
 				const hitBuffer = storage( hitAttribute, 'uint' );
-				const batchStart = uniform( 0, 'uint' );
 
-				const kernel = Fn( () => {
+				// Traces the rays of a set of origins, each with a frame of a normal and a tangent that the directions
+				// are relative to, and hands the hits of each batch to the callback. Returns the buffer of the origins,
+				// normals, tangents and directions: one buffer, WebGPU allows 8 storage buffers per stage by default
+				// and the BVH takes some
 
-					const i = instanceIndex.shiftRight( uint( Math.log2( RAYS ) ) ).add( batchStart ).min( uint( count - 1 ) );
-					const r = instanceIndex.bitAnd( uint( RAYS - 1 ) );
+				async function traceHits( origins, normals, tangents, directions, count, onBatch ) {
 
-					const normal = rayBuffer.element( i.add( uint( count ) ) ).xyz;
-					const tangent = rayBuffer.element( i.add( uint( count * 2 ) ) ).xyz;
-					const local = rayBuffer.element( r.add( uint( count * 3 ) ) ).xyz;
-					const direction = tangent.mul( local.x ).add( cross( normal, tangent ).mul( local.y ) ).add( normal.mul( local.z ) );
+					const rayData = new Float32Array( ( count * 3 + RAYS ) * 4 );
+					rayData.set( origins );
+					rayData.set( normals, count * 4 );
+					rayData.set( tangents, count * 8 );
+					rayData.set( directions, count * 12 );
 
-					const hit = trace( rayBuffer.element( i ).xyz, direction ).toVar();
-					const result = uint( MISS ).toVar();
+					const rayBuffer = buffer( rayData, 4, 'vec4' );
+					const batchStart = uniform( 0, 'uint' );
 
-					If( hit.z.notEqual( 0 ), () => {
+					const kernel = Fn( () => {
 
-						const texel = uvec2( surface( hit ).mul( size ) ).min( uvec2( size - 1 ) ).toVar();
-						const entry = texelBuffer.element( texel.y.mul( uint( size ) ).add( texel.x ) ).toVar();
-						const surfel = entry.bitAnd( uint( 0x3fffffff ) );
-						const side = entry.shiftRight( uint( 30 ) );
-						const back = hit.z.lessThan( 0 );
+						const i = instanceIndex.shiftRight( uint( Math.log2( RAYS ) ) ).add( batchStart ).min( uint( count - 1 ) );
+						const r = instanceIndex.bitAnd( uint( RAYS - 1 ) );
 
-						result.assign( uint( UNKNOWN ) );
+						const normal = rayBuffer.element( i.add( uint( count ) ) ).xyz;
+						const tangent = rayBuffer.element( i.add( uint( count * 2 ) ) ).xyz;
+						const local = rayBuffer.element( r.add( uint( count * 3 ) ) ).xyz;
+						const direction = tangent.mul( local.x ).add( cross( normal, tangent ).mul( local.y ) ).add( normal.mul( local.z ) );
 
-						If( surfel.greaterThan( uint( 0 ) ), () => {
+						const hit = trace( rayBuffer.element( i ).xyz, direction ).toVar();
+						const result = uint( MISS ).toVar();
 
-							// the back of a double-sided surface is the next surfel, the back of other surfaces is inside
+						If( hit.z.notEqual( 0 ), () => {
 
-							If( side.equal( uint( 2 ) ), () => {
+							const texel = uvec2( surface( hit ).mul( size ) ).min( uvec2( size - 1 ) ).toVar();
+							const entry = texelBuffer.element( texel.y.mul( uint( size ) ).add( texel.x ) ).toVar();
+							const surfel = entry.bitAnd( uint( 0x3fffffff ) );
+							const side = entry.shiftRight( uint( 30 ) );
+							const back = hit.z.lessThan( 0 );
 
-								result.assign( surfel.add( uint( 2 ) ).add( select( back, uint( 1 ), uint( 0 ) ) ) );
+							result.assign( uint( UNKNOWN ) );
 
-							} ).ElseIf( side.equal( uint( 1 ) ).and( back ).or( side.equal( uint( 3 ) ).and( back.not() ) ), () => {
+							If( surfel.greaterThan( uint( 0 ) ), () => {
 
-								result.assign( uint( BACKFACE ) );
+								// the back of a double-sided surface is the next surfel, the back of other surfaces is inside
 
-							} ).Else( () => {
+								If( side.equal( uint( 2 ) ), () => {
 
-								result.assign( surfel.add( uint( 2 ) ) );
+									result.assign( surfel.add( uint( 2 ) ).add( select( back, uint( 1 ), uint( 0 ) ) ) );
+
+								} ).ElseIf( side.equal( uint( 1 ) ).and( back ).or( side.equal( uint( 3 ) ).and( back.not() ) ), () => {
+
+									result.assign( uint( BACKFACE ) );
+
+								} ).Else( () => {
+
+									result.assign( surfel.add( uint( 2 ) ) );
+
+								} );
 
 							} );
 
 						} );
 
-					} );
+						hitBuffer.element( instanceIndex ).assign( result );
 
-					hitBuffer.element( instanceIndex ).assign( result );
+					} )().compute( BATCH * RAYS );
 
-				} )().compute( BATCH * RAYS );
+					for ( let start = 0; start < count && ! cancelled(); start += BATCH ) {
+
+						batchStart.value = start;
+						renderer.compute( kernel );
+
+						const hits = new Uint32Array( await renderer.getArrayBufferAsync( hitAttribute ) );
+
+						if ( ! cancelled() ) onBatch( hits, start );
+
+					}
+
+					kernel.dispose();
+
+					return rayBuffer;
+
+				}
 
 				// reduce each batch
 
@@ -600,14 +670,7 @@
 
 				let links = 0, buried = 0, unknownHits = 0, surfelHits = 0;
 
-				for ( let start = 0; start < count; start += BATCH ) {
-
-					batchStart.value = start;
-					renderer.compute( kernel );
-
-					const hits = new Uint32Array( await renderer.getArrayBufferAsync( hitAttribute ) );
-
-					if ( cancelled() ) break;
+				const rayBuffer = await traceHits( origins, normals, tangents, directions, count, ( hits, start ) => {
 
 					for ( let i = start; i < Math.min( start + BATCH, count ); i ++ ) {
 
@@ -701,19 +764,18 @@
 
 					onProgress( Math.min( start + BATCH, count ) / count );
 
-				}
+				} );
 
-				for ( const node of [ texelBuffer, hitBuffer ] ) node.value.dispose();
-
-				kernel.dispose();
-
-				// the BVH and the origins and normals of the surfels stay for the shadow rays of the lighting
+				// the BVH and the origins and normals of the surfels stay for the shadow rays of the lighting and for
+				// the rays of the probes
 
 				const dispose = () => {
 
 					bvh.dispose();
 					geometry.dispose();
 					rayBuffer.value.dispose();
+					texelBuffer.value.dispose();
+					hitAttribute.dispose();
 
 				};
 
@@ -722,7 +784,7 @@
 				return {
 					offsets, indices: indices.slice( 0, links ), weights: weights.slice( 0, links ), skyTransfer, invalid,
 					buried, unknown: unknownHits / Math.max( surfelHits + unknownHits, 1 ),
-					rayBuffer, visibility, dispose
+					rayBuffer, visibility, traceHits, dispose
 				};
 
 			}
@@ -948,6 +1010,298 @@
 				};
 
 				return { update, attribute, materials, lightMap, dispose };
+
+			}
+
+			// Probe bake: rays in all directions from the probes of a grid over the scene. A probe gathers the
+			// radiance of each surfel that its rays hit with the SH of their directions, and the radiance of the sky
+			// with the SH of the rays that miss, a matrix that the SH of the sky is multiplied with
+
+			async function bakeProbes( world, cancelled ) {
+
+				const box = new THREE.Box3();
+
+				for ( const mesh of world.atlas.meshes ) box.expandByObject( mesh );
+
+				const size = box.getSize( new THREE.Vector3() );
+
+				// about four surfels between two probes, fewer probes in large scenes
+
+				let spacing = world.detailSize * 4;
+
+				const resolution = new THREE.Vector3();
+				const cells = () => resolution.copy( size ).divideScalar( spacing ).subScalar( 0.01 ).ceil().max( new THREE.Vector3( 2, 2, 2 ) );
+
+				while ( cells().x * resolution.y * resolution.z > 4096 ) spacing *= 1.2;
+
+				const [ nx, ny, nz ] = resolution.toArray();
+				const count = nx * ny * nz;
+
+				const grid = new LightProbeGrid( nx * spacing, ny * spacing, nz * spacing, nx, ny, nz );
+				box.getCenter( grid.position );
+				grid.updateBoundingBox();
+
+				// uniform directions on the sphere, in the world frame
+
+				const directions = new Float32Array( RAYS * 4 );
+
+				for ( let r = 0; r < RAYS; r ++ ) {
+
+					const z = 1 - 2 * ( r + 0.5 ) / RAYS, radius = Math.sqrt( 1 - z * z ), angle = r * 2.399963;
+
+					directions.set( [ radius * Math.cos( angle ), radius * Math.sin( angle ), z ], r * 4 );
+
+				}
+
+				const origins = new Float32Array( count * 4 ), normals = new Float32Array( count * 4 ), tangents = new Float32Array( count * 4 );
+				const position = new THREE.Vector3();
+
+				for ( let i = 0; i < count; i ++ ) {
+
+					grid.getProbePosition( i % nx, Math.floor( i / nx ) % ny, Math.floor( i / ( nx * ny ) ), position ).toArray( origins, i * 4 );
+					normals[ i * 4 + 2 ] = 1;
+					tangents[ i * 4 ] = 1;
+
+				}
+
+				const basis = Array.from( { length: RAYS }, ( v, r ) => shBasis( directions[ r * 4 ], directions[ r * 4 + 1 ], directions[ r * 4 + 2 ] ) );
+				const rows = new Array( count );
+				const links = new Map();
+
+				const rayBuffer = await world.transfer.traceHits( origins, normals, tangents, directions, count, ( hits, start ) => {
+
+					for ( let i = start; i < Math.min( start + BATCH, count ); i ++ ) {
+
+						const sky = new Float32Array( 81 );
+
+						let backfaces = 0, found = 0, unknown = 0;
+
+						links.clear();
+
+						for ( let r = 0; r < RAYS; r ++ ) {
+
+							const hit = hits[ ( i - start ) * RAYS + r ];
+
+							if ( hit === MISS ) {
+
+								for ( let k = 0; k < 9; k ++ ) for ( let m = 0; m < 9; m ++ ) sky[ k * 9 + m ] += basis[ r ][ k ] * basis[ r ][ m ] * 4 * Math.PI / RAYS;
+
+							} else if ( hit === BACKFACE ) {
+
+								backfaces ++;
+
+							} else if ( hit === UNKNOWN ) {
+
+								unknown ++;
+
+							} else {
+
+								if ( ! links.has( hit - 3 ) ) links.set( hit - 3, new Float32Array( 9 ) );
+
+								const weights = links.get( hit - 3 );
+
+								for ( let k = 0; k < 9; k ++ ) weights[ k ] += basis[ r ][ k ] * 4 * Math.PI / RAYS;
+
+								found ++;
+
+							}
+
+						}
+
+						// the hits without a surfel count for the others. A probe that sees many back faces is inside
+						// of geometry
+
+						const scale = ( found + unknown ) / Math.max( found, 1 );
+						const weights = new Float32Array( links.size * 9 );
+
+						[ ...links.values() ].forEach( ( link, l ) => weights.set( link.map( ( v ) => v * scale ), l * 9 ) );
+
+						rows[ i ] = { indices: Uint32Array.from( links.keys() ), weights, sky, valid: backfaces <= RAYS * 0.3 };
+
+					}
+
+				} );
+
+				rayBuffer.value.dispose();
+
+				if ( cancelled() ) return null;
+
+				// the probes inside of geometry take the light of the nearest probe outside, so that they do not
+				// darken what is interpolated between them
+
+				const valid = rows.map( ( row, i ) => row.valid ? i : - 1 ).filter( ( i ) => i >= 0 );
+
+				for ( let i = 0; i < count && valid.length > 0; i ++ ) {
+
+					if ( rows[ i ].valid ) continue;
+
+					let nearest = valid[ 0 ], nearestDistance = Infinity;
+
+					for ( const other of valid ) {
+
+						const distance = Math.hypot( origins[ other * 4 ] - origins[ i * 4 ], origins[ other * 4 + 1 ] - origins[ i * 4 + 1 ], origins[ other * 4 + 2 ] - origins[ i * 4 + 2 ] );
+
+						if ( distance < nearestDistance ) {
+
+							nearest = other;
+							nearestDistance = distance;
+
+						}
+
+					}
+
+					rows[ i ] = { ...rows[ nearest ], valid: false };
+
+				}
+
+				const offsets = new Uint32Array( count + 1 );
+
+				rows.forEach( ( row, i ) => offsets[ i + 1 ] = offsets[ i ] + row.indices.length );
+
+				const indices = new Uint32Array( Math.max( offsets[ count ], 1 ) ), weights = new Float32Array( Math.max( offsets[ count ], 1 ) * 9 ), sky = new Float32Array( count * 81 );
+
+				rows.forEach( ( row, i ) => {
+
+					indices.set( row.indices, offsets[ i ] );
+					weights.set( row.weights, offsets[ i ] * 9 );
+					sky.set( row.sky, i * 81 );
+
+				} );
+
+				return { grid, spacing, offsets, indices, weights, sky, inside: count - valid.length };
+
+			}
+
+			// Runtime lighting of the probes, one compute pass per frame: the SH of the radiance around each probe,
+			// from the radiosity of its surfels and the SH of the sky, stored in the atlas of the grid
+
+			function createProbes( world, bake ) {
+
+				const { grid, spacing } = bake;
+				const [ nx, ny, nz ] = grid.resolution.toArray();
+
+				const atlas = new THREE.Storage3DTexture( nx, ny, 7 * ( nz + 2 ) );
+				atlas.type = THREE.HalfFloatType;
+
+				grid.texture = atlas;
+
+				const buffers = [
+					storage( new THREE.StorageBufferAttribute( bake.offsets, 1 ), 'uint' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( bake.indices, 1 ), 'uint' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( bake.weights, 1 ), 'float' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( bake.sky, 1 ), 'float' ).toReadOnly()
+				];
+
+				const [ offsetBuffer, indexBuffer, weightBuffer, skyBuffer ] = buffers;
+				const irradiance = storage( world.lighting.attribute, 'vec4' ).toReadOnly();
+
+				const compute = Fn( () => {
+
+					const sh = Array.from( { length: 9 }, () => vec3( 0 ).toVar() );
+
+					// a surfel with a radiosity has that over pi as radiance
+
+					Loop( { start: offsetBuffer.element( instanceIndex ), end: offsetBuffer.element( instanceIndex.add( uint( 1 ) ) ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+						const radiance = irradiance.element( indexBuffer.element( i ).mul( uint( 4 ) ).add( uint( 3 ) ) ).rgb.div( Math.PI ).toVar();
+
+						for ( let k = 0; k < 9; k ++ ) sh[ k ].addAssign( radiance.mul( weightBuffer.element( i.mul( uint( 9 ) ).add( uint( k ) ) ) ) );
+
+					} );
+
+					Loop( { start: uint( 0 ), end: uint( 9 ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+						const radiance = environmentSH.element( i ).mul( terms.y ).toVar();
+
+						for ( let k = 0; k < 9; k ++ ) sh[ k ].addAssign( radiance.mul( skyBuffer.element( instanceIndex.mul( uint( 81 ) ).add( uint( k * 9 ) ).add( i ) ) ) );
+
+					} );
+
+					const layer = instanceIndex.div( uint( nx * ny ) ).toVar();
+					const inLayer = instanceIndex.sub( layer.mul( uint( nx * ny ) ) ).toVar();
+					const row = inLayer.div( uint( nx ) ).toVar();
+					const column = inLayer.sub( row.mul( uint( nx ) ) );
+
+					const packed = [
+						vec4( sh[ 0 ], sh[ 1 ].x ), vec4( sh[ 1 ].yz, sh[ 2 ].xy ), vec4( sh[ 2 ].z, sh[ 3 ] ), vec4( sh[ 4 ], sh[ 5 ].x ),
+						vec4( sh[ 5 ].yz, sh[ 6 ].xy ), vec4( sh[ 6 ].z, sh[ 7 ] ), vec4( sh[ 8 ], 0 )
+					];
+
+					packed.forEach( ( value, t ) => {
+
+						// the padding slices repeat the first and the last slice of each volume
+
+						const slice = layer.add( uint( t * ( nz + 2 ) + 1 ) );
+
+						textureStore( atlas, uvec3( column, row, slice ), value );
+
+						If( layer.equal( uint( 0 ) ), () => {
+
+							textureStore( atlas, uvec3( column, row, slice.sub( uint( 1 ) ) ), value );
+
+						} );
+
+						If( layer.equal( uint( nz - 1 ) ), () => {
+
+							textureStore( atlas, uvec3( column, row, slice.add( uint( 1 ) ) ), value );
+
+						} );
+
+					} );
+
+				} )().compute( nx * ny * nz );
+
+				// the probes as spheres, lit by their SH
+
+				const helper = new LightProbeGridHelper( grid, spacing * 0.12 );
+				helper.visible = false;
+				world.root.add( helper );
+
+				const dispose = () => {
+
+					compute.dispose();
+					atlas.dispose();
+					helper.removeFromParent();
+					helper.dispose();
+
+					for ( const buffer of buffers ) buffer.value.dispose();
+
+				};
+
+				return { grid, atlas, helper, update: () => renderer.compute( compute ), dispose };
+
+			}
+
+			// The height of the ground under the path of the moving object, from rays down onto the scene
+
+			function bakeHeights( world ) {
+
+				const heights = new Float32Array( 256 );
+				const top = world.bounds.center.y + world.bounds.radius;
+				const down = new THREE.Vector3( 0, - 1, 0 );
+				const origin = new THREE.Vector3();
+
+				let height = world.bounds.center.y - world.bounds.radius;
+
+				for ( let i = 0; i < heights.length; i ++ ) {
+
+					const [ x, z ] = world.path( i / heights.length * Math.PI * 2 );
+
+					raycaster.set( origin.set( x, top, z ), down );
+
+					// the lowest surface that faces up, the floor under roofs and arches
+
+					for ( const hit of raycaster.intersectObjects( world.atlas.meshes, false ) ) {
+
+						if ( hit.face.normal.clone().transformDirection( hit.object.matrixWorld ).y > 0.7 ) height = hit.point.y;
+
+					}
+
+					heights[ i ] = height;
+
+				}
+
+				return heights;
 
 			}
 
@@ -1785,7 +2139,7 @@
 				add( new THREE.SphereGeometry( 0.65, 32, 32 ), sphereMaterial, 1, 0.65, 0.5 );
 				add( new THREE.PlaneGeometry( 2, 2 ), lightMaterial, 0, 4.99, 0, Math.PI / 2 );
 
-				return { root, sky: true, detailSize: 0.25, camera: new THREE.Vector3( 0, 2.5, 11 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
+				return { root, sky: true, detailSize: 0.25, path: ( a ) => [ 2.4 * Math.sin( a ), 1.9 + 0.5 * Math.sin( a * 2 ) ], camera: new THREE.Vector3( 0, 2.5, 11 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
 
 			}
 
@@ -1862,7 +2216,7 @@
 
 				}
 
-				return { root, sky: false, detailSize: 0.25, camera: new THREE.Vector3( 0, 2.5, 16 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
+				return { root, sky: false, detailSize: 0.25, path: ( a ) => [ 6.5 * Math.sin( a ), 1.5 * Math.sin( a * 2 ) ], camera: new THREE.Vector3( 0, 2.5, 16 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
 
 			}
 
@@ -1874,7 +2228,7 @@
 				const target = bounds.getCenter( new THREE.Vector3() );
 				const camera = bounds.getSize( new THREE.Vector3() ).multiply( new THREE.Vector3( 0.6, 0.9, 0.6 ) ).add( target );
 
-				return { root: gltf.scene, sky: true, detailSize: 0.5, camera, target };
+				return { root: gltf.scene, sky: true, detailSize: 0.5, path: ( a ) => [ target.x + 7 * Math.sin( a ), target.z + 4 * Math.sin( a * 2 ) ], camera, target };
 
 			}
 
@@ -1887,7 +2241,7 @@
 
 				for ( const light of lights ) light.removeFromParent();
 
-				return { root: gltf.scene, sky: true, sunLean: 0.25, detailSize: 0.5, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
+				return { root: gltf.scene, sky: true, sunLean: 0.25, detailSize: 0.5, path: ( a ) => [ 9 * Math.sin( a ), 1.2 * Math.sin( a * 2 ) ], camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
 
 			}
 
@@ -1957,6 +2311,36 @@
 
 					updateLights();
 					world.lighting.update();
+
+				}
+
+				// the probes light the moving object, once they are baked
+
+				const probes = world.probes;
+
+				probeAmount.value = params.gi && probes !== undefined ? 1 : 0;
+				mover.visible = probes !== undefined;
+
+				if ( probes !== undefined ) {
+
+					probes.update();
+					probes.helper.visible = params.showProbes;
+
+					probeAtlas.value = probes.atlas;
+					probeMin.value.copy( probes.grid.boundingBox.min );
+					probeMax.value.copy( probes.grid.boundingBox.max );
+					probeResolution.value.copy( probes.grid.resolution );
+
+					// along the path of the scene, on the ground
+
+					const angle = timer.getElapsed() * 0.3;
+					const [ x, z ] = world.path( angle );
+					const radius = world.detailSize * 1.5;
+					const index = ( angle / ( Math.PI * 2 ) % 1 ) * world.heights.length;
+					const height = THREE.MathUtils.lerp( world.heights[ Math.floor( index ) ], world.heights[ ( Math.floor( index ) + 1 ) % world.heights.length ], index % 1 );
+
+					mover.scale.setScalar( radius );
+					mover.position.set( x, height + radius, z );
 
 				}
 

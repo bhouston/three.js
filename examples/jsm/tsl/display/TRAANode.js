@@ -1,5 +1,5 @@
 import { HalfFloatType, Vector2, RenderTarget, RendererUtils, QuadMesh, NodeMaterial, Node, NodeUpdateType, Matrix4 } from 'three/webgpu';
-import { float, Fn, max, texture, uniform, uv, vec4, convertToTexture, passTexture, velocity, ivec2, mix, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
+import { float, Fn, max, texture, uniform, uv, vec4, convertToTexture, passTexture, velocity, ivec2, mix, smoothstep, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
 import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCurrentDepth } from '../utils/TAAUtils.js';
 import { Reprojection } from '../../utils/Reprojection.js';
 
@@ -121,6 +121,58 @@ class TRAANode extends Node {
 		 * @default true
 		 */
 		this.useSubpixelCorrection = true;
+
+		/**
+		 * Whether the history is clipped to its neighborhood while the camera is at rest. Disabling it
+		 * relaxes the clip over `historyLength` frames once the camera stops, which removes the shimmer
+		 * of a still image, and restores it as soon as the camera moves. Changes without velocity
+		 * (lighting, reflections) then lag behind; call `reset()` after one to restart the history.
+		 *
+		 * @type {boolean}
+		 * @default true
+		 */
+		this.clipAtRest = true;
+
+		/**
+		 * How far the clip is relaxed, from `0` when the camera moved to `1` after it rested.
+		 *
+		 * @private
+		 * @type {UniformNode<float>}
+		 */
+		this._restFactor = uniform( 0 );
+
+		/**
+		 * The number of frames the camera has been at rest.
+		 *
+		 * @private
+		 * @type {number}
+		 */
+		this._restFrames = 0;
+
+		/**
+		 * The unjittered projection matrix of the previous frame.
+		 *
+		 * @private
+		 * @type {Matrix4}
+		 */
+		this._previousProjectionMatrix = new Matrix4();
+
+		/**
+		 * Whether the history restarts from the next frame.
+		 *
+		 * @private
+		 * @type {boolean}
+		 */
+		this._needsReset = false;
+
+		/**
+		 * The approximate number of frames the history accumulates. The current frame
+		 * receives at least `1 / historyLength` of the blend weight, so `1` disables the history.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 20
+		 */
+		this.historyLength = uniform( 20 );
 
 		/**
 		 * The jitter index selects the current camera offset value.
@@ -306,6 +358,15 @@ class TRAANode extends Node {
 	}
 
 	/**
+	 * Restarts the history from the next frame, which then has the full weight.
+	 */
+	reset() {
+
+		this._needsReset = true;
+
+	}
+
+	/**
 	 * This method is used to render the effect once per frame.
 	 *
 	 * @param {NodeFrame} frame - The current node frame.
@@ -327,9 +388,20 @@ class TRAANode extends Node {
 
 		//
 
-		const needsRestart = this._reprojection.needsHistoryReset() ||
+		const needsRestart = this._needsReset || this._reprojection.needsHistoryReset() ||
 			this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
+		this._needsReset = false;
 		this.setSize( width, height );
+
+		// the clip relaxes while the camera is at rest and is restored when it moves
+
+		const atRest = needsRestart === false &&
+			this.camera.matrixWorld.equals( this._reprojection.previousCameraWorldMatrix.value ) &&
+			this._originalProjectionMatrix.equals( this._previousProjectionMatrix );
+
+		this._previousProjectionMatrix.copy( this._originalProjectionMatrix );
+		this._restFrames = atRest ? this._restFrames + 1 : 0;
+		this._restFactor.value = Math.min( this._restFrames / this.historyLength.value, 1 );
 
 		// swap history and resolve
 
@@ -492,7 +564,7 @@ class TRAANode extends Node {
 			// increase the weight towards the current frame under motion
 
 			const motionFactor = uvNode.sub( historyUV ).mul( textureSize ).length().div( this.maxVelocityLength ).saturate();
-			const currentWeight = float( 0.05 ).toVar(); // A minimum weight
+			const currentWeight = this.historyLength.reciprocal().toVar(); // A minimum weight
 
 			if ( this.useSubpixelCorrection ) {
 
@@ -505,8 +577,19 @@ class TRAANode extends Node {
 
 			// Perform neighborhood clipping/clamping. We use variance clipping here.
 
-			const varianceGamma = mix( 0.5, 1, motionFactor.oneMinus().pow2() ); // Reasonable gamma range is [0.75, 2]
-			const clippedHistoryColor = varianceClipping( positionTexel, currentColor, historyColor, varianceGamma );
+			// a 1σ box at rest clips converged sub-pixel detail, so longer histories lost accuracy
+			const varianceGamma = mix( 0.5, 2, motionFactor.oneMinus().pow2() );
+			let clippedHistoryColor = varianceClipping( positionTexel, currentColor, historyColor, varianceGamma );
+
+			if ( this.clipAtRest === false ) {
+
+				// only a pixel that does not move either keeps its history as it is
+
+				const pixelMotion = uvNode.sub( historyUV ).mul( textureSize ).length();
+				const relaxation = smoothstep( 0.01, 0.1, pixelMotion ).oneMinus().mul( this._restFactor );
+				clippedHistoryColor = mix( clippedHistoryColor, historyColor, relaxation );
+
+			}
 
 			// flicker reduction based on luminance weighing
 

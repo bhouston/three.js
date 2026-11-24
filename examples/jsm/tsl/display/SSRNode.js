@@ -1,16 +1,26 @@
-import { Break, Continue, Fn, If, Loop, abs, bool, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
-import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
+import { Break, Continue, EnvironmentBRDF, Fn, If, abs, bool, cos, cross, distance, div, dot, float, getScreenPosition, getViewPosition, int, ivec2, luminance, max, min, mix, mul, nodeObject, normalize, outputStruct, passTexture, property, reference, reflect, sin, sqrt, sub, texture, textureLoad, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, log2, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
+import { FloatType, HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NearestFilter, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
-import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
+import { D_GTR, ENV_RAY_LENGTH, F_Schlick, GeometryTerm, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
+import { hiZ } from './HiZNode.js';
+import { traceHiZ } from '../utils/SSRAdaptiveTrace.js';
+import { getSSRPixelWidth, validateSSRRayDistance } from '../utils/SSRValidation.js';
+import { traceLinearSSR } from '../utils/SSRLinearTrace.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
-const _size = /*@__PURE__*/ new Vector2();
+
+// Texel offsets of the neighbors whose rays a pixel reuses, rotated per pixel and frame.
+const REUSE_OFFSETS = [[ 1.5, 0.5 ], [ - 0.5, 1.5 ], [ - 1.5, - 0.5 ], [ 0.5, - 1.5 ]];
 let _rendererState;
 
 // Maximum ray-march step count; `quality` (0..1) scales it to a fixed per-ray count.
 const MAX_STEPS = 64;
+
+// Coarsest Hi-Z level for adaptive tracing (64-pixel cells, as in FidelityFX SSSR).
+// Measured at 720p: levels above this cost iterations without skipping more.
+const HIZ_MAX_LEVEL = 6;
 
 /**
  * @typedef {Object} SSRNodeOptions
@@ -24,6 +34,11 @@ const MAX_STEPS = 64;
  * @property {boolean} [envImportanceSampling=false] - When `true`, precomputes env-luminance CDF tables and uses MIS for environment misses. Build-time only.
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
+ * @property {'linear'|'adaptive'} [tracing='linear'] - Adaptive mode traces a nearest-depth hierarchy and stops at the first surface a ray reaches. Requires WebGPU.
+ * @property {number} [roughMinLevel=0] - Experimental, adaptive stochastic mode only: rays from surfaces rougher than 0.1 stop descending at this Hi-Z level (FidelityFX's most_detailed_mip). `0` disables it.
+ * @property {boolean} [occlusionSkipping=true] - Adaptive mode only: lets rays pass behind occluders by skipping Hi-Z cells they are entirely hidden behind, as linear tracing does sample by sample. Recovers reflections of surfaces seen past an occluder at the cost of longer rays.
+ * @property {?HiZNode} [hiZ=null] - Optional shared hierarchy built from the same depth texture.
+ * @property {boolean} [rayReuse=false] - Stochastic mode only: resolves each pixel from its own ray and those of four neighbors.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
 
@@ -46,8 +61,8 @@ class SSRNode extends Node {
 	/**
 	 * Constructs a new SSR node.
 	 *
-	 * @param {Node<vec4>} colorNode - The node that represents the beauty pass.
-	 * @param {Node<float>} depthNode - A node that represents the beauty pass's depth.
+	 * @param {TextureNode} colorNode - A texture node that represents the beauty pass.
+	 * @param {TextureNode} depthNode - A texture node that represents the beauty pass's depth.
 	 * @param {Node<vec3>} normalNode - A node that represents the beauty pass's unit view-space normals.
 	 * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.
 	 */
@@ -88,9 +103,9 @@ class SSRNode extends Node {
 		this.envImportanceSampling = envImportanceSampling;
 
 		/**
-		 * The node that represents the beauty pass.
+		 * A texture node that represents the beauty pass.
 		 *
-		 * @type {Node<vec4>}
+		 * @type {TextureNode}
 		 */
 		this.colorNode = colorNode;
 
@@ -103,11 +118,34 @@ class SSRNode extends Node {
 		this.diffuseNode = diffuseNode !== null ? nodeObject( diffuseNode ) : null;
 
 		/**
-		 * A node that represents the beauty pass's depth.
+		 * A texture node that represents the beauty pass's depth.
 		 *
-		 * @type {Node<float>}
+		 * @type {TextureNode}
 		 */
 		this.depthNode = depthNode;
+		this._tracing = options.tracing ?? 'linear';
+		if ( ! [ 'linear', 'adaptive' ].includes( this._tracing ) ) throw new Error( 'SSRNode: Invalid tracing mode.' );
+		this._roughMinLevel = options.roughMinLevel ?? 0;
+		this._coneTracing = options.coneTracing ?? false;
+		this._coneValidate = false;
+		this._hitValidation = true;
+		this._rayReuse = options.rayReuse ?? false;
+		this._occlusionSkipping = options.occlusionSkipping ?? true;
+		this._showIterations = false;
+		this._showConeMip = false;
+		this.hiZ = options.hiZ ?? null;
+		this._ownsHiZ = false;
+		if ( this._tracing === 'adaptive' && this.hiZ === null ) {
+
+			this.hiZ = hiZ( depthNode, { maxLevel: HIZ_MAX_LEVEL } );
+			this._ownsHiZ = true;
+
+		}
+
+		/** Adaptive cell-iteration budget, independent of quality. @type {UniformNode<int>} */
+		this.adaptiveMaxSteps = uniform( 32, 'int' );
+		/** Maximum linear stochastic march steps, scaled by quality. @type {UniformNode<int>} */
+		this.maxSteps = uniform( MAX_STEPS, 'int' );
 
 		/**
 		 * A node that represents the beauty pass's normals.
@@ -162,17 +200,6 @@ class SSRNode extends Node {
 		 * @default false
 		 */
 		this._reflectNonMetals = reflectNonMetals;
-
-		/**
-		 * The resolution scale. Valid values are in the range
-		 * `[0,1]`. `1` means best quality but also results in
-		 * more computational overhead. Setting to `0.5` means
-		 * the effect is computed in half-resolution.
-		 *
-		 * @type {number}
-		 * @default 1
-		 */
-		this.resolutionScale = 1;
 
 		/**
 		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node renders
@@ -261,6 +288,38 @@ class SSRNode extends Node {
 		 * @default 0
 		 */
 		this.mirrorBias = uniform( 0 );
+
+		/**
+		 * Stochastic mode only: the largest cosine between a ray and the direction to the camera
+		 * that is still traced. Rays turned further toward the camera are skipped, and hits fade
+		 * to the environment as a ray nears the threshold. `0` skips every ray heading back toward
+		 * the camera, as in GPU Pro 5; `1` traces them all. Range `[0,1]`.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 0
+		 */
+		this.cameraRayThreshold = uniform( 0 );
+
+		/**
+		 * Stochastic mode only: coarsest mip of the beauty pass a ray may read at its hit. Each ray
+		 * reads the mip matching the footprint of the cone it stands for, which grows with roughness
+		 * and hit distance, trading noise for some blur. `0` disables it. The texture behind
+		 * `colorNode` must have mipmaps (`generateMipmaps` and a trilinear `minFilter`).
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 0
+		 */
+		this.coneMaxLevel = uniform( 0 );
+
+		/**
+		 * Number of rays the GGX lobe is assumed to be shared between (spatial and temporal reuse
+		 * downstream). Each ray's cone covers `1 / ( coneSamples * pdf )` steradians, so lower
+		 * values read coarser mips: less noise, more blur.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 4
+		 */
+		this.coneSamples = uniform( 4 );
 
 		/**
 		 * The quality of the blur. Must be an integer in the range `[1,3]`.
@@ -425,6 +484,31 @@ class SSRNode extends Node {
 		this._ssrRenderTarget.texture.name = 'SSRNode.SSR';
 
 		/**
+		 * The render target the rays are traced into when they are reused: the radiance and ray
+		 * length of each ray, and its hit position in view space with its pdf.
+		 *
+		 * @private
+		 * @type {RenderTarget}
+		 */
+		this._traceRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 2, minFilter: NearestFilter, magFilter: NearestFilter } );
+		this._traceRenderTarget.textures[ 0 ].name = 'SSRNode.Trace';
+		this._traceRenderTarget.textures[ 1 ].name = 'SSRNode.Hit';
+		this._traceRenderTarget.textures[ 1 ].type = FloatType; // half floats cannot hold the pdf of a smooth surface
+
+		/**
+		 * The material that resolves the reused rays.
+		 *
+		 * @private
+		 * @type {NodeMaterial}
+		 */
+		this._resolveMaterial = new NodeMaterial();
+		this._resolveMaterial.name = 'SSRNode.Resolve';
+
+		this._resolveFn = null;
+		this._hitData = null;
+		this._reusesRays = false;
+
+		/**
 		 * The render target for the blurred SSR reflections.
 		 *
 		 * @private
@@ -504,6 +588,196 @@ class SSRNode extends Node {
 			this.setEnvMap( environmentNode );
 
 		}
+
+	}
+
+	/**
+	 * Traversal strategy. Switching modes recompiles only the SSR material.
+	 * The default linear tracer and downstream output contracts are preserved.
+	 * @type {'linear'|'adaptive'}
+	 */
+	get tracing() {
+
+		return this._tracing;
+
+	}
+
+	set tracing( value ) {
+
+		if ( ! [ 'linear', 'adaptive' ].includes( value ) ) throw new Error( 'SSRNode: Invalid tracing mode.' );
+		if ( value === this._tracing ) return;
+		if ( value === 'adaptive' && this.hiZ === null ) {
+
+			this.hiZ = hiZ( this.depthNode, { maxLevel: HIZ_MAX_LEVEL } );
+			this._ownsHiZ = true;
+
+		}
+
+		this._tracing = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/** Whether adaptive rays pass behind occluders. Changing it recompiles adaptive tracing. @type {boolean} */
+	get occlusionSkipping() {
+
+		return this._occlusionSkipping;
+
+	}
+
+	set occlusionSkipping( value ) {
+
+		if ( value === this._occlusionSkipping ) return;
+		this._occlusionSkipping = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Debug view: replaces the reflection with a heat map of trace iterations as a
+	 * fraction of the budget (blue, green, red; white where the budget ran out).
+	 * Changing it recompiles the SSR material.
+	 * @type {boolean}
+	 */
+	get showIterations() {
+
+		return this._showIterations;
+
+	}
+
+	set showIterations( value ) {
+
+		if ( value === this._showIterations ) return;
+		this._showIterations = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * With `coneTracing`: `false` takes a footprint-sized Hi-Z cell as the hit without the
+	 * normal and thickness tests, as the GPU Pro 5 tracer does. Fastest, but rays passing
+	 * behind or beside geometry hit it. Changing it recompiles adaptive tracing.
+	 *
+	 * @type {boolean}
+	 * @default false
+	 */
+	get coneValidate() {
+
+		return this._coneValidate;
+
+	}
+
+	set coneValidate( value ) {
+
+		if ( value === this._coneValidate ) return;
+		this._coneValidate = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Stochastic mode only: resolves each pixel from its own ray and those of four neighbors,
+	 * each weighted by the pixel's BRDF over the pdf the ray was sampled with, as in Stachowiak,
+	 * "Stochastic Screen-Space Reflections" (Frostbite, SIGGRAPH 2015), except that a neighbor's
+	 * ray direction is reused instead of its hit point. Lowers the noise of the
+	 * traced result at the cost of a resolve pass. Environment misses are then sampled along the
+	 * ray without `envImportanceSampling`. Changing it recompiles the SSR material.
+	 *
+	 * @type {boolean}
+	 * @default false
+	 */
+	get rayReuse() {
+
+		return this._rayReuse;
+
+	}
+
+	set rayReuse( value ) {
+
+		if ( value === this._rayReuse ) return;
+		this._rayReuse = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Adaptive tracing only: `false` takes the first depth crossing as the hit without the
+	 * normal, thickness and distance tests, so rays passing behind geometry hit it.
+	 * Changing it recompiles adaptive tracing.
+	 *
+	 * @type {boolean}
+	 * @default true
+	 */
+	get hitValidation() {
+
+		return this._hitValidation;
+
+	}
+
+	set hitValidation( value ) {
+
+		if ( value === this._hitValidation ) return;
+		this._hitValidation = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Stochastic mode only: outputs the beauty mip each hit read as a heat map (blue = 0,
+	 * red = `coneMaxLevel`, black = miss). Changing it recompiles the SSR material.
+	 *
+	 * @type {boolean}
+	 * @default false
+	 */
+	get showConeMip() {
+
+		return this._showConeMip;
+
+	}
+
+	set showConeMip( value ) {
+
+		if ( value === this._showConeMip ) return;
+		this._showConeMip = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/**
+	 * Adaptive stochastic mode only: rays test for a hit at the Hi-Z level whose cells fit inside
+	 * their cone footprint (see {@link SSRNode#coneMaxLevel}), once per cell and with a thickness
+	 * widened to the cell, as Hi-Z cone tracing does. Cheaper, but surfaces narrower than the
+	 * footprint are hit only in proportion to their coverage. Takes precedence over `roughMinLevel`. Changing it recompiles adaptive tracing.
+	 *
+	 * @type {boolean}
+	 * @default false
+	 */
+	get coneTracing() {
+
+		return this._coneTracing;
+
+	}
+
+	set coneTracing( value ) {
+
+		if ( value === this._coneTracing ) return;
+		this._coneTracing = value;
+		this._buildSSRMaterial();
+
+	}
+
+	/** Coarsest-leaf level for rough stochastic rays; `0` is off. Changing it recompiles adaptive tracing. @type {number} */
+	get roughMinLevel() {
+
+		return this._roughMinLevel;
+
+	}
+
+	set roughMinLevel( value ) {
+
+		if ( value === this._roughMinLevel ) return;
+		this._roughMinLevel = value;
+		this._buildSSRMaterial();
 
 	}
 
@@ -649,9 +923,26 @@ class SSRNode extends Node {
 
 		if ( this._ssrFn === null ) return;
 
+		// the debug views return a single value, so they are traced without reuse
+
+		this._reusesRays = this.stochastic === true && this._rayReuse === true &&
+			this.showIterations === false && this.showConeMip === false && this._traceDebug !== true;
+
+		this._hitData = this._reusesRays ? property( 'vec4' ) : null;
+
+		const traced = this._ssrFn();
+
 		this._ssrMaterial.contextNode = context( this._sharedContext );
-		this._ssrMaterial.fragmentNode = this._ssrFn();
+		this._ssrMaterial.fragmentNode = this._reusesRays ? outputStruct( traced, this._hitData ) : traced;
 		this._ssrMaterial.needsUpdate = true;
+
+		if ( this._reusesRays ) {
+
+			this._resolveMaterial.contextNode = context( this._sharedContext );
+			this._resolveMaterial.fragmentNode = this._resolveFn();
+			this._resolveMaterial.needsUpdate = true;
+
+		}
 
 	}
 
@@ -674,12 +965,10 @@ class SSRNode extends Node {
 	 */
 	setSize( width, height ) {
 
-		width = Math.round( this.resolutionScale * width );
-		height = Math.round( this.resolutionScale * height );
-
 		this._resolution.value.set( width, height );
 		this._ssrRenderTarget.setSize( width, height );
 		this._blurRenderTarget.setSize( width, height );
+		if ( this._reusesRays ) this._traceRenderTarget.setSize( width, height );
 
 	}
 
@@ -775,11 +1064,11 @@ class SSRNode extends Node {
 		const ssrRenderTarget = this._ssrRenderTarget;
 		const blurRenderTarget = this._blurRenderTarget;
 
-		const size = renderer.getDrawingBufferSize( _size );
+		const { width, height } = this.depthNode.value.image;
 
 		_quadMesh.material = this._ssrMaterial;
 
-		this.setSize( size.width, size.height );
+		this.setSize( width, height );
 
 		// Advance the noise index once per frame (matches SSGI / Denoise).
 		this._noiseIndex.value = ( this._noiseIndex.value + 1 ) % 0x7fffffff;
@@ -791,9 +1080,21 @@ class SSRNode extends Node {
 
 		// ssr
 
-		renderer.setRenderTarget( ssrRenderTarget );
+		renderer.setRenderTarget( this._reusesRays ? this._traceRenderTarget : ssrRenderTarget );
 		_quadMesh.name = 'SSR [ Reflections ]';
 		_quadMesh.render( renderer );
+
+		// resolve the reused rays (optional)
+
+		if ( this._reusesRays ) {
+
+			_quadMesh.material = this._resolveMaterial;
+
+			renderer.setRenderTarget( ssrRenderTarget );
+			_quadMesh.name = 'SSR [ Resolve ]';
+			_quadMesh.render( renderer );
+
+		}
 
 		// blur (optional)
 
@@ -827,6 +1128,19 @@ class SSRNode extends Node {
 	 * @return {PassTextureNode}
 	 */
 	setup( builder ) {
+
+		// the depth node defines the resolution of the effect and must be updated first
+
+		builder.getNodeProperties( this ).depthNode = this.depthNode;
+
+		// the owned hierarchy follows the depth node, which can be swapped for a downsampled one
+
+		if ( this._ownsHiZ && this.hiZ.depthNode !== this.depthNode ) {
+
+			this.hiZ.dispose();
+			this.hiZ = hiZ( this.depthNode, { maxLevel: HIZ_MAX_LEVEL } );
+
+		}
 
 		const uvNode = uv();
 
@@ -874,18 +1188,17 @@ class SSRNode extends Node {
 
 		const ssr = Fn( () => {
 
+			const adaptive = this.tracing === 'adaptive';
+			if ( adaptive && builder.renderer.backend.isWebGPUBackend !== true ) throw new Error( 'SSRNode: Adaptive tracing requires WebGPU.' );
+
 			const noise = this.stochastic === true ? sampleMarchNoise( uvNode, this._noiseIndex ) : null;
-			// reconstruct at the depth texel center
 
-			const depthSize = vec2( textureSize( this.depthNode ) ).toConst();
-			const uvPos = uvNode.mul( depthSize ).floor().add( 0.5 ).div( depthSize ).toVar();
-
-			const depth = sampleDepth( uvPos ).toVar();
+			const depth = sampleDepth( uvNode ).toVar();
 
 			// Skip background pixels (cleared far-plane depth); the target is cleared each frame.
 			isBackgroundDepth( depth ).discard();
 
-			const viewPosition = getViewPosition( uvPos, depth, this._cameraProjectionMatrixInverse ).toVar();
+			const viewPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar();
 			const worldPosition = this._cameraWorldMatrix.mul( vec4( viewPosition, 1.0 ) ).xyz.toVar();
 			const viewNormal = this.normalNode.rgb.toVar();
 
@@ -904,13 +1217,14 @@ class SSRNode extends Node {
 			const roughness = float( this.roughnessNode );
 			const glossiness = min( roughness.div( 0.25 ), 1 ).oneMinus();
 			// Only the fade-to-black miss path reads this, and that path is baked out otherwise.
-			const surfaceBorderFactor = this.screenEdgeFadeBlack ? computeScreenBorderFactor( uvPos, this.screenEdgeFade ) : null;
+			const surfaceBorderFactor = this.screenEdgeFadeBlack ? computeScreenBorderFactor( uvNode, this.screenEdgeFade ) : null;
 			const hitBorderWidth = this.screenEdgeFade.mul( glossiness );
 
 			const V = viewIncidentDir.negate().normalize().toVar();
 
 			let viewReflectDir, finalSampleWeight, specDominantFactor;
 			let sampleEnvReflection = null;
+			let coneTangent = null;
 
 			if ( this.stochastic === false ) {
 
@@ -925,7 +1239,7 @@ class SSRNode extends Node {
 				Xi.y.assign( mix( Xi.y, 0.0, this.mirrorBias.mul( Xi.w.sqrt() ) ) );
 
 				// The base color only feeds the metalness F0 fallback.
-				const albedo = ( this.specularNode === null && this.diffuseNode !== null ? this.diffuseNode.sample( uvPos ).rgb : vec3( 1 ) ).toVar();
+				const albedo = ( this.specularNode === null && this.diffuseNode !== null ? this.diffuseNode.sample( uvNode ).rgb : vec3( 1 ) ).toVar();
 				const ggxSample = ggxReflectionSample( viewNormal, V, roughness, metalness, albedo, Xi, this.specularNode, this.specularF90Node ?? 1 ).toVar();
 
 				// Sometimes the GGX sample is facing away from the surface, so we need to re-sample.
@@ -936,18 +1250,29 @@ class SSRNode extends Node {
 				} );
 
 				viewReflectDir = ggxSample.get( 'reflectDir' ).toVar();
+				// Cone footprint (filtered importance sampling): the ray stands for
+				// 1 / ( coneSamples * pdf ) steradians of the lobe.
+				coneTangent = ggxSample.get( 'pdf' ).mul( this.coneSamples ).mul( Math.PI ).max( 1e-6 ).inverseSqrt().toVar();
 				finalSampleWeight = ggxSample.get( 'sampleWeight' ).toVar();
 				specDominantFactor = getSpecularDominantFactor( ggxSample.get( 'NdotV' ), roughness ).toVar();
+
+				// a miss is stored as a hit far along the ray, so a neighbor sees it in the same direction
+
+				if ( this._reusesRays ) this._hitData.assign( vec4( viewPosition.add( viewReflectDir.mul( ENV_RAY_LENGTH ) ), ggxSample.get( 'pdf' ) ) );
 
 				sampleEnvReflection = () => {
 
 					if ( this._importanceEnvironment === null ) return vec3( 0 );
 
+					// reused rays carry the radiance, the pixel that reuses one applies its own BRDF
+
+					if ( this._reusesRays ) return this._importanceEnvironment.sampleEnvironment( this._cameraWorldMatrix, viewReflectDir );
+
 					const envColor = vec3( 0 ).toVar();
 
 					if ( this.envImportanceSampling ) {
 
-						const Xi2 = bindAnalyticNoise( this._resolution, 59 )( uvPos, this._noiseIndex );
+						const Xi2 = bindAnalyticNoise( this._resolution, 59 )( uvNode, this._noiseIndex );
 
 						envColor.assign( this._importanceEnvironment.sampleEnvironmentMIS( {
 							cameraWorldMatrix: this._cameraWorldMatrix,
@@ -1019,6 +1344,9 @@ class SSRNode extends Node {
 
 			};
 
+			// The margin of the ray below the camera ray threshold: negative when it turns too far toward the camera.
+			const cameraFacing = this.stochastic ? this.cameraRayThreshold.sub( dot( viewReflectDir, V ) ).toVar() : null;
+
 			const maxReflectRayLen = this.maxDistance.div( dot( viewIncidentDir.negate(), viewNormal ).max( 1e-4 ) ).toVar();
 
 			const d1viewPosition = viewPosition.add( viewReflectDir.mul( maxReflectRayLen ) ).toVar();
@@ -1036,7 +1364,7 @@ class SSRNode extends Node {
 
 			}
 
-			const d0 = uvPos.mul( this._resolution ).xy.toVar();
+			const d0 = uvNode.mul( this._resolution ).xy.toVar();
 			const d1 = getScreenPosition( d1viewPosition, this._cameraProjectionMatrix ).mul( this._resolution ).toVar();
 
 			// clip the ray to the screen so all steps land on visible texels
@@ -1068,7 +1396,7 @@ class SSRNode extends Node {
 			// coherent stochastic sampling; each step then spans the whole ray as rayVec / totalStep.
 			const totalStep = int( this.stochastic === false
 				? trunc( max( abs( xLen ), abs( yLen ) ).mul( this.quality.clamp() ) ).max( int( 1 ) ).toConst()
-				: this.quality.clamp().mul( MAX_STEPS ).max( float( 1 ) ) ).toConst();
+				: this.quality.clamp().mul( this.maxSteps.clamp( 1, 4096 ) ).max( float( 1 ) ) ).toConst();
 
 			const xSpan = xLen.div( totalStep ).toVar();
 			const ySpan = yLen.div( totalStep ).toVar();
@@ -1109,162 +1437,152 @@ class SSRNode extends Node {
 					idx.div( rayLen )
 				);
 
-			// Carry the hit out of the loop so refinement runs after the march, not nested inside it (a
-			// loop-inside-a-loop tripped shader-compiler bugs on some drivers). hitSLo/hitSHi bracket s.
 			const foundHit = bool( false ).toVar();
-			const hitSLo = float( 0 ).toVar();
-			const hitSHi = float( 0 ).toVar();
-			// Carry the coarse hit's UV/depth to skip a redundant fetch when refinement is off.
+			// The ray reached a surface it cannot shade, e.g. the back of one next to its origin: it is not free to see the environment.
+			const blocked = bool( false ).toVar();
 			const hitUvS = vec2( 0 ).toVar();
 			const hitD = float( 0 ).toVar();
-			const previousS = float( 0 ).toVar();
-			const previousInFront = bool( true ).toVar();
-			const canRefine = bool( false ).toVar();
+			const validatedPosition = vec3( 0 ).toVar();
+			const adaptiveRay = d1viewPosition.sub( viewPosition ).toConst();
+			const surfacePoint = ( uv, raw ) => getViewPosition( uv, projectionDepth( raw, this._cameraNear, this._cameraFar ), this._cameraProjectionMatrixInverse );
+			// `cell` widens the tolerance to a coarse Hi-Z cell's size in pixels (cone tracing).
+			const nearRay = ( point, cell = 0 ) => {
 
-			// March from d0 toward d1, looking for an intersection with the depth buffer.
-			Loop( { start: int( 1 ), end: totalStep }, ( { i } ) => {
+				const pixelWidth = getSSRPixelWidth( this._cameraProjectionMatrixInverse, point.z, invResolution.x, this.camera.isPerspectiveCamera );
+				return validateSSRRayDistance( point, viewPosition, adaptiveRay, max( pixelWidth.mul( float( cell ).add( 3 ) ), this.thickness ) );
 
-				// Exponentially-distributed ray parameter, shared by the sample position and ray depth.
-				const s = sampleFraction( float( i ) ).toVar();
+			};
 
-				If( s.greaterThan( 1 ), () => {
+			const iterationHeat = ( fraction, exhausted ) => {
 
-					Break();
+				const cool = mix( vec3( 0, 0, 1 ), vec3( 0, 1, 0 ), fraction.mul( 2 ).clamp() );
+				const warm = mix( cool, vec3( 1, 0, 0 ), fraction.mul( 2 ).sub( 1 ).clamp() );
+				return vec4( bool( exhausted ).select( vec3( 1 ), warm ), 1 );
+
+			};
+
+			const validateHit = ( hitUV, raw, cell ) => {
+
+				const valid = bool( false ).toVar();
+				const allowed = dot( viewReflectDir, this.normalNode.sample( hitUV ).rgb ).lessThan( 0 );
+				If( allowed, () => {
+
+					const point = surfacePoint( hitUV, raw ).toVar();
+					validatedPosition.assign( point );
+					valid.assign( nearRay( point, cell ) );
+
+					if ( this.stochastic === false ) valid.assign( valid.and( pointPlaneDistance( point, viewPosition, viewNormal ).lessThanEqual( this.maxDistance ) ) );
 
 				} );
+				return valid;
 
-				const xy = screenPosAt( s ).toVar();
+			};
 
-				If( xy.x.lessThan( 0 ).or( xy.x.greaterThan( this._resolution.x ) ).or( xy.y.lessThan( 0 ) ).or( xy.y.greaterThan( this._resolution.y ) ), () => {
+			if ( adaptive ) {
 
-					Break();
+				const reversed = builder.renderer.reversedDepthBuffer === true && builder.renderer.logarithmicDepthBuffer !== true;
+				const toDepth = this.camera.isPerspectiveCamera
+					? reversed ? viewZToReversedPerspectiveDepth : viewZToPerspectiveDepth
+					: reversed ? viewZToReversedOrthographicDepth : viewZToOrthographicDepth;
+				const result = traceHiZ( this.hiZ,
+					vec3( uvNode, toDepth( viewPosition.z, this._cameraNear, this._cameraFar ) ),
+					vec3( d1.mul( invResolution ), toDepth( d1viewPosition.z, this._cameraNear, this._cameraFar ) ), {
+						reversedDepth: reversed,
+						start: cameraFacing !== null ? cameraFacing.lessThan( 0 ).select( 1, rayLen.reciprocal() ) : rayLen.reciprocal(),
+						maxSteps: this.adaptiveMaxSteps,
+						// Cone tracing: cells no larger than the footprint radius, taking pixels travelled
+						// on screen as the distance (exact for rays parallel to the screen).
+						minLevel: this.stochastic && this.coneTracing ? travelled => int( log2( travelled.mul( coneTangent ).max( 1 ) ).min( this.coneMaxLevel ) )
+							: this.stochastic && this.roughMinLevel > 0 ? roughness.greaterThan( 0.1 ).select( int( this.roughMinLevel ), int( 0 ) ) : 0,
+						coarseHits: this.stochastic && this.coneTracing,
+						depthTolerance: 2e-7,
+						projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
+						// The cell's farthest surface fails the thickness test where the ray
+						// enters and leaves, so every nearer surface in between fails it too.
+						isHidden: this.occlusionSkipping === false ? null : ( uvIn, uvOut, raw ) => nearRay( surfacePoint( uvIn, raw ).toVar() ).not().and( nearRay( surfacePoint( uvOut, raw ).toVar() ).not() ),
+						acceptHit: ( uv, s, raw, cell ) => {
 
-				} );
+							if ( this.hitValidation && ( cell === undefined || this.coneValidate ) ) return validateHit( uv, raw, cell );
+							// Unvalidated hit: shade a coarse one at the ray's own point.
+							validatedPosition.assign( cell === undefined ? surfacePoint( uv, raw ) : rayPointAt( s ) );
+							return bool( true );
 
-				const uvS = xy.mul( invResolution ).toVar();
-				const rawDepth = this.depthNode.sample( uvS ).r;
-				const d = projectionDepth( rawDepth, this._cameraNear, this._cameraFar ).toVar();
-				const vZ = depthToViewZ( rawDepth, this._cameraNear, this._cameraFar, this.camera ).toVar();
+						}
+					} );
+				if ( this._traceDebug === true ) return vec4( float( result.iterations ), 0, float( result.hit ), float( result.exhausted ) );
+				if ( this.showIterations ) return iterationHeat( float( result.iterations ).div( float( this.adaptiveMaxSteps ) ), result.exhausted );
+				foundHit.assign( result.hit );
+				blocked.assign( result.rejected );
+				hitUvS.assign( result.uv );
+				hitD.assign( projectionDepth( result.depth, this._cameraNear, this._cameraFar ) );
 
-				const viewReflectRayZ = reflectRayZAt( s ).toVar();
+			} else {
 
-				// Advance the previous sample before any Continue() so rejected samples still bound the next bracket.
-				const lastS = previousS.toVar();
-				const lastInFront = previousInFront.toVar();
-				previousS.assign( s );
-				previousInFront.assign( viewReflectRayZ.greaterThan( vZ ) );
+				const result = traceLinearSSR( {
+					totalStep,
+					sampleFraction,
+					uvAt: s => screenPosAt( s ).mul( invResolution ),
+					sampleDepth: uv => this.depthNode.sample( uv ).r,
+					projectDepth: raw => projectionDepth( raw, this._cameraNear, this._cameraFar ),
+					sceneZ: raw => depthToViewZ( raw, this._cameraNear, this._cameraFar, this.camera ),
+					rayZAt: reflectRayZAt,
+					isBackground: isBackgroundDepth,
+					binaryRefine: this.binaryRefine,
+					frontFacing: uv => dot( viewReflectDir, this.normalNode.sample( uv ).rgb ).lessThan( 0 ),
+					acceptHit: ( uvS, s, lastS, d ) => {
 
-				If( isBackgroundDepth( d ).not().and( viewReflectRayZ.lessThanEqual( vZ ) ), () => {
+						const valid = bool( false ).toVar();
+						const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse ).toVar();
+						const away = pointToLineDistance( vP, viewPosition, d1viewPosition ).toVar();
+						const neighbor = getViewPosition( uvS.add( uvPixelStepX ), d, this._cameraProjectionMatrixInverse );
+						const minThickness = neighbor.x.sub( vP.x ).mul( 3 );
+						const stepLength = distance( rayPointAt( lastS ), rayPointAt( s ) );
+						const tk = this.binaryRefine ? max( max( minThickness, this.thickness ), stepLength ) : max( minThickness, this.thickness );
+						If( away.lessThanEqual( tk ), () => {
 
-					// Depth crossing: ray went behind the depth buffer. Gate by thickness before stopping
-					// so an occluder gap doesn't end the march prematurely.
-					const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse ).toVar();
-					const away = pointToLineDistance( vP, viewPosition, d1viewPosition ).toVar();
+							If( dot( viewReflectDir, this.normalNode.sample( uvS ).rgb ).greaterThanEqual( 0 ), () => {
 
-					const uvNeighbor = uvS.add( uvPixelStepX ).toVar();
-					const vPNeighbor = getViewPosition( uvNeighbor, d, this._cameraProjectionMatrixInverse ).toVar();
-					const minThickness = vPNeighbor.x.sub( vP.x ).mul( 3 ).toVar();
-					// Only refinement may use a wider coarse tolerance.
-
-					const stepLength = distance( rayPointAt( lastS ), rayPointAt( s ) );
-					const tk = ( this.binaryRefine ? max( max( minThickness, this.thickness ), stepLength ) : max( minThickness, this.thickness ) ).toVar();
-
-					If( away.lessThanEqual( tk ), () => {
-
-						const vN = this.normalNode.sample( uvS ).rgb.toVar();
-
-						// the reflected ray is pointing towards the same side as the fragment's normal (current ray position),
-						// which means it wouldn't reflect off the surface. The loop continues to the next step for the next ray sample.
-						If( dot( viewReflectDir, vN ).greaterThanEqual( 0 ), () => {
-
-							Continue();
-
-						} );
-
-						if ( this.stochastic === false ) {
-
-							// this distance represents the depth of the intersection point between the reflected ray and the scene.
-							const distance = pointPlaneDistance( vP, viewPosition, viewNormal ).toVar();
-
-							// Distance exceeding limit: The reflection is potentially too far away and
-							// might not contribute significantly to the final color
-							If( distance.greaterThan( this.maxDistance ), () => {
-
-								Break();
+								Continue();
 
 							} );
+							if ( this.stochastic === false ) {
 
-						}
+								If( pointPlaneDistance( vP, viewPosition, viewNormal ).greaterThan( this.maxDistance ), () => {
 
-						foundHit.assign( true );
-						hitUvS.assign( uvS );
-						hitD.assign( d );
+									Break();
 
-						if ( this.binaryRefine ) {
+								} );
 
-							// refine only front-to-back crossings
+							}
 
-							canRefine.assign( lastInFront );
-							hitSLo.assign( lastS );
-							hitSHi.assign( s );
+							valid.assign( true );
 
-						}
+						} );
+						return valid;
 
-						Break();
-
-
-					} );
-
+					}
 				} );
+				if ( this.showIterations ) return iterationHeat( float( result.iterations ).div( float( totalStep ) ), false );
+				foundHit.assign( result.hit );
+				hitUvS.assign( result.uv );
+				hitD.assign( result.depth );
 
-			} );
+			}
+
+			const coneLod = float( 0 ).toVar();
 
 			If( foundHit, () => {
 
-				// Bisect the bracketed crossing toward the exact intersection. Run after the march, not
-				// nested (a loop-inside-a-loop tripped shader-compiler bugs on some drivers).
-				if ( this.binaryRefine ) {
-
-					If( canRefine, () => {
-
-						Loop( { start: int( 0 ), end: int( 8 ), type: 'int', condition: '<' }, () => {
-
-							const sMid = hitSLo.add( hitSHi ).mul( 0.5 ).toVar();
-							const uvMid = screenPosAt( sMid ).mul( invResolution ).toConst();
-							const sceneZMid = depthToViewZ( this.depthNode.sample( uvMid ).r, this._cameraNear, this._cameraFar, this.camera );
-							const frontFacing = dot( viewReflectDir, this.normalNode.sample( uvMid ).rgb ).lessThan( 0 );
-
-							If( reflectRayZAt( sMid ).lessThanEqual( sceneZMid ).and( frontFacing ), () => {
-
-								hitSHi.assign( sMid );
-
-							} ).Else( () => {
-
-								hitSLo.assign( sMid );
-
-							} );
-
-						} );
-
-						// re-fetch UV/depth at the refined `s`
-
-						hitUvS.assign( screenPosAt( hitSHi ).mul( invResolution ) );
-						hitD.assign( sampleDepth( hitUvS ) );
-
-					} );
-
-				}
-
 				// Shade the hit, reusing the depth fetched during the march (or refinement).
 				const uvS = hitUvS;
-				const vP = getViewPosition( uvS, hitD, this._cameraProjectionMatrixInverse ).toVar();
+				const vP = ( adaptive ? validatedPosition : getViewPosition( uvS, hitD, this._cameraProjectionMatrixInverse ) ).toVar();
 
 				// In blur mode the ratio² falloff re-grows past maxDistance, so over-range hits fall back
 				// to env. The scatter path bounds reach via ray length, so every hit shades.
 				const distancePointPlane = this.stochastic === false ? pointPlaneDistance( vP, viewPosition, viewNormal ).toVar() : float( 0 );
 				const withinRange = distancePointPlane.lessThanEqual( this.maxDistance ).toVar();
 
-				if ( this.binaryRefine ) {
+				if ( this.binaryRefine && ! adaptive ) {
 
 					// bisection can land on a depth discontinuity, so validate the refined hit
 
@@ -1282,17 +1600,48 @@ class SSRNode extends Node {
 					const hitWorldPosition = this._cameraWorldMatrix.mul( vec4( vP, 1.0 ) ).xyz.toVar();
 					const worldDistance = distance( worldPosition, hitWorldPosition ).mul( specDominantFactor ).toVar();
 
-					const reflectColor = this.colorNode.sample( uvS ).toVar();
+					let reflectSample = this.colorNode.sample( uvS );
+
+					if ( this.stochastic === true ) {
+
+						// Read the beauty mip covering the cone's disc at the hit.
+						// ponytail: isotropic, not depth-aware; use a depth-aware Gaussian pyramid if it leaks.
+						const radius = distance( viewPosition, vP ).mul( coneTangent );
+						const pixelSize = getViewPosition( uvS.add( uvPixelStepX ), hitD, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).abs().max( 1e-6 );
+						// `pixelSize` is a texel of the pass, the mips are those of the beauty pass
+						const colorScale = float( textureSize( this.colorNode ).x ).div( this._resolution.x );
+						coneLod.assign( log2( radius.mul( 2 ).div( pixelSize ).mul( colorScale ) ).clamp( 0, this.coneMaxLevel ) );
+						reflectSample = reflectSample.level( coneLod );
+
+					}
+
+					const reflectColor = reflectSample.toVar();
 
 					// Multi-bounce: add the reprojected previous-frame reflection at the hit point.
 					reflectColor.rgb.assign( reprojectHitPointHistory( uvS, reflectColor.rgb ) );
 
 					if ( this.stochastic === true ) applyHitEdgeFade( reflectColor, uvS, hitBorderWidth );
 
+					if ( cameraFacing !== null ) {
+
+						// a threshold of 1 keeps every ray, so nothing fades
+						const fade = this.cameraRayThreshold.greaterThanEqual( 1 ).select( 1, cameraFacing.mul( 4 ).clamp() );
+						If( fade.lessThan( 1 ), () => {
+
+							reflectColor.rgb.assign( mix( sampleEnvReflection().mul( this.environmentIntensity ), reflectColor.rgb, fade ) );
+
+						} );
+
+					}
+
 					// The scatter (GGX) path bakes distance/grazing response into finalSampleWeight.
 					// The mirror/blur path is a plain reflection, so reapply upstream's squared
 					// distance attenuation and grazing Fresnel here to match its falloff.
-					let weightedColor = reflectColor.rgb.mul( finalSampleWeight );
+					let weightedColor = this._reusesRays ? reflectColor.rgb : reflectColor.rgb.mul( finalSampleWeight );
+
+					// the point on the ray at the hit distance: the validated surface point of a short ray can lie behind the pixel
+
+					if ( this._reusesRays ) this._hitData.xyz.assign( viewPosition.add( viewReflectDir.mul( distance( viewPosition, vP ) ) ) );
 
 					if ( this.stochastic === false ) {
 
@@ -1310,8 +1659,16 @@ class SSRNode extends Node {
 
 			} );
 
+			// A blocked ray carries no sample: ray reuse skips it and fills the pixel from its neighbors.
+
+			if ( this._reusesRays ) If( blocked, () => {
+
+				this._hitData.w.assign( 0 );
+
+			} );
+
 			// Screen-space ray missed: environment fallback (MIS when CDF env is set up).
-			If( hit.equal( 0 ), () => {
+			If( hit.equal( 0 ).and( blocked.not() ), () => {
 
 				if ( this.stochastic === true ) {
 
@@ -1328,6 +1685,8 @@ class SSRNode extends Node {
 
 			} );
 
+			if ( this.stochastic && this.showConeMip ) return iterationHeat( coneLod.div( this.coneMaxLevel.max( 1 ) ), false ).mul( hit );
+
 			const lum = luminance( output.rgb ).max( 1e-4 ).toVar();
 			output.rgb.mulAssign( this.maxLuminance.div( lum ).min( 1 ) );
 
@@ -1338,8 +1697,124 @@ class SSRNode extends Node {
 
 		} );
 
+		// Ray reuse, Stachowiak 2015: each ray is weighted by the BRDF of the pixel that reuses it over the
+		// pdf it was sampled with, and the sum is normalized by the weights (a ratio estimator).
+
+		const resolve = Fn( () => {
+
+			const depth = sampleDepth( uvNode ).toVar();
+
+			isBackgroundDepth( depth ).discard();
+
+			const traceColor = texture( this._traceRenderTarget.textures[ 0 ] );
+			const traceHit = texture( this._traceRenderTarget.textures[ 1 ] );
+
+			const viewPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar();
+			const N = this.normalNode.rgb.toVar();
+			const V = ( this.camera.isPerspectiveCamera ? normalize( viewPosition ).negate() : vec3( 0, 0, 1 ) ).toVar();
+			const NdotV = dot( N, V ).max( 1e-4 ).toVar();
+
+			const roughness = float( this.roughnessNode ).toVar();
+			const alpha = roughness.mul( roughness ).max( 0.001 ).toVar();
+
+			const coord = ivec2( uvNode.mul( this._resolution ) ).toVar();
+			const last = ivec2( this._resolution ).sub( 1 ).toVar();
+			const own = textureLoad( traceColor, coord ).toVar();
+
+			const angle = bindAnalyticNoise( this._resolution, 71 )( uvNode, this._noiseIndex ).x.mul( 2 * Math.PI ).toVar();
+			const rotation = vec2( cos( angle ), sin( angle ) ).toVar();
+
+			// the pdf of the bounded VNDF sampler, see `ggxReflectionSample()`
+
+			const sinV2 = NdotV.mul( NdotV ).oneMinus().max( 0 ).toVar();
+			const s2 = sqrt( sinV2 ).add( 1 ).pow2().toVar();
+			const a2 = alpha.mul( alpha ).toVar();
+			const k = a2.oneMinus().mul( s2 ).div( s2.add( a2.mul( NdotV ).mul( NdotV ) ) );
+			const pdfScale = k.mul( NdotV ).add( sqrt( a2.mul( sinV2 ).add( NdotV.mul( NdotV ) ) ) ).mul( 2 ).toVar();
+
+			const albedo = this.specularNode === null && this.diffuseNode !== null ? this.diffuseNode.sample( uvNode ).rgb : vec3( 1 );
+			const f0 = vec3( this.specularNode ?? mix( vec3( 0.04 ), albedo, float( this.metalnessNode ) ) ).toVar();
+			const f90 = float( this.specularF90Node ?? 1 );
+
+			const pixelWidth = getSSRPixelWidth( this._cameraProjectionMatrixInverse, viewPosition.z, this._resolution.x.reciprocal(), this.camera.isPerspectiveCamera ).toVar();
+
+			const sum = vec3( 0 ).toVar();
+			const total = vec3( 0 ).toVar();
+
+			const accumulate = ( texel, isOwn ) => {
+
+				const hit = textureLoad( traceHit, texel ).toVar();
+
+				// The direction of the ray is reused, not its hit point: aiming at a hit that is as near as
+				// the neighbor itself changes the direction, and with it the weight, by a large amount.
+
+				let origin = viewPosition, sameSurface = null;
+
+				if ( isOwn === false ) {
+
+					const neighborUV = vec2( texel ).add( 0.5 ).div( this._resolution ).toVar();
+
+					origin = getViewPosition( neighborUV, sampleDepth( neighborUV ), this._cameraProjectionMatrixInverse ).toVar();
+
+					// a neighbor on another surface sees other things
+
+					sameSurface = dot( N, this.normalNode.sample( neighborUV ).rgb ).greaterThan( 0.9 )
+						.and( dot( N, origin.sub( viewPosition ) ).abs().lessThan( pixelWidth.mul( 2 ) ) );
+
+				}
+
+				const L = normalize( hit.xyz.sub( origin ) ).toVar();
+				const NdotL = dot( N, L ).toVar();
+
+				// a ray is usable when it was traced and leaves the surface of this pixel
+
+				let usable = hit.w.greaterThan( 0 ).and( NdotL.greaterThan( 0 ) );
+
+				if ( isOwn === false ) usable = usable.and( texel.notEqual( coord ).any() ).and( sameSurface );
+
+				If( usable, () => {
+
+					const geometry = GeometryTerm( NdotL, NdotV, alpha ).div( NdotV.mul( 4 ) );
+
+					// the distribution cancels against the pdf of the pixel's own ray, which keeps a mirror stable
+
+					const H = normalize( V.add( L ) ).toVar();
+
+					const lobe = isOwn
+						? geometry.mul( pdfScale )
+						: D_GTR( alpha, dot( N, H ).max( 0 ), float( 2 ) ).mul( geometry ).div( hit.w );
+
+					// the Fresnel term varies across the lobe of a dielectric, so it is part of the weight
+
+					const weight = F_Schlick( f0, dot( V, H ).max( 0 ), f90 ).mul( lobe ).toVar();
+
+					sum.addAssign( textureLoad( traceColor, texel ).rgb.mul( weight ) );
+					total.addAssign( weight );
+
+				} );
+
+			};
+
+			accumulate( coord, true );
+
+			for ( const [ x, y ] of REUSE_OFFSETS ) {
+
+				const offset = vec2( rotation.x.mul( x ).sub( rotation.y.mul( y ) ), rotation.y.mul( x ).add( rotation.x.mul( y ) ) );
+
+				accumulate( coord.add( ivec2( offset.round() ) ).clamp( ivec2( 0 ), last ).toVar(), false );
+
+			}
+
+			// the normalized radiance is scaled by the directional albedo of the specular lobe
+
+			const reflectance = EnvironmentBRDF( { dotNV: NdotV, specularColor: f0, specularF90: f90, roughness } );
+
+			return vec4( sum.div( total.max( 1e-6 ) ).mul( reflectance ), own.a );
+
+		} );
 
 		this._ssrFn = ssr;
+		this._resolveFn = resolve;
 		this._sharedContext = builder.getSharedContext();
 		this._buildSSRMaterial();
 
@@ -1374,10 +1849,14 @@ class SSRNode extends Node {
 
 		super.dispose();
 
+		if ( this._ownsHiZ ) this.hiZ.dispose();
+
 		this._ssrRenderTarget.dispose();
+		this._traceRenderTarget.dispose();
 		this._blurRenderTarget.dispose();
 
 		this._ssrMaterial.dispose();
+		this._resolveMaterial.dispose();
 		this._blurMaterial.dispose();
 		this._copyMaterial.dispose();
 
@@ -1399,8 +1878,8 @@ export default SSRNode;
  *
  * @tsl
  * @function
- * @param {Node<vec4>} colorNode - The node that represents the beauty pass.
- * @param {Node<float>} depthNode - A node that represents the beauty pass's depth.
+ * @param {TextureNode} colorNode - A texture node that represents the beauty pass.
+ * @param {TextureNode} depthNode - A texture node that represents the beauty pass's depth.
  * @param {Node<vec3>} normalNode - A node that represents the beauty pass's unit view-space normals.
  * @param {SSRNodeOptions} [options] - Optional inputs for material and environment data.
  * @returns {SSRNode}

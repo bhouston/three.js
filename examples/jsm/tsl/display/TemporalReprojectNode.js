@@ -6,17 +6,6 @@ import { ENV_RAY_LENGTH, ENV_RAY_LENGTH_THRESHOLD } from '../utils/SpecularHelpe
 // Reprojection helpers
 
 /**
- * Maps a resolve (screen) texel to the corresponding beauty-input texel when resolutions differ.
- *
- * @tsl
- */
-const beautyTexelFromScreen = Fn( ( [ screenTexel, beautySize, resolveSize ] ) => {
-
-	return ivec2( floor( vec2( screenTexel ).mul( beautySize ).div( resolveSize ) ) );
-
-}, { screenTexel: 'ivec2', beautySize: 'vec2', resolveSize: 'vec2', return: 'ivec2' } );
-
-/**
  * Projects a world-space position into previous-frame UV coordinates.
  *
  * @tsl
@@ -111,9 +100,6 @@ const neighborhoodStruct = struct( {
  * Single 3×3 neighbourhood pass over the beauty buffer. One textureLoad per tap feeds both the
  * YCoCg variance-clipping box (colour) and the SSR ray-length statistics (alpha), which previously
  * required two separate 3×3 fetches of the same texture.
- *
- * Sampling is done on the beauty-texel grid (`beautyTexel + offset`), so the taps are distinct
- * source texels even when the beauty buffer is lower resolution than the resolve pass (upscaling).
  *
  * @tsl
  */
@@ -399,7 +385,6 @@ const reprojectHitPoint = Fn( ( [
 } );
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
-const _size = /*@__PURE__*/ new Vector2();
 
 let _rendererState;
 
@@ -415,8 +400,9 @@ const VARIANCE_GAMMA_MAX = 1;
  * @typedef {Object} TemporalReprojectNodeOptions
  * @property {TemporalReprojectMode} [mode='diffuse'] - `diffuse` for SSGI/scene colour; `specular` for SSR reflections.
  * @property {boolean} [hitPointReprojection] - Parallax hit-point reprojection (specular mode only). Defaults to `true` in specular mode.
- * @property {boolean} [accumulate=false] - When `true`, history is stored in this pass (classic temporal resolve). When `false`,
- * use {@link TemporalReprojectNode#setHistoryTexture} to read history from another pass (e.g. denoise output).
+ * @property {boolean} [accumulate=false] - When `true`, the current frame is blended into the history, which is stored in this pass
+ * (classic temporal resolve). When `false`, the reprojected history is returned for another pass to blend (e.g. a denoiser) and
+ * {@link TemporalReprojectNode#setHistoryTexture} reads the history from that pass.
  * @property {Function} [normalDecode] - Decodes a sample of the normal texture into a unit view-space normal. Defaults to {@link unpackRGBToNormal}.
  */
 
@@ -487,7 +473,8 @@ class TemporalReprojectNode extends Node {
 		this.mode = mode;
 
 		/**
-		 * When `true`, resolve output is copied into the internal history buffer each frame.
+		 * When `true`, the current frame is blended into the reprojected history and the result is
+		 * copied into the internal history buffer each frame.
 		 * When `false`, history is supplied externally via {@link TemporalReprojectNode#setHistoryTexture}.
 		 *
 		 * @type {boolean}
@@ -539,6 +526,17 @@ class TemporalReprojectNode extends Node {
 
 	}
 
+	/**
+	 * Returns the render target holding the result of the pass.
+	 *
+	 * @return {RenderTarget} The render target.
+	 */
+	getRenderTarget() {
+
+		return this._resolveRenderTarget;
+
+	}
+
 	setSize( width, height ) {
 
 		if ( width === null || height === null ) return;
@@ -567,9 +565,11 @@ class TemporalReprojectNode extends Node {
 
 		const { renderer } = frame;
 
-		const drawingBufferSize = renderer.getDrawingBufferSize( _size );
-		const width = drawingBufferSize.width;
-		const height = drawingBufferSize.height;
+		// the effect renders at the resolution of its depth input, so a pass that provides the depth must be up to date
+
+		if ( this.depthNode.isPassTextureNode === true ) frame.updateBeforeNode( this.depthNode.passNode );
+
+		const { width, height } = this.depthNode.value.image;
 
 		if ( this._needsPostProcessingSync === true ) {
 
@@ -641,6 +641,8 @@ class TemporalReprojectNode extends Node {
 
 		this.depthNode.build( builder );
 
+		this._reprojection.setInputs( this.depthNode, this.velocityNode );
+
 		const sharedContext = context( builder.getSharedContext() );
 
 		if ( builder.renderPipeline && ! builder.context.renderPipelineState.viewOffsetOwner ) {
@@ -678,10 +680,8 @@ class TemporalReprojectNode extends Node {
 		const seed = Fn( () => {
 
 			const screenTexel = ivec2( floor( screenCoordinate.xy.sub( 0.5 ) ) );
-			const beautySize = this.beautyNode.size();
-			const beautyTexel = beautyTexelFromScreen( screenTexel, beautySize, this._resolution );
 
-			return textureLoad( this.beautyNode, beautyTexel ).max( 0 );
+			return textureLoad( this.beautyNode, screenTexel ).max( 0 );
 
 		} );
 
@@ -705,14 +705,11 @@ class TemporalReprojectNode extends Node {
 			const depth = textureLoad( this.depthNode, screenTexel ).r.toVar();
 			isBackgroundDepth( depth ).discard();
 
-			const beautySize = this.beautyNode.size();
-			const beautyTexel = beautyTexelFromScreen( screenTexel, beautySize, this._resolution );
-
-			const inputColor = textureLoad( this.beautyNode, beautyTexel ).max( 0 ).toVar();
+			const inputColor = textureLoad( this.beautyNode, screenTexel ).max( 0 ).toVar();
 			const viewNormal = this.normalDecode( textureLoad( this.normalNode, screenTexel ) ).toVar();
 
 			// Shared 3×3 beauty fetch: feeds both the variance-clip box and the SSR ray-length stats.
-			const neighborhood = collectNeighborhood( this.beautyNode, beautyTexel, inputColor, this.flickerSuppression );
+			const neighborhood = collectNeighborhood( this.beautyNode, screenTexel, inputColor, this.flickerSuppression );
 			const worldNormal = viewNormal.transformNormalByInverseViewMatrix( reprojection.cameraViewMatrix ).toVar();
 
 			const viewPosition = getViewPosition( uvNode, depth, reprojection.cameraProjectionMatrixInverse ).toVar();
@@ -858,7 +855,13 @@ class TemporalReprojectNode extends Node {
 
 			}
 
-			return vec4( historyColor.rgb, float( 1 ).div( currentFrameCount ) );
+			const blend = float( 1 ).div( currentFrameCount );
+
+			// the classic temporal resolve blends the current frame into its own history
+
+			if ( this.accumulate === true ) return vec4( mix( historyColor.rgb, inputColor.rgb, blend ), blend );
+
+			return vec4( historyColor.rgb, blend );
 
 		} );
 

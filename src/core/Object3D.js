@@ -112,6 +112,17 @@ class Object3D extends EventDispatcher {
 		this.name = '';
 
 		/**
+		 * Optional inspector group for calls that render this object as a scene or quad.
+		 * Membership is captured when rendering begins and is not inherited by children.
+		 * Groups are identified by object identity, with a `name` used for display.
+		 * This runtime profiling metadata is not serialized.
+		 *
+		 * @type {?{name: string}}
+		 * @default null
+		 */
+		this.renderGroup = null;
+
+		/**
 		 * The type property is used for detecting the object type
 		 * in context of serialization/deserialization.
 		 *
@@ -1634,6 +1645,7 @@ class Object3D extends EventDispatcher {
 	copy( source, recursive = true ) {
 
 		this.name = source.name;
+		this.renderGroup = source.renderGroup;
 
 		this.up.copy( source.up );
 

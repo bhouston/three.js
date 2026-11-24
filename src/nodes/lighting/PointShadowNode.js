@@ -209,6 +209,8 @@ class PointShadowNode extends ShadowNode {
 
 		super( light, shadow );
 
+		this._renderGroup = { name: '' };
+
 	}
 
 	/**
@@ -307,6 +309,8 @@ class PointShadowNode extends ShadowNode {
 		renderer.autoClear = false;
 		renderer.setClearColor( shadow.clearColor, shadow.clearAlpha );
 
+		this._renderGroup.name = `Point Light Shadow [ ${ light.name || 'ID: ' + light.id } ]`;
+
 		// Render each cube face
 		for ( let face = 0; face < 6; face ++ ) {
 
@@ -342,12 +346,22 @@ class PointShadowNode extends ShadowNode {
 			//
 
 			const currentSceneName = scene.name;
+			const currentRenderGroup = scene.renderGroup;
 
-			scene.name = `Point Light Shadow [ ${ light.name || 'ID: ' + light.id } ] - Face ${ face + 1 }`;
+			scene.name = `Face ${ face + 1 }`;
 
-			renderer.render( scene, camera );
+			scene.renderGroup = this._renderGroup;
 
-			scene.name = currentSceneName;
+			try {
+
+				renderer.render( scene, camera );
+
+			} finally {
+
+				scene.name = currentSceneName;
+				scene.renderGroup = currentRenderGroup;
+
+			}
 
 		}
 

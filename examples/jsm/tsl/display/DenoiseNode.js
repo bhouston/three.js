@@ -92,6 +92,8 @@ class DenoiseNode extends Node {
 
 		super( 'vec4' );
 
+		this._renderGroup = { name: 'Denoise' };
+
 		const {
 			depth = null, normal = null, camera = null, position = null, variance = null, velocity = null,
 			roughness = null, hitDistance = null, alpha = false, coverage = false, temporal = false, quality = 'fast'
@@ -498,8 +500,9 @@ class DenoiseNode extends Node {
 			if ( this._prepareTarget !== null ) {
 
 				_quadMesh.material = this._prepareMaterial;
-				_quadMesh.name = 'Denoise [ Prepare ]';
+				_quadMesh.name = 'Prepare';
 				renderer.setRenderTarget( this._prepareTarget );
+				_quadMesh.renderGroup = this._renderGroup;
 				_quadMesh.render( renderer );
 
 			}
@@ -516,8 +519,9 @@ class DenoiseNode extends Node {
 				this._blurDeviation.value = i === 0 && this._prepareTarget === null && ! this._direct;
 
 				_quadMesh.material = this._getFilterMaterial( final, direct );
-				_quadMesh.name = 'Denoise [ Filter ]';
+				_quadMesh.name = 'Filter';
 				renderer.setRenderTarget( final ? this._renderTarget : this._targets[ i % 2 ] );
+				_quadMesh.renderGroup = this._renderGroup;
 				_quadMesh.render( renderer );
 
 			}
@@ -527,12 +531,13 @@ class DenoiseNode extends Node {
 			// texture space: prepare, filter and resolve ping-pong between two targets
 
 			_quadMesh.material = this._prepareMaterial;
-			_quadMesh.name = 'Denoise [ Prepare ]';
+			_quadMesh.name = 'Prepare';
 			renderer.setRenderTarget( this._targets[ 0 ] );
+			_quadMesh.renderGroup = this._renderGroup;
 			_quadMesh.render( renderer );
 
 			_quadMesh.material = this._getFilterMaterial( false, false );
-			_quadMesh.name = 'Denoise [ Filter ]';
+			_quadMesh.name = 'Filter';
 
 			for ( let i = 0; i < iterations; i ++ ) {
 
@@ -540,6 +545,7 @@ class DenoiseNode extends Node {
 				this._step.value = this.quality === 'fast' ? 3 ** i : 1 << i;
 
 				renderer.setRenderTarget( this._targets[ ( i + 1 ) % 2 ] );
+				_quadMesh.renderGroup = this._renderGroup;
 				_quadMesh.render( renderer );
 
 			}
@@ -547,8 +553,9 @@ class DenoiseNode extends Node {
 			this._input.value = this._targets[ iterations % 2 ].texture;
 
 			_quadMesh.material = this._resolveMaterial;
-			_quadMesh.name = 'Denoise [ Resolve ]';
+			_quadMesh.name = 'Resolve';
 			renderer.setRenderTarget( this._getOutput() );
+			_quadMesh.renderGroup = this._renderGroup;
 			_quadMesh.render( renderer );
 
 			this._textureNode.value = this._getOutput().texture;
@@ -659,8 +666,9 @@ class DenoiseNode extends Node {
 		this._cameraWorldMatrix.value.copy( camera.matrixWorld );
 
 		_quadMesh.material = this._temporalMaterial;
-		_quadMesh.name = 'Denoise [ Temporal ]';
+		_quadMesh.name = 'Temporal';
 		renderer.setRenderTarget( current );
+		_quadMesh.renderGroup = this._renderGroup;
 		_quadMesh.render( renderer );
 
 		this._previousViewMatrix.value.copy( camera.matrixWorldInverse );

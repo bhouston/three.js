@@ -55,6 +55,8 @@ class SSRNode extends Node {
 
 		super( 'vec4' );
 
+		this._renderGroup = { name: 'SSR' };
+
 		const {
 			stochastic = false,
 			metalnessNode = null,
@@ -792,7 +794,8 @@ class SSRNode extends Node {
 		// ssr
 
 		renderer.setRenderTarget( ssrRenderTarget );
-		_quadMesh.name = 'SSR [ Reflections ]';
+		_quadMesh.name = 'Reflections';
+		_quadMesh.renderGroup = this._renderGroup;
 		_quadMesh.render( renderer );
 
 		// blur (optional)
@@ -807,7 +810,8 @@ class SSRNode extends Node {
 
 				this._blurSpread.value = i;
 				renderer.setRenderTarget( blurRenderTarget, 0, i );
-				_quadMesh.name = 'SSR [ Blur Level ' + i + ' ]';
+				_quadMesh.name = 'Blur [ ' + i + ' ]';
+				_quadMesh.renderGroup = this._renderGroup;
 				_quadMesh.render( renderer );
 
 			}
@@ -1212,7 +1216,6 @@ class SSRNode extends Node {
 
 						Break();
 
-
 					} );
 
 				} );
@@ -1337,7 +1340,6 @@ class SSRNode extends Node {
 			return output.max( 0 );
 
 		} );
-
 
 		this._ssrFn = ssr;
 		this._sharedContext = builder.getSharedContext();

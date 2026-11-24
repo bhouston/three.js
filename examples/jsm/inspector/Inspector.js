@@ -481,8 +481,6 @@ class Inspector extends RendererInspector {
 
 		}
 
-		data.total = data.cpu + data.gpu;
-
 	}
 
 	getNodes() {
@@ -563,15 +561,14 @@ class Inspector extends RendererInspector {
 		// the GPU can overlap the calls, so the GPU time of the frame is the time it was busy and not their sum
 
 		frame.gpu = this.getAverageDeltaTime( { stats: this.frames }, 'gpuBusy' );
-		frame.total = frame.cpu + frame.gpu;
 
 		// the time since the last frame which rendered, see RendererInspector.finish()
 
-		frame.miscellaneous = frame.deltaTime - frame.total;
+		frame.miscellaneous = frame.deltaTime - frame.cpu;
 
 		if ( frame.miscellaneous < 0 ) {
 
-			// Frame desync, probably due to async GPU timing.
+			// Averaged CPU work can exceed the current frame period.
 
 			frame.miscellaneous = 0;
 

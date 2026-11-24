@@ -39,6 +39,8 @@ class BilateralBlurNode extends Node {
 
 		super( 'vec4' );
 
+		this._renderGroup = { name: 'Bilateral Blur' };
+
 		/**
 		 * The texture node that represents the input of the effect.
 		 *
@@ -189,7 +191,8 @@ class BilateralBlurNode extends Node {
 
 		this._passDirection.value.set( 1, 0 );
 
-		_quadMesh.name = 'Bilateral Blur [ Horizontal Pass ]';
+		_quadMesh.name = 'Horizontal';
+		_quadMesh.renderGroup = this._renderGroup;
 		_quadMesh.render( renderer );
 
 		// vertical
@@ -199,7 +202,8 @@ class BilateralBlurNode extends Node {
 
 		this._passDirection.value.set( 0, 1 );
 
-		_quadMesh.name = 'Bilateral Blur [ Vertical Pass ]';
+		_quadMesh.name = 'Vertical';
+		_quadMesh.renderGroup = this._renderGroup;
 		_quadMesh.render( renderer );
 
 		// restore

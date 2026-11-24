@@ -45,6 +45,8 @@ class FSR1Node extends Node {
 
 		super( 'vec4' );
 
+		this._renderGroup = { name: 'FSR1' };
+
 		/**
 		 * The texture node that represents the input of the effect.
 		 *
@@ -153,7 +155,8 @@ class FSR1Node extends Node {
 		renderer.setRenderTarget( this._easuRT );
 
 		_quadMesh.material = this._easuMaterial;
-		_quadMesh.name = 'FSR1 [ EASU Pass ]';
+		_quadMesh.name = 'EASU';
+		_quadMesh.renderGroup = this._renderGroup;
 		_quadMesh.render( renderer );
 
 		// RCAS pass
@@ -161,7 +164,8 @@ class FSR1Node extends Node {
 		renderer.setRenderTarget( this._rcasRT );
 
 		_quadMesh.material = this._rcasMaterial;
-		_quadMesh.name = 'FSR1 [ RCAS Pass ]';
+		_quadMesh.name = 'RCAS';
+		_quadMesh.renderGroup = this._renderGroup;
 		_quadMesh.render( renderer );
 
 		//

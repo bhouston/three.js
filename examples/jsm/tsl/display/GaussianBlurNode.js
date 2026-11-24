@@ -33,6 +33,8 @@ class GaussianBlurNode extends Node {
 
 		super( 'vec4' );
 
+		this._renderGroup = { name: 'Gaussian Blur' };
+
 		/**
 		 * The texture node that represents the input of the effect.
 		 *
@@ -187,7 +189,8 @@ class GaussianBlurNode extends Node {
 
 		renderer.setRenderTarget( this._horizontalRT );
 
-		_quadMesh.name = 'Gaussian Blur [ Horizontal Pass ]';
+		_quadMesh.name = 'Horizontal';
+		_quadMesh.renderGroup = this._renderGroup;
 		_quadMesh.render( renderer );
 
 		// vertical
@@ -196,7 +199,8 @@ class GaussianBlurNode extends Node {
 
 		renderer.setRenderTarget( this._verticalRT );
 
-		_quadMesh.name = 'Gaussian Blur [ Vertical Pass ]';
+		_quadMesh.name = 'Vertical';
+		_quadMesh.renderGroup = this._renderGroup;
 		_quadMesh.render( renderer );
 
 		// restore

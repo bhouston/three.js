@@ -33,9 +33,9 @@ class Performance extends Tab {
 
 		super( 'Performance', options );
 
-		const perfList = new List( 'Name', 'CPU', 'GPU', 'Total' );
-		perfList.setGridStyle( 'minmax(200px, 2fr) 80px 80px 80px' );
-		perfList.domElement.style.minWidth = '600px';
+		const perfList = new List( 'Name', 'CPU', 'GPU' );
+		perfList.setGridStyle( 'minmax(200px, 2fr) 80px 80px' );
+		perfList.domElement.style.minWidth = '520px';
 
 		const scrollWrapper = document.createElement( 'div' );
 		scrollWrapper.className = 'list-scroll-wrapper';
@@ -70,7 +70,7 @@ class Performance extends Tab {
 		*/
 
 		this.graphFpsCounter = createValueSpan();
-		const graphStats = new Item( 'Graph Stats', createValueSpan(), createValueSpan(), this.graphFpsCounter );
+		const graphStats = new Item( 'Graph Stats', createValueSpan(), this.graphFpsCounter );
 		perfList.add( graphStats );
 
 		const graphItem = new Item( graphContainer );
@@ -84,7 +84,7 @@ class Performance extends Tab {
 		const frameDiagram = new FrameDiagram();
 
 		this.averageFrameDuration = createValueSpan();
-		const averageFrame = new Item( 'Average Frame', createValueSpan(), createValueSpan(), this.averageFrameDuration );
+		const averageFrame = new Item( 'Average Frame', createValueSpan(), this.averageFrameDuration );
 		perfList.add( averageFrame );
 
 		const frameDiagramItem = new Item( frameDiagram.domElement );
@@ -93,10 +93,10 @@ class Performance extends Tab {
 
 		//
 
-		const frameStats = new Item( 'Frame Stats', createValueSpan(), createValueSpan(), createValueSpan() );
+		const frameStats = new Item( 'Frame Stats', createValueSpan(), createValueSpan() );
 		perfList.add( frameStats );
 
-		const miscellaneous = new Item( 'Miscellaneous & Idle', createValueSpan(), createValueSpan(), createValueSpan() );
+		const miscellaneous = new Item( 'Miscellaneous & Idle', createValueSpan(), createValueSpan() );
 		miscellaneous.domElement.firstChild.style.backgroundColor = '#00ff0b1a';
 		miscellaneous.domElement.firstChild.classList.add( 'no-hover' );
 		frameStats.add( miscellaneous );
@@ -126,7 +126,7 @@ class Performance extends Tab {
 
 		if ( item === undefined ) {
 
-			item = new Item( createValueSpan(), createValueSpan(), createValueSpan(), createValueSpan() );
+			item = new Item( createValueSpan(), createValueSpan(), createValueSpan() );
 
 			if ( stats.name ) {
 
@@ -180,7 +180,8 @@ class Performance extends Tab {
 		setText( item.data[ 0 ], name );
 		setText( item.data[ 1 ], data.cpu.toFixed( 2 ) );
 		setText( item.data[ 2 ], stats.gpuNotAvailable === true ? '-' : data.gpu.toFixed( 2 ) );
-		setText( item.data[ 3 ], data.total.toFixed( 2 ) );
+		item.data[ 1 ].style.fontStyle = stats.isGroupStats === true ? 'italic' : '';
+		item.data[ 2 ].style.fontStyle = stats.isGroupStats === true && stats.gpuNotAvailable !== true ? 'italic' : '';
 
 		//
 
@@ -337,13 +338,14 @@ class Performance extends Tab {
 
 		setText( this.frameStats.data[ 1 ], frame.cpu.toFixed( 2 ) );
 		setText( this.frameStats.data[ 2 ], hasTimestamp ? frame.gpu.toFixed( 2 ) : '-' );
-		setText( this.frameStats.data[ 3 ], frame.total.toFixed( 2 ) );
+		this.frameStats.data[ 1 ].style.fontStyle = 'italic';
+		this.frameStats.data[ 2 ].style.fontStyle = hasTimestamp ? 'italic' : '';
 
 		//
 
 		setText( this.miscellaneous.data[ 1 ], frame.miscellaneous.toFixed( 2 ) );
 		setText( this.miscellaneous.data[ 2 ], '-' );
-		setText( this.miscellaneous.data[ 3 ], frame.miscellaneous.toFixed( 2 ) );
+		this.miscellaneous.data[ 1 ].style.fontStyle = 'italic';
 
 		//
 

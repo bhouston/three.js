@@ -77,6 +77,46 @@ class ComputeStats extends ObjectStats {
 
 }
 
+// Groups organize calls for display without changing their execution ancestry or adding timers.
+
+class GroupStats extends ObjectStats {
+
+	constructor( uid, name ) {
+
+		super( uid, name );
+
+		this.isGroupStats = true;
+		this.cpuEnd = 0;
+
+	}
+
+}
+
+function resolveGroups( stats ) {
+
+	for ( const child of stats.children ) resolveGroups( child );
+
+	if ( stats.isGroupStats !== true ) return;
+
+	// Costs aggregate only member calls; diagram bounds also include gaps between them.
+
+	stats.timestamp = Math.min( ...stats.children.map( child => child.timestamp ) );
+	stats.cpuEnd = Math.max( ...stats.children.map( child => child.timestamp + child.cpu ) );
+	stats.cpu = stats.children.reduce( ( sum, child ) => sum + child.cpu, 0 );
+	stats.gpu = getBusyTime( stats.children );
+	stats.gpuNotAvailable = stats.children.every( child => child.gpuNotAvailable );
+
+	const timed = stats.children.filter( child => child.gpuStart !== null );
+
+	if ( timed.length > 0 ) {
+
+		stats.gpuStart = Math.min( ...timed.map( child => child.gpuStart ) );
+		stats.gpuEnd = Math.max( ...timed.map( child => child.gpuEnd ) );
+
+	}
+
+}
+
 // returns the time the GPU was busy with the given calls: the union of their spans, since the GPU can
 // overlap them, or the sum of their times without timestamps
 
@@ -109,8 +149,8 @@ function getBusyTime( children ) {
 
 function resolveFrameTimes( stats, frame ) {
 
-	stats.cpuFrameStart = stats.timestamp - frame.children[ 0 ].timestamp;
-	stats.cpuFrameEnd = stats.cpuFrameStart + stats.cpu;
+	stats.cpuFrameStart = stats.timestamp - frame.cpuStart;
+	stats.cpuFrameEnd = stats.isGroupStats === true ? stats.cpuEnd - frame.cpuStart : stats.cpuFrameStart + stats.cpu;
 
 	if ( stats.gpuStart !== null ) {
 
@@ -120,6 +160,18 @@ function resolveFrameTimes( stats, frame ) {
 	}
 
 	for ( const child of stats.children ) resolveFrameTimes( child, frame );
+
+}
+
+// Display groups do not participate in the execution stack.
+
+function findExecutionParent( stats, type ) {
+
+	let parent = stats.executionParent;
+
+	while ( parent && parent[ type ] !== true ) parent = parent.executionParent;
+
+	return parent || null;
 
 }
 
@@ -147,6 +199,9 @@ export class RendererInspector extends InspectorBase {
 		this.frames = [];
 		this.framesLib = {};
 		this.maxFrames = 512;
+
+		this._renderGroupIds = new WeakMap();
+		this._nextRenderGroupId = 0;
 
 		this._lastFinishTime = 0;
 		this._lastRenderedFinishTime = 0;
@@ -380,8 +435,15 @@ export class RendererInspector extends InspectorBase {
 
 		if ( frame.finished === true && frame.pendingTimers === 0 && this.framesLib[ frame.frameId ] === frame ) {
 
-			frame.gpuBusy = getBusyTime( frame.children );
-			frame.gpuStart = frame.children.reduce( ( start, stats ) => stats.gpuStart !== null ? Math.min( start, stats.gpuStart ) : start, Infinity );
+			for ( const stats of frame.children ) resolveGroups( stats );
+
+			// Use actual calls, not the bounding spans of synthetic groups: gaps between members
+			// must not count as GPU work, and nested calls must not be counted twice.
+
+			const calls = [ ...frame.renders, ...frame.computes ].filter( stats => stats.executionParent === frame );
+			frame.gpuBusy = getBusyTime( calls );
+			frame.gpuStart = calls.reduce( ( start, stats ) => stats.gpuStart !== null ? Math.min( start, stats.gpuStart ) : start, Infinity );
+			frame.cpuStart = calls.reduce( ( start, stats ) => Math.min( start, stats.timestamp ), Infinity );
 
 			for ( const stats of frame.children ) resolveFrameTimes( stats, frame );
 
@@ -442,15 +504,46 @@ export class RendererInspector extends InspectorBase {
 
 	}
 
+	_getRenderGroup( parent, renderGroup, frame ) {
+
+		if ( renderGroup === null || renderGroup === undefined ) return parent;
+
+		let id = this._renderGroupIds.get( renderGroup );
+
+		if ( id === undefined ) {
+
+			id = this._nextRenderGroupId ++;
+			this._renderGroupIds.set( renderGroup, id );
+
+		}
+
+		if ( parent.renderGroups === undefined ) parent.renderGroups = new Map();
+
+		let group = parent.renderGroups.get( id );
+
+		if ( group === undefined ) {
+
+			group = new GroupStats( `${ parent.cid || '' }/g:${ id }:f${ frame.frameId }`, renderGroup.name );
+			group.parent = parent;
+			parent.children.push( group );
+			parent.renderGroups.set( id, group );
+
+		}
+
+		return group;
+
+	}
+
 	beginCompute( uid, computeNode ) {
 
-		const frame = this.getFrame();
+		const frame = this.currentFrame;
 
 		if ( ! frame ) return;
 
 		const currentCompute = new ComputeStats( uid, computeNode );
 		currentCompute.timestamp = performance.now();
-		currentCompute.parent = this.getParent();
+		currentCompute.executionParent = this.getParent();
+		currentCompute.parent = currentCompute.executionParent;
 
 		frame.computes.push( currentCompute );
 		currentCompute.parent.children.push( currentCompute );
@@ -464,7 +557,7 @@ export class RendererInspector extends InspectorBase {
 
 	finishCompute() {
 
-		const frame = this.getFrame();
+		const frame = this.currentFrame;
 
 		if ( ! frame ) return;
 
@@ -473,20 +566,21 @@ export class RendererInspector extends InspectorBase {
 
 		this._endTimer( frame, currentCompute );
 
-		this.currentContext = currentCompute.parent;
-		this.currentCompute = currentCompute.parent && currentCompute.parent.isComputeStats ? currentCompute.parent : null;
+		this.currentContext = currentCompute.executionParent;
+		this.currentCompute = findExecutionParent( currentCompute, 'isComputeStats' );
 
 	}
 
 	beginRender( uid, scene, camera, renderTarget ) {
 
-		const frame = this.getFrame();
+		const frame = this.currentFrame;
 
 		if ( ! frame ) return;
 
 		const currentRender = new RenderStats( uid, scene, camera, renderTarget );
 		currentRender.timestamp = performance.now();
-		currentRender.parent = this.getParent();
+		currentRender.executionParent = this.getParent();
+		currentRender.parent = this._getRenderGroup( currentRender.executionParent, scene.renderGroup, frame );
 
 		frame.renders.push( currentRender );
 		currentRender.parent.children.push( currentRender );
@@ -500,7 +594,7 @@ export class RendererInspector extends InspectorBase {
 
 	finishRender() {
 
-		const frame = this.getFrame();
+		const frame = this.currentFrame;
 
 		if ( ! frame ) return;
 
@@ -509,12 +603,12 @@ export class RendererInspector extends InspectorBase {
 
 		this._endTimer( frame, currentRender );
 
-		this.currentContext = currentRender.parent;
-		this.currentRender = currentRender.parent && currentRender.parent.isRenderStats ? currentRender.parent : null;
+		this.currentContext = currentRender.executionParent;
+		this.currentRender = findExecutionParent( currentRender, 'isRenderStats' );
 
 		// draw over each top-level render to the canvas, the frame finishes only at the start of the next one
 
-		if ( this.overdraw === true && this._renderingOverdraw === false && currentRender.parent === frame && this.getRenderer().getRenderTarget() === null ) {
+		if ( this.overdraw === true && this._renderingOverdraw === false && currentRender.executionParent === frame && this.getRenderer().getRenderTarget() === null ) {
 
 			this._renderOverdraw();
 

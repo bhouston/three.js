@@ -37,7 +37,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, cross, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, positionWorld, select, storage, texture, uint, uniform, uv, uvec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, cross, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, positionWorld, select, storage, texture, uint, uniform, uniformArray, uv, uvec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -61,11 +61,15 @@
 
 			let camera, scene, renderer, controls, timer, status, selection;
 			let sky, sun, cubeCamera, world, rendererState;
+			let environmentSHPending = 0;
+
+			const lightPosition = new THREE.Vector3();
 
 			const atlasCamera = new THREE.OrthographicCamera();
 			const raycaster = new THREE.Raycaster();
 			const pointer = new THREE.Vector2(), pointerDown = new THREE.Vector2();
 			const linkMaterial = new THREE.LineBasicNodeMaterial( { vertexColors: true } );
+			const surfelMaterial = new THREE.MeshBasicNodeMaterial();
 
 			// the atlas of the light map, and how many of its texels a surfel spans
 
@@ -79,6 +83,14 @@
 			const LINKS = 64;
 			const BATCH = 8192;
 			const MISS = 0, BACKFACE = 1, UNKNOWN = 2;
+
+			// the lights of the surfels, two vec4 each: the position or the direction to the light with 1 for point
+			// lights in w, and the color times the intensity. And the SH of the radiance of the sky
+
+			const MAX_LIGHTS = 4;
+
+			const lightData = uniformArray( Array.from( { length: MAX_LIGHTS * 2 }, () => new THREE.Vector4() ) );
+			const environmentSH = uniformArray( Array.from( { length: 9 }, () => new THREE.Vector3() ) );
 
 			// SH basis of L2 in the order of THREE.SphericalHarmonics3
 
@@ -98,7 +110,7 @@
 
 			if ( location.hash ) Object.assign( params, JSON.parse( decodeURIComponent( location.hash.slice( 1 ) ) ) );
 
-			const views = [ 'Beauty', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
+			const views = [ 'Beauty', 'Surfels: Direct Light', 'Surfels: Sky Light', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
 
 			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Dungeon': loadDungeon, 'Sponza': loadSponza };
 			const worlds = {};
@@ -253,7 +265,9 @@
 				const baked = world;
 				const id = baked.bakeId = ( baked.bakeId ?? 0 ) + 1;
 
-				baked.transfer = undefined;
+				baked.transfer?.dispose();
+				baked.lighting?.dispose();
+				baked.transfer = baked.lighting = undefined;
 				selectSurfel( baked, - 1 );
 				const meshes = [];
 				world.root.traverse( ( object ) => object.isMesh && object !== world.surfelMesh && meshes.push( object ) );
@@ -316,6 +330,7 @@
 				if ( transfer === null ) return;
 
 				baked.transfer = transfer;
+				baked.lighting = createLighting( baked );
 
 				report( `${ ( transfer.indices.length / baked.surfels.count ).toFixed( 1 ) } links per surfel, ${ transfer.buried } buried, ${ ( transfer.unknown * 100 ).toFixed( 1 ) }% of hits without a surfel, baked in ${ ( ( performance.now() - start ) / 1000 ).toFixed( 1 ) } s` );
 
@@ -374,7 +389,23 @@
 				// the closest hit of a ray: its barycentric coordinates and its triangle plus one, negated for back
 				// faces, or zeros if nothing is hit. And the light map UV of a hit
 
-				const { raycastFirstHit, sampleTrianglePoint } = bvh.fns;
+				const { raycastFirstHit, raycastAnyHit, sampleTrianglePoint } = bvh.fns;
+
+				// shadow rays only need any blocker, zero distance means unbounded
+
+				const visibility = wgslTagFn/* wgsl */`
+					// fn
+					fn surfelVisibility( origin: vec3f, direction: vec3f, maxDist: f32 ) -> f32 {
+
+						var ray: ${ rayStruct };
+						ray.origin = origin;
+						ray.direction = direction;
+						ray.maxDist = maxDist;
+
+						return select( 1.0, 0.0, ${ raycastAnyHit }( ray ) );
+
+					}
+				`;
 
 				const trace = wgslTagFn/* wgsl */`
 					// fn
@@ -615,16 +646,194 @@
 
 				}
 
-				bvh.dispose();
-				geometry.dispose();
-
-				for ( const node of [ rayBuffer, texelBuffer, hitBuffer ] ) node.value.dispose();
+				for ( const node of [ texelBuffer, hitBuffer ] ) node.value.dispose();
 
 				kernel.dispose();
 
-				if ( cancelled() ) return null;
+				// the BVH and the origins and normals of the surfels stay for the shadow rays of the lighting
 
-				return { offsets, indices: indices.slice( 0, links ), weights: weights.slice( 0, links ), skyTransfer, invalid, buried, unknown: unknownHits / Math.max( surfelHits + unknownHits, 1 ) };
+				const dispose = () => {
+
+					bvh.dispose();
+					geometry.dispose();
+					rayBuffer.value.dispose();
+
+				};
+
+				if ( cancelled() ) return dispose(), null;
+
+				return {
+					offsets, indices: indices.slice( 0, links ), weights: weights.slice( 0, links ), skyTransfer, invalid,
+					buried, unknown: unknownHits / Math.max( surfelHits + unknownHits, 1 ),
+					rayBuffer, visibility, dispose
+				};
+
+			}
+
+			// Runtime lighting of the surfels, one compute pass per frame: the direct light of the sun and the point
+			// lights with a shadow ray each, and the light of the sky, the SH of its radiance times the SH of the
+			// sky that the surfel sees. Two vec4 per surfel: the direct irradiance with the lights that reach the
+			// surfel as bits in w, and the sky irradiance
+
+			function createLighting( world ) {
+
+				const { count } = world.surfels;
+				const { rayBuffer, visibility, skyTransfer } = world.transfer;
+
+				const skyBuffer = storage( new THREE.StorageBufferAttribute( skyTransfer, 1 ), 'float' ).toReadOnly();
+				const attribute = new THREE.StorageBufferAttribute( new Float32Array( count * 8 ), 4 );
+				const irradiance = storage( attribute, 'vec4' );
+
+				const compute = Fn( () => {
+
+					const origin = rayBuffer.element( instanceIndex ).xyz;
+					const normal = rayBuffer.element( instanceIndex.add( uint( count ) ) ).xyz;
+					const direct = vec4( 0 ).toVar();
+
+					for ( let l = 0; l < MAX_LIGHTS; l ++ ) {
+
+						const light = lightData.element( l * 2 ), color = lightData.element( l * 2 + 1 ).rgb;
+						const isPoint = light.w.greaterThan( 0.5 );
+						const toLight = select( isPoint, light.xyz.sub( origin ), light.xyz ).toVar();
+						const distance = toLight.length().toVar();
+						const direction = toLight.div( distance ).toVar();
+						const cosine = dot( normal, direction ).toVar();
+
+						If( cosine.greaterThan( 0 ).and( color.r.add( color.g ).add( color.b ).greaterThan( 0 ) ), () => {
+
+							// point lights fall off with the square of the distance
+
+							const lit = visibility( origin, direction, select( isPoint, distance.mul( 0.999 ), float( 0 ) ) ).toVar();
+							const falloff = select( isPoint, distance.mul( distance ).max( 1e-4 ).reciprocal(), float( 1 ) );
+
+							direct.addAssign( vec4( color.mul( cosine ).mul( falloff ).mul( lit ), lit.mul( 2 ** l ) ) );
+
+						} );
+
+					}
+
+					const sky = vec3( 0 ).toVar();
+
+					for ( let k = 0; k < 9; k ++ ) sky.addAssign( environmentSH.element( k ).mul( skyBuffer.element( instanceIndex.mul( uint( 9 ) ).add( uint( k ) ) ) ) );
+
+					irradiance.element( instanceIndex.mul( uint( 2 ) ) ).assign( direct );
+					irradiance.element( instanceIndex.mul( uint( 2 ) ).add( uint( 1 ) ) ).assign( vec4( sky.max( 0 ), 1 ) );
+
+				} )().compute( count );
+
+				// the debug views show the radiance of a white surface under the irradiance
+
+				const read = storage( attribute, 'vec4' ).toReadOnly();
+				const materials = {};
+
+				[ 'Surfels: Direct Light', 'Surfels: Sky Light' ].forEach( ( name, k ) => {
+
+					materials[ name ] = new THREE.MeshBasicNodeMaterial();
+					materials[ name ].colorNode = read.element( instanceIndex.mul( uint( 2 ) ).add( uint( k ) ) ).rgb.div( Math.PI ).toVarying();
+
+				} );
+
+				const dispose = () => {
+
+					compute.dispose();
+					skyBuffer.value.dispose();
+					attribute.dispose();
+					for ( const material of Object.values( materials ) ) material.dispose();
+
+				};
+
+				return { compute, attribute, materials, dispose };
+
+			}
+
+			// The lights of the current scene for the surfels: the sun or the moon and the point lights
+
+			function updateLights() {
+
+				const lights = [];
+
+				world.root.traverse( ( object ) => object.isPointLight && lights.push( object ) );
+
+				if ( world.sky ) lights.push( sun );
+
+				lightData.array.forEach( ( vector ) => vector.set( 0, 0, 0, 0 ) );
+
+				lights.slice( 0, MAX_LIGHTS ).forEach( ( light, l ) => {
+
+					const data = lightData.array[ l * 2 ], color = lightData.array[ l * 2 + 1 ];
+
+					light.getWorldPosition( lightPosition );
+
+					if ( light.isDirectionalLight ) lightPosition.sub( light.target.position ).normalize();
+
+					data.set( lightPosition.x, lightPosition.y, lightPosition.z, light.isPointLight ? 1 : 0 );
+					color.set( light.color.r, light.color.g, light.color.b, 0 ).multiplyScalar( light.intensity );
+
+				} );
+
+				return lights;
+
+			}
+
+			// Projects the radiance of the sky in the cube map of the environment to SH. Runs again if the
+			// environment changed meanwhile
+
+			async function updateEnvironmentSH() {
+
+				if ( environmentSHPending ++ > 0 ) return;
+
+				const target = cubeCamera.renderTarget, size = target.width;
+				const half = THREE.DataUtils.fromHalfFloat;
+				const direction = new THREE.Vector3();
+
+				// the directions of the faces of a cube map, which three.js mirrors in x
+
+				const faces = [
+					( u, v ) => direction.set( 1, - v, - u ), ( u, v ) => direction.set( - 1, - v, u ),
+					( u, v ) => direction.set( u, 1, v ), ( u, v ) => direction.set( u, - 1, - v ),
+					( u, v ) => direction.set( u, - v, 1 ), ( u, v ) => direction.set( - u, - v, - 1 )
+				];
+
+				while ( environmentSHPending > 0 ) {
+
+					const pending = environmentSHPending;
+					const pixels = await Promise.all( faces.map( ( face, i ) => renderer.readRenderTargetPixelsAsync( target, 0, 0, size, size, 0, i ) ) );
+					const sh = new Float32Array( 27 );
+
+					let weights = 0;
+
+					faces.forEach( ( face, f ) => {
+
+						for ( let y = 0; y < size; y ++ ) {
+
+							for ( let x = 0; x < size; x ++ ) {
+
+								const u = ( x + 0.5 ) / size * 2 - 1, v = ( y + 0.5 ) / size * 2 - 1;
+
+								// the solid angle of the texel
+
+								const weight = 1 / ( face( u, v ).length() ** 3 );
+
+								direction.normalize().x *= - 1;
+
+								const basis = shBasis( direction.x, direction.y, direction.z );
+								const texel = ( y * size + x ) * 4;
+
+								for ( let k = 0; k < 9; k ++ ) for ( let c = 0; c < 3; c ++ ) sh[ k * 3 + c ] += half( pixels[ f ][ texel + c ] ) * basis[ k ] * weight;
+
+								weights += weight;
+
+							}
+
+						}
+
+					} );
+
+					environmentSH.array.forEach( ( vector, k ) => vector.fromArray( sh, k * 3 ).multiplyScalar( 4 * Math.PI / weights ) );
+
+					environmentSHPending = environmentSHPending > pending ? 1 : 0;
+
+				}
 
 			}
 
@@ -834,7 +1043,7 @@
 				world.surfelMesh?.removeFromParent();
 				world.surfelMesh?.dispose();
 
-				const mesh = new THREE.InstancedMesh( new THREE.CircleGeometry( 1, 12 ), new THREE.MeshBasicNodeMaterial(), world.surfels.count );
+				const mesh = new THREE.InstancedMesh( new THREE.CircleGeometry( 1, 12 ), surfelMaterial, world.surfels.count );
 
 				mesh.setColorAt( 0, new THREE.Color() );
 				mesh.frustumCulled = false;
@@ -847,9 +1056,10 @@
 
 			}
 
-			// Click a surfel in a surfel view to show its links, colored from blue to red by their weight
+			// Click a surfel in a surfel view to show its links, colored from blue to red by their weight, and the
+			// lights that reach it, in white
 
-			function selectSurfel( world, i ) {
+			async function selectSurfel( world, i ) {
 
 				world.links?.removeFromParent();
 				world.links?.geometry.dispose();
@@ -878,6 +1088,30 @@
 
 				}
 
+				// the lights that the last lighting pass found visible from the surfel, as bits
+
+				const lights = updateLights();
+				const reached = new Float32Array( await renderer.getArrayBufferAsync( world.lighting.attribute ) )[ i * 8 + 3 ];
+				const lit = lights.filter( ( light, l ) => ( reached >> l ) & 1 );
+
+				if ( world.transfer === undefined || world.transfer.offsets !== offsets ) return;
+
+				for ( const light of lit ) {
+
+					// towards the sun, or to the point light
+
+					light.getWorldPosition( lightPosition );
+
+					if ( light.isDirectionalLight ) lightPosition.sub( light.target.position ).setLength( world.bounds.radius ).add( new THREE.Vector3().fromArray( position, i * 3 ) );
+
+					points.push( position[ i * 3 ] + normal[ i * 3 ] * lift, position[ i * 3 + 1 ] + normal[ i * 3 + 1 ] * lift, position[ i * 3 + 2 ] + normal[ i * 3 + 2 ] * lift, lightPosition.x, lightPosition.y, lightPosition.z );
+					colors.push( 1, 1, 1, 1, 1, 1 );
+
+				}
+
+				world.links?.removeFromParent();
+				world.links?.geometry.dispose();
+
 				const geometry = new THREE.BufferGeometry();
 				geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( points, 3 ) );
 				geometry.setAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ) );
@@ -888,7 +1122,7 @@
 
 				const visibility = skyTransfer[ i * 9 ] / ( Math.PI * 0.282095 );
 
-				selection.textContent = `Surfel ${ i }: ${ end - start } links${ invalid[ i ] ? ', buried' : '' }, receives ${ ( ( 1 - visibility ) * 100 ).toFixed( 0 ) }% from surfels and ${ ( visibility * 100 ).toFixed( 0 ) }% from the sky`;
+				selection.textContent = `Surfel ${ i }: ${ end - start } links${ invalid[ i ] ? ', buried' : '' }, receives ${ ( ( 1 - visibility ) * 100 ).toFixed( 0 ) }% from surfels and ${ ( visibility * 100 ).toFixed( 0 ) }% from the sky, lit by ${ lit.length } of ${ lights.length } lights`;
 
 			}
 
@@ -1060,10 +1294,22 @@
 
 				// surfels are colored per instance, over the scene in dark gray so that gaps show
 
+				const lightingView = world.lighting?.materials[ params.view ];
+
 				surfelMesh.visible = surfelView;
 				if ( world.links ) world.links.visible = surfelView;
 
-				if ( surfelView ) {
+				if ( lightingView !== undefined ) {
+
+					// lit by the compute pass, with white instance colors
+
+					surfelMesh.material = lightingView;
+					surfelMesh.instanceColor.array.fill( 1 );
+					surfelMesh.instanceColor.needsUpdate = true;
+
+				} else if ( surfelView ) {
+
+					surfelMesh.material = surfelMaterial;
 
 					const { count, albedo, emissive, normal } = world.surfels;
 					const colors = surfelMesh.instanceColor.array;
@@ -1128,7 +1374,7 @@
 
 				}
 
-				renderer.toneMapping = beauty ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+				renderer.toneMapping = beauty || lightingView !== undefined ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
 				sky.visible = world.sky && beauty;
 
 			}
@@ -1298,7 +1544,15 @@
 				if ( world.sky && sunDirection.angleTo( environmentSunDirection ) > 0.0087 ) {
 
 					environmentSunDirection.copy( sunDirection );
+					// the debug views hide the sky
+
+					const visible = sky.visible;
+
+					sky.visible = true;
 					cubeCamera.update( renderer, scene );
+					sky.visible = visible;
+
+					updateEnvironmentSH();
 
 				}
 
@@ -1320,6 +1574,13 @@
 				if ( params.autoplay ) params.timeOfDay = ( params.timeOfDay + timer.getDelta() * 24 / params.dayLength ) % 24;
 
 				updateSun();
+
+				if ( world.lighting !== undefined ) {
+
+					updateLights();
+					renderer.compute( world.lighting.compute );
+
+				}
 
 				renderer.render( scene, camera );
 

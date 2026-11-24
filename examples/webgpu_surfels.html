@@ -46,6 +46,7 @@
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
+			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 
@@ -115,6 +116,8 @@
 				scene: 'Cornell Box',
 				view: 'Beauty',
 				gi: true,
+				denoise: true,
+				denoiseStrength: 0.3,
 				detailSize: 0.25,
 				timeOfDay: 10,
 				autoplay: false,
@@ -160,7 +163,7 @@
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.shadowMap.enabled = true;
-				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMapping = THREE.NeutralToneMapping;
 				renderer.inspector = new Inspector();
 				document.body.appendChild( renderer.domElement );
 
@@ -224,6 +227,8 @@
 				giGui.add( params, 'emissive' ).name( 'Emissive' ).onChange( updateTerms );
 				giGui.add( params, 'iterations', 1, 4, 1 ).name( 'Iterations per Frame' );
 				giGui.add( params, 'hysteresis', 0.01, 1, 0.01 ).name( 'Hysteresis' ).onChange( ( value ) => hysteresis.value = value );
+				giGui.add( params, 'denoise' ).name( 'Denoise Light Map' );
+				giGui.add( params, 'denoiseStrength', 0.05, 1, 0.01 ).name( 'Denoise Strength' );
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -867,6 +872,18 @@
 
 				} )().compute( lightMapLinks.texels.length );
 
+				// the rays of the transfer bake leave noise from surfel to surfel, which the denoiser filters over the
+				// texels of the light map along the surfaces, guided by the positions and normals of the atlas
+
+				const denoiseNode = denoise( texture( lightMap ), {
+					position: texture( world.atlas.target.textures[ 0 ] ),
+					normal: texture( world.atlas.target.textures[ 1 ] ),
+					quality: 'quality',
+					coverage: true
+				} );
+
+				denoiseNode.setup();
+
 				const update = () => {
 
 					renderer.compute( compute );
@@ -874,6 +891,18 @@
 					for ( let i = 0; i < params.iterations; i ++ ) renderer.compute( gather[ iteration ++ % 2 ] );
 
 					renderer.compute( resolve );
+
+					// ponytail: the filter takes a few ms on a large atlas and the indirect light changes slowly, so it
+					// runs every fourth frame. Filter the surfels instead if the light map has to follow every frame
+
+					if ( params.denoise && iteration % 4 < params.iterations ) {
+
+						denoiseNode.relativeNoise.value = params.denoiseStrength;
+						denoiseNode.updateBefore( { renderer } );
+
+					}
+
+					if ( world.lighting !== undefined ) lightMapNode.value = params.denoise ? denoiseNode.getTexture() : lightMap;
 
 				};
 
@@ -912,6 +941,7 @@
 
 					resolve.dispose();
 					lightMap.dispose();
+					denoiseNode.dispose();
 
 					for ( const material of Object.values( materials ) ) material.dispose();
 
@@ -1228,7 +1258,7 @@
 
 								for ( const t of group ) {
 
-									if ( ! edges && half( atlas.position[ t + 3 ] ) < 1 ) continue;
+									if ( ! edges && half( atlas.albedo[ t + 3 ] ) < 1 ) continue;
 
 									for ( let c = 0; c < 3; c ++ ) {
 
@@ -1267,7 +1297,7 @@
 
 								texelMap[ t / 4 ] = data.radius.length + 1 + side * 0x40000000;
 
-								if ( ! edges && half( atlas.position[ t + 3 ] ) < 1 ) continue;
+								if ( ! edges && half( atlas.albedo[ t + 3 ] ) < 1 ) continue;
 
 								const distance = Math.hypot( half( atlas.position[ t ] ) - sum[ 0 ] / count, half( atlas.position[ t + 1 ] ) - sum[ 1 ] / count, half( atlas.position[ t + 2 ] ) - sum[ 2 ] / count );
 
@@ -1544,13 +1574,14 @@
 
 					material.vertexNode = vec4( uv( 1 ).flipY().mul( 2 ).sub( 1 ).add( jitter ), 0, 1 );
 
-					// position.w is the coverage, 1 for texels whose center is covered and less for the texels around
-					// them, normal.w the side of the material: 1 front, 2 double, 3 back
+					// position.w is 1 for the texels of a surface, also a guide of the denoiser, normal.w the side of
+					// the material: 1 front, 2 double, 3 back, and albedo.a the coverage: 1 for texels whose center is
+					// covered and less for the texels around them
 
 					material.fragmentNode = mrt( {
-						position: vec4( positionWorld, coverage ),
+						position: vec4( positionWorld, 1 ),
 						normal: vec4( normal.normalize(), source.side === THREE.DoubleSide ? 2 : source.side === THREE.BackSide ? 3 : 1 ),
-						albedo: vec4( source.vertexColors ? albedo.mul( vertexColor().rgb ) : albedo, 1 ),
+						albedo: vec4( source.vertexColors ? albedo.mul( vertexColor().rgb ) : albedo, coverage ),
 						emissive: vec4( emissive, 1 )
 					} );
 
@@ -1635,8 +1666,6 @@
 				const lightingView = world.lighting?.materials[ params.view ];
 				const lightMapView = params.view === 'Light Map';
 
-				if ( world.lighting !== undefined ) lightMapNode.value = world.lighting.lightMap;
-
 				surfelMesh.visible = surfelView;
 				if ( world.links ) world.links.visible = surfelView;
 
@@ -1697,7 +1726,7 @@
 						const [ position, normal, albedo, emissive ] = atlas.target.textures.map( ( map ) => texture( map, uv( 1 ) ).rgb );
 
 						atlas.views[ key ] = new THREE.MeshBasicNodeMaterial( { side: source.side } );
-						atlas.views[ key ].colorNode = surfelView ? vec3( 0.02 ) : lightMapView ? texture( world.lighting.lightMap, uv( 1 ) ).rgb.div( Math.PI ) : {
+						atlas.views[ key ].colorNode = surfelView ? vec3( 0.02 ) : lightMapView ? lightMapNode.rgb.div( Math.PI ) : {
 							'Atlas: Position': position.sub( world.bounds.center ).div( world.bounds.radius * 2 ).add( 0.5 ),
 							'Atlas: Normal': normal.mul( 0.5 ).add( 0.5 ),
 							'Atlas: Albedo': albedo,
@@ -1719,7 +1748,7 @@
 
 				}
 
-				renderer.toneMapping = beauty || lightMapView || lightingView !== undefined ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+				renderer.toneMapping = beauty || lightMapView || lightingView !== undefined ? THREE.NeutralToneMapping : THREE.NoToneMapping;
 				sky.visible = world.sky && beauty;
 
 			}

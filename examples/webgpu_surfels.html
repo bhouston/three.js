@@ -72,14 +72,15 @@
 				detailSize: 0.25,
 				timeOfDay: 10,
 				autoplay: false,
-				dayLength: 60
+				dayLength: 60,
+				surfelScale: 0.6
 			};
 
 			// TODO remove before the PR: parameters from the URL hash, for automated screenshots
 
 			if ( location.hash ) Object.assign( params, JSON.parse( decodeURIComponent( location.hash.slice( 1 ) ) ) );
 
-			const views = [ 'Beauty', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
+			const views = [ 'Beauty', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
 
 			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Dungeon': loadDungeon, 'Sponza': loadSponza };
 			const worlds = {};
@@ -148,6 +149,7 @@
 					bake();
 
 				} ).debounce( 500 );
+				gui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Surfel Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
 				gui.add( params, 'autoplay' ).name( 'Autoplay' );
 				gui.add( params, 'dayLength', 10, 300, 1 ).name( 'Day Length (s)' );
@@ -224,10 +226,11 @@
 
 			// Bake: light map UVs for all meshes of the scene, then their surfaces rasterized into the atlas
 
-			function bake() {
+			async function bake() {
 
+				const baked = world;
 				const meshes = [];
-				world.root.traverse( ( object ) => object.isMesh && meshes.push( object ) );
+				world.root.traverse( ( object ) => object.isMesh && object !== world.surfelMesh && meshes.push( object ) );
 
 				// each mesh gets a new geometry with light map UVs in uv1, in the smallest atlas that fits the
 				// scene at the texel size of the detail size. If none does, the largest atlas is fitted and the
@@ -250,15 +253,175 @@
 
 				for ( const geometry of geometries ) geometry.dispose();
 
-				world.atlas?.target.dispose();
-				for ( const material of Object.values( world.atlas?.views ?? {} ) ) material.dispose();
-				world.atlas = { layout, meshes, target: renderAtlas( meshes, layout.resolution ), views: {} };
+				baked.atlas?.target.dispose();
+				for ( const material of Object.values( baked.atlas?.views ?? {} ) ) material.dispose();
+				baked.atlas = { layout, meshes, target: renderAtlas( meshes, layout.resolution ), views: {} };
 
 				const texelSize = 1 / layout.texelsPerUnit;
+				const atlasTime = performance.now() - start;
 
-				status.textContent = `${ meshes.length } meshes, ${ layout.charts.length } charts, ${ layout.resolution }² atlas, ${ texelSize.toFixed( 3 ) } m texels, baked in ${ Math.round( performance.now() - start ) } ms`;
+				// surfels from the atlas, read back to the CPU
+
+				const size = layout.resolution;
+				const [ position, normal, albedo, emissive ] = await Promise.all( baked.atlas.target.textures.map( ( map, i ) => renderer.readRenderTargetPixelsAsync( baked.atlas.target, 0, 0, size, size, i ) ) );
+
+				baked.surfels = placeSurfels( { position, normal, albedo, emissive, size, texelSize }, baked.detailSize );
+
+				createSurfelMesh( baked );
+
+				// another scene was picked meanwhile
+
+				if ( baked !== world ) return;
+
+				status.textContent = `${ ( baked.bounds.radius * 2 ).toFixed( 0 ) } m scene, ${ meshes.length } meshes, ${ layout.charts.length } charts, ${ size }² atlas, ${ texelSize.toFixed( 3 ) } m texels, ${ baked.surfels.count } surfels, baked in ${ Math.round( atlasTime ) } + ${ Math.round( performance.now() - start - atlasTime ) } ms`;
 
 				setView();
+
+			}
+
+			// Surfels on a regular grid of the atlas: the unwrap has a uniform texel density, so every cell of
+			// texels is a patch of about the surfel spacing. A cell holds one surfel per group of its texels that
+			// lie close together and face the same way, which separates charts, creases and thin walls
+
+			function placeSurfels( atlas, spacing ) {
+
+				const { size, texelSize } = atlas;
+				const cell = Math.max( 1, Math.round( spacing / texelSize ) );
+				const half = THREE.DataUtils.fromHalfFloat;
+
+				const data = { position: [], normal: [], radius: [], albedo: [], emissive: [] };
+				const texels = [], sum = new Float32Array( 12 );
+
+				for ( let cy = 0; cy < size; cy += cell ) {
+
+					for ( let cx = 0; cx < size; cx += cell ) {
+
+						// the covered texels of the cell
+
+						texels.length = 0;
+
+						for ( let y = cy; y < Math.min( cy + cell, size ); y ++ ) {
+
+							for ( let x = cx; x < Math.min( cx + cell, size ); x ++ ) {
+
+								if ( atlas.position[ ( y * size + x ) * 4 + 3 ] !== 0 ) texels.push( ( y * size + x ) * 4 );
+
+							}
+
+						}
+
+						// each texel left seeds a group and takes the texels like it
+
+						while ( texels.length > 0 ) {
+
+							const seed = texels[ 0 ];
+							const px = half( atlas.position[ seed ] ), py = half( atlas.position[ seed + 1 ] ), pz = half( atlas.position[ seed + 2 ] );
+							const nx = half( atlas.normal[ seed ] ), ny = half( atlas.normal[ seed + 1 ] ), nz = half( atlas.normal[ seed + 2 ] );
+							const doubleSided = half( atlas.normal[ seed + 3 ] ) > 1.5;
+
+							let count = 0;
+
+							sum.fill( 0 );
+
+							for ( let i = texels.length - 1; i >= 0; i -- ) {
+
+								const t = texels[ i ];
+								const x = half( atlas.position[ t ] ), y = half( atlas.position[ t + 1 ] ), z = half( atlas.position[ t + 2 ] );
+								const u = half( atlas.normal[ t ] ), v = half( atlas.normal[ t + 1 ] ), w = half( atlas.normal[ t + 2 ] );
+
+								if ( u * nx + v * ny + w * nz < 0.7 || Math.hypot( x - px, y - py, z - pz ) > spacing * 2 ) continue;
+
+								sum[ 0 ] += x; sum[ 1 ] += y; sum[ 2 ] += z;
+								sum[ 3 ] += u; sum[ 4 ] += v; sum[ 5 ] += w;
+
+								for ( let c = 0; c < 3; c ++ ) {
+
+									sum[ 6 + c ] += half( atlas.albedo[ t + c ] );
+									sum[ 9 + c ] += half( atlas.emissive[ t + c ] );
+
+								}
+
+								count ++;
+								texels[ i ] = texels[ texels.length - 1 ];
+								texels.pop();
+
+							}
+
+							// the disk overlaps its neighbors, and shrinks with the part of the cell that is covered
+
+							const length = Math.hypot( sum[ 3 ], sum[ 4 ], sum[ 5 ] );
+							const radius = Math.sqrt( count ) * texelSize * 0.75;
+
+							for ( let side = 1; side >= ( doubleSided ? - 1 : 1 ); side -= 2 ) {
+
+								data.position.push( sum[ 0 ] / count, sum[ 1 ] / count, sum[ 2 ] / count );
+								data.normal.push( side * sum[ 3 ] / length, side * sum[ 4 ] / length, side * sum[ 5 ] / length );
+								data.radius.push( radius );
+								data.albedo.push( sum[ 6 ] / count, sum[ 7 ] / count, sum[ 8 ] / count );
+								data.emissive.push( sum[ 9 ] / count, sum[ 10 ] / count, sum[ 11 ] / count );
+
+							}
+
+						}
+
+					}
+
+				}
+
+				// ponytail: plain float normals, octahedral 16 bit when the surfels are serialized
+
+				return {
+					count: data.radius.length,
+					position: new Float32Array( data.position ),
+					normal: new Float32Array( data.normal ),
+					radius: new Float32Array( data.radius ),
+					albedo: new Float32Array( data.albedo ),
+					emissive: new Float32Array( data.emissive )
+				};
+
+			}
+
+			// The surfels as instanced disks for the debug views
+
+			function createSurfelMesh( world ) {
+
+				world.surfelMesh?.removeFromParent();
+				world.surfelMesh?.dispose();
+
+				const mesh = new THREE.InstancedMesh( new THREE.CircleGeometry( 1, 12 ), new THREE.MeshBasicNodeMaterial(), world.surfels.count );
+
+				mesh.setColorAt( 0, new THREE.Color() );
+				mesh.frustumCulled = false;
+				mesh.visible = false;
+
+				world.surfelMesh = mesh;
+				world.root.add( mesh );
+
+				updateSurfelMesh( world );
+
+			}
+
+			// the disks are drawn smaller than the surfels, so that each one shows
+
+			function updateSurfelMesh( world ) {
+
+				const { count, position, normal, radius } = world.surfels;
+				const mesh = world.surfelMesh;
+				const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion();
+				const p = new THREE.Vector3(), n = new THREE.Vector3(), scale = new THREE.Vector3(), z = new THREE.Vector3( 0, 0, 1 );
+
+				for ( let i = 0; i < count; i ++ ) {
+
+					// slightly above the surface
+
+					n.fromArray( normal, i * 3 );
+					p.fromArray( position, i * 3 ).addScaledVector( n, world.detailSize * 0.02 );
+
+					mesh.setMatrixAt( i, matrix.compose( p, quaternion.setFromUnitVectors( z, n ), scale.setScalar( radius[ i ] * params.surfelScale ) ) );
+
+				}
+
+				mesh.instanceMatrix.needsUpdate = true;
 
 			}
 
@@ -378,19 +541,41 @@
 
 				const beauty = params.view === 'Beauty';
 				const atlas = world.atlas;
+				const surfelView = params.view.startsWith( 'Surfels' );
+				const surfelMesh = world.surfelMesh;
+
+				// the atlas or the surfels may still be baking
+
+				if ( atlas === undefined || surfelMesh === undefined ) return;
+
+				// surfels are colored per instance, over the scene in dark gray so that gaps show
+
+				surfelMesh.visible = surfelView;
+
+				if ( surfelView ) {
+
+					const { count, albedo, emissive, normal } = world.surfels;
+					const colors = surfelMesh.instanceColor.array;
+
+					if ( params.view === 'Surfels: Normal' ) for ( let i = 0; i < count * 3; i ++ ) colors[ i ] = normal[ i ] * 0.5 + 0.5;
+					else colors.set( params.view === 'Surfels: Albedo' ? albedo : emissive );
+
+					surfelMesh.instanceColor.needsUpdate = true;
+
+				}
 
 				// one material per side of the materials that it replaces
 
 				function viewMaterial( source ) {
 
-					const key = params.view + source.side;
+					const key = ( surfelView ? 'Surfels' : params.view ) + source.side;
 
 					if ( atlas.views[ key ] === undefined ) {
 
 						const [ position, normal, albedo, emissive ] = atlas.target.textures.map( ( map ) => texture( map, uv( 1 ) ).rgb );
 
 						atlas.views[ key ] = new THREE.MeshBasicNodeMaterial( { side: source.side } );
-						atlas.views[ key ].colorNode = {
+						atlas.views[ key ].colorNode = surfelView ? vec3( 0.02 ) : {
 							'Atlas: Position': position.sub( world.bounds.center ).div( world.bounds.radius * 2 ).add( 0.5 ),
 							'Atlas: Normal': normal.mul( 0.5 ).add( 0.5 ),
 							'Atlas: Albedo': albedo,
@@ -538,7 +723,7 @@
 				const target = bounds.getCenter( new THREE.Vector3() );
 				const camera = bounds.getSize( new THREE.Vector3() ).multiply( new THREE.Vector3( 0.6, 0.9, 0.6 ) ).add( target );
 
-				return { root: gltf.scene, sky: true, detailSize: 0.25, camera, target };
+				return { root: gltf.scene, sky: true, detailSize: 0.5, camera, target };
 
 			}
 

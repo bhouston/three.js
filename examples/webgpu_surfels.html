@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - surfel global illumination</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - surfel global illumination">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_surfels.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_surfels.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Surfel Global Illumination</span>
+			</div>
+
+			<small>Real-time multi-bounce diffuse GI from surfels with precomputed transfer.<br/><span id="status"></span></small>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+
+			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+
+			if ( WebGPU.isAvailable() === false ) {
+
+				document.body.appendChild( WebGPU.getErrorMessage() );
+
+				throw new Error( 'No WebGPU support' );
+
+			}
+
+			const SPONZA_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Sponza/glTF/Sponza.gltf';
+
+			let camera, scene, renderer, controls, timer, status;
+			let sky, sun, cubeCamera, world;
+
+			const params = {
+				scene: 'Cornell Box',
+				timeOfDay: 10,
+				autoplay: false,
+				dayLength: 60
+			};
+
+			// TODO remove before the PR: parameters from the URL hash, for automated screenshots
+
+			if ( location.hash ) Object.assign( params, JSON.parse( decodeURIComponent( location.hash.slice( 1 ) ) ) );
+
+			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Dungeon': loadDungeon, 'Sponza': loadSponza };
+			const worlds = {};
+
+			const sunDirection = new THREE.Vector3();
+			const environmentSunDirection = new THREE.Vector3();
+
+			const sunColor = new THREE.Color( 0xfff2dc );
+			const horizonColor = new THREE.Color( 0xff8a3c );
+			const moonColor = new THREE.Color( 0x8fa8ff );
+
+			init();
+
+			async function init() {
+
+				timer = new THREE.Timer();
+
+				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 500 );
+
+				scene = new THREE.Scene();
+
+				// Renderer
+
+				renderer = new THREE.WebGPURenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.shadowMap.enabled = true;
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+
+				await renderer.init();
+
+				controls = new OrbitControls( camera, renderer.domElement );
+
+				status = document.getElementById( 'status' );
+
+				// Sky, sun and the environment captured from the sky. The sky is on layer 1 as well, which is all
+				// that the cube camera sees
+
+				sky = new SkyMesh();
+				sky.scale.setScalar( 450 );
+				sky.rayleigh.value = 2;
+				sky.mieCoefficient.value = 0.025;
+				sky.cloudSpeed.value = 0;
+				sky.showSunDisc.value = false; // the sun is represented by the light
+				sky.layers.enable( 1 );
+				scene.add( sky );
+
+				sun = new THREE.DirectionalLight();
+				sun.castShadow = true;
+				sun.shadow.mapSize.setScalar( 2048 );
+				scene.add( sun, sun.target );
+
+				cubeCamera = new THREE.CubeCamera( 1, 1000, new THREE.CubeRenderTarget( 64, { type: THREE.HalfFloatType } ) );
+				cubeCamera.layers.set( 1 );
+
+				// GUI
+
+				const gui = renderer.inspector.createParameters( 'Surfel GI' );
+				gui.add( params, 'scene', Object.keys( scenes ) ).name( 'Scene' ).onChange( setScene );
+				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
+				gui.add( params, 'autoplay' ).name( 'Autoplay' );
+				gui.add( params, 'dayLength', 10, 300, 1 ).name( 'Day Length (s)' );
+
+				window.addEventListener( 'resize', onWindowResize );
+
+				await setScene();
+
+				renderer.setAnimationLoop( animate );
+
+			}
+
+			async function setScene() {
+
+				const name = params.scene;
+
+				status.textContent = `Loading ${ name }…`;
+
+				worlds[ name ] ??= await scenes[ name ]();
+
+				// another scene was picked while this one loaded
+
+				if ( name !== params.scene ) return;
+
+				if ( world !== undefined ) scene.remove( world.root );
+
+				world = worlds[ name ];
+				scene.add( world.root );
+
+				world.root.traverse( ( object ) => {
+
+					if ( object.isMesh ) object.castShadow = object.receiveShadow = true;
+
+				} );
+
+				camera.position.copy( world.camera );
+				controls.target.copy( world.target );
+				controls.update();
+
+				// closed scenes have no sky and no sun, only their own lights
+
+				// the sky is an order of magnitude brighter than the lights of the closed scenes
+
+				renderer.toneMappingExposure = world.sky ? 0.1 : 1;
+
+				sky.visible = sun.visible = world.sky;
+				scene.background = world.sky ? null : new THREE.Color( 0x111111 );
+				scene.environment = world.sky ? cubeCamera.renderTarget.texture : null;
+				environmentSunDirection.set( 0, 0, 0 );
+
+				// the shadow of the sun covers the bounds of the scene
+
+				world.bounds ??= new THREE.Box3().setFromObject( world.root ).getBoundingSphere( new THREE.Sphere() );
+
+				const radius = world.bounds.radius;
+				const shadowCamera = sun.shadow.camera;
+
+				shadowCamera.left = shadowCamera.bottom = - radius;
+				shadowCamera.right = shadowCamera.top = radius;
+				shadowCamera.near = radius * 0.1;
+				shadowCamera.far = radius * 4;
+				shadowCamera.updateProjectionMatrix();
+
+				sun.shadow.normalBias = radius * 0.004;
+				sun.target.position.copy( world.bounds.center );
+
+				status.textContent = '';
+
+			}
+
+			function createCornellBox() {
+
+				// open at the front, so that the sun and the sky light it next to the emissive panel
+
+				const root = new THREE.Group();
+
+				const wallMaterial = new THREE.MeshStandardNodeMaterial( { color: 0xcccccc } );
+				const redMaterial = new THREE.MeshStandardNodeMaterial( { color: 0xff0000 } );
+				const greenMaterial = new THREE.MeshStandardNodeMaterial( { color: 0x00ff00 } );
+				const objectMaterial = new THREE.MeshStandardNodeMaterial( { color: 0xeeeeee } );
+				const sphereMaterial = new THREE.MeshStandardNodeMaterial( { color: 0x0044ff, roughness: 0.15 } );
+				const lightMaterial = new THREE.MeshStandardNodeMaterial( { color: 0x000000, emissive: 0xffffff, emissiveIntensity: 100 } );
+
+				function add( geometry, material, x, y, z, rx = 0, ry = 0 ) {
+
+					const mesh = new THREE.Mesh( geometry, material );
+					mesh.position.set( x, y, z );
+					mesh.rotation.set( rx, ry, 0 );
+					root.add( mesh );
+
+				}
+
+				add( new THREE.PlaneGeometry( 6, 6 ), wallMaterial, 0, 0, 0, - Math.PI / 2 ); // floor
+				add( new THREE.PlaneGeometry( 6, 6 ), wallMaterial, 0, 5, 0, Math.PI / 2 ); // ceiling
+				add( new THREE.PlaneGeometry( 6, 5 ), wallMaterial, 0, 2.5, - 3 ); // back wall
+				add( new THREE.PlaneGeometry( 6, 5 ), redMaterial, - 3, 2.5, 0, 0, Math.PI / 2 ); // left wall
+				add( new THREE.PlaneGeometry( 6, 5 ), greenMaterial, 3, 2.5, 0, 0, - Math.PI / 2 ); // right wall
+
+				add( new THREE.BoxGeometry( 1.2, 2.5, 1.2 ), objectMaterial, - 0.8, 1.25, - 0.8, 0, Math.PI / 8 );
+				add( new THREE.SphereGeometry( 0.65, 32, 32 ), sphereMaterial, 1, 0.65, 0.5 );
+				add( new THREE.PlaneGeometry( 2, 2 ), lightMaterial, 0, 4.99, 0, Math.PI / 2 );
+
+				return { root, sky: true, camera: new THREE.Vector3( 0, 2.5, 11 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
+
+			}
+
+			function createTwoRooms() {
+
+				// two closed rooms joined by a doorway, each with a point light, like webgpu_lightprobes_complex
+
+				const root = new THREE.Group();
+
+				const material = ( color, options ) => new THREE.MeshStandardNodeMaterial( { color, ...options } );
+
+				const wallMaterial = material( 0xcccccc, { side: THREE.BackSide } );
+				const dividerMaterial = material( 0xcccccc );
+				const whiteMaterial = material( 0xeeeeee );
+				const tableMaterial = material( 0x886644 );
+
+				function add( geometry, material, x, y, z ) {
+
+					const mesh = new THREE.Mesh( geometry, material );
+					mesh.position.set( x, y, z );
+					root.add( mesh );
+					return mesh;
+
+				}
+
+				// room shell: x = -8 to 8, y = 0 to 5, z = -4 to 4
+
+				add( new THREE.BoxGeometry( 16, 5, 8 ), wallMaterial, 0, 2.5, 0 );
+				add( new THREE.PlaneGeometry( 8, 5 ), material( 0xdd2200 ), - 7.99, 2.5, 0 ).rotation.y = Math.PI / 2;
+				add( new THREE.PlaneGeometry( 8, 5 ), material( 0x0044ff ), 7.99, 2.5, 0 ).rotation.y = - Math.PI / 2;
+
+				// dividing wall at x = 0 with a doorway and a lintel
+
+				add( new THREE.BoxGeometry( 0.3, 5, 2.75 ), dividerMaterial, 0, 2.5, - 2.625 );
+				add( new THREE.BoxGeometry( 0.3, 5, 2.75 ), dividerMaterial, 0, 2.5, 2.625 );
+				add( new THREE.BoxGeometry( 0.3, 1.2, 2.5 ), dividerMaterial, 0, 4.4, 0 );
+
+				const column = new THREE.CylinderGeometry( 0.3, 0.3, 4, 16 );
+
+				for ( const x of [ - 6, - 2, 2, 6 ] ) for ( const z of [ - 2.5, 2.5 ] ) add( column, whiteMaterial, x, 2, z );
+
+				// left room: table with a golden sphere, stepped blocks near the red wall
+
+				add( new THREE.BoxGeometry( 2.4, 0.12, 1.4 ), tableMaterial, - 4, 1, 0 );
+
+				const leg = new THREE.BoxGeometry( 0.1, 1, 0.1 );
+
+				for ( const x of [ - 5.05, - 2.95 ] ) for ( const z of [ - 0.55, 0.55 ] ) add( leg, tableMaterial, x, 0.5, z );
+
+				add( new THREE.SphereGeometry( 0.35, 32, 32 ), material( 0xffd700, { metalness: 0.3, roughness: 0.4 } ), - 4, 1.41, 0 );
+
+				add( new THREE.BoxGeometry( 1.5, 0.5, 1 ), whiteMaterial, - 7, 0.25, 0 );
+				add( new THREE.BoxGeometry( 1, 1, 1 ), whiteMaterial, - 7, 0.5, 0 );
+				add( new THREE.BoxGeometry( 0.5, 1.5, 1 ), whiteMaterial, - 7, 0.75, 0 );
+
+				// right room: pedestal with a torus knot, cone sculpture
+
+				add( new THREE.BoxGeometry( 0.8, 1.2, 0.8 ), whiteMaterial, 4, 0.6, 0 );
+				add( new THREE.TorusKnotGeometry( 0.3, 0.1, 64, 16 ), material( 0xff44aa, { metalness: 0.2, roughness: 0.5 } ), 4, 1.65, 0 );
+				add( new THREE.ConeGeometry( 0.4, 2.5, 5 ), whiteMaterial, 6.5, 1.25, - 1.5 );
+
+				// a warm and a cool point light
+
+				for ( const [ color, x ] of [[ 0xffaa44, - 4 ], [ 0x88bbff, 4 ]] ) {
+
+					const light = new THREE.PointLight( color, 30 );
+					light.position.set( x, 4.5, 0 );
+					light.castShadow = true;
+					light.shadow.mapSize.setScalar( 256 );
+					light.shadow.radius = 6;
+					light.shadow.bias = - 0.002;
+					light.shadow.normalBias = 0.05;
+					root.add( light );
+
+				}
+
+				return { root, sky: false, camera: new THREE.Vector3( 0, 2.5, 16 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
+
+			}
+
+			async function loadDungeon() {
+
+				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/dungeon_warkarma.glb' );
+
+				const bounds = new THREE.Box3().setFromObject( gltf.scene );
+				const target = bounds.getCenter( new THREE.Vector3() );
+				const camera = bounds.getSize( new THREE.Vector3() ).multiply( new THREE.Vector3( 0.6, 0.9, 0.6 ) ).add( target );
+
+				return { root: gltf.scene, sky: true, camera, target };
+
+			}
+
+			async function loadSponza() {
+
+				const gltf = await new GLTFLoader().loadAsync( SPONZA_URL );
+				const lights = [];
+
+				gltf.scene.traverse( ( object ) => object.isLight && lights.push( object ) );
+
+				for ( const light of lights ) light.removeFromParent();
+
+				return { root: gltf.scene, sky: true, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
+
+			}
+
+			function updateSun() {
+
+				// the sun rises at 6:00 in the +x direction and sets at 18:00, leaning towards +z
+
+				const angle = ( params.timeOfDay - 6 ) / 12 * Math.PI;
+
+				sunDirection.set( Math.cos( angle ), Math.sin( angle ), 0.8 ).normalize();
+
+				const elevation = sunDirection.y;
+				const day = THREE.MathUtils.smoothstep( elevation, 0, 0.15 );
+				const night = THREE.MathUtils.smoothstep( - elevation, 0, 0.15 );
+
+				// at night the same light is the moon, on the opposite side
+
+				sun.color.lerpColors( horizonColor, sunColor, THREE.MathUtils.smoothstep( elevation, 0, 0.5 ) );
+				if ( elevation < 0 ) sun.color.copy( moonColor );
+
+				sun.intensity = day * 40 + night * 0.5;
+				sun.position.copy( sunDirection ).multiplyScalar( elevation < 0 ? - 1 : 1 ).multiplyScalar( world.bounds.radius * 2 ).add( world.bounds.center );
+
+				sky.sunPosition.value.copy( sunDirection );
+
+				// capture the environment again when the sun moved by more than half a degree
+
+				if ( world.sky && sunDirection.angleTo( environmentSunDirection ) > 0.0087 ) {
+
+					environmentSunDirection.copy( sunDirection );
+					cubeCamera.update( renderer, scene );
+
+				}
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function animate() {
+
+				timer.update();
+
+				if ( params.autoplay ) params.timeOfDay = ( params.timeOfDay + timer.getDelta() * 24 / params.dayLength ) % 24;
+
+				updateSun();
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>

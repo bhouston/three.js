@@ -169,6 +169,7 @@
 	"webgpu_shadow_contact": [ "soft" ],
 	"webgpu_shadowmap_array": [ "tile" ],
 	"webgpu_sky": [ "sun" ],
+	"webgpu_surfels": [ "global illumination", "indirect diffuse", "lightmap" ],
 	"webgpu_tonemapping": [ "gltf" ],
 	"webgpu_tsl_compute_attractors_particles": [ "gpgpu" ],
 	"webgpu_upscaling_taau": [ "traa", "anti-aliasing" ],

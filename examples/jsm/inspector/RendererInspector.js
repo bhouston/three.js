@@ -13,7 +13,11 @@ class ObjectStats {
 		this.timer = null;
 		this.cpu = 0;
 		this.gpu = 0;
+		this.gpuStart = null; // GPU timestamps, only comparable with each other and null in WebGL
+		this.gpuEnd = null;
 		this.gpuNotAvailable = false;
+		this.cpuOffset = 0; // relative to the parent
+		this.gpuOffset = null;
 		this.fps = 0;
 
 		this.children = [];
@@ -68,6 +72,140 @@ class ComputeStats extends ObjectStats {
 		this.isComputeStats = true;
 
 	}
+
+}
+
+// returns the union of the measured call spans, or the sum of their times without timestamps
+
+function getSpanTime( children ) {
+
+	const spans = children.filter( ( stats ) => stats.gpuStart !== null ).sort( ( a, b ) => a.gpuStart - b.gpuStart );
+
+	if ( spans.length === 0 ) return children.reduce( ( sum, stats ) => sum + stats.gpu, 0 );
+
+	let duration = 0;
+	let end = - Infinity;
+
+	for ( const { gpuStart, gpuEnd } of spans ) {
+
+		if ( gpuEnd > end ) {
+
+			duration += gpuEnd - Math.max( gpuStart, end );
+			end = gpuEnd;
+
+		}
+
+	}
+
+	return duration;
+
+}
+
+// splits call names like "Group [ Pass ]" or "Group [ ID ] - Pass", used by the passes of effects
+
+function parseName( name ) {
+
+	const match = /^(.+?)\s*\[\s*(.+?)\s*\]$/.exec( name ) || /^(.+\])\s*-\s*(.+)$/.exec( name );
+
+	return match !== null ? { group: match[ 1 ], pass: match[ 2 ] } : null;
+
+}
+
+function getGroupName( stats ) {
+
+	const parsed = parseName( stats.name );
+
+	return parsed !== null ? parsed.group : null;
+
+}
+
+// moves two or more consecutive calls of the same group under a call that spans them
+
+function groupStats( parent, frameId ) {
+
+	const calls = parent.children;
+	const children = [];
+	const counts = {};
+
+	for ( let i = 0; i < calls.length; ) {
+
+		const name = getGroupName( calls[ i ] );
+
+		let end = i + 1;
+
+		while ( name !== null && end < calls.length && getGroupName( calls[ end ] ) === name ) end ++;
+
+		if ( end - i < 2 ) {
+
+			children.push( calls[ i ++ ] );
+			continue;
+
+		}
+
+		counts[ name ] = ( counts[ name ] || 0 ) + 1;
+
+		const group = new ObjectStats( `${ parent.cid || '' }/${ name }/${ counts[ name ] }:f${ frameId }`, name );
+		group.parent = parent;
+		group.children = calls.slice( i, end );
+
+		const first = group.children[ 0 ];
+		const last = group.children[ group.children.length - 1 ];
+		const timed = group.children.filter( ( stats ) => stats.gpuStart !== null );
+
+		group.timestamp = first.timestamp;
+		group.cpu = last.timestamp + last.cpu - first.timestamp;
+		group.gpuNotAvailable = group.children.every( ( stats ) => stats.gpuNotAvailable );
+
+		if ( timed.length > 0 ) {
+
+			group.gpuStart = Math.min( ...timed.map( ( stats ) => stats.gpuStart ) );
+			group.gpuEnd = Math.max( ...timed.map( ( stats ) => stats.gpuEnd ) );
+			group.gpu = group.gpuEnd - group.gpuStart;
+
+		} else {
+
+			group.gpu = group.children.reduce( ( sum, stats ) => sum + stats.gpu, 0 );
+
+		}
+
+		for ( const stats of group.children ) {
+
+			stats.name = parseName( stats.name ).pass;
+			stats.parent = group;
+
+		}
+
+		children.push( group );
+
+		i = end;
+
+	}
+
+	parent.children = children;
+
+	// the new groups can be grouped as well, e.g. the lights of "Point Light Shadow [ ID ] - Face"
+
+	if ( children.length < calls.length ) return groupStats( parent, frameId );
+
+	for ( const stats of children ) groupStats( stats, frameId );
+
+}
+
+// stores each call's offset relative to its parent, using separate CPU and GPU origins
+
+function resolveFrameTimes( stats, frame ) {
+
+	const parent = stats.parent;
+
+	stats.cpuOffset = stats.timestamp - ( parent === frame ? frame.children[ 0 ].timestamp : parent.timestamp );
+
+	if ( stats.gpuStart !== null ) {
+
+		stats.gpuOffset = stats.gpuStart - parent.gpuStart;
+
+	}
+
+	for ( const child of stats.children ) resolveFrameTimes( child, frame );
 
 }
 
@@ -311,6 +449,8 @@ export class RendererInspector extends InspectorBase {
 			} else {
 
 				stats.gpu = gpu.delta;
+				stats.gpuStart = gpu.start;
+				stats.gpuEnd = gpu.end;
 
 			}
 
@@ -325,6 +465,13 @@ export class RendererInspector extends InspectorBase {
 	_resolveFrameIfComplete( frame ) {
 
 		if ( frame.finished === true && frame.pendingTimers === 0 && this.framesLib[ frame.frameId ] === frame ) {
+
+			frame.gpuSpanTime = getSpanTime( frame.children );
+			frame.gpuStart = frame.children.reduce( ( start, stats ) => stats.gpuStart !== null ? Math.min( start, stats.gpuStart ) : start, Infinity );
+
+			groupStats( frame, frame.frameId );
+
+			for ( const stats of frame.children ) resolveFrameTimes( stats, frame );
 
 			this.resolveFrame( frame );
 

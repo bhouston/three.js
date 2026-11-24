@@ -1,12 +1,10 @@
 import { RenderTarget, Vector2, Node, QuadMesh, NodeMaterial, RendererUtils, MathUtils, RGBFormat, RedFormat, UnsignedInt101111Type, UnsignedByteType } from 'three/webgpu';
-import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, getViewPosition, screenCoordinate, float, sub, fract, dot, vec2, rand, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, interleavedGradientNoise, outputStruct, context, isBackgroundDepth, min, projectionDepth, textureSize, depthToViewZ } from 'three/tsl';
+import { clamp, normalize, reference, Fn, NodeUpdateType, uniform, vec4, passTexture, uv, getViewPosition, screenCoordinate, float, dot, vec2, vec3, Loop, mul, PI, cos, sin, uint, cross, acos, sign, pow, luminance, If, max, abs, Break, sqrt, HALF_PI, div, ceil, shiftRight, convertToTexture, bool, getNormalFromDepth, countOneBits, outputStruct, screenUV, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { hierarchicalHashedWeyl, R2_STEPS } from '../utils/HierarchicalHashedWeyl.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
-const _size = /*@__PURE__*/ new Vector2();
 
 // From Activision GTAO paper: https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
-const _temporalRotations = [ 60, 300, 180, 240, 120, 0 ];
-const _spatialOffsets = [ 0, 0.5, 0.25, 0.75 ];
 
 let _rendererState;
 
@@ -82,16 +80,6 @@ class SSGINode extends Node {
 		 * @type {TextureNode}
 		 */
 		this.normalNode = normalNode;
-
-		/**
-		 * The resolution scale. Values towards `0.5` noticeably increase noise, so it's
-		 * recommended to lower the renderer's pixel ratio first. Use this property only
-		 * for fine-tuning performance.
-		 *
-		 * @type {number}
-		 * @default 1
-		 */
-		this.resolutionScale = 1;
 
 		/**
 		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node renders
@@ -221,28 +209,12 @@ class SSGINode extends Node {
 		this._halfProjScale = uniform( 1 );
 
 		/**
-		 * Temporal direction that influences the rotation angle for each slice.
+		 * Index of the noise sample, advanced each frame with temporal filtering.
 		 *
 		 * @private
 		 * @type {UniformNode<float>}
 		 */
-		this._temporalDirection = uniform( 0 );
-
-		/**
-		 * Temporal offset added to the initial ray step.
-		 *
-		 * @private
-		 * @type {UniformNode<float>}
-		 */
-		this._temporalOffset = uniform( 0 );
-
-		/**
-		 * Resolution scale uniform.
-		 *
-		 * @private
-		 * @type {UniformNode<float>}
-		 */
-		this._resolutionScale = uniform( 0 );
+		this._noiseIndex = uniform( 0 );
 
 		/**
 		 * Represents the projection matrix of the scene's camera.
@@ -353,6 +325,33 @@ class SSGINode extends Node {
 	}
 
 	/**
+	 * Returns the gathered irradiance in RGB and its coverage in alpha at the surface being shaded,
+	 * e.g. as a diffuse source of `builtinIndirectContext()`.
+	 *
+	 * The coverage is the part of the hemisphere the screen occludes, which is the complement of the AO.
+	 * The sources behind this one, usually the environment, only light the part that is left open, so
+	 * the AO must not be applied to them a second time, e.g. with `builtinAOContext()`.
+	 *
+	 * ```js
+	 * beautyPass.contextNode = builtinIndirectContext( { diffuse: [ giPass.getDiffuseSource() ] } );
+	 * ```
+	 *
+	 * @param {?Node<vec3>} [giNode=null] - A filtered version of the GI at the surface to use in its place, e.g. upsampled or denoised.
+	 * @param {?Node<float>} [aoNode=null] - A filtered version of the AO at the surface to use in its place.
+	 * @return {Node<vec4>} The irradiance and coverage.
+	 */
+	getDiffuseSource( giNode = null, aoNode = null ) {
+
+		const gi = giNode || this._giNode.sample( screenUV ).rgb;
+		const ao = aoNode || this._aoNode.sample( screenUV ).r;
+
+		// the GI is what a white surface reflects, and the materials divide the irradiance by PI
+
+		return vec4( vec3( gi ).mul( PI ), float( ao ).oneMinus() );
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
@@ -360,10 +359,6 @@ class SSGINode extends Node {
 	 */
 	setSize( width, height ) {
 
-		width = Math.round( this.resolutionScale * width );
-		height = Math.round( this.resolutionScale * height );
-
-		this._resolutionScale.value = this.resolutionScale;
 		this._resolution.value.set( width, height );
 		this._ssgiRenderTarget.setSize( width, height );
 
@@ -384,24 +379,12 @@ class SSGINode extends Node {
 
 		//
 
-		const size = renderer.getDrawingBufferSize( _size );
-		this.setSize( size.width, size.height );
+		const { width, height } = this.depthNode.value.image;
+		this.setSize( width, height );
 
 		// update temporal uniforms
 
-		if ( this.useTemporalFiltering === true ) {
-
-			const frameId = frame.frameId;
-
-			this._temporalDirection.value = _temporalRotations[ frameId % 6 ] / 360;
-			this._temporalOffset.value = _spatialOffsets[ frameId % 4 ];
-
-		} else {
-
-			this._temporalDirection.value = 1;
-			this._temporalOffset.value = 1;
-
-		}
+		this._noiseIndex.value = this.useTemporalFiltering === true ? ( this._noiseIndex.value + 1 ) % 0x7fffffff : 0;
 
 		//
 
@@ -431,6 +414,10 @@ class SSGINode extends Node {
 	 */
 	setup( builder ) {
 
+		// the depth node defines the resolution of the effect and must be updated first
+
+		builder.getNodeProperties( this ).depthNode = this.depthNode;
+
 		const renderer = builder.renderer;
 
 		if ( renderer.backend.isWebGPUBackend === true && renderer.hasFeature( 'rg11b10ufloat-renderable' ) === false ) {
@@ -445,15 +432,12 @@ class SSGINode extends Node {
 
 		const sampleDepth = ( uv ) => projectionDepth( this.depthNode.sample( uv ).r, this._cameraNear, this._cameraFar );
 		const sampleNormal = ( uv ) => ( this.normalNode !== null ) ? this.normalNode.sample( uv ).rgb.normalize() : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
-		const sampleBeauty = ( uv ) => this.beautyNode.sample( uv );
+		// the samples are scattered, so a mipmapped beauty would be read at the coarse level their derivatives select
+
+		const sampleBeauty = ( uv ) => this.beautyNode.sample( uv ).level( 0 );
 
 		// From Activision GTAO paper: https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
 
-		const spatialOffsets = Fn( ( [ position ] ) => {
-
-			return float( 0.25 ).mul( sub( position.y, position.x ).bitAnd( 3 ) );
-
-		}, { position: 'vec2', return: 'float' } );
 
 		const GTAOFastAcos = Fn( ( [ value ] ) => {
 
@@ -553,51 +537,20 @@ class SSGINode extends Node {
 
 		const gi = Fn( () => {
 
-			const depth = float( 0 ).toVar();
-			const normalUV = uvNode.toVar();
-
-			If( this._resolutionScale.lessThan( 1 ), () => {
-
-				// Use the nearest depth texel to avoid banding. At silhouettes (view-space depth difference above 1%), take the
-				// normal from that texel to avoid dark rims. At creases, keep the blended normal to avoid jumpy noise.
-
-				const g = this.depthNode.gather().sample( uvNode ).toConst();
-				const minD = min( min( g.x, g.y ), min( g.z, g.w ) ).toConst();
-				const maxD = max( max( g.x, g.y ), max( g.z, g.w ) ).toConst();
-				const d = builder.renderer.reversedDepthBuffer === true ? maxD : minD;
-
-				depth.assign( projectionDepth( d, this._cameraNear, this._cameraFar ) );
-
-				const minViewZ = depthToViewZ( minD, this._cameraNear, this._cameraFar, this._camera ).toConst();
-				const maxViewZ = depthToViewZ( maxD, this._cameraNear, this._cameraFar, this._camera ).toConst();
-
-				If( minViewZ.div( maxViewZ ).sub( 1 ).abs().greaterThan( 0.01 ), () => {
-
-					const size = vec2( textureSize( this.depthNode, 0 ) ).toConst();
-					const offset = g.w.equal( d ).select( vec2( 0.5, 0.5 ), g.z.equal( d ).select( vec2( 1.5, 0.5 ), g.y.equal( d ).select( vec2( 1.5, 1.5 ), vec2( 0.5, 1.5 ) ) ) ).toConst();
-
-					normalUV.assign( uvNode.mul( size ).sub( 0.5 ).floor().add( offset ).div( size ) );
-
-				} );
-
-			} ).Else( () => {
-
-				depth.assign( sampleDepth( uvNode ) );
-
-			} );
+			const depth = sampleDepth( uvNode ).toVar();
 
 			isBackgroundDepth( depth ).discard();
 
 			const viewPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar();
-			const viewNormal = sampleNormal( normalUV ).toVar();
+			const viewNormal = sampleNormal( uvNode ).toVar();
 			const viewDir = normalize( viewPosition.xyz.negate() ).toVar();
 
 			//
 
-			const noiseOffset = spatialOffsets( screenCoordinate );
-			const noiseDirection = interleavedGradientNoise( screenCoordinate );
-			const noiseJitterIdx = this._temporalDirection.mul( 0.02 ); // Port: Add noiseJitterIdx here for slightly better noise convergence with TRAA (see #31890 for more details)
-			const initialRayStep = fract( noiseOffset.add( this._temporalOffset ) ).add( rand( uvNode.add( noiseJitterIdx ) ).mul( 2 ).sub( 1 ) ); // SSRT3 jitter: ( rand * 2 - 1 ) in [ - 1, 1 )
+			// Hierarchical Hashed Weyl noise: unlike a short cycle of rotations, it keeps converging as frames accumulate
+
+			const noiseDirection = hierarchicalHashedWeyl( screenCoordinate, this._noiseIndex, 1, R2_STEPS[ 0 ] );
+			const initialRayStep = hierarchicalHashedWeyl( screenCoordinate, this._noiseIndex, 2, R2_STEPS[ 1 ] ).add( 0.5 );
 
 			const ao = float( 0 );
 			const color = vec3( 0 );
@@ -627,7 +580,7 @@ class SSGINode extends Node {
 
 			Loop( { start: uint( 0 ), end: ROTATION_COUNT, type: 'uint', condition: '<' }, ( { i } ) => {
 
-				const rotationAngle = mul( float( i ).add( noiseDirection ).add( this._temporalDirection ), PI.div( float( ROTATION_COUNT ) ) ).toConst();
+				const rotationAngle = mul( float( i ).add( noiseDirection ), PI.div( float( ROTATION_COUNT ) ) ).toConst();
 				const sliceDir = vec3( vec2( cos( rotationAngle ), sin( rotationAngle ) ), 0 ).toConst();
 				const slideDirTexelSize = sliceDir.xy.mul( float( 1 ).div( this._resolution ) ).toConst();
 
@@ -701,7 +654,7 @@ export default SSGINode;
  *
  * @tsl
  * @function
- * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
+ * @param {Node<vec4>} beautyNode - The radiance the rays read: the beauty pass, or the previous frame's reprojected by `reprojectedBeauty()`.
  * @param {TextureNode} depthNode - A texture node that represents the scene's depth.
  * @param {TextureNode} normalNode - A texture node that represents the scene's normals.
  * @param {Camera} camera - The camera the scene is rendered with.

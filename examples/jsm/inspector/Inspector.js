@@ -558,9 +558,9 @@ class Inspector extends RendererInspector {
 
 		}
 
-		// the GPU can overlap the calls, so the GPU time of the frame is the time it was busy and not their sum
+		// GPU calls can overlap, so report their measured span coverage rather than summing their durations.
 
-		frame.gpu = this.getAverageDeltaTime( { stats: this.frames }, 'gpuBusy' );
+		frame.gpu = this.getAverageDeltaTime( { stats: this.frames }, 'gpuSpanTime' );
 
 		// the time since the last frame which rendered, see RendererInspector.finish()
 

@@ -103,7 +103,7 @@ function resolveGroups( stats ) {
 	stats.timestamp = Math.min( ...stats.children.map( child => child.timestamp ) );
 	stats.cpuEnd = Math.max( ...stats.children.map( child => child.timestamp + child.cpu ) );
 	stats.cpu = stats.children.reduce( ( sum, child ) => sum + child.cpu, 0 );
-	stats.gpu = getBusyTime( stats.children );
+	stats.gpu = getSpanTime( stats.children );
 	stats.gpuNotAvailable = stats.children.every( child => child.gpuNotAvailable );
 
 	const timed = stats.children.filter( child => child.gpuStart !== null );
@@ -117,30 +117,30 @@ function resolveGroups( stats ) {
 
 }
 
-// returns the time the GPU was busy with the given calls: the union of their spans, since the GPU can
-// overlap them, or the sum of their times without timestamps
+// Returns measured GPU span coverage: the union of call intervals, or summed durations without timestamps.
+// Enclosing intervals can include waits and gaps, so their union does not measure GPU busy time.
 
-function getBusyTime( children ) {
+function getSpanTime( children ) {
 
 	const spans = children.filter( ( stats ) => stats.gpuStart !== null ).sort( ( a, b ) => a.gpuStart - b.gpuStart );
 
 	if ( spans.length === 0 ) return children.reduce( ( sum, stats ) => sum + stats.gpu, 0 );
 
-	let busy = 0;
+	let duration = 0;
 	let end = - Infinity;
 
 	for ( const { gpuStart, gpuEnd } of spans ) {
 
 		if ( gpuEnd > end ) {
 
-			busy += gpuEnd - Math.max( gpuStart, end );
+			duration += gpuEnd - Math.max( gpuStart, end );
 			end = gpuEnd;
 
 		}
 
 	}
 
-	return busy;
+	return duration;
 
 }
 
@@ -441,7 +441,7 @@ export class RendererInspector extends InspectorBase {
 			// must not count as GPU work, and nested calls must not be counted twice.
 
 			const calls = [ ...frame.renders, ...frame.computes ].filter( stats => stats.executionParent === frame );
-			frame.gpuBusy = getBusyTime( calls );
+			frame.gpuSpanTime = getSpanTime( calls );
 			frame.gpuStart = calls.reduce( ( start, stats ) => stats.gpuStart !== null ? Math.min( start, stats.gpuStart ) : start, Infinity );
 			frame.cpuStart = calls.reduce( ( start, stats ) => Math.min( start, stats.timestamp ), Infinity );
 

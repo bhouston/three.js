@@ -96,7 +96,7 @@ export default QUnit.module( 'Addons', () => {
 				const frame = await finish( inspector );
 
 				assert.strictEqual( a.parent.gpu, 8, 'GPU cost is the union of member intervals' );
-				assert.strictEqual( frame.gpuBusy, 10, 'The group bounding span does not fill idle gaps' );
+				assert.strictEqual( frame.gpuSpanTime, 10, 'The group bounding span does not fill idle gaps' );
 				assert.strictEqual( a.parent.cpu, 6, 'CPU cost sums member calls, excluding gaps' );
 				assert.strictEqual( a.parent.cpuFrameStart, 0 );
 				assert.strictEqual( a.parent.cpuFrameEnd, 22, 'The diagram spans all members, including gaps' );
@@ -133,7 +133,7 @@ export default QUnit.module( 'Addons', () => {
 				inspector.finishRender();
 				assert.strictEqual( inspector.currentContext, inspector.currentFrame );
 				const frame = await finish( inspector );
-				assert.strictEqual( frame.gpuBusy, 20, 'Nested calls are not counted twice' );
+				assert.strictEqual( frame.gpuSpanTime, 20, 'Nested calls are not counted twice' );
 
 			} );
 
@@ -168,7 +168,7 @@ export default QUnit.module( 'Addons', () => {
 				assert.strictEqual( a.parent.gpu, 7 );
 				assert.strictEqual( a.parent.gpuFrameStart, null );
 				assert.strictEqual( unavailable.parent.gpuNotAvailable, true );
-				assert.strictEqual( frame.gpuBusy, 7 );
+				assert.strictEqual( frame.gpuSpanTime, 7 );
 
 			} );
 

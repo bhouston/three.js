@@ -36,11 +36,13 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
+			import { materialColor, materialEmissive, mrt, normalWorldGeometry, positionWorld, texture, uniform, uv, vec3, vec4, vertexColor } from 'three/tsl';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 
@@ -55,10 +57,19 @@
 			const SPONZA_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Sponza/glTF/Sponza.gltf';
 
 			let camera, scene, renderer, controls, timer, status;
-			let sky, sun, cubeCamera, world;
+			let sky, sun, cubeCamera, world, rendererState;
+
+			const atlasCamera = new THREE.OrthographicCamera();
+
+			// the atlas of the light map, and how many of its texels a surfel spans
+
+			const ATLAS_SIZES = [ 1024, 2048, 4096 ];
+			const SURFEL_TEXELS = 4;
 
 			const params = {
 				scene: 'Cornell Box',
+				view: 'Beauty',
+				detailSize: 0.25,
 				timeOfDay: 10,
 				autoplay: false,
 				dayLength: 60
@@ -67,6 +78,8 @@
 			// TODO remove before the PR: parameters from the URL hash, for automated screenshots
 
 			if ( location.hash ) Object.assign( params, JSON.parse( decodeURIComponent( location.hash.slice( 1 ) ) ) );
+
+			const views = [ 'Beauty', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
 
 			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Dungeon': loadDungeon, 'Sponza': loadSponza };
 			const worlds = {};
@@ -128,6 +141,13 @@
 
 				const gui = renderer.inspector.createParameters( 'Surfel GI' );
 				gui.add( params, 'scene', Object.keys( scenes ) ).name( 'Scene' ).onChange( setScene );
+				gui.add( params, 'view', views ).name( 'View' ).onChange( setView );
+				gui.add( params, 'detailSize', 0.05, 2, 0.01 ).name( 'Detail Size' ).listen().onChange( ( value ) => {
+
+					world.detailSize = value;
+					bake();
+
+				} ).debounce( 500 );
 				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
 				gui.add( params, 'autoplay' ).name( 'Autoplay' );
 				gui.add( params, 'dayLength', 10, 300, 1 ).name( 'Day Length (s)' );
@@ -173,7 +193,7 @@
 
 				renderer.toneMappingExposure = world.sky ? 0.1 : 1;
 
-				sky.visible = sun.visible = world.sky;
+				sun.visible = world.sky;
 				scene.background = world.sky ? null : new THREE.Color( 0x111111 );
 				scene.environment = world.sky ? cubeCamera.renderTarget.texture : null;
 				environmentSunDirection.set( 0, 0, 0 );
@@ -194,7 +214,206 @@
 				sun.shadow.normalBias = radius * 0.004;
 				sun.target.position.copy( world.bounds.center );
 
-				status.textContent = '';
+				params.detailSize = world.detailSize;
+
+				if ( world.atlas === undefined ) bake();
+
+				setView();
+
+			}
+
+			// Bake: light map UVs for all meshes of the scene, then their surfaces rasterized into the atlas
+
+			function bake() {
+
+				const meshes = [];
+				world.root.traverse( ( object ) => object.isMesh && meshes.push( object ) );
+
+				// each mesh gets a new geometry with light map UVs in uv1, in the smallest atlas that fits the
+				// scene at the texel size of the detail size. If none does, the largest atlas is fitted and the
+				// texels are larger
+				// ponytail: unwraps again per atlas size, estimate the size from the surface area if that is slow
+
+				const start = performance.now();
+				const geometries = new Set( meshes.map( ( mesh ) => mesh.geometry ) );
+				const texelsPerUnit = SURFEL_TEXELS / world.detailSize;
+
+				let layout = null;
+
+				for ( const resolution of ATLAS_SIZES ) {
+
+					layout = unwrapUVs( world.root, { resolution, padding: 3, texelsPerUnit } ) ?? layout;
+
+					if ( layout !== null && layout.texelsPerUnit >= texelsPerUnit * 0.99 ) break;
+
+				}
+
+				for ( const geometry of geometries ) geometry.dispose();
+
+				world.atlas?.target.dispose();
+				for ( const material of Object.values( world.atlas?.views ?? {} ) ) material.dispose();
+				world.atlas = { layout, meshes, target: renderAtlas( meshes, layout.resolution ), views: {} };
+
+				const texelSize = 1 / layout.texelsPerUnit;
+
+				status.textContent = `${ meshes.length } meshes, ${ layout.charts.length } charts, ${ layout.resolution }² atlas, ${ texelSize.toFixed( 3 ) } m texels, baked in ${ Math.round( performance.now() - start ) } ms`;
+
+				setView();
+
+			}
+
+			// UV space raster pass: world position, geometric normal, albedo and emissive of each texel, from the
+			// materials' own color and emissive, so textures are filtered to the size of the texels by the GPU
+
+			function renderAtlas( meshes, size ) {
+
+				// ponytail: half floats, WebGPU allows 32 bytes per texel over all attachments by default. Positions
+				// round to about a thousandth of their distance to the origin, use two passes if that shows
+
+				const target = new THREE.RenderTarget( size, size, { type: THREE.HalfFloatType, count: 4, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter } );
+
+				[ 'position', 'normal', 'albedo', 'emissive' ].forEach( ( name, i ) => target.textures[ i ].name = name );
+
+				const jitter = uniform( new THREE.Vector2() );
+				const materials = new Map();
+
+				function atlasMaterial( source ) {
+
+					if ( materials.has( source ) ) return materials.get( source );
+
+					const material = new THREE.NodeMaterial();
+					material.side = THREE.DoubleSide;
+					material.depthTest = false;
+					material.depthWrite = false;
+					material.blending = THREE.NoBlending;
+
+					// the material nodes read these from the material that is rendered
+
+					for ( const name of [ 'color', 'map', 'emissive', 'emissiveMap', 'emissiveIntensity' ] ) {
+
+						if ( source[ name ] !== undefined ) material[ name ] = source[ name ];
+
+					}
+
+					const normal = source.side === THREE.BackSide ? normalWorldGeometry.negate() : normalWorldGeometry;
+					const albedo = vec4( source.colorNode ?? materialColor ).rgb;
+					const emissive = source.emissive !== undefined ? vec4( source.emissiveNode ?? materialEmissive ).rgb : vec3( 0 );
+
+					material.vertexNode = vec4( uv( 1 ).flipY().mul( 2 ).sub( 1 ).add( jitter ), 0, 1 );
+
+					// position.w is the coverage, normal.w is 2 for double-sided surfaces
+
+					material.fragmentNode = mrt( {
+						position: vec4( positionWorld, 1 ),
+						normal: vec4( normal.normalize(), source.side === THREE.DoubleSide ? 2 : 1 ),
+						albedo: vec4( source.vertexColors ? albedo.mul( vertexColor().rgb ) : albedo, 1 ),
+						emissive: vec4( emissive, 1 )
+					} );
+
+					materials.set( source, material );
+
+					return material;
+
+				}
+
+				const atlasScene = new THREE.Scene();
+
+				for ( const mesh of meshes ) {
+
+					// a debug view may have replaced the material of the mesh
+
+					const source = mesh.userData.material ?? mesh.material;
+					const proxy = new THREE.Mesh( mesh.geometry, Array.isArray( source ) ? source.map( atlasMaterial ) : atlasMaterial( source ) );
+
+					proxy.matrix.copy( mesh.matrixWorld );
+					proxy.matrixAutoUpdate = false;
+					proxy.frustumCulled = false;
+					atlasScene.add( proxy );
+
+				}
+
+				rendererState = THREE.RendererUtils.resetRendererState( renderer, rendererState );
+
+				renderer.autoClear = false;
+				renderer.setClearColor( 0x000000, 0 );
+				renderer.setRenderTarget( target );
+				renderer.clear();
+
+				// jittered passes cover the texels that the charts only touch, the texel centers come last
+
+				for ( let i = 16; i >= 0; i -- ) {
+
+					jitter.value.set( halton( i, 2 ) - 0.5, halton( i, 3 ) - 0.5 ).multiplyScalar( i === 0 ? 0 : 4 / size );
+					renderer.render( atlasScene, atlasCamera );
+
+				}
+
+				THREE.RendererUtils.restoreRendererState( renderer, rendererState );
+
+				for ( const material of materials.values() ) material.dispose();
+
+				return target;
+
+			}
+
+			function halton( index, base ) {
+
+				let result = 0, f = 1;
+
+				while ( index > 0 ) {
+
+					f /= base;
+					result += f * ( index % base );
+					index = Math.floor( index / base );
+
+				}
+
+				return result;
+
+			}
+
+			// Debug views show an atlas unlit on the scene
+
+			function setView() {
+
+				const beauty = params.view === 'Beauty';
+				const atlas = world.atlas;
+
+				// one material per side of the materials that it replaces
+
+				function viewMaterial( source ) {
+
+					const key = params.view + source.side;
+
+					if ( atlas.views[ key ] === undefined ) {
+
+						const [ position, normal, albedo, emissive ] = atlas.target.textures.map( ( map ) => texture( map, uv( 1 ) ).rgb );
+
+						atlas.views[ key ] = new THREE.MeshBasicNodeMaterial( { side: source.side } );
+						atlas.views[ key ].colorNode = {
+							'Atlas: Position': position.sub( world.bounds.center ).div( world.bounds.radius * 2 ).add( 0.5 ),
+							'Atlas: Normal': normal.mul( 0.5 ).add( 0.5 ),
+							'Atlas: Albedo': albedo,
+							'Atlas: Emissive': emissive
+						}[ params.view ];
+
+					}
+
+					return atlas.views[ key ];
+
+				}
+
+				for ( const mesh of atlas.meshes ) {
+
+					const material = mesh.userData.material ??= mesh.material;
+
+					if ( beauty ) mesh.material = material;
+					else mesh.material = Array.isArray( material ) ? material.map( viewMaterial ) : viewMaterial( material );
+
+				}
+
+				renderer.toneMapping = beauty ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+				sky.visible = world.sky && beauty;
 
 			}
 
@@ -230,7 +449,7 @@
 				add( new THREE.SphereGeometry( 0.65, 32, 32 ), sphereMaterial, 1, 0.65, 0.5 );
 				add( new THREE.PlaneGeometry( 2, 2 ), lightMaterial, 0, 4.99, 0, Math.PI / 2 );
 
-				return { root, sky: true, camera: new THREE.Vector3( 0, 2.5, 11 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
+				return { root, sky: true, detailSize: 0.25, camera: new THREE.Vector3( 0, 2.5, 11 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
 
 			}
 
@@ -307,7 +526,7 @@
 
 				}
 
-				return { root, sky: false, camera: new THREE.Vector3( 0, 2.5, 16 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
+				return { root, sky: false, detailSize: 0.25, camera: new THREE.Vector3( 0, 2.5, 16 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
 
 			}
 
@@ -319,7 +538,7 @@
 				const target = bounds.getCenter( new THREE.Vector3() );
 				const camera = bounds.getSize( new THREE.Vector3() ).multiply( new THREE.Vector3( 0.6, 0.9, 0.6 ) ).add( target );
 
-				return { root: gltf.scene, sky: true, camera, target };
+				return { root: gltf.scene, sky: true, detailSize: 0.25, camera, target };
 
 			}
 
@@ -332,7 +551,7 @@
 
 				for ( const light of lights ) light.removeFromParent();
 
-				return { root: gltf.scene, sky: true, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
+				return { root: gltf.scene, sky: true, detailSize: 0.5, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
 
 			}
 

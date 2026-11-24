@@ -37,7 +37,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, cross, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, positionWorld, select, storage, texture, uint, uniform, uniformArray, uv, uvec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, cross, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, uint, uniform, uniformArray, uv, uvec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -77,10 +77,12 @@
 			const SURFEL_TEXELS = 4;
 
 			// the transfer bake: rays per surfel (a power of two), links kept per surfel, and surfels traced per
-			// dispatch. A ray ends as a miss, on a back face, on a texel without a surfel, or on surfel j as j + 3
+			// dispatch. Every ray keeps its link: fewer links pick an arbitrary part of the surfels that the rays
+			// hit, since most are hit once, which misses small emitters.
+			// ponytail: a link per ray, link far surfels as clusters to trace more rays with fewer links. A ray ends as a miss, on a back face, on a texel without a surfel, or on surfel j as j + 3
 
 			const RAYS = 256;
-			const LINKS = 64;
+			const LINKS = 256;
 			const BATCH = 8192;
 			const MISS = 0, BACKFACE = 1, UNKNOWN = 2;
 
@@ -91,6 +93,12 @@
 
 			const lightData = uniformArray( Array.from( { length: MAX_LIGHTS * 2 }, () => new THREE.Vector4() ) );
 			const environmentSH = uniformArray( Array.from( { length: 9 }, () => new THREE.Vector3() ) );
+
+			// the terms of the transport that are on: direct, sky, bounce and emissive. And how much of the new
+			// radiosity of a surfel replaces the previous one per iteration
+
+			const terms = uniform( new THREE.Vector4( 1, 1, 1, 1 ) );
+			const hysteresis = uniform( 0.15 );
 
 			// SH basis of L2 in the order of THREE.SphericalHarmonics3
 
@@ -103,6 +111,12 @@
 				timeOfDay: 10,
 				autoplay: false,
 				dayLength: 60,
+				direct: true,
+				sky: true,
+				bounce: true,
+				emissive: true,
+				iterations: 1,
+				hysteresis: 0.15,
 				surfelScale: 0.6
 			};
 
@@ -110,7 +124,7 @@
 
 			if ( location.hash ) Object.assign( params, JSON.parse( decodeURIComponent( location.hash.slice( 1 ) ) ) );
 
-			const views = [ 'Beauty', 'Surfels: Direct Light', 'Surfels: Sky Light', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
+			const views = [ 'Beauty', 'Surfels: Radiosity', 'Surfels: Irradiance', 'Surfels: Direct Light', 'Surfels: Sky Light', 'Surfels: Bounce Light', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
 
 			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Dungeon': loadDungeon, 'Sponza': loadSponza };
 			const worlds = {};
@@ -187,6 +201,16 @@
 				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
 				gui.add( params, 'autoplay' ).name( 'Autoplay' );
 				gui.add( params, 'dayLength', 10, 300, 1 ).name( 'Day Length (s)' );
+
+				const giGui = gui.addFolder( 'Transport' );
+				const updateTerms = () => terms.value.set( params.direct, params.sky, params.bounce, params.emissive );
+
+				giGui.add( params, 'direct' ).name( 'Direct' ).onChange( updateTerms );
+				giGui.add( params, 'sky' ).name( 'Sky' ).onChange( updateTerms );
+				giGui.add( params, 'bounce' ).name( 'Bounce' ).onChange( updateTerms );
+				giGui.add( params, 'emissive' ).name( 'Emissive' ).onChange( updateTerms );
+				giGui.add( params, 'iterations', 1, 4, 1 ).name( 'Iterations per Frame' );
+				giGui.add( params, 'hysteresis', 0.01, 1, 0.01 ).name( 'Hysteresis' ).onChange( ( value ) => hysteresis.value = value );
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -624,9 +648,22 @@
 
 						}
 
-						// keep the largest links, scaled so that they carry the light of all hits
+						// keep the largest links, scaled so that they carry the light of all hits. Most links have
+						// a ray or two, so they are shuffled first: the sort would keep the surfels with low indices
 
-						if ( runs.length > LINKS ) runs.sort( ( a, b ) => b[ 1 ] - a[ 1 ] ).length = LINKS;
+						if ( runs.length > LINKS ) {
+
+							for ( let r = runs.length - 1; r > 0; r -- ) {
+
+								const other = Math.floor( Math.random() * ( r + 1 ) );
+
+								[ runs[ r ], runs[ other ] ] = [ runs[ other ], runs[ r ] ];
+
+							}
+
+							runs.sort( ( a, b ) => b[ 1 ] - a[ 1 ] ).length = LINKS;
+
+						}
 
 						const kept = runs.reduce( ( sum, run ) => sum + run[ 1 ], 0 );
 
@@ -672,16 +709,18 @@
 
 			// Runtime lighting of the surfels, one compute pass per frame: the direct light of the sun and the point
 			// lights with a shadow ray each, and the light of the sky, the SH of its radiance times the SH of the
-			// sky that the surfel sees. Two vec4 per surfel: the direct irradiance with the lights that reach the
-			// surfel as bits in w, and the sky irradiance
+			// sky that the surfel sees. Then the bounces: every iteration gathers the radiosity that the linked
+			// surfels had in the previous one, so the light travels one more bounce per iteration and the frames
+			// converge to all of them. Four vec4 per surfel: the direct irradiance with the lights that reach the
+			// surfel as bits in w, the sky irradiance, the bounced irradiance and the radiosity
 
 			function createLighting( world ) {
 
 				const { count } = world.surfels;
-				const { rayBuffer, visibility, skyTransfer } = world.transfer;
+				const { rayBuffer, visibility, skyTransfer, offsets, indices, weights, invalid } = world.transfer;
 
 				const skyBuffer = storage( new THREE.StorageBufferAttribute( skyTransfer, 1 ), 'float' ).toReadOnly();
-				const attribute = new THREE.StorageBufferAttribute( new Float32Array( count * 8 ), 4 );
+				const attribute = new THREE.StorageBufferAttribute( new Float32Array( count * 16 ), 4 );
 				const irradiance = storage( attribute, 'vec4' );
 
 				const compute = Fn( () => {
@@ -716,33 +755,115 @@
 
 					for ( let k = 0; k < 9; k ++ ) sky.addAssign( environmentSH.element( k ).mul( skyBuffer.element( instanceIndex.mul( uint( 9 ) ).add( uint( k ) ) ) ) );
 
-					irradiance.element( instanceIndex.mul( uint( 2 ) ) ).assign( direct );
-					irradiance.element( instanceIndex.mul( uint( 2 ) ).add( uint( 1 ) ) ).assign( vec4( sky.max( 0 ), 1 ) );
+					irradiance.element( instanceIndex.mul( uint( 4 ) ) ).assign( direct );
+					irradiance.element( instanceIndex.mul( uint( 4 ) ).add( uint( 1 ) ) ).assign( vec4( sky.max( 0 ), 1 ) );
 
 				} )().compute( count );
+
+				// the albedo, at most 0.9 so that the bounces converge, and the emissive radiance of each surfel,
+				// black for the buried ones
+
+				const material = new Float32Array( count * 8 );
+
+				for ( let i = 0; i < count; i ++ ) {
+
+					if ( invalid[ i ] ) continue;
+
+					for ( let c = 0; c < 3; c ++ ) {
+
+						material[ i * 8 + c ] = Math.min( world.surfels.albedo[ i * 3 + c ], 0.9 );
+						material[ i * 8 + 4 + c ] = world.surfels.emissive[ i * 3 + c ];
+
+					}
+
+				}
+
+				const buffers = [
+					storage( new THREE.StorageBufferAttribute( material, 4 ), 'vec4' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( offsets, 1 ), 'uint' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( indices, 1 ), 'uint' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( weights, 1 ), 'float' ).toReadOnly()
+				];
+
+				const [ materialBuffer, offsetBuffer, indexBuffer, weightBuffer ] = buffers;
+
+				// the radiosity of the previous and of the current iteration, which swap
+
+				const radiosity = [ 0, 1 ].map( () => new THREE.StorageBufferAttribute( new Float32Array( count * 4 ), 4 ) );
+
+				const gather = [ 0, 1 ].map( ( k ) => Fn( () => {
+
+					const previous = storage( radiosity[ k ], 'vec4' ).toReadOnly();
+					const current = storage( radiosity[ 1 - k ], 'vec4' );
+					const base = instanceIndex.mul( uint( 4 ) );
+
+					const bounce = vec3( 0 ).toVar();
+
+					Loop( { start: offsetBuffer.element( instanceIndex ), end: offsetBuffer.element( instanceIndex.add( uint( 1 ) ) ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+						bounce.addAssign( previous.element( indexBuffer.element( i ) ).rgb.mul( weightBuffer.element( i ) ) );
+
+					} );
+
+					// a surface with a radiance emits pi times as much radiosity
+
+					const received = irradiance.element( base ).rgb.mul( terms.x ).add( irradiance.element( base.add( uint( 1 ) ) ).rgb.mul( terms.y ) ).add( bounce.mul( terms.z ) );
+					const emitted = materialBuffer.element( instanceIndex.mul( uint( 2 ) ).add( uint( 1 ) ) ).rgb.mul( Math.PI ).mul( terms.w );
+					const result = mix( previous.element( instanceIndex ).rgb, emitted.add( materialBuffer.element( instanceIndex.mul( uint( 2 ) ) ).rgb.mul( received ) ), hysteresis ).toVar();
+
+					current.element( instanceIndex ).assign( vec4( result, 1 ) );
+					irradiance.element( base.add( uint( 2 ) ) ).assign( vec4( bounce, 1 ) );
+					irradiance.element( base.add( uint( 3 ) ) ).assign( vec4( result, 1 ) );
+
+				} )().compute( count ) );
+
+				let iteration = 0;
+
+				const update = () => {
+
+					renderer.compute( compute );
+
+					for ( let i = 0; i < params.iterations; i ++ ) renderer.compute( gather[ iteration ++ % 2 ] );
+
+				};
 
 				// the debug views show the radiance of a white surface under the irradiance
 
 				const read = storage( attribute, 'vec4' ).toReadOnly();
 				const materials = {};
 
-				[ 'Surfels: Direct Light', 'Surfels: Sky Light' ].forEach( ( name, k ) => {
+				const element = ( k ) => read.element( instanceIndex.mul( uint( 4 ) ).add( uint( k ) ) ).rgb;
+
+				const colors = {
+					'Surfels: Direct Light': element( 0 ),
+					'Surfels: Sky Light': element( 1 ),
+					'Surfels: Bounce Light': element( 2 ),
+					'Surfels: Irradiance': element( 0 ).add( element( 1 ) ).add( element( 2 ) ),
+					'Surfels: Radiosity': element( 3 )
+				};
+
+				for ( const name in colors ) {
 
 					materials[ name ] = new THREE.MeshBasicNodeMaterial();
-					materials[ name ].colorNode = read.element( instanceIndex.mul( uint( 2 ) ).add( uint( k ) ) ).rgb.div( Math.PI ).toVarying();
+					materials[ name ].colorNode = colors[ name ].div( Math.PI ).toVarying();
 
-				} );
+				}
 
 				const dispose = () => {
 
 					compute.dispose();
 					skyBuffer.value.dispose();
 					attribute.dispose();
+
+					for ( const node of gather ) node.dispose();
+					for ( const buffer of buffers ) buffer.value.dispose();
+					for ( const buffer of radiosity ) buffer.dispose();
+
 					for ( const material of Object.values( materials ) ) material.dispose();
 
 				};
 
-				return { compute, attribute, materials, dispose };
+				return { update, attribute, materials, dispose };
 
 			}
 
@@ -881,9 +1002,6 @@
 							const nx = half( atlas.normal[ seed ] ), ny = half( atlas.normal[ seed + 1 ] ), nz = half( atlas.normal[ seed + 2 ] );
 							const side = Math.round( half( atlas.normal[ seed + 3 ] ) );
 
-							let count = 0;
-
-							sum.fill( 0 );
 							group.length = 0;
 
 							for ( let i = texels.length - 1; i >= 0; i -- ) {
@@ -898,28 +1016,50 @@
 								texels[ i ] = texels[ texels.length - 1 ];
 								texels.pop();
 
-								// texels that the charts only touch belong to the group, but lie on the edges of the surfaces
+							}
 
-								if ( half( atlas.position[ t + 3 ] ) < 1 ) continue;
+							// the texels that the charts only touch lie on the edges of the surfaces, so the surfel is the
+							// mean of the others. Emitters smaller than a texel only have such texels
 
-								sum[ 0 ] += x; sum[ 1 ] += y; sum[ 2 ] += z;
-								sum[ 3 ] += u; sum[ 4 ] += v; sum[ 5 ] += w;
+							let count = 0, edges = false;
 
-								for ( let c = 0; c < 3; c ++ ) {
+							const accumulate = () => {
 
-									sum[ 6 + c ] += half( atlas.albedo[ t + c ] );
-									sum[ 9 + c ] += half( atlas.emissive[ t + c ] );
+								count = 0;
+								sum.fill( 0 );
+
+								for ( const t of group ) {
+
+									if ( ! edges && half( atlas.position[ t + 3 ] ) < 1 ) continue;
+
+									for ( let c = 0; c < 3; c ++ ) {
+
+										sum[ c ] += half( atlas.position[ t + c ] );
+										sum[ 3 + c ] += half( atlas.normal[ t + c ] );
+										sum[ 6 + c ] += half( atlas.albedo[ t + c ] );
+										sum[ 9 + c ] += half( atlas.emissive[ t + c ] );
+
+									}
+
+									count ++;
 
 								}
 
-								count ++;
+							};
+
+							accumulate();
+
+							if ( count === 0 ) {
+
+								edges = true;
+								accumulate();
 
 							}
 
 							// slivers at the borders of the charts make poor surfels. Their texels have none, hits on them
-							// count for the other links
+							// count for the other links. Small emitters are kept, they light their surroundings
 
-							if ( count <= cell * cell / 4 ) continue;
+							if ( ( edges || count <= cell * cell / 4 ) && sum[ 9 ] + sum[ 10 ] + sum[ 11 ] === 0 ) continue;
 
 							// the surfel sits on the texel nearest to the mean, which is on the surface also where it curves
 
@@ -929,7 +1069,7 @@
 
 								texelMap[ t / 4 ] = data.radius.length + 1 + side * 0x40000000;
 
-								if ( half( atlas.position[ t + 3 ] ) < 1 ) continue;
+								if ( ! edges && half( atlas.position[ t + 3 ] ) < 1 ) continue;
 
 								const distance = Math.hypot( half( atlas.position[ t ] ) - sum[ 0 ] / count, half( atlas.position[ t + 1 ] ) - sum[ 1 ] / count, half( atlas.position[ t + 2 ] ) - sum[ 2 ] / count );
 
@@ -1091,7 +1231,7 @@
 				// the lights that the last lighting pass found visible from the surfel, as bits
 
 				const lights = updateLights();
-				const reached = new Float32Array( await renderer.getArrayBufferAsync( world.lighting.attribute ) )[ i * 8 + 3 ];
+				const reached = new Float32Array( await renderer.getArrayBufferAsync( world.lighting.attribute ) )[ i * 16 + 3 ];
 				const lit = lights.filter( ( light, l ) => ( reached >> l ) & 1 );
 
 				if ( world.transfer === undefined || world.transfer.offsets !== offsets ) return;
@@ -1513,17 +1653,17 @@
 
 				for ( const light of lights ) light.removeFromParent();
 
-				return { root: gltf.scene, sky: true, detailSize: 0.5, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
+				return { root: gltf.scene, sky: true, sunLean: 0.25, detailSize: 0.5, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
 
 			}
 
 			function updateSun() {
 
-				// the sun rises at 6:00 in the +x direction and sets at 18:00, leaning towards +z
+				// the sun rises at 6:00 in the +x direction and sets at 18:00, leaning towards +z, less so over narrow courtyards
 
 				const angle = ( params.timeOfDay - 6 ) / 12 * Math.PI;
 
-				sunDirection.set( Math.cos( angle ), Math.sin( angle ), 0.8 ).normalize();
+				sunDirection.set( Math.cos( angle ), Math.sin( angle ), world.sunLean ?? 0.8 ).normalize();
 
 				const elevation = sunDirection.y;
 				const day = THREE.MathUtils.smoothstep( elevation, 0, 0.15 );
@@ -1578,7 +1718,7 @@
 				if ( world.lighting !== undefined ) {
 
 					updateLights();
-					renderer.compute( world.lighting.compute );
+					world.lighting.update();
 
 				}
 

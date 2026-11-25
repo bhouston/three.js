@@ -201,8 +201,8 @@
 				denoiseStrength: 0.3,
 				showProbes: false,
 				detailSize: 0.25,
-				timeOfDay: 10,
-				exposure: 1,
+				timeOfDay: 7,
+				exposure: 0.5,
 				autoplay: true,
 				dayLength: 60,
 				direct: true,
@@ -214,10 +214,6 @@
 				spread: 4,
 				surfelScale: 0.6
 			};
-
-			// TODO remove before the PR: parameters from the URL hash, for automated screenshots
-
-			if ( location.hash ) Object.assign( params, JSON.parse( decodeURIComponent( location.hash.slice( 1 ) ) ) );
 
 			const views = [ 'Beauty', 'Light Map', 'Surfels: Radiosity', 'Surfels: Irradiance', 'Surfels: Direct Light', 'Surfels: Sky Light', 'Surfels: Bounce Light', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
 
@@ -309,7 +305,7 @@
 				gui.add( params, 'placement', Object.keys( placements ) ).name( 'Surfel Placement' ).onChange( bake );
 				gui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Surfel Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
-				gui.add( params, 'exposure', 0.1, 4, 0.01 ).name( 'Exposure' );
+				gui.add( params, 'exposure', 0.05, 4, 0.01 ).name( 'Exposure' ).listen();
 				gui.add( params, 'autoplay' ).name( 'Autoplay' );
 				gui.add( params, 'dayLength', 10, 300, 1 ).name( 'Day Length (s)' );
 
@@ -341,9 +337,7 @@
 				loading = true;
 				progress.removeAttribute( 'value' );
 
-				// the day of a scene starts an hour before the sun sets, once the scene shows
-
-				if ( params.autoplay ) params.timeOfDay = 17;
+				// the day of a scene starts in the morning, once the scene shows
 
 				status.textContent = `Loading ${ name }…`;
 				selection.textContent = '';
@@ -360,6 +354,9 @@
 				world = worlds[ name ];
 				scene.add( world.root );
 				loading = false;
+
+				params.timeOfDay = 7;
+				params.exposure = world.exposure ?? 0.5;
 
 				world.root.traverse( ( object ) => {
 
@@ -3040,7 +3037,7 @@
 
 				for ( const light of lights ) light.removeFromParent();
 
-				return { root: gltf.scene, sky: true, sunLean: 0.25, exposure: 0.5, detailSize: 0.5, path: ( a ) => [ 9 * Math.sin( a ), 1.2 * Math.sin( a * 2 ) ], camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
+				return { root: gltf.scene, sky: true, sunLean: 0.25, exposure: 1, detailSize: 0.5, path: ( a ) => [ 9 * Math.sin( a ), 1.2 * Math.sin( a * 2 ) ], camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
 
 			}
 
@@ -3100,9 +3097,9 @@
 
 				updateSun();
 
-				// the sky is an order of magnitude brighter than the lights of the closed scenes
+				// the sky is brighter than the lights of the closed scenes
 
-				renderer.toneMappingExposure = params.exposure * ( world.exposure ?? ( world.sky ? 0.1 : 1 ) );
+				renderer.toneMappingExposure = params.exposure * ( world.sky ? 0.3 : 1 );
 
 				// without GI, or until it is baked, the environment lights the scene
 

@@ -94,6 +94,7 @@
 			// the bits above
 
 			const RAYS = 1024;
+			const CLUSTER = 2, FAR = 1;
 			const BATCH = 2048;
 			const LINK_RAYS = 0x200000;
 			const MISS = 0, BACKFACE = 1, UNKNOWN = 2;
@@ -463,6 +464,10 @@
 
 				baked.surfels = placements[ params.placement ]( { position, normal, albedo, emissive, size, texelSize }, baked.detailSize );
 
+				const patches = labelPatches( albedo, size );
+
+				baked.surfels.patch = baked.surfels.texel.map( ( t ) => patches[ t ] );
+
 				times[ 'surfels' ] = performance.now() - start;
 				baked.progress = 0.1;
 
@@ -548,7 +553,7 @@
 
 				// only the cluster tree links to clusters
 
-				const clusters = surfels.clusters = params.budgetMethod === 'Cluster Tree' ? clusterSurfels( surfels, detailSize * 4, world.bounds.center.clone().subScalar( world.bounds.radius ) ) : { count: 0, levels: [] };
+				const clusters = surfels.clusters = params.budgetMethod === 'Cluster Tree' ? clusterSurfels( surfels, detailSize * CLUSTER, world.bounds.center.clone().subScalar( world.bounds.radius ), world.bounds.radius * 2 ) : { count: 0, levels: [] };
 
 				// The ways to bring the links of a surfel, each a surfel with its rays, down to the budget. The links are
 				// scaled below so that they carry the light of all hits
@@ -619,35 +624,80 @@
 
 					},
 
-					// The links with the fewest rays merge into the cluster above them, again and again: what sends much
-					// light stays a surfel or a small cluster, and what sends little ends up in a large one. Like the
-					// form factors of Enlighten, which has a budget per texel over a tree of clusters. A cluster sends
-					// the mean light of its surfels, also of those that the surfel doesn't see, which leaves a bias
+					// A cut through the tree of clusters, from the top: the link with the most rays is split into the
+					// clusters or surfels below it until the budget is used up, so that no link carries much more of the
+					// light than another. What takes up much of the view of the surfel stays surfels or small clusters,
+					// and what takes up little ends up in a large one. Like the cuts of Lightcuts and the form factors of
+					// Enlighten, which has a budget per texel over a tree of clusters. A cluster sends the mean light of
+					// its surfels, also of those that the surfel doesn't see, which leaves a bias
 
 					'Cluster Tree': ( runs ) => {
 
-						const targets = new Map( runs ), top = count + clusters.starts[ clusters.levels.length - 1 ];
+						const rays = new Map(), below = new Map();
 
-						while ( targets.size > budget ) {
+						let cut = [];
 
-							const small = [ ...targets ].filter( ( [ target ] ) => target < top ).sort( ( a, b ) => a[ 1 ] - b[ 1 ] );
+						for ( const [ target, hits ] of runs ) {
 
-							if ( small.length === 0 ) break;
+							rays.set( target, hits );
 
-							for ( let k = 0, merges = Math.min( targets.size - budget, small.length ); k < merges; k ++ ) {
+							let child = target, added = true;
 
-								const target = small[ k ][ 0 ];
-								const above = count + ( target < count ? clusters.levels[ 0 ][ target ] : clusters.parent[ target - count ] );
+							for ( const of of clusters.levels ) {
 
-								targets.set( above, ( targets.get( above ) ?? 0 ) + targets.get( target ) );
-								targets.delete( target );
+								const node = count + of[ target ], known = rays.has( node );
+
+								if ( ! known ) {
+
+									below.set( node, [] );
+
+									if ( of === clusters.levels[ clusters.levels.length - 1 ] ) cut.push( node );
+
+								}
+
+								rays.set( node, ( rays.get( node ) ?? 0 ) + hits );
+
+								if ( added ) below.get( node ).push( child );
+
+								child = node;
+								added = ! known;
 
 							}
 
 						}
 
+						// a cluster with rays into one of the clusters below it only is that one, which is not the light
+						// of the others
+
+						const settle = ( node ) => {
+
+							while ( node >= count && below.get( node ).length === 1 ) node = below.get( node )[ 0 ];
+
+							return node;
+
+						};
+
+						cut = cut.map( settle );
+
+						for ( ;; ) {
+
+							let split = - 1;
+
+							for ( let k = 0; k < cut.length; k ++ ) {
+
+								if ( cut[ k ] >= count && cut.length - 1 + below.get( cut[ k ] ).length <= budget && ( split < 0 || rays.get( cut[ k ] ) > rays.get( cut[ split ] ) ) ) split = k;
+
+							}
+
+							if ( split < 0 ) break;
+
+							cut.splice( split, 1, ...below.get( cut[ split ] ).map( settle ) );
+
+						}
+
 						runs.length = 0;
-						runs.push( ...targets );
+
+						for ( const node of cut ) runs.push( [ node, rays.get( node ) ] );
 
 					}
 
@@ -889,6 +939,7 @@
 				const skyTransfer = new Float32Array( count * 9 );
 				const invalid = new Uint8Array( count );
 				const sorted = new Uint32Array( RAYS );
+				const seen = clusters.levels.map( () => new Float32Array( count ) );
 				const runs = [];
 
 				let links = 0, unknownHits = 0, surfelHits = 0;
@@ -964,6 +1015,20 @@
 
 							invalid[ i ] = 1;
 							runs.length = 0;
+
+						}
+
+						// How much each surfel is seen from afar, by the rays that hit it, for the mean of its cluster on
+						// each level: only from further away than the cluster is large, where a surfel links to it. The
+						// surfels close by see more of what lies in corners, which is darker
+
+						for ( let l = 0, cell = detailSize * CLUSTER; l < seen.length; l ++, cell *= 2 ) {
+
+							for ( const [ target, rays ] of runs ) {
+
+								if ( Math.hypot( surfels.position[ target * 3 ] - surfels.position[ i * 3 ], surfels.position[ target * 3 + 1 ] - surfels.position[ i * 3 + 1 ], surfels.position[ target * 3 + 2 ] - surfels.position[ i * 3 + 2 ] ) > cell * FAR ) seen[ l ][ target ] += rays * surfels.radius[ i ] ** 2;
+
+							}
 
 						}
 
@@ -1065,7 +1130,7 @@
 
 				texelBuffer.value.needsUpdate = true;
 
-				for ( const [ name, itemSize ] of [[ 'position', 3 ], [ 'normal', 2 ], [ 'radius', 1 ], [ 'albedo', 3 ], [ 'emissive', 3 ], [ 'pair', 1 ]] ) surfels[ name ] = compact( surfels[ name ], itemSize );
+				for ( const [ name, itemSize ] of [[ 'position', 3 ], [ 'normal', 2 ], [ 'radius', 1 ], [ 'albedo', 3 ], [ 'emissive', 3 ], [ 'pair', 1 ], [ 'patch', 1 ]] ) surfels[ name ] = compact( surfels[ name ], itemSize );
 
 				clusters.levels = clusters.levels.map( ( of ) => compact( of, 1 ) );
 
@@ -1081,7 +1146,7 @@
 				rayBuffer = buffer( frames, 4, 'vec4' );
 
 				return {
-					offsets: keptOffsets, links: packed.slice( 0, keptLinks ), scales, skyTransfer: compact( skyTransfer, 9 ), invalid: compact( invalid, 1 ),
+					offsets: keptOffsets, links: packed.slice( 0, keptLinks ), scales, skyTransfer: compact( skyTransfer, 9 ), invalid: compact( invalid, 1 ), seen: seen.map( ( of ) => compact( of, 1 ) ),
 					buried: count - kept, unknown: ( unknownHits + lostHits ) / Math.max( surfelHits + unknownHits, 1 ),
 					rayBuffer, visibility, epsilon, dispose
 				};
@@ -1100,7 +1165,7 @@
 			function createLighting( world, lightMapLinks ) {
 
 				const { count } = world.surfels;
-				const { rayBuffer, visibility, skyTransfer, offsets, links, scales, invalid } = world.transfer;
+				const { rayBuffer, visibility, skyTransfer, offsets, links, scales, invalid, seen } = world.transfer;
 
 				const skyBuffer = storage( new THREE.StorageBufferAttribute( skyTransfer, 1 ), 'float' ).toReadOnly();
 				const clusters = world.surfels.clusters;
@@ -1165,13 +1230,18 @@
 
 				// the surfels of each cluster, without the buried ones
 
-				const members = Array.from( { length: clusters.count }, () => [] );
+				const members = Array.from( { length: clusters.count }, () => [] ), level = new Uint8Array( clusters.count );
 
 				for ( let i = 0; i < count; i ++ ) {
 
 					if ( invalid[ i ] ) continue;
 
-					for ( const of of clusters.levels ) members[ of[ i ] ].push( i );
+					clusters.levels.forEach( ( of, l ) => {
+
+						members[ of[ i ] ].push( i );
+						level[ of[ i ] ] = l;
+
+					} );
 
 					material[ i * 8 + 3 ] = scales[ i ];
 
@@ -1184,7 +1254,8 @@
 
 				}
 
-				// weighted by their area
+				// Weighted by how much they are seen, which is what the rays into a cluster hit: their area, without
+				// the parts that other surfaces cover
 
 				const memberOffsets = new Uint32Array( clusters.count + 1 );
 
@@ -1194,12 +1265,12 @@
 
 				members.forEach( ( list, c ) => {
 
-					const area = list.reduce( ( sum, i ) => sum + world.surfels.radius[ i ] ** 2, 0 );
+					const total = list.reduce( ( sum, i ) => sum + seen[ level[ c ] ][ i ], 0 ), area = list.reduce( ( sum, i ) => sum + world.surfels.radius[ i ] ** 2, 0 );
 
 					list.forEach( ( i, m ) => {
 
 						memberIndices[ memberOffsets[ c ] + m ] = i;
-						memberWeights[ memberOffsets[ c ] + m ] = world.surfels.radius[ i ] ** 2 / area;
+						memberWeights[ memberOffsets[ c ] + m ] = total > 0 ? seen[ level[ c ] ][ i ] / total : world.surfels.radius[ i ] ** 2 / area;
 
 					} );
 
@@ -1884,15 +1955,71 @@
 
 			}
 
-			// A tree of clusters. A cluster is the surfels of a cell of a grid that face along the same axis, and the
-			// cells of a level are twice as large as the ones below, up to one cell that holds the scene
+			// The patches of the atlas: the texels whose center is covered and that touch are one patch, a number
+			// from 1 for each of their texels. The charts keep a padding between them, so a patch is a chart, one
+			// connected piece of a surface
 
-			function clusterSurfels( surfels, size, origin ) {
+			function labelPatches( albedo, size ) {
+
+				const patches = new Uint32Array( size * size ), stack = [];
+				const covered = ( t ) => THREE.DataUtils.fromHalfFloat( albedo[ t * 4 + 3 ] ) >= 1;
+
+				let count = 0;
+
+				for ( let seed = 0; seed < size * size; seed ++ ) {
+
+					if ( patches[ seed ] !== 0 || ! covered( seed ) ) continue;
+
+					patches[ seed ] = ++ count;
+					stack.push( seed );
+
+					while ( stack.length > 0 ) {
+
+						const t = stack.pop(), x = t % size;
+
+						for ( const other of [ x > 0 ? t - 1 : - 1, x < size - 1 ? t + 1 : - 1, t - size, t + size ] ) {
+
+							if ( other < 0 || other >= size * size || patches[ other ] !== 0 || ! covered( other ) ) continue;
+
+							patches[ other ] = count;
+							stack.push( other );
+
+						}
+
+					}
+
+				}
+
+				return patches;
+
+			}
+
+			// A tree of clusters. A cluster is the surfels of a cell of a grid that face along the same axis, and the
+			// cells of a level are twice as large as the ones below, up to a cell that holds the scene. The lights
+			// have clusters of their own: the mean of a light and of the surface around it is far from both. And so
+			// has each patch that is larger than the cell: the floors of two rooms with a wall between them stay
+			// apart until a cell holds all of one, so that a surfel that sees only one does not get the light of both
+
+			function clusterSurfels( surfels, size, origin, extent ) {
 
 				const levels = [], starts = [], parent = [], sums = [];
 				const normal = decodeNormals( surfels.normal );
 
-				for ( let cell = size, cells = Infinity; cells > 6; cell *= 2 ) {
+				// the size of each patch, the diagonal of the box around its surfels
+
+				const boxes = new Map();
+
+				for ( let i = 0; i < surfels.count; i ++ ) {
+
+					if ( ! boxes.has( surfels.patch[ i ] ) ) boxes.set( surfels.patch[ i ], new THREE.Box3() );
+
+					boxes.get( surfels.patch[ i ] ).expandByPoint( new THREE.Vector3().fromArray( surfels.position, i * 3 ) );
+
+				}
+
+				const patchSize = new Map( [ ...boxes ].map( ( [ patch, box ] ) => [ patch, patch === 0 ? 0 : box.min.distanceTo( box.max ) ] ) );
+
+				for ( let cell = size; cell < extent * 2; cell *= 2 ) {
 
 					const ids = new Map(), of = new Uint32Array( surfels.count ), below = levels[ levels.length - 1 ];
 
@@ -1902,7 +2029,7 @@
 
 						const p = surfels.position.subarray( i * 3, i * 3 + 3 ), n = normal.subarray( i * 3, i * 3 + 3 );
 						const axis = Math.abs( n[ 0 ] ) > Math.abs( n[ 1 ] ) ? ( Math.abs( n[ 0 ] ) > Math.abs( n[ 2 ] ) ? 0 : 2 ) : ( Math.abs( n[ 1 ] ) > Math.abs( n[ 2 ] ) ? 1 : 2 );
-						const key = `${ Math.floor( ( p[ 0 ] - origin.x ) / cell ) },${ Math.floor( ( p[ 1 ] - origin.y ) / cell ) },${ Math.floor( ( p[ 2 ] - origin.z ) / cell ) },${ axis * 2 + ( n[ axis ] > 0 ? 1 : 0 ) }`;
+						const key = `${ Math.floor( ( p[ 0 ] - origin.x ) / cell ) },${ Math.floor( ( p[ 1 ] - origin.y ) / cell ) },${ Math.floor( ( p[ 2 ] - origin.z ) / cell ) },${ axis * 2 + ( n[ axis ] > 0 ? 1 : 0 ) },${ surfels.emissive[ i * 3 ] + surfels.emissive[ i * 3 + 1 ] + surfels.emissive[ i * 3 + 2 ] > 0 },${ patchSize.get( surfels.patch[ i ] ) > cell ? surfels.patch[ i ] : 0 }`;
 
 						if ( ! ids.has( key ) ) {
 
@@ -1923,7 +2050,6 @@
 					}
 
 					levels.push( of );
-					cells = ids.size;
 
 				}
 
@@ -1967,7 +2093,7 @@
 				const cell = Math.max( 1, Math.round( spacing / texelSize ) );
 				const half = THREE.DataUtils.fromHalfFloat;
 
-				const data = { position: [], normal: [], radius: [], albedo: [], emissive: [], pair: [] };
+				const data = { position: [], normal: [], radius: [], albedo: [], emissive: [], pair: [], texel: [] };
 				const texels = [], group = [], sum = new Float32Array( 12 );
 
 				// the surfel of each texel plus one, with the side of its material in the two high bits
@@ -2140,6 +2266,7 @@
 							data.albedo.push( sum[ 6 ] / count, sum[ 7 ] / count, sum[ 8 ] / count );
 							data.emissive.push( sum[ 9 ] / count, sum[ 10 ] / count, sum[ 11 ] / count );
 							data.pair.push( side === 2 ? sign : 0 );
+							data.texel.push( nearest / 4 );
 
 						}
 
@@ -2199,6 +2326,7 @@
 
 				return {
 					texelMap,
+					texel: new Uint32Array( data.texel ),
 					pair: new Int8Array( data.pair ),
 					count: data.radius.length,
 					position: new Float32Array( data.position ),
@@ -2637,6 +2765,7 @@
 				return {
 					grow: GROW,
 					texelMap,
+					texel: new Uint32Array( seeds ),
 					pair: new Int8Array( data.pair ),
 					count: data.radius.length,
 					position: new Float32Array( data.position ),

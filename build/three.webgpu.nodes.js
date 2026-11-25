@@ -7634,7 +7634,7 @@ class OperatorNode extends Node {
  * @param {...Node} params - Additional input parameters.
  * @returns {OperatorNode}
  */
-const add$1 = /*@__PURE__*/ nodeProxyAssignable( OperatorNode, '+' ).setParameterLength( 2, Infinity ).setName( 'add' );
+const add = /*@__PURE__*/ nodeProxyAssignable( OperatorNode, '+' ).setParameterLength( 2, Infinity ).setName( 'add' );
 
 /**
  * Returns the subtraction of two or more value.
@@ -7920,7 +7920,7 @@ const decrement = /*@__PURE__*/ Fn( ( [ a ] ) => {
 
 } );
 
-addMethodChaining( 'add', add$1 );
+addMethodChaining( 'add', add );
 addMethodChaining( 'sub', sub );
 addMethodChaining( 'mul', mul );
 addMethodChaining( 'div', div );
@@ -9788,15 +9788,22 @@ function builtinAOContext( aoNode, node = null ) {
 }
 
 /**
- * TSL function for defining the sources of indirect light of the materials of a given node,
- * e.g. of a pass. The sources are asked in order, in front of the environment and of what
- * the lights reflect.
+ * TSL function for defining the providers of indirect light of the materials of a given node,
+ * e.g. of a pass. A provider replaces the default one, {@link defaultIndirectSpecular} or
+ * {@link defaultIndirectDiffuse}, and what it returns goes through the BRDF of the material.
+ *
+ * ```js
+ * // add a GI buffer to the default indirect diffuse light
+ * scenePass.contextNode = builtinIndirectContext( {
+ * 	diffuse: ( query, builder ) => defaultIndirectDiffuse( query, builder ).add( gi )
+ * } );
+ * ```
  *
  * @tsl
  * @function
- * @param {Object} sources - The source lists.
- * @param {Array<IndirectLightSource>} [sources.specular] - The indirect specular sources, in order.
- * @param {Array<IndirectLightSource>} [sources.diffuse] - The indirect diffuse sources, in order.
+ * @param {Object} providers - The providers.
+ * @param {IndirectSpecularProvider} [providers.specular] - The provider of indirect specular light.
+ * @param {IndirectDiffuseProvider} [providers.diffuse] - The provider of indirect diffuse light.
  * @param {Node} [node=null] - The node whose context should be modified.
  * @returns {ContextNode}
  */
@@ -9835,7 +9842,7 @@ addMethodChaining( 'uniformFlow', uniformFlow );
 addMethodChaining( 'setName', setName );
 addMethodChaining( 'builtinShadowContext', ( node, shadowNode, light ) => builtinShadowContext( shadowNode, light, node ) );
 addMethodChaining( 'builtinAOContext', ( node, aoValue ) => builtinAOContext( aoValue, node ) );
-addMethodChaining( 'builtinIndirectContext', ( node, sources ) => builtinIndirectContext( sources, node ) );
+addMethodChaining( 'builtinIndirectContext', ( node, providers ) => builtinIndirectContext( providers, node ) );
 
 /**
  * Class for representing shader variables as nodes. Variables are created from
@@ -20453,7 +20460,7 @@ function getSkinnedPosition( boneMatrices, position, bindMatrix, bindMatrixInver
 
 	const skinVertex = bindMatrix.mul( position );
 
-	const skinned = add$1(
+	const skinned = add(
 		boneMatX.mul( skinWeight.x ).mul( skinVertex ),
 		boneMatY.mul( skinWeight.y ).mul( skinVertex ),
 		boneMatZ.mul( skinWeight.z ).mul( skinVertex ),
@@ -20485,7 +20492,7 @@ function getSkinnedNormalAndTangent( boneMatrices, normal, tangent, bindMatrix, 
 
 	// NORMAL and TANGENT
 
-	let skinMatrix = add$1(
+	let skinMatrix = add(
 		skinWeight.x.mul( boneMatX ),
 		skinWeight.y.mul( boneMatY ),
 		skinWeight.z.mul( boneMatZ ),
@@ -21539,30 +21546,89 @@ class AONode extends LightingNode {
 }
 
 /**
- * A source of indirect light. It answers a query with a `vec4`: RGB is the light, premultiplied
- * by the coverage, and alpha is the coverage, the part of the query the source answers.
- * A source with a coverage of zero adds its light to the sources behind it.
+ * A provider of indirect specular light. It returns the radiance arriving around a direction,
+ * filtered to the roughness of a specular lobe. It is asked once for each specular lobe of
+ * a material, and what it returns goes through the BRDF of that lobe.
  *
- * An indirect specular source returns radiance. Its query is the direction to look in, in world
- * space, and the roughness of the specular lobe. An indirect diffuse source returns irradiance.
- * Its query is the normal of the surface, in world space.
+ * The query holds the direction to look in, in world space, the roughness of the lobe and
+ * the name of the lobe: `'base'`, `'clearcoat'` or `'retroreflective'`.
  *
- * A source is a function of the query and the builder, which can return `null` to sit a material
- * out. A source that holds one answer per pixel, such as a screen-space pass, can be a `vec4`
- * node. For indirect specular, such a node only answers the outermost lobe: the clearcoat
- * where the material is coated and the base lobe elsewhere. It has to be computed from the
- * normal and the roughness of that lobe.
- *
- * @typedef {(Node<vec4>|function(Object, NodeBuilder): ?Node<vec4>)} IndirectLightSource
+ * @typedef {function({direction: Node<vec3>, roughness: Node<float>, lobe: string}, NodeBuilder): Node<vec3>} IndirectSpecularProvider
  */
 
 /**
- * Resolves the indirect light of a material: the radiance of each of its specular lobes,
+ * A provider of indirect diffuse light. It returns the irradiance arriving on a surface,
+ * which goes through the diffuse BRDF of the material. The provider holds its own occlusion:
+ * what it returns is not darkened by the ambient occlusion of the material afterwards.
+ *
+ * The query holds the normal of the surface, in world space.
+ *
+ * @typedef {function({normal: Node<vec3>}, NodeBuilder): Node<vec3>} IndirectDiffuseProvider
+ */
+
+/**
+ * The default provider of indirect specular light: the environment and what the ambient
+ * lights of the scene reflect. It is what a material uses if no other provider is set with
+ * {@link builtinIndirectContext}, and what another provider calls for that light.
+ *
+ * @tsl
+ * @function
+ * @param {Object} query - The query.
+ * @param {Node<vec3>} query.direction - The direction to look in, in world space.
+ * @param {Node<float>} query.roughness - The roughness of the specular lobe.
+ * @param {string} query.lobe - The name of the specular lobe.
+ * @param {NodeBuilder} builder - The current node builder.
+ * @return {Node<vec3>} The radiance.
+ */
+const defaultIndirectSpecular = ( query, builder ) => {
+
+	const { context } = builder;
+	const { environmentNode } = context.indirectLightingNode;
+
+	// the ambient lights have reflected into the target of each lobe
+
+	const lights = query.lobe === 'clearcoat' ? context.lightingModel.clearcoatRadiance : context.radiance;
+
+	return environmentNode !== null ? lights.add( environmentNode.getIndirectSpecular( query ) ) : lights;
+
+};
+
+/**
+ * The default provider of indirect diffuse light: the environment, the light map and the
+ * ambient lights of the scene, darkened by the ambient occlusion of the material. It is what
+ * a material uses if no other provider is set with {@link builtinIndirectContext}, and what
+ * another provider calls for that light.
+ *
+ * @tsl
+ * @function
+ * @param {Object} query - The query.
+ * @param {Node<vec3>} query.normal - The normal of the surface, in world space.
+ * @param {NodeBuilder} builder - The current node builder.
+ * @return {Node<vec3>} The irradiance.
+ */
+const defaultIndirectDiffuse = ( query, builder ) => {
+
+	const { context } = builder;
+	const { environmentNode } = context.indirectLightingNode;
+	const { lightingModel } = context;
+
+	// the light map and the ambient lights have added to the irradiance
+
+	const irradiance = environmentNode !== null ? context.irradiance.add( environmentNode.getIndirectDiffuse( query ) ) : context.irradiance;
+
+	const occlusion = ( lightingModel && lightingModel.getIndirectDiffuseOcclusion ) ? lightingModel.getIndirectDiffuseOcclusion( builder ) : context.ambientOcclusion;
+
+	return irradiance.mul( occlusion );
+
+};
+
+/**
+ * Supplies the indirect light of a material: the radiance of each of its specular lobes,
  * which is its indirect specular light, and the irradiance of its surface, which is its
  * indirect diffuse light.
  *
- * Each of the two is resolved from an ordered list of sources. A source fills what the sources
- * before it left open, and the environment and what the lights reflect fill the rest.
+ * Each of the two comes from a provider. The default providers answer from the environment,
+ * the light map and the ambient lights. A pass replaces them with {@link builtinIndirectContext}.
  *
  * @augments LightingNode
  */
@@ -21577,11 +21643,11 @@ class IndirectLightingNode extends LightingNode {
 	/**
 	 * Constructs a new indirect lighting node.
 	 *
-	 * @param {Array<IndirectLightSource>} [specular=[]] - The indirect specular sources, in order.
-	 * @param {Array<IndirectLightSource>} [diffuse=[]] - The indirect diffuse sources, in order.
-	 * @param {?EnvironmentNode} [environmentNode=null] - The environment, the last source of both.
+	 * @param {?IndirectSpecularProvider} [specular=defaultIndirectSpecular] - The provider of indirect specular light, `null` for a material without specular lobes.
+	 * @param {IndirectDiffuseProvider} [diffuse=defaultIndirectDiffuse] - The provider of indirect diffuse light.
+	 * @param {?EnvironmentNode} [environmentNode=null] - The environment the default providers answer from.
 	 */
-	constructor( specular = [], diffuse = [], environmentNode = null ) {
+	constructor( specular = defaultIndirectSpecular, diffuse = defaultIndirectDiffuse, environmentNode = null ) {
 
 		super();
 
@@ -21607,114 +21673,47 @@ class IndirectLightingNode extends LightingNode {
 
 		if ( environmentNode !== null ) environmentNode.build( builder );
 
-		// indirect diffuse, the sources hold their own occlusion
+		// the default providers read the environment from here
 
-		const diffuse = this.resolve( this.diffuse, { normal: normalWorld }, true, builder );
+		context.indirectLightingNode = this;
 
-		if ( diffuse.light !== null ) {
+		// indirect diffuse, the provider holds its own occlusion
 
-			context.irradiance.mulAssign( diffuse.remaining );
-			context.occlusionAwareIrradiance.addAssign( diffuse.light );
+		const irradiance = vec3( this.diffuse( { normal: normalWorld }, builder ) ).toVar();
 
-		}
+		context.irradiance.assign( vec3( 0 ) );
+		context.occlusionAwareIrradiance.addAssign( irradiance );
 
-		if ( environmentNode !== null ) {
-
-			const irradiance = environmentNode.getIndirectDiffuse( { normal: normalWorld } );
-
-			context.irradiance.addAssign( diffuse.light !== null ? irradiance.mul( diffuse.remaining ) : irradiance );
-
-		}
+		if ( this.specular === null ) return;
 
 		// indirect specular, one query per lobe
 
 		const useAnisotropy = material.useAnisotropy === true || material.anisotropy > 0;
 		const baseNormalView = useAnisotropy ? bentNormalView : normalView;
 
-		// per-pixel sources hold the outermost lobe: the clearcoat where there is one
+		const ask = ( direction, roughnessNode, lobe ) => vec3( this.specular( { direction, roughness: roughnessNode, lobe }, builder ) );
 
-		const clearcoatRadiance = context.lightingModel.clearcoatRadiance;
-		const isCoated = clearcoatRadiance ? clearcoat.greaterThan( 0 ).toVar() : false;
+		let radiance = ask( reflect( baseNormalView, roughness ), roughness, 'base' );
 
-		const base = this.getRadiance( reflect( baseNormalView, roughness ), roughness, isCoated === false ? true : isCoated.not(), builder );
-
-		if ( base.light !== null && ( material.useRetroreflection === true || material.retroreflectivity > 0 ) ) {
+		if ( material.useRetroreflection === true || material.retroreflectivity > 0 ) {
 
 			// the retroreflective lobe returns light toward its source, so it looks along the view direction
 
-			const retro = this.getRadiance( toWorld( positionViewDirection, baseNormalView, roughness ), roughness, false, builder );
+			const retro = ask( toWorld( positionViewDirection, baseNormalView, roughness ), roughness, 'retroreflective' );
 
-			if ( retro.light !== null ) base.light = retroreflectivity.clamp().mix( base.light, retro.light );
+			radiance = retroreflectivity.clamp().mix( radiance, retro );
 
 		}
 
-		add( context.radiance, base );
+		context.radiance.assign( radiance );
+
+		const clearcoatRadiance = context.lightingModel.clearcoatRadiance;
 
 		if ( clearcoatRadiance ) {
 
-			add( clearcoatRadiance, this.getRadiance( reflect( clearcoatNormalView, clearcoatRoughness ), clearcoatRoughness, isCoated, builder ) );
+			clearcoatRadiance.assign( ask( reflect( clearcoatNormalView, clearcoatRoughness ), clearcoatRoughness, 'clearcoat' ) );
 
 		}
-
-	}
-
-	/**
-	 * Returns the radiance of one specular lobe.
-	 *
-	 * @param {Node<vec3>} direction - The direction the lobe looks in, in world space.
-	 * @param {Node<float>} roughness - The roughness of the lobe.
-	 * @param {boolean|Node<bool>} perPixel - Whether this is the lobe that per-pixel sources hold the answer for.
-	 * @param {NodeBuilder} builder - The current node builder.
-	 * @return {{light: ?Node<vec3>, remaining: ?Node<float>}} The radiance of the sources and the environment and the coverage the sources left open, `null` if nothing answers.
-	 */
-	getRadiance( direction, roughness, perPixel, builder ) {
-
-		const query = { direction, roughness };
-		const result = this.resolve( this.specular, query, perPixel, builder );
-
-		if ( this.environmentNode !== null ) {
-
-			const environment = this.environmentNode.getIndirectSpecular( query );
-
-			result.light = result.light !== null ? result.light.add( environment.mul( result.remaining ) ) : environment;
-
-		}
-
-		return result;
-
-	}
-
-	/**
-	 * Resolves a list of sources front to back.
-	 *
-	 * @param {Array<IndirectLightSource>} sources - The sources, in order.
-	 * @param {Object} query - The query.
-	 * @param {boolean|Node<bool>} perPixel - Whether the sources that are nodes can answer the query.
-	 * @param {NodeBuilder} builder - The current node builder.
-	 * @return {{light: ?Node<vec3>, remaining: ?Node<float>}} The light of the sources and the coverage they left open, `null` if no source answers.
-	 */
-	resolve( sources, query, perPixel, builder ) {
-
-		let light = null, remaining = null;
-
-		for ( const source of sources ) {
-
-			let value = null;
-
-			if ( typeof source === 'function' ) value = source( query, builder );
-			else if ( perPixel === true ) value = source;
-			else if ( perPixel !== false ) value = select( perPixel, vec4( source ), vec4( 0 ) );
-
-			if ( value === null ) continue;
-
-			value = vec4( value ).toVar();
-
-			light = light === null ? value.rgb : light.add( value.rgb.mul( remaining ) );
-			remaining = ( remaining === null ? value.a.oneMinus() : remaining.mul( value.a.oneMinus() ) ).toVar();
-
-		}
-
-		return { light, remaining };
 
 	}
 
@@ -21724,14 +21723,6 @@ class IndirectLightingNode extends LightingNode {
 const toWorld = ( directionView, normalViewNode, roughnessNode ) => pow4( roughnessNode ).mix( directionView, normalViewNode ).normalize().transformDirection( cameraWorldMatrix );
 
 const reflect = ( normalViewNode, roughnessNode ) => toWorld( positionViewDirection.negate().reflect( normalViewNode ), normalViewNode, roughnessNode );
-
-// The sources go in front of what the lights have reflected into the target.
-const add = ( target, { light, remaining } ) => {
-
-	if ( remaining !== null ) target.mulAssign( remaining );
-	if ( light !== null ) target.addAssign( light );
-
-};
 
 /**
  * `LightingContextNode` represents an extension of the {@link ContextNode} module
@@ -22878,7 +22869,7 @@ const ALPHA_HASH_SCALE = 0.05; // Derived from trials only, and may be changed.
 
 const hash2D = /*@__PURE__*/ Fn( ( [ value ] ) => {
 
-	return fract( mul( 1.0e4, sin( mul( 17.0, value.x ).add( mul( 0.1, value.y ) ) ) ).mul( add$1( 0.1, abs( sin( mul( 13.0, value.y ).add( value.x ) ) ) ) ) );
+	return fract( mul( 1.0e4, sin( mul( 17.0, value.x ).add( mul( 0.1, value.y ) ) ) ).mul( add( 0.1, abs( sin( mul( 13.0, value.y ).add( value.x ) ) ) ) ) );
 
 }, { value: 'vec2', return: 'float' } );
 
@@ -22914,7 +22905,7 @@ const getAlphaHashThreshold = /*@__PURE__*/ Fn( ( [ position ] ) => {
 	const lerpFactor = fract( log2( pixScale ) );
 
 	// Interpolate alpha threshold from noise at two scales
-	const x = add$1( mul( lerpFactor.oneMinus(), alpha.x ), mul( lerpFactor, alpha.y ) );
+	const x = add( mul( lerpFactor.oneMinus(), alpha.x ), mul( lerpFactor, alpha.y ) );
 
 	// Pass into CDF to compute uniformly distrib threshold
 	const a = min( lerpFactor, lerpFactor.oneMinus() );
@@ -24592,8 +24583,8 @@ class NodeMaterial extends Material {
 	}
 
 	/**
-	 * Setups the lighting nodes of the environment and of the indirect light
-	 * sources of the context, see {@link builtinIndirectContext}.
+	 * Setups the lighting nodes of the environment and of the indirect diffuse
+	 * provider of the context, see {@link builtinIndirectContext}.
 	 *
 	 * @param {NodeBuilder} builder - The current node builder.
 	 * @return {Array<LightingNode>} The lighting nodes.
@@ -24614,7 +24605,7 @@ class NodeMaterial extends Material {
 
 		if ( diffuse !== undefined ) {
 
-			materialLightsNode.push( new IndirectLightingNode( [], diffuse ) );
+			materialLightsNode.push( new IndirectLightingNode( null, diffuse ) );
 
 		}
 
@@ -27650,8 +27641,8 @@ const bicubicWeights = ( a ) => {
 	const g1a = w2a.add( w3a );
 
 	// h0 and h1 are the two offset functions.
-	const h0a = add$1( -1, w1a.div( g0a ) );
-	const h1a = add$1( 1.0, w3a.div( g1a ) );
+	const h0a = add( -1, w1a.div( g0a ) );
+	const h1a = add( 1.0, w3a.div( g1a ) );
 
 	return { g0: g0a, g1: g1a, h0: h0a, h1: h1a };
 
@@ -27662,8 +27653,8 @@ const bicubic = ( textureNode, p0, p3, g0, g1, lod ) => {
 	const p1 = vec2( p3.x, p0.y );
 	const p2 = vec2( p0.x, p3.y );
 
-	const a = g0.y.mul( add$1( g0.x.mul( textureNode.sample( p0 ).level( lod ) ), g1.x.mul( textureNode.sample( p1 ).level( lod ) ) ) );
-	const b = g1.y.mul( add$1( g0.x.mul( textureNode.sample( p2 ).level( lod ) ), g1.x.mul( textureNode.sample( p3 ).level( lod ) ) ) );
+	const a = g0.y.mul( add( g0.x.mul( textureNode.sample( p0 ).level( lod ) ), g1.x.mul( textureNode.sample( p1 ).level( lod ) ) ) );
+	const b = g1.y.mul( add( g0.x.mul( textureNode.sample( p2 ).level( lod ) ), g1.x.mul( textureNode.sample( p3 ).level( lod ) ) ) );
 
 	return a.add( b );
 
@@ -28522,6 +28513,18 @@ class PhysicalLightingModel extends LightingModel {
 	}
 
 	/**
+	 * Returns how much of the indirect diffuse light the ambient occlusion lets through.
+	 *
+	 * @param {NodeBuilder} builder - The current node builder.
+	 * @return {Node<vec3>} The occlusion.
+	 */
+	getIndirectDiffuseOcclusion( builder ) {
+
+		return multiBounceOcclusion( builder.context.ambientOcclusion, diffuseContribution );
+
+	}
+
+	/**
 	 * Implements the indirect diffuse term.
 	 *
 	 * @param {NodeBuilder} builder - The current node builder.
@@ -28538,7 +28541,7 @@ class PhysicalLightingModel extends LightingModel {
 			? this.eonDirectionalAlbedo.mul( metalness.oneMinus(), 1 / Math.PI )
 			: BRDF_Lambert( { diffuseColor: diffuseContribution } );
 
-		const diffuseIrradiance = irradiance.mul( multiBounceOcclusion( ambientOcclusion, diffuseContribution ) ).add( occlusionAwareIrradiance );
+		const diffuseIrradiance = irradiance.mul( this.getIndirectDiffuseOcclusion( builder ) ).add( occlusionAwareIrradiance );
 
 		const diffuse = diffuseIrradiance.mul( diffuseBRDF ).mul( singleScattering.add( multiScattering ).oneMinus() ).toVar();
 
@@ -29898,8 +29901,8 @@ const _rendererCache = new WeakMap();
  * is defined by an equirectangular or cube texture.
  * `EnvironmentNode` is intended for PBR materials like {@link MeshStandardNodeMaterial}.
  *
- * It is a source of indirect specular and indirect diffuse light, and the last one
- * {@link IndirectLightingNode} asks.
+ * It answers queries for indirect specular and indirect diffuse light, which the default
+ * providers of {@link IndirectLightingNode} ask.
  *
  * @augments LightingNode
  */
@@ -29951,8 +29954,7 @@ class EnvironmentNode extends LightingNode {
 
 	/**
 	 * Resolves the environment. A texture is converted to PMREM here. The node contributes
-	 * no light by itself: {@link IndirectLightingNode} queries it as the last source of
-	 * indirect specular and indirect diffuse light.
+	 * no light by itself: the default providers of {@link IndirectLightingNode} query it.
 	 *
 	 * @param {NodeBuilder} builder - The current node builder.
 	 */
@@ -30188,22 +30190,18 @@ class MeshStandardNodeMaterial extends NodeMaterial {
 	}
 
 	/**
-	 * Overwritten since this type of material resolves its indirect specular and indirect
-	 * diffuse light from the sources of the context, see {@link builtinIndirectContext},
-	 * with the environment as the last source of both.
+	 * Overwritten since this type of material gets its indirect specular and indirect
+	 * diffuse light from the providers of the context, see {@link builtinIndirectContext},
+	 * or from the default providers.
 	 *
 	 * @param {NodeBuilder} builder - The current node builder.
 	 * @return {Array<LightingNode>} The lighting nodes.
 	 */
 	setupIndirectLightings( builder ) {
 
-		const { indirectSpecular = [], indirectDiffuse = [] } = builder.context;
+		const { indirectSpecular = defaultIndirectSpecular, indirectDiffuse = defaultIndirectDiffuse } = builder.context;
 
-		const environmentNode = this.setupEnvironment( builder );
-
-		if ( environmentNode === null && indirectSpecular.length === 0 && indirectDiffuse.length === 0 ) return [];
-
-		return [ new IndirectLightingNode( indirectSpecular, indirectDiffuse, environmentNode ) ];
+		return [ new IndirectLightingNode( indirectSpecular, indirectDiffuse, this.setupEnvironment( builder ) ) ];
 
 	}
 
@@ -39725,7 +39723,7 @@ const gain = ( x, k ) => select(
  * @param {Node<float>} b - Second control parameter.
  * @return {Node<float>} The remapped value.
  */
-const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add$1( pow( x, a ), pow( sub( 1.0, x ), b ) ) ), div( 1.0, a ) );
+const pcurve = ( x, a, b ) => pow( div( pow( x, a ), add( pow( x, a ), pow( sub( 1.0, x ), b ) ) ), div( 1.0, a ) );
 
 /**
  * A phase shifted sinus curve that starts at zero and ends at zero, with bouncing behavior.
@@ -40921,7 +40919,7 @@ const triplanarTextures = /*@__PURE__*/ Fn( ( [ textureXNode, textureYNode = nul
 	const cy = texture( textureY, ty ).mul( bf.y );
 	const cz = texture( textureZ, tz ).mul( bf.z );
 
-	return add$1( cx, cy, cz );
+	return add( cx, cy, cz );
 
 } );
 
@@ -43920,7 +43918,7 @@ const saturation = /*@__PURE__*/ Fn( ( [ color, adjustment = float( 1 ), luminan
  */
 const vibrance = /*@__PURE__*/ Fn( ( [ color, adjustment = float( 0 ) ] ) => {
 
-	const average = add$1( color.r, color.g, color.b ).div( 3.0 );
+	const average = add( color.r, color.g, color.b ).div( 3.0 );
 
 	const mx = color.r.max( color.g.max( color.b ) );
 	const amt = mx.sub( average ).mul( adjustment ).mul( -3 );
@@ -48070,7 +48068,7 @@ const outgoingLight = property( 'vec3', 'outgoingLight' );
  */
 const sortLights = ( lights ) => {
 
-	// the indirect lighting resolves last, in front of what the lights reflect
+	// the indirect lighting comes last, its default providers return what the lights have written
 
 	return lights.sort( ( a, b ) => ( a.isIndirectLightingNode === true ) - ( b.isIndirectLightingNode === true ) || a.id - b.id );
 
@@ -48375,17 +48373,31 @@ class LightsNode extends Node {
 	 */
 	setupLights( builder, lightNodes ) {
 
+		let lightProbes = false;
+
+		const setupLightProbes = () => {
+
+			if ( lightProbes === false && builder.context.lightProbeIrradiance !== undefined ) {
+
+				builder.context.irradiance.addAssign( builder.context.lightProbeIrradiance );
+
+				lightProbes = true;
+
+			}
+
+		};
+
 		for ( const lightNode of lightNodes ) {
+
+			// the indirect lighting comes last, and its default provider returns the irradiance
+
+			if ( lightNode.isIndirectLightingNode === true ) setupLightProbes();
 
 			lightNode.build( builder );
 
 		}
 
-		if ( builder.context.lightProbeIrradiance !== undefined ) {
-
-			builder.context.irradiance.addAssign( builder.context.lightProbeIrradiance );
-
-		}
+		setupLightProbes();
 
 	}
 
@@ -48943,7 +48955,7 @@ const PCFShadowFilter = /*@__PURE__*/ Fn( ( { depthTexture, shadowCoord, shadow,
 	const phi = interleavedGradientNoise( screenCoordinate.xy ).mul( 6.28318530718 );
 
 	// 5 samples using Vogel disk distribution
-	return add$1(
+	return add(
 		depthCompare( shadowCoord.xy.add( vogelDiskSample( 0, 5, phi ).mul( radiusScaled ) ), shadowCoord.z ),
 		depthCompare( shadowCoord.xy.add( vogelDiskSample( 1, 5, phi ).mul( radiusScaled ) ), shadowCoord.z ),
 		depthCompare( shadowCoord.xy.add( vogelDiskSample( 2, 5, phi ).mul( radiusScaled ) ), shadowCoord.z ),
@@ -49023,7 +49035,7 @@ const VSMPassVertical = /*@__PURE__*/ Fn( ( { samples, radius, size, shadowPass,
 
 		const uvOffset = uvStart.add( float( i ).mul( uvStride ) );
 
-		let depth = shadowPass.sample( add$1( screenCoordinate.xy, vec2( 0, uvOffset ).mul( radius ) ).div( size ) ).level( 0 );
+		let depth = shadowPass.sample( add( screenCoordinate.xy, vec2( 0, uvOffset ).mul( radius ) ).div( size ) ).level( 0 );
 
 		if ( shadowPass.value.isArrayTexture ) {
 
@@ -49070,7 +49082,7 @@ const VSMPassHorizontal = /*@__PURE__*/ Fn( ( { samples, radius, size, shadowPas
 
 		const uvOffset = uvStart.add( float( i ).mul( uvStride ) );
 
-		let distribution = shadowPass.sample( add$1( screenCoordinate.xy, vec2( uvOffset, 0 ).mul( radius ) ).div( size ) ).level( 0 );
+		let distribution = shadowPass.sample( add( screenCoordinate.xy, vec2( uvOffset, 0 ).mul( radius ) ).div( size ) ).level( 0 );
 
 		if ( shadowPass.value.isArrayTexture ) {
 
@@ -49079,7 +49091,7 @@ const VSMPassHorizontal = /*@__PURE__*/ Fn( ( { samples, radius, size, shadowPas
 		}
 
 		mean.addAssign( distribution.x );
-		squaredMean.addAssign( add$1( distribution.y.mul( distribution.y ), distribution.x.mul( distribution.x ) ) );
+		squaredMean.addAssign( add( distribution.y.mul( distribution.y ), distribution.x.mul( distribution.x ) ) );
 
 	} );
 
@@ -50602,7 +50614,7 @@ const mx_rotate2d = ( input, amount = 0 ) => {
 	const x = input.x;
 	const y = input.y;
 
-	return vec2( add$1( mul( ca, x ), mul( sa, y ) ), sub( mul( ca, y ), mul( sa, x ) ) );
+	return vec2( add( mul( ca, x ), mul( sa, y ) ), sub( mul( ca, y ), mul( sa, x ) ) );
 
 };
 
@@ -51246,8 +51258,8 @@ const mx_cell_noise_vec3_2 = /*@__PURE__*/ Fn( ( [ positionInput ] ) => {
 
 	const mixed = uvec3( mx_bjmix( a, b, c ) ).toVar();
 	const hash0 = mx_bjfinal( mixed.x, mixed.y, mixed.z );
-	const hash1 = mx_bjfinal( add$1( mixed.x, uint( 1 ) ), mixed.y, mixed.z );
-	const hash2 = mx_bjfinal( add$1( mixed.x, uint( 2 ) ), mixed.y, mixed.z );
+	const hash1 = mx_bjfinal( add( mixed.x, uint( 1 ) ), mixed.y, mixed.z );
+	const hash2 = mx_bjfinal( add( mixed.x, uint( 2 ) ), mixed.y, mixed.z );
 
 	return vec3(
 		mx_bits_to_01( hash0 ),
@@ -51279,8 +51291,8 @@ const mx_cell_noise_vec3_3 = /*@__PURE__*/ Fn( ( [ p_immutable ] ) => {
 
 	return vec3(
 		mx_bits_to_01( mx_bjfinal( a, b, c ) ),
-		mx_bits_to_01( mx_bjfinal( a, add$1( b, uint( 1 ) ), c ) ),
-		mx_bits_to_01( mx_bjfinal( a, add$1( b, uint( 2 ) ), c ) )
+		mx_bits_to_01( mx_bjfinal( a, add( b, uint( 1 ) ), c ) ),
+		mx_bits_to_01( mx_bjfinal( a, add( b, uint( 2 ) ), c ) )
 	);
 
 }, { p: 'vec4', return: 'vec3' } );
@@ -51302,8 +51314,8 @@ const mx_cell_noise_vec3_3d = /*@__PURE__*/ Fn( ( [ positionInput ] ) => {
 
 	const mixed = uvec3( mx_bjmix( a, b, c ) ).toVar();
 	const hash0 = mx_bjfinal( mixed.x, mixed.y, mixed.z );
-	const hash1 = mx_bjfinal( add$1( mixed.x, uint( 1 ) ), mixed.y, mixed.z );
-	const hash2 = mx_bjfinal( add$1( mixed.x, uint( 2 ) ), mixed.y, mixed.z );
+	const hash1 = mx_bjfinal( add( mixed.x, uint( 1 ) ), mixed.y, mixed.z );
+	const hash2 = mx_bjfinal( add( mixed.x, uint( 2 ) ), mixed.y, mixed.z );
 
 	return vec3(
 		mx_bits_to_01( hash0 ),
@@ -51940,7 +51952,7 @@ const mx_unifiednoise2d$1 = /*@__PURE__*/ Fn( ( [
 	const style = int( styleInput ).toVar();
 
 	const applyFreq = mul( texcoord, freq ).toVar();
-	const applyOffset = add$1( applyFreq, offset ).toVar();
+	const applyOffset = add( applyFreq, offset ).toVar();
 	const cellJitterMult = mul( sub( jitter, 1 ), 90000 ).toVar();
 	const applyCellJitter = mx_rotate2d( applyOffset, cellJitterMult ).toVar();
 	const fractalInput = vec3( applyOffset.x, applyOffset.y, cellJitterMult ).toVar();
@@ -51967,7 +51979,7 @@ const mx_unifiednoise2d$1 = /*@__PURE__*/ Fn( ( [
 
 	} );
 
-	const ranged = add$1( outmin, mul( result, sub( outmax, outmin ) ) ).toVar();
+	const ranged = add( outmin, mul( result, sub( outmax, outmin ) ) ).toVar();
 	const clamped = clamp( ranged, outmin, outmax ).toVar();
 	const output = ranged.toVar();
 
@@ -52025,7 +52037,7 @@ const mx_unifiednoise3d$1 = /*@__PURE__*/ Fn( ( [
 	const style = int( styleInput ).toVar();
 
 	const applyFreq = mul( position, freq ).toVar();
-	const applyOffset = add$1( applyFreq, offset ).toVar();
+	const applyOffset = add( applyFreq, offset ).toVar();
 	const cellJitterMult = mul( sub( jitter, 1 ), 90000 ).toVar();
 	const applyCellJitter = mx_rotate3d( applyOffset, cellJitterMult, vec3( 0.1, 1, 0 ) ).toVar();
 	const perlin = mx_perlin_noise_float_scaled( applyCellJitter, 0.5, 0.5 );
@@ -52050,7 +52062,7 @@ const mx_unifiednoise3d$1 = /*@__PURE__*/ Fn( ( [
 
 	} );
 
-	const ranged = add$1( outmin, mul( result, sub( outmax, outmin ) ) ).toVar();
+	const ranged = add( outmin, mul( result, sub( outmax, outmin ) ) ).toVar();
 	const clamped = clamp( ranged, outmin, outmax ).toVar();
 	const output = ranged.toVar();
 
@@ -52165,11 +52177,11 @@ const mx_rgbtohsv = /*@__PURE__*/ Fn( ( [ c_immutable ] ) => {
 
 		} ).ElseIf( g.greaterThanEqual( maxcomp ), () => {
 
-			h.assign( add$1( 2.0, b.sub( r ).div( delta ) ) );
+			h.assign( add( 2.0, b.sub( r ).div( delta ) ) );
 
 		} ).Else( () => {
 
-			h.assign( add$1( 4.0, r.sub( g ).div( delta ) ) );
+			h.assign( add( 4.0, r.sub( g ).div( delta ) ) );
 
 		} );
 
@@ -52285,7 +52297,7 @@ const mx_fractal_noise_vec4 = ( position = uv$1(), octaves = 3, lacunarity = 2, 
 // === Moved from MaterialXLoader.js ===
 
 // Math ops
-const mx_add = ( in1, in2 = float( 0 ) ) => add$1( in1, in2 );
+const mx_add = ( in1, in2 = float( 0 ) ) => add( in1, in2 );
 const mx_subtract = ( in1, in2 = float( 0 ) ) => sub( in1, in2 );
 const mx_multiply = ( in1, in2 = float( 1 ) ) => mul( in1, in2 );
 const mx_divide = ( in1, in2 = float( 1 ) ) => div( in1, in2 );
@@ -52332,8 +52344,8 @@ const mx_place2d = (
 ) => {
 
 	const centered = sub( texcoord, pivot );
-	const srt = add$1( sub( mx_rotate2d( div( centered, scale ), rotate ), offset ), pivot );
-	const trs = add$1( div( mx_rotate2d( sub( centered, offset ), rotate ), scale ), pivot );
+	const srt = add( sub( mx_rotate2d( div( centered, scale ), rotate ), offset ), pivot );
+	const trs = add( div( mx_rotate2d( sub( centered, offset ), rotate ), scale ), pivot );
 
 	if ( typeof operationorder === 'number' ) return Math.abs( operationorder ) > Number.EPSILON ? trs : srt;
 
@@ -55197,6 +55209,7 @@ class NodeBuilder {
 		delete context.getAO;
 		delete context.indirectSpecular;
 		delete context.indirectDiffuse;
+		delete context.indirectLightingNode;
 		delete context.getShadow;
 		delete context.nodeLoop;
 		delete context.nodeBlock;
@@ -94939,7 +94952,7 @@ var Three_TSL = /*#__PURE__*/Object.freeze({
 	acesFilmicToneMapping: acesFilmicToneMapping,
 	acos: acos,
 	acosh: acosh,
-	add: add$1,
+	add: add,
 	addMethodChaining: addMethodChaining,
 	addNodeElement: addNodeElement,
 	agxToneMapping: agxToneMapping,
@@ -95057,6 +95070,8 @@ var Three_TSL = /*#__PURE__*/Object.freeze({
 	decrement: decrement,
 	decrementBefore: decrementBefore,
 	defaultBuildStages: defaultBuildStages,
+	defaultIndirectDiffuse: defaultIndirectDiffuse,
+	defaultIndirectSpecular: defaultIndirectSpecular,
 	defaultShaderStages: defaultShaderStages,
 	defined: defined,
 	degrees: degrees,

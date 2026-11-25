@@ -37,7 +37,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Loop, builtinIndirectContext, cross, dot, float, getShIrradianceAt, instanceIndex, luminance, materialColor, materialEmissive, mrt, normalWorld, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, Return, builtinIndirectContext, cross, dot, float, getShIrradianceAt, instanceIndex, luminance, materialColor, materialEmissive, mrt, normalWorld, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -100,11 +100,9 @@
 			const lightData = uniformArray( Array.from( { length: MAX_LIGHTS * 2 }, () => new THREE.Vector4() ) );
 			const environmentSH = uniformArray( Array.from( { length: 9 }, () => new THREE.Vector3() ) );
 
-			// the terms of the transport that are on: direct, sky, bounce and emissive. And how much of the new
-			// radiosity of a surfel replaces the previous one per iteration
+			// the terms of the transport that are on: direct, sky, bounce and emissive
 
 			const terms = uniform( new THREE.Vector4( 1, 1, 1, 1 ) );
-			const hysteresis = uniform( 0.15 );
 
 			// the light map of the current scene with the indirect irradiance of the surfels. It is the indirect
 			// diffuse light of the meshes that have light map UVs, in place of the diffuse light of the environment,
@@ -204,6 +202,7 @@
 				emissive: true,
 				iterations: 1,
 				hysteresis: 0.15,
+				spread: 4,
 				surfelScale: 0.6
 			};
 
@@ -311,7 +310,8 @@
 				giGui.add( params, 'bounce' ).name( 'Bounce' ).onChange( updateTerms );
 				giGui.add( params, 'emissive' ).name( 'Emissive' ).onChange( updateTerms );
 				giGui.add( params, 'iterations', 1, 4, 1 ).name( 'Iterations per Frame' );
-				giGui.add( params, 'hysteresis', 0.01, 1, 0.01 ).name( 'Hysteresis' ).onChange( ( value ) => hysteresis.value = value );
+				giGui.add( params, 'hysteresis', 0.01, 1, 0.01 ).name( 'Hysteresis' );
+				giGui.add( params, 'spread', 1, 16, 1 ).name( 'Update Spread (frames)' );
 				giGui.add( params, 'denoise' ).name( 'Denoise Light Map' );
 				giGui.add( params, 'denoiseStrength', 0.05, 1, 0.01 ).name( 'Denoise Strength' );
 
@@ -496,6 +496,7 @@
 				if ( probeBake === null ) return;
 
 				baked.probes = createProbes( baked, probeBake );
+				baked.lighting.wake();
 				baked.heights = bakeHeights( baked );
 
 				times[ 'probes' ] = performance.now() - start;
@@ -980,11 +981,13 @@
 
 			}
 
-			// Runtime lighting of the surfels, one compute pass per frame: the direct light of the sun and the point
+			// Runtime lighting of the surfels, compute passes per frame: the direct light of the sun and the point
 			// lights with a shadow ray each, and the light of the sky, the SH of its radiance times the SH of the
 			// sky that the surfel sees. Then the bounces: every iteration gathers the radiosity that the linked
 			// surfels had in the previous one, so the light travels one more bounce per iteration and the frames
-			// converge to all of them. Four vec4 per surfel: the direct irradiance with the lights that reach the
+			// converge to all of them. The cost is spread over frames: each pass updates one surfel or texel in a
+			// number of them per frame, a different one each frame, and all passes stop once the lights and the sky
+			// have not changed for a while. Four vec4 per surfel: the direct irradiance with the lights that reach the
 			// surfel as bits in w, the sky irradiance, the bounced irradiance and the radiosity. The clusters follow
 			// the surfels, with the mean radiosity of their surfels
 
@@ -998,7 +1001,18 @@
 				const attribute = new THREE.StorageBufferAttribute( new Float32Array( ( count + clusters.count ) * 16 ), 4 );
 				const irradiance = storage( attribute, 'vec4' );
 
+				// the elements that a pass updates this frame: one in `spread`, shifted by the phase
+
+				const spread = uniform( 1, 'uint' ), phase = uniform( 0, 'uint' );
+				const selected = () => instanceIndex.add( phase ).mod( spread ).equal( uint( 0 ) );
+
+				// how much of the new radiosity of a surfel replaces the previous one
+
+				const blend = uniform( 0.15 );
+
 				const compute = Fn( () => {
+
+					If( selected().not(), () => Return() );
 
 					const origin = rayBuffer.element( instanceIndex ).xyz;
 					const normal = unpackOctahedralToNormal( vec2( rayBuffer.element( instanceIndex ).w, rayBuffer.element( instanceIndex.add( uint( count ) ) ).w ) ).toVar();
@@ -1116,6 +1130,16 @@
 					const current = storage( radiosity[ 1 - k ], 'vec4' );
 					const base = instanceIndex.mul( uint( 4 ) );
 
+					// the other surfels keep their radiosity
+
+					If( selected().not(), () => {
+
+						current.element( instanceIndex ).assign( previous.element( instanceIndex ) );
+
+						Return();
+
+					} );
+
 					const bounce = vec3( 0 ).toVar();
 
 					Loop( { start: offsetBuffer.element( instanceIndex ), end: offsetBuffer.element( instanceIndex.add( uint( 1 ) ) ), type: 'uint', condition: '<' }, ( { i } ) => {
@@ -1136,15 +1160,13 @@
 
 					const received = irradiance.element( base ).rgb.mul( terms.x ).add( irradiance.element( base.add( uint( 1 ) ) ).rgb.mul( terms.y ) ).add( bounce.mul( terms.z ) );
 					const emitted = materialBuffer.element( instanceIndex.mul( uint( 2 ) ).add( uint( 1 ) ) ).rgb.mul( Math.PI ).mul( terms.w );
-					const result = mix( previous.element( instanceIndex ).rgb, emitted.add( materialBuffer.element( instanceIndex.mul( uint( 2 ) ) ).rgb.mul( received ) ), hysteresis ).toVar();
+					const result = mix( previous.element( instanceIndex ).rgb, emitted.add( materialBuffer.element( instanceIndex.mul( uint( 2 ) ) ).rgb.mul( received ) ), blend ).toVar();
 
 					current.element( instanceIndex ).assign( vec4( result, 1 ) );
 					irradiance.element( base.add( uint( 2 ) ) ).assign( vec4( bounce, 1 ) );
 					irradiance.element( base.add( uint( 3 ) ) ).assign( vec4( result, 1 ) );
 
 				} )().compute( count ) );
-
-				let iteration = 0;
 
 				// the light map: the irradiance of the sky and of the bounces, blended from the surfels around each
 				// texel. Not the direct light, which the lights render with sharp shadows, and not the own emission
@@ -1161,6 +1183,8 @@
 				];
 
 				const resolve = Fn( () => {
+
+					If( selected().not(), () => Return() );
 
 					const texel = resolveBuffers[ 0 ].element( instanceIndex ).toVar();
 					const surfels = resolveBuffers[ 1 ].element( instanceIndex ).toVar();
@@ -1191,32 +1215,81 @@
 
 				denoiseNode.setup();
 
+				// What the passes depend on, to tell when it changes: the direct pass on the lights and the sky, and
+				// all of them on the settings as well
+
+				let lit = '', settings = '', directFrames = 0, activeFrames = 0, frame = 0, iteration = 0;
+
+				// Returns whether the surfels changed, for the probes
+
 				const update = () => {
 
-					renderer.compute( compute );
+					if ( world.lighting !== undefined ) lightMapNode.value = params.denoise ? denoiseNode.getTexture() : lightMap;
+
+					const frames = params.spread;
+					const lights = JSON.stringify( [ lightData.array, environmentSH.array ] );
+					const state = JSON.stringify( [ lights, terms.value, params.hysteresis, params.iterations, params.denoise, params.denoiseStrength, frames ] );
+
+					// a change of the lights updates the direct light of all surfels once, and everything then runs
+					// until the bounces have settled
+					// ponytail: a fixed number of frames, read the change of the radiosity back to stop when it is small
+
+					if ( lights !== lit ) directFrames = frames;
+					if ( state !== settings ) activeFrames = Math.ceil( 30 / params.hysteresis ) + frames;
+
+					lit = lights;
+					settings = state;
+
+					if ( activeFrames === 0 ) return false;
+
+					activeFrames --;
+					frame ++;
+
+					// a surfel is updated every few frames, with what the hysteresis adds up to over them
+
+					spread.value = frames;
+					blend.value = 1 - ( 1 - params.hysteresis ) ** frames;
+					phase.value = frame % frames;
+
+					if ( directFrames > 0 ) {
+
+						directFrames --;
+						renderer.compute( compute );
+
+					}
 
 					for ( let i = 0; i < params.iterations; i ++ ) {
+
+						phase.value = iteration % frames;
 
 						renderer.compute( average );
 						renderer.compute( gather[ iteration ++ % 2 ] );
 
 					}
 
+					phase.value = frame % frames;
+
 					renderer.compute( resolve );
 
-					// ponytail: the filter takes a few ms on a large atlas and the indirect light changes slowly, so it
-					// runs every fourth frame. Filter the surfels instead if the light map has to follow every frame
+					// the filter takes a few ms on a large atlas and the indirect light changes slowly, so it runs
+					// every fourth frame, and on the last one
 
-					if ( params.denoise && iteration % 4 < params.iterations ) {
+					const due = frame % Math.max( frames, 4 ) === 0 || activeFrames === 0;
+
+					if ( params.denoise && due ) {
 
 						denoiseNode.relativeNoise.value = params.denoiseStrength;
 						denoiseNode.updateBefore( { renderer } );
 
 					}
 
-					if ( world.lighting !== undefined ) lightMapNode.value = params.denoise ? denoiseNode.getTexture() : lightMap;
+					return due;
 
 				};
+
+				// runs the passes again, for what else reads the surfels
+
+				const wake = () => settings = '';
 
 				// the debug views show the radiance of a white surface under the irradiance
 
@@ -1261,7 +1334,7 @@
 
 				};
 
-				return { update, attribute, materials, lightMap, dispose };
+				return { update, wake, attribute, materials, lightMap, dispose };
 
 			}
 
@@ -2718,10 +2791,12 @@
 
 				giAmount.value = params.gi && world.lighting !== undefined ? 1 : 0;
 
+				let surfelsChanged = false;
+
 				if ( world.lighting !== undefined ) {
 
 					updateLights();
-					world.lighting.update();
+					surfelsChanged = world.lighting.update();
 
 				}
 
@@ -2734,7 +2809,8 @@
 
 				if ( probes !== undefined ) {
 
-					probes.update();
+					if ( surfelsChanged ) probes.update();
+
 					probes.helper.visible = params.showProbes;
 
 					const grid = probes.grid;

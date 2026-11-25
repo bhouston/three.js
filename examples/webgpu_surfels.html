@@ -477,7 +477,9 @@
 
 				createSurfelMesh( baked );
 
-				const lightMapLinks = bakeLightMapLinks( { position, normal, size }, baked.surfels, transfer.invalid, baked.detailSize );
+				const lightMapLinks = await bakeLightMapLinks( { position, normal, size }, baked.surfels, transfer, baked.detailSize, () => baked.bakeId !== id );
+
+				if ( lightMapLinks === null ) return transfer.dispose();
 
 				baked.transfer = transfer;
 				baked.lighting = createLighting( baked, lightMapLinks );
@@ -977,7 +979,7 @@
 				return {
 					offsets: keptOffsets, links: packed.slice( 0, keptLinks ), scales, skyTransfer: compact( skyTransfer, 9 ), invalid: compact( invalid, 1 ),
 					buried: count - kept, unknown: ( unknownHits + lostHits ) / Math.max( surfelHits + unknownHits, 1 ),
-					rayBuffer, visibility, traceHits, dispose
+					rayBuffer, visibility, epsilon, traceHits, dispose
 				};
 
 			}
@@ -1570,12 +1572,14 @@
 
 			// Links of the light map: each covered texel blends the four surfels around it that weigh most, by
 			// their distance, among those that face its way and lie in its plane, so that light does not leak
-			// around corners or between the steps of a stair.
-			// ponytail: no visibility rays, add them if light leaks through walls thinner than the surfel spacing
+			// around corners or between the steps of a stair. A ray from the texel to each of its eight best
+			// surfels drops the ones behind a wall, so that light does not leak through walls thinner than the
+			// surfel spacing either
 
-			function bakeLightMapLinks( atlas, surfels, invalid, spacing ) {
+			async function bakeLightMapLinks( atlas, surfels, transfer, spacing, cancelled ) {
 
 				const { size } = atlas;
+				const { invalid, rayBuffer, visibility, epsilon } = transfer;
 				const half = THREE.DataUtils.fromHalfFloat;
 				const reach = spacing * 1.5;
 				const normal = decodeNormals( surfels.normal );
@@ -1614,12 +1618,96 @@
 
 				}
 
-				// the texels of a surfel search around it, a little further, once. The others search by themselves
+				// The texels are linked in batches. Of each texel, the point above its surface, like the origins of
+				// the surfels, and its candidates as surfels plus one, which the GPU answers with a bit for each one
+				// that the point sees
 
-				const candidates = new Map(), own = [];
+				const CANDIDATES = 8, LINK_BATCH = 2 ** 18;
+
+				const points = new THREE.StorageBufferAttribute( new Float32Array( LINK_BATCH * 4 ), 4 );
+				const candidates = new THREE.StorageBufferAttribute( new Uint32Array( LINK_BATCH * CANDIDATES ), 1 );
+				const visible = new THREE.StorageBufferAttribute( new Uint32Array( LINK_BATCH ), 1 );
+				const candidateWeights = new Float32Array( LINK_BATCH * CANDIDATES ), batchTexels = new Uint32Array( LINK_BATCH );
+
+				const pointBuffer = storage( points, 'vec4' ).toReadOnly(), candidateBuffer = storage( candidates, 'uint' ).toReadOnly();
+
+				const kernel = Fn( () => {
+
+					const point = pointBuffer.element( instanceIndex ).xyz;
+					const mask = uint( 0 ).toVar();
+
+					Loop( { start: uint( 0 ), end: uint( CANDIDATES ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+						const candidate = candidateBuffer.element( instanceIndex.mul( uint( CANDIDATES ) ).add( i ) ).toVar();
+
+						If( candidate.greaterThan( uint( 0 ) ), () => {
+
+							const toSurfel = rayBuffer.element( candidate.sub( uint( 1 ) ) ).xyz.sub( point ).toVar();
+							const distance = toSurfel.length().max( 1e-5 ).toVar();
+
+							If( visibility( point, toSurfel.div( distance ), distance.mul( 0.999 ) ).greaterThan( 0.5 ), () => {
+
+								mask.assign( mask.bitOr( uint( 1 ).shiftLeft( i ) ) );
+
+							} );
+
+						} );
+
+					} );
+
+					storage( visible, 'uint' ).element( instanceIndex ).assign( mask );
+
+				} )().compute( LINK_BATCH );
 
 				const texels = [], indices = [], weights = [];
-				const best = [ 0, 0, 0, 0 ], bestWeight = [ 0, 0, 0, 0 ];
+				const order = Array.from( { length: CANDIDATES }, ( v, k ) => k );
+
+				let pending = 0;
+
+				async function flush() {
+
+					candidates.array.fill( 0, pending * CANDIDATES );
+					points.needsUpdate = candidates.needsUpdate = true;
+
+					renderer.compute( kernel );
+
+					const masks = new Uint32Array( await renderer.getArrayBufferAsync( visible ) );
+
+					for ( let b = 0; b < pending; b ++ ) {
+
+						const base = b * CANDIDATES;
+
+						// the four that weigh most among those that the texel sees. A texel that sees none is inside
+						// of geometry, and takes the four that weigh most
+
+						order.sort( ( i, j ) => candidateWeights[ base + j ] - candidateWeights[ base + i ] );
+
+						const seen = masks[ b ] !== 0 ? order.filter( ( k ) => ( masks[ b ] >> k ) & 1 ) : order;
+
+						let total = 0;
+
+						for ( let k = 0; k < 4; k ++ ) total += k < seen.length ? candidateWeights[ base + seen[ k ] ] : 0;
+
+						texels.push( batchTexels[ b ] );
+
+						for ( let k = 0; k < 4; k ++ ) {
+
+							const weight = k < seen.length ? candidateWeights[ base + seen[ k ] ] : 0;
+
+							indices.push( weight > 0 ? candidates.array[ base + seen[ k ] ] - 1 : 0 );
+							weights.push( weight / total );
+
+						}
+
+					}
+
+					pending = 0;
+
+				}
+
+				// the texels of a surfel search around it, a little further, once. The others search by themselves
+
+				const found = new Map(), own = [];
 
 				for ( let t = 0; t < size * size; t ++ ) {
 
@@ -1633,7 +1721,7 @@
 
 					if ( surfel >= 0 ) {
 
-						list = candidates.get( surfel );
+						list = found.get( surfel );
 
 						if ( list === undefined ) {
 
@@ -1647,7 +1735,7 @@
 
 							}
 
-							candidates.set( surfel, list );
+							found.set( surfel, list );
 
 						}
 
@@ -1660,10 +1748,14 @@
 					// surfaces too small for surfels of their own, like the risers of a stair, have none that face
 					// their way in their plane: they take the surfels around them that do not face away
 
+					const base = pending * CANDIDATES;
+					const best = candidates.array.subarray( base, base + CANDIDATES ), bestWeight = candidateWeights.subarray( base, base + CANDIDATES );
+
 					let total = 0;
 
 					for ( let strict = 1; strict >= 0 && total === 0; strict -- ) {
 
+						best.fill( 0 );
 						bestWeight.fill( 0 );
 
 						for ( const other of list ) {
@@ -1677,37 +1769,43 @@
 							const falloff = Math.min( Math.hypot( dx, dy, dz ) / reach, 1 );
 							const weight = ( 1 - falloff * falloff * ( 3 - 2 * falloff ) ) * ( strict === 1 ? facing : 1 ) + 1e-6;
 
-							// keep the four largest
+							// keep the largest
 
 							let slot = 0;
 
-							for ( let k = 1; k < 4; k ++ ) if ( bestWeight[ k ] < bestWeight[ slot ] ) slot = k;
+							for ( let k = 1; k < CANDIDATES; k ++ ) if ( bestWeight[ k ] < bestWeight[ slot ] ) slot = k;
 
 							if ( weight > bestWeight[ slot ] ) {
 
-								best[ slot ] = other;
+								best[ slot ] = other + 1;
 								bestWeight[ slot ] = weight;
+								total += weight;
 
 							}
 
 						}
 
-						total = bestWeight[ 0 ] + bestWeight[ 1 ] + bestWeight[ 2 ] + bestWeight[ 3 ];
-
 					}
 
 					if ( total === 0 ) continue;
 
-					texels.push( ( t % size ) + Math.floor( t / size ) * 0x10000 );
+					points.array.set( [ px + nx * epsilon, py + ny * epsilon, pz + nz * epsilon ], pending * 4 );
+					batchTexels[ pending ++ ] = ( t % size ) + Math.floor( t / size ) * 0x10000;
 
-					for ( let k = 0; k < 4; k ++ ) {
+					if ( pending === LINK_BATCH ) await flush();
 
-						indices.push( bestWeight[ k ] > 0 ? best[ k ] : 0 );
-						weights.push( bestWeight[ k ] / total );
-
-					}
+					if ( cancelled() ) break;
 
 				}
+
+				if ( pending > 0 && ! cancelled() ) await flush();
+
+				kernel.dispose();
+				points.dispose();
+				candidates.dispose();
+				visible.dispose();
+
+				if ( cancelled() ) return null;
 
 				return { texels: new Uint32Array( texels ), indices: new Uint32Array( indices ), weights: new Float32Array( weights ) };
 

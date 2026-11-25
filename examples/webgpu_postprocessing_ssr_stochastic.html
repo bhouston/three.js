@@ -57,7 +57,7 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, builtinIndirectContext, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, velocity, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, rtt, Fn, mx_hsvtorgb } from 'three/tsl';
+		import { pass, mrt, builtinIndirectContext, defaultIndirectSpecular, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, velocity, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation, rtt, Fn, mx_hsvtorgb } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 		import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
@@ -71,6 +71,7 @@
 		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 		import { Inspector } from 'three/addons/inspector/Inspector.js';
 		import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+		import { coverageCascade } from 'three/addons/tsl/lighting/CoverageCascade.js';
 
 		const OUTPUT_COMPARE_ACCUMULATION = 8;
 		const OUTPUT_COMPARE_SSR = 9;
@@ -320,7 +321,7 @@
 			// the materials reflect SSR through their BRDF, and the environment where SSR has no coverage
 
 			beautyPass.contextNode = builtinIndirectContext( {
-				specular: [ opaqueFragmentSource( ssrNode.getSpecularSource( accumulatedUpsampled ) ) ]
+				specular: coverageCascade( [ opaqueFragmentSource( ssrNode.getSpecularSource( accumulatedUpsampled ) ) ], defaultIndirectSpecular )
 			} );
 
 			// the same frame lit by the environment alone, for the comparison

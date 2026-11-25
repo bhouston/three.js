@@ -890,7 +890,7 @@ class SSRNode extends Node {
 
 	/**
 	 * Returns the reflected radiance in RGB and its coverage in alpha at the surface being shaded,
-	 * e.g. as a specular source of `builtinIndirectContext()`.
+	 * e.g. as a specular source of `coverageCascade()`.
 	 *
 	 * @param {?Node<vec4>} [reflectionNode=null] - A filtered version of the output at the surface to use in its place, e.g. from a denoiser.
 	 * @return {Node<vec4>} The radiance and coverage.

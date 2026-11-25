@@ -41,7 +41,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, normalView, velocity, vec4, packNormalToRGB, unpackRGBToNormal, sample, rtt, screenUV, uniform, vec3, Fn, builtinIndirectContext } from 'three/tsl';
+			import { pass, mrt, normalView, velocity, vec4, packNormalToRGB, unpackRGBToNormal, sample, rtt, screenUV, uniform, vec3, Fn, builtinIndirectContext, defaultIndirectDiffuse } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
@@ -51,6 +51,7 @@
 			import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { coverageCascade } from 'three/addons/tsl/lighting/CoverageCascade.js';
 
 			const BALL_RADIUS = 0.4;
 			const FILL_RATIO = 0.4;
@@ -224,7 +225,7 @@
 				const gi = accumulated.rgb;
 				const giUnfiltered = upsample( giTexture ).rgb;
 
-				beautyPass.contextNode = builtinIndirectContext( { diffuse: [ giPass.getDiffuseSource( gi, ao ) ] } );
+				beautyPass.contextNode = builtinIndirectContext( { diffuse: coverageCascade( [ giPass.getDiffuseSource( gi, ao ) ], defaultIndirectDiffuse ) } );
 
 				// traa
 

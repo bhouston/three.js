@@ -326,14 +326,14 @@ class SSGINode extends Node {
 
 	/**
 	 * Returns the gathered irradiance in RGB and its coverage in alpha at the surface being shaded,
-	 * e.g. as a diffuse source of `builtinIndirectContext()`.
+	 * e.g. as a diffuse source of `coverageCascade()`.
 	 *
 	 * The coverage is the part of the hemisphere the screen occludes, which is the complement of the AO.
 	 * The sources behind this one, usually the environment, only light the part that is left open, so
 	 * the AO must not be applied to them a second time, e.g. with `builtinAOContext()`.
 	 *
 	 * ```js
-	 * beautyPass.contextNode = builtinIndirectContext( { diffuse: [ giPass.getDiffuseSource() ] } );
+	 * beautyPass.contextNode = builtinIndirectContext( { diffuse: coverageCascade( [ giPass.getDiffuseSource() ], defaultIndirectDiffuse ) } );
 	 * ```
 	 *
 	 * @param {?Node<vec3>} [giNode=null] - A filtered version of the GI at the surface to use in its place, e.g. upsampled or denoised.

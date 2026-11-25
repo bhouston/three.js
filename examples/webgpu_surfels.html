@@ -37,7 +37,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Loop, array, builtinIndirectContext, cross, dot, float, getShIrradianceAt, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, texture3D, textureStore, uint, uniform, uniformArray, uv, uvec2, uvec3, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, array, builtinIndirectContext, cross, dot, float, getShIrradianceAt, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, texture3D, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -143,6 +143,55 @@
 			// SH basis of L2 in the order of THREE.SphericalHarmonics3
 
 			const shBasis = ( x, y, z ) => [ 0.282095, 0.488603 * y, 0.488603 * z, 0.488603 * x, 1.092548 * x * y, 1.092548 * y * z, 0.315392 * ( 3 * z * z - 1 ), 1.092548 * x * z, 0.546274 * ( x * x - y * y ) ];
+
+			// The normals of the surfels are octahedral coordinates, two floats each, like packNormalToOctahedral()
+
+			function encodeNormals( normals ) {
+
+				const encoded = new Float32Array( normals.length / 3 * 2 );
+
+				for ( let i = 0; i < encoded.length / 2; i ++ ) {
+
+					const x = normals[ i * 3 ], y = normals[ i * 3 + 1 ], z = normals[ i * 3 + 2 ];
+					const sum = Math.abs( x ) + Math.abs( y ) + Math.abs( z );
+
+					let u = x / sum, v = y / sum;
+
+					// the lower hemisphere folds over the corners, zero counts as positive
+
+					if ( z < 0 ) [ u, v ] = [ ( 1 - Math.abs( v ) ) * ( u >= 0 ? 1 : - 1 ), ( 1 - Math.abs( u ) ) * ( v >= 0 ? 1 : - 1 ) ];
+
+					encoded[ i * 2 ] = u;
+					encoded[ i * 2 + 1 ] = v;
+
+				}
+
+				return encoded;
+
+			}
+
+			function decodeNormals( encoded ) {
+
+				const normals = new Float32Array( encoded.length / 2 * 3 );
+
+				for ( let i = 0; i < encoded.length / 2; i ++ ) {
+
+					let x = encoded[ i * 2 ], y = encoded[ i * 2 + 1 ];
+
+					const z = 1 - Math.abs( x ) - Math.abs( y ), t = Math.max( - z, 0 );
+
+					x += x >= 0 ? - t : t;
+					y += y >= 0 ? - t : t;
+
+					const length = Math.hypot( x, y, z );
+
+					normals.set( [ x / length, y / length, z / length ], i * 3 );
+
+				}
+
+				return normals;
+
+			}
 
 			const params = {
 				scene: 'Cornell Box',
@@ -588,7 +637,10 @@
 
 				}
 
-				const origins = new Float32Array( count * 4 ), normals = new Float32Array( count * 4 ), tangents = new Float32Array( count * 4 );
+				// the origin and the tangent of each surfel, with its octahedral normal in their w
+
+				const origins = new Float32Array( count * 4 ), tangents = new Float32Array( count * 4 );
+				const normal = decodeNormals( surfels.normal );
 				const n = new THREE.Vector3(), t = new THREE.Vector3(), b = new THREE.Vector3();
 
 				// the rays start above the surface, by more than the rounding of the positions in the atlas
@@ -597,7 +649,7 @@
 
 				for ( let i = 0; i < count; i ++ ) {
 
-					n.fromArray( surfels.normal, i * 3 );
+					n.fromArray( normal, i * 3 );
 					t.set( Math.abs( n.x ) < 0.9 ? 1 : 0, Math.abs( n.x ) < 0.9 ? 0 : 1, 0 ).cross( n ).normalize();
 					b.crossVectors( n, t );
 
@@ -606,8 +658,10 @@
 					t.multiplyScalar( Math.cos( angle ) ).addScaledVector( b, Math.sin( angle ) );
 
 					vertex.fromArray( surfels.position, i * 3 ).addScaledVector( n, epsilon ).toArray( origins, i * 4 );
-					n.toArray( normals, i * 4 );
 					t.toArray( tangents, i * 4 );
+
+					origins[ i * 4 + 3 ] = surfels.normal[ i * 2 ];
+					tangents[ i * 4 + 3 ] = surfels.normal[ i * 2 + 1 ];
 
 				}
 
@@ -618,17 +672,16 @@
 				const hitBuffer = storage( hitAttribute, 'uint' );
 
 				// Traces the rays of a set of origins, each with a frame of a normal and a tangent that the directions
-				// are relative to, and hands the hits of each batch to the callback. Returns the buffer of the origins,
-				// normals, tangents and directions: one buffer, WebGPU allows 8 storage buffers per stage by default
-				// and the BVH takes some
+				// are relative to, and hands the hits of each batch to the callback. The octahedral normal is in the w
+				// of the origin and of the tangent. Returns the buffer of the origins, tangents and directions: one
+				// buffer, WebGPU allows 8 storage buffers per stage by default and the BVH takes four
 
-				async function traceHits( origins, normals, tangents, directions, count, onBatch ) {
+				async function traceHits( origins, tangents, directions, count, onBatch ) {
 
-					const rayData = new Float32Array( ( count * 3 + RAYS ) * 4 );
+					const rayData = new Float32Array( ( count * 2 + RAYS ) * 4 );
 					rayData.set( origins );
-					rayData.set( normals, count * 4 );
-					rayData.set( tangents, count * 8 );
-					rayData.set( directions, count * 12 );
+					rayData.set( tangents, count * 4 );
+					rayData.set( directions, count * 8 );
 
 					const rayBuffer = buffer( rayData, 4, 'vec4' );
 					const batchStart = uniform( 0, 'uint' );
@@ -638,12 +691,12 @@
 						const i = instanceIndex.shiftRight( uint( Math.log2( RAYS ) ) ).add( batchStart ).min( uint( count - 1 ) );
 						const r = instanceIndex.bitAnd( uint( RAYS - 1 ) );
 
-						const normal = rayBuffer.element( i.add( uint( count ) ) ).xyz;
-						const tangent = rayBuffer.element( i.add( uint( count * 2 ) ) ).xyz;
-						const local = rayBuffer.element( r.add( uint( count * 3 ) ) ).xyz;
-						const direction = tangent.mul( local.x ).add( cross( normal, tangent ).mul( local.y ) ).add( normal.mul( local.z ) );
+						const origin = rayBuffer.element( i ), tangent = rayBuffer.element( i.add( uint( count ) ) );
+						const normal = unpackOctahedralToNormal( vec2( origin.w, tangent.w ) ).toVar();
+						const local = rayBuffer.element( r.add( uint( count * 2 ) ) ).xyz;
+						const direction = tangent.xyz.mul( local.x ).add( cross( normal, tangent.xyz ).mul( local.y ) ).add( normal.mul( local.z ) );
 
-						const hit = trace( rayBuffer.element( i ).xyz, direction ).toVar();
+						const hit = trace( origin.xyz, direction ).toVar();
 						const result = uint( MISS ).toVar();
 
 						If( hit.z.notEqual( 0 ), () => {
@@ -712,7 +765,7 @@
 
 				let links = 0, buried = 0, unknownHits = 0, surfelHits = 0;
 
-				const rayBuffer = await traceHits( origins, normals, tangents, directions, count, ( hits, start ) => {
+				const rayBuffer = await traceHits( origins, tangents, directions, count, ( hits, start ) => {
 
 					for ( let i = start; i < Math.min( start + BATCH, count ); i ++ ) {
 
@@ -720,7 +773,7 @@
 
 						// sky transfer: the misses are cosine distributed, so their SH basis only needs the scale
 
-						n.fromArray( normals, i * 4 );
+						n.fromArray( normal, i * 3 );
 						t.fromArray( tangents, i * 4 );
 						b.crossVectors( n, t );
 
@@ -866,7 +919,7 @@
 				const compute = Fn( () => {
 
 					const origin = rayBuffer.element( instanceIndex ).xyz;
-					const normal = rayBuffer.element( instanceIndex.add( uint( count ) ) ).xyz;
+					const normal = unpackOctahedralToNormal( vec2( rayBuffer.element( instanceIndex ).w, rayBuffer.element( instanceIndex.add( uint( count ) ) ).w ) ).toVar();
 					const direct = vec4( 0 ).toVar();
 
 					for ( let l = 0; l < MAX_LIGHTS; l ++ ) {
@@ -1170,13 +1223,14 @@
 
 				}
 
-				const origins = new Float32Array( count * 4 ), normals = new Float32Array( count * 4 ), tangents = new Float32Array( count * 4 );
+				// the frame of the probes is the one of the world: the octahedral normal of +z is zero
+
+				const origins = new Float32Array( count * 4 ), tangents = new Float32Array( count * 4 );
 				const position = new THREE.Vector3();
 
 				for ( let i = 0; i < count; i ++ ) {
 
 					grid.getProbePosition( i % nx, Math.floor( i / nx ) % ny, Math.floor( i / ( nx * ny ) ), position ).toArray( origins, i * 4 );
-					normals[ i * 4 + 2 ] = 1;
 					tangents[ i * 4 ] = 1;
 
 				}
@@ -1187,7 +1241,7 @@
 				const rows = new Array( count );
 				const links = new Map();
 
-				const rayBuffer = await world.transfer.traceHits( origins, normals, tangents, directions, count, ( hits, start ) => {
+				const rayBuffer = await world.transfer.traceHits( origins, tangents, directions, count, ( hits, start ) => {
 
 					for ( let i = start; i < Math.min( start + BATCH, count ); i ++ ) {
 
@@ -1440,6 +1494,7 @@
 				const { size } = atlas;
 				const half = THREE.DataUtils.fromHalfFloat;
 				const reach = spacing * 1.5;
+				const normal = decodeNormals( surfels.normal );
 
 				// the surfels in a grid of cells of the reach
 
@@ -1531,7 +1586,7 @@
 
 							const o = other * 3;
 							const dx = surfels.position[ o ] - px, dy = surfels.position[ o + 1 ] - py, dz = surfels.position[ o + 2 ] - pz;
-							const facing = surfels.normal[ o ] * nx + surfels.normal[ o + 1 ] * ny + surfels.normal[ o + 2 ] * nz;
+							const facing = normal[ o ] * nx + normal[ o + 1 ] * ny + normal[ o + 2 ] * nz;
 
 							if ( strict === 1 ? facing < 0.5 || Math.abs( dx * nx + dy * ny + dz * nz ) > spacing * 0.5 : facing < - 0.5 ) continue;
 
@@ -1672,10 +1727,11 @@
 				const ids = new Map();
 				const of = new Uint32Array( surfels.count );
 				const sums = [];
+				const normal = decodeNormals( surfels.normal );
 
 				for ( let i = 0; i < surfels.count; i ++ ) {
 
-					const p = surfels.position.subarray( i * 3, i * 3 + 3 ), n = surfels.normal.subarray( i * 3, i * 3 + 3 );
+					const p = surfels.position.subarray( i * 3, i * 3 + 3 ), n = normal.subarray( i * 3, i * 3 + 3 );
 					const axis = Math.abs( n[ 0 ] ) > Math.abs( n[ 1 ] ) ? ( Math.abs( n[ 0 ] ) > Math.abs( n[ 2 ] ) ? 0 : 2 ) : ( Math.abs( n[ 1 ] ) > Math.abs( n[ 2 ] ) ? 1 : 2 );
 					const key = `${ Math.floor( p[ 0 ] / size ) },${ Math.floor( p[ 1 ] / size ) },${ Math.floor( p[ 2 ] / size ) },${ axis * 2 + ( n[ axis ] > 0 ? 1 : 0 ) }`;
 
@@ -1902,13 +1958,11 @@
 
 				for ( let i = 0; i < adopted.length; i ++ ) texelMap[ i ] ||= adopted[ i ];
 
-				// ponytail: plain float normals, octahedral 16 bit when the surfels are serialized
-
 				return {
 					texelMap,
 					count: data.radius.length,
 					position: new Float32Array( data.position ),
-					normal: new Float32Array( data.normal ),
+					normal: encodeNormals( data.normal ),
 					radius: new Float32Array( data.radius ),
 					albedo: new Float32Array( data.albedo ),
 					emissive: new Float32Array( data.emissive )
@@ -1947,7 +2001,8 @@
 
 				if ( i < 0 || world.transfer === undefined ) return;
 
-				const { position, normal } = world.surfels;
+				const { position } = world.surfels;
+				const normal = decodeNormals( world.surfels.normal );
 				const { offsets, links, skyTransfer, invalid } = world.transfer;
 				const { count, clusters } = world.surfels;
 				const start = offsets[ i ], end = offsets[ i + 1 ];
@@ -2039,7 +2094,8 @@
 
 			function updateSurfelMesh( world ) {
 
-				const { count, position, normal, radius } = world.surfels;
+				const { count, position, radius } = world.surfels;
+				const normal = decodeNormals( world.surfels.normal );
 				const mesh = world.surfelMesh;
 				const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion();
 				const p = new THREE.Vector3(), n = new THREE.Vector3(), scale = new THREE.Vector3(), z = new THREE.Vector3( 0, 0, 1 );
@@ -2206,13 +2262,13 @@
 
 					surfelMesh.material = surfelMaterial;
 
-					const { count, albedo, emissive, normal } = world.surfels;
+					const { count, albedo, emissive } = world.surfels;
 					const colors = surfelMesh.instanceColor.array;
 					const transfer = world.transfer;
 
 					if ( params.view === 'Surfels: Normal' ) {
 
-						for ( let i = 0; i < count * 3; i ++ ) colors[ i ] = normal[ i ] * 0.5 + 0.5;
+						colors.set( decodeNormals( world.surfels.normal ).map( ( v ) => v * 0.5 + 0.5 ) );
 
 					} else if ( params.view === 'Surfels: Sky Visibility' ) {
 

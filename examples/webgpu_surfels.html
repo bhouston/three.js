@@ -309,7 +309,7 @@
 				gui.add( params, 'placement', Object.keys( placements ) ).name( 'Surfel Placement' ).onChange( bake );
 				gui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Surfel Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
-				gui.add( params, 'exposure', 0.01, 2, 0.01 ).name( 'Exposure' ).listen();
+				gui.add( params, 'exposure', 0.1, 4, 0.01 ).name( 'Exposure' );
 				gui.add( params, 'autoplay' ).name( 'Autoplay' );
 				gui.add( params, 'dayLength', 10, 300, 1 ).name( 'Day Length (s)' );
 
@@ -373,10 +373,7 @@
 				controls.target.copy( world.target );
 				controls.update();
 
-				// closed scenes have no sky and no sun, only their own lights. The sky is an order of magnitude
-				// brighter than the lights of the closed scenes
-
-				params.exposure = world.exposure ?? ( world.sky ? 0.1 : 1 );
+				// closed scenes have no sky and no sun, only their own lights
 
 				if ( ! world.sky ) environmentSH.array.forEach( ( vector ) => vector.set( 0, 0, 0 ) );
 
@@ -3103,7 +3100,9 @@
 
 				updateSun();
 
-				renderer.toneMappingExposure = params.exposure;
+				// the sky is an order of magnitude brighter than the lights of the closed scenes
+
+				renderer.toneMappingExposure = params.exposure * ( world.exposure ?? ( world.sky ? 0.1 : 1 ) );
 
 				// without GI, or until it is baked, the environment lights the scene
 

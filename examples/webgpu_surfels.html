@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Loop, Return, builtinIndirectContext, cross, dot, float, getShIrradianceAt, instanceIndex, luminance, materialColor, materialEmissive, mrt, normalWorld, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, Return, builtinIndirectContext, cross, dFdx, dFdy, dot, float, getShIrradianceAt, instanceIndex, luminance, materialColor, materialEmissive, mrt, normalWorld, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -2776,8 +2776,13 @@
 					// the material: 1 front, 2 double, 3 back, and albedo.a the coverage: 1 for texels whose center is
 					// covered and less for the texels around them
 
+					// a jittered pass draws a texel from a point beside its center: the position is extended to the
+					// center, also past the edge of the chart, so both sides of a seam interpolate to the same light
+
+					const center = positionWorld.add( dFdx( positionWorld ).mul( jitter.x ).add( dFdy( positionWorld ).mul( jitter.y ) ).mul( size / 2 ) );
+
 					material.fragmentNode = mrt( {
-						position: vec4( positionWorld, 1 ),
+						position: vec4( center, 1 ),
 						normal: vec4( normal.normalize(), source.side === THREE.DoubleSide ? 2 : source.side === THREE.BackSide ? 3 : 1 ),
 						albedo: vec4( source.vertexColors ? albedo.mul( vertexColor().rgb ) : albedo, coverage ),
 						emissive: vec4( emissive, 1 )

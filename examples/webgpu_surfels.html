@@ -37,7 +37,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Loop, builtinIndirectContext, cross, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, builtinIndirectContext, cross, dot, float, getShIrradianceAt, instanceIndex, luminance, materialColor, materialEmissive, mrt, normalWorld, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -113,6 +113,19 @@
 			const giAmount = uniform( 1 );
 			const lightMapNode = texture( new THREE.Texture(), uv( 1 ) );
 
+			// The reflections of the meshes with a light map. The environment is not occluded: on its own it lights
+			// the inside of a building like the open sky does. So it keeps the part that the light map holds of the
+			// irradiance of the open sky, and the rest reflects the light of the surfels
+
+			const reflections = Fn( () => {
+
+				const open = luminance( getShIrradianceAt( normalWorld, environmentSH ) ).max( 0 );
+				const blocked = luminance( lightMapNode.rgb ).min( open ).div( open.max( 1e-4 ) ).oneMinus().mul( giAmount ).toVar();
+
+				return vec4( lightMapNode.rgb.div( Math.PI ).mul( blocked ), blocked );
+
+			} );
+
 			// the light probe grid with the SH of the radiance around each probe, the indirect diffuse light of the
 			// other objects, which move. It follows the grid of the current scene, so that the materials compile once
 
@@ -182,6 +195,7 @@
 				showProbes: false,
 				detailSize: 0.25,
 				timeOfDay: 10,
+				exposure: 1,
 				autoplay: false,
 				dayLength: 60,
 				direct: true,
@@ -232,7 +246,8 @@
 				await renderer.init();
 
 				renderer.contextNode = builtinIndirectContext( {
-					diffuse: [ ( query, builder ) => builder.object.userData.giStatic === true ? vec4( lightMapNode.rgb.mul( giAmount ), giAmount ) : probeSource( query ).mul( probeAmount ) ]
+					diffuse: [ ( query, builder ) => builder.object.userData.giStatic === true ? vec4( lightMapNode.rgb.mul( giAmount ), giAmount ) : probeSource( query ).mul( probeAmount ) ],
+					specular: [ ( query, builder ) => builder.object.userData.giStatic === true ? reflections() : null ]
 				} );
 
 				controls = new OrbitControls( camera, renderer.domElement );
@@ -284,6 +299,7 @@
 				} ).debounce( 500 );
 				gui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Surfel Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
+				gui.add( params, 'exposure', 0.01, 2, 0.01 ).name( 'Exposure' ).listen();
 				gui.add( params, 'autoplay' ).name( 'Autoplay' );
 				gui.add( params, 'dayLength', 10, 300, 1 ).name( 'Day Length (s)' );
 
@@ -338,11 +354,12 @@
 				controls.target.copy( world.target );
 				controls.update();
 
-				// closed scenes have no sky and no sun, only their own lights
+				// closed scenes have no sky and no sun, only their own lights. The sky is an order of magnitude
+				// brighter than the lights of the closed scenes
 
-				// the sky is an order of magnitude brighter than the lights of the closed scenes
+				params.exposure = world.exposure ?? ( world.sky ? 0.1 : 1 );
 
-				renderer.toneMappingExposure = world.sky ? 0.1 : 1;
+				if ( ! world.sky ) environmentSH.array.forEach( ( vector ) => vector.set( 0, 0, 0 ) );
 
 				sun.visible = world.sky;
 				scene.background = world.sky ? null : new THREE.Color( 0x111111 );
@@ -2633,7 +2650,7 @@
 
 				for ( const light of lights ) light.removeFromParent();
 
-				return { root: gltf.scene, sky: true, sunLean: 0.25, detailSize: 0.5, path: ( a ) => [ 9 * Math.sin( a ), 1.2 * Math.sin( a * 2 ) ], camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
+				return { root: gltf.scene, sky: true, sunLean: 0.25, exposure: 0.5, detailSize: 0.5, path: ( a ) => [ 9 * Math.sin( a ), 1.2 * Math.sin( a * 2 ) ], camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
 
 			}
 
@@ -2694,6 +2711,8 @@
 				if ( params.autoplay ) params.timeOfDay = ( params.timeOfDay + timer.getDelta() * 24 / params.dayLength ) % 24;
 
 				updateSun();
+
+				renderer.toneMappingExposure = params.exposure;
 
 				// without GI, or until it is baked, the environment lights the scene
 

@@ -189,7 +189,7 @@
 				view: 'Beauty',
 				placement: 'Sample Elimination',
 				thinWalls: true,
-				denoise: true,
+				denoise: false,
 				denoiseStrength: 1,
 				blur: true,
 				blurRadius: 2,
@@ -624,9 +624,9 @@
 
 					},
 
-					// A cut through the tree of clusters, from the top: the link with the most rays is split into the
-					// clusters or surfels below it until the budget is used up, so that no link carries much more of the
-					// light than another. What takes up much of the view of the surfel stays surfels or small clusters,
+					// A cut through the tree of clusters, from the top: the link that weighs most, by its rays and the
+					// size of its cluster, is split into the clusters or surfels below it until the budget is used up, so
+					// that no link gets much more of the light wrong than another. What takes up much of the view of the surfel stays surfels or small clusters,
 					// and what takes up little ends up in a large one. Like the cuts of Lightcuts and the form factors of
 					// Enlighten, which has a budget per texel over a tree of clusters. A cluster sends the mean light of
 					// its surfels, also of those that the surfel doesn't see, which leaves a bias
@@ -679,13 +679,18 @@
 
 						cut = cut.map( settle );
 
+						// what a link gets wrong grows with its rays and with how much the light differs over its cluster,
+						// which is more the larger the cluster is
+
+						const weigh = ( node ) => rays.get( node ) * Math.sqrt( clusters.sizes[ node - count ] );
+
 						for ( ;; ) {
 
 							let split = - 1;
 
 							for ( let k = 0; k < cut.length; k ++ ) {
 
-								if ( cut[ k ] >= count && cut.length - 1 + below.get( cut[ k ] ).length <= budget && ( split < 0 || rays.get( cut[ k ] ) > rays.get( cut[ split ] ) ) ) split = k;
+								if ( cut[ k ] >= count && cut.length - 1 + below.get( cut[ k ] ).length <= budget && ( split < 0 || weigh( cut[ k ] ) > weigh( cut[ split ] ) ) ) split = k;
 
 							}
 
@@ -1022,13 +1027,11 @@
 						// each level: only from further away than the cluster is large, where a surfel links to it. The
 						// surfels close by see more of what lies in corners, which is darker
 
-						for ( let l = 0, cell = detailSize * CLUSTER; l < seen.length; l ++, cell *= 2 ) {
+						for ( const [ target, rays ] of runs ) {
 
-							for ( const [ target, rays ] of runs ) {
+							const distance = Math.hypot( surfels.position[ target * 3 ] - surfels.position[ i * 3 ], surfels.position[ target * 3 + 1 ] - surfels.position[ i * 3 + 1 ], surfels.position[ target * 3 + 2 ] - surfels.position[ i * 3 + 2 ] );
 
-								if ( Math.hypot( surfels.position[ target * 3 ] - surfels.position[ i * 3 ], surfels.position[ target * 3 + 1 ] - surfels.position[ i * 3 + 1 ], surfels.position[ target * 3 + 2 ] - surfels.position[ i * 3 + 2 ] ) > cell * FAR ) seen[ l ][ target ] += rays * surfels.radius[ i ] ** 2;
-
-							}
+							for ( let l = 0, cell = detailSize * CLUSTER * FAR; l < seen.length && cell < distance; l ++, cell *= 2 ) seen[ l ][ target ] += rays * surfels.radius[ i ] ** 2;
 
 						}
 
@@ -2053,7 +2056,7 @@
 
 				}
 
-				return { count: sums.length, levels, starts, parent, center: new Float32Array( sums.flatMap( ( sum ) => [ sum[ 0 ] / sum[ 3 ], sum[ 1 ] / sum[ 3 ], sum[ 2 ] / sum[ 3 ] ] ) ) };
+				return { count: sums.length, levels, starts, parent, sizes: Float32Array.from( sums, ( sum ) => sum[ 3 ] ), center: new Float32Array( sums.flatMap( ( sum ) => [ sum[ 0 ] / sum[ 3 ], sum[ 1 ] / sum[ 3 ], sum[ 2 ] / sum[ 3 ] ] ) ) };
 
 			}
 

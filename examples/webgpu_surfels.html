@@ -203,7 +203,7 @@
 				detailSize: 0.25,
 				timeOfDay: 10,
 				exposure: 1,
-				autoplay: false,
+				autoplay: true,
 				dayLength: 60,
 				direct: true,
 				sky: true,
@@ -340,6 +340,10 @@
 
 				loading = true;
 				progress.removeAttribute( 'value' );
+
+				// the day of a scene starts an hour before the sun sets, once the scene shows
+
+				if ( params.autoplay ) params.timeOfDay = 17;
 
 				status.textContent = `Loading ${ name }…`;
 				selection.textContent = '';
@@ -3097,8 +3101,6 @@
 
 				timer.update();
 
-				if ( params.autoplay ) params.timeOfDay = ( params.timeOfDay + timer.getDelta() * 24 / params.dayLength ) % 24;
-
 				updateSun();
 
 				renderer.toneMappingExposure = params.exposure;
@@ -3110,6 +3112,8 @@
 				let surfelsChanged = false;
 
 				const ready = ! loading && world.ready === true;
+
+				if ( params.autoplay && ready ) params.timeOfDay = ( params.timeOfDay + timer.getDelta() * 24 / params.dayLength ) % 24;
 
 				progress.hidden = ready;
 				if ( ! loading ) progress.value = world.progress;

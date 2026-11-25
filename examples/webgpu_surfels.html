@@ -464,10 +464,6 @@
 
 				baked.surfels = placements[ params.placement ]( { position, normal, albedo, emissive, size, texelSize }, baked.detailSize );
 
-				const patches = labelPatches( albedo, size );
-
-				baked.surfels.patch = baked.surfels.texel.map( ( t ) => patches[ t ] );
-
 				times[ 'surfels' ] = performance.now() - start;
 				baked.progress = 0.1;
 
@@ -1133,7 +1129,7 @@
 
 				texelBuffer.value.needsUpdate = true;
 
-				for ( const [ name, itemSize ] of [[ 'position', 3 ], [ 'normal', 2 ], [ 'radius', 1 ], [ 'albedo', 3 ], [ 'emissive', 3 ], [ 'pair', 1 ], [ 'patch', 1 ]] ) surfels[ name ] = compact( surfels[ name ], itemSize );
+				for ( const [ name, itemSize ] of [[ 'position', 3 ], [ 'normal', 2 ], [ 'radius', 1 ], [ 'albedo', 3 ], [ 'emissive', 3 ], [ 'pair', 1 ]] ) surfels[ name ] = compact( surfels[ name ], itemSize );
 
 				clusters.levels = clusters.levels.map( ( of ) => compact( of, 1 ) );
 
@@ -1958,69 +1954,14 @@
 
 			}
 
-			// The patches of the atlas: the texels whose center is covered and that touch are one patch, a number
-			// from 1 for each of their texels. The charts keep a padding between them, so a patch is a chart, one
-			// connected piece of a surface
-
-			function labelPatches( albedo, size ) {
-
-				const patches = new Uint32Array( size * size ), stack = [];
-				const covered = ( t ) => THREE.DataUtils.fromHalfFloat( albedo[ t * 4 + 3 ] ) >= 1;
-
-				let count = 0;
-
-				for ( let seed = 0; seed < size * size; seed ++ ) {
-
-					if ( patches[ seed ] !== 0 || ! covered( seed ) ) continue;
-
-					patches[ seed ] = ++ count;
-					stack.push( seed );
-
-					while ( stack.length > 0 ) {
-
-						const t = stack.pop(), x = t % size;
-
-						for ( const other of [ x > 0 ? t - 1 : - 1, x < size - 1 ? t + 1 : - 1, t - size, t + size ] ) {
-
-							if ( other < 0 || other >= size * size || patches[ other ] !== 0 || ! covered( other ) ) continue;
-
-							patches[ other ] = count;
-							stack.push( other );
-
-						}
-
-					}
-
-				}
-
-				return patches;
-
-			}
-
 			// A tree of clusters. A cluster is the surfels of a cell of a grid that face along the same axis, and the
 			// cells of a level are twice as large as the ones below, up to a cell that holds the scene. The lights
-			// have clusters of their own: the mean of a light and of the surface around it is far from both. And so
-			// has each patch that is larger than the cell: the floors of two rooms with a wall between them stay
-			// apart until a cell holds all of one, so that a surfel that sees only one does not get the light of both
+			// have clusters of their own: the mean of a light and of the surface around it is far from both
 
 			function clusterSurfels( surfels, size, origin, extent ) {
 
 				const levels = [], starts = [], parent = [], sums = [];
 				const normal = decodeNormals( surfels.normal );
-
-				// the size of each patch, the diagonal of the box around its surfels
-
-				const boxes = new Map();
-
-				for ( let i = 0; i < surfels.count; i ++ ) {
-
-					if ( ! boxes.has( surfels.patch[ i ] ) ) boxes.set( surfels.patch[ i ], new THREE.Box3() );
-
-					boxes.get( surfels.patch[ i ] ).expandByPoint( new THREE.Vector3().fromArray( surfels.position, i * 3 ) );
-
-				}
-
-				const patchSize = new Map( [ ...boxes ].map( ( [ patch, box ] ) => [ patch, patch === 0 ? 0 : box.min.distanceTo( box.max ) ] ) );
 
 				for ( let cell = size; cell < extent * 2; cell *= 2 ) {
 
@@ -2032,7 +1973,7 @@
 
 						const p = surfels.position.subarray( i * 3, i * 3 + 3 ), n = normal.subarray( i * 3, i * 3 + 3 );
 						const axis = Math.abs( n[ 0 ] ) > Math.abs( n[ 1 ] ) ? ( Math.abs( n[ 0 ] ) > Math.abs( n[ 2 ] ) ? 0 : 2 ) : ( Math.abs( n[ 1 ] ) > Math.abs( n[ 2 ] ) ? 1 : 2 );
-						const key = `${ Math.floor( ( p[ 0 ] - origin.x ) / cell ) },${ Math.floor( ( p[ 1 ] - origin.y ) / cell ) },${ Math.floor( ( p[ 2 ] - origin.z ) / cell ) },${ axis * 2 + ( n[ axis ] > 0 ? 1 : 0 ) },${ surfels.emissive[ i * 3 ] + surfels.emissive[ i * 3 + 1 ] + surfels.emissive[ i * 3 + 2 ] > 0 },${ patchSize.get( surfels.patch[ i ] ) > cell ? surfels.patch[ i ] : 0 }`;
+						const key = `${ Math.floor( ( p[ 0 ] - origin.x ) / cell ) },${ Math.floor( ( p[ 1 ] - origin.y ) / cell ) },${ Math.floor( ( p[ 2 ] - origin.z ) / cell ) },${ axis * 2 + ( n[ axis ] > 0 ? 1 : 0 ) },${ surfels.emissive[ i * 3 ] + surfels.emissive[ i * 3 + 1 ] + surfels.emissive[ i * 3 + 2 ] > 0 }`;
 
 						if ( ! ids.has( key ) ) {
 
@@ -2096,7 +2037,7 @@
 				const cell = Math.max( 1, Math.round( spacing / texelSize ) );
 				const half = THREE.DataUtils.fromHalfFloat;
 
-				const data = { position: [], normal: [], radius: [], albedo: [], emissive: [], pair: [], texel: [] };
+				const data = { position: [], normal: [], radius: [], albedo: [], emissive: [], pair: [] };
 				const texels = [], group = [], sum = new Float32Array( 12 );
 
 				// the surfel of each texel plus one, with the side of its material in the two high bits
@@ -2269,7 +2210,6 @@
 							data.albedo.push( sum[ 6 ] / count, sum[ 7 ] / count, sum[ 8 ] / count );
 							data.emissive.push( sum[ 9 ] / count, sum[ 10 ] / count, sum[ 11 ] / count );
 							data.pair.push( side === 2 ? sign : 0 );
-							data.texel.push( nearest / 4 );
 
 						}
 
@@ -2329,7 +2269,6 @@
 
 				return {
 					texelMap,
-					texel: new Uint32Array( data.texel ),
 					pair: new Int8Array( data.pair ),
 					count: data.radius.length,
 					position: new Float32Array( data.position ),
@@ -2768,7 +2707,6 @@
 				return {
 					grow: GROW,
 					texelMap,
-					texel: new Uint32Array( seeds ),
 					pair: new Int8Array( data.pair ),
 					count: data.radius.length,
 					position: new Float32Array( data.position ),

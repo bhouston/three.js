@@ -203,7 +203,8 @@
 				gi: true,
 				denoise: true,
 				denoiseStrength: 1,
-				blur: false,
+				blur: true,
+				blurRadius: 2,
 				blurStrength: 0.3,
 				showProbes: false,
 				detailSize: 0.25,
@@ -330,6 +331,7 @@
 				giGui.add( params, 'denoise' ).name( 'Denoise Light Map' );
 				giGui.add( params, 'denoiseStrength', 0, 1, 0.01 ).name( 'Denoise Strength' );
 				giGui.add( params, 'blur' ).name( 'Blur' );
+				giGui.add( params, 'blurRadius', 0.5, 8, 0.5 ).name( 'Blur Radius (Surfels)' );
 				giGui.add( params, 'blurStrength', 0.05, 1, 0.01 ).name( 'Blur Strength' );
 
 				window.addEventListener( 'resize', onWindowResize );
@@ -1320,7 +1322,7 @@
 
 					const frames = params.spread;
 					const lights = JSON.stringify( [ lightData.array, environmentSH.array ] );
-					const state = JSON.stringify( [ lights, terms.value, params.hysteresis, params.iterations, params.denoise, params.denoiseStrength, params.blur, params.blurStrength, frames ] );
+					const state = JSON.stringify( [ lights, terms.value, params.hysteresis, params.iterations, params.denoise, params.denoiseStrength, params.blur, params.blurRadius, params.blurStrength, frames ] );
 
 					// a change of the lights updates the direct light of all surfels once, and everything then runs
 					// until the bounces have settled
@@ -1372,6 +1374,12 @@
 
 					if ( params.blur && due ) {
 
+						// each pass of the filter doubles its step, so n passes reach 2 * ( 2 ** n - 1 ) texels: the passes
+						// that come closest to the radius, which is in surfels
+
+						const texels = params.blurRadius * world.detailSize * world.atlas.layout.texelsPerUnit;
+
+						blurNode.iterations = Math.max( 1, Math.round( Math.log2( texels / 2 + 1 ) ) );
 						blurNode.relativeNoise.value = params.blurStrength;
 						blurNode.updateBefore( { renderer } );
 

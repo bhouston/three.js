@@ -47,6 +47,7 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
@@ -120,6 +121,7 @@
 
 			const giAmount = uniform( 1 );
 			const lightMapNode = texture( new THREE.Texture(), uv( 1 ) );
+			const skyMapNode = texture( new THREE.Texture(), uv( 1 ) );
 
 			// The reflections of the meshes with a light map. The environment is not occluded: on its own it lights
 			// the inside of a building like the open sky does. So it keeps the share of the sky that the surfels
@@ -127,7 +129,7 @@
 
 			const reflections = Fn( () => {
 
-				const blocked = lightMapNode.a.oneMinus().mul( giAmount ).toVar();
+				const blocked = skyMapNode.r.oneMinus().mul( giAmount ).toVar();
 
 				return vec4( lightMapNode.rgb.div( Math.PI ).mul( blocked ), blocked );
 
@@ -201,6 +203,8 @@
 				gi: true,
 				denoise: true,
 				denoiseStrength: 1,
+				blur: false,
+				blurStrength: 0.3,
 				showProbes: false,
 				detailSize: 0.25,
 				surfelTexels: 4,
@@ -325,6 +329,8 @@
 				giGui.add( params, 'spread', 1, 16, 1 ).name( 'Update Spread (frames)' );
 				giGui.add( params, 'denoise' ).name( 'Denoise Light Map' );
 				giGui.add( params, 'denoiseStrength', 0, 1, 0.01 ).name( 'Denoise Strength' );
+				giGui.add( params, 'blur' ).name( 'Blur' );
+				giGui.add( params, 'blurStrength', 0.05, 1, 0.01 ).name( 'Blur Strength' );
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -1222,6 +1228,10 @@
 				const lightMap = new THREE.StorageTexture( size, size );
 				lightMap.type = THREE.HalfFloatType;
 
+				// the share of the sky that a texel sees, for the reflections. Not in the alpha of the light map, which is its coverage
+
+				const skyMap = new THREE.StorageTexture( size, size );
+
 				const resolveBuffers = [
 					storage( new THREE.StorageBufferAttribute( lightMapLinks.texels, 1 ), 'uint' ).toReadOnly(),
 					storage( new THREE.StorageBufferAttribute( lightMapLinks.indices, 4 ), 'uvec4' ).toReadOnly(),
@@ -1273,9 +1283,24 @@
 
 					for ( const c of [ 'x', 'y', 'z', 'w' ] ) indirect.addAssign( storage( filtered, 'vec4' ).toReadOnly().element( surfels[ c ] ).mul( blend[ c ] ) );
 
-					textureStore( lightMap, uvec2( texel.bitAnd( uint( 0xffff ) ), texel.shiftRight( uint( 16 ) ) ), indirect );
+					const coord = uvec2( texel.bitAnd( uint( 0xffff ) ), texel.shiftRight( uint( 16 ) ) );
+
+					textureStore( lightMap, coord, vec4( indirect.rgb, 1 ) );
+					textureStore( skyMap, coord, vec4( indirect.a ) );
 
 				} )().compute( lightMapLinks.texels.length );
+
+				// the blur: an edge-aware filter over the texels of the light map, guided by the positions and normals of
+				// the atlas. It hides the outlines of the surfels, but leaks through walls thinner than its reach
+
+				const blurNode = denoise( texture( lightMap ), {
+					position: texture( world.atlas.target.textures[ 0 ] ),
+					normal: texture( world.atlas.target.textures[ 1 ] ),
+					quality: 'quality',
+					coverage: true
+				} );
+
+				blurNode.setup();
 
 				// What the passes depend on, to tell when it changes: the direct pass on the lights and the sky, and
 				// all of them on the settings as well
@@ -1286,11 +1311,16 @@
 
 				const update = () => {
 
-					if ( world.lighting !== undefined ) lightMapNode.value = lightMap;
+					if ( world.lighting !== undefined ) {
+
+						lightMapNode.value = params.blur ? blurNode.getTexture() : lightMap;
+						skyMapNode.value = skyMap;
+
+					}
 
 					const frames = params.spread;
 					const lights = JSON.stringify( [ lightData.array, environmentSH.array ] );
-					const state = JSON.stringify( [ lights, terms.value, params.hysteresis, params.iterations, params.denoise, params.denoiseStrength, frames ] );
+					const state = JSON.stringify( [ lights, terms.value, params.hysteresis, params.iterations, params.denoise, params.denoiseStrength, params.blur, params.blurStrength, frames ] );
 
 					// a change of the lights updates the direct light of all surfels once, and everything then runs
 					// until the bounces have settled
@@ -1336,9 +1366,18 @@
 					renderer.compute( filter );
 					renderer.compute( resolve );
 
-					// the indirect light changes slowly, so the probes follow every fourth frame, and on the last one
+					// the indirect light changes slowly, so the blur and the probes follow every fourth frame, and on the last one
 
-					return frame % Math.max( frames, 4 ) === 0 || activeFrames === 0;
+					const due = frame % Math.max( frames, 4 ) === 0 || activeFrames === 0;
+
+					if ( params.blur && due ) {
+
+						blurNode.relativeNoise.value = params.blurStrength;
+						blurNode.updateBefore( { renderer } );
+
+					}
+
+					return due;
 
 				};
 
@@ -1387,6 +1426,8 @@
 					filtered.dispose();
 					resolve.dispose();
 					lightMap.dispose();
+					skyMap.dispose();
+					blurNode.dispose();
 
 					for ( const material of Object.values( materials ) ) material.dispose();
 

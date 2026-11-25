@@ -22,6 +22,8 @@
 			<small>Real-time multi-bounce diffuse GI from surfels with precomputed transfer.<br/><span id="status"></span><br/><span id="report"></span><br/><span id="selection"></span></small>
 		</div>
 
+		<progress id="progress" max="1" style="position: fixed; left: 50%; top: 50%; width: 240px; margin-left: -120px; z-index: 1;"></progress>
+
 		<script type="importmap">
 			{
 				"imports": {
@@ -65,6 +67,12 @@
 			let camera, scene, renderer, controls, timer, status, selection;
 			let sky, sun, cubeCamera, mover, world, rendererState;
 			let environmentSHPending = 0;
+
+			// a scene is hidden behind the progress bar until it is loaded and baked and its bounces have settled
+
+			let loading = true;
+
+			const progress = document.getElementById( 'progress' );
 
 			const lightPosition = new THREE.Vector3();
 
@@ -330,6 +338,9 @@
 
 				const name = params.scene;
 
+				loading = true;
+				progress.removeAttribute( 'value' );
+
 				status.textContent = `Loading ${ name }…`;
 				selection.textContent = '';
 				document.getElementById( 'report' ).textContent = '';
@@ -344,6 +355,7 @@
 
 				world = worlds[ name ];
 				scene.add( world.root );
+				loading = false;
 
 				world.root.traverse( ( object ) => {
 
@@ -406,6 +418,8 @@
 				baked.lighting?.dispose();
 				baked.probes?.dispose();
 				baked.transfer = baked.lighting = baked.probes = undefined;
+				baked.ready = false;
+				baked.progress = 0;
 				selectSurfel( baked, - 1 );
 				const meshes = [];
 				world.root.traverse( ( object ) => object.isMesh && object !== world.surfelMesh && meshes.push( object ) );
@@ -448,6 +462,7 @@
 				baked.surfels.clusters = clusterSurfels( baked.surfels, baked.detailSize * CLUSTER_SIZE );
 
 				times[ 'surfels' ] = performance.now() - start;
+				baked.progress = 0.1;
 
 				// baked again meanwhile
 
@@ -467,7 +482,12 @@
 
 				// transfer between the surfels and from the sky
 
-				const transfer = await bakeTransfer( baked, ( done ) => report( `tracing ${ Math.round( done * 100 ) }%` ), () => baked.bakeId !== id );
+				const transfer = await bakeTransfer( baked, ( done ) => {
+
+					baked.progress = 0.1 + done * 0.5;
+					report( `tracing ${ Math.round( done * 100 ) }%` );
+
+				}, () => baked.bakeId !== id );
 
 				if ( transfer === null ) return;
 
@@ -485,6 +505,7 @@
 				baked.lighting = createLighting( baked, lightMapLinks );
 
 				times[ 'light map' ] = performance.now() - start;
+				baked.progress = 0.75;
 
 				const transferSummary = `${ baked.surfels.clusters.count } clusters, ${ ( transfer.links.length / baked.surfels.count ).toFixed( 1 ) } links per surfel, ${ transfer.buried } buried surfels dropped, ${ ( transfer.unknown * 100 ).toFixed( 1 ) }% of hits without a surfel`;
 
@@ -500,6 +521,7 @@
 
 				baked.probes = createProbes( baked, probeBake );
 				baked.lighting.wake();
+				baked.progress = 0.9;
 				baked.heights = bakeHeights( baked );
 
 				times[ 'probes' ] = performance.now() - start;
@@ -1337,7 +1359,7 @@
 
 				};
 
-				return { update, wake, attribute, materials, lightMap, dispose };
+				return { update, wake, settled: () => activeFrames === 0 && settings !== '', attribute, materials, lightMap, dispose };
 
 			}
 
@@ -2880,7 +2902,6 @@
 				}
 
 				renderer.toneMapping = beauty || lightMapView || lightingView !== undefined ? THREE.NeutralToneMapping : THREE.NoToneMapping;
-				sky.visible = world.sky && beauty;
 
 			}
 
@@ -3088,10 +3109,21 @@
 
 				let surfelsChanged = false;
 
+				const ready = ! loading && world.ready === true;
+
+				progress.hidden = ready;
+				if ( ! loading ) progress.value = world.progress;
+
+				world.root.visible = ready;
+				sky.visible = ready && world.sky && params.view === 'Beauty';
+
 				if ( world.lighting !== undefined ) {
 
 					updateLights();
-					surfelsChanged = world.lighting.update();
+
+					// the bounces settle faster while the scene is hidden
+
+					for ( let i = ready ? 1 : 16; i > 0; i -- ) surfelsChanged = world.lighting.update() || surfelsChanged;
 
 				}
 
@@ -3100,7 +3132,7 @@
 				const probes = world.probes;
 
 				probeAmount.value = params.gi && probes !== undefined ? 1 : 0;
-				mover.visible = probes !== undefined;
+				mover.visible = ready;
 
 				if ( probes !== undefined ) {
 
@@ -3127,6 +3159,8 @@
 					mover.position.set( x, height + radius, z );
 
 				}
+
+				if ( ! ready && ! loading && probes !== undefined && world.lighting.settled() ) world.ready = true;
 
 				renderer.render( scene, camera );
 

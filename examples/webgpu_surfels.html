@@ -48,7 +48,6 @@
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
-			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 			import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 
@@ -202,7 +201,7 @@
 				placement: 'Atlas Grid',
 				gi: true,
 				denoise: true,
-				denoiseStrength: 0.3,
+				denoiseStrength: 1,
 				showProbes: false,
 				detailSize: 0.25,
 				timeOfDay: 7,
@@ -329,7 +328,7 @@
 				giGui.add( params, 'hysteresis', 0.01, 1, 0.01 ).name( 'Hysteresis' );
 				giGui.add( params, 'spread', 1, 16, 1 ).name( 'Update Spread (frames)' );
 				giGui.add( params, 'denoise' ).name( 'Denoise Light Map' );
-				giGui.add( params, 'denoiseStrength', 0.05, 1, 0.01 ).name( 'Denoise Strength' );
+				giGui.add( params, 'denoiseStrength', 0, 1, 0.01 ).name( 'Denoise Strength' );
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -1234,6 +1233,35 @@
 					storage( new THREE.StorageBufferAttribute( lightMapLinks.weights, 4 ), 'vec4' ).toReadOnly()
 				];
 
+				// The rays of the transfer bake leave noise from surfel to surfel. The light map takes the indirect light
+				// of a surfel filtered over the surfels around it that it sees, so the filter doesn't leak through walls
+
+				const FILTER = lightMapLinks.filter.indices.length / count;
+				const strength = uniform( 1 );
+				const filterBuffers = [
+					storage( new THREE.StorageBufferAttribute( lightMapLinks.filter.indices, 1 ), 'uint' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( lightMapLinks.filter.weights, 1 ), 'float' ).toReadOnly()
+				];
+				const filtered = new THREE.StorageBufferAttribute( new Float32Array( count * 4 ), 4 );
+
+				const filter = Fn( () => {
+
+					const read = storage( attribute, 'vec4' ).toReadOnly();
+					const indirect = ( surfel ) => read.element( surfel.mul( uint( 4 ) ).add( uint( 1 ) ) ).rgb.mul( terms.y ).add( read.element( surfel.mul( uint( 4 ) ).add( uint( 2 ) ) ).rgb.mul( terms.z ) );
+					const sum = vec3( 0 ).toVar();
+
+					Loop( { start: uint( 0 ), end: uint( FILTER ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+						const link = instanceIndex.mul( uint( FILTER ) ).add( i );
+
+						sum.addAssign( indirect( filterBuffers[ 0 ].element( link ) ).mul( filterBuffers[ 1 ].element( link ) ) );
+
+					} );
+
+					storage( filtered, 'vec4' ).element( instanceIndex ).assign( vec4( mix( indirect( instanceIndex ), sum, strength ), 1 ) );
+
+				} )().compute( count );
+
 				const resolve = Fn( () => {
 
 					If( selected().not(), () => Return() );
@@ -1243,29 +1271,11 @@
 					const blend = resolveBuffers[ 2 ].element( instanceIndex ).toVar();
 					const indirect = vec3( 0 ).toVar();
 
-					for ( const c of [ 'x', 'y', 'z', 'w' ] ) {
-
-						const base = surfels[ c ].mul( uint( 4 ) );
-
-						indirect.addAssign( irradiance.element( base.add( uint( 1 ) ) ).rgb.mul( terms.y ).add( irradiance.element( base.add( uint( 2 ) ) ).rgb.mul( terms.z ) ).mul( blend[ c ] ) );
-
-					}
+					for ( const c of [ 'x', 'y', 'z', 'w' ] ) indirect.addAssign( storage( filtered, 'vec4' ).toReadOnly().element( surfels[ c ] ).rgb.mul( blend[ c ] ) );
 
 					textureStore( lightMap, uvec2( texel.bitAnd( uint( 0xffff ) ), texel.shiftRight( uint( 16 ) ) ), vec4( indirect, 1 ) );
 
 				} )().compute( lightMapLinks.texels.length );
-
-				// the rays of the transfer bake leave noise from surfel to surfel, which the denoiser filters over the
-				// texels of the light map along the surfaces, guided by the positions and normals of the atlas
-
-				const denoiseNode = denoise( texture( lightMap ), {
-					position: texture( world.atlas.target.textures[ 0 ] ),
-					normal: texture( world.atlas.target.textures[ 1 ] ),
-					quality: 'quality',
-					coverage: true
-				} );
-
-				denoiseNode.setup();
 
 				// What the passes depend on, to tell when it changes: the direct pass on the lights and the sky, and
 				// all of them on the settings as well
@@ -1276,7 +1286,7 @@
 
 				const update = () => {
 
-					if ( world.lighting !== undefined ) lightMapNode.value = params.denoise ? denoiseNode.getTexture() : lightMap;
+					if ( world.lighting !== undefined ) lightMapNode.value = lightMap;
 
 					const frames = params.spread;
 					const lights = JSON.stringify( [ lightData.array, environmentSH.array ] );
@@ -1321,21 +1331,14 @@
 
 					phase.value = frame % frames;
 
+					strength.value = params.denoise ? params.denoiseStrength : 0;
+
+					renderer.compute( filter );
 					renderer.compute( resolve );
 
-					// the filter takes a few ms on a large atlas and the indirect light changes slowly, so it runs
-					// every fourth frame, and on the last one
+					// the indirect light changes slowly, so the probes follow every fourth frame, and on the last one
 
-					const due = frame % Math.max( frames, 4 ) === 0 || activeFrames === 0;
-
-					if ( params.denoise && due ) {
-
-						denoiseNode.relativeNoise.value = params.denoiseStrength;
-						denoiseNode.updateBefore( { renderer } );
-
-					}
-
-					return due;
+					return frame % Math.max( frames, 4 ) === 0 || activeFrames === 0;
 
 				};
 
@@ -1378,9 +1381,12 @@
 					for ( const buffer of radiosity ) buffer.dispose();
 					for ( const buffer of resolveBuffers ) buffer.value.dispose();
 
+					for ( const buffer of filterBuffers ) buffer.value.dispose();
+
+					filter.dispose();
+					filtered.dispose();
 					resolve.dispose();
 					lightMap.dispose();
-					denoiseNode.dispose();
 
 					for ( const material of Object.values( materials ) ) material.dispose();
 
@@ -1783,9 +1789,22 @@
 				const texels = [], indices = [], weights = [];
 				const order = Array.from( { length: CANDIDATES }, ( v, k ) => k );
 
+				// the filter of the surfels: each one with itself and the surfels around it that it sees
+
+				const filter = { indices: new Uint32Array( surfels.count * CANDIDATES ), weights: new Float32Array( surfels.count * CANDIDATES ) };
+
+				for ( let i = 0; i < surfels.count; i ++ ) {
+
+					filter.indices.fill( i, i * CANDIDATES, ( i + 1 ) * CANDIDATES );
+					filter.weights[ i * CANDIDATES ] = 1;
+
+				}
+
 				let pending = 0;
 
-				async function flush() {
+				// answers the batch, of surfels for the filter or of texels for their links
+
+				async function flush( ofSurfels ) {
 
 					candidates.array.fill( 0, pending * CANDIDATES );
 					points.needsUpdate = candidates.needsUpdate = true;
@@ -1799,24 +1818,36 @@
 						const base = b * CANDIDATES;
 
 						// the four that weigh most among those that the texel sees. A texel that sees none is inside
-						// of geometry, and takes the four that weigh most
+						// of geometry, and takes the four that weigh most. A surfel takes all that it sees
 
 						order.sort( ( i, j ) => candidateWeights[ base + j ] - candidateWeights[ base + i ] );
 
 						const seen = masks[ b ] !== 0 ? order.filter( ( k ) => ( masks[ b ] >> k ) & 1 ) : order;
+						const kept = ofSurfels ? CANDIDATES : 4;
+						const weightOf = ( k ) => k >= seen.length ? 0 : candidateWeights[ base + seen[ k ] ];
 
 						let total = 0;
 
-						for ( let k = 0; k < 4; k ++ ) total += k < seen.length ? candidateWeights[ base + seen[ k ] ] : 0;
+						for ( let k = 0; k < kept; k ++ ) total += weightOf( k );
 
-						texels.push( batchTexels[ b ] );
+						if ( ofSurfels === false ) texels.push( batchTexels[ b ] );
 
-						for ( let k = 0; k < 4; k ++ ) {
+						for ( let k = 0; k < kept; k ++ ) {
 
-							const weight = k < seen.length ? candidateWeights[ base + seen[ k ] ] : 0;
+							const weight = weightOf( k );
+							const index = weight > 0 ? candidates.array[ base + seen[ k ] ] - 1 : 0;
 
-							indices.push( weight > 0 ? candidates.array[ base + seen[ k ] ] - 1 : 0 );
-							weights.push( weight / total );
+							if ( ofSurfels ) {
+
+								filter.indices[ batchTexels[ b ] * CANDIDATES + k ] = index;
+								filter.weights[ batchTexels[ b ] * CANDIDATES + k ] = weight / total;
+
+							} else {
+
+								indices.push( index );
+								weights.push( weight / total );
+
+							}
 
 						}
 
@@ -1826,45 +1857,10 @@
 
 				}
 
-				// the texels of a surfel search around it, a little further, once. The others search by themselves
+				// Adds a point of a surface to the batch, with the surfels of the list that weigh most as its
+				// candidates. Returns whether it has any
 
-				const found = new Map(), own = [];
-
-				for ( let t = 0; t < size * size; t ++ ) {
-
-					if ( atlas.position[ t * 4 + 3 ] === 0 ) continue;
-
-					const px = half( atlas.position[ t * 4 ] ), py = half( atlas.position[ t * 4 + 1 ] ), pz = half( atlas.position[ t * 4 + 2 ] );
-					const nx = half( atlas.normal[ t * 4 ] ), ny = half( atlas.normal[ t * 4 + 1 ] ), nz = half( atlas.normal[ t * 4 + 2 ] );
-					const surfel = ( surfels.texelMap[ t ] & 0x3fffffff ) - 1;
-
-					let list;
-
-					if ( surfel >= 0 ) {
-
-						list = found.get( surfel );
-
-						if ( list === undefined ) {
-
-							list = [];
-
-							const s = surfel * 3;
-
-							for ( const other of near( surfels.position[ s ], surfels.position[ s + 1 ], surfels.position[ s + 2 ], own ) ) {
-
-								if ( Math.hypot( surfels.position[ other * 3 ] - surfels.position[ s ], surfels.position[ other * 3 + 1 ] - surfels.position[ s + 1 ], surfels.position[ other * 3 + 2 ] - surfels.position[ s + 2 ] ) < reach ) list.push( other );
-
-							}
-
-							found.set( surfel, list );
-
-						}
-
-					} else {
-
-						list = near( px, py, pz, own );
-
-					}
+				function add( id, px, py, pz, nx, ny, nz, list ) {
 
 					// surfaces too small for surfels of their own, like the risers of a stair, have none that face
 					// their way in their plane: they take the surfels around them that do not face away
@@ -1908,18 +1904,80 @@
 
 					}
 
-					if ( total === 0 ) continue;
+					if ( total === 0 ) return false;
 
 					points.array.set( [ px + nx * epsilon, py + ny * epsilon, pz + nz * epsilon ], pending * 4 );
-					batchTexels[ pending ++ ] = ( t % size ) + Math.floor( t / size ) * 0x10000;
+					batchTexels[ pending ++ ] = id;
 
-					if ( pending === LINK_BATCH ) await flush();
+					return true;
+
+				}
+
+				const own = [];
+
+				for ( let i = 0; i < surfels.count && ! cancelled(); i ++ ) {
+
+					if ( invalid[ i ] ) continue;
+
+					const s = i * 3;
+
+					add( i, surfels.position[ s ], surfels.position[ s + 1 ], surfels.position[ s + 2 ], normal[ s ], normal[ s + 1 ], normal[ s + 2 ], near( surfels.position[ s ], surfels.position[ s + 1 ], surfels.position[ s + 2 ], own ) );
+
+					if ( pending === LINK_BATCH ) await flush( true );
+
+				}
+
+				if ( pending > 0 && ! cancelled() ) await flush( true );
+
+				// the texels of a surfel search around it, a little further, once. The others search by themselves
+
+				const found = new Map();
+
+				for ( let t = 0; t < size * size; t ++ ) {
+
+					if ( atlas.position[ t * 4 + 3 ] === 0 ) continue;
+
+					const px = half( atlas.position[ t * 4 ] ), py = half( atlas.position[ t * 4 + 1 ] ), pz = half( atlas.position[ t * 4 + 2 ] );
+					const nx = half( atlas.normal[ t * 4 ] ), ny = half( atlas.normal[ t * 4 + 1 ] ), nz = half( atlas.normal[ t * 4 + 2 ] );
+					const surfel = ( surfels.texelMap[ t ] & 0x3fffffff ) - 1;
+
+					let list;
+
+					if ( surfel >= 0 ) {
+
+						list = found.get( surfel );
+
+						if ( list === undefined ) {
+
+							list = [];
+
+							const s = surfel * 3;
+
+							for ( const other of near( surfels.position[ s ], surfels.position[ s + 1 ], surfels.position[ s + 2 ], own ) ) {
+
+								if ( Math.hypot( surfels.position[ other * 3 ] - surfels.position[ s ], surfels.position[ other * 3 + 1 ] - surfels.position[ s + 1 ], surfels.position[ other * 3 + 2 ] - surfels.position[ s + 2 ] ) < reach ) list.push( other );
+
+							}
+
+							found.set( surfel, list );
+
+						}
+
+					} else {
+
+						list = near( px, py, pz, own );
+
+					}
+
+					if ( add( ( t % size ) + Math.floor( t / size ) * 0x10000, px, py, pz, nx, ny, nz, list ) === false ) continue;
+
+					if ( pending === LINK_BATCH ) await flush( false );
 
 					if ( cancelled() ) break;
 
 				}
 
-				if ( pending > 0 && ! cancelled() ) await flush();
+				if ( pending > 0 && ! cancelled() ) await flush( false );
 
 				kernel.dispose();
 				points.dispose();
@@ -1928,7 +1986,7 @@
 
 				if ( cancelled() ) return null;
 
-				return { texels: new Uint32Array( texels ), indices: new Uint32Array( indices ), weights: new Float32Array( weights ) };
+				return { texels: new Uint32Array( texels ), indices: new Uint32Array( indices ), weights: new Float32Array( weights ), filter };
 
 			}
 
@@ -2754,7 +2812,7 @@
 
 					material.vertexNode = vec4( uv( 1 ).flipY().mul( 2 ).sub( 1 ).add( jitter ), 0, 1 );
 
-					// position.w is 1 for the texels of a surface, also a guide of the denoiser, normal.w the side of
+					// position.w is 1 for the texels of a surface, normal.w the side of
 					// the material: 1 front, 2 double, 3 back, and albedo.a the coverage: 1 for texels whose center is
 					// covered and less for the texels around them
 

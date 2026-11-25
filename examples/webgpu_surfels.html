@@ -213,7 +213,7 @@
 
 			const views = [ 'Beauty', 'Beauty (no GI)', 'Light Map', 'Surfels: Radiosity', 'Surfels: Irradiance', 'Surfels: Direct Light', 'Surfels: Sky Light', 'Surfels: Bounce Light', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
 
-			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Dungeon': loadDungeon, 'Hallway': loadHallway, 'Sponza': loadSponza };
+			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Hallway': loadHallway, 'Sponza': loadSponza };
 			const placements = { 'Atlas Grid': placeSurfels, 'Sample Elimination': eliminateSurfels };
 			const worlds = {};
 
@@ -2927,16 +2927,6 @@
 				}
 
 				return { root, sky: false, detailSize: 0.25, camera: new THREE.Vector3( - 7.5, 2.5, 0 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
-
-			}
-
-			async function loadDungeon() {
-
-				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/dungeon_warkarma.glb' );
-
-				// in front of the throne, down the long hallway
-
-				return { root: gltf.scene, sky: true, detailSize: 0.5, camera: new THREE.Vector3( 11.1, 3.5, - 14.3 ), target: new THREE.Vector3( 11.1, 3, 5 ) };
 
 			}
 

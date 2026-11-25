@@ -46,7 +46,6 @@
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
@@ -199,6 +198,7 @@
 				scene: 'Cornell Box',
 				view: 'Beauty',
 				placement: 'Atlas Grid',
+				thinWalls: true,
 				gi: true,
 				denoise: true,
 				denoiseStrength: 1,
@@ -300,6 +300,7 @@
 
 				} ).debounce( 500 );
 				gui.add( params, 'placement', Object.keys( placements ) ).name( 'Surfel Placement' ).onChange( bake );
+				gui.add( params, 'thinWalls' ).name( 'Thin Wall Fix' ).onChange( bake );
 				gui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Surfel Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
 				gui.add( params, 'exposure', 0.05, 4, 0.01 ).name( 'Exposure' ).listen();
@@ -372,22 +373,14 @@
 				controls.target.copy( world.target );
 				controls.update();
 
-				// closed scenes have no sky and no sun, only their own lights, or an environment map in place of the sky
+				// closed scenes have no sky and no sun, only their own lights
 
 				if ( ! world.sky ) environmentSH.array.forEach( ( vector ) => vector.set( 0, 0, 0 ) );
 
 				sun.visible = world.sky;
-				scene.background = world.sky ? null : world.environment ?? new THREE.Color( 0x111111 );
-				scene.backgroundIntensity = world.environmentIntensity ?? 1;
-				scene.environment = world.sky || world.environment ? cubeCamera.renderTarget.texture : null;
+				scene.background = world.sky ? null : new THREE.Color( 0x111111 );
+				scene.environment = world.sky ? cubeCamera.renderTarget.texture : null;
 				environmentSunDirection.set( 0, 0, 0 );
-
-				if ( world.environment ) {
-
-					cubeCamera.update( renderer, scene );
-					updateEnvironmentSH();
-
-				}
 
 				// the shadow of the sun covers the bounds of the scene
 
@@ -1795,7 +1788,7 @@
 
 						order.sort( ( i, j ) => candidateWeights[ base + j ] - candidateWeights[ base + i ] );
 
-						const seen = masks[ b ] !== 0 ? order.filter( ( k ) => ( masks[ b ] >> k ) & 1 ) : order;
+						const seen = params.thinWalls && masks[ b ] !== 0 ? order.filter( ( k ) => ( masks[ b ] >> k ) & 1 ) : order;
 						const kept = ofSurfels ? CANDIDATES : 4;
 						const weightOf = ( k ) => k >= seen.length ? 0 : candidateWeights[ base + seen[ k ] ];
 
@@ -3128,19 +3121,12 @@
 
 				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/space_ship_hallway.glb' );
 
-				const environment = await new UltraHDRLoader().loadAsync( 'textures/equirectangular/ice_planet_close.jpg' );
-
-				environment.mapping = THREE.EquirectangularReflectionMapping;
-
-				// lit by its emissive panels and by space through its windows, seen from one end to the other
-				// ponytail: the rays take glass as opaque, so the windows have none
-
-				gltf.scene.getObjectByName( 'highpolywall11_Glass_0' ).removeFromParent();
+				// lit by its emissive panels alone, seen from one end to the other
 
 				gltf.scene.position.sub( new THREE.Box3().setFromObject( gltf.scene ).getCenter( new THREE.Vector3() ) );
 				gltf.scene.traverse( ( object ) => object.isMesh && ( object.material.emissiveIntensity = 5 ) );
 
-				return { root: gltf.scene, sky: false, environment, environmentIntensity: 4, detailSize: 0.25, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
+				return { root: gltf.scene, sky: false, detailSize: 0.25, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
 
 			}
 

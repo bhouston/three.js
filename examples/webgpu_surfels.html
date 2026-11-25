@@ -283,6 +283,13 @@
 				gui.add( params, 'view', views ).name( 'View' ).onChange( setView );
 				gui.add( params, 'exposure', 0.05, 4, 0.01 ).name( 'Exposure' ).listen();
 
+				// the sun of the open scenes
+
+				const hurryUp = () => hurry = 30;
+
+				gui.add( params, 'azimuth', 0, 360, 1 ).name( 'Sun Azimuth' ).listen().onChange( hurryUp );
+				gui.add( params, 'altitude', 0, 90, 1 ).name( 'Sun Altitude' ).listen().onChange( hurryUp );
+
 				const layoutGui = gui.addFolder( 'Surfel Layout' );
 				layoutGui.add( params, 'detailSize', 0.05, 2, 0.01 ).name( 'Detail Size' ).listen().onChange( ( value ) => {
 
@@ -293,7 +300,6 @@
 				layoutGui.add( params, 'placement', Object.keys( placements ) ).name( 'Placement' ).onChange( bake );
 				layoutGui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 
-				const hurryUp = () => hurry = 30;
 				const updateTerms = () => {
 
 					terms.value.set( params.direct, params.sky, params.bounce, params.emissive );
@@ -301,7 +307,7 @@
 
 				};
 
-				const transportGui = gui.addFolder( 'Transport' );
+				const transportGui = gui.addFolder( 'Light Transport' );
 				transportGui.add( params, 'direct' ).name( 'Direct' ).onChange( updateTerms );
 				transportGui.add( params, 'sky' ).name( 'Sky' ).onChange( updateTerms );
 				transportGui.add( params, 'bounce' ).name( 'Bounce' ).onChange( updateTerms );
@@ -310,7 +316,7 @@
 				transportGui.add( params, 'hysteresis', 0.01, 1, 0.01 ).name( 'Hysteresis' );
 				transportGui.add( params, 'spread', 1, 16, 1 ).name( 'Update Spread (frames)' );
 
-				const lightMapGui = gui.addFolder( 'Lightmap' );
+				const lightMapGui = gui.addFolder( 'Lightmap Bake' );
 				lightMapGui.add( params, 'surfelTexels', 1, 8, 1 ).name( 'Texels per Surfel' ).onChange( bake ).debounce( 500 );
 				lightMapGui.add( params, 'thinWalls' ).name( 'Thin Wall Fix' ).onChange( bake );
 				lightMapGui.add( params, 'denoise' ).name( 'Denoise' );
@@ -318,12 +324,6 @@
 				lightMapGui.add( params, 'blur' ).name( 'Blur' );
 				lightMapGui.add( params, 'blurRadius', 0.5, 8, 0.5 ).name( 'Blur Radius (Surfels)' );
 				lightMapGui.add( params, 'blurStrength', 0.05, 1, 0.01 ).name( 'Blur Strength' );
-
-				// the sun of the open scenes
-
-				const lightingGui = gui.addFolder( 'Lighting' );
-				lightingGui.add( params, 'azimuth', 0, 360, 1 ).name( 'Sun Azimuth' ).listen().onChange( hurryUp );
-				lightingGui.add( params, 'altitude', 0, 90, 1 ).name( 'Sun Altitude' ).listen().onChange( hurryUp );
 
 				window.addEventListener( 'resize', onWindowResize );
 

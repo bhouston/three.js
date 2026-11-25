@@ -105,7 +105,7 @@ export const GeometryTerm = Fn( ( [ NoL, NoV, alphaG ] ) => {
 // Bounded VNDF direction PDF (reflection mapping), matching SampleGGXVNDF above.
 // p(L) = D_GTR(roughness, NoH, 2) / ( 2 * (k * N·V + t) )   (Eto & Tokuyoshi eq. 8)
 // with the isotropic cap bound k and t = ‖(α·V.xy, V.z)‖. Here 'roughness' is α, not α².
-const GGXVNDFPdf = Fn( ( [ NoH, NoV, roughness ] ) => {
+export const GGXVNDFPdf = Fn( ( [ NoH, NoV, roughness ] ) => {
 
 	const D = D_GTR( roughness, NoH, float( 2.0 ) ).toVar();
 	const a2 = roughness.mul( roughness ).toVar();
@@ -251,7 +251,6 @@ export const ggxReflectionSample = ( N, V, roughness, metalness, albedo, Xi, f0 
 
 /**
  * Equirectangular direction / UV / PDF helpers and MIS weighting shared by environment sampling code.
- * Env-miss MIS integration lives in {@link ImportanceSampledEnvironment}.
  *
  * Equirectangular parameterization helpers used with CDF importance sampling are adapted from
  * [three-gpu-pathtracer](https://github.com/gkjohnson/three-gpu-pathtracer).

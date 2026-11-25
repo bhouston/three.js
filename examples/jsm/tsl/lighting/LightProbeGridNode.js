@@ -1,5 +1,5 @@
 import { AnalyticLightNode, NodeUpdateType, Vector3 } from 'three/webgpu';
-import { INFINITY, If, array, getShIrradianceAt, normalWorld, positionWorld, renderGroup, step, texture3D, uniform, vec3 } from 'three/tsl';
+import { INFINITY, If, array, float, getShIrradianceAt, normalWorld, positionWorld, renderGroup, step, texture3D, uniform, vec3, vec4 } from 'three/tsl';
 
 // Padding texels at each boundary of every atlas sub-volume.
 export const ATLAS_PADDING = 1;
@@ -53,7 +53,7 @@ function evaluateGridIrradiance( atlas, uvw, res, normal ) {
  * Evaluates the irradiance of a light probe grid at the given world-space position and normal.
  *
  * @private
- * @param {LightProbeGrid} light - The light probe grid.
+ * @param {Texture3DNode} atlas - The atlas texture node of the grid.
  * @param {Node<vec3>} min - The minimum of the grid bounds.
  * @param {Node<vec3>} max - The maximum of the grid bounds.
  * @param {Node<vec3>} res - The probe resolution.
@@ -62,7 +62,7 @@ function evaluateGridIrradiance( atlas, uvw, res, normal ) {
  * @param {Node<vec3>} normal - The world-space normal.
  * @return {Node<vec3>} The irradiance.
  */
-function getGridIrradiance( light, min, max, res, intensity, position, normal ) {
+function getGridIrradiance( atlas, min, max, res, intensity, position, normal ) {
 
 	const range = max.sub( min );
 	const spacing = range.div( res );
@@ -74,7 +74,62 @@ function getGridIrradiance( light, min, max, res, intensity, position, normal ) 
 	const halfTexel = vec3( 0.5 ).div( res );
 	const uvw = samplePos.sub( min ).div( range ).clamp( halfTexel, halfTexel.oneMinus() );
 
-	return evaluateGridIrradiance( texture3D( light.texture ), uvw, res, normal ).mul( intensity );
+	return evaluateGridIrradiance( atlas, uvw, res, normal ).mul( intensity );
+
+}
+
+/**
+ * Returns whether a fragment is lit by a light probe grid, which is inside of its bounds.
+ *
+ * @private
+ * @param {Node<vec3>} min - The minimum of the grid bounds.
+ * @param {Node<vec3>} max - The maximum of the grid bounds.
+ * @param {Node<vec3>} res - The probe resolution.
+ * @param {Node<vec3>} normal - The world-space normal.
+ * @return {Node<bool>} Whether the fragment is inside of the grid.
+ */
+function isInsideGrid( min, max, res, normal ) {
+
+	const spacing = max.sub( min ).div( res );
+
+	// An axis with a single probe isn't offset along the normal, since that offset would span the whole grid.
+
+	const samplePos = positionWorld.add( normal.mul( spacing ).mul( 0.5 ).mul( step( 1.5, res ) ) );
+
+	// Grow the bounds by 1% of a cell, so fragments on the bounds aren't left out by
+	// precision errors or samples outside of the triangle.
+
+	const margin = spacing.mul( 0.01 );
+
+	return samplePos.greaterThanEqual( min.sub( margin ) ).all().and( samplePos.lessThanEqual( max.add( margin ) ).all() );
+
+}
+
+/**
+ * Returns a light probe grid as an indirect diffuse source for `builtinIndirectContext()`,
+ * see {@link LightProbeGrid#getDiffuseSource}.
+ *
+ * @private
+ * @param {LightProbeGrid} light - The light probe grid.
+ * @return {function(Object): Node<vec4>} The source.
+ */
+export function getGridDiffuseSource( light ) {
+
+	// the source follows the grid, whose bounds, resolution and atlas can be replaced
+
+	const min = uniform( new Vector3() ).onRenderUpdate( () => light.boundingBox.min );
+	const max = uniform( new Vector3() ).onRenderUpdate( () => light.boundingBox.max );
+	const res = uniform( new Vector3() ).onRenderUpdate( () => light.resolution );
+	const intensity = uniform( 1 ).onRenderUpdate( () => light.intensity );
+	const atlas = texture3D( light.texture ).onRenderUpdate( () => light.texture );
+
+	return ( { normal } ) => {
+
+		const irradiance = getGridIrradiance( atlas, min, max, res, intensity, positionWorld, normal );
+
+		return vec4( irradiance, 1 ).mul( float( isInsideGrid( min, max, res, normal ) ) );
+
+	};
 
 }
 
@@ -132,17 +187,7 @@ class LightProbeGridNode extends AnalyticLightNode {
 		const max = this._max;
 		const res = this._resolution;
 
-		const spacing = max.sub( min ).div( res );
-
-		// An axis with a single probe isn't offset along the normal, since that offset would span the whole grid.
-
-		const samplePos = positionWorld.add( normalWorld.mul( spacing ).mul( 0.5 ).mul( step( 1.5, res ) ) );
-
-		// Grow the bounds by 1% of a cell, so fragments on the bounds aren't left out by
-		// precision errors or samples outside of the triangle.
-
-		const margin = spacing.mul( 0.01 );
-		const inside = samplePos.greaterThanEqual( min.sub( margin ) ).all().and( samplePos.lessThanEqual( max.add( margin ) ).all() );
+		const inside = isInsideGrid( min, max, res, normalWorld );
 
 		builder.context.lightProbeIrradiance ||= vec3().toVar( 'lightProbeIrradiance' );
 		builder.context.lightProbePriority ||= INFINITY.negate().toVar( 'lightProbePriority' );
@@ -151,7 +196,7 @@ class LightProbeGridNode extends AnalyticLightNode {
 
 		If( inside.and( prioritized ), () => {
 
-			const irradiance = getGridIrradiance( light, min, max, res, this._intensity, positionWorld, normalWorld ).toConst();
+			const irradiance = getGridIrradiance( texture3D( light.texture ), min, max, res, this._intensity, positionWorld, normalWorld ).toConst();
 
 			// fragments can be located in multiple grids but only the one with the highest priority defines the irradiance,
 			// on ties the most recently created grid wins, see #34798

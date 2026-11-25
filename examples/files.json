@@ -504,6 +504,7 @@
 		"webgpu_sprites",
 		"webgpu_storage_buffer",
 		"webgpu_struct_drawindirect",
+		"webgpu_surfels",
 		"webgpu_test_memory",
 		"webgpu_texturegather",
 		"webgpu_texturegrad",

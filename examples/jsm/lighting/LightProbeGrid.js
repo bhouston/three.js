@@ -32,7 +32,7 @@ import {
 	vec4
 } from 'three/tsl';
 
-import { LightProbeGridNode, ATLAS_PADDING } from '../tsl/lighting/LightProbeGridNode.js';
+import { LightProbeGridNode, ATLAS_PADDING, getGridDiffuseSource } from '../tsl/lighting/LightProbeGridNode.js';
 import { replaceSunLights, restoreSunLights } from './LightProbeGridUtils.js';
 
 // Probes captured per render, six sub-cameras each.
@@ -494,6 +494,26 @@ class LightProbeGrid extends Light {
 		);
 
 		return target;
+
+	}
+
+	/**
+	 * Returns the grid as an indirect diffuse source for `builtinIndirectContext()`. Inside of its
+	 * bounds the grid then is the indirect diffuse light of the materials of that context, in
+	 * place of the diffuse light of the environment, where a grid that is added to the scene adds
+	 * to it on all lit materials. Do not add the grid to the scene as well.
+	 *
+	 * ```js
+	 * renderer.contextNode = builtinIndirectContext( { diffuse: [ probes.getDiffuseSource() ] } );
+	 * ```
+	 *
+	 * The source follows the bounds, the resolution, the intensity and the texture of the grid.
+	 *
+	 * @return {function(Object): Node<vec4>} The source: the irradiance, with a coverage of one inside of the grid.
+	 */
+	getDiffuseSource() {
+
+		return getGridDiffuseSource( this );
 
 	}
 

@@ -94,10 +94,14 @@
 			// the bits above
 
 			const RAYS = 1024;
-			const CLUSTER = 2, FAR = 1;
 			const BATCH = 2048;
 			const LINK_RAYS = 0x200000;
 			const MISS = 0, BACKFACE = 1, UNKNOWN = 2;
+
+			// the smallest clusters of the cluster tree, in surfel spacings, and from how many of its sizes away a
+			// surfel counts for the mean of a cluster
+
+			const CLUSTER = 2, FAR = 1;
 
 			// the lights of the surfels, two vec4 each: the position or the direction to the light with 1 for point
 			// lights in w, and the color times the intensity. And the SH of the radiance of the sky
@@ -291,17 +295,24 @@
 				gui.add( params, 'azimuth', 0, 360, 1 ).name( 'Sun Azimuth' ).listen().onChange( hurryUp );
 				gui.add( params, 'altitude', 0, 90, 1 ).name( 'Sun Altitude' ).listen().onChange( hurryUp );
 
-				const layoutGui = gui.addFolder( 'Surfel Layout' );
-				layoutGui.add( params, 'detailSize', 0.05, 2, 0.01 ).name( 'Detail Size' ).listen().onChange( ( value ) => {
+				// The settings that each scene has its own of. They follow the scene, which their controls report as
+				// a change like one of the user: only a value that the scene does not have bakes it again
 
-					world.detailSize = value;
+				const perScene = ( name ) => ( value ) => {
+
+					if ( world[ name ] === value ) return;
+
+					world[ name ] = value;
 					bake();
 
-				} ).debounce( 500 );
-				layoutGui.add( params, 'links', 16, 256, 16 ).name( 'Links per Surfel' ).onChange( bake ).debounce( 500 );
+				};
+
+				const layoutGui = gui.addFolder( 'Surfel Layout' );
+				layoutGui.add( params, 'detailSize', 0.05, 2, 0.01 ).name( 'Detail Size' ).listen().onChange( perScene( 'detailSize' ) ).debounce( 500 );
+				layoutGui.add( params, 'links', 16, 256, 16 ).name( 'Links per Surfel' ).listen().onChange( perScene( 'linkBudget' ) ).debounce( 500 );
 				layoutGui.add( params, 'budgetMethod', [ 'Stratified Random', 'Random', 'Largest', 'Cluster Tree' ] ).name( 'Budget Method' ).onChange( bake );
 				layoutGui.add( params, 'placement', Object.keys( placements ) ).name( 'Placement' ).onChange( bake );
-				layoutGui.add( params, 'adaptive' ).name( 'Adaptive Size (Sample Elimination)' ).onChange( bake );
+				layoutGui.add( params, 'adaptive' ).name( 'Adaptive Size (Sample Elimination)' ).listen().onChange( perScene( 'adaptive' ) );
 				layoutGui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 
 				const updateTerms = () => {
@@ -402,7 +413,15 @@
 				sun.shadow.normalBias = radius * 0.004;
 				sun.target.position.copy( world.bounds.center );
 
+				// The links and the sizes of the surfels that suit the scene. A cut of 64 links is within about 1% of
+				// all links where the light is even, like under the panel of the Cornell box. Where lights that are
+				// not surfels leave small bright spots, a point light close to a ceiling or the sun through a roof,
+				// the mean of a cluster is further off and the scene takes 128. Adaptive sizes save a quarter to a
+				// half of the surfels of open rooms, and none where the surfaces are small, as in the last two scenes
+
 				params.detailSize = world.detailSize;
+				params.links = world.linkBudget ??= 64;
+				params.adaptive = world.adaptive ??= false;
 
 				document.getElementById( 'report' ).textContent = world.report ?? '';
 
@@ -622,10 +641,11 @@
 
 					// A cut through the tree of clusters, from the top: the link that weighs most, by its rays and the
 					// size of its cluster, is split into the clusters or surfels below it until the budget is used up, so
-					// that no link gets much more of the light wrong than another. What takes up much of the view of the surfel stays surfels or small clusters,
-					// and what takes up little ends up in a large one. Like the cuts of Lightcuts and the form factors of
-					// Enlighten, which has a budget per texel over a tree of clusters. A cluster sends the mean light of
-					// its surfels, also of those that the surfel doesn't see, which leaves a bias
+					// that no link gets much more of the light wrong than another. What takes up much of the view of the
+					// surfel stays surfels or small clusters, and what takes up little ends up in a large one. Like the
+					// cuts of Lightcuts and the form factors of Enlighten, which has a budget per texel over a tree of
+					// clusters. A cluster sends the mean light of its surfels, also of those that the surfel doesn't see,
+					// which leaves a bias. Unlike links picked at random, it leaves no noise from surfel to surfel
 
 					'Cluster Tree': ( runs ) => {
 
@@ -1960,14 +1980,12 @@
 
 			function clusterSurfels( surfels, size, origin, extent ) {
 
-				const levels = [], starts = [], parent = [], sums = [];
+				const levels = [], sums = [];
 				const normal = decodeNormals( surfels.normal );
 
 				for ( let cell = size; cell < extent * 2; cell *= 2 ) {
 
-					const ids = new Map(), of = new Uint32Array( surfels.count ), below = levels[ levels.length - 1 ];
-
-					starts.push( sums.length );
+					const ids = new Map(), of = new Uint32Array( surfels.count );
 
 					for ( let i = 0; i < surfels.count; i ++ ) {
 
@@ -1979,13 +1997,10 @@
 
 							ids.set( key, sums.length );
 							sums.push( [ 0, 0, 0, 0 ] );
-							parent.push( 0 );
 
 						}
 
 						of[ i ] = ids.get( key );
-
-						if ( below !== undefined ) parent[ below[ i ] ] = of[ i ];
 
 						const sum = sums[ of[ i ] ];
 
@@ -1997,7 +2012,7 @@
 
 				}
 
-				return { count: sums.length, levels, starts, parent, sizes: Float32Array.from( sums, ( sum ) => sum[ 3 ] ), center: new Float32Array( sums.flatMap( ( sum ) => [ sum[ 0 ] / sum[ 3 ], sum[ 1 ] / sum[ 3 ], sum[ 2 ] / sum[ 3 ] ] ) ) };
+				return { count: sums.length, levels, sizes: Float32Array.from( sums, ( sum ) => sum[ 3 ] ), center: new Float32Array( sums.flatMap( ( sum ) => [ sum[ 0 ] / sum[ 3 ], sum[ 1 ] / sum[ 3 ], sum[ 2 ] / sum[ 3 ] ] ) ) };
 
 			}
 
@@ -3109,7 +3124,7 @@
 				add( new THREE.SphereGeometry( 0.65, 32, 32 ), sphereMaterial, 1, 0.65, 0.5 );
 				add( new THREE.PlaneGeometry( 2, 2 ), lightMaterial, 0, 4.99, 0, Math.PI / 2 );
 
-				return { root, sky: true, detailSize: 0.25, camera: new THREE.Vector3( 0, 2.5, 8.75 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
+				return { root, sky: true, detailSize: 0.25, adaptive: true, camera: new THREE.Vector3( 0, 2.5, 8.75 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
 
 			}
 
@@ -3209,7 +3224,7 @@
 
 				}
 
-				return { root, sky: false, detailSize: 0.25, camera: new THREE.Vector3( - 7.5, 2.5, 0 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
+				return { root, sky: false, detailSize: 0.25, linkBudget: 128, adaptive: true, camera: new THREE.Vector3( - 7.5, 2.5, 0 ), target: new THREE.Vector3( 0, 2.5, 0 ) };
 
 			}
 
@@ -3222,7 +3237,7 @@
 				gltf.scene.position.sub( new THREE.Box3().setFromObject( gltf.scene ).getCenter( new THREE.Vector3() ) );
 				gltf.scene.traverse( ( object ) => object.isMesh && ( object.material.emissiveIntensity = 5 ) );
 
-				return { root: gltf.scene, sky: false, detailSize: 0.5, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
+				return { root: gltf.scene, sky: false, detailSize: 0.5, linkBudget: 128, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
 
 			}
 
@@ -3235,7 +3250,7 @@
 
 				for ( const light of lights ) light.removeFromParent();
 
-				return { root: gltf.scene, sky: true, sun: [ 206, 72 ], exposure: 2, detailSize: 0.5, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
+				return { root: gltf.scene, sky: true, sun: [ 206, 72 ], exposure: 2, detailSize: 0.5, linkBudget: 128, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
 
 			}
 

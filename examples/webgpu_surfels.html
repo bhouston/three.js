@@ -72,6 +72,10 @@
 
 			let loading = true;
 
+			// after a jump of the time of day or of the transport, the bounces settle faster for some frames
+
+			let previousTime = 0, hurry = 0;
+
 			const progress = document.getElementById( 'progress' );
 
 			const lightPosition = new THREE.Vector3();
@@ -310,7 +314,12 @@
 				gui.add( params, 'dayLength', 10, 300, 1 ).name( 'Day Length (s)' );
 
 				const giGui = gui.addFolder( 'Transport' );
-				const updateTerms = () => terms.value.set( params.direct, params.sky, params.bounce, params.emissive );
+				const updateTerms = () => {
+
+					terms.value.set( params.direct, params.sky, params.bounce, params.emissive );
+					hurry = 30;
+
+				};
 
 				giGui.add( params, 'direct' ).name( 'Direct' ).onChange( updateTerms );
 				giGui.add( params, 'sky' ).name( 'Sky' ).onChange( updateTerms );
@@ -3141,9 +3150,15 @@
 
 					updateLights();
 
-					// the bounces settle faster while the scene is hidden
+					// more than a quarter of an hour in a frame is a jump
 
-					for ( let i = ready ? 1 : 16; i > 0; i -- ) surfelsChanged = world.lighting.update() || surfelsChanged;
+					if ( Math.abs( params.timeOfDay - previousTime ) > 0.25 ) hurry = 30;
+
+					previousTime = params.timeOfDay;
+
+					// the bounces settle faster while the scene is hidden, and after a jump
+
+					for ( let i = ready ? ( hurry -- > 0 ? 8 : 1 ) : 16; i > 0; i -- ) surfelsChanged = world.lighting.update() || surfelsChanged;
 
 				}
 

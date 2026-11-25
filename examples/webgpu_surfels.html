@@ -39,13 +39,14 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Loop, Return, builtinIndirectContext, cross, dFdx, dFdy, dot, float, getShIrradianceAt, instanceIndex, luminance, materialColor, materialEmissive, mrt, normalWorld, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, Return, builtinIndirectContext, cross, dFdx, dFdy, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
@@ -123,13 +124,12 @@
 			const lightMapNode = texture( new THREE.Texture(), uv( 1 ) );
 
 			// The reflections of the meshes with a light map. The environment is not occluded: on its own it lights
-			// the inside of a building like the open sky does. So it keeps the part that the light map holds of the
-			// irradiance of the open sky, and the rest reflects the light of the surfels
+			// the inside of a building like the open sky does. So it keeps the share of the sky that the surfels
+			// see, which the light map holds in its alpha, and the rest reflects the light of the surfels
 
 			const reflections = Fn( () => {
 
-				const open = luminance( getShIrradianceAt( normalWorld, environmentSH ) ).max( 0 );
-				const blocked = luminance( lightMapNode.rgb ).min( open ).div( open.max( 1e-4 ) ).oneMinus().mul( giAmount ).toVar();
+				const blocked = lightMapNode.a.oneMinus().mul( giAmount ).toVar();
 
 				return vec4( lightMapNode.rgb.div( Math.PI ).mul( blocked ), blocked );
 
@@ -372,14 +372,22 @@
 				controls.target.copy( world.target );
 				controls.update();
 
-				// closed scenes have no sky and no sun, only their own lights
+				// closed scenes have no sky and no sun, only their own lights, or an environment map in place of the sky
 
 				if ( ! world.sky ) environmentSH.array.forEach( ( vector ) => vector.set( 0, 0, 0 ) );
 
 				sun.visible = world.sky;
-				scene.background = world.sky ? null : new THREE.Color( 0x111111 );
-				scene.environment = world.sky ? cubeCamera.renderTarget.texture : null;
+				scene.background = world.sky ? null : world.environment ?? new THREE.Color( 0x111111 );
+				scene.backgroundIntensity = world.environmentIntensity ?? 1;
+				scene.environment = world.sky || world.environment ? cubeCamera.renderTarget.texture : null;
 				environmentSunDirection.set( 0, 0, 0 );
+
+				if ( world.environment ) {
+
+					cubeCamera.update( renderer, scene );
+					updateEnvironmentSH();
+
+				}
 
 				// the shadow of the sun covers the bounds of the scene
 
@@ -1240,8 +1248,13 @@
 				const filter = Fn( () => {
 
 					const read = storage( attribute, 'vec4' ).toReadOnly();
-					const indirect = ( surfel ) => read.element( surfel.mul( uint( 4 ) ).add( uint( 1 ) ) ).rgb.mul( terms.y ).add( read.element( surfel.mul( uint( 4 ) ).add( uint( 2 ) ) ).rgb.mul( terms.z ) );
-					const sum = vec3( 0 ).toVar();
+					// with the share of the sky that the surfel sees in w, for the reflections
+
+					const indirect = ( surfel ) => vec4(
+						read.element( surfel.mul( uint( 4 ) ).add( uint( 1 ) ) ).rgb.mul( terms.y ).add( read.element( surfel.mul( uint( 4 ) ).add( uint( 2 ) ) ).rgb.mul( terms.z ) ),
+						skyBuffer.element( surfel.mul( uint( 9 ) ) ).div( Math.PI * 0.282095 ).clamp()
+					);
+					const sum = vec4( 0 ).toVar();
 
 					Loop( { start: uint( 0 ), end: uint( FILTER ), type: 'uint', condition: '<' }, ( { i } ) => {
 
@@ -1251,7 +1264,7 @@
 
 					} );
 
-					storage( filtered, 'vec4' ).element( instanceIndex ).assign( vec4( mix( indirect( instanceIndex ), sum, strength ), 1 ) );
+					storage( filtered, 'vec4' ).element( instanceIndex ).assign( mix( indirect( instanceIndex ), sum, strength ) );
 
 				} )().compute( count );
 
@@ -1262,11 +1275,11 @@
 					const texel = resolveBuffers[ 0 ].element( instanceIndex ).toVar();
 					const surfels = resolveBuffers[ 1 ].element( instanceIndex ).toVar();
 					const blend = resolveBuffers[ 2 ].element( instanceIndex ).toVar();
-					const indirect = vec3( 0 ).toVar();
+					const indirect = vec4( 0 ).toVar();
 
-					for ( const c of [ 'x', 'y', 'z', 'w' ] ) indirect.addAssign( storage( filtered, 'vec4' ).toReadOnly().element( surfels[ c ] ).rgb.mul( blend[ c ] ) );
+					for ( const c of [ 'x', 'y', 'z', 'w' ] ) indirect.addAssign( storage( filtered, 'vec4' ).toReadOnly().element( surfels[ c ] ).mul( blend[ c ] ) );
 
-					textureStore( lightMap, uvec2( texel.bitAnd( uint( 0xffff ) ), texel.shiftRight( uint( 16 ) ) ), vec4( indirect, 1 ) );
+					textureStore( lightMap, uvec2( texel.bitAnd( uint( 0xffff ) ), texel.shiftRight( uint( 16 ) ) ), indirect );
 
 				} )().compute( lightMapLinks.texels.length );
 
@@ -3082,12 +3095,19 @@
 
 				const gltf = await new GLTFLoader().loadAsync( 'models/gltf/space_ship_hallway.glb' );
 
-				// lit by its emissive panels alone, seen from one end to the other
+				const environment = await new UltraHDRLoader().loadAsync( 'textures/equirectangular/ice_planet_close.jpg' );
+
+				environment.mapping = THREE.EquirectangularReflectionMapping;
+
+				// lit by its emissive panels and by space through its windows, seen from one end to the other
+				// ponytail: the rays take glass as opaque, so the windows have none
+
+				gltf.scene.getObjectByName( 'highpolywall11_Glass_0' ).removeFromParent();
 
 				gltf.scene.position.sub( new THREE.Box3().setFromObject( gltf.scene ).getCenter( new THREE.Vector3() ) );
 				gltf.scene.traverse( ( object ) => object.isMesh && ( object.material.emissiveIntensity = 5 ) );
 
-				return { root: gltf.scene, sky: false, detailSize: 0.25, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
+				return { root: gltf.scene, sky: false, environment, environmentIntensity: 4, detailSize: 0.25, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
 
 			}
 

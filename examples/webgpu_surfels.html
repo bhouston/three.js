@@ -2407,6 +2407,12 @@
 				const count = covered.length;
 				const point = new Float32Array( count * 6 );
 
+				// A light is a surface of its own, also where it lies on another one, like a panel on a ceiling: its
+				// points do not crowd those of the surface under it, and its texels do not share their surfels, or
+				// the surfels of the two would mix what the light emits with the surface that it hides
+
+				const emits = ( t ) => half( atlas.emissive[ t * 4 ] ) + half( atlas.emissive[ t * 4 + 1 ] ) + half( atlas.emissive[ t * 4 + 2 ] ) > 0;
+
 				for ( let i = 0; i < count; i ++ ) {
 
 					for ( let c = 0; c < 3; c ++ ) {
@@ -2429,7 +2435,7 @@
 
 					const a = i * 6, b = j * 6;
 
-					if ( point[ a + 3 ] * point[ b + 3 ] + point[ a + 4 ] * point[ b + 4 ] + point[ a + 5 ] * point[ b + 5 ] < 0.7 ) return 0;
+					if ( point[ a + 3 ] * point[ b + 3 ] + point[ a + 4 ] * point[ b + 4 ] + point[ a + 5 ] * point[ b + 5 ] < 0.7 || lights[ i ] !== lights[ j ] ) return 0;
 
 					// the distances count relative to the size of the surfels at the points
 
@@ -2440,7 +2446,7 @@
 				};
 
 				const points = hashGrid( reach * GROW );
-				const weight = new Float32Array( count );
+				const weight = new Float32Array( count ), lights = Uint8Array.from( covered, emits );
 
 				for ( let i = 0; i < count; i ++ ) points.add( i, point[ i * 6 ], point[ i * 6 + 1 ], point[ i * 6 + 2 ] );
 
@@ -2542,7 +2548,7 @@
 
 				function assign( t ) {
 
-					const side = Math.round( half( atlas.normal[ t * 4 + 3 ] ) );
+					const side = Math.round( half( atlas.normal[ t * 4 + 3 ] ) ), light = emits( t );
 					const px = half( atlas.position[ t * 4 ] ), py = half( atlas.position[ t * 4 + 1 ] ), pz = half( atlas.position[ t * 4 + 2 ] );
 					const nx = half( atlas.normal[ t * 4 ] ), ny = half( atlas.normal[ t * 4 + 1 ] ), nz = half( atlas.normal[ t * 4 + 2 ] );
 
@@ -2550,7 +2556,7 @@
 
 					surfels.each( px, py, pz, ( i ) => {
 
-						if ( sides[ i ] !== side ) return;
+						if ( sides[ i ] !== side || emits( seeds[ i ] ) !== light ) return;
 
 						const dx = data.position[ i * 3 ] - px, dy = data.position[ i * 3 + 1 ] - py, dz = data.position[ i * 3 + 2 ] - pz;
 						const distance = Math.hypot( dx, dy, dz );
@@ -2578,7 +2584,7 @@
 
 				for ( let t = 0; t < size * size; t ++ ) {
 
-					if ( atlas.position[ t * 4 + 3 ] === 0 || texelMap[ t ] !== 0 || half( atlas.emissive[ t * 4 ] ) + half( atlas.emissive[ t * 4 + 1 ] ) + half( atlas.emissive[ t * 4 + 2 ] ) === 0 ) continue;
+					if ( atlas.position[ t * 4 + 3 ] === 0 || texelMap[ t ] !== 0 || ! emits( t ) ) continue;
 
 					if ( ! assign( t ) ) {
 

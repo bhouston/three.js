@@ -2379,22 +2379,70 @@
 
 				}
 
-				// the texels whose center is covered, and a random five times the surfels of them
+				// The texels whose center is covered, flat and curved. A surface is curved where the normal turns by
+				// more than 15 degrees without a crease within half the spacing: its surfels have half the radius, as
+				// on the grid
+				// ponytail: a curved surface of charts of a texel or two has too few such texels for more surfels
 
-				const covered = [];
+				const all = [], near = hashGrid( spacing / 2 );
 
-				for ( let t = 0; t < size * size; t ++ ) if ( atlas.position[ t * 4 + 3 ] !== 0 && half( atlas.albedo[ t * 4 + 3 ] ) >= 1 ) covered.push( t );
+				for ( let t = 0; t < size * size; t ++ ) {
 
-				const area = covered.length * texelSize * texelSize;
+					if ( atlas.position[ t * 4 + 3 ] === 0 || half( atlas.albedo[ t * 4 + 3 ] ) < 1 ) continue;
+
+					near.add( all.length / 7, half( atlas.position[ t * 4 ] ), half( atlas.position[ t * 4 + 1 ] ), half( atlas.position[ t * 4 + 2 ] ) );
+
+					for ( let c = 0; c < 3; c ++ ) all.push( half( atlas.position[ t * 4 + c ] ) );
+					for ( let c = 0; c < 3; c ++ ) all.push( half( atlas.normal[ t * 4 + c ] ) );
+
+					all.push( t );
+
+				}
+
+				const flat = [], curved = [];
+
+				for ( let a = 0; a < all.length; a += 7 ) {
+
+					let turns = false;
+
+					near.each( all[ a ], all[ a + 1 ], all[ a + 2 ], ( j ) => {
+
+						const b = j * 7;
+						const facing = all[ a + 3 ] * all[ b + 3 ] + all[ a + 4 ] * all[ b + 4 ] + all[ a + 5 ] * all[ b + 5 ];
+
+						if ( facing > 0.7 && facing < 0.966 && Math.hypot( all[ a ] - all[ b ], all[ a + 1 ] - all[ b + 1 ], all[ a + 2 ] - all[ b + 2 ] ) < spacing / 2 ) turns = true;
+
+					} );
+
+					( turns ? curved : flat ).push( all[ a + 6 ] );
+
+				}
+
+				// a random five times the surfels of each of them, the curved ones first. A curved surface holds four
+				// times the surfels, and counts as four times its area
+
+				const shuffle = ( list, count ) => {
+
+					for ( let i = 0; i < count; i ++ ) {
+
+						const other = i + Math.floor( Math.random() * ( list.length - i ) );
+
+						[ list[ i ], list[ other ] ] = [ list[ other ], list[ i ] ];
+
+					}
+
+					return list.slice( 0, count );
+
+				};
+
+				const area = ( flat.length + curved.length * 4 ) * texelSize * texelSize;
 				const target = Math.max( 1, Math.round( area / ( spacing * spacing ) ) );
-				const count = Math.min( covered.length, target * 5 );
+				const fine = Math.min( curved.length, Math.round( curved.length * 4 * texelSize * texelSize / ( spacing * spacing ) ) * 5 );
+				const covered = shuffle( curved, fine ).concat( shuffle( flat, Math.min( flat.length, Math.round( flat.length * texelSize * texelSize / ( spacing * spacing ) ) * 5 ) ) );
+				const count = covered.length;
 				const point = new Float32Array( count * 6 );
 
 				for ( let i = 0; i < count; i ++ ) {
-
-					const other = i + Math.floor( Math.random() * ( covered.length - i ) );
-
-					[ covered[ i ], covered[ other ] ] = [ covered[ other ], covered[ i ] ];
 
 					for ( let c = 0; c < 3; c ++ ) {
 
@@ -2418,7 +2466,10 @@
 
 					if ( point[ a + 3 ] * point[ b + 3 ] + point[ a + 4 ] * point[ b + 4 ] + point[ a + 5 ] * point[ b + 5 ] < 0.7 ) return 0;
 
-					const distance = Math.hypot( point[ a ] - point[ b ], point[ a + 1 ] - point[ b + 1 ], point[ a + 2 ] - point[ b + 2 ] );
+					// the distances count twice between the points of curved surfaces, and a third more between one
+					// of them and another
+
+					const distance = Math.hypot( point[ a ] - point[ b ], point[ a + 1 ] - point[ b + 1 ], point[ a + 2 ] - point[ b + 2 ] ) * 4 / ( ( i < fine ? 1 : 2 ) + ( j < fine ? 1 : 2 ) );
 
 					return distance < reach ? ( 1 - distance / reach ) ** 8 : 0;
 

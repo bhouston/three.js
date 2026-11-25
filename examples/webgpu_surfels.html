@@ -90,7 +90,8 @@
 
 			// the transfer bake: rays per surfel (a power of two) and surfels traced per dispatch. A ray ends as a
 			// miss, on a back face, on a texel without a surfel, or on surfel j as j + 3.
-			// A link is the surfel that rays hit, with their number in the bits above
+			// A link is the surfel that rays hit or, past the surfels, a cluster of them, with the number of rays in
+			// the bits above
 
 			const RAYS = 1024;
 			const BATCH = 2048;
@@ -195,6 +196,7 @@
 				detailSize: 0.25,
 				surfelTexels: 4,
 				links: 128,
+				budgetMethod: 'Stratified Random',
 				azimuth: 40,
 				altitude: 12,
 				exposure: 0.5,
@@ -295,6 +297,7 @@
 
 				} ).debounce( 500 );
 				layoutGui.add( params, 'links', 16, 256, 16 ).name( 'Links per Surfel' ).onChange( bake ).debounce( 500 );
+				layoutGui.add( params, 'budgetMethod', [ 'Stratified Random', 'Random', 'Largest', 'Cluster Tree' ] ).name( 'Budget Method' ).onChange( bake );
 				layoutGui.add( params, 'placement', Object.keys( placements ) ).name( 'Placement' ).onChange( bake );
 				layoutGui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 
@@ -539,6 +542,114 @@
 				const { surfels, atlas, detailSize } = world;
 				const { count, texelMap } = surfels;
 				const rank = mortonRanks( surfels.position, count, detailSize * 4 );
+				const budget = params.links;
+
+				// only the cluster tree links to clusters
+
+				const clusters = surfels.clusters = params.budgetMethod === 'Cluster Tree' ? clusterSurfels( surfels, detailSize * 4, world.bounds.center.clone().subScalar( world.bounds.radius ) ) : { count: 0, levels: [] };
+
+				// The ways to bring the links of a surfel, each a surfel with its rays, down to the budget. The links are
+				// scaled below so that they carry the light of all hits
+
+				const reduce = {
+
+					// At random, which leaves noise that the filter of the light map removes. Stratified, so that there
+					// is less of it: one ray is kept per stride of rays along the links in the order of a Morton curve,
+					// from a random start. A large link keeps its share of the rays, and of the small ones of a region
+					// one stands for all
+
+					'Stratified Random': ( runs ) => {
+
+						runs.sort( ( a, b ) => rank[ a[ 0 ] ] - rank[ b[ 0 ] ] );
+
+						const stride = runs.reduce( ( sum, link ) => sum + link[ 1 ], 0 ) / budget;
+
+						let next = Math.random() * stride, sum = 0, kept = 0;
+
+						for ( const [ target, rays ] of runs ) {
+
+							let strides = 0;
+
+							for ( sum += rays; next < sum; next += stride ) strides ++;
+
+							if ( strides > 0 ) runs[ kept ++ ] = [ target, strides ];
+
+						}
+
+						runs.length = kept;
+
+					},
+
+					// as many of the rays as the budget, picked at random
+
+					'Random': ( runs ) => {
+
+						const pool = runs.flatMap( ( [ target, rays ] ) => Array( rays ).fill( target ) ), kept = new Map();
+
+						for ( let k = 0; k < budget; k ++ ) {
+
+							const other = k + Math.floor( Math.random() * ( pool.length - k ) );
+
+							[ pool[ k ], pool[ other ] ] = [ pool[ other ], pool[ k ] ];
+							kept.set( pool[ k ], ( kept.get( pool[ k ] ) ?? 0 ) + 1 );
+
+						}
+
+						runs.length = 0;
+						runs.push( ...kept );
+
+					},
+
+					// The links with the most rays. Many links have a ray or two, so they are shuffled first: the sort
+					// would keep the surfels with low indices
+
+					'Largest': ( runs ) => {
+
+						for ( let k = runs.length - 1; k > 0; k -- ) {
+
+							const other = Math.floor( Math.random() * ( k + 1 ) );
+
+							[ runs[ k ], runs[ other ] ] = [ runs[ other ], runs[ k ] ];
+
+						}
+
+						runs.sort( ( a, b ) => b[ 1 ] - a[ 1 ] ).length = budget;
+
+					},
+
+					// The links with the fewest rays merge into the cluster above them, again and again: what sends much
+					// light stays a surfel or a small cluster, and what sends little ends up in a large one. Like the
+					// form factors of Enlighten, which has a budget per texel over a tree of clusters. A cluster sends
+					// the mean light of its surfels, also of those that the surfel doesn't see, which leaves a bias
+
+					'Cluster Tree': ( runs ) => {
+
+						const targets = new Map( runs ), top = count + clusters.starts[ clusters.levels.length - 1 ];
+
+						while ( targets.size > budget ) {
+
+							const small = [ ...targets ].filter( ( [ target ] ) => target < top ).sort( ( a, b ) => a[ 1 ] - b[ 1 ] );
+
+							if ( small.length === 0 ) break;
+
+							for ( let k = 0, merges = Math.min( targets.size - budget, small.length ); k < merges; k ++ ) {
+
+								const target = small[ k ][ 0 ];
+								const above = count + ( target < count ? clusters.levels[ 0 ][ target ] : clusters.parent[ target - count ] );
+
+								targets.set( above, ( targets.get( above ) ?? 0 ) + targets.get( target ) );
+								targets.delete( target );
+
+							}
+
+						}
+
+						runs.length = 0;
+						runs.push( ...targets );
+
+					}
+
+				}[ params.budgetMethod ];
 				const size = atlas.layout.resolution;
 
 				// world space triangles that are not shared, so each one carries its light map UVs. Mirrored
@@ -771,7 +882,6 @@
 				// reduce each batch
 
 				const offsets = new Uint32Array( count + 1 );
-				const budget = params.links;
 				const packed = new Uint32Array( count * budget );
 				const received = new Uint16Array( count );
 				const skyTransfer = new Float32Array( count * 9 );
@@ -855,33 +965,7 @@
 
 						}
 
-						// Over the budget, the links are pruned at random, which leaves noise that the filter of the light map
-						// removes, where merging them would leave a bias. Stratified, so that there is less of it: one ray is
-						// kept per stride of rays along the links in the order of a Morton curve, from a random start. A large
-						// link keeps its share of the rays, and of the small ones of a region one stands for all. The links
-						// are scaled below so that they carry the light of all hits
-
-						if ( runs.length > budget ) {
-
-							runs.sort( ( a, b ) => rank[ a[ 0 ] ] - rank[ b[ 0 ] ] );
-
-							const stride = runs.reduce( ( sum, link ) => sum + link[ 1 ], 0 ) / budget;
-
-							let next = Math.random() * stride, sum = 0, kept = 0;
-
-							for ( const [ target, rays ] of runs ) {
-
-								let strides = 0;
-
-								for ( sum += rays; next < sum; next += stride ) strides ++;
-
-								if ( strides > 0 ) runs[ kept ++ ] = [ target, strides ];
-
-							}
-
-							runs.length = kept;
-
-						}
+						if ( runs.length > budget ) reduce( runs );
 
 						for ( const [ target, rays ] of runs ) packed[ links ++ ] = target + rays * LINK_RAYS;
 
@@ -928,6 +1012,12 @@
 
 				};
 
+				// the clusters that are left with a surfel that is lit
+
+				const alive = new Uint8Array( clusters.count );
+
+				for ( let i = 0; i < count; i ++ ) if ( invalid[ i ] === 0 ) for ( const of of clusters.levels ) alive[ of[ i ] ] = 1;
+
 				// the links to what is left, in place, and what a ray of each surfel weighs: the kept links carry the
 				// light of all hits
 
@@ -944,7 +1034,7 @@
 					for ( let l = offsets[ i ]; l < offsets[ i + 1 ]; l ++ ) {
 
 						const target = packed[ l ] % LINK_RAYS, linkRays = Math.floor( packed[ l ] / LINK_RAYS );
-						const moved = remap[ target ];
+						const moved = target < count ? remap[ target ] : alive[ target - count ] ? kept + target - count : - 1;
 
 						if ( moved < 0 ) {
 
@@ -974,6 +1064,8 @@
 				texelBuffer.value.needsUpdate = true;
 
 				for ( const [ name, itemSize ] of [[ 'position', 3 ], [ 'normal', 2 ], [ 'radius', 1 ], [ 'albedo', 3 ], [ 'emissive', 3 ], [ 'pair', 1 ]] ) surfels[ name ] = compact( surfels[ name ], itemSize );
+
+				clusters.levels = clusters.levels.map( ( of ) => compact( of, 1 ) );
 
 				surfels.count = kept;
 
@@ -1009,7 +1101,11 @@
 				const { rayBuffer, visibility, skyTransfer, offsets, links, scales, invalid } = world.transfer;
 
 				const skyBuffer = storage( new THREE.StorageBufferAttribute( skyTransfer, 1 ), 'float' ).toReadOnly();
-				const attribute = new THREE.StorageBufferAttribute( new Float32Array( count * 16 ), 4 );
+				const clusters = world.surfels.clusters;
+
+				// the clusters follow the surfels, with the mean radiosity of their surfels
+
+				const attribute = new THREE.StorageBufferAttribute( new Float32Array( ( count + clusters.count ) * 16 ), 4 );
 				const irradiance = storage( attribute, 'vec4' );
 
 				// the elements that a pass updates this frame: one in `spread`, shifted by the phase
@@ -1065,9 +1161,15 @@
 
 				const material = new Float32Array( count * 8 );
 
+				// the surfels of each cluster, without the buried ones
+
+				const members = Array.from( { length: clusters.count }, () => [] );
+
 				for ( let i = 0; i < count; i ++ ) {
 
 					if ( invalid[ i ] ) continue;
+
+					for ( const of of clusters.levels ) members[ of[ i ] ].push( i );
 
 					material[ i * 8 + 3 ] = scales[ i ];
 
@@ -1080,13 +1182,54 @@
 
 				}
 
+				// weighted by their area
+
+				const memberOffsets = new Uint32Array( clusters.count + 1 );
+
+				members.forEach( ( list, c ) => memberOffsets[ c + 1 ] = memberOffsets[ c ] + list.length );
+
+				const memberIndices = new Uint32Array( Math.max( memberOffsets[ clusters.count ], 1 ) ), memberWeights = new Float32Array( memberIndices.length );
+
+				members.forEach( ( list, c ) => {
+
+					const area = list.reduce( ( sum, i ) => sum + world.surfels.radius[ i ] ** 2, 0 );
+
+					list.forEach( ( i, m ) => {
+
+						memberIndices[ memberOffsets[ c ] + m ] = i;
+						memberWeights[ memberOffsets[ c ] + m ] = world.surfels.radius[ i ] ** 2 / area;
+
+					} );
+
+				} );
+
 				const buffers = [
 					storage( new THREE.StorageBufferAttribute( material, 4 ), 'vec4' ).toReadOnly(),
 					storage( new THREE.StorageBufferAttribute( offsets, 1 ), 'uint' ).toReadOnly(),
-					storage( new THREE.StorageBufferAttribute( links, 1 ), 'uint' ).toReadOnly()
+					storage( new THREE.StorageBufferAttribute( links, 1 ), 'uint' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( memberOffsets, 1 ), 'uint' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( memberIndices, 1 ), 'uint' ).toReadOnly(),
+					storage( new THREE.StorageBufferAttribute( memberWeights, 1 ), 'float' ).toReadOnly()
 				];
 
-				const [ materialBuffer, offsetBuffer, linkBuffer ] = buffers;
+				const [ materialBuffer, offsetBuffer, linkBuffer, memberOffsetBuffer, memberIndexBuffer, memberWeightBuffer ] = buffers;
+
+				// the radiosity of each cluster, from the radiosity of its surfels after the last iteration
+				// ponytail: every cluster sums its surfels, sum the clusters below it if the large ones get slow
+
+				const average = clusters.count === 0 ? null : Fn( () => {
+
+					const sum = vec3( 0 ).toVar();
+
+					Loop( { start: memberOffsetBuffer.element( instanceIndex ), end: memberOffsetBuffer.element( instanceIndex.add( uint( 1 ) ) ), type: 'uint', condition: '<' }, ( { i } ) => {
+
+						sum.addAssign( irradiance.element( memberIndexBuffer.element( i ).mul( uint( 4 ) ).add( uint( 3 ) ) ).rgb.mul( memberWeightBuffer.element( i ) ) );
+
+					} );
+
+					irradiance.element( instanceIndex.add( uint( count ) ).mul( uint( 4 ) ).add( uint( 3 ) ) ).assign( vec4( sum, 1 ) );
+
+				} )().compute( clusters.count );
 
 				// the radiosity of the previous and of the current iteration, which swap
 
@@ -1112,11 +1255,13 @@
 
 					Loop( { start: offsetBuffer.element( instanceIndex ), end: offsetBuffer.element( instanceIndex.add( uint( 1 ) ) ), type: 'uint', condition: '<' }, ( { i } ) => {
 
-						// the radiosity of the surfel in the previous iteration
+						// a surfel of the previous iteration, or a cluster
 
 						const link = linkBuffer.element( i ).toVar();
+						const target = link.bitAnd( uint( LINK_RAYS - 1 ) ).toVar();
+						const source = select( target.lessThan( uint( count ) ), previous.element( target.min( uint( count - 1 ) ) ).rgb, irradiance.element( target.mul( uint( 4 ) ).add( uint( 3 ) ) ).rgb );
 
-						bounce.addAssign( previous.element( link.bitAnd( uint( LINK_RAYS - 1 ) ) ).rgb.mul( float( link.shiftRight( uint( Math.log2( LINK_RAYS ) ) ) ) ) );
+						bounce.addAssign( source.mul( float( link.shiftRight( uint( Math.log2( LINK_RAYS ) ) ) ) ) );
 
 					} );
 
@@ -1266,6 +1411,8 @@
 
 						phase.value = iteration % frames;
 
+						if ( average !== null ) renderer.compute( average );
+
 						renderer.compute( gather[ iteration ++ % 2 ] );
 
 					}
@@ -1325,6 +1472,8 @@
 					attribute.dispose();
 
 					for ( const node of gather ) node.dispose();
+
+					average?.dispose();
 
 					for ( const buffer of buffers ) buffer.value.dispose();
 					for ( const buffer of radiosity ) buffer.dispose();
@@ -1728,6 +1877,53 @@
 					environmentSHPending = environmentSHPending > pending ? 1 : 0;
 
 				}
+
+			}
+
+			// A tree of clusters. A cluster is the surfels of a cell of a grid that face along the same axis, and the
+			// cells of a level are twice as large as the ones below, up to one cell that holds the scene
+
+			function clusterSurfels( surfels, size, origin ) {
+
+				const levels = [], starts = [], parent = [], sums = [];
+				const normal = decodeNormals( surfels.normal );
+
+				for ( let cell = size, cells = Infinity; cells > 6; cell *= 2 ) {
+
+					const ids = new Map(), of = new Uint32Array( surfels.count ), below = levels[ levels.length - 1 ];
+
+					starts.push( sums.length );
+
+					for ( let i = 0; i < surfels.count; i ++ ) {
+
+						const p = surfels.position.subarray( i * 3, i * 3 + 3 ), n = normal.subarray( i * 3, i * 3 + 3 );
+						const axis = Math.abs( n[ 0 ] ) > Math.abs( n[ 1 ] ) ? ( Math.abs( n[ 0 ] ) > Math.abs( n[ 2 ] ) ? 0 : 2 ) : ( Math.abs( n[ 1 ] ) > Math.abs( n[ 2 ] ) ? 1 : 2 );
+						const key = `${ Math.floor( ( p[ 0 ] - origin.x ) / cell ) },${ Math.floor( ( p[ 1 ] - origin.y ) / cell ) },${ Math.floor( ( p[ 2 ] - origin.z ) / cell ) },${ axis * 2 + ( n[ axis ] > 0 ? 1 : 0 ) }`;
+
+						if ( ! ids.has( key ) ) {
+
+							ids.set( key, sums.length );
+							sums.push( [ 0, 0, 0, 0 ] );
+							parent.push( 0 );
+
+						}
+
+						of[ i ] = ids.get( key );
+
+						if ( below !== undefined ) parent[ below[ i ] ] = of[ i ];
+
+						const sum = sums[ of[ i ] ];
+
+						sum[ 0 ] += p[ 0 ]; sum[ 1 ] += p[ 1 ]; sum[ 2 ] += p[ 2 ]; sum[ 3 ] ++;
+
+					}
+
+					levels.push( of );
+					cells = ids.size;
+
+				}
+
+				return { count: sums.length, levels, starts, parent, center: new Float32Array( sums.flatMap( ( sum ) => [ sum[ 0 ] / sum[ 3 ], sum[ 1 ] / sum[ 3 ], sum[ 2 ] / sum[ 3 ] ] ) ) };
 
 			}
 
@@ -2398,9 +2594,12 @@
 
 				for ( let l = start; l < end; l ++ ) {
 
+					// to the surfel, or to the center of the cluster
+
 					const target = links[ l ] % LINK_RAYS;
 
-					points.push( ...from, position[ target * 3 ] + normal[ target * 3 ] * lift, position[ target * 3 + 1 ] + normal[ target * 3 + 1 ] * lift, position[ target * 3 + 2 ] + normal[ target * 3 + 2 ] * lift );
+					if ( target < position.length / 3 ) points.push( ...from, position[ target * 3 ] + normal[ target * 3 ] * lift, position[ target * 3 + 1 ] + normal[ target * 3 + 1 ] * lift, position[ target * 3 + 2 ] + normal[ target * 3 + 2 ] * lift );
+					else points.push( ...from, ...world.surfels.clusters.center.subarray( target * 3 - position.length, target * 3 - position.length + 3 ) );
 
 					color.setHSL( 0.66 * ( 1 - Math.floor( links[ l ] / LINK_RAYS ) / largest ), 1, 0.5 );
 					colors.push( color.r, color.g, color.b, color.r, color.g, color.b );

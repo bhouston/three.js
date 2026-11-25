@@ -3139,8 +3139,7 @@
 
 				const material = ( color, options ) => new THREE.MeshStandardNodeMaterial( { color, ...options } );
 
-				const wallMaterial = material( 0xcccccc, { side: THREE.BackSide } );
-				const dividerMaterial = material( 0xcccccc );
+				const wallMaterial = material( 0xcccccc, { shadowSide: THREE.DoubleSide } );
 				const whiteMaterial = material( 0xeeeeee );
 				const tableMaterial = material( 0x886644 );
 
@@ -3153,17 +3152,41 @@
 
 				}
 
-				// room shell: x = -8 to 8, y = 0 to 5, z = -4 to 4
+				// Two separate rooms of planes that face inwards, 0.3 apart: x = 0.15 to 8 on either side, y = 0 to 5,
+				// z = -4 to 4. The walls between them have a doorway each, which a short tunnel of planes joins
 
-				add( new THREE.BoxGeometry( 16, 5, 8 ), wallMaterial, 0, 2.5, 0 );
-				add( new THREE.PlaneGeometry( 8, 5 ), material( 0xdd2200 ), - 7.99, 2.5, 0 ).rotation.y = Math.PI / 2;
-				add( new THREE.PlaneGeometry( 8, 5 ), material( 0x0044ff ), 7.99, 2.5, 0 ).rotation.y = - Math.PI / 2;
+				function wall( width, height, material, x, y, z, rx, ry ) {
 
-				// dividing wall at x = 0 with a doorway and a lintel
+					add( new THREE.PlaneGeometry( width, height ), material, x, y, z ).rotation.set( rx, ry, 0 );
 
-				add( new THREE.BoxGeometry( 0.3, 5, 2.75 ), dividerMaterial, 0, 2.5, - 2.625 );
-				add( new THREE.BoxGeometry( 0.3, 5, 2.75 ), dividerMaterial, 0, 2.5, 2.625 );
-				add( new THREE.BoxGeometry( 0.3, 1.2, 2.5 ), dividerMaterial, 0, 4.4, 0 );
+				}
+
+				const up = - Math.PI / 2, down = Math.PI / 2;
+
+				for ( const [ side, color ] of [[ - 1, 0xdd2200 ], [ 1, 0x0044ff ]] ) {
+
+					const x = side * 4.075, inwards = side * Math.PI / 2;
+
+					wall( 7.85, 8, wallMaterial, x, 0, 0, up, 0 );
+					wall( 7.85, 8, wallMaterial, x, 5, 0, down, 0 );
+					wall( 7.85, 5, wallMaterial, x, 2.5, - 4, 0, 0 );
+					wall( 7.85, 5, wallMaterial, x, 2.5, 4, 0, Math.PI );
+					wall( 8, 5, material( color, { shadowSide: THREE.DoubleSide } ), side * 8, 2.5, 0, 0, - inwards );
+
+					// the wall with the doorway: a panel on either side of it and a lintel
+
+					wall( 2.75, 5, wallMaterial, side * 0.15, 2.5, - 2.625, 0, inwards );
+					wall( 2.75, 5, wallMaterial, side * 0.15, 2.5, 2.625, 0, inwards );
+					wall( 2.5, 1.2, wallMaterial, side * 0.15, 4.4, 0, 0, inwards );
+
+				}
+
+				// the tunnel of the doorway: floor, top and jambs
+
+				wall( 0.3, 2.5, wallMaterial, 0, 0, 0, up, 0 );
+				wall( 0.3, 2.5, wallMaterial, 0, 3.8, 0, down, 0 );
+				wall( 0.3, 3.8, wallMaterial, 0, 1.9, - 1.25, 0, 0 );
+				wall( 0.3, 3.8, wallMaterial, 0, 1.9, 1.25, 0, Math.PI );
 
 				const column = new THREE.CylinderGeometry( 0.3, 0.3, 4, 16 );
 

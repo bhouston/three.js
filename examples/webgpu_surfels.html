@@ -295,6 +295,16 @@
 				gui.add( params, 'azimuth', 0, 360, 1 ).name( 'Sun Azimuth' ).listen().onChange( hurryUp );
 				gui.add( params, 'altitude', 0, 90, 1 ).name( 'Sun Altitude' ).listen().onChange( hurryUp );
 
+				// Without the sky, the sun is all that lights the open scenes, and what it bounces shows on its own:
+				// the sky lights the surfels no more, nor the scene as its environment, and is not drawn
+
+				gui.add( params, 'sky' ).name( 'Sky' ).onChange( () => {
+
+					updateTerms();
+					updateSky();
+
+				} );
+
 				// The settings that each scene has its own of. They follow the scene, which their controls report as
 				// a change like one of the user: only a value that the scene does not have bakes it again
 
@@ -324,7 +334,6 @@
 
 				const transportGui = gui.addFolder( 'Light Transport' );
 				transportGui.add( params, 'direct' ).name( 'Direct' ).onChange( updateTerms );
-				transportGui.add( params, 'sky' ).name( 'Sky' ).onChange( updateTerms );
 				transportGui.add( params, 'bounce' ).name( 'Bounce' ).onChange( updateTerms );
 				transportGui.add( params, 'emissive' ).name( 'Emissive' ).onChange( updateTerms );
 				transportGui.add( params, 'iterations', 1, 4, 1 ).name( 'Iterations per Frame' );
@@ -393,8 +402,7 @@
 				if ( ! world.sky ) environmentSH.array.forEach( ( vector ) => vector.set( 0, 0, 0 ) );
 
 				sun.visible = world.sky;
-				scene.background = world.sky ? null : new THREE.Color( 0x111111 );
-				scene.environment = world.sky ? cubeCamera.renderTarget.texture : null;
+				updateSky();
 				environmentSunDirection.set( 0, 0, 0 );
 
 				// the shadow of the sun covers the bounds of the scene
@@ -428,6 +436,17 @@
 				if ( world.atlas === undefined ) bake();
 
 				setView();
+
+			}
+
+			// the sky as the background and the environment of the scenes that have one, while it is on
+
+			function updateSky() {
+
+				const lit = world.sky && params.sky;
+
+				scene.background = lit ? null : new THREE.Color( 0x111111 );
+				scene.environment = lit ? cubeCamera.renderTarget.texture : null;
 
 			}
 
@@ -3316,7 +3335,7 @@
 				if ( ! loading ) progress.value = world.progress;
 
 				world.root.visible = ready;
-				sky.visible = ready && world.sky && params.view.startsWith( 'Beauty' );
+				sky.visible = ready && world.sky && params.sky && params.view.startsWith( 'Beauty' );
 
 				if ( world.lighting !== undefined ) {
 

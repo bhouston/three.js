@@ -162,6 +162,7 @@ class Reprojection {
 
 	/**
 	 * Samples the previous frame's depth at the given UV and reprojects it into the current view.
+	 * This takes the surface for one at rest: one that moves through the world is somewhere else.
 	 *
 	 * @param {Node<vec2>} uvNode - The UV in the previous frame.
 	 * @param {Node<vec2>} cameraNearFar - The camera's near and far.
@@ -173,6 +174,49 @@ class Reprojection {
 		const positionView = getViewPosition( uvNode, depth, this.previousCameraProjectionMatrixInverse );
 		const positionWorld = this.previousCameraWorldMatrix.mul( vec4( positionView, 1 ) ).xyz;
 		const viewZ = this.cameraViewMatrix.mul( vec4( positionWorld, 1 ) ).z;
+
+		return this._viewZToDepth( viewZ, cameraNearFar );
+
+	}
+
+	/**
+	 * Samples the previous frame's depth at the given UV, as the previous camera saw it.
+	 * Compare it with {@link Reprojection#getExpectedPreviousDepth}.
+	 *
+	 * @param {Node<vec2>} uvNode - The UV in the previous frame.
+	 * @param {Node<vec2>} cameraNearFar - The camera's near and far.
+	 * @return {Node<float>} The depth of the previous frame.
+	 */
+	getPreviousCameraDepth( uvNode, cameraNearFar ) {
+
+		const depth = projectionDepth( this.previousDepthNode.sample( uvNode ).r, cameraNearFar.x, cameraNearFar.y );
+		const viewZ = getViewPosition( uvNode, depth, this.previousCameraProjectionMatrixInverse ).z;
+
+		return this._viewZToDepth( viewZ, cameraNearFar );
+
+	}
+
+	/**
+	 * Returns the depth the surface at the given texel had in the previous frame, as the
+	 * previous camera saw it. The alpha channel of the velocity must hold `previousViewZ`
+	 * (see `ReprojectedBeautyNode`), which follows a surface that moves through the world.
+	 * {@link Reprojection#getPreviousDepth} takes the surface for one at rest instead.
+	 *
+	 * @param {Node<vec2>} texel - The texel the velocity is loaded from.
+	 * @param {Node<vec2>} cameraNearFar - The camera's near and far.
+	 * @return {Node<float>} The depth the surface had in the previous frame.
+	 */
+	getExpectedPreviousDepth( texel, cameraNearFar ) {
+
+		const viewZ = this.velocityNode.load( texel ).w;
+
+		// nothing has drawn a view z into the background
+
+		return viewZ.lessThan( 0 ).select( this._viewZToDepth( viewZ, cameraNearFar ), 1 );
+
+	}
+
+	_viewZToDepth( viewZ, cameraNearFar ) {
 
 		return this.camera.isOrthographicCamera
 			? viewZToOrthographicDepth( viewZ, cameraNearFar.x, cameraNearFar.y )

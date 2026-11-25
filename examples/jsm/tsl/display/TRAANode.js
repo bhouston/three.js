@@ -133,6 +133,18 @@ class TRAANode extends Node {
 		this.useSubpixelCorrection = true;
 
 		/**
+		 * Whether the alpha channel of the velocity holds `previousViewZ` (see `ReprojectedBeautyNode`).
+		 * The disocclusion test then compares the depth a surface had in the previous frame with the
+		 * depth of that frame. Without it the test takes every surface for one at rest, so one that
+		 * moves through the world, like a vehicle the camera follows, loses its history and shows
+		 * the jitter of the camera.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.usePreviousViewZ = false;
+
+		/**
 		 * Whether the history is clipped to its neighborhood while the camera is at rest. Disabling it
 		 * relaxes the clip over `historyLength` frames once the camera stops, which removes the shimmer
 		 * of a still image, and restores it as soon as the camera moves. Changes without velocity
@@ -237,6 +249,24 @@ class TRAANode extends Node {
 		this._textureNode = passTexture( this, this._resolveRenderTarget.texture );
 
 		/**
+		 * The render target of the debug output, created by `getDebugTextureNode()`.
+		 *
+		 * @private
+		 * @type {?RenderTarget}
+		 * @default null
+		 */
+		this._debugRenderTarget = null;
+
+		/**
+		 * The material that renders the debug output.
+		 *
+		 * @private
+		 * @type {NodeMaterial}
+		 */
+		this._debugMaterial = new NodeMaterial();
+		this._debugMaterial.name = 'TRAA.debug';
+
+		/**
 		 * Used to save the original/unjittered projection matrix.
 		 *
 		 * @private
@@ -300,6 +330,27 @@ class TRAANode extends Node {
 	}
 
 	/**
+	 * Returns a texture node that shows what the resolve did with the history, for debugging.
+	 * Red is `1` where the history was thrown away, as off the screen or disoccluded. Green is
+	 * the weight of the current frame in the result. It is rendered with a second resolve from
+	 * the first call on.
+	 *
+	 * @return {PassTextureNode} A texture node that represents the debug output.
+	 */
+	getDebugTextureNode() {
+
+		if ( this._debugRenderTarget === null ) {
+
+			this._debugRenderTarget = new RenderTarget( this._resolveRenderTarget.width, this._resolveRenderTarget.height, { depthBuffer: false } );
+			this._debugRenderTarget.texture.name = 'TRAANode.debug';
+
+		}
+
+		return passTexture( this, this._debugRenderTarget.texture );
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
@@ -309,6 +360,7 @@ class TRAANode extends Node {
 
 		this._historyRenderTarget.setSize( width, height );
 		this._resolveRenderTarget.setSize( width, height );
+		if ( this._debugRenderTarget !== null ) this._debugRenderTarget.setSize( width, height );
 
 		this._invSize.value.set( 1 / width, 1 / height );
 
@@ -439,6 +491,16 @@ class TRAANode extends Node {
 		_quadMesh.material = this._resolveMaterial;
 		_quadMesh.name = 'TRAA';
 		_quadMesh.render( renderer );
+
+		if ( this._debugRenderTarget !== null ) {
+
+			renderer.setRenderTarget( this._debugRenderTarget );
+			_quadMesh.material = this._debugMaterial;
+			_quadMesh.name = 'TRAA.debug';
+			_quadMesh.render( renderer );
+
+		}
+
 		renderer.setRenderTarget( null );
 
 		// store the depth and camera matrices for the next frame
@@ -541,7 +603,7 @@ class TRAANode extends Node {
 
 		const historyNode = this._historyTextureNode;
 
-		const resolve = Fn( () => {
+		const createResolve = ( debug ) => Fn( () => {
 
 			const uvNode = uv();
 			const textureSize = this.beautyNode.size(); // Assumes all the buffers share the same size.
@@ -557,13 +619,21 @@ class TRAANode extends Node {
 			// sample the previous depth
 
 			const historyUV = this._reprojection.getHistoryUV( uvNode, closestPositionTexel ).toConst();
-			const previousDepth = this._reprojection.getPreviousDepth( historyUV, this._cameraNearFar );
+
+			// with the previous view z, both depths are of the previous frame: where the surface was, and what was there
+
+			const previousDepth = this.usePreviousViewZ
+				? this._reprojection.getPreviousCameraDepth( historyUV, this._cameraNearFar )
+				: this._reprojection.getPreviousDepth( historyUV, this._cameraNearFar );
+			const expectedDepth = this.usePreviousViewZ
+				? this._reprojection.getExpectedPreviousDepth( closestPositionTexel, this._cameraNearFar )
+				: closestDepth;
 
 			// history is considered valid when the UV is in range and there's no disocclusion except on edges
 
 			const isValidUV = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() );
 			const isEdge = farthestDepth.sub( closestDepth ).greaterThan( this.edgeDepthDiff );
-			const isDisocclusion = closestDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
+			const isDisocclusion = expectedDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
 			const hasValidHistory = isValidUV.and( isEdge.or( isDisocclusion.not() ) );
 
 			// sample the current and previous colors
@@ -584,6 +654,8 @@ class TRAANode extends Node {
 			}
 
 			currentWeight.assign( hasValidHistory.select( currentWeight.add( motionFactor ).saturate(), 1 ) );
+
+			if ( debug ) return vec4( hasValidHistory.select( 0, 1 ), currentWeight, 0, 1 );
 
 			// Perform neighborhood clipping/clamping. We use variance clipping here.
 
@@ -612,7 +684,10 @@ class TRAANode extends Node {
 		// materials
 
 		this._resolveMaterial.contextNode = context( builder.getSharedContext() );
-		this._resolveMaterial.fragmentNode = resolve();
+		this._resolveMaterial.fragmentNode = createResolve( false )();
+
+		this._debugMaterial.contextNode = this._resolveMaterial.contextNode;
+		this._debugMaterial.fragmentNode = createResolve( true )();
 
 		return this._textureNode;
 
@@ -628,10 +703,12 @@ class TRAANode extends Node {
 
 		this._historyRenderTarget.dispose();
 		this._resolveRenderTarget.dispose();
+		if ( this._debugRenderTarget !== null ) this._debugRenderTarget.dispose();
 
 		this._reprojection.dispose();
 
 		this._resolveMaterial.dispose();
+		this._debugMaterial.dispose();
 
 	}
 

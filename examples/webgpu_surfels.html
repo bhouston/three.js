@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Loop, Return, builtinIndirectContext, cross, dFdx, dFdy, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, Return, builtinIndirectContext, cross, dFdx, dFdy, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, vec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -49,8 +49,6 @@
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
-			import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
-			import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 
@@ -64,7 +62,7 @@
 
 			const SPONZA_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Sponza/glTF/Sponza.gltf';
 
-			let camera, scene, renderer, controls, timer, status, selection;
+			let camera, scene, renderer, controls, status, selection;
 			let sky, sun, cubeCamera, world, rendererState;
 			let environmentSHPending = 0;
 
@@ -72,9 +70,9 @@
 
 			let loading = true;
 
-			// after a jump of the time of day or of the transport, the bounces settle faster for some frames
+			// after a change of the sun or of the transport, the bounces settle faster for some frames
 
-			let previousTime = 0, hurry = 0;
+			let hurry = 0;
 
 			const progress = document.getElementById( 'progress' );
 
@@ -135,13 +133,6 @@
 
 			} );
 
-			// the light probe grid with the SH of the radiance around each probe, the indirect diffuse light of the
-			// other objects, which move. It follows the grid of the current scene, so that the materials compile once
-
-			const probeAmount = uniform( 0 );
-			const probeGrid = new LightProbeGrid( 1, 1, 1, 1, 1, 1 );
-			const probeSource = probeGrid.getDiffuseSource();
-
 			// SH basis of L2 in the order of THREE.SphericalHarmonics3
 
 			const shBasis = ( x, y, z ) => [ 0.282095, 0.488603 * y, 0.488603 * z, 0.488603 * x, 1.092548 * x * y, 1.092548 * y * z, 0.315392 * ( 3 * z * z - 1 ), 1.092548 * x * z, 0.546274 * ( x * x - y * y ) ];
@@ -200,19 +191,16 @@
 				view: 'Beauty',
 				placement: 'Atlas Grid',
 				thinWalls: true,
-				gi: true,
 				denoise: true,
 				denoiseStrength: 1,
 				blur: true,
 				blurRadius: 2,
 				blurStrength: 0.3,
-				showProbes: false,
 				detailSize: 0.25,
 				surfelTexels: 4,
-				timeOfDay: 7,
+				azimuth: 40,
+				altitude: 12,
 				exposure: 0.5,
-				autoplay: true,
-				dayLength: 60,
 				direct: true,
 				sky: true,
 				bounce: true,
@@ -223,7 +211,7 @@
 				surfelScale: 0.6
 			};
 
-			const views = [ 'Beauty', 'Light Map', 'Surfels: Radiosity', 'Surfels: Irradiance', 'Surfels: Direct Light', 'Surfels: Sky Light', 'Surfels: Bounce Light', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
+			const views = [ 'Beauty', 'Beauty (no GI)', 'Light Map', 'Surfels: Radiosity', 'Surfels: Irradiance', 'Surfels: Direct Light', 'Surfels: Sky Light', 'Surfels: Bounce Light', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
 
 			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Dungeon': loadDungeon, 'Hallway': loadHallway, 'Sponza': loadSponza };
 			const placements = { 'Atlas Grid': placeSurfels, 'Sample Elimination': eliminateSurfels };
@@ -234,13 +222,10 @@
 
 			const sunColor = new THREE.Color( 0xfff2dc );
 			const horizonColor = new THREE.Color( 0xff8a3c );
-			const moonColor = new THREE.Color( 0x8fa8ff );
 
 			init();
 
 			async function init() {
-
-				timer = new THREE.Timer();
 
 				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 500 );
 
@@ -259,7 +244,7 @@
 				await renderer.init();
 
 				renderer.contextNode = builtinIndirectContext( {
-					diffuse: [ ( query, builder ) => builder.object.userData.giStatic === true ? vec4( lightMapNode.rgb.mul( giAmount ), giAmount ) : probeSource( query ).mul( probeAmount ) ],
+					diffuse: [ ( query, builder ) => builder.object.userData.giStatic === true ? vec4( lightMapNode.rgb.mul( giAmount ), giAmount ) : null ],
 					specular: [ ( query, builder ) => builder.object.userData.giStatic === true ? reflections() : null ]
 				} );
 
@@ -296,43 +281,49 @@
 				const gui = renderer.inspector.createParameters( 'Surfel GI' );
 				gui.add( params, 'scene', Object.keys( scenes ) ).name( 'Scene' ).onChange( setScene );
 				gui.add( params, 'view', views ).name( 'View' ).onChange( setView );
-				gui.add( params, 'gi' ).name( 'GI' );
-				gui.add( params, 'showProbes' ).name( 'Show Probes' );
-				gui.add( params, 'detailSize', 0.05, 2, 0.01 ).name( 'Detail Size' ).listen().onChange( ( value ) => {
+				gui.add( params, 'exposure', 0.05, 4, 0.01 ).name( 'Exposure' ).listen();
+
+				const layoutGui = gui.addFolder( 'Surfel Layout' );
+				layoutGui.add( params, 'detailSize', 0.05, 2, 0.01 ).name( 'Detail Size' ).listen().onChange( ( value ) => {
 
 					world.detailSize = value;
 					bake();
 
 				} ).debounce( 500 );
-				gui.add( params, 'surfelTexels', 1, 8, 1 ).name( 'Light Map Texels per Surfel' ).onChange( bake ).debounce( 500 );
-				gui.add( params, 'placement', Object.keys( placements ) ).name( 'Surfel Placement' ).onChange( bake );
-				gui.add( params, 'thinWalls' ).name( 'Thin Wall Fix' ).onChange( bake );
-				gui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Surfel Display Scale' ).onChange( () => updateSurfelMesh( world ) );
-				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
-				gui.add( params, 'exposure', 0.05, 4, 0.01 ).name( 'Exposure' ).listen();
-				gui.add( params, 'autoplay' ).name( 'Autoplay' );
-				gui.add( params, 'dayLength', 10, 300, 1 ).name( 'Day Length (s)' );
+				layoutGui.add( params, 'placement', Object.keys( placements ) ).name( 'Placement' ).onChange( bake );
+				layoutGui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 
-				const giGui = gui.addFolder( 'Transport' );
+				const hurryUp = () => hurry = 30;
 				const updateTerms = () => {
 
 					terms.value.set( params.direct, params.sky, params.bounce, params.emissive );
-					hurry = 30;
+					hurryUp();
 
 				};
 
-				giGui.add( params, 'direct' ).name( 'Direct' ).onChange( updateTerms );
-				giGui.add( params, 'sky' ).name( 'Sky' ).onChange( updateTerms );
-				giGui.add( params, 'bounce' ).name( 'Bounce' ).onChange( updateTerms );
-				giGui.add( params, 'emissive' ).name( 'Emissive' ).onChange( updateTerms );
-				giGui.add( params, 'iterations', 1, 4, 1 ).name( 'Iterations per Frame' );
-				giGui.add( params, 'hysteresis', 0.01, 1, 0.01 ).name( 'Hysteresis' );
-				giGui.add( params, 'spread', 1, 16, 1 ).name( 'Update Spread (frames)' );
-				giGui.add( params, 'denoise' ).name( 'Denoise Light Map' );
-				giGui.add( params, 'denoiseStrength', 0, 1, 0.01 ).name( 'Denoise Strength' );
-				giGui.add( params, 'blur' ).name( 'Blur' );
-				giGui.add( params, 'blurRadius', 0.5, 8, 0.5 ).name( 'Blur Radius (Surfels)' );
-				giGui.add( params, 'blurStrength', 0.05, 1, 0.01 ).name( 'Blur Strength' );
+				const transportGui = gui.addFolder( 'Transport' );
+				transportGui.add( params, 'direct' ).name( 'Direct' ).onChange( updateTerms );
+				transportGui.add( params, 'sky' ).name( 'Sky' ).onChange( updateTerms );
+				transportGui.add( params, 'bounce' ).name( 'Bounce' ).onChange( updateTerms );
+				transportGui.add( params, 'emissive' ).name( 'Emissive' ).onChange( updateTerms );
+				transportGui.add( params, 'iterations', 1, 4, 1 ).name( 'Iterations per Frame' );
+				transportGui.add( params, 'hysteresis', 0.01, 1, 0.01 ).name( 'Hysteresis' );
+				transportGui.add( params, 'spread', 1, 16, 1 ).name( 'Update Spread (frames)' );
+
+				const lightMapGui = gui.addFolder( 'Lightmap' );
+				lightMapGui.add( params, 'surfelTexels', 1, 8, 1 ).name( 'Texels per Surfel' ).onChange( bake ).debounce( 500 );
+				lightMapGui.add( params, 'thinWalls' ).name( 'Thin Wall Fix' ).onChange( bake );
+				lightMapGui.add( params, 'denoise' ).name( 'Denoise' );
+				lightMapGui.add( params, 'denoiseStrength', 0, 1, 0.01 ).name( 'Denoise Strength' );
+				lightMapGui.add( params, 'blur' ).name( 'Blur' );
+				lightMapGui.add( params, 'blurRadius', 0.5, 8, 0.5 ).name( 'Blur Radius (Surfels)' );
+				lightMapGui.add( params, 'blurStrength', 0.05, 1, 0.01 ).name( 'Blur Strength' );
+
+				// the sun of the open scenes
+
+				const lightingGui = gui.addFolder( 'Lighting' );
+				lightingGui.add( params, 'azimuth', 0, 360, 1 ).name( 'Sun Azimuth' ).listen().onChange( hurryUp );
+				lightingGui.add( params, 'altitude', 0, 90, 1 ).name( 'Sun Altitude' ).listen().onChange( hurryUp );
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -348,8 +339,6 @@
 
 				loading = true;
 				progress.removeAttribute( 'value' );
-
-				// the day of a scene starts in the morning, once the scene shows
 
 				status.textContent = `Loading ${ name }…`;
 				selection.textContent = '';
@@ -367,7 +356,9 @@
 				scene.add( world.root );
 				loading = false;
 
-				params.timeOfDay = 7;
+				// the sun of a scene starts low, in the morning
+
+				[ params.azimuth, params.altitude ] = world.sun ?? [ 40, 12 ];
 				params.exposure = world.exposure ?? 0.5;
 
 				world.root.traverse( ( object ) => {
@@ -426,8 +417,7 @@
 
 				baked.transfer?.dispose();
 				baked.lighting?.dispose();
-				baked.probes?.dispose();
-				baked.transfer = baked.lighting = baked.probes = undefined;
+				baked.transfer = baked.lighting = undefined;
 				baked.ready = false;
 				baked.progress = 0;
 				selectSurfel( baked, - 1 );
@@ -523,20 +513,6 @@
 
 				if ( baked === world ) setView();
 
-				// the probes
-
-				const probeBake = await bakeProbes( baked, () => baked.bakeId !== id );
-
-				if ( probeBake === null ) return;
-
-				baked.probes = createProbes( baked, probeBake );
-				baked.lighting.wake();
-				baked.progress = 0.9;
-
-				times[ 'probes' ] = performance.now() - start;
-
-				report( `${ transferSummary }, ${ probeBake.grid.resolution.toArray().join( '×' ) } probes, ${ probeBake.inside } inside of geometry` );
-
 				// how long each step of the bake took, and the memory of what it left on the GPU
 
 				const megabytes = ( ...arrays ) => ( arrays.reduce( ( sum, array ) => sum + array.byteLength, 0 ) / 2 ** 20 ).toFixed( 1 ) + ' MB';
@@ -551,7 +527,7 @@
 
 					return `${ name } ${ ( step / 1000 ).toFixed( 2 ) } s`;
 
-				} ).join( ', ' ) + `. Memory: atlas ${ ( size * size * 32 / 2 ** 20 ).toFixed( 0 ) } MB, surfel links ${ megabytes( transfer.links, transfer.offsets, transfer.skyTransfer ) }, light map links ${ megabytes( lightMapLinks.texels, lightMapLinks.indices, lightMapLinks.weights ) }, probe links ${ megabytes( probeBake.indices, probeBake.weights, probeBake.sky ) }`;
+				} ).join( ', ' ) + `. Memory: atlas ${ ( size * size * 32 / 2 ** 20 ).toFixed( 0 ) } MB, surfel links ${ megabytes( transfer.links, transfer.offsets, transfer.skyTransfer ) }, light map links ${ megabytes( lightMapLinks.texels, lightMapLinks.indices, lightMapLinks.weights ) }`;
 
 				if ( baked === world ) document.getElementById( 'report' ).textContent = baked.report;
 
@@ -1017,8 +993,7 @@
 				clusters.of = compact( clusters.of, 1 );
 				surfels.count = kept;
 
-				// the BVH and the origins, with the normals, of the surfels stay for the shadow rays of the lighting,
-				// and the BVH and the texels for the rays of the probes
+				// the BVH and the origins, with the normals, of the surfels stay for the shadow rays of the lighting
 
 				const frames = new Float32Array( kept * 8 );
 				frames.set( compact( origins, 4 ) );
@@ -1030,7 +1005,7 @@
 				return {
 					offsets: keptOffsets, links: packed.slice( 0, keptLinks ), scales, skyTransfer: compact( skyTransfer, 9 ), invalid: compact( invalid, 1 ),
 					buried: count - kept, unknown: ( unknownHits + lostHits ) / Math.max( surfelHits + unknownHits, 1 ),
-					rayBuffer, visibility, epsilon, traceHits, dispose
+					rayBuffer, visibility, epsilon, dispose
 				};
 
 			}
@@ -1309,8 +1284,6 @@
 
 				let lit = '', settings = '', directFrames = 0, activeFrames = 0, frame = 0, iteration = 0;
 
-				// Returns whether the surfels changed, for the probes
-
 				const update = () => {
 
 					if ( world.lighting !== undefined ) {
@@ -1368,7 +1341,7 @@
 					renderer.compute( filter );
 					renderer.compute( resolve );
 
-					// the indirect light changes slowly, so the blur and the probes follow every fourth frame, and on the last one
+					// the indirect light changes slowly, so the blur follows every fourth frame, and on the last one
 
 					const due = frame % Math.max( frames, 4 ) === 0 || activeFrames === 0;
 
@@ -1385,13 +1358,7 @@
 
 					}
 
-					return due;
-
 				};
-
-				// runs the passes again, for what else reads the surfels
-
-				const wake = () => settings = '';
 
 				// the debug views show the radiance of a white surface under the irradiance
 
@@ -1441,275 +1408,7 @@
 
 				};
 
-				return { update, wake, settled: () => activeFrames === 0 && settings !== '', attribute, materials, lightMap, dispose };
-
-			}
-
-			// Probe bake: rays in all directions from the probes of a grid over the scene. A probe gathers the
-			// radiance of each surfel that its rays hit with the SH of their directions, and the radiance of the sky
-			// with the SH of the rays that miss, a matrix that the SH of the sky is multiplied with
-
-			async function bakeProbes( world, cancelled ) {
-
-				const box = new THREE.Box3();
-
-				for ( const mesh of world.atlas.meshes ) box.expandByObject( mesh );
-
-				const size = box.getSize( new THREE.Vector3() );
-
-				// about four surfels between two probes, fewer probes in large scenes
-
-				let spacing = world.detailSize * 4;
-
-				const resolution = new THREE.Vector3();
-				const cells = () => resolution.copy( size ).divideScalar( spacing ).subScalar( 0.01 ).ceil().max( new THREE.Vector3( 2, 2, 2 ) );
-
-				while ( cells().x * resolution.y * resolution.z > 4096 ) spacing *= 1.2;
-
-				const [ nx, ny, nz ] = resolution.toArray();
-				const count = nx * ny * nz;
-
-				const grid = new LightProbeGrid( nx * spacing, ny * spacing, nz * spacing, nx, ny, nz );
-				box.getCenter( grid.position );
-				grid.updateBoundingBox();
-
-				// uniform directions on the sphere, in the world frame
-
-				const directions = new Float32Array( RAYS * 4 );
-
-				for ( let r = 0; r < RAYS; r ++ ) {
-
-					const z = 1 - 2 * ( r + 0.5 ) / RAYS, radius = Math.sqrt( 1 - z * z ), angle = r * 2.399963;
-
-					directions.set( [ radius * Math.cos( angle ), radius * Math.sin( angle ), z ], r * 4 );
-
-				}
-
-				// the frame of the probes is the one of the world: the octahedral normal of +z is zero
-
-				const origins = new Float32Array( count * 4 ), tangents = new Float32Array( count * 4 );
-				const position = new THREE.Vector3();
-
-				for ( let i = 0; i < count; i ++ ) {
-
-					grid.getProbePosition( i % nx, Math.floor( i / nx ) % ny, Math.floor( i / ( nx * ny ) ), position ).toArray( origins, i * 4 );
-					tangents[ i * 4 ] = 1;
-
-				}
-
-				const surfels = world.surfels;
-				const near = world.detailSize * CLUSTER_SIZE;
-				const basis = Array.from( { length: RAYS }, ( v, r ) => shBasis( directions[ r * 4 ], directions[ r * 4 + 1 ], directions[ r * 4 + 2 ] ) );
-				const rows = new Array( count );
-				const links = new Map();
-
-				const rayBuffer = await world.transfer.traceHits( origins, tangents, directions, count, 0, ( hits, start ) => {
-
-					for ( let i = start; i < Math.min( start + BATCH, count ); i ++ ) {
-
-						const sky = new Float32Array( 81 );
-
-						let backfaces = 0, found = 0, unknown = 0;
-
-						links.clear();
-
-						for ( let r = 0; r < RAYS; r ++ ) {
-
-							const hit = hits[ ( i - start ) * RAYS + r ];
-
-							if ( hit === MISS ) {
-
-								for ( let k = 0; k < 9; k ++ ) for ( let m = 0; m < 9; m ++ ) sky[ k * 9 + m ] += basis[ r ][ k ] * basis[ r ][ m ] * 4 * Math.PI / RAYS;
-
-							} else if ( hit === BACKFACE ) {
-
-								backfaces ++;
-
-							} else if ( hit === UNKNOWN ) {
-
-								unknown ++;
-
-							} else {
-
-								// the surfels near the probe, the clusters of the others
-
-								const surfel = hit - 3;
-								const distance = Math.hypot( surfels.position[ surfel * 3 ] - origins[ i * 4 ], surfels.position[ surfel * 3 + 1 ] - origins[ i * 4 + 1 ], surfels.position[ surfel * 3 + 2 ] - origins[ i * 4 + 2 ] );
-								const target = distance < near ? surfel : surfels.count + surfels.clusters.of[ surfel ];
-
-								if ( ! links.has( target ) ) links.set( target, new Float32Array( 9 ) );
-
-								const weights = links.get( target );
-
-								for ( let k = 0; k < 9; k ++ ) weights[ k ] += basis[ r ][ k ] * 4 * Math.PI / RAYS;
-
-								found ++;
-
-							}
-
-						}
-
-						// the hits without a surfel count for the others. A probe that sees many back faces is inside
-						// of geometry
-
-						const scale = ( found + unknown ) / Math.max( found, 1 );
-						const weights = new Float32Array( links.size * 9 );
-
-						[ ...links.values() ].forEach( ( link, l ) => weights.set( link.map( ( v ) => v * scale ), l * 9 ) );
-
-						rows[ i ] = { indices: Uint32Array.from( links.keys() ), weights, sky, valid: backfaces <= RAYS * 0.3 };
-
-					}
-
-				} );
-
-				rayBuffer.value.dispose();
-
-				if ( cancelled() ) return null;
-
-				// the probes inside of geometry take the light of the nearest probe outside, so that they do not
-				// darken what is interpolated between them
-
-				const valid = rows.map( ( row, i ) => row.valid ? i : - 1 ).filter( ( i ) => i >= 0 );
-
-				for ( let i = 0; i < count && valid.length > 0; i ++ ) {
-
-					if ( rows[ i ].valid ) continue;
-
-					let nearest = valid[ 0 ], nearestDistance = Infinity;
-
-					for ( const other of valid ) {
-
-						const distance = Math.hypot( origins[ other * 4 ] - origins[ i * 4 ], origins[ other * 4 + 1 ] - origins[ i * 4 + 1 ], origins[ other * 4 + 2 ] - origins[ i * 4 + 2 ] );
-
-						if ( distance < nearestDistance ) {
-
-							nearest = other;
-							nearestDistance = distance;
-
-						}
-
-					}
-
-					rows[ i ] = { ...rows[ nearest ], valid: false };
-
-				}
-
-				const offsets = new Uint32Array( count + 1 );
-
-				rows.forEach( ( row, i ) => offsets[ i + 1 ] = offsets[ i ] + row.indices.length );
-
-				const indices = new Uint32Array( Math.max( offsets[ count ], 1 ) ), weights = new Float32Array( Math.max( offsets[ count ], 1 ) * 9 ), sky = new Float32Array( count * 81 );
-
-				rows.forEach( ( row, i ) => {
-
-					indices.set( row.indices, offsets[ i ] );
-					weights.set( row.weights, offsets[ i ] * 9 );
-					sky.set( row.sky, i * 81 );
-
-				} );
-
-				return { grid, spacing, offsets, indices, weights, sky, inside: count - valid.length };
-
-			}
-
-			// Runtime lighting of the probes, one compute pass per frame: the SH of the radiance around each probe,
-			// from the radiosity of its surfels and the SH of the sky, stored in the atlas of the grid
-
-			function createProbes( world, bake ) {
-
-				const { grid, spacing } = bake;
-				const [ nx, ny, nz ] = grid.resolution.toArray();
-
-				const atlas = new THREE.Storage3DTexture( nx, ny, 7 * ( nz + 2 ) );
-				atlas.type = THREE.HalfFloatType;
-
-				grid.texture = atlas;
-
-				const buffers = [
-					storage( new THREE.StorageBufferAttribute( bake.offsets, 1 ), 'uint' ).toReadOnly(),
-					storage( new THREE.StorageBufferAttribute( bake.indices, 1 ), 'uint' ).toReadOnly(),
-					storage( new THREE.StorageBufferAttribute( bake.weights, 1 ), 'float' ).toReadOnly(),
-					storage( new THREE.StorageBufferAttribute( bake.sky, 1 ), 'float' ).toReadOnly()
-				];
-
-				const [ offsetBuffer, indexBuffer, weightBuffer, skyBuffer ] = buffers;
-				const irradiance = storage( world.lighting.attribute, 'vec4' ).toReadOnly();
-
-				const compute = Fn( () => {
-
-					const sh = Array.from( { length: 9 }, () => vec3( 0 ).toVar() );
-
-					// a surfel or a cluster with a radiosity has that over pi as radiance
-
-					Loop( { start: offsetBuffer.element( instanceIndex ), end: offsetBuffer.element( instanceIndex.add( uint( 1 ) ) ), type: 'uint', condition: '<' }, ( { i } ) => {
-
-						const radiance = irradiance.element( indexBuffer.element( i ).mul( uint( 4 ) ).add( uint( 3 ) ) ).rgb.div( Math.PI ).toVar();
-
-						for ( let k = 0; k < 9; k ++ ) sh[ k ].addAssign( radiance.mul( weightBuffer.element( i.mul( uint( 9 ) ).add( uint( k ) ) ) ) );
-
-					} );
-
-					Loop( { start: uint( 0 ), end: uint( 9 ), type: 'uint', condition: '<' }, ( { i } ) => {
-
-						const radiance = environmentSH.element( i ).mul( terms.y ).toVar();
-
-						for ( let k = 0; k < 9; k ++ ) sh[ k ].addAssign( radiance.mul( skyBuffer.element( instanceIndex.mul( uint( 81 ) ).add( uint( k * 9 ) ).add( i ) ) ) );
-
-					} );
-
-					const layer = instanceIndex.div( uint( nx * ny ) ).toVar();
-					const inLayer = instanceIndex.sub( layer.mul( uint( nx * ny ) ) ).toVar();
-					const row = inLayer.div( uint( nx ) ).toVar();
-					const column = inLayer.sub( row.mul( uint( nx ) ) );
-
-					const packed = [
-						vec4( sh[ 0 ], sh[ 1 ].x ), vec4( sh[ 1 ].yz, sh[ 2 ].xy ), vec4( sh[ 2 ].z, sh[ 3 ] ), vec4( sh[ 4 ], sh[ 5 ].x ),
-						vec4( sh[ 5 ].yz, sh[ 6 ].xy ), vec4( sh[ 6 ].z, sh[ 7 ] ), vec4( sh[ 8 ], 0 )
-					];
-
-					packed.forEach( ( value, t ) => {
-
-						// the padding slices repeat the first and the last slice of each volume
-
-						const slice = layer.add( uint( t * ( nz + 2 ) + 1 ) );
-
-						textureStore( atlas, uvec3( column, row, slice ), value );
-
-						If( layer.equal( uint( 0 ) ), () => {
-
-							textureStore( atlas, uvec3( column, row, slice.sub( uint( 1 ) ) ), value );
-
-						} );
-
-						If( layer.equal( uint( nz - 1 ) ), () => {
-
-							textureStore( atlas, uvec3( column, row, slice.add( uint( 1 ) ) ), value );
-
-						} );
-
-					} );
-
-				} )().compute( nx * ny * nz );
-
-				// the probes as spheres, lit by their SH
-
-				const helper = new LightProbeGridHelper( grid, spacing * 0.12 );
-				helper.visible = false;
-				world.root.add( helper );
-
-				const dispose = () => {
-
-					compute.dispose();
-					atlas.dispose();
-					helper.removeFromParent();
-					helper.dispose();
-
-					for ( const buffer of buffers ) buffer.value.dispose();
-
-				};
-
-				return { grid, atlas, helper, update: () => renderer.compute( compute ), dispose };
+				return { update, settled: () => activeFrames === 0 && settings !== '', attribute, materials, lightMap, dispose };
 
 			}
 
@@ -2995,7 +2694,7 @@
 
 			function setView() {
 
-				const beauty = params.view === 'Beauty';
+				const beauty = params.view.startsWith( 'Beauty' );
 				const atlas = world.atlas;
 				const surfelView = params.view.startsWith( 'Surfels' );
 				const surfelMesh = world.surfelMesh;
@@ -3263,29 +2962,23 @@
 
 				for ( const light of lights ) light.removeFromParent();
 
-				return { root: gltf.scene, sky: true, sunLean: 0.25, exposure: 1, detailSize: 0.5, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
+				return { root: gltf.scene, sky: true, sun: [ 15, 15 ], exposure: 1, detailSize: 0.5, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
 
 			}
 
 			function updateSun() {
 
-				// the sun rises at 6:00 in the +x direction and sets at 18:00, leaning towards +z, less so over narrow courtyards
+				// the azimuth turns from +x towards +z, the altitude rises from the horizon
 
-				const angle = ( params.timeOfDay - 6 ) / 12 * Math.PI;
+				const azimuth = THREE.MathUtils.degToRad( params.azimuth ), altitude = THREE.MathUtils.degToRad( params.altitude );
 
-				sunDirection.set( Math.cos( angle ), Math.sin( angle ), world.sunLean ?? 0.8 ).normalize();
+				sunDirection.set( Math.cos( altitude ) * Math.cos( azimuth ), Math.sin( altitude ), Math.cos( altitude ) * Math.sin( azimuth ) );
 
-				const elevation = sunDirection.y;
-				const day = THREE.MathUtils.smoothstep( elevation, 0, 0.15 );
-				const night = THREE.MathUtils.smoothstep( - elevation, 0, 0.15 );
+				// a low sun is warmer and fades out at the horizon
 
-				// at night the same light is the moon, on the opposite side
-
-				sun.color.lerpColors( horizonColor, sunColor, THREE.MathUtils.smoothstep( elevation, 0, 0.5 ) );
-				if ( elevation < 0 ) sun.color.copy( moonColor );
-
-				sun.intensity = day * 40 + night * 0.5;
-				sun.position.copy( sunDirection ).multiplyScalar( elevation < 0 ? - 1 : 1 ).multiplyScalar( world.bounds.radius * 2 ).add( world.bounds.center );
+				sun.color.lerpColors( horizonColor, sunColor, THREE.MathUtils.smoothstep( sunDirection.y, 0, 0.5 ) );
+				sun.intensity = THREE.MathUtils.smoothstep( sunDirection.y, 0, 0.15 ) * 40;
+				sun.position.copy( sunDirection ).multiplyScalar( world.bounds.radius * 2 ).add( world.bounds.center );
 
 				sky.sunPosition.value.copy( sunDirection );
 
@@ -3319,8 +3012,6 @@
 
 			function animate() {
 
-				timer.update();
-
 				updateSun();
 
 				// the sky is brighter than the lights of the closed scenes
@@ -3329,58 +3020,27 @@
 
 				// without GI, or until it is baked, the environment lights the scene
 
-				giAmount.value = params.gi && world.lighting !== undefined ? 1 : 0;
-
-				let surfelsChanged = false;
+				giAmount.value = params.view !== 'Beauty (no GI)' && world.lighting !== undefined ? 1 : 0;
 
 				const ready = ! loading && world.ready === true;
-
-				if ( params.autoplay && ready ) params.timeOfDay = ( params.timeOfDay + timer.getDelta() * 24 / params.dayLength ) % 24;
 
 				progress.hidden = ready;
 				if ( ! loading ) progress.value = world.progress;
 
 				world.root.visible = ready;
-				sky.visible = ready && world.sky && params.view === 'Beauty';
+				sky.visible = ready && world.sky && params.view.startsWith( 'Beauty' );
 
 				if ( world.lighting !== undefined ) {
 
 					updateLights();
 
-					// more than a quarter of an hour in a frame is a jump
+					// the bounces settle faster while the scene is hidden, and after a change
 
-					if ( Math.abs( params.timeOfDay - previousTime ) > 0.25 ) hurry = 30;
-
-					previousTime = params.timeOfDay;
-
-					// the bounces settle faster while the scene is hidden, and after a jump
-
-					for ( let i = ready ? ( hurry -- > 0 ? 8 : 1 ) : 16; i > 0; i -- ) surfelsChanged = world.lighting.update() || surfelsChanged;
+					for ( let i = ready ? ( hurry -- > 0 ? 8 : 1 ) : 16; i > 0; i -- ) world.lighting.update();
 
 				}
 
-				// the probes light the objects that are not static, once they are baked
-
-				const probes = world.probes;
-
-				probeAmount.value = params.gi && probes !== undefined ? 1 : 0;
-
-				if ( probes !== undefined ) {
-
-					if ( surfelsChanged ) probes.update();
-
-					probes.helper.visible = params.showProbes;
-
-					const grid = probes.grid;
-
-					Object.assign( probeGrid, { width: grid.width, height: grid.height, depth: grid.depth, texture: probes.atlas } );
-					probeGrid.position.copy( grid.position );
-					probeGrid.resolution.copy( grid.resolution );
-					probeGrid.updateBoundingBox();
-
-				}
-
-				if ( ! ready && ! loading && probes !== undefined && world.lighting.settled() ) world.ready = true;
+				if ( ! ready && ! loading && world.lighting !== undefined && world.lighting.settled() ) world.ready = true;
 
 				renderer.render( scene, camera );
 

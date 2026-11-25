@@ -455,10 +455,9 @@
 
 				createSurfelMesh( baked );
 
-				const summary = `${ ( baked.bounds.radius * 2 ).toFixed( 0 ) } m scene, ${ meshes.length } meshes, ${ layout.charts.length } charts, ${ size }² atlas, ${ texelSize.toFixed( 3 ) } m texels, ${ baked.surfels.count } surfels`;
 				const report = ( text ) => {
 
-					if ( baked === world ) status.textContent = `${ summary }, ${ text }`;
+					if ( baked === world ) status.textContent = `${ ( baked.bounds.radius * 2 ).toFixed( 0 ) } m scene, ${ meshes.length } meshes, ${ layout.charts.length } charts, ${ size }² atlas, ${ texelSize.toFixed( 3 ) } m texels, ${ baked.surfels.count } surfels, ${ text }`;
 
 				};
 
@@ -474,6 +473,10 @@
 
 				times[ 'transfer' ] = performance.now() - start;
 
+				// the transfer dropped the buried surfels
+
+				createSurfelMesh( baked );
+
 				const lightMapLinks = bakeLightMapLinks( { position, normal, size }, baked.surfels, transfer.invalid, baked.detailSize );
 
 				baked.transfer = transfer;
@@ -481,7 +484,7 @@
 
 				times[ 'light map' ] = performance.now() - start;
 
-				const transferSummary = `${ baked.surfels.clusters.count } clusters, ${ ( transfer.links.length / baked.surfels.count ).toFixed( 1 ) } links per surfel, ${ transfer.buried } buried, ${ ( transfer.unknown * 100 ).toFixed( 1 ) }% of hits without a surfel`;
+				const transferSummary = `${ baked.surfels.clusters.count } clusters, ${ ( transfer.links.length / baked.surfels.count ).toFixed( 1 ) } links per surfel, ${ transfer.buried } buried surfels dropped, ${ ( transfer.unknown * 100 ).toFixed( 1 ) }% of hits without a surfel`;
 
 				report( transferSummary );
 
@@ -756,7 +759,7 @@
 
 				const offsets = new Uint32Array( count + 1 );
 				const packed = new Uint32Array( count * LINKS );
-				const scales = new Float32Array( count );
+				const received = new Uint16Array( count );
 				const targets = new Map();
 				const skyTransfer = new Float32Array( count * 9 );
 				const invalid = new Uint8Array( count );
@@ -765,7 +768,7 @@
 
 				let links = 0, buried = 0, unknownHits = 0, surfelHits = 0;
 
-				const rayBuffer = await traceHits( origins, tangents, directions, count, ( hits, start ) => {
+				const traced = await traceHits( origins, tangents, directions, count, ( hits, start ) => {
 
 					for ( let i = start; i < Math.min( start + BATCH, count ); i ++ ) {
 
@@ -843,7 +846,7 @@
 
 						for ( const link of targets ) runs.push( link );
 
-						// keep the largest links, scaled so that they carry the light of all hits. Many links have
+						// keep the largest links, scaled below so that they carry the light of all hits. Many links have
 						// a ray or two, so they are shuffled first: the sort would keep the surfels with low indices
 
 						if ( runs.length > LINKS ) {
@@ -860,13 +863,9 @@
 
 						}
 
-						const kept = runs.reduce( ( sum, run ) => sum + run[ 1 ], 0 );
-
 						for ( const [ target, rays ] of runs ) packed[ links ++ ] = target + rays * LINK_RAYS;
 
-						// what a ray of the surfel weighs
-
-						scales[ i ] = ( hit + unknown ) / ( Math.max( kept, 1 ) * RAYS );
+						received[ i ] = hit + unknown;
 						offsets[ i + 1 ] = links;
 
 					}
@@ -875,8 +874,7 @@
 
 				} );
 
-				// the BVH and the origins and normals of the surfels stay for the shadow rays of the lighting and for
-				// the rays of the probes
+				let rayBuffer = traced;
 
 				const dispose = () => {
 
@@ -890,9 +888,95 @@
 
 				if ( cancelled() ) return dispose(), null;
 
+				// The buried surfels are dropped: the texels of their surfaces are left without a surfel, so the rays
+				// that hit them count for the other links. A buried side of a double-sided surface stays with the
+				// other side, since the texels find the back through the front
+
+				const remap = new Int32Array( count );
+
+				let kept = 0;
+
+				for ( let i = 0; i < count; i ++ ) remap[ i ] = invalid[ i ] === 0 || ( surfels.pair[ i ] !== 0 && invalid[ i + surfels.pair[ i ] ] === 0 ) ? kept ++ : - 1;
+
+				const compact = ( array, itemSize ) => {
+
+					const result = new array.constructor( kept * itemSize );
+
+					for ( let i = 0; i < count; i ++ ) if ( remap[ i ] >= 0 ) result.set( array.subarray( i * itemSize, ( i + 1 ) * itemSize ), remap[ i ] * itemSize );
+
+					return result;
+
+				};
+
+				// the clusters that are left with a surfel that is lit
+
+				const alive = new Uint8Array( clusters.count );
+
+				for ( let i = 0; i < count; i ++ ) if ( invalid[ i ] === 0 ) alive[ clusters.of[ i ] ] = 1;
+
+				// the links to what is left, in place, and what a ray of each surfel weighs: the kept links carry the
+				// light of all hits
+
+				const keptOffsets = new Uint32Array( kept + 1 ), scales = new Float32Array( kept );
+
+				let keptLinks = 0, lostHits = 0;
+
+				for ( let i = 0; i < count; i ++ ) {
+
+					if ( remap[ i ] < 0 ) continue;
+
+					let rays = 0;
+
+					for ( let l = offsets[ i ]; l < offsets[ i + 1 ]; l ++ ) {
+
+						const target = packed[ l ] % LINK_RAYS, linkRays = Math.floor( packed[ l ] / LINK_RAYS );
+						const moved = target < count ? remap[ target ] : alive[ target - count ] ? kept + target - count : - 1;
+
+						if ( moved < 0 ) {
+
+							lostHits += linkRays;
+							continue;
+
+						}
+
+						packed[ keptLinks ++ ] = moved + linkRays * LINK_RAYS;
+						rays += linkRays;
+
+					}
+
+					scales[ remap[ i ] ] = received[ i ] / ( Math.max( rays, 1 ) * RAYS );
+					keptOffsets[ remap[ i ] + 1 ] = keptLinks;
+
+				}
+
+				for ( let t = 0; t < texelMap.length; t ++ ) {
+
+					const surfel = ( texelMap[ t ] & 0x3fffffff ) - 1;
+
+					if ( surfel >= 0 ) texelMap[ t ] = remap[ surfel ] < 0 ? 0 : texelMap[ t ] - surfel + remap[ surfel ];
+
+				}
+
+				texelBuffer.value.needsUpdate = true;
+
+				for ( const [ name, itemSize ] of [[ 'position', 3 ], [ 'normal', 2 ], [ 'radius', 1 ], [ 'albedo', 3 ], [ 'emissive', 3 ], [ 'pair', 1 ]] ) surfels[ name ] = compact( surfels[ name ], itemSize );
+
+				clusters.of = compact( clusters.of, 1 );
+				surfels.count = kept;
+
+				// the BVH and the origins, with the normals, of the surfels stay for the shadow rays of the lighting,
+				// and the BVH and the texels for the rays of the probes
+
+				const frames = new Float32Array( kept * 8 );
+				frames.set( compact( origins, 4 ) );
+				frames.set( compact( tangents, 4 ), kept * 4 );
+
+				rayBuffer.value.dispose();
+				rayBuffer = buffer( frames, 4, 'vec4' );
+
 				return {
-					offsets, links: packed.slice( 0, links ), scales, skyTransfer, invalid,
-					buried, unknown: unknownHits / Math.max( surfelHits + unknownHits, 1 ),
+					offsets: keptOffsets, links: packed.slice( 0, keptLinks ), scales, skyTransfer: compact( skyTransfer, 9 ), invalid: compact( invalid, 1 ),
+					buried: count - kept, unknown: ( unknownHits + lostHits ) / Math.max( surfelHits + unknownHits, 1 ),
 					rayBuffer, visibility, traceHits, dispose
 				};
 
@@ -1764,7 +1848,7 @@
 				const cell = Math.max( 1, Math.round( spacing / texelSize ) );
 				const half = THREE.DataUtils.fromHalfFloat;
 
-				const data = { position: [], normal: [], radius: [], albedo: [], emissive: [] };
+				const data = { position: [], normal: [], radius: [], albedo: [], emissive: [], pair: [] };
 				const texels = [], group = [], sum = new Float32Array( 12 );
 
 				// the surfel of each texel plus one, with the side of its material in the two high bits
@@ -1903,6 +1987,7 @@
 								data.radius.push( radius );
 								data.albedo.push( sum[ 6 ] / count, sum[ 7 ] / count, sum[ 8 ] / count );
 								data.emissive.push( sum[ 9 ] / count, sum[ 10 ] / count, sum[ 11 ] / count );
+								data.pair.push( side === 2 ? sign : 0 );
 
 							}
 
@@ -1958,8 +2043,11 @@
 
 				for ( let i = 0; i < adopted.length; i ++ ) texelMap[ i ] ||= adopted[ i ];
 
+				// the pair is where the other side of a double-sided surfel is, one after or one before
+
 				return {
 					texelMap,
+					pair: new Int8Array( data.pair ),
 					count: data.radius.length,
 					position: new Float32Array( data.position ),
 					normal: encodeNormals( data.normal ),

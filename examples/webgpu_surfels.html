@@ -37,7 +37,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Loop, array, builtinIndirectContext, cross, dot, float, getShIrradianceAt, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, texture3D, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, builtinIndirectContext, cross, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, uvec3, vec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -113,32 +113,12 @@
 			const giAmount = uniform( 1 );
 			const lightMapNode = texture( new THREE.Texture(), uv( 1 ) );
 
-			// the light probe grid of the current scene with the SH of the radiance around each probe, the indirect
-			// diffuse light of the other objects, which move. The atlas has the layout of LightProbeGrid: seven
-			// volumes along z with a padding slice at both ends, that pack the nine coefficients
+			// the light probe grid with the SH of the radiance around each probe, the indirect diffuse light of the
+			// other objects, which move. It follows the grid of the current scene, so that the materials compile once
 
 			const probeAmount = uniform( 0 );
-			const probeMin = uniform( new THREE.Vector3() ), probeMax = uniform( new THREE.Vector3() ), probeResolution = uniform( new THREE.Vector3( 1, 1, 1 ) );
-			const probeAtlas = texture3D( new THREE.Data3DTexture( new Uint8Array( 4 ), 1, 1, 1 ) );
-
-			const probeIrradiance = ( normal ) => {
-
-				const range = probeMax.sub( probeMin );
-
-				// half a cell along the normal, away from the surface
-
-				const position = positionWorld.add( normal.mul( range.div( probeResolution ) ).mul( 0.5 ) );
-				const halfTexel = vec3( 0.5 ).div( probeResolution );
-				const uvw = position.sub( probeMin ).div( range ).clamp( halfTexel, halfTexel.oneMinus() );
-
-				const slices = probeResolution.z.add( 2 );
-				const s = [ 0, 1, 2, 3, 4, 5, 6 ].map( ( t ) => probeAtlas.sample( vec3( uvw.xy, uvw.z.mul( probeResolution.z ).add( 1 ).add( slices.mul( t ) ).div( slices.mul( 7 ) ) ) ).level( 0 ) );
-
-				const sh = array( [ s[ 0 ].xyz, vec3( s[ 0 ].w, s[ 1 ].xy ), vec3( s[ 1 ].zw, s[ 2 ].x ), s[ 2 ].yzw, s[ 3 ].xyz, vec3( s[ 3 ].w, s[ 4 ].xy ), vec3( s[ 4 ].zw, s[ 5 ].x ), s[ 5 ].yzw, s[ 6 ].xyz ] );
-
-				return getShIrradianceAt( normal, sh ).max( 0 );
-
-			};
+			const probeGrid = new LightProbeGrid( 1, 1, 1, 1, 1, 1 );
+			const probeSource = probeGrid.getDiffuseSource();
 
 			// SH basis of L2 in the order of THREE.SphericalHarmonics3
 
@@ -252,7 +232,7 @@
 				await renderer.init();
 
 				renderer.contextNode = builtinIndirectContext( {
-					diffuse: [ ( query, builder ) => builder.object.userData.giStatic === true ? vec4( lightMapNode.rgb.mul( giAmount ), giAmount ) : vec4( probeIrradiance( query.normal ).mul( probeAmount ), probeAmount ) ]
+					diffuse: [ ( query, builder ) => builder.object.userData.giStatic === true ? vec4( lightMapNode.rgb.mul( giAmount ), giAmount ) : probeSource( query ).mul( probeAmount ) ]
 				} );
 
 				controls = new OrbitControls( camera, renderer.domElement );
@@ -768,7 +748,7 @@
 				const sorted = new Uint32Array( RAYS );
 				const runs = [];
 
-				let links = 0, buried = 0, unknownHits = 0, surfelHits = 0;
+				let links = 0, unknownHits = 0, surfelHits = 0;
 
 				const traced = await traceHits( origins, tangents, directions, count, ( hits, start ) => {
 
@@ -826,7 +806,6 @@
 						if ( backfaces > RAYS / 4 ) {
 
 							invalid[ i ] = 1;
-							buried ++;
 							runs.length = 0;
 
 						}
@@ -2739,10 +2718,12 @@
 					probes.update();
 					probes.helper.visible = params.showProbes;
 
-					probeAtlas.value = probes.atlas;
-					probeMin.value.copy( probes.grid.boundingBox.min );
-					probeMax.value.copy( probes.grid.boundingBox.max );
-					probeResolution.value.copy( probes.grid.resolution );
+					const grid = probes.grid;
+
+					Object.assign( probeGrid, { width: grid.width, height: grid.height, depth: grid.depth, texture: probes.atlas } );
+					probeGrid.position.copy( grid.position );
+					probeGrid.resolution.copy( grid.resolution );
+					probeGrid.updateBoundingBox();
 
 					// along the path of the scene, on the ground
 

@@ -2105,147 +2105,180 @@
 
 				const texelMap = new Uint32Array( size * size );
 
-				for ( let cy = 0; cy < size; cy += cell ) {
+				const fullCell = cell, normals = new Float32Array( cell * cell * 3 );
 
-					for ( let cx = 0; cx < size; cx += cell ) {
+				function placeCell( cx, cy, cell ) {
 
-						// the covered texels of the cell
+					// the covered texels of the cell
 
-						texels.length = 0;
+					texels.length = 0;
 
-						for ( let y = cy; y < Math.min( cy + cell, size ); y ++ ) {
+					for ( let y = cy; y < Math.min( cy + cell, size ); y ++ ) {
 
-							for ( let x = cx; x < Math.min( cx + cell, size ); x ++ ) {
+						for ( let x = cx; x < Math.min( cx + cell, size ); x ++ ) {
 
-								if ( atlas.position[ ( y * size + x ) * 4 + 3 ] !== 0 ) texels.push( ( y * size + x ) * 4 );
+							if ( atlas.position[ ( y * size + x ) * 4 + 3 ] !== 0 ) texels.push( ( y * size + x ) * 4 );
+
+						}
+
+					}
+
+					// A cell over a curved surface is too coarse for the light around it: where the normals of its texels
+					// turn by more than 15 degrees without a crease, its four quarters place surfels of half the radius
+
+					if ( cell === fullCell && cell > 1 ) {
+
+						for ( let i = 0; i < texels.length; i ++ ) for ( let c = 0; c < 3; c ++ ) normals[ i * 3 + c ] = half( atlas.normal[ texels[ i ] + c ] );
+
+						let curved = false;
+
+						for ( let i = 0; i < texels.length && ! curved; i ++ ) {
+
+							for ( let j = 0; j < i; j ++ ) {
+
+								const facing = normals[ i * 3 ] * normals[ j * 3 ] + normals[ i * 3 + 1 ] * normals[ j * 3 + 1 ] + normals[ i * 3 + 2 ] * normals[ j * 3 + 2 ];
+
+								if ( facing > 0.7 && facing < 0.966 ) curved = true;
 
 							}
 
 						}
 
-						// each texel left seeds a group and takes the texels like it
+						if ( curved ) {
 
-						while ( texels.length > 0 ) {
+							const quarter = Math.ceil( cell / 2 );
 
-							const seed = texels[ 0 ];
-							const px = half( atlas.position[ seed ] ), py = half( atlas.position[ seed + 1 ] ), pz = half( atlas.position[ seed + 2 ] );
-							const nx = half( atlas.normal[ seed ] ), ny = half( atlas.normal[ seed + 1 ] ), nz = half( atlas.normal[ seed + 2 ] );
-							const side = Math.round( half( atlas.normal[ seed + 3 ] ) );
+							for ( let y = cy; y < cy + cell; y += quarter ) for ( let x = cx; x < cx + cell; x += quarter ) placeCell( x, y, quarter );
 
-							group.length = 0;
+							return;
 
-							for ( let i = texels.length - 1; i >= 0; i -- ) {
+						}
 
-								const t = texels[ i ];
-								const x = half( atlas.position[ t ] ), y = half( atlas.position[ t + 1 ] ), z = half( atlas.position[ t + 2 ] );
-								const u = half( atlas.normal[ t ] ), v = half( atlas.normal[ t + 1 ] ), w = half( atlas.normal[ t + 2 ] );
+					}
 
-								if ( u * nx + v * ny + w * nz < 0.7 || Math.hypot( x - px, y - py, z - pz ) > spacing * 2 ) continue;
+					// each texel left seeds a group and takes the texels like it
 
-								group.push( t );
-								texels[ i ] = texels[ texels.length - 1 ];
-								texels.pop();
+					while ( texels.length > 0 ) {
 
-							}
+						const seed = texels[ 0 ];
+						const px = half( atlas.position[ seed ] ), py = half( atlas.position[ seed + 1 ] ), pz = half( atlas.position[ seed + 2 ] );
+						const nx = half( atlas.normal[ seed ] ), ny = half( atlas.normal[ seed + 1 ] ), nz = half( atlas.normal[ seed + 2 ] );
+						const side = Math.round( half( atlas.normal[ seed + 3 ] ) );
 
-							// the texels that the charts only touch lie on the edges of the surfaces, so the surfel is the
-							// mean of the others. Emitters smaller than a texel only have such texels
+						group.length = 0;
 
-							let count = 0, edges = false;
+						for ( let i = texels.length - 1; i >= 0; i -- ) {
 
-							const accumulate = () => {
+							const t = texels[ i ];
+							const x = half( atlas.position[ t ] ), y = half( atlas.position[ t + 1 ] ), z = half( atlas.position[ t + 2 ] );
+							const u = half( atlas.normal[ t ] ), v = half( atlas.normal[ t + 1 ] ), w = half( atlas.normal[ t + 2 ] );
 
-								count = 0;
-								sum.fill( 0 );
+							if ( u * nx + v * ny + w * nz < 0.7 || Math.hypot( x - px, y - py, z - pz ) > spacing * 2 ) continue;
 
-								for ( const t of group ) {
+							group.push( t );
+							texels[ i ] = texels[ texels.length - 1 ];
+							texels.pop();
 
-									if ( ! edges && half( atlas.albedo[ t + 3 ] ) < 1 ) continue;
+						}
 
-									for ( let c = 0; c < 3; c ++ ) {
+						// the texels that the charts only touch lie on the edges of the surfaces, so the surfel is the
+						// mean of the others. Emitters smaller than a texel only have such texels
 
-										sum[ c ] += half( atlas.position[ t + c ] );
-										sum[ 3 + c ] += half( atlas.normal[ t + c ] );
-										sum[ 6 + c ] += half( atlas.albedo[ t + c ] );
-										sum[ 9 + c ] += half( atlas.emissive[ t + c ] );
+						let count = 0, edges = false;
 
-									}
+						const accumulate = () => {
 
-									count ++;
-
-								}
-
-							};
-
-							accumulate();
-
-							if ( count === 0 ) {
-
-								edges = true;
-								accumulate();
-
-							}
-
-							// slivers at the borders of the charts make poor surfels. Their texels have none, hits on them
-							// count for the other links. Small emitters are kept, they light their surroundings
-
-							if ( ( edges || count <= cell * cell / 4 ) && sum[ 9 ] + sum[ 10 ] + sum[ 11 ] === 0 ) continue;
-
-							// the surfel sits on the texel nearest to the mean, which is on the surface also where it curves
-
-							let nearest = seed, nearestDistance = Infinity;
+							count = 0;
+							sum.fill( 0 );
 
 							for ( const t of group ) {
 
-								texelMap[ t / 4 ] = data.radius.length + 1 + side * 0x40000000;
-
 								if ( ! edges && half( atlas.albedo[ t + 3 ] ) < 1 ) continue;
 
-								const distance = Math.hypot( half( atlas.position[ t ] ) - sum[ 0 ] / count, half( atlas.position[ t + 1 ] ) - sum[ 1 ] / count, half( atlas.position[ t + 2 ] ) - sum[ 2 ] / count );
+								for ( let c = 0; c < 3; c ++ ) {
 
-								if ( distance < nearestDistance ) {
-
-									nearest = t;
-									nearestDistance = distance;
+									sum[ c ] += half( atlas.position[ t + c ] );
+									sum[ 3 + c ] += half( atlas.normal[ t + c ] );
+									sum[ 6 + c ] += half( atlas.albedo[ t + c ] );
+									sum[ 9 + c ] += half( atlas.emissive[ t + c ] );
 
 								}
 
-							}
-
-							// the disk overlaps its neighbors, and shrinks with the part of the cell that is covered
-
-							const length = Math.hypot( sum[ 3 ], sum[ 4 ], sum[ 5 ] );
-							const radius = Math.sqrt( count ) * texelSize * 0.75;
-
-							// charts start at texel centers, so the texel may lie on the very edge of the surface: move it up
-							// to half a texel towards the mean, along the surface
-
-							const point = [ 0, 1, 2 ].map( ( c ) => half( atlas.position[ nearest + c ] ) );
-							const toMean = point.map( ( v, c ) => sum[ c ] / count - v );
-							const along = ( toMean[ 0 ] * sum[ 3 ] + toMean[ 1 ] * sum[ 4 ] + toMean[ 2 ] * sum[ 5 ] ) / length;
-
-							for ( let c = 0; c < 3; c ++ ) toMean[ c ] -= along * sum[ 3 + c ] / length;
-
-							const move = Math.min( 1, texelSize * 0.5 / Math.max( Math.hypot( ...toMean ), 1e-9 ) );
-
-							// double-sided surfaces get a second surfel that faces the other way, right after the first
-
-							for ( let sign = 1; sign >= ( side === 2 ? - 1 : 1 ); sign -= 2 ) {
-
-								data.position.push( point[ 0 ] + toMean[ 0 ] * move, point[ 1 ] + toMean[ 1 ] * move, point[ 2 ] + toMean[ 2 ] * move );
-								data.normal.push( sign * sum[ 3 ] / length, sign * sum[ 4 ] / length, sign * sum[ 5 ] / length );
-								data.radius.push( radius );
-								data.albedo.push( sum[ 6 ] / count, sum[ 7 ] / count, sum[ 8 ] / count );
-								data.emissive.push( sum[ 9 ] / count, sum[ 10 ] / count, sum[ 11 ] / count );
-								data.pair.push( side === 2 ? sign : 0 );
+								count ++;
 
 							}
+
+						};
+
+						accumulate();
+
+						if ( count === 0 ) {
+
+							edges = true;
+							accumulate();
+
+						}
+
+						// slivers at the borders of the charts make poor surfels. Their texels have none, hits on them
+						// count for the other links. Small emitters are kept, they light their surroundings
+
+						if ( ( edges || count <= cell * cell / 4 ) && sum[ 9 ] + sum[ 10 ] + sum[ 11 ] === 0 ) continue;
+
+						// the surfel sits on the texel nearest to the mean, which is on the surface also where it curves
+
+						let nearest = seed, nearestDistance = Infinity;
+
+						for ( const t of group ) {
+
+							texelMap[ t / 4 ] = data.radius.length + 1 + side * 0x40000000;
+
+							if ( ! edges && half( atlas.albedo[ t + 3 ] ) < 1 ) continue;
+
+							const distance = Math.hypot( half( atlas.position[ t ] ) - sum[ 0 ] / count, half( atlas.position[ t + 1 ] ) - sum[ 1 ] / count, half( atlas.position[ t + 2 ] ) - sum[ 2 ] / count );
+
+							if ( distance < nearestDistance ) {
+
+								nearest = t;
+								nearestDistance = distance;
+
+							}
+
+						}
+
+						// the disk overlaps its neighbors, and shrinks with the part of the cell that is covered
+
+						const length = Math.hypot( sum[ 3 ], sum[ 4 ], sum[ 5 ] );
+						const radius = Math.sqrt( count ) * texelSize * 0.75;
+
+						// charts start at texel centers, so the texel may lie on the very edge of the surface: move it up
+						// to half a texel towards the mean, along the surface
+
+						const point = [ 0, 1, 2 ].map( ( c ) => half( atlas.position[ nearest + c ] ) );
+						const toMean = point.map( ( v, c ) => sum[ c ] / count - v );
+						const along = ( toMean[ 0 ] * sum[ 3 ] + toMean[ 1 ] * sum[ 4 ] + toMean[ 2 ] * sum[ 5 ] ) / length;
+
+						for ( let c = 0; c < 3; c ++ ) toMean[ c ] -= along * sum[ 3 + c ] / length;
+
+						const move = Math.min( 1, texelSize * 0.5 / Math.max( Math.hypot( ...toMean ), 1e-9 ) );
+
+						// double-sided surfaces get a second surfel that faces the other way, right after the first
+
+						for ( let sign = 1; sign >= ( side === 2 ? - 1 : 1 ); sign -= 2 ) {
+
+							data.position.push( point[ 0 ] + toMean[ 0 ] * move, point[ 1 ] + toMean[ 1 ] * move, point[ 2 ] + toMean[ 2 ] * move );
+							data.normal.push( sign * sum[ 3 ] / length, sign * sum[ 4 ] / length, sign * sum[ 5 ] / length );
+							data.radius.push( radius );
+							data.albedo.push( sum[ 6 ] / count, sum[ 7 ] / count, sum[ 8 ] / count );
+							data.emissive.push( sum[ 9 ] / count, sum[ 10 ] / count, sum[ 11 ] / count );
+							data.pair.push( side === 2 ? sign : 0 );
 
 						}
 
 					}
 
 				}
+
+				for ( let cy = 0; cy < size; cy += cell ) for ( let cx = 0; cx < size; cx += cell ) placeCell( cx, cy, cell );
 
 				// the texels left without a surfel, slivers and what the cells split off, adopt the nearest surfel
 				// of the texels around them that faces their way, so that the rays that hit them find it

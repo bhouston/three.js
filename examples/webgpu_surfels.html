@@ -2939,7 +2939,7 @@
 				gltf.scene.position.sub( new THREE.Box3().setFromObject( gltf.scene ).getCenter( new THREE.Vector3() ) );
 				gltf.scene.traverse( ( object ) => object.isMesh && ( object.material.emissiveIntensity = 5 ) );
 
-				return { root: gltf.scene, sky: false, detailSize: 0.25, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
+				return { root: gltf.scene, sky: false, detailSize: 0.5, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
 
 			}
 

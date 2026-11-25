@@ -85,10 +85,9 @@
 			const linkMaterial = new THREE.LineBasicNodeMaterial( { vertexColors: true } );
 			const surfelMaterial = new THREE.MeshBasicNodeMaterial();
 
-			// the atlas of the light map, and how many of its texels a surfel spans
+			// the sizes of the atlas of the light map
 
 			const ATLAS_SIZES = [ 1024, 2048, 4096 ];
-			const SURFEL_TEXELS = 4;
 
 			// the transfer bake: rays per surfel (a power of two), links kept per surfel, and surfels traced per
 			// dispatch. A ray ends as a miss, on a back face, on a texel without a surfel, or on surfel j as j + 3.
@@ -204,6 +203,7 @@
 				denoiseStrength: 1,
 				showProbes: false,
 				detailSize: 0.25,
+				surfelTexels: 4,
 				timeOfDay: 7,
 				exposure: 0.5,
 				autoplay: true,
@@ -299,6 +299,7 @@
 					bake();
 
 				} ).debounce( 500 );
+				gui.add( params, 'surfelTexels', 1, 8, 1 ).name( 'Light Map Texels per Surfel' ).onChange( bake ).debounce( 500 );
 				gui.add( params, 'placement', Object.keys( placements ) ).name( 'Surfel Placement' ).onChange( bake );
 				gui.add( params, 'thinWalls' ).name( 'Thin Wall Fix' ).onChange( bake );
 				gui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Surfel Display Scale' ).onChange( () => updateSurfelMesh( world ) );
@@ -432,7 +433,7 @@
 
 				const start = performance.now();
 				const geometries = new Set( meshes.map( ( mesh ) => mesh.geometry ) );
-				const texelsPerUnit = SURFEL_TEXELS / world.detailSize;
+				const texelsPerUnit = params.surfelTexels / world.detailSize;
 
 				let layout = null;
 

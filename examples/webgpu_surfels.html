@@ -187,6 +187,7 @@
 			const params = {
 				scene: 'Cornell Box',
 				view: 'Beauty',
+				placement: 'Atlas Grid',
 				gi: true,
 				denoise: true,
 				denoiseStrength: 0.3,
@@ -213,6 +214,7 @@
 			const views = [ 'Beauty', 'Light Map', 'Surfels: Radiosity', 'Surfels: Irradiance', 'Surfels: Direct Light', 'Surfels: Sky Light', 'Surfels: Bounce Light', 'Surfels: Albedo', 'Surfels: Emissive', 'Surfels: Normal', 'Surfels: Sky Visibility', 'Atlas: Position', 'Atlas: Normal', 'Atlas: Albedo', 'Atlas: Emissive' ];
 
 			const scenes = { 'Cornell Box': createCornellBox, 'Two Rooms': createTwoRooms, 'Dungeon': loadDungeon, 'Sponza': loadSponza };
+			const placements = { 'Atlas Grid': placeSurfels, 'Sample Elimination': eliminateSurfels };
 			const worlds = {};
 
 			const sunDirection = new THREE.Vector3();
@@ -296,6 +298,7 @@
 					bake();
 
 				} ).debounce( 500 );
+				gui.add( params, 'placement', Object.keys( placements ) ).name( 'Surfel Placement' ).onChange( bake );
 				gui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Surfel Display Scale' ).onChange( () => updateSurfelMesh( world ) );
 				gui.add( params, 'timeOfDay', 0, 24, 0.01 ).name( 'Time of Day' ).listen();
 				gui.add( params, 'exposure', 0.01, 2, 0.01 ).name( 'Exposure' ).listen();
@@ -441,7 +444,7 @@
 
 				const times = { 'atlas': performance.now() - start };
 
-				baked.surfels = placeSurfels( { position, normal, albedo, emissive, size, texelSize }, baked.detailSize );
+				baked.surfels = placements[ params.placement ]( { position, normal, albedo, emissive, size, texelSize }, baked.detailSize );
 				baked.surfels.clusters = clusterSurfels( baked.surfels, baked.detailSize * CLUSTER_SIZE );
 
 				times[ 'surfels' ] = performance.now() - start;
@@ -2211,6 +2214,298 @@
 				for ( let i = 0; i < adopted.length; i ++ ) texelMap[ i ] ||= adopted[ i ];
 
 				// the pair is where the other side of a double-sided surfel is, one after or one before
+
+				return {
+					texelMap,
+					pair: new Int8Array( data.pair ),
+					count: data.radius.length,
+					position: new Float32Array( data.position ),
+					normal: encodeNormals( data.normal ),
+					radius: new Float32Array( data.radius ),
+					albedo: new Float32Array( data.albedo ),
+					emissive: new Float32Array( data.emissive )
+				};
+
+			}
+
+			// Surfels by sample elimination (Yuksel 2015): of five times as many points as surfels, spread evenly
+			// over the surfaces, the one that is most crowded by the points around it that face its way is removed
+			// until as many are left as the surfaces hold at the surfel spacing. The points are the texels of the
+			// atlas, whose density is uniform. The surfels do not follow the grid of the atlas then, and none are
+			// lost at the borders of the charts
+
+			function eliminateSurfels( atlas, spacing ) {
+
+				const { size, texelSize } = atlas;
+				const half = THREE.DataUtils.fromHalfFloat;
+
+				// the indices of points in a grid of cells, and those around a point
+
+				function hashGrid( cell ) {
+
+					const cells = new Map();
+					const key = ( x, y, z ) => ( Math.floor( x / cell ) * 73856093 ) ^ ( Math.floor( y / cell ) * 19349663 ) ^ ( Math.floor( z / cell ) * 83492791 );
+
+					return {
+
+						add( index, x, y, z ) {
+
+							const k = key( x, y, z );
+
+							if ( cells.has( k ) ) cells.get( k ).push( index );
+							else cells.set( k, [ index ] );
+
+						},
+
+						each( x, y, z, callback ) {
+
+							for ( let i = - 1; i <= 1; i ++ ) for ( let j = - 1; j <= 1; j ++ ) for ( let k = - 1; k <= 1; k ++ ) {
+
+								const list = cells.get( key( x + i * cell, y + j * cell, z + k * cell ) );
+
+								if ( list !== undefined ) for ( const index of list ) callback( index );
+
+							}
+
+						}
+
+					};
+
+				}
+
+				// the texels whose center is covered, and a random five times the surfels of them
+
+				const covered = [];
+
+				for ( let t = 0; t < size * size; t ++ ) if ( atlas.position[ t * 4 + 3 ] !== 0 && half( atlas.albedo[ t * 4 + 3 ] ) >= 1 ) covered.push( t );
+
+				const area = covered.length * texelSize * texelSize;
+				const target = Math.max( 1, Math.round( area / ( spacing * spacing ) ) );
+				const count = Math.min( covered.length, target * 5 );
+				const point = new Float32Array( count * 6 );
+
+				for ( let i = 0; i < count; i ++ ) {
+
+					const other = i + Math.floor( Math.random() * ( covered.length - i ) );
+
+					[ covered[ i ], covered[ other ] ] = [ covered[ other ], covered[ i ] ];
+
+					for ( let c = 0; c < 3; c ++ ) {
+
+						point[ i * 6 + c ] = half( atlas.position[ covered[ i ] * 4 + c ] );
+						point[ i * 6 + 3 + c ] = half( atlas.normal[ covered[ i ] * 4 + c ] );
+
+					}
+
+				}
+
+				// how much two points crowd each other: within twice the largest distance that as many points as
+				// surfels can keep on the area. Points that face apart do not, so that both sides of a thin wall and
+				// of a crease keep theirs
+				// ponytail: without the weight limiting of the paper, which evens out the borders of the surfaces
+
+				const reach = 2 * Math.sqrt( area / ( 2 * Math.sqrt( 3 ) * target ) );
+
+				const crowding = ( i, j ) => {
+
+					const a = i * 6, b = j * 6;
+
+					if ( point[ a + 3 ] * point[ b + 3 ] + point[ a + 4 ] * point[ b + 4 ] + point[ a + 5 ] * point[ b + 5 ] < 0.7 ) return 0;
+
+					const distance = Math.hypot( point[ a ] - point[ b ], point[ a + 1 ] - point[ b + 1 ], point[ a + 2 ] - point[ b + 2 ] );
+
+					return distance < reach ? ( 1 - distance / reach ) ** 8 : 0;
+
+				};
+
+				const points = hashGrid( reach );
+				const weight = new Float32Array( count );
+
+				for ( let i = 0; i < count; i ++ ) points.add( i, point[ i * 6 ], point[ i * 6 + 1 ], point[ i * 6 + 2 ] );
+
+				for ( let i = 0; i < count; i ++ ) {
+
+					points.each( point[ i * 6 ], point[ i * 6 + 1 ], point[ i * 6 + 2 ], ( j ) => {
+
+						if ( j !== i ) weight[ i ] += crowding( i, j );
+
+					} );
+
+				}
+
+				// a heap with the most crowded point on top. The weights only fall, so a point is put back when its
+				// weight has changed since it was placed
+
+				const heap = Int32Array.from( weight, ( v, i ) => i ), key = Float32Array.from( weight ), removed = new Uint8Array( count );
+
+				let heapSize = count, left = count;
+
+				const sink = ( k ) => {
+
+					for ( ;; ) {
+
+						const l = 2 * k + 1, r = l + 1;
+
+						let top = k;
+
+						if ( l < heapSize && key[ heap[ l ] ] > key[ heap[ top ] ] ) top = l;
+						if ( r < heapSize && key[ heap[ r ] ] > key[ heap[ top ] ] ) top = r;
+						if ( top === k ) return;
+
+						[ heap[ k ], heap[ top ] ] = [ heap[ top ], heap[ k ] ];
+						k = top;
+
+					}
+
+				};
+
+				for ( let k = ( count >> 1 ) - 1; k >= 0; k -- ) sink( k );
+
+				while ( left > target ) {
+
+					const i = heap[ 0 ];
+
+					if ( key[ i ] !== weight[ i ] ) {
+
+						key[ i ] = weight[ i ];
+						sink( 0 );
+						continue;
+
+					}
+
+					removed[ i ] = 1;
+					left --;
+					heap[ 0 ] = heap[ -- heapSize ];
+					sink( 0 );
+
+					points.each( point[ i * 6 ], point[ i * 6 + 1 ], point[ i * 6 + 2 ], ( j ) => {
+
+						if ( removed[ j ] === 0 ) weight[ j ] -= crowding( i, j );
+
+					} );
+
+				}
+
+				// a surfel on the texel of each point that is left, two on double-sided surfaces
+
+				const data = { position: [], normal: [], radius: [], albedo: [], emissive: [], pair: [] };
+				const sides = [], seeds = [], texelMap = new Uint32Array( size * size );
+				const surfels = hashGrid( spacing * 1.5 );
+
+				function addSurfel( t ) {
+
+					const side = Math.round( half( atlas.normal[ t * 4 + 3 ] ) );
+					const p = [ 0, 1, 2 ].map( ( c ) => half( atlas.position[ t * 4 + c ] ) ), n = [ 0, 1, 2 ].map( ( c ) => half( atlas.normal[ t * 4 + c ] ) );
+					const length = Math.hypot( ...n );
+
+					surfels.add( data.radius.length, ...p );
+
+					for ( let sign = 1; sign >= ( side === 2 ? - 1 : 1 ); sign -= 2 ) {
+
+						sides.push( side );
+						seeds.push( t );
+
+						data.position.push( ...p );
+						data.normal.push( sign * n[ 0 ] / length, sign * n[ 1 ] / length, sign * n[ 2 ] / length );
+						data.radius.push( 0 );
+						data.albedo.push( 0, 0, 0 );
+						data.emissive.push( 0, 0, 0 );
+						data.pair.push( side === 2 ? sign : 0 );
+
+					}
+
+				}
+
+				// a texel belongs to the nearest surfel of its kind of surface that faces its way and lies in its
+				// plane, like the links of the light map
+
+				function assign( t ) {
+
+					const side = Math.round( half( atlas.normal[ t * 4 + 3 ] ) );
+					const px = half( atlas.position[ t * 4 ] ), py = half( atlas.position[ t * 4 + 1 ] ), pz = half( atlas.position[ t * 4 + 2 ] );
+					const nx = half( atlas.normal[ t * 4 ] ), ny = half( atlas.normal[ t * 4 + 1 ] ), nz = half( atlas.normal[ t * 4 + 2 ] );
+
+					let nearest = - 1, nearestDistance = spacing * 1.5;
+
+					surfels.each( px, py, pz, ( i ) => {
+
+						if ( sides[ i ] !== side ) return;
+
+						const dx = data.position[ i * 3 ] - px, dy = data.position[ i * 3 + 1 ] - py, dz = data.position[ i * 3 + 2 ] - pz;
+						const distance = Math.hypot( dx, dy, dz );
+
+						if ( distance < nearestDistance && data.normal[ i * 3 ] * nx + data.normal[ i * 3 + 1 ] * ny + data.normal[ i * 3 + 2 ] * nz > 0.5 && Math.abs( dx * nx + dy * ny + dz * nz ) < spacing * 0.5 ) {
+
+							nearest = i;
+							nearestDistance = distance;
+
+						}
+
+					} );
+
+					if ( nearest >= 0 ) texelMap[ t ] = nearest + 1 + side * 0x40000000;
+
+					return nearest >= 0;
+
+				}
+
+				for ( let i = 0; i < count; i ++ ) if ( removed[ i ] === 0 ) addSurfel( covered[ i ] );
+
+				for ( let t = 0; t < size * size; t ++ ) if ( atlas.position[ t * 4 + 3 ] !== 0 ) assign( t );
+
+				// emitters too small to have got a surfel get one, they light their surroundings
+
+				for ( let t = 0; t < size * size; t ++ ) {
+
+					if ( atlas.position[ t * 4 + 3 ] === 0 || texelMap[ t ] !== 0 || half( atlas.emissive[ t * 4 ] ) + half( atlas.emissive[ t * 4 + 1 ] ) + half( atlas.emissive[ t * 4 + 2 ] ) === 0 ) continue;
+
+					if ( ! assign( t ) ) {
+
+						addSurfel( t );
+						assign( t );
+
+					}
+
+				}
+
+				// the albedo and the emissive of a surfel are the means of its texels whose center is covered, or
+				// those of its own texel, and its disk has their area
+
+				const counts = new Uint32Array( data.radius.length );
+
+				const accumulate = ( i, t ) => {
+
+					counts[ i ] ++;
+
+					for ( let c = 0; c < 3; c ++ ) {
+
+						data.albedo[ i * 3 + c ] += half( atlas.albedo[ t * 4 + c ] );
+						data.emissive[ i * 3 + c ] += half( atlas.emissive[ t * 4 + c ] );
+
+					}
+
+				};
+
+				for ( let t = 0; t < size * size; t ++ ) if ( texelMap[ t ] !== 0 && half( atlas.albedo[ t * 4 + 3 ] ) >= 1 ) accumulate( ( texelMap[ t ] & 0x3fffffff ) - 1, t );
+
+				for ( let i = 0; i < counts.length; i ++ ) {
+
+					// the back of a double-sided surfel is like its front
+
+					const front = data.pair[ i ] === - 1 ? i - 1 : i;
+
+					if ( counts[ front ] === 0 ) accumulate( front, seeds[ front ] );
+
+					data.radius[ i ] = Math.sqrt( counts[ front ] ) * texelSize * 0.75;
+
+					for ( let c = 0; c < 3; c ++ ) {
+
+						data.albedo[ i * 3 + c ] = data.albedo[ front * 3 + c ] / ( front === i ? counts[ front ] : 1 );
+						data.emissive[ i * 3 + c ] = data.emissive[ front * 3 + c ] / ( front === i ? counts[ front ] : 1 );
+
+					}
+
+				}
 
 				return {
 					texelMap,

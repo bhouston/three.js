@@ -1546,7 +1546,7 @@
 					'Surfels: Direct Light': element( 0 ),
 					'Surfels: Sky Light': element( 1 ),
 					'Surfels: Bounce Light': element( 2 ),
-					'Surfels: Irradiance': element( 0 ).add( element( 1 ) ).add( element( 2 ) ),
+					'Surfels: Irradiance': element( 0 ).mul( terms.x ).add( element( 1 ).mul( terms.y ) ).add( element( 2 ).mul( terms.z ) ),
 					'Surfels: Radiosity': element( 3 )
 				};
 

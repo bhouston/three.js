@@ -595,8 +595,8 @@
 				const bvh = new BVHComputeData( geometry, { attributes: { position: 'vec4f', uv1: 'vec2f' } } );
 				bvh.update();
 
-				// the closest hit of a ray: its barycentric coordinates and its triangle plus one, negated for back
-				// faces, or zeros if nothing is hit. And the light map UV of a hit
+				// the closest hit of a ray: its barycentric coordinates, its triangle plus one, negated for back
+				// faces, and its distance, or zeros if nothing is hit. And the light map UV of a hit
 
 				const { raycastFirstHit, raycastAnyHit, sampleTrianglePoint } = bvh.fns;
 
@@ -618,7 +618,7 @@
 
 				const trace = wgslTagFn/* wgsl */`
 					// fn
-					fn surfelTrace( origin: vec3f, direction: vec3f ) -> vec3f {
+					fn surfelTrace( origin: vec3f, direction: vec3f ) -> vec4f {
 
 						var ray: ${ rayStruct };
 						ray.origin = origin;
@@ -630,11 +630,11 @@
 
 						if ( ! hit.didHit ) {
 
-							return vec3f( 0.0 );
+							return vec4f( 0.0 );
 
 						}
 
-						return vec3f( hit.barycoord.yz, hit.side * ( f32( hit.indices.x / 3u ) + 1.0 ) );
+						return vec4f( hit.barycoord.yz, hit.side * ( f32( hit.indices.x / 3u ) + 1.0 ), hit.dist );
 
 					}
 				`;
@@ -699,10 +699,10 @@
 
 				// Traces the rays of a set of origins, each with a frame of a normal and a tangent that the directions
 				// are relative to, and hands the hits of each batch to the callback. The octahedral normal is in the w
-				// of the origin and of the tangent. Returns the buffer of the origins, tangents and directions: one
+				// of the origin and of the tangent. A hit closer than `cover` has its high bit set. Returns the buffer of the origins, tangents and directions: one
 				// buffer, WebGPU allows 8 storage buffers per stage by default and the BVH takes four
 
-				async function traceHits( origins, tangents, directions, count, onBatch ) {
+				async function traceHits( origins, tangents, directions, count, cover, onBatch ) {
 
 					const rayData = new Float32Array( ( count * 2 + RAYS ) * 4 );
 					rayData.set( origins );
@@ -727,7 +727,7 @@
 
 						If( hit.z.notEqual( 0 ), () => {
 
-							const texel = uvec2( surface( hit ).mul( size ) ).min( uvec2( size - 1 ) ).toVar();
+							const texel = uvec2( surface( hit.xyz ).mul( size ) ).min( uvec2( size - 1 ) ).toVar();
 							const entry = texelBuffer.element( texel.y.mul( uint( size ) ).add( texel.x ) ).toVar();
 							const surfel = entry.bitAnd( uint( 0x3fffffff ) );
 							const side = entry.shiftRight( uint( 30 ) );
@@ -754,6 +754,12 @@
 								} );
 
 							} );
+
+						} );
+
+						If( hit.z.notEqual( 0 ).and( hit.w.lessThan( cover ) ), () => {
+
+							result.assign( result.bitOr( uint( 0x80000000 ) ) );
 
 						} );
 
@@ -791,11 +797,24 @@
 
 				let links = 0, unknownHits = 0, surfelHits = 0;
 
-				const traced = await traceHits( origins, tangents, directions, count, ( hits, start ) => {
+				const traced = await traceHits( origins, tangents, directions, count, detailSize * 0.5, ( hits, start ) => {
 
 					for ( let i = start; i < Math.min( start + BATCH, count ); i ++ ) {
 
 						const rays = hits.subarray( ( i - start ) * RAYS, ( i - start + 1 ) * RAYS );
+
+						// the rays that end within half the surfel spacing
+
+						let covered = 0;
+
+						for ( let r = 0; r < RAYS; r ++ ) {
+
+							if ( rays[ r ] < 0x80000000 ) continue;
+
+							rays[ r ] -= 0x80000000;
+							covered ++;
+
+						}
 
 						// sky transfer: the misses are cosine distributed, so their SH basis only needs the scale
 
@@ -842,9 +861,10 @@
 						unknownHits += unknown;
 						surfelHits += hit;
 
-						// a surfel that sees many back faces is inside of geometry
+						// a surfel that sees many back faces is inside of geometry, and one whose rays end right
+						// above it is covered by other geometry, like a floor under a stair
 
-						if ( backfaces > RAYS / 4 ) {
+						if ( backfaces > RAYS / 4 || covered > RAYS * 0.75 ) {
 
 							invalid[ i ] = 1;
 							runs.length = 0;
@@ -1419,7 +1439,7 @@
 				const rows = new Array( count );
 				const links = new Map();
 
-				const rayBuffer = await world.transfer.traceHits( origins, tangents, directions, count, ( hits, start ) => {
+				const rayBuffer = await world.transfer.traceHits( origins, tangents, directions, count, 0, ( hits, start ) => {
 
 					for ( let i = start; i < Math.min( start + BATCH, count ); i ++ ) {
 

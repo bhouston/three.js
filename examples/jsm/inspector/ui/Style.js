@@ -1280,6 +1280,15 @@ export class Style {
 		--frame-timeline-width: min(60cqw, 100cqw - 372px);
 	}
 
+	.performance-frame-count {
+		margin-right: 8px;
+		border: 1px solid var(--profiler-border);
+		border-radius: 3px;
+		background: var(--chart-background);
+		color: var(--text-primary);
+		font: inherit;
+	}
+
 	/* the timeline has a darker background, up to the padding of the rows */
 	.frame-stats {
 		background: linear-gradient(var(--chart-background), var(--chart-background)) 100% 0 / calc(var(--frame-timeline-width) + 8px) 100% no-repeat;

@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { Fn, If, Loop, Return, builtinIndirectContext, cross, dFdx, dFdy, dot, float, instanceIndex, materialColor, materialEmissive, mrt, normalWorldGeometry, mix, positionWorld, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, uv, uvec2, vec2, vec3, vec4, vertexColor } from 'three/tsl';
+			import { Fn, If, Loop, Return, builtinIndirectContext, cross, dFdx, dFdy, dot, float, instanceIndex, materialColor, materialEmissive, mix, mrt, negateOnBackSide, normalViewGeometry, normalWorldGeometry, packNormalToRGB, pass, positionWorld, sample, screenUV, select, storage, texture, textureStore, uint, uniform, uniformArray, unpackOctahedralToNormal, unpackRGBToNormal, uv, uvec2, vec2, vec3, vec4, vertexColor } from 'three/tsl';
 			import { BVHComputeData, rayIntersectionResultStruct, rayStruct, wgslTagFn } from 'three-mesh-bvh/webgpu';
 
 
@@ -47,6 +47,7 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+			import { ao } from 'three/addons/tsl/display/GTAONode.js';
 			import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { unwrapUVs } from 'three/addons/utils/unwrapUVs.js';
 
@@ -62,7 +63,7 @@
 
 			const SPONZA_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Sponza/glTF/Sponza.gltf';
 
-			let camera, scene, renderer, controls, status, selection;
+			let camera, scene, renderer, renderPipeline, controls, status, selection;
 			let sky, sun, cubeCamera, world, rendererState;
 			let environmentSHPending = 0;
 
@@ -122,6 +123,18 @@
 			const giAmount = uniform( 1 );
 			const lightMapNode = texture( new THREE.Texture(), uv( 1 ) );
 			const skyMapNode = texture( new THREE.Texture(), uv( 1 ) );
+
+			const lightMapDiffuse = ( visibility = float( 1 ) ) => ( query, builder ) => {
+
+				if ( builder.object.userData.giStatic !== true ) return null;
+
+				const irradiance = lightMapNode.rgb.mul( giAmount );
+
+				// Only the lightmap irradiance is occluded. Its coverage still replaces the environment diffuse.
+
+				return vec4( builder.material.transparent ? irradiance : irradiance.mul( visibility ), giAmount );
+
+			};
 
 			// The reflections of the meshes with a light map. The environment is not occluded: on its own it lights
 			// the inside of a building like the open sky does. So it keeps the share of the sky that the surfels
@@ -191,6 +204,7 @@
 			const params = {
 				scene: 'Cornell Box',
 				view: 'Beauty',
+				gtao: true,
 				placement: 'Sample Elimination',
 				thinWalls: true,
 				denoise: false,
@@ -249,9 +263,29 @@
 				await renderer.init();
 
 				renderer.contextNode = builtinIndirectContext( {
-					diffuse: [ ( query, builder ) => builder.object.userData.giStatic === true ? vec4( lightMapNode.rgb.mul( giAmount ), giAmount ) : null ],
+					diffuse: [ lightMapDiffuse() ],
 					specular: [ ( query, builder ) => builder.object.userData.giStatic === true ? reflections() : null ]
 				} );
+
+				const prePass = pass( scene, camera, { type: THREE.UnsignedByteType, samples: 0 } );
+				prePass.name = 'GTAO Pre-Pass';
+				prePass.transparent = false;
+				prePass.lighting = new THREE.Lighting();
+				prePass.lighting.enabled = false;
+				prePass.setMRT( mrt( { output: packNormalToRGB( negateOnBackSide( normalViewGeometry ) ) } ) );
+
+				const depth = prePass.getTextureNode( 'depth' );
+				const packedNormal = prePass.getTextureNode();
+				const normal = sample( ( uv ) => unpackRGBToNormal( packedNormal.sample( uv ) ) );
+				const gtao = ao( depth, normal, camera );
+				gtao.radius.value = 0.5;
+
+				const beautyPass = pass( scene, camera );
+				beautyPass.name = 'Beauty';
+				beautyPass.contextNode = builtinIndirectContext( {
+					diffuse: [ lightMapDiffuse( gtao.getTextureNode().sample( screenUV ).r ) ]
+				} );
+				renderPipeline = new THREE.RenderPipeline( renderer, beautyPass );
 
 				controls = new OrbitControls( camera, renderer.domElement );
 
@@ -286,6 +320,7 @@
 				const gui = renderer.inspector.createParameters( 'Surfel GI' );
 				gui.add( params, 'scene', Object.keys( scenes ) ).name( 'Scene' ).onChange( setScene );
 				gui.add( params, 'view', views ).name( 'View' ).onChange( setView );
+				gui.add( params, 'gtao' ).name( 'GTAO' );
 				gui.add( params, 'exposure', 0.05, 4, 0.01 ).name( 'Exposure' ).listen();
 
 				// the sun of the open scenes
@@ -298,7 +333,7 @@
 				// Without the sky, the sun is all that lights the open scenes, and what it bounces shows on its own:
 				// the sky lights the surfels no more, nor the scene as its environment, and is not drawn
 
-				gui.add( params, 'sky' ).name( 'Sky' ).onChange( () => {
+				gui.add( params, 'sky' ).name( 'Sky' ).listen().onChange( () => {
 
 					updateTerms();
 					updateSky();
@@ -324,13 +359,6 @@
 				layoutGui.add( params, 'placement', Object.keys( placements ) ).name( 'Placement' ).onChange( bake );
 				layoutGui.add( params, 'adaptive' ).name( 'Adaptive Size (Sample Elimination)' ).listen().onChange( perScene( 'adaptive' ) );
 				layoutGui.add( params, 'surfelScale', 0.1, 1, 0.01 ).name( 'Display Scale' ).onChange( () => updateSurfelMesh( world ) );
-
-				const updateTerms = () => {
-
-					terms.value.set( params.direct, params.sky, params.bounce, params.emissive );
-					hurryUp();
-
-				};
 
 				const transportGui = gui.addFolder( 'Light Transport' );
 				transportGui.add( params, 'direct' ).name( 'Direct' ).onChange( updateTerms );
@@ -402,6 +430,8 @@
 				if ( ! world.sky ) environmentSH.array.forEach( ( vector ) => vector.set( 0, 0, 0 ) );
 
 				sun.visible = world.sky;
+				params.sky = world.skyDefault ?? world.sky;
+				updateTerms();
 				updateSky();
 				environmentSunDirection.set( 0, 0, 0 );
 
@@ -436,6 +466,13 @@
 				if ( world.atlas === undefined ) bake();
 
 				setView();
+
+			}
+
+			function updateTerms() {
+
+				terms.value.set( params.direct, params.sky, params.bounce, params.emissive );
+				hurry = 30;
 
 			}
 
@@ -3256,7 +3293,12 @@
 				gltf.scene.position.sub( new THREE.Box3().setFromObject( gltf.scene ).getCenter( new THREE.Vector3() ) );
 				gltf.scene.traverse( ( object ) => object.isMesh && ( object.material.emissiveIntensity = 5 ) );
 
-				return { root: gltf.scene, sky: false, detailSize: 0.5, linkBudget: 128, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
+				// Surfel disks and links are generated in world space and added to the root.
+
+				const root = new THREE.Group();
+				root.add( gltf.scene );
+
+				return { root, sky: false, detailSize: 0.5, linkBudget: 128, camera: new THREE.Vector3( 0, - 1, 12.5 ), target: new THREE.Vector3( 0, - 1, - 14 ) };
 
 			}
 
@@ -3269,7 +3311,7 @@
 
 				for ( const light of lights ) light.removeFromParent();
 
-				return { root: gltf.scene, sky: true, sun: [ 206, 72 ], exposure: 2, detailSize: 0.5, linkBudget: 128, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
+				return { root: gltf.scene, sky: true, skyDefault: false, sun: [ 206, 72 ], exposure: 2, detailSize: 0.5, linkBudget: 128, camera: new THREE.Vector3( - 10.25, 5, 0.4 ), target: new THREE.Vector3( 0, 4, 0 ) };
 
 			}
 
@@ -3349,7 +3391,8 @@
 
 				if ( ! ready && ! loading && world.lighting !== undefined && world.lighting.settled() ) world.ready = true;
 
-				renderer.render( scene, camera );
+				if ( ready && params.view === 'Beauty' && params.gtao ) renderPipeline.render();
+				else renderer.render( scene, camera );
 
 			}
 

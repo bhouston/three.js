@@ -145,7 +145,7 @@
 
 				// traa ( resolves the temporal noise of GTAO )
 
-				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
+				traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera, prePass.getPreviousTextureNode( 'depth' ) );
 				traaPass.useSubpixelCorrection = false;
 
 				// ao: the AO node feeds the scene's ambient term via `builtinAOContext`, and

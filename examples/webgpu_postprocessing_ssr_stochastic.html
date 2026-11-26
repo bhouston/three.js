@@ -160,7 +160,7 @@
 
 		let camera, scene, model, renderer, renderPipeline, ssrNode, temporalReprojectNode, denoiseNode;
 		let controls;
-		let combinedOutputNode, scenePassColor, scenePassDepth, scenePassVelocity;
+		let combinedOutputNode, scenePassColor, scenePassDepth, scenePassPreviousDepth, scenePassVelocity;
 		let gammaUniform, contrastUniform, saturationUniform;
 		const temporalOutputs = new Map();
 
@@ -252,6 +252,7 @@
 				return scenePass.getLinearDepthNode();
 
 			} );
+			scenePassPreviousDepth = scenePass.getPreviousTextureNode( 'depth' );
 			scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 			const scenePassDiffuseColor = scenePass.getTextureNode( 'diffuseColor' ).toInspector( 'Diffuse Color' );
 
@@ -286,7 +287,8 @@
 			temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 				mode: 'specular',
 				accumulate: false,
-				normalDecode: normalDecode
+				normalDecode: normalDecode,
+				previousDepthNode: scenePassPreviousDepth
 			} );
 			temporalReprojectNode.toInspector( 'Temporal Reproject' );
 
@@ -474,7 +476,7 @@
 			let temporal = temporalOutputs.get( source );
 			if ( temporal === undefined ) {
 
-				temporal = traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera );
+				temporal = traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera, scenePassPreviousDepth );
 				temporalOutputs.set( source, temporal );
 
 			}

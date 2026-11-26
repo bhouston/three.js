@@ -418,6 +418,7 @@ const VARIANCE_GAMMA_MAX = 1;
  * @property {boolean} [accumulate=false] - When `true`, history is stored in this pass (classic temporal resolve). When `false`,
  * use {@link TemporalReprojectNode#setHistoryTexture} to read history from another pass (e.g. denoise output).
  * @property {Function} [normalDecode] - Decodes a sample of the normal texture into a unit view-space normal. Defaults to {@link unpackRGBToNormal}.
+ * @property {?TextureNode} [previousDepthNode=null] - The previous frame's depth, e.g. `pass.getPreviousTextureNode( 'depth' )`. By default the depth is copied each frame.
  */
 
 /**
@@ -462,7 +463,8 @@ class TemporalReprojectNode extends Node {
 			mode = 'diffuse',
 			hitPointReprojection = mode === 'specular',
 			accumulate = false,
-			normalDecode = ( value ) => unpackRGBToNormal( value.rgb )
+			normalDecode = ( value ) => unpackRGBToNormal( value.rgb ),
+			previousDepthNode = null
 		} = options;
 
 		if ( mode !== 'specular' && mode !== 'diffuse' ) {
@@ -498,8 +500,9 @@ class TemporalReprojectNode extends Node {
 
 		this._resolution = uniform( new Vector2() );
 
-		this._reprojection = new Reprojection( depthNode, velocityNode, camera );
-		this._reprojection.previousDepthNode.value.name = 'TemporalReprojectNode.previousDepth';
+		this._reprojection = new Reprojection( depthNode, velocityNode, camera, previousDepthNode );
+
+		if ( previousDepthNode === null ) this._reprojection.previousDepthNode.value.name = 'TemporalReprojectNode.previousDepth';
 
 		this.maxFrames = uniform( 32 );
 		this.hitPointReprojection = uniform( hitPointReprojection, 'bool' );

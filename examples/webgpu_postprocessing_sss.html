@@ -168,7 +168,7 @@
 
 				// traa
 
-				const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
+				const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera, prePass.getPreviousTextureNode( 'depth' ) );
 				renderPipeline.outputNode = traaPass;
 
 				//

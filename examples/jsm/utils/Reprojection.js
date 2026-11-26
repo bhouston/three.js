@@ -19,8 +19,9 @@ class Reprojection {
 	 * @param {TextureNode} depthNode - The scene's depth.
 	 * @param {TextureNode} velocityNode - The scene's velocity.
 	 * @param {Camera} camera - The camera the scene is rendered with.
+	 * @param {?TextureNode} [previousDepthNode=null] - The previous frame's depth, e.g. `pass.getPreviousTextureNode( 'depth' )`. By default the depth is copied each frame.
 	 */
-	constructor( depthNode, velocityNode, camera ) {
+	constructor( depthNode, velocityNode, camera, previousDepthNode = null ) {
 
 		/**
 		 * The scene's depth.
@@ -44,20 +45,36 @@ class Reprojection {
 		this.camera = camera;
 
 		/**
-		 * The render target that holds the depth of the previous frame.
+		 * The render target that holds the copied depth of the previous frame, `null` if the previous depth is provided.
 		 *
 		 * @private
-		 * @type {RenderTarget}
+		 * @type {?RenderTarget}
 		 */
-		this._previousDepthRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, depthTexture: new DepthTexture(), count: 0 } );
-		this._previousDepthRenderTarget.depthTexture.name = 'Reprojection.previousDepth';
+		this._previousDepthRenderTarget = null;
+
+		if ( previousDepthNode === null ) {
+
+			this._previousDepthRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, depthTexture: new DepthTexture(), count: 0 } );
+			this._previousDepthRenderTarget.depthTexture.name = 'Reprojection.previousDepth';
+
+			previousDepthNode = texture( this._previousDepthRenderTarget.depthTexture );
+
+		}
 
 		/**
 		 * The previous frame's depth.
 		 *
 		 * @type {TextureNode}
 		 */
-		this.previousDepthNode = texture( this._previousDepthRenderTarget.depthTexture );
+		this.previousDepthNode = previousDepthNode;
+
+		/**
+		 * The depth the previous frame was stored with, for detecting incompatible history.
+		 *
+		 * @private
+		 * @type {{width: number, height: number, format: ?number, type: ?number}}
+		 */
+		this._previousDepthState = { width: 0, height: 0, format: null, type: null };
 
 		/**
 		 * The camera's world matrix.
@@ -156,12 +173,12 @@ class Reprojection {
 	needsHistoryReset() {
 
 		const depth = this.depthNode.value;
-		const previousDepth = this.previousDepthNode.value;
+		const state = this._previousDepthState;
 
-		return previousDepth.image.width !== depth.image.width ||
-			previousDepth.image.height !== depth.image.height ||
-			previousDepth.format !== depth.format ||
-			previousDepth.type !== depth.type;
+		return state.width !== depth.image.width ||
+			state.height !== depth.image.height ||
+			state.format !== depth.format ||
+			state.type !== depth.type;
 
 	}
 
@@ -174,21 +191,32 @@ class Reprojection {
 	update( renderer ) {
 
 		const depth = this.depthNode.value;
-		const previousDepth = this._previousDepthRenderTarget.depthTexture;
+		const state = this._previousDepthState;
 
 		const { width, height } = depth.image;
 
-		if ( this.needsHistoryReset() ) {
+		if ( this._previousDepthRenderTarget !== null ) {
 
-			previousDepth.image.width = width;
-			previousDepth.image.height = height;
-			previousDepth.format = depth.format;
-			previousDepth.type = depth.type;
-			previousDepth.needsUpdate = true;
+			const previousDepth = this._previousDepthRenderTarget.depthTexture;
+
+			if ( this.needsHistoryReset() ) {
+
+				previousDepth.image.width = width;
+				previousDepth.image.height = height;
+				previousDepth.format = depth.format;
+				previousDepth.type = depth.type;
+				previousDepth.needsUpdate = true;
+
+			}
+
+			renderer.copyTextureToTexture( depth, previousDepth );
 
 		}
 
-		renderer.copyTextureToTexture( depth, previousDepth );
+		state.width = width;
+		state.height = height;
+		state.format = depth.format;
+		state.type = depth.type;
 
 		this.previousCameraWorldMatrix.value.copy( this.camera.matrixWorld );
 		this.previousCameraViewMatrix.value.copy( this.camera.matrixWorldInverse );
@@ -203,7 +231,7 @@ class Reprojection {
 	 */
 	dispose() {
 
-		this._previousDepthRenderTarget.dispose();
+		if ( this._previousDepthRenderTarget !== null ) this._previousDepthRenderTarget.dispose();
 
 	}
 

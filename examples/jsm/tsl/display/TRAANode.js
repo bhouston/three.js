@@ -37,8 +37,9 @@ class TRAANode extends Node {
 	 * @param {TextureNode} depthNode - A node that represents the scene's depth.
 	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
 	 * @param {Camera} camera - The camera the scene is rendered with.
+	 * @param {?TextureNode} [previousDepthNode=null] - The previous frame's depth, e.g. `pass.getPreviousTextureNode( 'depth' )`. By default the depth is copied each frame.
 	 */
-	constructor( beautyNode, depthNode, velocityNode, camera ) {
+	constructor( beautyNode, depthNode, velocityNode, camera, previousDepthNode = null ) {
 
 		super( 'vec4' );
 
@@ -213,8 +214,9 @@ class TRAANode extends Node {
 		 * @private
 		 * @type {Reprojection}
 		 */
-		this._reprojection = new Reprojection( depthNode, velocityNode, camera );
-		this._reprojection.previousDepthNode.value.name = 'TRAANode.previousDepth';
+		this._reprojection = new Reprojection( depthNode, velocityNode, camera, previousDepthNode );
+
+		if ( previousDepthNode === null ) this._reprojection.previousDepthNode.value.name = 'TRAANode.previousDepth';
 
 		/**
 		 * The node used to render the scene's velocity.
@@ -557,6 +559,7 @@ const _haltonOffsets = /*@__PURE__*/ computeHaltonOffsets( 32 );
  * @param {TextureNode} depthNode - A node that represents the scene's depth.
  * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
  * @param {Camera} camera - The camera the scene is rendered with.
+ * @param {?TextureNode} [previousDepthNode=null] - The previous frame's depth, e.g. `pass.getPreviousTextureNode( 'depth' )`. By default the depth is copied each frame.
  * @returns {TRAANode}
  */
-export const traa = ( beautyNode, depthNode, velocityNode, camera ) => new TRAANode( convertToTexture( beautyNode ), depthNode, velocityNode, camera );
+export const traa = ( beautyNode, depthNode, velocityNode, camera, previousDepthNode = null ) => new TRAANode( convertToTexture( beautyNode ), depthNode, velocityNode, camera, previousDepthNode );

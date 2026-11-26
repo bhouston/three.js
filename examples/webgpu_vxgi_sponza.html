@@ -219,7 +219,7 @@
 
 				// traa ( resolves the temporal noise of the cone tracing )
 
-				const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
+				const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera, prePass.getPreviousTextureNode( 'depth' ) );
 				renderPipeline.outputNode = traaPass;
 
 				//

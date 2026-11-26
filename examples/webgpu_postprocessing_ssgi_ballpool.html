@@ -177,7 +177,7 @@
 
 				// traa
 
-				const traaPass = traa( compositePass, scenePassDepth, scenePassVelocity, camera );
+				const traaPass = traa( compositePass, scenePassDepth, scenePassVelocity, camera, scenePass.getPreviousTextureNode( 'depth' ) );
 				renderPipeline.outputNode = traaPass;
 
 				// light

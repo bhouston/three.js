@@ -232,7 +232,8 @@
 				const temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
 					mode: 'specular',
 					accumulate: false,
-					normalDecode: normalDecode
+					normalDecode: normalDecode,
+					previousDepthNode: scenePass.getPreviousTextureNode( 'depth' )
 				} );
 				temporalReprojectNode.maxFrames.value = 16;
 				temporalReprojectNode.clampIntensity.value = 0.25;
@@ -263,7 +264,7 @@
 
 				const combined = scenePassColor.rgb.add( mix( ssrTexture.rgb, denoiseNode.rgb, denoiseEnabled ) );
 
-				const temporalAA = traa( vec4( combined, 1 ), scenePassDepth, scenePassVelocity, camera );
+				const temporalAA = traa( vec4( combined, 1 ), scenePassDepth, scenePassVelocity, camera, scenePass.getPreviousTextureNode( 'depth' ) );
 				const spatialAA = smaa( vec4( combined, 1 ) );
 
 				function updateOutput() {

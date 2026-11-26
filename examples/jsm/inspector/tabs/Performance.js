@@ -52,27 +52,12 @@ class Performance extends Tab {
 
 		//
 
-		const frameCount = document.createElement( 'select' );
-		frameCount.className = 'performance-frame-count';
-		frameCount.setAttribute( 'aria-label', 'Frames averaged' );
-		frameCount.title = 'Number of resolved frames to average';
-		frameCount.addEventListener( 'click', ( event ) => event.stopPropagation() );
-
-		for ( const count of [ 1, 5, 10, 30 ] ) {
-
-			frameCount.add( new Option( count === 1 ? '1 frame' : `${ count } frames`, count ) );
-
-		}
-
-		frameCount.value = '10';
-		this.frameCountSelect = frameCount;
-
 		this.graphFpsCounter = createValueSpan();
 		this.graphMsCounter = createValueSpan();
 		this.graphMsCounter.classList.add( 'secondary' );
 
 		const graphCounters = document.createElement( 'div' );
-		graphCounters.append( frameCount, this.graphFpsCounter, this.graphMsCounter );
+		graphCounters.append( this.graphFpsCounter, this.graphMsCounter );
 
 		const graphStats = new Item( 'Graph Stats', createValueSpan(), createValueSpan(), graphCounters );
 		perfList.add( graphStats );
@@ -111,12 +96,6 @@ class Performance extends Tab {
 		//
 
 		this.frameItems = new Map();
-
-	}
-
-	get frameCount() {
-
-		return Number( this.frameCountSelect.value );
 
 	}
 

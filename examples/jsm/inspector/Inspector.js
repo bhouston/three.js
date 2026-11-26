@@ -486,7 +486,7 @@ class Inspector extends RendererInspector {
 
 	_averageFrame() {
 
-		const windowSize = this.performance.frameCount;
+		const windowSize = this.settings.averageFrameCount;
 		const frames = [];
 
 		for ( let i = this.frames.length - 1; i >= 0 && frames.length < windowSize; i -- ) {

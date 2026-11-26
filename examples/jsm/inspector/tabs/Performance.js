@@ -52,20 +52,6 @@ class Performance extends Tab {
 
 		//
 
-		/*
-		const label = document.createElement( 'label' );
-		label.className = 'custom-checkbox';
-
-		const checkbox = document.createElement( 'input' );
-		checkbox.type = 'checkbox';
-
-		const checkmark = document.createElement( 'span' );
-		checkmark.className = 'checkmark';
-
-		label.appendChild( checkbox );
-		label.appendChild( checkmark );
-		*/
-
 		this.graphFpsCounter = createValueSpan();
 		this.graphMsCounter = createValueSpan();
 		this.graphMsCounter.classList.add( 'secondary' );
@@ -100,7 +86,6 @@ class Performance extends Tab {
 
 		//
 
-		this.notInUse = new Map();
 		this.perfList = perfList;
 		this.timelineRuler = timelineRuler;
 		this.frameStats = frameStats;
@@ -110,146 +95,98 @@ class Performance extends Tab {
 
 		//
 
-		this.currentRender = null;
-		this.currentItem = null;
 		this.frameItems = new Map();
 
 	}
 
-	resolveStats( inspector, stats ) {
+	resolveStats( inspector, rows, count, parent ) {
 
-		const data = inspector.getStatsData( stats.cid );
+		let index = 0;
 
-		let item = data.item;
+		for ( const row of rows.values() ) {
 
-		if ( item === undefined ) {
+			const data = inspector.getStatsData( row.cid );
+			let item = data.item;
 
-			item = new Item( createValueSpan(), createValueSpan(), createValueSpan(), createTimelineCell( 'cpu', 'gpu' ) );
+			if ( item === undefined ) {
 
-			if ( stats.isGroupStats === true ) {
+				item = new Item( createValueSpan(), createValueSpan(), createValueSpan(), createTimelineCell( 'cpu', 'gpu' ) );
+				data.item = item;
 
-				item.itemRow.classList.add( 'group' );
-				item.close();
+				if ( row.isGroupStats === true ) {
 
-			}
-
-			if ( stats.name ) {
-
-				if ( stats.isComputeStats === true ) {
-
-					stats.name = `${ stats.name } [ Compute ]`;
+					item.itemRow.classList.add( 'group' );
+					item.close();
 
 				}
 
-			} else {
-
-				stats.name = `Unnamed ${ stats.cid }`;
-
 			}
 
-			item.userData.name = stats.name;
+			if ( item.parent !== parent || parent.children[ index ] !== item ) parent.add( item, index );
+			index ++;
 
-			this.currentItem.add( item );
-			data.item = item;
+			const name = row.name || `Unnamed ${ row.cid }`;
+			const gpuAvailable = row.gpuUnavailable < row.count;
 
-		} else {
+			setText( item.data[ 0 ], row.isComputeStats ? `${ name } [ Compute ]` : name );
+			setText( item.data[ 1 ], ( row.cpu / count ).toFixed( 2 ) );
+			setText( item.data[ 2 ], gpuAvailable ? ( row.gpu / ( count - row.gpuUnavailable ) ).toFixed( 2 ) : '-' );
 
-			item.userData.name = stats.name;
-
-			if ( this.notInUse.has( stats.cid ) ) {
-
-				item.domElement.firstElementChild.classList.remove( 'alert' );
-
-				this.notInUse.delete( stats.cid );
-
-			}
-
-			const statsIndex = stats.parent.children.indexOf( stats );
-
-			if ( item.parent !== this.currentItem || item.parent.children.indexOf( item ) !== statsIndex ) {
-
-				this.currentItem.add( item, statsIndex );
-
-			}
+			this.frameItems.set( row.cid, { item, row } );
+			this.resolveStats( inspector, row.children, count, item );
 
 		}
-
-		let name = item.userData.name;
-
-		if ( stats.isComputeStats ) {
-
-			name += ' [ Compute ]';
-
-		}
-
-		setText( item.data[ 0 ], name );
-		setText( item.data[ 1 ], data.cpu.toFixed( 2 ) );
-		setText( item.data[ 2 ], stats.gpuNotAvailable === true ? '-' : data.gpu.toFixed( 2 ) );
-
-		//
-
-		const previousItem = this.currentItem;
-
-		this.currentItem = item;
-
-		for ( const child of stats.children ) {
-
-			this.resolveStats( inspector, child );
-
-		}
-
-		this.currentItem = previousItem;
-
-		this.frameItems.set( stats.cid, item );
 
 	}
 
-	updateTimeline( inspector, frame ) {
+	updateTimeline( frame ) {
 
-		const period = inspector.fps > 0 ? 1000 / inspector.fps : 0;
 		const calls = [];
 
-		// the CPU and GPU clocks are not comparable: the GPU is delayed, so no call starts on it before the CPU
-
+		// The clocks have separate origins. Shift the GPU lane for display only.
 		let gpuDelay = 0;
 
-		for ( const [ cid, item ] of this.frameItems ) {
+		for ( const { row, item } of this.frameItems.values() ) {
 
-			const data = inspector.getStatsData( cid );
+			const cpuStart = row.cpuOffset / row.count;
+			const cpuEnd = cpuStart + row.cpu / row.count;
+			const gpuStart = row.timestampCount > 0 ? row.gpuStart / row.timestampCount : null;
+			const gpuEnd = row.timestampCount > 0 ? row.gpuEnd / row.timestampCount : null;
 
-			if ( data.gpuOffset !== null ) gpuDelay = Math.max( gpuDelay, data.cpuOffset - data.gpuOffset );
+			if ( gpuStart !== null ) gpuDelay = Math.max( gpuDelay, cpuStart - gpuStart );
 
-			calls.push( { data, bars: item.data[ 3 ].children } );
+			calls.push( { row, item, cpuStart, cpuEnd, gpuStart, gpuEnd } );
 
 		}
 
-		// the timeline shows a frame period, or more if the calls end after it
-
-		const duration = calls.reduce( ( end, { data } ) => Math.max( end, data.cpuOffset + data.cpu, data.gpuOffset !== null ? gpuDelay + data.gpuOffset + data.gpu : 0 ), Math.max( period, 1e-3 ) );
+		const duration = calls.reduce( ( end, call ) => Math.max( end, call.cpuEnd, call.gpuEnd !== null ? call.gpuEnd + gpuDelay : 0 ), Math.max( frame.period, 1e-3 ) );
 		const toPercent = ( time ) => ( time / duration ) * 100 + '%';
 
-		const setBar = ( bar, start, time ) => {
+		const setBar = ( bar, start, end ) => {
 
 			bar.style.left = toPercent( start );
-			bar.style.width = toPercent( time );
+			bar.style.width = toPercent( end - start );
 
 		};
 
-		for ( const { data, bars } of calls ) {
+		for ( const { row, item, cpuStart, cpuEnd, gpuStart, gpuEnd } of calls ) {
 
-			setBar( bars[ 0 ], data.cpuOffset, data.cpu );
+			const [ cpuBar, gpuBar ] = item.data[ 3 ].children;
+			setBar( cpuBar, cpuStart, cpuEnd );
+			gpuBar.hidden = gpuStart === null;
 
-			bars[ 1 ].hidden = data.gpuOffset === null;
+			if ( gpuStart !== null ) setBar( gpuBar, gpuStart + gpuDelay, gpuEnd + gpuDelay );
 
-			if ( data.gpuOffset !== null ) setBar( bars[ 1 ], gpuDelay + data.gpuOffset, data.gpu );
+			const samples = `${ row.count }/${ frame.count } frames`;
+			const gpuSpan = gpuStart === null ? '' : `\nGPU span when timed: ${ gpuStart.toFixed( 3 ) }–${ gpuEnd.toFixed( 3 ) } ms from GPU frame start (${ row.timestampCount }/${ frame.count } frames)`;
+			item.data[ 2 ].title = `Average per frame · Present in ${ samples }${ gpuSpan }`;
+			gpuBar.title = item.data[ 2 ].title;
 
 		}
 
-		// the frame has the bars of its calls
+		const getBars = ( { cid } ) => Array.from( this.frameItems.get( cid ).item.data[ 3 ].children );
 
-		const getBars = ( stats ) => Array.from( this.frameItems.get( stats.cid ).data[ 3 ].children );
-
-		this.frameStats.data[ 3 ].replaceChildren( ...frame.children.flatMap( getBars ).map( ( bar ) => bar.cloneNode() ) );
+		this.frameStats.data[ 3 ].replaceChildren( ...Array.from( frame.rows.values() ).flatMap( getBars ).map( ( bar ) => bar.cloneNode() ) );
 
 		// the labels of the ruler are at a multiple of 1, 2 or 5, at least 80 pixels apart
 
@@ -293,86 +230,20 @@ class Performance extends Tab {
 
 	}
 
-	addNotInUse( cid, item ) {
-
-		item.domElement.firstElementChild.classList.add( 'alert' );
-
-		this.notInUse.set( cid, {
-			item,
-			time: performance.now()
-		} );
-
-		this.updateNotInUse( cid );
-
-	}
-
-	updateNotInUse( cid ) {
-
-		const { item, time } = this.notInUse.get( cid );
-
-		const current = performance.now();
-		const duration = 5;
-		const remaining = duration - Math.floor( ( current - time ) / 1000 );
-
-		if ( remaining >= 0 ) {
-
-			const counter = '*'.repeat( Math.max( 0, remaining ) );
-			const element = item.domElement.querySelector( '.list-item-cell .value' );
-
-			setText( element, item.userData.name + ' (not in use) ' + counter );
-
-		} else {
-
-			item.domElement.firstElementChild.classList.remove( 'alert' );
-			item.parent.remove( item );
-
-			this.notInUse.delete( cid );
-
-		}
-
-	}
-
 	updateText( inspector, frame ) {
 
 		const oldFrameItems = new Map( this.frameItems );
-
 		this.frameItems.clear();
 
-		const hasTimestamp = inspector.getRenderer().backend.hasTimestamp;
+		this.resolveStats( inspector, frame.rows, frame.count, this.frameStats );
 
-		this.currentItem = this.frameStats;
+		for ( const [ cid, { item } ] of oldFrameItems ) {
 
-		for ( const child of frame.children ) {
-
-			this.resolveStats( inspector, child );
+			if ( ! this.frameItems.has( cid ) ) item.parent.remove( item );
 
 		}
 
-		this.updateTimeline( inspector, frame );
-
-		// remove unused frame items
-
-		for ( const [ cid, item ] of oldFrameItems ) {
-
-			if ( ! this.frameItems.has( cid ) ) {
-
-				this.addNotInUse( cid, item );
-
-				oldFrameItems.delete( cid );
-
-			}
-
-		}
-
-		// update not in use items
-
-		for ( const cid of this.notInUse.keys() ) {
-
-			this.updateNotInUse( cid );
-
-		}
-
-		//
+		this.updateTimeline( frame );
 
 		const fps = inspector.fps;
 
@@ -382,16 +253,12 @@ class Performance extends Tab {
 		//
 
 		setText( this.frameStats.data[ 1 ], frame.cpu.toFixed( 2 ) );
-		setText( this.frameStats.data[ 2 ], hasTimestamp ? frame.gpu.toFixed( 2 ) : '-' );
+		setText( this.frameStats.data[ 2 ], inspector.getRenderer().backend.hasTimestamp ? frame.gpu.toFixed( 2 ) : '-' );
 
 		//
 
-		setText( this.miscellaneous.data[ 1 ], frame.miscellaneous.toFixed( 2 ) );
+		setText( this.miscellaneous.data[ 1 ], Math.max( 0, frame.period - frame.cpu - frame.gpu ).toFixed( 2 ) );
 		setText( this.miscellaneous.data[ 2 ], '-' );
-
-		//
-
-		this.currentItem = null;
 
 	}
 

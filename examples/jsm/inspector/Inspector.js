@@ -438,77 +438,86 @@ class Inspector extends RendererInspector {
 
 	}
 
-	resolveStats( stats ) {
+	_accumulateStats( children, averages, parentId = '' ) {
 
-		const data = this.getStatsData( stats.cid );
+		const occurrences = new Map();
 
-		if ( data.initialized !== true ) {
+		for ( const stats of children ) {
 
-			data.cpu = stats.cpu;
-			data.gpu = stats.gpu;
-			data.stats = [];
+			// The backend call number shifts when unrelated passes appear or disappear.
+			const key = stats.isGroupStats ? `group:${ stats.name }` : stats.cid.replace( /^([rc]):\d+:/, '$1:' );
+			const occurrence = occurrences.get( key ) || 0;
+			const cid = `${ parentId }/${ key.length }:${ key }/${ occurrence }`;
+			occurrences.set( key, occurrence + 1 );
 
-			data.initialized = true;
+			let row = averages.get( cid );
+
+			if ( row === undefined ) {
+
+				row = {
+					cid, name: stats.name, isGroupStats: stats.isGroupStats, isComputeStats: stats.isComputeStats,
+					cpu: 0, gpu: 0, cpuOffset: 0, gpuStart: 0, gpuEnd: 0,
+					count: 0, gpuUnavailable: 0, timestampCount: 0, children: new Map()
+				};
+				averages.set( cid, row );
+
+			}
+
+			row.count ++;
+			row.cpu += stats.cpu;
+			row.cpuOffset += stats.cpuOffset;
+
+			if ( stats.gpuNotAvailable ) row.gpuUnavailable ++;
+			else row.gpu += stats.gpu;
+
+			if ( stats.gpuStart !== null ) {
+
+				row.timestampCount ++;
+				row.gpuStart += stats.gpuOffset;
+				row.gpuEnd += stats.gpuOffset + ( stats.gpuEnd - stats.gpuStart );
+
+			}
+
+			this._accumulateStats( stats.children, row.children, cid );
 
 		}
 
-		// store stats
+	}
 
-		if ( data.stats.length > this.maxFrames ) {
+	_averageFrame() {
 
-			data.stats.shift();
+		const windowSize = this.settings.averageFrameCount;
+		const frames = [];
+
+		for ( let i = this.frames.length - 1; i >= 0 && frames.length < windowSize; i -- ) {
+
+			const sample = this.frames[ i ];
+			if ( sample.gpuSpanTime !== undefined && sample.children.length > 0 ) frames.push( sample );
+
+		}
+
+		const rows = new Map();
+		let gpu = 0;
+		let period = 0;
+
+		for ( const sample of frames.reverse() ) {
+
+			this._accumulateStats( sample.children, rows );
+			gpu += sample.gpuSpanTime;
+			period += sample.deltaTime;
 
 		}
 
-		data.stats.push( stats );
+		const count = frames.length;
+		const cpu = Array.from( rows.values() ).reduce( ( sum, row ) => sum + row.cpu, 0 ) / count;
 
-		// compute averages
-
-		data.cpu = this.getAverageDeltaTime( data, 'cpu' );
-		data.gpu = this.getAverageDeltaTime( data, 'gpu' );
-		data.cpuOffset = this.getAverageDeltaTime( data, 'cpuOffset' );
-		data.gpuOffset = stats.gpuOffset >= 0 ? this.getAverageDeltaTime( data, 'gpuOffset' ) : null;
-
-		// children: the CPU and GPU time of a render or compute call include the calls nested in it
-
-		for ( const child of stats.children ) {
-
-			this.resolveStats( child );
-
-		}
+		return { rows, count, cpu, gpu: gpu / count, period: period / count };
 
 	}
 
 	getNodes() {
 
 		return this.currentNodes;
-
-	}
-
-	getAverageDeltaTime( statsData, property, frames = this.fps ) {
-
-		const statsArray = statsData.stats;
-
-		let sum = 0;
-		let count = 0;
-
-		for ( let i = statsArray.length - 1; i >= 0 && count < frames; i -- ) {
-
-			const stats = statsArray[ i ];
-			const value = stats[ property ];
-
-			if ( value >= 0 && ( property !== 'gpu' || stats.gpuNotAvailable === false ) ) {
-
-				// ignore invalid values
-
-				sum += value;
-				count ++;
-
-			}
-
-		}
-
-		return count > 0 ? sum / count : 0;
 
 	}
 
@@ -540,50 +549,19 @@ class Inspector extends RendererInspector {
 
 	resolveFrame( frame ) {
 
-		const previousFrame = this.getFrameById( frame.frameId - 1 );
-
-		if ( ! previousFrame ) return;
-
-		frame.cpu = 0;
-
-		for ( const stats of frame.children ) {
-
-			this.resolveStats( stats );
-
-			const data = this.getStatsData( stats.cid );
-
-			frame.cpu += data.cpu;
-
-		}
-
-		const frames = this.frames.filter( ( sample ) => sample.frameId <= frame.frameId && sample.gpuSpanTime !== undefined && sample.children.length > 0 ).slice( - Math.max( Math.ceil( this.fps ), 1 ) );
-
-		frame.gpu = frames.length > 0 ? frames.reduce( ( sum, sample ) => sum + sample.gpuSpanTime, 0 ) / frames.length : 0;
-		frame.total = frame.cpu + frame.gpu;
-
-		// the time since the last frame which rendered, see RendererInspector.finish()
-
-		frame.miscellaneous = frame.deltaTime - frame.total;
-
-		if ( frame.miscellaneous < 0 ) {
-
-			// Frame desync, probably due to async GPU timing.
-
-			frame.miscellaneous = 0;
-
-		}
-
-		//
+		if ( frame.children.length === 0 ) return;
 
 		this.updateCycle( this.displayCycle.text );
 		this.updateCycle( this.displayCycle.graph );
 		this.updateCycle( this.displayCycle.toggleGraph );
 
+		const average = this.displayCycle.text.needsUpdate || this.displayCycle.graph.needsUpdate ? this._averageFrame() : null;
+
 		if ( this.displayCycle.text.needsUpdate ) {
 
 			setText( this.profiler.toggleButton.querySelector( '.fps-counter' ), this.fps.toFixed() );
 
-			this.performance.updateText( this, frame );
+			this.performance.updateText( this, average );
 			this.memory.updateText( this );
 
 		}
@@ -601,7 +579,7 @@ class Inspector extends RendererInspector {
 
 		if ( this.displayCycle.graph.needsUpdate ) {
 
-			this.performance.updateGraph( this, frame );
+			this.performance.updateGraph( this, average );
 			this.memory.updateGraph( this );
 
 		}

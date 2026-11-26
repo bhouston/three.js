@@ -94,7 +94,6 @@ class GroupStats extends ObjectStats {
 		this.cpu = last.timestamp + last.cpu - first.timestamp;
 		this.cpuOffset = first.cpuOffset;
 
-		this.gpu = getSpanTime( calls );
 		this.gpuNotAvailable = calls.every( ( stats ) => stats.gpuNotAvailable );
 
 		if ( timed.length > 0 ) {
@@ -105,6 +104,7 @@ class GroupStats extends ObjectStats {
 
 		}
 
+		this.gpu = timed.length > 0 ? this.gpuEnd - this.gpuStart : getSpanTime( calls );
 		this.isGroupStats = true;
 
 	}
@@ -134,27 +134,6 @@ function getSpanTime( children ) {
 	}
 
 	return duration;
-
-}
-
-// tile-based GPUs can run the vertex stage of a call while the previous ones are still shading, so its time
-// includes the wait. Each call starts after the end of the previous ones, and the sum is the union of the spans
-
-function sequenceCalls( children, end = - Infinity ) {
-
-	const calls = children.filter( ( stats ) => stats.gpuStart !== null ).sort( ( a, b ) => a.gpuStart - b.gpuStart );
-
-	for ( const stats of calls ) {
-
-		stats.gpuStart = Math.max( stats.gpuStart, end );
-		stats.gpuEnd = Math.max( stats.gpuEnd, stats.gpuStart );
-		stats.gpu = stats.gpuEnd - stats.gpuStart;
-
-		sequenceCalls( stats.children, stats.gpuStart );
-
-		end = stats.gpuEnd;
-
-	}
 
 }
 
@@ -465,7 +444,7 @@ export class RendererInspector extends InspectorBase {
 
 		stats.timer.end().then( ( gpu ) => {
 
-			if ( gpu === null ) {
+			if ( gpu === null || gpu.delta < 0 ) {
 
 				stats.gpuNotAvailable = true;
 
@@ -491,7 +470,6 @@ export class RendererInspector extends InspectorBase {
 
 			frame.gpuSpanTime = getSpanTime( frame.children );
 
-			sequenceCalls( frame.children );
 			resolveOffsets( frame );
 			groupCalls( frame, frame.frameId );
 

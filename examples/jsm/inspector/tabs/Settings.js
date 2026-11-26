@@ -41,6 +41,8 @@ function forceWebGL( enable ) {
 
 }
 
+const _frameCounts = [ 1, 5, 10, 30 ];
+
 let _state = null;
 
 function _loadState() {
@@ -52,6 +54,7 @@ function _loadState() {
 	_state = {
 		forceWebGL: settings.forceWebGL !== undefined ? settings.forceWebGL : false,
 		captureStackTrace: settings.captureStackTrace !== undefined ? settings.captureStackTrace : false,
+		averageFrameCount: _frameCounts.includes( settings.averageFrameCount ) ? settings.averageFrameCount : 10,
 		activeExtensions: settings.activeExtensions !== undefined ? settings.activeExtensions : {},
 		storage: settings.storage !== undefined ? settings.storage : 'url'
 	};
@@ -77,6 +80,7 @@ function _saveState() {
 	setItem( 'settings', {
 		forceWebGL: _state.forceWebGL,
 		captureStackTrace: _state.captureStackTrace,
+		averageFrameCount: _state.averageFrameCount,
 		activeExtensions: _state.activeExtensions,
 		storage: _state.storage
 	} );
@@ -128,6 +132,18 @@ class Settings extends Parameters {
 			this.inspector.overdraw = enable;
 
 		} ).info( 'Shows how many times each pixel is shaded.' );
+
+
+		const performanceGroup = this.createGroup( 'Performance' );
+
+		performanceGroup.add( currentState, 'averageFrameCount', _frameCounts ).name( 'Frames Averaged' )
+			.onChange( _saveState ).info( 'Select 1 to show the latest resolved frame.' );
+
+	}
+
+	get averageFrameCount() {
+
+		return _state.averageFrameCount;
 
 	}
 

@@ -181,6 +181,15 @@ class SSSNode extends Node {
 		this.hiZ = false;
 
 		/**
+		 * Whether the node outputs the number of steps of each ray instead of the shadow, for debugging.
+		 * The output is `sqrt( steps / 1024 )`. The render pipeline must be updated when the value changes.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.showSteps = false;
+
+		/**
 		 * The maximum number of steps of a ray when `hiZ` is used.
 		 *
 		 * @type {UniformNode<int>}
@@ -504,7 +513,11 @@ class SSSNode extends Node {
 
 			const result = float( 1 ).toVar();
 
+			const steps = float( 0 ).toVar();
+
 			Loop( totalStep, ( { i } ) => {
+
+				steps.addAssign( 1 );
 
 				// advance on the ray by computing a new position in screen coordinates
 				const xy = vec2( d0.x.add( xSpan.mul( float( i ).add( offset ) ) ), d0.y.add( ySpan.mul( float( i ).add( offset ) ) ) ).toVar();
@@ -538,6 +551,8 @@ class SSSNode extends Node {
 
 
 			} );
+
+			if ( this.showSteps === true ) return steps.div( 1024 ).sqrt();
 
 			return result;
 
@@ -596,6 +611,8 @@ class SSSNode extends Node {
 			acceptHit: ( uv, s, raw ) => behind( s, raw ).lessThan( this.thickness ).and( occludes( uv, raw ) ),
 			passRejected: true
 		} );
+
+		if ( this.showSteps === true ) return float( result.iterations ).div( 1024 ).sqrt();
 
 		const value = float( 1 ).toVar();
 

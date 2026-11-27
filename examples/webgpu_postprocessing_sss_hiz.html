@@ -20,7 +20,8 @@
 			</div>
 
 			<small>
-				Long Screen-Space Shadows (SSS), traced through a hierarchical depth buffer or marched linearly.
+				Long Screen-Space Shadows (SSS), traced through a hierarchical depth buffer or marched linearly.<br/>
+				The steps output shows sqrt( steps / 1024 ) per ray, white is 1024 steps.
 			</small>
 		</div>
 
@@ -230,9 +231,10 @@
 				function updatePostprocessing() {
 
 					sssPass.hiZ = params.hiZ;
+					sssPass.showSteps = params.output === 2;
 					sssPass.useTemporalFiltering = params.traa;
 
-					renderPipeline.outputNode = params.output === 1 ? vec4( vec3( sssPass.r ), 1 ) : ( params.traa ? traaPass : scenePass );
+					renderPipeline.outputNode = params.output !== 0 ? vec4( vec3( sssPass.r ), 1 ) : ( params.traa ? traaPass : scenePass );
 					renderPipeline.needsUpdate = true;
 
 				}
@@ -245,7 +247,7 @@
 				gui.add( params, 'altitude', 0.5, 90 ).name( 'sun altitude' ).onChange( updateSun );
 				gui.add( params, 'hiZ', { 'Hi-Z': true, 'linear': false } ).name( 'tracing' ).onChange( updatePostprocessing );
 				gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updatePostprocessing );
-				gui.add( params, 'output', { 'Scene with SSS': 0, 'SSS': 1 } ).onChange( updatePostprocessing );
+				gui.add( params, 'output', { 'Scene with SSS': 0, 'SSS': 1, 'Steps per ray': 2 } ).onChange( updatePostprocessing );
 				gui.add( sssPass.shadowIntensity, 'value', 0, 1 ).name( 'shadow intensity' );
 				gui.add( sssPass.maxDistance, 'value', 0.1, 200 ).name( 'max ray distance' );
 				gui.add( sssPass.fadeOutDistance, 'value', 0, 100 ).name( 'fade out distance' );

@@ -1,5 +1,5 @@
 import { RedFormat, RenderTarget, Vector2, RendererUtils, QuadMesh, Node, NodeMaterial, NodeUpdateType, UnsignedByteType } from 'three/webgpu';
-import { reference, getViewPosition, float, min, If, Fn, passTexture, uv, uniform, depthToViewZ, lightPosition, lightTargetPosition, mix, context, isBackgroundDepth, projectionDepth, getNormalFromDepth, vec3 } from 'three/tsl';
+import { reference, getViewPosition, float, min, If, Fn, passTexture, uv, uniform, depthToViewZ, lightPosition, lightTargetPosition, mix, context, isBackgroundDepth, projectionDepth, getNormalFromDepth, sample, vec3 } from 'three/tsl';
 import { LinearTracer, getRayPosition } from '../utils/traceLinear.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
@@ -69,13 +69,11 @@ class SSSNode extends Node {
 		this.depthNode = depthNode;
 
 		/**
-		 * A node that represents the scene's normals in view space. The normals are reconstructed
-		 * from the depth if no node is set.
+		 * Returns the scene's unit normal in view space when sampled at a uv. Reconstructs it from the depth by default.
 		 *
-		 * @type {?Node<vec3>}
-		 * @default null
+		 * @type {Node<vec3>}
 		 */
-		this.normalNode = null;
+		this.normalNode = sample( ( uv ) => getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse ) );
 
 		/**
 		 * Maximum shadow length in world units. Longer shadows result in more computational
@@ -329,8 +327,6 @@ class SSSNode extends Node {
 
 		const sampleDepth = ( uv ) => projectionDepth( this.depthNode.sample( uv ).r, this._cameraNear, this._cameraFar );
 
-		const sampleNormal = ( uv ) => this.normalNode !== null ? this.normalNode.sample( uv ).rgb.normalize() : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
-
 		const sss = Fn( () => {
 
 			const depth = sampleDepth( uvNode ).toVar();
@@ -371,7 +367,7 @@ class SSSNode extends Node {
 				const edge = min( uv, uv.oneMinus() ).div( this.screenEdgeFade.max( 1e-6 ) ).clamp();
 
 				const occluderPosition = getViewPosition( uv, sampleDepth( uv ), this._cameraProjectionMatrixInverse );
-				const occluderNormal = sampleNormal( uv );
+				const occluderNormal = this.normalNode.sample( uv );
 				const viewDirection = this._camera.isPerspectiveCamera === true ? occluderPosition.normalize() : vec3( 0, 0, - 1 );
 				const grazing = occluderNormal.dot( viewDirection ).abs().div( this.grazingFade.max( 1e-6 ) ).clamp();
 
@@ -382,7 +378,7 @@ class SSSNode extends Node {
 			// an occluder is above the plane of the receiver by more than a pixel, otherwise a surface at a grazing
 			// angle shadows itself: the depth of a pixel is constant, while its surface spans a range of depths
 
-			const normal = sampleNormal( uvNode ).toVar();
+			const normal = this.normalNode.sample( uvNode ).toVar();
 			const facing = normal.dot( rayStartPosition ).lessThan( 0 ).select( normal, normal.negate() ).toConst();
 			const pixelSize = float( 2 ).div( this._cameraProjectionMatrix.element( 1 ).element( 1 ).mul( this._resolution.y ) );
 

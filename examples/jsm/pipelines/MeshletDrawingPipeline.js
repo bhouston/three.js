@@ -23,12 +23,14 @@ import {
 } from 'three/webgpu';
 
 import {
-	Fn, If, Loop, fract, floor, screenCoordinate, vec2, vec3, vec4, uvec4, int, uint, float, max, min, clamp, ceil, log2, select, dot, bool, distance, length, normalize, textureLoad, ivec2, mat4, sqrt,
+	Fn, If, Loop, fract, floor, screenCoordinate, vec2, vec3, vec4, uvec4, int, uint, float, max, min, clamp, ceil, log2, select, dot, bool, distance, length, normalize, texture, mat4, sqrt,
 	storage, uniform, uniformArray, instanceIndex, vertexIndex, varying, context as contextNode, overrideNodes, Return,
 	modelWorldMatrix, modelWorldMatrixInverse, modelNormalMatrix, modelPosition, modelViewPosition, mat3,
 	positionLocal, positionPrevious, normalLocal, transformNormal, velocity, materialColor,
 	cameraViewMatrix, atomicAdd, atomicStore, atomicLoad, workgroupId, localId, floatBitsToUint, workgroupArray, workgroupBarrier, packHalf2x16, unpackHalf2x16
 } from 'three/tsl';
+
+import { hiZ } from '../tsl/display/HiZNode.js';
 
 import { createMeshlets, ready as clusterProcessingReady, MESHLET_SIZE, MAX_LODS } from '../utils/MeshletGeometryUtils.js';
 
@@ -617,14 +619,9 @@ function isSupportedObject( object, geometry, group, allowEmpty = false ) {
 }
 
 
-// the maximum number of levels of the hierarchical depth, enough for 65536 pixels
-
-const MAX_HZB_LEVELS = 16;
-
 /**
  * Creates the occlusion data of a view: the depth of the clusters visible in the last frame and its
- * hierarchical depth. Each level stores the maximum depth of 2x2 texels of the previous level, the first
- * level covers 2x2 pixels. The levels are stored in one storage buffer.
+ * hierarchical depth.
  *
  * @private
  * @param {number} width - The width of the view in pixels.
@@ -635,86 +632,17 @@ function createOcclusion( width, height ) {
 
 	const depthTexture = new DepthTexture( width, height );
 	const target = new RenderTarget( width, height, { depthTexture, count: 0 } );
-
-	const levels = [];
-
-	let levelWidth = width;
-	let levelHeight = height;
-	let size = 0;
-
-	do {
-
-		levelWidth = Math.ceil( levelWidth / 2 );
-		levelHeight = Math.ceil( levelHeight / 2 );
-
-		levels.push( { offset: size, width: levelWidth, height: levelHeight } );
-
-		size += levelWidth * levelHeight;
-
-	} while ( levelWidth > 1 || levelHeight > 1 );
-
-	const hzbAttribute = new StorageBufferAttribute( new Float32Array( size ), 1 );
-	const hzbWrite = storage( hzbAttribute, 'float' );
-
-	// the texels at the border cover the remaining pixels, so odd sizes stay conservative
-
-	const computeNodes = levels.map( ( level, i ) => {
-
-		const source = i > 0 ? levels[ i - 1 ] : { offset: 0, width, height };
-
-		return Fn( () => {
-
-			If( instanceIndex.lessThan( level.width * level.height ), () => {
-
-				const x = instanceIndex.mod( level.width );
-				const y = instanceIndex.div( level.width );
-
-				const depth = float( 0 ).toVar();
-
-				for ( let j = 0; j < 4; j ++ ) {
-
-					const sourceX = min( x.mul( 2 ).add( j & 1 ), uint( source.width - 1 ) );
-					const sourceY = min( y.mul( 2 ).add( j >> 1 ), uint( source.height - 1 ) );
-
-					const value = i === 0 ? textureLoad( depthTexture, ivec2( sourceX, sourceY ) ).x : hzbWrite.element( sourceY.mul( source.width ).add( sourceX ).add( source.offset ) );
-
-					depth.assign( max( depth, value ) );
-
-				}
-
-				hzbWrite.element( instanceIndex.add( level.offset ) ).assign( depth );
-
-			} );
-
-		} )().compute( level.width * level.height ).setName( 'MeshletDrawingPipeline HZB' );
-
-	} );
-
-	const levelData = [];
-
-	for ( let i = 0; i < MAX_HZB_LEVELS; i ++ ) {
-
-		const level = levels[ Math.min( i, levels.length - 1 ) ];
-
-		levelData.push( new Vector4( level.offset, level.width, level.height, 0 ) );
-
-	}
+	const hiZNode = hiZ( texture( depthTexture ), { reversedDepth: false } );
 
 	return {
 		target,
 		scene: new Scene(),
-		hzb: storage( hzbAttribute, 'float' ).toReadOnly(),
-		hzbLevels: uniformArray( levelData, 'vec4' ),
-		hzbLevelCount: uniform( levels.length, 'uint' ),
-		hzbSize: uniform( new Vector2( width, height ) ),
-		computeNodes,
+		hiZNode,
 		dispose() {
 
-			for ( const computeNode of computeNodes ) computeNode.dispose();
-
+			hiZNode.dispose();
 			target.dispose();
 			depthTexture.dispose();
-			hzbAttribute.dispose();
 
 		}
 	};
@@ -1777,7 +1705,7 @@ class MeshletCulling {
  */
 function createOcclusionTest( occlusion ) {
 
-	const { hzb, hzbLevels, hzbLevelCount, hzbSize } = occlusion;
+	const hiZNode = occlusion.hiZNode;
 
 	return ( mvp, sphere ) => {
 
@@ -1818,8 +1746,8 @@ function createOcclusionTest( occlusion ) {
 
 			// pixel rectangle, the framebuffer origin is the top left corner
 
-			const width = hzbSize.x;
-			const height = hzbSize.y;
+			const width = hiZNode.size.x;
+			const height = hiZNode.size.y;
 
 			const x0 = int( clamp( minX.mul( 0.5 ).add( 0.5 ).mul( width ), 0.0, width.sub( 1.0 ) ) );
 			const x1 = int( clamp( maxX.mul( 0.5 ).add( 0.5 ).mul( width ), 0.0, width.sub( 1.0 ) ) );
@@ -1829,12 +1757,10 @@ function createOcclusionTest( occlusion ) {
 			// the level whose texels cover 2^( level + 1 ) pixels, so the rectangle overlaps at most 2x2 texels
 
 			const span = max( x1.sub( x0 ), y1.sub( y0 ) ).add( 1 );
-			const level = clamp( int( ceil( log2( float( span ) ) ) ).sub( 1 ), int( 0 ), int( hzbLevelCount ).sub( 1 ) );
+			const level = clamp( int( ceil( log2( float( span ) ) ) ).sub( 1 ), int( 0 ), int( hiZNode.levelCount ).sub( 1 ) );
 			const shift = uint( level.add( 1 ) );
 
-			const levelData = hzbLevels.element( level );
-			const offset = uint( levelData.x );
-			const levelWidth = uint( levelData.y );
+			const { load } = hiZNode.getLevelNode( level );
 
 			const tx0 = uint( x0 ).shiftRight( shift );
 			const tx1 = uint( x1 ).shiftRight( shift );
@@ -1842,8 +1768,8 @@ function createOcclusionTest( occlusion ) {
 			const ty1 = uint( y1 ).shiftRight( shift );
 
 			const depth = max(
-				max( hzb.element( offset.add( ty0.mul( levelWidth ) ).add( tx0 ) ), hzb.element( offset.add( ty0.mul( levelWidth ) ).add( tx1 ) ) ),
-				max( hzb.element( offset.add( ty1.mul( levelWidth ) ).add( tx0 ) ), hzb.element( offset.add( ty1.mul( levelWidth ) ).add( tx1 ) ) )
+				max( load( tx0, ty0 ), load( tx1, ty0 ) ),
+				max( load( tx0, ty1 ), load( tx1, ty1 ) )
 			);
 
 			occluded.assign( minZ.greaterThan( depth ) );
@@ -4934,7 +4860,7 @@ class MeshletDrawingPipeline extends StandardDrawingPipeline {
 		record.occlusionProjections = occlusionActive === true && record.occlusionVisibility === culling.visibilityAttribute ? record.occlusionProjections + 1 : 0;
 		record.occlusionVisibility = culling.visibilityAttribute;
 
-		if ( occlusion !== null ) computeNodes.push( ...occlusion.computeNodes );
+		if ( occlusion !== null ) computeNodes.push( ...occlusion.hiZNode.computeNodes );
 		if ( view !== null && view.computeClear !== null ) computeNodes.push( view.computeClear );
 
 		computeNodes.push( ...culling.computeNodes, ...batchComputeNodes );

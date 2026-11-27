@@ -3755,10 +3755,6 @@ class Renderer {
 			const hasCastShadowNode = material.castShadowNode && material.castShadowNode.isNode;
 			const hasMaskNode = ( material.maskShadowNode && material.maskShadowNode.isNode ) || ( material.maskNode && material.maskNode.isNode );
 
-			// the alpha of the map and of the color node only matters when it can discard or blend: for an opaque material
-			// it would compile (and evaluate) the whole color graph into the shadow pass for a value nothing reads
-			const usesAlpha = material.transparent === true || material.alphaTest > 0;
-
 			let positionNode = null;
 			let colorNode = null;
 			let depthNode = null;

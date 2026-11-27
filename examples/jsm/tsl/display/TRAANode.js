@@ -1,5 +1,5 @@
 import { HalfFloatType, Vector2, RenderTarget, RendererUtils, QuadMesh, NodeMaterial, Node, NodeUpdateType, Matrix4 } from 'three/webgpu';
-import { float, Fn, max, texture, uniform, uv, vec4, convertToTexture, passTexture, velocity, ivec2, mix, context, OnBeforeRenderPipeline, OnAfterRenderPipeline, depthToViewZ } from 'three/tsl';
+import { float, Fn, max, texture, uniform, uv, vec4, convertToTexture, passTexture, velocity, ivec2, mix, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
 import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCurrentDepth } from '../utils/TAAUtils.js';
 import { Reprojection } from '../../utils/Reprojection.js';
 
@@ -35,7 +35,7 @@ class TRAANode extends Node {
 	 *
 	 * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
 	 * @param {TextureNode} depthNode - A node that represents the scene's depth.
-	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
 	 * @param {Camera} camera - The camera the scene is rendered with.
 	 */
 	constructor( beautyNode, depthNode, velocityNode, camera ) {
@@ -89,13 +89,13 @@ class TRAANode extends Node {
 		this.camera = camera;
 
 		/**
-		 * The normalized depth difference above which history is rejected when
-		 * `usePreviousViewZ` is disabled.
+		 * The history is rejected when the previous frame's surface is nearer than the
+		 * expected one by more than this fraction of its distance.
 		 *
 		 * @type {number}
-		 * @default 0.0005
+		 * @default 0.002
 		 */
-		this.depthThreshold = 0.0005;
+		this.depthThreshold = 0.002;
 
 		/**
 		 * The depth difference within the 3×3 neighborhood to consider a pixel as an edge.
@@ -121,15 +121,6 @@ class TRAANode extends Node {
 		 * @default true
 		 */
 		this.useSubpixelCorrection = true;
-
-		/**
-		 * Enables motion-aware disocclusion testing. Set before building the node and
-		 * write `viewZDelta` to the velocity texture's alpha channel. The velocity texture must support signed floating-point values.
-		 *
-		 * @type {boolean}
-		 * @default false
-		 */
-		this.usePreviousViewZ = false;
 
 		/**
 		 * The jitter index selects the current camera offset value.
@@ -484,36 +475,18 @@ class TRAANode extends Node {
 			const surfaceVelocity = this.velocityNode.load( closestPositionTexel );
 			const historyUV = this._reprojection.getHistoryUV( uvNode, surfaceVelocity.xy ).toConst();
 
-			let isValidHistoryPosition = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() );
-			let isDisocclusion;
+			// compare the expected and visible surface distances in the previous camera's view space
 
-			if ( this.usePreviousViewZ ) {
+			const { x: near, y: far } = this._reprojection.previousCameraNearFar;
+			const expectedDistance = this._reprojection.getExpectedPreviousViewZ( this.depthNode.load( closestPositionTexel ).r, surfaceVelocity.w, this._cameraNearFar ).negate().toConst();
+			const sampledDistance = this._reprojection.getPreviousViewZ( historyUV ).negate();
+			const isDisocclusion = expectedDistance.sub( sampledDistance ).greaterThan( expectedDistance.mul( this.depthThreshold ) );
 
-				// Compare the expected and visible surface depths in the previous camera's view space.
-				const { x: near, y: far } = this._reprojection.previousCameraNearFar;
-				const sampledDepth = this._reprojection.previousDepthNode.sample( historyUV ).r;
-				const sampledDistance = depthToViewZ( sampledDepth, near, far, this.camera ).negate();
+			// a surface outside the previous camera's clip range has no history, even on edges
 
-				// The previous view z of the surface is its current view z minus the change since then.
-				const currentViewZ = depthToViewZ( this.depthNode.load( closestPositionTexel ).r, this._cameraNearFar.x, this._cameraNearFar.y, this.camera );
-				const expectedDistance = currentViewZ.sub( surfaceVelocity.w ).negate().toConst();
-
-				// Allow for depth precision and subpixel reprojection.
-				const relativeTolerance = 0.002;
-				const tolerance = expectedDistance.mul( relativeTolerance );
-				isDisocclusion = expectedDistance.sub( sampledDistance ).greaterThan( tolerance );
-
-				// A surface outside the previous camera's clip range has no history, even on edges.
-				isValidHistoryPosition = isValidHistoryPosition.and( expectedDistance.greaterThan( 0 ) )
-					.and( expectedDistance.greaterThanEqual( near.mul( 1 - relativeTolerance ) ) )
-					.and( expectedDistance.lessThanEqual( far.mul( 1 + relativeTolerance ) ) );
-
-			} else {
-
-				const previousDepth = this._reprojection.getPreviousDepth( historyUV, this._cameraNearFar );
-				isDisocclusion = closestDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
-
-			}
+			const isValidHistoryPosition = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() )
+				.and( expectedDistance.greaterThanEqual( near.mul( float( 1 ).sub( this.depthThreshold ) ) ) )
+				.and( expectedDistance.lessThanEqual( far.mul( float( 1 ).add( this.depthThreshold ) ) ) );
 
 			const isEdge = farthestDepth.sub( closestDepth ).greaterThan( this.edgeDepthDiff );
 			const hasValidHistory = isValidHistoryPosition.and( isEdge.or( isDisocclusion.not() ) );
@@ -589,7 +562,7 @@ const _haltonOffsets = /*@__PURE__*/ computeHaltonOffsets( 32 );
  * @function
  * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
  * @param {TextureNode} depthNode - A node that represents the scene's depth.
- * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+ * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
  * @param {Camera} camera - The camera the scene is rendered with.
  * @returns {TRAANode}
  */

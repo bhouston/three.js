@@ -46,7 +46,6 @@
 
 			const LENGTH = 2000; // of the road, in meters
 
-			const params = { usePreviousViewZ: true };
 
 			let camera, scene, renderer, renderPipeline, timer, controls, follower;
 
@@ -141,23 +140,7 @@
 				const scenePassDepth = scenePass.getTextureNode( 'depth' );
 				const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
 
-				const updateTRAA = () => {
-
-					const previousTRAA = renderPipeline.outputNode;
-					const traaNode = traa( scenePassColor, scenePassDepth, scenePassVelocity, camera );
-					traaNode.usePreviousViewZ = params.usePreviousViewZ;
-
-					renderPipeline.outputNode = traaNode;
-					renderPipeline.needsUpdate = true;
-
-					if ( previousTRAA.isTRAANode ) previousTRAA.dispose();
-
-				};
-
-				updateTRAA();
-
-				const gui = renderer.inspector.createParameters( 'Settings' );
-				gui.add( params, 'usePreviousViewZ' ).name( 'Depth motion' ).onChange( updateTRAA );
+				renderPipeline.outputNode = traa( scenePassColor, scenePassDepth, scenePassVelocity, camera );
 
 				window.addEventListener( 'resize', onWindowResize );
 

@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, color, positionLocal, sample, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity } from 'three/tsl';
+			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, color, positionLocal, sample, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity, viewZDelta } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
@@ -187,7 +187,7 @@
 					output: output,
 					diffuseColor: vec4( diffuseColor.rgb, materialMetalness ),
 					normal: packNormalToOctahedral( normalView ),
-					velocity: vec4( velocity, materialRoughness, 0 )
+					velocity: vec4( velocity, materialRoughness, viewZDelta )
 				} ) );
 
 				// octahedral normals can't be filtered across their folds

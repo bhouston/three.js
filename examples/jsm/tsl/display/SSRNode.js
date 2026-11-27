@@ -1175,26 +1175,45 @@ class SSRNode extends Node {
 			const origin = vec3( uvPos, depth ).toConst();
 			const end = vec3( d1.mul( invResolution ), toDepth( d1viewPosition.z, near, far ) ).toConst();
 
+			// the distance of the surface at a depth from the ray and the thickness it has to be within
+
+			const reach = ( uvS, raw ) => {
+
+				const d = projectionDepth( raw, near, far );
+				const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse );
+				const minThickness = getViewPosition( uvS.add( uvPixelStepX ), d, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).mul( 3 );
+
+				return { d, away: pointToLineDistance( vP, viewPosition, d1viewPosition ), tk: max( minThickness, this.thickness ) };
+
+			};
+
+			const outOfReach = ( uvS, raw ) => {
+
+				const { away, tk } = reach( uvS, raw );
+
+				return away.greaterThan( tk );
+
+			};
+
 			const result = this._tracer.trace( this.depthNode, origin, end, {
 				resolution: this._resolution,
 				reversedDepth: reversed,
 				steps: totalStep.sub( 1 ),
 				parameter: ( index ) => sampleFraction( index.add( 1 ) ),
 				projectDepth: ( raw ) => projectionDepth( raw, near, far ),
+				// a ray passing farther than the thickness behind the farthest surface of a cell skips it
+				isHidden: ( uvIn, uvOut, raw ) => outOfReach( uvIn, raw ).and( outOfReach( uvOut, raw ) ),
 				acceptHit: ( uvS, s, raw, lastS ) => {
 
 					// Gate by thickness so an occluder gap doesn't end the trace, and by the normal so the ray
 					// reflects off a surface facing it.
-					const d = projectionDepth( raw, near, far );
-					const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse );
-					const minThickness = getViewPosition( uvS.add( uvPixelStepX ), d, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).mul( 3 );
+					const { d, away, tk } = reach( uvS, raw );
 
 					// Only refinement may use a wider coarse tolerance.
-					let tk = max( minThickness, this.thickness );
-					if ( this.binaryRefine && lastS !== undefined ) tk = max( tk, distance( rayPointAt( lastS ), rayPointAt( s ) ) );
+					const tolerance = ( this.binaryRefine && lastS !== undefined ) ? max( tk, distance( rayPointAt( lastS ), rayPointAt( s ) ) ) : tk;
 
 					return isBackgroundDepth( d ).not()
-						.and( pointToLineDistance( vP, viewPosition, d1viewPosition ).lessThanEqual( tk ) )
+						.and( away.lessThanEqual( tolerance ) )
 						.and( dot( viewReflectDir, this.normalNode.sample( uvS ).rgb ).lessThan( 0 ) );
 
 				},

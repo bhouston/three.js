@@ -172,7 +172,8 @@ class SSSNode extends Node {
 		/**
 		 * Whether the rays are traced through a hierarchical depth buffer instead of being marched linearly.
 		 * The cost of a ray then barely depends on its length, so long shadows stay cheap. The rays are exact,
-		 * `quality` and the temporal filtering are not used. Requires a WebGPU backend.
+		 * `quality` and the temporal filtering are not used. Requires a WebGPU backend, the materials using the node
+		 * must be rebuilt when the value changes.
 		 *
 		 * @type {boolean}
 		 * @default false
@@ -186,15 +187,6 @@ class SSSNode extends Node {
 		 * @default false
 		 */
 		this.anyHit = false;
-
-		/**
-		 * Whether the node outputs the number of steps of each ray instead of the shadow, for debugging.
-		 * The output is `sqrt( steps / 1024 )`.
-		 *
-		 * @type {boolean}
-		 * @default false
-		 */
-		this.showSteps = false;
 
 		/**
 		 * The maximum number of steps of a ray when `hiZ` is used.
@@ -329,9 +321,6 @@ class SSSNode extends Node {
 		 */
 		this._hiZNode = null;
 
-		this._fragmentFn = null;
-		this._builtKey = '';
-
 	}
 
 	/**
@@ -369,18 +358,6 @@ class SSSNode extends Node {
 	updateBefore( frame ) {
 
 		const { renderer } = frame;
-
-		// the material reads these properties when it is built
-
-		const key = `${ this.hiZ },${ this.anyHit },${ this.showSteps }`;
-
-		if ( this._fragmentFn !== null && key !== this._builtKey ) {
-
-			this._builtKey = key;
-			this._material.fragmentNode = this._fragmentFn();
-			this._material.needsUpdate = true;
-
-		}
 
 		if ( this.hiZ === true ) {
 
@@ -515,7 +492,7 @@ class SSSNode extends Node {
 
 				// a surface facing away from the light shadows itself, no ray is traced
 
-				const value = ( this.showSteps === true ? float( 0 ) : this.shadowIntensity.oneMinus() ).toVar();
+				const value = this.shadowIntensity.oneMinus().toVar();
 
 				If( facing.dot( rayDirection ).greaterThan( 0 ), () => {
 
@@ -555,11 +532,7 @@ class SSSNode extends Node {
 
 			const result = float( 1 ).toVar();
 
-			const steps = float( 0 ).toVar();
-
 			Loop( totalStep, ( { i } ) => {
-
-				steps.addAssign( 1 );
 
 				// advance on the ray by computing a new position in screen coordinates
 				const xy = vec2( d0.x.add( xSpan.mul( float( i ).add( offset ) ) ), d0.y.add( ySpan.mul( float( i ).add( offset ) ) ) ).toVar();
@@ -594,15 +567,11 @@ class SSSNode extends Node {
 
 			} );
 
-			if ( this.showSteps === true ) return steps.div( 1024 ).sqrt();
-
 			return result;
 
 		} );
 
 		this._material.contextNode = context( builder.getSharedContext() );
-		this._fragmentFn = sss;
-		this._builtKey = `${ this.hiZ },${ this.anyHit },${ this.showSteps }`;
 		this._material.fragmentNode = sss();
 		this._material.needsUpdate = true;
 
@@ -656,8 +625,6 @@ class SSSNode extends Node {
 			anyHit: this.anyHit,
 			passRejected: true
 		} );
-
-		if ( this.showSteps === true ) return float( result.iterations ).div( 1024 ).sqrt();
 
 		const value = float( 1 ).toVar();
 

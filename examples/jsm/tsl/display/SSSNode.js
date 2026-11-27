@@ -160,15 +160,6 @@ class SSSNode extends Node {
 		this.anyHit = false;
 
 		/**
-		 * Whether the node outputs the number of steps of each ray instead of the shadow, for debugging.
-		 * The output is `sqrt( steps / 1024 )`.
-		 *
-		 * @type {boolean}
-		 * @default false
-		 */
-		this.showSteps = false;
-
-		/**
 		 * The maximum number of steps of a ray when `hiZ` is used.
 		 *
 		 * @type {UniformNode<int>}
@@ -344,7 +335,7 @@ class SSSNode extends Node {
 
 		// the material reads these properties when it is built
 
-		const key = `${ this.hiZ },${ this.anyHit },${ this.showSteps }`;
+		const key = `${ this.hiZ },${ this.anyHit }`;
 
 		if ( this._fragmentFn !== null && key !== this._builtKey ) {
 
@@ -466,7 +457,7 @@ class SSSNode extends Node {
 
 				// a surface facing away from the light shadows itself, no ray is traced
 
-				const value = ( this.showSteps === true ? float( 0 ) : this.shadowIntensity.oneMinus() ).toVar();
+				const value = this.shadowIntensity.oneMinus().toVar();
 
 				If( facing.dot( rayDirection ).greaterThan( 0 ), () => {
 
@@ -506,11 +497,7 @@ class SSSNode extends Node {
 
 			const result = float( 1 ).toVar();
 
-			const steps = float( 0 ).toVar();
-
 			Loop( totalStep, ( { i } ) => {
-
-				steps.addAssign( 1 );
 
 				// advance on the ray by computing a new position in screen coordinates
 				const xy = vec2( d0.x.add( xSpan.mul( float( i ).add( offset ) ) ), d0.y.add( ySpan.mul( float( i ).add( offset ) ) ) ).toVar();
@@ -545,15 +532,13 @@ class SSSNode extends Node {
 
 			} );
 
-			if ( this.showSteps === true ) return steps.div( 1024 ).sqrt();
-
 			return result;
 
 		} );
 
 		this._material.contextNode = context( builder.getSharedContext() );
 		this._fragmentFn = sss;
-		this._builtKey = `${ this.hiZ },${ this.anyHit },${ this.showSteps }`;
+		this._builtKey = `${ this.hiZ },${ this.anyHit }`;
 		this._material.fragmentNode = sss();
 		this._material.needsUpdate = true;
 
@@ -606,8 +591,6 @@ class SSSNode extends Node {
 			anyHit: this.anyHit,
 			passRejected: true
 		} );
-
-		if ( this.showSteps === true ) return float( result.iterations ).div( 1024 ).sqrt();
 
 		const value = float( 1 ).toVar();
 

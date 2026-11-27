@@ -20,8 +20,7 @@
 			</div>
 
 			<small>
-				Long Screen-Space Shadows (SSS), traced through a hierarchical depth buffer or marched linearly.<br/>
-				The trace steps output is green for few steps per ray, then yellow, orange and red at the maximum steps.
+				Long Screen-Space Shadows (SSS), traced through a hierarchical depth buffer or marched linearly.
 			</small>
 		</div>
 
@@ -39,7 +38,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, velocity, normalView, packNormalToOctahedral, unpackOctahedralToNormal, sample, float, uniform, vec3, vec4, mix, checker, hash, varying, instanceIndex, positionWorld, screenUV, builtinShadowContext } from 'three/tsl';
+			import { pass, mrt, velocity, normalView, packNormalToOctahedral, unpackOctahedralToNormal, sample, uniform, vec3, vec4, mix, checker, hash, varying, instanceIndex, positionWorld, screenUV, builtinShadowContext } from 'three/tsl';
 			import { sss } from 'three/addons/tsl/display/SSSNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -185,11 +184,6 @@
 
 				scenePass.contextNode = builtinShadowContext( sssSample, sun );
 
-				// steps per ray relative to the maximum steps as green, yellow, orange and red, the background is black
-
-				const steps = sssPass.r.pow2().mul( 1024 ).div( float( sssPass.maxSteps ) );
-				const stepsColor = vec3( steps.mul( 3 ).saturate(), steps.sub( 1 / 3 ).mul( 1.5 ).saturate().oneMinus(), 0 ).mul( float( sssPass.r.lessThan( 1 ) ) );
-
 				// traa, the jittered depth antialiases the edges of the shadows
 
 				const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
@@ -231,14 +225,13 @@
 
 					sssPass.hiZ = params.hiZ;
 					sssPass.anyHit = params.anyHit;
-					sssPass.showSteps = params.output === 3;
 					sssPass.useTemporalFiltering = params.traa;
 
 					raw.value = params.output === 1 ? 1 : 0;
 
 					const beauty = params.traa ? traaPass : scenePass;
 
-					renderPipeline.outputNode = [ beauty, beauty, vec4( vec3( sssPass.r ), 1 ), vec4( stepsColor, 1 ) ][ params.output ];
+					renderPipeline.outputNode = [ beauty, beauty, vec4( vec3( sssPass.r ), 1 ) ][ params.output ];
 					renderPipeline.needsUpdate = true;
 
 					for ( const editor of [ hit, maxSteps ] ) params.hiZ ? editor.show() : editor.hide();
@@ -247,7 +240,7 @@
 				}
 
 				const gui = renderer.inspector.createParameters( 'Settings' );
-				gui.add( params, 'output', { 'Beauty': 0, 'Raw': 1, 'Shadows': 2, 'Trace Steps': 3 } ).onChange( updatePostprocessing );
+				gui.add( params, 'output', { 'Beauty': 0, 'Raw': 1, 'Shadows': 2 } ).onChange( updatePostprocessing );
 				gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updatePostprocessing );
 				gui.add( params, 'azimuth', - 180, 180 ).name( 'sun azimuth' ).onChange( updateSun );
 				gui.add( params, 'altitude', 0.5, 90 ).name( 'sun altitude' ).onChange( updateSun );

@@ -77,7 +77,15 @@ class ReprojectedBeautyNode extends Node {
 		 * @private
 		 * @type {Reprojection}
 		 */
-		this._reprojection = new Reprojection( scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'velocity' ), scenePass.camera, scenePass.getPreviousTextureNode( 'depth' ) );
+		this._reprojection = new Reprojection( scenePass.getTextureNode( 'depth' ), scenePass.camera, scenePass.getPreviousTextureNode( 'depth' ) );
+
+		/**
+		 * The scene's velocity, with `viewZDelta` in the alpha channel.
+		 *
+		 * @private
+		 * @type {TextureNode}
+		 */
+		this._velocityNode = scenePass.getTextureNode( 'velocity' );
 
 		/**
 		 * The camera's near and far planes from the last scene render.
@@ -86,14 +94,6 @@ class ReprojectedBeautyNode extends Node {
 		 * @type {UniformNode<vec2>}
 		 */
 		this._cameraNearFar = uniform( new Vector2( scenePass.camera.near, scenePass.camera.far ) );
-
-		/**
-		 * The near and far planes used to encode the previous depth texture.
-		 *
-		 * @private
-		 * @type {UniformNode<vec2>}
-		 */
-		this._previousCameraNearFar = uniform( this._cameraNearFar.value.clone() );
 
 		/**
 		 * The TRAA jitter of the previous frame relative to the current one, in UV space.
@@ -149,7 +149,6 @@ class ReprojectedBeautyNode extends Node {
 		const valid = reprojection.needsHistoryReset() === false;
 
 		reprojection.advance();
-		this._previousCameraNearFar.value.copy( this._cameraNearFar.value );
 		this._cameraNearFar.value.set( camera.near, camera.far );
 
 		// the scene buffers carry TRAA jitter, the velocity does not
@@ -174,21 +173,21 @@ class ReprojectedBeautyNode extends Node {
 		const { scenePass } = this;
 		const reprojection = this._reprojection;
 
-		const velocityNode = reprojection.velocityNode;
+		const velocityNode = this._velocityNode;
 		const previousColor = this.beautyPass.getPreviousTextureNode( 'output' );
 		const previousDepth = reprojection.previousDepthNode;
 		const projectionMatrixInverse = reprojection.previousCameraProjectionMatrixInverse;
 
-		const cameraNearFar = this._previousCameraNearFar;
+		const cameraNearFar = reprojection.previousCameraNearFar;
 
 		const size = vec2( textureSize( velocityNode ) ).toConst();
 		const texel = ivec2( uvNode.mul( size ) ).toConst();
-		const historyUV = reprojection.getHistoryUV( uvNode, texel ).add( this._jitterDelta ).toConst();
+		const historyUV = reprojection.getHistoryUV( uvNode, velocityNode.load( texel ).xy ).add( this._jitterDelta ).toConst();
 
 		// the previous view z of the surface is its current view z minus the change since then
 
 		const currentDepth = reprojection.depthNode.load( texel ).r.toConst();
-		const previousZ = ( t ) => depthToViewZ( reprojection.depthNode.load( t ).r, this._cameraNearFar.x, this._cameraNearFar.y, scenePass.camera ).sub( velocityNode.load( t ).w );
+		const previousZ = ( t ) => reprojection.getExpectedPreviousViewZ( reprojection.depthNode.load( t ).r, velocityNode.load( t ).w, this._cameraNearFar );
 		const expectedZ = previousZ( texel ).toConst();
 
 		// the depth slope per pixel, taken from the flatter side so it does not cross silhouettes

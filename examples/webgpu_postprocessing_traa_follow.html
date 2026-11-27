@@ -20,9 +20,7 @@
 			</div>
 
 			<small>
-				An object moves through a scene at rest and the camera follows it. It stays still on the screen,<br/>
-				so it should keep its history. Without the previous view z it loses it and shows the camera's jitter.<br/>
-				Drag to orbit around the object.
+				Stress test object and camera motion together by <a href="https://ben3d.ca" target="_blank" rel="noopener">Ben Houston</a>
 			</small>
 		</div>
 
@@ -40,24 +38,16 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { mix, mrt, output, pass, velocity, vec3, vec4 } from 'three/tsl';
+			import { mrt, output, pass, velocity, vec4, viewZDelta } from 'three/tsl';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
-			import { previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			const LENGTH = 2000; // of the road, in meters
 
-			const params = {
-				speed: 20, // meters per second
-				traa: true,
-				usePreviousViewZ: true,
-				view: 'Final'
-			};
 
-			let camera, scene, renderer, renderPipeline, timer, controls;
-			let follower, views, withoutTRAA, activeView;
+			let camera, scene, renderer, renderPipeline, timer, controls, follower;
 
 			init();
 
@@ -140,48 +130,17 @@
 
 				renderPipeline = new THREE.RenderPipeline( renderer );
 				const scenePass = pass( scene, camera );
+
 				scenePass.setMRT( mrt( {
 					output: output,
-					velocity: vec4( velocity, 0, previousViewZ ) // the view z is for the disocclusion test of TRAA
+					velocity: vec4( velocity, 0, viewZDelta ) // the view z delta is for the disocclusion test of TRAA
 				} ) );
 
-				const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );
-				const scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
+				const scenePassColor = scenePass.getTextureNode( 'output' );
+				const scenePassDepth = scenePass.getTextureNode( 'depth' );
+				const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
 
-					return scenePass.getLinearDepthNode();
-
-				} );
-				const scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
-
-				withoutTRAA = scenePassColor;
-
-				// the test is compiled into the shader of TRAA, so there is a set of views for each
-
-				const dimmed = ( color ) => color.rgb.mul( 0.35 );
-
-				views = [ false, true ].map( ( usePreviousViewZ ) => {
-
-					const traaNode = traa( scenePassColor, scenePassDepth, scenePassVelocity, camera );
-					traaNode.usePreviousViewZ = usePreviousViewZ;
-
-					const debug = traaNode.getDebugTextureNode();
-
-					return {
-						'Final': traaNode,
-						'Velocity (x50)': vec4( scenePassVelocity.xy.abs().mul( 50 ), 0, 1 ),
-						'History thrown away (red)': vec4( mix( dimmed( traaNode ), vec3( 1, 0, 0 ), debug.r ), 1 ),
-						'Weight of the current frame': vec4( vec3( debug.g ), 1 )
-					};
-
-				} );
-
-				//
-
-				const gui = renderer.inspector.createParameters( 'Settings' );
-				gui.add( params, 'speed', - 60, 60, 1 ).name( 'speed (m/s)' );
-				gui.add( params, 'traa' ).name( 'TRAA' );
-				gui.add( params, 'usePreviousViewZ' ).name( 'object motion' ); // in the disocclusion test
-				gui.add( params, 'view', Object.keys( views[ 0 ] ) ).name( 'view' );
+				renderPipeline.outputNode = traa( scenePassColor, scenePassDepth, scenePassVelocity, camera );
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -206,26 +165,13 @@
 				// the camera is carried along with the object, which never moves on the screen
 
 				const z = follower.position.z;
-				follower.position.z -= params.speed * timer.getDelta();
+				follower.position.z -= 20 * timer.getDelta();
 				if ( follower.position.z < - LENGTH + 300 ) follower.position.z = - 300;
 				if ( follower.position.z > - 300 ) follower.position.z = - LENGTH + 300;
 
 				camera.position.z += follower.position.z - z;
 				controls.target.copy( follower.position );
 				controls.update();
-
-				// the views of TRAA are of TRAA, also while it is off
-
-				let view = views[ params.usePreviousViewZ ? 1 : 0 ][ params.view ];
-				if ( params.traa === false && params.view === 'Final' ) view = withoutTRAA;
-
-				if ( view !== activeView ) {
-
-					activeView = view;
-					renderPipeline.outputNode = view;
-					renderPipeline.needsUpdate = true;
-
-				}
 
 				renderPipeline.render();
 

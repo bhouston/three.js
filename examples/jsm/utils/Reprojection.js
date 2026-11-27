@@ -1,5 +1,5 @@
-import { DepthTexture, RenderTarget } from 'three/webgpu';
-import { getViewPosition, projectionDepth, texture, uniform, vec2, vec4, viewZToOrthographicDepth, viewZToPerspectiveDepth } from 'three/tsl';
+import { DepthTexture, RenderTarget, Vector2 } from 'three/webgpu';
+import { depthToViewZ, texture, uniform, vec2 } from 'three/tsl';
 
 const _createPreviousDepthRenderTarget = ( isDepthTexture ) => isDepthTexture
 	? new RenderTarget( 1, 1, { depthBuffer: false, depthTexture: new DepthTexture(), count: 0 } )
@@ -21,11 +21,10 @@ class Reprojection {
 	 * Constructs a new reprojection.
 	 *
 	 * @param {TextureNode} depthNode - The scene's depth.
-	 * @param {TextureNode} velocityNode - The scene's velocity.
 	 * @param {Camera} camera - The camera the scene is rendered with.
 	 * @param {?TextureNode} [previousDepthNode=null] - The previous frame's depth. Copied in `update()` when omitted.
 	 */
-	constructor( depthNode, velocityNode, camera, previousDepthNode = null ) {
+	constructor( depthNode, camera, previousDepthNode = null ) {
 
 		/**
 		 * The scene's depth.
@@ -33,13 +32,6 @@ class Reprojection {
 		 * @type {TextureNode}
 		 */
 		this.depthNode = depthNode;
-
-		/**
-		 * The scene's velocity.
-		 *
-		 * @type {TextureNode}
-		 */
-		this.velocityNode = velocityNode;
 
 		/**
 		 * The camera the scene is rendered with.
@@ -94,13 +86,6 @@ class Reprojection {
 		this.cameraProjectionMatrixInverse = uniform( camera.projectionMatrixInverse );
 
 		/**
-		 * The previous frame's camera world matrix.
-		 *
-		 * @type {UniformNode<mat4>}
-		 */
-		this.previousCameraWorldMatrix = uniform( camera.matrixWorld.clone() );
-
-		/**
 		 * The previous frame's camera view matrix.
 		 *
 		 * @type {UniformNode<mat4>}
@@ -122,12 +107,11 @@ class Reprojection {
 		this.previousCameraProjectionMatrixInverse = uniform( camera.projectionMatrixInverse.clone() );
 
 		/**
-		 * The camera's world matrix when the camera was last stored.
+		 * The previous frame's camera near and far, for decoding the previous frame's depth.
 		 *
-		 * @private
-		 * @type {Matrix4}
+		 * @type {UniformNode<vec2>}
 		 */
-		this._cameraWorldMatrix = camera.matrixWorld.clone();
+		this.previousCameraNearFar = uniform( new Vector2( camera.near, camera.far ) );
 
 		/**
 		 * The camera's view matrix when the camera was last stored.
@@ -154,6 +138,14 @@ class Reprojection {
 		this._cameraProjectionMatrixInverse = camera.projectionMatrixInverse.clone();
 
 		/**
+		 * The camera's near and far when the camera was last stored.
+		 *
+		 * @private
+		 * @type {Vector2}
+		 */
+		this._cameraNearFar = new Vector2( camera.near, camera.far );
+
+		/**
 		 * The depth's width when the camera was last stored.
 		 *
 		 * @private
@@ -172,17 +164,15 @@ class Reprojection {
 	}
 
 	/**
-	 * Sets the scene's depth and velocity, e.g. to switch to downsampled inputs. A
-	 * downsampled depth is a color texture, so the previous depth is recreated to match.
-	 * Call it before the effect is built.
+	 * Sets the scene's depth, e.g. to switch to a downsampled one. A downsampled depth
+	 * is a color texture, so the previous depth is recreated to match. Call it before
+	 * the effect is built.
 	 *
 	 * @param {TextureNode} depthNode - The scene's depth.
-	 * @param {TextureNode} velocityNode - The scene's velocity.
 	 */
-	setInputs( depthNode, velocityNode ) {
+	setInputs( depthNode ) {
 
 		this.depthNode = depthNode;
-		this.velocityNode = velocityNode;
 
 		// a provided previous depth already matches the depth
 
@@ -208,80 +198,42 @@ class Reprojection {
 	 * Returns the UV the surface at the given UV had in the previous frame.
 	 *
 	 * @param {Node<vec2>} uvNode - The UV in the current frame.
-	 * @param {Node<ivec2>} texel - The texel to load the velocity from.
+	 * @param {Node<vec2>} velocity - The surface velocity in NDC.
 	 * @return {Node<vec2>} The UV in the previous frame.
 	 */
-	getHistoryUV( uvNode, texel ) {
-
-		const velocity = this.velocityNode.load( texel );
+	getHistoryUV( uvNode, velocity ) {
 
 		// convert the NDC offset to UV offset
 
-		return uvNode.sub( velocity.xy.mul( vec2( 0.5, - 0.5 ) ) );
+		return uvNode.sub( velocity.mul( vec2( 0.5, - 0.5 ) ) );
 
 	}
 
 	/**
-	 * Samples the previous frame's depth at the given UV and reprojects it into the current view.
-	 * This takes the surface for one at rest: one that moves through the world is somewhere else.
+	 * Returns the view z the surface had in the previous frame.
+	 *
+	 * @param {Node<float>} depth - The surface's depth in the current frame.
+	 * @param {Node<float>} viewZDelta - The surface's `viewZDelta`.
+	 * @param {Node<vec2>} cameraNearFar - The camera's near and far.
+	 * @return {Node<float>} The expected view z in the previous frame.
+	 */
+	getExpectedPreviousViewZ( depth, viewZDelta, cameraNearFar ) {
+
+		return depthToViewZ( depth, cameraNearFar.x, cameraNearFar.y, this.camera ).sub( viewZDelta );
+
+	}
+
+	/**
+	 * Samples the view z of the previous frame at the given UV.
 	 *
 	 * @param {Node<vec2>} uvNode - The UV in the previous frame.
-	 * @param {Node<vec2>} cameraNearFar - The camera's near and far.
-	 * @return {Node<float>} The reprojected depth.
+	 * @return {Node<float>} The visible view z in the previous frame.
 	 */
-	getPreviousDepth( uvNode, cameraNearFar ) {
+	getPreviousViewZ( uvNode ) {
 
-		const depth = projectionDepth( this.previousDepthNode.sample( uvNode ).r, cameraNearFar.x, cameraNearFar.y );
-		const positionView = getViewPosition( uvNode, depth, this.previousCameraProjectionMatrixInverse );
-		const positionWorld = this.previousCameraWorldMatrix.mul( vec4( positionView, 1 ) ).xyz;
-		const viewZ = this.cameraViewMatrix.mul( vec4( positionWorld, 1 ) ).z;
+		const { x: near, y: far } = this.previousCameraNearFar;
 
-		return this._viewZToDepth( viewZ, cameraNearFar );
-
-	}
-
-	/**
-	 * Samples the previous frame's depth at the given UV, as the previous camera saw it.
-	 * Compare it with {@link Reprojection#getExpectedPreviousDepth}.
-	 *
-	 * @param {Node<vec2>} uvNode - The UV in the previous frame.
-	 * @param {Node<vec2>} cameraNearFar - The camera's near and far.
-	 * @return {Node<float>} The depth of the previous frame.
-	 */
-	getPreviousCameraDepth( uvNode, cameraNearFar ) {
-
-		const depth = projectionDepth( this.previousDepthNode.sample( uvNode ).r, cameraNearFar.x, cameraNearFar.y );
-		const viewZ = getViewPosition( uvNode, depth, this.previousCameraProjectionMatrixInverse ).z;
-
-		return this._viewZToDepth( viewZ, cameraNearFar );
-
-	}
-
-	/**
-	 * Returns the depth the surface at the given texel had in the previous frame, as the
-	 * previous camera saw it. The alpha channel of the velocity must hold `previousViewZ`
-	 * (see `ReprojectedBeautyNode`), which follows a surface that moves through the world.
-	 * {@link Reprojection#getPreviousDepth} takes the surface for one at rest instead.
-	 *
-	 * @param {Node<vec2>} texel - The texel the velocity is loaded from.
-	 * @param {Node<vec2>} cameraNearFar - The camera's near and far.
-	 * @return {Node<float>} The depth the surface had in the previous frame.
-	 */
-	getExpectedPreviousDepth( texel, cameraNearFar ) {
-
-		const viewZ = this.velocityNode.load( texel ).w;
-
-		// nothing has drawn a view z into the background
-
-		return viewZ.lessThan( 0 ).select( this._viewZToDepth( viewZ, cameraNearFar ), 1 );
-
-	}
-
-	_viewZToDepth( viewZ, cameraNearFar ) {
-
-		return this.camera.isOrthographicCamera
-			? viewZToOrthographicDepth( viewZ, cameraNearFar.x, cameraNearFar.y )
-			: viewZToPerspectiveDepth( viewZ, cameraNearFar.x, cameraNearFar.y );
+		return depthToViewZ( this.previousDepthNode.sample( uvNode ).r, near, far, this.camera );
 
 	}
 
@@ -343,22 +295,22 @@ class Reprojection {
 	}
 
 	/**
-	 * Advances the camera matrices by one frame. Call it before the history is read,
+	 * Advances the camera state by one frame. Call it before the history is read,
 	 * instead of `update()`, when the previous depth is provided.
 	 */
 	advance() {
 
-		this.previousCameraWorldMatrix.value.copy( this._cameraWorldMatrix );
 		this.previousCameraViewMatrix.value.copy( this._cameraViewMatrix );
 		this.previousCameraProjectionMatrix.value.copy( this._cameraProjectionMatrix );
 		this.previousCameraProjectionMatrixInverse.value.copy( this._cameraProjectionMatrixInverse );
+		this.previousCameraNearFar.value.copy( this._cameraNearFar );
 
 		this._storeCamera();
 
 	}
 
 	/**
-	 * Stores the current camera matrices and depth size.
+	 * Stores the current camera state and depth size.
 	 *
 	 * @private
 	 */
@@ -367,10 +319,10 @@ class Reprojection {
 		const { camera } = this;
 		const { width, height } = this.depthNode.value.image;
 
-		this._cameraWorldMatrix.copy( camera.matrixWorld );
 		this._cameraViewMatrix.copy( camera.matrixWorldInverse );
 		this._cameraProjectionMatrix.copy( camera.projectionMatrix );
 		this._cameraProjectionMatrixInverse.copy( camera.projectionMatrixInverse );
+		this._cameraNearFar.set( camera.near, camera.far );
 		this._width = width;
 		this._height = height;
 

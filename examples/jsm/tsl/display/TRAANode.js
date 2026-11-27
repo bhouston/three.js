@@ -35,7 +35,7 @@ class TRAANode extends Node {
 	 *
 	 * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
 	 * @param {TextureNode} depthNode - A node that represents the scene's depth.
-	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
 	 * @param {Camera} camera - The camera the scene is rendered with.
 	 */
 	constructor( beautyNode, depthNode, velocityNode, camera ) {
@@ -89,13 +89,13 @@ class TRAANode extends Node {
 		this.camera = camera;
 
 		/**
-		 * When the difference between the current and previous depth goes above this threshold,
-		 * the history is considered invalid.
+		 * The history is rejected when the previous frame's surface is nearer than the
+		 * expected one by more than this fraction of its distance.
 		 *
 		 * @type {number}
-		 * @default 0.0005
+		 * @default 0.002
 		 */
-		this.depthThreshold = 0.0005;
+		this.depthThreshold = 0.002;
 
 		/**
 		 * The depth difference within the 3×3 neighborhood to consider a pixel as an edge.
@@ -131,18 +131,6 @@ class TRAANode extends Node {
 		 * @default true
 		 */
 		this.useSubpixelCorrection = true;
-
-		/**
-		 * Whether the alpha channel of the velocity holds `previousViewZ` (see `ReprojectedBeautyNode`).
-		 * The disocclusion test then compares the depth a surface had in the previous frame with the
-		 * depth of that frame. Without it the test takes every surface for one at rest, so one that
-		 * moves through the world, like a vehicle the camera follows, loses its history and shows
-		 * the jitter of the camera.
-		 *
-		 * @type {boolean}
-		 * @default false
-		 */
-		this.usePreviousViewZ = false;
 
 		/**
 		 * Whether the history is clipped to its neighborhood while the camera is at rest. Disabling it
@@ -305,7 +293,7 @@ class TRAANode extends Node {
 		 * @private
 		 * @type {Reprojection}
 		 */
-		this._reprojection = new Reprojection( depthNode, velocityNode, camera );
+		this._reprojection = new Reprojection( depthNode, camera );
 		this._reprojection.previousDepthNode.value.name = 'TRAANode.previousDepth';
 
 		/**
@@ -458,7 +446,7 @@ class TRAANode extends Node {
 		// the clip relaxes while the camera is at rest and is restored when it moves
 
 		const atRest = needsRestart === false &&
-			this.camera.matrixWorld.equals( this._reprojection.previousCameraWorldMatrix.value ) &&
+			this.camera.matrixWorldInverse.equals( this._reprojection.previousCameraViewMatrix.value ) &&
 			this._originalProjectionMatrix.equals( this._previousProjectionMatrix );
 
 		this._previousProjectionMatrix.copy( this._originalProjectionMatrix );
@@ -616,25 +604,24 @@ class TRAANode extends Node {
 			const closestPositionTexel = currentDepth.get( 'closestPositionTexel' );
 			const farthestDepth = currentDepth.get( 'farthestDepth' );
 
-			// sample the previous depth
+			const surfaceVelocity = this.velocityNode.load( closestPositionTexel );
+			const historyUV = this._reprojection.getHistoryUV( uvNode, surfaceVelocity.xy ).toConst();
 
-			const historyUV = this._reprojection.getHistoryUV( uvNode, closestPositionTexel ).toConst();
+			// compare the expected and visible surface distances in the previous camera's view space
 
-			// with the previous view z, both depths are of the previous frame: where the surface was, and what was there
+			const { x: near, y: far } = this._reprojection.previousCameraNearFar;
+			const expectedDistance = this._reprojection.getExpectedPreviousViewZ( this.depthNode.load( closestPositionTexel ).r, surfaceVelocity.w, this._cameraNearFar ).negate().toConst();
+			const sampledDistance = this._reprojection.getPreviousViewZ( historyUV ).negate();
+			const isDisocclusion = expectedDistance.sub( sampledDistance ).greaterThan( expectedDistance.mul( this.depthThreshold ) );
 
-			const previousDepth = this.usePreviousViewZ
-				? this._reprojection.getPreviousCameraDepth( historyUV, this._cameraNearFar )
-				: this._reprojection.getPreviousDepth( historyUV, this._cameraNearFar );
-			const expectedDepth = this.usePreviousViewZ
-				? this._reprojection.getExpectedPreviousDepth( closestPositionTexel, this._cameraNearFar )
-				: closestDepth;
+			// a surface outside the previous camera's clip range has no history, even on edges
 
-			// history is considered valid when the UV is in range and there's no disocclusion except on edges
+			const isValidHistoryPosition = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() )
+				.and( expectedDistance.greaterThanEqual( near.mul( float( 1 ).sub( this.depthThreshold ) ) ) )
+				.and( expectedDistance.lessThanEqual( far.mul( float( 1 ).add( this.depthThreshold ) ) ) );
 
-			const isValidUV = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() );
 			const isEdge = farthestDepth.sub( closestDepth ).greaterThan( this.edgeDepthDiff );
-			const isDisocclusion = expectedDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
-			const hasValidHistory = isValidUV.and( isEdge.or( isDisocclusion.not() ) );
+			const hasValidHistory = isValidHistoryPosition.and( isEdge.or( isDisocclusion.not() ) );
 
 			// sample the current and previous colors
 
@@ -725,7 +712,7 @@ const _haltonOffsets = /*@__PURE__*/ computeHaltonOffsets( 32 );
  * @function
  * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
  * @param {TextureNode} depthNode - A node that represents the scene's depth.
- * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+ * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
  * @param {Camera} camera - The camera the scene is rendered with.
  * @returns {TRAANode}
  */

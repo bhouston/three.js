@@ -40,7 +40,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, vec3, vec4, mrt, screenUV, velocity, builtinShadowContext, rtt, uniform, Fn } from 'three/tsl';
+			import { pass, vec3, vec4, mrt, screenUV, velocity, builtinShadowContext, rtt, uniform, Fn, viewZDelta } from 'three/tsl';
 			import { sss } from 'three/addons/tsl/display/SSSNode.js';
 			import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
@@ -145,7 +145,7 @@
 				prePass.transparent = false;
 
 				prePass.setMRT( mrt( {
-					output: velocity
+					output: vec4( velocity, 0, viewZDelta )
 				} ) );
 
 				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );

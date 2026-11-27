@@ -25,7 +25,7 @@
 
 			<small>
 				One ray per pixel over the GGX lobe of the material, denoised over space and time.<br />
-				The materials reflect the previous frame through their BRDF, in front of the environment.<br />
+				The materials reflect the traced scene through their BRDF, in front of the environment.<br />
 				<a href="https://skfb.ly/6tqYD" target="_blank" rel="noopener">Steampunk Camera</a> by
 				<a href="https://sketchfab.com/lumoize" target="_blank" rel="noopener">dylanheyes</a> is licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Creative Commons Attribution</a>.
 			</small>
@@ -63,7 +63,8 @@
 		const params = {
 			output: 'Beauty', enabled: true, quality: 0.5, intensity: 1,
 			maxDistance: 3, thickness: 0.2, binaryRefine: false,
-			roughness: 1, denoise: true, alphaThreshold: 1, aoMap: false
+			roughness: 1, denoise: true, alphaThreshold: 1, aoMap: false,
+			traceSource: 'Clean Beauty'
 		};
 
 		let camera, scene, model, renderer, renderPipeline;
@@ -198,11 +199,16 @@
 
 			//
 
-			// SSR reflects the previous frame's beauty, so it is ready before this frame is shaded
+			// SSR traces this frame rendered without reflections, or the previous frame's beauty
 
 			const beautyPass = pass( scene, camera );
 
-			const reflection = ssr( reprojectedBeauty( scenePass, beautyPass ), scenePassDepth, sceneNormal, {
+			const traceSources = {
+				'Clean Beauty': pass( scene, camera ),
+				'Previous Frame': reprojectedBeauty( scenePass, beautyPass )
+			};
+
+			const reflection = ssr( traceSources[ params.traceSource ], scenePassDepth, sceneNormal, {
 				camera,
 				stochastic: true,
 				metalnessNode: scenePassMetalRough.r,
@@ -298,6 +304,7 @@
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params, 'enabled' ).name( 'Enabled' ).onChange( updateParameters );
+			ssrGui.add( params, 'traceSource', Object.keys( traceSources ) ).name( 'Trace Source' ).onChange( updateTraceSource );
 			ssrGui.add( params, 'intensity', 0, 1 ).name( 'Intensity' ).onChange( updateParameters );
 			ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 			ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
@@ -322,6 +329,13 @@
 
 			updateParameters();
 			updateOutput();
+
+			function updateTraceSource() {
+
+				reflection.colorNode = traceSources[ params.traceSource ];
+				reflection._buildSSRMaterial(); // the source is baked into the SSR material
+
+			}
 
 			function updateParameters() {
 

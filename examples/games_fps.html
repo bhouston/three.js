@@ -94,6 +94,13 @@
 
 			const STEPS_PER_FRAME = 5;
 
+			const params = {
+				kinematic: true,
+				walkSpeed: 6,
+				maxSlope: 50, // degrees
+				stepHeight: 0.3
+			};
+
 			const sphereGeometry = new THREE.IcosahedronGeometry( SPHERE_RADIUS, 5 );
 			const sphereMaterial = new THREE.MeshLambertMaterial( { color: 0xdede8d } );
 
@@ -246,6 +253,156 @@
 				playerCollider.translate( deltaPosition );
 
 				playerCollisions();
+
+				camera.position.copy( playerCollider.end );
+
+			}
+
+			const _offset = new THREE.Vector3();
+			const _wishDirection = new THREE.Vector3();
+			const _faceNormal = new THREE.Vector3();
+			const _probeCollider = new Capsule();
+			const _downRay = new THREE.Ray( new THREE.Vector3(), new THREE.Vector3( 0, - 1, 0 ) );
+
+			function getWishDirection() {
+
+				const forward = ( keyStates[ 'KeyW' ] ? 1 : 0 ) - ( keyStates[ 'KeyS' ] ? 1 : 0 );
+				const side = ( keyStates[ 'KeyD' ] ? 1 : 0 ) - ( keyStates[ 'KeyA' ] ? 1 : 0 );
+
+				_wishDirection.copy( getForwardVector() ).multiplyScalar( forward );
+				_wishDirection.addScaledVector( getSideVector(), side );
+
+				return _wishDirection.normalize();
+
+			}
+
+			// Returns true if the collider can stand on a contact with the given normal.
+			function isWalkable( collider, normal ) {
+
+				const minFloorNormalY = Math.cos( THREE.MathUtils.degToRad( params.maxSlope ) );
+
+				if ( normal.y >= minFloorNormalY ) return true;
+				if ( normal.y < 0.01 ) return false;
+
+				// steep contact: either a slope or the edge of a step. Probe the surface just behind the contact point,
+				// it is a step if that surface is walkable and at most stepHeight above the feet.
+
+				const radius = collider.radius;
+				const horizontalLength = Math.hypot( normal.x, normal.z );
+				const reach = radius * horizontalLength + 0.05;
+
+				_downRay.origin.set(
+					collider.start.x - normal.x / horizontalLength * reach,
+					collider.start.y - radius + params.stepHeight,
+					collider.start.z - normal.z / horizontalLength * reach
+				);
+
+				const hit = worldOctree.rayIntersect( _downRay );
+
+				return hit !== false && hit.distance < params.stepHeight - 0.01 && hit.triangle.getNormal( _faceNormal ).y >= minFloorNormalY;
+
+			}
+
+			// Pushes the player out of the world.
+			function resolvePlayerCollisions() {
+
+				for ( let i = 0; i < 3; i ++ ) {
+
+					const result = worldOctree.capsuleIntersect( playerCollider );
+
+					if ( ! result ) break;
+
+					const normal = result.normal;
+
+					if ( isWalkable( playerCollider, normal ) ) {
+
+						// lift straight up so slopes and step edges do not change the horizontal speed
+						playerCollider.translate( _offset.set( 0, Math.min( result.depth / normal.y, params.stepHeight ), 0 ) );
+						continue;
+
+					}
+
+					let depth = result.depth;
+
+					if ( playerOnFloor && normal.y > 0 ) {
+
+						// too steep to walk on: treat as a vertical wall so the player is not pushed up it
+						const horizontalLength = Math.hypot( normal.x, normal.z );
+						normal.set( normal.x / horizontalLength, 0, normal.z / horizontalLength );
+						depth /= horizontalLength;
+
+					}
+
+					playerVelocity.addScaledVector( normal, - Math.min( 0, normal.dot( playerVelocity ) ) );
+					playerCollider.translate( _offset.copy( normal ).multiplyScalar( depth ) );
+
+				}
+
+			}
+
+			// Sweeps the player down and snaps it onto walkable ground within the given distance.
+			function probeGround( distance ) {
+
+				const steps = Math.ceil( distance / 0.05 );
+				const stepSize = distance / steps;
+
+				_probeCollider.copy( playerCollider );
+
+				for ( let i = 1; i <= steps; i ++ ) {
+
+					_probeCollider.translate( _offset.set( 0, - stepSize, 0 ) );
+
+					const result = worldOctree.capsuleIntersect( _probeCollider );
+
+					if ( result ) {
+
+						if ( ! isWalkable( _probeCollider, result.normal ) ) return false;
+
+						const lift = Math.min( result.depth / result.normal.y, stepSize );
+						playerCollider.translate( _offset.set( 0, lift - i * stepSize, 0 ) );
+
+						return true;
+
+					}
+
+				}
+
+				return false;
+
+			}
+
+			function updatePlayerKinematic( deltaTime ) {
+
+				const wishDirection = getWishDirection();
+
+				if ( playerOnFloor ) {
+
+					// velocity comes straight from the input, there is no momentum on the ground
+					playerVelocity.copy( wishDirection ).multiplyScalar( params.walkSpeed );
+
+					if ( keyStates[ 'Space' ] ) {
+
+						playerVelocity.y = 15;
+						playerOnFloor = false;
+
+					}
+
+				} else {
+
+					// air control: accelerate towards the wish direction without exceeding the walk speed
+					const addSpeed = params.walkSpeed - playerVelocity.dot( wishDirection );
+					if ( addSpeed > 0 ) playerVelocity.addScaledVector( wishDirection, Math.min( addSpeed, 8 * deltaTime ) );
+
+					playerVelocity.y -= GRAVITY * deltaTime;
+
+				}
+
+				playerCollider.translate( _offset.copy( playerVelocity ).multiplyScalar( deltaTime ) );
+
+				resolvePlayerCollisions();
+
+				// snap to the ground while walking, so stairs and ramps going down do not launch the player
+				playerOnFloor = playerVelocity.y <= 0 && probeGround( playerOnFloor ? params.stepHeight : 0.02 );
 
 				camera.position.copy( playerCollider.end );
 
@@ -454,6 +611,10 @@
 						helper.visible = value;
 
 					} );
+				gui.add( params, 'kinematic' );
+				gui.add( params, 'walkSpeed', 1, 12 );
+				gui.add( params, 'maxSlope', 0, 89 );
+				gui.add( params, 'stepHeight', 0, playerCollider.radius ); // steps are climbed on the capsule's round bottom
 			
 			} );
 
@@ -483,9 +644,17 @@
 
 				for ( let i = 0; i < STEPS_PER_FRAME; i ++ ) {
 
-					controls( deltaTime );
+					if ( params.kinematic ) {
 
-					updatePlayer( deltaTime );
+						updatePlayerKinematic( deltaTime );
+
+					} else {
+
+						controls( deltaTime );
+
+						updatePlayer( deltaTime );
+
+					}
 
 					updateSpheres( deltaTime );
 

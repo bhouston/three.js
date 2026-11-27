@@ -14,27 +14,43 @@ const _temporalOffsets = [ 0, 0.5, 0.25, 0.75 ];
  * @param {boolean} [options.reversedDepth=false] - Projected depth convention.
  * @param {Node<float>|number} [options.quality=1] - The steps per pixel of the ray.
  * @param {Node<float>|number} [options.offset=0] - The offset of the samples, in steps.
+ * @param {Node<int>} [options.steps] - The number of samples, instead of the one given by `quality`.
+ * @param {Function} [options.parameter] - Returns the ray parameter of a sample index, instead of even steps.
  * @param {Function} [options.projectDepth] - Converts raw depth to projected depth (log-depth inputs).
- * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
- * @return {Object} Hit flag, UV, raw depth and parameter.
+ * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth, previous parameter).
+ * @return {Object} Hit flag, UV, raw depth and parameter, and the parameter of the sample before the hit and
+ * whether the ray was in front of the depth there, to refine the hit.
  */
-export function traceLinear( depthNode, origin, end, { resolution, reversedDepth = false, quality = 1, offset = 0, projectDepth = value => value, acceptHit = () => bool( true ) } ) {
+export function traceLinear( depthNode, origin, end, { resolution, reversedDepth = false, quality = 1, offset = 0, steps = null, parameter = null, projectDepth = value => value, acceptHit = () => bool( true ) } ) {
 
 	const delta = end.sub( origin ).toConst();
-	const pixels = delta.xy.mul( resolution ).abs();
-	const steps = int( pixels.x.max( pixels.y ).mul( quality ) ).toConst();
+
+	if ( steps === null ) {
+
+		const pixels = delta.xy.mul( resolution ).abs();
+
+		steps = int( pixels.x.max( pixels.y ).mul( quality ) ).toConst();
+
+	}
+
+	if ( parameter === null ) parameter = ( index ) => index.add( offset ).div( float( steps ) );
 
 	const hit = bool( false ).toVar();
 	const hitUV = vec2( 0 ).toVar();
 	const hitDepth = float( 0 ).toVar();
 	const hitS = float( 0 ).toVar();
+	const hitPreviousS = float( 0 ).toVar();
+	const hitPreviousInFront = bool( false ).toVar();
+
+	const previousS = float( 0 ).toVar();
+	const previousInFront = bool( true ).toVar();
 
 	Loop( steps, ( { i } ) => {
 
-		const s = float( i ).add( offset ).div( float( steps ) ).toConst();
+		const s = parameter( float( i ) ).toConst();
 		const sampleUV = origin.xy.add( delta.xy.mul( s ) ).toConst();
 
-		If( sampleUV.lessThan( vec2( 0 ) ).any().or( sampleUV.greaterThan( vec2( 1 ) ).any() ), () => {
+		If( s.greaterThan( 1 ).or( sampleUV.lessThan( vec2( 0 ) ).any() ).or( sampleUV.greaterThan( vec2( 1 ) ).any() ), () => {
 
 			Break();
 
@@ -43,22 +59,29 @@ export function traceLinear( depthNode, origin, end, { resolution, reversedDepth
 		const raw = depthNode.sample( sampleUV ).r.toConst();
 		const depth = projectDepth( raw );
 		const z = origin.z.add( delta.z.mul( s ) );
+		const inFront = ( reversedDepth ? z.greaterThan( depth ) : z.lessThan( depth ) ).toConst();
 
-		// the ray is behind the surface
+		const lastS = previousS.toConst();
+		const lastInFront = previousInFront.toConst();
 
-		If( ( reversedDepth ? z.lessThan( depth ) : z.greaterThan( depth ) ).and( acceptHit( sampleUV, s, raw ) ), () => {
+		previousS.assign( s );
+		previousInFront.assign( inFront );
+
+		If( inFront.not().and( acceptHit( sampleUV, s, raw, lastS ) ), () => {
 
 			hit.assign( true );
 			hitUV.assign( sampleUV );
 			hitDepth.assign( raw );
 			hitS.assign( s );
+			hitPreviousS.assign( lastS );
+			hitPreviousInFront.assign( lastInFront );
 			Break();
 
 		} );
 
 	} );
 
-	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS };
+	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS, previousParameter: hitPreviousS, previousInFront: hitPreviousInFront };
 
 }
 
@@ -108,14 +131,15 @@ export class LinearTracer {
 	 * @param {TextureNode} depthNode - The depth of the scene.
 	 * @param {Node<vec3>} origin - Start UV and projected depth.
 	 * @param {Node<vec3>} end - End UV and projected depth.
-	 * @param {Object} options - The resolution, the depth convention and the predicates, see `traceLinear()`.
+	 * @param {Object} options - The resolution, the depth convention and the predicates, see `traceLinear()`. `steps` and
+	 * `parameter` replace the samples given by `quality`.
 	 * @return {Object} Hit flag, UV, raw depth and parameter.
 	 */
 	trace( depthNode, origin, end, options ) {
 
 		const offset = fract( interleavedGradientNoise( screenCoordinate ).add( this._temporalOffset ) ).add( rand( uv() ) ).toConst();
 
-		return traceLinear( depthNode, origin, end, { ...options, quality: this.quality.clamp(), offset } );
+		return traceLinear( depthNode, origin, end, { quality: this.quality.clamp(), offset, ...options } );
 
 	}
 

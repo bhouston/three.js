@@ -1,6 +1,6 @@
 import { HalfFloatType, Vector2, RenderTarget, RendererUtils, QuadMesh, NodeMaterial, Node, NodeUpdateType, Matrix4 } from 'three/webgpu';
-import { float, Fn, max, texture, uniform, uv, vec4, convertToTexture, passTexture, velocity, ivec2, mix, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
-import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCurrentDepth } from '../utils/TAAUtils.js';
+import { float, Fn, max, texture, uniform, uv, vec2, vec4, convertToTexture, passTexture, velocity, ivec2, mix, smoothstep, context, OnBeforeRenderPipeline, OnAfterRenderPipeline } from 'three/tsl';
+import { clipAABB, computeHaltonOffsets, flickerReduction, sampleCatmullRom, sampleCurrentDepth } from '../utils/TAAUtils.js';
 import { Reprojection } from '../../utils/Reprojection.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
@@ -35,10 +35,11 @@ class TRAANode extends Node {
 	 *
 	 * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
 	 * @param {TextureNode} depthNode - A node that represents the scene's depth.
-	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
 	 * @param {Camera} camera - The camera the scene is rendered with.
+	 * @param {?TextureNode} [previousDepthNode=null] - The previous frame's depth, e.g. `pass.getPreviousTextureNode( 'depth' )`. By default the depth is copied each frame.
 	 */
-	constructor( beautyNode, depthNode, velocityNode, camera ) {
+	constructor( beautyNode, depthNode, velocityNode, camera, previousDepthNode = null ) {
 
 		super( 'vec4' );
 
@@ -89,13 +90,13 @@ class TRAANode extends Node {
 		this.camera = camera;
 
 		/**
-		 * When the difference between the current and previous depth goes above this threshold,
-		 * the history is considered invalid.
+		 * The history is rejected when the previous frame's surface is nearer than the
+		 * expected one by more than this fraction of its distance.
 		 *
 		 * @type {number}
-		 * @default 0.0005
+		 * @default 0.002
 		 */
-		this.depthThreshold = 0.0005;
+		this.depthThreshold = 0.002;
 
 		/**
 		 * The depth difference within the 3×3 neighborhood to consider a pixel as an edge.
@@ -114,6 +115,16 @@ class TRAANode extends Node {
 		this.maxVelocityLength = 128;
 
 		/**
+		 * How the reprojected history is sampled. `'linear'` uses a single bilinear fetch which is cheaper
+		 * but blurs the image under motion, since the history is resampled every frame. `'catmull-rom'`
+		 * uses a 5-tap Catmull-Rom filter that keeps the history sharp.
+		 *
+		 * @type {('linear'|'catmull-rom')}
+		 * @default 'catmull-rom'
+		 */
+		this.historySampling = 'catmull-rom';
+
+		/**
 		 * Whether to decrease the weight on the current frame when the velocity is more subpixel.
 		 * This reduces blurriness under motion, but can introduce a square pattern artifact.
 		 *
@@ -121,6 +132,58 @@ class TRAANode extends Node {
 		 * @default true
 		 */
 		this.useSubpixelCorrection = true;
+
+		/**
+		 * Whether the history is clipped to its neighborhood while the camera is at rest. Disabling it
+		 * relaxes the clip over `historyLength` frames once the camera stops, which removes the shimmer
+		 * of a still image, and restores it as soon as the camera moves. Changes without velocity
+		 * (lighting, reflections) then lag behind; call `reset()` after one to restart the history.
+		 *
+		 * @type {boolean}
+		 * @default true
+		 */
+		this.clipAtRest = true;
+
+		/**
+		 * How far the clip is relaxed, from `0` when the camera moved to `1` after it rested.
+		 *
+		 * @private
+		 * @type {UniformNode<float>}
+		 */
+		this._restFactor = uniform( 0 );
+
+		/**
+		 * The number of frames the camera has been at rest.
+		 *
+		 * @private
+		 * @type {number}
+		 */
+		this._restFrames = 0;
+
+		/**
+		 * The unjittered projection matrix of the previous frame.
+		 *
+		 * @private
+		 * @type {Matrix4}
+		 */
+		this._previousProjectionMatrix = new Matrix4();
+
+		/**
+		 * Whether the history restarts from the next frame.
+		 *
+		 * @private
+		 * @type {boolean}
+		 */
+		this._needsReset = false;
+
+		/**
+		 * The approximate number of frames the history accumulates. The current frame
+		 * receives at least `1 / historyLength` of the blend weight, so `1` disables the history.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 20
+		 */
+		this.historyLength = uniform( 20 );
 
 		/**
 		 * The jitter index selects the current camera offset value.
@@ -146,7 +209,7 @@ class TRAANode extends Node {
 		 * @type {?RenderTarget}
 		 */
 		this._historyRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
-		this._historyRenderTarget.texture.name = 'TRAANode.history';
+		this._historyRenderTarget.texture.name = 'TRAA / History';
 
 		/**
 		 * The render target for the resolve.
@@ -155,7 +218,7 @@ class TRAANode extends Node {
 		 * @type {?RenderTarget}
 		 */
 		this._resolveRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
-		this._resolveRenderTarget.texture.name = 'TRAANode.resolve';
+		this._resolveRenderTarget.texture.name = 'TRAA / Resolve';
 
 		/**
 		 * Material used for the resolve step.
@@ -164,7 +227,7 @@ class TRAANode extends Node {
 		 * @type {NodeMaterial}
 		 */
 		this._resolveMaterial = new NodeMaterial();
-		this._resolveMaterial.name = 'TRAA.resolve';
+		this._resolveMaterial.name = 'TRAA / Resolve';
 
 		/**
 		 * The result of the effect is represented as a separate texture node.
@@ -173,6 +236,24 @@ class TRAANode extends Node {
 		 * @type {PassTextureNode}
 		 */
 		this._textureNode = passTexture( this, this._resolveRenderTarget.texture );
+
+		/**
+		 * The render target of the debug output, created by `getDebugTextureNode()`.
+		 *
+		 * @private
+		 * @type {?RenderTarget}
+		 * @default null
+		 */
+		this._debugRenderTarget = null;
+
+		/**
+		 * The material that renders the debug output.
+		 *
+		 * @private
+		 * @type {NodeMaterial}
+		 */
+		this._debugMaterial = new NodeMaterial();
+		this._debugMaterial.name = 'TRAA.debug';
 
 		/**
 		 * Used to save the original/unjittered projection matrix.
@@ -213,8 +294,9 @@ class TRAANode extends Node {
 		 * @private
 		 * @type {Reprojection}
 		 */
-		this._reprojection = new Reprojection( depthNode, velocityNode, camera );
-		this._reprojection.previousDepthNode.value.name = 'TRAANode.previousDepth';
+		this._reprojection = new Reprojection( depthNode, camera, previousDepthNode );
+
+		if ( previousDepthNode === null ) this._reprojection.previousDepthNode.value.name = 'TRAA / Previous Depth';
 
 		/**
 		 * The node used to render the scene's velocity.
@@ -238,6 +320,27 @@ class TRAANode extends Node {
 	}
 
 	/**
+	 * Returns a texture node that shows what the resolve did with the history, for debugging.
+	 * Red is `1` where the history was thrown away, as off the screen or disoccluded. Green is
+	 * the weight of the current frame in the result. It is rendered with a second resolve from
+	 * the first call on.
+	 *
+	 * @return {PassTextureNode} A texture node that represents the debug output.
+	 */
+	getDebugTextureNode() {
+
+		if ( this._debugRenderTarget === null ) {
+
+			this._debugRenderTarget = new RenderTarget( this._resolveRenderTarget.width, this._resolveRenderTarget.height, { depthBuffer: false } );
+			this._debugRenderTarget.texture.name = 'TRAA / Debug';
+
+		}
+
+		return passTexture( this, this._debugRenderTarget.texture );
+
+	}
+
+	/**
 	 * Sets the size of the effect.
 	 *
 	 * @param {number} width - The width of the effect.
@@ -247,6 +350,7 @@ class TRAANode extends Node {
 
 		this._historyRenderTarget.setSize( width, height );
 		this._resolveRenderTarget.setSize( width, height );
+		if ( this._debugRenderTarget !== null ) this._debugRenderTarget.setSize( width, height );
 
 		this._invSize.value.set( 1 / width, 1 / height );
 
@@ -306,6 +410,15 @@ class TRAANode extends Node {
 	}
 
 	/**
+	 * Restarts the history from the next frame, which then has the full weight.
+	 */
+	reset() {
+
+		this._needsReset = true;
+
+	}
+
+	/**
 	 * This method is used to render the effect once per frame.
 	 *
 	 * @param {NodeFrame} frame - The current node frame.
@@ -327,9 +440,20 @@ class TRAANode extends Node {
 
 		//
 
-		const needsRestart = this._reprojection.needsHistoryReset() ||
+		const needsRestart = this._needsReset || this._reprojection.needsHistoryReset() ||
 			this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
+		this._needsReset = false;
 		this.setSize( width, height );
+
+		// the clip relaxes while the camera is at rest and is restored when it moves
+
+		const atRest = needsRestart === false &&
+			this.camera.matrixWorldInverse.equals( this._reprojection.previousCameraViewMatrix.value ) &&
+			this._originalProjectionMatrix.equals( this._previousProjectionMatrix );
+
+		this._previousProjectionMatrix.copy( this._originalProjectionMatrix );
+		this._restFrames = atRest ? this._restFrames + 1 : 0;
+		this._restFactor.value = Math.min( this._restFrames / this.historyLength.value, 1 );
 
 		// swap history and resolve
 
@@ -357,6 +481,16 @@ class TRAANode extends Node {
 		_quadMesh.material = this._resolveMaterial;
 		_quadMesh.name = 'TRAA';
 		_quadMesh.render( renderer );
+
+		if ( this._debugRenderTarget !== null ) {
+
+			renderer.setRenderTarget( this._debugRenderTarget );
+			_quadMesh.material = this._debugMaterial;
+			_quadMesh.name = 'TRAA / Debug';
+			_quadMesh.render( renderer );
+
+		}
+
 		renderer.setRenderTarget( null );
 
 		// store the depth and camera matrices for the next frame
@@ -459,7 +593,7 @@ class TRAANode extends Node {
 
 		const historyNode = this._historyTextureNode;
 
-		const resolve = Fn( () => {
+		const createResolve = ( debug ) => Fn( () => {
 
 			const uvNode = uv();
 			const textureSize = this.beautyNode.size(); // Assumes all the buffers share the same size.
@@ -472,27 +606,34 @@ class TRAANode extends Node {
 			const closestPositionTexel = currentDepth.get( 'closestPositionTexel' );
 			const farthestDepth = currentDepth.get( 'farthestDepth' );
 
-			// sample the previous depth
+			const surfaceVelocity = this.velocityNode.load( closestPositionTexel );
+			const historyUV = this._reprojection.getHistoryUV( uvNode, surfaceVelocity.xy ).toConst();
 
-			const historyUV = this._reprojection.getHistoryUV( uvNode, closestPositionTexel ).toConst();
-			const previousDepth = this._reprojection.getPreviousDepth( historyUV, this._cameraNearFar );
+			// compare the expected and visible surface distances in the previous camera's view space
 
-			// history is considered valid when the UV is in range and there's no disocclusion except on edges
+			const { x: near, y: far } = this._reprojection.previousCameraNearFar;
+			const expectedDistance = this._reprojection.getExpectedPreviousViewZ( this.depthNode.load( closestPositionTexel ).r, surfaceVelocity.w, this._cameraNearFar ).negate().toConst();
+			const sampledDistance = this._reprojection.getPreviousViewZ( historyUV ).negate();
+			const isDisocclusion = expectedDistance.sub( sampledDistance ).greaterThan( expectedDistance.mul( this.depthThreshold ) );
 
-			const isValidUV = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() );
+			// a surface outside the previous camera's clip range has no history, even on edges
+
+			const isValidHistoryPosition = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() )
+				.and( expectedDistance.greaterThanEqual( near.mul( float( 1 ).sub( this.depthThreshold ) ) ) )
+				.and( expectedDistance.lessThanEqual( far.mul( float( 1 ).add( this.depthThreshold ) ) ) );
+
 			const isEdge = farthestDepth.sub( closestDepth ).greaterThan( this.edgeDepthDiff );
-			const isDisocclusion = closestDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
-			const hasValidHistory = isValidUV.and( isEdge.or( isDisocclusion.not() ) );
+			const hasValidHistory = isValidHistoryPosition.and( isEdge.or( isDisocclusion.not() ) );
 
 			// sample the current and previous colors
 
 			const currentColor = this.beautyNode.sample( uvNode );
-			const historyColor = historyNode.sample( historyUV );
+			const historyColor = this.historySampling === 'catmull-rom' ? sampleCatmullRom( historyNode, historyUV, vec2( textureSize ) ) : historyNode.sample( historyUV );
 
 			// increase the weight towards the current frame under motion
 
 			const motionFactor = uvNode.sub( historyUV ).mul( textureSize ).length().div( this.maxVelocityLength ).saturate();
-			const currentWeight = float( 0.05 ).toVar(); // A minimum weight
+			const currentWeight = this.historyLength.reciprocal().toVar(); // A minimum weight
 
 			if ( this.useSubpixelCorrection ) {
 
@@ -503,10 +644,23 @@ class TRAANode extends Node {
 
 			currentWeight.assign( hasValidHistory.select( currentWeight.add( motionFactor ).saturate(), 1 ) );
 
+			if ( debug ) return vec4( hasValidHistory.select( 0, 1 ), currentWeight, 0, 1 );
+
 			// Perform neighborhood clipping/clamping. We use variance clipping here.
 
-			const varianceGamma = mix( 0.5, 1, motionFactor.oneMinus().pow2() ); // Reasonable gamma range is [0.75, 2]
-			const clippedHistoryColor = varianceClipping( positionTexel, currentColor, historyColor, varianceGamma );
+			// a 1σ box at rest clips converged sub-pixel detail, so longer histories lost accuracy
+			const varianceGamma = mix( 0.5, 2, motionFactor.oneMinus().pow2() );
+			let clippedHistoryColor = varianceClipping( positionTexel, currentColor, historyColor, varianceGamma );
+
+			if ( this.clipAtRest === false ) {
+
+				// only a pixel that does not move either keeps its history as it is
+
+				const pixelMotion = uvNode.sub( historyUV ).mul( textureSize ).length();
+				const relaxation = smoothstep( 0.01, 0.1, pixelMotion ).oneMinus().mul( this._restFactor );
+				clippedHistoryColor = mix( clippedHistoryColor, historyColor, relaxation );
+
+			}
 
 			// flicker reduction based on luminance weighing
 
@@ -519,7 +673,10 @@ class TRAANode extends Node {
 		// materials
 
 		this._resolveMaterial.contextNode = context( builder.getSharedContext() );
-		this._resolveMaterial.fragmentNode = resolve();
+		this._resolveMaterial.fragmentNode = createResolve( false )();
+
+		this._debugMaterial.contextNode = this._resolveMaterial.contextNode;
+		this._debugMaterial.fragmentNode = createResolve( true )();
 
 		return this._textureNode;
 
@@ -535,10 +692,12 @@ class TRAANode extends Node {
 
 		this._historyRenderTarget.dispose();
 		this._resolveRenderTarget.dispose();
+		if ( this._debugRenderTarget !== null ) this._debugRenderTarget.dispose();
 
 		this._reprojection.dispose();
 
 		this._resolveMaterial.dispose();
+		this._debugMaterial.dispose();
 
 	}
 
@@ -555,8 +714,9 @@ const _haltonOffsets = /*@__PURE__*/ computeHaltonOffsets( 32 );
  * @function
  * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
  * @param {TextureNode} depthNode - A node that represents the scene's depth.
- * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+ * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
  * @param {Camera} camera - The camera the scene is rendered with.
+ * @param {?TextureNode} [previousDepthNode=null] - The previous frame's depth, e.g. `pass.getPreviousTextureNode( 'depth' )`. By default the depth is copied each frame.
  * @returns {TRAANode}
  */
-export const traa = ( beautyNode, depthNode, velocityNode, camera ) => new TRAANode( convertToTexture( beautyNode ), depthNode, velocityNode, camera );
+export const traa = ( beautyNode, depthNode, velocityNode, camera, previousDepthNode = null ) => new TRAANode( convertToTexture( beautyNode ), depthNode, velocityNode, camera, previousDepthNode );

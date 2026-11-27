@@ -2088,6 +2088,7 @@ class Renderer {
 		this.info.calls ++;
 		this.info.render.calls ++;
 		this.info.render.frameCalls ++;
+		this.info.beginRender( scene, camera, renderTarget, this.getActiveCubeFace(), this.getActiveMipmapLevel() );
 
 		nodeFrame.renderId = this.info.calls;
 
@@ -2273,6 +2274,7 @@ class Renderer {
 		//
 
 		this.inspector.finishRender( this.backend.getTimestampUID( renderContext ) );
+		this.info.finishRender();
 
 		//
 
@@ -3298,6 +3300,7 @@ class Renderer {
 		this.info.calls ++;
 		this.info.compute.calls ++;
 		this.info.compute.frameCalls ++;
+		this.info.beginCompute( computeNodes );
 
 		nodeFrame.renderId = this.info.calls;
 
@@ -3370,6 +3373,7 @@ class Renderer {
 		//
 
 		this.inspector.finishCompute( this.backend.getTimestampUID( computeNodes ) );
+		this.info.finishCompute();
 
 	}
 
@@ -3755,7 +3759,7 @@ class Renderer {
 			let colorNode = null;
 			let depthNode = null;
 
-			if ( hasMap || hasColorNode || hasCastShadowNode || hasMaskNode ) {
+			if ( ( usesAlpha && ( hasMap || hasColorNode ) ) || hasCastShadowNode || hasMaskNode ) {
 
 				let shadowRGB;
 				let shadowAlpha;
@@ -3778,13 +3782,13 @@ class Renderer {
 
 				}
 
-				if ( hasMap ) {
+				if ( hasMap && usesAlpha ) {
 
 					shadowAlpha = shadowAlpha.mul( reference( 'map', 'texture', material ).a );
 
 				}
 
-				if ( hasColorNode ) {
+				if ( hasColorNode && usesAlpha ) {
 
 					shadowAlpha = shadowAlpha.mul( material.colorNode.a );
 

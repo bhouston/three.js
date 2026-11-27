@@ -36,13 +36,18 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, diffuseColor, velocity, add, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample } from 'three/tsl';
+			import { pass, mrt, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample, rtt, uniform, screenUV, Fn, builtinIndirectContext, defaultIndirectDiffuse, viewZDelta, convertToTexture } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
+			import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
+			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
+			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
+			import { reprojectedBeauty } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
+			import { coverageCascade } from 'three/addons/tsl/lighting/CoverageCascade.js';
 
 			let camera, scene, renderer, renderPipeline, controls;
 
@@ -77,56 +82,110 @@
 
 				renderPipeline = new THREE.RenderPipeline( renderer );
 
-				const scenePass = pass( scene, camera );
-				scenePass.setMRT( mrt( {
-					output: output,
-					diffuseColor: diffuseColor,
-					normal: packNormalToRGB( normalView ),
-					velocity: velocity
+				// the pre-pass renders the geometry SSGI traces, without shading it
+
+				const prePass = pass( scene, camera );
+				prePass.setMRT( mrt( {
+					output: packNormalToRGB( normalView ),
+					velocity: vec4( velocity, 0, viewZDelta )
 				} ) );
 
-				const scenePassColor = scenePass.getTextureNode( 'output' );
-				const scenePassDiffuse = scenePass.getTextureNode( 'diffuseColor' ).toInspector( 'Diffuse Color' );
-				const scenePassDepth = scenePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
+				const prePassNormal = prePass.getTextureNode( 'output' ).toInspector( 'Normal' );
+				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => {
 
-					return scenePass.getLinearDepthNode();
+					return prePass.getLinearDepthNode();
 
 				} );
-
-				const scenePassNormal = scenePass.getTextureNode( 'normal' ).toInspector( 'Normal' );
-				const scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
+				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
 				// bandwidth optimization
 
-				const diffuseTexture = scenePass.getTexture( 'diffuseColor' );
-				diffuseTexture.type = THREE.UnsignedByteType;
-
-				const normalTexture = scenePass.getTexture( 'normal' );
+				const normalTexture = prePass.getTexture( 'output' );
 				normalTexture.type = THREE.UnsignedByteType;
+
+				// the beauty pass shades the scene with the GI, which gathers the previous frame's beauty
+
+				const beautyPass = pass( scene, camera );
+				const previousBeauty = convertToTexture( reprojectedBeauty( prePass, beautyPass ) );
 
 				const sceneNormal = sample( ( uv ) => {
 
-					return unpackRGBToNormal( scenePassNormal.sample( uv ) );
+					return unpackRGBToNormal( prePassNormal.sample( uv ) );
 
 				} );
 
 				// gi
 
-				const giPass = ssgi( scenePassColor, scenePassDepth, sceneNormal, camera );
+				const giPass = ssgi( previousBeauty, prePassDepth, sceneNormal, camera );
 				giPass.sliceCount.value = 2;
 				giPass.stepCount.value = 8;
 
-				// composite
+				// downsample: at a ratio above 1, the GI is computed and accumulated from downsampled inputs and upsampled afterwards
 
-				const ao = giPass.getAONode().toInspector( 'SSGI.AO' );
-				const gi = giPass.getGINode().toInspector( 'SSGI.GI' );
+				const downsampleParams = { level: 1, upsampler: 'Joint bilateral' };
 
-				const compositePass = vec4( add( scenePassColor.rgb.mul( ao ), ( scenePassDiffuse.rgb.mul( gi.rgb ) ) ), scenePassColor.a );
-				compositePass.name = 'Composite';
+				const downsample = depthAwareDownsample( prePassDepth, { normal: prePassNormal, velocity: prePassVelocity } );
+				const downsampleDepth = downsample.getTextureNode( 'depth' );
+				const downsampleVelocity = downsample.getTextureNode( 'velocity' );
+				const downsampleNormal = sample( ( uv ) => {
+
+					return unpackRGBToNormal( downsample.getTextureNode( 'normal' ).sample( uv ) );
+
+				} );
+
+				// without depth rejection, the joint bilateral filter is a bilinear filter
+
+				const depthTolerance = uniform( 0.005 );
+
+				const upsample = ( node ) => {
+
+					const upsampled = rtt( jointBilateralUpsample( node, downsampleDepth, prePassDepth, camera, { depthTolerance } ).sample( screenUV ) ).sample( screenUV );
+
+					return Fn( () => ( downsampleParams.level > 0 ) ? upsampled : node.sample( screenUV ) )();
+
+				};
+
+				function updateDownsample() {
+
+					const reduced = downsampleParams.level > 0;
+
+					if ( reduced ) downsample.level = downsampleParams.level;
+
+					giPass.depthNode = reduced ? downsampleDepth : prePassDepth;
+					giPass.normalNode = reduced ? downsampleNormal : sceneNormal;
+
+					giTexture.setResolutionScale( 1 / ( 1 << downsampleParams.level ) );
+
+					temporalReprojectNode.depthNode = giPass.depthNode;
+					temporalReprojectNode.normalNode = reduced ? downsample.getTextureNode( 'normal' ) : prePassNormal;
+					temporalReprojectNode.velocityNode = reduced ? downsampleVelocity : prePassVelocity;
+
+					renderPipeline.needsUpdate = true;
+
+					reduced ? upsamplerControl.show() : upsamplerControl.hide();
+
+				}
+
+				// temporal accumulation at the resolution of the GI: the GI in rgb and its coverage, the complement of the AO, in alpha
+
+				const giTexture = rtt( vec4( giPass.getGINode().toInspector( 'SSGI.GI' ).rgb, giPass.getAONode().toInspector( 'SSGI.AO' ).r.oneMinus() ) );
+
+				const temporalReprojectNode = temporalReproject( giTexture, prePassDepth, prePassNormal, prePassVelocity, camera, { accumulate: true } );
+				temporalReprojectNode.clampIntensity.value = 0.25;
+
+				const accumulated = upsample( temporalReprojectNode.getTextureNode().toInspector( 'Temporal Accumulation' ) );
+
+				// the materials receive the GI through their BRDF, and it occludes the ambient light and the environment
+
+				const ao = accumulated.a.oneMinus();
+				const gi = accumulated.rgb;
+				const giUnfiltered = upsample( giTexture ).rgb;
+
+				beautyPass.contextNode = builtinIndirectContext( { diffuse: coverageCascade( [ giPass.getDiffuseSource( gi, ao ) ], defaultIndirectDiffuse ) } );
 
 				// traa
 
-				const traaPass = traa( compositePass, scenePassDepth, scenePassVelocity, camera );
+				const traaPass = traa( beautyPass, prePassDepth, prePassVelocity, camera, prePass.getPreviousTextureNode( 'depth' ) );
 				renderPipeline.outputNode = traaPass;
 
 				// Cornell Box inspired scene
@@ -223,21 +282,39 @@
 					output: 0
 				};
 
-				const types = { Combined: 0, Direct: 3, AO: 1, GI: 2 };
+				const types = { Combined: 0, AO: 1, GI: 2, 'GI (unfiltered)': 4 };
 
-				const gui = renderer.inspector.createParameters( 'SSGI settings' );
-				gui.add( params, 'output', types ).onChange( updatePostprocessing );
-				gui.add( giPass.sliceCount, 'value', 1, 4, 1 ).name( 'slice count' );
-				gui.add( giPass.stepCount, 'value', 1, 32, 1 ).name( 'step count' );
-				gui.add( giPass.radius, 'value', 1, 25 ).name( 'radius' );
-				gui.add( giPass.expFactor, 'value', 1, 3 ).name( 'exp factor' );
-				gui.add( giPass.thickness, 'value', 0.01, 10 ).name( 'thickness' );
-				gui.add( giPass.backfaceLighting, 'value', 0, 1 ).name( 'backface lighting' );
-				gui.add( giPass.aoIntensity, 'value', 0, 4 ).name( 'AO intensity' );
-				gui.add( giPass.giIntensity, 'value', 0, 100 ).name( 'GI intensity' );
-				gui.add( giPass.useLinearThickness, 'value' ).name( 'use linear thickness' );
-				gui.add( giPass.useScreenSpaceSampling, 'value' ).name( 'screen-space sampling' );
-				gui.add( giPass, 'useTemporalFiltering' ).name( 'temporal filtering' ).onChange( updatePostprocessing );
+				const displayGui = renderer.inspector.createParameters( 'Display' );
+				displayGui.add( params, 'output', types ).onChange( updatePostprocessing );
+
+				const downsampleGui = renderer.inspector.createParameters( 'Downsample' );
+				downsampleGui.add( downsampleParams, 'level', { '1': 0, '2': 1, '4': 2 } ).name( 'ratio' ).onChange( ( value ) => {
+
+					downsampleParams.level = Number( value );
+					updateDownsample();
+
+				} );
+				const upsamplerControl = downsampleGui.add( downsampleParams, 'upsampler', [ 'Bilinear', 'Joint bilateral' ] ).onChange( ( value ) => depthTolerance.value = ( value === 'Bilinear' ) ? 1e6 : 0.005 );
+
+				updateDownsample();
+
+				const giGui = renderer.inspector.createParameters( 'SSGI' );
+				giGui.add( giPass.sliceCount, 'value', 1, 4, 1 ).name( 'slice count' );
+				giGui.add( giPass.stepCount, 'value', 1, 32, 1 ).name( 'step count' );
+				giGui.add( giPass.radius, 'value', 1, 25 ).name( 'radius' );
+				giGui.add( giPass.expFactor, 'value', 1, 3 ).name( 'exp factor' );
+				giGui.add( giPass.thickness, 'value', 0.01, 10 ).name( 'thickness' );
+				giGui.add( giPass.backfaceLighting, 'value', 0, 1 ).name( 'backface lighting' );
+				giGui.add( giPass.aoIntensity, 'value', 0, 4 ).name( 'AO intensity' );
+				giGui.add( giPass.giIntensity, 'value', 0, 100 ).name( 'GI intensity' );
+				giGui.add( giPass.useLinearThickness, 'value' ).name( 'linear thickness' );
+				giGui.add( giPass.useScreenSpaceSampling, 'value' ).name( 'screen-space sampling' );
+
+				const filteringGui = renderer.inspector.createParameters( 'Filtering' );
+				filteringGui.add( giPass, 'useTemporalFiltering' ).name( 'temporal' ).onChange( updatePostprocessing );
+				filteringGui.add( temporalReprojectNode.maxFrames, 'value', 1, 128, 1 ).name( 'history frames' );
+				filteringGui.add( temporalReprojectNode.clampIntensity, 'value', 0, 1 ).name( 'clamp intensity' );
+				filteringGui.add( temporalReprojectNode.flickerSuppression, 'value', 0, 1 ).name( 'flicker suppression' );
 
 				function updatePostprocessing( value ) {
 
@@ -249,13 +326,13 @@
 
 						renderPipeline.outputNode = vec4( gi, 1 );
 
-					} else if ( value === 3 ) {
+					} else if ( value === 4 ) {
 
-						renderPipeline.outputNode = scenePassColor;
+						renderPipeline.outputNode = vec4( giUnfiltered, 1 );
 
 					} else {
 
-						renderPipeline.outputNode = giPass.useTemporalFiltering ? traaPass : compositePass;
+						renderPipeline.outputNode = giPass.useTemporalFiltering ? traaPass : beautyPass;
 
 					}
 

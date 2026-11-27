@@ -27,27 +27,34 @@ class ObjectStats {
 
 }
 
+function getRenderName( scene, camera, renderTarget, activeCubeFace, activeMipmapLevel ) {
+
+	// Keep the material's name intact for shader program labels.
+	const materialLabel = scene.material?.name?.replaceAll( ': ', ' / ' );
+
+	if ( renderTarget?.isCubeRenderTarget ) {
+
+		const label = scene.name || materialLabel || renderTarget.texture.name || 'Cube Capture';
+
+		return `${ label } / Mip ${ activeMipmapLevel } / Face ${ activeCubeFace }`;
+
+	}
+
+	return scene.name || materialLabel || camera.name || ( scene.isQuadMesh ? 'Quad Mesh' : scene.type );
+
+}
+
+function getComputeName( computeNode ) {
+
+	return computeNode.name || ( computeNode.isComputeNode ? 'Compute' : 'Compute Group' );
+
+}
+
 class RenderStats extends ObjectStats {
 
-	constructor( uid, scene, camera, renderTarget ) {
+	constructor( uid, scene, camera, renderTarget, renderer ) {
 
-		let name = scene.name;
-
-		if ( name === '' ) {
-
-			if ( scene.isScene ) {
-
-				name = 'Scene';
-
-			} else if ( scene.isQuadMesh ) {
-
-				name = 'QuadMesh';
-
-			}
-
-		}
-
-		super( uid, name );
+		super( uid, getRenderName( scene, camera, renderTarget, renderer.getActiveCubeFace(), renderer.getActiveMipmapLevel() ) );
 
 		this.scene = scene;
 		this.camera = camera;
@@ -63,9 +70,7 @@ class ComputeStats extends ObjectStats {
 
 	constructor( uid, computeNode ) {
 
-		const name = computeNode.name || ( computeNode.isComputeNode ? 'Compute' : 'Compute Group' );
-
-		super( uid, name );
+		super( uid, getComputeName( computeNode ) );
 
 		this.computeNode = computeNode;
 
@@ -175,25 +180,23 @@ function resolveOffsets( frame ) {
 
 }
 
-// splits names like "Group [ Pass ]" and "Group [ ID ] - Pass"
+// splits the first level of names like "Group / Stage / Pass"
 
 function parseName( name ) {
 
-	const match = /^(.+?)\s*\[\s*(.+?)\s*\]$/.exec( name ) || /^(.+\])\s*-\s*(.+)$/.exec( name );
+	const match = /^\s*([^/]*?[^/\s])\s*\/\s*(\S.*?)\s*$/s.exec( name );
 
 	return match !== null ? { group: match[ 1 ], pass: match[ 2 ] } : { group: null, pass: name };
 
 }
 
-// moves two or more consecutive calls of the same group under a GroupStats
+// moves the consecutive calls of the same group under a GroupStats, even a single one
 
 function groupCalls( parent, frameId ) {
 
 	const runs = [];
 
 	for ( const stats of parent.children ) {
-
-		groupCalls( stats, frameId );
 
 		const { group, pass } = stats.isGroupStats ? { group: null, pass: stats.name } : parseName( stats.name );
 		const run = runs[ runs.length - 1 ];
@@ -215,7 +218,12 @@ function groupCalls( parent, frameId ) {
 
 	parent.children = runs.map( ( { group, index, calls, passes } ) => {
 
-		if ( calls.length === 1 ) return calls[ 0 ];
+		if ( group === null ) {
+
+			groupCalls( calls[ 0 ], frameId );
+			return calls[ 0 ];
+
+		}
 
 		const groupStats = new GroupStats( `${ parent.cid || '' }/${ group }/${ index }:f${ frameId }`, group, parent, calls );
 
@@ -225,6 +233,8 @@ function groupCalls( parent, frameId ) {
 			stats.parent = groupStats;
 
 		} );
+
+		groupCalls( groupStats, frameId );
 
 		return groupStats;
 
@@ -256,6 +266,8 @@ export class RendererInspector extends InspectorBase {
 		this.frames = [];
 		this.framesLib = {};
 		this.maxFrames = 512;
+
+		this._callNames = new WeakMap();
 
 		this._lastFinishTime = 0;
 		this._lastRenderedFinishTime = 0;
@@ -552,6 +564,30 @@ export class RendererInspector extends InspectorBase {
 
 	}
 
+	// returns the path of names of the render and compute calls which created a resource, see Info.resources
+
+	getCreatorPath( creator ) {
+
+		return creator.flatMap( ( call ) => {
+
+			let names = this._callNames.get( call );
+
+			if ( names === undefined ) {
+
+				const name = call.computeNode ? getComputeName( call.computeNode ) : getRenderName( call.scene, call.camera, call.renderTarget, call.activeCubeFace, call.activeMipmapLevel );
+
+				names = name.trim().split( /\s*\/\s*/ );
+
+				this._callNames.set( call, names );
+
+			}
+
+			return names;
+
+		} );
+
+	}
+
 	beginCompute( uid, computeNode ) {
 
 		const frame = this.getFrame();
@@ -594,7 +630,7 @@ export class RendererInspector extends InspectorBase {
 
 		if ( ! frame ) return;
 
-		const currentRender = new RenderStats( uid, scene, camera, renderTarget );
+		const currentRender = new RenderStats( uid, scene, camera, renderTarget, this.getRenderer() );
 		currentRender.timestamp = performance.now();
 		currentRender.parent = this.getParent();
 

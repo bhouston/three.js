@@ -37,7 +37,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { vec2, vec3, Fn, texture3D, screenUV, uniform, screenCoordinate, pass, depthPass, mrt, output, velocity, fract, interleavedGradientNoise } from 'three/tsl';
+			import { vec2, vec3, Fn, texture3D, screenUV, uniform, screenCoordinate, pass, depthPass, mrt, output, velocity, fract, interleavedGradientNoise, vec4, viewZDelta } from 'three/tsl';
 
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -244,7 +244,7 @@
 				scenePass.name = 'Scene Pass';
 				scenePass.setMRT( mrt( {
 					output: output,
-					velocity: velocity
+					velocity: vec4( velocity, 0, viewZDelta )
 				} ) );
 
 				const scenePassColor = scenePass.getTextureNode().toInspector( 'Output' );
@@ -252,7 +252,7 @@
 
 				// TRAA with scene pass depth/velocity (includes volumetric)
 
-				const traaPass = traa( scenePassColor, prePassDepth, scenePassVelocity, camera );
+				const traaPass = traa( scenePassColor, prePassDepth, scenePassVelocity, camera, prePass.getPreviousTextureNode( 'depth' ) );
 
 				renderPipeline.outputNode = traaPass;
 

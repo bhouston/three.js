@@ -175,6 +175,8 @@
 				sssPass.normalNode = sceneNormal;
 				sssPass.hiZ = true;
 				sssPass.maxDistance.value = 30;
+				sssPass.fadeOutDistance.value = 10;
+				sssPass.screenEdgeFade.value = 0.1;
 				sssPass.thickness.value = 1;
 
 				// scene context
@@ -260,6 +262,11 @@
 				const quality = sssGui.add( sssPass.quality, 'value', 0, 1 ).name( 'quality' );
 				sssGui.add( sssPass.thickness, 'value', 0.01, 10 ).name( 'thickness' );
 				sssGui.add( sssPass.maxDistance, 'value', 0.1, 200 ).name( 'max distance' );
+
+				const fadeGui = renderer.inspector.createParameters( 'SSS Fade' );
+				fadeGui.add( sssPass.fadeOutDistance, 'value', 0, 100 ).name( 'distance' );
+				fadeGui.add( sssPass.screenEdgeFade, 'value', 0, 0.5 ).name( 'screen edge' );
+				fadeGui.add( sssPass.grazingFade, 'value', 0, 1 ).name( 'grazing angle' );
 
 				updateSun();
 				updatePostprocessing();

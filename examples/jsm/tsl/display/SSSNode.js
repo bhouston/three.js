@@ -144,7 +144,8 @@ class SSSNode extends Node {
 		/**
 		 * Whether the rays are traced through a hierarchical depth buffer instead of being marched linearly.
 		 * The cost of a ray then barely depends on its length, so long shadows stay cheap. The rays are exact,
-		 * `quality` and the temporal filtering are not used. Requires a WebGPU backend.
+		 * `quality` and the temporal filtering are not used. Requires a WebGPU backend, the materials using the node
+		 * must be rebuilt when the value changes.
 		 *
 		 * @type {boolean}
 		 * @default false
@@ -292,9 +293,6 @@ class SSSNode extends Node {
 		 */
 		this._hiZNode = null;
 
-		this._fragmentFn = null;
-		this._builtKey = '';
-
 	}
 
 	/**
@@ -332,18 +330,6 @@ class SSSNode extends Node {
 	updateBefore( frame ) {
 
 		const { renderer } = frame;
-
-		// the material reads these properties when it is built
-
-		const key = `${ this.hiZ },${ this.anyHit }`;
-
-		if ( this._fragmentFn !== null && key !== this._builtKey ) {
-
-			this._builtKey = key;
-			this._material.fragmentNode = this._fragmentFn();
-			this._material.needsUpdate = true;
-
-		}
 
 		if ( this.hiZ === true ) {
 
@@ -537,8 +523,6 @@ class SSSNode extends Node {
 		} );
 
 		this._material.contextNode = context( builder.getSharedContext() );
-		this._fragmentFn = sss;
-		this._builtKey = `${ this.hiZ },${ this.anyHit }`;
 		this._material.fragmentNode = sss();
 		this._material.needsUpdate = true;
 

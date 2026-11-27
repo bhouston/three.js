@@ -182,8 +182,6 @@
 
 				const sssSample = sssPass.getTextureNode().sample( screenUV ).r.max( raw );
 
-				scenePass.contextNode = builtinShadowContext( sssSample, sun );
-
 				// traa, the jittered depth antialiases the edges of the shadows
 
 				const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
@@ -228,6 +226,10 @@
 					sssPass.useTemporalFiltering = params.traa;
 
 					raw.value = params.output === 1 ? 1 : 0;
+
+					// a new context rebuilds the scene materials and with them the SSS, which reads hiZ and anyHit when built
+
+					scenePass.contextNode = builtinShadowContext( sssSample, sun );
 
 					const beauty = params.traa ? traaPass : scenePass;
 

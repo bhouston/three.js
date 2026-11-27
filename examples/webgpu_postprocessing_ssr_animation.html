@@ -223,8 +223,7 @@
 					stochastic: true,
 					diffuseNode: scenePassDiffuseColor,
 					metalnessNode: scenePassDiffuseColor.a,
-					roughnessNode: sceneRoughness,
-					binaryRefine: params.binaryRefine
+					roughnessNode: sceneRoughness
 				} ).toInspector( 'SSR' );
 
 				const ssrTexture = ssrNode.getTextureNode();
@@ -290,9 +289,13 @@
 
 				function updateParameters() {
 
+					// the refinement is read when the tracing is built, a new tracer rebuilds the SSR material
+					if ( tracers.linear.binaryRefine !== params.binaryRefine ) tracers.linear = new LinearTracer( { binaryRefine: params.binaryRefine } );
+
 					ssrNode.tracer = tracers[ params.tracing ];
 					ssrNode.quality.value = params.quality;
-					ssrNode.binaryRefine = params.binaryRefine;
+
+					params.tracing === 'linear' ? binaryRefine.show() : binaryRefine.hide();
 					ssrNode.maxDistance.value = params.maxDistance;
 					ssrNode.thickness.value = params.thickness;
 
@@ -309,7 +312,7 @@
 				const ssrGui = renderer.inspector.createParameters( 'SSR' );
 				ssrGui.add( params, 'tracing', [ 'linear', 'hi-z' ] ).name( 'Tracing' ).onChange( updateParameters );
 				ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
-				ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
+				const binaryRefine = ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 				ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );
 				ssrGui.add( params, 'thickness', 0, 0.5, 0.001 ).name( 'Thickness' ).onChange( updateParameters );
 

@@ -38,11 +38,13 @@ export const getRayPosition = /*@__PURE__*/ Fn( ( [ viewPosition, projectionMatr
  * @param {Node<int>} [options.steps] - The number of samples, instead of the one given by `quality`.
  * @param {Function} [options.parameter] - Returns the ray parameter of a sample index, instead of even steps.
  * @param {Function} [options.projectDepth] - Converts raw depth to projected depth (log-depth inputs).
- * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth, previous parameter).
- * @return {Object} Hit flag, UV, raw depth and parameter, and the parameter of the sample before the hit and
- * whether the ray was in front of the depth there, to refine the hit.
+ * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth). With `refine` it also
+ * receives the parameter of the previous sample, to widen its tolerance to the step.
+ * @param {boolean} [options.refine=false] - Whether a hit is bisected towards the sample before it, where the ray was in front.
+ * @param {Function} [options.refineHit] - TSL predicate (UV, parameter, raw depth): whether the ray can hit the surface it is behind at a bisection sample.
+ * @return {Object} Hit flag, UV, raw depth and parameter, and whether hits are refined.
  */
-export function traceLinear( depthNode, origin, end, { resolution, reversedDepth = false, quality = 1, offset = 0, steps = null, parameter = null, projectDepth = value => value, acceptHit = () => bool( true ) } ) {
+export function traceLinear( depthNode, origin, end, { resolution, reversedDepth = false, quality = 1, offset = 0, steps = null, parameter = null, projectDepth = value => value, acceptHit = () => bool( true ), refine = false, refineHit = () => bool( true ) } ) {
 
 	const delta = end.sub( origin ).toConst();
 
@@ -66,6 +68,15 @@ export function traceLinear( depthNode, origin, end, { resolution, reversedDepth
 	const previousS = float( 0 ).toVar();
 	const previousInFront = bool( true ).toVar();
 
+	const inFrontAt = ( s, raw ) => {
+
+		const z = origin.z.add( delta.z.mul( s ) );
+		const depth = projectDepth( raw );
+
+		return reversedDepth ? z.greaterThan( depth ) : z.lessThan( depth );
+
+	};
+
 	Loop( steps, ( { i } ) => {
 
 		const s = parameter( float( i ) ).toConst();
@@ -78,9 +89,7 @@ export function traceLinear( depthNode, origin, end, { resolution, reversedDepth
 		} );
 
 		const raw = depthNode.sample( sampleUV ).r.toConst();
-		const depth = projectDepth( raw );
-		const z = origin.z.add( delta.z.mul( s ) );
-		const inFront = ( reversedDepth ? z.greaterThan( depth ) : z.lessThan( depth ) ).toConst();
+		const inFront = inFrontAt( s, raw ).toConst();
 
 		const lastS = previousS.toConst();
 		const lastInFront = previousInFront.toConst();
@@ -88,7 +97,7 @@ export function traceLinear( depthNode, origin, end, { resolution, reversedDepth
 		previousS.assign( s );
 		previousInFront.assign( inFront );
 
-		If( inFront.not().and( acceptHit( sampleUV, s, raw, lastS ) ), () => {
+		If( inFront.not().and( refine ? acceptHit( sampleUV, s, raw, lastS ) : acceptHit( sampleUV, s, raw ) ), () => {
 
 			hit.assign( true );
 			hitUV.assign( sampleUV );
@@ -102,7 +111,38 @@ export function traceLinear( depthNode, origin, end, { resolution, reversedDepth
 
 	} );
 
-	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS, previousParameter: hitPreviousS, previousInFront: hitPreviousInFront };
+	if ( refine ) {
+
+		// bisect front-to-back crossings, after the march since nested loops trip some shader compilers
+
+		If( hit.and( hitPreviousInFront ), () => {
+
+			Loop( { start: int( 0 ), end: int( 8 ), type: 'int', condition: '<' }, () => {
+
+				const s = hitPreviousS.add( hitS ).mul( 0.5 ).toConst();
+				const sampleUV = origin.xy.add( delta.xy.mul( s ) ).toConst();
+				const raw = depthNode.sample( sampleUV ).r.toConst();
+
+				If( inFrontAt( s, raw ).not().and( refineHit( sampleUV, s, raw ) ), () => {
+
+					hitS.assign( s );
+
+				} ).Else( () => {
+
+					hitPreviousS.assign( s );
+
+				} );
+
+			} );
+
+			hitUV.assign( origin.xy.add( delta.xy.mul( hitS ) ) );
+			hitDepth.assign( depthNode.sample( hitUV ).r );
+
+		} );
+
+	}
+
+	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS, refined: refine };
 
 }
 
@@ -113,7 +153,21 @@ export function traceLinear( depthNode, origin, end, { resolution, reversedDepth
  */
 export class LinearTracer {
 
-	constructor() {
+	/**
+	 * Constructs a new linear tracer.
+	 *
+	 * @param {Object} [options] - The options.
+	 * @param {boolean} [options.binaryRefine=false] - Whether a hit is bisected towards the exact intersection.
+	 */
+	constructor( { binaryRefine = false } = {} ) {
+
+		/**
+		 * Whether a hit is bisected towards the exact intersection, read when the tracing is built.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.binaryRefine = binaryRefine;
 
 		/**
 		 * The steps per pixel of a ray, in the range `[0,1]`.
@@ -160,7 +214,7 @@ export class LinearTracer {
 
 		const offset = fract( interleavedGradientNoise( screenCoordinate ).add( this._temporalOffset ) ).add( rand( uv() ) ).toConst();
 
-		return traceLinear( depthNode, origin, end, { quality: this.quality.clamp(), offset, ...options } );
+		return traceLinear( depthNode, origin, end, { quality: this.quality.clamp(), offset, ...options, refine: this.binaryRefine } );
 
 	}
 

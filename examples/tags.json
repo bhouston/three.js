@@ -163,6 +163,7 @@
 	"webgpu_postprocessing_ssgi": [ "global illumination", "indirect diffuse" ],
 	"webgpu_postprocessing_ssgi_ballpool": [ "community", "physics" ],
 	"webgpu_postprocessing_sss": [ "shadow" ],
+	"webgpu_postprocessing_sss_hiz": [ "shadow", "hi-z" ],
 	"webgpu_postprocessing_traa": [ "taa", "anti-aliasing" ],
 	"webgpu_refraction": [ "water" ],
 	"webgpu_rtt": [ "renderTarget" ],

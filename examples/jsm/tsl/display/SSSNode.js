@@ -1,5 +1,7 @@
 import { RedFormat, RenderTarget, Vector2, RendererUtils, QuadMesh, Node, NodeMaterial, NodeUpdateType, UnsignedByteType } from 'three/webgpu';
-import { reference, getScreenPosition, getViewPosition, float, Break, Loop, int, max, abs, If, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, depthToViewZ, vec2, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { reference, getScreenPosition, getViewPosition, float, Break, Loop, int, max, min, abs, If, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, depthToViewZ, vec2, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth, getNormalFromDepth, vec3, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
+import { hiZ } from './HiZNode.js';
+import { traceHiZ } from '../utils/traceHiZ.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -70,6 +72,15 @@ class SSSNode extends Node {
 		this.depthNode = depthNode;
 
 		/**
+		 * A node that represents the scene's normals in view space. The normals are reconstructed
+		 * from the depth if no node is set.
+		 *
+		 * @type {?Node<vec3>}
+		 * @default null
+		 */
+		this.normalNode = null;
+
+		/**
 		 * Maximum shadow length in world units. Longer shadows result in more computational
 		 * overhead.
 		 *
@@ -77,6 +88,34 @@ class SSSNode extends Node {
 		 * @default 0.1
 		 */
 		this.maxDistance = uniform( 0.1, 'float' );
+
+		/**
+		 * The distance before `maxDistance` over which the shadow fades out, in world units. Occluders
+		 * farther than `maxDistance - fadeOutDistance` cast a weaker shadow, so the shadows do not end abruptly.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 0
+		 */
+		this.fadeOutDistance = uniform( 0, 'float' );
+
+		/**
+		 * The width of the border of the screen in which occluders fade out, as a fraction of the screen.
+		 * An occluder leaving the screen then loses its shadow gradually instead of all at once.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 0
+		 */
+		this.screenEdgeFade = uniform( 0, 'float' );
+
+		/**
+		 * Fades out the shadow of occluding surfaces seen at a grazing angle, which are about to turn away
+		 * from the camera and lose their shadow. The value is the cosine of the angle between the surface
+		 * normal and the view direction below which the shadow fades, `0` disables the fade.
+		 *
+		 * @type {UniformNode<float>}
+		 * @default 0
+		 */
+		this.grazingFade = uniform( 0, 'float' );
 
 		/**
 		 * Depth testing thickness.
@@ -129,6 +168,25 @@ class SSSNode extends Node {
 		 * @default false
 		 */
 		this.useTemporalFiltering = false;
+
+		/**
+		 * Whether the rays are traced through a hierarchical depth buffer instead of being marched linearly.
+		 * The cost of a ray then barely depends on its length, so long shadows stay cheap. The rays are exact,
+		 * `quality` and the temporal filtering are not used. Requires a WebGPU backend, the render pipeline
+		 * must be updated when the value changes.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.hiZ = false;
+
+		/**
+		 * The maximum number of steps of a ray when `hiZ` is used.
+		 *
+		 * @type {UniformNode<int>}
+		 * @default 64
+		 */
+		this.maxSteps = uniform( 64, 'int' );
 
 		/**
 		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node renders
@@ -247,6 +305,13 @@ class SSSNode extends Node {
 		 */
 		this._textureNode = passTexture( this, this._sssRenderTarget.texture );
 
+		/**
+		 * The hierarchical depth buffer, created when `hiZ` is used.
+		 *
+		 * @private
+		 * @type {?HiZNode}
+		 */
+		this._hiZNode = null;
 
 	}
 
@@ -285,6 +350,8 @@ class SSSNode extends Node {
 	updateBefore( frame ) {
 
 		const { renderer } = frame;
+
+		if ( this.hiZ === true && this._hiZNode !== null ) this._hiZNode.updateBefore( frame );
 
 		_rendererState = RendererUtils.resetRendererState( renderer, _rendererState );
 
@@ -341,6 +408,8 @@ class SSSNode extends Node {
 
 		const sampleDepth = ( uv ) => projectionDepth( this.depthNode.sample( uv ).r, this._cameraNear, this._cameraFar );
 
+		const sampleNormal = ( uv ) => this.normalNode !== null ? this.normalNode.sample( uv ).rgb.normalize() : getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse );
+
 		const sss = Fn( () => {
 
 			const depth = sampleDepth( uvNode ).toVar();
@@ -350,7 +419,62 @@ class SSSNode extends Node {
 
 			const rayStartPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar( 'rayStartPosition' );
 			const rayDirection = this._cameraViewMatrix.transformDirection( lightPosition( this._mainLight ).sub( lightTargetPosition( this._mainLight ) ) ).toConst( 'rayDirection' );
-			const rayEndPosition = rayStartPosition.add( rayDirection.mul( this.maxDistance ) ).toConst( 'rayEndPosition' );
+			const rayEndPosition = rayStartPosition.add( rayDirection.mul( this.maxDistance ) ).toVar( 'rayEndPosition' );
+
+			// the ray ends at the near plane
+
+			If( rayEndPosition.z.greaterThan( this._cameraNear.negate() ), () => {
+
+				const t = this._cameraNear.negate().sub( rayStartPosition.z ).div( rayDirection.z ).mul( 0.999 );
+
+				rayEndPosition.assign( rayStartPosition.add( rayDirection.mul( t ) ) );
+
+			} );
+
+			// the viewZ of the ray, its parameter is linear in screen space
+
+			const rayZ = this._camera.isPerspectiveCamera === true
+				? ( s ) => mix( rayStartPosition.z.reciprocal(), rayEndPosition.z.reciprocal(), s ).reciprocal()
+				: ( s ) => mix( rayStartPosition.z, rayEndPosition.z, s );
+
+			// the shadow of an occluder at a parameter of the ray, fading out towards the maximum distance,
+			// the screen edges and grazing occluders
+
+			const rayLength = rayEndPosition.sub( rayStartPosition ).length();
+
+			const shadow = ( s, uv ) => {
+
+				const t = this._camera.isPerspectiveCamera === true ? s.mul( rayStartPosition.z ).div( mix( rayEndPosition.z, rayStartPosition.z, s ) ) : s;
+				const fade = this.maxDistance.sub( t.mul( rayLength ) ).div( this.fadeOutDistance.max( 1e-6 ) ).clamp();
+
+				const edge = min( uv, uv.oneMinus() ).div( this.screenEdgeFade.max( 1e-6 ) ).clamp();
+
+				const occluderPosition = getViewPosition( uv, sampleDepth( uv ), this._cameraProjectionMatrixInverse );
+				const occluderNormal = sampleNormal( uv );
+				const viewDirection = this._camera.isPerspectiveCamera === true ? occluderPosition.normalize() : vec3( 0, 0, - 1 );
+				const grazing = occluderNormal.dot( viewDirection ).abs().div( this.grazingFade.max( 1e-6 ) ).clamp();
+
+				return this.shadowIntensity.mul( fade ).mul( edge.x ).mul( edge.y ).mul( grazing ).oneMinus();
+
+			};
+
+			// an occluder is above the plane of the receiver by more than a pixel, otherwise a surface at a grazing
+			// angle shadows itself: the depth of a pixel is constant, while its surface spans a range of depths
+
+			const normal = sampleNormal( uvNode ).toVar();
+			const facing = normal.dot( rayStartPosition ).lessThan( 0 ).select( normal, normal.negate() ).toConst();
+			const pixelSize = float( 2 ).div( this._cameraProjectionMatrix.element( 1 ).element( 1 ).mul( this._resolution.y ) );
+
+			const occludes = ( uv, raw ) => {
+
+				const position = getViewPosition( uv, projectionDepth( raw, this._cameraNear, this._cameraFar ), this._cameraProjectionMatrixInverse ).toConst();
+				const bias = this._camera.isPerspectiveCamera === true ? pixelSize.mul( position.z.negate() ) : pixelSize;
+
+				return position.sub( rayStartPosition ).dot( facing ).greaterThan( bias );
+
+			};
+
+			if ( this.hiZ === true ) return this._setupHiZ( builder, uvNode, depth, rayEndPosition, rayZ, shadow, occludes );
 
 			// d0 and d1 are the start and maximum points of the ray in screen space
 			const d0 = screenCoordinate.xy.toVar();
@@ -378,7 +502,7 @@ class SSSNode extends Node {
 			const noise = interleavedGradientNoise( screenCoordinate );
 			const offset = fract( noise.add( this._temporalOffset ) ).add( rand( uvNode.add( this._frameId ) ) ).toConst( 'offset' );
 
-			const occlusion = float( 0 ).toVar();
+			const result = float( 1 ).toVar();
 
 			Loop( totalStep, ( { i } ) => {
 
@@ -398,9 +522,7 @@ class SSSNode extends Node {
 				const fragmentViewZ = depthToViewZ( this.depthNode.sample( uvNode ).r, this._cameraNear, this._cameraFar, this._camera ).toConst( 'fragmentViewZ' );
 
 				const s = xy.sub( d0 ).length().div( totalLen ).toVar();
-				const rayPosition = mix( rayStartPosition, rayEndPosition, s );
-
-				const depthDelta = rayPosition.z.sub( fragmentViewZ ).negate(); // Port note: viewZ values are negative in three
+				const depthDelta = rayZ( s ).sub( fragmentViewZ ).negate(); // Port note: viewZ values are negative in three
 
 				// check if the camera can't "see" the ray (ray depth must be larger than the camera depth, so positive depth_delta)
 
@@ -408,7 +530,7 @@ class SSSNode extends Node {
 
 					// mark as occluded
 
-					occlusion.assign( this.shadowIntensity );
+					result.assign( shadow( s, uvNode ) );
 
 					Break();
 
@@ -417,7 +539,7 @@ class SSSNode extends Node {
 
 			} );
 
-			return occlusion.oneMinus();
+			return result;
 
 		} );
 
@@ -426,6 +548,64 @@ class SSSNode extends Node {
 		this._material.needsUpdate = true;
 
 		return this._textureNode;
+
+	}
+
+	/**
+	 * Traces the shadow ray through the hierarchical depth buffer.
+	 *
+	 * @private
+	 * @param {NodeBuilder} builder - The current node builder.
+	 * @param {Node<vec2>} uvNode - The uv of the fragment.
+	 * @param {Node<float>} depth - The depth of the fragment.
+	 * @param {Node<vec3>} rayEndPosition - The view position of the end of the ray.
+	 * @param {Function} rayZ - Returns the viewZ of the ray at a parameter.
+	 * @param {Function} shadow - Returns the shadow factor of an occluder at a parameter.
+	 * @param {Function} occludes - Returns whether the surface at a uv and a raw depth can occlude the fragment.
+	 * @return {Node<float>} The shadow factor.
+	 */
+	_setupHiZ( builder, uvNode, depth, rayEndPosition, rayZ, shadow, occludes ) {
+
+		if ( this._hiZNode === null ) this._hiZNode = hiZ( this.depthNode, { nearest: true } );
+
+		const near = this._cameraNear;
+		const far = this._cameraFar;
+		const perspective = this._camera.isPerspectiveCamera === true;
+		const reversed = builder.renderer.reversedDepthBuffer === true && builder.renderer.logarithmicDepthBuffer !== true;
+
+		const toDepth = perspective
+			? ( reversed ? viewZToReversedPerspectiveDepth : viewZToPerspectiveDepth )
+			: ( reversed ? viewZToReversedOrthographicDepth : viewZToOrthographicDepth );
+
+		const origin = vec3( uvNode, depth ).toConst();
+		const end = vec3( getScreenPosition( rayEndPosition, this._cameraProjectionMatrix ), toDepth( rayEndPosition.z, near, far ) ).toConst();
+		const delta = end.xy.sub( origin.xy ).toConst();
+
+		// the distance of the ray behind a surface, an occluder is at most `thickness` in front of the ray
+
+		const behind = ( s, raw ) => depthToViewZ( raw, near, far, this._camera ).sub( rayZ( s ) );
+		const parameter = ( uv ) => uv.sub( origin.xy ).dot( delta ).div( delta.dot( delta ).max( 1e-12 ) ).clamp();
+
+		const result = traceHiZ( this._hiZNode, origin, end, {
+			reversedDepth: reversed,
+			start: delta.mul( this._hiZNode.size ).length().max( 1 ).reciprocal(), // skip the pixel of the fragment
+			maxSteps: this.maxSteps,
+			depthTolerance: 2e-7,
+			projectDepth: ( raw ) => projectionDepth( raw, near, far ),
+			isHidden: ( uvIn, uvOut, raw ) => behind( parameter( uvIn ), raw ).greaterThan( this.thickness ).and( behind( parameter( uvOut ), raw ).greaterThan( this.thickness ) ),
+			acceptHit: ( uv, s, raw ) => behind( s, raw ).lessThan( this.thickness ).and( occludes( uv, raw ) ),
+			passRejected: true
+		} );
+
+		const value = float( 1 ).toVar();
+
+		If( result.hit, () => {
+
+			value.assign( shadow( result.parameter, result.uv ) );
+
+		} );
+
+		return value;
 
 	}
 
@@ -440,6 +620,8 @@ class SSSNode extends Node {
 		this._sssRenderTarget.dispose();
 
 		this._material.dispose();
+
+		if ( this._hiZNode !== null ) this._hiZNode.dispose();
 
 	}
 

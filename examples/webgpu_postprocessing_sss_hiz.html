@@ -21,7 +21,7 @@
 
 			<small>
 				Long Screen-Space Shadows (SSS), traced through a hierarchical depth buffer or marched linearly.<br/>
-				The steps output is green for few steps per ray, then yellow, orange and red at the maximum steps.
+				The trace steps output is green for few steps per ray, then yellow, orange and red at the maximum steps.
 			</small>
 		</div>
 
@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, velocity, normalView, packNormalToOctahedral, unpackOctahedralToNormal, sample, float, vec3, vec4, mix, checker, hash, varying, instanceIndex, positionWorld, screenUV, builtinShadowContext } from 'three/tsl';
+			import { pass, mrt, velocity, normalView, packNormalToOctahedral, unpackOctahedralToNormal, sample, float, uniform, vec3, vec4, mix, checker, hash, varying, instanceIndex, positionWorld, screenUV, builtinShadowContext } from 'three/tsl';
 			import { sss } from 'three/addons/tsl/display/SSSNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -181,7 +181,9 @@
 
 				// scene context
 
-				const sssSample = sssPass.getTextureNode().sample( screenUV ).r;
+				const raw = uniform( 0 ); // 1 disables the shadows
+
+				const sssSample = sssPass.getTextureNode().sample( screenUV ).r.max( raw );
 
 				scenePass.contextNode = builtinShadowContext( sssSample, sun );
 
@@ -231,32 +233,43 @@
 
 					sssPass.hiZ = params.hiZ;
 					sssPass.anyHit = params.anyHit;
-					sssPass.showSteps = params.output === 2;
+					sssPass.showSteps = params.output === 3;
 					sssPass.useTemporalFiltering = params.traa;
 
-					renderPipeline.outputNode = [ params.traa ? traaPass : scenePass, vec4( vec3( sssPass.r ), 1 ), vec4( stepsColor, 1 ) ][ params.output ];
+					raw.value = params.output === 1 ? 1 : 0;
+
+					const beauty = params.traa ? traaPass : scenePass;
+
+					renderPipeline.outputNode = [ beauty, beauty, vec4( vec3( sssPass.r ), 1 ), vec4( stepsColor, 1 ) ][ params.output ];
 					renderPipeline.needsUpdate = true;
+
+					for ( const editor of [ hit, maxSteps ] ) params.hiZ ? editor.show() : editor.hide();
+					params.hiZ ? quality.hide() : quality.show();
 
 				}
 
-				updateSun();
-				updatePostprocessing();
-
-				const gui = renderer.inspector.createParameters( 'SSS settings' );
+				const gui = renderer.inspector.createParameters( 'Settings' );
+				gui.add( params, 'output', { 'Beauty': 0, 'Raw': 1, 'Shadows': 2, 'Trace Steps': 3 } ).onChange( updatePostprocessing );
+				gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updatePostprocessing );
 				gui.add( params, 'azimuth', - 180, 180 ).name( 'sun azimuth' ).onChange( updateSun );
 				gui.add( params, 'altitude', 0.5, 90 ).name( 'sun altitude' ).onChange( updateSun );
-				gui.add( params, 'hiZ', { 'Hi-Z': true, 'linear': false } ).name( 'tracing' ).onChange( updatePostprocessing );
-				gui.add( params, 'anyHit', { 'closest': false, 'any': true } ).name( 'hit (Hi-Z)' ).onChange( updatePostprocessing );
-				gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updatePostprocessing );
-				gui.add( params, 'output', { 'Scene with SSS': 0, 'SSS': 1, 'Steps per ray': 2 } ).onChange( updatePostprocessing );
 				gui.add( sssPass.shadowIntensity, 'value', 0, 1 ).name( 'shadow intensity' );
-				gui.add( sssPass.maxDistance, 'value', 0.1, 200 ).name( 'max ray distance' );
-				gui.add( sssPass.fadeOutDistance, 'value', 0, 100 ).name( 'fade out distance' );
-				gui.add( sssPass.screenEdgeFade, 'value', 0, 0.5 ).name( 'screen edge fade' );
-				gui.add( sssPass.grazingFade, 'value', 0, 1 ).name( 'grazing fade' );
-				gui.add( sssPass.thickness, 'value', 0.01, 10 ).name( 'thickness' );
-				gui.add( sssPass.maxSteps, 'value', 4, 256, 1 ).name( 'max steps (Hi-Z)' );
-				gui.add( sssPass.quality, 'value', 0, 1 ).name( 'quality (linear)' );
+
+				const sssGui = renderer.inspector.createParameters( 'SSS' );
+				sssGui.add( params, 'hiZ', { 'Hi-Z': true, 'linear': false } ).name( 'tracing' ).onChange( updatePostprocessing );
+				const hit = sssGui.add( params, 'anyHit', { 'closest': false, 'any': true } ).name( 'hit' ).onChange( updatePostprocessing );
+				const maxSteps = sssGui.add( sssPass.maxSteps, 'value', 4, 256, 1 ).name( 'max steps' );
+				const quality = sssGui.add( sssPass.quality, 'value', 0, 1 ).name( 'quality' );
+				sssGui.add( sssPass.thickness, 'value', 0.01, 10 ).name( 'thickness' );
+				sssGui.add( sssPass.maxDistance, 'value', 0.1, 200 ).name( 'max distance' );
+
+				const fadeGui = renderer.inspector.createParameters( 'SSS Fade' );
+				fadeGui.add( sssPass.fadeOutDistance, 'value', 0, 100 ).name( 'distance' );
+				fadeGui.add( sssPass.screenEdgeFade, 'value', 0, 0.5 ).name( 'screen edge' );
+				fadeGui.add( sssPass.grazingFade, 'value', 0, 1 ).name( 'grazing angle' );
+
+				updateSun();
+				updatePostprocessing();
 
 				window.addEventListener( 'resize', onWindowResize );
 

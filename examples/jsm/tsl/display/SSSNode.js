@@ -1,5 +1,6 @@
 import { RedFormat, RenderTarget, Vector2, RendererUtils, QuadMesh, Node, NodeMaterial, NodeUpdateType, UnsignedByteType } from 'three/webgpu';
-import { reference, getScreenPosition, getViewPosition, float, Break, Loop, int, max, abs, If, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, depthToViewZ, vec2, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { reference, getViewPosition, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, depthToViewZ, vec3, float, If, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth, getNormalFromDepth, sample } from 'three/tsl';
+import { LinearTracer, getRayPosition } from '../utils/traceLinear.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -70,6 +71,13 @@ class SSSNode extends Node {
 		this.depthNode = depthNode;
 
 		/**
+		 * Returns the scene's unit normal in view space when sampled at a uv. Reconstructs it from the depth by default.
+		 *
+		 * @type {Node<vec3>}
+		 */
+		this.normalNode = sample( ( uv ) => getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse ) );
+
+		/**
 		 * Maximum shadow length in world units. Longer shadows result in more computational
 		 * overhead.
 		 *
@@ -129,6 +137,13 @@ class SSSNode extends Node {
 		 * @default false
 		 */
 		this.useTemporalFiltering = false;
+
+		/**
+		 * Traces the shadow rays through the depth.
+		 *
+		 * @type {LinearTracer}
+		 */
+		this.tracer = new LinearTracer();
 
 		/**
 		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node renders
@@ -352,68 +367,48 @@ class SSSNode extends Node {
 			const rayDirection = this._cameraViewMatrix.transformDirection( lightPosition( this._mainLight ).sub( lightTargetPosition( this._mainLight ) ) ).toConst( 'rayDirection' );
 			const rayEndPosition = rayStartPosition.add( rayDirection.mul( this.maxDistance ) ).toConst( 'rayEndPosition' );
 
-			// d0 and d1 are the start and maximum points of the ray in screen space
-			const d0 = screenCoordinate.xy.toVar();
-			const d1 = getScreenPosition( rayEndPosition, this._cameraProjectionMatrix ).mul( this._resolution ).toVar();
+			// the viewZ of the ray, its parameter is linear in screen space
 
-			// below variables are used to control the raymarching process
-
-			// total length of the ray
-			const totalLen = d1.sub( d0 ).length().toVar();
-
-			// offset in x and y direction
-			const xLen = d1.x.sub( d0.x ).toVar();
-			const yLen = d1.y.sub( d0.y ).toVar();
-
-			// determine the larger delta
-			// The larger difference will help to determine how much to travel in the X and Y direction each iteration and
-			// how many iterations are needed to travel the entire ray
-			const totalStep = int( max( abs( xLen ), abs( yLen ) ).mul( this.quality.clamp() ) ).toConst();
-
-			// step sizes in the x and y directions
-			const xSpan = xLen.div( totalStep ).toVar();
-			const ySpan = yLen.div( totalStep ).toVar();
+			const rayZ = this._camera.isPerspectiveCamera === true
+				? ( s ) => mix( rayStartPosition.z.reciprocal(), rayEndPosition.z.reciprocal(), s ).reciprocal()
+				: ( s ) => mix( rayStartPosition.z, rayEndPosition.z, s );
 
 			// compute noise based ray offset
 			const noise = interleavedGradientNoise( screenCoordinate );
 			const offset = fract( noise.add( this._temporalOffset ) ).add( rand( uvNode.add( this._frameId ) ) ).toConst( 'offset' );
 
-			const occlusion = float( 0 ).toVar();
+			// an occluder is above the plane of the receiver by more than a pixel, otherwise a surface at a grazing angle shadows itself
 
-			Loop( totalStep, ( { i } ) => {
+			const normal = this.normalNode.sample( uvNode ).toVar();
+			const facing = normal.dot( rayStartPosition ).lessThan( 0 ).select( normal, normal.negate() ).toConst();
+			const pixelSize = float( 2 ).div( this._cameraProjectionMatrix.element( 1 ).element( 1 ).mul( this._resolution.y ) );
 
-				// advance on the ray by computing a new position in screen coordinates
-				const xy = vec2( d0.x.add( xSpan.mul( float( i ).add( offset ) ) ), d0.y.add( ySpan.mul( float( i ).add( offset ) ) ) ).toVar();
+			const occludes = ( uv, raw ) => {
 
-				// stop processing if the new position lies outside of the screen
-				If( xy.x.lessThan( 0 ).or( xy.x.greaterThan( this._resolution.x ) ).or( xy.y.lessThan( 0 ) ).or( xy.y.greaterThan( this._resolution.y ) ), () => {
+				const position = getViewPosition( uv, projectionDepth( raw, this._cameraNear, this._cameraFar ), this._cameraProjectionMatrixInverse ).toConst();
+				const bias = this._camera.isPerspectiveCamera === true ? pixelSize.mul( position.z.negate() ) : pixelSize;
 
-					Break();
+				return position.sub( rayStartPosition ).dot( facing ).greaterThan( bias );
 
+			};
+
+			// a surface facing away from the light shadows itself, no ray is traced
+
+			const occlusion = this.shadowIntensity.toVar();
+
+			If( facing.dot( rayDirection ).greaterThan( 0 ), () => {
+
+				const result = this.tracer.trace( this.depthNode, vec3( uvNode, depth ), getRayPosition( rayEndPosition, this._cameraProjectionMatrix ), {
+					resolution: this._resolution,
+					reversedDepth: builder.renderer.reversedDepthBuffer === true,
+					quality: this.quality.clamp(),
+					offset,
+					projectDepth: ( raw ) => projectionDepth( raw, this._cameraNear, this._cameraFar ),
+					// an occluder is at most `thickness` in front of the ray
+					acceptHit: ( uv, s, raw ) => depthToViewZ( raw, this._cameraNear, this._cameraFar, this._camera ).sub( rayZ( s ) ).lessThan( this.thickness ).and( occludes( uv, raw ) )
 				} );
 
-				// compute new uv and viewZ for the next fragment
-
-				const uvNode = xy.div( this._resolution );
-				const fragmentViewZ = depthToViewZ( this.depthNode.sample( uvNode ).r, this._cameraNear, this._cameraFar, this._camera ).toConst( 'fragmentViewZ' );
-
-				const s = xy.sub( d0 ).length().div( totalLen ).toVar();
-				const rayPosition = mix( rayStartPosition, rayEndPosition, s );
-
-				const depthDelta = rayPosition.z.sub( fragmentViewZ ).negate(); // Port note: viewZ values are negative in three
-
-				// check if the camera can't "see" the ray (ray depth must be larger than the camera depth, so positive depth_delta)
-
-				If( depthDelta.greaterThan( 0 ).and( depthDelta.lessThan( this.thickness ) ), () => {
-
-					// mark as occluded
-
-					occlusion.assign( this.shadowIntensity );
-
-					Break();
-
-				} );
-
+				occlusion.assign( result.hit.select( this.shadowIntensity, 0 ) );
 
 			} );
 

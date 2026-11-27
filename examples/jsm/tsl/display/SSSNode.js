@@ -511,7 +511,21 @@ class SSSNode extends Node {
 
 			};
 
-			if ( this.hiZ === true ) return this._setupHiZ( builder, uvNode, depth, rayEndPosition, rayZ, shadow, occludes );
+			if ( this.hiZ === true ) {
+
+				// a surface facing away from the light shadows itself, no ray is traced
+
+				const value = ( this.showSteps === true ? float( 0 ) : this.shadowIntensity.oneMinus() ).toVar();
+
+				If( facing.dot( rayDirection ).greaterThan( 0 ), () => {
+
+					value.assign( this._setupHiZ( builder, uvNode, depth, rayEndPosition, rayZ, shadow, occludes ) );
+
+				} );
+
+				return value;
+
+			}
 
 			// d0 and d1 are the start and maximum points of the ray in screen space
 			const d0 = screenCoordinate.xy.toVar();

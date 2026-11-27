@@ -21,7 +21,7 @@
 
 			<small>
 				Long Screen-Space Shadows (SSS), traced through a hierarchical depth buffer or marched linearly.<br/>
-				The steps output shows sqrt( steps / 1024 ) per ray, white is 1024 steps.
+				The steps output is green for few steps per ray, then yellow, orange and red at the maximum steps.
 			</small>
 		</div>
 
@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, velocity, normalView, packNormalToOctahedral, unpackOctahedralToNormal, sample, vec3, vec4, mix, checker, hash, varying, instanceIndex, positionWorld, screenUV, builtinShadowContext } from 'three/tsl';
+			import { pass, mrt, velocity, normalView, packNormalToOctahedral, unpackOctahedralToNormal, sample, float, vec3, vec4, mix, checker, hash, varying, instanceIndex, positionWorld, screenUV, builtinShadowContext } from 'three/tsl';
 			import { sss } from 'three/addons/tsl/display/SSSNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -54,7 +54,7 @@
 			async function init() {
 
 				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 0.1, 1000 );
-				camera.position.set( 0, 1.7, 6 );
+				camera.position.set( 0, 4, 8 );
 
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0x9fc4e8 );
@@ -115,12 +115,7 @@
 						const size = 0.4 + random() * 0.8;
 						const height = size * ( 0.5 + random() );
 
-						do {
-
-							dummy.position.set( ( random() - 0.5 ) * EXTENT, height / 2, ( random() - 0.5 ) * EXTENT );
-
-						} while ( Math.hypot( dummy.position.x, dummy.position.z ) < size * 2 + 3 ); // keep the start clear
-
+						dummy.position.set( ( random() - 0.5 ) * EXTENT, height / 2, ( random() - 0.5 ) * EXTENT );
 						dummy.rotation.y = random() * Math.PI * 2;
 						dummy.scale.set( size, height, size );
 						dummy.updateMatrix();
@@ -190,6 +185,11 @@
 
 				scenePass.contextNode = builtinShadowContext( sssSample, sun );
 
+				// steps per ray relative to the maximum steps as green, yellow, orange and red, the background is black
+
+				const steps = sssPass.r.pow2().mul( 1024 ).div( float( sssPass.maxSteps ) );
+				const stepsColor = vec3( steps.mul( 3 ).saturate(), steps.sub( 1 / 3 ).mul( 1.5 ).saturate().oneMinus(), 0 ).mul( float( sssPass.r.lessThan( 1 ) ) );
+
 				// traa, the jittered depth antialiases the edges of the shadows
 
 				const traaPass = traa( scenePass, prePassDepth, prePassVelocity, camera );
@@ -203,7 +203,7 @@
 				controls.maxDistance = 150;
 				controls.maxPolarAngle = Math.PI / 2 - 0.01;
 				controls.screenSpacePanning = false;
-				controls.target.set( 0, 1.2, 0 );
+				controls.target.set( 0, 0.5, 0 );
 				controls.enableDamping = true;
 				controls.update();
 
@@ -234,7 +234,7 @@
 					sssPass.showSteps = params.output === 2;
 					sssPass.useTemporalFiltering = params.traa;
 
-					renderPipeline.outputNode = params.output !== 0 ? vec4( vec3( sssPass.r ), 1 ) : ( params.traa ? traaPass : scenePass );
+					renderPipeline.outputNode = [ params.traa ? traaPass : scenePass, vec4( vec3( sssPass.r ), 1 ), vec4( stepsColor, 1 ) ][ params.output ];
 					renderPipeline.needsUpdate = true;
 
 				}

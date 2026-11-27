@@ -1,5 +1,5 @@
 import { RedFormat, RenderTarget, Vector2, RendererUtils, QuadMesh, Node, NodeMaterial, NodeUpdateType, UnsignedByteType } from 'three/webgpu';
-import { reference, getViewPosition, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, depthToViewZ, vec3, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { reference, getViewPosition, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, depthToViewZ, vec3, float, If, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth, getNormalFromDepth, sample } from 'three/tsl';
 import { LinearTracer, getRayPosition } from '../utils/traceLinear.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
@@ -69,6 +69,13 @@ class SSSNode extends Node {
 		 * @type {TextureNode}
 		 */
 		this.depthNode = depthNode;
+
+		/**
+		 * Returns the scene's unit normal in view space when sampled at a uv. Reconstructs it from the depth by default.
+		 *
+		 * @type {Node<vec3>}
+		 */
+		this.normalNode = sample( ( uv ) => getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse ) );
 
 		/**
 		 * Maximum shadow length in world units. Longer shadows result in more computational
@@ -370,17 +377,40 @@ class SSSNode extends Node {
 			const noise = interleavedGradientNoise( screenCoordinate );
 			const offset = fract( noise.add( this._temporalOffset ) ).add( rand( uvNode.add( this._frameId ) ) ).toConst( 'offset' );
 
-			const result = this.tracer.trace( this.depthNode, vec3( uvNode, depth ), getRayPosition( rayEndPosition, this._cameraProjectionMatrix ), {
-				resolution: this._resolution,
-				reversedDepth: builder.renderer.reversedDepthBuffer === true,
-				quality: this.quality.clamp(),
-				offset,
-				projectDepth: ( raw ) => projectionDepth( raw, this._cameraNear, this._cameraFar ),
-				// an occluder is at most `thickness` in front of the ray
-				acceptHit: ( uv, s, raw ) => depthToViewZ( raw, this._cameraNear, this._cameraFar, this._camera ).sub( rayZ( s ) ).lessThan( this.thickness )
-			} );
+			// an occluder is above the plane of the receiver by more than a pixel, otherwise a surface at a grazing angle shadows itself
 
-			const occlusion = result.hit.select( this.shadowIntensity, 0 );
+			const normal = this.normalNode.sample( uvNode ).toVar();
+			const facing = normal.dot( rayStartPosition ).lessThan( 0 ).select( normal, normal.negate() ).toConst();
+			const pixelSize = float( 2 ).div( this._cameraProjectionMatrix.element( 1 ).element( 1 ).mul( this._resolution.y ) );
+
+			const occludes = ( uv, raw ) => {
+
+				const position = getViewPosition( uv, projectionDepth( raw, this._cameraNear, this._cameraFar ), this._cameraProjectionMatrixInverse ).toConst();
+				const bias = this._camera.isPerspectiveCamera === true ? pixelSize.mul( position.z.negate() ) : pixelSize;
+
+				return position.sub( rayStartPosition ).dot( facing ).greaterThan( bias );
+
+			};
+
+			// a surface facing away from the light shadows itself, no ray is traced
+
+			const occlusion = this.shadowIntensity.toVar();
+
+			If( facing.dot( rayDirection ).greaterThan( 0 ), () => {
+
+				const result = this.tracer.trace( this.depthNode, vec3( uvNode, depth ), getRayPosition( rayEndPosition, this._cameraProjectionMatrix ), {
+					resolution: this._resolution,
+					reversedDepth: builder.renderer.reversedDepthBuffer === true,
+					quality: this.quality.clamp(),
+					offset,
+					projectDepth: ( raw ) => projectionDepth( raw, this._cameraNear, this._cameraFar ),
+					// an occluder is at most `thickness` in front of the ray
+					acceptHit: ( uv, s, raw ) => depthToViewZ( raw, this._cameraNear, this._cameraFar, this._camera ).sub( rayZ( s ) ).lessThan( this.thickness ).and( occludes( uv, raw ) )
+				} );
+
+				occlusion.assign( result.hit.select( this.shadowIntensity, 0 ) );
+
+			} );
 
 			return occlusion.oneMinus();
 

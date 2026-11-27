@@ -1,4 +1,5 @@
-import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec2 } from 'three/tsl';
+import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uniform, uvec2, vec2 } from 'three/tsl';
+import { hiZ } from '../display/HiZNode.js';
 
 /**
  * Builds hierarchical screen-space traversal inside the calling TSL function.
@@ -288,5 +289,92 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	} );
 
 	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS, iterations, exhausted, rejected };
+
+}
+
+/**
+ * Traces screen-space rays through a hierarchical depth buffer it builds from the depth, see `traceHiZ()`.
+ * The cost of a ray barely depends on its length. Requires a WebGPU backend.
+ *
+ * @three_import import { HiZTracer } from 'three/addons/tsl/utils/traceHiZ.js';
+ */
+export class HiZTracer {
+
+	/**
+	 * Constructs a new Hi-Z tracer.
+	 *
+	 * @param {Object} [options] - The options.
+	 * @param {boolean} [options.anyHit=false] - Whether a ray stops at any accepted surface instead of the closest one.
+	 */
+	constructor( { anyHit = false } = {} ) {
+
+		/**
+		 * Whether a ray stops at any accepted surface instead of the closest one, read when the tracing is built.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.anyHit = anyHit;
+
+		/**
+		 * The maximum number of steps of a ray.
+		 *
+		 * @type {UniformNode<int>}
+		 * @default 64
+		 */
+		this.maxSteps = uniform( 64, 'int' );
+
+		this._hiZNode = null;
+
+	}
+
+	_getHiZNode( depthNode ) {
+
+		if ( this._hiZNode === null ) this._hiZNode = hiZ( depthNode, { nearest: true } );
+
+		return this._hiZNode;
+
+	}
+
+	/**
+	 * Updates the hierarchical depth, called once per frame before tracing.
+	 *
+	 * @param {NodeFrame} frame - The current node frame.
+	 * @param {TextureNode} depthNode - The depth of the scene.
+	 */
+	update( frame, depthNode ) {
+
+		this._getHiZNode( depthNode ).updateBefore( frame );
+
+	}
+
+	/**
+	 * Traces a ray inside the calling TSL function.
+	 *
+	 * @param {TextureNode} depthNode - The depth of the scene.
+	 * @param {Node<vec3>} origin - Start UV and projected depth.
+	 * @param {Node<vec3>} end - End UV and projected depth.
+	 * @param {Object} options - The depth convention and the predicates, see `traceHiZ()`.
+	 * @return {Object} Hit flag, UV, raw depth and parameter.
+	 */
+	trace( depthNode, origin, end, options ) {
+
+		const hiZNode = this._getHiZNode( depthNode );
+
+		return traceHiZ( hiZNode, origin, end, {
+			...options,
+			start: end.xy.sub( origin.xy ).mul( hiZNode.size ).length().max( 1 ).reciprocal(), // skip the pixel of the origin
+			maxSteps: this.maxSteps,
+			depthTolerance: 2e-7,
+			anyHit: this.anyHit
+		} );
+
+	}
+
+	dispose() {
+
+		if ( this._hiZNode !== null ) this._hiZNode.dispose();
+
+	}
 
 }

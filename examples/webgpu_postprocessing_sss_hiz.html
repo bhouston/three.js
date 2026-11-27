@@ -40,6 +40,8 @@
 			import * as THREE from 'three/webgpu';
 			import { pass, mrt, velocity, normalView, packNormalToOctahedral, unpackOctahedralToNormal, sample, uniform, vec3, vec4, mix, checker, hash, varying, instanceIndex, positionWorld, screenUV, builtinShadowContext } from 'three/tsl';
 			import { sss } from 'three/addons/tsl/display/SSSNode.js';
+			import { HiZTracer } from 'three/addons/tsl/utils/traceHiZ.js';
+			import { LinearTracer } from 'three/addons/tsl/utils/traceLinear.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -172,11 +174,15 @@
 
 				const sssPass = sss( prePassDepth, camera, sun );
 				sssPass.normalNode = sceneNormal;
-				sssPass.hiZ = true;
 				sssPass.maxDistance.value = 30;
 				sssPass.fadeOutDistance.value = 10;
 				sssPass.screenEdgeFade.value = 0.1;
 				sssPass.thickness.value = 1;
+
+				// the tracers of the shadow rays
+
+				const hiZTracer = new HiZTracer();
+				const linearTracer = new LinearTracer();
 
 				// scene context
 
@@ -223,13 +229,13 @@
 
 				function updatePostprocessing() {
 
-					sssPass.hiZ = params.hiZ;
-					sssPass.anyHit = params.anyHit;
-					sssPass.useTemporalFiltering = params.traa;
+					sssPass.tracer = params.hiZ ? hiZTracer : linearTracer;
+					hiZTracer.anyHit = params.anyHit;
+					linearTracer.useTemporalFiltering = params.traa;
 
 					raw.value = params.output === 1 ? 1 : 0;
 
-					// a new context rebuilds the scene materials and with them the SSS, which reads hiZ and anyHit when built
+					// a new context rebuilds the scene materials and with them the SSS, which reads its tracer when built
 
 					scenePass.contextNode = builtinShadowContext( sssSample, sun );
 
@@ -253,8 +259,8 @@
 				const sssGui = renderer.inspector.createParameters( 'SSS' );
 				sssGui.add( params, 'hiZ', { 'Hi-Z': true, 'linear': false } ).name( 'tracing' ).onChange( updatePostprocessing );
 				const hit = sssGui.add( params, 'anyHit', { 'closest': false, 'any': true } ).name( 'hit' ).onChange( updatePostprocessing );
-				const maxSteps = sssGui.add( sssPass.maxSteps, 'value', 4, 256, 1 ).name( 'max steps' );
-				const quality = sssGui.add( sssPass.quality, 'value', 0, 1 ).name( 'quality' );
+				const maxSteps = sssGui.add( hiZTracer.maxSteps, 'value', 4, 256, 1 ).name( 'max steps' );
+				const quality = sssGui.add( linearTracer.quality, 'value', 0, 1 ).name( 'quality' );
 				sssGui.add( sssPass.thickness, 'value', 0.01, 10 ).name( 'thickness' );
 				sssGui.add( sssPass.maxDistance, 'value', 0.1, 200 ).name( 'max distance' );
 

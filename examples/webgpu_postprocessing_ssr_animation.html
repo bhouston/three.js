@@ -39,14 +39,14 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, builtinIndirectContext, defaultIndirectSpecular, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity, rtt, screenUV, Fn } from 'three/tsl';
+			import { pass, mrt, builtinIndirectContext, defaultIndirectSpecular, normalView, materialMetalness, materialRoughness, color, positionLocal, sample, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity, rtt, screenUV, Fn, viewZDelta, convertToTexture } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { smaa } from 'three/addons/tsl/display/SMAANode.js';
-			import { reprojectedBeauty, previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
+			import { reprojectedBeauty } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
 			import { opaqueFragment, opaqueFragmentSource } from 'three/addons/tsl/utils/OpaqueFragment.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -196,7 +196,7 @@
 				scenePass.setMRT( mrt( {
 					output: opaqueFragment( packNormalToOctahedral( normalView ) ),
 					metalrough: vec2( materialMetalness, materialRoughness ),
-					velocity: vec4( velocity, 0, previousViewZ )
+					velocity: vec4( velocity, 0, viewZDelta )
 				} ) );
 
 				// the attachments hold data, so the blending of transparent materials does not apply
@@ -225,7 +225,7 @@
 				// ssr reflects the previous frame's beauty, so it is ready before this frame is shaded
 
 				const beautyPass = pass( scene, camera );
-				const previousBeauty = reprojectedBeauty( scenePass, beautyPass );
+				const previousBeauty = convertToTexture( reprojectedBeauty( scenePass, beautyPass ) );
 
 				// mip chain of the reflected radiance for the SSR cone footprint lookup
 

@@ -41,12 +41,12 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, normalView, velocity, vec4, packNormalToRGB, unpackRGBToNormal, sample, rtt, screenUV, uniform, vec3, Fn, builtinIndirectContext, defaultIndirectDiffuse } from 'three/tsl';
+			import { pass, mrt, normalView, velocity, vec4, packNormalToRGB, unpackRGBToNormal, sample, rtt, screenUV, uniform, vec3, Fn, builtinIndirectContext, defaultIndirectDiffuse, viewZDelta, convertToTexture } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { depthAwareDownsample } from 'three/addons/tsl/display/DepthAwareDownsampleNode.js';
 			import { jointBilateralUpsample } from 'three/addons/tsl/display/JointBilateralUpsample.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
-			import { reprojectedBeauty, previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
+			import { reprojectedBeauty } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 			import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
 
@@ -135,7 +135,7 @@
 				const prePass = pass( scene, camera );
 				prePass.setMRT( mrt( {
 					output: packNormalToRGB( normalView ),
-					velocity: vec4( velocity, 0, previousViewZ )
+					velocity: vec4( velocity, 0, viewZDelta )
 				} ) );
 
 				const prePassNormal = prePass.getTextureNode( 'output' );
@@ -150,7 +150,7 @@
 				// the beauty pass shades the scene with the GI, which gathers the previous frame's beauty
 
 				const beautyPass = pass( scene, camera );
-				const previousBeauty = reprojectedBeauty( prePass, beautyPass );
+				const previousBeauty = convertToTexture( reprojectedBeauty( prePass, beautyPass ) );
 
 				const sceneNormal = sample( ( uv ) => {
 

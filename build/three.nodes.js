@@ -7927,7 +7927,7 @@ const step = /*@__PURE__*/ nodeProxyAssignable( MathNode, MathNode.STEP ).setPar
  * @param {Node<vec2|vec3|vec4>} N - The normal vector.
  * @returns {Node<vec2|vec3|vec4>}
  */
-const reflect = /*@__PURE__*/ nodeProxyAssignable( MathNode, MathNode.REFLECT ).setParameterLength( 2 );
+const reflect$1 = /*@__PURE__*/ nodeProxyAssignable( MathNode, MathNode.REFLECT ).setParameterLength( 2 );
 
 /**
  * Calculates the distance between two points.
@@ -8246,7 +8246,7 @@ addMethodChaining( 'fwidth', fwidth );
 addMethodChaining( 'min', min );
 addMethodChaining( 'max', max );
 addMethodChaining( 'step', stepElement );
-addMethodChaining( 'reflect', reflect );
+addMethodChaining( 'reflect', reflect$1 );
 addMethodChaining( 'distance', distance );
 addMethodChaining( 'dot', dot );
 addMethodChaining( 'cross', cross );
@@ -8891,38 +8891,33 @@ function builtinAOContext( aoNode, node = null ) {
 }
 
 /**
- * TSL function for defining a built-in global illumination context for a given node. The AO node
- * modulates the indirect lighting of the materials, the GI node is added to their irradiance
- * without being modulated by the AO since it already accounts for occlusion.
+ * TSL function for defining the providers of indirect light of the materials of a given node,
+ * e.g. of a pass. A provider replaces the default one, {@link defaultIndirectSpecular} or
+ * {@link defaultIndirectDiffuse}, and what it returns goes through the BRDF of the material.
+ *
+ * ```js
+ * // add a GI buffer to the default indirect diffuse light
+ * scenePass.contextNode = builtinIndirectContext( {
+ * 	diffuse: ( query, builder ) => defaultIndirectDiffuse( query, builder ).add( gi )
+ * } );
+ * ```
  *
  * @tsl
  * @function
- * @param {Node<float>} aoNode - The ambient occlusion value node to apply.
- * @param {Node<vec3>} giNode - The indirect diffuse irradiance node to add.
+ * @param {Object} providers - The providers.
+ * @param {IndirectSpecularProvider} [providers.specular] - The provider of indirect specular light.
+ * @param {IndirectDiffuseProvider} [providers.diffuse] - The provider of indirect diffuse light.
  * @param {Node} [node=null] - The node whose context should be modified.
  * @returns {ContextNode}
  */
-function builtinGIContext( aoNode, giNode, node = null ) {
+function builtinIndirectContext( { specular, diffuse }, node = null ) {
 
-	return context( node, {
+	const value = {};
 
-		getAO: ( inputNode, { material } ) => {
+	if ( specular !== undefined ) value.indirectSpecular = specular;
+	if ( diffuse !== undefined ) value.indirectDiffuse = diffuse;
 
-			if ( material.transparent === true ) return inputNode;
-
-			return inputNode !== null ? inputNode.mul( aoNode ) : aoNode;
-
-		},
-
-		getGI: ( inputNode, { material } ) => {
-
-			if ( material.transparent === true ) return inputNode;
-
-			return inputNode !== null ? inputNode.add( giNode ) : giNode;
-
-		}
-
-	} );
+	return context( node, value );
 
 }
 
@@ -8950,7 +8945,7 @@ addMethodChaining( 'uniformFlow', uniformFlow );
 addMethodChaining( 'setName', setName );
 addMethodChaining( 'builtinShadowContext', ( node, shadowNode, light ) => builtinShadowContext( shadowNode, light, node ) );
 addMethodChaining( 'builtinAOContext', ( node, aoValue ) => builtinAOContext( aoValue, node ) );
-addMethodChaining( 'builtinGIContext', ( node, aoValue, giValue ) => builtinGIContext( aoValue, giValue, node ) );
+addMethodChaining( 'builtinIndirectContext', ( node, providers ) => builtinIndirectContext( providers, node ) );
 
 /**
  * Class for representing shader variables as nodes. Variables are created from
@@ -21685,7 +21680,7 @@ class ReflectorBaseNode extends Node {
 
 		const previousName = scene.name;
 
-		scene.name = ( scene.name || 'Scene' ) + ' [ Reflector ]'; // TODO: Add bounce index
+		scene.name = ( scene.name || 'Scene' ) + ' / Reflector'; // TODO: Add bounce index
 
 		if ( needsClear ) {
 
@@ -25964,46 +25959,183 @@ class AONode extends LightingNode {
 }
 
 /**
- * A generic class that can be used by nodes which contribute irradiance
- * that already accounts for ambient occlusion, e.g. global illumination.
- * Unlike {@link IrradianceNode}, the contribution is not modulated by
- * the ambient occlusion of the lighting model. Used in {@link NodeMaterial}.
+ * A provider of indirect specular light. It returns the radiance arriving around a direction,
+ * filtered to the roughness of a specular lobe. It is asked once for each specular lobe of
+ * a material, and what it returns goes through the BRDF of that lobe.
+ *
+ * The query holds the direction to look in, in world space, the roughness of the lobe and
+ * the name of the lobe: `'base'`, `'clearcoat'` or `'retroreflective'`.
+ *
+ * @typedef {function({direction: Node<vec3>, roughness: Node<float>, lobe: string}, NodeBuilder): Node<vec3>} IndirectSpecularProvider
+ */
+
+/**
+ * A provider of indirect diffuse light. It returns the irradiance arriving on a surface,
+ * which goes through the diffuse BRDF of the material. The provider holds its own occlusion:
+ * what it returns is not darkened by the ambient occlusion of the material afterwards.
+ *
+ * The query holds the normal of the surface, in world space.
+ *
+ * @typedef {function({normal: Node<vec3>}, NodeBuilder): Node<vec3>} IndirectDiffuseProvider
+ */
+
+/**
+ * The default provider of indirect specular light: the environment and what the ambient
+ * lights of the scene reflect. It is what a material uses if no other provider is set with
+ * {@link builtinIndirectContext}, and what another provider calls for that light.
+ *
+ * @tsl
+ * @function
+ * @param {Object} query - The query.
+ * @param {Node<vec3>} query.direction - The direction to look in, in world space.
+ * @param {Node<float>} query.roughness - The roughness of the specular lobe.
+ * @param {string} query.lobe - The name of the specular lobe.
+ * @param {NodeBuilder} builder - The current node builder.
+ * @return {Node<vec3>} The radiance.
+ */
+const defaultIndirectSpecular = ( query, builder ) => {
+
+	const { context } = builder;
+	const { environmentNode } = context.indirectLightingNode;
+
+	// the ambient lights have reflected into the target of each lobe
+
+	const lights = query.lobe === 'clearcoat' ? context.lightingModel.clearcoatRadiance : context.radiance;
+
+	return environmentNode !== null ? lights.add( environmentNode.getIndirectSpecular( query ) ) : lights;
+
+};
+
+/**
+ * The default provider of indirect diffuse light: the environment, the light map and the
+ * ambient lights of the scene, darkened by the ambient occlusion of the material. It is what
+ * a material uses if no other provider is set with {@link builtinIndirectContext}, and what
+ * another provider calls for that light.
+ *
+ * @tsl
+ * @function
+ * @param {Object} query - The query.
+ * @param {Node<vec3>} query.normal - The normal of the surface, in world space.
+ * @param {NodeBuilder} builder - The current node builder.
+ * @return {Node<vec3>} The irradiance.
+ */
+const defaultIndirectDiffuse = ( query, builder ) => {
+
+	const { context } = builder;
+	const { environmentNode } = context.indirectLightingNode;
+	const { lightingModel } = context;
+
+	// the light map and the ambient lights have added to the irradiance
+
+	const irradiance = environmentNode !== null ? context.irradiance.add( environmentNode.getIndirectDiffuse( query ) ) : context.irradiance;
+
+	const occlusion = ( lightingModel && lightingModel.getIndirectDiffuseOcclusion ) ? lightingModel.getIndirectDiffuseOcclusion( builder ) : context.ambientOcclusion;
+
+	return irradiance.mul( occlusion );
+
+};
+
+/**
+ * Supplies the indirect light of a material: the radiance of each of its specular lobes,
+ * which is its indirect specular light, and the irradiance of its surface, which is its
+ * indirect diffuse light.
+ *
+ * Each of the two comes from a provider. The default providers answer from the environment,
+ * the light map and the ambient lights. A pass replaces them with {@link builtinIndirectContext}.
  *
  * @augments LightingNode
  */
-class OcclusionAwareIrradianceNode extends LightingNode {
+class IndirectLightingNode extends LightingNode {
 
 	static get type() {
 
-		return 'OcclusionAwareIrradianceNode';
+		return 'IndirectLightingNode';
 
 	}
 
 	/**
-	 * Constructs a new occlusion-aware irradiance node.
+	 * Constructs a new indirect lighting node.
 	 *
-	 * @param {Node<vec3>} node - A node contributing irradiance that accounts for ambient occlusion.
+	 * @param {?IndirectSpecularProvider} [specular=defaultIndirectSpecular] - The provider of indirect specular light, `null` for a material without specular lobes.
+	 * @param {IndirectDiffuseProvider} [diffuse=defaultIndirectDiffuse] - The provider of indirect diffuse light.
+	 * @param {?EnvironmentNode} [environmentNode=null] - The environment the default providers answer from.
 	 */
-	constructor( node ) {
+	constructor( specular = defaultIndirectSpecular, diffuse = defaultIndirectDiffuse, environmentNode = null ) {
 
 		super();
 
 		/**
-		 * A node contributing irradiance that accounts for ambient occlusion.
+		 * This flag can be used for type testing.
 		 *
-		 * @type {Node<vec3>}
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
 		 */
-		this.node = node;
+		this.isIndirectLightingNode = true;
+
+		this.specular = specular;
+		this.diffuse = diffuse;
+		this.environmentNode = environmentNode;
 
 	}
 
 	setup( builder ) {
 
-		builder.context.occlusionAwareIrradiance.addAssign( this.node );
+		const { context, material } = builder;
+		const { environmentNode } = this;
+
+		if ( environmentNode !== null ) environmentNode.build( builder );
+
+		// the default providers read the environment from here
+
+		context.indirectLightingNode = this;
+
+		// indirect diffuse, the provider holds its own occlusion
+
+		const irradiance = vec3( this.diffuse( { normal: normalWorld }, builder ) ).toVar();
+
+		context.irradiance.assign( vec3( 0 ) );
+		context.occlusionAwareIrradiance.addAssign( irradiance );
+
+		if ( this.specular === null ) return;
+
+		// indirect specular, one query per lobe
+
+		const useAnisotropy = material.useAnisotropy === true || material.anisotropy > 0;
+		const baseNormalView = useAnisotropy ? bentNormalView : normalView;
+
+		const ask = ( direction, roughnessNode, lobe ) => vec3( this.specular( { direction, roughness: roughnessNode, lobe }, builder ) );
+
+		let radiance = ask( reflect( baseNormalView, roughness ), roughness, 'base' );
+
+		if ( material.useRetroreflection === true || material.retroreflectivity > 0 ) {
+
+			// the retroreflective lobe returns light toward its source, so it looks along the view direction
+
+			const retro = ask( toWorld( positionViewDirection, baseNormalView, roughness ), roughness, 'retroreflective' );
+
+			radiance = retroreflectivity.clamp().mix( radiance, retro );
+
+		}
+
+		context.radiance.assign( radiance );
+
+		const clearcoatRadiance = context.lightingModel.clearcoatRadiance;
+
+		if ( clearcoatRadiance ) {
+
+			clearcoatRadiance.assign( ask( reflect( clearcoatNormalView, clearcoatRoughness ), clearcoatRoughness, 'clearcoat' ) );
+
+		}
 
 	}
 
 }
+
+// Mixing the direction with the normal is more accurate and keeps rough objects from gathering light from behind their tangent plane.
+const toWorld = ( directionView, normalViewNode, roughnessNode ) => pow4( roughnessNode ).mix( directionView, normalViewNode ).normalize().transformDirection( cameraWorldMatrix );
+
+const reflect = ( normalViewNode, roughnessNode ) => toWorld( positionViewDirection.negate().reflect( normalViewNode ), normalViewNode, roughnessNode );
 
 /**
  * `LightingContextNode` represents an extension of the {@link ContextNode} module
@@ -26816,7 +26948,7 @@ class NodeMaterialObserver {
 
 		// context
 
-		if ( builder.context.modelViewMatrix || builder.context.modelNormalViewMatrix || builder.context.getAO || builder.context.getShadow || builder.context.getGI )
+		if ( builder.context.modelViewMatrix || builder.context.modelNormalViewMatrix || builder.context.getAO || builder.context.getShadow || builder.context.indirectSpecular || builder.context.indirectDiffuse )
 			return true;
 
 		return false;
@@ -28717,15 +28849,7 @@ class NodeMaterial extends Material {
 	 */
 	setupMaterialLightings( builder ) {
 
-		const materialLightsNode = [];
-
-		const envNode = this.setupEnvironment( builder );
-
-		if ( envNode && envNode.isLightingNode ) {
-
-			materialLightsNode.push( envNode );
-
-		}
+		const materialLightsNode = this.setupIndirectLightings( builder );
 
 		const lightMapNode = this.setupLightMap( builder );
 
@@ -28741,15 +28865,34 @@ class NodeMaterial extends Material {
 
 		}
 
-		if ( builder.context.getGI ) {
+		return materialLightsNode;
 
-			const giNode = builder.context.getGI( null, builder );
+	}
 
-			if ( giNode !== null ) {
+	/**
+	 * Setups the lighting nodes of the environment and of the indirect diffuse
+	 * provider of the context, see {@link builtinIndirectContext}.
+	 *
+	 * @param {NodeBuilder} builder - The current node builder.
+	 * @return {Array<LightingNode>} The lighting nodes.
+	 */
+	setupIndirectLightings( builder ) {
 
-				materialLightsNode.push( new OcclusionAwareIrradianceNode( giNode ) );
+		const materialLightsNode = [];
 
-			}
+		const envNode = this.setupEnvironment( builder );
+
+		if ( envNode && envNode.isLightingNode ) {
+
+			materialLightsNode.push( envNode );
+
+		}
+
+		const diffuse = builder.context.indirectDiffuse;
+
+		if ( diffuse !== undefined ) {
+
+			materialLightsNode.push( new IndirectLightingNode( null, diffuse ) );
 
 		}
 
@@ -29509,7 +29652,7 @@ class RTTNode extends TextureNode {
 
 		if ( callName ) {
 
-			name = callName + ' [ ' + name + ' ]';
+			name = callName + ' / ' + name;
 
 		}
 
@@ -31151,6 +31294,15 @@ function getData( object ) {
 const velocity = /*@__PURE__*/ nodeImmutable( VelocityNode );
 
 /**
+ * TSL object that represents the change of the view-space depth since the previous.
+ * It depends on the uniforms of {@link velocity}, so it must be used together with it in the same material.
+ *
+ * @tsl
+ * @type {Node<float>}
+ */
+const viewZDelta = /*@__PURE__*/ modelViewMatrix.mul( positionLocal ).z.sub( velocity.previousCameraViewMatrix.mul( velocity.previousModelWorldMatrix ).mul( positionPrevious ).z ).toVarying();
+
+/**
  * Represents a "Color Burn" blend mode.
  *
  * It's designed to darken the base layer's colors based on the color of the blend layer.
@@ -31476,6 +31628,7 @@ class ViewportSharedTextureNode extends ViewportTextureNode {
 const viewportSharedTexture = /*@__PURE__*/ nodeProxy( ViewportSharedTextureNode ).setParameterLength( 0, 2 );
 
 const _size = /*@__PURE__*/ new Vector2();
+const _baseContextNodes = /*@__PURE__*/ new WeakMap();
 
 /**
  * Represents the texture of a pass node.
@@ -31744,7 +31897,7 @@ class PassNode extends Node {
 
 			depthTexture.isRenderTargetTexture = true;
 			//depthTexture.type = FloatType;
-			depthTexture.name = 'depth';
+			depthTexture.name = 'Pass / Depth';
 
 			renderTarget.depthTexture = depthTexture;
 
@@ -32411,9 +32564,17 @@ class PassNode extends Node {
 
 		}
 
+		// a pass rendered while another pass renders does not inherit the context of that pass
+
+		const baseContextNode = _baseContextNodes.get( currentContextNode ) || currentContextNode;
+
+		renderer.contextNode = baseContextNode;
+
 		if ( this.contextNode !== null ) {
 
 			renderer.contextNode = this._getContextNode( renderer );
+
+			_baseContextNodes.set( renderer.contextNode, baseContextNode );
 
 		}
 
@@ -35382,7 +35543,9 @@ const outgoingLight = property( 'vec3', 'outgoingLight' );
  */
 const sortLights = ( lights ) => {
 
-	return lights.sort( ( a, b ) => a.id - b.id );
+	// the indirect lighting comes last, its default providers return what the lights have written
+
+	return lights.sort( ( a, b ) => ( a.isIndirectLightingNode === true ) - ( b.isIndirectLightingNode === true ) || a.id - b.id );
 
 };
 
@@ -35685,17 +35848,31 @@ class LightsNode extends Node {
 	 */
 	setupLights( builder, lightNodes ) {
 
+		let lightProbes = false;
+
+		const setupLightProbes = () => {
+
+			if ( lightProbes === false && builder.context.lightProbeIrradiance !== undefined ) {
+
+				builder.context.irradiance.addAssign( builder.context.lightProbeIrradiance );
+
+				lightProbes = true;
+
+			}
+
+		};
+
 		for ( const lightNode of lightNodes ) {
+
+			// the indirect lighting comes last, and its default provider returns the irradiance
+
+			if ( lightNode.isIndirectLightingNode === true ) setupLightProbes();
 
 			lightNode.build( builder );
 
 		}
 
-		if ( builder.context.lightProbeIrradiance !== undefined ) {
-
-			builder.context.irradiance.addAssign( builder.context.lightProbeIrradiance );
-
-		}
+		setupLightProbes();
 
 	}
 
@@ -36742,11 +36919,11 @@ class ShadowNode extends ShadowBaseNode {
 	setupRenderTarget( shadow, builder ) {
 
 		const depthTexture = new DepthTexture( shadow.mapSize.width, shadow.mapSize.height );
-		depthTexture.name = 'ShadowDepthTexture';
+		depthTexture.name = 'Shadow / Depth';
 		depthTexture.compareFunction = builder.renderer.reversedDepthBuffer ? GreaterEqualCompare : LessEqualCompare;
 
 		const shadowMap = builder.createRenderTarget( shadow.mapSize.width, shadow.mapSize.height );
-		shadowMap.texture.name = 'ShadowMap';
+		shadowMap.texture.name = 'Shadow / Map';
 		shadowMap.texture.type = shadow.mapType;
 		shadowMap.depthTexture = depthTexture;
 
@@ -36798,7 +36975,7 @@ class ShadowNode extends ShadowBaseNode {
 				if ( ! shadowMap._vsmShadowMapVertical ) {
 
 					shadowMap._vsmShadowMapVertical = builder.createRenderTarget( shadow.mapSize.width, shadow.mapSize.height, { format: RGFormat, type: HalfFloatType, depth: shadowMap.depth, depthBuffer: false } );
-					shadowMap._vsmShadowMapVertical.texture.name = 'VSMVertical';
+					shadowMap._vsmShadowMapVertical.texture.name = 'Shadow / VSM Vertical';
 
 				}
 
@@ -36807,7 +36984,7 @@ class ShadowNode extends ShadowBaseNode {
 				if ( ! shadowMap._vsmShadowMapHorizontal ) {
 
 					shadowMap._vsmShadowMapHorizontal = builder.createRenderTarget( shadow.mapSize.width, shadow.mapSize.height, { format: RGFormat, type: HalfFloatType, depth: shadowMap.depth, depthBuffer: false } );
-					shadowMap._vsmShadowMapHorizontal.texture.name = 'VSMHorizontal';
+					shadowMap._vsmShadowMapHorizontal.texture.name = 'Shadow / VSM Horizontal';
 
 				}
 
@@ -36940,7 +37117,7 @@ class ShadowNode extends ShadowBaseNode {
 
 		// Shadow Output + Inspector
 
-		const inspectName = `${ this.light.type } Shadow [ ${ this.light.name || 'ID: ' + this.light.id } ]`;
+		const inspectName = `${ this.light.type } Shadow / ${ this.light.name || 'ID ' + this.light.id }`;
 
 		if ( shadowColor ) {
 
@@ -37061,7 +37238,7 @@ class ShadowNode extends ShadowBaseNode {
 
 		const currentSceneName = scene.name;
 
-		scene.name = `Shadow Map [ ${ light.name || 'ID: ' + light.id } ]`;
+		scene.name = `Shadow Map / ${ light.name || 'ID ' + light.id }`;
 
 		renderer.render( scene, shadow.camera );
 
@@ -37464,11 +37641,11 @@ class PointShadowNode extends ShadowNode {
 	setupRenderTarget( shadow, builder ) {
 
 		const depthTexture = new CubeDepthTexture( shadow.mapSize.width );
-		depthTexture.name = 'PointShadowDepthTexture';
+		depthTexture.name = 'Point Shadow / Cube Depth';
 		depthTexture.compareFunction = builder.renderer.reversedDepthBuffer ? GreaterEqualCompare : LessEqualCompare;
 
 		const shadowMap = builder.createCubeRenderTarget( shadow.mapSize.width );
-		shadowMap.texture.name = 'PointShadowMap';
+		shadowMap.texture.name = 'Point Shadow / Cube Target';
 		shadowMap.depthTexture = depthTexture;
 
 		return { shadowMap, depthTexture };
@@ -37542,7 +37719,7 @@ class PointShadowNode extends ShadowNode {
 
 			const currentSceneName = scene.name;
 
-			scene.name = `Point Light Shadow [ ${ light.name || 'ID: ' + light.id } ] - Face ${ face + 1 }`;
+			scene.name = `Point Light Shadow / ${ light.name || 'ID ' + light.id }`;
 
 			renderer.render( scene, camera );
 
@@ -38848,7 +39025,7 @@ function _createRenderTarget( size, generateMipmaps, depthBuffer ) {
 function _getMaterial( type, uniforms, fragmentNode ) {
 
 	const material = new NodeMaterial();
-	material.name = `PMREM_${ type }`;
+	material.name = `PMREM / ${ type }`;
 	material.fragmentNode = fragmentNode;
 	material.side = BackSide;
 	material.blending = NoBlending;
@@ -38868,7 +39045,7 @@ function _getBlurMaterial() {
 		sigma: uniform( 0 )
 	};
 
-	return _getMaterial( 'blur', uniforms, sphericalGaussianBlur( {
+	return _getMaterial( 'Blur', uniforms, sphericalGaussianBlur( {
 		...uniforms,
 		direction: positionWorldDirection,
 		SAMPLES: int( BLUR_SAMPLES )
@@ -38884,7 +39061,7 @@ function _getGGXMaterial() {
 		lodBias: uniform( 0 )
 	};
 
-	return _getMaterial( 'ggx', uniforms, ggxConvolution( {
+	return _getMaterial( 'GGX', uniforms, ggxConvolution( {
 		...uniforms,
 		direction: positionWorldDirection,
 		GGX_SAMPLES: uint( GGX_SAMPLES )
@@ -38901,7 +39078,7 @@ function _getIntegrationMaterial() {
 		sourceSize: uniform( INTEGRATION_SIZE, 'int' ) // a uniform so the loops aren't unrolled
 	};
 
-	return _getMaterial( 'integration', uniforms, ggxIntegration( {
+	return _getMaterial( 'Integration', uniforms, ggxIntegration( {
 		...uniforms,
 		direction: positionWorldDirection
 	} ) );
@@ -38914,7 +39091,7 @@ function _getCubemapMaterial() {
 		envMap: cubeTexture()
 	};
 
-	return _getMaterial( 'cubemap', uniforms, uniforms.envMap.sample( positionWorldDirection ).level( 0 ) );
+	return _getMaterial( 'Cube Map', uniforms, uniforms.envMap.sample( positionWorldDirection ).level( 0 ) );
 
 }
 
@@ -38940,7 +39117,7 @@ function _getEquirectMaterial() {
 
 	} )();
 
-	return _getMaterial( 'equirect', uniforms, fragmentNode );
+	return _getMaterial( 'Equirect', uniforms, fragmentNode );
 
 }
 
@@ -41826,7 +42003,7 @@ var Three_Nodes = /*#__PURE__*/Object.freeze({
 	bufferAttribute: bufferAttribute,
 	builtin: builtin,
 	builtinAOContext: builtinAOContext,
-	builtinGIContext: builtinGIContext,
+	builtinIndirectContext: builtinIndirectContext,
 	builtinShadowContext: builtinShadowContext,
 	bumpMap: bumpMap,
 	bvec2: bvec2,
@@ -41883,6 +42060,8 @@ var Three_Nodes = /*#__PURE__*/Object.freeze({
 	decrement: decrement,
 	decrementBefore: decrementBefore,
 	defaultBuildStages: defaultBuildStages,
+	defaultIndirectDiffuse: defaultIndirectDiffuse,
+	defaultIndirectSpecular: defaultIndirectSpecular,
 	defaultShaderStages: defaultShaderStages,
 	defined: defined,
 	degrees: degrees,
@@ -42213,7 +42392,7 @@ var Three_Nodes = /*#__PURE__*/Object.freeze({
 	reference: reference,
 	referenceAttribute: referenceAttribute,
 	referenceBuffer: referenceBuffer,
-	reflect: reflect,
+	reflect: reflect$1,
 	reflectVector: reflectVector,
 	reflectView: reflectView,
 	reflector: reflector,
@@ -42375,6 +42554,7 @@ var Three_Nodes = /*#__PURE__*/Object.freeze({
 	vertexIndex: vertexIndex,
 	vertexStage: vertexStage,
 	vibrance: vibrance,
+	viewZDelta: viewZDelta,
 	viewZToLogarithmicDepth: viewZToLogarithmicDepth,
 	viewZToOrthographicDepth: viewZToOrthographicDepth,
 	viewZToPerspectiveDepth: viewZToPerspectiveDepth,
@@ -42402,4 +42582,4 @@ var Three_Nodes = /*#__PURE__*/Object.freeze({
 	xor: xor
 });
 
-export { AONode, AnalyticLightNode, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BRDF_EON, BRDF_GGX, BRDF_Lambert, BRDF_Sheen, BarrierNode, BasicPointShadowFilter, BasicShadowFilter, BitcastNode, BitcountNode, BlendMode, Break, BufferAttributeNode, BufferNode, BuiltinNode, BumpMapNode, BypassNode, ChainMap, ClippingNode, CodeNode, Color4, ColorSpaceNode, ComputeBuiltinNode, ComputeNode, ConditionalNode, Const, ConstNode, ContextNode, Continue, ConvertNode, CubeRenderTarget, CubeTextureNode, DFGLUT, D_GGX, D_GGX_Anisotropic, DebugNode, DeferredNode, Discard, EON_DirectionalAlbedo, EPSILON, EnvironmentBRDF, EnvironmentBRDF_MultiScattering, EventNode, ExpressionNode, F_Schlick, FlipNode, Fn, FrontFacingNode, FunctionCallNode, FunctionNode, FunctionOverloadingNode, HALF_PI, INFINITY, If, IndexNode, InputNode, InspectorBase, InspectorNode, IrradianceNode, IsolateNode, JoinNode, LTC_Evaluate, LTC_Evaluate_Volume, LTC_Uv, LightingContextNode, LightingNode, LightsNode, Loop, LoopNode, MRTNode, MaterialNode, MaterialReferenceNode, MathNode, MaxMipLevelNode, MemberNode, ModelNode, Node, NodeAccess, NodeError, NodeMaterial, NodeMaterialObserver, NodeShaderStage, NodeType, NodeUpdateType, NodeUtils, NormalMapNode, Object3DNode, OcclusionAwareIrradianceNode, OnAfterObjectUpdate, OnAfterRenderPipeline, OnBeforeFrameUpdate, OnBeforeMaterialUpdate, OnBeforeObjectUpdate, OnBeforeRenderPipeline, OnFrameUpdate, OnMaterialUpdate, OnObjectUpdate, OperatorNode, OutputStructNode, OverrideContextNode, PCFShadowFilter, PI, PI2, PMREMGenerator, PMREMNode, PackFloatNode, Packed4x8IntegerNode, ParameterNode, PassNode, PointLightNode, PointShadowFilter, PointShadowNode, PointUVNode, PropertyNode, QuadMesh, RTTNode, RangeNode, ReferenceAttributeNode, ReferenceBaseNode, ReferenceNode, ReflectorNode, RenderOutputNode, RendererReferenceNode, RendererUtils, Return, RotateNode, SampleNode, Schlick_to_F0, SetNode, ShaderNode, ShadowBaseNode, ShadowNode, SplitNode, Stack, StackNode, StackTrace, StorageBufferAttribute, StorageBufferNode, StorageInstancedBufferAttribute, StorageStructNode, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, Switch, TBNViewMatrix, TWO_PI, Texture3DNode, TextureNode, TextureSizeNode, Three_Nodes, ToneMappingNode, ToonOutlinePassNode, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UserDataNode, VSMShadowFilter, V_GGX_SmithCorrelated, V_GGX_SmithCorrelated_Anisotropic, Var, VarNode, VaryingNode, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, WorkgroupInfoNode, abs, acesFilmicToneMapping, acos, acosh, add, addMethodChaining, addNodeElement, agxToneMapping, all, alphaT, ambientOcclusion, and, anisotropy, anisotropyB, anisotropyT, any, array, asin, asinh, assign, atan, atanh, atomicAdd, atomicAnd, atomicExchange, atomicFunc, atomicLoad, atomicMax, atomicMin, atomicOr, atomicStore, atomicSub, atomicXor, attenuationColor, attenuationDistance, attribute, attributeArray, backgroundBlurriness, backgroundIntensity, backgroundRotation, batch, batchColor, batchIndirectIndex, bentNormalView, billboarding, bitAnd, bitNot, bitOr, bitXor, bitangentGeometry, bitangentLocal, bitangentView, bitangentViewFrame, bitangentWorld, bitcast, blendBurn, blendColor, blendDodge, blendOverlay, blendScreen, bool, buffer, bufferAttribute, builtin, builtinAOContext, builtinGIContext, builtinShadowContext, bumpMap, bvec2, bvec3, bvec4, bypass, cache, call, cameraFar, cameraIndex, cameraNear, cameraNormalMatrix, cameraPosition, cameraProjectionMatrix, cameraProjectionMatrixInverse, cameraViewMatrix, cameraViewport, cameraWorldMatrix, cbrt, cdl, ceil, checker, cineonToneMapping, clamp, clearcoat, clearcoatNormalView, clearcoatRoughness, clipSpace, clipping, clippingAlpha, code, color, colorSpaceToWorking, colorToDirection, compute, computeKernel, computeSkinning, context, convert, convertColorSpace, convertToTexture, cos, cosh, countLeadingZeros, countOneBits, countTrailingZeros, cross, cubeTexture, cubeTextureBase, dFdx, dFdy, dashSize, debug, decrement, decrementBefore, defaultBuildStages, defaultShaderStages, defined, degrees, deltaTime, densityFogFactor, depth, depthPass, depthToViewZ, determinant, difference, diffuseColor, diffuseContribution, diffuseRoughness, directPointLight, directionToColor, directionToFaceDirection, dispersion, distance, dither, div, dot, dot4I8Packed, dot4U8Packed, drawIndex, dynamicBufferAttribute, element, emissive, equal, equirectDirection, equirectUV, exp, exp2, exponentialHeightFogFactor, expression, faceDirection, faceForward, faceforward, float, floatBitsToInt, floatBitsToUint, floor, fog, fract, frameGroup, frameId, frontFacing, fwidth, gain, gapSize, getConstNodeType, getCurrentStack, getDistanceAttenuation, getGeometryRoughness, getNormalFromDepth, getParallaxCorrectNormal, getRoughness, getScreenPosition, getScreenPositionFromClip, getShIrradianceAt, getTextureType, getTypeFromLength, getViewPosition, globalId, glsl, glslFn, grayscale, greaterThan, greaterThanEqual, hardwareClipping, hash, hashArray, hashString, highpModelNormalViewMatrix, highpModelViewMatrix, hue, increment, incrementBefore, inspect, instance, instanceColor, instanceIndex, instancedArray, instancedBufferAttribute, instancedDynamicBufferAttribute, instancedMesh, int, intBitsToFloat, interleavedGradientNoise, inverse, inverseSqrt, inversesqrt, invocationLocalIndex, invocationSubgroupIndex, ior, iridescence, iridescenceIOR, iridescenceThickness, isArrayAsParameter, isBackgroundDepth, isolate, ivec2, ivec3, ivec4, js, label, length, lengthSq, lessThan, lessThanEqual, lightPosition, lightProjectionUV, lightShadowMatrix, lightTargetDirection, lightTargetPosition, lightViewPosition, lightingContext, lights, linearDepth, linearToneMapping, localId, log, log2, logarithmicDepthToViewZ, luminance, mat2, mat3, mat4, matcapUV, materialAO, materialAlphaTest, materialAnisotropy, materialAnisotropyVector, materialAttenuationColor, materialAttenuationDistance, materialClearcoat, materialClearcoatNormal, materialClearcoatRoughness, materialColor, materialDiffuseRoughness, materialDispersion, materialEmissive, materialEnvIntensity, materialEnvRotation, materialIOR, materialIridescence, materialIridescenceIOR, materialIridescenceThickness, materialLightMap, materialLineDashOffset, materialLineDashSize, materialLineGapSize, materialLineScale, materialLineWidth, materialMetalness, materialNormal, materialOpacity, materialPointSize, materialReference, materialReflectivity, materialRefractionRatio, materialRetroreflectivity, materialRotation, materialRoughness, materialSheen, materialSheenRoughness, materialShininess, materialSpecular, materialSpecularColor, materialSpecularIntensity, materialSpecularStrength, materialThickness, materialTransmission, max, maxMipLevel, mediumpModelViewMatrix, mergeContext, metalness, min, mix, mixElement, mod, modelDirection, modelNormalMatrix, modelPosition, modelRadius, modelScale, modelViewMatrix, modelViewPosition, modelViewProjection, modelWorldMatrix, modelWorldMatrixInverse, morphColor, morphReference, mrt, mul, mx_aastep, mx_add, mx_atan2, mx_cell_noise_float, mx_cell_noise_vec3, mx_contrast, mx_divide, mx_fractal_noise_float, mx_fractal_noise_float_2d, mx_fractal_noise_vec2, mx_fractal_noise_vec3, mx_fractal_noise_vec4, mx_frame, mx_heighttonormal, mx_hsvtorgb, mx_ifequal, mx_ifgreater, mx_ifgreatereq, mx_invert, mx_modulo, mx_multiply, mx_noise_float, mx_noise_vec3, mx_noise_vec4, mx_place2d, mx_power, mx_ramp4, mx_ramplr, mx_ramptb, mx_rgbtohsv, mx_rotate2d, mx_rotate3d, mx_safepower, mx_separate, mx_smoothstep, mx_splitlr, mx_splittb, mx_srgb_texture_to_lin_rec709, mx_subtract, mx_timer, mx_transform_uv, mx_unifiednoise2d, mx_unifiednoise3d, mx_worley_noise_float, mx_worley_noise_float_2d, mx_worley_noise_float_3d, mx_worley_noise_vec2, mx_worley_noise_vec3, mx_worley_noise_vec3_style, negate, negateOnBackSide, neutralToneMapping, nodeArray, nodeImmutable, nodeObject, nodeObjectAssignable, nodeObjects, nodeProxy, nodeProxyAssignable, nodeProxyConstructor, normalFlat, normalGeometry, normalLocal, normalMap, normalView, normalViewGeometry, normalWorld, normalWorldGeometry, normalize, not, notEqual, numWorkgroups, objectDirection, objectGroup, objectPosition, objectRadius, objectScale, objectViewPosition, objectWorldMatrix, oneMinus, or, orthographicDepthToViewZ, oscSawtooth, oscSine, oscSquare, oscTriangle, output, outputStruct, overloadingFn, overrideNode, overrideNodes, pack4xI8, pack4xI8Clamp, pack4xU8, pack4xU8Clamp, packHalf2x16, packNormalToOctahedral, packNormalToRGB, packSnorm2x16, packSnorm4x8, packUnorm2x16, packUnorm4x8, parabola, parallaxDirection, parallaxUV, parameter, pass, passTexture, pcurve, perspectiveDepthToViewZ, pmremTexture, pointShadow, pointUV, pointWidth, positionGeometry, positionLocal, positionPrevious, positionView, positionViewDirection, positionWorld, positionWorldDirection, posterize, pow, pow2, pow3, pow4, premultiplyAlpha, projectionDepth, property, quadBroadcast, quadSwapDiagonal, quadSwapX, quadSwapY, radians, rand, range, rangeFogFactor, reciprocal, reference, reference$1, referenceAttribute, referenceBuffer, reflect, reflectVector, reflectView, reflector, refract, refractVector, refractView, reinhardToneMapping, remap, remapClamp, renderGroup, renderOutput, rendererReference, replaceDefaultUV, retroreflectivity, rotate, rotateUV, roughness, round, rtt, sRGBTransferEOTF, sRGBTransferOETF, sample, sampler, samplerComparison, saturate, saturation, screenCoordinate, screenDPR, screenSize, screenUV, select, setCurrentStack, setName, shaderStages, shadow, shadowPositionWorld, shapeCircle, sharedUniformGroup, sheen, sheenRoughness, shiftLeft, shiftRight, shininess, sign, sin, sinc, sinh, skinning, smoothstep, smoothstepElement, specularColor, specularColorBlended, specularF90, spherizeUV, split, spritesheetUV, sqrt, stack, step, stepElement, storage, storageBarrier, storageStruct, storageTexture, storageTexture3D, struct, sub, subBuild, subgroupAdd, subgroupAll, subgroupAnd, subgroupAny, subgroupBallot, subgroupBroadcast, subgroupBroadcastFirst, subgroupElect, subgroupExclusiveAdd, subgroupExclusiveMul, subgroupInclusiveAdd, subgroupInclusiveMul, subgroupIndex, subgroupMax, subgroupMin, subgroupMul, subgroupOr, subgroupShuffle, subgroupShuffleDown, subgroupShuffleUp, subgroupShuffleXor, subgroupSize, subgroupXor, tan, tangentGeometry, tangentLocal, tangentView, tangentViewFrame, tangentWorld, tanh, texture, texture3D, texture3DLevel, texture3DLoad, textureBarrier, textureBicubic, textureBicubicLevel, textureLevel, textureLoad, textureMatrix, textureSize, textureStore, thickness, time, toneMapping, toneMappingExposure, toonOutlinePass, transformDirection, transformNormal, transformNormalByInverseViewMatrix, transformNormalByViewMatrix, transformNormalToView, transmission, transpose, triNoise3D, triplanarTexture, triplanarTextures, trunc, uint, uintBitsToFloat, uniform, uniformArray, uniformCubeTexture, uniformFlow, uniformGroup, uniformTexture, unpack4xI8, unpack4xU8, unpackHalf2x16, unpackNormal, unpackOctahedralToNormal, unpackRGBToNormal, unpackSnorm2x16, unpackSnorm4x8, unpackUnorm2x16, unpackUnorm4x8, unpremultiplyAlpha, userData, uv$1 as uv, uvec2, uvec3, uvec4, varying, varyingProperty, vec2, vec3, vec4, vectorComponents, velocity, vertexColor, vertexIndex, vertexStage, vibrance, viewZToLogarithmicDepth, viewZToOrthographicDepth, viewZToPerspectiveDepth, viewZToReversedOrthographicDepth, viewZToReversedPerspectiveDepth, viewport, viewportCoordinate, viewportDepthTexture, viewportLinearDepth, viewportMipTexture, viewportOpaqueMipTexture, viewportSafeUV, viewportSharedTexture, viewportSize, viewportTexture, viewportUV, vogelDiskSample, wgsl, wgslFn, workgroupArray, workgroupBarrier, workgroupId, workingLuminanceCoefficients, workingToColorSpace, xor };
+export { AONode, AnalyticLightNode, ArrayElementNode, ArrayNode, AssignNode, AtomicFunctionNode, AttributeNode, BRDF_EON, BRDF_GGX, BRDF_Lambert, BRDF_Sheen, BarrierNode, BasicPointShadowFilter, BasicShadowFilter, BitcastNode, BitcountNode, BlendMode, Break, BufferAttributeNode, BufferNode, BuiltinNode, BumpMapNode, BypassNode, ChainMap, ClippingNode, CodeNode, Color4, ColorSpaceNode, ComputeBuiltinNode, ComputeNode, ConditionalNode, Const, ConstNode, ContextNode, Continue, ConvertNode, CubeRenderTarget, CubeTextureNode, DFGLUT, D_GGX, D_GGX_Anisotropic, DebugNode, DeferredNode, Discard, EON_DirectionalAlbedo, EPSILON, EnvironmentBRDF, EnvironmentBRDF_MultiScattering, EventNode, ExpressionNode, F_Schlick, FlipNode, Fn, FrontFacingNode, FunctionCallNode, FunctionNode, FunctionOverloadingNode, HALF_PI, INFINITY, If, IndexNode, IndirectLightingNode, InputNode, InspectorBase, InspectorNode, IrradianceNode, IsolateNode, JoinNode, LTC_Evaluate, LTC_Evaluate_Volume, LTC_Uv, LightingContextNode, LightingNode, LightsNode, Loop, LoopNode, MRTNode, MaterialNode, MaterialReferenceNode, MathNode, MaxMipLevelNode, MemberNode, ModelNode, Node, NodeAccess, NodeError, NodeMaterial, NodeMaterialObserver, NodeShaderStage, NodeType, NodeUpdateType, NodeUtils, NormalMapNode, Object3DNode, OnAfterObjectUpdate, OnAfterRenderPipeline, OnBeforeFrameUpdate, OnBeforeMaterialUpdate, OnBeforeObjectUpdate, OnBeforeRenderPipeline, OnFrameUpdate, OnMaterialUpdate, OnObjectUpdate, OperatorNode, OutputStructNode, OverrideContextNode, PCFShadowFilter, PI, PI2, PMREMGenerator, PMREMNode, PackFloatNode, Packed4x8IntegerNode, ParameterNode, PassNode, PointLightNode, PointShadowFilter, PointShadowNode, PointUVNode, PropertyNode, QuadMesh, RTTNode, RangeNode, ReferenceAttributeNode, ReferenceBaseNode, ReferenceNode, ReflectorNode, RenderOutputNode, RendererReferenceNode, RendererUtils, Return, RotateNode, SampleNode, Schlick_to_F0, SetNode, ShaderNode, ShadowBaseNode, ShadowNode, SplitNode, Stack, StackNode, StackTrace, StorageBufferAttribute, StorageBufferNode, StorageInstancedBufferAttribute, StorageStructNode, StorageTexture3DNode, StorageTextureNode, StructNode, StructTypeNode, SubBuildNode, SubgroupFunctionNode, Switch, TBNViewMatrix, TWO_PI, Texture3DNode, TextureNode, TextureSizeNode, Three_Nodes, ToneMappingNode, ToonOutlinePassNode, UniformArrayNode, UniformGroupNode, UniformNode, UnpackFloatNode, UserDataNode, VSMShadowFilter, V_GGX_SmithCorrelated, V_GGX_SmithCorrelated_Anisotropic, Var, VarNode, VaryingNode, VelocityNode, VertexColorNode, ViewportDepthNode, ViewportDepthTextureNode, ViewportSharedTextureNode, ViewportTextureNode, WorkgroupInfoNode, abs, acesFilmicToneMapping, acos, acosh, add, addMethodChaining, addNodeElement, agxToneMapping, all, alphaT, ambientOcclusion, and, anisotropy, anisotropyB, anisotropyT, any, array, asin, asinh, assign, atan, atanh, atomicAdd, atomicAnd, atomicExchange, atomicFunc, atomicLoad, atomicMax, atomicMin, atomicOr, atomicStore, atomicSub, atomicXor, attenuationColor, attenuationDistance, attribute, attributeArray, backgroundBlurriness, backgroundIntensity, backgroundRotation, batch, batchColor, batchIndirectIndex, bentNormalView, billboarding, bitAnd, bitNot, bitOr, bitXor, bitangentGeometry, bitangentLocal, bitangentView, bitangentViewFrame, bitangentWorld, bitcast, blendBurn, blendColor, blendDodge, blendOverlay, blendScreen, bool, buffer, bufferAttribute, builtin, builtinAOContext, builtinIndirectContext, builtinShadowContext, bumpMap, bvec2, bvec3, bvec4, bypass, cache, call, cameraFar, cameraIndex, cameraNear, cameraNormalMatrix, cameraPosition, cameraProjectionMatrix, cameraProjectionMatrixInverse, cameraViewMatrix, cameraViewport, cameraWorldMatrix, cbrt, cdl, ceil, checker, cineonToneMapping, clamp, clearcoat, clearcoatNormalView, clearcoatRoughness, clipSpace, clipping, clippingAlpha, code, color, colorSpaceToWorking, colorToDirection, compute, computeKernel, computeSkinning, context, convert, convertColorSpace, convertToTexture, cos, cosh, countLeadingZeros, countOneBits, countTrailingZeros, cross, cubeTexture, cubeTextureBase, dFdx, dFdy, dashSize, debug, decrement, decrementBefore, defaultBuildStages, defaultIndirectDiffuse, defaultIndirectSpecular, defaultShaderStages, defined, degrees, deltaTime, densityFogFactor, depth, depthPass, depthToViewZ, determinant, difference, diffuseColor, diffuseContribution, diffuseRoughness, directPointLight, directionToColor, directionToFaceDirection, dispersion, distance, dither, div, dot, dot4I8Packed, dot4U8Packed, drawIndex, dynamicBufferAttribute, element, emissive, equal, equirectDirection, equirectUV, exp, exp2, exponentialHeightFogFactor, expression, faceDirection, faceForward, faceforward, float, floatBitsToInt, floatBitsToUint, floor, fog, fract, frameGroup, frameId, frontFacing, fwidth, gain, gapSize, getConstNodeType, getCurrentStack, getDistanceAttenuation, getGeometryRoughness, getNormalFromDepth, getParallaxCorrectNormal, getRoughness, getScreenPosition, getScreenPositionFromClip, getShIrradianceAt, getTextureType, getTypeFromLength, getViewPosition, globalId, glsl, glslFn, grayscale, greaterThan, greaterThanEqual, hardwareClipping, hash, hashArray, hashString, highpModelNormalViewMatrix, highpModelViewMatrix, hue, increment, incrementBefore, inspect, instance, instanceColor, instanceIndex, instancedArray, instancedBufferAttribute, instancedDynamicBufferAttribute, instancedMesh, int, intBitsToFloat, interleavedGradientNoise, inverse, inverseSqrt, inversesqrt, invocationLocalIndex, invocationSubgroupIndex, ior, iridescence, iridescenceIOR, iridescenceThickness, isArrayAsParameter, isBackgroundDepth, isolate, ivec2, ivec3, ivec4, js, label, length, lengthSq, lessThan, lessThanEqual, lightPosition, lightProjectionUV, lightShadowMatrix, lightTargetDirection, lightTargetPosition, lightViewPosition, lightingContext, lights, linearDepth, linearToneMapping, localId, log, log2, logarithmicDepthToViewZ, luminance, mat2, mat3, mat4, matcapUV, materialAO, materialAlphaTest, materialAnisotropy, materialAnisotropyVector, materialAttenuationColor, materialAttenuationDistance, materialClearcoat, materialClearcoatNormal, materialClearcoatRoughness, materialColor, materialDiffuseRoughness, materialDispersion, materialEmissive, materialEnvIntensity, materialEnvRotation, materialIOR, materialIridescence, materialIridescenceIOR, materialIridescenceThickness, materialLightMap, materialLineDashOffset, materialLineDashSize, materialLineGapSize, materialLineScale, materialLineWidth, materialMetalness, materialNormal, materialOpacity, materialPointSize, materialReference, materialReflectivity, materialRefractionRatio, materialRetroreflectivity, materialRotation, materialRoughness, materialSheen, materialSheenRoughness, materialShininess, materialSpecular, materialSpecularColor, materialSpecularIntensity, materialSpecularStrength, materialThickness, materialTransmission, max, maxMipLevel, mediumpModelViewMatrix, mergeContext, metalness, min, mix, mixElement, mod, modelDirection, modelNormalMatrix, modelPosition, modelRadius, modelScale, modelViewMatrix, modelViewPosition, modelViewProjection, modelWorldMatrix, modelWorldMatrixInverse, morphColor, morphReference, mrt, mul, mx_aastep, mx_add, mx_atan2, mx_cell_noise_float, mx_cell_noise_vec3, mx_contrast, mx_divide, mx_fractal_noise_float, mx_fractal_noise_float_2d, mx_fractal_noise_vec2, mx_fractal_noise_vec3, mx_fractal_noise_vec4, mx_frame, mx_heighttonormal, mx_hsvtorgb, mx_ifequal, mx_ifgreater, mx_ifgreatereq, mx_invert, mx_modulo, mx_multiply, mx_noise_float, mx_noise_vec3, mx_noise_vec4, mx_place2d, mx_power, mx_ramp4, mx_ramplr, mx_ramptb, mx_rgbtohsv, mx_rotate2d, mx_rotate3d, mx_safepower, mx_separate, mx_smoothstep, mx_splitlr, mx_splittb, mx_srgb_texture_to_lin_rec709, mx_subtract, mx_timer, mx_transform_uv, mx_unifiednoise2d, mx_unifiednoise3d, mx_worley_noise_float, mx_worley_noise_float_2d, mx_worley_noise_float_3d, mx_worley_noise_vec2, mx_worley_noise_vec3, mx_worley_noise_vec3_style, negate, negateOnBackSide, neutralToneMapping, nodeArray, nodeImmutable, nodeObject, nodeObjectAssignable, nodeObjects, nodeProxy, nodeProxyAssignable, nodeProxyConstructor, normalFlat, normalGeometry, normalLocal, normalMap, normalView, normalViewGeometry, normalWorld, normalWorldGeometry, normalize, not, notEqual, numWorkgroups, objectDirection, objectGroup, objectPosition, objectRadius, objectScale, objectViewPosition, objectWorldMatrix, oneMinus, or, orthographicDepthToViewZ, oscSawtooth, oscSine, oscSquare, oscTriangle, output, outputStruct, overloadingFn, overrideNode, overrideNodes, pack4xI8, pack4xI8Clamp, pack4xU8, pack4xU8Clamp, packHalf2x16, packNormalToOctahedral, packNormalToRGB, packSnorm2x16, packSnorm4x8, packUnorm2x16, packUnorm4x8, parabola, parallaxDirection, parallaxUV, parameter, pass, passTexture, pcurve, perspectiveDepthToViewZ, pmremTexture, pointShadow, pointUV, pointWidth, positionGeometry, positionLocal, positionPrevious, positionView, positionViewDirection, positionWorld, positionWorldDirection, posterize, pow, pow2, pow3, pow4, premultiplyAlpha, projectionDepth, property, quadBroadcast, quadSwapDiagonal, quadSwapX, quadSwapY, radians, rand, range, rangeFogFactor, reciprocal, reference, reference$1, referenceAttribute, referenceBuffer, reflect$1 as reflect, reflectVector, reflectView, reflector, refract, refractVector, refractView, reinhardToneMapping, remap, remapClamp, renderGroup, renderOutput, rendererReference, replaceDefaultUV, retroreflectivity, rotate, rotateUV, roughness, round, rtt, sRGBTransferEOTF, sRGBTransferOETF, sample, sampler, samplerComparison, saturate, saturation, screenCoordinate, screenDPR, screenSize, screenUV, select, setCurrentStack, setName, shaderStages, shadow, shadowPositionWorld, shapeCircle, sharedUniformGroup, sheen, sheenRoughness, shiftLeft, shiftRight, shininess, sign, sin, sinc, sinh, skinning, smoothstep, smoothstepElement, specularColor, specularColorBlended, specularF90, spherizeUV, split, spritesheetUV, sqrt, stack, step, stepElement, storage, storageBarrier, storageStruct, storageTexture, storageTexture3D, struct, sub, subBuild, subgroupAdd, subgroupAll, subgroupAnd, subgroupAny, subgroupBallot, subgroupBroadcast, subgroupBroadcastFirst, subgroupElect, subgroupExclusiveAdd, subgroupExclusiveMul, subgroupInclusiveAdd, subgroupInclusiveMul, subgroupIndex, subgroupMax, subgroupMin, subgroupMul, subgroupOr, subgroupShuffle, subgroupShuffleDown, subgroupShuffleUp, subgroupShuffleXor, subgroupSize, subgroupXor, tan, tangentGeometry, tangentLocal, tangentView, tangentViewFrame, tangentWorld, tanh, texture, texture3D, texture3DLevel, texture3DLoad, textureBarrier, textureBicubic, textureBicubicLevel, textureLevel, textureLoad, textureMatrix, textureSize, textureStore, thickness, time, toneMapping, toneMappingExposure, toonOutlinePass, transformDirection, transformNormal, transformNormalByInverseViewMatrix, transformNormalByViewMatrix, transformNormalToView, transmission, transpose, triNoise3D, triplanarTexture, triplanarTextures, trunc, uint, uintBitsToFloat, uniform, uniformArray, uniformCubeTexture, uniformFlow, uniformGroup, uniformTexture, unpack4xI8, unpack4xU8, unpackHalf2x16, unpackNormal, unpackOctahedralToNormal, unpackRGBToNormal, unpackSnorm2x16, unpackSnorm4x8, unpackUnorm2x16, unpackUnorm4x8, unpremultiplyAlpha, userData, uv$1 as uv, uvec2, uvec3, uvec4, varying, varyingProperty, vec2, vec3, vec4, vectorComponents, velocity, vertexColor, vertexIndex, vertexStage, vibrance, viewZDelta, viewZToLogarithmicDepth, viewZToOrthographicDepth, viewZToPerspectiveDepth, viewZToReversedOrthographicDepth, viewZToReversedPerspectiveDepth, viewport, viewportCoordinate, viewportDepthTexture, viewportLinearDepth, viewportMipTexture, viewportOpaqueMipTexture, viewportSafeUV, viewportSharedTexture, viewportSize, viewportTexture, viewportUV, vogelDiskSample, wgsl, wgslFn, workgroupArray, workgroupBarrier, workgroupId, workingLuminanceCoefficients, workingToColorSpace, xor };

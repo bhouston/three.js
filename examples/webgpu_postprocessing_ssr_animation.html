@@ -41,6 +41,8 @@
 			import * as THREE from 'three/webgpu';
 			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, color, positionLocal, sample, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+			import { HiZTracer } from 'three/addons/tsl/utils/traceHiZ.js';
+			import { LinearTracer } from 'three/addons/tsl/utils/traceLinear.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -52,7 +54,7 @@
 
 			const params = {
 				output: 'Beauty', traa: true,
-				quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
+				tracing: 'linear', quality: 0.5, binaryRefine: false, maxDistance: 20, thickness: 0.12,
 				denoise: true, lumaPhi: 0.75,
 				roughness: 0.18, animate: true, orbit: false
 			};
@@ -284,8 +286,11 @@
 
 				}
 
+				const tracers = { 'linear': new LinearTracer(), 'hi-z': new HiZTracer() };
+
 				function updateParameters() {
 
+					ssrNode.tracer = tracers[ params.tracing ];
 					ssrNode.quality.value = params.quality;
 					ssrNode.binaryRefine = params.binaryRefine;
 					ssrNode.maxDistance.value = params.maxDistance;
@@ -302,6 +307,7 @@
 				displayGui.add( params, 'traa' ).name( 'TRAA' ).onChange( updateOutput );
 
 				const ssrGui = renderer.inspector.createParameters( 'SSR' );
+				ssrGui.add( params, 'tracing', [ 'linear', 'hi-z' ] ).name( 'Tracing' ).onChange( updateParameters );
 				ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 				ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
 				ssrGui.add( params, 'maxDistance', 0.01, 50, 0.01 ).name( 'Max distance' ).onChange( updateParameters );

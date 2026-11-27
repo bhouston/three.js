@@ -1,9 +1,10 @@
-import { Break, Continue, DFGLUT, EnvironmentBRDF_MultiScattering, Fn, If, Loop, abs, bool, cross, distance, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
+import { DFGLUT, EnvironmentBRDF_MultiScattering, Fn, If, Loop, abs, bool, cross, distance, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
+import { LinearTracer } from '../utils/traceLinear.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -24,6 +25,7 @@ const MAX_STEPS = 64;
  * @property {boolean} [envImportanceSampling=false] - When `true`, precomputes env-luminance CDF tables and uses MIS for environment misses. Build-time only.
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
  * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
+ * @property {LinearTracer|HiZTracer} [tracer=null] - Traces the reflection rays, a `LinearTracer` when omitted.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
 
@@ -65,7 +67,8 @@ class SSRNode extends Node {
 			environmentNode = null,
 			envImportanceSampling = false,
 			diffuseNode = null,
-			binaryRefine = false
+			binaryRefine = false,
+			tracer = null
 		} = options;
 
 		let camera = options.camera ?? null;
@@ -283,6 +286,14 @@ class SSRNode extends Node {
 		 * @default false
 		 */
 		this._binaryRefine = binaryRefine;
+
+		/**
+		 * Internal storage for {@link SSRNode#tracer}.
+		 *
+		 * @private
+		 * @type {LinearTracer|HiZTracer}
+		 */
+		this._tracer = tracer !== null ? tracer : new LinearTracer();
 
 		/**
 		 * Non-linear step distribution exponent. `1` = uniform steps; `> 1` concentrates
@@ -615,6 +626,29 @@ class SSRNode extends Node {
 	}
 
 	/**
+	 * Traces the reflection rays through the depth, a `LinearTracer` by default or a `HiZTracer`. The samples
+	 * of a linear march are placed by `quality` and `stepExponent`. Assigning a new value rebuilds the SSR material.
+	 *
+	 * @type {LinearTracer|HiZTracer}
+	 */
+	get tracer() {
+
+		return this._tracer;
+
+	}
+
+	set tracer( value ) {
+
+		if ( value !== this._tracer ) {
+
+			this._tracer = value;
+			this._buildSSRMaterial();
+
+		}
+
+	}
+
+	/**
 	 * Whether dielectrics are reflected in the non-stochastic path (compile-time constant).
 	 * Assigning a new value rebuilds the SSR material.
 	 *
@@ -769,6 +803,8 @@ class SSRNode extends Node {
 
 		this._cameraWorldMatrix.value.copy( this.camera.matrixWorld );
 		this._cameraWorldPosition.value.copy( this.camera.position );
+
+		this._tracer.update( frame, this.depthNode );
 
 		_rendererState = RendererUtils.resetRendererState( renderer, _rendererState );
 
@@ -1123,107 +1159,80 @@ class SSRNode extends Node {
 			// Carry the coarse hit's UV/depth to skip a redundant fetch when refinement is off.
 			const hitUvS = vec2( 0 ).toVar();
 			const hitD = float( 0 ).toVar();
-			const previousS = float( 0 ).toVar();
-			const previousInFront = bool( true ).toVar();
 			const canRefine = bool( false ).toVar();
 
-			// March from d0 toward d1, looking for an intersection with the depth buffer.
-			Loop( { start: int( 1 ), end: totalStep }, ( { i } ) => {
+			// Trace toward d1, looking for an intersection with the depth buffer. A linear march places its samples
+			// with sampleFraction() and brackets the hit for the refinement, a hierarchical one returns its pixel.
 
-				// Exponentially-distributed ray parameter, shared by the sample position and ray depth.
-				const s = sampleFraction( float( i ) ).toVar();
+			const near = this._cameraNear;
+			const far = this._cameraFar;
+			const reversed = builder.renderer.reversedDepthBuffer === true && builder.renderer.logarithmicDepthBuffer !== true;
 
-				If( s.greaterThan( 1 ), () => {
+			const toDepth = this.camera.isPerspectiveCamera
+				? ( reversed ? viewZToReversedPerspectiveDepth : viewZToPerspectiveDepth )
+				: ( reversed ? viewZToReversedOrthographicDepth : viewZToOrthographicDepth );
 
-					Break();
+			const origin = vec3( uvPos, depth ).toConst();
+			const end = vec3( d1.mul( invResolution ), toDepth( d1viewPosition.z, near, far ) ).toConst();
 
-				} );
+			// the distance of the surface at a depth from the ray and the thickness it has to be within
 
-				const xy = screenPosAt( s ).toVar();
+			const reach = ( uvS, raw ) => {
 
-				If( xy.x.lessThan( 0 ).or( xy.x.greaterThan( this._resolution.x ) ).or( xy.y.lessThan( 0 ) ).or( xy.y.greaterThan( this._resolution.y ) ), () => {
+				const d = projectionDepth( raw, near, far );
+				const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse );
+				const minThickness = getViewPosition( uvS.add( uvPixelStepX ), d, this._cameraProjectionMatrixInverse ).x.sub( vP.x ).mul( 3 );
 
-					Break();
+				return { d, away: pointToLineDistance( vP, viewPosition, d1viewPosition ), tk: max( minThickness, this.thickness ) };
 
-				} );
+			};
 
-				const uvS = xy.mul( invResolution ).toVar();
-				const rawDepth = this.depthNode.sample( uvS ).r;
-				const d = projectionDepth( rawDepth, this._cameraNear, this._cameraFar ).toVar();
-				const vZ = depthToViewZ( rawDepth, this._cameraNear, this._cameraFar, this.camera ).toVar();
+			const outOfReach = ( uvS, raw ) => {
 
-				const viewReflectRayZ = reflectRayZAt( s ).toVar();
+				const { away, tk } = reach( uvS, raw );
 
-				// Advance the previous sample before any Continue() so rejected samples still bound the next bracket.
-				const lastS = previousS.toVar();
-				const lastInFront = previousInFront.toVar();
-				previousS.assign( s );
-				previousInFront.assign( viewReflectRayZ.greaterThan( vZ ) );
+				return away.greaterThan( tk );
 
-				If( isBackgroundDepth( d ).not().and( viewReflectRayZ.lessThanEqual( vZ ) ), () => {
+			};
 
-					// Depth crossing: ray went behind the depth buffer. Gate by thickness before stopping
-					// so an occluder gap doesn't end the march prematurely.
-					const vP = getViewPosition( uvS, d, this._cameraProjectionMatrixInverse ).toVar();
-					const away = pointToLineDistance( vP, viewPosition, d1viewPosition ).toVar();
+			const result = this._tracer.trace( this.depthNode, origin, end, {
+				resolution: this._resolution,
+				reversedDepth: reversed,
+				steps: totalStep.sub( 1 ),
+				parameter: ( index ) => sampleFraction( index.add( 1 ) ),
+				projectDepth: ( raw ) => projectionDepth( raw, near, far ),
+				// a ray passing farther than the thickness behind the farthest surface of a cell skips it
+				isHidden: ( uvIn, uvOut, raw ) => outOfReach( uvIn, raw ).and( outOfReach( uvOut, raw ) ),
+				acceptHit: ( uvS, s, raw, lastS ) => {
 
-					const uvNeighbor = uvS.add( uvPixelStepX ).toVar();
-					const vPNeighbor = getViewPosition( uvNeighbor, d, this._cameraProjectionMatrixInverse ).toVar();
-					const minThickness = vPNeighbor.x.sub( vP.x ).mul( 3 ).toVar();
+					// Gate by thickness so an occluder gap doesn't end the trace, and by the normal so the ray
+					// reflects off a surface facing it.
+					const { d, away, tk } = reach( uvS, raw );
+
 					// Only refinement may use a wider coarse tolerance.
+					const tolerance = ( this.binaryRefine && lastS !== undefined ) ? max( tk, distance( rayPointAt( lastS ), rayPointAt( s ) ) ) : tk;
 
-					const stepLength = distance( rayPointAt( lastS ), rayPointAt( s ) );
-					const tk = ( this.binaryRefine ? max( max( minThickness, this.thickness ), stepLength ) : max( minThickness, this.thickness ) ).toVar();
+					return isBackgroundDepth( d ).not()
+						.and( away.lessThanEqual( tolerance ) )
+						.and( dot( viewReflectDir, this.normalNode.sample( uvS ).rgb ).lessThan( 0 ) );
 
-					If( away.lessThanEqual( tk ), () => {
-
-						const vN = this.normalNode.sample( uvS ).rgb.toVar();
-
-						// the reflected ray is pointing towards the same side as the fragment's normal (current ray position),
-						// which means it wouldn't reflect off the surface. The loop continues to the next step for the next ray sample.
-						If( dot( viewReflectDir, vN ).greaterThanEqual( 0 ), () => {
-
-							Continue();
-
-						} );
-
-						if ( this.stochastic === false ) {
-
-							// this distance represents the depth of the intersection point between the reflected ray and the scene.
-							const distance = pointPlaneDistance( vP, viewPosition, viewNormal ).toVar();
-
-							// Distance exceeding limit: The reflection is potentially too far away and
-							// might not contribute significantly to the final color
-							If( distance.greaterThan( this.maxDistance ), () => {
-
-								Break();
-
-							} );
-
-						}
-
-						foundHit.assign( true );
-						hitUvS.assign( uvS );
-						hitD.assign( d );
-
-						if ( this.binaryRefine ) {
-
-							// refine only front-to-back crossings
-
-							canRefine.assign( lastInFront );
-							hitSLo.assign( lastS );
-							hitSHi.assign( s );
-
-						}
-
-						Break();
-
-
-					} );
-
-				} );
-
+				},
+				passRejected: true
 			} );
+
+			foundHit.assign( result.hit );
+			hitUvS.assign( result.uv );
+			hitD.assign( projectionDepth( result.depth, near, far ) );
+
+			if ( this.binaryRefine && result.previousParameter !== undefined ) {
+
+				// refine only front-to-back crossings
+
+				canRefine.assign( result.previousInFront );
+				hitSLo.assign( result.previousParameter );
+				hitSHi.assign( result.parameter );
+
+			}
 
 			If( foundHit, () => {
 
@@ -1382,6 +1391,8 @@ class SSRNode extends Node {
 		this._ssrMaterial.dispose();
 		this._blurMaterial.dispose();
 		this._copyMaterial.dispose();
+
+		this._tracer.dispose();
 
 		if ( this._importanceEnvironment !== null ) {
 

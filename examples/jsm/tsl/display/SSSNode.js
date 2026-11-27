@@ -172,8 +172,7 @@ class SSSNode extends Node {
 		/**
 		 * Whether the rays are traced through a hierarchical depth buffer instead of being marched linearly.
 		 * The cost of a ray then barely depends on its length, so long shadows stay cheap. The rays are exact,
-		 * `quality` and the temporal filtering are not used. Requires a WebGPU backend, the render pipeline
-		 * must be updated when the value changes.
+		 * `quality` and the temporal filtering are not used. Requires a WebGPU backend.
 		 *
 		 * @type {boolean}
 		 * @default false
@@ -181,8 +180,16 @@ class SSSNode extends Node {
 		this.hiZ = false;
 
 		/**
+		 * Whether a ray traced with `hiZ` stops at any occluder instead of the closest one, which takes fewer steps.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this.anyHit = false;
+
+		/**
 		 * Whether the node outputs the number of steps of each ray instead of the shadow, for debugging.
-		 * The output is `sqrt( steps / 1024 )`. The render pipeline must be updated when the value changes.
+		 * The output is `sqrt( steps / 1024 )`.
 		 *
 		 * @type {boolean}
 		 * @default false
@@ -322,6 +329,9 @@ class SSSNode extends Node {
 		 */
 		this._hiZNode = null;
 
+		this._fragmentFn = null;
+		this._builtKey = '';
+
 	}
 
 	/**
@@ -360,7 +370,25 @@ class SSSNode extends Node {
 
 		const { renderer } = frame;
 
-		if ( this.hiZ === true && this._hiZNode !== null ) this._hiZNode.updateBefore( frame );
+		// the material reads these properties when it is built
+
+		const key = `${ this.hiZ },${ this.anyHit },${ this.showSteps }`;
+
+		if ( this._fragmentFn !== null && key !== this._builtKey ) {
+
+			this._builtKey = key;
+			this._material.fragmentNode = this._fragmentFn();
+			this._material.needsUpdate = true;
+
+		}
+
+		if ( this.hiZ === true ) {
+
+			if ( this._hiZNode === null ) this._hiZNode = hiZ( this.depthNode, { nearest: true } );
+
+			this._hiZNode.updateBefore( frame );
+
+		}
 
 		_rendererState = RendererUtils.resetRendererState( renderer, _rendererState );
 
@@ -559,6 +587,8 @@ class SSSNode extends Node {
 		} );
 
 		this._material.contextNode = context( builder.getSharedContext() );
+		this._fragmentFn = sss;
+		this._builtKey = `${ this.hiZ },${ this.anyHit },${ this.showSteps }`;
 		this._material.fragmentNode = sss();
 		this._material.needsUpdate = true;
 
@@ -609,6 +639,7 @@ class SSSNode extends Node {
 			projectDepth: ( raw ) => projectionDepth( raw, near, far ),
 			isHidden: ( uvIn, uvOut, raw ) => behind( parameter( uvIn ), raw ).greaterThan( this.thickness ).and( behind( parameter( uvOut ), raw ).greaterThan( this.thickness ) ),
 			acceptHit: ( uv, s, raw ) => behind( s, raw ).lessThan( this.thickness ).and( occludes( uv, raw ) ),
+			anyHit: this.anyHit,
 			passRejected: true
 		} );
 

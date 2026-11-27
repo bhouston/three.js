@@ -62,7 +62,7 @@
 
 				// lights
 
-				scene.add( new THREE.HemisphereLight( 0xcfe3ff, 0x6b6558, 1 ) );
+				scene.add( new THREE.HemisphereLight( 0xcfe3ff, 0x6b6558, 0.33 ) );
 
 				// the shadow map stays empty since no object casts shadows, the light only casts the screen-space shadows
 
@@ -89,14 +89,14 @@
 
 				const geometries = [
 					new THREE.BoxGeometry(),
-					new THREE.SphereGeometry( 0.5 ),
-					new THREE.CylinderGeometry( 0.5, 0.5, 1 ),
-					new THREE.ConeGeometry( 0.5, 1 ),
+					new THREE.SphereGeometry( 0.5, 12, 8 ),
+					new THREE.CylinderGeometry( 0.5, 0.5, 1, 12 ),
+					new THREE.ConeGeometry( 0.5, 1, 12 ),
 					new THREE.IcosahedronGeometry( 0.5 ),
-					new THREE.TorusKnotGeometry( 0.3, 0.1, 64, 12 ).scale( 1.1, 1.1, 1.1 )
+					new THREE.TorusKnotGeometry( 0.3, 0.1, 32, 6 ).scale( 1.1, 1.1, 1.1 )
 				];
 
-				const COUNT = 1000; // per geometry
+				const COUNT = 10000; // per geometry
 				const EXTENT = 300;
 
 				const random = THREE.MathUtils.seededRandom;
@@ -112,9 +112,7 @@
 
 					for ( let i = 0; i < COUNT; i ++ ) {
 
-						// many small objects and some larger ones
-
-						const size = random() < 0.94 ? 0.15 + random() * 0.7 : 1.5 + random() * 4.5;
+						const size = 0.4 + random() * 0.8;
 						const height = size * ( 0.5 + random() );
 
 						do {
@@ -150,7 +148,7 @@
 
 				const pmremGenerator = new THREE.PMREMGenerator( renderer );
 				scene.environment = pmremGenerator.fromScene( new RoomEnvironment(), 0.04 ).texture;
-				scene.environmentIntensity = 0.6;
+				scene.environmentIntensity = 0.2;
 
 				// post-processing
 
@@ -162,12 +160,12 @@
 				prePass.name = 'Pre-Pass';
 
 				prePass.setMRT( mrt( {
-					output: velocity,
+					velocity, // must be named 'velocity', instanced meshes only track their previous matrices then
 					normal: packNormalToOctahedral( normalView )
 				} ) );
 
 				const prePassDepth = prePass.getTextureNode( 'depth' ).toInspector( 'Depth', () => prePass.getLinearDepthNode() );
-				const prePassVelocity = prePass.getTextureNode( 'output' ).toInspector( 'Velocity' );
+				const prePassVelocity = prePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 				const prePassNormal = prePass.getTextureNode( 'normal' );
 
 				const sceneNormal = sample( ( uv ) => unpackOctahedralToNormal( prePassNormal.sample( uv ).rg ) ).toInspector( 'Normal' );
@@ -215,6 +213,7 @@
 					azimuth: 135,
 					altitude: 25,
 					hiZ: true,
+					anyHit: false,
 					traa: true,
 					output: 0
 				};
@@ -231,6 +230,7 @@
 				function updatePostprocessing() {
 
 					sssPass.hiZ = params.hiZ;
+					sssPass.anyHit = params.anyHit;
 					sssPass.showSteps = params.output === 2;
 					sssPass.useTemporalFiltering = params.traa;
 
@@ -246,6 +246,7 @@
 				gui.add( params, 'azimuth', - 180, 180 ).name( 'sun azimuth' ).onChange( updateSun );
 				gui.add( params, 'altitude', 0.5, 90 ).name( 'sun altitude' ).onChange( updateSun );
 				gui.add( params, 'hiZ', { 'Hi-Z': true, 'linear': false } ).name( 'tracing' ).onChange( updatePostprocessing );
+				gui.add( params, 'anyHit', { 'closest': false, 'any': true } ).name( 'hit (Hi-Z)' ).onChange( updatePostprocessing );
 				gui.add( params, 'traa' ).name( 'TRAA' ).onChange( updatePostprocessing );
 				gui.add( params, 'output', { 'Scene with SSS': 0, 'SSS': 1, 'Steps per ray': 2 } ).onChange( updatePostprocessing );
 				gui.add( sssPass.shadowIntensity, 'value', 0, 1 ).name( 'shadow intensity' );

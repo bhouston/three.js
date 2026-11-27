@@ -27,11 +27,12 @@ import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uvec2, vec
  * @param {boolean} [options.coarseHits=false] - Cone-tracing approximation: a coarse leaf is tested once, with its nearest depth at the ray's UV, and stepped over when `acceptHit` rejects that. `acceptHit` receives the cell size in pixels as a fourth argument to widen its tolerance.
  * @param {Function} [options.isHidden] - TSL predicate (entry UV, exit UV, raw farthest depth): true when no surface in the cell can be accepted because the ray is too far behind all of them. Such cells are skipped like empty ones.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth).
+ * @param {boolean} [options.anyHit=false] - Whether any accepted surface on the ray is returned instead of the closest one, for visibility rays. A coarse cell is then hit without descending, at a point where the ray is behind all of its surfaces and `acceptHit` holds for both its nearest and its farthest depth. `acceptHit` must hold for every depth between two depths it accepts. The depth of the hit is the nearest depth of the cell.
  * @param {boolean} [options.passRejected=false] - Whether the ray continues past a surface `acceptHit` refuses, instead of stopping there. For visibility rays, which only need any accepted occluder.
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations, exhausted flag and rejected flag: the ray reached a
  * surface that `acceptHit` refused, so it is blocked rather than free.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, minLevel = 0, coarseHits = false, isHidden = null, acceptHit = () => bool( true ), passRejected = false } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, minLevel = 0, coarseHits = false, isHidden = null, acceptHit = () => bool( true ), anyHit = false, passRejected = false } = {} ) {
 
 	const delta = end.sub( origin ).toConst();
 	const s = float( start ).toVar();
@@ -141,6 +142,33 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			If( inFront.not().and( background.not() ).and( farther( z, far ) ).and( farther( origin.z.add( delta.z.mul( exit ) ), far ) ), () => {
 
 				hidden.assign( isHidden( pixel.div( size ), origin.xy.add( delta.xy.mul( exit ) ), farRaw ) );
+
+			} );
+
+		}
+
+		if ( anyHit ) {
+
+			// The point of the ray in the cell nearest to the plane of its farthest depth. Behind that plane the
+			// pixel under the ray is a surface the ray has passed, whatever its depth within the cell.
+			const farRaw = cellFarthest.toVar();
+			const farDepth = projectDepth( farRaw ).toVar();
+			const tolerance = float( depthTolerance );
+			const sAny = farDepth.add( reversedDepth ? tolerance.negate() : tolerance ).sub( origin.z ).mul( inverseZ ).min( exit ).max( s ).toVar();
+			const zAny = origin.z.add( delta.z.mul( sAny ) );
+			If( mip.greaterThan( 0 ).and( background.not() ).and( nearer( zAny, farDepth.add( reversedDepth ? tolerance : tolerance.negate() ) ).not() ), () => {
+
+				const uvAny = lookupOrigin.add( deltaPixel.mul( sAny ) ).max( begin ).min( cellEnd.sub( 0.01 ) ).div( size ).toVar();
+				If( acceptHit( uvAny, sAny, raw ).and( acceptHit( uvAny, sAny, farRaw ) ), () => {
+
+					hit.assign( true );
+					validated.assign( true );
+					hitUV.assign( uvAny );
+					hitDepth.assign( raw );
+					hitS.assign( sAny );
+					Break();
+
+				} );
 
 			} );
 

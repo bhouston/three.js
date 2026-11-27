@@ -1,6 +1,27 @@
-import { Break, If, Loop, bool, float, fract, int, interleavedGradientNoise, rand, screenCoordinate, uniform, uv, vec2 } from 'three/tsl';
+import { WebGLCoordinateSystem } from 'three/webgpu';
+import { Break, Fn, If, Loop, bool, float, fract, getScreenPositionFromClip, int, interleavedGradientNoise, rand, screenCoordinate, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 
 const _temporalOffsets = [ 0, 0.5, 0.25, 0.75 ];
+
+/**
+ * Projects a view position to the UV and projected depth the rays are traced in, for any camera and depth buffer.
+ *
+ * @tsl
+ * @function
+ * @param {Node<vec3>} viewPosition - The position in view space.
+ * @param {Node<mat4>} projectionMatrix - The camera's projection matrix.
+ * @return {Node<vec3>} The UV and the projected depth.
+ */
+export const getRayPosition = /*@__PURE__*/ Fn( ( [ viewPosition, projectionMatrix ], builder ) => {
+
+	const clipPosition = projectionMatrix.mul( vec4( viewPosition, 1 ) ).toConst();
+	const depth = clipPosition.z.div( clipPosition.w );
+
+	const { coordinateSystem, reversedDepthBuffer } = builder.renderer;
+
+	return vec3( getScreenPositionFromClip( clipPosition ), coordinateSystem === WebGLCoordinateSystem && reversedDepthBuffer !== true ? depth.mul( 0.5 ).add( 0.5 ) : depth );
+
+} );
 
 /**
  * Marches a screen-space ray through the depth one sample at a time, inside the calling TSL function.

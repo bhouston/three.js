@@ -1,6 +1,6 @@
 import { RedFormat, RenderTarget, Vector2, RendererUtils, QuadMesh, Node, NodeMaterial, NodeUpdateType, UnsignedByteType } from 'three/webgpu';
-import { reference, getScreenPosition, getViewPosition, float, min, If, Fn, passTexture, uv, uniform, depthToViewZ, lightPosition, lightTargetPosition, mix, context, isBackgroundDepth, projectionDepth, getNormalFromDepth, vec3, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
-import { LinearTracer } from '../utils/traceLinear.js';
+import { reference, getViewPosition, float, min, If, Fn, passTexture, uv, uniform, depthToViewZ, lightPosition, lightTargetPosition, mix, context, isBackgroundDepth, projectionDepth, getNormalFromDepth, vec3 } from 'three/tsl';
+import { LinearTracer, getRayPosition } from '../utils/traceLinear.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -399,15 +399,10 @@ class SSSNode extends Node {
 
 			const near = this._cameraNear;
 			const far = this._cameraFar;
-			const perspective = this._camera.isPerspectiveCamera === true;
-			const reversed = builder.renderer.reversedDepthBuffer === true && builder.renderer.logarithmicDepthBuffer !== true;
-
-			const toDepth = perspective
-				? ( reversed ? viewZToReversedPerspectiveDepth : viewZToPerspectiveDepth )
-				: ( reversed ? viewZToReversedOrthographicDepth : viewZToOrthographicDepth );
+			const reversed = builder.renderer.reversedDepthBuffer === true;
 
 			const origin = vec3( uvNode, depth ).toConst();
-			const end = vec3( getScreenPosition( rayEndPosition, this._cameraProjectionMatrix ), toDepth( rayEndPosition.z, near, far ) ).toConst();
+			const end = getRayPosition( rayEndPosition, this._cameraProjectionMatrix ).toConst();
 			const delta = end.xy.sub( origin.xy ).toConst();
 
 			// the distance of the ray behind a surface, an occluder is at most `thickness` in front of the ray

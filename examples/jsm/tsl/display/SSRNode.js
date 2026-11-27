@@ -1,10 +1,10 @@
-import { DFGLUT, EnvironmentBRDF_MultiScattering, Fn, If, Loop, abs, bool, cross, distance, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ, viewZToPerspectiveDepth, viewZToReversedPerspectiveDepth, viewZToOrthographicDepth, viewZToReversedOrthographicDepth } from 'three/tsl';
+import { DFGLUT, EnvironmentBRDF_MultiScattering, Fn, If, Loop, abs, bool, cross, distance, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth, depthToViewZ } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
-import { LinearTracer } from '../utils/traceLinear.js';
+import { LinearTracer, getRayPosition } from '../utils/traceLinear.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -1166,14 +1166,10 @@ class SSRNode extends Node {
 
 			const near = this._cameraNear;
 			const far = this._cameraFar;
-			const reversed = builder.renderer.reversedDepthBuffer === true && builder.renderer.logarithmicDepthBuffer !== true;
-
-			const toDepth = this.camera.isPerspectiveCamera
-				? ( reversed ? viewZToReversedPerspectiveDepth : viewZToPerspectiveDepth )
-				: ( reversed ? viewZToReversedOrthographicDepth : viewZToOrthographicDepth );
+			const reversed = builder.renderer.reversedDepthBuffer === true;
 
 			const origin = vec3( uvPos, depth ).toConst();
-			const end = vec3( d1.mul( invResolution ), toDepth( d1viewPosition.z, near, far ) ).toConst();
+			const end = vec3( d1.mul( invResolution ), getRayPosition( d1viewPosition, this._cameraProjectionMatrix ).z ).toConst();
 
 			// the distance of the surface at a depth from the ray and the thickness it has to be within
 

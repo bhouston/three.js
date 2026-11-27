@@ -304,7 +304,7 @@
 					specular: coverageCascade( [ opaqueFragmentSource( ssrNode.getSpecularSource( accumulatedUpsampled ) ) ], defaultIndirectSpecular )
 				} );
 
-				const temporalAA = traa( beautyPass, scenePassDepth, scenePassVelocity, camera );
+				const temporalAA = traa( beautyPass, scenePassDepth, scenePassVelocity, camera, scenePass.getPreviousTextureNode( 'depth' ) );
 				const spatialAA = smaa( beautyPass );
 
 				function updateOutput() {

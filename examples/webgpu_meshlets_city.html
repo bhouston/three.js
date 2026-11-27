@@ -357,7 +357,7 @@
 						velocity: vec4( velocity, 0, viewZDelta )
 					} ) );
 
-					colorNode = traa( scenePass.getTextureNode( 'output' ), scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'velocity' ), camera );
+					colorNode = traa( scenePass.getTextureNode( 'output' ), scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'velocity' ), camera, scenePass.getPreviousTextureNode( 'depth' ) );
 
 				} else {
 

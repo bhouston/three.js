@@ -252,7 +252,7 @@
 
 				// TRAA with scene pass depth/velocity (includes volumetric)
 
-				const traaPass = traa( scenePassColor, prePassDepth, scenePassVelocity, camera );
+				const traaPass = traa( scenePassColor, prePassDepth, scenePassVelocity, camera, prePass.getPreviousTextureNode( 'depth' ) );
 
 				renderPipeline.outputNode = traaPass;
 

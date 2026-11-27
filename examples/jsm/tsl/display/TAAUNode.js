@@ -47,8 +47,9 @@ class TAAUNode extends Node {
 	 * @param {TextureNode} depthNode - A node that represents the scene's depth.
 	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
 	 * @param {Camera} camera - The camera the scene is rendered with.
+	 * @param {?TextureNode} [previousDepthNode=null] - The previous frame's depth, e.g. `pass.getPreviousTextureNode( 'depth' )`. By default the depth is copied each frame.
 	 */
-	constructor( beautyNode, depthNode, velocityNode, camera ) {
+	constructor( beautyNode, depthNode, velocityNode, camera, previousDepthNode = null ) {
 
 		super( 'vec4' );
 
@@ -234,8 +235,9 @@ class TAAUNode extends Node {
 		 * @private
 		 * @type {Reprojection}
 		 */
-		this._reprojection = new Reprojection( depthNode, camera );
-		this._reprojection.previousDepthNode.value.name = 'TAAU / Previous Depth';
+		this._reprojection = new Reprojection( depthNode, camera, previousDepthNode );
+
+		if ( previousDepthNode === null ) this._reprojection.previousDepthNode.value.name = 'TAAU / Previous Depth';
 
 	}
 
@@ -617,6 +619,7 @@ const _haltonOffsets = /*@__PURE__*/ computeHaltonOffsets( 32 );
  * @param {TextureNode} depthNode - A node that represents the scene's depth.
  * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
  * @param {Camera} camera - The camera the scene is rendered with.
+ * @param {?TextureNode} [previousDepthNode=null] - The previous frame's depth, e.g. `pass.getPreviousTextureNode( 'depth' )`. By default the depth is copied each frame.
  * @returns {TAAUNode}
  */
-export const taau = ( beautyNode, depthNode, velocityNode, camera ) => new TAAUNode( convertToTexture( beautyNode ), depthNode, velocityNode, camera );
+export const taau = ( beautyNode, depthNode, velocityNode, camera, previousDepthNode = null ) => new TAAUNode( convertToTexture( beautyNode ), depthNode, velocityNode, camera, previousDepthNode );

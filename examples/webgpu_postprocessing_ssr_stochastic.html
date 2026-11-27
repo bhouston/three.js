@@ -529,7 +529,7 @@
 			let temporal = temporalOutputs.get( source );
 			if ( temporal === undefined ) {
 
-				temporal = traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera );
+				temporal = traa( applyGrading( source ), scenePassDepth, scenePassVelocity, camera, scenePass.getPreviousTextureNode( 'depth' ) );
 				temporalOutputs.set( source, temporal );
 
 			}

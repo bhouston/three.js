@@ -96,7 +96,7 @@
 				} );
 				const scenePassVelocity = scenePass.getTextureNode( 'velocity' ).toInspector( 'Velocity' );
 
-				const traaNode = traa( scenePassColor, scenePassDepth, scenePassVelocity, camera );
+				const traaNode = traa( scenePassColor, scenePassDepth, scenePassVelocity, camera, scenePass.getPreviousTextureNode( 'depth' ) );
 			
 				renderPipeline.outputNode = traaNode;
 

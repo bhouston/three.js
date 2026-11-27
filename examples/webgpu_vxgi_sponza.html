@@ -38,7 +38,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample, screenUV, builtinGIContext } from 'three/tsl';
+			import { pass, mrt, normalView, velocity, vec3, vec4, packNormalToRGB, unpackRGBToNormal, sample, screenUV, builtinGIContext, viewZDelta } from 'three/tsl';
 			import { vxgi } from 'three/addons/lighting/vxgi/VXGINode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
@@ -186,7 +186,7 @@
 
 				prePass.setMRT( mrt( {
 					output: packNormalToRGB( normalView ),
-					velocity: velocity
+					velocity: vec4( velocity, 0, viewZDelta )
 				} ) );
 
 				const prePassNormal = sample( ( uv ) => {

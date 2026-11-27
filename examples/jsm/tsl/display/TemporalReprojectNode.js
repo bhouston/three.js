@@ -221,23 +221,20 @@ const createSampleBilinearTap = ( normalDecode ) => Fn( ( [
 	previousNormalNode,
 	resolution,
 	previousProjectionMatrixInverse,
-	previousCameraWorldMatrix,
-	previousCameraViewMatrix,
 	tapCoord,
 	bilinearWeight,
-	worldPosition,
-	worldNormal
+	previousViewPosition,
+	previousViewNormal
 ] ) => {
 
 	const color = textureLoad( historyTexture, tapCoord ).max( 0 );
 	const reprojDepth = textureLoad( previousDepthNode, tapCoord ).r;
 	const reprojViewPos = getViewPosition( vec2( tapCoord ).add( 0.5 ).div( resolution ), reprojDepth, previousProjectionMatrixInverse );
-	const reprojWorldPos = previousCameraWorldMatrix.mul( vec4( reprojViewPos, 1.0 ) ).xyz;
-	const reprojWorldNorm = normalDecode( textureLoad( previousNormalNode, tapCoord ) ).transformNormalByInverseViewMatrix( previousCameraViewMatrix );
+	const reprojViewNorm = normalDecode( textureLoad( previousNormalNode, tapCoord ) );
 
-	const planeDiff = abs( dot( reprojWorldPos.sub( worldPosition ), worldNormal ) ).toVar();
+	const planeDiff = abs( dot( reprojViewPos.sub( previousViewPosition ), previousViewNormal ) ).toVar();
 	planeDiff.divAssign( abs( reprojViewPos.z ) );
-	const normalConfidence = smoothstep( 0.95, 0.999, reprojWorldNorm.dot( worldNormal ) );
+	const normalConfidence = smoothstep( 0.95, 0.999, reprojViewNorm.dot( previousViewNormal ) );
 	const confidence = smoothstep( 0, 0.01, planeDiff ).oneMinus().mul( normalConfidence );
 	const weight = bilinearWeight.mul( confidence );
 
@@ -258,12 +255,10 @@ function bilinearHistoryTap( ctx, tapOffset, bilinearWeight ) {
 		ctx.previousNormalNode,
 		ctx.resolution,
 		ctx.previousProjectionMatrixInverse,
-		ctx.previousCameraWorldMatrix,
-		ctx.previousCameraViewMatrix,
 		ctx.reprojICoord.add( tapOffset ),
 		bilinearWeight,
-		ctx.worldPosition,
-		ctx.worldNormal
+		ctx.previousViewPosition,
+		ctx.previousViewNormal
 	);
 
 }
@@ -279,11 +274,9 @@ const createSampleHistory4Tap = ( normalDecode ) => Fn( ( [
 	previousNormalNode,
 	resolution,
 	previousProjectionMatrixInverse,
-	previousCameraWorldMatrix,
-	previousCameraViewMatrix,
 	reprojUV,
-	worldPosition,
-	worldNormal,
+	previousViewPosition,
+	previousViewNormal,
 	inputColor
 ] ) => {
 
@@ -307,11 +300,9 @@ const createSampleHistory4Tap = ( normalDecode ) => Fn( ( [
 		previousNormalNode,
 		resolution,
 		previousProjectionMatrixInverse,
-		previousCameraWorldMatrix,
-		previousCameraViewMatrix,
 		reprojICoord,
-		worldPosition,
-		worldNormal
+		previousViewPosition,
+		previousViewNormal
 	};
 
 	const tap00 = bilinearHistoryTap( tapCtx, ivec2( 0, 0 ), f00 );
@@ -450,7 +441,7 @@ class TemporalReprojectNode extends Node {
 	 * @param {TextureNode} beautyNode
 	 * @param {TextureNode} depthNode
 	 * @param {TextureNode} normalNode
-	 * @param {TextureNode} velocityNode
+	 * @param {TextureNode} velocityNode - The scene's velocity, with `viewZDelta` in the alpha channel.
 	 * @param {Camera} camera
 	 * @param {TemporalReprojectNodeOptions} [options]
 	 */
@@ -498,7 +489,9 @@ class TemporalReprojectNode extends Node {
 
 		this._resolution = uniform( new Vector2() );
 
-		this._reprojection = new Reprojection( depthNode, velocityNode, camera );
+		this._cameraNearFar = uniform( new Vector2() );
+
+		this._reprojection = new Reprojection( depthNode, camera );
 		this._reprojection.previousDepthNode.value.name = 'TemporalReprojectNode.previousDepth';
 
 		this.maxFrames = uniform( 32 );
@@ -579,6 +572,8 @@ class TemporalReprojectNode extends Node {
 		}
 
 		_rendererState = RendererUtils.resetRendererState( renderer, _rendererState );
+
+		this._cameraNearFar.value.set( this.camera.near, this.camera.far );
 
 		const needsRestart = this._reprojection.needsHistoryReset() ||
 			this._historyRenderTarget.width !== width || this._historyRenderTarget.height !== height;
@@ -718,23 +713,30 @@ class TemporalReprojectNode extends Node {
 			const viewPosition = getViewPosition( uvNode, depth, reprojection.cameraProjectionMatrixInverse ).toVar();
 			const worldPosition = reprojection.cameraWorldMatrix.mul( vec4( viewPosition, 1.0 ) ).xyz.toVar();
 
+			// The surface in the previous camera's view space, following both camera and object motion.
+			// `historyUV` is reused below for the stretch guard, so it is computed once here.
+			const surfaceVelocity = this.velocityNode.load( screenTexel );
+			const historyUV = reprojection.getHistoryUV( uvNode, surfaceVelocity.xy ).toVar();
+			const previousViewZ = reprojection.getExpectedPreviousViewZ( depth, surfaceVelocity.w, this._cameraNearFar );
+			const previousViewRay = getViewPosition( historyUV, depth, reprojection.previousCameraProjectionMatrixInverse );
+			const previousViewPosition = ( this.camera.isOrthographicCamera
+				? vec3( previousViewRay.xy, previousViewZ )
+				: previousViewRay.mul( previousViewZ.div( previousViewRay.z ) ) ).toVar();
+			const previousViewNormal = normalize( reprojection.previousCameraViewMatrix.mul( vec4( worldNormal, 0 ) ).xyz ).toVar();
+
 			const sampleHistory = ( reprojUV ) => sampleHistory4Tap(
 				this._historyTextureNode,
 				reprojection.previousDepthNode,
 				this._previousNormalNode,
 				this._resolution,
 				reprojection.previousCameraProjectionMatrixInverse,
-				reprojection.previousCameraWorldMatrix,
-				reprojection.previousCameraViewMatrix,
 				reprojUV,
-				worldPosition,
-				worldNormal,
+				previousViewPosition,
+				previousViewNormal,
 				inputColor.rgb
 			);
 
-			// Surface-velocity reprojection — the base history for both modes. `historyUV` is
-			// reused below for the stretch guard, so it is computed once here.
-			const historyUV = reprojection.getHistoryUV( uvNode, screenTexel ).toVar();
+			// Surface-velocity reprojection — the base history for both modes.
 			const motionFactor = uvNode.sub( historyUV ).mul( this._resolution ).length().div( float( this.maxVelocityLength ) ).saturate();
 
 			const surf = sampleHistory( historyUV );
@@ -917,7 +919,7 @@ export default TemporalReprojectNode;
  * @param {TextureNode} beautyNode
  * @param {TextureNode} depthNode
  * @param {TextureNode} normalNode
- * @param {TextureNode} velocityNode
+ * @param {TextureNode} velocityNode - The scene's velocity, with `viewZDelta` in the alpha channel.
  * @param {Camera} camera
  * @param {TemporalReprojectNodeOptions} [options]
  * @returns {TemporalReprojectNode}

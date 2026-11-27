@@ -45,7 +45,7 @@ class TAAUNode extends Node {
 	 *
 	 * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
 	 * @param {TextureNode} depthNode - A node that represents the scene's depth.
-	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
 	 * @param {Camera} camera - The camera the scene is rendered with.
 	 */
 	constructor( beautyNode, depthNode, velocityNode, camera ) {
@@ -99,13 +99,13 @@ class TAAUNode extends Node {
 		this.camera = camera;
 
 		/**
-		 * When the difference between the current and previous depth goes above this threshold,
-		 * the history is considered invalid.
+		 * The history is rejected when the previous frame's surface is nearer than the
+		 * expected one by more than this fraction of its distance.
 		 *
 		 * @type {number}
-		 * @default 0.0005
+		 * @default 0.002
 		 */
-		this.depthThreshold = 0.0005;
+		this.depthThreshold = 0.002;
 
 		/**
 		 * The depth difference within the 3×3 neighborhood to consider a pixel as an edge.
@@ -234,7 +234,7 @@ class TAAUNode extends Node {
 		 * @private
 		 * @type {Reprojection}
 		 */
-		this._reprojection = new Reprojection( depthNode, velocityNode, camera );
+		this._reprojection = new Reprojection( depthNode, camera );
 		this._reprojection.previousDepthNode.value.name = 'TAAUNode.previousDepth';
 
 	}
@@ -472,14 +472,20 @@ class TAAUNode extends Node {
 
 			// reproject using the velocity sampled at the dilated depth tap
 
-			const historyUV = this._reprojection.getHistoryUV( uvNode, closestPositionTexel ).toConst();
-			const previousDepth = this._reprojection.getPreviousDepth( historyUV, this._cameraNearFar );
+			const surfaceVelocity = this.velocityNode.load( closestPositionTexel );
+			const historyUV = this._reprojection.getHistoryUV( uvNode, surfaceVelocity.xy ).toConst();
+
+			// the expected and visible surface distances in the previous camera's view space
+
+			const expectedDistance = this._reprojection.getExpectedPreviousViewZ( this.depthNode.load( closestPositionTexel ).r, surfaceVelocity.w, this._cameraNearFar ).negate().toConst();
+			const depthChange = expectedDistance.sub( this._reprojection.getPreviousViewZ( historyUV ).negate() ).toConst();
+			const depthTolerance = expectedDistance.mul( this.depthThreshold ).toConst();
 
 			// history validity
 
 			const isValidUV = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() );
 			const isEdge = farthestDepth.sub( closestDepth ).greaterThan( this.edgeDepthDiff );
-			const isDisocclusion = closestDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
+			const isDisocclusion = depthChange.greaterThan( depthTolerance );
 			const hasValidHistory = isValidUV.and( isEdge.or( isDisocclusion.not() ) );
 
 			// 9-tap Blackman-Harris (Gaussian approximation) reconstruction
@@ -545,7 +551,7 @@ class TAAUNode extends Node {
 			// existing `isDisocclusion` is one-sided (only fires when
 			// the scene moves farther), but new geometry appearing
 			// closer also makes the history stale.
-			const isDepthChanged = closestDepth.sub( previousDepth ).abs().greaterThan( this.depthThreshold );
+			const isDepthChanged = depthChange.abs().greaterThan( depthTolerance );
 			const canLock = isValidUV.and( isDepthChanged.not() );
 			const gatedThinFeature = canLock.select( thinFeature, float( 0 ) );
 
@@ -609,7 +615,7 @@ const _haltonOffsets = /*@__PURE__*/ computeHaltonOffsets( 32 );
  * @function
  * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
  * @param {TextureNode} depthNode - A node that represents the scene's depth.
- * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+ * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
  * @param {Camera} camera - The camera the scene is rendered with.
  * @returns {TAAUNode}
  */

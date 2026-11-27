@@ -41,7 +41,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, normalView, diffuseColor, velocity, add, vec4, packNormalToRGB, unpackRGBToNormal, sample } from 'three/tsl';
+			import { pass, mrt, output, normalView, diffuseColor, velocity, add, vec4, packNormalToRGB, unpackRGBToNormal, sample, viewZDelta } from 'three/tsl';
 			import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 			import { temporalDenoise } from 'three/addons/tsl/display/DenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -131,7 +131,7 @@
 					output: output,
 					diffuseColor: diffuseColor,
 					normal: packNormalToRGB( normalView ),
-					velocity: velocity
+					velocity: vec4( velocity, 0, viewZDelta )
 				} ) );
 
 				const scenePassColor = scenePass.getTextureNode( 'output' );

@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { pass, mrt, output, velocity, fog, pmremTexture, positionWorld, positionView, cameraPosition, cameraViewMatrix, cameraProjectionMatrix, modelViewProjection, overrideNodes, context, uniform, vec3, vec4, select, abs, exp, max } from 'three/tsl';
+			import { pass, mrt, output, velocity, fog, pmremTexture, positionWorld, positionView, cameraPosition, cameraViewMatrix, cameraProjectionMatrix, modelViewProjection, overrideNodes, context, uniform, vec3, vec4, select, abs, exp, max, viewZDelta } from 'three/tsl';
 
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
@@ -354,7 +354,7 @@
 					scenePass = pass( scene, camera, { samples: 0 } );
 					scenePass.setMRT( mrt( {
 						output: output,
-						velocity: velocity
+						velocity: vec4( velocity, 0, viewZDelta )
 					} ) );
 
 					colorNode = traa( scenePass.getTextureNode( 'output' ), scenePass.getTextureNode( 'depth' ), scenePass.getTextureNode( 'velocity' ), camera );

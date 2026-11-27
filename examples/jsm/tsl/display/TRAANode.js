@@ -35,7 +35,7 @@ class TRAANode extends Node {
 	 *
 	 * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
 	 * @param {TextureNode} depthNode - A node that represents the scene's depth.
-	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+	 * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
 	 * @param {Camera} camera - The camera the scene is rendered with.
 	 */
 	constructor( beautyNode, depthNode, velocityNode, camera ) {
@@ -89,13 +89,13 @@ class TRAANode extends Node {
 		this.camera = camera;
 
 		/**
-		 * When the difference between the current and previous depth goes above this threshold,
-		 * the history is considered invalid.
+		 * The history is rejected when the previous frame's surface is nearer than the
+		 * expected one by more than this fraction of its distance.
 		 *
 		 * @type {number}
-		 * @default 0.0005
+		 * @default 0.002
 		 */
-		this.depthThreshold = 0.0005;
+		this.depthThreshold = 0.002;
 
 		/**
 		 * The depth difference within the 3×3 neighborhood to consider a pixel as an edge.
@@ -213,7 +213,7 @@ class TRAANode extends Node {
 		 * @private
 		 * @type {Reprojection}
 		 */
-		this._reprojection = new Reprojection( depthNode, velocityNode, camera );
+		this._reprojection = new Reprojection( depthNode, camera );
 		this._reprojection.previousDepthNode.value.name = 'TRAANode.previousDepth';
 
 		/**
@@ -472,17 +472,24 @@ class TRAANode extends Node {
 			const closestPositionTexel = currentDepth.get( 'closestPositionTexel' );
 			const farthestDepth = currentDepth.get( 'farthestDepth' );
 
-			// sample the previous depth
+			const surfaceVelocity = this.velocityNode.load( closestPositionTexel );
+			const historyUV = this._reprojection.getHistoryUV( uvNode, surfaceVelocity.xy ).toConst();
 
-			const historyUV = this._reprojection.getHistoryUV( uvNode, closestPositionTexel ).toConst();
-			const previousDepth = this._reprojection.getPreviousDepth( historyUV, this._cameraNearFar );
+			// compare the expected and visible surface distances in the previous camera's view space
 
-			// history is considered valid when the UV is in range and there's no disocclusion except on edges
+			const { x: near, y: far } = this._reprojection.previousCameraNearFar;
+			const expectedDistance = this._reprojection.getExpectedPreviousViewZ( this.depthNode.load( closestPositionTexel ).r, surfaceVelocity.w, this._cameraNearFar ).negate().toConst();
+			const sampledDistance = this._reprojection.getPreviousViewZ( historyUV ).negate();
+			const isDisocclusion = expectedDistance.sub( sampledDistance ).greaterThan( expectedDistance.mul( this.depthThreshold ) );
 
-			const isValidUV = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() );
+			// a surface outside the previous camera's clip range has no history, even on edges
+
+			const isValidHistoryPosition = historyUV.greaterThanEqual( 0 ).all().and( historyUV.lessThanEqual( 1 ).all() )
+				.and( expectedDistance.greaterThanEqual( near.mul( float( 1 ).sub( this.depthThreshold ) ) ) )
+				.and( expectedDistance.lessThanEqual( far.mul( float( 1 ).add( this.depthThreshold ) ) ) );
+
 			const isEdge = farthestDepth.sub( closestDepth ).greaterThan( this.edgeDepthDiff );
-			const isDisocclusion = closestDepth.sub( previousDepth ).greaterThan( this.depthThreshold );
-			const hasValidHistory = isValidUV.and( isEdge.or( isDisocclusion.not() ) );
+			const hasValidHistory = isValidHistoryPosition.and( isEdge.or( isDisocclusion.not() ) );
 
 			// sample the current and previous colors
 
@@ -555,7 +562,7 @@ const _haltonOffsets = /*@__PURE__*/ computeHaltonOffsets( 32 );
  * @function
  * @param {TextureNode} beautyNode - The texture node that represents the input of the effect.
  * @param {TextureNode} depthNode - A node that represents the scene's depth.
- * @param {TextureNode} velocityNode - A node that represents the scene's velocity.
+ * @param {TextureNode} velocityNode - A node that represents the scene's velocity, with `viewZDelta` in the alpha channel.
  * @param {Camera} camera - The camera the scene is rendered with.
  * @returns {TRAANode}
  */

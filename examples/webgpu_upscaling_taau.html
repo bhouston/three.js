@@ -39,7 +39,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { mrt, output, pass, velocity } from 'three/tsl';
+			import { mrt, output, pass, velocity, vec4, viewZDelta } from 'three/tsl';
 			import { taau } from 'three/addons/tsl/display/TAAUNode.js';
 			import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 
@@ -117,7 +117,7 @@
 				scenePass.setResolutionScale( params.resolutionScale );
 				scenePass.setMRT( mrt( {
 					output: output,
-					velocity: velocity
+					velocity: vec4( velocity, 0, viewZDelta )
 				} ) );
 
 				const scenePassColor = scenePass.getTextureNode( 'output' ).toInspector( 'Color' );

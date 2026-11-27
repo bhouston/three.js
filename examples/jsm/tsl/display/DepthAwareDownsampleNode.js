@@ -103,7 +103,7 @@ class DepthAwareDownsampleNode extends Node {
 		this._renderTarget = new RenderTarget( 1, 1, { depthBuffer: false, count: names.length + 1 } );
 
 		const depthTexture = this._renderTarget.textures[ 0 ];
-		depthTexture.name = 'DepthAwareDownsample.depth';
+		depthTexture.name = 'Depth-Aware Downsample / Depth';
 		depthTexture.type = FloatType;
 		depthTexture.format = RedFormat;
 		depthTexture.minFilter = NearestFilter;
@@ -129,7 +129,7 @@ class DepthAwareDownsampleNode extends Node {
 		for ( let i = 0; i < names.length; i ++ ) {
 
 			const texture = this._renderTarget.textures[ i + 1 ];
-			texture.name = 'DepthAwareDownsample.' + names[ i ];
+			texture.name = 'Depth-Aware Downsample / ' + names[ i ];
 
 			this._textureNodes[ names[ i ] ] = passTexture( this, texture );
 

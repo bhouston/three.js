@@ -60,7 +60,7 @@ class HiZNode extends Node {
 		this.updateBeforeType = NodeUpdateType.FRAME;
 
 		this.texture = new StorageTexture();
-		this.texture.name = 'HiZNode.Pyramid';
+		this.texture.name = 'Hi-Z / Pyramid';
 		this.texture.type = FloatType;
 		this.texture.format = RGFormat;
 		this.texture.minFilter = NearestFilter;

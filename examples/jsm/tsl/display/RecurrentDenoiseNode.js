@@ -339,8 +339,8 @@ class RecurrentDenoiseNode extends Node {
 		this._viewMatrix = uniform( new Matrix4().copy( camera.matrixWorldInverse ) );
 
 		this._renderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 2 } );
-		this._renderTarget.textures[ 0 ].name = 'RecurrentDenoiseNode.output';
-		this._renderTarget.textures[ 1 ].name = 'RecurrentDenoiseNode.frameCount';
+		this._renderTarget.textures[ 0 ].name = 'Recurrent Denoise / Output';
+		this._renderTarget.textures[ 1 ].name = 'Recurrent Denoise / Frame Count';
 
 		this._material = new NodeMaterial();
 		this._material.name = 'RecurrentDenoise';
@@ -416,7 +416,7 @@ class RecurrentDenoiseNode extends Node {
 
 		renderer.setRenderTarget( this._renderTarget );
 		_quadMesh.material = this._material;
-		_quadMesh.name = 'RecurrentDenoise';
+		_quadMesh.name = 'Recurrent Denoise';
 		_quadMesh.render( renderer );
 		renderer.setRenderTarget( null );
 

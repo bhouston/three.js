@@ -407,8 +407,8 @@ class SSRNode extends Node {
 		 * @type {RenderTarget}
 		 */
 		this._ssrRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 2 } );
-		this._ssrRenderTarget.textures[ 0 ].name = 'SSRNode.SSR';
-		this._ssrRenderTarget.textures[ 1 ].name = 'SSRNode.HitDistance';
+		this._ssrRenderTarget.textures[ 0 ].name = 'SSR / Reflections';
+		this._ssrRenderTarget.textures[ 1 ].name = 'SSR / Hit Distance';
 
 		/**
 		 * The render target the rays are traced into when they are reused: the radiance and ray
@@ -418,9 +418,9 @@ class SSRNode extends Node {
 		 * @type {RenderTarget}
 		 */
 		this._traceRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, count: 3, minFilter: NearestFilter, magFilter: NearestFilter } );
-		this._traceRenderTarget.textures[ 0 ].name = 'SSRNode.Trace';
-		this._traceRenderTarget.textures[ 1 ].name = 'SSRNode.TraceHitDistance';
-		this._traceRenderTarget.textures[ 2 ].name = 'SSRNode.Hit';
+		this._traceRenderTarget.textures[ 0 ].name = 'SSR / Trace';
+		this._traceRenderTarget.textures[ 1 ].name = 'SSR / Trace Hit Distance';
+		this._traceRenderTarget.textures[ 2 ].name = 'SSR / Hit';
 		this._traceRenderTarget.textures[ 2 ].type = FloatType; // half floats cannot hold the pdf of a smooth surface
 
 		/**
@@ -443,7 +443,7 @@ class SSRNode extends Node {
 		 * @type {RenderTarget}
 		 */
 		this._blurRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType, minFilter: LinearMipmapLinearFilter, magFilter: LinearFilter } );
-		this._blurRenderTarget.texture.name = 'SSRNode.Blur';
+		this._blurRenderTarget.texture.name = 'SSR / Blur';
 		this._blurRenderTarget.texture.mipmaps.push( {}, {}, {}, {}, {} );
 
 		/**
@@ -972,7 +972,7 @@ class SSRNode extends Node {
 		// ssr
 
 		renderer.setRenderTarget( this._reusesRays ? this._traceRenderTarget : ssrRenderTarget );
-		_quadMesh.name = 'SSR [ Reflections ]';
+		_quadMesh.name = 'SSR / Trace';
 		_quadMesh.render( renderer );
 
 		// resolve the reused rays (optional)
@@ -982,7 +982,7 @@ class SSRNode extends Node {
 			_quadMesh.material = this._resolveMaterial;
 
 			renderer.setRenderTarget( ssrRenderTarget );
-			_quadMesh.name = 'SSR [ Resolve ]';
+			_quadMesh.name = 'SSR / Resolve';
 			_quadMesh.render( renderer );
 
 		}
@@ -999,7 +999,7 @@ class SSRNode extends Node {
 
 				this._blurSpread.value = i;
 				renderer.setRenderTarget( blurRenderTarget, 0, i );
-				_quadMesh.name = 'SSR [ Blur Level ' + i + ' ]';
+				_quadMesh.name = `SSR / Blur / Mip ${ i }`;
 				_quadMesh.render( renderer );
 
 			}

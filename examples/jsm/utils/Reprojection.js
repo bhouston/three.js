@@ -51,7 +51,7 @@ class Reprojection {
 		if ( previousDepthNode === null ) {
 
 			this._previousDepthRenderTarget = _createPreviousDepthRenderTarget( true );
-			this._previousDepthRenderTarget.depthTexture.name = 'Reprojection.previousDepth';
+			this._previousDepthRenderTarget.depthTexture.name = 'Reprojection / Previous Depth';
 
 			previousDepthNode = texture( this._previousDepthRenderTarget.depthTexture );
 

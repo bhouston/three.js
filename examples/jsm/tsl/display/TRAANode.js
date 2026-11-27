@@ -208,7 +208,7 @@ class TRAANode extends Node {
 		 * @type {?RenderTarget}
 		 */
 		this._historyRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
-		this._historyRenderTarget.texture.name = 'TRAANode.history';
+		this._historyRenderTarget.texture.name = 'TRAA / History';
 
 		/**
 		 * The render target for the resolve.
@@ -217,7 +217,7 @@ class TRAANode extends Node {
 		 * @type {?RenderTarget}
 		 */
 		this._resolveRenderTarget = new RenderTarget( 1, 1, { depthBuffer: false, type: HalfFloatType } );
-		this._resolveRenderTarget.texture.name = 'TRAANode.resolve';
+		this._resolveRenderTarget.texture.name = 'TRAA / Resolve';
 
 		/**
 		 * Material used for the resolve step.
@@ -226,7 +226,7 @@ class TRAANode extends Node {
 		 * @type {NodeMaterial}
 		 */
 		this._resolveMaterial = new NodeMaterial();
-		this._resolveMaterial.name = 'TRAA.resolve';
+		this._resolveMaterial.name = 'TRAA / Resolve';
 
 		/**
 		 * The result of the effect is represented as a separate texture node.
@@ -294,7 +294,7 @@ class TRAANode extends Node {
 		 * @type {Reprojection}
 		 */
 		this._reprojection = new Reprojection( depthNode, camera );
-		this._reprojection.previousDepthNode.value.name = 'TRAANode.previousDepth';
+		this._reprojection.previousDepthNode.value.name = 'TRAA / Previous Depth';
 
 		/**
 		 * The node used to render the scene's velocity.
@@ -330,7 +330,7 @@ class TRAANode extends Node {
 		if ( this._debugRenderTarget === null ) {
 
 			this._debugRenderTarget = new RenderTarget( this._resolveRenderTarget.width, this._resolveRenderTarget.height, { depthBuffer: false } );
-			this._debugRenderTarget.texture.name = 'TRAANode.debug';
+			this._debugRenderTarget.texture.name = 'TRAA / Debug';
 
 		}
 
@@ -484,7 +484,7 @@ class TRAANode extends Node {
 
 			renderer.setRenderTarget( this._debugRenderTarget );
 			_quadMesh.material = this._debugMaterial;
-			_quadMesh.name = 'TRAA.debug';
+			_quadMesh.name = 'TRAA / Debug';
 			_quadMesh.render( renderer );
 
 		}

@@ -63,11 +63,13 @@
 		const params = {
 			output: 'Beauty', enabled: true, quality: 0.5, intensity: 1,
 			maxDistance: 3, thickness: 0.2, binaryRefine: false,
-			roughness: 1, denoise: true, alphaThreshold: 1
+			roughness: 1, denoise: true, alphaThreshold: 1, aoMap: false
 		};
 
 		let camera, scene, model, renderer, renderPipeline;
 		let controls;
+
+		const aoMaps = new Map();
 
 		init();
 
@@ -100,9 +102,13 @@
 						// Avoid overdrawing
 						object.material.side = THREE.FrontSide;
 
+						if ( aoMaps.has( object.material ) === false ) aoMaps.set( object.material, object.material.aoMap );
+
 					}
 
 				} );
+
+				updateAO();
 
 				model.position.y = 0.1;
 				scene.add( model );
@@ -303,6 +309,7 @@
 
 			const sceneGui = renderer.inspector.createParameters( 'Scene' );
 			sceneGui.add( params, 'alphaThreshold', 0, 1, 0.01 ).name( 'Alpha threshold' ).info( 'Fragments of transparent materials below this alpha are not traced and reflect the environment.' ).onChange( value => alphaThreshold.value = value );
+			sceneGui.add( params, 'aoMap' ).name( 'AO map' ).onChange( updateAO );
 			sceneGui.add( params, 'roughness', 0, 1 ).name( 'Roughness' ).onChange( value => {
 
 				model?.traverse( object => {
@@ -323,6 +330,17 @@
 				reflection.binaryRefine = params.binaryRefine;
 				reflection.maxDistance.value = params.maxDistance;
 				reflection.thickness.value = params.thickness;
+
+			}
+
+		}
+
+		function updateAO() {
+
+			for ( const [ material, aoMap ] of aoMaps ) {
+
+				material.aoMap = params.aoMap ? aoMap : null;
+				material.needsUpdate = true;
 
 			}
 

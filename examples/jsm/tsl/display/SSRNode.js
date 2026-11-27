@@ -887,7 +887,7 @@ class SSRNode extends Node {
 
 			const viewPosition = getViewPosition( uvPos, depth, this._cameraProjectionMatrixInverse ).toVar();
 			const worldPosition = this._cameraWorldMatrix.mul( vec4( viewPosition, 1.0 ) ).xyz.toVar();
-			const viewNormal = this.normalNode.rgb.toVar();
+			const viewNormal = this.normalNode.toVar();
 
 			const viewIncidentDir = ( ( this.camera.isPerspectiveCamera ) ? normalize( viewPosition ) : vec3( 0, 0, - 1 ) ).toVar();
 
@@ -1156,10 +1156,10 @@ class SSRNode extends Node {
 
 					return isBackgroundDepth( d ).not()
 						.and( away.lessThanEqual( tolerance ) )
-						.and( dot( viewReflectDir, this.normalNode.sample( uvS ).rgb ).lessThan( 0 ) );
+						.and( dot( viewReflectDir, this.normalNode.sample( uvS ) ).lessThan( 0 ) );
 
 				},
-				refineHit: ( uvS ) => dot( viewReflectDir, this.normalNode.sample( uvS ).rgb ).lessThan( 0 ),
+				refineHit: ( uvS ) => dot( viewReflectDir, this.normalNode.sample( uvS ) ).lessThan( 0 ),
 				passRejected: true
 			} );
 
@@ -1186,7 +1186,7 @@ class SSRNode extends Node {
 					withinRange.assign( withinRange.and( isBackgroundDepth( hitD ).not() )
 						.and( pointToLineDistance( vP, viewPosition, d1viewPosition ).lessThanEqual( tk ) ) );
 
-					withinRange.assign( withinRange.and( dot( viewReflectDir, this.normalNode.sample( uvS ).rgb ).lessThan( 0 ) ) );
+					withinRange.assign( withinRange.and( dot( viewReflectDir, this.normalNode.sample( uvS ) ).lessThan( 0 ) ) );
 
 				}
 

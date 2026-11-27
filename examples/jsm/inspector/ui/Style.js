@@ -10,6 +10,7 @@ export class Style {
 		--profiler-header-background: #2a2a33aa;
 		--profiler-header: #2a2a33;
 		--profiler-border: #4a4a5a;
+		--chart-background: var(--profiler-background);
 		--text-primary: #e0e0e0;
 		--text-secondary: #9a9aab;
 		--color-accent: #00aaff;
@@ -1102,8 +1103,7 @@ export class Style {
 		-webkit-user-select: none;
 	}
 
-	.list-item-wrapper:has(> .list-item-row .graph-container),
-	.list-item-wrapper:has(> .list-item-row .frame-diagram) {
+	.list-item-wrapper:has(> .list-item-row .graph-container) {
 		margin-left: -1.5em;
 	}
 
@@ -1132,6 +1132,10 @@ export class Style {
 	.list-item-row.collapsible {
 		background-color: rgba(0, 170, 255, 0.15) !important;
 		min-height: 23px;
+	}
+
+	.list-item-row.collapsible.group {
+		background-color: rgba(0, 170, 255, 0.07) !important;
 	}
 
 	.list-item-row.collapsible.alert,
@@ -1165,11 +1169,6 @@ export class Style {
 	.list-item-cell:not(:first-child) {
 		justify-content: flex-end;
 		font-weight: 600;
-	}
-
-	.frame-diagram-span.aggregate-timing {
-		font-style: italic;
-		font-weight: normal;
 	}
 
 	.list-header {
@@ -1245,106 +1244,125 @@ export class Style {
 	.list-container.parameters .list-item-row:not(.collapsible) {
 	}
 
-	.frame-diagram-track {
-		display: flex;
-		align-items: center;
-		margin-bottom: 4px;
+	.performance-content .value.secondary {
+		margin-left: 12px;
+		color: var(--text-primary);
+		opacity: 0.8;
+		font-weight: normal;
 	}
 
-	.frame-diagram-label {
-		width: 36px;
-		flex-shrink: 0;
-		color: var(--text-secondary);
+	.performance-content .list-header-cell:nth-child(2),
+	.performance-content .list-item-cell:nth-child(2) {
+		color: var(--color-yellow);
 	}
 
-	.frame-diagram-content {
-		position: relative;
-		flex: 1;
+	.performance-content .list-header-cell:nth-child(3),
+	.performance-content .list-item-cell:nth-child(3) {
+		color: var(--color-green);
+	}
+
+	.list-item-row:has(.frame-timeline) > .list-item-cell:first-child {
+		min-width: 0;
+	}
+
+	.list-item-row:has(.frame-timeline) > .list-item-cell:first-child > .value {
 		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
-	.frame-diagram-period {
+	.list-item-cell:has(> .frame-timeline) {
+		align-self: stretch;
+		align-items: stretch;
+		margin: -4px 0; /* fill the height of the row */
+	}
+
+	.performance-content {
+		--frame-timeline-width: min(60cqw, 100cqw - 372px);
+	}
+
+	/* the timeline has a darker background, up to the padding of the rows */
+	.frame-stats {
+		background: linear-gradient(var(--chart-background), var(--chart-background)) 100% 0 / calc(var(--frame-timeline-width) + 8px) 100% no-repeat;
+		border-radius: 3px;
+		position: relative;
+	}
+
+	/* the dashed lines are not interrupted by the rows */
+	.frame-stats::before {
+		content: '';
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		border-left: 1px dashed var(--text-secondary);
-	}
-
-	.frame-diagram-axis {
-		position: relative;
-		height: 14px;
-		margin-left: 36px;
-		overflow: hidden;
-	}
-
-	.frame-diagram-tick {
-		position: absolute;
-		padding-left: 3px;
-		border-left: 1px solid var(--profiler-border);
-		color: var(--text-secondary);
-		font-size: 10px;
-		line-height: 14px;
-		white-space: nowrap;
-	}
-
-	/* only the hue of the color is used, with a lightness and chroma that suit the dark theme */
-	.frame-diagram-span {
-		position: absolute;
-		box-sizing: border-box;
-		min-width: 1px;
-		overflow: hidden;
-		padding-left: 3px;
-		background-color: oklch(from var(--span-color) 0.36 0.08 h);
-		border: 1px solid oklch(from var(--span-color) 0.7 0.14 h);
-		border-radius: 2px;
-		color: var(--text-primary);
-		font-size: 10px;
-		line-height: 15px;
-		font-style: normal;
-		font-weight: 600;
-		white-space: nowrap;
-	}
-
-	.frame-diagram-group {
-		cursor: pointer;
-		user-select: none;
-		-webkit-user-select: none;
-	}
-
-	.frame-diagram-tooltip {
-		transform: none;
-		opacity: 1;
-		visibility: visible;
-		transition: none;
+		right: 8px;
+		width: var(--frame-timeline-width);
+		background: repeating-linear-gradient(to right, rgba(255, 255, 255, 0.2) 0 1px, transparent 1px var(--frame-timeline-step, 100%));
+		mask: repeating-linear-gradient(to bottom, black 0 3px, transparent 3px 6px);
 		pointer-events: none;
-		white-space: pre-line;
-		overflow-wrap: anywhere;
-		max-width: min(400px, calc(100vw - 16px));
 	}
 
-	.frame-diagram-pipeline {
-		background-color: transparent;
-		background-image: linear-gradient( color-mix(in srgb, var(--span-color) 40%, transparent), transparent );
-		border-color: var(--span-color);
+	.frame-timeline {
+		position: relative;
+		width: 100%;
+		overflow: hidden;
 	}
 
-	.graph-container, .frame-diagram {
+	.frame-timeline > div {
+		position: absolute;
+		bottom: calc(50% + 1px);
+		min-width: 1px;
+		height: 7px;
+		border-radius: 2px;
+		background-color: var(--color-yellow);
+	}
+
+	.frame-timeline > .gpu {
+		top: calc(50% + 1px);
+		background-color: var(--color-green);
+	}
+
+	.list-item-row.alert .frame-timeline > div {
+		display: none;
+	}
+
+	/* ten ticks in each step, the one in the middle is taller. The layers don't overlap, they are translucent */
+	.frame-timeline-ruler {
+		--tick: rgba(255, 255, 255, 0.3) 0 1px, transparent 1px;
+		position: relative;
+		align-self: stretch;
+		margin-bottom: -6px; /* padding of the header */
+		overflow: hidden;
+		background:
+			repeating-linear-gradient(to right, var(--tick) var(--frame-timeline-step, 100%)) 0 0 / 100% calc(100% - 10px) no-repeat,
+			repeating-linear-gradient(to right, var(--tick) calc(var(--frame-timeline-step, 100%) / 2)) 0 calc(100% - 4px) / 100% 6px no-repeat,
+			repeating-linear-gradient(to right, var(--tick) calc(var(--frame-timeline-step, 100%) / 10)) 0 100% / 100% 4px no-repeat;
+	}
+
+	.frame-timeline-ruler > span {
+		position: absolute;
+		padding-left: 4px;
+		font-size: 10px;
+		font-weight: normal;
+		white-space: nowrap;
+	}
+
+	.list-item-wrapper:not(.header-wrapper) > .list-item-row:has(.graph-container) {
+		background-color: var(--chart-background);
+	}
+
+	.graph-container {
 		width: 100%;
 		box-sizing: border-box;
 		padding: 8px 0;
 		position: relative;
 	}
 
-	.graph-svg, .graph-canvas, .frame-diagram-content {
-		background-color: var(--profiler-header);
-		border: 1px solid var(--profiler-border);
-		border-radius: 4px;
-	}
-
 	.graph-svg, .graph-canvas {
 		width: 0;
 		min-width: 100%;
 		height: 80px;
+		background-color: color-mix(in srgb, var(--chart-background), black 15%);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 4px;
 		display: block;
 	}
 

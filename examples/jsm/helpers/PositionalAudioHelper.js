@@ -118,12 +118,15 @@ class PositionalAudioHelper extends Line {
 			positionAttribute.setXYZ( start, 0, 0, 0 );
 			count ++;
 
-			for ( i = from; i < to; i += step ) {
+			for ( i = 0; i < divisions; i ++ ) {
 
 				stride = start + count;
 
-				positionAttribute.setXYZ( stride, Math.sin( i ) * range, 0, Math.cos( i ) * range );
-				positionAttribute.setXYZ( stride + 1, Math.sin( Math.min( i + step, to ) ) * range, 0, Math.cos( Math.min( i + step, to ) ) * range );
+				const a1 = from + i * step;
+				const a2 = from + ( i + 1 ) * step;
+
+				positionAttribute.setXYZ( stride, Math.sin( a1 ) * range, 0, Math.cos( a1 ) * range );
+				positionAttribute.setXYZ( stride + 1, Math.sin( a2 ) * range, 0, Math.cos( a2 ) * range );
 				positionAttribute.setXYZ( stride + 2, 0, 0, 0 );
 
 				count += 3;
@@ -156,6 +159,8 @@ class PositionalAudioHelper extends Line {
 	 * method whenever this instance is no longer used in your app.
 	 */
 	dispose() {
+
+		super.dispose();
 
 		this.geometry.dispose();
 		this.material[ 0 ].dispose();

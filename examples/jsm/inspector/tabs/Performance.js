@@ -1,21 +1,25 @@
-import { NodeUtils } from 'three/webgpu';
 import { Tab } from '../ui/Tab.js';
 import { List } from '../ui/List.js';
 import { Graph } from '../ui/Graph.js';
-import { FrameDiagram } from '../ui/FrameDiagram.js';
 import { Item } from '../ui/Item.js';
-import { createValueSpan, setText, info } from '../ui/utils.js';
+import { createValueSpan, setText } from '../ui/utils.js';
 
-// returns a stable hue for the name before the first dash, so calls with the same prefix
-// share a hue, and keep it between frames and runs
+// creates the cell of a row in the timeline, with a bar for each type
 
-function getColor( name, type ) {
+function createTimelineCell( ...types ) {
 
-	if ( name === 'Render Pipeline' ) return type === 'cpu' ? 'var(--color-yellow)' : 'var(--color-green)';
+	const cell = document.createElement( 'div' );
+	cell.className = 'frame-timeline';
 
-	name = name.split( '-' )[ 0 ].trim();
+	for ( const type of types ) {
 
-	return `oklch( 0.7 0.15 ${ NodeUtils.hashString( name ) % 360 } )`;
+		const bar = document.createElement( 'div' );
+		bar.className = type;
+		cell.appendChild( bar );
+
+	}
+
+	return cell;
 
 }
 
@@ -25,9 +29,10 @@ class Performance extends Tab {
 
 		super( 'Performance', options );
 
-		const perfList = new List( 'Name', 'CPU', 'GPU' );
-		perfList.setGridStyle( 'minmax(200px, 2fr) 80px 80px' );
-		perfList.domElement.style.minWidth = '520px';
+		const perfList = new List( 'Name', 'CPU', 'GPU', '' );
+		perfList.setGridStyle( 'minmax(0, 1fr) 60px 60px var(--frame-timeline-width)' ); // the timeline is as wide in the nested rows
+		perfList.domElement.style.containerType = 'inline-size';
+		perfList.domElement.style.minWidth = '640px';
 
 		const scrollWrapper = document.createElement( 'div' );
 		scrollWrapper.className = 'list-scroll-wrapper';
@@ -62,43 +67,25 @@ class Performance extends Tab {
 		*/
 
 		this.graphFpsCounter = createValueSpan();
-		const graphStats = new Item( 'Graph Stats', createValueSpan(), this.graphFpsCounter );
+		this.graphMsCounter = createValueSpan();
+		this.graphMsCounter.classList.add( 'secondary' );
+
+		const graphCounters = document.createElement( 'div' );
+		graphCounters.append( this.graphFpsCounter, this.graphMsCounter );
+
+		const graphStats = new Item( 'Graph Stats', createValueSpan(), createValueSpan(), graphCounters );
 		perfList.add( graphStats );
 
 		const graphItem = new Item( graphContainer );
 		graphItem.itemRow.childNodes[ 0 ].style.gridColumn = '1 / -1';
+		graphItem.itemRow.classList.add( 'no-hover' ); // keep the background of the graph
 		graphStats.add( graphItem );
 
 		//
 
-		// the calls of the average frame over time, the ones the GPU overlaps are stacked
-
-		const frameDiagram = new FrameDiagram();
-		frameDiagram.onToggle = ( key ) => {
-
-			const item = this.frameItems.get( key );
-
-			if ( item === undefined ) return;
-
-			item.toggle();
-			this.refreshFrameDiagram();
-
-		};
-
-		this.frameTimelineDuration = createValueSpan();
-		const frameTimeline = new Item( 'Frame Timeline', createValueSpan(), this.frameTimelineDuration );
-		info( frameTimeline.itemRow.firstChild, 'For detailed WebGPU profiling in Chrome, restart with:\n--disable-frame-rate-limit\n--enable-webgpu-developer-features\nRemoves the frame limit and disables GPU timestamp rounding.' );
-		perfList.add( frameTimeline );
-
-		const frameDiagramItem = new Item( frameDiagram.domElement );
-		frameDiagramItem.itemRow.childNodes[ 0 ].style.gridColumn = '1 / -1';
-		frameTimeline.add( frameDiagramItem );
-
-		//
-
-		const frameStats = new Item( 'Frame Stats', createValueSpan(), createValueSpan() );
-		frameStats.domElement.addEventListener( 'click', () => this.refreshFrameDiagram() ); // the diagram follows the expanded rows
-		perfList.domElement.appendChild( perfList.domElement.querySelector( '.list-header' ) ); // move the header below the graphs
+		const frameStats = new Item( 'Frame Stats', createValueSpan(), createValueSpan(), createTimelineCell() );
+		frameStats.domElement.classList.add( 'frame-stats' );
+		perfList.domElement.appendChild( perfList.domElement.querySelector( '.list-header' ) ); // move the header below the graph
 		perfList.add( frameStats );
 
 		const miscellaneous = new Item( 'Miscellaneous & Idle', createValueSpan(), createValueSpan() );
@@ -108,9 +95,14 @@ class Performance extends Tab {
 
 		//
 
+		const timelineRuler = perfList.domElement.querySelector( '.list-header-cell:last-child' );
+		timelineRuler.classList.add( 'frame-timeline-ruler' );
+
+		//
+
 		this.notInUse = new Map();
-		this.frameDiagram = frameDiagram;
-		this.frameDiagramData = null;
+		this.perfList = perfList;
+		this.timelineRuler = timelineRuler;
 		this.frameStats = frameStats;
 		this.graphStats = graphStats;
 		this.graph = graph;
@@ -132,9 +124,14 @@ class Performance extends Tab {
 
 		if ( item === undefined ) {
 
-			item = new Item( createValueSpan(), createValueSpan(), createValueSpan() );
+			item = new Item( createValueSpan(), createValueSpan(), createValueSpan(), createTimelineCell( 'cpu', 'gpu' ) );
 
-			if ( stats.name !== 'Render Pipeline' ) item.close();
+			if ( stats.isGroupStats === true ) {
+
+				item.itemRow.classList.add( 'group' );
+				item.close();
+
+			}
 
 			if ( stats.name ) {
 
@@ -169,7 +166,7 @@ class Performance extends Tab {
 
 			const statsIndex = stats.parent.children.indexOf( stats );
 
-			if ( item.parent === null || item.parent.children.indexOf( item ) !== statsIndex ) {
+			if ( item.parent !== this.currentItem || item.parent.children.indexOf( item ) !== statsIndex ) {
 
 				this.currentItem.add( item, statsIndex );
 
@@ -207,93 +204,72 @@ class Performance extends Tab {
 
 	}
 
-	updateFrameDiagram( inspector, frame ) {
+	updateTimeline( inspector, frame ) {
 
-		const cpuStarts = new Map();
-		let gpuOffset = 0;
+		const period = inspector.fps > 0 ? 1000 / inspector.fps : 0;
+		const calls = [];
 
-		const createSpans = ( children, type, parentStart = 0 ) => children.filter( ( stats ) => type === 'cpu' || inspector.getStatsData( stats.cid ).gpuHasTimestamp ).map( ( stats ) => {
+		// the CPU and GPU clocks are not comparable: the GPU is delayed, so no call starts on it before the CPU
 
-			const data = inspector.getStatsData( stats.cid );
-			const start = parentStart + data[ type + 'Offset' ];
+		let gpuDelay = 0;
 
-			if ( type === 'cpu' ) {
+		for ( const [ cid, item ] of this.frameItems ) {
 
-				cpuStarts.set( stats.cid, start );
+			const data = inspector.getStatsData( cid );
 
-			} else {
+			if ( data.gpuOffset !== null ) gpuDelay = Math.max( gpuDelay, data.cpuOffset - data.gpuOffset );
 
-				gpuOffset = Math.max( gpuOffset, cpuStarts.get( stats.cid ) - start );
+			calls.push( { data, bars: item.data[ 3 ].children } );
 
-			}
+		}
 
-			return {
-				key: stats.cid,
-				name: stats.name,
-				isSpan: stats.children.length > 0,
-				color: getColor( stats.name, type ),
-				start,
-				end: start + data[ type ],
-				children: createSpans( stats.children, type, start )
-			};
+		// the timeline shows a frame period, or more if the calls end after it
 
-		} );
+		const duration = calls.reduce( ( end, { data } ) => Math.max( end, data.cpuOffset + data.cpu, data.gpuOffset !== null ? gpuDelay + data.gpuOffset + data.gpu : 0 ), Math.max( period, 1e-3 ) );
+		const toPercent = ( time ) => ( time / duration ) * 100 + '%';
 
-		const tracks = { CPU: createSpans( frame.average.children, 'cpu' ), GPU: createSpans( frame.average.children, 'gpu' ) };
+		const setBar = ( bar, start, time ) => {
 
-		// align matching call starts without changing the spacing of the GPU spans
-
-		const shiftSpans = ( spans ) => {
-
-			for ( const span of spans ) {
-
-				span.start += gpuOffset;
-				span.end += gpuOffset;
-
-				shiftSpans( span.children );
-
-			}
+			bar.style.left = toPercent( start );
+			bar.style.width = toPercent( time );
 
 		};
 
-		shiftSpans( tracks.GPU );
+		for ( const { data, bars } of calls ) {
 
-		// the diagram shows a frame period, or more if the frame takes longer on the GPU
+			setBar( bars[ 0 ], data.cpuOffset, data.cpu );
 
-		const period = inspector.fps > 0 ? 1000 / inspector.fps : 0;
-		const duration = Math.max( period, ...tracks.CPU.map( ( span ) => span.end ), ...tracks.GPU.map( ( span ) => span.end ) );
+			bars[ 1 ].hidden = data.gpuOffset === null;
 
-		this.frameDiagramData = { tracks, duration, period };
-		this.refreshFrameDiagram();
+			if ( data.gpuOffset !== null ) setBar( bars[ 1 ], gpuDelay + data.gpuOffset, data.gpu );
 
-		setText( this.frameTimelineDuration, duration.toFixed( 2 ) + ' ms' );
+		}
 
-	}
+		// the frame has the bars of its calls
 
-	refreshFrameDiagram() {
+		const getBars = ( stats ) => Array.from( this.frameItems.get( stats.cid ).data[ 3 ].children );
 
-		const data = this.frameDiagramData;
+		this.frameStats.data[ 3 ].replaceChildren( ...frame.children.flatMap( getBars ).map( ( bar ) => bar.cloneNode() ) );
 
-		if ( data === null ) return;
+		// the labels of the ruler are at a multiple of 1, 2 or 5, at least 80 pixels apart
 
-		const visibleSpans = ( spans ) => spans.map( ( span ) => {
+		const count = Math.max( this.timelineRuler.clientWidth / 80, 1 );
+		const magnitude = 10 ** Math.floor( Math.log10( duration / count ) );
+		const step = magnitude * [ 1, 2, 5, 10 ].find( ( multiple ) => duration / ( magnitude * multiple ) <= count );
 
-			const item = this.frameItems.get( span.key );
-			const collapsed = item !== undefined && item.isOpen === false;
+		const ticks = [];
 
-			return {
-				...span,
-				collapsed: span.children.length > 0 ? collapsed : undefined,
-				children: collapsed ? [] : visibleSpans( span.children )
-			};
+		for ( let i = 0; i * step < duration; i ++ ) {
 
-		} );
+			const tick = document.createElement( 'span' );
+			tick.textContent = parseFloat( ( i * step ).toFixed( 3 ) ) + ( i === 0 ? ' ms' : '' );
+			tick.style.left = toPercent( i * step );
+			ticks.push( tick );
 
-		const tracks = {};
+		}
 
-		for ( const name in data.tracks ) tracks[ name ] = visibleSpans( data.tracks[ name ] );
-
-		this.frameDiagram.update( tracks, data.duration, data.period );
+		this.timelineRuler.replaceChildren( ...ticks );
+		this.perfList.domElement.style.setProperty( '--frame-timeline-step', toPercent( step ) );
 
 	}
 
@@ -366,13 +342,13 @@ class Performance extends Tab {
 
 		this.currentItem = this.frameStats;
 
-		for ( const child of frame.average.children ) {
+		for ( const child of frame.children ) {
 
 			this.resolveStats( inspector, child );
 
 		}
 
-		this.updateFrameDiagram( inspector, frame );
+		this.updateTimeline( inspector, frame );
 
 		// remove unused frame items
 
@@ -398,7 +374,10 @@ class Performance extends Tab {
 
 		//
 
-		setText( this.graphFpsCounter, inspector.fps.toFixed() + ' FPS' );
+		const fps = inspector.fps;
+
+		setText( this.graphFpsCounter, fps.toFixed() + ' FPS' );
+		setText( this.graphMsCounter, ( fps > 0 ? 1000 / fps : 0 ).toFixed( 2 ) + ' ms' );
 
 		//
 

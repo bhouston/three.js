@@ -4,7 +4,7 @@ import NodeBuilderState from './NodeBuilderState.js';
 import NodeMaterial from '../../../materials/nodes/NodeMaterial.js';
 import { cubeMapNode } from '../../../nodes/utils/CubeMapNode.js';
 import { NodeFrame, NodeUpdateType, StackTrace } from '../../../nodes/Nodes.js';
-import { renderGroup, cubeTexture, texture, fog, rangeFogFactor, densityFogFactor, reference, pmremTexture, screenUV, uniform } from '../../../nodes/TSL.js';
+import { renderGroup, cubeTexture, texture, textureMatrix, fog, rangeFogFactor, densityFogFactor, reference, pmremTexture, screenUV, uniform, vec3 } from '../../../nodes/TSL.js';
 import { builtin } from '../../../nodes/accessors/BuiltinNode.js';
 
 import { EquirectangularReflectionMapping, EquirectangularRefractionMapping } from '../../../constants.js';
@@ -553,7 +553,9 @@ class NodeManager extends DataMap {
 
 					} else if ( background.isTexture === true ) {
 
-						return texture( background, screenUV.flipY() ).setUpdateMatrix( true );
+						const backgroundUV = textureMatrix( background ).mul( vec3( screenUV.flipY(), 1 ) ).xy;
+
+						return texture( background, backgroundUV );
 
 					} else if ( background.isColor !== true ) {
 
@@ -785,7 +787,7 @@ class NodeManager extends DataMap {
 
 		const renderer = this.renderer;
 
-		return renderer.toneMapping + ',' + renderer.currentColorSpace + ',' + renderer.xr.isPresenting;
+		return renderer.toneMapping + ',' + renderer.currentColorSpace + ',' + renderer.dithering + ',' + renderer.xr.isPresenting;
 
 	}
 
@@ -806,17 +808,17 @@ class NodeManager extends DataMap {
 
 			if ( this.backend.isWebGLBackend ) {
 
-				output = texture( outputTarget, screenUV ).depth( builtin( 'gl_ViewID_OVR' ) ).renderOutput( renderer.toneMapping, renderer.currentColorSpace );
+				output = texture( outputTarget, screenUV ).depth( builtin( 'gl_ViewID_OVR' ) ).renderOutput( renderer.toneMapping, renderer.currentColorSpace, renderer.dithering );
 
 			} else {
 
-				output = texture( outputTarget, screenUV ).depth( _outputLayerIndex ).renderOutput( renderer.toneMapping, renderer.currentColorSpace );
+				output = texture( outputTarget, screenUV ).depth( _outputLayerIndex ).renderOutput( renderer.toneMapping, renderer.currentColorSpace, renderer.dithering );
 
 			}
 
 		} else {
 
-			output = texture( outputTarget, screenUV ).renderOutput( renderer.toneMapping, renderer.currentColorSpace );
+			output = texture( outputTarget, screenUV ).renderOutput( renderer.toneMapping, renderer.currentColorSpace, renderer.dithering );
 
 		}
 

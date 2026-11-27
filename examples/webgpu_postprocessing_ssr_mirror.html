@@ -24,7 +24,7 @@
 			</div>
 
 			<small>
-				One mirror trace per pixel, followed by a roughness-dependent blur post-process.<br />
+				One ray per pixel over the GGX lobe of the material, denoised over space and time.<br />
 				The materials reflect the previous frame through their BRDF, in front of the environment.<br />
 				<a href="https://skfb.ly/6tqYD" target="_blank" rel="noopener">Steampunk Camera</a> by
 				<a href="https://sketchfab.com/lumoize" target="_blank" rel="noopener">dylanheyes</a> is licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Creative Commons Attribution</a>.
@@ -45,8 +45,10 @@
 	<script type="module">
 
 		import * as THREE from 'three/webgpu';
-		import { pass, mrt, Fn, builtinIndirectContext, defaultIndirectSpecular, normalView, metalness, roughness, velocity, screenUV, color, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, passTexture, colorSpaceToWorking } from 'three/tsl';
+		import { pass, mrt, Fn, builtinIndirectContext, defaultIndirectSpecular, normalView, metalness, roughness, velocity, screenUV, color, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, colorSpaceToWorking } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
+		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 		import { reprojectedBeauty, previousViewZ } from 'three/addons/tsl/display/ReprojectedBeautyNode.js';
 		import { opaqueFragment, opaqueFragmentSource } from 'three/addons/tsl/utils/OpaqueFragment.js';
@@ -60,8 +62,8 @@
 
 		const params = {
 			output: 'Beauty', enabled: true, quality: 0.5, intensity: 1,
-			maxDistance: 2, thickness: 0.1, binaryRefine: false,
-			roughness: 1, blur: true, alphaThreshold: 1
+			maxDistance: 3, thickness: 0.2, binaryRefine: false,
+			roughness: 1, denoise: true, alphaThreshold: 1
 		};
 
 		let camera, scene, model, renderer, renderPipeline;
@@ -172,7 +174,7 @@
 
 			// the attachments clone the output texture, so the velocity is created before the output becomes RG
 
-			scenePass.getTextureNode( 'velocity' );
+			const scenePassVelocity = scenePass.getTextureNode( 'velocity' );
 
 			// octahedral normals can't be filtered across their folds
 
@@ -185,11 +187,8 @@
 			const metalRoughTexture = scenePass.getTexture( 'metalrough' );
 			metalRoughTexture.type = THREE.UnsignedByteType;
 
-			const sceneNormal = sample( ( uv ) => {
-
-				return unpackOctahedralToNormal( scenePassNormal.sample( uv ).rg );
-
-			} );
+			const normalDecode = ( value ) => unpackOctahedralToNormal( value.rg );
+			const sceneNormal = sample( ( uv ) => normalDecode( scenePassNormal.sample( uv ) ) );
 
 			//
 
@@ -199,20 +198,56 @@
 
 			const reflection = ssr( reprojectedBeauty( scenePass, beautyPass ), scenePassDepth, sceneNormal, {
 				camera,
+				stochastic: true,
 				metalnessNode: scenePassMetalRough.r,
 				roughnessNode: scenePassMetalRough.g,
 				binaryRefine: params.binaryRefine
 			} ).toInspector( 'SSR' );
 
-			const raw = passTexture( reflection, reflection.getRenderTarget().texture );
-			const blurred = reflection.getTextureNode();
+			// one ray per pixel is noisy, so it is reprojected and denoised
 
-			const blurEnabled = uniform( 1 );
+			const hitDistance = reflection.getHitDistanceNode();
+
+			const temporal = temporalReproject( reflection, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
+				mode: 'specular',
+				hitDistance,
+				accumulate: false,
+				normalDecode
+			} );
+			temporal.maxFrames.value = 16;
+			temporal.clampIntensity.value = 0.25;
+			temporal.flickerSuppression.value = 0; // it clamps the bright floor the model reflects
+
+			const denoised = recurrentDenoise( temporal, camera, {
+				depth: scenePassDepth,
+				normal: sceneNormal,
+				raw: reflection,
+				metalRoughness: scenePassMetalRough,
+				hitDistance,
+				frameCount: temporal.getFrameCountNode(),
+				mode: 'specular',
+				accumulate: true
+			} ).toInspector( 'Denoise' );
+			denoised.lumaPhi.value = 0.75;
+			denoised.depthPhi.value = 20;
+			denoised.normalPhi.value = 0.3;
+			denoised.alphaPhi.value = 5;
+			denoised.radius.value = 1.5;
+			denoised.strength.value = 0.725;
+			denoised.adaptiveTrust.value = 1;
+			denoised.flickerSuppression.value = 0;
+
+			temporal.setHistoryTexture( denoised );
+
+			const raw = reflection.getTextureNode();
+			const filtered = denoised.getTextureNode();
+
+			const denoiseEnabled = uniform( 1 );
 
 			// the materials reflect SSR through their BRDF, and the environment where SSR has no coverage
 
 			beautyPass.contextNode = builtinIndirectContext( {
-				specular: coverageCascade( [ opaqueFragmentSource( mix( raw.sample( screenUV ), reflection.getSpecularSource(), blurEnabled ), alphaThreshold ) ], defaultIndirectSpecular )
+				specular: coverageCascade( [ opaqueFragmentSource( mix( raw.sample( screenUV ), filtered.sample( screenUV ), denoiseEnabled ), alphaThreshold ) ], defaultIndirectSpecular )
 			} );
 
 			const spatialAA = smaa( beautyPass );
@@ -233,8 +268,8 @@
 
 					case 'Beauty': view = spatialAA; break;
 					case 'SSR': view = vec4( raw.rgb, 1 ); break;
-					case 'SSR DN': view = vec4( blurred.rgb, 1 ); break;
-					case 'Coverage': view = vec4( blurred.aaa, 1 ); break;
+					case 'SSR DN': view = vec4( filtered.rgb, 1 ); break;
+					case 'Coverage': view = vec4( filtered.aaa, 1 ); break;
 
 				}
 
@@ -253,18 +288,18 @@
 			// GUI
 
 			const displayGui = renderer.inspector.createParameters( 'Display' );
-			displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN', 'Coverage' ] ).name( 'Output' ).info( 'DN means denoise; this mirror example uses spatial blur rather than stochastic denoising.' ).onChange( updateOutput );
+			displayGui.add( params, 'output', [ 'Beauty', 'SSR', 'SSR DN', 'Coverage' ] ).name( 'Output' ).onChange( updateOutput );
 
 			const ssrGui = renderer.inspector.createParameters( 'SSR' );
 			ssrGui.add( params, 'enabled' ).name( 'Enabled' ).onChange( updateParameters );
 			ssrGui.add( params, 'intensity', 0, 1 ).name( 'Intensity' ).onChange( updateParameters );
 			ssrGui.add( params, 'quality', 0, 1, 0.01 ).name( 'Quality' ).onChange( updateParameters );
 			ssrGui.add( params, 'binaryRefine' ).name( 'Binary refine' ).onChange( updateParameters );
-			ssrGui.add( params, 'maxDistance', 0, 2 ).name( 'Max distance' ).onChange( updateParameters );
+			ssrGui.add( params, 'maxDistance', 0, 5 ).name( 'Max distance' ).onChange( updateParameters );
 			ssrGui.add( params, 'thickness', 0, 0.5 ).name( 'Thickness' ).onChange( updateParameters );
 
-			const blurGui = renderer.inspector.createParameters( 'Blur' );
-			blurGui.add( params, 'blur' ).name( 'Enabled' ).onChange( value => blurEnabled.value = Number( value ) );
+			const denoiseGui = renderer.inspector.createParameters( 'Denoise' );
+			denoiseGui.add( params, 'denoise' ).name( 'Enabled' ).onChange( value => denoiseEnabled.value = Number( value ) );
 
 			const sceneGui = renderer.inspector.createParameters( 'Scene' );
 			sceneGui.add( params, 'alphaThreshold', 0, 1, 0.01 ).name( 'Alpha threshold' ).info( 'Fragments of transparent materials below this alpha are not traced and reflect the environment.' ).onChange( value => alphaThreshold.value = value );

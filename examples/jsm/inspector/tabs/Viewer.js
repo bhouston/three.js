@@ -930,7 +930,7 @@ class Viewer extends Tab {
 			material.outputNode = output;
 
 			const quad = new QuadMesh( material );
-			quad.name = 'Viewer - ' + name;
+			quad.name = 'Viewer / ' + name;
 
 			canvasData = {
 				id,

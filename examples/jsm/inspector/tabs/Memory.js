@@ -74,13 +74,13 @@ class Memory extends Tab {
 		this.uniformBuffers = new Item( 'Uniform Buffers', createValueSpan(), createValueSpan() );
 		this.memoryStats.add( this.uniformBuffers );
 
-		// creators
+		// resources
 
-		this.creators = new Item( 'Creators', createValueSpan(), createValueSpan() );
-		this.creators.domElement.firstChild.classList.add( 'no-hover' );
-		memoryList.add( this.creators );
+		this.resources = new Item( 'Resources', createValueSpan(), createValueSpan() );
+		this.resources.domElement.firstChild.classList.add( 'no-hover' );
+		memoryList.add( this.resources );
 
-		this.creatorItems = new Map();
+		this.resourceItems = new Map();
 
 		this.graph = graph;
 
@@ -88,27 +88,27 @@ class Memory extends Tab {
 
 	// tree of the render and compute calls which created the resources, the allocations are grouped by type and name
 
-	updateCreators( inspector ) {
+	updateResources( inspector ) {
 
-		const createNode = ( isAllocation ) => ( { count: 0, size: 0, ownCount: 0, ownSize: 0, isAllocation, children: new Map() } );
-		const root = createNode( false );
+		const createNode = () => ( { count: 0, size: 0, ownCount: 0, ownSize: 0, children: new Map() } );
+		const root = createNode();
 
 		for ( const { type, name, size, creator } of inspector.getRenderer().info.resources ) {
 
 			const path = creator !== null ? inspector.getCreatorPath( creator ) : [ 'Miscellaneous' ];
-			const labels = type === 'textures' || type === 'programs' ? name.trim().split( /\s*\/\s*/ ).filter( ( key ) => key !== '' ) : ( name.trim() !== '' ? [ name ] : [] );
+			const labels = name.trim().split( /\s*\/\s*/ ).filter( ( key ) => key !== '' );
 			const keys = [ ...path, splitCamelCase( type[ 0 ].toUpperCase() + type.slice( 1, - 1 ) ), ...labels ];
 
 			let node = root;
 
-			for ( let i = 0; i < keys.length; i ++ ) {
+			for ( const key of keys ) {
 
 				node.count ++;
 				node.size += size;
 
-				if ( node.children.has( keys[ i ] ) === false ) node.children.set( keys[ i ], createNode( i >= path.length ) );
+				if ( node.children.has( key ) === false ) node.children.set( key, createNode() );
 
-				node = node.children.get( keys[ i ] );
+				node = node.children.get( key );
 
 			}
 
@@ -119,26 +119,11 @@ class Memory extends Tab {
 
 		}
 
-		// returns the rows of a node: a group of a single allocation name is a single row, like "Texture / output"
+		// returns the rows of a node, the unnamed allocations are listed apart if the node has named ones
 
 		const getRows = ( node ) => {
 
-			const rows = [];
-
-			for ( let [ name, child ] of node.children ) {
-
-				while ( child.isAllocation && child.ownCount === 0 && child.children.size === 1 ) {
-
-					const [ childName, grandchild ] = child.children.entries().next().value;
-
-					name += ' / ' + childName;
-					child = grandchild;
-
-				}
-
-				rows.push( [ name, child ] );
-
-			}
+			const rows = [ ...node.children ];
 
 			if ( node.ownCount > 0 && rows.length > 0 ) {
 
@@ -150,7 +135,7 @@ class Memory extends Tab {
 
 		};
 
-		const unused = new Map( this.creatorItems );
+		const unused = new Map( this.resourceItems );
 
 		const update = ( item, node, path ) => {
 
@@ -162,16 +147,21 @@ class Memory extends Tab {
 				const childPath = [ ...path, name ];
 				const childKey = JSON.stringify( childPath );
 
-				let childItem = this.creatorItems.get( childKey );
+				let childItem = this.resourceItems.get( childKey );
 
 				if ( childItem === undefined ) {
 
-					childItem = new Item( createValueSpan(), createValueSpan(), createValueSpan() ).close();
+					childItem = new Item( createValueSpan(), createValueSpan(), createValueSpan() );
+
+					// the calls are listed open, the resources of each call closed
+
+					if ( path.length > 0 ) childItem.close();
+
 					childItem.data[ 0 ].title = name;
 					setText( childItem.data[ 0 ], name );
 
 					item.add( childItem );
-					this.creatorItems.set( childKey, childItem );
+					this.resourceItems.set( childKey, childItem );
 
 				}
 
@@ -185,12 +175,12 @@ class Memory extends Tab {
 
 		};
 
-		update( this.creators, root, [] );
+		update( this.resources, root, [] );
 
 		for ( const [ path, item ] of unused ) {
 
 			item.parent.remove( item );
-			this.creatorItems.delete( path );
+			this.resourceItems.delete( path );
 
 		}
 
@@ -246,7 +236,7 @@ class Memory extends Tab {
 		setText( this.uniformBuffers.data[ 1 ], memory.uniformBuffers.toString() );
 		setText( this.uniformBuffers.data[ 2 ], formatBytes( memory.uniformBuffersSize ) );
 
-		this.updateCreators( inspector );
+		this.updateResources( inspector );
 
 	}
 

@@ -163,6 +163,19 @@ class Info {
 	}
 
 	/**
+	 * The render or compute call in progress, `null` outside of them.
+	 * The calls are the entries of the `creator` of {@link Info#resources}.
+	 *
+	 * @type {?Object}
+	 * @readonly
+	 */
+	get currentCall() {
+
+		return this._calls.length > 0 ? this._calls[ this._calls.length - 1 ] : null;
+
+	}
+
+	/**
 	 * Called when a render call begins.
 	 *
 	 * @param {Object3D} scene - The scene or 3D object to render.

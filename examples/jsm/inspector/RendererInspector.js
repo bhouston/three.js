@@ -52,9 +52,9 @@ function getComputeName( computeNode ) {
 
 class RenderStats extends ObjectStats {
 
-	constructor( uid, scene, camera, renderTarget, renderer ) {
+	constructor( uid, name, scene, camera, renderTarget ) {
 
-		super( uid, getRenderName( scene, camera, renderTarget, renderer.getActiveCubeFace(), renderer.getActiveMipmapLevel() ) );
+		super( uid, name );
 
 		this.scene = scene;
 		this.camera = camera;
@@ -68,9 +68,9 @@ class RenderStats extends ObjectStats {
 
 class ComputeStats extends ObjectStats {
 
-	constructor( uid, computeNode ) {
+	constructor( uid, name, computeNode ) {
 
-		super( uid, getComputeName( computeNode ) );
+		super( uid, name );
 
 		this.computeNode = computeNode;
 
@@ -564,6 +564,15 @@ export class RendererInspector extends InspectorBase {
 
 	}
 
+	// the name of a call is stored when it begins, the scene, material and compute node names can change after it,
+	// like the shared quad meshes of the effects
+
+	_setCallName( name ) {
+
+		this._callNames.set( this.getRenderer().info.currentCall, name );
+
+	}
+
 	// returns the path of names of the render and compute calls which created a resource, see Info.resources
 
 	getCreatorPath( creator ) {
@@ -572,9 +581,11 @@ export class RendererInspector extends InspectorBase {
 
 			let names = this._callNames.get( call );
 
-			if ( names === undefined ) {
+			if ( Array.isArray( names ) === false ) {
 
-				const name = call.computeNode ? getComputeName( call.computeNode ) : getRenderName( call.scene, call.camera, call.renderTarget, call.activeCubeFace, call.activeMipmapLevel );
+				// calls without a stored name began before the inspector was set
+
+				const name = names || ( call.computeNode ? getComputeName( call.computeNode ) : getRenderName( call.scene, call.camera, call.renderTarget, call.activeCubeFace, call.activeMipmapLevel ) );
 
 				names = name.trim().split( /\s*\/\s*/ );
 
@@ -590,11 +601,15 @@ export class RendererInspector extends InspectorBase {
 
 	beginCompute( uid, computeNode ) {
 
+		const name = getComputeName( computeNode );
+
+		this._setCallName( name );
+
 		const frame = this.getFrame();
 
 		if ( ! frame ) return;
 
-		const currentCompute = new ComputeStats( uid, computeNode );
+		const currentCompute = new ComputeStats( uid, name, computeNode );
 		currentCompute.timestamp = performance.now();
 		currentCompute.parent = this.getParent();
 
@@ -626,11 +641,16 @@ export class RendererInspector extends InspectorBase {
 
 	beginRender( uid, scene, camera, renderTarget ) {
 
+		const renderer = this.getRenderer();
+		const name = getRenderName( scene, camera, renderTarget, renderer.getActiveCubeFace(), renderer.getActiveMipmapLevel() );
+
+		this._setCallName( name );
+
 		const frame = this.getFrame();
 
 		if ( ! frame ) return;
 
-		const currentRender = new RenderStats( uid, scene, camera, renderTarget, this.getRenderer() );
+		const currentRender = new RenderStats( uid, name, scene, camera, renderTarget );
 		currentRender.timestamp = performance.now();
 		currentRender.parent = this.getParent();
 

@@ -60,7 +60,6 @@
 		import { pass, mrt, output, normalView, materialMetalness, materialRoughness, screenUV, sample, packNormalToRGB, packNormalToOctahedral, unpackOctahedralToNormal, vec2, velocity, diffuseColor, vec3, vec4, uniform, mix, step, abs, float, renderOutput, saturation } from 'three/tsl';
 		import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 		import { HiZTracer } from 'three/addons/tsl/utils/traceHiZ.js';
-		import { LinearTracer } from 'three/addons/tsl/utils/traceLinear.js';
 		import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 		import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 		import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
@@ -282,7 +281,8 @@
 				metalnessNode: scenePassDiffuseColor.a,
 				roughnessNode: scenePassVelocity.z,
 				environmentNode: hdrTexture,
-				envImportanceSampling: params.ssr.envImportanceSampling
+				envImportanceSampling: params.ssr.envImportanceSampling,
+				binaryRefine: params.ssr.binaryRefine
 			} ).toInspector( 'SSR' );
 
 			temporalReprojectNode = temporalReproject( ssrNode, scenePassDepth, scenePassNormal, scenePassVelocity, camera, {
@@ -412,7 +412,7 @@
 
 		}
 
-		const tracers = { 'linear': new LinearTracer(), 'hi-z': new HiZTracer() };
+		const hiZTracer = new HiZTracer();
 		let binaryRefine;
 
 		function applyParams() {
@@ -422,14 +422,11 @@
 			ssrNode.resolutionScale = params.ssr.resolutionScale;
 			ssrNode.quality.value = params.ssr.quality;
 			ssrNode.mirrorBias.value = params.ssr.mirrorBias;
-			// stepExponent / screenEdgeFadeBlack / tracer are build-time constants: assigning
+			// stepExponent / screenEdgeFadeBlack / binaryRefine / tracer are build-time constants: assigning
 			// them recompiles the SSR material (the setters no-op when the value is unchanged).
 			ssrNode.stepExponent = params.ssr.stepExponent;
-
-			// the refinement is read when the tracing is built, so it needs a new tracer
-			if ( tracers.linear.binaryRefine !== params.ssr.binaryRefine ) tracers.linear = new LinearTracer( { binaryRefine: params.ssr.binaryRefine } );
-
-			ssrNode.tracer = tracers[ params.ssr.tracing ];
+			ssrNode.binaryRefine = params.ssr.binaryRefine;
+			ssrNode.tracer = params.ssr.tracing === 'hi-z' ? hiZTracer : null;
 			if ( binaryRefine ) params.ssr.tracing === 'linear' ? binaryRefine.show() : binaryRefine.hide();
 			ssrNode.maxDistance.value = params.ssr.maxDistance;
 			ssrNode.intensity.value = params.ssr.intensity;

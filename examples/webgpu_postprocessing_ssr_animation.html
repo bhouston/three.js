@@ -42,7 +42,6 @@
 			import { pass, mrt, output, normalView, materialMetalness, materialRoughness, diffuseColor, color, positionLocal, sample, packNormalToOctahedral, unpackOctahedralToNormal, vec2, vec4, uniform, mix, velocity } from 'three/tsl';
 			import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 			import { HiZTracer } from 'three/addons/tsl/utils/traceHiZ.js';
-			import { LinearTracer } from 'three/addons/tsl/utils/traceLinear.js';
 			import { temporalReproject } from 'three/addons/tsl/display/TemporalReprojectNode.js';
 			import { recurrentDenoise } from 'three/addons/tsl/display/RecurrentDenoiseNode.js';
 			import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -223,7 +222,8 @@
 					stochastic: true,
 					diffuseNode: scenePassDiffuseColor,
 					metalnessNode: scenePassDiffuseColor.a,
-					roughnessNode: sceneRoughness
+					roughnessNode: sceneRoughness,
+					binaryRefine: params.binaryRefine
 				} ).toInspector( 'SSR' );
 
 				const ssrTexture = ssrNode.getTextureNode();
@@ -285,15 +285,13 @@
 
 				}
 
-				const tracers = { 'linear': new LinearTracer(), 'hi-z': new HiZTracer() };
+				const hiZTracer = new HiZTracer();
 
 				function updateParameters() {
 
-					// the refinement is read when the tracing is built, a new tracer rebuilds the SSR material
-					if ( tracers.linear.binaryRefine !== params.binaryRefine ) tracers.linear = new LinearTracer( { binaryRefine: params.binaryRefine } );
-
-					ssrNode.tracer = tracers[ params.tracing ];
+					ssrNode.tracer = params.tracing === 'hi-z' ? hiZTracer : null;
 					ssrNode.quality.value = params.quality;
+					ssrNode.binaryRefine = params.binaryRefine;
 
 					params.tracing === 'linear' ? binaryRefine.show() : binaryRefine.hide();
 					ssrNode.maxDistance.value = params.maxDistance;

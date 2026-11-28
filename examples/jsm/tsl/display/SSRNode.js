@@ -1,10 +1,10 @@
-import { DFGLUT, EnvironmentBRDF_MultiScattering, Fn, If, abs, cross, distance, dot, float, getScreenPosition, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { DFGLUT, EnvironmentBRDF_MultiScattering, Fn, If, cross, distance, dot, float, getViewPosition, int, luminance, max, min, mix, mul, nodeObject, normalize, passTexture, reference, reflect, sub, texture, textureSize, trunc, uniform, uv, vec2, vec3, vec4, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
 import { HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Matrix4, NodeMaterial, NodeUpdateType, QuadMesh, RenderTarget, RendererUtils, Node, Vector2, Vector3 } from 'three/webgpu';
 import { bindAnalyticNoise } from '../utils/RNoise.js';
 import { ENV_RAY_LENGTH, getSpecularDominantFactor, ggxReflectionSample } from '../utils/SpecularHelpers.js';
 import { boxBlur } from './boxBlur.js';
 import ImportanceSampledEnvironment from './ImportanceSampledEnvironment.js';
-import { LinearTracer, getRayPosition } from '../utils/traceLinear.js';
+import { traceLinear, getRayPosition } from '../utils/traceLinear.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -24,7 +24,8 @@ const MAX_STEPS = 64;
  * @property {Texture} [environmentNode=null] - Equirectangular HDR environment map with CPU-side `image.data` (e.g. from RGBELoader). Not compatible with PMREM / `scene.environment` cubemaps.
  * @property {boolean} [envImportanceSampling=false] - When `true`, precomputes env-luminance CDF tables and uses MIS for environment misses. Build-time only.
  * @property {Node} [diffuseNode=null] - Scene diffuse / base color. Defaults to `vec3(1)` in the shader when omitted.
- * @property {LinearTracer|HiZTracer} [tracer=null] - Traces the reflection rays, a `LinearTracer` when omitted.
+ * @property {boolean} [binaryRefine=false] - Sub-step binary-search refinement of detected hits. Compile-time constant (baked into the shader at construction).
+ * @property {?HiZTracer} [tracer=null] - Traces the reflection rays through a hierarchical depth instead of marching them linearly.
  * @property {Camera} [camera=null] - Camera the scene is rendered with. Inferred from the color pass when omitted.
  */
 
@@ -66,6 +67,7 @@ class SSRNode extends Node {
 			environmentNode = null,
 			envImportanceSampling = false,
 			diffuseNode = null,
+			binaryRefine = false,
 			tracer = null
 		} = options;
 
@@ -275,12 +277,23 @@ class SSRNode extends Node {
 		this._blurQuality = 2;
 
 		/**
+		 * Enables sub-step binary-search refinement of a detected hit. When on, a coarse
+		 * crossing is bisected toward the exact intersection (sharper hits, less step
+		 * aliasing) at the cost of extra depth samples. Baked into the shader as a
+		 * compile-time constant; assigning a new value rebuilds the SSR material.
+		 *
+		 * @type {boolean}
+		 * @default false
+		 */
+		this._binaryRefine = binaryRefine;
+
+		/**
 		 * Internal storage for {@link SSRNode#tracer}.
 		 *
 		 * @private
-		 * @type {LinearTracer|HiZTracer}
+		 * @type {?HiZTracer}
 		 */
-		this._tracer = tracer !== null ? tracer : new LinearTracer();
+		this._tracer = tracer;
 
 		/**
 		 * Non-linear step distribution exponent. `1` = uniform steps; `> 1` concentrates
@@ -590,10 +603,33 @@ class SSRNode extends Node {
 	}
 
 	/**
-	 * Traces the reflection rays through the depth, a `LinearTracer` by default or a `HiZTracer`. The samples
-	 * of a linear march are placed by `quality` and `stepExponent`. Assigning a new value rebuilds the SSR material.
+	 * Whether sub-step binary-search hit refinement is enabled (compile-time constant).
+	 * Assigning a new value rebuilds the SSR material.
 	 *
-	 * @type {LinearTracer|HiZTracer}
+	 * @type {boolean}
+	 */
+	get binaryRefine() {
+
+		return this._binaryRefine;
+
+	}
+
+	set binaryRefine( value ) {
+
+		if ( value !== this._binaryRefine ) {
+
+			this._binaryRefine = value;
+			this._buildSSRMaterial();
+
+		}
+
+	}
+
+	/**
+	 * Traces the reflection rays through a hierarchical depth when set, instead of the linear march placed by
+	 * `quality` and `stepExponent`. Assigning a new value rebuilds the SSR material.
+	 *
+	 * @type {?HiZTracer}
 	 */
 	get tracer() {
 
@@ -637,7 +673,7 @@ class SSRNode extends Node {
 
 	/**
 	 * Rebuilds the SSR material's node graph by re-invoking the fragment `Fn`, which
-	 * re-bakes the compile-time constants ({@link SSRNode#tracer},
+	 * re-bakes the compile-time constants ({@link SSRNode#binaryRefine}, {@link SSRNode#tracer},
 	 * {@link SSRNode#stepExponent}, {@link SSRNode#screenEdgeFadeBlack}) at their current
 	 * values. A no-op until {@link SSRNode#setup} has captured the `Fn`.
 	 *
@@ -768,7 +804,7 @@ class SSRNode extends Node {
 		this._cameraWorldMatrix.value.copy( this.camera.matrixWorld );
 		this._cameraWorldPosition.value.copy( this.camera.position );
 
-		this._tracer.update( frame, this.depthNode );
+		if ( this._tracer !== null ) this._tracer.update( frame, this.depthNode );
 
 		_rendererState = RendererUtils.resetRendererState( renderer, _rendererState );
 
@@ -1042,60 +1078,32 @@ class SSRNode extends Node {
 
 			}
 
-			const d0 = uvPos.mul( this._resolution ).xy.toVar();
-			const d1 = getScreenPosition( d1viewPosition, this._cameraProjectionMatrix ).mul( this._resolution ).toVar();
+			// the ray in UV and projected depth, where it is linear, clipped to the screen so all steps land on visible texels
 
-			// clip the ray to the screen so all steps land on visible texels
-
-			const extent = d1.sub( d0 ).toVar();
+			const origin = vec3( uvPos, depth ).toConst();
+			const rayEnd = getRayPosition( d1viewPosition, this._cameraProjectionMatrix ).toConst();
+			const extent = rayEnd.xy.sub( uvPos ).toConst();
 			const exitT = vec2(
-				extent.x.greaterThanEqual( 0 ).select( this._resolution.x.sub( d0.x ), d0.x ),
-				extent.y.greaterThanEqual( 0 ).select( this._resolution.y.sub( d0.y ), d0.y )
-			).div( extent.abs().max( 1e-6 ) );
-			const clipT = min( exitT.x, exitT.y ).min( 1 ).toConst();
-
-			If( clipT.lessThan( 1 ), () => {
-
-				d1.assign( d0.add( extent.mul( clipT ) ) );
-				d1viewPosition.assign( this.camera.isPerspectiveCamera
-					? mix( viewPosition.div( viewPosition.z ), d1viewPosition.div( d1viewPosition.z ), clipT ).div( mix( viewPosition.z.reciprocal(), d1viewPosition.z.reciprocal(), clipT ) )
-					: mix( viewPosition, d1viewPosition, clipT ) );
-
-			} );
-
-			const xLen = d1.x.sub( d0.x ).toVar();
-			const yLen = d1.y.sub( d0.y ).toVar();
+				extent.x.greaterThanEqual( 0 ).select( uvPos.x.oneMinus(), uvPos.x ),
+				extent.y.greaterThanEqual( 0 ).select( uvPos.y.oneMinus(), uvPos.y )
+			).div( extent.abs().max( 1e-9 ) );
+			const end = mix( origin, rayEnd, min( exitT.x, exitT.y ).min( 1 ) ).toConst();
 
 			// dominant-axis ray length in texels (used for the per-step floor below)
-			const rayLen = max( xLen.abs(), yLen.abs() ).max( 1 ).toVar();
+			const pixels = end.xy.sub( uvPos ).mul( this._resolution ).abs().toConst();
+			const rayLen = max( pixels.x, pixels.y ).max( 1 ).toVar();
 
 			// Blur traces a single mirror ray, so spend steps in proportion to the ray's screen-space
 			// length (cheap for the short rays that dominate). Scatter needs a fixed, bounded count for
 			// coherent stochastic sampling; each step then spans the whole ray as rayVec / totalStep.
 			const totalStep = int( this.stochastic === false
-				? trunc( max( abs( xLen ), abs( yLen ) ).mul( this.quality.clamp() ) ).max( int( 1 ) ).toConst()
+				? trunc( max( pixels.x, pixels.y ).mul( this.quality.clamp() ) ).max( int( 1 ) ).toConst()
 				: this.quality.clamp().mul( MAX_STEPS ).max( float( 1 ) ) ).toConst();
 
-			const invResolution = vec2( float( 1 ), float( 1 ) ).div( this._resolution ).toVar();
-			const uvPixelStepX = vec2( invResolution.x, float( 0 ) ).toVar();
+			const uvPixelStepX = vec2( this._resolution.x.reciprocal(), float( 0 ) ).toVar();
 
 			const output = vec4( 0 ).toVar();
 			const hit = float( 0 ).toVar();
-
-			// Reflected-ray view-space Z at ray parameter s ∈ [0,1] (linear in 1/z for perspective).
-			const recipVPZ = float( 1 ).div( viewPosition.z ).toConst();
-			const recipD1VPZ = float( 1 ).div( d1viewPosition.z ).toConst();
-
-			// Camera type is known at build time, so branch at compile time rather than via a runtime select.
-			const reflectRayZAt = this.camera.isPerspectiveCamera
-				? ( sVal ) => float( 1 ).div( recipVPZ.add( sVal.mul( recipD1VPZ.sub( recipVPZ ) ) ) )
-				: ( sVal ) => viewPosition.z.add( sVal.mul( d1viewPosition.z.sub( viewPosition.z ) ) );
-
-			// view-space point on the reflected ray at s
-
-			const rayPointAt = this.camera.isPerspectiveCamera
-				? ( sVal ) => mix( viewPosition.div( viewPosition.z ), d1viewPosition.div( d1viewPosition.z ), sVal ).mul( reflectRayZAt( sVal ) )
-				: ( sVal ) => mix( viewPosition, d1viewPosition, sVal );
 
 			// Ray parameter s ∈ [0,1] for step `idx`. Blur marches uniformly (matching the original loop:
 			// one ~texel step per iteration). Scatter uses an exponential remap `(idx/steps)^stepExponent`
@@ -1107,15 +1115,14 @@ class SSRNode extends Node {
 					idx.div( rayLen )
 				);
 
-			// Trace toward d1, looking for an intersection with the depth buffer. A linear march places its samples
-			// with sampleFraction() and can refine the hit, a hierarchical one returns its pixel.
+			// Trace toward d1, looking for an intersection with the depth buffer.
 
 			const near = this._cameraNear;
 			const far = this._cameraFar;
-			const reversed = builder.renderer.reversedDepthBuffer === true;
 
-			const origin = vec3( uvPos, depth ).toConst();
-			const end = vec3( d1.mul( invResolution ), getRayPosition( d1viewPosition, this._cameraProjectionMatrix ).z ).toConst();
+			// view-space point on the ray at s, the ray is linear in UV and projected depth
+
+			const rayPointAt = ( s ) => getViewPosition( mix( origin.xy, end.xy, s ), mix( origin.z, end.z, s ), this._cameraProjectionMatrixInverse );
 
 			// the distance of the surface at a depth from the ray and the thickness it has to be within
 
@@ -1129,6 +1136,22 @@ class SSRNode extends Node {
 
 			};
 
+			// Gate by thickness so an occluder gap doesn't end the trace, and by the normal so the ray
+			// reflects off a surface facing it.
+
+			const acceptHit = ( uvS, s, raw, lastS ) => {
+
+				const { d, away, tk } = reach( uvS, raw );
+
+				// A hit that gets refined may use a wider coarse tolerance.
+				const tolerance = lastS !== undefined ? max( tk, distance( rayPointAt( lastS ), rayPointAt( s ) ) ) : tk;
+
+				return isBackgroundDepth( d ).not()
+					.and( away.lessThanEqual( tolerance ) )
+					.and( dot( viewReflectDir, this.normalNode.sample( uvS ) ).lessThan( 0 ) );
+
+			};
+
 			const outOfReach = ( uvS, raw ) => {
 
 				const { away, tk } = reach( uvS, raw );
@@ -1137,31 +1160,24 @@ class SSRNode extends Node {
 
 			};
 
-			const result = this._tracer.trace( this.depthNode, origin, end, {
-				resolution: this._resolution,
-				reversedDepth: reversed,
-				steps: totalStep.sub( 1 ),
-				parameter: ( index ) => sampleFraction( index.add( 1 ) ),
-				projectDepth: ( raw ) => projectionDepth( raw, near, far ),
-				// a ray passing farther than the thickness behind the farthest surface of a cell skips it
-				isHidden: ( uvIn, uvOut, raw ) => outOfReach( uvIn, raw ).and( outOfReach( uvOut, raw ) ),
-				acceptHit: ( uvS, s, raw, lastS ) => {
-
-					// Gate by thickness so an occluder gap doesn't end the trace, and by the normal so the ray
-					// reflects off a surface facing it.
-					const { d, away, tk } = reach( uvS, raw );
-
-					// A hit that gets refined may use a wider coarse tolerance.
-					const tolerance = lastS !== undefined ? max( tk, distance( rayPointAt( lastS ), rayPointAt( s ) ) ) : tk;
-
-					return isBackgroundDepth( d ).not()
-						.and( away.lessThanEqual( tolerance ) )
-						.and( dot( viewReflectDir, this.normalNode.sample( uvS ) ).lessThan( 0 ) );
-
-				},
-				refineHit: ( uvS ) => dot( viewReflectDir, this.normalNode.sample( uvS ) ).lessThan( 0 ),
-				passRejected: true
-			} );
+			const result = this._tracer !== null
+				? this._tracer.trace( this.depthNode, origin, end, {
+					near,
+					far,
+					// a ray passing farther than the thickness behind the farthest surface of a cell skips it
+					isHidden: ( uvIn, uvOut, raw ) => outOfReach( uvIn, raw ).and( outOfReach( uvOut, raw ) ),
+					acceptHit,
+					passRejected: true
+				} )
+				: traceLinear( this.depthNode, origin, end, {
+					steps: totalStep.sub( 1 ),
+					parameter: ( index ) => sampleFraction( index.add( 1 ) ),
+					near,
+					far,
+					refine: this.binaryRefine,
+					acceptHit,
+					refineHit: ( uvS ) => dot( viewReflectDir, this.normalNode.sample( uvS ) ).lessThan( 0 )
+				} );
 
 			const hitUvS = result.uv;
 			const hitD = projectionDepth( result.depth, near, far ).toConst();
@@ -1176,19 +1192,6 @@ class SSRNode extends Node {
 				// to env. The scatter path bounds reach via ray length, so every hit shades.
 				const distancePointPlane = this.stochastic === false ? pointPlaneDistance( vP, viewPosition, viewNormal ).toVar() : float( 0 );
 				const withinRange = distancePointPlane.lessThanEqual( this.maxDistance ).toVar();
-
-				if ( result.refined === true ) {
-
-					// bisection can land on a depth discontinuity, so validate the refined hit
-
-					const neighbor = getViewPosition( uvS.add( uvPixelStepX ), hitD, this._cameraProjectionMatrixInverse );
-					const tk = max( neighbor.x.sub( vP.x ).mul( 3 ), this.thickness );
-					withinRange.assign( withinRange.and( isBackgroundDepth( hitD ).not() )
-						.and( pointToLineDistance( vP, viewPosition, d1viewPosition ).lessThanEqual( tk ) ) );
-
-					withinRange.assign( withinRange.and( dot( viewReflectDir, this.normalNode.sample( uvS ) ).lessThan( 0 ) ) );
-
-				}
 
 				If( withinRange, () => {
 
@@ -1290,7 +1293,7 @@ class SSRNode extends Node {
 		this._blurMaterial.dispose();
 		this._copyMaterial.dispose();
 
-		this._tracer.dispose();
+		if ( this._tracer !== null ) this._tracer.dispose();
 
 		if ( this._importanceEnvironment !== null ) {
 

@@ -1,7 +1,5 @@
 import { WebGLCoordinateSystem } from 'three/webgpu';
-import { Break, Fn, If, Loop, bool, float, fract, getScreenPositionFromClip, int, interleavedGradientNoise, rand, screenCoordinate, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
-
-const _temporalOffsets = [ 0, 0.5, 0.25, 0.75 ];
+import { Break, Fn, If, Loop, bool, float, getScreenPositionFromClip, int, projectionDepth, vec2, vec3, vec4 } from 'three/tsl';
 
 /**
  * Projects a view position to the UV and projected depth the rays are traced in, for any camera and depth buffer.
@@ -23,40 +21,28 @@ export const getRayPosition = /*@__PURE__*/ Fn( ( [ viewPosition, projectionMatr
 
 } );
 
+const isInFront = /*@__PURE__*/ Fn( ( [ z, depth ], builder ) => builder.renderer.reversedDepthBuffer === true ? z.greaterThan( depth ) : z.lessThan( depth ) );
+
 /**
  * Marches a screen-space ray through the depth one sample at a time, inside the calling TSL function.
- * The ray and the result follow `traceHiZ()`, the cost grows with the length of the ray in pixels.
  *
  * @param {TextureNode} depthNode - The depth of the scene being traced.
  * @param {Node<vec3>} origin - Start UV and projected depth.
  * @param {Node<vec3>} end - End UV and projected depth.
  * @param {Object} options - Traversal configuration.
- * @param {Node<vec2>} options.resolution - The resolution the steps are counted in.
- * @param {boolean} [options.reversedDepth=false] - Projected depth convention.
- * @param {Node<float>|number} [options.quality=1] - The steps per pixel of the ray.
- * @param {Node<float>|number} [options.offset=0] - The offset of the samples, in steps.
- * @param {Node<int>} [options.steps] - The number of samples, instead of the one given by `quality`.
- * @param {Function} [options.parameter] - Returns the ray parameter of a sample index, instead of even steps.
- * @param {Function} [options.projectDepth] - Converts raw depth to projected depth (log-depth inputs).
+ * @param {Node<int>} options.steps - The number of samples.
+ * @param {Function} options.parameter - Returns the ray parameter of a sample index.
+ * @param {Node<float>} options.near - The camera's near value.
+ * @param {Node<float>} options.far - The camera's far value.
  * @param {Function} [options.acceptHit] - TSL predicate accepting (UV, parameter, raw depth). With `refine` it also
- * receives the parameter of the previous sample, to widen its tolerance to the step.
+ * receives the parameter of the previous sample, to widen its tolerance to the step, and tests the refined hit without it.
  * @param {boolean} [options.refine=false] - Whether a hit is bisected towards the sample before it, where the ray was in front.
  * @param {Function} [options.refineHit] - TSL predicate (UV, parameter, raw depth): whether the ray can hit the surface it is behind at a bisection sample.
- * @return {Object} Hit flag, UV, raw depth and parameter, and whether hits are refined.
+ * @return {Object} Hit flag, UV, raw depth and parameter.
  */
-export function traceLinear( depthNode, origin, end, { resolution, reversedDepth = false, quality = 1, offset = 0, steps = null, parameter = null, projectDepth = value => value, acceptHit = () => bool( true ), refine = false, refineHit = () => bool( true ) } ) {
+export function traceLinear( depthNode, origin, end, { steps, parameter, near, far, acceptHit = () => bool( true ), refine = false, refineHit = () => bool( true ) } ) {
 
 	const delta = end.sub( origin ).toConst();
-
-	if ( steps === null ) {
-
-		const pixels = delta.xy.mul( resolution ).abs();
-
-		steps = int( pixels.x.max( pixels.y ).mul( quality ) ).toConst();
-
-	}
-
-	if ( parameter === null ) parameter = ( index ) => index.add( offset ).div( float( steps ) );
 
 	const hit = bool( false ).toVar();
 	const hitUV = vec2( 0 ).toVar();
@@ -68,14 +54,7 @@ export function traceLinear( depthNode, origin, end, { resolution, reversedDepth
 	const previousS = float( 0 ).toVar();
 	const previousInFront = bool( true ).toVar();
 
-	const inFrontAt = ( s, raw ) => {
-
-		const z = origin.z.add( delta.z.mul( s ) );
-		const depth = projectDepth( raw );
-
-		return reversedDepth ? z.greaterThan( depth ) : z.lessThan( depth );
-
-	};
+	const inFrontAt = ( s, raw ) => isInFront( origin.z.add( delta.z.mul( s ) ), projectionDepth( raw, near, far ) );
 
 	Loop( steps, ( { i } ) => {
 
@@ -140,84 +119,16 @@ export function traceLinear( depthNode, origin, end, { resolution, reversedDepth
 
 		} );
 
-	}
+		// bisection can land on a depth discontinuity, so validate the refined hit
 
-	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS, refined: refine };
+		If( hit, () => {
 
-}
+			hit.assign( acceptHit( hitUV, hitS, hitDepth ) );
 
-/**
- * Traces screen-space rays by marching the depth linearly, see `traceLinear()`.
- *
- * @three_import import { LinearTracer } from 'three/addons/tsl/utils/traceLinear.js';
- */
-export class LinearTracer {
-
-	/**
-	 * Constructs a new linear tracer.
-	 *
-	 * @param {Object} [options] - The options.
-	 * @param {boolean} [options.binaryRefine=false] - Whether a hit is bisected towards the exact intersection.
-	 */
-	constructor( { binaryRefine = false } = {} ) {
-
-		/**
-		 * Whether a hit is bisected towards the exact intersection, read when the tracing is built.
-		 *
-		 * @type {boolean}
-		 * @default false
-		 */
-		this.binaryRefine = binaryRefine;
-
-		/**
-		 * The steps per pixel of a ray, in the range `[0,1]`.
-		 *
-		 * @type {UniformNode<float>}
-		 * @default 0.5
-		 */
-		this.quality = uniform( 0.5 );
-
-		/**
-		 * Whether the samples are offset each frame, which requires a temporal filter like `TRAANode`.
-		 *
-		 * @type {boolean}
-		 * @default false
-		 */
-		this.useTemporalFiltering = false;
-
-		this._temporalOffset = uniform( 0 );
+		} );
 
 	}
 
-	/**
-	 * Updates the tracer, called once per frame before tracing.
-	 *
-	 * @param {NodeFrame} frame - The current node frame.
-	 */
-	update( frame ) {
-
-		this._temporalOffset.value = this.useTemporalFiltering === true ? _temporalOffsets[ frame.frameId % 4 ] : 0;
-
-	}
-
-	/**
-	 * Traces a ray inside the calling TSL function.
-	 *
-	 * @param {TextureNode} depthNode - The depth of the scene.
-	 * @param {Node<vec3>} origin - Start UV and projected depth.
-	 * @param {Node<vec3>} end - End UV and projected depth.
-	 * @param {Object} options - The resolution, the depth convention and the predicates, see `traceLinear()`. `steps` and
-	 * `parameter` replace the samples given by `quality`.
-	 * @return {Object} Hit flag, UV, raw depth and parameter.
-	 */
-	trace( depthNode, origin, end, options ) {
-
-		const offset = fract( interleavedGradientNoise( screenCoordinate ).add( this._temporalOffset ) ).add( rand( uv() ) ).toConst();
-
-		return traceLinear( depthNode, origin, end, { quality: this.quality.clamp(), offset, ...options, refine: this.binaryRefine } );
-
-	}
-
-	dispose() {}
+	return { hit, uv: hitUV, depth: hitDepth, parameter: hitS };
 
 }

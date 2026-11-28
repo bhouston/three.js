@@ -1,5 +1,9 @@
-import { Break, Continue, If, Loop, bool, float, int, max, min, uint, uniform, uvec2, vec2 } from 'three/tsl';
+import { Break, Continue, Fn, If, Loop, bool, float, int, max, min, projectionDepth, uint, uniform, uvec2, vec2 } from 'three/tsl';
 import { hiZ } from '../display/HiZNode.js';
+
+// selects by the direction of the depth buffer when the shader is built
+
+const ifReversed = /*@__PURE__*/ Fn( ( [ reversed, standard ], builder ) => builder.renderer.reversedDepthBuffer === true ? reversed : standard );
 
 /**
  * Builds hierarchical screen-space traversal inside the calling TSL function.
@@ -19,10 +23,10 @@ import { hiZ } from '../display/HiZNode.js';
  * @param {Node<vec3>} origin - Start UV and projected depth.
  * @param {Node<vec3>} end - End UV and projected depth.
  * @param {Object} options - Traversal configuration.
- * @param {boolean} [options.reversedDepth=false] - Projected depth convention.
+ * @param {Node<float>} options.near - The camera's near value.
+ * @param {Node<float>} options.far - The camera's far value.
  * @param {Node<float>|number} [options.start=0] - Initial ray parameter (self-hit exclusion).
  * @param {Node<int>|number} [options.maxSteps=32] - Work budget.
- * @param {Function} [options.projectDepth] - Converts raw hierarchy depth to projected depth (log-depth inputs).
  * @param {Node<float>|number} [options.depthTolerance=0] - Conservative projected-depth rounding tolerance.
  * @param {Node<int>|number|Function} [options.minLevel=0] - Finest level later descents need to reach (FidelityFX's most_detailed_mip), or a function of the level-zero pixels travelled so far returning it, for a tolerance that grows along the ray. A coarse leaf is accepted only when the full-resolution pixel under the ray is itself the hit; otherwise that cell is resolved exactly, so hits match `minLevel = 0`.
  * @param {boolean} [options.coarseHits=false] - Cone-tracing approximation: a coarse leaf is tested once, with its nearest depth at the ray's UV, and stepped over when `acceptHit` rejects that. `acceptHit` receives the cell size in pixels as a fourth argument to widen its tolerance.
@@ -33,7 +37,7 @@ import { hiZ } from '../display/HiZNode.js';
  * @return {Object} Hit flag, UV, raw depth, parameter, iterations, exhausted flag and rejected flag: the ray reached a
  * surface that `acceptHit` refused, so it is blocked rather than free.
  */
-export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start = 0, maxSteps = 32, projectDepth = value => value, depthTolerance = 0, minLevel = 0, coarseHits = false, isHidden = null, acceptHit = () => bool( true ), anyHit = false, passRejected = false } = {} ) {
+export function traceHiZ( hierarchy, origin, end, { near, far, start = 0, maxSteps = 32, depthTolerance = 0, minLevel = 0, coarseHits = false, isHidden = null, acceptHit = () => bool( true ), anyHit = false, passRejected = false } = {} ) {
 
 	const delta = end.sub( origin ).toConst();
 	const s = float( start ).toVar();
@@ -70,8 +74,11 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 	const epsilon = float( 0.00001 ).div( max( pixels.x, pixels.y ).max( 1 ) ).max( 1e-7 ).toConst();
 	const inverseXY = delta.xy.greaterThanEqual( vec2( 0 ) ).select( vec2( 1 ), vec2( - 1 ) ).div( pixels.max( 1e-20 ) ).toConst();
 	const inverseZ = delta.z.greaterThanEqual( 0 ).select( 1, - 1 ).div( delta.z.abs().max( 1e-20 ) ).toConst();
-	const farther = reversedDepth ? ( a, b ) => a.lessThan( b ) : ( a, b ) => a.greaterThan( b );
-	const nearer = reversedDepth ? ( a, b ) => a.greaterThan( b ) : ( a, b ) => a.lessThan( b );
+	const farther = ( a, b ) => ifReversed( a.lessThan( b ), a.greaterThan( b ) );
+	const nearer = ( a, b ) => ifReversed( a.greaterThan( b ), a.lessThan( b ) );
+	const projectDepth = ( raw ) => projectionDepth( raw, near, far );
+	// the rounding tolerance of a depth, towards the camera
+	const tolerance = ifReversed( float( depthTolerance ), float( depthTolerance ).negate() );
 
 	Loop( { start: int( 0 ), end: int( maxSteps ).clamp( 1, 4096 ), type: 'int', condition: '<' }, ( { i } ) => {
 
@@ -127,11 +134,11 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 		const raw = cellDepth.toVar();
 		const depth = projectDepth( raw ).toVar();
 		const plane = depth.sub( origin.z ).mul( inverseZ ).toVar();
-		const conservativeDepth = depth.add( reversedDepth ? depthTolerance : float( depthTolerance ).negate() );
+		const conservativeDepth = depth.add( tolerance );
 		const inFront = nearer( z, conservativeDepth ).and(
 			farther( end.z, origin.z ).not().or( plane.greaterThan( s.add( 1e-7 ) ) )
 		).toVar();
-		const background = reversedDepth ? raw.lessThanEqual( 0 ) : raw.greaterThanEqual( 1 );
+		const background = ifReversed( raw.lessThanEqual( 0 ), raw.greaterThanEqual( 1 ) );
 
 		// Behind every surface in the cell from entry to exit: the ray is hidden
 		// by an occluder here and cannot be accepted, so skip it as if empty.
@@ -139,8 +146,8 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 		if ( isHidden !== null ) {
 
 			const farRaw = cellFarthest.toVar();
-			const far = projectDepth( farRaw ).add( reversedDepth ? float( depthTolerance ).negate() : depthTolerance );
-			If( inFront.not().and( background.not() ).and( farther( z, far ) ).and( farther( origin.z.add( delta.z.mul( exit ) ), far ) ), () => {
+			const farBound = projectDepth( farRaw ).sub( tolerance );
+			If( inFront.not().and( background.not() ).and( farther( z, farBound ) ).and( farther( origin.z.add( delta.z.mul( exit ) ), farBound ) ), () => {
 
 				hidden.assign( isHidden( pixel.div( size ), origin.xy.add( delta.xy.mul( exit ) ), farRaw ) );
 
@@ -154,10 +161,9 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 			// pixel under the ray is a surface the ray has passed, whatever its depth within the cell.
 			const farRaw = cellFarthest.toVar();
 			const farDepth = projectDepth( farRaw ).toVar();
-			const tolerance = float( depthTolerance );
-			const sAny = farDepth.add( reversedDepth ? tolerance.negate() : tolerance ).sub( origin.z ).mul( inverseZ ).min( exit ).max( s ).toVar();
+			const sAny = farDepth.sub( tolerance ).sub( origin.z ).mul( inverseZ ).min( exit ).max( s ).toVar();
 			const zAny = origin.z.add( delta.z.mul( sAny ) );
-			If( mip.greaterThan( 0 ).and( background.not() ).and( nearer( zAny, farDepth.add( reversedDepth ? tolerance : tolerance.negate() ) ).not() ), () => {
+			If( mip.greaterThan( 0 ).and( background.not() ).and( nearer( zAny, farDepth.add( tolerance ) ).not() ), () => {
 
 				const uvAny = lookupOrigin.add( deltaPixel.mul( sAny ) ).max( begin ).min( cellEnd.sub( 0.01 ) ).div( size ).toVar();
 				If( acceptHit( uvAny, sAny, raw ).and( acceptHit( uvAny, sAny, farRaw ) ), () => {
@@ -233,7 +239,7 @@ export function traceHiZ( hierarchy, origin, end, { reversedDepth = false, start
 				const leaf = hierarchy.getPixelCellNode( 0, pixel ).depth.toVar();
 				// The same test a mip-zero leaf makes at this pixel, so the result is
 				// the exact one: only the descents in between are saved.
-				const leafProjected = projectDepth( leaf ).add( reversedDepth ? depthTolerance : float( depthTolerance ).negate() );
+				const leafProjected = projectDepth( leaf ).add( tolerance );
 				If( nearer( z, leafProjected ).not().and( acceptHit( leafUV, s, leaf ) ), () => {
 
 					hit.assign( true );
@@ -354,7 +360,7 @@ export class HiZTracer {
 	 * @param {TextureNode} depthNode - The depth of the scene.
 	 * @param {Node<vec3>} origin - Start UV and projected depth.
 	 * @param {Node<vec3>} end - End UV and projected depth.
-	 * @param {Object} options - The depth convention and the predicates, see `traceHiZ()`.
+	 * @param {Object} options - The camera's near and far values and the predicates, see `traceHiZ()`.
 	 * @return {Object} Hit flag, UV, raw depth and parameter.
 	 */
 	trace( depthNode, origin, end, options ) {

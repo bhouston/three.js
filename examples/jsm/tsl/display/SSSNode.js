@@ -1,5 +1,6 @@
 import { RedFormat, RenderTarget, Vector2, RendererUtils, QuadMesh, Node, NodeMaterial, NodeUpdateType, UnsignedByteType } from 'three/webgpu';
-import { reference, getScreenPosition, getViewPosition, float, Break, Loop, int, max, abs, If, interleavedGradientNoise, screenCoordinate, Fn, passTexture, uv, uniform, depthToViewZ, vec2, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth } from 'three/tsl';
+import { reference, getViewPosition, interleavedGradientNoise, screenCoordinate, float, int, If, Fn, passTexture, uv, uniform, depthToViewZ, lightPosition, lightTargetPosition, fract, rand, mix, context, isBackgroundDepth, projectionDepth, getNormalFromDepth, sample, vec3 } from 'three/tsl';
+import { traceLinear, getRayPosition } from '../utils/traceLinear.js';
 
 const _quadMesh = /*@__PURE__*/ new QuadMesh();
 const _size = /*@__PURE__*/ new Vector2();
@@ -30,7 +31,7 @@ let _rendererState;
  *
  * - Ideally the maximum shadow length should not exceed `1` meter. Otherwise the effect gets
  * computationally very expensive since more samples during the ray marching process are evaluated.
- * You can mitigate this issue by reducing the `quality` parameter.
+ * You can mitigate this issue by reducing the `quality` parameter, or by using a `HiZTracer`.
  * - The effect can only be used with a single directional light, the main light of your scene.
  * This main light usually represents the sun or daylight.
  * - Like other Screen-Space techniques SSS can only honor objects in the shadowing computation that
@@ -68,6 +69,13 @@ class SSSNode extends Node {
 		 * @type {TextureNode}
 		 */
 		this.depthNode = depthNode;
+
+		/**
+		 * Returns the scene's unit normal in view space when sampled at a uv. Reconstructs it from the depth by default.
+		 *
+		 * @type {Node<vec3>}
+		 */
+		this.normalNode = sample( ( uv ) => getNormalFromDepth( uv, this.depthNode.value, this._cameraProjectionMatrixInverse ) );
 
 		/**
 		 * Maximum shadow length in world units. Longer shadows result in more computational
@@ -129,6 +137,15 @@ class SSSNode extends Node {
 		 * @default false
 		 */
 		this.useTemporalFiltering = false;
+
+		/**
+		 * Traces the shadow rays through a hierarchical depth when set, instead of the linear march placed by
+		 * `quality`. The materials using the node must be rebuilt when it changes.
+		 *
+		 * @type {?HiZTracer}
+		 * @default null
+		 */
+		this.tracer = null;
 
 		/**
 		 * The `updateBeforeType` is set to `NodeUpdateType.FRAME` since the node renders
@@ -247,7 +264,6 @@ class SSSNode extends Node {
 		 */
 		this._textureNode = passTexture( this, this._sssRenderTarget.texture );
 
-
 	}
 
 	/**
@@ -285,6 +301,8 @@ class SSSNode extends Node {
 	updateBefore( frame ) {
 
 		const { renderer } = frame;
+
+		if ( this.tracer !== null ) this.tracer.update( frame, this.depthNode );
 
 		_rendererState = RendererUtils.resetRendererState( renderer, _rendererState );
 
@@ -350,74 +368,97 @@ class SSSNode extends Node {
 
 			const rayStartPosition = getViewPosition( uvNode, depth, this._cameraProjectionMatrixInverse ).toVar( 'rayStartPosition' );
 			const rayDirection = this._cameraViewMatrix.transformDirection( lightPosition( this._mainLight ).sub( lightTargetPosition( this._mainLight ) ) ).toConst( 'rayDirection' );
-			const rayEndPosition = rayStartPosition.add( rayDirection.mul( this.maxDistance ) ).toConst( 'rayEndPosition' );
+			const rayEndPosition = rayStartPosition.add( rayDirection.mul( this.maxDistance ) ).toVar( 'rayEndPosition' );
 
-			// d0 and d1 are the start and maximum points of the ray in screen space
-			const d0 = screenCoordinate.xy.toVar();
-			const d1 = getScreenPosition( rayEndPosition, this._cameraProjectionMatrix ).mul( this._resolution ).toVar();
+			// the ray ends at the near plane
 
-			// below variables are used to control the raymarching process
+			If( rayEndPosition.z.greaterThan( this._cameraNear.negate() ), () => {
 
-			// total length of the ray
-			const totalLen = d1.sub( d0 ).length().toVar();
+				const t = this._cameraNear.negate().sub( rayStartPosition.z ).div( rayDirection.z ).mul( 0.999 );
 
-			// offset in x and y direction
-			const xLen = d1.x.sub( d0.x ).toVar();
-			const yLen = d1.y.sub( d0.y ).toVar();
-
-			// determine the larger delta
-			// The larger difference will help to determine how much to travel in the X and Y direction each iteration and
-			// how many iterations are needed to travel the entire ray
-			const totalStep = int( max( abs( xLen ), abs( yLen ) ).mul( this.quality.clamp() ) ).toConst();
-
-			// step sizes in the x and y directions
-			const xSpan = xLen.div( totalStep ).toVar();
-			const ySpan = yLen.div( totalStep ).toVar();
-
-			// compute noise based ray offset
-			const noise = interleavedGradientNoise( screenCoordinate );
-			const offset = fract( noise.add( this._temporalOffset ) ).add( rand( uvNode.add( this._frameId ) ) ).toConst( 'offset' );
-
-			const occlusion = float( 0 ).toVar();
-
-			Loop( totalStep, ( { i } ) => {
-
-				// advance on the ray by computing a new position in screen coordinates
-				const xy = vec2( d0.x.add( xSpan.mul( float( i ).add( offset ) ) ), d0.y.add( ySpan.mul( float( i ).add( offset ) ) ) ).toVar();
-
-				// stop processing if the new position lies outside of the screen
-				If( xy.x.lessThan( 0 ).or( xy.x.greaterThan( this._resolution.x ) ).or( xy.y.lessThan( 0 ) ).or( xy.y.greaterThan( this._resolution.y ) ), () => {
-
-					Break();
-
-				} );
-
-				// compute new uv and viewZ for the next fragment
-
-				const uvNode = xy.div( this._resolution );
-				const fragmentViewZ = depthToViewZ( this.depthNode.sample( uvNode ).r, this._cameraNear, this._cameraFar, this._camera ).toConst( 'fragmentViewZ' );
-
-				const s = xy.sub( d0 ).length().div( totalLen ).toVar();
-				const rayPosition = mix( rayStartPosition, rayEndPosition, s );
-
-				const depthDelta = rayPosition.z.sub( fragmentViewZ ).negate(); // Port note: viewZ values are negative in three
-
-				// check if the camera can't "see" the ray (ray depth must be larger than the camera depth, so positive depth_delta)
-
-				If( depthDelta.greaterThan( 0 ).and( depthDelta.lessThan( this.thickness ) ), () => {
-
-					// mark as occluded
-
-					occlusion.assign( this.shadowIntensity );
-
-					Break();
-
-				} );
-
+				rayEndPosition.assign( rayStartPosition.add( rayDirection.mul( t ) ) );
 
 			} );
 
-			return occlusion.oneMinus();
+			// an occluder is above the plane of the receiver by more than a pixel, otherwise a surface at a grazing
+			// angle shadows itself: the depth of a pixel is constant, while its surface spans a range of depths
+
+			const normal = this.normalNode.sample( uvNode ).toVar();
+			const facing = normal.dot( rayStartPosition ).lessThan( 0 ).select( normal, normal.negate() ).toConst();
+			const pixelSize = float( 2 ).div( this._cameraProjectionMatrix.element( 1 ).element( 1 ).mul( this._resolution.y ) );
+
+			const occludes = ( uv, raw ) => {
+
+				const position = getViewPosition( uv, projectionDepth( raw, this._cameraNear, this._cameraFar ), this._cameraProjectionMatrixInverse ).toConst();
+				const bias = this._camera.isPerspectiveCamera === true ? pixelSize.mul( position.z.negate() ) : pixelSize;
+
+				return position.sub( rayStartPosition ).dot( facing ).greaterThan( bias );
+
+			};
+
+			// the ray in UV and projected depth, where it is linear, and its viewZ
+
+			const near = this._cameraNear;
+			const far = this._cameraFar;
+
+			const origin = vec3( uvNode, depth ).toConst();
+			const end = getRayPosition( rayEndPosition, this._cameraProjectionMatrix ).toConst();
+			const delta = end.xy.sub( origin.xy ).toConst();
+			const rayZ = ( s ) => getViewPosition( mix( origin.xy, end.xy, s ), mix( origin.z, end.z, s ), this._cameraProjectionMatrixInverse ).z;
+
+			// the distance of the ray behind a surface, an occluder is at most `thickness` in front of the ray
+
+			const behind = ( s, raw ) => depthToViewZ( raw, near, far, this._camera ).sub( rayZ( s ) );
+			const acceptHit = ( uv, s, raw ) => behind( s, raw ).lessThan( this.thickness ).and( occludes( uv, raw ) );
+
+			const trace = () => {
+
+				if ( this.tracer !== null ) {
+
+					const parameter = ( uv ) => uv.sub( origin.xy ).dot( delta ).div( delta.dot( delta ).max( 1e-12 ) ).clamp();
+
+					return this.tracer.trace( this.depthNode, origin, end, {
+						near,
+						far,
+						isHidden: ( uvIn, uvOut, raw ) => behind( parameter( uvIn ), raw ).greaterThan( this.thickness ).and( behind( parameter( uvOut ), raw ).greaterThan( this.thickness ) ),
+						acceptHit,
+						passRejected: true
+					} );
+
+				}
+
+				// compute noise based ray offset
+				const noise = interleavedGradientNoise( screenCoordinate );
+				const offset = fract( noise.add( this._temporalOffset ) ).add( rand( uvNode.add( this._frameId ) ) ).toConst( 'offset' );
+
+				// step by pixels of the ray
+
+				const pixels = delta.mul( this._resolution ).abs();
+				const steps = int( pixels.x.max( pixels.y ).mul( this.quality.clamp() ) ).toConst();
+
+				return traceLinear( this.depthNode, origin, end, {
+					steps,
+					parameter: ( index ) => index.add( offset ).div( float( steps ) ),
+					near,
+					far,
+					acceptHit
+				} );
+
+			};
+
+			// a surface facing away from the light shadows itself, no ray is traced
+
+			const value = this.shadowIntensity.oneMinus().toVar();
+
+			If( facing.dot( rayDirection ).greaterThan( 0 ), () => {
+
+				const result = trace();
+
+				value.assign( result.hit.select( this.shadowIntensity.oneMinus(), 1 ) );
+
+			} );
+
+			return value;
 
 		} );
 
@@ -440,6 +481,8 @@ class SSSNode extends Node {
 		this._sssRenderTarget.dispose();
 
 		this._material.dispose();
+
+		if ( this.tracer !== null ) this.tracer.dispose();
 
 	}
 
